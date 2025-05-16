@@ -15,10 +15,9 @@ limitations under the License.
 
 #include "xla/hlo/transforms/expanders/dot_decomposer.h"
 
-#include <algorithm>
+#include <cstddef>
 #include <cstdint>
-#include <memory>
-#include <utility>
+#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -33,240 +32,215 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/permutation_util.h"
+#include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
 namespace {
+using DotOperandDims = gpu::DotOperandDims;
+
+absl::StatusOr<std::optional<std::vector<int64_t>>>
+ComputeContractingDimPermutation(HloDotInstruction* dot) {
+  std::optional<std::vector<int64_t>> result;
+
+  for (const SparsityDescriptor& descriptor : dot->sparsity()) {
+    int operand = descriptor.index();
+    int dim = descriptor.dimension();
+    TF_ASSIGN_OR_RETURN(auto dims, DotOperandDims::FromDot(dot, operand));
+    TF_ASSIGN_OR_RETURN(int64_t local_dim,
+                        dims.LocalIndex(DotOperandDims::kContracting, dim));
+    std::vector<int64_t> permutation;
+    for (size_t i = 0; i < dims.DimensionCount(DotOperandDims::kContracting);
+         ++i) {
+      if (i != local_dim) {
+        permutation.push_back(i);
+      }
+    }
+    permutation.push_back(local_dim);
+    TF_RET_CHECK(!result || absl::c_equal(*result, permutation));
+    result = permutation;
+  }
+
+  return result;
+}
+
+struct DotOperand {
+  HloInstruction* operand = nullptr;
+  HloInstruction* sparsity_meta = nullptr;
+  std::optional<SparsityDescriptor> sparsity_descriptor;
+  DotOperandDims dims;
+};
+
+int64_t SuggestDimensionIndex(
+    const DotOperandDims& dims,
+    absl::Span<const DotOperandDims::Category> categories_order,
+    DotOperandDims::Category category_to_insert) {
+  // Assume that the dimensions are sorted in the categories_order.
+  int64_t index = 0;
+  for (auto cat : categories_order) {
+    if (cat == category_to_insert) {
+      return index;
+    }
+    index += dims.DimensionCount(cat);
+  }
+  return index;
+}
+
+absl::StatusOr<DotOperand> CanonicalizeDotOperand(
+    HloDotInstruction* dot, int operand_idx,
+    std::optional<std::vector<int64_t>> contracting_dim_permutation,
+    absl::Span<const DotOperandDims::Category> categories_order) {
+  auto computation = dot->parent();
+  HloInstruction* operand = dot->mutable_operand(operand_idx);
+  TF_ASSIGN_OR_RETURN(auto operand_dims,
+                      DotOperandDims::FromDot(dot, operand_idx));
+
+  // Build a permutation. The order of the categories comes from the parameter,
+  // and potentially we apply the permutation to the contracting dimensions.
+  std::vector<int64_t> transpose;
+  transpose.reserve(operand_dims.shape().dimensions().size());
+  for (auto cat : categories_order) {
+    if (cat == DotOperandDims::kContracting && contracting_dim_permutation) {
+      // If the contracting dimension order is specified, permute the
+      // contracting dimensions.
+      const auto& dims =
+          Permute(operand_dims.Indices(cat), *contracting_dim_permutation);
+      transpose.insert(transpose.end(), dims.begin(), dims.end());
+    } else {
+      transpose.insert(transpose.end(), operand_dims.Indices(cat).begin(),
+                       operand_dims.Indices(cat).end());
+    }
+  }
+  operand_dims.Permute(transpose);
+  HloInstruction* transposed =
+      operand_dims.shape() == operand->shape()
+          ? operand
+          : computation->AddInstruction(
+                HloInstruction::CreateTranspose(operand_dims.shape(), operand,
+                                                transpose),
+                &operand->metadata());
+
+  // * Batch dimensions are not collapsed.
+  // * Non-contracting dimensions are collapsed and removed if empty.
+  // * Contracting dimensions are collapsed but not removed if empty.
+  TF_RETURN_IF_ERROR(operand_dims.Collapse(DotOperandDims::kNonContracting,
+                                           /*remove_if_empty=*/true));
+  TF_RETURN_IF_ERROR(operand_dims.Collapse(DotOperandDims::kContracting,
+                                           /*remove_if_empty=*/false));
+  if (operand_dims.DimensionCount(DotOperandDims::kContracting) == 0) {
+    // If there are no contracting dimensions, insert a dimension of size 1.
+    const int64_t new_dim_idx = SuggestDimensionIndex(
+        operand_dims, categories_order, DotOperandDims::kContracting);
+    TF_RETURN_IF_ERROR(operand_dims.InsertDimension(
+        DotOperandDims::kContracting, new_dim_idx, 1));
+  }
+  HloInstruction* reshape =
+      operand_dims.shape() == transposed->shape()
+          ? transposed
+          : computation->AddInstruction(
+                HloInstruction::CreateReshape(operand_dims.shape(), transposed),
+                &transposed->metadata());
+  DotOperand result;
+  result.operand = reshape;
+
+  // Now also do the same transformations for the sparsity metadata.
+  const auto& sparsity = dot->sparsity();
+  if (auto iter = absl::c_find_if(sparsity,
+                                  [&](const SparsityDescriptor& descriptor) {
+                                    return descriptor.index() == operand_idx;
+                                  });
+      iter != sparsity.end()) {
+    SparsityDescriptor descriptor = *iter;
+    descriptor.set_dimension(
+        operand_dims.Indices(DotOperandDims::kContracting).back());
+    result.sparsity_descriptor = descriptor;
+    HloInstruction* meta = dot->mutable_operand(HloDotInstruction::kOperands +
+                                                (iter - sparsity.begin()));
+    HloInstruction* meta_transpose = computation->AddInstruction(
+        HloInstruction::CreateTranspose(
+            ShapeUtil::PermuteDimensions(transpose, meta->shape()), meta,
+            transpose),
+        &meta->metadata());
+    TF_ASSIGN_OR_RETURN(
+        Shape result_shape,
+        ShapeInference::InferSparseDotMetadataShape(
+            result.operand->shape(),
+            operand_dims.Indices(DotOperandDims::kContracting), descriptor));
+    result.sparsity_meta = computation->AddInstruction(
+        HloInstruction::CreateReshape(result_shape, meta_transpose),
+        &meta->metadata());
+  }
+  result.dims = operand_dims;
+  return result;
+}
 
 // Convert a dot into a canonical form;
 // * Non-contracting dimensions are reshaped together,
 // * Contracting dimensions are reshaped together,
 // * Batch dimensions are the most major dimensions.
 // This requires transposing and reshaping of the lhs and rhs, and reshaping the
-// output batch to the original shape.
+// output non-contracting dimensions to the original shape.
 absl::Status CanonicalizeDot(HloDotInstruction* original_dot) {
   auto computation = original_dot->parent();
-  const auto& original_dnums = original_dot->dot_dimension_numbers();
-  const int64_t num_batch_dims = original_dnums.lhs_batch_dimensions_size();
-  const int64_t num_contracting_dims =
-      original_dnums.lhs_contracting_dimensions_size();
+  // Check whether there is special requirements for the contracting dimension
+  // order (e.g. for sparse operands, the sparse dimension should be the last).
+  TF_ASSIGN_OR_RETURN(
+      std::optional<std::vector<int64_t>> contracting_dim_permutation,
+      ComputeContractingDimPermutation(original_dot));
 
-  // Sparse dimension (if present), must be at the end of the contracting
-  // dimensions list.
-  int lhs_sparse_dim = -1, rhs_sparse_dim = -1;
-  for (const SparsityDescriptor& descriptor : original_dot->sparsity()) {
-    (descriptor.index() == 0 ? lhs_sparse_dim : rhs_sparse_dim) =
-        descriptor.dimension();
-  }
-  auto move_dim_to_end = [&](std::vector<int64_t>& dims, int sparse_dim) {
-    if (sparse_dim < 0) return;
-    auto it = std::remove(dims.begin(), dims.end(), sparse_dim);
-    *it = sparse_dim;  // Effectively the same as erase+push_back.
-  };
+  TF_ASSIGN_OR_RETURN(
+      DotOperand lhs,
+      CanonicalizeDotOperand(
+          original_dot, 0, contracting_dim_permutation,
+          {DotOperandDims::kBatch, DotOperandDims::kNonContracting,
+           DotOperandDims::kContracting}));
+  TF_ASSIGN_OR_RETURN(DotOperand rhs,
+                      CanonicalizeDotOperand(
+                          original_dot, 1, contracting_dim_permutation,
+                          {DotOperandDims::kBatch, DotOperandDims::kContracting,
+                           DotOperandDims::kNonContracting}));
 
-  const auto& lhs_shape = original_dot->operand(0)->shape();
-  const int64_t lhs_rank = lhs_shape.dimensions().size();
-  const int64_t num_lhs_non_contracting_dims =
-      lhs_rank - num_batch_dims - num_contracting_dims;
+  TF_ASSIGN_OR_RETURN(Shape out_shape, DotOperandDims::IntoOutputShape(
+                                           original_dot->shape().element_type(),
+                                           lhs.dims, rhs.dims));
+  TF_ASSIGN_OR_RETURN(
+      DotDimensionNumbers dnums,
+      DotOperandDims::IntoDotDimensionNumbers(lhs.dims, rhs.dims));
 
-  std::vector<int64_t> lhs_non_contracting_dims;
-  lhs_non_contracting_dims.reserve(num_lhs_non_contracting_dims);
-  int64_t lhs_contracting_size = 1;
-  bool lhs_contracting_dynamic = false;
-  int64_t lhs_non_contracting_size = 1;
-  bool lhs_non_contracting_dynamic = false;
-  std::vector<int64_t> batch_dim_sizes;
-  batch_dim_sizes.reserve(num_batch_dims);
-  std::vector<bool> batch_dynamic_dims;
-  batch_dynamic_dims.reserve(num_batch_dims);
-  for (int64_t i = 0; i < lhs_rank; ++i) {
-    if (absl::c_linear_search(original_dnums.lhs_contracting_dimensions(), i)) {
-      lhs_contracting_size *= lhs_shape.dimensions(i);
-      lhs_contracting_dynamic |= lhs_shape.is_dynamic_dimension(i);
-    } else if (absl::c_linear_search(original_dnums.lhs_batch_dimensions(),
-                                     i)) {
-      batch_dim_sizes.push_back(lhs_shape.dimensions(i));
-      batch_dynamic_dims.push_back(lhs_shape.is_dynamic_dimension(i));
-    } else {
-      lhs_non_contracting_dims.push_back(i);
-      lhs_non_contracting_size *= lhs_shape.dimensions(i);
-      lhs_non_contracting_dynamic |= lhs_shape.is_dynamic_dimension(i);
-    }
-  }
-  // The canonical form of the lhs is
-  // [BatchDims, NonContractingDimsProduct, ContractingsDimsProduct]
-  // If NonContractingDimsProduct is 1, it is omitted.
-  std::vector<int64_t> lhs_transpose;
-  lhs_transpose.reserve(lhs_rank);
-  lhs_transpose.insert(lhs_transpose.end(),
-                       original_dnums.lhs_batch_dimensions().begin(),
-                       original_dnums.lhs_batch_dimensions().end());
-  lhs_transpose.insert(lhs_transpose.end(), lhs_non_contracting_dims.begin(),
-                       lhs_non_contracting_dims.end());
-  lhs_transpose.insert(lhs_transpose.end(),
-                       original_dnums.lhs_contracting_dimensions().begin(),
-                       original_dnums.lhs_contracting_dimensions().end());
-  move_dim_to_end(lhs_transpose, lhs_sparse_dim);
-  HloInstruction* lhs_operand = original_dot->mutable_operand(0);
-  HloInstruction* transposed_lhs = computation->AddInstruction(
-      HloInstruction::CreateTranspose(
-          ShapeUtil::PermuteDimensions(lhs_transpose, lhs_shape), lhs_operand,
-          lhs_transpose),
-      &lhs_operand->metadata());
-
-  std::vector<int64_t> lhs_reshape_dims = batch_dim_sizes;
-  std::vector<bool> lhs_reshape_dynamic_dims = batch_dynamic_dims;
-  if (lhs_non_contracting_size > 1) {
-    lhs_reshape_dims.push_back(lhs_non_contracting_size);
-    lhs_reshape_dynamic_dims.push_back(lhs_non_contracting_dynamic);
-  }
-  lhs_reshape_dims.push_back(lhs_contracting_size);
-  lhs_reshape_dynamic_dims.push_back(lhs_contracting_dynamic);
-  // Reshape the contracting and non-contracting dimensions together.
-  HloInstruction* reshaped_lhs = computation->AddInstruction(
-      HloInstruction::CreateReshape(
-          ShapeUtil::MakeShape(lhs_shape.element_type(), lhs_reshape_dims,
-                               lhs_reshape_dynamic_dims),
-          transposed_lhs),
-      &transposed_lhs->metadata());
-
-  const auto& rhs_shape = original_dot->operand(1)->shape();
-  const int64_t rhs_rank = rhs_shape.dimensions().size();
-  const int64_t num_rhs_non_contracting_dims =
-      rhs_rank - num_batch_dims - num_contracting_dims;
-  std::vector<int64_t> rhs_non_contracting_dims;
-  rhs_non_contracting_dims.reserve(num_rhs_non_contracting_dims);
-  int64_t rhs_non_contracting_size = 1;
-  bool rhs_non_contracting_dynamic = false;
-  int64_t rhs_contracting_size = 1;
-  bool rhs_contracting_dynamic = false;
-  for (int64_t i = 0; i < rhs_rank; ++i) {
-    if (absl::c_linear_search(original_dnums.rhs_contracting_dimensions(), i)) {
-      rhs_contracting_size *= rhs_shape.dimensions(i);
-      rhs_contracting_dynamic |= rhs_shape.is_dynamic_dimension(i);
-    } else if (!absl::c_linear_search(original_dnums.rhs_batch_dimensions(),
-                                      i)) {
-      rhs_non_contracting_dims.push_back(i);
-      rhs_non_contracting_size *= rhs_shape.dimensions(i);
-      rhs_non_contracting_dynamic |= rhs_shape.is_dynamic_dimension(i);
-    }
-  }
-
-  // The canonical form of the rhs is
-  // [BatchDims, ContractingsDimsProduct, NonContractingDimsProduct]
-  // If NonContractingDimsProduct is 1, it is omitted.
-  std::vector<int64_t> rhs_transpose;
-  rhs_transpose.reserve(rhs_rank);
-  rhs_transpose.insert(rhs_transpose.end(),
-                       original_dnums.rhs_batch_dimensions().begin(),
-                       original_dnums.rhs_batch_dimensions().end());
-  rhs_transpose.insert(rhs_transpose.end(),
-                       original_dnums.rhs_contracting_dimensions().begin(),
-                       original_dnums.rhs_contracting_dimensions().end());
-  move_dim_to_end(rhs_transpose, rhs_sparse_dim);
-  rhs_transpose.insert(rhs_transpose.end(), rhs_non_contracting_dims.begin(),
-                       rhs_non_contracting_dims.end());
-  HloInstruction* rhs_operand = original_dot->mutable_operand(1);
-  HloInstruction* transposed_rhs = computation->AddInstruction(
-      HloInstruction::CreateTranspose(
-          ShapeUtil::PermuteDimensions(rhs_transpose, rhs_shape), rhs_operand,
-          rhs_transpose),
-      &rhs_operand->metadata());
-
-  std::vector<int64_t> rhs_reshape_dims = batch_dim_sizes;
-  rhs_reshape_dims.push_back(rhs_contracting_size);
-  std::vector<bool> rhs_reshape_dynamic_dims = batch_dynamic_dims;
-  rhs_reshape_dynamic_dims.push_back(rhs_contracting_dynamic);
-  if (rhs_non_contracting_size > 1) {
-    rhs_reshape_dims.push_back(rhs_non_contracting_size);
-    rhs_reshape_dynamic_dims.push_back(rhs_non_contracting_dynamic);
-  }
-  // Reshape the contracting and non-contracting dimensions together.
-  HloInstruction* reshaped_rhs = computation->AddInstruction(
-      HloInstruction::CreateReshape(
-          ShapeUtil::MakeShape(rhs_shape.element_type(), rhs_reshape_dims,
-                               rhs_reshape_dynamic_dims),
-          transposed_rhs),
-      &transposed_rhs->metadata());
-
-  std::vector<int64_t> dot_dims = batch_dim_sizes;
-  std::vector<bool> dot_dynamic_dims = batch_dynamic_dims;
-  if (lhs_non_contracting_size > 1) {
-    dot_dims.push_back(lhs_non_contracting_size);
-    dot_dynamic_dims.push_back(lhs_non_contracting_dynamic);
-  }
-  if (rhs_non_contracting_size > 1) {
-    dot_dims.push_back(rhs_non_contracting_size);
-    dot_dynamic_dims.push_back(rhs_non_contracting_dynamic);
-  }
-
-  DotDimensionNumbers dot_dnums;
-  for (int64_t i = 0; i < num_batch_dims; ++i) {
-    dot_dnums.add_lhs_batch_dimensions(i);
-    dot_dnums.add_rhs_batch_dimensions(i);
-  }
-  dot_dnums.add_lhs_contracting_dimensions(
-      num_batch_dims + (lhs_non_contracting_size > 1 ? 1 : 0));
-  dot_dnums.add_rhs_contracting_dimensions(num_batch_dims);
-
-  // Build sparsity data for the new dot.
   std::vector<SparsityDescriptor> sparsity;
   std::vector<HloInstruction*> sparse_meta;
-  sparsity.reserve(original_dot->sparse_operands());
-  sparse_meta.reserve(original_dot->sparse_operands());
-  auto transpose_meta = [&](HloInstruction* original_meta,
-                            absl::Span<const int64_t> transpose) {
-    return computation->AddInstruction(
-        HloInstruction::CreateTranspose(
-            ShapeUtil::PermuteDimensions(transpose, original_meta->shape()),
-            original_meta, transpose),
-        &original_meta->metadata());
-  };
-  for (int i = 0; i < original_dot->sparse_operands(); ++i) {
-    SparsityDescriptor descriptor = original_dot->sparsity()[i];
-    descriptor.set_dimension(num_batch_dims + (descriptor.index() == 0 &&
-                                               lhs_non_contracting_size > 1));
-    sparsity.push_back(descriptor);
-    HloInstruction* meta =
-        original_dot->mutable_operand(HloDotInstruction::kOperands + i);
-    HloInstruction* meta_operand;
-    if (descriptor.index() == 0) {
-      meta = transpose_meta(meta, lhs_transpose);
-      meta_operand = reshaped_lhs;
-    } else {
-      meta = transpose_meta(meta, rhs_transpose);
-      meta_operand = reshaped_rhs;
+  for (auto& operand : {lhs, rhs}) {
+    if (operand.sparsity_descriptor.has_value()) {
+      sparsity.push_back(operand.sparsity_descriptor.value());
     }
-    TF_ASSIGN_OR_RETURN(Shape result_shape,
-                        ShapeInference::InferSparseDotMetadataShape(
-                            meta_operand->shape(), dot_dnums, descriptor));
-    meta = computation->AddInstruction(
-        HloInstruction::CreateReshape(result_shape, meta), &meta->metadata());
-    sparse_meta.push_back(meta);
+    if (operand.sparsity_meta != nullptr) {
+      sparse_meta.push_back(operand.sparsity_meta);
+    }
   }
 
   HloInstruction* dot = computation->AddInstruction(HloInstruction::CreateDot(
-      ShapeUtil::MakeShape(original_dot->shape().element_type(), dot_dims,
-                           dot_dynamic_dims),
-      reshaped_lhs, reshaped_rhs, dot_dnums, original_dot->precision_config(),
-      sparsity, sparse_meta));
+      out_shape, lhs.operand, rhs.operand, dnums,
+      original_dot->precision_config(), sparsity, sparse_meta));
   original_dot->SetupDerivedInstruction(dot);
 
-  std::unique_ptr<HloInstruction> replacement =
-      HloInstruction::CreateReshape(original_dot->shape(), dot);
+  HloInstruction* reshape =
+      original_dot->shape() == dot->shape()
+          ? dot
+          : computation->AddInstruction(
+                HloInstruction::CreateReshape(original_dot->shape(), dot));
   VLOG(3) << "Canonicalizing dot:\n"
           << "\t old: " << original_dot->ToString() << "\n"
           << "\t new: " << dot->ToString() << "\n"
-          << "\t   -> " << replacement->ToString();
-  return computation->ReplaceWithNewInstruction(original_dot,
-                                                std::move(replacement));
+          << "\t   -> " << reshape->ToString();
+  return computation->ReplaceInstruction(original_dot, reshape);
 }
 
 }  // namespace

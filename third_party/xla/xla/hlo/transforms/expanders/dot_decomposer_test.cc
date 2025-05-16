@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/pattern_matcher.h"
 #include "tsl/platform/statusor.h"
@@ -57,7 +58,7 @@ TEST_F(DotDecomposerTest, CanonicalizeMultipleNonContractingDims) {
                           DotDecomposer().Run(module.get()));
   EXPECT_TRUE(canonicalized);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Reshape(AllOf(op::Dot(op::Reshape(), op::Reshape(),
+              op::Reshape(AllOf(op::Dot(op::Reshape(), op::Parameter(),
                                         /*lhs_contracting_dim=*/1,
                                         /*rhs_contracting_dim=*/0),
                                 op::Shape("f32[4032,512]"))));
@@ -102,7 +103,7 @@ TEST_F(DotDecomposerTest, DontAddLhsNonContractingDimIfOne) {
                           DotDecomposer().Run(module.get()));
   EXPECT_TRUE(canonicalized);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Reshape(AllOf(op::Dot(op::Reshape(), op::Reshape(),
+              op::Reshape(AllOf(op::Dot(op::Parameter(), op::Reshape(),
                                         /*lhs_contracting_dim=*/1,
                                         /*rhs_contracting_dim=*/1),
                                 op::Shape("f32[64,2]"))));
@@ -127,7 +128,7 @@ TEST_F(DotDecomposerTest, DontAddRhsNonContractingDimIfOne) {
                           DotDecomposer().Run(module.get()));
   EXPECT_TRUE(canonicalized);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Reshape(AllOf(op::Dot(op::Reshape(), op::Reshape(),
+              op::Reshape(AllOf(op::Dot(op::Reshape(), op::Parameter(),
                                         /*lhs_contracting_dim=*/2,
                                         /*rhs_contracting_dim=*/1),
                                 op::Shape("f32[64,2]"))));
@@ -161,11 +162,11 @@ TEST_F(DotDecomposerTest, CanonicalizeSparseLhs) {
                           DotDecomposer().Run(module.get()));
   EXPECT_TRUE(canonicalized);
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, GmockMatch(m::Reshape(SparseDotMatcher(
+  EXPECT_THAT(root, GmockMatch(SparseDotMatcher(
                         m::Reshape(m::Transpose(m::Parameter(0))),
                         m::Reshape(m::Transpose(m::Parameter(1))),
-                        m::Reshape(m::Transpose(m::Parameter(2)))))));
-  auto dot = Cast<HloDotInstruction>(root->operand(0));
+                        m::Reshape(m::Transpose(m::Parameter(2))))));
+  auto dot = Cast<HloDotInstruction>(root);
   auto descriptor = dot->sparsity().front();
   EXPECT_EQ(descriptor.index(), 0);
   EXPECT_EQ(descriptor.dimension(), 2);
@@ -190,14 +191,62 @@ TEST_F(DotDecomposerTest, CanonicalizeSparseRhs) {
                           DotDecomposer().Run(module.get()));
   EXPECT_TRUE(canonicalized);
   HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, GmockMatch(m::Reshape(SparseDotMatcher(
+  EXPECT_THAT(root, GmockMatch(SparseDotMatcher(
                         m::Reshape(m::Transpose(m::Parameter(0))),
                         m::Reshape(m::Transpose(m::Parameter(1))),
-                        m::Reshape(m::Transpose(m::Parameter(2)))))));
-  auto dot = Cast<HloDotInstruction>(root->operand(0));
+                        m::Reshape(m::Transpose(m::Parameter(2))))));
+  auto dot = Cast<HloDotInstruction>(root);
   auto descriptor = dot->sparsity().front();
   EXPECT_EQ(descriptor.index(), 1);
   EXPECT_EQ(descriptor.dimension(), 1);
+}
+
+TEST_F(DotDecomposerTest, PermutedBatchDims) {
+  absl::string_view kHlo = R"(
+    HloModule t
+
+    ENTRY main {
+      p0 = bf16[3,4,5,2,4]{4,3,2,1,0} parameter(0)
+      p1 = bf16[3,4,5,3,2]{4,3,2,1,0} parameter(1)
+      ROOT dot = bf16[5,3,4,4,3]{4,3,2,1,0} dot(p0, p1),
+        lhs_batch_dims={2,0,1}, lhs_contracting_dims={3},
+        rhs_batch_dims={2,0,1}, rhs_contracting_dims={4}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  TF_ASSERT_OK_AND_ASSIGN(bool canonicalized,
+                          DotDecomposer().Run(module.get()));
+  EXPECT_TRUE(canonicalized);
+  EXPECT_OK(module->Verify());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              AllOf(op::Dot(op::Transpose(), op::Transpose(),
+                            /*lhs_contracting_dim=*/4,
+                            /*rhs_contracting_dim=*/3),
+                    op::Shape("bf16[5,3,4,4,3]")));
+}
+
+TEST_F(DotDecomposerTest, MultipleNonContractingDims) {
+  absl::string_view kHlo = R"(
+    HloModule t
+
+    ENTRY main {
+      p0 = bf16[10,20,30,50]{3,2,1,0} parameter(0)
+      p1 = bf16[10,40,50]{2,1,0} parameter(1)
+      ROOT dot = bf16[10,20,30,40]{3,2,1,0} dot(p0, p1),
+        lhs_batch_dims={0}, lhs_contracting_dims={3},
+        rhs_batch_dims={0}, rhs_contracting_dims={2}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  TF_ASSERT_OK_AND_ASSIGN(bool canonicalized,
+                          DotDecomposer().Run(module.get()));
+  EXPECT_TRUE(canonicalized);
+  EXPECT_OK(module->Verify());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Reshape(AllOf(op::Dot(op::Reshape(), op::Transpose(),
+                                        /*lhs_contracting_dim=*/2,
+                                        /*rhs_contracting_dim=*/1),
+                                op::Shape("bf16[10,600,40]"))));
 }
 
 }  // namespace

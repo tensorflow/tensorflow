@@ -364,7 +364,7 @@ class ShapeInference {
 
   // Helper that infers the shape of the sparse dot metadata.
   static absl::StatusOr<Shape> InferSparseDotMetadataShape(
-      const Shape& operand_shape, const DotDimensionNumbers& dimension_numbers,
+      const Shape& operand_shape, absl::Span<const int64_t> contracting_dims,
       const SparsityDescriptor& sparsity, PrimitiveType element_type = U16);
 
   // Helper that infers the shape produced by performing a ragged dot operation

@@ -40,7 +40,7 @@ bool IsPermutation(absl::Span<const int64_t> permutation);
 // 1. `permutation` is a permutation of 0..permutation.size()-1.
 // 2. permutation.size() == input.size().
 template <typename Container>
-std::vector<typename Container::value_type> Permute(
+[[nodiscard]] std::vector<typename Container::value_type> Permute(
     const Container& input, absl::Span<const int64_t> permutation) {
   using T = typename Container::value_type;
   absl::Span<const T> data(input);
@@ -59,7 +59,7 @@ std::vector<typename Container::value_type> Permute(
 // 1. `permutation` is a permutation of 0..permutation.size()-1.
 // 2. permutation.size() == input.size().
 template <typename Container>
-std::vector<typename Container::value_type> PermuteInverse(
+[[nodiscard]] std::vector<typename Container::value_type> PermuteInverse(
     const Container& input, absl::Span<const int64_t> permutation) {
   using T = typename Container::value_type;
   absl::Span<const T> data(input);
@@ -73,7 +73,7 @@ std::vector<typename Container::value_type> PermuteInverse(
 }
 
 // Inverts a permutation, i.e., output_permutation[input_permutation[i]] = i.
-std::vector<int64_t> InversePermutation(
+[[nodiscard]] std::vector<int64_t> InversePermutation(
     absl::Span<const int64_t> input_permutation);
 
 // Composes two permutations: output[i] = p1[p2[i]].
