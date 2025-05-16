@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 
 #include <algorithm>
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -26,8 +25,6 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/algorithm/container.h"
-#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -36,16 +33,14 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/collectives/gpu_clique.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/collectives/gpu_cliques.h"
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -66,9 +61,11 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/service/stream_pool.h"
 #include "xla/service/xla_debug_info_manager.h"
+#include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
@@ -84,6 +81,7 @@ limitations under the License.
 #include "xla/tsl/platform/env_time.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/random.h"
@@ -958,5 +956,56 @@ GetOutputInfo(const HloModule& hlo_module, const BufferAssignment& assignment) {
   return output;
 }
 
+OutputInfoProto GpuExecutable::OutputInfo::ToProto() const {
+  OutputInfoProto proto;
+  proto.set_allocation_index(allocation_index);
+  proto.set_passthrough(passthrough);
+
+  if (alias_config.has_value()) {
+    proto.mutable_alias_config()->set_parameter_number(
+        alias_config->parameter_number);
+    proto.mutable_alias_config()->mutable_parameter_shape_index()->Assign(
+        alias_config->parameter_index.begin(),
+        alias_config->parameter_index.end());
+
+    switch (alias_config->kind) {
+      case xla::HloInputOutputAliasConfig::AliasKind::kMayAlias:
+        proto.mutable_alias_config()->set_kind(Kind::MAY_ALIAS);
+        break;
+      case xla::HloInputOutputAliasConfig::AliasKind::kMustAlias:
+        proto.mutable_alias_config()->set_kind(Kind::MUST_ALIAS);
+        break;
+    }
+  }
+
+  return proto;
+}
+
+absl::StatusOr<GpuExecutable::OutputInfo> GpuExecutable::OutputInfo::FromProto(
+    const OutputInfoProto& proto) {
+  OutputInfo output_info;
+  output_info.allocation_index = proto.allocation_index();
+  output_info.passthrough = proto.passthrough();
+  if (proto.has_alias_config()) {
+    xla::HloInputOutputAliasConfig::AliasKind alias_kind;
+    switch (proto.alias_config().kind()) {
+      case Kind::MAY_ALIAS:
+        alias_kind = xla::HloInputOutputAliasConfig::AliasKind::kMayAlias;
+        break;
+      case Kind::MUST_ALIAS:
+        alias_kind = xla::HloInputOutputAliasConfig::AliasKind::kMustAlias;
+        break;
+      default:
+        return absl::InvalidArgumentError("Given alias kind is invalid");
+    }
+    const auto& parameter_shape_index =
+        proto.alias_config().parameter_shape_index();
+    output_info.alias_config.emplace(
+        proto.alias_config().parameter_number(),
+        ShapeIndex{parameter_shape_index.begin(), parameter_shape_index.end()},
+        alias_kind);
+  }
+  return output_info;
+}
 }  // namespace gpu
 }  // namespace xla
