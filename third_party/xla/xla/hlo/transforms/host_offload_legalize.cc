@@ -363,7 +363,7 @@ void UpdateInstructionLayout(const InstructionAndIndex& instruction_and_index,
 
 Shape RemoveMajormostDimension(const Shape& shape) {
   CHECK(shape.has_layout()) << "Shape must have layout.";
-  const int size = shape.layout().minor_to_major_size();
+  const int size = shape.layout().minor_to_major().size();
   const int64_t majormost_dim = shape.layout().minor_to_major(size - 1);
   return ShapeUtil::DeleteDimension(majormost_dim, shape);
 }
