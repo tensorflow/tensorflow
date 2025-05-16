@@ -552,8 +552,8 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
     // Append an empty field to the layout.
     shape->mutable_layout()->add_minor_to_major(0);
     // Shift by one position all values in the layout in the major direction.
-    for (int dim_idx = shape->layout().minor_to_major_size() - 2; dim_idx >= 0;
-         --dim_idx) {
+    for (int dim_idx = shape->layout().minor_to_major().size() - 2;
+         dim_idx >= 0; --dim_idx) {
       int layout_idx = shape->layout().minor_to_major(dim_idx);
       shape->mutable_layout()->set_minor_to_major(dim_idx + 1, layout_idx);
     }
@@ -1187,7 +1187,7 @@ bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
 
 /* static */ absl::StatusOr<int64_t>
 ShapeUtil::PackedFactorFor1DInterleavedArray(const Shape& shape) {
-  if (shape.dimensions().size() == 1 && shape.layout().tiles_size() == 3 &&
+  if (shape.dimensions().size() == 1 && shape.layout().tiles().size() == 3 &&
       shape.layout().tiles()[2].dimensions().size() == 2) {
     return shape.layout().tiles()[2].dimension(0);
   }
