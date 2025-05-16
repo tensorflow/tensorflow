@@ -1,15 +1,385 @@
+diff --git a/shardy/dialect/sdy/ir/attrs.td b/shardy/dialect/sdy/ir/attrs.td
+index 215fd9e..313610b 100644
+--- a/shardy/dialect/sdy/ir/attrs.td
++++ b/shardy/dialect/sdy/ir/attrs.td
+@@ -1168,25 +1168,6 @@ def Sdy_AllToAllParamAttr : AttrDef<Sdy_Dialect, "AllToAllParam"> {
+ def Sdy_AllToAllParamList : ArrayOfAttr<Sdy_Dialect, "AllToAllParamList",
+                                  "all_to_all_param_list", "AllToAllParamAttr"> {
+   let summary = "List of all-to-all parameters";
+-
+-  let extraClassDeclaration = [{
+-    bool empty() const { return getValue().empty(); }
+-
+-    size_t size() const { return getValue().size(); }
+-
+-    ArrayRef<AllToAllParamAttr>::iterator begin() const { return getValue().begin(); }
+-
+-    ArrayRef<AllToAllParamAttr>::iterator end() const { return getValue().end(); }
+-
+-    // Returns true if this parameter list's dimensions overlap with 'other'.
+-    bool overlaps(AllToAllParamListAttr other) const;
+-
+-    // Returns a list of parameters that combines this list and `other`, sorted
+-    // by source dimension. This function assumes that this list and `other`
+-    // do not have overlapping dimensions, and should only be called after
+-    // checking `overlaps` is false.
+-    AllToAllParamListAttr combineAndSort(AllToAllParamListAttr other) const;
+-  }];
+ }
+ 
+ #endif  // SDY_ATTRS
+diff --git a/shardy/dialect/sdy/ir/canonicalization.cc b/shardy/dialect/sdy/ir/canonicalization.cc
+index 7f77e35..6926a01 100644
+--- a/shardy/dialect/sdy/ir/canonicalization.cc
++++ b/shardy/dialect/sdy/ir/canonicalization.cc
+@@ -354,7 +354,7 @@ void AllReduceOp::getCanonicalizationPatterns(RewritePatternSet& results,
+ 
+ void AllToAllOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                              MLIRContext* context) {
+-  results.add<AllToAllFusionPattern, AllToAllNoUsePattern>(context);
++  // We don't have patterns for all-to-all for now.
+ }
+ 
+ void CollectivePermuteOp::getCanonicalizationPatterns(
+diff --git a/shardy/dialect/sdy/ir/canonicalization.td b/shardy/dialect/sdy/ir/canonicalization.td
+index d74a59e..d01661c 100644
+--- a/shardy/dialect/sdy/ir/canonicalization.td
++++ b/shardy/dialect/sdy/ir/canonicalization.td
+@@ -53,21 +53,4 @@ def AllSliceOfAllGatherPattern : Pat<
+   (replaceWithValue $tensor),
+   [(Constraint<AllMatchPred<["gatheringAxes", "slicingAxes"]>, "axes match">)]>;
+ 
+-def AllToAllParamsNoOverlap: Constraint<CPred<"!$0.overlaps($1)">, "no overlap">;
+-
+-def CombineAllToAllParams: NativeCodeCall<"$0.combineAndSort($1)">;
+-
+-def AllToAllNoUsePattern : Pat<
+-  (Sdy_AllToAllOp:$all_to_all $tensor, $params, $sharding),
+-  (replaceWithValue $tensor),
+-  [(HasNoUseOf: $all_to_all)]>;
+-
+-def AllToAllFusionPattern : Pat<
+-  (Sdy_AllToAllOp
+-    (Sdy_AllToAllOp:$inner_all_to_all $inner_tensor, $inner_params, $inner_sharding),
+-    $outer_params, $outer_sharding),
+-  (Sdy_AllToAllOp $inner_tensor, (CombineAllToAllParams $inner_params, $outer_params),
+-                  $outer_sharding),
+-  [(HasOneUse:$inner_all_to_all), (AllToAllParamsNoOverlap $inner_params, $outer_params)]>;
+-
+ #endif  // SDY_CANONICALIZATION
+diff --git a/shardy/dialect/sdy/ir/dialect.cc b/shardy/dialect/sdy/ir/dialect.cc
+index 233a953..8e3affb 100644
+--- a/shardy/dialect/sdy/ir/dialect.cc
++++ b/shardy/dialect/sdy/ir/dialect.cc
+@@ -27,7 +27,6 @@ limitations under the License.
+ #include <utility>
+ 
+ #include "llvm/ADT/DenseMap.h"
+-#include "llvm/ADT/DenseSet.h"
+ #include "llvm/ADT/STLExtras.h"
+ #include "llvm/ADT/SmallVector.h"
+ #include "llvm/Support/ErrorHandling.h"
+@@ -61,7 +60,6 @@ namespace mlir {
+ namespace sdy {
+ 
+ namespace {
+-using llvm::SmallDenseSet;
+ 
+ struct ShardyDialectInlinerInterface : public DialectInlinerInterface {
+   using DialectInlinerInterface::DialectInlinerInterface;
+@@ -1076,37 +1074,6 @@ bool OpShardingRuleAttr::hasDimensionsWithMultipleFactors() const {
+   return false;
+ }
+ 
+-//===----------------------------------------------------------------------===//
+-// AllToAllParamList
+-//===----------------------------------------------------------------------===//
+-
+-bool AllToAllParamListAttr::overlaps(AllToAllParamListAttr other) const {
+-  SmallDenseSet<int64_t> seenDims;
+-  seenDims.reserve(getValue().size() + other.getValue().size());
+-  for (AllToAllParamAttr param :
+-       llvm::concat<const AllToAllParamAttr>(getValue(), other.getValue())) {
+-    for (int64_t dim : {param.getSrcDim(), param.getTgtDim()}) {
+-      if (!seenDims.insert(dim).second) {
+-        return true;
+-      }
+-    }
+-  }
+-  return false;
+-}
+-
+-AllToAllParamListAttr AllToAllParamListAttr::combineAndSort(
+-    AllToAllParamListAttr other) const {
+-  SmallVector<AllToAllParamAttr> combinedParams;
+-  combinedParams.reserve(size() + other.size());
+-  combinedParams.append(begin(), end());
+-  combinedParams.append(other.begin(), other.end());
+-  llvm::sort(combinedParams,
+-             [](const AllToAllParamAttr& a, const AllToAllParamAttr& b) {
+-               return a.getSrcDim() < b.getSrcDim();
+-             });
+-  return AllToAllParamListAttr::get(getContext(), combinedParams);
+-}
+-
+ //===----------------------------------------------------------------------===//
+ // ManualComputationOp
+ //===----------------------------------------------------------------------===//
+diff --git a/shardy/dialect/sdy/ir/test/collective_canonicalization.mlir b/shardy/dialect/sdy/ir/test/collective_canonicalization.mlir
+index 196b402..0e35d05 100644
+--- a/shardy/dialect/sdy/ir/test/collective_canonicalization.mlir
++++ b/shardy/dialect/sdy/ir/test/collective_canonicalization.mlir
+@@ -222,100 +222,3 @@ func.func @reduce_scatter_fusion_no_subaxis_prefix_match(%arg0 : tensor<64x16xf3
+   %1 = sdy.all_slice [{"r", "x", "z"}, {"y", "q"}] %0 out_sharding=<@mesh2, [{"r", "x", "z"}, {"y", "q"}]> : tensor<64x16xf32>
+   return %1 : tensor<64x16xf32>
+ }
+-
+-// CHECK-LABEL: func @all_to_all_no_use
+-func.func @all_to_all_no_use(%arg0 : tensor<64x16xf32> {sdy.sharding=#sdy.sharding<@mesh, [{"x"}, {}]>}) -> tensor<64x16xf32> {
+-  // CHECK-NEXT: %0 = sdy.all_to_all [{"x"}: 0->1] %arg0 out_sharding=<@mesh, [{}, {"x"}]> : tensor<64x16xf32>
+-  // CHECK-NEXT: return %0 : tensor<64x16xf32>
+-  %0 = sdy.all_to_all [{"x"}: 0->1] %arg0 out_sharding=<@mesh, [{}, {"x"}]> : tensor<64x16xf32>
+-  %1 = sdy.all_to_all [{"x"}: 0->1] %arg0 out_sharding=<@mesh, [{}, {"x"}]> : tensor<64x16xf32>
+-  return %1 : tensor<64x16xf32>
+-}
+-
+-// CHECK-LABEL: func @all_to_all_fusion_two_ops
+-func.func @all_to_all_fusion_two_ops(%arg0 : tensor<64x16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh, [{"x"}, {"y"}, {}, {}]>}) -> tensor<64x16x8x8xf32> {
+-  // CHECK-NEXT: %0 = sdy.all_to_all [{"x"}: 0->2, {"y"}: 1->3] %arg0 out_sharding=<@mesh, [{}, {}, {"x"}, {"y"}]> : tensor<64x16x8x8xf32>
+-  // CHECK-NEXT: return %0 : tensor<64x16x8x8xf32>
+-  %0 = sdy.all_to_all [{"x"}: 0->2] %arg0 out_sharding=<@mesh, [{}, {"y"}, {"x"}, {}]> : tensor<64x16x8x8xf32>
+-  %1 = sdy.all_to_all [{"y"}: 1->3] %0 out_sharding=<@mesh, [{}, {}, {"x"}, {"y"}]> : tensor<64x16x8x8xf32>
+-  return %1 : tensor<64x16x8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @all_to_all_fusion_two_ops_need_sorting
+-func.func @all_to_all_fusion_two_ops_need_sorting(%arg0 : tensor<64x16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh, [{"x"}, {"y"}, {}, {}]>}) -> tensor<64x16x8x8xf32> {
+-  // CHECK-NEXT: %0 = sdy.all_to_all [{"x"}: 0->2, {"y"}: 1->3] %arg0 out_sharding=<@mesh, [{}, {}, {"x"}, {"y"}]> : tensor<64x16x8x8xf32>
+-  // CHECK-NEXT: return %0 : tensor<64x16x8x8xf32>
+-  %0 = sdy.all_to_all [{"y"}: 1->3] %arg0 out_sharding=<@mesh, [{"x"}, {}, {}, {"y"}]> : tensor<64x16x8x8xf32>
+-  %1 = sdy.all_to_all [{"x"}: 0->2] %0 out_sharding=<@mesh, [{}, {}, {"x"}, {"y"}]> : tensor<64x16x8x8xf32>
+-  return %1 : tensor<64x16x8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @all_to_all_fusion_chained_ops
+-func.func @all_to_all_fusion_chained_ops(%arg0 : tensor<64x16x8x8x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh2, [{"x"}, {"y"}, {"z"}, {}, {}, {}]>}) -> tensor<64x16x8x8x8x8xf32> {
+-  // CHECK-NEXT: %0 = sdy.all_to_all [{"x"}: 0->3, {"y"}: 1->4, {"z"}: 2->5] %arg0 out_sharding=<@mesh2, [{}, {}, {}, {"x"}, {"y"}, {"z"}]> : tensor<64x16x8x8x8x8xf32>
+-  // CHECK-NEXT: return %0 : tensor<64x16x8x8x8x8xf32>
+-  %0 = sdy.all_to_all [{"x"}: 0->3] %arg0 out_sharding=<@mesh2, [{}, {"y"}, {"z"}, {"x"}, {}, {}]> : tensor<64x16x8x8x8x8xf32>
+-  %1 = sdy.all_to_all [{"y"}: 1->4] %0 out_sharding=<@mesh2, [{}, {}, {"z"}, {"x"}, {"y"}, {}]> : tensor<64x16x8x8x8x8xf32>
+-  %2 = sdy.all_to_all [{"z"}: 2->5] %1 out_sharding=<@mesh2, [{}, {}, {}, {"x"}, {"y"}, {"z"}]> : tensor<64x16x8x8x8x8xf32>
+-  return %2 : tensor<64x16x8x8x8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @all_to_all_fusion_ignore_no_use
+-func.func @all_to_all_fusion_ignore_no_use(%arg0 : tensor<64x16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh, [{"x"}, {"y"}, {}, {}]>}) -> tensor<64x16x8x8xf32> {
+-  // CHECK-NEXT: %0 = sdy.all_to_all [{"x"}: 0->2, {"y"}: 1->3] %arg0 out_sharding=<@mesh, [{}, {}, {"x"}, {"y"}]> : tensor<64x16x8x8xf32>
+-  // CHECK-NEXT: return %0 : tensor<64x16x8x8xf32>
+-  %0 = sdy.all_to_all [{"x"}: 0->2] %arg0 out_sharding=<@mesh, [{}, {"y"}, {"x"}, {}]> : tensor<64x16x8x8xf32>
+-  %1 = sdy.all_to_all [{"y"}: 1->0] %0 out_sharding=<@mesh, [{"y"}, {}, {"x"}, {}]> : tensor<64x16x8x8xf32>
+-  %2 = sdy.all_to_all [{"y"}: 1->3] %0 out_sharding=<@mesh, [{}, {}, {"x"}, {"y"}]> : tensor<64x16x8x8xf32>
+-  return %2 : tensor<64x16x8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @all_to_all_fusion_multiple_params
+-func.func @all_to_all_fusion_multiple_params(%arg0 : tensor<64x16x8x8x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh2, [{"x"}, {"y"}, {"z"}, {}, {}, {}]>}) -> tensor<64x16x8x8x8x8xf32> {
+-  // CHECK-NEXT: %0 = sdy.all_to_all [{"x"}: 0->3, {"y"}: 1->4, {"z"}: 2->5] %arg0 out_sharding=<@mesh2, [{}, {}, {}, {"x"}, {"y"}, {"z"}]> : tensor<64x16x8x8x8x8xf32>
+-  // CHECK-NEXT: return %0 : tensor<64x16x8x8x8x8xf32>
+-  %0 = sdy.all_to_all [{"x"}: 0->3, {"z"}: 2->5] %arg0 out_sharding=<@mesh2, [{}, {"y"}, {}, {"x"}, {}, {"z"}]> : tensor<64x16x8x8x8x8xf32>
+-  %1 = sdy.all_to_all [{"y"}: 1->4] %0 out_sharding=<@mesh2, [{}, {}, {}, {"x"}, {"y"}, {"z"}]> : tensor<64x16x8x8x8x8xf32>
+-  return %1 : tensor<64x16x8x8x8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @all_to_all_fusion_multiple_axes
+-func.func @all_to_all_fusion_multiple_axes(%arg0 : tensor<64x16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh2, [{"x", "y"}, {"z"}, {}, {}]>}) -> tensor<64x16x8x8xf32> {
+-  // CHECK-NEXT: %0 = sdy.all_to_all [{"x", "y"}: 0->3, {"z"}: 1->2] %arg0 out_sharding=<@mesh2, [{}, {}, {"z"}, {"x", "y"}]> : tensor<64x16x8x8xf32>
+-  // CHECK-NEXT: return %0 : tensor<64x16x8x8xf32>
+-  %0 = sdy.all_to_all [{"x", "y"}: 0->3] %arg0 out_sharding=<@mesh2, [{}, {"z"}, {}, {"x", "y"}]> : tensor<64x16x8x8xf32>
+-  %1 = sdy.all_to_all [{"z"}: 1->2] %0 out_sharding=<@mesh2, [{}, {}, {"z"}, {"x", "y"}]> : tensor<64x16x8x8xf32>
+-  return %1 : tensor<64x16x8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @all_to_all_fusion_src_overlaps_tgt
+-func.func @all_to_all_fusion_src_overlaps_tgt(%arg0 : tensor<64x16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh, [{"x"}, {"y"}, {}, {}]>}) -> tensor<64x16x8x8xf32> {
+-  // CHECK-NEXT: %0 = sdy.all_to_all [{"x"}: 0->2] %arg0 out_sharding=<@mesh, [{}, {"y"}, {"x"}, {}]> : tensor<64x16x8x8xf32>
+-  // CHECK-NEXT: %1 = sdy.all_to_all [{"y"}: 1->0] %0 out_sharding=<@mesh, [{"y"}, {}, {"x"}, {}]> : tensor<64x16x8x8xf32>
+-  // CHECK-NEXT: return %1 : tensor<64x16x8x8xf32>
+-  %0 = sdy.all_to_all [{"x"}: 0->2] %arg0 out_sharding=<@mesh, [{}, {"y"}, {"x"}, {}]> : tensor<64x16x8x8xf32>
+-  %1 = sdy.all_to_all [{"y"}: 1->0] %0 out_sharding=<@mesh, [{"y"}, {}, {"x"}, {}]> : tensor<64x16x8x8xf32>
+-  return %1 : tensor<64x16x8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @all_to_all_fusion_tgt_overlaps_src
+-func.func @all_to_all_fusion_tgt_overlaps_src(%arg0 : tensor<64x16x8xf32> {sdy.sharding=#sdy.sharding<@mesh, [{"x"}, {"y"}, {}]>}) -> tensor<64x16x8xf32> {
+-  // CHECK-NEXT: %0 = sdy.all_to_all [{"x"}: 0->1] %arg0 out_sharding=<@mesh, [{}, {"y", "x"}, {}]> : tensor<64x16x8xf32>
+-  // CHECK-NEXT: %1 = sdy.all_to_all [{"y", "x"}: 1->2] %0 out_sharding=<@mesh, [{}, {}, {"y", "x"}]> : tensor<64x16x8xf32>
+-  // CHECK-NEXT: return %1 : tensor<64x16x8xf32>
+-  %0 = sdy.all_to_all [{"x"}: 0->1] %arg0 out_sharding=<@mesh, [{}, {"y", "x"}, {}]> : tensor<64x16x8xf32>
+-  %1 = sdy.all_to_all [{"y", "x"}: 1->2] %0 out_sharding=<@mesh, [{}, {}, {"y", "x"}]> : tensor<64x16x8xf32>
+-  return %1 : tensor<64x16x8xf32>
+-}
+-
+-// CHECK-LABEL: func @all_to_all_fusion_multiple_uses
+-func.func @all_to_all_fusion_multiple_uses(%arg0 : tensor<64x16x8x8xf32> {sdy.sharding=#sdy.sharding<@mesh, [{"x"}, {"y"}, {}, {}]>}) -> (tensor<64x16x8x8xf32>, tensor<64x16x8x8xf32>) {
+-  // CHECK-NEXT: %0 = sdy.all_to_all [{"x"}: 0->2] %arg0 out_sharding=<@mesh, [{}, {"y"}, {"x"}, {}]> : tensor<64x16x8x8xf32>
+-  // CHECK-NEXT: %1 = sdy.all_to_all [{"y"}: 1->0] %0 out_sharding=<@mesh, [{"y"}, {}, {"x"}, {}]> : tensor<64x16x8x8xf32>
+-  // CHECK-NEXT: %2 = sdy.all_to_all [{"x"}: 2->0] %0 out_sharding=<@mesh, [{"x"}, {"y"}, {}, {}]> : tensor<64x16x8x8xf32>
+-  // CHECK-NEXT: return %1, %2 : tensor<64x16x8x8xf32>, tensor<64x16x8x8xf32>
+-  %0 = sdy.all_to_all [{"x"}: 0->2] %arg0 out_sharding=<@mesh, [{}, {"y"}, {"x"}, {}]> : tensor<64x16x8x8xf32>
+-  %1 = sdy.all_to_all [{"y"}: 1->0] %0 out_sharding=<@mesh, [{"y"}, {}, {"x"}, {}]> : tensor<64x16x8x8xf32>
+-  %2 = sdy.all_to_all [{"x"}: 2->0] %0 out_sharding=<@mesh, [{"x"}, {"y"}, {}, {}]> : tensor<64x16x8x8xf32>
+-  return %1, %2 : tensor<64x16x8x8xf32>, tensor<64x16x8x8xf32>
+-}
+diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
+index 3c2196e..4fcfedc 100644
+--- a/third_party/llvm/generated.patch
++++ b/third_party/llvm/generated.patch
+@@ -1,49 +1,66 @@
+ Auto generated patch. Do not edit or delete it, even if empty.
+-diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDecl.cpp b/clang/lib/Sema/SemaDecl.cpp
+---- a/clang/lib/Sema/SemaDecl.cpp
+-+++ b/clang/lib/Sema/SemaDecl.cpp
+-@@ -4755,8 +4755,16 @@
+-         return;
+-     }
+-   } else {
+--    Diag(New->getLocation(), diag::warn_cxx_compat_tentative_definition) << New;
+--    Diag(Old->getLocation(), diag::note_previous_declaration);
+-+    // C++ may not have a tentative definition rule, but it has a different
+-+    // rule about what constitutes a definition in the first place. See
+-+    // [basic.def]p2 for details, but the basic idea is: if the old declaration
+-+    // contains the extern specifier and doesn't have an initializer, it's fine
+-+    // in C++.
+-+    if (Old->getStorageClass() != SC_Extern || Old->hasInit()) {
+-+      Diag(New->getLocation(), diag::warn_cxx_compat_tentative_definition)
+-+          << New;
+-+      Diag(Old->getLocation(), diag::note_previous_declaration);
+-+    }
+-   }
++diff -ruN --strip-trailing-cr a/clang/include/clang/Sema/Overload.h b/clang/include/clang/Sema/Overload.h
++--- a/clang/include/clang/Sema/Overload.h
+++++ b/clang/include/clang/Sema/Overload.h
++@@ -435,7 +435,8 @@
+  
+-   if (haveIncompatibleLanguageLinkages(Old, New)) {
+-diff -ruN --strip-trailing-cr a/clang/test/Sema/warn-tentative-defn-compat.c b/clang/test/Sema/warn-tentative-defn-compat.c
+---- a/clang/test/Sema/warn-tentative-defn-compat.c
+-+++ b/clang/test/Sema/warn-tentative-defn-compat.c
+-@@ -20,4 +20,7 @@
+-                cxx-error {{redefinition of 'k'}}
++           // A function pointer type can be resolved to a member function type,
++           // which is still an identity conversion.
++-          if (auto *N = T->getAs<MemberPointerType>())
+++          if (auto *N = T->getAs<MemberPointerType>();
+++              N && N->isMemberFunctionPointer())
++             T = C.getDecayedType(N->getPointeeType());
++           return T;
++         };
++diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/overload-resolution-deferred-templates.cpp b/clang/test/SemaCXX/overload-resolution-deferred-templates.cpp
++--- a/clang/test/SemaCXX/overload-resolution-deferred-templates.cpp
+++++ b/clang/test/SemaCXX/overload-resolution-deferred-templates.cpp
++@@ -251,3 +251,26 @@
++   e.g(&N::f);
++ }
++ }
+++
+++#if __cplusplus >= 201402
+++namespace PointerToMemData {
+++struct N {
+++  int field;
+++};
+++template <typename It, typename T>
+++struct B {
+++  B(It, T);
+++  template <typename It2>
+++  B(B<It2, T>);
+++};
+++template <typename T>
+++struct C {
+++  auto g() { return B<int, T>(0, T{}); }
+++};
+++void f() {
+++  using T = decltype(C<decltype(&N::field)>{}.g());
+++}
+++
+++}
+++
+++#endif
++diff -ruN --strip-trailing-cr a/mlir/include/mlir/Query/Matcher/SliceMatchers.h b/mlir/include/mlir/Query/Matcher/SliceMatchers.h
++--- a/mlir/include/mlir/Query/Matcher/SliceMatchers.h
+++++ b/mlir/include/mlir/Query/Matcher/SliceMatchers.h
++@@ -14,6 +14,7 @@
++ #define MLIR_TOOLS_MLIRQUERY_MATCHERS_SLICEMATCHERS_H
+  
+- // Cannot have two declarations with initializers, that is a redefinition in
+--// both C and C++.
+-+// both C and C++. However, C++ does have a different definition of what makes
+-+// a declaration a definition.
+-+extern const int a;
+-+const int a = 12; // Okay in C and C++
+-diff -ruN --strip-trailing-cr a/mlir/lib/TableGen/Pattern.cpp b/mlir/lib/TableGen/Pattern.cpp
+---- a/mlir/lib/TableGen/Pattern.cpp
+-+++ b/mlir/lib/TableGen/Pattern.cpp
+-@@ -304,8 +304,8 @@
+-     assert(index < 0);
+-     auto *operand = cast<NamedTypeConstraint *>(op->getArg(getArgIndex()));
+-     if (operand->isOptional()) {
+--      auto repl =
+--          formatv(fmt, formatv("({0}.empty() ? Value() : *{0}.begin())", name));
+-+      auto repl = formatv(
+-+          fmt, formatv("({0}.empty() ? ::mlir::Value() : *{0}.begin())", name));
+-       LLVM_DEBUG(dbgs() << repl << " (OptionalOperand)\n");
+-       return std::string(repl);
+-     }
++ #include "mlir/Analysis/SliceAnalysis.h"
+++#include "mlir/IR/Operation.h"
++ 
++ /// A matcher encapsulating `getBackwardSlice` method from SliceAnalysis.h.
++ /// Additionally, it limits the slice computation to a certain depth level using
++diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++@@ -12874,6 +12874,7 @@
++     ),
++     includes = ["include"],
++     deps = [
+++        ":Analysis",
++         ":FuncDialect",
++         ":IR",
++         ":Reducer",
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index dadb98a..d345d6f 100644
+index d345d6f..363bf1d 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "b35f6e26a5015db32a70048159425aee9e850519"
--    LLVM_SHA256 = "d3673b71d436df48f969835515950c7aecf558c9411bb5055ddb481a834b4795"
-+    LLVM_COMMIT = "52ed6791f87a3ef862f555f84ba88a7cdf8fe461"
-+    LLVM_SHA256 = "5f4230b06dd2ff977919f26e2deb0b82da00f0a3265f60ac206743169693e933"
+-    LLVM_COMMIT = "52ed6791f87a3ef862f555f84ba88a7cdf8fe461"
+-    LLVM_SHA256 = "5f4230b06dd2ff977919f26e2deb0b82da00f0a3265f60ac206743169693e933"
++    LLVM_COMMIT = "818893177807663f438155f8d962d32a9473ae99"
++    LLVM_SHA256 = "015593166bfcf0855eb6abe70a64206d165e6f2cb7a44c422dfbbad7a8758b9b"
  
      tf_http_archive(
          name = name,
+diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
+index 5662432..53a3ec9 100755
+--- a/third_party/stablehlo/temporary.patch
++++ b/third_party/stablehlo/temporary.patch
+@@ -69,4 +69,16 @@ diff --ruN a/stablehlo/stablehlo/tests/canonicalize.mlir b/stablehlo/stablehlo/t
+ +
+ +// CHECK: return %arg1
+ +}
++diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
++--- stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
+++++ stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
++@@ -9,7 +9,7 @@
++   %3 = builtin.unrealized_conversion_cast %2 : memref<i16> to memref<ui16>
++   %4 = bufferization.to_tensor %3 : memref<ui16> to tensor<ui16>
++   %5 = builtin.unrealized_conversion_cast %4 : tensor<ui16> to tensor<i16>
++-  %6 = bufferization.to_memref %5 : tensor<i16> to memref<i16>
+++  %6 = bufferization.to_buffer %5 : tensor<i16> to memref<i16>
++   %7 = builtin.unrealized_conversion_cast %6 : memref<i16> to memref<ui16>
++   func.return %7 : memref<ui16>
++ }
+ 
