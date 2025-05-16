@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 
 #include <algorithm>
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <ostream>
@@ -44,6 +43,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {

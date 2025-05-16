@@ -53,6 +53,22 @@ message WhileThunkProto {
   optional int64 trip_count = 4;
 }
 
+message Dim3DProto {
+  int64 x = 1;
+  int64 y = 2;
+  int64 z = 3;
+}
+
+message KernelThunkProto {
+  repeated xla.buffer_assignment.BufferAllocationSliceProto args = 1;
+  repeated bool written = 2;
+  string kernel_name = 3;
+  Dim3DProto launch_block_counts = 4;
+  Dim3DProto launch_thread_counts_per_block = 5;
+  optional Dim3DProto cluster_dim = 6;
+  int64 shmem_bytes = 7;
+}
+
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
 
@@ -63,6 +79,7 @@ message ThunkProto {
     HostToDeviceCopyThunkProto host_to_device_copy_thunk = 5;
     ConditionalThunkProto conditional_thunk = 6;
     WhileThunkProto while_thunk = 7;
+    KernelThunkProto kernel_thunk = 8;
   }
 }
 
