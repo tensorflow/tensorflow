@@ -206,6 +206,8 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
     kAlive     // IsDeleted() will return false.
   };
   mutable DeletionState deleted_ ABSL_GUARDED_BY(mu_) = DeletionState::kAlive;
+
+  mutable Future<> ready_future_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace proxy

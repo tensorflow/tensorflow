@@ -437,12 +437,14 @@ void Array::Destruct(RpcHelper* rpc_helper, ArrayHandle handle) {
 Future<> Array::GetReadyFuture() const {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       "IfrtProxyEntrypointArrayGetReadyFuture");
+  if (IsDeleted()) {
+    return Future<>(absl::InvalidArgumentError("Already deleted array."));
+  }
 
-  {
-    absl::MutexLock lock(&mu_);
-    if (deleted_ == DeletionState::kDeleted) {
-      return Future<>(absl::InvalidArgumentError("Already deleted array."));
-    }
+  absl::MutexLock lock(&mu_);
+
+  if (ready_future_.IsValid()) {
+    return ready_future_;
   }
 
   auto req = std::make_unique<CheckValueReadyRequest>();
@@ -453,7 +455,8 @@ Future<> Array::GetReadyFuture() const {
       .OnReady(
           [promise](absl::StatusOr<std::shared_ptr<CheckValueReadyResponse>>
                         resp) mutable { promise.Set(resp.status()); });
-  return Future<>(std::move(promise));
+  ready_future_ = Future<>(std::move(promise));
+  return ready_future_;
 }
 
 Future<> Array::Delete() {
