@@ -96,8 +96,13 @@ TensorShardingAttr removeSizeOneAxes(TensorShardingAttr sharding,
   llvm::copy_if(sharding.getReplicatedAxes(),
                 std::back_inserter(replicatedAxes), isNotSizeOne);
 
+  // Remove from unreduced axes.
+  SmallVector<AxisRefAttr> unreducedAxes;
+  llvm::copy_if(sharding.getUnreducedAxes(), std::back_inserter(unreducedAxes),
+                isNotSizeOne);
+
   return TensorShardingAttr::get(sharding.getContext(), sharding.getMeshOrRef(),
-                                 dimShardings, replicatedAxes);
+                                 dimShardings, replicatedAxes, unreducedAxes);
 }
 
 void removeSizeOneManualAxes(ManualComputationOp manualComputationOp,

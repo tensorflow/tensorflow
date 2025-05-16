@@ -480,7 +480,8 @@ TensorShardingAttr convertToSdySharding(
         DimensionShardingAttr::get(ctx, axes, /*is_closed=*/!openDims));
   }
   return TensorShardingAttr::get(ctx, StringAttr::get(ctx, kGlobalMeshName),
-                                 dimShardings, /*replicated_axes=*/{});
+                                 dimShardings, /*replicated_axes=*/{},
+                                 /*unreduced_axes=*/{});
 }
 
 namespace {
