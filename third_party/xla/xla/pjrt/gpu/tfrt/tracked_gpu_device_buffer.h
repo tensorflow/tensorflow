@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/types/span.h"
@@ -86,11 +87,12 @@ class TrackedGpuDeviceBuffer {
   TrackedGpuDeviceBuffer(
       tsl::AsyncValueRef<GpuDeviceMemory> buffer,
       absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> definition_events,
-      std::function<void()> on_delete_callback = nullptr);
+      absl::AnyInvocable<void() &&> on_delete_callback = nullptr);
 
-  TrackedGpuDeviceBuffer(tsl::AsyncValueRef<GpuDeviceMemory> buffer,
-                         tsl::AsyncValueRef<GpuEvent> definition_event,
-                         std::function<void()> on_delete_callback = nullptr);
+  TrackedGpuDeviceBuffer(
+      tsl::AsyncValueRef<GpuDeviceMemory> buffer,
+      tsl::AsyncValueRef<GpuEvent> definition_event,
+      absl::AnyInvocable<void() &&> on_delete_callback = nullptr);
 
   TrackedGpuDeviceBuffer(TrackedGpuDeviceBuffer&&) = default;
   TrackedGpuDeviceBuffer& operator=(TrackedGpuDeviceBuffer&&) = default;
@@ -147,7 +149,7 @@ class TrackedGpuDeviceBuffer {
 
   // A callback to call when the TrackedGpuDeviceBuffer is about to be
   // destroyed.
-  std::function<void()> on_delete_callback_;
+  absl::AnyInvocable<void() &&> on_delete_callback_;
 };
 
 }  // namespace xla

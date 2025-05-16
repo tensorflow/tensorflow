@@ -2609,67 +2609,49 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 TfrtGpuBuffer::DonateWithControlDependency(PjRtFuture<> dependency) {
   VLOG(3) << "TfrtGpuBuffer::DonateWithControlDependency";
 
-  {
-    // TODO(ziyinh): Remove this once we have a better solution.
-    // Wait on the definition and usage events before we can donate the buffer.
-    // This is might not be optimal but avoids issues where a buffer is donated
-    // before its usage event is ready.
-    absl::MutexLock lock(&mu_);
-    auto usage_events = tracked_device_buffer_->LockUseAndTransferUsageEvents();
-    auto definition_event = tracked_device_buffer_->definition_event();
-    tsl::BlockUntilReady(usage_events);
-    tsl::BlockUntilReady(definition_event);
-  }
-  // Acquire donation hold.
-  TF_ASSIGN_OR_RETURN(auto donation_transaction, AcquireDonation());
+  TF_ASSIGN_OR_RETURN(DonationTransaction donation_transaction,
+                      AcquireDonation());
 
-  TrackedGpuDeviceBuffer* original_tracked_buffer =
-      donation_transaction.device_buffer();
+  TrackedGpuDeviceBuffer* tracked_buffer = donation_transaction.device_buffer();
 
-  // Check if the original buffer is valid.
-  if (original_tracked_buffer == nullptr) {
-    // Donation hold is released on destruction, return error.
+  if (tracked_buffer == nullptr) {
     return InvalidArgument(
         "DonateWithControlDependency was called on a deleted or donated "
         "buffer.");
   }
 
-  // Get definition event and buffer data Async Values.
-  tsl::AsyncValueRef<GpuDeviceMemory> buffer_data_av =
-      original_tracked_buffer->buffer();
-  tsl::AsyncValueRef<GpuEvent> original_def_event =
-      original_tracked_buffer->definition_event();
+  // Combine the original definition event and usage event.
+  tsl::AsyncValueRef<GpuEvent> usage_definition_events =
+      AfterAll({tracked_buffer->LockUseAndTransferUsageEvents(),
+                tracked_buffer->definition_event()});
 
-  // Create new event for donated buffer, the dependency will resolve it.
-  tsl::AsyncValueRef<GpuEvent> donation_event =
+  // Create an event for `dependency`.
+  tsl::AsyncValueRef<GpuEvent> dependency_event =
       tsl::MakeConstructedAsyncValueRef<GpuEvent>();
+  dependency.OnReady([dependency_event](absl::Status status) {
+    if (status.ok()) {
+      dependency_event.SetStateConcrete();
+    } else {
+      dependency_event.SetError(status);
+    }
+  });
 
   // Create new buffer with the combined event and underlying data from the
   // original buffer.
   absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> new_definition_events{
-      donation_event.CopyRef(), original_def_event.CopyRef()};
+      usage_definition_events.CopyRef(), dependency_event.CopyRef()};
   auto new_tracked_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
-      std::move(buffer_data_av), new_definition_events,
-      std::move(original_tracked_buffer->on_delete_callback_));
+      tracked_buffer->buffer(), std::move(new_definition_events),
+      std::move(tracked_buffer->on_delete_callback_));
 
-  // Create the new PjRtBuffer wrapper.
   auto new_pjrt_buffer = std::make_unique<TfrtGpuBuffer>(
-      on_device_shape(),  // Reuse the shape
-      std::move(new_tracked_buffer),
-      client_,  // Reuse client, device, memory space
-      device_, memory_space_);
+      on_device_shape_, std::move(new_tracked_buffer), client_, device_,
+      memory_space_);
 
-  // Resolve the donation event when the dependency is ready.
-  dependency.OnReady([donation_event](absl::Status status) mutable {
-    if (status.ok()) {
-      donation_event.SetStateConcrete();
-    } else {
-      donation_event.SetError(status);
-    }
-  });
-
-  // Commit the donation transaction when the original definition event is ready
-  original_def_event.AndThen(
+  // Commit will set the underlying device buffer unowned. This may break other
+  // ongoing users. Only commit after all the pending definition and usage
+  // events are ready.
+  usage_definition_events.AndThen(
       [donation_transaction = std::move(donation_transaction)]() mutable {
         std::move(donation_transaction).Commit();
       });
