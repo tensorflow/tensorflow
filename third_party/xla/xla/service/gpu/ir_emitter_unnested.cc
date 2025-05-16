@@ -1505,8 +1505,9 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
                               /*dedup=*/false));
 
   AddThunkToThunkSequence(std::make_unique<KernelThunk>(
-      instr, entry->kernel_name, kernel_arguments.args(),
-      entry->launch_dimensions, entry->cluster_dim, entry->shmem_bytes));
+      Thunk::ThunkInfo::WithProfileAnnotation(instr), entry->kernel_name,
+      kernel_arguments.args(), entry->launch_dimensions, entry->cluster_dim,
+      entry->shmem_bytes));
   return absl::OkStatus();
 }
 
@@ -2286,14 +2287,14 @@ absl::Status IrEmitterUnnested::EmitOutfeed(
 absl::StatusOr<std::pair<std::vector<llvm_ir::IrArray> /*inputs*/,
                          std::vector<llvm_ir::IrArray> /*outputs*/>>
 IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
-    const HloInstruction* hlo,
+    const HloInstruction* instr,
     absl::Span<const HloInstruction* const> needed_operands,
     const LaunchDimensions& launch_dimensions) {
-  std::string suggested_kernel_name(hlo->name());
+  std::string suggested_kernel_name(instr->name());
 
   TF_ASSIGN_OR_RETURN(
       auto kernel_arguments,
-      KernelArguments::Create(ir_emitter_context_->buffer_assignment(), hlo,
+      KernelArguments::Create(ir_emitter_context_->buffer_assignment(), instr,
                               needed_operands));
 
   VLOG(3) << "Generating (without reuse check): " << suggested_kernel_name;
@@ -2309,7 +2310,8 @@ IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
                            &b_));
 
   AddThunkToThunkSequence(std::make_unique<KernelThunk>(
-      hlo, kernel->getName().str(), kernel_arguments.args(), launch_dimensions,
+      Thunk::ThunkInfo::WithProfileAnnotation(instr), kernel->getName().str(),
+      kernel_arguments.args(), launch_dimensions,
       /*cluster_dim=*/std::nullopt,
       /*shmem_bytes=*/0));
 

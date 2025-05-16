@@ -84,6 +84,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
@@ -112,7 +113,9 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -343,8 +346,8 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
 
   FusionEmissionResult result;
   result.thunks.emplace_back(std::make_unique<KernelThunk>(
-      &fusion, entry->kernel_name, args.args(), launch_dims, entry->cluster_dim,
-      entry->shmem_bytes));
+      Thunk::ThunkInfo::WithProfileAnnotation(&fusion), entry->kernel_name,
+      args.args(), launch_dims, entry->cluster_dim, entry->shmem_bytes));
   return result;
 }
 

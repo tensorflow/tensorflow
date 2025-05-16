@@ -37,6 +37,7 @@ cc_library(
         "//xla:status_macros",
         "//xla/backends/gpu/codegen:fusion_emitter",
         "//xla/backends/gpu/runtime:kernel_thunk",
+        "//xla/backends/gpu/runtime:thunk",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service/gpu:backend_configs_cc",
@@ -52,6 +53,7 @@ cc_library(
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -63,7 +65,6 @@ cc_library(
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

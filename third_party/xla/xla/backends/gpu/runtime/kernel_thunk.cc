@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -44,8 +45,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -55,12 +54,12 @@ namespace gpu {
 //===----------------------------------------------------------------------===//
 
 KernelThunk::KernelThunk(
-    const HloInstruction* instr, std::string kernel_name,
+    Thunk::ThunkInfo thunk_info, std::string kernel_name,
     absl::Span<const KernelArgument> kernel_arguments,
     LaunchDimensions launch_dimensions,
     std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes,
     std::optional<stream_executor::gpu::TmaMetadata> tma_metadata)
-    : Thunk(Kind::kKernel, Thunk::ThunkInfo::WithProfileAnnotation(instr)),
+    : Thunk(Kind::kKernel, std::move(thunk_info)),
       kernel_name_(std::move(kernel_name)),
       launch_dimensions_(std::move(launch_dimensions)),
       cluster_dim_(std::move(cluster_dim)),
@@ -254,10 +253,9 @@ absl::Status CustomKernelThunk::ExecuteOnStream(const ExecuteParams& params) {
     return kernel->Launch(custom_kernel_.thread_dims(),
                           custom_kernel_.block_dims(), *cluster, params.stream,
                           args);
-  } else {
-    return kernel->Launch(custom_kernel_.thread_dims(),
-                          custom_kernel_.block_dims(), params.stream, args);
   }
+  return kernel->Launch(custom_kernel_.thread_dims(),
+                        custom_kernel_.block_dims(), params.stream, args);
 }
 
 }  // namespace gpu
