@@ -36,25 +36,25 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/component.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/statistics.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/tf_component.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/context.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/debugger.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/post_calibration.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pre_calibration.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_export.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_import.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_post_calibration.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_pre_calibration.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_saved_model_export.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_saved_model_import.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_weight_only_ptq.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/types.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/weight_only_ptq.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_passes.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_preprocess.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/tf_quantize_passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/tf_quantize_preprocess.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "xla/tsl/platform/errors.h"
@@ -68,18 +68,18 @@ namespace tensorflow {
 namespace quantization {
 namespace {
 
-using ::mlir::quant::stablehlo::ConvertMlirModuleToExportedModel;
 using ::mlir::quant::stablehlo::CreateMlirContextForQuantization;
-using ::mlir::quant::stablehlo::ExportOptions;
 using ::mlir::quant::stablehlo::FunctionAlias;
 using ::mlir::quant::stablehlo::FunctionName;
-using ::mlir::quant::stablehlo::GetFunctionAliases;
-using ::mlir::quant::stablehlo::kExportStepSuffix;
-using ::mlir::quant::stablehlo::PostCalibrationComponent;
-using ::mlir::quant::stablehlo::PreCalibrationComponent;
-using ::mlir::quant::stablehlo::RunCalibrationPasses;
-using ::mlir::quant::stablehlo::UpdateFunctionAliases;
-using ::mlir::quant::stablehlo::WeightOnlyPtqComponent;
+using ::mlir::tf_quant::stablehlo::ConvertMlirModuleToExportedModel;
+using ::mlir::tf_quant::stablehlo::ExportOptions;
+using ::mlir::tf_quant::stablehlo::GetFunctionAliases;
+using ::mlir::tf_quant::stablehlo::kExportStepSuffix;
+using ::mlir::tf_quant::stablehlo::PostCalibrationComponent;
+using ::mlir::tf_quant::stablehlo::PreCalibrationComponent;
+using ::mlir::tf_quant::stablehlo::RunCalibrationPasses;
+using ::mlir::tf_quant::stablehlo::UpdateFunctionAliases;
+using ::mlir::tf_quant::stablehlo::WeightOnlyPtqComponent;
 using ::stablehlo::quantization::AddCalibrationStatistics;
 using ::stablehlo::quantization::ChangeToQuantizedFilename;
 using ::stablehlo::quantization::DebuggerConfig;
@@ -90,6 +90,13 @@ using ::stablehlo::quantization::QuantizationConfig;
 using ::stablehlo::quantization::io::CreateTmpDir;
 using ::stablehlo::quantization::io::GetLocalTmpFileName;
 using ::tensorflow::quantization::PyFunctionLibrary;
+using ::tensorflow::tf_quantization::AddQuantizePtqDynamicRangePasses;
+using ::tensorflow::tf_quantization::AddQuantizePtqPostCalibrationPasses;
+using ::tensorflow::tf_quantization::AddQuantizePtqPreCalibrationPasses;
+using ::tensorflow::tf_quantization::AddQuantizeQatPasses;
+using ::tensorflow::tf_quantization::AddQuantizeWeightOnlyPasses;
+using ::tensorflow::tf_quantization::kDefaultTfQuantMlirDumpFilePrefix;
+using ::tensorflow::tf_quantization::PreprocessAndFreezeGraph;
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportAndPreprocessSavedModel(
     absl::string_view saved_model_path,

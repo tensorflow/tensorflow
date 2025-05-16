@@ -64,8 +64,7 @@ StaticRangePtqComponent::StaticRangePtqComponent(
     absl::flat_hash_map<FunctionName, FunctionAlias> function_aliases)
     : ctx_(ctx) {
   // Initialize the three sub-components.
-  sub_components_[0] =
-      std::make_unique<quant::stablehlo::PreCalibrationComponent>(ctx_);
+  sub_components_[0] = std::make_unique<PreCalibrationComponent>(ctx_);
   sub_components_[1] =
       std::make_unique<CalibrationComponent>(
           ctx_, py_function_library, src_saved_model_path,
@@ -111,10 +110,9 @@ absl::Status QuantizeStaticRangePtq(
 
   TF_ASSIGN_OR_RETURN(
       OwningOpRef<ModuleOp> module,
-      ImportSavedModel(
-          src_saved_model_path, signature_keys, tags, quantization_config,
-          quant::stablehlo::PreCalibrationComponent::kName, *function_aliases,
-          *ctx));
+      ImportSavedModel(src_saved_model_path, signature_keys, tags,
+                       quantization_config, PreCalibrationComponent::kName,
+                       *function_aliases, *ctx));
 
   StaticRangePtqComponent static_range_ptq_component(
       ctx.get(), &py_function_library, src_saved_model_path, signature_keys,
