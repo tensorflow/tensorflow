@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/numeric/int128.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -1285,13 +1286,18 @@ bool IndexingMap::Verify(std::ostream& out) const {
     return true;
   }
   if (affine_map_.getNumDims() != dim_vars_.size()) {
-    out << "dim size must match the number of dimensions in "
-           "the affine map";
+    out << absl::StrCat(
+        "number of dim vars (", dim_vars_.size(),
+        ") must match the number of dimensions in the affine map (",
+        affine_map_.getNumDims(), ")");
     return false;
   }
   if (affine_map_.getNumSymbols() != range_vars_.size() + rt_vars_.size()) {
-    out << "range vars size + rt var size must match the number of "
-           "symbols in the affine map";
+    out << absl::StrCat(
+        "number of range (", range_vars_.size(), ") + runtime (",
+        rt_vars_.size(),
+        ") variables must match the number of symbols in the affine map (",
+        affine_map_.getNumSymbols(), ")");
     return false;
   }
   return true;

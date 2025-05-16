@@ -1419,9 +1419,10 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
     // use tensor ops). CuDNN 7.2.1 fixed this issue.
     // TODO(csigg): Minimal support cuDNN version is 7.3, clean up.
     bool allow_tensor_ops = data_type == CUDNN_DATA_HALF;
-    if (data_type == CUDNN_DATA_FLOAT)
+    if (data_type == CUDNN_DATA_FLOAT) {
       allow_tensor_ops = numeric_options.allow_tf32 &&
                          tsl::tensor_float_32_execution_enabled();
+    }
     bool use_tensor_ops =
         algorithm_config.algorithm().has_value()
             ? algorithm_config.algorithm()->tensor_ops_enabled()
@@ -1436,7 +1437,9 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
 
     cudnnRNNBiasMode_t bias_mode = CUDNN_RNN_DOUBLE_BIAS;
     uint32_t aux_flags = 0;
-    if (use_padded_io) aux_flags |= CUDNN_RNN_PADDED_IO_ENABLED;
+    if (use_padded_io) {
+      aux_flags |= CUDNN_RNN_PADDED_IO_ENABLED;
+    }
     RETURN_IF_CUDNN_ERROR(cudnnSetRNNDescriptor_v8(
         /*rnnDesc=*/rnn_desc.get(), /*algo=*/rnn_algo, /*cellMode=*/rnn_mode,
         /*biasMode=*/bias_mode, /*dirMode=*/direction_mode,
@@ -2936,12 +2939,10 @@ bool UseTensorOps(dnn::DataType input_type,
                   std::optional<dnn::AlgorithmDesc> desc) {
   if (desc.has_value()) {
     return desc->tensor_ops_enabled();
-  } else {
-    // It's unknown whether the user wants to use TensorFloat-32, which is used
-    // with tensor ops when the inputs are FP32. For safety, assume the user
-    // does not want TensorFloat-32 on FP32 inputs.
-    return input_type != dnn::DataType::kFloat;
-  }
+  }  // It's unknown whether the user wants to use TensorFloat-32, which is used
+  // with tensor ops when the inputs are FP32. For safety, assume the user
+  // does not want TensorFloat-32 on FP32 inputs.
+  return input_type != dnn::DataType::kFloat;
 }
 
 cudnnDataType_t GetRnnComputeType(dnn::DataType data_type);
@@ -3558,7 +3559,8 @@ absl::StatusOr<dnn::DataType> PrimitiveTypeStringToDnnType(
     std::string data_type_string) {
   if (data_type_string == "f8e4m3fn") {
     return dnn::DataType::kF8E4M3FN;
-  } else if (data_type_string == "f8e5m2") {
+  }
+  if (data_type_string == "f8e5m2") {
     return dnn::DataType::kF8E5M2;
   } else if (data_type_string == "bf16") {
     return dnn::DataType::kBF16;
@@ -4513,11 +4515,10 @@ static absl::StatusOr<cudnn_frontend::ExecutionPlan> GetExecPlanFromHeuristics(
     status = plan.get_status();
     if (status == CUDNN_STATUS_SUCCESS) {
       return plan;
-    } else {
-      VLOG(4) << "Failed to build cuDNN execution plan for opGraph "
-              << opGraph.getTag()
-              << ". absl::Status: " << CudnnStatusToString(status);
     }
+    VLOG(4) << "Failed to build cuDNN execution plan for opGraph "
+            << opGraph.getTag()
+            << ". absl::Status: " << CudnnStatusToString(status);
   }
 
   LOG(FATAL) << "Failed to generate cuDNN execution plan for opGraph "
@@ -5867,7 +5868,8 @@ class ScalingParam {
   void* ToVoidPointer(dnn::DataType element_type) {
     if (element_type == dnn::DataType::kDouble) {
       return &as_double_;
-    } else if (element_type == dnn::DataType::kHalf) {
+    }
+    if (element_type == dnn::DataType::kHalf) {
       return &as_half_;
     } else if (element_type == dnn::DataType::kBF16) {
       return &as_bfloat16_;
@@ -5879,7 +5881,8 @@ class ScalingParam {
   const void* ToVoidPointer() const {
     if (default_target_dtype_ == dnn::DataType::kDouble) {
       return &as_double_;
-    } else if (default_target_dtype_ == dnn::DataType::kHalf) {
+    }
+    if (default_target_dtype_ == dnn::DataType::kHalf) {
       return &as_half_;
     } else if (default_target_dtype_ == dnn::DataType::kBF16) {
       return &as_bfloat16_;
@@ -7168,9 +7171,9 @@ absl::Status CudnnSupport::DoBatchNormalizationForwardImpl(
       return activation_mode == dnn::ActivationMode::kNone
                  ? CUDNN_BATCHNORM_OPS_BN
                  : CUDNN_BATCHNORM_OPS_BN_ACTIVATION;
-    } else {
-      return CUDNN_BATCHNORM_OPS_BN_ADD_ACTIVATION;
     }
+    return CUDNN_BATCHNORM_OPS_BN_ADD_ACTIVATION;
+   
   };
   const cudnnBatchNormOps_t bn_ops = get_bn_ops();
 
@@ -7205,9 +7208,9 @@ absl::Status CudnnSupport::DoBatchNormalizationForwardImpl(
           absl::StrCat("Side input and activation are not "
                        "supported by cuDNN version: ",
                        CUDNN_VERSION));
-    } else {
-      return absl::OkStatus();
     }
+    return absl::OkStatus();
+   
   };
 
   if (is_training) {
@@ -7377,9 +7380,9 @@ absl::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
         return activation_mode == dnn::ActivationMode::kNone
                    ? CUDNN_BATCHNORM_OPS_BN
                    : CUDNN_BATCHNORM_OPS_BN_ACTIVATION;
-      } else {
-        return CUDNN_BATCHNORM_OPS_BN_ADD_ACTIVATION;
       }
+      return CUDNN_BATCHNORM_OPS_BN_ADD_ACTIVATION;
+     
     }();
 
     // We use Nan propagation to be consistent with
@@ -7430,9 +7433,9 @@ absl::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
       return tsl::errors::Internal(
           "Side input and activation are not supported by cuDNN version: ",
           CUDNN_VERSION);
-    } else {
-      return absl::OkStatus();
     }
+    return absl::OkStatus();
+   
   };
 
   if (!called && check_no_side_input_or_activation().ok()) {

@@ -104,11 +104,11 @@ absl::Status CudaKernel::Launch(const ThreadDim& thread_dims,
       return stream->LaunchKernel(thread_dims, block_dims, cluster_dims,
                                   function, name(), params,
                                   packed.number_of_shared_bytes());
-    } else {
-      return stream->LaunchKernel(thread_dims, block_dims, std::nullopt,
-                                  function, name(), params,
-                                  packed.number_of_shared_bytes());
     }
+    return stream->LaunchKernel(thread_dims, block_dims, std::nullopt, function,
+                                name(), params,
+                                packed.number_of_shared_bytes());
+   
   };
 
   // If arguments are already packed we can just launch the kernel.

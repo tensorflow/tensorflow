@@ -552,19 +552,18 @@ absl::StatusOr<void*> HostAllocate(Context* context, int numa_node,
                           size, numa_node));
     }
     return buffer;
-  } else {
-    ScopedActivateContext activation(context);
-    void* buffer = nullptr;
-    // "Portable" memory is visible to all CUDA contexts. Safe for our use
-    // model.
-    TF_RETURN_IF_ERROR(cuda::ToStatus(
-        cuMemHostAlloc(&buffer, size, CU_MEMHOSTALLOC_PORTABLE)));
-    if (!buffer && size > 0) {
-      return absl::InternalError(absl::StrFormat(
-          "Failed to allocate pinned host memory of size %d", size));
-    }
-    return buffer;
   }
+  ScopedActivateContext activation(context);
+  void* buffer = nullptr;
+  // "Portable" memory is visible to all CUDA contexts. Safe for our use
+  // model.
+  TF_RETURN_IF_ERROR(
+      cuda::ToStatus(cuMemHostAlloc(&buffer, size, CU_MEMHOSTALLOC_PORTABLE)));
+  if (!buffer && size > 0) {
+    return absl::InternalError(absl::StrFormat(
+        "Failed to allocate pinned host memory of size %d", size));
+  }
+  return buffer;
 }
 
 // Deallocates memory allocated via HostAllocate.
@@ -644,7 +643,9 @@ absl::StatusOr<xla::gpu::GpuCollectives*> GetGpuCollectives(
 
 absl::StatusOr<void*> CollectiveMemoryAllocate(StreamExecutor* executor,
                                                uint64_t bytes) {
-  if (bytes == 0) return nullptr;
+  if (bytes == 0) {
+    return nullptr;
+  }
 
   std::unique_ptr<ActivateContext> activation = executor->Activate();
   TF_ASSIGN_OR_RETURN(xla::gpu::GpuCollectives * gpu_collectives,
@@ -690,7 +691,8 @@ CudaExecutor::CreateMemoryAllocator(MemoryType type) {
                 }
               });
         });
-  } else if (type == MemoryType::kCollective) {
+  }
+  if (type == MemoryType::kCollective) {
     return std::make_unique<GenericMemoryAllocator>(
         [this](uint64_t size)
             -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
@@ -926,7 +928,8 @@ absl::StatusOr<ModuleHandle> CudaExecutor::LoadModule(
     absl::MutexLock lock{&in_memory_modules_mu_};
     return LoadModuleFromCuBin(
         reinterpret_cast<const char*>(spec.cuda_cubin_in_memory().data()));
-  } else if (spec.has_cuda_ptx_in_memory()) {
+  }
+  if (spec.has_cuda_ptx_in_memory()) {
     if (cc_major_ == 0 && cc_minor_ == 0) {
       return absl::InternalError("Compute capability not set");
     }
@@ -1033,8 +1036,9 @@ DeviceMemoryBase CudaExecutor::Allocate(uint64_t size, int64_t memory_space) {
     }
     VLOG(1) << "CudaExecutor::Allocate returns " << result.value();
     return DeviceMemoryBase(result.value(), size);
-  } else if (memory_space ==
-             static_cast<int64_t>(stream_executor::MemoryType::kHost)) {
+  }
+  if (memory_space ==
+      static_cast<int64_t>(stream_executor::MemoryType::kHost)) {
     auto result = HostAllocate(cuda_context_, numa_node_, size);
     if (!result.ok()) {
       LOG(ERROR) << "Failed to allocate host memory: " << result.status();
@@ -1415,7 +1419,9 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
           .value());
 
   auto value_or = [](const auto& status_or, auto default_val) {
-    if (status_or.ok()) return *status_or;
+    if (status_or.ok()) {
+      return *status_or;
+    }
     return default_val;
   };
 

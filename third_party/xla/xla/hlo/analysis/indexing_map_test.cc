@@ -96,7 +96,8 @@ TEST_F(IndexingMapTest, VerifyDimensions) {
   std::stringstream ss;
   EXPECT_FALSE(indexing_map.Verify(ss));
   EXPECT_EQ(ss.str(),
-            "dim size must match the number of dimensions in the affine map");
+            "number of dim vars (2) must match the number of dimensions in the "
+            "affine map (1)");
 }
 
 TEST_F(IndexingMapTest, VerifySymbols) {
@@ -107,8 +108,8 @@ TEST_F(IndexingMapTest, VerifySymbols) {
   std::stringstream ss;
   EXPECT_FALSE(indexing_map.Verify(ss));
   EXPECT_EQ(ss.str(),
-            "range vars size + rt var size must match the number of symbols in "
-            "the affine map");
+            "number of range (1) + runtime (0) variables must match the number "
+            "of symbols in the affine map (0)");
 }
 
 TEST_F(IndexingMapTest, RTVar) {
