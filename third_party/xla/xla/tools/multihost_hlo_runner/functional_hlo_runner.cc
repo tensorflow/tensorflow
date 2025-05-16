@@ -116,7 +116,7 @@ absl::StatusOr<Literal> MakeFakeLiteralWithSameValue(const Shape& shape,
             PopulateWithSameValue(
                 &literal,
                 static_cast<NativeT>(type == PRED ? (value % 2) == 0 : value));
-            for (int i = 0; i < shape.dimensions_size(); i++) {
+            for (int i = 0; i < shape.dimensions().size(); i++) {
               if (shape.is_dynamic_dimension(i)) {
                 // TODO(b/378917570): We might need to set the dynamic size to
                 // the actual bound i.e., shape.dimensions(i) when HybridSim
