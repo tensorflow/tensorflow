@@ -1,0 +1,22 @@
+{
+  "benchmark_name": "gemma3_1b_flax_call",
+  "config_id": "gemma3_1b_flax_call_gpu_b200_1_host_1_device", 
+  "hardware_category": "GPU_B200",
+  "run_status": "SUCCESS",
+  "commit_sha": "testcommit123",
+  "workflow_run_id": "testrun456",
+  "metrics": {
+    "GPU_DEVICE_TIME": {
+      "value_ms": 190.0,
+      "unit": "ms"
+    },
+    "GPU_DEVICE_MEMCPY_TIME": {
+      "value_ms": 1.1,
+      "unit": "ms"
+    },
+    "WALL_TIME": { 
+      "value_ms": 2000.0,
+      "unit": "ms"
+    }
+  }
+}

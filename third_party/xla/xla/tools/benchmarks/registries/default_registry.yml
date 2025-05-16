@@ -26,11 +26,16 @@ benchmarks: [
     }
     model_source_info: ["Gemma3 1B"]
     hardware_targets: [{
-      hardware_category: GPU_B200
+      hardware_category: GPU_L4
       topology: { num_hosts: 1, num_devices_per_host: 1 }
       target_metrics: [WALL_TIME, GPU_DEVICE_TIME, GPU_DEVICE_MEMCPY_TIME, PEAK_GPU_MEMORY]
+    },
+    {
+      hardware_category: CPU_X86
+      topology: { num_hosts: 1, num_devices_per_host: 1 }
+      target_metrics: [CPU_TIME]
     }]
-    run_frequencies: [POSTSUBMIT]
+    run_frequencies: [PRESUBMIT]
     update_frequency_policy: QUARTERLY
     runtime_flags: ["--num_repeats=5"]
     github_labels: ["blocking_presubmit_test"] # Github label for presubmit triggering
@@ -45,7 +50,7 @@ benchmarks: [
     }
     model_source_info: ["Gemma2 2B"]
     hardware_targets: [{
-      hardware_category: GPU_L4
+      hardware_category: GPU_B200
       topology: { num_hosts: 1, num_devices_per_host: 1 }
       target_metrics: [WALL_TIME, GPU_DEVICE_TIME, GPU_DEVICE_MEMCPY_TIME, PEAK_GPU_MEMORY]
     },
@@ -55,7 +60,7 @@ benchmarks: [
       target_metrics: [CPU_TIME, PEAK_CPU_MEMORY]
     }
     ]
-    run_frequencies: [PRESUBMIT, POSTSUBMIT]
+    run_frequencies: [POSTSUBMIT]
     update_frequency_policy: QUARTERLY
     runtime_flags: ["--num_repeats=5"]
     github_labels: ["blocking_presubmit_test"] # Github label for presubmit triggering
