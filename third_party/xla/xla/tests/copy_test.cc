@@ -215,7 +215,7 @@ XLA_TEST_F(CopyOpTest, CopyConstantR2DifferentLayouts) {
   Literal literal = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   // Reverse the minor-to-major order of the literal.
   Layout* literal_layout = literal.mutable_shape_do_not_use()->mutable_layout();
-  ASSERT_EQ(2, literal_layout->minor_to_major_size());
+  ASSERT_EQ(2, literal_layout->minor_to_major().size());
   // Swap the first and second elements.
   *literal_layout->mutable_minor_to_major() = {
       literal_layout->minor_to_major(1), literal_layout->minor_to_major(0)};
