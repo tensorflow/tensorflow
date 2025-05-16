@@ -25,6 +25,7 @@ lit_test_suite(
         [
             # go/keep-sorted start
             "hlo_opt_all_passes_smoke_test.hlo",
+            "hlo_opt_dump.hlo",
             "hlo_opt_emit_proto.hlo",
             "hlo_opt_hlo_protobinary_to_hlotext.hlo",
             "hlo_opt_nonexistent_pass_failure.hlo",
