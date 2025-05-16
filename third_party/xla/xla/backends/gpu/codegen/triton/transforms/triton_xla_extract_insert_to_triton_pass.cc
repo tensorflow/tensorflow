@@ -16,6 +16,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
@@ -304,11 +305,6 @@ Value CreateMakeTensorPtrOp(::xla::EmitterLocOpBuilder& builder, Value ptr,
                             SmallVector<Value> offsets,
                             SmallVector<Value> tile_strides,
                             ArrayRef<int64_t> layout) {
-  // TODO(b/342989850): Clarify and comment what `order` exactly is. It's
-  // not entirely clear from the Triton docs. Currently we are propagating
-  // the layout from the original tensor.
-  auto dim_order = llvm::to_vector_of<int32_t>(layout);
-
   SmallVector<Value> residual_shape =
       ComputeResidualShape(builder, original_shape, offsets);
 
@@ -320,6 +316,11 @@ Value CreateMakeTensorPtrOp(::xla::EmitterLocOpBuilder& builder, Value ptr,
 
   SmallVector<Value> strides =
       ComputeStrides(builder, original_shape, tile_strides, layout);
+
+  // Strides already encode the layout, so we can use the default order.
+  // Note that the order attribute is ignored in the Triton lowering.
+  SmallVector<int32_t> dim_order(layout.size());
+  std::iota(dim_order.rbegin(), dim_order.rend(), 0);
 
   return builder
       .create<MakeTensorPtrOp>(ptr, residual_shape, strides, zero_offsets,
