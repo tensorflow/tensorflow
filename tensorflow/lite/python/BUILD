@@ -1,4 +1,5 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_contrib_test", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
