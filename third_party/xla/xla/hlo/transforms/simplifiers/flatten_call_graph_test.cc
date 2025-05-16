@@ -397,5 +397,87 @@ HloModule CallInWhileInCall
   EXPECT_EQ(module->computation_count(), 9);
 }
 
+TEST_F(FlattenCallGraphTest, SortInCall) {
+  std::string hlo_string = R"(
+HloModule SortInCall
+
+  %compare {
+    %p.0.lhs = f32[] parameter(0)
+    %p.0.rhs = f32[] parameter(1)
+    ROOT %lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+  }
+
+  %called_computation(arg: f32[4096]) -> f32[4096] {
+    %x = f32[4096]{0} parameter(0)
+    ROOT %sort =f32[4096]{0} sort(%x), dimensions={0}, to_apply=%compare
+  }
+
+  ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
+    %a = f32[4096]{0} parameter(0)
+    %b = f32[4096]{0} parameter(1)
+    %call0 = f32[4096]{0} call(%a), to_apply=%called_computation
+    %call1 = f32[4096]{0} call(%b), to_apply=%called_computation
+    ROOT %multiply = f32[4096]{0} multiply(%call0, %call1)
+  }
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_EQ(module->computation_count(), 3);
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  ASSERT_EQ(module->computation_count(), 5);
+  EXPECT_TRUE(result);
+
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+  for (const CallGraphNode& node : call_graph->nodes()) {
+    EXPECT_LE(node.caller_callsites().size(), 1);
+  }
+}
+
+TEST_F(FlattenCallGraphTest, CallInSortInCall) {
+  std::string hlo_string = R"(
+HloModule CallInSortInCall
+
+  %compare.impl {
+    %p.0.lhs = f32[] parameter(0)
+    %p.0.rhs = f32[] parameter(1)
+    ROOT %lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+  }
+
+  %compare {
+    %p.0.lhs = f32[] parameter(0)
+    %p.0.rhs = f32[] parameter(1)
+    ROOT %lt = pred[] call(%p.0.lhs, %p.0.rhs), to_apply=%compare.impl
+  }
+
+  %called_computation(arg: f32[4096]) -> f32[4096] {
+    %x = f32[4096]{0} parameter(0)
+    ROOT %sort =f32[4096]{0} sort(%x), dimensions={0}, to_apply=%compare
+  }
+
+  ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
+    %a = f32[4096]{0} parameter(0)
+    %b = f32[4096]{0} parameter(1)
+    %call0 = f32[4096]{0} call(%a), to_apply=%called_computation
+    %call1 = f32[4096]{0} call(%b), to_apply=%called_computation
+    ROOT %multiply = f32[4096]{0} multiply(%call0, %call1)
+  }
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_EQ(module->computation_count(), 4);
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
+  ASSERT_EQ(module->computation_count(), 7);
+  EXPECT_TRUE(result);
+
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+  for (const CallGraphNode& node : call_graph->nodes()) {
+    EXPECT_LE(node.caller_callsites().size(), 1);
+  }
+}
+
 }  // namespace
 }  // namespace xla

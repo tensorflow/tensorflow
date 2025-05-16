@@ -39,23 +39,22 @@ namespace {
 absl::Status FlattenNode(const CallGraphNode& node) {
   HloComputation* computation = node.computation();
   HloModule* module = computation->parent();
-  // Clone callee for all call-sites except the first one.
   for (int i = 0; i < node.caller_callsites().size(); ++i) {
     CallSite call_site = node.caller_callsites()[i];
-    // Only consider sequential call contexts.
-    if (call_site.context() == CallContext::kEmbedded) {
-      continue;
-    }
-    CHECK_EQ(call_site.context(), CallContext::kControlFlow);
-
-    // Skip first element if this computation is only called from a sequential
-    // context.
-    if (node.context() != CallContext::kBoth && i == 0) {
-      continue;
-    }
-
     std::vector<HloComputation*> worklist;
-    // Clone computation for the remaining sequential context call sites.
+    // If this is the first (or only) callsite, and it only refers to the
+    // computation once, no need to clone.
+    if (i == 0) {
+      int computation_count = 0;
+      for (auto* callee : call_site.instruction()->called_computations()) {
+        if (callee == computation) {
+          ++computation_count;
+        }
+      }
+      if (computation_count <= 1) {
+        continue;
+      }
+    }
     call_site.instruction()->ReplaceCalledComputations(
         [&](HloComputation* callee) {
           if (callee == computation) {
@@ -72,11 +71,6 @@ absl::Status FlattenNode(const CallGraphNode& node) {
       auto current = worklist.back();
       worklist.pop_back();
       for (auto* instruction : current->instructions()) {
-        if (GetInstructionCallContext(instruction->opcode()) !=
-            CallContext::kControlFlow) {
-          continue;
-        }
-
         instruction->ReplaceCalledComputations([&](HloComputation* callee) {
           return module->AddEmbeddedComputation(callee->Clone());
         });
@@ -100,6 +94,14 @@ absl::Status AnnotateNode(const CallGraphNode& node) {
       }
     }
   }
+
+  // Correctly handle dead code: if a fusion computation is no longer used, it
+  // should not have a fusion instruction set.
+  if (node.callers().empty() &&
+      node.computation()->FusionInstruction() != nullptr) {
+    node.computation()->SetFusionInstruction(nullptr);
+  }
+
   return absl::OkStatus();
 }
 
@@ -116,6 +118,8 @@ absl::StatusOr<bool> FlattenCallGraph::Run(
     TF_RETURN_IF_ERROR(call_graph->VisitNodes(FlattenNode));
   }
 
+  // TODO(b/418034360): Remove this step once the fusion instruction is
+  // automatically maintained.
   {  // Annotate flattened computations with callee types.
     std::unique_ptr<CallGraph> call_graph =
         CallGraph::Build(module, execution_threads);
