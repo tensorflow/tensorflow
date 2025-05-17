@@ -14,6 +14,7 @@
 # ============================================================================
 
 load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+load("//third_party/bazel_rules/rules_shell/shell:sh_binary.bzl", "sh_binary")  # copybara:strip
 load("//xla:pytype.bzl", "pytype_strict_binary")
 
 package(
