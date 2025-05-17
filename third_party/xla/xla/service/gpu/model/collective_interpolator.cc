@@ -115,7 +115,7 @@ std::unique_ptr<HloModule> AllReduceModule(
 
   HloComputation::Builder wrapped_computation("wrapped_computation");
   HloComputation::Builder entry_builder("entry");
-  Shape s(shape->element_type(), {}, {});
+  Shape s(shape->element_type(), /*dimensions=*/{});
   HloInstruction* a = wrapped_computation.AddInstruction(
       HloInstruction::CreateParameter(0, s, "p0.1"));
   HloInstruction* b = wrapped_computation.AddInstruction(
@@ -156,7 +156,7 @@ std::unique_ptr<HloModule> ReduceScatterModule(
 
   HloComputation::Builder wrapped_computation("wrapped_computation");
   HloComputation::Builder entry_builder("entry");
-  Shape s(shape->element_type(), {}, {});
+  Shape s(shape->element_type(), /*dimensions=*/{});
   HloInstruction* a = wrapped_computation.AddInstruction(
       HloInstruction::CreateParameter(0, s, "p0.1"));
   HloInstruction* b = wrapped_computation.AddInstruction(

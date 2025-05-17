@@ -225,8 +225,7 @@ Shape GetLinearizedShape(const Shape& shape) {
     return shape;
   }
   std::vector<int64_t> dims{ShapeUtil::ElementsIn(shape)};
-  auto result = Shape(shape.element_type(), dims,
-                      absl::InlinedVector<bool, 4>(dims.size(), false));
+  auto result = Shape(shape.element_type(), dims);
   *result.mutable_layout() = xla::Layout({0});
   return result;
 }

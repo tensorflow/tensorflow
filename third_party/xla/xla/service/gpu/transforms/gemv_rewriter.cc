@@ -99,9 +99,7 @@ class GemvRewriterVisitor : public DfsHloRewriteVisitor {
       std::vector<int64_t> new_lhs_dimensions(lhs_dimensions.begin(),
                                               lhs_dimensions.end());
       new_lhs_dimensions.push_back(1);
-      Shape new_lhs_shape(
-          lhs_shape.element_type(), new_lhs_dimensions,
-          absl::InlinedVector<bool, 4>(new_lhs_dimensions.size(), false));
+      Shape new_lhs_shape(lhs_shape.element_type(), new_lhs_dimensions);
       TF_ASSIGN_OR_RETURN(
           *new_lhs_shape.mutable_layout(),
           GetLayoutWithNewMinorMostDimension(lhs_shape.layout()));
@@ -116,9 +114,7 @@ class GemvRewriterVisitor : public DfsHloRewriteVisitor {
       std::vector<int64_t> new_rhs_dimensions(rhs_dimensions.begin(),
                                               rhs_dimensions.end());
       new_rhs_dimensions.push_back(1);
-      Shape new_rhs_shape(
-          rhs_shape.element_type(), new_rhs_dimensions,
-          absl::InlinedVector<bool, 4>(new_rhs_dimensions.size(), false));
+      Shape new_rhs_shape(rhs_shape.element_type(), new_rhs_dimensions);
       TF_ASSIGN_OR_RETURN(
           *new_rhs_shape.mutable_layout(),
           GetLayoutWithNewMinorMostDimension(rhs_shape.layout()));
@@ -141,9 +137,7 @@ class GemvRewriterVisitor : public DfsHloRewriteVisitor {
       new_out_dimensions.push_back(1);
     }
 
-    Shape new_out_shape(
-        dot->shape().element_type(), new_out_dimensions,
-        absl::InlinedVector<bool, 4>(new_out_dimensions.size(), false));
+    Shape new_out_shape(dot->shape().element_type(), new_out_dimensions);
     TF_ASSIGN_OR_RETURN(
         *new_out_shape.mutable_layout(),
         GetLayoutWithNewMinorMostDimension(dot->shape().layout()));
