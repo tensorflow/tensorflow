@@ -55,6 +55,7 @@ namespace xla {
 namespace {
 
 using ::testing::ContainerEq;
+using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 using ::testing::StrEq;
 
@@ -3775,6 +3776,32 @@ TEST_F(SliceTimePermutationIteratorTest, Repacks) {
   for (const RepackTestCase& test_case : test_cases) {
     test_case.Test();
   }
+}
+
+class BreadthFirstMidpointIteratorTest : public ::testing::Test {
+ protected:
+  static void RunTest(int start, int end, std::vector<int> expected_order) {
+    std::vector<int> actual;
+    for (BreadthFirstMidpointIterator iterator(start, end); !iterator.End();
+         iterator.Next()) {
+      actual.push_back(iterator.value());
+    }
+    EXPECT_THAT(actual, ElementsAreArray(expected_order));
+  }
+};
+
+TEST_F(BreadthFirstMidpointIteratorTest, NoValues) { RunTest(1, 0, {}); }
+
+TEST_F(BreadthFirstMidpointIteratorTest, OneValue) { RunTest(1, 1, {1}); }
+
+TEST_F(BreadthFirstMidpointIteratorTest, TwoValues) { RunTest(1, 2, {2, 1}); }
+
+TEST_F(BreadthFirstMidpointIteratorTest, General1) {
+  RunTest(1, 5, {3, 2, 5, 1, 4});
+}
+
+TEST_F(BreadthFirstMidpointIteratorTest, General2) {
+  RunTest(0, 10, {5, 2, 8, 1, 4, 7, 10, 0, 3, 6, 9});
 }
 
 }  // namespace

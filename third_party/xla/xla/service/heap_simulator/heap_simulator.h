@@ -1042,6 +1042,34 @@ class ChooseBestHeapAlgorithm : public HeapAlgorithm<BufferType> {
   std::vector<std::unique_ptr<HeapAlgorithm<BufferType>>> algorithms_;
 };
 
+// An iterator that produces every integer in [start, end], starting with the
+// midpoint of [start, end], followed by the midpoint of [start, midpoint-1],
+// and then the midpoint of [midpoint+1, end]. This is useful for constructing
+// a balanced BufferIntervalTree.
+class BreadthFirstMidpointIterator {
+ public:
+  BreadthFirstMidpointIterator(int start, int end);
+
+  int value() const;
+
+  void Begin();
+
+  void Next();
+
+  bool End() const { return !value_.has_value(); }
+
+ private:
+  struct WorkItem {
+    int start;
+    int end;
+  };
+
+  WorkItem initial_work_item_;
+  std::optional<int> value_ = std::nullopt;
+
+  std::list<WorkItem> work_items_;
+};
+
 extern template class GlobalDecreasingSizeBestFitHeap<HloValue>;
 extern template class GlobalDecreasingSizeBestFitHeap<AllocationBlock>;
 extern template class ChooseBestHeapAlgorithm<HloValue>;
