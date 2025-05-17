@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/transforms/collective_send_recv_combiner.h"
+#include "xla/service/gpu/transforms/collectives/collective_send_recv_combiner.h"
 
 #include <vector>
 

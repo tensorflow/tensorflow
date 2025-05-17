@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVE_SEND_RECV_COMBINER_H_
-#define XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVE_SEND_RECV_COMBINER_H_
+#ifndef XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_SEND_RECV_COMBINER_H_
+#define XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_SEND_RECV_COMBINER_H_
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -56,4 +56,4 @@ class CollectiveSendRecvCombiner : public HloModulePass {
 };
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVE_SEND_RECV_COMBINER_H_
+#endif  // XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_SEND_RECV_COMBINER_H_

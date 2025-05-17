@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVE_PERMUTE_CYCLE_DECOMPOSER_H_
-#define XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVE_PERMUTE_CYCLE_DECOMPOSER_H_
+#ifndef XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_PERMUTE_CYCLE_DECOMPOSER_H_
+#define XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_PERMUTE_CYCLE_DECOMPOSER_H_
 
 #include <cstdint>
 
@@ -71,4 +71,4 @@ class CollectivePermuteCycleDecomposer : public HloModulePass {
 
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVE_PERMUTE_CYCLE_DECOMPOSER_H_
+#endif  // XLA_SERVICE_GPU_TRANSFORMS_COLLECTIVES_COLLECTIVE_PERMUTE_CYCLE_DECOMPOSER_H_
