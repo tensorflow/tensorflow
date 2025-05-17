@@ -655,7 +655,7 @@ lit_test_suite(
 #         "//xla/codegen/emitters/ir:xla",  # buildcleaner: keep
 #         "//xla/codegen/emitters/transforms:passes",
 #         "@triton//:AllPassesAndDialects",
-#         "@triton//third_party/amd:TestAMDRangeAnalysis",
+#         "@triton//third_party/amd:TestAMDAnalysis",
 #     ],
 # )
 # copybara:uncomment_end
