@@ -2640,7 +2640,7 @@ void MsaAlgorithm::MaybeSplitAllocationValues(
     *mutable_element = result->dimension();
     Shape new_shape = allocation_value.value()->shape();
     if (new_shape.has_layout() &&
-        new_shape.layout().split_configs_size() == 0) {
+        new_shape.layout().split_configs().size() == 0) {
       new_shape.mutable_layout()->add_split_configs(result.value());
     }
     allocation_value.set_split_shape(new_shape);
