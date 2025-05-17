@@ -68,8 +68,8 @@ struct XlaCompileOptions
 //
 // TODO(hyeontaek): Move `loaded_host_callbacks` to a (new) `LoadOptions`
 // because deserialization (without loading) should not take them.
-// TODO(emilyaf): Make `devices` non-optional once it is plumbed through from
-// Australis.
+// TODO(emilyaf): Make `devices` non-optional once it is plumbed through
+// deserialization.
 struct XlaDeserializeExecutableOptions
     : llvm::RTTIExtends<XlaDeserializeExecutableOptions,
                         DeserializeExecutableOptions> {
