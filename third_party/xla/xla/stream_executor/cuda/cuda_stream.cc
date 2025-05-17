@@ -285,13 +285,12 @@ absl::Status CudaStream::MemZero(DeviceMemoryBase* location, uint64_t size) {
           0 &&
       size % sizeof(uint32_t) == 0) {
     return Memset32(location, 0x0, size);
-  } else {
-    std::unique_ptr<ActivateContext> activation = executor_->Activate();
-    return cuda::ToStatus(
-        cuMemsetD8Async(absl::bit_cast<CUdeviceptr>(location->opaque()), 0x0,
-                        size, stream_handle_),
-        "Failed to enqueue async memset operation");
   }
+  std::unique_ptr<ActivateContext> activation = executor_->Activate();
+  return cuda::ToStatus(
+      cuMemsetD8Async(absl::bit_cast<CUdeviceptr>(location->opaque()), 0x0,
+                      size, stream_handle_),
+      "Failed to enqueue async memset operation");
 }
 
 absl::Status CudaStream::Memcpy(DeviceMemoryBase* gpu_dst,
@@ -463,13 +462,12 @@ absl::Status CudaStream::LaunchKernel(
                             thread_dims.x, thread_dims.y, thread_dims.z,
                             shmem_bytes, stream_handle_, args,
                             /*extra=*/nullptr);
-  } else {
-    return LaunchCudaKernel(executor_, name, static_cast<CUfunction>(function),
-                            block_dims.x, block_dims.y, block_dims.z,
-                            thread_dims.x, thread_dims.y, thread_dims.z,
-                            shmem_bytes, stream_handle_, args,
-                            /*extra=*/nullptr);
   }
+  return LaunchCudaKernel(executor_, name, static_cast<CUfunction>(function),
+                          block_dims.x, block_dims.y, block_dims.z,
+                          thread_dims.x, thread_dims.y, thread_dims.z,
+                          shmem_bytes, stream_handle_, args,
+                          /*extra=*/nullptr);
 }
 
 void CudaStream::SetName(std::string name) {

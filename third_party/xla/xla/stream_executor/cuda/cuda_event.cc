@@ -77,7 +77,8 @@ Event::Status CudaEvent::PollForStatus() {
   CUresult res = cuEventQuery(handle_);
   if (res == CUDA_SUCCESS) {
     return Event::Status::kComplete;
-  } else if (res == CUDA_ERROR_NOT_READY) {
+  }
+  if (res == CUDA_ERROR_NOT_READY) {
     return Event::Status::kPending;
   }
   return Event::Status::kError;

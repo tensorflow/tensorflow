@@ -664,7 +664,8 @@ static absl::StatusOr<cublasMath_t> GetMathTypeForGemmEx(
           "Algorithm ", algorithm,
           " uses tensor ops, but tensor ops are not available in sm", cc.major,
           "X devices."));
-    } else if (type_a == blas::DataType::kFloat) {
+    }
+    if (type_a == blas::DataType::kFloat) {
 #if CUDA_VERSION < 11000
       return absl::InternalError(
           "Algorithm ", algorithm,
@@ -1009,19 +1010,17 @@ absl::Status CUDABlas::DoBlasGemmBatchedInternal(
       return absl::OkStatus();
     }
     return absl::InternalError("failed BLAS call, see log for details");
-  } else {
-    // Fall back to a loop for fp16
-    for (int b = 0; b < batch_count; ++b) {
-      const DeviceMemory<T> &a_matrix = *a_ptrs_to_wrappers[b];
-      const DeviceMemory<T> &b_matrix = *b_ptrs_to_wrappers[b];
-      DeviceMemory<T> *c_matrix = c_ptrs_to_wrappers[b];
-      TF_RETURN_IF_ERROR(DoBlasGemm(
-          stream, transa, transb, m, n, k, blas::ToDataType<T>::value, &alpha,
-          a_matrix, lda, b_matrix, ldb, &beta, c_matrix, ldc, numeric_options,
-          blas::CallContext::kNone));
-    }
-    return absl::OkStatus();
+  }  // Fall back to a loop for fp16
+  for (int b = 0; b < batch_count; ++b) {
+    const DeviceMemory<T> &a_matrix = *a_ptrs_to_wrappers[b];
+    const DeviceMemory<T> &b_matrix = *b_ptrs_to_wrappers[b];
+    DeviceMemory<T> *c_matrix = c_ptrs_to_wrappers[b];
+    TF_RETURN_IF_ERROR(DoBlasGemm(stream, transa, transb, m, n, k,
+                                  blas::ToDataType<T>::value, &alpha, a_matrix,
+                                  lda, b_matrix, ldb, &beta, c_matrix, ldc,
+                                  numeric_options, blas::CallContext::kNone));
   }
+  return absl::OkStatus();
 }
 
 bool CUDABlas::DoBlasGemmBatched(

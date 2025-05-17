@@ -61,7 +61,9 @@ absl::StatusOr<RelocatableModule>
 DeferRelocatableCompilationCompilationProvider::CompileToRelocatableModule(
     const CudaComputeCapability& cc, absl::string_view ptx,
     const CompilationOptions& options) const {
-  if (ptx.empty()) return RelocatableModule{};
+  if (ptx.empty()) {
+    return RelocatableModule{};
+  }
 
   // Instead of actually compiling the PTX to CUBIN, we just bundle the PTX
   // string into a fake CUBIN. In the `CompileAndLink` call we detect the prefix
