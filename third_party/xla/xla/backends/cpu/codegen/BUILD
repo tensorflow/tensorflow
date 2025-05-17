@@ -264,10 +264,10 @@ cc_library(
     hdrs = ["target_machine_test_base.h"],
     deps = [
         ":target_machine_features",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_for_library",
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:MC",
