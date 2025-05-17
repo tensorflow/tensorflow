@@ -217,7 +217,7 @@ class GraphOperation : public TracingOperation {
                             const int num_dims) override {
     PartialTensorShape shape;
     if (num_dims >= 0) {
-      shape = PartialTensorShape(ArraySlice<int64_t>(
+      shape = PartialTensorShape(absl::Span<const int64_t>(
           reinterpret_cast<const int64_t*>(dims), num_dims));
     }
     op_->node_builder.Attr(attr_name, shape);
@@ -299,7 +299,7 @@ class GraphOperation : public TracingOperation {
       if (num_dims[i] < 0) {
         shapes.emplace_back();
       } else {
-        shapes.emplace_back(ArraySlice<int64_t>(
+        shapes.emplace_back(absl::Span<const int64_t>(
             reinterpret_cast<const int64_t*>(dims[i]), num_dims[i]));
       }
     }
