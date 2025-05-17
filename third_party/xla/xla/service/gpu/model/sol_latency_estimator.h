@@ -17,14 +17,15 @@ limitations under the License.
 #define XLA_SERVICE_GPU_MODEL_SOL_LATENCY_ESTIMATOR_H_
 
 #include <memory>
-#include <optional>
 
+#include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/model/collective_interpolator.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
+#include "xla/service/gpu/model/matmul_interpolator.h"
 #include "xla/service/gpu/model/sol_gpu_cost_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/latency_hiding_scheduler.h"
@@ -35,14 +36,6 @@ namespace gpu {
 
 class SolLatencyEstimator : public LatencyEstimator {
  public:
-  // Implementation of SolLatencyEstimator using HloAnalysis and
-  // GPUPerformanceModel to estimate latencies for instructions.
-  SolLatencyEstimator(const SchedulerConfig& config,
-                      std::unique_ptr<LatencyEstimator> latency_estimator,
-                      const se::DeviceDescription& gpu_info,
-                      HloCostAnalysis::ShapeSizeFunction shape_size_function,
-                      HloComputation* computation);
-
   TimeCost GetLatencyBetween(const HloGraphNode& from,
                              const HloGraphNode& target) const override;
   TimeCost NodeCost(const HloInstruction* instr) const override;
@@ -63,18 +56,36 @@ class SolLatencyEstimator : public LatencyEstimator {
       const GpuHloCostAnalysis& cost_analysis,
       const CollectiveInterpolator* collective_interpolator = nullptr);
 
+  static absl::StatusOr<std::unique_ptr<SolLatencyEstimator>> Create(
+      const SchedulerConfig& config,
+      std::unique_ptr<LatencyEstimator> latency_estimator,
+      const se::DeviceDescription& gpu_info,
+      HloCostAnalysis::ShapeSizeFunction shape_size_function,
+      const HloComputation* computation);
+
   static constexpr TimeCost kLowCost = 1.0;
   static constexpr TimeCost kLowLatency = 1.0;
 
  private:
+  SolLatencyEstimator(
+      const SchedulerConfig& config,
+      std::unique_ptr<LatencyEstimator> latency_estimator,
+      const se::DeviceDescription& gpu_info,
+      std::unique_ptr<const GpuHloCostAnalysis> cost_analysis,
+      HloCostAnalysis::ShapeSizeFunction shape_size_function,
+      SolGPUCostModel::Config sol_flags,
+      std::unique_ptr<CollectiveInterpolator> collective_interpolator,
+      std::unique_ptr<MatmulInterpolator> matmul_interpolator);
+
   const SchedulerConfig config_;
   const se::DeviceDescription& gpu_info_;
-  GpuPerformanceModelOwning gpu_performance_model_;
-  std::optional<GpuHloCostAnalysis> cost_analysis_;
-  std::unique_ptr<LatencyEstimator> latency_estimator_;
+  const GpuPerformanceModelOwning gpu_performance_model_;
+  std::unique_ptr<const GpuHloCostAnalysis> cost_analysis_;
+  std::unique_ptr<const LatencyEstimator> latency_estimator_;
   HloCostAnalysis::ShapeSizeFunction shape_size_function_;
   const SolGPUCostModel::Config sol_flags_;
-  std::unique_ptr<CollectiveInterpolator> collective_interpolator_;
+  std::unique_ptr<const CollectiveInterpolator> collective_interpolator_;
+  std::unique_ptr<const MatmulInterpolator> matmul_interpolator_;
 };
 
 }  // namespace gpu

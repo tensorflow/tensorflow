@@ -186,23 +186,12 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_analytical_sol_latency_estimator(false);
   auto* sol_estimator_defaults =
       opts.mutable_xla_gpu_analytical_latency_estimator_options();
-  sol_estimator_defaults->emplace(
-      "nccl_op_launch_us",
-      absl::StrCat(static_cast<int>(100.0f * kDefaultNcclCostModelCoeff)));
-  // GBytes per second = 10^9 bytes per second
-  sol_estimator_defaults->emplace(
-      "nic_speed_gbps",
-      absl::StrCat(static_cast<int>(55.56f * kDefaultNcclCostModelCoeff)));
-  sol_estimator_defaults->emplace(
-      "chunk_prep_us",
-      absl::StrCat(static_cast<int>(13.34f * kDefaultNcclCostModelCoeff)));
-  sol_estimator_defaults->emplace(
-      "rtt_us",
-      absl::StrCat(static_cast<int>(68.89f * kDefaultNcclCostModelCoeff)));
-  sol_estimator_defaults->emplace(
-      "chunk_size_bytes", absl::StrCat(kDefaultNcclCostModelChunkSizeBytes));
-  sol_estimator_defaults->emplace(
-      "gpus_per_node", absl::StrCat(kDefaultNcclCostModelGPUsPerNode));
+  sol_estimator_defaults->emplace("nccl_op_launch_us", "-1");
+  sol_estimator_defaults->emplace("nic_speed_gbps", "-1");
+  sol_estimator_defaults->emplace("chunk_prep_us", "-1");
+  sol_estimator_defaults->emplace("rtt_us", "-1");
+  sol_estimator_defaults->emplace("chunk_size_bytes", "-1");
+  sol_estimator_defaults->emplace("gpus_per_node", "-1");
   opts.set_xla_gpu_pgle_profile_file_or_directory_path("");
   opts.set_xla_gpu_memory_limit_slop_factor(95);
   opts.set_xla_gpu_enable_highest_priority_async_stream(true);
