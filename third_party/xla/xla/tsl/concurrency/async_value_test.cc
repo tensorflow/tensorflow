@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/tsl/concurrency/async_value.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <utility>
@@ -197,20 +196,16 @@ TEST(AsyncValueTest, MoveOnlyCallback) {
 //===----------------------------------------------------------------------===//
 
 static void BM_AddAndThenCallback(benchmark::State& state) {
-  size_t n = 0;
-
-  auto ref = MakeConstructedAsyncValueRef<int32_t>(42);
   for (auto _ : state) {
-    // Reset AsyncValue to avoid keeping enqueued callbacks alive.
-    if (++n % 1024 == 0) {
-      ref.SetStateConcrete();
-      ref = MakeConstructedAsyncValueRef<int32_t>(42);
-    }
+    internal::AsyncValueStorage<int32_t> storage;
 
-    ref.AndThen([] {});
+    AsyncValueOwningRef<int32_t> owner =
+        MakeConstructedAsyncValueRef<int32_t>(storage, 42);
+    AsyncValuePtr<int32_t> ptr = owner.AsPtr();
+
+    ptr.AndThen([] {});
+    ptr.SetStateConcrete();
   }
-
-  ref.SetStateConcrete();
 }
 
 BENCHMARK(BM_AddAndThenCallback);
