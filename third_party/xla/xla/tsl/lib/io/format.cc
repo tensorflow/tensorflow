@@ -94,8 +94,8 @@ absl::Status ReadBlock(RandomAccessFile* file, const BlockHandle& handle,
 
   char* buf = new char[n + kBlockTrailerSize];
   absl::string_view contents;
-  absl::Status s =
-      file->Read(handle.offset(), n + kBlockTrailerSize, &contents, buf);
+  absl::Status s = file->Read(handle.offset(), contents,
+                              absl::MakeSpan(buf, n + kBlockTrailerSize));
   if (!s.ok()) {
     delete[] buf;
     return s;

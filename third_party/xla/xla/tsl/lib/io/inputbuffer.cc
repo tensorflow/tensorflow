@@ -41,7 +41,7 @@ InputBuffer::~InputBuffer() = default;
 
 absl::Status InputBuffer::FillBuffer() {
   absl::string_view data;
-  absl::Status s = file_->Read(file_pos_, size_, &data, buf());
+  absl::Status s = file_->Read(file_pos_, data, absl::MakeSpan(buf(), size_));
   if (data.data() != buf()) {
     memmove(buf(), data.data(), data.size());
   }
@@ -234,7 +234,8 @@ absl::Status InputBuffer::Hint(int64_t bytes_to_read) {
 
   // Read the remaining bytes from file.
   absl::string_view data;
-  absl::Status s = file_->Read(file_pos_, bytes_to_read, &data, limit_);
+  absl::Status s =
+      file_->Read(file_pos_, data, absl::MakeSpan(limit_, bytes_to_read));
   if (data.data() != limit_) {
     memmove(limit_, data.data(), data.size());
   }
