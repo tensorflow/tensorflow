@@ -172,6 +172,7 @@ cc_library(
     deps = [
         ":hlo_op_metadata",
         ":tile_assignment",
+        "//third_party/highway/hwy/contrib/sort:vqsort",
         "//xla:array",
         "//xla:printer",
         "//xla:shape_tree",
