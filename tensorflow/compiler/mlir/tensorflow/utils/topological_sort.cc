@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/topological_sort.h"
 
 #include <algorithm>
+#include <cassert>
 #include <queue>
-#include <utility>
 #include <vector>
 
 #include "llvm/ADT/DenseMap.h"
