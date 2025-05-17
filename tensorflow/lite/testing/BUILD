@@ -760,6 +760,8 @@ edgetpu_ops = [
     "transpose_conv",
 ]
 
+# THIS IS A TEST
+
 # copybara:uncomment_begin(google-only)
 # [gen_zipped_test_file(
 #     name = "zip_%s_edgetpu" % op_name,
