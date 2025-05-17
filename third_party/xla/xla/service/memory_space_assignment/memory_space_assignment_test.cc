@@ -656,9 +656,69 @@ TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementAfterPrefetch) {
   EXPECT_THAT(concat->operand(1), op::AsyncDone(op::AsyncStart(p0)));
 }
 
-// TODO(b/415757985): Enable after addressing the bug.
 TEST_F(MemorySpaceAssignmentTest,
-       DISABLED_SyncDynamicSliceReplacementAfterPrefetch) {
+       SyncDynamicSliceReplacementWithLateIndexOperand) {
+  absl::string_view hlo_string = R"(
+  HloModule module, is_scheduled=true
+
+  ENTRY entry {
+    p0_data = s32[10,2,3]{2,1,0} parameter(0)         // Data for dynamic-slice
+    p1_long_pole = s32[10,2,3]{2,1,0} parameter(1) // For creating a long schedule gap
+    p2_index = s32[] parameter(2)                   // Index for dynamic-slice
+
+    // Long chain of operations from p1_long_pole
+    negate0_lp = s32[10,2,3]{2,1,0} negate(p1_long_pole)
+    negate1_lp = s32[10,2,3]{2,1,0} negate(negate0_lp)
+    negate2_lp = s32[10,2,3]{2,1,0} negate(negate1_lp)
+    negate3_lp = s32[10,2,3]{2,1,0} negate(negate2_lp)
+    negate4_lp = s32[10,2,3]{2,1,0} negate(negate3_lp)
+    negate5_lp = s32[10,2,3]{2,1,0} negate(negate4_lp)
+    negate6_lp = s32[10,2,3]{2,1,0} negate(negate5_lp)
+    negate7_lp = s32[10,2,3]{2,1,0} negate(negate6_lp) // Available late in the schedule
+
+    // Index operand, made available after the long pole computation
+    index = s32[] bitcast(negate7_lp)
+
+    zero = s32[] constant(0)
+
+    // Dynamic slice using p0_data and the late-available index
+    dynamic_slice = s32[1,2,3] dynamic-slice(p0_data, index, zero, zero), dynamic_slice_sizes={1,2,3}
+    ROOT root = s32[1,2,3] negate(dynamic_slice)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto module_copy = module->Clone();
+
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 512;  // Ensure p0_data can be prefetched
+  options.enable_sync_slice_replacement = true;
+  options.is_async_slice_implemented_fn =
+      [](const HloInstruction* instruction) { return true; };
+
+  // The index operand is not available until the dynamic-slice instruction
+  // itself which pushes earliest_prefetch_time to right before the
+  // dynamic-slice. We test two cases with min_prefetch_interval = 2 and 1: Case
+  // 1 - min_prefetch_interval = 2:
+  //   The dynamic slice is NOT replaced by an async. This is beacause we
+  //   require at least 2 instructions to be overlapped (including the
+  //   dynamic-slice).
+  AssignMemorySpace(module.get(), options, /*max_prefetch_interval=*/10,
+                    /*min_prefetch_interval=*/2);
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_NE(root, nullptr);
+  ASSERT_EQ(root->operand(0)->opcode(), HloOpcode::kDynamicSlice);
+
+  // Case 2 - min_prefetch_interval = 1:
+  //   The dynamic slice is replaced by an async.
+  AssignMemorySpace(module_copy.get(), options, /*max_prefetch_interval=*/10,
+                    /*min_prefetch_interval=*/1);
+  root = module_copy->entry_computation()->root_instruction();
+  ASSERT_NE(root, nullptr);
+  ASSERT_EQ(root->operand(0)->opcode(), HloOpcode::kAsyncDone);
+}
+
+TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementAfterPrefetch) {
   absl::string_view hlo_string = R"(
   HloModule module, is_scheduled=true
 
@@ -738,9 +798,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementIgnoredTrivials) {
               op::Bitcast(op::AsyncDone(op::AsyncStart(p0))));
 }
 
-// TODO(b/415757985): Enable after addressing the bug.
-TEST_F(MemorySpaceAssignmentTest,
-       DISABLED_SyncDynamicSliceReplacementIgnoredTrivials) {
+TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementIgnoredTrivials) {
   absl::string_view hlo_string = R"(
   HloModule module, is_scheduled=true
 
@@ -829,9 +887,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementAfterEviction) {
                   kDefaultMemorySpace, kAlternateMemorySpace, negate_p0))));
 }
 
-// TODO(b/415757985): Enable after addressing the bug.
-TEST_F(MemorySpaceAssignmentTest,
-       DISABLED_SyncDynamicSliceReplacementAfterEviction) {
+TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementAfterEviction) {
   absl::string_view hlo_string = R"(
   HloModule module, is_scheduled=true
 
@@ -920,9 +976,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementTwoSlices) {
   EXPECT_THAT(add->operand(1), op::AsyncDone(op::AsyncStart(p0)));
 }
 
-// TODO(b/415757985): Enable after addressing the bug.
-TEST_F(MemorySpaceAssignmentTest,
-       DISABLED_SyncDynamicSliceReplacementTwoSlices) {
+TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementTwoSlices) {
   absl::string_view hlo_string = R"(
   HloModule module, is_scheduled=true
 
@@ -1009,9 +1063,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementNestedSlices) {
   EXPECT_THAT(concat->operand(1), op::Slice(op::AsyncDone(op::AsyncStart(p0))));
 }
 
-// TODO(b/415757985): Enable after addressing the bug.
-TEST_F(MemorySpaceAssignmentTest,
-       DISABLED_SyncDynamicSliceReplacementNestedSlices) {
+TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementNestedSlices) {
   absl::string_view hlo_string = R"(
   HloModule module, is_scheduled=true
 
@@ -1100,9 +1152,7 @@ TEST_F(MemorySpaceAssignmentTest, SyncSliceReplacementOneFails) {
   ASSERT_NE(slice0, nullptr);
 }
 
-// TODO(b/415757985): Enable after addressing the bug.
-TEST_F(MemorySpaceAssignmentTest,
-       DISABLED_SyncDynamicSliceReplacementOneFails) {
+TEST_F(MemorySpaceAssignmentTest, SyncDynamicSliceReplacementOneFails) {
   absl::string_view hlo_string = R"(
   HloModule module, is_scheduled=true
 
