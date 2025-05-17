@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter.h"
 
 #include <cstdint>
-#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
