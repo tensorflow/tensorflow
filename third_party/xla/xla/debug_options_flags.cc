@@ -127,6 +127,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_cublaslt(false);
 
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+  opts.add_xla_gpu_enable_command_buffer(DebugOptions::CONDITIONAL);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLASLT);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUSTOM_CALL);
