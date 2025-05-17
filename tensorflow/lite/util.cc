@@ -683,6 +683,8 @@ int GetBuiltinDataSize(BuiltinOperator op) {
       return 0;
     case BuiltinOperator_STABLEHLO_CASE:
       return sizeof(TfLiteStablehloCaseParams);
+    case BuiltinOperator_SOFTSIGN:
+      return 0;
   }
   return 0;
 }
