@@ -1,3 +1,4 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//xla:py_strict.bzl", "py_strict_test")
 load("//xla:pytype.bzl", "pytype_strict_library")
 load(
@@ -568,4 +569,11 @@ cc_library(
     hdrs = ["version.h"],
     compatible_with = [],
     visibility = internal_visibility([":friends"]),
+)
+
+bzl_library(
+    name = "package_groups_bzl",
+    srcs = ["package_groups.bzl"],
+    parse_tests = False,
+    visibility = ["//visibility:private"],
 )
