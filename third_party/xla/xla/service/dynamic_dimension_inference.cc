@@ -964,7 +964,7 @@ absl::Status DynamicDimensionInferenceVisitor::HandleSetDimensionSize(
     // s32[2, 5] = set-dimension-size(s32[2,<=5]{1,0} %param, s32[] %size),
     //                                                        dimensions={1}
     // The result shape has no dynamic dimension.
-    TF_RET_CHECK(size->shape().dimensions().size() == 0);
+    TF_RET_CHECK(size->shape().dimensions().empty());
     if (size->literal().Get<int32_t>({}) ==
             hlo->shape().dimensions(hlo->dimension()) &&
         !hlo->shape().is_dynamic_dimension(hlo->dimension())) {
@@ -1458,7 +1458,7 @@ absl::Status DynamicDimensionInferenceVisitor::HandleReshape(
           int64_t input_dynamic_dimension, int64_t operand_index,
           HloInstruction* operand_dynamic_size) -> absl::Status {
         HloInstruction* const reshape = hlo;
-        if (reshape->shape().dimensions().size() == 0) {
+        if (reshape->shape().dimensions().empty()) {
           VLOG(0) << "Reshaping a dynamic dimension into a scalar, which has "
                      "undefined behavior when input size is 0. The offending "
                      "instruction is: "

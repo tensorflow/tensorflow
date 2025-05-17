@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/service.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <numeric>
@@ -1091,7 +1092,7 @@ absl::StatusOr<Literal> Service::ComputeConstantGraph(
          absl::Span<const Literal*> operands) -> absl::StatusOr<Literal> {
         if (custom_call->custom_call_target() == "SliceToDynamic") {
           auto result = operands[0]->Clone();
-          for (int64_t i = 0; i < result.shape().dimensions_size(); ++i) {
+          for (int64_t i = 0; i < result.shape().dimensions().size(); ++i) {
             result.SetDynamicSize(i, operands[1 + i]->Get<int32_t>({}));
           }
           return result.ToStatic();
