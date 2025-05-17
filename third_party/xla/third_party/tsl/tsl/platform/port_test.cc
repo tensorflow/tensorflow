@@ -13,14 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <condition_variable>
-
+#include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "xla/tsl/platform/env_time.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/mem.h"
-#include "tsl/platform/mutex.h"
 
 namespace tsl {
 namespace port {
@@ -45,72 +44,72 @@ TEST(Port, GetCurrentCPU) {
 }
 
 TEST(ConditionVariable, WaitForMilliseconds_Timeout) {
-  mutex m;
-  mutex_lock l(m);
-  condition_variable cv;
-  ConditionResult result = tsl::kCond_MaybeNotified;
+  absl::Mutex m;
+  absl::MutexLock l(&m);
+  absl::CondVar cv;
+  bool result = false;
   time_t start = time(nullptr);
   // Condition variables are subject to spurious wakeups on some platforms,
   // so need to check for a timeout within a loop.
-  while (result == tsl::kCond_MaybeNotified) {
-    result = WaitForMilliseconds(&l, &cv, 3000);
+  while (!result) {
+    result = cv.WaitWithTimeout(&m, absl::Milliseconds(3000));
   }
-  EXPECT_EQ(result, tsl::kCond_Timeout);
   time_t finish = time(nullptr);
   EXPECT_GE(finish - start, 3);
 }
 
 TEST(ConditionVariable, WaitForMilliseconds_Signalled) {
   thread::ThreadPool pool(Env::Default(), "test", 1);
-  mutex m;
-  mutex_lock l(m);
-  condition_variable cv;
+  absl::Mutex m;
+  absl::MutexLock l(&m);
+  absl::CondVar cv;
   time_t start = time(nullptr);
   // Sleep for just 1 second then notify.  We have a timeout of 3 secs,
   // so the condition variable will notice the cv signal before the timeout.
   pool.Schedule([&m, &cv]() {
     Env::Default()->SleepForMicroseconds(1 * 1000 * 1000);
-    mutex_lock l(m);
-    cv.notify_all();
+    absl::MutexLock l(&m);
+    cv.SignalAll();
   });
-  EXPECT_EQ(WaitForMilliseconds(&l, &cv, 3000), tsl::kCond_MaybeNotified);
+  EXPECT_FALSE(cv.WaitWithTimeout(&m, absl::Milliseconds(3000)));
   time_t finish = time(nullptr);
   EXPECT_LT(finish - start, 3);
 }
 
 TEST(ConditionalCriticalSections, AwaitWithDeadline_Timeout) {
   bool always_false = false;
-  mutex m;
-  m.lock();
+  absl::Mutex m;
+  m.Lock();
   time_t start = time(nullptr);
-  bool result =
-      m.AwaitWithDeadline(Condition(&always_false),
-                          EnvTime::NowNanos() + 3 * EnvTime::kSecondsToNanos);
+  bool result = m.AwaitWithDeadline(
+      absl::Condition(&always_false),
+      absl::FromUnixNanos(EnvTime::NowNanos() + 3 * EnvTime::kSecondsToNanos));
   time_t finish = time(nullptr);
-  m.unlock();
-  EXPECT_EQ(result, false);
+  m.Unlock();
+  EXPECT_FALSE(result);
   EXPECT_GE(finish - start, 3);
 }
 
 TEST(ConditionalCriticalSections, AwaitWithDeadline_Woken) {
   thread::ThreadPool pool(Env::Default(), "test", 1);
   bool woken = false;
-  mutex m;
-  m.lock();
+  absl::Mutex m;
+  m.Lock();
   time_t start = time(nullptr);
   // Sleep for just 1 second then set the boolean.  We have a timeout of 3
-  // secs, so the mutex implementation will notice the boolean state change
-  // before the timeout.
+  // secs, so the absl::Mutex implementation will notice the boolean state
+  // change before the timeout.
   pool.Schedule([&m, &woken]() {
     Env::Default()->SleepForMicroseconds(1 * 1000 * 1000);
-    m.lock();
+    m.Lock();
     woken = true;
-    m.unlock();
+    m.Unlock();
   });
   bool result = m.AwaitWithDeadline(
-      Condition(&woken), EnvTime::NowNanos() + 3 * EnvTime::kSecondsToNanos);
+      absl::Condition(&woken),
+      absl::FromUnixNanos(EnvTime::NowNanos() + 3 * EnvTime::kSecondsToNanos));
   time_t finish = time(nullptr);
-  m.unlock();
+  m.Unlock();
   EXPECT_EQ(result, true);
   EXPECT_LT(finish - start, 3);
 }
@@ -134,48 +133,48 @@ TEST(ConditionalCriticalSections, Await_PingPong) {
   thread::ThreadPool pool(Env::Default(), "test", 1);
   bool ping_pong = false;
   bool done = false;
-  mutex m;
+  absl::Mutex m;
   pool.Schedule([&m, &ping_pong, &done]() {
-    m.lock();
+    m.Lock();
     for (int i = 0; i != 1000; i++) {
-      m.Await(Condition(&ping_pong));
+      m.Await(absl::Condition(&ping_pong));
       ping_pong = false;
     }
     done = true;
-    m.unlock();
+    m.Unlock();
   });
-  m.lock();
+  m.Lock();
   InvertClass invert(&ping_pong);
   for (int i = 0; i != 1000; i++) {
-    m.Await(Condition(&Invert, &ping_pong));
+    m.Await(absl::Condition(&Invert, &ping_pong));
     ping_pong = true;
   }
-  m.Await(Condition(&done));
-  m.unlock();
+  m.Await(absl::Condition(&done));
+  m.Unlock();
 }
 
 TEST(ConditionalCriticalSections, Await_PingPongMethod) {
   thread::ThreadPool pool(Env::Default(), "test", 1);
   bool ping_pong = false;
   bool done = false;
-  mutex m;
+  absl::Mutex m;
   pool.Schedule([&m, &ping_pong, &done]() {
-    m.lock();
+    m.Lock();
     for (int i = 0; i != 1000; i++) {
-      m.Await(Condition(&ping_pong));
+      m.Await(absl::Condition(&ping_pong));
       ping_pong = false;
     }
     done = true;
-    m.unlock();
+    m.Unlock();
   });
-  m.lock();
+  m.Lock();
   InvertClass invert(&ping_pong);
   for (int i = 0; i != 1000; i++) {
-    m.Await(Condition(&invert, &InvertClass::Value));
+    m.Await(absl::Condition(&invert, &InvertClass::Value));
     ping_pong = true;
   }
-  m.Await(Condition(&done));
-  m.unlock();
+  m.Await(absl::Condition(&done));
+  m.Unlock();
 }
 
 TEST(TestCPUFeature, TestFeature) {
