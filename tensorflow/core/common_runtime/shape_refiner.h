@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
