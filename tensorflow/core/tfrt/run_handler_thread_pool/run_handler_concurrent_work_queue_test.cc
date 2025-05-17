@@ -15,12 +15,18 @@ limitations under the License.
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler_concurrent_work_queue.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
+#include "tensorflow/core/common_runtime/cost_util.h"
+#include "tensorflow/core/common_runtime/request_cost.h"
+#include "tensorflow/core/common_runtime/request_cost_accessor.h"
+#include "tensorflow/core/common_runtime/request_cost_accessor_registry.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status_matchers.h"
@@ -37,11 +43,41 @@ namespace tfrt {
 namespace tf {
 namespace {
 
+using ::tensorflow::RequestCost;
+using ::tensorflow::RequestCostAccessor;
+
 const int kNumMainThreads = 1;
 const int kNumComplementaryThreads = 1;
 
+void VerifyGetRunHandlerDelayMetric() {
+  const std::string kGetRunHandlerDelayUsecsMetric =
+      "get_run_handler_delay_usecs";
+  std::unique_ptr<tensorflow::RequestCostAccessor> cost_accessor =
+      tensorflow::CreateRequestCostAccessor();
+  ASSERT_THAT(cost_accessor, testing::NotNull());
+  const absl::flat_hash_map<std::string, double>& metrics =
+      cost_accessor->GetRequestCost()->GetMetrics();
+  EXPECT_TRUE(metrics.contains(kGetRunHandlerDelayUsecsMetric));
+  EXPECT_GT(metrics.at(kGetRunHandlerDelayUsecsMetric), 0);
+}
+
+class TestRequestCostAccessor : public RequestCostAccessor {
+ public:
+  RequestCost* GetRequestCost() const override {
+    static RequestCost* request_cost = new RequestCost();
+    return request_cost;
+  }
+};
+
 class RunHandlerThreadWorkQueueTest : public ::testing::Test {
  protected:
+  static void SetUpTestSuite() {
+    // setenv needs to be called before the RequestCostAccessor is registered.
+    setenv("TF_REQUEST_COST_ACCESSOR_TYPE", "test", 1 /*overwrite*/);
+    tensorflow::RequestCostAccessorRegistry::RegisterRequestCostAccessor(
+        "test", []() { return std::make_unique<TestRequestCostAccessor>(); });
+  }
+
   void SetUp() override {
     RunHandlerThreadWorkQueue::Options options;
     options.num_complementary_threads = kNumComplementaryThreads;
@@ -61,6 +97,7 @@ class RunHandlerThreadWorkQueueTest : public ::testing::Test {
     RequestContextBuilder req_ctx_builder{host_.get(),
                                           /*resource_context=*/nullptr};
     auto queue = pool_->InitializeRequest(/*request_id=*/100);
+    VerifyGetRunHandlerDelayMetric();
     TF_CHECK_OK(queue.status());
     queue_ = std::move(*queue);
     auto req_ctx = std::move(req_ctx_builder).build();

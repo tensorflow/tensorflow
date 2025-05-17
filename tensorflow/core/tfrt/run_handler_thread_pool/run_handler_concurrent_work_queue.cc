@@ -24,6 +24,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/common_runtime/cost_util.h"
+#include "tensorflow/core/common_runtime/request_cost_accessor.h"
+#include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler.h"
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
@@ -65,6 +68,7 @@ RunHandlerThreadWorkQueue::RunHandlerThreadWorkQueue(const Options& options)
 
 absl::StatusOr<std::unique_ptr<tensorflow::tfrt_stub::WorkQueueInterface>>
 RunHandlerThreadWorkQueue::InitializeRequest(int64_t request_id) const {
+  const uint64_t start_t = tensorflow::EnvTime::NowMicros();
   RunHandlerOptions options;
   std::unique_ptr<RunHandler> handler =
       handler_pool_->Get(request_id, options_.init_timeout_ms, options);
@@ -72,6 +76,13 @@ RunHandlerThreadWorkQueue::InitializeRequest(int64_t request_id) const {
     return tensorflow::errors::Internal(absl::StrCat(
         "Could not obtain RunHandler for request after waiting for ",
         options_.init_timeout_ms, " ms."));
+  }
+  const uint64_t end_t = tensorflow::EnvTime::NowMicros();
+  std::unique_ptr<tensorflow::RequestCostAccessor> cost_accessor =
+      tensorflow::CreateRequestCostAccessor();
+  if (cost_accessor != nullptr) {
+    cost_accessor->GetRequestCost()->RecordMetrics(
+        {{"get_run_handler_delay_usecs", end_t - start_t}});
   }
 
   return {std::make_unique<RunHandlerWorkQueue>(std::move(handler))};
