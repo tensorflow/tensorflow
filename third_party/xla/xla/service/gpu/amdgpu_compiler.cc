@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 #include "xla/service/float_support.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
-#include "xla/service/gpu/autotuning/conv_algorithm_picker.h"
 #include "xla/service/gpu/autotuning/gemm_algorithm_picker.h"
 #include "xla/service/gpu/autotuning/gemm_fusion_autotuner.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
@@ -66,9 +65,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace gpu {
@@ -208,31 +204,10 @@ absl::Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
   return absl::OkStatus();
 }
 
-// Linearize collective schedule under if online autotuning of convolutions is
-// enabled.
-bool AMDGPUCompiler::RequiresCollectiveScheduleLinearizer(
-    const HloModule* module, se::StreamExecutor* stream_exec) {
-  if (stream_exec == nullptr || !GpuConvAlgorithmPicker::IsEnabled(module)) {
-    return false;
-  }
-  for (const HloComputation* comp : module->MakeNonfusionComputations()) {
-    for (const HloInstruction* inst : comp->instructions()) {
-      if (GpuConvAlgorithmPicker::IsCandidate(inst)) {
-        return true;
-      }
-    }
-  }
-  // No convolution auto-tuning candidates found in the module.
-  return false;
-}
-
-absl::Status AMDGPUCompiler::AddConvAndGemmAutotuningPasses(
+absl::Status AMDGPUCompiler::AddGemmAutotuningPasses(
     HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
     const CompileOptions& options, HloModule* hlo_module,
-    AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
-  if (GpuConvAlgorithmPicker::IsEnabled(hlo_module)) {
-    pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
-  }
+    AutotuneConfig& autotune_config) {
   pipeline->AddPass<GemmAlgorithmPicker>(autotune_config);
   return absl::OkStatus();
 }

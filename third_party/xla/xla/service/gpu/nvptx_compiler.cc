@@ -59,7 +59,6 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/float_support.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
-#include "xla/service/gpu/autotuning/conv_algorithm_picker.h"
 #include "xla/service/gpu/autotuning/gemm_algorithm_picker.h"
 #include "xla/service/gpu/autotuning/gemm_fusion_autotuner.h"
 #include "xla/service/gpu/buffer_sharing.h"
@@ -318,36 +317,16 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   return absl::OkStatus();
 }
 
-// Linearize collective schedule under if online autotuning of convolutions is
-// enabled.
-bool NVPTXCompiler::RequiresCollectiveScheduleLinearizer(
-    const HloModule* module, se::StreamExecutor* stream_exec) {
-  if (stream_exec == nullptr || !GpuConvAlgorithmPicker::IsEnabled(module)) {
-    return false;
-  }
-  for (const HloComputation* comp : module->MakeNonfusionComputations()) {
-    for (const HloInstruction* inst : comp->instructions()) {
-      if (GpuConvAlgorithmPicker::IsCandidate(inst)) {
-        return true;
-      }
-    }
-  }
-  // No convolution auto-tuning candidates found in the module.
-  return false;
-}
-
-absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
+absl::Status NVPTXCompiler::AddGemmAutotuningPasses(
     HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
     const CompileOptions& options, HloModule* hlo_module,
-    AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
+    AutotuneConfig& autotune_config) {
   if (hlo_module->config()
           .debug_options()
           .xla_gpu_experimental_disable_binary_libraries()) {
     return absl::OkStatus();
   }
-  if (GpuConvAlgorithmPicker::IsEnabled(hlo_module)) {
-    pipeline->AddPass<GpuConvAlgorithmPicker>(autotune_config);
-  }
+
   // On Ampere or later, GemmAlgorithmPicker just provides a way to "warmup" the
   // execution. But we already do that during GemmFusionAutotuner pass. In that
   // case, we do a recursive compilation call that has
