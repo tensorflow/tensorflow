@@ -1119,7 +1119,8 @@ TfrtCpuExecutable::TfrtCpuExecutable(
       result_buffer_indices_(std::move(result_buffer_indices)),
       addressable_device_logical_ids_(
           std::move(addressable_device_logical_ids)),
-      addressable_devices_(std::move(addressable_devices)) {
+      addressable_devices_(std::move(addressable_devices)),
+      run_id_(0) {
   auto hlo_cost_analysis =
       std::make_unique<HloCostAnalysis>(cpu::CpuExecutable::ShapeSizeBytes);
   CHECK_OK(cpu_executable_->module().entry_computation()->Accept(
@@ -1932,7 +1933,7 @@ TfrtCpuExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
     std::optional<std::vector<PjRtFuture<>>>& returned_futures) {
-  RunId run_id(options.launch_id);
+  RunId run_id(options.launch_id ? options.launch_id : ++run_id_);
   tsl::profiler::TraceMeProducer activity("TfrtCpuExecutable::Execute",
                                           tsl::profiler::ContextType::kPjRt,
                                           run_id.ToInt());
@@ -2060,7 +2061,7 @@ TfrtCpuExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
     bool fill_future) {
-  RunId run_id(options.launch_id);
+  RunId run_id(options.launch_id ? options.launch_id : ++run_id_);
   tsl::profiler::TraceMeProducer activity("TfrtCpuExecutable::ExecuteSharded",
                                           tsl::profiler::ContextType::kPjRt,
                                           run_id.ToInt());
@@ -2102,7 +2103,7 @@ TfrtCpuExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
     bool fill_future) {
-  RunId run_id(options.launch_id);
+  RunId run_id(options.launch_id ? options.launch_id : ++run_id_);
   tsl::profiler::TraceMeProducer activity("TfrtCpuExecutable::ExecutePortable",
                                           tsl::profiler::ContextType::kPjRt,
                                           run_id.ToInt());
