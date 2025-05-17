@@ -349,9 +349,6 @@ class TensorContractionBlocking<Eigen::QInt32, Eigen::QInt8, Eigen::QUInt8,
   using ResScalar = Eigen::QInt32;
 
   // Multiply default choice of block size along M, N and K dimensions.
-  static constexpr float kScaleM = 1.5;
-  static constexpr float kScaleN = 1.5;
-  static constexpr float kScaleK = 1.5;
 
  public:
   TensorContractionBlocking(StorageIndex k, StorageIndex m, StorageIndex n,
@@ -489,7 +486,6 @@ REGISTER_DIRECT_COL_MAJOR_ACCESS(SIMPLE_TENSOR);
 REGISTER_DIRECT_COL_MAJOR_ACCESS(TENSOR_MAP_ROWMAJOR);
 REGISTER_DIRECT_COL_MAJOR_ACCESS(TENSOR_MAP_COLMAJOR);
 REGISTER_DIRECT_COL_MAJOR_ACCESS(TENSOR_MAP_CONST_ROWMAJOR);
-REGISTER_DIRECT_COL_MAJOR_ACCESS(TENSOR_MAP_CONST_COLMAJOR);
 REGISTER_DIRECT_COL_MAJOR_ACCESS(TENSOR_RESHAPE);
 
 #undef SIMPLE_TENSOR
