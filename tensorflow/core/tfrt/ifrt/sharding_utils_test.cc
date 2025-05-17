@@ -395,9 +395,11 @@ TEST_P(TensorToArrayTest, MakeArrayFromTensor) {
                           absl::MakeSpan(GetParam().device_ids),
                           GetParam().sharding, thread_pool));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto disassembled_arrays,
-                          assembled_array->DisassembleIntoSingleDeviceArrays(
-                              xla::ifrt::ArrayCopySemantics::kAlwaysCopy));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto disassembled_arrays,
+      assembled_array->DisassembleIntoSingleDeviceArrays(
+          xla::ifrt::ArrayCopySemantics::kAlwaysCopy,
+          xla::ifrt::SingleDeviceShardSemantics::kAddressableShards));
 
   ASSERT_EQ(disassembled_arrays.size(), GetParam().expected_out_tensors.size());
 
