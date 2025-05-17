@@ -793,7 +793,7 @@ absl::StatusOr<Literal> HloRunnerPjRt::TransferLiteralFromDevice(
   // Implementations of ToLiteralSync() do not support empty tuples. Since an
   // empty tuple literal is easy to construct, we do so here.
   if (const Shape& on_device_shape = buffer.on_device_shape();
-      on_device_shape.IsTuple() && on_device_shape.tuple_shapes_size() == 0) {
+      on_device_shape.IsTuple() && on_device_shape.tuple_shapes().size() == 0) {
     return LiteralUtil::MakeTuple({});
   }
   TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, buffer.ToLiteralSync());

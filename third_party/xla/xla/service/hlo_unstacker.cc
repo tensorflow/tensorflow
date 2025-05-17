@@ -428,15 +428,15 @@ bool CanPropagateGteShapeChangesInComputation(
 std::unique_ptr<HloInstruction> DynamicSliceToSlice(
     HloInstruction* dynamic_slice, HloInstruction* input, int64_t i) {
   std::vector<int64_t> new_start_indices;
-  new_start_indices.reserve(dynamic_slice->shape().dimensions_size());
+  new_start_indices.reserve(dynamic_slice->shape().dimensions().size());
   std::vector<int64_t> new_limit_indices;
-  new_limit_indices.reserve(dynamic_slice->shape().dimensions_size());
+  new_limit_indices.reserve(dynamic_slice->shape().dimensions().size());
   std::vector<int64_t> new_strides;
-  new_strides.reserve(dynamic_slice->shape().dimensions_size());
+  new_strides.reserve(dynamic_slice->shape().dimensions().size());
   new_start_indices.push_back(i);
   new_limit_indices.push_back(i + 1);
   new_strides.push_back(1);
-  for (int64_t j = 1; j < dynamic_slice->shape().dimensions_size(); ++j) {
+  for (int64_t j = 1; j < dynamic_slice->shape().dimensions().size(); ++j) {
     new_start_indices.push_back(0);
     new_limit_indices.push_back(
         dynamic_slice->mutable_operand(0)->shape().dimensions(j));
@@ -484,7 +484,7 @@ void UnstackWhileInput(const UnstackerTransformer& unstacker,
   // If the input is an AllocateBuffer, we simply break it down into a tuple of
   // AllocateBuffer instructions, one per slice.
   if (old_while_input->IsCustomCall("AllocateBuffer")) {
-    for (int64_t i = 0; i < new_shape->tuple_shapes_size(); ++i) {
+    for (int64_t i = 0; i < new_shape->tuple_shapes().size(); ++i) {
       slices.push_back(while_instr->AddInstruction(
           HloInstruction::CreateCustomCall(slice_shape, {}, "AllocateBuffer")));
     }
@@ -495,7 +495,7 @@ void UnstackWhileInput(const UnstackerTransformer& unstacker,
     //
     // Hoist the unstacking computation outside the while_instr and create a
     // tuple of slices.
-    for (int64_t i = 0; i < new_shape->tuple_shapes_size(); ++i) {
+    for (int64_t i = 0; i < new_shape->tuple_shapes().size(); ++i) {
       HloInstruction* root_instr = unstacking_computation->root_instruction();
       // TODO: b/352400145 - After unifying patterns and handlers, instead of
       // using the pattern type to determine the unstacked input, we should use
@@ -1089,10 +1089,10 @@ std::optional<PatternInfo> GetDSFusionWithAddPattern(
       HloInstruction* zero =
           builder.AddInstruction(MakeScalarConstantWithShape(p1->shape(), 0));
       std::vector<HloInstruction*> slice_starts;
-      slice_starts.reserve(shape_covering_instr->shape().dimensions_size());
+      slice_starts.reserve(shape_covering_instr->shape().dimensions().size());
       slice_starts.push_back(p1);
       for (int64_t i = 0;
-           i < shape_covering_instr->shape().dimensions_size() - 1; i++) {
+           i < shape_covering_instr->shape().dimensions().size() - 1; i++) {
         slice_starts.push_back(zero);
       }
       HloInstruction* slice =
@@ -1446,7 +1446,7 @@ absl::StatusOr<bool> HloUnstacker::Run(
   bool unstacked = false;
   std::vector<const HloInstruction*> unstacked_instructions;
   for (HloInstruction* loop : entry_loops) {
-    for (int64_t i = 0; i < loop->shape().tuple_shapes_size(); ++i) {
+    for (int64_t i = 0; i < loop->shape().tuple_shapes().size(); ++i) {
       // We don't handle tuples and if we see then we assume they come from a
       // previous unstacking attempt.
       if (loop->while_init()->operand(i)->shape().IsTuple()) {
