@@ -432,6 +432,7 @@ cc_library(
         ":master",
         ":master_interface",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/time",
     ],
 )
 
