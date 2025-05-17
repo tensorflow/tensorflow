@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/call_once.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
@@ -436,55 +437,39 @@ bool TileAssignment::operator==(const TileAssignment& other) const {
 }
 
 int64_t TileAssignment::operator()(absl::Span<const int64_t> indexes) const {
-  absl::MutexLock lock(&mu_);
   return array_ ? (*array_)(indexes) : iota_->value_at(indexes);
 }
 
 absl::Span<const int64_t> TileAssignment::dimensions() const {
-  absl::MutexLock lock(&mu_);
   return array_ ? array_->dimensions() : iota_->dims();
 }
 
 int64_t TileAssignment::num_dimensions() const {
-  absl::MutexLock lock(&mu_);
   return array_ ? array_->num_dimensions() : iota_->ndims();
 }
 
 int64_t TileAssignment::dim(int64_t n) const {
-  absl::MutexLock lock(&mu_);
   return array_ ? array_->dim(n) : iota_->dim(n);
 }
 int64_t TileAssignment::num_elements() const {
-  absl::MutexLock lock(&mu_);
   return array_ ? array_->num_elements() : iota_->num_elements();
 }
 
 int64_t TileAssignment::first() const {
-  absl::MutexLock lock(&mu_);
   return array_ ? *array_->begin() : 0;
 }
 
 void TileAssignment::Each(
     absl::FunctionRef<void(absl::Span<const int64_t>, int64_t)> f) const {
-  Array<int64_t> const* array;
-  {
-    absl::MutexLock lock(&mu_);
-    MaybeMaterializeFullArray();
-    array = array_;
-  }
-  array->Each(f);
+  MaybeMaterializeFullArray();
+  array_->Each(f);
 }
 
 absl::Status TileAssignment::EachStatus(
     absl::FunctionRef<absl::Status(absl::Span<const int64_t>, int64_t)> f)
     const {
-  Array<int64_t> const* array;
-  {
-    absl::MutexLock lock(&mu_);
-    MaybeMaterializeFullArray();
-    array = array_;
-  }
-  return array->EachStatus(f);
+  MaybeMaterializeFullArray();
+  return array_->EachStatus(f);
 }
 
 [[nodiscard]] TileAssignment TileAssignment::Reshape(
@@ -542,30 +527,30 @@ bool TileAssignment::UsesDevice(int64_t device) const {
 }
 
 const Array<int64_t>& TileAssignment::array() const {
-  absl::MutexLock lock(&mu_);
   MaybeMaterializeFullArray();
   return *array_;
 }
 std::shared_ptr<const Array<int64_t>> TileAssignment::shared_array() const {
-  absl::MutexLock lock(&mu_);
   MaybeMaterializeFullArray();
   return shared_array_;
 }
 
 std::shared_ptr<Array<int64_t>> TileAssignment::shared_array_clone() const {
-  absl::MutexLock lock(&mu_);
   MaybeMaterializeFullArray();
   return std::make_shared<Array<int64_t>>(*array_);
 }
 
 void TileAssignment::MaybeMaterializeFullArray() const {
-  if (array_ == nullptr) {
-    DCHECK(shared_array_ == nullptr);
-    DCHECK(iota_.has_value());
-    auto full = std::make_shared<Array<int64_t>>(iota_->ToArray());
-    shared_array_ = std::move(full);
-    array_ = shared_array_.get();
-  }
+  absl::call_once(flag_, [&]() {
+    absl::MutexLock lock(&mu_);
+    if (array_ == nullptr) {
+      DCHECK(shared_array_ == nullptr);
+      DCHECK(iota_.has_value());
+      auto full = std::make_shared<Array<int64_t>>(iota_->ToArray());
+      shared_array_ = std::move(full);
+      array_ = shared_array_.get();
+    }
+  });
 }
 
 }  // namespace xla

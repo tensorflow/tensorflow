@@ -279,7 +279,7 @@ class TileAssignment {
         shared_array_(std::move(shared_array)),
         array_(shared_array_.get()) {}
 
-  void MaybeMaterializeFullArray() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void MaybeMaterializeFullArray() const;
 
   static const Array<int64_t>* ReplicatedArray() {
     static auto* const array = new Array<int64_t>({0});
@@ -288,12 +288,12 @@ class TileAssignment {
 
   std::optional<IotaTileAssignment> iota_;
 
+  mutable absl::once_flag flag_;
   mutable absl::Mutex mu_;
   // If iota_ is set, shared_array_ is a lazy cache of the materialized array.
-  mutable std::shared_ptr<const Array<int64_t>> shared_array_
-      ABSL_GUARDED_BY(mu_);
+  mutable std::shared_ptr<const Array<int64_t>> shared_array_;
   // Pointer to the storage of the fully materialized array format.
-  mutable const Array<int64_t>* array_ ABSL_GUARDED_BY(mu_) = nullptr;
+  mutable const Array<int64_t>* array_ = nullptr;
 };
 
 }  // namespace xla
