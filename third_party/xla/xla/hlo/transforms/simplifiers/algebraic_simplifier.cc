@@ -6693,7 +6693,9 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::RemoveRedundantStride(
 
 absl::Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
   // Delete no-op slices, i.e. where shape = operand shape.
-  if (ReplaceInstructionIfCompatible(slice, slice->mutable_operand(0))) {
+  if ((!options_.is_slice_dynamic_shape_sensitive() ||
+       ShapeUtil::Equal(slice->shape(), slice->mutable_operand(0)->shape())) &&
+      ReplaceInstructionIfCompatible(slice, slice->mutable_operand(0))) {
     return absl::OkStatus();
   }
 
