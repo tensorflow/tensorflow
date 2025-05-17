@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <set>
 #include <string>
@@ -23,12 +24,16 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/attributes.h"
+#include "absl/base/const_init.h"
+#include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -42,6 +47,7 @@ limitations under the License.
 #include "xla/service/global_device_id.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -379,43 +385,29 @@ GetParticipatingDevicesGroups(const HloInstruction* collective) {
       device_assignment, GetCollectiveReplicaGroups(collective), mode);
 }
 
-absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+absl::StatusOr<std::reference_wrapper<const CollectiveDeviceList>>
+GetParticipatingFlattenedIdGroups(
     const DeviceAssignment& device_assignment,
-    absl::Span<const ReplicaGroup> replica_groups,
+    const CollectiveDeviceList& collective_device_list,
     CollectiveOpGroupMode group_mode) {
-  // Compute the device_id to flattened_id mapping once to avoid brute force
-  // searching through device assignment repeatedly.
-  absl::flat_hash_map<GlobalDeviceId, int64_t> device_id_to_flattened_id;
-  for (int r = 0; r < device_assignment.replica_count(); ++r) {
-    for (int c = 0; c < device_assignment.computation_count(); ++c) {
-      GlobalDeviceId device_id = GlobalDeviceId(device_assignment(r, c));
-      int64_t flattened_id = r * device_assignment.computation_count() + c;
-      device_id_to_flattened_id[device_id] = flattened_id;
-    }
-  }
-
-  std::vector<ReplicaGroup> flattened_id_groups;
-  TF_ASSIGN_OR_RETURN(std::vector<std::vector<GlobalDeviceId>> device_groups,
-                      GetParticipatingDevicesGroups(
-                          device_assignment, replica_groups, group_mode));
-  for (const auto& device_group : device_groups) {
-    ReplicaGroup flattened_id_group;
-    flattened_id_group.mutable_replica_ids()->Reserve(device_group.size());
-    for (const GlobalDeviceId& device_id : device_group) {
-      flattened_id_group.add_replica_ids(device_id_to_flattened_id[device_id]);
-    }
-    flattened_id_groups.push_back(flattened_id_group);
-  }
-  return flattened_id_groups;
+  return GetParticipatingFlattenedIdGroups(
+      collective_device_list, group_mode, device_assignment.replica_count(),
+      device_assignment.computation_count());
 }
 
-absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
-    absl::Span<const ReplicaGroup> replica_groups,
+namespace {
+
+absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroupsImpl(
+    const CollectiveDeviceList& collective_device_list,
     CollectiveOpGroupMode group_mode, int replica_count, int partition_count) {
+  if (group_mode == CollectiveOpGroupMode::kFlattenedID) {
+    return collective_device_list;
+  }
   std::vector<ReplicaGroup> filled_empty_replica_group;
-  absl::Span<const ReplicaGroup> original_replica_groups = replica_groups;
+  absl::Span<const ReplicaGroup> original_replica_groups =
+      collective_device_list.replica_groups();
   std::vector<ReplicaGroup> flattened_replica_groups;
-  if (replica_groups.empty()) {
+  if (collective_device_list.replica_groups().empty()) {
     filled_empty_replica_group.emplace_back();
     const int64_t id_count =
         group_mode == CollectiveOpGroupMode::kCrossPartition ? partition_count
@@ -425,11 +417,7 @@ absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
     }
     original_replica_groups = filled_empty_replica_group;
   }
-  if (group_mode == CollectiveOpGroupMode::kFlattenedID) {
-    flattened_replica_groups.insert(flattened_replica_groups.end(),
-                                    original_replica_groups.begin(),
-                                    original_replica_groups.end());
-  } else if (group_mode == CollectiveOpGroupMode::kCrossReplica) {
+  if (group_mode == CollectiveOpGroupMode::kCrossReplica) {
     flattened_replica_groups.resize(original_replica_groups.size() *
                                     partition_count);
     for (int64_t i = 0, current_group_offset = 0;
@@ -474,30 +462,103 @@ absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
       }
     }
   }
-  return flattened_replica_groups;
+  return CollectiveDeviceList(flattened_replica_groups);
 }
 
-absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
-    const HloInstruction* hlo, const DeviceAssignment& device_assignment) {
+// A simple encoding scheme to encode the collective device list.
+std::string CollectiveDeviceListEncoding(
+    const CollectiveDeviceList& collective_device_list) {
+  // If it's iota replica group list, the string representation is very short,
+  // just use that as the encoding.
+  if (collective_device_list.iota_replica_group_list()) {
+    return collective_device_list.iota_replica_group_list()->ToString();
+  }
+  // Otherwise, do a short string encoding on the replica groups.
+  std::string result;
+  tsl::SerializeToStringDeterministic(collective_device_list.ToProto(),
+                                      &result);
+  return result;
+}
+
+// Cache for holding results of ReplicaGroupsOnNDPlane.
+struct FlattenedIdCacheKey {
+  std::string encoded_collective_device_list;
+  CollectiveOpGroupMode group_mode;
+  int replica_count;
+  int partition_count;
+
+  friend bool operator==(const FlattenedIdCacheKey& a,
+                         const FlattenedIdCacheKey& b) {
+    return ((a.encoded_collective_device_list ==
+             b.encoded_collective_device_list) &&
+            (a.group_mode == b.group_mode) &&
+            (a.replica_count == b.replica_count) &&
+            (a.partition_count == b.partition_count));
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const FlattenedIdCacheKey& key) {
+    return H::combine(std::move(h), key.encoded_collective_device_list,
+                      key.group_mode, key.replica_count, key.partition_count);
+  }
+};
+
+class FlattenedIdCache
+    : public absl::flat_hash_map<FlattenedIdCacheKey, CollectiveDeviceList> {};
+
+ABSL_CONST_INIT absl::Mutex flattened_id_cache_mutex(absl::kConstInit);
+
+FlattenedIdCache& GetFlattenedIdCache() {
+  static absl::NoDestructor<FlattenedIdCache> flattened_id_cache;
+  return *flattened_id_cache;
+}
+
+}  // namespace
+
+absl::StatusOr<std::reference_wrapper<const CollectiveDeviceList>>
+GetParticipatingFlattenedIdGroups(
+    const CollectiveDeviceList& collective_device_list,
+    CollectiveOpGroupMode group_mode, int replica_count, int partition_count) {
+  // If the group mode is flattenedID, just return the collective device list.
+  if (group_mode == CollectiveOpGroupMode::kFlattenedID) {
+    return std::cref(collective_device_list);
+  }
+  // Otherwise, use the cache to get the flattened collective device list.
+  FlattenedIdCacheKey key{
+      .encoded_collective_device_list =
+          CollectiveDeviceListEncoding(collective_device_list),
+      .group_mode = group_mode,
+      .replica_count = replica_count,
+      .partition_count = partition_count,
+  };
+  absl::MutexLock lock(&flattened_id_cache_mutex);
+  if (!GetFlattenedIdCache().contains(key)) {
+    TF_ASSIGN_OR_RETURN(CollectiveDeviceList collective_device_list,
+                        GetParticipatingFlattenedIdGroupsImpl(
+                            collective_device_list, group_mode, replica_count,
+                            partition_count));
+    GetFlattenedIdCache().insert({key, std::move(collective_device_list)});
+  }
+  return std::cref(GetFlattenedIdCache().at(key));
+}
+
+absl::StatusOr<std::reference_wrapper<const CollectiveDeviceList>>
+GetParticipatingFlattenedIdGroups(const HloInstruction* hlo,
+                                  const DeviceAssignment& device_assignment) {
   TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
                       GetCollectiveOpGroupMode(hlo));
-  TF_ASSIGN_OR_RETURN(
-      std::vector<ReplicaGroup> replica_groups,
-      GetParticipatingFlattenedIdGroups(device_assignment,
-                                        GetCollectiveReplicaGroups(hlo), mode));
-  return replica_groups;
+  return GetParticipatingFlattenedIdGroups(device_assignment,
+                                           GetCollectiveDeviceList(hlo), mode);
 }
 
 // Same as above, used for cases where static_device_assignment is not present.
-absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
-    const HloInstruction* hlo, int replica_count, int partition_count) {
+absl::StatusOr<std::reference_wrapper<const CollectiveDeviceList>>
+GetParticipatingFlattenedIdGroups(const HloInstruction* hlo, int replica_count,
+                                  int partition_count) {
   TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
                       GetCollectiveOpGroupMode(hlo));
-  TF_ASSIGN_OR_RETURN(
-      std::vector<ReplicaGroup> replica_groups,
-      GetParticipatingFlattenedIdGroups(GetCollectiveReplicaGroups(hlo), mode,
-                                        replica_count, partition_count));
-  return replica_groups;
+  return GetParticipatingFlattenedIdGroups(GetCollectiveDeviceList(hlo), mode,
+                                           replica_count, partition_count);
 }
 
 absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
@@ -704,24 +765,6 @@ bool ReplicaGroupsOrthogonal(absl::Span<const ReplicaGroup> first,
   for (int64_t i = 0; i < first.size(); ++i) {
     for (int64_t j = 0; j < first[i].replica_ids_size(); ++j) {
       if (first[i].replica_ids(j) != second[j].replica_ids(i)) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
-bool ReplicaGroupsEqual(absl::Span<const ReplicaGroup> first,
-                        absl::Span<const ReplicaGroup> second) {
-  if (first.size() != second.size()) {
-    return false;
-  }
-  for (int64_t i = 0; i < first.size(); ++i) {
-    if (first[i].replica_ids_size() != second[i].replica_ids_size()) {
-      return false;
-    }
-    for (int j = 0; j < first[i].replica_ids_size(); ++j) {
-      if (first[i].replica_ids(j) != second[i].replica_ids(j)) {
         return false;
       }
     }

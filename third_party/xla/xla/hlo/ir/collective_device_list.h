@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
@@ -34,6 +35,9 @@ namespace xla {
 
 std::string ReplicaGroupsToString(
     absl::Span<const ReplicaGroup> replica_groups);
+
+bool ReplicaGroupsEqual(absl::Span<const ReplicaGroup> first,
+                        absl::Span<const ReplicaGroup> second);
 
 // Represents a list of replica groups (a list of list of devices) with
 // reshaping and transposing an iota array (iota tile assignment). Can be used
@@ -97,6 +101,10 @@ class CollectiveDeviceList {
   explicit CollectiveDeviceList()
       : replica_groups_(std::make_shared<std::vector<ReplicaGroup>>()) {};
 
+  explicit CollectiveDeviceList(std::vector<ReplicaGroup>&& replica_groups)
+      : replica_groups_(std::make_shared<std::vector<ReplicaGroup>>(
+            std::move(replica_groups))) {};
+
   explicit CollectiveDeviceList(absl::Span<const ReplicaGroup> replica_groups)
       : replica_groups_(std::make_shared<std::vector<ReplicaGroup>>(
             replica_groups.begin(), replica_groups.end())) {};
@@ -109,6 +117,13 @@ class CollectiveDeviceList {
   explicit CollectiveDeviceList(
       const IotaReplicaGroupList& iota_replica_group_list)
       : iota_replica_group_list_(iota_replica_group_list) {}
+
+  bool operator==(const CollectiveDeviceList& other) const {
+    return replica_groups_ == other.replica_groups_ &&
+           ((replica_groups_ == nullptr && other.replica_groups_ == nullptr) ||
+            (replica_groups_ != nullptr && other.replica_groups_ != nullptr &&
+             ReplicaGroupsEqual(replica_groups(), other.replica_groups())));
+  }
 
   // Lazyly explands iota if applicable.
   const std::vector<ReplicaGroup>& replica_groups() const;

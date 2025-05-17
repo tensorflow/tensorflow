@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -160,7 +161,8 @@ TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId2) {
   HloInstruction *instr =
       builder.AddInstruction(HloInstruction::CreateAllGather(
           ShapeUtil::MakeShape(BF16, {1, 4096, 4096}), {param_0}, 1,
-          CollectiveDeviceList({group}), true, 231, true));
+          CollectiveDeviceList(std::vector<ReplicaGroup>({group})), true, 231,
+          true));
   auto computation = builder.Build(
       builder.AddInstruction(HloInstruction::CreateTuple({instr})));
   auto fusion =
@@ -1095,20 +1097,22 @@ TEST_P(GetParticipatingTest, Test) {
 
   EXPECT_THAT(*actual_device_groups,
               testing::UnorderedElementsAreArray(expect_device_groups));
-
+  CollectiveDeviceList device_list(replica_groups);
   // Test GetParticipatingFlattenedIdGroups.
-  absl::StatusOr<std::vector<ReplicaGroup>> actual_flattened_id_groups =
-      GetParticipatingFlattenedIdGroups(device_assignment, replica_groups,
-                                        *group_mode);
-  if (!actual_flattened_id_groups.ok()) {
+  absl::StatusOr<std::reference_wrapper<const CollectiveDeviceList>>
+      collective_device_list = GetParticipatingFlattenedIdGroups(
+          device_assignment, device_list, *group_mode);
+  if (!collective_device_list.ok()) {
     EXPECT_TRUE(tc.expected_failure);
     return;
   }
+  const std::vector<ReplicaGroup> &actual_flattened_id_groups =
+      collective_device_list->get().replica_groups();
 
   std::vector<std::vector<int64_t>> actual_flattened_id_groups_int;
-  actual_flattened_id_groups_int.reserve(actual_flattened_id_groups->size());
+  actual_flattened_id_groups_int.reserve(actual_flattened_id_groups.size());
 
-  for (auto subgroup : *actual_flattened_id_groups) {
+  for (auto subgroup : actual_flattened_id_groups) {
     std::vector<int64_t> replica_group;
     for (int id : subgroup.replica_ids()) {
       replica_group.push_back(id);
