@@ -61,4 +61,16 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
      ]> {
    let summary = "Recv operation";
    let description = [{
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
+@@ -9,7 +9,7 @@
+   %3 = builtin.unrealized_conversion_cast %2 : memref<i16> to memref<ui16>
+   %4 = bufferization.to_tensor %3 : memref<ui16> to tensor<ui16>
+   %5 = builtin.unrealized_conversion_cast %4 : tensor<ui16> to tensor<i16>
+-  %6 = bufferization.to_memref %5 : tensor<i16> to memref<i16>
++  %6 = bufferization.to_buffer %5 : tensor<i16> to memref<i16>
+   %7 = builtin.unrealized_conversion_cast %6 : memref<i16> to memref<ui16>
+   func.return %7 : memref<ui16>
+ }
 

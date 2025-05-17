@@ -36,7 +36,7 @@ InterpreterValue ToTensor(InterpreterState&, bufferization::ToTensorOp,
   return in.Clone();
 }
 
-InterpreterValue ToMemref(InterpreterState&, bufferization::ToMemrefOp,
+InterpreterValue ToMemref(InterpreterState&, bufferization::ToBufferOp,
                           const InterpreterValue& in) {
   return in;
 }
