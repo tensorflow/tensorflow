@@ -95,11 +95,6 @@ void ShapeLayout::Clear(ShapeIndexView shape_index) {
   ShapeUtil::GetMutableSubshape(&shape_, shape_index)->clear_layout();
 }
 
-void ShapeLayout::ClearTiles() { LayoutUtil::ClearTiles(&shape_); }
-void ShapeLayout::ClearTiles(ShapeIndexView shape_index) {
-  LayoutUtil::ClearTiles(ShapeUtil::GetMutableSubshape(&shape_, shape_index));
-}
-
 bool ShapeLayout::LayoutIsSet() const { return LayoutUtil::HasLayout(shape_); }
 bool ShapeLayout::AnyLayoutIsSet() const {
   return LayoutUtil::HasAnyLayout(shape_);
