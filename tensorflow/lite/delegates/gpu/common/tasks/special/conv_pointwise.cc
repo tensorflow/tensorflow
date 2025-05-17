@@ -131,7 +131,7 @@ absl::Status IsReduceSumNode(const GraphFloat32& graph, Node* node,
   RETURN_IF_ERROR(
       IsNode(graph, OperationType::REDUCE_SUM, 1, 1, node, node_context));
   auto reduce_attr =
-      std::any_cast<ReduceAttributes>(node_context->node->operation.attributes);
+      absl::any_cast<ReduceAttributes>(node_context->node->operation.attributes);
   if (reduce_attr.dims != std::set<Axis>{Axis::CHANNELS}) {
     return absl::InternalError(
         "Expected reduce_sum node with channels reduction.");
