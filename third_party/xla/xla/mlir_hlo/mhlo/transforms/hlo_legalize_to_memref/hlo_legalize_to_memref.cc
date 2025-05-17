@@ -137,7 +137,7 @@ struct DynamicReshapeOpInterface
       if (failed(tensorAlloc)) return failure();
       auto memrefType =
           MemRefType::get(bufferType.getShape(), bufferType.getElementType());
-      operand = rewriter.create<bufferization::ToMemrefOp>(
+      operand = rewriter.create<bufferization::ToBufferOp>(
           op->getLoc(), memrefType, *tensorAlloc);
     }
     bufferization::replaceOpWithNewBufferizedOp<memref::ReshapeOp>(
