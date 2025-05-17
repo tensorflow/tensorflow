@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/text_line_dataset_op.h"
 
 #include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/tf_data_file_logger_options.h"
 #include "tensorflow/core/data/utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -101,7 +102,9 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params) {}
 
     absl::Status Initialize(IteratorContext* ctx) override {
-      LogFilenames(dataset()->filenames_);
+      LogFilenamesOptions log_filenames_options(dataset()->filenames_,
+                                                ctx->data_service_address());
+      LogFilenames(log_filenames_options);
       return absl::OkStatus();
     }
 

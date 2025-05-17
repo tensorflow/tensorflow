@@ -739,11 +739,18 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "tf_data_file_logger_options",
+    hdrs = ["tf_data_file_logger_options.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
+        ":tf_data_file_logger_options",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -756,6 +763,7 @@ tf_cc_test(
     srcs = ["utils_test.cc"],
     # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
+        ":tf_data_file_logger_options",
         ":utils",
         "@com_google_googletest//:gtest_main",
     ],
