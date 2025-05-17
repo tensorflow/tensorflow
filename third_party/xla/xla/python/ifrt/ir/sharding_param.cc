@@ -271,13 +271,9 @@ ShardingParam::LocalShapeFromGlobalShape(
   llvm::SmallVector<int64_t> local_shape;
   local_shape.reserve(global_shape.size());
   for (int i = 0; i < num_shards.size(); ++i) {
-    if (global_shape[i] % num_shards[i] != 0) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Global shape is not divisible by the number of shards in dimension ",
-          i, ". Global shape: [", absl::StrJoin(global_shape, ","),
-          "], number of shards: ", num_shards[i], "."));
-    }
-    local_shape.push_back(global_shape[i] / num_shards[i]);
+    // We allow indivisible sharding.
+    local_shape.push_back((global_shape[i] + num_shards[i] - 1) /
+                          num_shards[i]);
   }
   return local_shape;
 }
