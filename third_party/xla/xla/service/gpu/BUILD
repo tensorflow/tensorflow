@@ -1562,6 +1562,7 @@ cc_library(
         "//xla/service/gpu/transforms:reduction_splitter",
         "//xla/service/gpu/transforms:rename_fusions",
         "//xla/service/gpu/transforms:sanitize_constant_names",
+        "//xla/service/gpu/transforms:scalar_constant_sinker",
         "//xla/service/gpu/transforms:scatter_expander",
         "//xla/service/gpu/transforms:scatter_slice_simplifier",
         "//xla/service/gpu/transforms:softmax_rewriter_triton",
