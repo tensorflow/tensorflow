@@ -534,7 +534,7 @@ func.func @abs_f32(%arg0: memref<*xf32>) -> memref<*xf32>
     %12 = math.absf %arg1 : f32
     linalg.yield %12 : f32
   }
-  %10 = bufferization.to_memref %0 : tensor<?xindex> to memref<?xindex>
+  %10 = bufferization.to_buffer %0 : tensor<?xindex> to memref<?xindex>
   %11 = memref.reshape %9(%10)
       : (memref<?xf32>, memref<?xindex>) -> memref<*xf32>
   func.return %11 : memref<*xf32>
