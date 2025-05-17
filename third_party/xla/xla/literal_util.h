@@ -648,7 +648,8 @@ absl::StatusOr<Literal> MakeFakeLiteral(
     const Shape& shape, std::minstd_rand0* engine,
     std::optional<std::pair<int64_t, int64_t>> limit, bool is_sorted,
     bool no_duplicates, bool use_large_range,
-    std::optional<int64_t> max_bits_of_precision);
+    std::optional<int64_t> max_bits_of_precision,
+    bool keep_shape_layout = false);
 
 }  // namespace xla
 

@@ -709,7 +709,7 @@ absl::StatusOr<Literal> MakeFakeLiteral(
     const Shape& shape, std::minstd_rand0* engine,
     std::optional<std::pair<int64_t, int64_t>> limit, bool is_sorted,
     bool no_duplicates, bool use_large_range,
-    std::optional<int64_t> max_bits_of_precision) {
+    std::optional<int64_t> max_bits_of_precision, bool keep_shape_layout) {
   if (shape.IsTuple()) {
     std::vector<Literal> elements;
     const auto& shape_tuple_shapes = shape.tuple_shapes();
@@ -730,9 +730,11 @@ absl::StatusOr<Literal> MakeFakeLiteral(
   // Clear tiles/element size in shape's layout before using it for creating
   // literal.
   Shape new_shape = shape;
-  new_shape.mutable_layout()->clear_tiles();
-  new_shape.mutable_layout()->set_tail_padding_alignment_in_elements(1);
-  new_shape.mutable_layout()->set_element_size_in_bits(0);
+  if (!keep_shape_layout) {
+    new_shape.mutable_layout()->clear_tiles();
+    new_shape.mutable_layout()->set_tail_padding_alignment_in_elements(1);
+    new_shape.mutable_layout()->set_element_size_in_bits(0);
+  }
   Literal literal(new_shape);
 
   TF_RETURN_IF_ERROR(primitive_util::PrimitiveTypeSwitch<absl::Status>(
