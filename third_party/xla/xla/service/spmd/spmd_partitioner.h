@@ -719,12 +719,12 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   }
 
   virtual double GetCommunicationTimeInMilliSec(
-      int64_t bytes, absl::Span<const ReplicaGroup> device_groups) {
+      int64_t bytes, const CollectiveDeviceList& collective_device_list) {
     return 0.0;
   }
 
   virtual int GetCommunicationMultiplier(
-      absl::Span<const ReplicaGroup> device_groups) {
+      const CollectiveDeviceList& collective_device_list) {
     return 1;
   }
 
