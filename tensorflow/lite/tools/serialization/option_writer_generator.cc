@@ -258,6 +258,7 @@ class OpOptionData {
     op_to_option_["STABLEHLO_DYNAMIC_UPDATE_SLICE"] = "";
     op_to_option_["STABLEHLO_SHIFT_LEFT"] = "";
     op_to_option_["STABLEHLO_CBRT"] = "";
+    op_to_option_["SOFTSIGN"] = "";
 
     // TODO(aselle): These are undesirable hacks. Consider changing C structs
     option_to_struct_["Pool2DOptions"] = "TfLitePoolParams";
