@@ -45,6 +45,20 @@ fi
 
 /setup.packages.sh pythons.txt
 
+# For pre-released Python 3.14, we need to build scipy from source as it does
+# not have pre-built wheels for this Python version. Install the required
+# build requirements for scipy first.
+# TODO(kanglan): Remove this once scipy is available for Python 3.14.
+if [[ ${VERSION} == "python3.14" ]]; then
+  cat >scipy_build_requirements.txt <<EOF
+gfortran
+libopenblas-dev
+liblapack-dev
+pkg-config
+EOF
+  /setup.packages.sh scipy_build_requirements.txt
+fi
+
 # Re-link pyconfig.h from x86_64-linux-gnu into the devtoolset directory
 # for any Python version present
 pushd /usr/include/x86_64-linux-gnu
@@ -76,6 +90,20 @@ wget --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=15 --tries=5 
 if [[ ${VERSION} == "python3.13-nogil" || ${VERSION} == "python3.14" ]]; then
   grep -v "twine" $REQUIREMENTS > requirements_without_twine.txt
   REQUIREMENTS=requirements_without_twine.txt
+fi
+
+# For pre-released Python 3.14, we need to build ml-dtypes from source first in
+# the system Python (3.12 for now) so that it can be found via cache when bazel
+# builds target artifacts. Otherwise, the bazel build will fail.
+# TODO(kanglan): Remove this once ml-dtypes is available for Python 3.14.
+if [[ ${VERSION} == "python3.12" ]]; then
+  echo "ml-dtypes" >> $REQUIREMENTS
+fi
+
+# Build scipy from source as it doesn't have pre-built wheels for 3.14.
+# TODO(kanglan): Remove this once scipy is available for Python 3.14.
+if [[ ${VERSION} == "python3.14" ]]; then
+  echo "scipy" >> $REQUIREMENTS
 fi
 
 # Disable the cache dir to save image space, and install packages
