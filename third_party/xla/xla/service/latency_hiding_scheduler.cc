@@ -199,7 +199,7 @@ LatencyEstimator::TimeCost ApproximateLatencyEstimator::NodeCost(
 }
 
 // Returns if this is an Async done op that the scheduler supports.
-bool AsyncTracker::IsSupportedAsyncDone(const HloInstruction& hlo) const {
+bool AsyncTracker::IsSupportedAsyncDoneImpl(const HloInstruction& hlo) const {
   CanonicalAsyncOp op = GetCanonicalAsyncOp(hlo);
   if (op.outer == HloOpcode::kSendDone || op.outer == HloOpcode::kRecvDone) {
     return config_.schedule_send_recvs;
@@ -229,7 +229,7 @@ bool AsyncTracker::IsSupportedAsyncDone(const HloInstruction& hlo) const {
 }
 
 // Returns if this is an Async op start that the scheduler supports.
-bool AsyncTracker::IsSupportedAsyncStart(const HloInstruction& hlo) const {
+bool AsyncTracker::IsSupportedAsyncStartImpl(const HloInstruction& hlo) const {
   CanonicalAsyncOp op = GetCanonicalAsyncOp(hlo);
   if (op.outer == HloOpcode::kSend || op.outer == HloOpcode::kRecv) {
     return config_.schedule_send_recvs;
