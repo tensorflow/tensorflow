@@ -47,6 +47,9 @@ class NvshmemCollectives : public GpuCollectives {
                   size_t device_count_per_process,
                   std::weak_ptr<KeyValueStoreInterface> kv_store);
 
+  size_t device_count_per_process() const { return device_count_per_process_; }
+  size_t num_processes() const { return num_processes_; }
+
   absl::StatusOr<void*> Allocate(uint64_t bytes) final;
 
   absl::Status Deallocate(void* buffer) final;
