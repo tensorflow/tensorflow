@@ -20,5 +20,6 @@ package xla.ifrt;
 // Wire format for objects serialized from `Serializable`.
 message Serialized {
   string type_name = 1;
+  int32 version = 3;
   bytes data = 2;
 }
