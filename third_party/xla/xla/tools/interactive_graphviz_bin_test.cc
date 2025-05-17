@@ -44,7 +44,9 @@ TEST(InteractiveGraphviz, CPU) {
                                    "--platform=Host"};
 
   // Logging to stderr is the default externally.
-  if (!tsl::kIsOpenSource) args.push_back("--logtostderr");
+  if (!tsl::kIsOpenSource) {
+    args.push_back("--logtostderr");
+  }
 
   tsl::SubProcess proc;
   proc.SetProgram(interactive_graphviz_bin, args);

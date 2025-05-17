@@ -650,7 +650,8 @@ void InteractiveDumpGraphs(const Options& opts, const HloModule& module) {
         absl::StrSplit(line, ' ', absl::SkipEmpty());
     if (tokens[0] == "quit" || tokens[0] == "exit") {
       break;
-    } else if (tokens[0] == "help") {
+    }
+    if (tokens[0] == "help") {
       DoHelpCommand();
     } else if (tokens[0] == "backend_config") {
       DoBackendConfigCommand(tokens);
