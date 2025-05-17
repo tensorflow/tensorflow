@@ -677,6 +677,7 @@ message BufferAllocationProto {
   bool is_constant = 12;
   int64 parameter_number = 6;
   repeated int64 parameter_shape_index = 10;
+  bool is_parameter_aliased_with_output = 13;
   bool maybe_live_out = 7;
   int64 color = 8;
   repeated Assigned assigned = 9;
