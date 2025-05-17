@@ -39,8 +39,9 @@ double EvaluateMakespan(const AutoShardingSolverRequest& request,
 }
 
 StrategyShaverForRequest::StrategyShaverForRequest(
+    const AutoShardingSolverParams& params,
     const AutoShardingSolverRequest& request)
-    : request_(request) {}
+    : params_(params), request_(request) {}
 
 NodeStrategies StrategyShaverForRequest::FindShavedStrategies() const {
   return {};  // TODO(moffitt): Implement this.
