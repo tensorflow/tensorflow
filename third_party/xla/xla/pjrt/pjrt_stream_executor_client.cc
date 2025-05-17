@@ -2727,12 +2727,21 @@ PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
         }));
   }
 
+  VLOG(1) << "Start calling RunAsync for "
+          << executables_[executable_idx]->executable()->module().name()
+          << ", device=" << device->DebugString()
+          << ", run_id=" << run_options.run_id().ToInt();
+
   absl::StatusOr<PjRtStreamExecutorExecutionOutput> result_buffer_or_status =
       client_->RunAsync(*executables_[executable_idx], device,
                         std::move(execution_inputs), run_options);
 
-  VLOG(1) << "Replica " << replica << " partition " << partition
-          << " completed; ok=" << result_buffer_or_status.ok();
+  VLOG(1) << "Finish calling RunAsync for "
+          << executables_[executable_idx]->executable()->module().name()
+          << ", device=" << device->DebugString()
+          << ", run_id=" << run_options.run_id().ToInt()
+          << ", replica=" << replica << ", partition=" << partition
+          << ", completed, ok=" << result_buffer_or_status.ok();
 
   if (!result_buffer_or_status.ok()) {
     return result_buffer_or_status.status();
