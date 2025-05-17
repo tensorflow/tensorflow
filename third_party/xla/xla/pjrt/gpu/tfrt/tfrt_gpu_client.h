@@ -797,8 +797,8 @@ class TfrtGpuExecutable final : public PjRtLoadedExecutable {
 
   absl::StatusOr<Result> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
-      int partition, const RunId& run_id, const ExecuteOptions& options,
-      bool fill_future, TfrtGpuDevice* device = nullptr);
+      int partition, const ExecuteOptions& options, bool fill_future,
+      TfrtGpuDevice* device = nullptr);
 
   // Create shared pointers so we can free them after the execution: with
   // asynchronous execution, the process being executed can outlive the

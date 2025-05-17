@@ -3325,11 +3325,10 @@ TfrtGpuExecutable::TfrtGpuExecutable(
 
 absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
-    const RunId& run_id, const ExecuteOptions& options, bool fill_future,
-    TfrtGpuDevice* device) {
+    const ExecuteOptions& options, bool fill_future, TfrtGpuDevice* device) {
   tsl::profiler::TraceMeProducer activity("TfrtGpuExecutable::ExecuteHelper",
                                           tsl::profiler::ContextType::kPjRt,
-                                          run_id.ToInt());
+                                          options.launch_id);
 
   std::shared_ptr<DeviceAssignment> device_assignment;
   if (device == nullptr) {
@@ -3582,7 +3581,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
       ConvertRecvCallbacksToRecvFunction(replica, options);
 
   auto execute_fn =
-      [replica, partition, device, launch_id(options.launch_id), run_id(run_id),
+      [replica, partition, device, launch_id(options.launch_id),
        output_buffers(output_buffers), complete_event(complete_event.CopyRef()),
        scheduled_event(scheduled_event.CopyRef()),
        untuple_result(untuple_result), result_is_tuple(result_is_tuple),
@@ -3597,7 +3596,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
        compute_reservation(std::move(compute_reservation)),
        client = client_](std::vector<ExecutionInput> execution_inputs) mutable {
         VLOG(1) << "execute_fn for " << executable_name
-                << ", run_id: " << launch_id << ", replica: " << replica
+                << ", launch_id: " << launch_id << ", replica: " << replica
                 << ", device: " << device->DebugString();
 
         tsl::profiler::TraceMeProducer producer(
@@ -3607,7 +3606,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
                   {{"launch_id", std::to_string(launch_id)},
                    {"device_ordinal", device->local_device_id().value()}});
             },
-            tsl::profiler::ContextType::kTfExecutor, run_id.ToInt());
+            tsl::profiler::ContextType::kTfExecutor, launch_id);
 
         auto set_error = [&](absl::Status status) {
           for (auto& output_buffer : output_buffers) {
@@ -3631,12 +3630,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         run_options.set_device_to_host_stream(stream);
         run_options.set_allocator(client->allocator());
         run_options.set_device_assignment(device_assignment.get());
-
-        if (launch_id != 0) {
-          run_options.set_run_id(RunId(launch_id));
-        } else {
-          run_options.set_run_id(run_id);
-        }
+        run_options.set_run_id(RunId(launch_id));
         run_options.set_rng_seed(device->GetNewPrngSeed());
         run_options.set_gpu_executable_run_options(
             CHECK_NOTNULL(client->gpu_run_options()));
@@ -3716,18 +3710,18 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
                      << device->DebugString() << ", status = " << status;
           complete_event.SetError(status);
         } else {
-          VLOG(1) << "Device execution done for " << executable_name
-                  << ", run_id: " << run_id.ToInt();
           complete_event.SetStateConcrete();
         }
 
-        VLOG(1) << "execute_fn for " << executable_name << " on "
-                << device->DebugString() << " is done with status " << status;
+        VLOG(1) << "execute_fn for " << executable_name
+                << ", launch_id: " << launch_id
+                << ", device: " << device->DebugString()
+                << " is done with status " << status;
       };
 
   auto prepare_inputs =
-      [blocking_thread_pool = client_->blocking_thread_pool(), run_id(run_id),
-       executable_name(name()), device,
+      [blocking_thread_pool = client_->blocking_thread_pool(),
+       launch_id(options.launch_id), executable_name(name()), device,
        tracked_buffers(std::move(tracked_buffers)),
        buffer_is_donated(std::move(buffer_is_donated)),
        prepare_inputs_avs(CopyAsyncValues(prepare_input_deps)),
@@ -3741,8 +3735,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
        input_buffer_sizes_in_bytes(
            input_buffer_sizes_in_bytes_[executable_idx])]() mutable {
         tsl::profiler::TraceMeConsumer activity(
-            "prepare_inputs", tsl::profiler::ContextType::kPjRt,
-            run_id.ToInt());
+            "prepare_inputs", tsl::profiler::ContextType::kPjRt, launch_id);
 
         auto set_error = [&](absl::Status status) {
           complete_event.SetError(status);
@@ -3843,10 +3836,9 @@ TfrtGpuExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
     std::optional<std::vector<PjRtFuture<>>>& returned_futures) {
-  RunId run_id(options.launch_id);
   tsl::profiler::TraceMeProducer activity("TfrtGpuExecutable::Execute",
                                           tsl::profiler::ContextType::kPjRt,
-                                          run_id.ToInt());
+                                          options.launch_id);
   if (device_assignment_ == nullptr) {
     return InvalidArgument("Execute expects a non-null device_assignment");
   }
@@ -3878,12 +3870,11 @@ TfrtGpuExecutable::Execute(
 
     // TODO(b/382117736): Dump HLO snapshot.
     // Dump once before running, in case there's a crash.
-    // MaybeDumpHloSnapshot(gpu_executable_->module(), run_id,
+    // MaybeDumpHloSnapshot(gpu_executable_->module(), options.launch_id,
     //                      argument_handles[0], {});
 
-    auto statusor =
-        ExecuteHelper(argument_handles[0], replica, partition, run_id, options,
-                      returned_futures.has_value());
+    auto statusor = ExecuteHelper(argument_handles[0], replica, partition,
+                                  options, returned_futures.has_value());
 
     if (!statusor.ok()) {
       return std::move(statusor).status();
@@ -3895,7 +3886,7 @@ TfrtGpuExecutable::Execute(
     }
 
     // TODO(b/382117736): Dump HLO snapshot.
-    // MaybeDumpHloSnapshot(cpu_executable_->module(), run_id,
+    // MaybeDumpHloSnapshot(cpu_executable_->module(), options.launch_id,
     //                      argument_handles[0], wrapped_results[0]);
   } else {
     absl::Mutex mu;
@@ -3913,20 +3904,21 @@ TfrtGpuExecutable::Execute(
           tensorflow::down_cast<TfrtGpuDevice*>(pjrt_device);
 
       VLOG(1) << "Try to run ExecuteHelper for " << name() << " on device "
-              << gpu_device->DebugString() << ", run_id: " << run_id.ToInt();
+              << gpu_device->DebugString()
+              << ", launch_id: " << options.launch_id;
 
       // Gang schedule collectives to ensure that collectives with the same
-      // RunId are run at the same time. We conservatively run only one
+      // launch_id are run at the same time. We conservatively run only one
       // collective at a time, because we may not have enough threads to run
       // arbitrary number of collectives concurrently.
       EnqueueWork(
           client_->non_blocking_thread_pool(),
-          [this, gpu_device, replica, partition, i, &argument_handles, &run_id,
-           &options, &returned_futures, &wrapped_results, &mu, &running,
-           &failed, &first_failure_status] {
+          [this, replica, partition, i, &argument_handles, &options,
+           &returned_futures, &wrapped_results, &mu, &running, &failed,
+           &first_failure_status] {
             auto statusor =
-                ExecuteHelper(argument_handles[i], replica, partition, run_id,
-                              options, returned_futures.has_value());
+                ExecuteHelper(argument_handles[i], replica, partition, options,
+                              returned_futures.has_value());
             if (statusor.ok()) {
               wrapped_results[i] = std::move(statusor->buffers);
               if (returned_futures.has_value()) {
@@ -3972,10 +3964,9 @@ TfrtGpuExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
     bool fill_future) {
-  RunId run_id(options.launch_id);
   tsl::profiler::TraceMeProducer activity("TfrtGpuExecutable::ExecuteSharded",
                                           tsl::profiler::ContextType::kPjRt,
-                                          run_id.ToInt());
+                                          options.launch_id);
   if (device_assignment_ == nullptr) {
     return InvalidArgument("ExecuteShard expects a non-null device_assignment");
   }
@@ -3988,8 +3979,8 @@ TfrtGpuExecutable::ExecuteSharded(
           auto result,
           ExecuteHelper(argument_handles,
                         addressable_device_logical_ids_[i].replica,
-                        addressable_device_logical_ids_[i].partition, run_id,
-                        options, fill_future));
+                        addressable_device_logical_ids_[i].partition, options,
+                        fill_future));
       returned_future = std::move(result.future);
       return std::move(result.buffers);
     }
@@ -4005,10 +3996,9 @@ TfrtGpuExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
     bool fill_future) {
-  RunId run_id(options.launch_id);
   tsl::profiler::TraceMeProducer activity("TfrtGpuExecutable::ExecutePortable",
                                           tsl::profiler::ContextType::kPjRt,
-                                          run_id.ToInt());
+                                          options.launch_id);
   if (device_assignment_ != nullptr) {
     return InvalidArgument("ExecutePortable gets a non-portable executable");
   }
@@ -4023,11 +4013,11 @@ TfrtGpuExecutable::ExecutePortable(
   }
   VLOG(1) << "ExecutePortable executes single-core portable executable "
           << name();
-  TF_ASSIGN_OR_RETURN(
-      auto result, ExecuteHelper(argument_handles,
-                                 /*replica=*/0,
-                                 /*partition=*/0, run_id, options, fill_future,
-                                 tsl::down_cast<TfrtGpuDevice*>(device)));
+  TF_ASSIGN_OR_RETURN(auto result,
+                      ExecuteHelper(argument_handles,
+                                    /*replica=*/0,
+                                    /*partition=*/0, options, fill_future,
+                                    tsl::down_cast<TfrtGpuDevice*>(device)));
   returned_future = std::move(result.future);
   return std::move(result.buffers);
 }
