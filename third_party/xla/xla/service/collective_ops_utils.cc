@@ -379,26 +379,43 @@ GetParticipatingDevicesGroups(const HloInstruction* collective) {
       device_assignment, GetCollectiveReplicaGroups(collective), mode);
 }
 
-absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
+absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
     const DeviceAssignment& device_assignment,
-    const CollectiveDeviceList& collective_device_list,
+    absl::Span<const ReplicaGroup> replica_groups,
     CollectiveOpGroupMode group_mode) {
-  return GetParticipatingFlattenedIdGroups(
-      collective_device_list, group_mode, device_assignment.replica_count(),
-      device_assignment.computation_count());
+  // Compute the device_id to flattened_id mapping once to avoid brute force
+  // searching through device assignment repeatedly.
+  absl::flat_hash_map<GlobalDeviceId, int64_t> device_id_to_flattened_id;
+  for (int r = 0; r < device_assignment.replica_count(); ++r) {
+    for (int c = 0; c < device_assignment.computation_count(); ++c) {
+      GlobalDeviceId device_id = GlobalDeviceId(device_assignment(r, c));
+      int64_t flattened_id = r * device_assignment.computation_count() + c;
+      device_id_to_flattened_id[device_id] = flattened_id;
+    }
+  }
+
+  std::vector<ReplicaGroup> flattened_id_groups;
+  TF_ASSIGN_OR_RETURN(std::vector<std::vector<GlobalDeviceId>> device_groups,
+                      GetParticipatingDevicesGroups(
+                          device_assignment, replica_groups, group_mode));
+  for (const auto& device_group : device_groups) {
+    ReplicaGroup flattened_id_group;
+    flattened_id_group.mutable_replica_ids()->Reserve(device_group.size());
+    for (const GlobalDeviceId& device_id : device_group) {
+      flattened_id_group.add_replica_ids(device_id_to_flattened_id[device_id]);
+    }
+    flattened_id_groups.push_back(flattened_id_group);
+  }
+  return flattened_id_groups;
 }
 
-absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
-    const CollectiveDeviceList& collective_device_list,
+absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+    absl::Span<const ReplicaGroup> replica_groups,
     CollectiveOpGroupMode group_mode, int replica_count, int partition_count) {
-  if (group_mode == CollectiveOpGroupMode::kFlattenedID) {
-    return collective_device_list;
-  }
   std::vector<ReplicaGroup> filled_empty_replica_group;
-  absl::Span<const ReplicaGroup> original_replica_groups =
-      collective_device_list.replica_groups();
+  absl::Span<const ReplicaGroup> original_replica_groups = replica_groups;
   std::vector<ReplicaGroup> flattened_replica_groups;
-  if (collective_device_list.replica_groups().empty()) {
+  if (replica_groups.empty()) {
     filled_empty_replica_group.emplace_back();
     const int64_t id_count =
         group_mode == CollectiveOpGroupMode::kCrossPartition ? partition_count
@@ -408,7 +425,11 @@ absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
     }
     original_replica_groups = filled_empty_replica_group;
   }
-  if (group_mode == CollectiveOpGroupMode::kCrossReplica) {
+  if (group_mode == CollectiveOpGroupMode::kFlattenedID) {
+    flattened_replica_groups.insert(flattened_replica_groups.end(),
+                                    original_replica_groups.begin(),
+                                    original_replica_groups.end());
+  } else if (group_mode == CollectiveOpGroupMode::kCrossReplica) {
     flattened_replica_groups.resize(original_replica_groups.size() *
                                     partition_count);
     for (int64_t i = 0, current_group_offset = 0;
@@ -453,30 +474,30 @@ absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
       }
     }
   }
-  return CollectiveDeviceList(flattened_replica_groups);
+  return flattened_replica_groups;
 }
 
-absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
+absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
     const HloInstruction* hlo, const DeviceAssignment& device_assignment) {
   TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
                       GetCollectiveOpGroupMode(hlo));
   TF_ASSIGN_OR_RETURN(
-      CollectiveDeviceList collective_device_list,
+      std::vector<ReplicaGroup> replica_groups,
       GetParticipatingFlattenedIdGroups(device_assignment,
-                                        GetCollectiveDeviceList(hlo), mode));
-  return collective_device_list;
+                                        GetCollectiveReplicaGroups(hlo), mode));
+  return replica_groups;
 }
 
 // Same as above, used for cases where static_device_assignment is not present.
-absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
+absl::StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
     const HloInstruction* hlo, int replica_count, int partition_count) {
   TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
                       GetCollectiveOpGroupMode(hlo));
   TF_ASSIGN_OR_RETURN(
-      CollectiveDeviceList collective_device_list,
-      GetParticipatingFlattenedIdGroups(GetCollectiveDeviceList(hlo), mode,
+      std::vector<ReplicaGroup> replica_groups,
+      GetParticipatingFlattenedIdGroups(GetCollectiveReplicaGroups(hlo), mode,
                                         replica_count, partition_count));
-  return collective_device_list;
+  return replica_groups;
 }
 
 absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
