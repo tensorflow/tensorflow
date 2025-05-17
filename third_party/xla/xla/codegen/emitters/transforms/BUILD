@@ -63,6 +63,7 @@ cc_library(
         ":passes_inc_gen",
         ":simplify_affine_pass",
         ":simplify_arith_pass",
+        "//third_party/protobuf",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
