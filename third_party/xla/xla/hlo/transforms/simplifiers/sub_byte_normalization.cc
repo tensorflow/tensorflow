@@ -64,7 +64,7 @@ bool UpdateLayout(Layout* layout, PrimitiveType type,
 bool UpdateShape(Shape* shape, SubByteNormalization::Mode mode) {
   if (shape->IsTuple()) {
     bool changed = false;
-    for (int idx = 0; idx < shape->tuple_shapes_size(); ++idx) {
+    for (int idx = 0; idx < shape->tuple_shapes().size(); ++idx) {
       changed |= UpdateShape(shape->mutable_tuple_shapes(idx), mode);
     }
     return changed;
