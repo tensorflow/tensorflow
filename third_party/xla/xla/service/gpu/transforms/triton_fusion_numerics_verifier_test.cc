@@ -135,6 +135,60 @@ TEST_P(TritonFusionNumericsVerifierTest, VerifyExactSoftmaxFusionNumerics) {
   TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 
+TEST_P(TritonFusionNumericsVerifierTest, VerifyNestedGemmNumerics) {
+  constexpr absl::string_view kNestedGemmFusionHloText = R"(
+flhs {
+  ROOT flhs.p0 = $0[16,16] parameter(0)
+}
+
+frhs {
+  frhs.p0 = $0[16,16] parameter(0)
+  ROOT frhs.root = $0[16,16] abs(frhs.p0)
+}
+
+fdot {
+  fdot.p0 = $0[16,16] parameter(0)
+  fdot.p1 = $0[16,16] parameter(1)
+  fdot.lhs = $0[16,16] fusion(fdot.p0), kind=kCustom, calls=flhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["16", "16"]}]
+      }
+    }
+  }
+  fdot.rhs = $0[16,16]{1,0} fusion(fdot.p1), kind=kCustom, calls=frhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["16", "16"]}]
+      }
+    }
+  }
+  ROOT fdot.root = $0[16,16]{1,0} dot(fdot.lhs, fdot.rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    algorithm=dot_$0_$0_$0
+}
+
+ENTRY entry {
+  entry.p0 = $0[16,16] parameter(0)
+  entry.p1 = $0[16,16] parameter(1)
+  ROOT fusion = $0[16,16] fusion(entry.p0, entry.p1),
+    kind=kCustom, calls=fdot, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16","16"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+})";
+  auto module = Module(kNestedGemmFusionHloText,
+                       primitive_util::LowercasePrimitiveTypeName(GetParam()));
+
+  EXPECT_NE(TritonFusion(*module), nullptr);
+  auto verifier = TritonFusionNumericsVerifier(CreateAutotuneConfig());
+  TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
+}
+
 TEST_P(TritonFusionNumericsVerifierTest, VerifyMultiOutputFusionNumerics) {
   constexpr absl::string_view kMultiOutputFusionHloText = R"(
 HloModule m

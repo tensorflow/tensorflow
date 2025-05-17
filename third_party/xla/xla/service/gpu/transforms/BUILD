@@ -3095,7 +3095,9 @@ cc_library(
     hdrs = ["triton_fusion_numerics_verifier.h"],
     tags = ["gpu"],
     deps = [
+        ":dot_algorithm_rewriter",
         ":fusion_wrapper",
+        ":gemm_rewriter",
         ":priority_fusion",
         ":tree_reduction_rewriter",
         "//xla:shape_util",
@@ -3104,6 +3106,7 @@ cc_library(
         "//xla/backends/gpu/runtime:buffer_comparator",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/service:call_inliner",
         "//xla/service:dump",
         "//xla/service:executable",
         "//xla/service:hlo_cost_analysis",
