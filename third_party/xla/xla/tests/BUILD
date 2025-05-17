@@ -7,7 +7,7 @@ load(
     "if_rocm_is_configured",
 )
 load("//xla:package_groups.bzl", "xla_test_friend_package_group")
-load("//xla:xla.default.bzl", "tests_build_defs_bzl_deps", "xla_cc_test")
+load("//xla:xla.default.bzl", "tests_build_defs_bzl_deps", "xla_cc_test", "xla_internal")
 load("//xla/tests:build_defs.bzl", "generate_backend_suites", "generate_backend_test_macros", "xla_test", "xla_test_library")
 load("//xla/tsl:tsl.bzl", "if_google", "if_oss", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
@@ -3831,5 +3831,22 @@ cc_library(
         "//xla/service:hlo_runner_pjrt",
         "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "xla_test_backend_predicates",
+    testonly = True,
+    srcs = ["xla_test_backend_predicates.cc"],
+    hdrs = ["xla_test_backend_predicates.h"],
+    visibility = if_google(
+        xla_internal(["tests:__pkg__"]),
+        ["//visibility:public"],
+    ),
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
