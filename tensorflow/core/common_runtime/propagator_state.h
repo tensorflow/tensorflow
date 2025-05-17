@@ -18,6 +18,9 @@ limitations under the License.
 #include <queue>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "tensorflow/core/common_runtime/entry.h"
 #include "tensorflow/core/common_runtime/immutable_executor_state.h"
 #include "tensorflow/core/common_runtime/pending_counts.h"
