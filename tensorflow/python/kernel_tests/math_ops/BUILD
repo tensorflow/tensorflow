@@ -206,6 +206,17 @@ tf_py_strict_test(
     ],
 )
 
+tf_py_test(
+    name = "truncate_div_complex_test",
+    srcs = ["truncate_div_complex_test.py"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
 cuda_py_strict_test(
     name = "cross_grad_test",
     size = "small",

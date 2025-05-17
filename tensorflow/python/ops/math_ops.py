@@ -1699,7 +1699,19 @@ def floordiv(x, y, name=None):
 
 
 realdiv = gen_math_ops.real_div
-truncatediv = gen_math_ops.truncate_div
+@tf_export("math.truncatediv", "truncatediv")
+@dispatch.add_dispatch_support
+def truncatediv(x, y, name=None):
+    with ops.name_scope(name, "TruncateDiv", [x, y]) as name:
+        x = ops.convert_to_tensor(x)
+        y = ops.convert_to_tensor(y)
+
+        if x.dtype.is_complex:
+            result = x / y
+            return tf.complex(tf.math.trunc(tf.math.real(result)),
+                              tf.math.trunc(tf.math.imag(result)))
+        return gen_math_ops.truncate_div(x, y, name=name)
+
 floor_div = gen_math_ops.floor_div
 truncatemod = gen_math_ops.truncate_mod
 floormod = gen_math_ops.floor_mod
