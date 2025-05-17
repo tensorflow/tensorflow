@@ -51,7 +51,7 @@ absl::StatusOr<bool> AllGatherSimplifier::Run(
       } else {
         HloAllGatherInstruction* all_gather =
             Cast<HloAllGatherInstruction>(inst);
-        const HloModuleConfig config = module->config();
+        const HloModuleConfig& config = module->config();
         std::optional<ReduceScatterSpec> spec =
             AllGatherDynamicSliceCancellation(
                 all_gather, config.num_partitions(), config.replica_count(),
