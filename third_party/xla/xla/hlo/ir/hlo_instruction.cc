@@ -3934,7 +3934,7 @@ void HloInstruction::PrintWithCanonicalNameMap(
 
   if (options.print_original_value() && original_value_) {
     printer->Append(", origin={");
-    printer->Append(OriginalValueToString(*original_value()));
+    printer->Append(original_value()->ToString());
     printer->Append("}");
   }
 
@@ -4361,7 +4361,7 @@ HloInstructionProto HloInstruction::ToProto() const {
   *proto.mutable_statistics_viz() = statistics_viz();
 
   if (original_value_) {
-    *proto.mutable_original_value() = OriginalValueToProto(*original_value_);
+    *proto.mutable_original_value() = original_value_->ToProto();
   }
 
   if (has_result_accuracy()) {

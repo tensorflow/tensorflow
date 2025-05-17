@@ -18,23 +18,25 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
-// Stores information of original values.
 struct OriginalArray {
   std::string instruction_name;
   ShapeIndex shape_index;
 };
 
-using OriginalValue = ShapeTree<std::optional<OriginalArray>>;
-
-std::string OriginalValueToString(const OriginalValue& original_value);
-
-OriginalValueProto OriginalValueToProto(const OriginalValue& original_value);
+// Stores information of values in an unoptimized HLO module.
+class OriginalValue : public ShapeTree<std::optional<OriginalArray>> {
+ public:
+  explicit OriginalValue(Shape shape) : ShapeTree(std::move(shape)) {}
+  std::string ToString();
+  OriginalValueProto ToProto();
+};
 
 // Associate the original value of the source to the destination instruction.
 // Note the original values of fused instructions are copied when they are added

@@ -30,9 +30,9 @@ limitations under the License.
 
 namespace xla {
 
-std::string OriginalValueToStringHelper(const OriginalValue& original_value,
-                                        const Shape& shape,
-                                        std::vector<int64_t>& shape_index) {
+std::string OriginalValueToString(const OriginalValue& original_value,
+                                  const Shape& shape,
+                                  std::vector<int64_t>& shape_index) {
   std::string result;
   if (shape.IsTuple()) {
     if (shape.tuple_shapes().empty()) {
@@ -41,15 +41,15 @@ std::string OriginalValueToStringHelper(const OriginalValue& original_value,
     absl::StrAppend(&result, "(");
     shape_index.push_back(0);
     absl::StrAppend(&result,
-                    OriginalValueToStringHelper(
-                        original_value, shape.tuple_shapes(0), shape_index));
+                    OriginalValueToString(original_value, shape.tuple_shapes(0),
+                                          shape_index));
     shape_index.pop_back();
     for (int64_t i = 1; i < shape.tuple_shapes().size(); ++i) {
       absl::StrAppend(&result, ", ");
       shape_index.push_back(i);
-      absl::StrAppend(&result,
-                      OriginalValueToStringHelper(
-                          original_value, shape.tuple_shapes(i), shape_index));
+      absl::StrAppend(
+          &result, OriginalValueToString(original_value, shape.tuple_shapes(i),
+                                         shape_index));
       shape_index.pop_back();
     }
     absl::StrAppend(&result, ")");
@@ -68,15 +68,14 @@ std::string OriginalValueToStringHelper(const OriginalValue& original_value,
   return result;
 }
 
-std::string OriginalValueToString(const OriginalValue& original_value) {
+std::string OriginalValue::ToString() {
   std::vector<int64_t> shape_index;
-  return OriginalValueToStringHelper(original_value, original_value.shape(),
-                                     shape_index);
+  return OriginalValueToString(*this, shape(), shape_index);
 }
 
-OriginalValueProto OriginalValueToProto(const OriginalValue& original_value) {
+OriginalValueProto OriginalValue::ToProto() {
   OriginalValueProto original_value_proto;
-  for (const auto& leaf : original_value.leaves()) {
+  for (const auto& leaf : leaves()) {
     OriginalArrayProto* original_array_proto =
         original_value_proto.add_leaves();
     for (const auto& index : leaf.first) {
