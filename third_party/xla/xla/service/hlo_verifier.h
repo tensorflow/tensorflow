@@ -445,6 +445,11 @@ class MetadataTracker : public DfsHloVisitorWithDefault {
   int64_t has_profile_info_count_ = 0;
 };
 
+inline constexpr absl::string_view kPinCustomCallTarget = "pin";
+inline constexpr absl::string_view kUnpinCustomCallTarget = "unpin";
+inline constexpr absl::string_view kAllocateBufferCustomCallTarget =
+    "allocateBuffer";
+
 }  // namespace xla
 
 #endif  // XLA_SERVICE_HLO_VERIFIER_H_
