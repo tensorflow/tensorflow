@@ -46,7 +46,7 @@ absl::Status SerializeHloUnoptimizedSnapshot(
   for (const auto& partition : snapshot.partitions()) {
     HloInputs* partition_metadata = metadata_proto.add_partitions();
     for (const auto& argument : partition.arguments()) {
-      auto shape = xla::Shape(argument.shape());
+      TF_ASSIGN_OR_RETURN(auto shape, Shape::FromProto(argument.shape()));
       TF_ASSIGN_OR_RETURN(int64_t serialized_size,
                           ShapeUtil::SerializedSize(shape));
       partition_metadata->add_arguments_descriptors()->set_argument_size_bytes(

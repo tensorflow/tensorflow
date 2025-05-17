@@ -438,8 +438,10 @@ FunctionalHloRunner::CreateExecutableBuildOptionsFromExecutionOptions(
     build_options.mutable_debug_options()->set_xla_dump_to("");
   }
   if (execution_options.has_shape_with_output_layout()) {
-    build_options.set_result_layout(
-        Shape(execution_options.shape_with_output_layout()));
+    absl::StatusOr<Shape> shape =
+        Shape::FromProto(execution_options.shape_with_output_layout());
+    TF_CHECK_OK(shape.status());
+    build_options.set_result_layout(*shape);
   }
   build_options.set_num_replicas(execution_options.num_replicas());
   build_options.set_num_partitions(execution_options.num_partitions());

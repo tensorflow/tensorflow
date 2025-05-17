@@ -207,7 +207,9 @@ TEST_F(XlaCompilerOptionsTest, PjRtOptionsNonXlaDevice) {
   xla::ShapeProto shape_proto;
   shape_proto.set_element_type(xla::PrimitiveType::F32);
   shape_proto.mutable_layout();
-  EXPECT_EQ(shape, xla::Shape(shape_proto));
+  TF_ASSERT_OK_AND_ASSIGN(auto expected_shape,
+                          xla::Shape::FromProto(shape_proto));
+  EXPECT_EQ(shape, expected_shape);
   EXPECT_EQ(options.shape_determination_fns.layout_preference_fn(
                 TensorShape(), DT_FLOAT, std::nullopt),
             tensorflow::XlaLayoutPreference::kNoPreference);
@@ -289,7 +291,9 @@ TEST_F(XlaCompilerOptionsTest, XlaOptionsHasRefVarsNoXlaDeviceMetadata) {
   xla::ShapeProto shape_proto;
   shape_proto.set_element_type(xla::PrimitiveType::F32);
   shape_proto.mutable_layout();
-  EXPECT_EQ(shape, xla::Shape(shape_proto));
+  TF_ASSERT_OK_AND_ASSIGN(auto expected_shape,
+                          xla::Shape::FromProto(shape_proto));
+  EXPECT_EQ(shape, expected_shape);
   EXPECT_EQ(options.shape_determination_fns.layout_preference_fn(
                 TensorShape(), DT_FLOAT, std::nullopt),
             tensorflow::XlaLayoutPreference::kNoPreference);
