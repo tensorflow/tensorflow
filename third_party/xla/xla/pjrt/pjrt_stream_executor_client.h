@@ -683,6 +683,7 @@ class PjRtStreamExecutorBuffer : public CommonPjRtBuffer {
 
   PjRtStreamExecutorClient* const client_;
   const Shape on_device_shape_;
+  const int64_t on_device_size_in_bytes_;
   PjRtStreamExecutorDevice* const device_;
   PjRtMemorySpace* const memory_space_;
 };

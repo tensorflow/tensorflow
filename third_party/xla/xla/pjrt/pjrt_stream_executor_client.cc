@@ -1297,8 +1297,16 @@ PjRtStreamExecutorBuffer::PjRtStreamExecutorBuffer(
     : CommonPjRtBuffer(std::move(device_buffer)),
       client_(tensorflow::down_cast<PjRtStreamExecutorClient*>(client)),
       on_device_shape_(std::move(on_device_shape)),
+      on_device_size_in_bytes_(xla::ShapeUtil::ByteSizeOf(on_device_shape_)),
       device_(tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)),
-      memory_space_(memory_space) {}
+      memory_space_(memory_space) {
+  if (this->device_buffer() != nullptr &&
+      this->device_buffer()->device_memory()) {
+    CHECK_EQ(on_device_size_in_bytes_,
+             this->device_buffer()->device_memory()->mem().size())
+        << on_device_shape_;
+  }
+}
 
 PjRtStreamExecutorBuffer::~PjRtStreamExecutorBuffer() {
   Delete();
@@ -1616,12 +1624,7 @@ PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteral(MutableLiteralBase* literal) {
 
 absl::StatusOr<size_t> PjRtStreamExecutorBuffer::GetOnDeviceSizeInBytes()
     const {
-  absl::MutexLock lock(&mu_);
-  if (device_buffer() == nullptr || !device_buffer()->device_memory()) {
-    return InvalidArgument(
-        "GetOnDeviceSizeInBytes called on deleted or donated buffer");
-  }
-  return device_buffer()->device_memory()->mem().size();
+  return on_device_size_in_bytes_;
 }
 
 PjRtFuture<> PjRtStreamExecutorBuffer::CopyRawToHost(void* dst, int64_t offset,
