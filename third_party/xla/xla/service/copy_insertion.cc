@@ -1106,9 +1106,10 @@ absl::StatusOr<bool> CopyInsertion::Run(
   DumpHloModuleDuringPassIfEnabled(
       name(), "after adding copies to resolve interference", *module);
 
-  TF_RETURN_IF_ERROR(RemoveUnnecessaryCopies(module,
-                                             /*check_live_range_ordering=*/true,
-                                             execution_threads));
+  TF_RETURN_IF_ERROR(RemoveUnnecessaryCopies(
+      module,
+      /*check_live_range_ordering=*/true, execution_threads,
+      insert_post_scheduling_control_dependencies_));
   DumpHloModuleDuringPassIfEnabled(name(), "after removing unnecessary copies",
                                    *module);
   TF_RETURN_IF_ERROR(
