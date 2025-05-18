@@ -19,6 +19,8 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/cord.h"
+#include "third_party/protobuf/message_lite.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/refcount.h"
