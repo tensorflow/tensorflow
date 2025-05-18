@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/layout_util.h"
+#include "xla/pjrt/distributed/client.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
@@ -54,6 +56,7 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -232,6 +235,30 @@ CollectiveThunk::CollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_sync,
       stream_kind_(stream_kind),
       async_events_(is_sync ? nullptr : new AsyncEvents()) {}
 
+// Returns the incarnation ids of the provided devices.
+absl::StatusOr<std::vector<uint64_t>> GetIncarnations(
+    absl::Span<const GlobalDeviceId> devices,
+    std::shared_ptr<DistributedRuntimeClient> distributed_client,
+    const absl::flat_hash_map<GlobalDeviceId, int>& device_to_process_index) {
+  if (!distributed_client) {
+    return FailedPrecondition("Missing distributed client");
+  }
+
+  std::vector<int> task_ids;
+  task_ids.reserve(devices.size());
+  for (GlobalDeviceId device : devices) {
+    auto it = device_to_process_index.find(device);
+    if (it == device_to_process_index.end()) {
+      return FailedPrecondition("Device %d not found", device.value());
+    }
+    task_ids.push_back(it->second);
+  }
+
+  TF_ASSIGN_OR_RETURN(tsl::CoordinationServiceAgent * agent,
+                      distributed_client->GetCoordinationServiceAgent());
+  return agent->Incarnations(task_ids);
+}
+
 absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
     GpuCollectives* collectives, const Thunk::CollectiveExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
@@ -265,8 +292,16 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
   TF_ASSIGN_OR_RETURN(int64_t num_local_participants,
                       GetNumLocalParticipants(params, participants));
 
-  return GpuCliqueKey(std::move(participants), num_local_participants,
-                      kNoStreamId, stream_kind, std::move(participant_groups));
+  absl::StatusOr<std::vector<uint64_t>> incarnations = GetIncarnations(
+      participants, params.distributed_client, params.device_to_process_index);
+  if (!incarnations.ok()) {
+    LOG(ERROR) << "Failed to get incarnations " << incarnations.status();
+  }
+
+  return GpuCliqueKey(
+      std::move(participants), num_local_participants, kNoStreamId, stream_kind,
+      std::move(participant_groups), GlobalDeviceId(-1),
+      incarnations.ok() ? *std::move(incarnations) : std::vector<uint64_t>{});
 }
 
 absl::StatusOr<CommunicatorHandle> GetComm(
