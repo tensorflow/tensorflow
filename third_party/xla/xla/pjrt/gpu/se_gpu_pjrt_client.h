@@ -103,6 +103,8 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       bool should_stage_host_to_device_transfers,
       std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
       std::shared_ptr<KeyValueStoreInterface> kv_store,
+      std::shared_ptr<DistributedRuntimeClient> distributed_client,
+      bool abort_collectives_on_failure,
       std::shared_ptr<const GpuTopology> gpu_topology);
 
   std::optional<std::shared_ptr<KeyValueStoreInterface>> key_value_store()
@@ -162,6 +164,7 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
  private:
   xla::StreamExecutorGpuTopologyDescription topology_;
   std::shared_ptr<KeyValueStoreInterface> kv_store_;
+  std::shared_ptr<DistributedRuntimeClient> distributed_client_;
 };
 
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(

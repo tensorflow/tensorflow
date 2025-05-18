@@ -94,6 +94,7 @@ cc_library(
         "//xla/backends/gpu/collectives:gpu_collectives",
         "//xla/core/collectives:clique_id",
         "//xla/core/collectives:clique_key",
+        "//xla/pjrt/distributed:client",
         "//xla/service:global_device_id",
         "@com_google_absl//absl/status:statusor",
     ],

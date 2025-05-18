@@ -338,9 +338,12 @@ void CoordinationServiceRpcHandler::GetAliveTasksAsync(
       request->requesting_task(), tasks,
       [done = std::move(done), response](
           const absl::Status& status,
-          const std::vector<tensorflow::CoordinatedTask>& alive_tasks) {
+          const std::vector<tensorflow::CoordinatedTask>& alive_tasks,
+          const std::vector<uint64_t>& incarnations) {
         *response->mutable_alive_tasks() = {alive_tasks.begin(),
                                             alive_tasks.end()};
+        *response->mutable_incarnations() = {incarnations.begin(),
+                                             incarnations.end()};
         done(status);
       });
 }

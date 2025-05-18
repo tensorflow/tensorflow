@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/executable_run_options.h"
+#include "xla/pjrt/distributed/client.h"
 #include "xla/service/global_device_id.h"
 
 namespace xla::gpu {
@@ -59,6 +60,16 @@ class GpuExecutableRunOptions {
   GpuExecutableRunOptions& set_collectives(GpuCollectives* collectives);
   GpuCollectives* collectives() const;
 
+  // Distributed runtime client, mostly for health checking.
+  GpuExecutableRunOptions& set_distributed_client(
+      std::shared_ptr<DistributedRuntimeClient> client);
+  std::shared_ptr<DistributedRuntimeClient> distributed_client() const;
+
+  GpuExecutableRunOptions& set_device_to_process_index(
+      absl::flat_hash_map<GlobalDeviceId, int> device_to_process_index);
+  const absl::flat_hash_map<GlobalDeviceId, int>& device_to_process_index()
+      const;
+
   // Whether the run requires an exclusive lock on the GPU.
   bool requires_exclusive_lock_on_gpu() const {
     return requires_exclusive_lock_on_gpu_;
@@ -84,6 +95,8 @@ class GpuExecutableRunOptions {
   std::optional<std::map<int, GlobalDeviceId>> gpu_global_device_ids_;
   CliqueIdCallback clique_id_callback_;
   GpuCollectives* collectives_;
+  std::shared_ptr<DistributedRuntimeClient> distributed_runtime_client_;
+  absl::flat_hash_map<GlobalDeviceId, int> device_to_process_index_;
 };
 
 }  // namespace xla::gpu
