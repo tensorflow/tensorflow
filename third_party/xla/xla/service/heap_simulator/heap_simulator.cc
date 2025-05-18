@@ -2410,7 +2410,10 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::MakeFreeChunks(
       free_chunks.erase(it_end, it_start);
 
       // Create a new free chunk after the used chunk, if it is large enough.
-      int64_t chunk_end_aligned = RoundUpTo(used_chunk.chunk_end(), alignment_);
+      int64_t chunk_end_aligned =
+          ((alignment_ == 1)
+               ? used_chunk.chunk_end()  // Avoid expensive RoundUpTo call
+               : RoundUpTo(used_chunk.chunk_end(), alignment_));
       if (free_chunk_end - chunk_end_aligned >= max_colocation_size) {
         CHECK(free_chunks.insert({chunk_end_aligned, free_chunk_end}).second);
       }

@@ -193,9 +193,11 @@ HloComputation::~HloComputation() {
   }
   for (HloComputation* caller : callers) {
     for (HloInstruction* inst : caller->instructions()) {
-      for (int i = 0; i < inst->called_computations().size(); ++i) {
-        if (inst->called_computations()[i] == this) {
-          inst->set_called_computation(i, nullptr);
+      if (inst->has_called_computations()) {
+        for (int i = 0; i < inst->called_computations().size(); ++i) {
+          if (inst->called_computations()[i] == this) {
+            inst->set_called_computation(i, nullptr);
+          }
         }
       }
     }
