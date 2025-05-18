@@ -1265,7 +1265,7 @@ absl::Status IrEmitterUnnested::EmitTriangularSolveCustomCall(
   // and 1 swapped.  For example instead of default layout {3,2,1,0} we'd have
   // Fortran layout {2,3,1,0}.
   auto has_fortran_layout = [](const Layout& layout) {
-    int n = layout.minor_to_major_size();
+    int n = layout.minor_to_major().size();
     return layout.minor_to_major(0) == n - 2 &&
            layout.minor_to_major(1) == n - 1;
   };
