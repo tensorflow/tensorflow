@@ -34,12 +34,6 @@ namespace tsl {
 
 using Notification ABSL_DEPRECATE_AND_INLINE() = absl::Notification;
 
-ABSL_DEPRECATE_AND_INLINE()
-inline bool WaitForNotificationWithTimeout(absl::Notification* n,
-                                           int64_t timeout_in_us) {
-  return n->WaitForNotificationWithTimeout(absl::Microseconds(timeout_in_us));
-}
-
 }  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_PLATFORM_NOTIFICATION_H_
