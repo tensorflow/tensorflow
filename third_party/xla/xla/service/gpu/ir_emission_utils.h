@@ -66,8 +66,8 @@ inline constexpr int64_t kMinTotalDimensionsToTransposeTiled = 16 * 16;
 inline constexpr int64_t kMaxBitsInMostMinorDimension = 8 * 8;
 
 // Matrix multiplication before the rewrite.
-bool IsMatrixMultiplication(const HloInstruction& dot);
-bool IsMatrixVectorMultiplication(const HloInstruction& dot);
+absl::StatusOr<bool> IsMatrixMultiplication(const HloInstruction& dot);
+absl::StatusOr<bool> IsMatrixVectorMultiplication(const HloInstruction& dot);
 
 inline constexpr int64_t WarpSize(
     const se::DeviceDescription& gpu_device_info) {
