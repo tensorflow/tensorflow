@@ -86,11 +86,6 @@ class TrackedGpuDeviceBuffer {
  public:
   TrackedGpuDeviceBuffer(
       tsl::AsyncValueRef<GpuDeviceMemory> buffer,
-      absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> definition_events,
-      absl::AnyInvocable<void() &&> on_delete_callback = nullptr);
-
-  TrackedGpuDeviceBuffer(
-      tsl::AsyncValueRef<GpuDeviceMemory> buffer,
       tsl::AsyncValueRef<GpuEvent> definition_event,
       absl::AnyInvocable<void() &&> on_delete_callback = nullptr);
 

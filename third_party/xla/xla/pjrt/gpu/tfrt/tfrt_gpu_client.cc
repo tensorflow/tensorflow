@@ -182,8 +182,7 @@ absl::StatusOr<Shape> GetDestinationDeviceShape(const Shape& host_shape,
 }
 
 absl::StatusOr<std::unique_ptr<TfrtGpuBuffer>> AllocateTfrtGpuDestinationBuffer(
-    const Shape& on_host_shape,
-    absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> definition_events,
+    const Shape& on_host_shape, tsl::AsyncValueRef<GpuEvent> definition_event,
     TfrtGpuDevice* device, TfrtGpuClient* client, PjRtMemorySpace* memory_space,
     int64_t pack_size = 0) {
   if (on_host_shape.IsTuple()) {
@@ -206,7 +205,7 @@ absl::StatusOr<std::unique_ptr<TfrtGpuBuffer>> AllocateTfrtGpuDestinationBuffer(
   return std::make_unique<TfrtGpuBuffer>(
       on_device_shape,
       std::make_unique<TrackedGpuDeviceBuffer>(buffer_async_value_ref,
-                                               std::move(definition_events)),
+                                               std::move(definition_event)),
       client, device, memory_space);
 }
 
@@ -307,8 +306,7 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
     }
     absl::InlinedVector<std::unique_ptr<PjRtBuffer>, 4> buffers;
     absl::InlinedVector<tsl::AsyncValueRef<GpuDeviceMemory>, 4> buffer_ptrs;
-    absl::InlinedVector<absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4>, 4>
-        definition_events;
+    absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> definition_events;
     absl::InlinedVector<Shape, 4> device_shapes;
     buffers.reserve(shape_specs.size());
     buffer_ptrs.reserve(shape_specs.size());
@@ -326,7 +324,7 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
           tsl::MakeConstructedAsyncValueRef<GpuEvent>();
       // Since transfer of tuples are not supported, we can use a single event
       // for each buffer.
-      definition_events.push_back({copy_event.CopyRef()});
+      definition_events.push_back(copy_event.CopyRef());
       Shape& device_shape = device_shapes.emplace_back(
           ShapeUtil::MakeShape(shape_spec.element_type, shape_spec.dims));
       if (device_layouts.has_value() && (*device_layouts)[i].has_value()) {
@@ -360,9 +358,7 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
   TfrtGpuAsyncHostToDeviceTransferManager(
       absl::InlinedVector<std::unique_ptr<PjRtBuffer>, 4> buffers,
       absl::InlinedVector<tsl::AsyncValueRef<GpuDeviceMemory>, 4> buffer_ptrs,
-      absl::InlinedVector<absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4>,
-                          4>
-          definition_events,
+      absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> definition_events,
       absl::InlinedVector<Shape, 4> device_shapes, TfrtGpuDevice* device)
       : buffers_(std::move(buffers)),
         h2d_thread_(std::make_unique<WorkerThread>(
@@ -592,8 +588,8 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
       absl::MutexLock l(&mu_);
       // For a given buffer_index, SetBufferError can't be called twice, or
       // called after the last transfer has been enqueued.
-      CHECK(!definition_events_[buffer_index].back().IsConcrete());
-      definition_events_[buffer_index].back().SetError(error);
+      CHECK(!definition_events_[buffer_index].IsConcrete());
+      definition_events_[buffer_index].SetError(error);
     }
     LOG(ERROR) << "SetBufferError sets the " << buffer_index
                << "th buffer error: " << error;
@@ -633,7 +629,7 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
         buffer_ptrs_[buffer_index] = nullptr;
         CHECK_GT(remaining_buffer_count_, 0);
         --remaining_buffer_count_;
-        definition_events_[buffer_index].back().SetStateConcrete();
+        definition_events_[buffer_index].SetStateConcrete();
         if (remaining_buffer_count_ == 0) {
           VLOG(2) << "TransferLiteralToBuffer for all buffers is done. this: "
                   << this;
@@ -668,8 +664,8 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
   absl::InlinedVector<bool, 4> last_transfer_started_ ABSL_GUARDED_BY(mu_);
   // The buffer definition events on all the buffers, unblocked once the
   // corresponding buffer transfer has completed.
-  absl::InlinedVector<absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4>, 4>
-      definition_events_ ABSL_GUARDED_BY(mu_);
+  absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> definition_events_
+      ABSL_GUARDED_BY(mu_);
   // Device shapes for all buffers with either compact or custom layout.
   const absl::InlinedVector<Shape, 4> device_shapes_;
   // Count of buffers that have not yet been fully transferred.
@@ -1541,7 +1537,7 @@ TfrtGpuClient::CreateUninitializedBuffer(const Shape& shape,
   TF_ASSIGN_OR_RETURN(Shape compact_shape,
                       transfer_manager->ChooseCompactLayoutForShape(shape));
   return AllocateTfrtGpuDestinationBuffer(
-      compact_shape, /*definition_events=*/{},
+      compact_shape, tsl::MakeAvailableAsyncValueRef<GpuEvent>(),
       tsl::down_cast<TfrtGpuDevice*>(memory_space->devices()[0]), this,
       memory_space);
 }
@@ -1944,8 +1940,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
   auto dst_definition_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TfrtGpuBuffer> output_buffer,
                       AllocateTfrtGpuDestinationBuffer(
-                          device_shape, {dst_definition_event.CopyRef()},
-                          device, this, memory_space, packed_size));
+                          device_shape, dst_definition_event.CopyRef(), device,
+                          this, memory_space, packed_size));
   auto copy_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   TrackedGpuDeviceBuffer* allocated_dst_buffer =
       output_buffer->AcquireUsage(copy_event);
@@ -2102,7 +2098,7 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
   }
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<TfrtGpuBuffer> output_buffer,
-      AllocateTfrtGpuDestinationBuffer(shape, std::move(definition_events),
+      AllocateTfrtGpuDestinationBuffer(shape, AfterAll(definition_events),
                                        tsl::down_cast<TfrtGpuDevice*>(device),
                                        this, memory_space));
 
@@ -2639,10 +2635,10 @@ TfrtGpuBuffer::DonateWithControlDependency(PjRtFuture<> dependency) {
 
   // Create new buffer with the combined event and underlying data from the
   // original buffer.
-  absl::InlinedVector<tsl::AsyncValueRef<GpuEvent>, 4> new_definition_events{
-      usage_definition_events.CopyRef(), dependency_event.CopyRef()};
+  tsl::AsyncValueRef<GpuEvent> new_definition_event =
+      AfterAll({usage_definition_events, dependency_event});
   auto new_tracked_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
-      tracked_buffer->buffer(), std::move(new_definition_events),
+      tracked_buffer->buffer(), std::move(new_definition_event),
       std::move(tracked_buffer->on_delete_callback_));
 
   auto new_pjrt_buffer = std::make_unique<TfrtGpuBuffer>(
@@ -3105,7 +3101,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
   auto dst_definition_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   TF_ASSIGN_OR_RETURN(auto output_buffer,
                       AllocateTfrtGpuDestinationBuffer(
-                          on_device_shape_, {dst_definition_event.CopyRef()},
+                          on_device_shape_, dst_definition_event.CopyRef(),
                           gpu_dst_device, client_, dst_memory_space));
   auto dst_usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   TrackedGpuDeviceBuffer* allocated_dst_device_buffer =
