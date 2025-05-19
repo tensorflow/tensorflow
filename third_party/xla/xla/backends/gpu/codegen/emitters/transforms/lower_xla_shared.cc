@@ -35,7 +35,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "xla/codegen/emitters/ir/xla_dialect.h.inc"
+#include "xla/codegen/emitters/ir/xla_ops.h"
 
 namespace xla::gpu {
 
@@ -95,13 +95,45 @@ struct LowerForall : mlir::OpRewritePattern<mlir::scf::ForallOp> {
   }
 };
 
+struct LowerWorkgroupId : mlir::OpRewritePattern<WorkGroupIdOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      WorkGroupIdOp op, mlir::PatternRewriter& rewriter) const override {
+    switch (op.getDimension()) {
+      case WorkGroupDimension::x:
+        return replaceWorkgroupId(op, rewriter, mlir::gpu::Dimension::x);
+      case WorkGroupDimension::y:
+        return replaceWorkgroupId(op, rewriter, mlir::gpu::Dimension::y);
+      case WorkGroupDimension::z:
+        return replaceWorkgroupId(op, rewriter, mlir::gpu::Dimension::z);
+      default:
+        return mlir::failure();
+    }
+  }
+
+ private:
+  mlir::LogicalResult replaceWorkgroupId(WorkGroupIdOp op,
+                                         mlir::PatternRewriter& rewriter,
+                                         mlir::gpu::Dimension dimension) const {
+    mlir::Location loc = op.getLoc();
+    mlir::ImplicitLocOpBuilder b(loc, rewriter);
+    auto block_id = b.create<mlir::gpu::BlockIdOp>(dimension);
+    if (mlir::Attribute range = op->getAttr("xla.range")) {
+      block_id->setAttr("xla.range", op->getAttr("xla.range"));
+    }
+    rewriter.replaceOp(op, block_id);
+    return mlir::success();
+  }
+};
+
 struct LowerXlaSharedPass final
     : public impl::LowerXlaSharedPassBase<LowerXlaSharedPass> {
  public:
   void runOnOperation() final {
     mlir::MLIRContext* context = &getContext();
     mlir::RewritePatternSet patterns(context);
-    patterns.add<LowerForall>(context);
+    patterns.add<LowerForall, LowerWorkgroupId>(context);
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();

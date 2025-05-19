@@ -255,6 +255,17 @@ absl::Status RunPassPipeline(mlir::ModuleOp module, const HloModule& hlo_module,
 
 }  // namespace
 
+Value EmitterBase::EmitWorkGroupId(mlir::ImplicitLocOpBuilder& builder,
+                                   WorkGroupDimension dim) const {
+  const auto& counts = launch_dimensions().block_counts();
+  int64_t count = dim == WorkGroupDimension::x   ? counts.x
+                  : dim == WorkGroupDimension::y ? counts.y
+                                                 : counts.z;
+  auto block_id = builder.create<WorkGroupIdOp>(dim);
+  block_id->setAttr("xla.range", builder.getIndexArrayAttr({0, count - 1}));
+  return block_id;
+}
+
 Value EmitterBase::EmitBlockId(mlir::ImplicitLocOpBuilder& builder,
                                int dim) const {
   const auto& counts = launch_dimensions().block_counts();
@@ -282,10 +293,11 @@ llvm::SmallVector<Value> EmitterBase::EmitThreadAndBlockIds(
           EmitBlockId(b, 0),  EmitBlockId(b, 1),  EmitBlockId(b, 2)};
 }
 
-llvm::SmallVector<mlir::Value> EmitterBase::EmitBlockIds(
+llvm::SmallVector<mlir::Value> EmitterBase::EmitWorkGroupIds(
     mlir::ImplicitLocOpBuilder& builder) const {
-  return {EmitBlockId(builder, 0), EmitBlockId(builder, 1),
-          EmitBlockId(builder, 2)};
+  return {EmitWorkGroupId(builder, WorkGroupDimension::x),
+          EmitWorkGroupId(builder, WorkGroupDimension::y),
+          EmitWorkGroupId(builder, WorkGroupDimension::z)};
 }
 
 absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(

@@ -114,7 +114,7 @@ absl::Status LoopFusion::EmitEntryFunction(
 
   mlir::MLIRContext* context = builder.getContext();
 
-  auto block_ids = EmitBlockIds(builder);
+  auto workgroup_ids = EmitWorkGroupIds(builder);
 
   auto indexing =
       ComputeThreadIdToOutputIndexing(0, entry_function.getContext());
@@ -161,21 +161,20 @@ absl::Status LoopFusion::EmitEntryFunction(
   };
 
   const auto loop_builder = [&](mlir::OpBuilder& builder, mlir::Location loc,
-                                mlir::ValueRange forall_idx_and_outputs) {
+                                mlir::ValueRange workitem_ids_and_outputs) {
     ImplicitLocOpBuilder nested_b(loc, builder);
 
-    mlir::ValueRange forall_idx = forall_idx_and_outputs.take_front(3);
-    mlir::ValueRange outputs = forall_idx_and_outputs.drop_front(3);
+    mlir::ValueRange workitem_ids = workitem_ids_and_outputs.take_front(3);
+    mlir::ValueRange outputs = workitem_ids_and_outputs.drop_front(3);
 
-    llvm::SmallVector<Value, 6> thread_and_block_ids;
-    thread_and_block_ids.insert(thread_and_block_ids.end(), forall_idx.begin(),
-                                forall_idx.end());
-    thread_and_block_ids.insert(thread_and_block_ids.end(), block_ids.begin(),
-                                block_ids.end());
+    llvm::SmallVector<Value, 6> work_dims;
+    work_dims.insert(work_dims.end(), workitem_ids.begin(), workitem_ids.end());
+    work_dims.insert(work_dims.end(), workgroup_ids.begin(),
+                     workgroup_ids.end());
 
-    auto loop_results = emitters::EmitXlaLoopOp(
-        nested_b, mlir::ValueRange(thread_and_block_ids), outputs, *indexing,
-        body_builder);
+    auto loop_results =
+        emitters::EmitXlaLoopOp(nested_b, mlir::ValueRange(work_dims), outputs,
+                                *indexing, body_builder);
     auto terminator = nested_b.create<mlir::scf::InParallelOp>();
     nested_b.setInsertionPointToStart(terminator.getBody());
     for (auto [result, output] : llvm::zip(loop_results, outputs)) {
