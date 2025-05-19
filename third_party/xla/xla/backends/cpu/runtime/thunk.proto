@@ -209,13 +209,13 @@ message WhileThunkProto {
 }
 
 message KernelThunkProto {
-  message WorkgroupDim {
+  message NumWorkGroups {
     int64 x = 1;
     int64 y = 2;
     int64 z = 3;
   }
   string kernel_name = 1;
-  WorkgroupDim workgroup_dim = 2;
+  NumWorkGroups num_workgroups = 2;
   repeated int64 invariant_arguments = 3;
   Int64Optional min_alignment = 4;
   repeated xla.buffer_assignment.BufferAllocationSliceProto arguments_buffers =

@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
-#include "xla/runtime/workgroup_dim.h"
+#include "xla/runtime/work_group.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
@@ -72,25 +72,25 @@ class Kernel {
   absl::Status CallOnce(absl::Span<const XLA_CPU_KernelArg> args) const;
 
   // Launches the kernel on the current thread by iterating over all workgroups
-  // in `workgroup_dim` and calling the kernel function.
-  absl::Status Launch(const WorkgroupDim& workgroup_dim,
+  // in `num_workgroups` and calling the kernel function.
+  absl::Status Launch(const NumWorkGroups& num_workgroups,
                       absl::Span<const DeviceMemoryBase> buffers) const;
-  absl::Status Launch(const WorkgroupDim& workgroup_dim,
+  absl::Status Launch(const NumWorkGroups& num_workgroups,
                       absl::Span<const XLA_CPU_KernelArg> args) const;
 
-  // Launches the kernel by iterating over all workgroups in `workgroup_dim`
+  // Launches the kernel by iterating over all workgroups in `num_workgroups`
   // and using `device` to parallelize the execution.
   //
   // The returned async value becomes available after all tasks are completed.
   // Async value returned in constructed state and the caller can access it to
   // get the number of tasks that are expected to be completed.
   tsl::AsyncValueRef<LaunchEvent> Launch(
-      const WorkgroupDim& workgroup_dim,
+      const NumWorkGroups& num_workgroups,
       absl::Span<const DeviceMemoryBase> buffers,
       const Eigen::ThreadPoolDevice* device) const;
 
   tsl::AsyncValueRef<LaunchEvent> Launch(
-      const WorkgroupDim& workgroup_dim,
+      const NumWorkGroups& num_workgroups,
       absl::Span<const XLA_CPU_KernelArg> args,
       const Eigen::ThreadPoolDevice* device) const;
 
@@ -106,7 +106,7 @@ class Kernel {
 
  private:
   // A kernel parallel task that is used to parallelize host kernel execution.
-  template <bool workgroup_dim_x_only>
+  template <bool num_workgroups_x_only>
   class ParallelTask;
 
   std::unique_ptr<KernelFunction> function_;
@@ -117,10 +117,10 @@ class Kernel {
 
 inline ABSL_ATTRIBUTE_ALWAYS_INLINE absl::Status Kernel::CallOnce(
     absl::Span<const XLA_CPU_KernelArg> args) const {
-  constexpr XLA_CPU_WorkgroupDim workgroup_dim = {1, 1, 1};
-  constexpr XLA_CPU_WorkgroupId workgroup_id = {0, 0, 0};
+  constexpr XLA_CPU_NumWorkGroups num_workgroups = {1, 1, 1};
+  constexpr XLA_CPU_WorkGroupId workgroup_id = {0, 0, 0};
 
-  XLA_CPU_KernelCallFrame call_frame = {&workgroup_dim, &workgroup_id,
+  XLA_CPU_KernelCallFrame call_frame = {&num_workgroups, &workgroup_id,
                                         args.size(), args.data()};
 
   XLA_CPU_KernelError* error = (*kernel_)(&call_frame);

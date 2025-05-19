@@ -134,8 +134,24 @@ cc_library(
 )
 
 cc_library(
-    name = "workgroup_dim",
-    hdrs = ["workgroup_dim.h"],
+    name = "work_cluster",
+    hdrs = ["work_cluster.h"],
+    deps = [
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_library(
+    name = "work_group",
+    hdrs = ["work_group.h"],
+    deps = [
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_library(
+    name = "work_item",
+    hdrs = ["work_item.h"],
     deps = [
         "@com_google_absl//absl/strings:str_format",
     ],

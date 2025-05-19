@@ -52,18 +52,18 @@ extern "C" {
 // by the same parallel task.
 
 // Dimensionality of an XLA:CPU kernel workgroup.
-typedef struct XLA_CPU_WorkgroupDim {
+typedef struct XLA_CPU_NumWorkGroups {
   uint64_t x;
   uint64_t y;
   uint64_t z;
-} XLA_CPU_WorkgroupDim;
+} XLA_CPU_NumWorkGrousm;
 
 // Workgroup id for an XLA:CPU kernel invocation.
-typedef struct XLA_CPU_WorkgroupId {
+typedef struct XLA_CPU_WorkGroupId {
   uint64_t x;
   uint64_t y;
   uint64_t z;
-} XLA_CPU_WorkgroupId;
+} XLA_CPU_WorkGroupId;
 
 // A CPU kernel argument that corresponds to se::DeviceMemoryBase.
 typedef struct XLA_CPU_KernelArg {
@@ -73,8 +73,8 @@ typedef struct XLA_CPU_KernelArg {
 
 // A CPU kernel call frame.
 typedef struct XLA_CPU_KernelCallFrame {
-  const XLA_CPU_WorkgroupDim* workgroup_dim;
-  const XLA_CPU_WorkgroupId* workgroup_id;
+  const XLA_CPU_NumWorkGroups* num_workgroups;
+  const XLA_CPU_WorkGroupId* workgroup_id;
 
   size_t num_args;
   const XLA_CPU_KernelArg* args;

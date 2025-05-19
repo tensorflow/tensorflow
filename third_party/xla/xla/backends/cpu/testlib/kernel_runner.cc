@@ -38,7 +38,7 @@ limitations under the License.
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
-#include "xla/runtime/workgroup_dim.h"
+#include "xla/runtime/work_group.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/cpu/runtime_symbol_generator.h"
 #include "xla/service/hlo_module_config.h"
@@ -84,11 +84,11 @@ absl::StatusOr<KernelRunner> KernelRunner::Create(
   TF_ASSIGN_OR_RETURN(XLA_CPU_Kernel * kernel_fn,
                       library->ResolveFunction<XLA_CPU_Kernel>(kernel_name));
 
-  // TODO(ezhulenev): Migrate KernelSpec to use WorkgroupDim.
-  WorkgroupDim workgroup_dim{kernel_spec.thread_dim().x,
-                             kernel_spec.thread_dim().y,
-                             kernel_spec.thread_dim().z};
-  return KernelRunner(std::move(library), Kernel(1, kernel_fn), workgroup_dim);
+  // TODO(ezhulenev): Migrate KernelSpec to use NumWorkGroups.
+  NumWorkGroups num_workgroups{kernel_spec.thread_dim().x,
+                               kernel_spec.thread_dim().y,
+                               kernel_spec.thread_dim().z};
+  return KernelRunner(std::move(library), Kernel(1, kernel_fn), num_workgroups);
 }
 
 absl::StatusOr<KernelRunner> KernelRunner::Create(
@@ -102,10 +102,10 @@ absl::StatusOr<KernelRunner> KernelRunner::Create(
 }
 
 KernelRunner::KernelRunner(std::unique_ptr<FunctionLibrary> library,
-                           Kernel kernel, WorkgroupDim workgroup_dim)
+                           Kernel kernel, NumWorkGroups num_workgroups)
     : library_(std::move(library)),
       kernel_(std::move(kernel)),
-      workgroup_dim_(workgroup_dim) {}
+      num_workgroups_(num_workgroups) {}
 
 absl::Status KernelRunner::Call(absl::Span<const Argument> arguments) {
   std::vector<XLA_CPU_KernelArg> kernel_args;
@@ -113,7 +113,7 @@ absl::Status KernelRunner::Call(absl::Span<const Argument> arguments) {
     kernel_args.push_back({arg.data(), arg.size()});
   }
 
-  return kernel_.Launch(workgroup_dim_, kernel_args);
+  return kernel_.Launch(num_workgroups_, kernel_args);
 }
 
 absl::StatusOr<JitCompiler> KernelRunner::CreateJitCompiler(

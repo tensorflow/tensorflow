@@ -129,12 +129,12 @@ llvm::StructType* Dim3StructTy(llvm::LLVMContext& ctx, absl::string_view name) {
   return llvm::StructType::create(name, i64, i64, i64);
 }
 
-llvm::StructType* KernelWorkgroupDimTy(llvm::LLVMContext& ctx) {
-  return Dim3StructTy(ctx, "XLA_CPU_WorkgroupDim");
+llvm::StructType* KernelNumWorkGroupsTy(llvm::LLVMContext& ctx) {
+  return Dim3StructTy(ctx, "XLA_CPU_NumWorkGroups");
 }
 
-llvm::StructType* KernelWorkgroupTy(llvm::LLVMContext& ctx) {
-  return Dim3StructTy(ctx, "XLA_CPU_WorkgroupId");
+llvm::StructType* KernelWorkGroupIdTy(llvm::LLVMContext& ctx) {
+  return Dim3StructTy(ctx, "XLA_CPU_WorkGroupId");
 }
 
 llvm::StructType* KernelArgTy(llvm::LLVMContext& ctx) {
@@ -295,8 +295,8 @@ KernelApiIrBuilder::KernelApiIrBuilder(llvm::LLVMContext& context,
     : context_(context),
       options_(std::move(options)),
       buffer_validation_(buffer_validation) {
-  workgroup_dim_ty_ = KernelWorkgroupDimTy(context_);
-  workgroup_id_ty_ = KernelWorkgroupTy(context_);
+  num_workgroups_ty_ = KernelNumWorkGroupsTy(context_);
+  workgroup_id_ty_ = KernelWorkGroupIdTy(context_);
   arg_ty_ = KernelArgTy(context_);
   call_frame_ty_ = KernelCallFrameTy(context_);
   kernel_function_ty_ = KernelFunctionTy(context_);
@@ -352,10 +352,10 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
   llvm::Value* call_frame = function->getArg(0);
 
   // Build workgroup coordinates from the call frame.
-  KernelApiIrBuilder::WorkgroupDim kernel_workgroup_dim =
-      EmitKernelWorkgroupDim(b, call_frame);
-  KernelApiIrBuilder::WorkgroupId kernel_workgroup_id =
-      EmitKernelWorkgroupId(b, call_frame);
+  KernelApiIrBuilder::NumWorkGroups kernel_workgroup_dim =
+      EmitKernelNumWorkGroups(b, call_frame);
+  KernelApiIrBuilder::WorkGroupId kernel_workgroup_id =
+      EmitKernelWorkGroupId(b, call_frame);
 
   int64_t idx = 0;
 
@@ -444,40 +444,42 @@ std::unique_ptr<llvm::Module> KernelApiIrBuilder::CreateModule(
       absl::StrCat(kXlaModuleIdentifier, "_", name), context);
 }
 
-auto KernelApiIrBuilder::EmitKernelWorkgroupDim(llvm::IRBuilderBase& builder,
-                                                llvm::Value* call_frame)
-    -> WorkgroupDim {
-  llvm::Value* td_gep =
-      builder.CreateStructGEP(call_frame_ty_, call_frame, 0, "wdims_gep");
-  llvm::Value* wdims = builder.CreateLoad(builder.getPtrTy(), td_gep, "wdims");
-  llvm::Value* x_gep =
-      builder.CreateStructGEP(workgroup_dim_ty_, wdims, 0, "wdim_x_gep");
-  llvm::Value* y_gep =
-      builder.CreateStructGEP(workgroup_dim_ty_, wdims, 1, "wdim_y_gep");
-  llvm::Value* z_gep =
-      builder.CreateStructGEP(workgroup_dim_ty_, wdims, 2, "wdim_z_gep");
+auto KernelApiIrBuilder::EmitKernelNumWorkGroups(llvm::IRBuilderBase& builder,
+                                                 llvm::Value* call_frame)
+    -> NumWorkGroups {
+  llvm::Value* num_workgroups_gep = builder.CreateStructGEP(
+      call_frame_ty_, call_frame, 0, "num_workgroups_gep");
+  llvm::Value* num_workgroups = builder.CreateLoad(
+      builder.getPtrTy(), num_workgroups_gep, "num_workgroups");
+  llvm::Value* x_gep = builder.CreateStructGEP(
+      num_workgroups_ty_, num_workgroups, 0, "num_workgroups_x_gep");
+  llvm::Value* y_gep = builder.CreateStructGEP(
+      num_workgroups_ty_, num_workgroups, 1, "num_workgroups_y_gep");
+  llvm::Value* z_gep = builder.CreateStructGEP(
+      num_workgroups_ty_, num_workgroups, 2, "num_workgroups_z_gep");
 
-  return {builder.CreateLoad(builder.getInt64Ty(), x_gep, "wdim_x"),
-          builder.CreateLoad(builder.getInt64Ty(), y_gep, "wdim_y"),
-          builder.CreateLoad(builder.getInt64Ty(), z_gep, "wdim_z")};
+  return {builder.CreateLoad(builder.getInt64Ty(), x_gep, "num_workgroups_x"),
+          builder.CreateLoad(builder.getInt64Ty(), y_gep, "num_workgroups_y"),
+          builder.CreateLoad(builder.getInt64Ty(), z_gep, "num_workgroups_z")};
 }
 
-auto KernelApiIrBuilder::EmitKernelWorkgroupId(llvm::IRBuilderBase& builder,
+auto KernelApiIrBuilder::EmitKernelWorkGroupId(llvm::IRBuilderBase& builder,
                                                llvm::Value* call_frame)
-    -> WorkgroupId {
-  llvm::Value* t_gep =
-      builder.CreateStructGEP(call_frame_ty_, call_frame, 1, "wid_gep");
-  llvm::LoadInst* wids = builder.CreateLoad(builder.getPtrTy(), t_gep, "wids");
-  llvm::Value* x_gep =
-      builder.CreateStructGEP(workgroup_id_ty_, wids, 0, "wid_x_gep");
-  llvm::Value* y_gep =
-      builder.CreateStructGEP(workgroup_id_ty_, wids, 1, "wid_y_gep");
-  llvm::Value* z_gep =
-      builder.CreateStructGEP(workgroup_id_ty_, wids, 2, "wid_z_gep");
+    -> WorkGroupId {
+  llvm::Value* workgroup_id_gep = builder.CreateStructGEP(
+      call_frame_ty_, call_frame, 1, "workgroup_id_gep");
+  llvm::LoadInst* workgroup_id =
+      builder.CreateLoad(builder.getPtrTy(), workgroup_id_gep, "workgroup_id");
+  llvm::Value* x_gep = builder.CreateStructGEP(workgroup_id_ty_, workgroup_id,
+                                               0, "workgroup_id_x_gep");
+  llvm::Value* y_gep = builder.CreateStructGEP(workgroup_id_ty_, workgroup_id,
+                                               1, "workgroup_id_y_gep");
+  llvm::Value* z_gep = builder.CreateStructGEP(workgroup_id_ty_, workgroup_id,
+                                               2, "workgroup_id_z_gep");
 
-  return {builder.CreateLoad(builder.getInt64Ty(), x_gep, "wid_x"),
-          builder.CreateLoad(builder.getInt64Ty(), y_gep, "wid_y"),
-          builder.CreateLoad(builder.getInt64Ty(), z_gep, "wid_z")};
+  return {builder.CreateLoad(builder.getInt64Ty(), x_gep, "workgroup_id_x"),
+          builder.CreateLoad(builder.getInt64Ty(), y_gep, "workgroup_id_y"),
+          builder.CreateLoad(builder.getInt64Ty(), z_gep, "workgroup_id_z")};
 }
 
 llvm_ir::IrArray KernelApiIrBuilder::EmitKernelArgument(

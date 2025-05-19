@@ -79,7 +79,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/layout_util.h"
 #include "xla/runtime/resource_use.h"
-#include "xla/runtime/workgroup_dim.h"
+#include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/cpu/backend_config.pb.h"
@@ -1362,12 +1362,12 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::MakeKernelThunkSequence(
     const ThunkEmitter::HostKernelAllocationSlices& buffers,
     const IrEmitter2::KernelInfo& kernel,
     std::optional<uint64_t> min_alignment) {
-  // TODO(ezhulenev): Migrate KernelSpec to use WorkgroupDim.
-  WorkgroupDim workgroup_dim{kernel.thread_dims.x, kernel.thread_dims.y,
-                             kernel.thread_dims.z};
+  // TODO(ezhulenev): Migrate KernelSpec to use NumWorkGroups.
+  NumWorkGroups num_workgroups{kernel.thread_dims.x, kernel.thread_dims.y,
+                               kernel.thread_dims.z};
   return ThunkSequence::Of<KernelThunk>(
       ThunkInfo(instruction), buffers.arguments, buffers.results, kernel.name,
-      workgroup_dim, kernel.invariant_arguments, min_alignment);
+      num_workgroups, kernel.invariant_arguments, min_alignment);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::MakeKernelThunkSequence(

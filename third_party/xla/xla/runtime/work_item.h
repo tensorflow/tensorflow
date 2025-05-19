@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_RUNTIME_WORKGROUP_DIM_H_
-#define XLA_RUNTIME_WORKGROUP_DIM_H_
+#ifndef XLA_RUNTIME_WORK_ITEM_H_
+#define XLA_RUNTIME_WORK_ITEM_H_
 
 #include <cstdint>
 
@@ -22,19 +22,33 @@ limitations under the License.
 
 namespace xla {
 
-// Dimensionality of an XLA workgroup.
-//
-// Workgroups mapped to backends specific concepts for parallelizing XLA kernel
-// execution, i.e. on GPU backends workgroups are mapped to blocks, and on CPU
-// backend workgroups are mapped to parallel tasks (threads).
-struct WorkgroupDim {
-  bool operator==(const WorkgroupDim& other) const {
+// Work item is the lowest level of the kernel parallel execution hierarchy in
+// XLA. In XLA:GPU it corresponds to a SIMT thread. In XLA:CPU it roughly
+// corresponds to one iteration of the kernel loop nest.
+
+struct NumWorkItems {
+  bool operator==(const NumWorkItems& other) const {
     return x == other.x && y == other.y && z == other.z;
   }
 
   template <typename Sink>
-  friend void AbslStringify(Sink& sink, const WorkgroupDim& d) {
-    absl::Format(&sink, "WorkgroupDim{%d, %d, %d}", d.x, d.y, d.z);
+  friend void AbslStringify(Sink& sink, const NumWorkItems& d) {
+    absl::Format(&sink, "NumWorkItems{%d, %d, %d}", d.x, d.y, d.z);
+  }
+
+  uint64_t x = 1;
+  uint64_t y = 1;
+  uint64_t z = 1;
+};
+
+struct WorkItemId {
+  bool operator==(const WorkItemId& other) const {
+    return x == other.x && y == other.y && z == other.z;
+  }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const WorkItemId& d) {
+    absl::Format(&sink, "WorkItemId{%d, %d, %d}", d.x, d.y, d.z);
   }
 
   uint64_t x = 1;
@@ -44,4 +58,4 @@ struct WorkgroupDim {
 
 }  // namespace xla
 
-#endif  // XLA_RUNTIME_WORKGROUP_DIM_H_
+#endif  // XLA_RUNTIME_WORK_ITEM_H_

@@ -54,15 +54,15 @@ class KernelApiIrBuilder {
                 // arguments and results is the same buffer)
   };
 
-  // Workgroup dimensions of the kernel invocation.
-  struct WorkgroupDim {
+  // Number of the kernel invocation work groups.
+  struct NumWorkGroups {
     llvm::Value* x;
     llvm::Value* y;
     llvm::Value* z;
   };
 
-  // Workgroup id of the kernel invocation.
-  struct WorkgroupId {
+  // Work group id of the kernel invocation.
+  struct WorkGroupId {
     llvm::Value* x;
     llvm::Value* y;
     llvm::Value* z;
@@ -83,8 +83,8 @@ class KernelApiIrBuilder {
     llvm::BasicBlock* return_block;
 
     // LLVM values identifying kernel invocation workgroup parameters.
-    WorkgroupDim workgroup_dim;
-    WorkgroupId workgroup_id;
+    NumWorkGroups num_workgroups;
+    WorkGroupId workgroup_id;
 
     // LLVM values corresponding to the kernel arguments and results arrays. All
     // tuples are flattened as we do not have any tuples at run time and only
@@ -140,10 +140,10 @@ class KernelApiIrBuilder {
   void SetKernelFunctionAttributes(llvm::Function* function);
 
  private:
-  WorkgroupDim EmitKernelWorkgroupDim(llvm::IRBuilderBase& builder,
-                                      llvm::Value* call_frame);
+  NumWorkGroups EmitKernelNumWorkGroups(llvm::IRBuilderBase& builder,
+                                        llvm::Value* call_frame);
 
-  WorkgroupId EmitKernelWorkgroupId(llvm::IRBuilderBase& builder,
+  WorkGroupId EmitKernelWorkGroupId(llvm::IRBuilderBase& builder,
                                     llvm::Value* call_frame);
 
   llvm_ir::IrArray EmitKernelArgument(llvm::IRBuilderBase& builder,
@@ -160,7 +160,7 @@ class KernelApiIrBuilder {
 
   BufferValidation buffer_validation_;
 
-  llvm::StructType* workgroup_dim_ty_;
+  llvm::StructType* num_workgroups_ty_;
   llvm::StructType* workgroup_id_ty_;
   llvm::StructType* arg_ty_;
   llvm::StructType* call_frame_ty_;

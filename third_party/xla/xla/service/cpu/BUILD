@@ -991,7 +991,7 @@ cc_library(
         "//xla/codegen:mlir_kernel_source",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:resource_use",
-        "//xla/runtime:workgroup_dim",
+        "//xla/runtime:work_group",
         "//xla/service:buffer_assignment",
         "//xla/service:collective_ops_utils",
         "//xla/service:hlo_module_config",

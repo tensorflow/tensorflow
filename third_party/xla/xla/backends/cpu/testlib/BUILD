@@ -37,7 +37,7 @@ cc_library(
         "//xla/codegen:llvm_ir_kernel_source",
         "//xla/codegen:mlir_kernel_source",
         "//xla/codegen/testlib:kernel_runner",
-        "//xla/runtime:workgroup_dim",
+        "//xla/runtime:work_group",
         "//xla/service:hlo_module_config",
         "//xla/service/cpu:cpu_options",
         "//xla/service/cpu:runtime_symbol_generator",

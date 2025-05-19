@@ -49,7 +49,7 @@ class KernelSpec {
              std::optional<size_t> scratch_bytes = std::nullopt);
 
   // Get the backend specific name of the kernel.
-  // Thus may be used to identify the kernel in the backend specific runtime.
+  // This may be used to identify the kernel in the backend specific runtime.
   const std::string& name() const { return name_; }
 
   // Kernel launch dimensions define how the kernel execution must be
