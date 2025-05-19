@@ -46,6 +46,10 @@ limitations under the License.
 
 namespace xla {
 
+// The maximum number of times to run the algebraic simplifier to reach a fixed
+// point.
+static constexpr int64_t kAlgSimpRerunLimit = 50;
+
 class AlgebraicSimplifierOptions {
  public:
   // Platform dependent callback to determine if a reshape `from_shape` to
@@ -347,6 +351,10 @@ class AlgebraicSimplifierOptions {
     rewrite_reshape_transpose_as_slice_concatenate_ = value;
   }
 
+  bool run_to_fixed_point() const { return run_to_fixed_point_; }
+
+  void set_run_to_fixed_point(bool value) { run_to_fixed_point_ = value; }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
   // with the AlgebraicSimplifierOptions that can be later used in an
@@ -403,6 +411,7 @@ class AlgebraicSimplifierOptions {
 #endif  // INTEL_MKL
   };
   bool rewrite_reshape_transpose_as_slice_concatenate_{true};
+  bool run_to_fixed_point_{true};
   Metadata metadata_;
 };
 

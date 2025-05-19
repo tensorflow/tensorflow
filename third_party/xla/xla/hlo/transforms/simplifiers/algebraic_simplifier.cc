@@ -572,6 +572,7 @@ bool AlgebraicSimplifierVisitor::IsNonNegative(
 
 void AlgebraicSimplifierVisitor::ResetState(HloComputation* computation) {
   ResetVisitStates();
+  MarkAsUnchanged();
   computation_ = computation;
 }
 
@@ -9910,8 +9911,23 @@ absl::StatusOr<bool> AlgebraicSimplifier::Run(
   bool changed = false;
   AlgebraicSimplifierVisitor visitor(options_, this);
   for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
-    if (visitor.Run(comp, options_, this)) {
-      changed = true;
+    bool computation_changed_per_run = false;
+    int64_t run_count = 0;
+    // Repeatedly run simplification on each computation until it is stable.
+    do {
+      computation_changed_per_run = false;
+      if (visitor.Run(comp, options_, this)) {
+        changed = true;
+        if (options_.run_to_fixed_point()) {
+          ++run_count;
+          computation_changed_per_run = true;
+        }
+      }
+    } while (computation_changed_per_run && run_count < kAlgSimpRerunLimit);
+    if (run_count >= kAlgSimpRerunLimit) {
+      LOG(ERROR) << "Algebraic simplifier is likely stuck in a circular "
+                    "simplification loop and ran for "
+                 << run_count << " runs on computation " << comp->name();
     }
   }
   return changed;
