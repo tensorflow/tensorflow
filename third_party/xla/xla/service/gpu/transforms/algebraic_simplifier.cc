@@ -145,20 +145,7 @@ bool GpuAlgebraicSimplifierVisitor::ShouldStrengthReduceDotToReduce(
                         rhs->shape().dimensions().size());
   // Strength-reduce vector-vector dots since they are not supported by
   // GemmFusion.
-  if (lhs_is_vector && rhs_is_vector) {
-    return true;
-  }
-
-  absl::StatusOr<bool> is_too_small =
-      IsMatrixMultiplicationTooSmallForRewriting(*hlo, /*threshold=*/10000000);
-  CHECK_OK(is_too_small.status());
-  if (is_too_small.value()) {
-    return true;
-  }
-
-  // If GemmFusion cannot handle this dot, we should strength-reduce it so that
-  // it can be handled by the fusion pipeline.
-  return !legacy_triton::CanTritonHandleGEMM(*dot, compute_capability_);
+  return lhs_is_vector && rhs_is_vector;
 }
 
 }  // namespace xla::gpu
