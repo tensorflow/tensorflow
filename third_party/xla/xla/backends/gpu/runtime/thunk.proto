@@ -18,6 +18,7 @@ syntax = "proto3";
 package xla.gpu;
 
 import "xla/service/buffer_assignment.proto";
+import "xla/stream_executor/gpu/gpu_blas_lt.proto";
 
 // Contains basic pieces of information that every thunk type has.
 message ThunkInfoProto {
@@ -69,6 +70,15 @@ message KernelThunkProto {
   int64 shmem_bytes = 7;
 }
 
+message GemmThunkProto {
+  xla.GemmConfigProto gemm_config = 1;
+  xla.buffer_assignment.BufferAllocationSliceProto lhs_buffer = 2;
+  xla.buffer_assignment.BufferAllocationSliceProto rhs_buffer = 3;
+  xla.buffer_assignment.BufferAllocationSliceProto output_buffer = 4;
+  optional xla.buffer_assignment.BufferAllocationSliceProto workspace = 5;
+  bool deterministic = 6;
+}
+
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
 
@@ -80,6 +90,7 @@ message ThunkProto {
     ConditionalThunkProto conditional_thunk = 6;
     WhileThunkProto while_thunk = 7;
     KernelThunkProto kernel_thunk = 8;
+    GemmThunkProto gemm_thunk = 9;
   }
 }
 

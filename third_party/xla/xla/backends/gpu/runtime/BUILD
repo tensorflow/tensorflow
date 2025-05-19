@@ -704,23 +704,35 @@ cc_library(
     hdrs = ["gemm_thunk.h"],
     deps = [
         ":thunk",
+        ":thunk_proto_cc",
         "//xla/service:buffer_assignment",
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:matmul_utils",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:stream",
+        "//xla/stream_executor/gpu:gpu_blas_lt",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
 
-tf_proto_library(
-    name = "gemm_thunk_proto",
-    srcs = ["gemm_thunk.proto"],
-    protodeps = [
-        "//xla/service:buffer_assignment_proto",
-        "//xla/stream_executor/gpu:gpu_blas_lt_proto",
+xla_cc_test(
+    name = "gemm_thunk_test",
+    srcs = ["gemm_thunk_test.cc"],
+    deps = [
+        ":gemm_thunk",
+        ":thunk",
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -1814,6 +1826,7 @@ tf_proto_library(
     ],
     protodeps = [
         "//xla/service:buffer_assignment_proto",
+        "//xla/stream_executor/gpu:gpu_blas_lt_proto",
     ],
 )
 
@@ -1822,11 +1835,14 @@ cc_library(
     srcs = ["thunk_proto_deserialization.cc"],
     hdrs = ["thunk_proto_deserialization.h"],
     deps = [
+        ":gemm_thunk",
         ":sequential_thunk",
         ":thunk",
         ":thunk_proto_cc",
+        "//xla/service:buffer_assignment",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
