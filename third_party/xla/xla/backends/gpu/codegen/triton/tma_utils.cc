@@ -22,13 +22,28 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
 using ::llvm::SmallVector;
+using mlir::triton::xla::SwizzleMode;
 using ::stream_executor::gpu::TmaDescriptor;
+
+TmaDescriptor::TmaSwizzle GetTmaSwizzleMode(SwizzleMode swizzle_mode) {
+  switch (swizzle_mode) {
+    case SwizzleMode::kNone:
+      return TmaDescriptor::TmaSwizzle::kNone;
+    case SwizzleMode::k32b:
+      return TmaDescriptor::TmaSwizzle::k32B;
+    case SwizzleMode::k64b:
+      return TmaDescriptor::TmaSwizzle::k64B;
+    case SwizzleMode::k128b:
+      return TmaDescriptor::TmaSwizzle::k128B;
+  }
+}
 
 // Returns a TmaDescriptor for a 2D tensor to be emitted in Triton.
 //
@@ -36,7 +51,8 @@ using ::stream_executor::gpu::TmaDescriptor;
 // @triton/third_party/nvidia/backend/cuda_utils.cc
 absl::StatusOr<TmaDescriptor> Create2DTmaDescriptor(
     llvm::ArrayRef<int64_t> global_shape, llvm::ArrayRef<int64_t> block_shape,
-    llvm::ArrayRef<int64_t> layout, int element_byte_size) {
+    llvm::ArrayRef<int64_t> layout, int element_byte_size,
+    TmaDescriptor::TmaSwizzle swizzle_mode) {
   if (global_shape.size() != 2) {
     return absl::InvalidArgumentError("expected 2D global shape");
   }
@@ -52,26 +68,27 @@ absl::StatusOr<TmaDescriptor> Create2DTmaDescriptor(
       static_cast<uint32_t>(block_shape[layout[0]]),
       static_cast<uint32_t>(block_shape[layout[1]])};
   SmallVector<uint32_t, 2> element_strides = {1, 1};
-  TmaDescriptor::TmaSwizzle swizzle;
+
   uint32_t contig_dim_size_in_byte = element_byte_size * box_dims[0];
-  if (contig_dim_size_in_byte >= 128) {
-    swizzle = TmaDescriptor::TmaSwizzle::k128B;
-  } else if (contig_dim_size_in_byte >= 64) {
-    swizzle = TmaDescriptor::TmaSwizzle::k64B;
-  } else if (contig_dim_size_in_byte >= 32) {
-    swizzle = TmaDescriptor::TmaSwizzle::k32B;
-  } else {
-    return absl::FailedPreconditionError("contiguous dimension size too small");
-  }
   if (contig_dim_size_in_byte > 128) {
     box_dims[0] = 128 / element_byte_size;
   }
+
   TF_ASSIGN_OR_RETURN(
       auto tma_desc, TmaDescriptor::Create(
                          global_dims, global_strides, box_dims, element_strides,
                          element_byte_size, TmaDescriptor::TmaInterleave::kNone,
-                         swizzle, TmaDescriptor::TmaL2Promotion::k128B));
+                         swizzle_mode, TmaDescriptor::TmaL2Promotion::k128B));
   return tma_desc;
+}
+
+absl::StatusOr<TmaDescriptor> Create2DTmaDescriptor(
+    llvm::ArrayRef<int64_t> global_shape, llvm::ArrayRef<int64_t> block_shape,
+    llvm::ArrayRef<int64_t> layout, int element_byte_size,
+    SwizzleMode swizzle_mode) {
+  return Create2DTmaDescriptor(global_shape, block_shape, layout,
+                               element_byte_size,
+                               GetTmaSwizzleMode(swizzle_mode));
 }
 
 }  // namespace xla::gpu

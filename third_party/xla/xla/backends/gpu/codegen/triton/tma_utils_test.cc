@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
@@ -32,6 +33,7 @@ namespace {
 
 using ::absl::StatusCode;
 using ::llvm::SmallVector;
+using ::mlir::triton::xla::SwizzleMode;
 using ::stream_executor::gpu::TmaDescriptor;
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
@@ -44,9 +46,11 @@ TEST(Create2DTmaDescriptorTest, ValidInputReturnCorrectDescriptor) {
   llvm::SmallVector<int64_t, 2> block_shape = {64, 32};
   llvm::SmallVector<int64_t, 2> layout = {1, 0};
   int element_byte_size = 4;
-  TF_ASSERT_OK_AND_ASSIGN(TmaDescriptor tma_desc,
-                          Create2DTmaDescriptor(global_shape, block_shape,
-                                                layout, element_byte_size));
+  SwizzleMode swizzle_mode = SwizzleMode::k128b;
+  TF_ASSERT_OK_AND_ASSIGN(
+      TmaDescriptor tma_desc,
+      Create2DTmaDescriptor(global_shape, block_shape, layout,
+                            element_byte_size, swizzle_mode));
   EXPECT_EQ(tma_desc.element_size(), 4);
   EXPECT_EQ(tma_desc.num_dimensions(), 2);
   EXPECT_THAT(tma_desc.global_dims(), ElementsAre(128, 256));
@@ -67,7 +71,7 @@ TEST(Create2DTmaDescriptorTest, BadGlobalShapeFailsGracefully) {
   llvm::SmallVector<int64_t, 2> layout = {1, 0};
   int element_byte_size = 4;
   EXPECT_THAT(Create2DTmaDescriptor(global_shape, block_shape, layout,
-                                    element_byte_size),
+                                    element_byte_size, SwizzleMode::k128b),
               StatusIs(StatusCode::kInvalidArgument,
                        HasSubstr("expected 2D global shape")));
 }
@@ -80,22 +84,9 @@ TEST(Create2DTmaDescriptorTest, BadBlockShapeFailsGracefully) {
   llvm::SmallVector<int64_t, 2> layout = {1, 0};
   int element_byte_size = 4;
   EXPECT_THAT(Create2DTmaDescriptor(global_shape, block_shape, layout,
-                                    element_byte_size),
+                                    element_byte_size, SwizzleMode::k128b),
               StatusIs(StatusCode::kInvalidArgument,
                        HasSubstr("expected 2D block shape")));
-}
-
-TEST(Create2DTmaDescriptorTest, SmallBlockShapeFailsGracefully) {
-  mlir::MLIRContext mlir_context;
-  mlir::Builder b(&mlir_context);
-  llvm::SmallVector<int64_t, 2> global_shape = {128, 128};
-  llvm::SmallVector<int64_t, 2> block_shape = {128, 2};
-  llvm::SmallVector<int64_t, 2> layout = {1, 0};
-  int element_byte_size = 4;
-  EXPECT_THAT(Create2DTmaDescriptor(global_shape, block_shape, layout,
-                                    element_byte_size),
-              StatusIs(StatusCode::kFailedPrecondition,
-                       HasSubstr("dimension size too small")));
 }
 
 }  // namespace

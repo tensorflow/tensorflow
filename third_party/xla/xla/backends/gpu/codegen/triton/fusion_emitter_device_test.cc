@@ -1103,12 +1103,6 @@ ENTRY entry_computation {
 // Parameterized to make sure that slices are also handled correctly when TMA is
 // enabled.
 TEST_P(TmaParameterizedTritonEmitterTest, TestSliceWithTileThatNeedsMasking) {
-  bool tma_enabled = GetParam();
-  if (tma_enabled) {
-    GTEST_SKIP()
-        << "TODO(b/413301521): Skipping TMA due to: contiguous dimension "
-           "size too small.";
-  }
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
