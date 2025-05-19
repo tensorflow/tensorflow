@@ -199,6 +199,7 @@ def xla_test(
         tags = [],
         copts = [],
         data = [],
+        env = {},
         backend_tags = {},
         backend_args = {},
         backend_kwargs = {},
@@ -269,6 +270,7 @@ def xla_test(
       tags: Tags for the target.
       copts: Additional copts to pass to the build.
       data: Additional data to pass to the build.
+      env: Env vars to set for the test.
       backend_tags: A dict mapping backend name to list of additional tags to
         use for that target.
       backend_args: A dict mapping backend name to list of additional args to
@@ -357,6 +359,10 @@ def xla_test(
             for lib_dep in xla_test_library_deps:
                 backend_deps += ["%s_%s" % (lib_dep, backend)]  # buildifier: disable=list-append
 
+        device_and_modifiers = backend.split("_")
+        device = device_and_modifiers[0]
+        modifiers = device_and_modifiers[1:]
+
         xla_cc_test(
             name = test_name,
             srcs = srcs,
@@ -366,6 +372,10 @@ def xla_test(
             args = args + this_backend_args,
             deps = deps + backend_deps,
             data = data + this_backend_data,
+            env = env | {
+                "XLA_TEST_DEVICE": device,
+                "XLA_TEST_MODIFIERS": ",".join(modifiers),
+            },
             linkstatic = linkstatic,
             fail_if_no_test_linked = fail_if_no_test_linked,
             **this_backend_kwargs
