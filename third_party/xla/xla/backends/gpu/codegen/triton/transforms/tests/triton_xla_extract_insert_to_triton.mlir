@@ -130,3 +130,38 @@ module {
 // CHECK-SAME:    boundaryCheck = array<i32: 0>
 // CHECK:         tt.store
 // CHECK-NOT:     boundaryCheck = array<i32: 0>
+
+// -----
+
+func.func @extract_with_non_unit_minor_dim_stride(%arg0: tensor<1024x1024xbf16>,
+                          %arg1: tensor<256x256xbf16>) -> tensor<256x256xbf16> {
+  %extracted_tensor = triton_xla.extract %arg0 [0, 0] [16, 64] [2, 2]
+    {layout = array<i64:1, 0>} : tensor<1024x1024xbf16> to tensor<16x64xbf16>
+  %updated_tensor = triton_xla.insert %extracted_tensor into
+    %arg1 [0, 0] [16, 64] [1, 1] {layout = array<i64:1, 0>}
+    : tensor<16x64xbf16> into tensor<256x256xbf16>
+  func.return %updated_tensor : tensor<256x256xbf16>
+}
+
+// CHECK-TMA:   tt.make_tensor_ptr
+// CHECK-TMA:   tt.load
+// CHECK-TMA:   tt.descriptor_store
+
+// -----
+
+func.func @extract_with_non_static_strides(%arg0: tensor<1024x1024xbf16>,
+                          %arg1: tensor<256x256xbf16>) -> tensor<256x256xbf16> {
+  %0 = tt.get_program_id x : i32
+  %1 = arith.extsi %0 : i32 to i64
+  %2 = arith.index_castui %1 : i64 to index
+  %extracted_tensor = triton_xla.extract %arg0 [0, 0] [16, 64] [%2, 1]
+    {layout = array<i64:1, 0>} : tensor<1024x1024xbf16> to tensor<16x64xbf16>
+  %updated_tensor = triton_xla.insert %extracted_tensor into
+    %arg1 [0, 0] [16, 64] [1, 1] {layout = array<i64:1, 0>}
+    : tensor<16x64xbf16> into tensor<256x256xbf16>
+  func.return %updated_tensor : tensor<256x256xbf16>
+}
+
+// CHECK-TMA:   tt.make_tensor_ptr
+// CHECK-TMA:   tt.load
+// CHECK-TMA:   tt.descriptor_store
