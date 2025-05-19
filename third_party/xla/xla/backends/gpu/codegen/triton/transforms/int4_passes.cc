@@ -12,8 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -341,7 +343,12 @@ class ExtSIInt4ToInt8Pattern : public OpConversionPattern<ma::ExtSIOp> {
     Value hi = r.create<ma::ShRSIOp>(loc, packed_type, adaptor.getIn(), shift4);
     Value hi_lo = r.create<mt::JoinOp>(loc, lo, hi);
     if (converter_.packed_dimension() + 1 != input_type.getRank()) {
-      auto trans_attr = r.getDenseI32ArrayAttr({0, 2, 1});
+      // Move the minor (joined) dimension to just after the packed dimension.
+      SmallVector<int32_t> trans_order(input_type.getRank() + 1);
+      absl::c_iota(trans_order, 0);
+      std::rotate(trans_order.begin() + converter_.packed_dimension() + 1,
+                  std::prev(trans_order.end()), trans_order.end());
+      auto trans_attr = r.getDenseI32ArrayAttr(trans_order);
       hi_lo = r.create<mt::TransOp>(loc, hi_lo, trans_attr);
     }
     auto unpacked_type = input_type.clone(r.getI8Type());

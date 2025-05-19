@@ -536,9 +536,8 @@ TEST_F(TritonTest, DotWithI4WeightsOnLhsWithBitcastTo3dTensor) {
       kHloText, ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
 }
 
-TEST_F(
-    TritonTest,
-    DISABLED_DotWithI4WeightsOnLhsWithNonStandardLayoutAndMultplyInEpilogue) {
+TEST_F(TritonTest,
+       DotWithI4WeightsOnLhsWithNonStandardLayoutAndMultplyInEpilogue) {
   constexpr absl::string_view kHloText = R"(
     HloModule DotWithI4WeightsOnLhsWithNonStandardLayoutAndMultplyInEpilogue
 
@@ -662,7 +661,7 @@ TEST_F(TritonTest, FuseMultiplyInEpilogue) {
     )"));
 }
 
-TEST_F(TritonTest, DISABLED_NonstandardLayoutInt4) {
+TEST_F(TritonTest, NonstandardLayoutInt4) {
   constexpr absl::string_view kHloText = R"(
     HloModule NonstandardLayoutInt4
 
@@ -1056,7 +1055,7 @@ TEST_F(TritonTest, LHSMinorContractingDim) {
       kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
-TEST_F(TritonTest, DISABLED_ConvertPlusNegate) {
+TEST_F(TritonTest, ConvertPlusNegate) {
   constexpr absl::string_view kHloText = R"(
     HloModule ConvertPlusNegate
 
@@ -1107,7 +1106,7 @@ TEST_F(TritonTest, LHSMinorContractingDimWithBatchDim0) {
       kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
-TEST_F(TritonTest, DISABLED_RHSTestWithNotMinorContractingDim) {
+TEST_F(TritonTest, RHSTestWithNotMinorContractingDim) {
   constexpr absl::string_view kHloText = R"(
     HloModule RHSTestWithNotMinorContractingDim
 
