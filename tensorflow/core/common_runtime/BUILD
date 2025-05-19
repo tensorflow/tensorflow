@@ -2201,9 +2201,9 @@ tf_cuda_library(
     deps = [
         ":core_cpu_internal",
         ":local_session_selection",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
-        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -2216,6 +2216,8 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:traceme_encode",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:optional",
     ],
     alwayslink = 1,
 )
