@@ -248,6 +248,7 @@ class BufferAllocation {
                                 int64_t more_than_k = 50) const;
 
   BufferAllocationProto ToProto() const;
+  static BufferAllocation FromProto(const BufferAllocationProto&);
 
   // Whether the buffer is a parameter to or live out of the entry computation.
   bool IsInputOrOutput() const {

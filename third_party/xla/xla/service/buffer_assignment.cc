@@ -313,6 +313,8 @@ BufferAllocationProto BufferAllocation::ToProto() const {
       proto.add_parameter_shape_index(idx);
     }
     proto.set_parameter_number(parameter_number_);
+    proto.set_is_parameter_aliased_with_output(
+        is_parameter_aliased_with_output_);
   }
   proto.set_is_constant(is_constant_);
   proto.set_maybe_live_out(maybe_live_out_);
@@ -329,6 +331,24 @@ BufferAllocationProto BufferAllocation::ToProto() const {
                         assign2.logical_buffer_id();
                });
   return proto;
+}
+
+BufferAllocation BufferAllocation::FromProto(
+    const BufferAllocationProto& proto) {
+  BufferAllocation allocation{proto.index(), proto.size(), proto.color()};
+  allocation.set_constant(proto.is_constant());
+  allocation.set_is_thread_local(proto.is_thread_local());
+  allocation.set_is_tuple(proto.is_tuple());
+  if (proto.is_entry_computation_parameter()) {
+    ShapeIndex shape_index{proto.parameter_shape_index().begin(),
+                           proto.parameter_shape_index().end()};
+    allocation.set_entry_computation_parameter(
+        proto.parameter_number(), std::move(shape_index),
+        proto.is_parameter_aliased_with_output());
+  }
+  allocation.set_maybe_live_out(proto.maybe_live_out());
+
+  return allocation;
 }
 
 static bool CompareHloValuesById(const HloValue* a, const HloValue* b) {

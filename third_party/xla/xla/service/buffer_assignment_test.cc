@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -30,7 +31,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -50,16 +53,20 @@ limitations under the License.
 #include "xla/service/buffer_value.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/copy_insertion.h"
+#include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_buffer.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -67,13 +74,14 @@ namespace {
 using memory_space_assignment::PresetAssignments;
 using ::testing::HasSubstr;
 using ::testing::UnorderedElementsAre;
+using ::tsl::proto_testing::EqualsProto;
 using tsl::testing::StatusIs;
 
 // DFS visitor that collects the instructions referenced by a computation
 // without descending into nested computations, i.e., only from the operands.
 class InstructionListVisitor : public DfsHloVisitorWithDefault {
  public:
-  explicit InstructionListVisitor(const HloInstruction* root) : root_(root) {}
+  explicit InstructionListVisitor(const HloInstruction* root) {}
 
   absl::Status DefaultAction(HloInstruction* hlo) override {
     // For each instruction, just push it on the list after walking the
@@ -86,9 +94,6 @@ class InstructionListVisitor : public DfsHloVisitorWithDefault {
   std::vector<const HloInstruction*> GetInstructions() { return instructions_; }
 
  private:
-  // The instruction root of the computation.
-  const HloInstruction* root_;
-
   // The full set of instructions found (may be duplicates, e.g., kParameter).
   std::vector<const HloInstruction*> instructions_;
 
@@ -96,7 +101,7 @@ class InstructionListVisitor : public DfsHloVisitorWithDefault {
   InstructionListVisitor& operator=(const InstructionListVisitor&) = delete;
 };
 
-const std::vector<const HloInstruction*> GetInstructions(HloInstruction* root) {
+std::vector<const HloInstruction*> GetInstructions(HloInstruction* root) {
   InstructionListVisitor main_list(root);
   TF_CHECK_OK(root->Accept(&main_list));
   return main_list.GetInstructions();
@@ -3530,6 +3535,96 @@ TEST(BufferAllocationSliceProtoTest, FromProtoErrorAllocationNotFound) {
       BufferAllocation::Slice::FromProto(proto, allocations),
       StatusIs(absl::StatusCode::kOutOfRange,
                HasSubstr("Buffer allocation index 2 is out of range.")));
+}
+
+TEST(BufferAllocationTest, ToProto) {
+  BufferAllocation alloc{42, 64, 3};
+  alloc.set_constant(true);
+
+  BufferAllocationProto proto = alloc.ToProto();
+  EXPECT_THAT(proto,
+              EqualsProto(R"pb(
+                index: 42, size: 64, color: 3, is_constant: true
+              )pb"));
+
+  alloc.set_constant(false);
+  alloc.set_is_thread_local(true);
+  alloc.set_is_tuple(true);
+  alloc.set_entry_computation_parameter(11, {9, 8, 7}, true);
+
+  proto = alloc.ToProto();
+  EXPECT_THAT(proto, EqualsProto(R"pb(
+                index: 42,
+                size: 64,
+                color: 3,
+                is_thread_local: true
+                is_tuple: true
+                is_entry_computation_parameter: true
+                parameter_number: 11
+                parameter_shape_index: [ 9, 8, 7 ]
+                is_parameter_aliased_with_output: true
+              )pb"));
+}
+
+// Since BufferAllocation carries so many booleans this function creates
+// the cartesian product of all those boolean value combinations to make sure
+// none of them are mixed up.
+template <typename Func>
+void ForEachExampleBufferAllocation(Func func) {
+  for (int index : {42, 43}) {
+    for (int size : {128, 256}) {
+      for (int color : {44, 55}) {
+        for (bool is_constant : {true, false}) {
+          for (bool is_thread_local : {true, false}) {
+            for (bool is_tuple : {true, false}) {
+              for (bool maybe_live_out : {true, false}) {
+                BufferAllocation buf_allocation{index, size, color};
+                buf_allocation.set_constant(is_constant);
+                buf_allocation.set_is_thread_local(is_thread_local);
+                buf_allocation.set_is_tuple(is_tuple);
+                buf_allocation.set_maybe_live_out(maybe_live_out);
+                func(buf_allocation);
+
+                buf_allocation.set_entry_computation_parameter(
+                    33, ShapeIndex{1, 2, 3, 4},
+                    /*parameter_aliased_with_output=*/true);
+                func(buf_allocation);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+TEST(BufferAllocationTest, ToAndFromProto) {
+  ForEachExampleBufferAllocation([](const BufferAllocation& allocation) {
+    auto new_allocation = BufferAllocation::FromProto(allocation.ToProto());
+    EXPECT_EQ(allocation.index(), new_allocation.index());
+    EXPECT_EQ(allocation.size(), new_allocation.size());
+    EXPECT_EQ(allocation.color(), new_allocation.color());
+    EXPECT_EQ(allocation.is_constant(), new_allocation.is_constant());
+    EXPECT_EQ(allocation.is_thread_local(), new_allocation.is_thread_local());
+    EXPECT_EQ(allocation.is_tuple(), new_allocation.is_tuple());
+    EXPECT_EQ(allocation.maybe_live_out(), new_allocation.maybe_live_out());
+    EXPECT_EQ(allocation.is_parameter_aliased_with_output(),
+              new_allocation.is_parameter_aliased_with_output());
+    EXPECT_EQ(allocation.is_entry_computation_parameter(),
+              new_allocation.is_entry_computation_parameter());
+
+    if (allocation.is_entry_computation_parameter() &&
+        new_allocation.is_entry_computation_parameter()) {
+      // `BufferAllocation::parameter_number` and
+      // `BufferAllocation::param_shape_index` abort if
+      // `is_entry_computation_parameter` is not set to true. Therefore we can't
+      // unconditionally add these expectations here.
+      EXPECT_EQ(allocation.parameter_number(),
+                new_allocation.parameter_number());
+      EXPECT_EQ(allocation.param_shape_index(),
+                new_allocation.param_shape_index());
+    }
+  });
 }
 
 }  // namespace
