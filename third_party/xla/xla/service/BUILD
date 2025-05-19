@@ -1216,6 +1216,7 @@ xla_cc_test(
         ":legalize_scheduling_annotations",
         "//xla:shape_util",
         "//xla:util",
+        "//xla/hlo/analysis:hlo_alias_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test_helpers",

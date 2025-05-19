@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -4412,8 +4413,8 @@ TEST_F(LatencyHidingSchedulerTest, ValidScheduleWithRandomPreferences) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
-  std::unique_ptr<LatencyHidingScheduler> scheduler =
-      SetupScheduler(hlo_module.get()).value();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<LatencyHidingScheduler> scheduler,
+                          SetupScheduler(hlo_module.get()));
 
   // Save the old schedule before running the LHS.
   HloComputation* computation = hlo_module->entry_computation();
@@ -4433,9 +4434,10 @@ TEST_F(LatencyHidingSchedulerTest, ValidScheduleWithRandomPreferences) {
 
   // Restore original order.
   hlo_module->schedule().set_sequence(computation, original_order);
+  auto alias_analysis = HloAliasAnalysis::Run(hlo_module.get()).value();
 
   auto result = scheduler->ScheduleWithPreferences(
-      hlo_module.get(), random_preferences, computation);
+      hlo_module.get(), random_preferences, computation, alias_analysis.get());
 
   // Set the new schedule.
   hlo_module->schedule().set_sequence(computation, result->first);

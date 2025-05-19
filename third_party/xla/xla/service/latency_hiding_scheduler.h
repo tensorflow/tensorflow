@@ -332,13 +332,16 @@ class AsyncTracker {
       resources_cache_;
 };
 
+class LatencyHidingScheduler;
+
 // Base class for the core scheduling algorithm.
 class SchedulerCore {
  public:
   // Hook function to modify scheduling graph before scheduler runs.
   using GraphProcessingHook = std::function<absl::Status(HloScheduleGraph*)>;
 
-  virtual absl::Status InitializeScheduler(const HloModule* module) = 0;
+  virtual absl::Status InitializeScheduler(LatencyHidingScheduler* scheduler,
+                                           const HloModule* module) = 0;
 
   virtual absl::Status CaptureScheduleProto() = 0;
 
@@ -513,6 +516,15 @@ class HloGraphNode {
                             const LatencyEstimator* latency_estimator) {
     AddDependency(from, to, latency_estimator->GetLatencyBetween(*from, *to));
   }
+
+  // Reset the node to a state where it's ready to be scheduled again.
+  void ResetScheduling() {
+    scheduled_ = false;
+    indegree_ = predecessors_.size();
+    outdegree_ = successors_.size();
+    ready_time_ = std::numeric_limits<TimeCost>::max();
+  }
+
   size_t GetReadyNodesIfScheduled() const { return ready_nodes_if_scheduled_; }
   void UpdateReadyNodesIfScheduled() {
     ready_nodes_if_scheduled_ = 0;
@@ -846,6 +858,11 @@ class HloScheduleGraph {
     CHECK_EQ(preferences.size(), original_order_.size());
     for (int i = 0; i < original_order_.size(); ++i) {
       nodes_[original_order_[i]]->SetPreference(preferences[i]);
+    }
+  }
+  void ResetScheduling() {
+    for (auto& pair : nodes_) {
+      pair.second->ResetScheduling();
     }
   }
 
@@ -1186,7 +1203,7 @@ class DefaultSchedulerCore : public SchedulerCore {
   // this struct instead of having to pass many individual pointers to elements
   // of the state.
   struct SchedulingState {
-    HloScheduleGraph sched_graph;
+    HloScheduleGraph& sched_graph;
     // Ready set for the nodes. Its ordered by our heuristic defined in
     // ReadySetLt.
     ReadyQueueSet ready_set;
@@ -1251,14 +1268,12 @@ class DefaultSchedulerCore : public SchedulerCore {
     absl::flat_hash_set<HloGraphNode*> nodes_holding_annotations;
     // Reference to this scheduler run configuration.
     const SchedulerConfig& config;
-    SchedulingState(const HloInstructionSequence* instr_sequence,
-                    HloAliasAnalysis* alias_analysis,
+    SchedulingState(HloScheduleGraph& schedule_graph,
                     const LatencyEstimator* latency_estimator,
                     const AsyncTracker* async_tracker,
                     MemoryPressureTracker* memory_pressure_tracker,
                     const SchedulerConfig& config)
-        : sched_graph(&instr_sequence->instructions(), alias_analysis,
-                      latency_estimator, async_tracker),
+        : sched_graph(schedule_graph),
           latency_estimator(latency_estimator),
           async_tracker(async_tracker),
           memory_pressure_tracker(memory_pressure_tracker),
@@ -1287,7 +1302,8 @@ class DefaultSchedulerCore : public SchedulerCore {
         scheduling_instruction_crosses_overlap_limit_(
             scheduling_instruction_crosses_overlap_limit) {}
 
-  absl::Status InitializeScheduler(const HloModule* module) override;
+  absl::Status InitializeScheduler(LatencyHidingScheduler* scheduler,
+                                   const HloModule* module) override;
 
   absl::Status CaptureScheduleProto() override {
     schedule_proto_ = ScheduleProto();
@@ -1371,6 +1387,7 @@ class DefaultSchedulerCore : public SchedulerCore {
   std::optional<ScheduleProto> schedule_proto_;
   const HloModule* module_ = nullptr;
   SchedulerCore::GraphProcessingHook graph_processing_hook_;
+  LatencyHidingScheduler* scheduler_;
 };
 
 // A scheduler oriented to hiding latencies of operations that can run in
@@ -1428,7 +1445,8 @@ class LatencyHidingScheduler : public HloModulePass {
       const AsyncTracker* async_tracker,
       const HloCostAnalysis::ShapeSizeFunction& shape_size_bytes,
       const HloAliasAnalysis* alias_analysis = nullptr,
-      ModulePressureState* pressure_state = nullptr);
+      ModulePressureState* pressure_state = nullptr,
+      HloScheduleGraph* schedule_graph = nullptr);
 
   // Even with random preferences this function will always return a schedule
   // that obeys overlap constraints.
@@ -1436,7 +1454,11 @@ class LatencyHidingScheduler : public HloModulePass {
       std::pair<std::vector<HloInstruction*>, ComputationScheduleInfo>>
   ScheduleWithPreferences(HloModule* module,
                           const std::vector<double>& preferences,
-                          const HloComputation* computation);
+                          const HloComputation* computation,
+                          HloAliasAnalysis* alias_analysis);
+
+  HloScheduleGraph* GetOrCreateScheduleGraph(const HloComputation* computation,
+                                             HloAliasAnalysis* alias_analysis);
 
   using HloPassInterface::Run;
 
@@ -1452,6 +1474,9 @@ class LatencyHidingScheduler : public HloModulePass {
   std::unique_ptr<SchedulerCore> scheduler_core_;
   const HloCostAnalysis::ShapeSizeFunction shape_size_bytes_;
   std::vector<HloComputation*> computations_to_schedule_;
+  absl::flat_hash_map<const HloComputation*, std::unique_ptr<HloScheduleGraph>>
+      computation_to_schedule_graph_;
+  const HloModule* module_;
 };
 
 }  // namespace xla
