@@ -39,7 +39,9 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/redzone_buffers.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
 #include "xla/service/gpu/transforms/fusion_wrapper.h"
+#include "xla/service/gpu/transforms/gemm_rewriter.h"
 #include "xla/service/gpu/transforms/priority_fusion.h"
 #include "xla/service/gpu/transforms/tree_reduction_rewriter.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -90,9 +92,34 @@ absl::StatusOr<std::unique_ptr<HloModule>> NewHloModuleFromFusionComputation(
   std::unique_ptr<HloModule> new_module =
       ExtractComputationIntoNewModule(*fusion.fused_instructions_computation());
   new_module->mutable_config().set_debug_options(debug_opts);
+  // Make sure that nested fusions do not trigger the generic triton emitter. We
+  // can do that by clearing the backend config and setting the fusion kind to
+  // loop.
+  for (HloComputation* computation : new_module->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kFusion) {
+        instruction->clear_backend_config();
+        instruction->set_fusion_kind(HloInstruction::FusionKind::kLoop);
+      }
+    }
+  }
   TreeReductionRewriter tree_reduction_rewriter(gpu_device_info);
   TF_RETURN_IF_ERROR(tree_reduction_rewriter.Run(new_module.get()).status());
-
+  TF_RETURN_IF_ERROR(DotAlgorithmRewriter().Run(new_module.get()).status());
+  TF_RETURN_IF_ERROR(
+      GemmRewriter(gpu_device_info.gpu_compute_capability(),
+                   gpu_device_info.runtime_version(),
+                   GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only,
+                                       GemmRewriterOptions::BiasMode::kBias})
+          .Run(new_module.get())
+          .status());
+  TF_RETURN_IF_ERROR(
+      GemmRewriter(gpu_device_info.gpu_compute_capability(),
+                   gpu_device_info.runtime_version(),
+                   GemmRewriterOptions{GemmRewriterOptions::DType::kNonFp8Only,
+                                       GemmRewriterOptions::BiasMode::kBias})
+          .Run(new_module.get())
+          .status());
   PriorityFusion fusion_pass(
       /*thread_pool=*/nullptr, gpu_device_info, HloCostAnalysis::Options{});
   TF_RETURN_IF_ERROR(fusion_pass.Run(new_module.get()).status());
