@@ -58,13 +58,16 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/lib/monitoring/sampler.h"
+#include "tensorflow/core/common_runtime/cost_util.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/common_runtime/request_cost_accessor.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
+#include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
@@ -204,8 +207,20 @@ absl::Status RunMlrtFunction(
 
   // TODO(chky): Set up cancellation.
 
-  work_queue.AddTask(
-      [&execution_context]() { mlrt::Execute(execution_context); });
+  const uint64_t task_added_time = tensorflow::EnvTime::NowMicros();
+  work_queue.AddTask([&execution_context, task_added_time]() {
+    const uint64_t task_start_time = tensorflow::EnvTime::NowMicros();
+    std::unique_ptr<tensorflow::RequestCostAccessor> cost_accessor =
+        tensorflow::CreateRequestCostAccessor();
+    if (cost_accessor != nullptr &&
+        cost_accessor->GetRequestCost() != nullptr) {
+      cost_accessor->GetRequestCost()->RecordMetrics(
+          {{"top_graph_queueing_delay_usecs",
+            task_start_time - task_added_time}});
+    }
+
+    mlrt::Execute(execution_context);
+  });
 
   work_queue.Await(chain);
 
