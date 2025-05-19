@@ -1123,7 +1123,33 @@ ENTRY entry_computation {
         "num_ctas":"1",
         "num_stages":"1"}}}
 })";
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{0, 0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
+// Parameterized to make sure that tile strides are handled correctly when TMA
+// is enabled.
+TEST_P(TmaParameterizedTritonEmitterTest, TestSliceWithNonMinorDimStrides) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+fused_computation {
+  p = f32[128,32] parameter(0)
+  ROOT slice = f32[12,16] slice(p), slice={[102:126:2], [16:32]}
+}
+
+ENTRY entry_computation {
+  p = f32[128,32] parameter(0)
+  ROOT fusion = f32[12,16] fusion(p), kind=kCustom, calls=fused_computation,
+    backend_config={
+      "fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["4","4"]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+})";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_F(TritonEmitterTest, TestSliceWithTileElementsNotAllContiguous) {
@@ -1202,7 +1228,7 @@ ENTRY entry_computation {
           "num_ctas":"1",
           "num_stages":"1"}}}
 })";
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{0, 0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_P(TmaParameterizedTritonEmitterTest,
@@ -1992,7 +2018,7 @@ CHECK:     tt.reduce{{.*}}axis = 0
 CHECK:     tensor.insert {{.*}} tensor<f32>
 )"));
 
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, ErrorSpec{0, 0}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 // Reproducer from b/380277401.

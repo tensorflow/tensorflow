@@ -45,7 +45,8 @@ def XLA_TmaDescriptorAttr : TTXLA_Attr<"TmaDescriptor"> {
   let mnemonic = "tma_descriptor";
   let parameters = (ins
     ArrayRefParameter<"int64_t", "">:$global_shape,
-    ArrayRefParameter<"int64_t", "">:$block_shape,
+    ArrayRefParameter<"int64_t", "">:$tile_shape,
+    ArrayRefParameter<"int64_t", "">:$tile_strides,
     ArrayRefParameter<"int64_t", "">:$layout,
     "int":$element_byte_size,
     // Swizzle mode corresponds to the enum CUtensorMapSwizzle
@@ -56,13 +57,14 @@ def XLA_TmaDescriptorAttr : TTXLA_Attr<"TmaDescriptor"> {
   let builders = [
       AttrBuilder<(ins
             "ArrayRef<int64_t>":$global_shape,
-            "ArrayRef<int64_t>":$block_shape,
+            "ArrayRef<int64_t>":$tile_shape,
+            "ArrayRef<int64_t>":$tile_strides,
             "ArrayRef<int64_t>":$layout,
             "int":$element_byte_size), [{
             // Swizzle mode is decided later in the pipeline than these TMA
             // descriptors are first created. Set it to nullptr here.
-            return $_get(context, global_shape, block_shape, layout,
-              element_byte_size, /*swizzle_mode=*/nullptr);
+            return $_get(context, global_shape, tile_shape, tile_strides,
+              layout, element_byte_size, /*swizzle_mode=*/nullptr);
       }]>
   ];
 }

@@ -50,24 +50,37 @@ TmaDescriptor::TmaSwizzle GetTmaSwizzleMode(SwizzleMode swizzle_mode) {
 // This function follows the defaults and logic found in fill2DTMADescriptor in
 // @triton/third_party/nvidia/backend/cuda_utils.cc
 absl::StatusOr<TmaDescriptor> Create2DTmaDescriptor(
-    llvm::ArrayRef<int64_t> global_shape, llvm::ArrayRef<int64_t> block_shape,
-    llvm::ArrayRef<int64_t> layout, int element_byte_size,
-    TmaDescriptor::TmaSwizzle swizzle_mode) {
+    llvm::ArrayRef<int64_t> global_shape, llvm::ArrayRef<int64_t> tile_shape,
+    llvm::ArrayRef<int64_t> tile_strides, llvm::ArrayRef<int64_t> layout,
+    int element_byte_size, TmaDescriptor::TmaSwizzle swizzle_mode) {
   if (global_shape.size() != 2) {
     return absl::InvalidArgumentError("expected 2D global shape");
   }
-  if (block_shape.size() != 2) {
+  if (tile_shape.size() != 2) {
     return absl::InvalidArgumentError("expected 2D block shape");
   }
 
   SmallVector<uint64_t, 2> global_dims = {
       static_cast<uint64_t>(global_shape[layout[0]]),
       static_cast<uint64_t>(global_shape[layout[1]])};
-  auto global_strides = {global_dims[0] * element_byte_size};
+  SmallVector<uint64_t, 1> global_strides = {global_dims[0] *
+                                             element_byte_size};
+
+  // Tile strides are reflected in the element strides. Note that the most minor
+  // dimension should have a stride of 1.
+  CHECK(tile_strides[layout[0]] == 1)
+      << "tile stride must be 1 for the most minor dimension";
+  SmallVector<uint32_t, 2> element_strides = {
+      static_cast<uint32_t>(tile_strides[layout[0]]),
+      static_cast<uint32_t>(tile_strides[layout[1]])};
+
+  // When the tile strides are > 1, the box dimensions no longer reflect the
+  // number of elements in the tile. To load the correct number of
+  // elements, we need to multiply the tile strides by the number of elements in
+  // the tile.
   SmallVector<uint32_t, 2> box_dims = {
-      static_cast<uint32_t>(block_shape[layout[0]]),
-      static_cast<uint32_t>(block_shape[layout[1]])};
-  SmallVector<uint32_t, 2> element_strides = {1, 1};
+      static_cast<uint32_t>(tile_shape[layout[0]]),
+      static_cast<uint32_t>(tile_shape[layout[1]] * tile_strides[layout[1]])};
 
   uint32_t contig_dim_size_in_byte = element_byte_size * box_dims[0];
   if (contig_dim_size_in_byte > 128) {
@@ -84,9 +97,9 @@ absl::StatusOr<TmaDescriptor> Create2DTmaDescriptor(
 
 absl::StatusOr<TmaDescriptor> Create2DTmaDescriptor(
     llvm::ArrayRef<int64_t> global_shape, llvm::ArrayRef<int64_t> block_shape,
-    llvm::ArrayRef<int64_t> layout, int element_byte_size,
-    SwizzleMode swizzle_mode) {
-  return Create2DTmaDescriptor(global_shape, block_shape, layout,
+    llvm::ArrayRef<int64_t> tile_strides, llvm::ArrayRef<int64_t> layout,
+    int element_byte_size, SwizzleMode swizzle_mode) {
+  return Create2DTmaDescriptor(global_shape, block_shape, tile_strides, layout,
                                element_byte_size,
                                GetTmaSwizzleMode(swizzle_mode));
 }

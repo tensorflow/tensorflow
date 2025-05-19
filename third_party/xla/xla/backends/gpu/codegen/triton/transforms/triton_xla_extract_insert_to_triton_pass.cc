@@ -240,6 +240,7 @@ Value ComputeLinearOffset(::xla::EmitterLocOpBuilder& builder,
 void AddTmaAttributes(::xla::EmitterLocOpBuilder& builder,
                       const TypedValue<RankedTensorType>& tensor,
                       const ArrayRef<int64_t>& tile_shape,
+                      const ArrayRef<int64_t>& tile_strides,
                       const ArrayRef<int64_t>& layout) {
   auto block_arg = mlir::dyn_cast<BlockArgument>(tensor);
   auto func_op =
@@ -252,7 +253,7 @@ void AddTmaAttributes(::xla::EmitterLocOpBuilder& builder,
   func_op.setArgAttr(
       block_arg.getArgNumber(), "tt.tma_descriptor",
       builder.getAttr<TmaDescriptorAttr>(
-          tensor.getType().getShape(), tile_shape, layout,
+          tensor.getType().getShape(), tile_shape, tile_strides, layout,
           tensor.getType().getElementType().getIntOrFloatBitWidth() / 8));
 }
 
@@ -363,7 +364,7 @@ class RewriteFuncOp : public mlir::OpRewritePattern<func::FuncOp> {
       if (auto attr = op.getArgAttr(index, "tt.tma_descriptor")) {
         auto tma_descriptor = mlir::cast<TmaDescriptorAttr>(attr);
         auto layout = tma_descriptor.getLayout();
-        auto block_shape = tma_descriptor.getBlockShape();
+        auto block_shape = tma_descriptor.getTileShape();
         SmallVector<int64_t> normalized_block_shape =
             Normalize(block_shape, layout);
 
@@ -462,7 +463,8 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
     auto offsets = op.getOffsetsAsValues(builder);
     if (CanUseTMA(builder, tma_enabled_, *device_description_, tile_shape,
                   op.getStaticStrides(), op.getSrc(), op.getLayout())) {
-      AddTmaAttributes(builder, op.getSrc(), tile_shape, op.getLayout());
+      AddTmaAttributes(builder, op.getSrc(), tile_shape, op.getStaticStrides(),
+                       op.getLayout());
 
       SmallVector<int64_t> normalized_tile_shape =
           Normalize(tile_shape, op.getLayout());
@@ -553,7 +555,8 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
     auto offsets = op.getOffsetsAsValues(builder);
     if (CanUseTMA(builder, tma_enabled_, *device_description_, tile_shape,
                   op.getStaticStrides(), op.getDst(), op.getLayout())) {
-      AddTmaAttributes(builder, op.getDst(), tile_shape, op.getLayout());
+      AddTmaAttributes(builder, op.getDst(), tile_shape, op.getStaticStrides(),
+                       op.getLayout());
 
       SmallVector<int64_t> normalized_tile_shape =
           Normalize(tile_shape, op.getLayout());

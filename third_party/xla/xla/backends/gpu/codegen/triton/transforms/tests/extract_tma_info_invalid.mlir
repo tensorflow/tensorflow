@@ -17,7 +17,8 @@ tt.func @extract_tma_info_no_tma_descriptor(
 tt.func @extract_tma_info_invalid_tma_layout(%arg0: !tt.tensordesc<tensor<16x32xf32, #blocked>>
   {tt.nv_tma_desc = 1 : i32,
    tt.tma_descriptor = #triton_xla.tma_descriptor<global_shape = [32, 256],
-                                                  block_shape = [16, 32],
+                                                  tile_shape = [16, 32],
+                                                  tile_strides = [1, 1],
                                                   layout = [1, 0],
                                                   element_byte_size = 4>}) {
   tt.return
