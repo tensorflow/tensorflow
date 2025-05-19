@@ -1423,7 +1423,8 @@ class LatencyHidingScheduler : public HloModulePass {
       const AsyncTracker* async_tracker,
       const HloCostAnalysis::ShapeSizeFunction& shape_size_bytes,
       const HloAliasAnalysis* alias_analysis = nullptr,
-      ModulePressureState* pressure_state = nullptr);
+      ModulePressureState* pressure_state = nullptr,
+      bool calculate_peak_memory = true);
 
   // Even with random preferences this function will always return a schedule
   // that obeys overlap constraints.

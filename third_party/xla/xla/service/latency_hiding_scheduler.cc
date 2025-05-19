@@ -2796,7 +2796,7 @@ LatencyHidingScheduler::LatencyHidingStatistics(
     const AsyncTracker* async_tracker,
     const HloCostAnalysis::ShapeSizeFunction& shape_size_bytes,
     const HloAliasAnalysis* alias_analysis,
-    ModulePressureState* module_pressure_state) {
+    ModulePressureState* module_pressure_state, bool calculate_peak_memory) {
   const HloModule* module = computation->parent();
   // A map keyed by outstanding collective op's opcode, with value of a tuple
   // including {instruction, scheduled_time, position in the original order}.
@@ -2908,33 +2908,45 @@ LatencyHidingScheduler::LatencyHidingStatistics(
   if (alias_analysis == nullptr) {
     alias_analysis_ptr = HloAliasAnalysis::Run(module).value();
   }
-  if (module_pressure_state == nullptr) {
-    module_pressure_state_ptr = std::make_unique<ModulePressureState>(
-        module, alias_analysis ? alias_analysis : alias_analysis_ptr.get(),
-        shape_size_bytes);
-    module_pressure_state_ptr->InitializePressureStates();
-  }
-  bool memory_tracked =
-      module_pressure_state
-          ? module_pressure_state->ComputationIsMemoryTracked(computation)
-          : module_pressure_state_ptr->ComputationIsMemoryTracked(computation);
-  const MemoryPressureTracker::MemoryPressureState& computation_pressure_state =
-      module_pressure_state
-          ? module_pressure_state->GetPressureStateForComputation(computation)
-          : module_pressure_state_ptr->GetPressureStateForComputation(
-                computation);
-  const MemoryPressureTracker::MemoryPressureState* memory_pressure_state =
-      memory_tracked ? &computation_pressure_state : nullptr;
-  MemoryPressureTracker mem_pressure_tracker(
-      alias_analysis ? alias_analysis : alias_analysis_ptr.get(),
-      module_pressure_state ? module_pressure_state->buffer_tracker()
-                            : module_pressure_state_ptr->buffer_tracker(),
-      module_pressure_state
-          ? module_pressure_state->pressure_state_cache()
-          : module_pressure_state_ptr->pressure_state_cache());
-  if (memory_pressure_state != nullptr) {
-    mem_pressure_tracker.Initialize(computation,
-                                    memory_pressure_state->live_ids_at_bottom);
+
+  int64_t memory_pressure_peak = 0;
+  if (calculate_peak_memory) {
+    if (module_pressure_state == nullptr) {
+      module_pressure_state_ptr = std::make_unique<ModulePressureState>(
+          module, alias_analysis ? alias_analysis : alias_analysis_ptr.get(),
+          shape_size_bytes);
+      module_pressure_state_ptr->InitializePressureStates();
+    }
+
+    bool memory_tracked =
+        module_pressure_state
+            ? module_pressure_state->ComputationIsMemoryTracked(computation)
+            : module_pressure_state_ptr->ComputationIsMemoryTracked(
+                  computation);
+    const MemoryPressureTracker::MemoryPressureState&
+        computation_pressure_state =
+            module_pressure_state
+                ? module_pressure_state->GetPressureStateForComputation(
+                      computation)
+                : module_pressure_state_ptr->GetPressureStateForComputation(
+                      computation);
+    const MemoryPressureTracker::MemoryPressureState* memory_pressure_state =
+        memory_tracked ? &computation_pressure_state : nullptr;
+    MemoryPressureTracker mem_pressure_tracker(
+        alias_analysis ? alias_analysis : alias_analysis_ptr.get(),
+        module_pressure_state ? module_pressure_state->buffer_tracker()
+                              : module_pressure_state_ptr->buffer_tracker(),
+        module_pressure_state
+            ? module_pressure_state->pressure_state_cache()
+            : module_pressure_state_ptr->pressure_state_cache());
+    if (memory_pressure_state != nullptr) {
+      mem_pressure_tracker.Initialize(
+          computation, memory_pressure_state->live_ids_at_bottom);
+    }
+    memory_pressure_peak =
+        memory_pressure_state ? mem_pressure_tracker.initial_memory_pressure() +
+                                    memory_pressure_state->memory_peak
+                              : 0;
   }
   return LatencyHidingScheduler::SchedulerStatistics{
       /*computation=*/computation,
@@ -2955,10 +2967,7 @@ LatencyHidingScheduler::LatencyHidingStatistics(
       /*send_wasted_cycles=*/wasted_time_per_collective[AsyncKind::kSend],
       /*recv_wasted_cycles=*/wasted_time_per_collective[AsyncKind::kRecv],
       /*total_cycles=*/current_time,
-      /*memory_pressure_peak=*/
-      memory_pressure_state ? mem_pressure_tracker.initial_memory_pressure() +
-                                  memory_pressure_state->memory_peak
-                            : 0};
+      /*memory_pressure_peak=*/memory_pressure_peak};
 }
 
 // Prints a SchedulerStatistics object.
@@ -3041,9 +3050,9 @@ LatencyHidingScheduler::ScheduleWithPreferences(
   // Temporarily use the new schedule to capture stats.
   module->schedule().set_sequence(computation,
                                   absl::MakeConstSpan(new_schedule));
-  LatencyHidingScheduler::SchedulerStatistics stats =
-      LatencyHidingStatistics(computation, latency_estimator_.get(),
-                              async_tracker_.get(), shape_size_bytes_);
+  LatencyHidingScheduler::SchedulerStatistics stats = LatencyHidingStatistics(
+      computation, latency_estimator_.get(), async_tracker_.get(),
+      shape_size_bytes_, nullptr, nullptr, false);
   // Restore the old schedule.
   module->schedule().set_sequence(computation,
                                   absl::MakeConstSpan(old_schedule));
