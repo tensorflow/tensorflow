@@ -2195,7 +2195,7 @@ def TF_XlaSparseDenseMatmulWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulWithCsrIn
     TF_Int32Tensor:$sorted_sample_ids,
     TF_Int32Tensor:$sorted_token_ids,
     TF_Float32Tensor:$sorted_gains,
-    TF_Float32Tensor:$embedding_table,
+    TF_Tensor:$embedding_table,
     TF_Int32Tensor:$num_minibatches_per_physical_sparse_core,
 
     ConfinedAttr<I64Attr, [IntMinValue<0>]>:$input_size,
@@ -2206,8 +2206,10 @@ def TF_XlaSparseDenseMatmulWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulWithCsrIn
   );
 
   let results = (outs
-    TF_Float32Tensor:$activations
+    TF_Tensor:$activations
   );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<4>;
 }
 
 def TF_XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInput", [Pure]> {
@@ -2833,7 +2835,7 @@ def TF_XlaSparseDenseMatmulGradWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulGradW
     TF_Int32Tensor:$sorted_token_ids,
     TF_Float32Tensor:$sorted_gains,
     TF_Float32Tensor:$activation_gradients,
-    Variadic<TF_Float32Tensor>:$tables,
+    Variadic<TF_Tensor>:$tables,
     Variadic<TF_Float32Tensor>:$hyperparameters,
     TF_Int32Tensor:$num_minibatches_per_physical_sparse_core,
 
@@ -2842,11 +2844,12 @@ def TF_XlaSparseDenseMatmulGradWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulGradW
   );
 
   let results = (outs
-    Variadic<TF_Float32Tensor>:$updated_tables
+    Variadic<TF_Tensor>:$updated_tables
   );
 
   TF_DerivedOperandSizeAttr M = TF_DerivedOperandSizeAttr<6>;
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<5>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<5>;
 }
 
 def TF_XlaSparseDenseMatmulCustomCombinerOnTcGradWithSgdAndCsrInputOp : TF_Op<"XlaSparseDenseMatmulCustomCombinerOnTcGradWithSgdAndCsrInput", [Pure]> {

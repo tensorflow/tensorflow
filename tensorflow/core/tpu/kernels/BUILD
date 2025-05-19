@@ -181,6 +181,7 @@ cc_library(
     hdrs = ["sparse_core_xla_ops.h"],
     deps = [
         ":sparse_core_ops_utils",
+        "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
