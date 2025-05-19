@@ -114,5 +114,37 @@ TEST(Create2DTmaDescriptorTest, NonUnitTileStridesAreCorrectlyHandled) {
   EXPECT_EQ(tma_desc.box_dims()[1], 32 * 3);
 }
 
+TEST(Create2DTmaDescriptorTest, BoxDimsAreAdjustedForSwizzleMode) {
+  mlir::MLIRContext mlir_context;
+  mlir::Builder b(&mlir_context);
+  llvm::SmallVector<int64_t, 2> global_shape = {1024, 1024};
+  llvm::SmallVector<int64_t, 2> tile_shape = {256, 256};
+  llvm::SmallVector<int64_t, 2> tile_strides = {1, 1};
+  llvm::SmallVector<int64_t, 2> layout = {1, 0};
+  int element_byte_size = 4;
+
+  // 128B swizzle mode.
+  SwizzleMode swizzle_mode = SwizzleMode::k128b;
+  TF_ASSERT_OK_AND_ASSIGN(
+      TmaDescriptor tma_desc,
+      Create2DTmaDescriptor(global_shape, tile_shape, tile_strides, layout,
+                            element_byte_size, swizzle_mode));
+  EXPECT_EQ(tma_desc.box_dims()[0], 32);
+
+  // 64B swizzle mode.
+  swizzle_mode = SwizzleMode::k64b;
+  TF_ASSERT_OK_AND_ASSIGN(
+      tma_desc, Create2DTmaDescriptor(global_shape, tile_shape, tile_strides,
+                                      layout, element_byte_size, swizzle_mode));
+  EXPECT_EQ(tma_desc.box_dims()[0], 16);
+
+  // 32B swizzle mode.
+  swizzle_mode = SwizzleMode::k32b;
+  TF_ASSERT_OK_AND_ASSIGN(
+      tma_desc, Create2DTmaDescriptor(global_shape, tile_shape, tile_strides,
+                                      layout, element_byte_size, swizzle_mode));
+  EXPECT_EQ(tma_desc.box_dims()[0], 8);
+}
+
 }  // namespace
 }  // namespace xla::gpu

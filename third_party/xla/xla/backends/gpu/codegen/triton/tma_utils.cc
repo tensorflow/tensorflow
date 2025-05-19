@@ -82,8 +82,25 @@ absl::StatusOr<TmaDescriptor> Create2DTmaDescriptor(
       static_cast<uint32_t>(tile_shape[layout[0]]),
       static_cast<uint32_t>(tile_shape[layout[1]] * tile_strides[layout[1]])};
 
+  // We need to respect maximum limit restrictions on box_dims imposed by TMA.
+  // Documented in
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__TENSOR__MEMORY.html#group__CUDA__TENSOR__MEMORY_1ga7c7d2aaac9e49294304e755e6f341d7
+  // Triton handles this by clamping the block size in a similar fashion:
+  // triton/lib/Dialect/TritonNvidiaGPU/Transforms/TMAUtilities.cpp;l=102-119;rcl=759529316
+  // Replicating their code-comment here:
+  // "We clamp the block size and the codegen will emit multiple copy
+  // operations."
+  // This only works because Triton expects this way of handling and makes the
+  // corresponding codegen adjustments under the hood.
   uint32_t contig_dim_size_in_byte = element_byte_size * box_dims[0];
-  if (contig_dim_size_in_byte > 128) {
+  if (swizzle_mode == TmaDescriptor::TmaSwizzle::k32B &&
+      contig_dim_size_in_byte > 32) {
+    box_dims[0] = 32 / element_byte_size;
+  } else if (swizzle_mode == TmaDescriptor::TmaSwizzle::k64B &&
+             contig_dim_size_in_byte > 64) {
+    box_dims[0] = 64 / element_byte_size;
+  } else if (swizzle_mode == TmaDescriptor::TmaSwizzle::k128B &&
+             contig_dim_size_in_byte > 128) {
     box_dims[0] = 128 / element_byte_size;
   }
 

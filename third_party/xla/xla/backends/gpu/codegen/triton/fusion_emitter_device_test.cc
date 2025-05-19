@@ -1393,6 +1393,33 @@ backend_config={
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
+// When TMA is enabled, it is important to test this in an end-to-end fashion.
+// This test covers the logic that adjusts box_dims based on the swizzle mode.
+// See tensorflow/compiler/xla/backends/gpu/codegen/triton/tma_utils.cc.
+TEST_P(TmaParameterizedTritonEmitterTest,
+       ContiguousDimensionExceedsSwizzleLimitIsLoweredCorrectly) {
+  constexpr absl::string_view kHloText = R"(
+triton_computation {
+p = s32[16,128] parameter(0)
+ROOT bitcast = s32[16,128] bitcast(p)
+}
+
+ENTRY entry_computation {
+p = s32[16,128] parameter(0)
+ROOT fusion = s32[16,128] fusion(p), kind=kCustom, calls=triton_computation,
+backend_config={
+"fusion_backend_config":{
+ "kind":"__triton",
+ "block_level_fusion_config":{
+ "output_tiles":[{"sizes":["16","64"]}],
+ "num_warps":"1",
+ "num_ctas":"1",
+ "num_stages":"1"}}}
+})";
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
 TEST_F(TritonEmitterTest, BitcastNormalizedLayoutsIsLoweredCorrectly) {
   constexpr absl::string_view kHloText = R"(
 triton_computation {
@@ -2066,11 +2093,6 @@ CHECK:     triton_xla.insert
 }
 
 TEST_P(TmaParameterizedTritonEmitterTest, BroadcastWorksCorrectly) {
-  bool tma_enabled = GetParam();
-  if (tma_enabled) {
-    GTEST_SKIP() << "TODO(b/415758695): Skipping TMA due to incorrect handling "
-                    "of swizzle. Re-enable once fixed.";
-  }
   constexpr absl::string_view kTritonHloText = R"(
 computation {
   p0 = s32[256]{0} parameter(0)
