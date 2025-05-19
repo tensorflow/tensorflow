@@ -2850,6 +2850,11 @@ class HloRngBitGeneratorInstruction : public HloInstruction {
   RandomAlgorithm algorithm_;
 };
 
+inline constexpr absl::string_view kPinCustomCallTarget = "Pin";
+inline constexpr absl::string_view kUnpinCustomCallTarget = "Unpin";
+inline constexpr absl::string_view kCreateBufferCustomCallTarget =
+    "CreateBuffer";
+
 }  // namespace xla
 
 #endif  // XLA_HLO_IR_HLO_INSTRUCTIONS_H_
