@@ -42,7 +42,7 @@ tsl_pybind_extension(
         "-fno-strict-aliasing",
     ],
     pytype_srcs = ["profile_data.pyi"],
-    visibility = internal_visibility(XLA_PYTHON_PROFILER_USERS),
+    visibility = ["//learning/brain/research/jax/lib:__pkg__"],
     deps = [
         ":profile_data_lib",
         "@local_tsl//tsl/platform:protobuf",
@@ -62,5 +62,6 @@ py_strict_test(
         ":profile_data",
         # copybara:uncomment "//pyglib:gfile",
         "@absl_py//absl/testing:absltest",
+        "//third_party/py/jax",
     ],
 )
