@@ -7,6 +7,11 @@ load(
     _if_gpu_is_configured = "if_gpu_is_configured",
 )
 
+load(
+    "//xla/tsl/platform:rules_cc.bzl",
+    "cc_library",
+)
+
 def stream_executor_friends():
     return ["//..."]
 
