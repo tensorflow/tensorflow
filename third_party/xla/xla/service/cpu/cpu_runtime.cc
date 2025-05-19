@@ -514,7 +514,7 @@ void AllReduceImpl(const ExecutableRunOptions* run_options,
       DecodeSelfDescribingShapeConstant(shape_ptr, shape_length).value();
 
   CHECK((num_buffers > 1 && shape.IsTuple()) ||
-        (num_buffers == 1 && LayoutUtil::IsDenseArray(shape)));
+        (num_buffers == 1 && shape.IsArray()));
 
   int rank = RankInGlobalDevices(rendezvous_key.global_devices, device).value();
 
