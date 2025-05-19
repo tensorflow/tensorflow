@@ -551,6 +551,7 @@ xla_cc_test(
         "data/add_mhlo.mlir",
         "data/add_stablehlo.mlir",
         "data/input_literal_f32_2_2.pbtxt",
+        "data/large_constant.hlo",
         "data/must_alias.hlo",
         "data/must_alias_with_sharding.hlo",
         ":run_hlo_module",
