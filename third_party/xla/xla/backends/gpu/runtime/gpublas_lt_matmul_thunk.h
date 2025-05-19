@@ -63,7 +63,6 @@ class CublasLtMatmulThunk : public Thunk {
                                        const ExecuteParams& params);
   absl::StatusOr<se::gpu::BlasLt::MatmulPlan*> GetCachedMatmulPlan(
       const ExecuteParams& params);
->>>>>>> upstream/master
 
  protected:
   GemmConfig gemm_config_;

@@ -376,11 +376,6 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg, Epilogue epilogue) const
                                       must_swap_operands);
 }
 
-absl::Status BlasLt::MatmulPlan::SetAlgorithm(const MatmulAlgorithm& algorithm) const {
-  algorithm_ = algorithm;
-  return absl::OkStatus();
-}
-
 absl::Status BlasLt::MatmulPlan::DoMatmul(
     Stream* stream, const void* alpha, const void* beta,
     const gpu::BlasLt::MemoryArgs& args,
@@ -406,8 +401,6 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
     TF_ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
                                    profile_result->warmup_run_executed()));
   }
-
-  auto algorithm = algorithm_.has_value() ? *algorithm_ : Xalgorithm;
 
   void* workspace_addr = nullptr;
   uint64_t workspace_size = algorithm_->workspace_size;
