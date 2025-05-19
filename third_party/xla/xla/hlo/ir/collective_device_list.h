@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
@@ -97,10 +96,6 @@ class CollectiveDeviceList {
  public:
   explicit CollectiveDeviceList()
       : replica_groups_(std::make_shared<std::vector<ReplicaGroup>>()) {};
-
-  explicit CollectiveDeviceList(std::vector<ReplicaGroup> replica_groups)
-      : replica_groups_(std::make_shared<std::vector<ReplicaGroup>>(
-            std::move(replica_groups))) {};
 
   explicit CollectiveDeviceList(absl::Span<const ReplicaGroup> replica_groups)
       : replica_groups_(std::make_shared<std::vector<ReplicaGroup>>(
