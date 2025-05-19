@@ -2,7 +2,7 @@
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
 
-load("//third_party/bazel_rules/rules_shell/shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
