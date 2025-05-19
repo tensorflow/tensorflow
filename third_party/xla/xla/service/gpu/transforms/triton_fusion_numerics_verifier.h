@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
-#include "xla/service/hlo_module_config.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/stream.h"
@@ -74,7 +73,7 @@ absl::StatusOr<ScopedShapedBuffer> CompileAndRunFusion(
     bool disable_triton);
 absl::Status CompareBuffers(const ScopedShapedBuffer& current,
                             const ScopedShapedBuffer& expected,
-                            const Shape& shape, const HloModuleConfig& config,
+                            const Shape& shape, const DebugOptions& debug_opts,
                             se::Stream* stream);
 absl::Status ForAllTritonFusions(
     const HloModule& module,

@@ -261,8 +261,7 @@ TEST_F(TritonFusionNumericsVerifierTest, CheckMismatch) {
   // Intentionally compare the fusions from the different modules, triggering a
   // mismatch.
   auto cmp = triton_fusion_numerics_pass_internal::CompareBuffers(
-      *f64_result, *f32_result, fusion_f64->shape(),
-      fusion_f64->GetModule()->config(), *stream);
+      *f64_result, *f32_result, fusion_f64->shape(), debug_options, *stream);
 
   EXPECT_FALSE(cmp.ok());
 }
