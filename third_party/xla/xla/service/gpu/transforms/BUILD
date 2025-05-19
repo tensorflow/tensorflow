@@ -2598,6 +2598,34 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "scalar_constant_sinker",
+    srcs = ["scalar_constant_sinker.cc"],
+    hdrs = ["scalar_constant_sinker.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "scalar_constant_sinker_test",
+    srcs = ["scalar_constant_sinker_test.cc"],
+    deps = [
+        ":scalar_constant_sinker",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+    ],
+)
+
+cc_library(
     name = "scatter_slice_simplifier",
     srcs = ["scatter_slice_simplifier.cc"],
     hdrs = ["scatter_slice_simplifier.h"],
