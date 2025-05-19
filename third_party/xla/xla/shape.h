@@ -77,8 +77,9 @@ class Shape {
 
   // Constructs a shape from a ShapeProto. Results in an invalid shape (as
   // opposed to crashing) if the proto has logically invalid fields.
-  ABSL_DEPRECATED("Use FromProto instead.")
-  explicit Shape(const ShapeProto& shape_proto);
+  ABSL_DEPRECATE_AND_INLINE()
+  explicit Shape(const ShapeProto& shape_proto)
+      : Shape(FromProto(shape_proto).value_or(Shape())) {}
 
   // Creates a token, opaque or buffer shape.
   // Precondition:
@@ -656,15 +657,21 @@ class Shape {
 // to a traditional function signature.
 class ProgramShape {
  public:
+  // Constructs an empty ProgramShape, which has 0 parameters and an empty
+  // (invalid) result shape.
   ProgramShape();
   ~ProgramShape();
+
   ProgramShape(const ProgramShape&);
   ProgramShape(ProgramShape&&);
   ProgramShape& operator=(const ProgramShape&);
   ProgramShape& operator=(ProgramShape&&);
 
-  ABSL_DEPRECATED("Use FromProto instead.")
-  explicit ProgramShape(const ProgramShapeProto& program_shape_proto);
+  // Constructs a ProgramShape from a ProgramShapeProto protobuf. If the
+  // ProgramShapeProto is invalid, an empty ProgramShape is constructed.
+  ABSL_DEPRECATE_AND_INLINE()
+  explicit ProgramShape(const ProgramShapeProto& program_shape_proto)
+      : ProgramShape(FromProto(program_shape_proto).value_or(ProgramShape())) {}
 
   // Creates a ProgramShape from a ProgramShapeProto protobuf.
   static absl::StatusOr<ProgramShape> FromProto(
