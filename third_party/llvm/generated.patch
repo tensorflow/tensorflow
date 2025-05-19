@@ -1,49 +1,973 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/lib/Sema/SemaDecl.cpp b/clang/lib/Sema/SemaDecl.cpp
---- a/clang/lib/Sema/SemaDecl.cpp
-+++ b/clang/lib/Sema/SemaDecl.cpp
-@@ -4755,8 +4755,16 @@
-         return;
-     }
-   } else {
--    Diag(New->getLocation(), diag::warn_cxx_compat_tentative_definition) << New;
--    Diag(Old->getLocation(), diag::note_previous_declaration);
-+    // C++ may not have a tentative definition rule, but it has a different
-+    // rule about what constitutes a definition in the first place. See
-+    // [basic.def]p2 for details, but the basic idea is: if the old declaration
-+    // contains the extern specifier and doesn't have an initializer, it's fine
-+    // in C++.
-+    if (Old->getStorageClass() != SC_Extern || Old->hasInit()) {
-+      Diag(New->getLocation(), diag::warn_cxx_compat_tentative_definition)
-+          << New;
-+      Diag(Old->getLocation(), diag::note_previous_declaration);
-+    }
+diff -ruN --strip-trailing-cr a/clang/include/clang/Sema/Overload.h b/clang/include/clang/Sema/Overload.h
+--- a/clang/include/clang/Sema/Overload.h
++++ b/clang/include/clang/Sema/Overload.h
+@@ -435,7 +435,8 @@
+ 
+           // A function pointer type can be resolved to a member function type,
+           // which is still an identity conversion.
+-          if (auto *N = T->getAs<MemberPointerType>())
++          if (auto *N = T->getAs<MemberPointerType>();
++              N && N->isMemberFunctionPointer())
+             T = C.getDecayedType(N->getPointeeType());
+           return T;
+         };
+diff -ruN --strip-trailing-cr a/clang/test/SemaCXX/overload-resolution-deferred-templates.cpp b/clang/test/SemaCXX/overload-resolution-deferred-templates.cpp
+--- a/clang/test/SemaCXX/overload-resolution-deferred-templates.cpp
++++ b/clang/test/SemaCXX/overload-resolution-deferred-templates.cpp
+@@ -251,3 +251,26 @@
+   e.g(&N::f);
+ }
+ }
++
++#if __cplusplus >= 201402
++namespace PointerToMemData {
++struct N {
++  int field;
++};
++template <typename It, typename T>
++struct B {
++  B(It, T);
++  template <typename It2>
++  B(B<It2, T>);
++};
++template <typename T>
++struct C {
++  auto g() { return B<int, T>(0, T{}); }
++};
++void f() {
++  using T = decltype(C<decltype(&N::field)>{}.g());
++}
++
++}
++
++#endif
+diff -ruN --strip-trailing-cr a/libcxx/include/__tree b/libcxx/include/__tree
+--- a/libcxx/include/__tree
++++ b/libcxx/include/__tree
+@@ -1281,7 +1281,7 @@
+   }
+   _LIBCPP_HIDE_FROM_ABI void __move_assign_alloc(__tree&, false_type) _NOEXCEPT {}
+ 
+-  template <class _From, __enable_if_t<__is_pair_v<__remove_cvref_t<_From> >, int> = 0>
++  template <class _From, class _ValueT = _Tp, __enable_if_t<__is_tree_value_type<_ValueT>::value, int> = 0>
+   _LIBCPP_HIDE_FROM_ABI static void __assign_value(__get_node_value_type_t<value_type>& __lhs, _From&& __rhs) {
+     using __key_type = typename _NodeTypes::key_type;
+ 
+@@ -1291,7 +1291,7 @@
+     __lhs.second                         = std::forward<_From>(__rhs).second;
    }
  
-   if (haveIncompatibleLanguageLinkages(Old, New)) {
-diff -ruN --strip-trailing-cr a/clang/test/Sema/warn-tentative-defn-compat.c b/clang/test/Sema/warn-tentative-defn-compat.c
---- a/clang/test/Sema/warn-tentative-defn-compat.c
-+++ b/clang/test/Sema/warn-tentative-defn-compat.c
-@@ -20,4 +20,7 @@
-                cxx-error {{redefinition of 'k'}}
+-  template <class _To, class _From, class _ValueT = _Tp, __enable_if_t<!__is_pair_v<__remove_cvref_t<_From> >, int> = 0>
++  template <class _To, class _From, class _ValueT = _Tp, __enable_if_t<!__is_tree_value_type<_ValueT>::value, int> = 0>
+   _LIBCPP_HIDE_FROM_ABI static void __assign_value(_To& __lhs, _From&& __rhs) {
+     __lhs = std::forward<_From>(__rhs);
+   }
+diff -ruN --strip-trailing-cr a/libcxx/test/std/containers/associative/set/set.cons/copy_assign.pass.cpp b/libcxx/test/std/containers/associative/set/set.cons/copy_assign.pass.cpp
+--- a/libcxx/test/std/containers/associative/set/set.cons/copy_assign.pass.cpp
++++ b/libcxx/test/std/containers/associative/set/set.cons/copy_assign.pass.cpp
+@@ -80,5 +80,15 @@
+     assert(*std::next(mo.begin(), 2) == 3);
+   }
  
- // Cannot have two declarations with initializers, that is a redefinition in
--// both C and C++.
-+// both C and C++. However, C++ does have a different definition of what makes
-+// a declaration a definition.
-+extern const int a;
-+const int a = 12; // Okay in C and C++
-diff -ruN --strip-trailing-cr a/mlir/lib/TableGen/Pattern.cpp b/mlir/lib/TableGen/Pattern.cpp
---- a/mlir/lib/TableGen/Pattern.cpp
-+++ b/mlir/lib/TableGen/Pattern.cpp
-@@ -304,8 +304,8 @@
-     assert(index < 0);
-     auto *operand = cast<NamedTypeConstraint *>(op->getArg(getArgIndex()));
-     if (operand->isOptional()) {
--      auto repl =
--          formatv(fmt, formatv("({0}.empty() ? Value() : *{0}.begin())", name));
-+      auto repl = formatv(
-+          fmt, formatv("({0}.empty() ? ::mlir::Value() : *{0}.begin())", name));
-       LLVM_DEBUG(dbgs() << repl << " (OptionalOperand)\n");
-       return std::string(repl);
++  { // Test with std::pair, since we have some special handling for pairs inside __tree
++    std::pair<int, int> arr[] = {
++        std::make_pair(1, 2), std::make_pair(2, 3), std::make_pair(3, 4), std::make_pair(4, 5)};
++    std::set<std::pair<int, int> > a(arr, arr + 4);
++    std::set<std::pair<int, int> > b;
++
++    b = a;
++    assert(a == b);
++  }
++
+   return 0;
+ }
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/Analysis/TargetTransformInfo.h b/llvm/include/llvm/Analysis/TargetTransformInfo.h
+--- a/llvm/include/llvm/Analysis/TargetTransformInfo.h
++++ b/llvm/include/llvm/Analysis/TargetTransformInfo.h
+@@ -680,9 +680,6 @@
+     /// If the value is true the peeling cost model can decide to peel only
+     /// some iterations and in this case it will set this to false.
+     bool PeelProfiledIterations;
+-
+-    /// Peel off the last PeelCount loop iterations.
+-    bool PeelLast;
+   };
+ 
+   /// Get target-customized preferences for the generic loop peeling
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/Transforms/Utils/LoopPeel.h b/llvm/include/llvm/Transforms/Utils/LoopPeel.h
+--- a/llvm/include/llvm/Transforms/Utils/LoopPeel.h
++++ b/llvm/include/llvm/Transforms/Utils/LoopPeel.h
+@@ -21,18 +21,11 @@
+ 
+ bool canPeel(const Loop *L);
+ 
+-/// Returns true if the last iteration of \p L can be peeled off. It makes sure
+-/// the loop exit condition can be adjusted when peeling and that the loop
+-/// executes at least 2 iterations.
+-bool canPeelLastIteration(const Loop &L, ScalarEvolution &SE);
+-
+ /// VMap is the value-map that maps instructions from the original loop to
+-/// instructions in the last peeled-off iteration. If \p PeelLast is true, peel
+-/// off the last \p PeelCount iterations from \p L (canPeelLastIteration must be
+-/// true for \p L), otherwise peel off the first \p PeelCount iterations.
+-bool peelLoop(Loop *L, unsigned PeelCount, bool PeelLast, LoopInfo *LI,
+-              ScalarEvolution *SE, DominatorTree &DT, AssumptionCache *AC,
+-              bool PreserveLCSSA, ValueToValueMapTy &VMap);
++/// instructions in the last peeled-off iteration.
++bool peelLoop(Loop *L, unsigned PeelCount, LoopInfo *LI, ScalarEvolution *SE,
++              DominatorTree &DT, AssumptionCache *AC, bool PreserveLCSSA,
++              ValueToValueMapTy &VMap);
+ 
+ TargetTransformInfo::PeelingPreferences
+ gatherPeelingPreferences(Loop *L, ScalarEvolution &SE,
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Scalar/LoopFuse.cpp b/llvm/lib/Transforms/Scalar/LoopFuse.cpp
+--- a/llvm/lib/Transforms/Scalar/LoopFuse.cpp
++++ b/llvm/lib/Transforms/Scalar/LoopFuse.cpp
+@@ -790,8 +790,7 @@
+                       << " iterations of the first loop. \n");
+ 
+     ValueToValueMapTy VMap;
+-    FC0.Peeled =
+-        peelLoop(FC0.L, PeelCount, false, &LI, &SE, DT, &AC, true, VMap);
++    FC0.Peeled = peelLoop(FC0.L, PeelCount, &LI, &SE, DT, &AC, true, VMap);
+     if (FC0.Peeled) {
+       LLVM_DEBUG(dbgs() << "Done Peeling\n");
+ 
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Scalar/LoopUnrollPass.cpp b/llvm/lib/Transforms/Scalar/LoopUnrollPass.cpp
+--- a/llvm/lib/Transforms/Scalar/LoopUnrollPass.cpp
++++ b/llvm/lib/Transforms/Scalar/LoopUnrollPass.cpp
+@@ -1314,8 +1314,7 @@
+     });
+ 
+     ValueToValueMapTy VMap;
+-    if (peelLoop(L, PP.PeelCount, PP.PeelLast, LI, &SE, DT, &AC, PreserveLCSSA,
+-                 VMap)) {
++    if (peelLoop(L, PP.PeelCount, LI, &SE, DT, &AC, PreserveLCSSA, VMap)) {
+       simplifyLoopAfterUnroll(L, true, LI, &SE, &DT, &AC, &TTI, nullptr);
+       // If the loop was peeled, we already "used up" the profile information
+       // we had, so we don't want to unroll or peel again.
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Utils/LoopPeel.cpp b/llvm/lib/Transforms/Utils/LoopPeel.cpp
+--- a/llvm/lib/Transforms/Utils/LoopPeel.cpp
++++ b/llvm/lib/Transforms/Utils/LoopPeel.cpp
+@@ -49,7 +49,6 @@
+ #define DEBUG_TYPE "loop-peel"
+ 
+ STATISTIC(NumPeeled, "Number of loops peeled");
+-STATISTIC(NumPeeledEnd, "Number of loops peeled from end");
+ 
+ static cl::opt<unsigned> UnrollPeelCount(
+     "unroll-peel-count", cl::Hidden,
+@@ -326,71 +325,19 @@
+   return 0;
+ }
+ 
+-bool llvm::canPeelLastIteration(const Loop &L, ScalarEvolution &SE) {
+-  const SCEV *BTC = SE.getBackedgeTakenCount(&L);
+-  Value *Inc;
+-  CmpPredicate Pred;
+-  BasicBlock *Succ1;
+-  BasicBlock *Succ2;
+-  // The loop must execute at least 2 iterations to guarantee that peeled
+-  // iteration executes.
+-  // TODO: Add checks during codegen.
+-  if (isa<SCEVCouldNotCompute>(BTC) ||
+-      !SE.isKnownPredicate(CmpInst::ICMP_UGT, BTC, SE.getZero(BTC->getType())))
+-    return false;
+-
+-  // Check if the exit condition of the loop can be adjusted by the peeling
+-  // codegen. For now, it must
+-  // * exit via the latch,
+-  // * the exit condition must be a NE/EQ compare of an induction with step
+-  // of 1.
+-  BasicBlock *Latch = L.getLoopLatch();
+-  return Latch && Latch == L.getExitingBlock() &&
+-         match(Latch->getTerminator(),
+-               m_Br(m_ICmp(Pred, m_Value(Inc), m_Value()), m_BasicBlock(Succ1),
+-                    m_BasicBlock(Succ2))) &&
+-         ((Pred == CmpInst::ICMP_EQ && Succ2 == L.getHeader()) ||
+-          (Pred == CmpInst::ICMP_NE && Succ1 == L.getHeader())) &&
+-         isa<SCEVAddRecExpr>(SE.getSCEV(Inc)) &&
+-         cast<SCEVAddRecExpr>(SE.getSCEV(Inc))->getStepRecurrence(SE)->isOne();
+-}
+-
+-/// Returns true if the last iteration can be peeled off and the condition (Pred
+-/// LeftAR, RightSCEV) is known at the last iteration and the inverse condition
+-/// is known at the second-to-last.
+-static bool shouldPeelLastIteration(Loop &L, CmpPredicate Pred,
+-                                    const SCEVAddRecExpr *LeftAR,
+-                                    const SCEV *RightSCEV,
+-                                    ScalarEvolution &SE) {
+-  if (!canPeelLastIteration(L, SE))
+-    return false;
+-
+-  const SCEV *BTC = SE.getBackedgeTakenCount(&L);
+-  const SCEV *ValAtLastIter = LeftAR->evaluateAtIteration(BTC, SE);
+-  const SCEV *ValAtSecondToLastIter = LeftAR->evaluateAtIteration(
+-      SE.getMinusSCEV(BTC, SE.getOne(BTC->getType())), SE);
+-
+-  return SE.isKnownPredicate(ICmpInst::getInversePredicate(Pred), ValAtLastIter,
+-                             RightSCEV) &&
+-         SE.isKnownPredicate(Pred, ValAtSecondToLastIter, RightSCEV);
+-}
+-
+-// Return the number of iterations to peel off from the beginning and end of the
+-// loop respectively, that make conditions in the body true/false. For example,
+-// if we peel 2 iterations off the loop below, the condition i < 2 can be
+-// evaluated at compile time.
+-//
++// Return the number of iterations to peel off that make conditions in the
++// body true/false. For example, if we peel 2 iterations off the loop below,
++// the condition i < 2 can be evaluated at compile time.
+ //  for (i = 0; i < n; i++)
+ //    if (i < 2)
+ //      ..
+ //    else
+ //      ..
+ //   }
+-static std::pair<unsigned, unsigned>
+-countToEliminateCompares(Loop &L, unsigned MaxPeelCount, ScalarEvolution &SE) {
++static unsigned countToEliminateCompares(Loop &L, unsigned MaxPeelCount,
++                                         ScalarEvolution &SE) {
+   assert(L.isLoopSimplifyForm() && "Loop needs to be in loop simplify form");
+   unsigned DesiredPeelCount = 0;
+-  unsigned DesiredPeelCountLast = 0;
+ 
+   // Do not peel the entire loop.
+   const SCEV *BE = SE.getConstantMaxBackedgeTakenCount(&L);
+@@ -474,11 +421,8 @@
+ 
+     const SCEV *Step = LeftAR->getStepRecurrence(SE);
+     if (!PeelWhilePredicateIsKnown(NewPeelCount, IterVal, RightSCEV, Step,
+-                                   Pred)) {
+-      if (shouldPeelLastIteration(L, Pred, LeftAR, RightSCEV, SE))
+-        DesiredPeelCountLast = 1;
++                                   Pred))
+       return;
+-    }
+ 
+     // However, for equality comparisons, that isn't always sufficient to
+     // eliminate the comparsion in loop body, we may need to peel one more
+@@ -495,7 +439,6 @@
      }
+ 
+     DesiredPeelCount = std::max(DesiredPeelCount, NewPeelCount);
+-    DesiredPeelCountLast = std::max(DesiredPeelCountLast, NewPeelCount);
+   };
+ 
+   auto ComputePeelCountMinMax = [&](MinMaxIntrinsic *MinMax) {
+@@ -557,7 +500,7 @@
+     ComputePeelCount(BI->getCondition(), 0);
+   }
+ 
+-  return {DesiredPeelCount, DesiredPeelCountLast};
++  return DesiredPeelCount;
+ }
+ 
+ /// This "heuristic" exactly matches implicit behavior which used to exist
+@@ -596,7 +539,6 @@
+   // TTI.getPeelingPreferences or by the flag -unroll-peel-count.
+   unsigned TargetPeelCount = PP.PeelCount;
+   PP.PeelCount = 0;
+-  PP.PeelLast = false;
+   if (!canPeel(L))
+     return;
+ 
+@@ -651,9 +593,8 @@
+       DesiredPeelCount = std::max(DesiredPeelCount, *NumPeels);
+   }
+ 
+-  const auto &[CountToEliminateCmps, CountToEliminateCmpsLast] =
+-      countToEliminateCompares(*L, MaxPeelCount, SE);
+-  DesiredPeelCount = std::max(DesiredPeelCount, CountToEliminateCmps);
++  DesiredPeelCount = std::max(DesiredPeelCount,
++                              countToEliminateCompares(*L, MaxPeelCount, SE));
+ 
+   if (DesiredPeelCount == 0)
+     DesiredPeelCount = peelToTurnInvariantLoadsDerefencebale(*L, DT, AC);
+@@ -668,23 +609,6 @@
+                         << " some Phis into invariants.\n");
+       PP.PeelCount = DesiredPeelCount;
+       PP.PeelProfiledIterations = false;
+-      PP.PeelLast = false;
+-      return;
+-    }
+-  }
+-
+-  if (CountToEliminateCmpsLast > 0) {
+-    unsigned DesiredPeelCountLast =
+-        std::min(CountToEliminateCmpsLast, MaxPeelCount);
+-    // Consider max peel count limitation.
+-    assert(DesiredPeelCountLast > 0 && "Wrong loop size estimation?");
+-    if (DesiredPeelCountLast + AlreadyPeeled <= UnrollPeelMaxCount) {
+-      LLVM_DEBUG(dbgs() << "Peel " << DesiredPeelCount
+-                        << " iteration(s) to turn"
+-                        << " some Phis into invariants.\n");
+-      PP.PeelCount = DesiredPeelCountLast;
+-      PP.PeelProfiledIterations = false;
+-      PP.PeelLast = true;
+       return;
+     }
+   }
+@@ -809,7 +733,6 @@
+ /// InsertBot.
+ /// \param IterNumber The serial number of the iteration currently being
+ /// peeled off.
+-/// \param PeelLast Peel off the last iterations from \p L.
+ /// \param ExitEdges The exit edges of the original loop.
+ /// \param[out] NewBlocks A list of the blocks in the newly created clone
+ /// \param[out] VMap The value map between the loop and the new clone.
+@@ -817,8 +740,7 @@
+ /// \param LVMap A value-map that maps instructions from the original loop to
+ /// instructions in the last peeled-off iteration.
+ static void cloneLoopBlocks(
+-    Loop *L, unsigned IterNumber, bool PeelLast, BasicBlock *InsertTop,
+-    BasicBlock *InsertBot,
++    Loop *L, unsigned IterNumber, BasicBlock *InsertTop, BasicBlock *InsertBot,
+     SmallVectorImpl<std::pair<BasicBlock *, BasicBlock *>> &ExitEdges,
+     SmallVectorImpl<BasicBlock *> &NewBlocks, LoopBlocksDFS &LoopBlocks,
+     ValueToValueMapTy &VMap, ValueToValueMapTy &LVMap, DominatorTree *DT,
+@@ -882,26 +804,16 @@
+ 
+   // Similarly, for the latch:
+   // The original exiting edge is still hooked up to the loop exit.
++  // The backedge now goes to the "bottom", which is either the loop's real
++  // header (for the last peeled iteration) or the copied header of the next
++  // iteration (for every other iteration)
+   BasicBlock *NewLatch = cast<BasicBlock>(VMap[Latch]);
+-  if (PeelLast) {
+-    // This is the last iteration and we definitely will go to the exit. Just
+-    // set both successors to InsertBot and let the branch be simplified later.
+-    assert(IterNumber == 0 && "Only peeling a single iteration implemented.");
+-    auto *LatchTerm = cast<BranchInst>(NewLatch->getTerminator());
+-    LatchTerm->setSuccessor(0, InsertBot);
+-    LatchTerm->setSuccessor(1, InsertBot);
+-  } else {
+-    auto *LatchTerm = cast<Instruction>(NewLatch->getTerminator());
+-    // The backedge now goes to the "bottom", which is either the loop's real
+-    // header (for the last peeled iteration) or the copied header of the next
+-    // iteration (for every other iteration)
+-    for (unsigned idx = 0, e = LatchTerm->getNumSuccessors(); idx < e; ++idx) {
+-      if (LatchTerm->getSuccessor(idx) == Header) {
+-        LatchTerm->setSuccessor(idx, InsertBot);
+-        break;
+-      }
++  auto *LatchTerm = cast<Instruction>(NewLatch->getTerminator());
++  for (unsigned idx = 0, e = LatchTerm->getNumSuccessors(); idx < e; ++idx)
++    if (LatchTerm->getSuccessor(idx) == Header) {
++      LatchTerm->setSuccessor(idx, InsertBot);
++      break;
+     }
+-  }
+   if (DT)
+     DT->changeImmediateDominator(InsertBot, NewLatch);
+ 
+@@ -909,33 +821,23 @@
+   // that pick an incoming value from either the preheader, or the previous
+   // loop iteration. Since this copy is no longer part of the loop, we
+   // resolve this statically:
+-  if (PeelLast) {
+-    // For the last iteration, we use the value from the latch of the original
+-    // loop directly.
+-    for (BasicBlock::iterator I = Header->begin(); isa<PHINode>(I); ++I) {
+-      PHINode *NewPHI = cast<PHINode>(VMap[&*I]);
+-      VMap[&*I] = NewPHI->getIncomingValueForBlock(Latch);
+-      NewPHI->eraseFromParent();
+-    }
+-  } else {
+-    // For the first iteration, we use the value from the preheader directly.
+-    // For any other iteration, we replace the phi with the value generated by
+-    // the immediately preceding clone of the loop body (which represents
+-    // the previous iteration).
+-    for (BasicBlock::iterator I = Header->begin(); isa<PHINode>(I); ++I) {
+-      PHINode *NewPHI = cast<PHINode>(VMap[&*I]);
+-      if (IterNumber == 0) {
+-        VMap[&*I] = NewPHI->getIncomingValueForBlock(PreHeader);
+-      } else {
+-        Value *LatchVal = NewPHI->getIncomingValueForBlock(Latch);
+-        Instruction *LatchInst = dyn_cast<Instruction>(LatchVal);
+-        if (LatchInst && L->contains(LatchInst))
+-          VMap[&*I] = LVMap[LatchInst];
+-        else
+-          VMap[&*I] = LatchVal;
+-      }
+-      NewPHI->eraseFromParent();
++  // For the first iteration, we use the value from the preheader directly.
++  // For any other iteration, we replace the phi with the value generated by
++  // the immediately preceding clone of the loop body (which represents
++  // the previous iteration).
++  for (BasicBlock::iterator I = Header->begin(); isa<PHINode>(I); ++I) {
++    PHINode *NewPHI = cast<PHINode>(VMap[&*I]);
++    if (IterNumber == 0) {
++      VMap[&*I] = NewPHI->getIncomingValueForBlock(PreHeader);
++    } else {
++      Value *LatchVal = NewPHI->getIncomingValueForBlock(Latch);
++      Instruction *LatchInst = dyn_cast<Instruction>(LatchVal);
++      if (LatchInst && L->contains(LatchInst))
++        VMap[&*I] = LVMap[LatchInst];
++      else
++        VMap[&*I] = LatchVal;
+     }
++    NewPHI->eraseFromParent();
+   }
+ 
+   // Fix up the outgoing values - we need to add a value for the iteration
+@@ -1003,14 +905,11 @@
+ /// this provides a benefit, since the peeled off iterations, which account
+ /// for the bulk of dynamic execution, can be further simplified by scalar
+ /// optimizations.
+-bool llvm::peelLoop(Loop *L, unsigned PeelCount, bool PeelLast, LoopInfo *LI,
++bool llvm::peelLoop(Loop *L, unsigned PeelCount, LoopInfo *LI,
+                     ScalarEvolution *SE, DominatorTree &DT, AssumptionCache *AC,
+                     bool PreserveLCSSA, ValueToValueMapTy &LVMap) {
+   assert(PeelCount > 0 && "Attempt to peel out zero iterations?");
+   assert(canPeel(L) && "Attempt to peel a loop which is not peelable?");
+-  assert((!PeelLast || (canPeelLastIteration(*L, *SE) && PeelCount == 1)) &&
+-         "when peeling the last iteration, the loop must be supported and can "
+-         "only peel a single iteration");
+ 
+   LoopBlocksDFS LoopBlocks(L);
+   LoopBlocks.perform(LI);
+@@ -1045,99 +944,60 @@
+ 
+   Function *F = Header->getParent();
+ 
+-  // Set up all the necessary basic blocks.
+-  BasicBlock *InsertTop;
+-  BasicBlock *InsertBot;
+-  BasicBlock *NewPreHeader;
+-  DenseMap<Instruction *, Value *> ExitValues;
+-  if (PeelLast) {
+-    // It is convenient to split the single exit block from the latch the
+-    // into 3 parts - two blocks to anchor the peeled copy of the loop body,
+-    // and a new final  exit block.
+-
+-    // Peeling the last iteration transforms.
+-    //
+-    // PreHeader:
+-    // ...
+-    // Header:
+-    //   LoopBody
+-    //   If (cond) goto Header
+-    // Exit:
+-    //
+-    // into
+-    //
+-    // Header:
+-    //  LoopBody
+-    //  If (cond) goto Header
+-    // InsertTop:
+-    //   LoopBody
+-    //   If (!cond) goto InsertBot
+-    // InsertBot:
+-    // Exit:
+-    // ...
+-    BasicBlock *Exit = L->getExitBlock();
+-    for (PHINode &P : Exit->phis())
+-      ExitValues[&P] = P.getIncomingValueForBlock(Latch);
+-
+-    InsertTop = SplitEdge(Latch, Exit, &DT, LI);
+-    InsertBot = SplitBlock(InsertTop, InsertTop->getTerminator(), &DT, LI);
+-
+-    InsertTop->setName(Exit->getName() + ".peel.begin");
+-    InsertBot->setName(Exit->getName() + ".peel.next");
+-  } else {
+-    // It is convenient to split the preheader into 3 parts - two blocks to
+-    // anchor the peeled copy of the loop body, and a new preheader for the
+-    // "real" loop.
+-
+-    // Peeling the first iteration transforms.
+-    //
+-    // PreHeader:
+-    // ...
+-    // Header:
+-    //   LoopBody
+-    //   If (cond) goto Header
+-    // Exit:
+-    //
+-    // into
+-    //
+-    // InsertTop:
+-    //   LoopBody
+-    //   If (!cond) goto Exit
+-    // InsertBot:
+-    // NewPreHeader:
+-    // ...
+-    // Header:
+-    //  LoopBody
+-    //  If (cond) goto Header
+-    // Exit:
+-    //
+-    // Each following iteration will split the current bottom anchor in two,
+-    // and put the new copy of the loop body between these two blocks. That
+-    // is, after peeling another iteration from the example above, we'll
+-    // split InsertBot, and get:
+-    //
+-    // InsertTop:
+-    //   LoopBody
+-    //   If (!cond) goto Exit
+-    // InsertBot:
+-    //   LoopBody
+-    //   If (!cond) goto Exit
+-    // InsertBot.next:
+-    // NewPreHeader:
+-    // ...
+-    // Header:
+-    //  LoopBody
+-    //  If (cond) goto Header
+-    // Exit:
+-    //
+-    InsertTop = SplitEdge(PreHeader, Header, &DT, LI);
+-    InsertBot = SplitBlock(InsertTop, InsertTop->getTerminator(), &DT, LI);
+-    NewPreHeader = SplitBlock(InsertBot, InsertBot->getTerminator(), &DT, LI);
+-
+-    InsertTop->setName(Header->getName() + ".peel.begin");
+-    InsertBot->setName(Header->getName() + ".peel.next");
+-    NewPreHeader->setName(PreHeader->getName() + ".peel.newph");
+-  }
++  // Set up all the necessary basic blocks. It is convenient to split the
++  // preheader into 3 parts - two blocks to anchor the peeled copy of the loop
++  // body, and a new preheader for the "real" loop.
++
++  // Peeling the first iteration transforms.
++  //
++  // PreHeader:
++  // ...
++  // Header:
++  //   LoopBody
++  //   If (cond) goto Header
++  // Exit:
++  //
++  // into
++  //
++  // InsertTop:
++  //   LoopBody
++  //   If (!cond) goto Exit
++  // InsertBot:
++  // NewPreHeader:
++  // ...
++  // Header:
++  //  LoopBody
++  //  If (cond) goto Header
++  // Exit:
++  //
++  // Each following iteration will split the current bottom anchor in two,
++  // and put the new copy of the loop body between these two blocks. That is,
++  // after peeling another iteration from the example above, we'll split
++  // InsertBot, and get:
++  //
++  // InsertTop:
++  //   LoopBody
++  //   If (!cond) goto Exit
++  // InsertBot:
++  //   LoopBody
++  //   If (!cond) goto Exit
++  // InsertBot.next:
++  // NewPreHeader:
++  // ...
++  // Header:
++  //  LoopBody
++  //  If (cond) goto Header
++  // Exit:
++
++  BasicBlock *InsertTop = SplitEdge(PreHeader, Header, &DT, LI);
++  BasicBlock *InsertBot =
++      SplitBlock(InsertTop, InsertTop->getTerminator(), &DT, LI);
++  BasicBlock *NewPreHeader =
++      SplitBlock(InsertBot, InsertBot->getTerminator(), &DT, LI);
++
++  InsertTop->setName(Header->getName() + ".peel.begin");
++  InsertBot->setName(Header->getName() + ".peel.next");
++  NewPreHeader->setName(PreHeader->getName() + ".peel.newph");
+ 
+   Instruction *LatchTerm =
+       cast<Instruction>(cast<BasicBlock>(Latch)->getTerminator());
+@@ -1153,40 +1013,23 @@
+   identifyNoAliasScopesToClone(L->getBlocks(), LoopLocalNoAliasDeclScopes);
+ 
+   // For each peeled-off iteration, make a copy of the loop.
+-  ValueToValueMapTy VMap;
+   for (unsigned Iter = 0; Iter < PeelCount; ++Iter) {
+     SmallVector<BasicBlock *, 8> NewBlocks;
++    ValueToValueMapTy VMap;
+ 
+-    cloneLoopBlocks(L, Iter, PeelLast, InsertTop, InsertBot, ExitEdges,
+-                    NewBlocks, LoopBlocks, VMap, LVMap, &DT, LI,
++    cloneLoopBlocks(L, Iter, InsertTop, InsertBot, ExitEdges, NewBlocks,
++                    LoopBlocks, VMap, LVMap, &DT, LI,
+                     LoopLocalNoAliasDeclScopes, *SE);
+ 
+     // Remap to use values from the current iteration instead of the
+     // previous one.
+     remapInstructionsInBlocks(NewBlocks, VMap);
+ 
+-    if (Iter == 0) {
+-      if (PeelLast) {
+-        // Adjust the exit condition so the loop exits one iteration early.
+-        // For now we simply subtract one form the second operand of the
+-        // exit condition. This relies on the peel count computation to
+-        // check that this is actually legal. In particular, it ensures that
+-        // the first operand of the compare is an AddRec with step 1 and we
+-        // execute more than one iteration.
+-        auto *Cmp =
+-            cast<ICmpInst>(L->getLoopLatch()->getTerminator()->getOperand(0));
+-        IRBuilder B(Cmp);
+-        Cmp->setOperand(
+-            1, B.CreateSub(Cmp->getOperand(1),
+-                           ConstantInt::get(Cmp->getOperand(1)->getType(), 1)));
+-      } else {
+-        // Update IDoms of the blocks reachable through exits.
+-        for (auto BBIDom : NonLoopBlocksIDom)
+-          DT.changeImmediateDominator(BBIDom.first,
+-                                      cast<BasicBlock>(LVMap[BBIDom.second]));
+-      }
+-    }
+-
++    // Update IDoms of the blocks reachable through exits.
++    if (Iter == 0)
++      for (auto BBIDom : NonLoopBlocksIDom)
++        DT.changeImmediateDominator(BBIDom.first,
++                                     cast<BasicBlock>(LVMap[BBIDom.second]));
+ #ifdef EXPENSIVE_CHECKS
+     assert(DT.verify(DominatorTree::VerificationLevel::Fast));
+ #endif
+@@ -1209,24 +1052,16 @@
+               F->end());
+   }
+ 
+-  if (PeelLast) {
+-    // Now adjust users of the original exit values by replacing them with the
+-    // exit value from the peeled iteration.
+-    for (const auto &[P, E] : ExitValues)
+-      P->replaceAllUsesWith(VMap.lookup(E));
+-    formLCSSA(*L, DT, LI, SE);
+-  } else {
+-    // Now adjust the phi nodes in the loop header to get their initial values
+-    // from the last peeled-off iteration instead of the preheader.
+-    for (BasicBlock::iterator I = Header->begin(); isa<PHINode>(I); ++I) {
+-      PHINode *PHI = cast<PHINode>(I);
+-      Value *NewVal = PHI->getIncomingValueForBlock(Latch);
+-      Instruction *LatchInst = dyn_cast<Instruction>(NewVal);
+-      if (LatchInst && L->contains(LatchInst))
+-        NewVal = LVMap[LatchInst];
++  // Now adjust the phi nodes in the loop header to get their initial values
++  // from the last peeled-off iteration instead of the preheader.
++  for (BasicBlock::iterator I = Header->begin(); isa<PHINode>(I); ++I) {
++    PHINode *PHI = cast<PHINode>(I);
++    Value *NewVal = PHI->getIncomingValueForBlock(Latch);
++    Instruction *LatchInst = dyn_cast<Instruction>(NewVal);
++    if (LatchInst && L->contains(LatchInst))
++      NewVal = LVMap[LatchInst];
+ 
+-      PHI->setIncomingValueForBlock(NewPreHeader, NewVal);
+-    }
++    PHI->setIncomingValueForBlock(NewPreHeader, NewVal);
+   }
+ 
+   for (const auto &[Term, Info] : Weights) {
+@@ -1255,7 +1090,6 @@
+   simplifyLoop(L, &DT, LI, SE, AC, nullptr, PreserveLCSSA);
+ 
+   NumPeeled++;
+-  NumPeeledEnd += PeelLast;
+ 
+   return true;
+ }
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopUnroll/peel-last-iteration.ll b/llvm/test/Transforms/LoopUnroll/peel-last-iteration.ll
+--- a/llvm/test/Transforms/LoopUnroll/peel-last-iteration.ll
++++ b/llvm/test/Transforms/LoopUnroll/peel-last-iteration.ll
+@@ -6,28 +6,16 @@
+ ; CHECK-NEXT:  [[ENTRY:.*]]:
+ ; CHECK-NEXT:    br label %[[LOOP:.*]]
+ ; CHECK:       [[LOOP]]:
+-; CHECK-NEXT:    [[IV1:%.*]] = phi i64 [ 0, %[[ENTRY]] ], [ [[IV_NEXT1:%.*]], %[[LOOP]] ]
+-; CHECK-NEXT:    call void @foo(i32 20)
+-; CHECK-NEXT:    [[IV_NEXT1]] = add nuw nsw i64 [[IV1]], 1
+-; CHECK-NEXT:    [[EC1:%.*]] = icmp ne i64 [[IV_NEXT1]], 63
+-; CHECK-NEXT:    br i1 [[EC1]], label %[[LOOP]], label %[[EXIT_PEEL_BEGIN:.*]], !llvm.loop [[LOOP0:![0-9]+]]
+-; CHECK:       [[EXIT_PEEL_BEGIN]]:
+-; CHECK-NEXT:    [[IV:%.*]] = phi i64 [ [[IV_NEXT1]], %[[LOOP]] ]
+-; CHECK-NEXT:    [[IV_LCSSA:%.*]] = phi i64 [ [[IV1]], %[[LOOP]] ]
+-; CHECK-NEXT:    br label %[[LOOP_PEEL:.*]]
+-; CHECK:       [[LOOP_PEEL]]:
++; CHECK-NEXT:    [[IV:%.*]] = phi i64 [ 0, %[[ENTRY]] ], [ [[IV_NEXT:%.*]], %[[LOOP]] ]
+ ; CHECK-NEXT:    [[CMP18_NOT:%.*]] = icmp eq i64 [[IV]], 63
+ ; CHECK-NEXT:    [[COND:%.*]] = select i1 [[CMP18_NOT]], i32 10, i32 20
+ ; CHECK-NEXT:    call void @foo(i32 [[COND]])
+-; CHECK-NEXT:    [[IV_NEXT:%.*]] = add i64 [[IV]], 1
++; CHECK-NEXT:    [[IV_NEXT]] = add i64 [[IV]], 1
+ ; CHECK-NEXT:    [[EC:%.*]] = icmp ne i64 [[IV_NEXT]], 64
+-; CHECK-NEXT:    br i1 [[EC]], label %[[EXIT_PEEL_NEXT:.*]], label %[[EXIT_PEEL_NEXT]]
+-; CHECK:       [[EXIT_PEEL_NEXT]]:
+-; CHECK-NEXT:    br label %[[LOOP_PEEL_NEXT:.*]]
+-; CHECK:       [[LOOP_PEEL_NEXT]]:
+-; CHECK-NEXT:    br label %[[EXIT:.*]]
++; CHECK-NEXT:    br i1 [[EC]], label %[[LOOP]], label %[[EXIT:.*]]
+ ; CHECK:       [[EXIT]]:
+-; CHECK-NEXT:    ret i64 [[IV]]
++; CHECK-NEXT:    [[IV_LCSSA:%.*]] = phi i64 [ [[IV]], %[[LOOP]] ]
++; CHECK-NEXT:    ret i64 [[IV_LCSSA]]
+ ;
+ entry:
+   br label %loop
+@@ -85,28 +73,16 @@
+ ; CHECK-NEXT:  [[ENTRY:.*]]:
+ ; CHECK-NEXT:    br label %[[LOOP:.*]]
+ ; CHECK:       [[LOOP]]:
+-; CHECK-NEXT:    [[IV:%.*]] = phi i64 [ 0, %[[ENTRY]] ], [ [[IV_LCSSA:%.*]], %[[LOOP]] ]
+-; CHECK-NEXT:    call void @foo(i32 20)
+-; CHECK-NEXT:    [[IV_LCSSA]] = add nuw nsw i64 [[IV]], 1
+-; CHECK-NEXT:    [[CMP_PEEL:%.*]] = icmp eq i64 [[IV_LCSSA]], 63
+-; CHECK-NEXT:    br i1 [[CMP_PEEL]], label %[[EXIT_PEEL_BEGIN:.*]], label %[[LOOP]], !llvm.loop [[LOOP2:![0-9]+]]
+-; CHECK:       [[EXIT_PEEL_BEGIN]]:
+-; CHECK-NEXT:    [[IV_NEXT_LCSSA:%.*]] = phi i64 [ [[IV_LCSSA]], %[[LOOP]] ]
+-; CHECK-NEXT:    [[IV_LCSSA1:%.*]] = phi i64 [ [[IV]], %[[LOOP]] ]
+-; CHECK-NEXT:    br label %[[LOOP_PEEL:.*]]
+-; CHECK:       [[LOOP_PEEL]]:
+-; CHECK-NEXT:    [[CMP_PEEL1:%.*]] = icmp eq i64 [[IV_NEXT_LCSSA]], 63
+-; CHECK-NEXT:    [[COND:%.*]] = select i1 [[CMP_PEEL1]], i32 10, i32 20
++; CHECK-NEXT:    [[IV:%.*]] = phi i64 [ 0, %[[ENTRY]] ], [ [[IV_NEXT:%.*]], %[[LOOP]] ]
++; CHECK-NEXT:    [[CMP:%.*]] = icmp eq i64 [[IV]], 63
++; CHECK-NEXT:    [[COND:%.*]] = select i1 [[CMP]], i32 10, i32 20
+ ; CHECK-NEXT:    call void @foo(i32 [[COND]])
+-; CHECK-NEXT:    [[IV_NEXT:%.*]] = add i64 [[IV_NEXT_LCSSA]], 1
++; CHECK-NEXT:    [[IV_NEXT]] = add i64 [[IV]], 1
+ ; CHECK-NEXT:    [[EC:%.*]] = icmp eq i64 [[IV_NEXT]], 64
+-; CHECK-NEXT:    br i1 [[EC]], label %[[EXIT_PEEL_NEXT:.*]], label %[[EXIT_PEEL_NEXT]]
+-; CHECK:       [[EXIT_PEEL_NEXT]]:
+-; CHECK-NEXT:    br label %[[LOOP_PEEL_NEXT:.*]]
+-; CHECK:       [[LOOP_PEEL_NEXT]]:
+-; CHECK-NEXT:    br label %[[EXIT:.*]]
++; CHECK-NEXT:    br i1 [[EC]], label %[[EXIT:.*]], label %[[LOOP]]
+ ; CHECK:       [[EXIT]]:
+-; CHECK-NEXT:    ret i64 [[IV_NEXT_LCSSA]]
++; CHECK-NEXT:    [[IV_LCSSA:%.*]] = phi i64 [ [[IV]], %[[LOOP]] ]
++; CHECK-NEXT:    ret i64 [[IV_LCSSA]]
+ ;
+ entry:
+   br label %loop
+@@ -165,32 +141,20 @@
+ ; CHECK-NEXT:    br label %[[LOOP:.*]]
+ ; CHECK:       [[LOOP]]:
+ ; CHECK-NEXT:    [[IV:%.*]] = phi i64 [ 0, %[[OUTER_HEADER]] ], [ [[IV_NEXT:%.*]], %[[LOOP]] ]
+-; CHECK-NEXT:    call void @foo(i32 20)
+-; CHECK-NEXT:    [[IV_NEXT]] = add nuw nsw i64 [[IV]], 1
+-; CHECK-NEXT:    [[EC:%.*]] = icmp ne i64 [[IV_NEXT]], 63
+-; CHECK-NEXT:    br i1 [[EC]], label %[[LOOP]], label %[[OUTER_LATCH_PEEL_BEGIN:.*]], !llvm.loop [[LOOP3:![0-9]+]]
+-; CHECK:       [[OUTER_LATCH_PEEL_BEGIN]]:
+-; CHECK-NEXT:    [[IV_NEXT_LCSSA:%.*]] = phi i64 [ [[IV_NEXT]], %[[LOOP]] ]
+-; CHECK-NEXT:    [[IV_LCSSA:%.*]] = phi i64 [ [[IV]], %[[LOOP]] ]
+-; CHECK-NEXT:    br label %[[LOOP_PEEL:.*]]
+-; CHECK:       [[LOOP_PEEL]]:
+-; CHECK-NEXT:    [[CMP_PEEL:%.*]] = icmp eq i64 [[IV_NEXT_LCSSA]], 63
+-; CHECK-NEXT:    [[COND_PEEL:%.*]] = select i1 [[CMP_PEEL]], i32 10, i32 20
+-; CHECK-NEXT:    call void @foo(i32 [[COND_PEEL]])
+-; CHECK-NEXT:    [[IV_NEXT_PEEL:%.*]] = add i64 [[IV_NEXT_LCSSA]], 1
+-; CHECK-NEXT:    [[EC_PEEL:%.*]] = icmp ne i64 [[IV_NEXT_PEEL]], 64
+-; CHECK-NEXT:    br i1 [[EC_PEEL]], label %[[OUTER_LATCH_PEEL_NEXT:.*]], label %[[OUTER_LATCH_PEEL_NEXT]]
+-; CHECK:       [[OUTER_LATCH_PEEL_NEXT]]:
+-; CHECK-NEXT:    br label %[[LOOP_PEEL_NEXT:.*]]
+-; CHECK:       [[LOOP_PEEL_NEXT]]:
+-; CHECK-NEXT:    br label %[[OUTER_LATCH]]
++; CHECK-NEXT:    [[CMP:%.*]] = icmp eq i64 [[IV]], 63
++; CHECK-NEXT:    [[COND:%.*]] = select i1 [[CMP]], i32 10, i32 20
++; CHECK-NEXT:    call void @foo(i32 [[COND]])
++; CHECK-NEXT:    [[IV_NEXT]] = add i64 [[IV]], 1
++; CHECK-NEXT:    [[EC:%.*]] = icmp ne i64 [[IV_NEXT]], 64
++; CHECK-NEXT:    br i1 [[EC]], label %[[LOOP]], label %[[OUTER_LATCH]]
+ ; CHECK:       [[OUTER_LATCH]]:
++; CHECK-NEXT:    [[IV_LCSSA:%.*]] = phi i64 [ [[IV]], %[[LOOP]] ]
+ ; CHECK-NEXT:    call void @foo(i32 1)
+ ; CHECK-NEXT:    [[OUTER_IV_NEXT]] = add i64 [[OUTER_IV]], 1
+ ; CHECK-NEXT:    [[OUTER_EC:%.*]] = icmp ne i64 [[OUTER_IV_NEXT]], 100
+ ; CHECK-NEXT:    br i1 [[OUTER_EC]], label %[[EXIT:.*]], label %[[OUTER_HEADER]]
+ ; CHECK:       [[EXIT]]:
+-; CHECK-NEXT:    [[IV_LCSSA_LCSSA:%.*]] = phi i64 [ [[IV_NEXT_LCSSA]], %[[OUTER_LATCH]] ]
++; CHECK-NEXT:    [[IV_LCSSA_LCSSA:%.*]] = phi i64 [ [[IV_LCSSA]], %[[OUTER_LATCH]] ]
+ ; CHECK-NEXT:    ret i64 [[IV_LCSSA_LCSSA]]
+ ;
+ entry:
+@@ -225,39 +189,21 @@
+ ; CHECK-NEXT:    br label %[[LOOP:.*]]
+ ; CHECK:       [[LOOP]]:
+ ; CHECK-NEXT:    [[IV:%.*]] = phi i64 [ 0, %[[ENTRY]] ], [ [[IV_NEXT:%.*]], %[[LATCH:.*]] ]
+-; CHECK-NEXT:    call void @foo(i32 20)
++; CHECK-NEXT:    [[CMP:%.*]] = icmp eq i64 [[IV]], 63
++; CHECK-NEXT:    [[COND:%.*]] = select i1 [[CMP]], i32 10, i32 20
++; CHECK-NEXT:    call void @foo(i32 [[COND]])
+ ; CHECK-NEXT:    [[C:%.*]] = call i1 @cond()
+ ; CHECK-NEXT:    br i1 [[C]], label %[[THEN:.*]], label %[[LATCH]]
+ ; CHECK:       [[THEN]]:
+-; CHECK-NEXT:    call void @foo(i32 20)
++; CHECK-NEXT:    call void @foo(i32 [[COND]])
+ ; CHECK-NEXT:    br label %[[LATCH]]
+ ; CHECK:       [[LATCH]]:
+-; CHECK-NEXT:    [[IV_NEXT]] = add nuw nsw i64 [[IV]], 1
+-; CHECK-NEXT:    [[EC:%.*]] = icmp ne i64 [[IV_NEXT]], 63
+-; CHECK-NEXT:    br i1 [[EC]], label %[[LOOP]], label %[[EXIT_PEEL_BEGIN:.*]], !llvm.loop [[LOOP4:![0-9]+]]
+-; CHECK:       [[EXIT_PEEL_BEGIN]]:
+-; CHECK-NEXT:    [[IV_NEXT_LCSSA:%.*]] = phi i64 [ [[IV_NEXT]], %[[LATCH]] ]
+-; CHECK-NEXT:    [[IV_LCSSA:%.*]] = phi i64 [ [[IV]], %[[LATCH]] ]
+-; CHECK-NEXT:    br label %[[LOOP_PEEL:.*]]
+-; CHECK:       [[LOOP_PEEL]]:
+-; CHECK-NEXT:    [[CMP_PEEL:%.*]] = icmp eq i64 [[IV_NEXT_LCSSA]], 63
+-; CHECK-NEXT:    [[COND_PEEL:%.*]] = select i1 [[CMP_PEEL]], i32 10, i32 20
+-; CHECK-NEXT:    call void @foo(i32 [[COND_PEEL]])
+-; CHECK-NEXT:    [[C_PEEL:%.*]] = call i1 @cond()
+-; CHECK-NEXT:    br i1 [[C_PEEL]], label %[[THEN_PEEL:.*]], label %[[LATCH_PEEL:.*]]
+-; CHECK:       [[THEN_PEEL]]:
+-; CHECK-NEXT:    call void @foo(i32 [[COND_PEEL]])
+-; CHECK-NEXT:    br label %[[LATCH_PEEL]]
+-; CHECK:       [[LATCH_PEEL]]:
+-; CHECK-NEXT:    [[IV_NEXT_PEEL:%.*]] = add i64 [[IV_NEXT_LCSSA]], 1
+-; CHECK-NEXT:    [[EC_PEEL:%.*]] = icmp ne i64 [[IV_NEXT_PEEL]], 64
+-; CHECK-NEXT:    br i1 [[EC_PEEL]], label %[[EXIT_PEEL_NEXT:.*]], label %[[EXIT_PEEL_NEXT]]
+-; CHECK:       [[EXIT_PEEL_NEXT]]:
+-; CHECK-NEXT:    br label %[[LOOP_PEEL_NEXT:.*]]
+-; CHECK:       [[LOOP_PEEL_NEXT]]:
+-; CHECK-NEXT:    br label %[[EXIT:.*]]
++; CHECK-NEXT:    [[IV_NEXT]] = add i64 [[IV]], 1
++; CHECK-NEXT:    [[EC:%.*]] = icmp ne i64 [[IV_NEXT]], 64
++; CHECK-NEXT:    br i1 [[EC]], label %[[LOOP]], label %[[EXIT:.*]]
+ ; CHECK:       [[EXIT]]:
+-; CHECK-NEXT:    ret i64 [[IV_NEXT_LCSSA]]
++; CHECK-NEXT:    [[IV_LCSSA:%.*]] = phi i64 [ [[IV]], %[[LATCH]] ]
++; CHECK-NEXT:    ret i64 [[IV_LCSSA]]
+ ;
+ entry:
+   br label %loop
+@@ -359,27 +305,16 @@
+ ; CHECK-NEXT:  [[ENTRY:.*]]:
+ ; CHECK-NEXT:    br label %[[LOOP:.*]]
+ ; CHECK:       [[LOOP]]:
+-; CHECK-NEXT:    [[IV1:%.*]] = phi i64 [ 0, %[[ENTRY]] ], [ [[IV_NEXT1:%.*]], %[[LOOP]] ]
+-; CHECK-NEXT:    call void @foo(i32 20)
+-; CHECK-NEXT:    [[IV_NEXT1]] = add nuw nsw i64 [[IV1]], 1
+-; CHECK-NEXT:    br i1 false, label %[[LOOP]], label %[[EXIT_PEEL_BEGIN:.*]], !llvm.loop [[LOOP5:![0-9]+]]
+-; CHECK:       [[EXIT_PEEL_BEGIN]]:
+-; CHECK-NEXT:    [[IV:%.*]] = phi i64 [ [[IV_NEXT1]], %[[LOOP]] ]
+-; CHECK-NEXT:    [[IV_LCSSA:%.*]] = phi i64 [ [[IV1]], %[[LOOP]] ]
+-; CHECK-NEXT:    br label %[[LOOP_PEEL:.*]]
+-; CHECK:       [[LOOP_PEEL]]:
++; CHECK-NEXT:    [[IV:%.*]] = phi i64 [ 0, %[[ENTRY]] ], [ [[IV_NEXT:%.*]], %[[LOOP]] ]
+ ; CHECK-NEXT:    [[CMP:%.*]] = icmp eq i64 [[IV]], 1
+ ; CHECK-NEXT:    [[COND:%.*]] = select i1 [[CMP]], i32 10, i32 20
+ ; CHECK-NEXT:    call void @foo(i32 [[COND]])
+-; CHECK-NEXT:    [[IV_NEXT:%.*]] = add i64 [[IV]], 1
++; CHECK-NEXT:    [[IV_NEXT]] = add i64 [[IV]], 1
+ ; CHECK-NEXT:    [[EC:%.*]] = icmp ne i64 [[IV_NEXT]], 2
+-; CHECK-NEXT:    br i1 [[EC]], label %[[EXIT_PEEL_NEXT:.*]], label %[[EXIT_PEEL_NEXT]]
+-; CHECK:       [[EXIT_PEEL_NEXT]]:
+-; CHECK-NEXT:    br label %[[LOOP_PEEL_NEXT:.*]]
+-; CHECK:       [[LOOP_PEEL_NEXT]]:
+-; CHECK-NEXT:    br label %[[EXIT:.*]]
++; CHECK-NEXT:    br i1 [[EC]], label %[[LOOP]], label %[[EXIT:.*]]
+ ; CHECK:       [[EXIT]]:
+-; CHECK-NEXT:    ret i64 [[IV]]
++; CHECK-NEXT:    [[IV_LCSSA:%.*]] = phi i64 [ [[IV]], %[[LOOP]] ]
++; CHECK-NEXT:    ret i64 [[IV_LCSSA]]
+ ;
+ entry:
+   br label %loop
+@@ -508,45 +443,25 @@
+ ; CHECK:       [[LOOP_HEADER_PREHEADER]]:
+ ; CHECK-NEXT:    br label %[[LOOP_HEADER:.*]]
+ ; CHECK:       [[LOOP_HEADER]]:
+-; CHECK-NEXT:    [[IV1:%.*]] = phi i32 [ [[IV_NEXT1:%.*]], %[[LOOP_LATCH:.*]] ], [ 0, %[[LOOP_HEADER_PREHEADER]] ]
+-; CHECK-NEXT:    [[RED1:%.*]] = phi i32 [ [[ADD1:%.*]], %[[LOOP_LATCH]] ], [ 0, %[[LOOP_HEADER_PREHEADER]] ]
+-; CHECK-NEXT:    br i1 false, label %[[IF_THEN:.*]], label %[[LOOP_LATCH]]
++; CHECK-NEXT:    [[IV:%.*]] = phi i32 [ [[IV_NEXT:%.*]], %[[LOOP_LATCH:.*]] ], [ 0, %[[LOOP_HEADER_PREHEADER]] ]
++; CHECK-NEXT:    [[RED:%.*]] = phi i32 [ [[ADD:%.*]], %[[LOOP_LATCH]] ], [ 0, %[[LOOP_HEADER_PREHEADER]] ]
++; CHECK-NEXT:    [[CMP1:%.*]] = icmp eq i32 [[IV]], 99
++; CHECK-NEXT:    br i1 [[CMP1]], label %[[IF_THEN:.*]], label %[[LOOP_LATCH]]
+ ; CHECK:       [[IF_THEN]]:
+ ; CHECK-NEXT:    tail call void @foo(i32 10)
+ ; CHECK-NEXT:    br label %[[LOOP_LATCH]]
+ ; CHECK:       [[LOOP_LATCH]]:
+-; CHECK-NEXT:    [[GEP_X1:%.*]] = getelementptr inbounds nuw i32, ptr [[X]], i32 [[IV1]]
+-; CHECK-NEXT:    [[L1:%.*]] = load i32, ptr [[GEP_X1]], align 4
+-; CHECK-NEXT:    [[ADD1]] = add nsw i32 [[L1]], [[RED1]]
+-; CHECK-NEXT:    [[IV_NEXT1]] = add nuw nsw i32 [[IV1]], 1
+-; CHECK-NEXT:    [[EC1:%.*]] = icmp ne i32 [[IV_NEXT1]], 99
+-; CHECK-NEXT:    br i1 [[EC1]], label %[[LOOP_HEADER]], label %[[LOOPEXIT_PEEL_BEGIN:.*]], !llvm.loop [[LOOP6:![0-9]+]]
+-; CHECK:       [[LOOPEXIT_PEEL_BEGIN]]:
+-; CHECK-NEXT:    [[RED:%.*]] = phi i32 [ [[ADD1]], %[[LOOP_LATCH]] ]
+-; CHECK-NEXT:    [[IV:%.*]] = phi i32 [ [[IV_NEXT1]], %[[LOOP_LATCH]] ]
+-; CHECK-NEXT:    [[ADD_LCSSA:%.*]] = phi i32 [ [[ADD1]], %[[LOOP_LATCH]] ]
+-; CHECK-NEXT:    br label %[[LOOP_HEADER_PEEL:.*]]
+-; CHECK:       [[LOOP_HEADER_PEEL]]:
+-; CHECK-NEXT:    [[CMP1:%.*]] = icmp eq i32 [[IV]], 99
+-; CHECK-NEXT:    br i1 [[CMP1]], label %[[IF_THEN_PEEL:.*]], label %[[LOOP_LATCH_PEEL:.*]]
+-; CHECK:       [[IF_THEN_PEEL]]:
+-; CHECK-NEXT:    tail call void @foo(i32 10)
+-; CHECK-NEXT:    br label %[[LOOP_LATCH_PEEL]]
+-; CHECK:       [[LOOP_LATCH_PEEL]]:
+ ; CHECK-NEXT:    [[GEP_X:%.*]] = getelementptr inbounds nuw i32, ptr [[X]], i32 [[IV]]
+ ; CHECK-NEXT:    [[L:%.*]] = load i32, ptr [[GEP_X]], align 4
+-; CHECK-NEXT:    [[ADD:%.*]] = add nsw i32 [[L]], [[RED]]
+-; CHECK-NEXT:    [[IV_NEXT:%.*]] = add nuw nsw i32 [[IV]], 1
++; CHECK-NEXT:    [[ADD]] = add nsw i32 [[L]], [[RED]]
++; CHECK-NEXT:    [[IV_NEXT]] = add nuw nsw i32 [[IV]], 1
+ ; CHECK-NEXT:    [[EC:%.*]] = icmp ne i32 [[IV_NEXT]], 100
+-; CHECK-NEXT:    br i1 [[EC]], label %[[LOOPEXIT_PEEL_NEXT:.*]], label %[[LOOPEXIT_PEEL_NEXT]]
+-; CHECK:       [[LOOPEXIT_PEEL_NEXT]]:
+-; CHECK-NEXT:    br label %[[LOOP_HEADER_PEEL_NEXT:.*]]
+-; CHECK:       [[LOOP_HEADER_PEEL_NEXT]]:
+-; CHECK-NEXT:    br label %[[LOOPEXIT:.*]]
++; CHECK-NEXT:    br i1 [[EC]], label %[[LOOP_HEADER]], label %[[LOOPEXIT:.*]]
+ ; CHECK:       [[LOOPEXIT]]:
++; CHECK-NEXT:    [[ADD_LCSSA:%.*]] = phi i32 [ [[ADD]], %[[LOOP_LATCH]] ]
+ ; CHECK-NEXT:    br label %[[EXIT]]
+ ; CHECK:       [[EXIT]]:
+-; CHECK-NEXT:    [[SUM_0_LCSSA:%.*]] = phi i32 [ 0, %[[ENTRY]] ], [ [[ADD]], %[[LOOPEXIT]] ]
++; CHECK-NEXT:    [[SUM_0_LCSSA:%.*]] = phi i32 [ 0, %[[ENTRY]] ], [ [[ADD_LCSSA]], %[[LOOPEXIT]] ]
+ ; CHECK-NEXT:    ret i32 [[SUM_0_LCSSA]]
+ ;
+ entry:
+@@ -637,12 +552,4 @@
+ 
+ declare void @foo(i32)
+ declare i1 @cond()
+-;.
+-; CHECK: [[LOOP0]] = distinct !{[[LOOP0]], [[META1:![0-9]+]]}
+-; CHECK: [[META1]] = !{!"llvm.loop.peeled.count", i32 1}
+-; CHECK: [[LOOP2]] = distinct !{[[LOOP2]], [[META1]]}
+-; CHECK: [[LOOP3]] = distinct !{[[LOOP3]], [[META1]]}
+-; CHECK: [[LOOP4]] = distinct !{[[LOOP4]], [[META1]]}
+-; CHECK: [[LOOP5]] = distinct !{[[LOOP5]], [[META1]]}
+-; CHECK: [[LOOP6]] = distinct !{[[LOOP6]], [[META1]]}
+-;.
++
+diff -ruN --strip-trailing-cr a/llvm/unittests/ProfileData/DataAccessProfTest.cpp b/llvm/unittests/ProfileData/DataAccessProfTest.cpp
+--- a/llvm/unittests/ProfileData/DataAccessProfTest.cpp
++++ b/llvm/unittests/ProfileData/DataAccessProfTest.cpp
+@@ -10,7 +10,6 @@
+ #include "llvm/ProfileData/DataAccessProf.h"
+ #include "llvm/Support/raw_ostream.h"
+ #include "llvm/Testing/Support/SupportHelpers.h"
+-#include "gmock/gmock-more-matchers.h"
+ #include "gmock/gmock.h"
+ #include "gtest/gtest.h"
+ 
+diff -ruN --strip-trailing-cr a/mlir/include/mlir/Query/Matcher/SliceMatchers.h b/mlir/include/mlir/Query/Matcher/SliceMatchers.h
+--- a/mlir/include/mlir/Query/Matcher/SliceMatchers.h
++++ b/mlir/include/mlir/Query/Matcher/SliceMatchers.h
+@@ -14,6 +14,7 @@
+ #define MLIR_TOOLS_MLIRQUERY_MATCHERS_SLICEMATCHERS_H
+ 
+ #include "mlir/Analysis/SliceAnalysis.h"
++#include "mlir/IR/Operation.h"
+ 
+ /// A matcher encapsulating `getBackwardSlice` method from SliceAnalysis.h.
+ /// Additionally, it limits the slice computation to a certain depth level using
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -12874,6 +12874,7 @@
+     ),
+     includes = ["include"],
+     deps = [
++        ":Analysis",
+         ":FuncDialect",
+         ":IR",
+         ":Reducer",

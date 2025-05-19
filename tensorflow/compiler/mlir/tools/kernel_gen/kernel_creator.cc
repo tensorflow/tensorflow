@@ -342,7 +342,7 @@ absl::Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
   kernelPm.addPass(mlir::createGpuKernelToRocdlPass(architecture));
 #elif GOOGLE_CUDA
   kernelPm.addPass(mlir::createGpuKernelToNvvmPass());
-  kernelPm.addPass(mlir::NVVM::createOptimizeForTargetPass());
+  kernelPm.addPass(mlir::LLVM::createNVVMOptimizeForTargetPass());
 #endif
   // Remove all location information to prevent a debug build.
   pm.addPass(::mlir::createStripDebugInfoPass());
