@@ -403,6 +403,14 @@ absl::Status AllReduceStartThunk::Initialize(const InitializeParams& params) {
         return absl::InternalError("Failed to allocate signal pads buffer.");
       }
 
+      // One-shot kernel expects that the signal flags buffer is zeroed out.
+      // Initial state of device memory is undefined, so we need to zero out the
+      // buffer. The kernel will take care of leaving the buffer in correct
+      // state after use, so we don't need to zero out only during
+      // initialization.
+      TF_RETURN_IF_ERROR(params.executor->SynchronousMemZero(
+          signal_flags_alloc.memory_ptr(), signal_flags_alloc.memory().size()));
+
       signal_flags_allocs_.emplace(params.executor,
                                    std::move(signal_flags_alloc));
     }
