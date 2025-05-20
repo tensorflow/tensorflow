@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tf_data_file_logger_options.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
@@ -133,7 +134,10 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params) {}
 
     absl::Status Initialize(IteratorContext* ctx) override {
-      LogFilenames(dataset()->filenames_);
+      LogFilenamesOptions log_filenames_options = {
+          .files = dataset()->filenames_,
+          .data_service_address = ctx->data_service_address()};
+      LogFilenames(log_filenames_options);
       return absl::OkStatus();
     }
 
@@ -264,7 +268,10 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params) {}
 
     absl::Status Initialize(IteratorContext* ctx) override {
-      LogFilenames(dataset()->filenames_);
+      LogFilenamesOptions log_filenames_options = {
+          .files = dataset()->filenames_,
+          .data_service_address = ctx->data_service_address()};
+      LogFilenames(log_filenames_options);
       return absl::OkStatus();
     }
 

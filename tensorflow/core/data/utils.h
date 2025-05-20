@@ -18,9 +18,11 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
+#include "tensorflow/core/framework/tf_data_file_logger_options.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 
 namespace tensorflow {
@@ -54,7 +56,7 @@ absl::StatusOr<bool> DisableCompressionAtRuntime(
 // every call. Thread safe.
 // TODO (shushanik) Implement streamz error reporting in case the logging is not
 // successful
-void LogFilenames(const std::vector<std::string>& files);
+void LogFilenames(const LogFilenamesOptions& options);
 
 }  // namespace data
 }  // namespace tensorflow
