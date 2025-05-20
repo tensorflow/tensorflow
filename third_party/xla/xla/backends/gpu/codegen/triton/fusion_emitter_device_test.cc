@@ -1231,13 +1231,13 @@ ENTRY entry_computation {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
+// Parameterized to make sure that when TMA flag is enabled, this test would
+// correctly fall back to normal loads. This is due to the fact that the most
+// minor dimension is not contiguous.
+// TODO(b/419025213): To FileCheck here, we need to create a test wrapper that
+// also invokes TritonXlaExtractInsertPass to check TTIR.
 TEST_P(TmaParameterizedTritonEmitterTest,
        TestSlice2DWithTileElementsNotAllContiguousUnaligned) {
-  bool tma_enabled = GetParam();
-  if (tma_enabled) {
-    GTEST_SKIP() << "TODO(b/413351837): Skipping TMA due to: "
-                    "CUDA_ERROR_ILLEGAL_INSTRUCTION";
-  }
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
