@@ -129,7 +129,12 @@ constexpr char kSliceMemcpyModule[] = R"(
       offset2 = s32[] get-tuple-element(p0), index=3
 
       slice = s32[1,1,8] fusion(input, offset1, offset2), kind=kLoop, calls=dynamic_slice,
-          backend_config={"fusion_backend_config":{"kind":"__dynamic_memcpy"}}
+          backend_config={"fusion_backend_config":{
+              "kind":"__dynamic_memcpy",
+              "dynamic_memcpy_config":{
+                  "depends_on_loop":true,
+                  "src_offset_bytes":["288","544","800","800","800","288"],
+                  "dst_offset_bytes":["0","0","0","0","0","0"]}}}
       next_ivar = s32[] fusion(ivar_copy), kind=kLoop, calls=add
       next_offset_2 = s32[] fusion(offset2), kind=kLoop, calls=times_two
 
@@ -187,36 +192,6 @@ TEST_F(GpuCopyTest, UseMemcpyForDynamicSlice) {
       RunAndCompareNoHloPasses(kSliceMemcpyModule, ErrorSpec{1e-5, 1e-5}));
 }
 
-TEST_F(GpuCopyTest, DoNotUseMemcpyForDynamicSlice) {
-  // This is a test for the CompileAndVerifyIr statement in
-  // UseMemcpyForDynamicSlice. When the conditions are not met, there should be
-  // a fusion for the slice.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(kSliceMemcpyModule));
-
-  // This prevents the memcpy fusion logic from triggering.
-  hlo_module->entry_computation()->root_instruction()->clear_backend_config();
-
-  CompileAndVerifyIr(std::move(hlo_module), "; CHECK: void @slice",
-                     /*match_optimized_ir=*/false,
-                     /*run_optimization_passes=*/false);
-}
-
-TEST_F(GpuCopyTest, DoNotUseMemcpyWithLayoutChange) {
-  // By changing the layout of the result, the slice is no longer contiguous and
-  // cannot be emitted with a memcpy. Technically, this means the input program
-  // is incorrect, since the __dynamic_memcpy fusion kind should not have been
-  // set. We still verify that we correctly fall back to codegen.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(absl::StrReplaceAll(
-                              kSliceMemcpyModule, {{"{2,1,0}", "{0,2,1}"}})));
-
-  CompileAndVerifyIr(std::move(hlo_module), "; CHECK: void @slice",
-                     /*match_optimized_ir=*/false,
-                     /*run_optimization_passes=*/false);
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kSliceMemcpyModule, ErrorSpec{0, 0}));
-}
-
 constexpr char kDynamicUpdateSliceModule[] = R"(
     dynamic_update_slice {
       p0 = s32[4,8,8] parameter(0)
@@ -250,7 +225,12 @@ constexpr char kDynamicUpdateSliceModule[] = R"(
 
       updated = s32[4,8,8] fusion(input-copy, acc_copy, ivar_copy), kind=kLoop,
           calls=dynamic_update_slice,
-          backend_config={"fusion_backend_config":{"kind":"__dynamic_memcpy"}}
+          backend_config={"fusion_backend_config":{
+              "kind":"__dynamic_memcpy",
+              "dynamic_memcpy_config":{
+                  "depends_on_loop":true,
+                  "src_offset_bytes":["0","0","0","0","0","0"],
+                  "dst_offset_bytes":["0","256","512","768","768","768"]}}}
       next_ivar = s32[] fusion(ivar_copy), kind=kLoop, calls=add
 
       next_acc = s32[1,1,8] fusion(acc_copy), kind=kLoop, calls=add_slices
@@ -299,21 +279,6 @@ TEST_F(GpuCopyTest, UseMemcpyForDynamicUpdateSlice) {
       RunAndCompareNoHloPasses(kDynamicUpdateSliceModule, ErrorSpec{0, 0}));
 }
 
-TEST_F(GpuCopyTest, DoNotUseMemcpyForDynamicUpdateSlice) {
-  // This is a test for the CompileAndVerifyIr statement in
-  // UseMemcpyForDynamicUpdateSlice. When the conditions are not met, there
-  // should be a fusion for the slice.
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<VerifiedHloModule> hlo_module,
-      ParseAndReturnVerifiedModule(kDynamicUpdateSliceModule));
-
-  // This prevents the memcpy fusion logic from triggering.
-  hlo_module->entry_computation()->root_instruction()->clear_backend_config();
-  CompileAndVerifyIr(std::move(hlo_module), "; CHECK: void @updated",
-                     /*match_optimized_ir=*/false,
-                     /*run_optimization_passes=*/false);
-}
-
 constexpr char kDynamicUpdateSliceWithBitcastModule[] = R"(
     dynamic_update_slice {
       p0 = s32[8,8] parameter(0)
@@ -341,7 +306,12 @@ constexpr char kDynamicUpdateSliceWithBitcastModule[] = R"(
 
       updated_bc = s32[8,8] fusion(input-copy, update, ivar-copy), kind=kLoop,
           calls=dynamic_update_slice,
-          backend_config={"fusion_backend_config":{"kind":"__dynamic_memcpy"}}
+          backend_config={"fusion_backend_config":{
+              "kind":"__dynamic_memcpy",
+              "dynamic_memcpy_config":{
+                  "depends_on_loop":true,
+                  "src_offset_bytes":["0","0","0","0","0","0"],
+                  "dst_offset_bytes":["0","4","8","12","16","20"]}}}
       next_ivar = s32[] fusion(ivar-copy), kind=kLoop, calls=add
 
       ROOT result = (s32[], s32[8,8], s32[1,4])
