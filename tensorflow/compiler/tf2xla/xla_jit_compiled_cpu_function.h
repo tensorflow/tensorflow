@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/client/local_client.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/service/cpu/executable.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/types.h"
 
