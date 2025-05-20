@@ -86,11 +86,34 @@ std::string GetReferencePlatformName(std::string reference_platform) {
   }
   return reference_platform;
 }
+
+// This function is parsing only the debug options file, because we cannot wait
+// till all the flags are parsed. If the debug_options file exists, then we have
+// to first consider the debug_options from that file, then XLA_FLAGS, and then
+// the command line flags. Hence, we parse the debug_options file first.
+std::optional<absl::string_view> GetDebugOptionsFileName(int argc,
+                                                         char* argv[]) {
+  for (int i = 1; i < argc; ++i) {
+    absl::string_view arg = argv[i];
+    if (absl::StrContains(arg, "--debug_options_file")) {
+      auto eq_idx = arg.find('=');
+      if (eq_idx != absl::string_view::npos) {
+        return arg.substr(eq_idx + 1);
+      } else {
+        LOG(QFATAL) << "No value provided for --debug_options_file. Expected "
+                    << "--debug_options_file=<filename>";
+      }
+    }
+  }
+  return std::nullopt;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
   xla::RunHloModuleOptions opts;
   bool different_random_seeds = false;
+  std::string unused_debug_options_filename;
   std::vector<tsl::Flag> flag_list = {
       tsl::Flag("platform", &opts.platform,
                 "The test platform that the HLO module will be executed on "
@@ -165,8 +188,24 @@ int main(int argc, char** argv) {
       tsl::Flag("different_random_seeds", &different_random_seeds,
                 "Whether each iteration should use a different random seed for "
                 "the HloModuleConfig."),
-  };
+      // This option is not used during parsing, but it is added here for
+      // documentation, and for ensuring that the parser knows this should be
+      // ignored if present.
+      tsl::Flag("debug_options_file", &unused_debug_options_filename,
+                "A file containing debug options to be passed to the HLO "
+                "module. The file should contain a serialized DebugOptions "
+                "proto message. The order of precedence: command line flags > "
+                "XLA_FLAGS > debug_options_file > default flags.")};
+
   xla::AppendDebugOptionsFlags(&flag_list);
+
+  std::optional<absl::string_view> debug_options_filename =
+      GetDebugOptionsFileName(argc, argv);
+  if (debug_options_filename.has_value()) {
+    xla::ParseFlagsFromDebugOptionsFile(debug_options_filename.value());
+  }
+  xla::ParseDebugOptionFlagsFromEnv(true);
+
   // The usage string includes the message at the top of the file, the
   // DebugOptions flags and the flags defined above.
   const std::string kUsageString =
