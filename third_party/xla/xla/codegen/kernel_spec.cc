@@ -22,27 +22,29 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
-#include "xla/stream_executor/launch_dim.h"
+#include "xla/runtime/work_cluster.h"
+#include "xla/runtime/work_group.h"
+#include "xla/runtime/work_item.h"
 
 namespace xla {
 
-KernelSpec::KernelSpec(absl::string_view name, se::ThreadDim thread_dim,
+KernelSpec::KernelSpec(absl::string_view name, NumWorkGroups num_workgroups,
                        Buffers argument_buffers, Buffers result_buffers,
                        absl::flat_hash_set<int64_t> invariant_arguments,
                        std::optional<size_t> scratch_bytes)
-    : KernelSpec(name, se::ClusterDim(), se::BlockDim(), thread_dim,
+    : KernelSpec(name, NumWorkClusters(), num_workgroups, NumWorkItems(),
                  std::move(argument_buffers), std::move(result_buffers),
                  std::move(invariant_arguments), std::move(scratch_bytes)) {}
 
-KernelSpec::KernelSpec(absl::string_view name, se::ClusterDim cluster_dim,
-                       se::BlockDim block_dim, se::ThreadDim thread_dim,
+KernelSpec::KernelSpec(absl::string_view name, NumWorkClusters num_workclusters,
+                       NumWorkGroups num_workgroups, NumWorkItems num_workitems,
                        Buffers argument_buffers, Buffers result_buffers,
                        absl::flat_hash_set<int64_t> invariant_arguments,
                        std::optional<size_t> scratch_bytes)
     : name_(name),
-      cluster_dim_(cluster_dim),
-      block_dim_(block_dim),
-      thread_dim_(thread_dim),
+      num_workclusters_(num_workclusters),
+      num_workgroups_(num_workgroups),
+      num_workitems_(num_workitems),
       argument_buffers_(std::move(argument_buffers)),
       result_buffers_(std::move(result_buffers)),
       invariant_arguments_(std::move(invariant_arguments)),

@@ -24,10 +24,10 @@ limitations under the License.
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_emitter.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/elemental_ir_emitter.h"
 #include "xla/service/llvm_ir/loop_emitter.h"
-#include "xla/stream_executor/launch_dim.h"
 
 namespace xla::cpu {
 
@@ -43,7 +43,7 @@ class ElementalKernelEmitter final : public KernelEmitter {
   // Emits LLVM IR using elemental loop emitter and the given element generator.
   // If the instruction is parallelized, it will emit a parallel loop partition
   // and return the requested number of execution threads.
-  absl::StatusOr<se::ThreadDim> EmitElementalLoops(
+  absl::StatusOr<NumWorkGroups> EmitElementalLoops(
       llvm::IRBuilderBase& b, const HloInstruction* instr,
       const KernelApiIrBuilder::KernelPrototype& kernel_prototype,
       const llvm_ir::ElementGenerator& element_generator);

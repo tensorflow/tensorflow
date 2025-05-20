@@ -28,18 +28,18 @@ limitations under the License.
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::cpu {
 MlirKernelEmitter::MlirKernelEmitter(absl::string_view mlir,
                                      absl::string_view kernel_name,
-                                     se::ThreadDim thread_dim,
+                                     NumWorkGroups num_workgroups,
                                      absl::Span<const KernelArg> args)
     : mlir_(mlir),
       kernel_name_(kernel_name),
-      thread_dim_(thread_dim),
+      num_workgroups_(num_workgroups),
       args_(args.begin(), args.end()) {
   for (const MlirKernelEmitter::KernelArg& arg : args_) {
     buffer_allocations_.emplace_back(buffer_allocations_.size(), arg.size_bytes,
@@ -67,8 +67,9 @@ absl::StatusOr<KernelDefinition> MlirKernelEmitter::EmitKernelDefinition() {
     }
   }
 
-  KernelSpec kernel_spec(kernel_name_, thread_dim_, std::move(argument_buffers),
-                         std::move(result_buffers), /*invariant_arguments=*/{});
+  KernelSpec kernel_spec(kernel_name_, num_workgroups_,
+                         std::move(argument_buffers), std::move(result_buffers),
+                         /*invariant_arguments=*/{});
   return KernelDefinition(
       std::move(kernel_spec),
       std::make_unique<MlirKernelSource>(std::move(source)));

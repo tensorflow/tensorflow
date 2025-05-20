@@ -84,11 +84,8 @@ absl::StatusOr<KernelRunner> KernelRunner::Create(
   TF_ASSIGN_OR_RETURN(XLA_CPU_Kernel * kernel_fn,
                       library->ResolveFunction<XLA_CPU_Kernel>(kernel_name));
 
-  // TODO(ezhulenev): Migrate KernelSpec to use NumWorkGroups.
-  NumWorkGroups num_workgroups{kernel_spec.thread_dim().x,
-                               kernel_spec.thread_dim().y,
-                               kernel_spec.thread_dim().z};
-  return KernelRunner(std::move(library), Kernel(1, kernel_fn), num_workgroups);
+  return KernelRunner(std::move(library), Kernel(1, kernel_fn),
+                      kernel_spec.num_workgroups());
 }
 
 absl::StatusOr<KernelRunner> KernelRunner::Create(

@@ -49,12 +49,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/fusion_wrapper.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/stream_executor/launch_dim.h"
-#include "tsl/platform/casts.h"
 
 namespace xla::cpu {
 
@@ -83,31 +82,33 @@ NB_MODULE(_extension, kernel_runner_module) {
   // register the derived versions.
   ImportBaseClasses(kernel_runner_module);
 
-  // Use a tuple and cast to ThreadDim to take advantage of built in bindings.
-  using NbThreadDim = std::tuple<uint64_t, uint64_t, uint64_t>;
+  // Use a tuple and cast to NumWorkGroups to take advantage of built in
+  // bindings.
+  using NbNumWorkGroups = std::tuple<uint64_t, uint64_t, uint64_t>;
   nb::class_<LlvmIrKernelEmitter, KernelEmitter>(kernel_runner_module,
                                                  "LlvmIrKernelEmitter")
       .def("__init__",
            [](LlvmIrKernelEmitter* self, absl::string_view ir,
-              absl::string_view kernel_name, NbThreadDim thread_dim) {
-             new (self) LlvmIrKernelEmitter(
-                 ir, kernel_name,
-                 se::ThreadDim{std::get<0>(thread_dim), std::get<1>(thread_dim),
-                               std::get<2>(thread_dim)},
-                 {});
+              absl::string_view kernel_name, NbNumWorkGroups num_workgroups) {
+             new (self)
+                 LlvmIrKernelEmitter(ir, kernel_name,
+                                     NumWorkGroups{std::get<0>(num_workgroups),
+                                                   std::get<1>(num_workgroups),
+                                                   std::get<2>(num_workgroups)},
+                                     {});
            });
 
   nb::class_<MlirKernelEmitter, KernelEmitter>(kernel_runner_module,
                                                "MlirKernelEmitter")
-      .def("__init__",
-           [](MlirKernelEmitter* self, absl::string_view ir,
-              absl::string_view kernel_name, NbThreadDim thread_dim) {
-             new (self) MlirKernelEmitter(
-                 ir, kernel_name,
-                 se::ThreadDim{std::get<0>(thread_dim), std::get<1>(thread_dim),
-                               std::get<2>(thread_dim)},
-                 {});
-           });
+      .def("__init__", [](MlirKernelEmitter* self, absl::string_view ir,
+                          absl::string_view kernel_name,
+                          NbNumWorkGroups num_workgroups) {
+        new (self) MlirKernelEmitter(ir, kernel_name,
+                                     NumWorkGroups{std::get<0>(num_workgroups),
+                                                   std::get<1>(num_workgroups),
+                                                   std::get<2>(num_workgroups)},
+                                     {});
+      });
 
   kernel_runner_module.def("lower_to_llvm", [](MlirKernelSource& source) {
     absl::StatusOr<LlvmIrKernelSource> llvm_ir_kernel_source =

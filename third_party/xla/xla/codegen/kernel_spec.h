@@ -24,8 +24,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
+#include "xla/runtime/work_cluster.h"
+#include "xla/runtime/work_group.h"
+#include "xla/runtime/work_item.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/launch_dim.h"
 
 namespace xla {
 
@@ -37,13 +39,13 @@ class KernelSpec {
  public:
   using Buffers = absl::InlinedVector<BufferAllocation::Slice, 8>;
 
-  KernelSpec(absl::string_view name, se::ThreadDim thread_dim,
+  KernelSpec(absl::string_view name, NumWorkGroups num_workgroups,
              Buffers argument_buffers, Buffers result_buffers,
              absl::flat_hash_set<int64_t> invariant_arguments,
              std::optional<size_t> scratch_bytes = std::nullopt);
 
-  KernelSpec(absl::string_view name, se::ClusterDim cluster_dim,
-             se::BlockDim block_dim, se::ThreadDim thread_dim,
+  KernelSpec(absl::string_view name, NumWorkClusters num_workclusters,
+             NumWorkGroups num_workgroups, NumWorkItems num_workitems,
              Buffers argument_buffers, Buffers result_buffers,
              absl::flat_hash_set<int64_t> invariant_arguments,
              std::optional<size_t> scratch_bytes = std::nullopt);
@@ -52,19 +54,20 @@ class KernelSpec {
   // This may be used to identify the kernel in the backend specific runtime.
   const std::string& name() const { return name_; }
 
-  // Kernel launch dimensions define how the kernel execution must be
+  // Kernel work dimensions define how the kernel execution must be
   // parallelized. The meaning of these dimensions is backend specific, i.e.
-  // on GPU these are CUDA block and thread dimensions, and on CPU these
-  // dimensions mapped to tasks submitted to a thread pool.
+  // on GPU these dimensions are mapped to CUDA cluster, block and thread
+  // dimensions, and on CPU these dimensions mapped to tasks submitted to a
+  // thread pool.
   //
   // At a high level kernel codegen can rely on these dimensions to define
   // spatial partitioning of the computation problem and optimize for data
   // locality. However it's up to the backend codegen and runtime to agree
   // on the exact meaning of these dimensions and how they are mapped to the
   // underlying hardware, and how to use them for perfrormance optimization.
-  se::ClusterDim cluster_dim() const { return cluster_dim_; }
-  se::BlockDim block_dim() const { return block_dim_; }
-  se::ThreadDim thread_dim() const { return thread_dim_; }
+  NumWorkClusters num_workclusters() const { return num_workclusters_; }
+  NumWorkGroups num_workgroups() const { return num_workgroups_; }
+  NumWorkItems num_workitems() const { return num_workitems_; }
 
   // Requested amount of scratch bytes for the kernel (backed by backend
   // specific memory, i.e. on GPU this is shared memory, on CPU it can runtime
@@ -84,9 +87,10 @@ class KernelSpec {
 
  private:
   std::string name_;
-  se::ClusterDim cluster_dim_;
-  se::BlockDim block_dim_;
-  se::ThreadDim thread_dim_;
+
+  NumWorkClusters num_workclusters_;
+  NumWorkGroups num_workgroups_;
+  NumWorkItems num_workitems_;
 
   Buffers argument_buffers_;
   Buffers result_buffers_;

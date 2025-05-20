@@ -372,13 +372,9 @@ absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
 absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
     Thunk::Info info, const KernelSpec& kernel_spec,
     std::optional<uint64_t> min_alignment) {
-  // TODO(ezhulenev): Migrate KernelSpec to use NumWorkGroups.
-  NumWorkGroups num_workgroups{kernel_spec.thread_dim().x,
-                               kernel_spec.thread_dim().y,
-                               kernel_spec.thread_dim().z};
   return Create(std::move(info), kernel_spec.argument_buffers(),
                 kernel_spec.result_buffers(), kernel_spec.name(),
-                num_workgroups, kernel_spec.invariant_arguments(),
+                kernel_spec.num_workgroups(), kernel_spec.invariant_arguments(),
                 min_alignment);
 }
 

@@ -65,13 +65,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/primitive_util.h"
+#include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/backend_config.pb.h"
-#include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/scatter_simplifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -311,7 +310,8 @@ absl::StatusOr<KernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
     }
   }
 
-  KernelSpec kernel_spec(module_name, se::ThreadDim(num_threads_),
+  KernelSpec kernel_spec(module_name,
+                         NumWorkGroups{static_cast<uint64_t>(num_threads_)},
                          std::move(argument_buffers), std::move(result_buffers),
                          std::move(invariant_arguments));
   return KernelDefinition(std::move(kernel_spec),

@@ -32,10 +32,10 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/runtime/work_group.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
@@ -77,7 +77,7 @@ TEST(KernelRunnerTest, Add) {
   LlvmIrKernelEmitter::KernelArg read_arg{kArgSizeBytes, BufferUse::kRead};
   LlvmIrKernelEmitter::KernelArg write_arg{kArgSizeBytes, BufferUse::kWrite};
   LlvmIrKernelEmitter emitter(kLlvmAddI32, "LlvmAddI32",
-                              se::ThreadDim(kNumElements),
+                              NumWorkGroups{kNumElements},
                               {read_arg, read_arg, write_arg});
 
   TF_ASSERT_OK_AND_ASSIGN(KernelDefinition kernel_definition,
