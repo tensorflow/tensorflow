@@ -52,6 +52,25 @@ TEST_F(CopyFusionTest, ValidCandidate) {
   EXPECT_TRUE(DynamicMemcpyFusion::IsCandidateFusion(GetFusion(module.get())));
 }
 
+TEST_F(CopyFusionTest, LayoutChange) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    dynamic_slice {
+      p0 = f32[100,100]{0,1} parameter(0)
+      p1 = s32[] parameter(1)
+      ROOT slice = f32[10,100]{1,0} dynamic-slice(p0, p1, p1), dynamic_slice_sizes={10,100}
+    }
+
+    ENTRY main {
+      p0 = f32[100,100]{0,1} parameter(0)
+      p1 = s32[] parameter(1)
+      ROOT fusion = f32[10,100]{1,0} fusion(p0, p1), kind=kLoop, calls=dynamic_slice
+    }
+  )")
+                    .value();
+
+  EXPECT_FALSE(DynamicMemcpyFusion::IsCandidateFusion(GetFusion(module.get())));
+}
+
 TEST_F(CopyFusionTest, ValidCandidateClamped) {
   auto module = ParseAndReturnVerifiedModule(R"(
     dynamic_slice {

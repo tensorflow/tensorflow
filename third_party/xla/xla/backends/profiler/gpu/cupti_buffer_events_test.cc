@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 
+#include <gtest/gtest.h>
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -41,6 +42,8 @@ TEST(CuptiBufferEventsTest, EventInitialization) {
       /* .context_id = */ 9,
       /* .stream_id = */ 2,
       /* .graph_id = */ 5,
+      /* .scope_range_id = */ 10,
+      /* .graph_node_id = */ 11,
   };
 
   EXPECT_EQ(event.type, CuptiTracerEventType::CudaGraph);
@@ -56,6 +59,8 @@ TEST(CuptiBufferEventsTest, EventInitialization) {
   EXPECT_EQ(event.context_id, 9);
   EXPECT_EQ(event.stream_id, 2);
   EXPECT_EQ(event.graph_id, 5);
+  EXPECT_EQ(event.scope_range_id, 10);
+  EXPECT_EQ(event.graph_node_id, 11);
 }
 
 }  // namespace

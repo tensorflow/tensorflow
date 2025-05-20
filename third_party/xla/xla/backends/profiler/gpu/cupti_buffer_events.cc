@@ -172,6 +172,7 @@ void AddKernelActivityEvent(CuptiEventCollectorDelegate &collector,
   event.context_id = kernel->contextId;
   event.stream_id = kernel->streamId;
   event.correlation_id = kernel->correlationId;
+  event.graphNodeId = kernel->graphNodeId;
   AnnotationMap::AnnotationInfo info =
       collector.annotation_map.LookUp(event.device_id, event.correlation_id);
   event.annotation = info.annotation;
