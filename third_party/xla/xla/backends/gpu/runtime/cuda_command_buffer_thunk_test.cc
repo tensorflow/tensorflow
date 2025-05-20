@@ -13,17 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
-#include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/types/span.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend.h"  // IWYU pragma: keep - cudnn frontend headers are not hermetic
 #include "third_party/cudnn_frontend/include/cudnn_frontend/graph_interface.h"
@@ -32,8 +32,8 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
-#include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/platform_util.h"
@@ -45,10 +45,10 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -88,6 +88,11 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
   if (dnn_support.GetVersion().value_or(se::dnn::VersionInfo{0, 0, 0}) <
       se::dnn::VersionInfo(9, 7, 0)) {
     GTEST_SKIP() << "Requires cuDNN 9.7.0 or later.";
+  }
+
+  if (stream_executor->GetDeviceDescription().cuda_compute_capability() <
+      stream_executor::CudaComputeCapability::Ampere()) {
+    GTEST_SKIP() << "Requires at least an Ampere GPU.";
   }
 
   constexpr int kDimSize = 32;
