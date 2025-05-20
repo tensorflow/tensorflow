@@ -20,7 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
-#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/constant_value.h"
 
@@ -103,7 +103,7 @@ class Range {
 Range RecursivelyIdentifyRange(
     const HloInstruction* instr,
     absl::flat_hash_map<const HloInstruction*, Range>& known_ranges,
-    const HloAliasAnalysis* alias_analysis = nullptr);
+    const HloDataflowAnalysis* dataflow_analysis = nullptr);
 
 }  // namespace xla
 

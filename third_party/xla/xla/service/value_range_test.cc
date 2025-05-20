@@ -22,13 +22,14 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/analysis/hlo_alias_analysis.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/constant_value.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -118,8 +119,8 @@ TEST_F(ValueRangeTest, MultiplyValuePassedToLoop) {
   )";
   auto module =
       ParseAndReturnUnverifiedModule(hlo_string, HloModuleConfig{}).value();
-  TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
-                          HloAliasAnalysis::Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(auto dataflow_analysis,
+                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
   const HloInstruction* p0 =
       module->entry_computation()->parameter_instruction(0);
   absl::flat_hash_map<const HloInstruction*, Range> fs;
@@ -131,7 +132,7 @@ TEST_F(ValueRangeTest, MultiplyValuePassedToLoop) {
                 /*is_linear=*/true}));
   HloComputation* body = module->GetComputationWithName("body.comp");
   HloInstruction* gte = body->GetInstructionWithName("gte");
-  auto range = RecursivelyIdentifyRange(gte, fs, alias_analysis.get());
+  auto range = RecursivelyIdentifyRange(gte, fs, dataflow_analysis.get());
   EXPECT_FALSE(range.IsEmpty());
   EXPECT_FALSE(range.IsSingleValue());
   EXPECT_TRUE(range.IsLinear());
@@ -192,8 +193,8 @@ TEST_F(ValueRangeTest, ConstantValueWithConditional) {
   )";
   auto module =
       ParseAndReturnUnverifiedModule(hlo_string, HloModuleConfig{}).value();
-  TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
-                          HloAliasAnalysis::Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(auto dataflow_analysis,
+                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
   HloComputation* region1 = module->GetComputationWithName("region1");
   HloComputation* region2 = module->GetComputationWithName("region2");
   HloInstruction* add = region1->GetInstructionWithName("add");
@@ -208,7 +209,7 @@ TEST_F(ValueRangeTest, ConstantValueWithConditional) {
                 /*step=*/ConstantValue::GetUnsigned(2, /*bitwidth=*/32),
                 /*is_linear=*/true}));
 
-  auto add_range = RecursivelyIdentifyRange(add, fs, alias_analysis.get());
+  auto add_range = RecursivelyIdentifyRange(add, fs, dataflow_analysis.get());
   EXPECT_FALSE(add_range.IsEmpty());
   EXPECT_FALSE(add_range.IsSingleValue());
   EXPECT_TRUE(add_range.IsLinear());
@@ -216,7 +217,7 @@ TEST_F(ValueRangeTest, ConstantValueWithConditional) {
   EXPECT_EQ(add_range.max()->GetSignedValue(), 1024 + 32);
   EXPECT_EQ(add_range.step()->GetSignedValue(), 2);
 
-  auto mult_range = RecursivelyIdentifyRange(mult, fs, alias_analysis.get());
+  auto mult_range = RecursivelyIdentifyRange(mult, fs, dataflow_analysis.get());
   EXPECT_FALSE(mult_range.IsEmpty());
   EXPECT_FALSE(mult_range.IsSingleValue());
   EXPECT_TRUE(mult_range.IsLinear());
@@ -259,8 +260,8 @@ TEST_F(ValueRangeTest, SelectValueWithCompareInConditional) {
   )";
   auto module =
       ParseAndReturnUnverifiedModule(hlo_string, HloModuleConfig{}).value();
-  TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
-                          HloAliasAnalysis::Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(auto dataflow_analysis,
+                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
   HloComputation* region1 = module->GetComputationWithName("region1");
   HloComputation* region2 = module->GetComputationWithName("region2");
   HloInstruction* select1 = region1->GetInstructionWithName("select1");
@@ -276,9 +277,9 @@ TEST_F(ValueRangeTest, SelectValueWithCompareInConditional) {
                 /*is_linear=*/true}));
 
   auto select1_range =
-      RecursivelyIdentifyRange(select1, fs, alias_analysis.get());
+      RecursivelyIdentifyRange(select1, fs, dataflow_analysis.get());
   auto select2_range =
-      RecursivelyIdentifyRange(select2, fs, alias_analysis.get());
+      RecursivelyIdentifyRange(select2, fs, dataflow_analysis.get());
   // We expect the select ranges to be the same as the parameter range since
   // both selects return true values.
   EXPECT_EQ(select1_range, select2_range);
