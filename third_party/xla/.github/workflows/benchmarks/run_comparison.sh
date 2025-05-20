@@ -15,60 +15,44 @@
 # .github/workflows/benchmarks/run_comparison.sh
 # TODO(juliagmt): convert this to a python script.
 #!/bin/bash
-set -eu # Exit on unset variables and errors
 
-# Input variables from the GitHub Actions workflow
-readonly RESULTS_JSON_FILE="$1"
-readonly BASELINE_YAML_FILE="$2"
-readonly CONFIG_ID_FOR_BASELINE_LOOKUP="$3"
-readonly TARGET_METRICS_JSON="$4"
-readonly PYTHON_COMPARISON_SCRIPT="$5"
+# This script encapsulates the logic to compare benchmark results against a baseline.
 
-echo "--- Starting Baseline Comparison Script ---"
-echo "Results JSON File: $RESULTS_JSON_FILE"
-echo "Baseline YAML File: $BASELINE_YAML_FILE"
-echo "Config ID for Baseline Lookup: $CONFIG_ID_FOR_BASELINE_LOOKUP"
-echo "Target Metrics JSON: $TARGET_METRICS_JSON"
-echo "Python Comparison Script: $PYTHON_COMPARISON_SCRIPT" # New line
+set -e  # Exit immediately if a command exits with a non-zero status.
+set -u # Treat unset variables as an error when substituting.
 
-# Validate inputs
-if [ -z "$RESULTS_JSON_FILE" ] || [ ! -f "$RESULTS_JSON_FILE" ]; then
-    echo "::error::Results JSON file not found or invalid: '$RESULTS_JSON_FILE'"
-    exit 1
-fi
-if [ -z "$BASELINE_YAML_FILE" ] || [ ! -f "$BASELINE_YAML_FILE" ]; then
-    echo "::warning::Baseline YAML file not found or invalid: '$BASELINE_YAML_FILE'. Skipping comparison."
-    exit 0 # Exit cleanly if baseline file is missing, as comparison cannot proceed.
-fi
-if [ -z "$CONFIG_ID_FOR_BASELINE_LOOKUP" ]; then
-    echo "::error::Config ID for baseline lookup is empty."
-    exit 1
-fi
-if [ -z "$PYTHON_COMPARISON_SCRIPT" ] || [ ! -f "$PYTHON_COMPARISON_SCRIPT" ]; then # New validation
-    echo "::error::Python comparison script not found or invalid: '$PYTHON_COMPARISON_SCRIPT'"
-    exit 1
+# Path to the results.json created by run_benchmark.sh
+ACTUAL_RESULTS_JSON_PATH="${RESOLVED_OUTPUT_DIR}/results.json"
+
+echo "Results JSON path for comparison script: $ACTUAL_RESULTS_JSON_PATH"
+echo "Baseline YAML path for comparison script: $RESOLVED_BASELINE_YAML"
+echo "Comparison script path: $RESOLVED_COMPARISON_SCRIPT"
+
+if [ ! -f "$ACTUAL_RESULTS_JSON_PATH" ]; then
+  echo "::warning::Primary results file '$ACTUAL_RESULTS_JSON_PATH' not found. Cannot perform baseline comparison."
+  # If results.json.txt exists, the comparison script won't use it.
+  # This indicates an issue in run_benchmark.sh not creating the primary results.json
+  # Depending on policy, this could be an error: exit 1
+  exit 0 # Exiting cleanly to not block if results are missing
 fi
 
-# Ensure Python and jq are available
-if ! command -v python3 &> /dev/null; then echo "::error::python3 command not found."; exit 1; fi
-if ! command -v jq &> /dev/null; then echo "::error::jq command not found."; exit 1; fi
+# Construct the config_id for baseline lookup (must match keys in baseline YAML)
+NUM_HOSTS=$(echo "$TOPOLOGY_JSON" | jq -r '.num_hosts // "1"')
+DEVICES_PER_HOST=$(echo "$TOPOLOGY_JSON" | jq -r '.num_devices_per_host // "1"')
+HW_CAT_LOWER=$(echo "$HARDWARE_CATEGORY" | tr '[:upper:]' '[:lower:]')
+# Use CONFIG_ID (which is matrix.benchmark_entry.config_id || matrix.benchmark_entry.benchmark_name)
+SCRIPT_CONFIG_ID_FOR_BASELINE_LOOKUP="${CONFIG_ID}_${HW_CAT_LOWER}_${NUM_HOSTS}_host_${DEVICES_PER_HOST}_device"
 
+echo "Constructed Config ID for baseline lookup: $SCRIPT_CONFIG_ID_FOR_BASELINE_LOOKUP"
 
-echo "Executing Python comparison script..."
-# Use the passed Python script path
-python3 "$PYTHON_COMPARISON_SCRIPT" \
-  --results-json-file="$RESULTS_JSON_FILE" \
-  --baseline-yaml-file="$BASELINE_YAML_FILE" \
-  --config-id="$CONFIG_ID_FOR_BASELINE_LOOKUP" \
-  --target-metrics-json="$TARGET_METRICS_JSON"
+python3 "$RESOLVED_COMPARISON_SCRIPT" \
+  --results-json-file="$ACTUAL_RESULTS_JSON_PATH" \
+  --baseline-yaml-file="$RESOLVED_BASELINE_YAML" \
+  --config-id="$SCRIPT_CONFIG_ID_FOR_BASELINE_LOOKUP"
 
 COMPARISON_EXIT_CODE=$?
-
 if [ $COMPARISON_EXIT_CODE -ne 0 ]; then
   echo "::error::Baseline comparison script failed or regressions detected (Exit Code: $COMPARISON_EXIT_CODE)."
-  exit $COMPARISON_EXIT_CODE # This will fail the shell script and the GitHub Actions step
-else
-  echo "Baseline comparison successful: No regressions detected or no applicable baselines found."
+  exit $COMPARISON_EXIT_CODE # This will fail the GitHub Actions step and block the PR
 fi
-
-echo "--- Baseline Comparison Script Finished ---"
+echo "Baseline comparison successful: No regressions detected or no applicable baselines found."

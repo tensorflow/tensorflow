@@ -101,10 +101,10 @@ jobs:
       CHECKOUT_REF: ${{ github.event.pull_request.head.sha || github.sha }}
       COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       WORKFLOW_RUN_ID: ${{ github.run_id }}
-      # --- Define only the NAME of the output dir here ---
       OUTPUT_DIR_NAME: benchmark_output_${{ matrix.benchmark_entry.config_id || matrix.benchmark_entry.benchmark_name }}_${{ matrix.benchmark_entry.hardware_category }}
-      # --- Location for scripts (Adjust if you move them, e.g., to .github/scripts) ---
-      SCRIPT_DIR_RELATIVE: .github/workflows/benchmarks # Relative to GITHUB_WORKSPACE
+      SCRIPT_DIR_RELATIVE: .github/workflows/benchmarks
+      BASELINE_YAML_FILE_RELATIVE: xla/tools/benchmarks/baseline/presubmit_baseline.yml
+      COMPARISON_SCRIPT_RELATIVE: .github/workflows/benchmarks/compare_with_baseline.py
 
     steps:
       - name: "Wait For Connection"
@@ -112,25 +112,42 @@ jobs:
         with:
           halt-dispatch-input: ${{ inputs.halt-for-connection }}
 
-      - name: Print Job Info & Set Env Vars
+      - name: Print Job Info & Set Full Paths in ENV
         run: |
           FULL_OUTPUT_DIR_PATH="${GITHUB_WORKSPACE}/${OUTPUT_DIR_NAME}"
-          RESOLVED_SCRIPT_DIR_PATH="${GITHUB_WORKSPACE}/${SCRIPT_DIR_RELATIVE}" # Renamed for clarity
+          RESOLVED_SCRIPT_DIR_PATH="${GITHUB_WORKSPACE}/${SCRIPT_DIR_RELATIVE}"
+          RESOLVED_BASELINE_YAML_PATH="${GITHUB_WORKSPACE}/${BASELINE_YAML_FILE_RELATIVE}"
+          RESOLVED_COMPARISON_SCRIPT_PATH="${GITHUB_WORKSPACE}/${COMPARISON_SCRIPT_RELATIVE}"
+          RESOLVED_COMPARE_RESULTS_SCRIPT_PATH="${GITHUB_WORKSPACE}/${SCRIPT_DIR_RELATIVE}/run_comparison.sh"
 
           echo "--- Benchmark Job Info ---"
           echo "Config ID: $CONFIG_ID"
           echo "Benchmark Name: $BENCHMARK_NAME"
           echo "Runner Label: $RUNNER_LABEL"
           echo "Hardware Category: $HARDWARE_CATEGORY"
-          echo "Output Directory Name (relative to workspace): $OUTPUT_DIR_NAME"
-          echo "Full Output Directory Path (will be created by script): $FULL_OUTPUT_DIR_PATH"
+          echo "Output Directory Name (relative): $OUTPUT_DIR_NAME"
+          echo "Full Output Directory Path: $FULL_OUTPUT_DIR_PATH"
           echo "Full Script Directory Path: $RESOLVED_SCRIPT_DIR_PATH"
+          echo "Full Baseline YAML Path: $RESOLVED_BASELINE_YAML_PATH"
+          echo "Full Comparison Script Path: $RESOLVED_COMPARISON_SCRIPT_PATH"
+          echo "Full Compare Results Script Path: $RESOLVED_COMPARE_RESULTS_SCRIPT_PATH"
           echo "GITHUB_WORKSPACE: ${GITHUB_WORKSPACE}"
           echo "Current PWD: $(pwd)"
           echo "--------------------------"
 
+          # These are now available to subsequent steps via env context
           echo "RESOLVED_OUTPUT_DIR=$FULL_OUTPUT_DIR_PATH" >> $GITHUB_ENV
           echo "RESOLVED_SCRIPT_DIR=$RESOLVED_SCRIPT_DIR_PATH" >> $GITHUB_ENV
+          echo "RESOLVED_BASELINE_YAML=$RESOLVED_BASELINE_YAML_PATH" >> $GITHUB_ENV
+          echo "RESOLVED_COMPARISON_SCRIPT=$RESOLVED_COMPARISON_SCRIPT_PATH" >> $GITHUB_ENV
+          echo "RESOLVED_COMPARE_RESULTS_SCRIPT=$RESOLVED_COMPARE_RESULTS_SCRIPT_PATH" >> $GITHUB_ENV
+
+          # Create the output directory - scripts will assume it exists
+          mkdir -p "$FULL_OUTPUT_DIR_PATH"
+          if [ ! -d "$FULL_OUTPUT_DIR_PATH" ]; then
+            echo "::error::Failed to create output directory: $FULL_OUTPUT_DIR_PATH"
+            exit 1
+          fi
 
       - name: Checkout OpenXLA Repository
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
@@ -143,14 +160,14 @@ jobs:
         run: |
            bash "${RESOLVED_SCRIPT_DIR}/build_binaries.sh"
         env:
-          OUTPUT_DIR: ${{ env.RESOLVED_OUTPUT_DIR }} # Pass the correctly resolved full path
+          OUTPUT_DIR: ${{ env.RESOLVED_OUTPUT_DIR }}
 
       - name: Prepare Benchmark Artifact
         id: prep_artifact
         run: |
            bash "${RESOLVED_SCRIPT_DIR}/prepare_artifact.sh"
         env:
-          OUTPUT_DIR: ${{ env.RESOLVED_OUTPUT_DIR }} # Pass the correctly resolved full path
+          OUTPUT_DIR: ${{ env.RESOLVED_OUTPUT_DIR }}
 
       - name: Run Benchmark and Generate Stats
         id: run_hlo
@@ -159,12 +176,39 @@ jobs:
            STATS_BINARY: "${{ steps.build_binaries.outputs.stats_binary }}"
            DEVICE_TYPE_FLAG: "${{ steps.build_binaries.outputs.device_type_flag }}"
            LOCAL_ARTIFACT_PATH: "${{ steps.prep_artifact.outputs.artifact_local_path }}"
-           OUTPUT_DIR: ${{ env.RESOLVED_OUTPUT_DIR }} # Pass the correctly resolved full path
+           OUTPUT_DIR: ${{ env.RESOLVED_OUTPUT_DIR }}
            # Other job-level env vars are automatically inherited
         run: |
+           # The run_benchmark.sh script is expected to create $OUTPUT_DIR/results.json
            bash "${RESOLVED_SCRIPT_DIR}/run_benchmark.sh"
 
-      #TODO(juliagmt): add a step to compare the stats with the baseline and block the PR if there is a regression.
+           # Print the content of results.json for debugging
+           RESULTS_JSON_FILE_PATH="${RESOLVED_OUTPUT_DIR}/results.json"
+           echo "--- Content of results.json (from workflow) ---"
+           if [ -f "$RESULTS_JSON_FILE_PATH" ]; then
+             if command -v jq &> /dev/null && jq '.' "$RESULTS_JSON_FILE_PATH" > /dev/null 2>&1; then
+               jq '.' "$RESULTS_JSON_FILE_PATH"
+             else
+               echo "results.json may not be valid JSON or jq failed, printing with cat:"
+               cat "$RESULTS_JSON_FILE_PATH"
+             fi
+           elif [ -f "${RESULTS_JSON_FILE_PATH}.txt" ]; then
+             echo "results.json not found, printing fallback .txt file:"
+             cat "${RESULTS_JSON_FILE_PATH}.txt"
+           else
+             echo "::warning::Neither results.json nor results.json.txt found at $RESULTS_JSON_FILE_PATH"
+           fi
+           echo "---------------------------------------------"
+
+      - name: Compare Results to Baseline
+        # Run if benchmark step finished (even if it failed but produced a results file)
+        # AND PyYAML installation didn't cause a skip
+        if: (steps.run_hlo.outcome == 'success' || (steps.run_hlo.outcome == 'failure' && (hashFiles(format('{0}/results.json', env.RESOLVED_OUTPUT_DIR)) != '' || hashFiles(format('{0}/results.json.txt', env.RESOLVED_OUTPUT_DIR)) != ''))) && env.skip_comparison_due_to_yaml_install_failure != 'true'
+        run: |
+          echo "Starting baseline comparison..."
+          bash "$RESOLVED_COMPARE_RESULTS_SCRIPT"
+          echo "Baseline comparison finished."
+          echo "---------------------------------------------"
 
       - name: Upload Benchmark Artifacts
         if: always()
