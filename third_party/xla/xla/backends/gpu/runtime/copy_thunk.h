@@ -183,6 +183,7 @@ class CopyDoneThunk : public Thunk {
 
 class DynamicMemcpyThunk : public Thunk {
  public:
+  // TODO(jreiffers): Move this to a more appropriate place.
   struct MemcpyDescriptor {
     struct DynamicOffset {
       // The while loop whose induction variable defines the offset.
@@ -212,10 +213,16 @@ class DynamicMemcpyThunk : public Thunk {
     int64_t dst_byte_static_offset = 0;
   };
 
+  struct Offsets {
+    bool depends_on_loop;
+    std::vector<int64_t> src_offsets;
+    std::vector<int64_t> dst_offsets;
+  };
+
   DynamicMemcpyThunk(ThunkInfo thunk_info,
                      const BufferAllocation::Slice& source_buffer,
                      const BufferAllocation::Slice& destination_buffer,
-                     uint64_t mem_size, MemcpyDescriptor descriptor);
+                     uint64_t mem_size, Offsets offsets);
   DynamicMemcpyThunk(const DynamicMemcpyThunk&) = delete;
   DynamicMemcpyThunk& operator=(const DynamicMemcpyThunk&) = delete;
 
@@ -225,7 +232,7 @@ class DynamicMemcpyThunk : public Thunk {
   const BufferAllocation::Slice source_buffer_;
   const BufferAllocation::Slice destination_buffer_;
   const uint64_t mem_size_;
-  MemcpyDescriptor descriptor_;
+  Offsets offsets_;
 };
 
 }  // namespace gpu

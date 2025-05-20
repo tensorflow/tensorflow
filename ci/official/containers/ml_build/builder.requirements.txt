@@ -12,3 +12,6 @@ uv ~= 0.5.30
 
 # For running wheel verification script
 immutabledict ~= 4.2.1
+
+ansbile # For building VM images
+pywinrm # For connecting with Packer/Ansible

@@ -1694,5 +1694,33 @@ TEST_F(IndexingMapTest, ConvertRangeVariablesToDimensions) {
   )"));
 }
 
+TEST_F(IndexingMapTest, ConvertRangeVariablesToDimensionsWithRuntimeVars) {
+  IndexingMap indexing_map = Parse(R"(
+     (d0, d1)[to_convert_0, range, to_convert_1]{rt0, rt1}
+       -> (d1, d0, range + to_convert_1 + rt0, to_convert_0),
+     domain:
+     d0 in [0, 3],
+     d1 in [0, 3],
+     to_convert_0 in [0, 2],
+     range in [0, 1],
+     to_convert_1 in [0, 3],
+     rt0 in [0, 0],
+     rt1 in [0, 1]
+  )");
+  EXPECT_THAT(ConvertRangeVariablesToDimensions(indexing_map, {0, 2}),
+              MatchIndexingMap(R"(
+     (d0, d1, to_convert_0, to_convert_1)[range]{rt0, rt1}
+       -> (d1, d0, to_convert_1 + range + rt0, to_convert_0),
+     domain:
+     d0 in [0, 3],
+     d1 in [0, 3],
+     to_convert_0 in [0, 2],
+     to_convert_1 in [0, 3],
+     range in [0, 1],
+     rt0 in [0, 0],
+     rt1 in [0, 1]
+  )"));
+}
+
 }  // namespace
 }  // namespace xla

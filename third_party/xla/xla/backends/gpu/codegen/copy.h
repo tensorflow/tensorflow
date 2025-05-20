@@ -53,11 +53,8 @@ class MemcpyFusion : public FusionInterface {
 class DynamicMemcpyFusion : public FusionInterface {
  public:
   DynamicMemcpyFusion(const HloFusionAnalysis& analysis,
-                      const BufferAssignment* buffer_assignment,
-                      DynamicMemcpyThunk::MemcpyDescriptor descriptor)
-      : analysis_(analysis),
-        buffer_assignment_(buffer_assignment),
-        descriptor_(std::move(descriptor)) {}
+                      const BufferAssignment* buffer_assignment)
+      : analysis_(analysis), buffer_assignment_(buffer_assignment) {}
 
   absl::StatusOr<FusionEmissionResult> Emit(
       IrEmitterContext& ir_emitter_context,
@@ -74,7 +71,6 @@ class DynamicMemcpyFusion : public FusionInterface {
  private:
   const HloFusionAnalysis& analysis_;
   const BufferAssignment* buffer_assignment_;
-  DynamicMemcpyThunk::MemcpyDescriptor descriptor_;
 };
 
 }  // namespace gpu

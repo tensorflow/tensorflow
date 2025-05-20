@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
-#include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
@@ -245,174 +244,15 @@ absl::Status CopyDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
 // DynamicMemcpyThunk
 //===----------------------------------------------------------------------===//
 
-namespace {
-
-class DynamicOffsetEvaluator {
- public:
-  // Evaluates the clamped array index for the given offset.
-  absl::StatusOr<int64_t> EvaluateArrayIndexForOffset(
-      const DynamicMemcpyThunk::MemcpyDescriptor::DynamicOffset& offset) {
-    TF_ASSIGN_OR_RETURN(auto call_stack, ComputeCallStack(offset));
-
-    // Walk up the call stack and compute the required parameter's values at
-    // each step, using them as the substitutions for the next call. By
-    // definition, the first call can only depend on the induction variable.
-    TF_ASSIGN_OR_RETURN(auto substitutions,
-                        GetInductionVariableSubstitutions(offset));
-    HloEvaluator evaluator(/*max_loop_iterations=*/0);
-    for (auto it = call_stack.rbegin(), e = call_stack.rend(); it != e; ++it) {
-      const HloInstruction* caller = *it;
-      VLOG(3) << "Evaluating required operands of caller " << caller->name()
-              << ".";
-      if (VLOG_IS_ON(4)) {
-        VLOG(4) << "Current substitutions:";
-        for (auto [instr, value] : substitutions) {
-          VLOG(4) << "  " << instr->name() << " -> " << value->ToString();
-        }
-      }
-      absl::flat_hash_map<const HloInstruction*, const LiteralBase*>
-          next_substitutions;
-      for (auto [parameter, operand] :
-           GetRequiredParametersAndOperands(offset, caller)) {
-        // Only compute the value if we didn't already need it for a different
-        // offset.
-        if (!known_values_.contains(operand)) {
-          TF_ASSIGN_OR_RETURN(
-              known_values_[operand],
-              evaluator.Evaluate(operand, {}, true, substitutions));
-        }
-        next_substitutions[parameter] = &known_values_[operand];
-      }
-
-      std::swap(substitutions, next_substitutions);
-    }
-
-    // We now have the parameter values for the innermost call, so we can
-    // compute the offset.
-    TF_ASSIGN_OR_RETURN(
-        auto array_index_literal,
-        evaluator.Evaluate(offset.offset, {}, true, substitutions));
-
-    std::optional<int64_t> array_index =
-        LiteralUtil::LiteralAsScalarInt64(array_index_literal);
-    if (!array_index) {
-      return absl::InternalError("Failed to evaluate offset");
-    }
-
-    int64_t clamped_index =
-        std::max<int64_t>(0, std::min(*array_index, offset.dimension_size - 1));
-    VLOG(3) << "Computed dynamic array index " << clamped_index << ".";
-
-    return clamped_index;
-  }
-
- private:
-  // Computes the call stack between `offset`'s while loop and the derived
-  // value. Typically, there will be up to three items in the stack: 1) a
-  // fusion, 2) optionally an async-start, 3) optionally a command buffer. The
-  // while loop instruction is not included.
-  static absl::StatusOr<absl::InlinedVector<HloInstruction*, 4>>
-  ComputeCallStack(
-      const DynamicMemcpyThunk::MemcpyDescriptor::DynamicOffset& offset) {
-    VLOG(3) << "Computing call stack for " << offset.offset->name() << ".";
-    const HloComputation* current_computation = offset.offset->parent();
-    const HloComputation* while_body = offset.induction_variable->parent();
-
-    absl::InlinedVector<HloInstruction*, 4> call_stack;
-    while (current_computation && current_computation != while_body) {
-      VLOG(3) << "Current computation: " << current_computation->name() << ".";
-      auto callers = current_computation->caller_instructions();
-
-      // If there isn't a single caller, the thunk was not constructed
-      // correctly.
-      TF_RET_CHECK(callers.size() == 1);
-
-      call_stack.push_back(callers.front());
-      current_computation = callers.front()->parent();
-    }
-
-    // If we didn't arrive at the while body, the thunk was not constructed
-    // correctly.
-    TF_RET_CHECK(current_computation == while_body);
-    return call_stack;
-  }
-
-  // Returns the pairs of {computation parameter, computation caller operand}
-  // that are required in the given computation to compute the given offset.
-  static absl::InlinedVector<
-      std::pair<const HloInstruction*, const HloInstruction*>, 1>
-  GetRequiredParametersAndOperands(
-      const DynamicMemcpyThunk::MemcpyDescriptor::DynamicOffset& offset,
-      const HloInstruction* caller) {
-    absl::InlinedVector<std::pair<const HloInstruction*, const HloInstruction*>,
-                        1>
-        result;
-    const HloComputation* callee = caller->called_computations().front();
-    if (auto maybe_required = offset.required_parameters.find(callee);
-        maybe_required != offset.required_parameters.end()) {
-      const auto& required_parameters = maybe_required->second;
-      for (int i = 0; i < required_parameters.size(); ++i) {
-        if (required_parameters[i]) {
-          result.push_back(
-              {callee->parameter_instruction(i), caller->operand(i)});
-        }
-      }
-    }
-    return result;
-  }
-
-  absl::StatusOr<absl::flat_hash_map<const HloInstruction*, const LiteralBase*>>
-  GetInductionVariableSubstitutions(
-      const DynamicMemcpyThunk::MemcpyDescriptor::DynamicOffset& offset) {
-    // Set the value of the induction variable, if it's not known yet.
-    if (!known_values_.contains(offset.induction_variable)) {
-      TF_ASSIGN_OR_RETURN(
-          auto config,
-          offset.while_loop->backend_config<xla::WhileLoopBackendConfig>());
-      TF_RET_CHECK(config.has_known_init_step());
-      TF_ASSIGN_OR_RETURN(int64_t iteration,
-                          WhileThunk::CurrentLoopIteration(offset.while_loop));
-      int64_t induction_variable = config.known_init_step().init() +
-                                   iteration * config.known_init_step().step();
-
-      Literal induction_variable_literal(offset.induction_variable->shape());
-      TF_RETURN_IF_ERROR(
-          induction_variable_literal.SetIntegralAsS64({}, induction_variable));
-      known_values_[offset.induction_variable] =
-          std::move(induction_variable_literal);
-    }
-
-    return {{{offset.induction_variable,
-              &known_values_.at(offset.induction_variable)}}};
-  }
-
-  absl::node_hash_map<const HloInstruction*, Literal> known_values_;
-};
-
-absl::StatusOr<int64_t> EvaluateDynamicOffsets(
-    absl::Span<const DynamicMemcpyThunk::MemcpyDescriptor::DynamicOffset>
-        offsets) {
-  int64_t offset_sum = 0;
-  DynamicOffsetEvaluator evaluator;
-  for (const auto& offset : offsets) {
-    TF_ASSIGN_OR_RETURN(int64_t clamped_index,
-                        evaluator.EvaluateArrayIndexForOffset(offset));
-    offset_sum += clamped_index * offset.byte_stride;
-  }
-  return offset_sum;
-}
-
-}  // namespace
-
 DynamicMemcpyThunk::DynamicMemcpyThunk(
     ThunkInfo thunk_info, const BufferAllocation::Slice& source_buffer,
     const BufferAllocation::Slice& destination_buffer, uint64_t mem_size,
-    DynamicMemcpyThunk::MemcpyDescriptor descriptor)
+    DynamicMemcpyThunk::Offsets offsets)
     : Thunk(Kind::kCopy, std::move(thunk_info)),
       source_buffer_(source_buffer),
       destination_buffer_(destination_buffer),
       mem_size_(mem_size),
-      descriptor_(descriptor) {}
+      offsets_(std::move(offsets)) {}
 
 absl::Status DynamicMemcpyThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::DeviceMemoryBase src_data =
@@ -420,13 +260,13 @@ absl::Status DynamicMemcpyThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::DeviceMemoryBase dst_data =
       params.buffer_allocations->GetDeviceAddress(destination_buffer_);
 
-  TF_ASSIGN_OR_RETURN(int64_t src_offset,
-                      EvaluateDynamicOffsets(descriptor_.src_dynamic_offsets));
-  src_offset += descriptor_.src_byte_static_offset;
+  int64_t iteration_index = 0;
+  if (offsets_.depends_on_loop) {
+    TF_ASSIGN_OR_RETURN(iteration_index, WhileThunk::CurrentLoopIteration());
+  }
 
-  TF_ASSIGN_OR_RETURN(int64_t dst_offset,
-                      EvaluateDynamicOffsets(descriptor_.dst_dynamic_offsets));
-  dst_offset += descriptor_.dst_byte_static_offset;
+  int64_t src_offset = offsets_.src_offsets[iteration_index];
+  int64_t dst_offset = offsets_.dst_offsets[iteration_index];
 
   auto src_with_offset = src_data.GetByteSlice(src_offset, mem_size_);
   auto dst_with_offset = dst_data.GetByteSlice(dst_offset, mem_size_);
