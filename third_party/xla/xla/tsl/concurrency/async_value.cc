@@ -157,7 +157,9 @@ void IndirectAsyncValue::ForwardTo(RCReference<AsyncValue> value) {
 //===----------------------------------------------------------------------===//
 
 void BlockUntilReady(AsyncValue* async_value) {
-  if (ABSL_PREDICT_TRUE(async_value->IsAvailable())) return;
+  if (ABSL_PREDICT_TRUE(async_value->IsAvailable())) {
+    return;
+  }
 
   absl::Notification notification;
   async_value->AndThen([&notification] { notification.Notify(); });
@@ -169,12 +171,16 @@ void RunWhenReady(absl::Span<AsyncValue* const> values,
   // Perform a quick scan of the arguments.  If they are all available,
   // then we can run the callee synchronously.
   absl::InlinedVector<AsyncValue*, 4> unavailable_values;
-  for (auto i : values) {
-    if (!i->IsAvailable()) unavailable_values.push_back(i);
+  for (AsyncValue* value : values) {
+    if (!value->IsAvailable()) {
+      unavailable_values.push_back(value);
+    }
   }
 
   // If we can synchronously call 'callee', then do it and we're done.
-  if (unavailable_values.empty()) return std::move(callee)();
+  if (unavailable_values.empty()) {
+    return std::move(callee)();
+  }
 
   // If there is exactly one unavailable value, then we can just AndThen it.
   if (unavailable_values.size() == 1) {
@@ -196,7 +202,9 @@ void RunWhenReady(absl::Span<AsyncValue* const> values,
   for (auto* val : unavailable_values) {
     val->AndThen([data]() {
       // Decrement the counter unless we're the last to be here.
-      if (data->counter.fetch_sub(1) != 1) return;
+      if (data->counter.fetch_sub(1) != 1) {
+        return;
+      }
 
       // If we are the last one, then run the callee and free the data.
       std::move(data->callee)();
