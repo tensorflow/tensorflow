@@ -1333,6 +1333,122 @@ TEST_F(IrEmissionUtilsTest, ResolveWhileLoopDependencySideEffect) {
   ASSERT_FALSE(result.has_value());
 }
 
+TEST_F(IrEmissionUtilsTest, InternalTuple) {
+  // Verifies that we can resolve dependencies that involve internal tuples.
+  constexpr absl::string_view kHlo = R"(
+      add12 {
+        p0 = s32[] parameter(0)
+        c1 = s32[] constant(1)
+        c2 = s32[] constant(2)
+        p0p1 = s32[] add(p0, c1)
+        p0p2 = s32[] add(p0, c2)
+        ROOT tuple = (s32[], s32[]) tuple(p0p1, p0p2)
+      }
+
+      call_body {
+        p0 = s32[] parameter(0)
+        ROOT sum = s32[] add(p0, p0)
+      }
+
+      while_body {
+        p0 = (s32[], s32[]) parameter(0)
+        ivar = s32[] get-tuple-element(p0), index=0
+        ivar_copy = s32[] copy(ivar)
+
+        side_effect = s32[] custom-call(), custom_call_target=""
+
+        derived = (s32[], s32[]) fusion(ivar_copy), kind=kLoop, calls=add12
+        val = get-tuple-element(derived), index=1
+
+        c1 = s32[] constant(1)
+        next_ivar = s32[] add(ivar_copy, c1)
+        use = s32[] call(val), to_apply=call_body
+
+        ROOT result = (s32[], s32[]) tuple(next_ivar, use)
+      }
+
+      condition {
+        p0 = (s32[], s32[]) parameter(0)
+        ivar = s32[] get-tuple-element(p0), index=0
+        c5 = s32[] constant(5)
+        ROOT cmp = pred[] compare(ivar, c5), direction=LT
+      }
+
+      ENTRY main {
+        c0 = s32[] constant(0)
+        tuple = (s32[], s32[]) tuple(c0, c0)
+        ROOT while = (s32[], s32[]) while(tuple),
+            condition=condition, body=while_body,
+            backend_config={"known_induction_variable":{"tuple_index":"0"}}
+      }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  auto result = ResolveFunctionalDependencyOnInductionVariable(
+      module->GetComputationWithName("call_body")->root_instruction());
+
+  ASSERT_TRUE(result.has_value());
+
+  HloComputation* while_body = module->GetComputationWithName("while_body");
+  const HloComputation* call_body = module->GetComputationWithName("call_body");
+  const HloInstruction* loop = module->entry_computation()->root_instruction();
+
+  EXPECT_EQ(result->loop, loop);
+  EXPECT_EQ(result->induction_var, while_body->GetInstructionWithName("ivar"));
+
+  EXPECT_THAT(result->required_parameters, SizeIs(1));
+  EXPECT_THAT(result->required_parameters[call_body], ElementsAre(true));
+}
+
+TEST_F(IrEmissionUtilsTest, NonInductionVariableLoopCarriedVariable) {
+  // Verifies that we detect when there is a dependency on a non-induction
+  // variable loop-carried variable.
+  constexpr absl::string_view kHlo = R"(
+      while_body {
+        p0 = (s32[], s32[]) parameter(0)
+        ivar = s32[] get-tuple-element(p0), index=0
+        lcv = s32[] get-tuple-element(p0), index=1
+
+        c1 = s32[] constant(1)
+        next_ivar = s32[] add(ivar, c1)
+        next_lcv = s32[] add(ivar, lcv)
+
+        ROOT result = (s32[], s32[]) tuple(next_ivar, next_lcv)
+      }
+
+      condition {
+        p0 = (s32[], s32[]) parameter(0)
+        ivar = s32[] get-tuple-element(p0), index=0
+        c5 = s32[] constant(5)
+        ROOT cmp = pred[] compare(ivar, c5), direction=LT
+      }
+
+      ENTRY main {
+        c0 = s32[] constant(0)
+        tuple = (s32[], s32[]) tuple(c0, c0)
+        ROOT while = (s32[], s32[]) while(tuple),
+            condition=condition, body=while_body,
+            backend_config={"known_induction_variable":{"tuple_index":"0"}}
+      }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  HloComputation* while_body = module->GetComputationWithName("while_body");
+
+  // Sanity check to ensure there isn't something wrong with the loop.
+  ASSERT_TRUE(ResolveFunctionalDependencyOnInductionVariable(
+                  while_body->GetInstructionWithName("next_ivar"))
+                  .has_value());
+
+  // This must be false, since it depends on tuple index 1, which is not the
+  // induction variable.
+  ASSERT_FALSE(ResolveFunctionalDependencyOnInductionVariable(
+                   while_body->GetInstructionWithName("next_lcv"))
+                   .has_value());
+}
+
 TEST_F(IrEmissionUtilsTest, Transpose_10) {
   auto spec = GetTransposeSpecFromRoot(R"(ENTRY entry {
     p0 = f32[8, 32] parameter(0)
