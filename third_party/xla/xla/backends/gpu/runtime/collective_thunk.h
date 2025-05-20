@@ -111,6 +111,21 @@ struct CommunicatorHandle {
   GpuCliqueKey clique_key;  // clique key
 };
 
+// Wrap GpuCliqueKey into a unique struct to guarantee we do not accidentally
+// try to run multiple unrelated rendezvous for a same key.
+struct FirstCallRendezvousKey {
+  GpuCliqueKey clique_key;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const FirstCallRendezvousKey& key) {
+    return H::combine(std::move(h), key.clique_key);
+  }
+  friend bool operator==(const FirstCallRendezvousKey& a,
+                         const FirstCallRendezvousKey& b) {
+    return a.clique_key == b.clique_key;
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // CollectiveThunk
 //===----------------------------------------------------------------------===//
@@ -142,6 +157,8 @@ class CollectiveThunk : public Thunk {
     friend class CollectiveThunk;
     friend class CollectiveDoneThunk;
     friend class CollectiveGroupThunk;
+    friend class NvshmemCollectiveThunk;
+    friend class NvshmemCollectiveDoneThunk;
 
     absl::Status Initialize(se::StreamExecutor* executor);
     absl::StatusOr<se::Event*> GetEvent(se::StreamExecutor* executor);
@@ -281,7 +298,8 @@ absl::Status AddOpDescription(absl::Status status, OpT op,
 absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
     GpuCollectives* collectives, const Thunk::CollectiveExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind);
+    CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind,
+    bool use_nccl = true);
 
 // Returns a communicator and additional information about the clique.
 absl::StatusOr<CommunicatorHandle> GetComm(
@@ -318,6 +336,9 @@ absl::Status MaybeRegisterBuffers(GpuCollectives* collectives,
                                   const std::vector<DeviceBufferPair>& buffers,
                                   Communicator* comm);
 
+absl::StatusOr<int64_t> GetNumLocalParticipants(
+    const Thunk::CollectiveExecuteParams& params,
+    const std::vector<GlobalDeviceId>& participants);
 }  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_THUNK_H_

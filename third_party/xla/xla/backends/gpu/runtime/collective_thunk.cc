@@ -96,24 +96,6 @@ bool IsTypeSupportedBy(PrimitiveType element_type, Thunk::Kind reduction_op) {
   }
 }
 
-absl::StatusOr<int64_t> GetNumLocalParticipants(
-    const Thunk::CollectiveExecuteParams& params,
-    const std::vector<GlobalDeviceId>& participants) {
-  if (!params.global_device_id_map) {
-    return participants.size();
-  }
-
-  std::vector<GlobalDeviceId> local_devices;
-  local_devices.reserve(params.global_device_id_map->size());
-  for (const auto& entry : *params.global_device_id_map) {
-    local_devices.push_back(entry.second);
-  }
-
-  return absl::c_count_if(participants, [&](const GlobalDeviceId& device_id) {
-    return absl::c_linear_search(local_devices, device_id);
-  });
-}
-
 }  // namespace
 
 // This file runs collective ops (i.e. ops that communicate between multiple
@@ -232,36 +214,55 @@ CollectiveThunk::CollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_sync,
       stream_kind_(stream_kind),
       async_events_(is_sync ? nullptr : new AsyncEvents()) {}
 
+absl::StatusOr<int64_t> GetNumLocalParticipants(
+    const Thunk::CollectiveExecuteParams& params,
+    const std::vector<GlobalDeviceId>& participants) {
+  if (!params.global_device_id_map) {
+    return participants.size();
+  }
+
+  std::vector<GlobalDeviceId> local_devices;
+  local_devices.reserve(params.global_device_id_map->size());
+  for (const auto& entry : *params.global_device_id_map) {
+    local_devices.push_back(entry.second);
+  }
+
+  return absl::c_count_if(participants, [&](const GlobalDeviceId& device_id) {
+    return absl::c_linear_search(local_devices, device_id);
+  });
+}
+
 absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
     GpuCollectives* collectives, const Thunk::CollectiveExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind) {
+    CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind,
+    bool use_nccl) {
   GlobalDeviceId global_device_id = params.global_device_id;
 
   TF_ASSIGN_OR_RETURN(
       std::vector<GlobalDeviceId> participants,
       GetParticipatingDevices(global_device_id, *params.device_assn,
                               replica_groups, group_mode));
-
-  // If splitting is enabled, participating groups must match in order for a
-  // clique to be reused from the cache. We can ignore the participating groups
-  // otherwise.
-  static const int64_t enable_nccl_comm_splitting =
-      xla::GetDebugOptionsFromFlags().xla_gpu_enable_nccl_comm_splitting();
   std::vector<std::vector<GlobalDeviceId>> participant_groups;
-  if (enable_nccl_comm_splitting) {
-    TF_ASSIGN_OR_RETURN(participant_groups,
-                        GetParticipatingDevicesGroups(
-                            *params.device_assn, replica_groups, group_mode));
-  }
+  if (use_nccl) {
+    // If splitting is enabled, participating groups must match in order for a
+    // clique to be reused from the cache. We can ignore the participating
+    // groups otherwise.
+    static const int64_t enable_nccl_comm_splitting =
+        xla::GetDebugOptionsFromFlags().xla_gpu_enable_nccl_comm_splitting();
+    if (enable_nccl_comm_splitting) {
+      TF_ASSIGN_OR_RETURN(participant_groups,
+                          GetParticipatingDevicesGroups(
+                              *params.device_assn, replica_groups, group_mode));
+    }
 
-  if (collectives->IsGlobalConfig() &&
-      (participants.size() != params.device_assn->replica_count())) {
-    return InvalidArgument(
-        "Partial replica groups are not allowed when using NCCL_COMM_ID "
-        "environment configuration.");
+    if (collectives->IsGlobalConfig() &&
+        (participants.size() != params.device_assn->replica_count())) {
+      return InvalidArgument(
+          "Partial replica groups are not allowed when using NCCL_COMM_ID "
+          "environment configuration.");
+    }
   }
-
   TF_ASSIGN_OR_RETURN(int64_t num_local_participants,
                       GetNumLocalParticipants(params, participants));
 
@@ -413,24 +414,6 @@ absl::Status CollectiveThunk::Initialize(const InitializeParams& params) {
   }
   return absl::OkStatus();
 }
-
-namespace {
-// Wrap GpuCliqueKey into a unique struct to guarantee we do not accidentally
-// try to run multiple unrelated rendezvous for a same key.
-struct FirstCallRendezvousKey {
-  GpuCliqueKey clique_key;
-
-  template <typename H>
-  friend H AbslHashValue(H h, const FirstCallRendezvousKey& key) {
-    return H::combine(std::move(h), key.clique_key);
-  }
-};
-
-bool operator==(const FirstCallRendezvousKey& a,
-                const FirstCallRendezvousKey& b) {
-  return a.clique_key == b.clique_key;
-}
-}  // namespace
 
 absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(1) << absl::StreamFormat("Starting %s %s.", IsAsync() ? "async" : "sync",
