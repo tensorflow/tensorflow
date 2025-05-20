@@ -28,7 +28,12 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace py = pybind11;
+
+#ifdef Py_GIL_DISABLED
+constexpr int PY_MODULE_TYPE_TP_BASIC_SIZE = 80;  // Under Python 3.13t
+#else                                             // Py_GIL_DISABLED
 constexpr int PY_MODULE_TYPE_TP_BASIC_SIZE = 56;
+#endif                                            // Py_GIL_DISABLED
 
 struct FastModuleObject {
   // A dummy array that ensures enough size is reserved for FastModuleObject,
