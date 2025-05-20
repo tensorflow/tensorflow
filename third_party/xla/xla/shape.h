@@ -91,9 +91,11 @@ class Shape {
   // Precondition:
   //  - `element_type` must be a valid array type.
   //  - `dynamic_dimensions` must be either empty or have the same size as
-  //    `dimensions`. If it's empty, all dimensions are static.
+  //    `dimensions`. If it's empty (the default), all dimensions are static.
+  //    Otherwise, `dynamic_dimensions[i]` is true if the `i`th dimension is
+  //    dynamic.
   Shape(PrimitiveType element_type, absl::Span<const int64_t> dimensions,
-        absl::Span<const bool> dynamic_dimensions);
+        absl::Span<const bool> dynamic_dimensions = {});
 
   // Creates a tuple shape. `tuple_shapes` can be empty, in which case the
   // shape is a nil shape (empty tuple).

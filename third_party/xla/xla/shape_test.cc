@@ -51,10 +51,20 @@ class ShapeTest : public ::testing::Test {
       ShapeUtil::MakeShape(F32, {Shape::kUnboundedSize, 784}, {true, false});
 };
 
-// Tests that if the dynamic_dimensions parameter empty in the Shape
+// Tests that if the dynamic_dimensions parameter is empty in the Shape
 // constructor, it's treated as all dimensions are static.
 TEST(Shape, ArrayCtorTreatsEmptyDynamicDimensionsAsAllStatic) {
-  const Shape shape(F32, {1, 2, 3}, {});
+  const Shape shape(F32, {1, 2, 3}, /*dynamic_dimensions=*/{});
+  EXPECT_TRUE(shape.is_static());
+  EXPECT_TRUE(shape.is_static_dimension(0));
+  EXPECT_TRUE(shape.is_static_dimension(1));
+  EXPECT_TRUE(shape.is_static_dimension(2));
+}
+
+// Tests that if the dynamic_dimensions parameter is missing in the Shape
+// constructor, it's treated as all dimensions are static.
+TEST(Shape, ArrayCtorTreatsMissingDynamicDimensionsAsAllStatic) {
+  const Shape shape(F32, {1, 2, 3});
   EXPECT_TRUE(shape.is_static());
   EXPECT_TRUE(shape.is_static_dimension(0));
   EXPECT_TRUE(shape.is_static_dimension(1));
@@ -328,19 +338,19 @@ static Shape MakeShapeHelper(int id) {
     }
     case 1: {
       // f32[1,2,2]{2,1,0}
-      shape = Shape(F32, {1, 2, 2}, {false, false, false});
+      shape = Shape(F32, {1, 2, 2});
       *shape.mutable_layout() = Layout({2, 1, 0});
       break;
     }
     case 2: {
       // f32[1,2,2]{2,1,0:T(2,128)}
-      shape = Shape(F32, {1, 2, 2}, {false, false, false});
+      shape = Shape(F32, {1, 2, 2});
       *shape.mutable_layout() = Layout({2, 1, 0}, {Tile({2, 128})});
       break;
     }
     default: {
       // f32[1,2,2]{2,1,0}
-      shape = Shape(F32, {1024, 1024, 128}, {});
+      shape = Shape(F32, {1024, 1024, 128});
     }
   }
   return shape;
