@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -24,6 +25,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -74,6 +76,9 @@ std::string PrintCss() {
     details > summary:hover {
       background-color: #eee;
     }
+    details > summary > .decoration {
+      font-weight: normal;
+    }
     details > .content {
       padding-left: 20px;
     }
@@ -96,44 +101,90 @@ std::string PrintCss() {
       display: inline-block;
       border-bottom: 1px dotted black;
     }
-    .tooltip .tooltiptext {
+    .tooltip > .tooltiptext {
       visibility: hidden;
       background-color: #555;
       color: #fff;
-      text-align: left;
       padding: 5px;
       border-radius: 6px;
       position: absolute;
       z-index: 1;
-      top: 50%;
-      transform: translateY(-50%);
-      left: calc(100% + 10px);
       opacity: 0;
       transition: opacity 0.3s;
       white-space: pre;
       font-family: monospace;
     }
-    .tooltip .tooltiptext::after {
+    .tooltip > .tooltiptext::after {
       content: " ";
       position: absolute;
+      border-width: 5px;
+      border-style: solid;
+      white-space: normal;
+    }
+    .tooltip > .tooltiptext-left {
+      top: 50%;
+      transform: translateY(-50%);
+      right: calc(100% + 10px);
+      text-align: left;
+    }
+    .tooltip > .tooltiptext-left::after {
+      top: 50%;
+      left: 100%;
+      margin-top: -5px;
+      border-color: transparent transparent transparent #555;
+    }
+    .tooltip > .tooltiptext-right {
+      top: 50%;
+      transform: translateY(-50%);
+      left: calc(100% + 10px);
+      text-align: right;
+    }
+    .tooltip > .tooltiptext-right::after {
       top: 50%;
       right: 100%;
       margin-top: -5px;
-      border-width: 5px;
-      border-style: solid;
       border-color: transparent #555 transparent transparent;
-      white-space: normal;
     }
-    .tooltip:hover .tooltiptext {
+    .tooltip:hover > .tooltiptext {
       visibility: visible;
       opacity: 1;
     }
 
-  .click-to-copy {
-    position: relative;
-    display: inline-block;
-    cursor: pointer;
-  }
+    .hlo-textbox-pair {
+      display: flex;
+      flex-direction: row;
+      width: 100%;
+      gap: 10px;
+    }
+    .hlo-textbox {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .textbox {
+      position: relative;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+    .textbox > pre {
+      width: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: auto;
+      white-space: pre-wrap;
+    }
+    .textbox > .click-to-copy {
+      position: absolute;
+      display: inline-block;
+      cursor: pointer;
+      right: 0px;
+      bottom: 0px;
+      z-index: 1;
+      padding: 5px;
+      background-color: #ddd;
+      border-radius: 5px;
+    }
     </style>
   )html";
 }
@@ -183,16 +234,24 @@ std::string EscapeStringForHtmlAttribute(absl::string_view str) {
 }
 
 // Prints the div html block.
-std::string PrintDiv(absl::string_view content, absl::string_view class_name) {
-  return absl::StrFormat(R"html(<div class="%s">%s</div>)html", class_name,
-                         content);
+std::string PrintDiv(absl::string_view content,
+                     absl::Span<const absl::string_view> class_names) {
+  return absl::StrFormat(R"html(<div class="%s">%s</div>)html",
+                         absl::StrJoin(class_names, " "), content);
+}
+
+// Print the span html block.
+std::string PrintSpan(absl::string_view content,
+                      absl::Span<const absl::string_view> class_names) {
+  return absl::StrFormat(R"html(<span class="%s">%s</span>)html",
+                         absl::StrJoin(class_names, " "), content);
 }
 
 // Prints the detail html block.
 std::string PrintDetails(absl::string_view summary, absl::string_view content) {
   return absl::StrFormat(
       R"html(<details><summary>%s</summary>%s</details>)html", summary,
-      PrintDiv(content, "content"));
+      PrintDiv(content, {"content"}));
 }
 
 // Prints a link to the given url.
@@ -204,35 +263,44 @@ std::string PrintLink(absl::string_view text, absl::string_view url) {
 // Prints a html block with a header.
 std::string PrintSectionWithHeader(absl::string_view header,
                                    absl::string_view content) {
-  return PrintDiv(
-      absl::StrCat(PrintDiv(header, "header"), PrintDiv(content, "content")),
-      "section");
+  return PrintDiv(absl::StrCat(PrintDiv(header, {"header"}),
+                               PrintDiv(content, {"content"})),
+                  {"section"});
 }
 
 // Prints a list of items.
 std::string PrintList(absl::Span<const std::string> items) {
   return PrintDiv(absl::StrJoin(items, "",
                                 [](std::string* out, const auto& item) {
-                                  absl::StrAppend(out, PrintDiv(item, "item"));
+                                  absl::StrAppend(out,
+                                                  PrintDiv(item, {"item"}));
                                 }),
-                  "list");
+                  {"list"});
 }
 
 // Prints a list of attribute items.
 std::string PrintAttributesList(absl::Span<const std::string> items) {
   return PrintDiv(absl::StrJoin(items, "",
                                 [](std::string* out, const auto& item) {
-                                  absl::StrAppend(out, PrintDiv(item, "item"));
+                                  absl::StrAppend(out,
+                                                  PrintDiv(item, {"item"}));
                                 }),
-                  "attributes-list");
+                  {"attributes-list"});
 }
 
+// The position of the tooltip.
+enum class TooltipPosition : std::uint8_t { kLeft, kRight };
+
 // Prints a span with a tooltip.
-std::string PrintTooltip(absl::string_view text,
-                         absl::string_view tooltip_text) {
-  return absl::StrFormat(
-      R"html(<span class="tooltip">%s<span class="tooltiptext">%s</span></span>)html",
-      text, tooltip_text);
+std::string PrintTooltip(absl::string_view text, absl::string_view tooltip_text,
+                         TooltipPosition position) {
+  return PrintSpan(
+      absl::StrCat(text,
+                   PrintSpan(tooltip_text,
+                             {"tooltiptext", position == TooltipPosition::kLeft
+                                                 ? "tooltiptext-left"
+                                                 : "tooltiptext-right"})),
+      {"tooltip"});
 }
 
 // Print click to copy button.
@@ -241,70 +309,68 @@ std::string PrintClickToCopyButton(absl::string_view text,
   return absl::StrFormat(
       R"html(<span class="click-to-copy" onclick="CopyToClipboard(`%s`)">%s</span>)html",
       EscapeStringForHtmlAttribute(content),
-      PrintTooltip(text, "Click to copy"));
+      PrintTooltip(text, "Click to copy", TooltipPosition::kLeft));
+}
+
+// Print textbox with click to copy button.
+std::string PrintTextbox(absl::string_view content) {
+  return PrintDiv(
+      absl::StrCat(absl::StrFormat(R"html(<pre>%s</pre>)html", content),
+                   PrintClickToCopyButton("📋", content)),
+      {"textbox"});
 }
 
 /*** Summary logic ***/
 
-// Prints the instruction name and click to copy button that copy the text
-// format.
-std::string PrintInstruction(const HloInstruction& inst) {
-  return absl::StrFormat("%s (%s)", inst.name(),
-                         PrintClickToCopyButton("text", inst.ToString()));
+// Prints a pair of instructions or computations in a text box.
+template <typename T>
+std::string PrintHloTextboxPair(const T* left_node, const T* right_node) {
+  std::vector<std::string> textareas;
+  if (left_node != nullptr) {
+    textareas.push_back(
+        PrintDiv(PrintTextbox(left_node->ToString()), {"hlo-textbox"}));
+  }
+  if (right_node != nullptr) {
+    textareas.push_back(
+        PrintDiv(PrintTextbox(right_node->ToString()), {"hlo-textbox"}));
+  }
+  return PrintDiv(absl::StrJoin(textareas, ""), {"hlo-textbox-pair"});
 }
 
-// Prints a pair of instructions. If url_generator is not null, a link to the
-// pair of instructions in model explorer will be printed.
-std::string PrintInstructionPair(const HloInstruction* left_inst,
-                                 const HloInstruction* right_inst,
-                                 GraphUrlGenerator* url_generator) {
-  std::vector<std::string> instructions;
-  if (left_inst != nullptr) {
-    instructions.push_back(PrintInstruction(*left_inst));
-  }
-  if (right_inst != nullptr) {
-    instructions.push_back(PrintInstruction(*right_inst));
-  }
-  std::string text = absl::StrJoin(instructions, " ↔ ");
-  if (url_generator == nullptr) {
-    return text;
-  }
-  std::string url =
-      url_generator->GenerateWithSelectedNodes(left_inst, right_inst);
-  if (url.empty()) {
-    return text;
-  }
-  return absl::StrCat(text, " (", PrintLink("Model Explorer", url), ")");
-}
+template <typename T>
+using DecorationPrinter = std::string(const T*, const T*);
 
-// Prints computation name and click to copy button that copy the text format.
-std::string PrintComputation(const HloComputation& comp) {
-  return absl::StrFormat("%s (%s)", comp.name(),
-                         PrintClickToCopyButton("text", comp.ToString()));
-}
-
-// Prints a pair of computations. If url_generator is not null, a link to the
-// pair of computations in model explorer will be printed.
-std::string PrintComputationPair(const HloComputation* left_comp,
-                                 const HloComputation* right_comp,
-                                 GraphUrlGenerator* url_generator) {
-  std::vector<std::string> computations;
-  if (left_comp != nullptr) {
-    computations.push_back(PrintComputation(*left_comp));
+// Prints a pair of instructions or computations. If url_generator is not
+// null, a link to the pair of instructions or computations in model
+// explorer will be printed.
+template <typename T>
+std::string PrintNodePair(const T* left_node, const T* right_node,
+                          GraphUrlGenerator* url_generator,
+                          std::optional<absl::FunctionRef<DecorationPrinter<T>>>
+                              decoration_printer = std::nullopt) {
+  std::vector<std::string> nodes;
+  if (left_node != nullptr) {
+    nodes.push_back(std::string(left_node->name()));
   }
-  if (right_comp != nullptr) {
-    computations.push_back(PrintComputation(*right_comp));
+  if (right_node != nullptr) {
+    nodes.push_back(std::string(right_node->name()));
   }
-  std::string text = absl::StrJoin(computations, " ↔ ");
-  if (url_generator == nullptr) {
-    return text;
+  std::string text = absl::StrJoin(nodes, " ↔ ");
+  std::string url;
+  if (url_generator != nullptr) {
+    url = url_generator->GenerateWithSelectedNodes(left_node, right_node);
   }
-  std::string url =
-      url_generator->GenerateWithSelectedNodes(left_comp, right_comp);
-  if (url.empty()) {
-    return text;
+  std::string decoration;
+  if (decoration_printer.has_value()) {
+    decoration =
+        PrintSpan((*decoration_printer)(left_node, right_node), {"decoration"});
   }
-  return absl::StrCat(text, " (", PrintLink("Model Explorer", url), ")");
+  return PrintDetails(
+      absl::StrCat(text, " ", decoration),
+      absl::StrCat(PrintHloTextboxPair(left_node, right_node),
+                   url.empty() ? ""
+                               : PrintDiv(PrintLink("Model Explorer", url),
+                                          {"model-explorer-url"})));
 }
 
 // The location of the instruction in the diff result.
@@ -319,25 +385,27 @@ std::string PrintInstructionsAsList(
   for (const HloInstruction* inst : instructions) {
     std::string link;
     if (location == InstructionLocation::kLeft) {
-      link = PrintInstructionPair(inst, /*right_inst=*/nullptr, url_generator);
+      link = PrintNodePair<HloInstruction>(inst, /*right_node=*/nullptr,
+                                           url_generator);
     } else {
-      link = PrintInstructionPair(/*left_inst=*/nullptr, inst, url_generator);
+      link = PrintNodePair<HloInstruction>(
+          /*left_node=*/nullptr, inst, url_generator);
     }
     instructions_list.push_back(link);
   }
   return PrintList(instructions_list);
 }
 
-// Prints a list of instruction pairs.
-std::string PrintInstructionPairsAsList(
-    absl::Span<const std::pair<const HloInstruction*, const HloInstruction*>>
-        instruction_pairs,
-    const std::function<std::string(const HloInstruction*,
-                                    const HloInstruction*)>&
-        instruction_pair_printer) {
+// Prints a list of instruction or computation pairs.
+template <typename T>
+std::string PrintNodePairsAsList(
+    absl::Span<const std::pair<const T*, const T*>> node_pairs,
+    GraphUrlGenerator* url_generator,
+    std::optional<absl::FunctionRef<DecorationPrinter<T>>> decoration_printer) {
   std::vector<std::string> pair_list;
-  for (const auto& pair : instruction_pairs) {
-    pair_list.push_back(instruction_pair_printer(pair.first, pair.second));
+  for (const auto& pair : node_pairs) {
+    pair_list.push_back(PrintNodePair(pair.first, pair.second, url_generator,
+                                      decoration_printer));
   }
   return PrintList(pair_list);
 }
@@ -376,9 +444,9 @@ std::string PrintInstructionPairsByOpcode(
     const absl::flat_hash_map<const HloInstruction*, const HloInstruction*>&
         instructions,
     const absl::flat_hash_set<HloOpcode>& opcodes_to_ignore,
-    const std::function<std::string(const HloInstruction*,
-                                    const HloInstruction*)>&
-        instruction_pair_printer) {
+    GraphUrlGenerator* url_generator,
+    std::optional<absl::FunctionRef<DecorationPrinter<HloInstruction>>>
+        decoration_printer = std::nullopt) {
   absl::flat_hash_map<
       HloOpcode,
       std::vector<std::pair<const HloInstruction*, const HloInstruction*>>>
@@ -395,10 +463,10 @@ std::string PrintInstructionPairsByOpcode(
       continue;
     }
     absl::string_view op_name = HloOpcodeString(cit->first);
-    ss << PrintDetails(
-        absl::StrFormat("%s (%d)", op_name, cit->second),
-        PrintInstructionPairsAsList(instructions_by_opcode.at(cit->first),
-                                    instruction_pair_printer));
+    ss << PrintDetails(absl::StrFormat("%s (%d)", op_name, cit->second),
+                       PrintNodePairsAsList<HloInstruction>(
+                           instructions_by_opcode.at(cit->first), url_generator,
+                           decoration_printer));
   }
   return ss.str();
 }
@@ -457,29 +525,31 @@ std::string PrintChangedInstructions(
         instructions,
     const absl::flat_hash_set<HloOpcode>& opcodes_to_ignore,
     GraphUrlGenerator* url_generator) {
-  auto decorated_printer = [&url_generator](const HloInstruction* left_inst,
-                                            const HloInstruction* right_inst) {
+  std::function<DecorationPrinter<HloInstruction>> decorated_printer =
+      [](const HloInstruction* left_inst,
+         const HloInstruction* right_inst) -> std::string {
     std::vector<ChangedInstructionDiffType> diff_types =
         GetChangedInstructionDiffTypes(*left_inst, *right_inst);
-    return absl::StrFormat(
-        "%s have changed: %s",
-        PrintInstructionPair(left_inst, right_inst, url_generator),
+    return absl::StrCat(
+        "have changed: ",
         absl::StrJoin(
             diff_types, ", ",
             [&left_inst, &right_inst](std::string* out, const auto& diff_type) {
               std::string diff_type_string =
                   GetChangedInstructionDiffTypeString(diff_type);
-              return absl::StrAppend(
-                  out,
-                  diff_type == ChangedInstructionDiffType::kOtherChange
-                      ? diff_type_string
-                      : PrintTooltip(diff_type_string,
-                                     PrintChangedInstructionDiffTypeSummary(
-                                         left_inst, right_inst, diff_type)));
+              if (diff_type == ChangedInstructionDiffType::kOtherChange) {
+                absl::StrAppend(out, diff_type_string);
+              } else {
+                absl::StrAppend(
+                    out, PrintTooltip(diff_type_string,
+                                      PrintChangedInstructionDiffTypeSummary(
+                                          left_inst, right_inst, diff_type),
+                                      TooltipPosition::kRight));
+              }
             }));
   };
   return PrintInstructionPairsByOpcode(instructions, opcodes_to_ignore,
-                                       decorated_printer);
+                                       url_generator, decorated_printer);
 }
 
 // Prints unchanged instructions grouped by opcode and print in a
@@ -489,14 +559,13 @@ std::string PrintUnchangedInstructions(
         instructions,
     const absl::flat_hash_set<HloOpcode>& opcodes_to_ignore,
     GraphUrlGenerator* url_generator) {
-  auto simple_printer = [&url_generator](const HloInstruction* left_inst,
-                                         const HloInstruction* right_inst) {
-    return PrintInstructionPair(left_inst, right_inst, url_generator);
-  };
   return PrintInstructionPairsByOpcode(instructions, opcodes_to_ignore,
-                                       simple_printer);
+                                       url_generator);
 }
 
+/* Metrics diff */
+
+// Prints unmatched instructions sorted by the metrics diff.
 std::string PrintUnmatchedMetricsDiff(
     const absl::flat_hash_set<const HloInstruction*>& instructions,
     const OpMetricGetter& op_metric_getter, GraphUrlGenerator* url_generator) {
@@ -508,17 +577,26 @@ std::string PrintUnmatchedMetricsDiff(
     }
   }
 
-  std::sort(sorted_metrics_diff.begin(), sorted_metrics_diff.end());
+  std::sort(sorted_metrics_diff.begin(), sorted_metrics_diff.end(),
+            [](const auto& a, const auto& b) {
+              // Sort by the absolute value of the diff in descending order.
+              return std::abs(a.second) > std::abs(b.second);
+            });
   std::vector<std::string> metrics_diff_list(sorted_metrics_diff.size());
-  for (const auto& [inst, metrics_diff] : sorted_metrics_diff) {
-    metrics_diff_list.push_back(absl::StrFormat(
-        "%s: %.2f (us)",
-        PrintInstructionPair(inst, /*right_inst=*/nullptr, url_generator),
-        metrics_diff / 1e6));
+  for (const auto& entry : sorted_metrics_diff) {
+    const HloInstruction* inst = entry.first;
+    double metrics_diff = entry.second;
+    metrics_diff_list.push_back(PrintNodePair<HloInstruction>(
+        inst, /*right_node=*/nullptr, url_generator,
+        [&metrics_diff](const HloInstruction* inst,
+                        const HloInstruction*) -> std::string {
+          return absl::StrFormat("%+.2f (us)", metrics_diff / 1e6);
+        }));
   }
   return PrintList(metrics_diff_list);
 }
 
+// Prints matched instructions sorted by the metrics diff.
 std::string PrintMatchedMetricsDiff(
     const absl::flat_hash_map<const HloInstruction*, const HloInstruction*>&
         instructions,
@@ -536,21 +614,28 @@ std::string PrintMatchedMetricsDiff(
     if (!left_time_ps.ok() || !right_time_ps.ok()) {
       continue;
     }
-    sorted_metrics_diff.push_back(
-        {{left_inst, right_inst},
-         static_cast<double>(*right_time_ps - *left_time_ps)});
+    sorted_metrics_diff.push_back({{left_inst, right_inst},
+                                   static_cast<double>(*right_time_ps) -
+                                       static_cast<double>(*left_time_ps)});
   }
-  std::sort(sorted_metrics_diff.begin(), sorted_metrics_diff.end());
+  std::sort(sorted_metrics_diff.begin(), sorted_metrics_diff.end(),
+            [](const auto& a, const auto& b) { return a.second > b.second; });
   std::vector<std::string> metrics_diff_list(sorted_metrics_diff.size());
-  for (const auto& [inst_pair, metrics_diff] : sorted_metrics_diff) {
-    const auto& [left_inst, right_inst] = inst_pair;
-    metrics_diff_list.push_back(absl::StrFormat(
-        "%s: %.2f (us)",
-        PrintInstructionPair(left_inst, right_inst, url_generator),
-        metrics_diff / 1e6));
+  for (const auto& entry : sorted_metrics_diff) {
+    const HloInstruction* left_inst = entry.first.first;
+    const HloInstruction* right_inst = entry.first.second;
+    double metrics_diff = entry.second;
+    metrics_diff_list.push_back(PrintNodePair<HloInstruction>(
+        left_inst, right_inst, url_generator,
+        [&metrics_diff](const HloInstruction* left_inst,
+                        const HloInstruction* right_inst) -> std::string {
+          return absl::StrFormat("%+.2f (us)", metrics_diff / 1e6);
+        }));
   }
   return PrintList(metrics_diff_list);
 }
+
+/* Diff pattern */
 
 // Summarize a diff pattern.
 std::string SummarizeDiffPattern(const ComputationDiffPattern& diff_pattern) {
@@ -599,7 +684,7 @@ std::string PrintRepetitiveDiffPatterns(
           computation_group.left_computations[0];
       const HloComputation* right_computation =
           computation_group.right_computations[0];
-      computation_pair_list.push_back(PrintComputationPair(
+      computation_pair_list.push_back(PrintNodePair<HloComputation>(
           left_computation, right_computation, url_generator));
     }
     absl::StrAppend(
