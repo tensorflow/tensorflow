@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_NCCL_COMMUNICATOR_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_NCCL_COMMUNICATOR_H_
 
+#include <atomic>
 #include <cstddef>
 #include <memory>
 #include <optional>
@@ -131,6 +132,8 @@ class NcclCommunicator : public GpuCommunicator {
   ncclComm_t comm() const { return comm_; }
 
  private:
+  class NcclRegisteredBufferHandle;
+
   static absl::StatusOr<se::Stream*> ToStream(const Executor& executor);
 
   explicit NcclCommunicator(ncclComm_t comm,
@@ -184,6 +187,10 @@ class NcclCommunicator : public GpuCommunicator {
                           size_t count, RankId peer,
                           const Executor& executor) final;
 
+  // Polls the communicator until any pending non-blocking operations are "done"
+  // or aborted.
+  absl::Status PollUntilDone() const;
+
   // Executes f on executor_, or calls f directly if executor_ is null.
   tsl::AsyncValueRef<Event> Execute(absl::AnyInvocable<absl::Status()> f) const;
 
@@ -212,7 +219,10 @@ class NcclCommunicator : public GpuCommunicator {
   // communicators.
   std::unique_ptr<tsl::AsyncValue::Executor> executor_;
 
-  // Has Abort() been called?
+  // Should all pending collectives cancel?
+  std::atomic_bool canceling_ = false;
+
+  // Has comm_ been aborted?
   bool aborted_ = false;
 
   // Nesting level of current NCCL group
