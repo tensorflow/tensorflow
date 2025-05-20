@@ -73,15 +73,15 @@ class TritonFusionNumericsVerifierTest
     return fusion_result;
   }
 
-  AutotuneConfig CreateAutotuneConfig() {
+  DeviceOrDevicelessConfig CreateDeviceOrDevicelessConfig() {
     se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
     auto executors_or = PlatformUtil::GetStreamExecutors(platform);
     TF_EXPECT_OK(executors_or);
-    return AutotuneConfig{DeviceConfig{executors_or->at(0), nullptr},
-                          GetDebugOptionsForTest()};
+    return DeviceOrDevicelessConfig{DeviceConfig{executors_or->at(0), nullptr}};
   }
 
-  AutotunerCompileUtil CreateAutotunerCompileUtil(AutotuneConfig& config) {
+  AutotunerCompileUtil CreateAutotunerCompileUtil(
+      DeviceOrDevicelessConfig& config) {
     auto compile_util_or =
         AutotunerCompileUtil::Create(config, GetDebugOptionsForTest());
     TF_EXPECT_OK(compile_util_or);
@@ -131,7 +131,8 @@ TEST_P(TritonFusionNumericsVerifierTest, VerifyExactSoftmaxFusionNumerics) {
                        primitive_util::LowercasePrimitiveTypeName(GetParam()));
 
   EXPECT_NE(TritonFusion(*module), nullptr);
-  auto verifier = TritonFusionNumericsVerifier(CreateAutotuneConfig());
+  auto verifier =
+      TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig());
   TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 
@@ -185,7 +186,8 @@ ENTRY entry {
                        primitive_util::LowercasePrimitiveTypeName(GetParam()));
 
   EXPECT_NE(TritonFusion(*module), nullptr);
-  auto verifier = TritonFusionNumericsVerifier(CreateAutotuneConfig());
+  auto verifier =
+      TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig());
   TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 
@@ -215,7 +217,8 @@ ENTRY main{
                        primitive_util::LowercasePrimitiveTypeName(GetParam()));
 
   EXPECT_NE(TritonFusion(*module), nullptr);
-  auto verifier = TritonFusionNumericsVerifier(CreateAutotuneConfig());
+  auto verifier =
+      TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig());
   TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 
@@ -240,7 +243,7 @@ TEST_F(TritonFusionNumericsVerifierTest, CheckMismatch) {
   auto fusion_f32 = TritonFusion(*module_f32);
   EXPECT_NE(fusion_f32, nullptr);
 
-  AutotuneConfig autotune_config = CreateAutotuneConfig();
+  DeviceOrDevicelessConfig autotune_config = CreateDeviceOrDevicelessConfig();
   AutotunerCompileUtil compile_util =
       CreateAutotunerCompileUtil(autotune_config);
   const DebugOptions& debug_options = GetDebugOptionsForTest();
@@ -301,12 +304,13 @@ ENTRY main {
 })",
                        "");
 
-  auto verifier = TritonFusionNumericsVerifier(CreateAutotuneConfig());
+  auto verifier =
+      TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig());
   TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
   auto fusion = TritonFusion(*module);
   EXPECT_NE(fusion, nullptr);
 
-  AutotuneConfig autotune_config = CreateAutotuneConfig();
+  DeviceOrDevicelessConfig autotune_config = CreateDeviceOrDevicelessConfig();
   AutotunerCompileUtil compile_util =
       CreateAutotunerCompileUtil(autotune_config);
   auto compilation_result =
@@ -370,7 +374,8 @@ ENTRY main {
   )";
 
   std::unique_ptr<HloModule> module = Module(hlo_text, "");
-  auto verifier = TritonFusionNumericsVerifier(CreateAutotuneConfig());
+  auto verifier =
+      TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig());
   TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
   EXPECT_EQ(verifier.CacheHitsForTestingOnly(), 1);
 }
@@ -424,7 +429,8 @@ ENTRY main {
   )";
   auto module = Module(hlo_text, "");
   EXPECT_NE(TritonFusion(*module), nullptr);
-  auto verifier = TritonFusionNumericsVerifier(CreateAutotuneConfig());
+  auto verifier =
+      TritonFusionNumericsVerifier(CreateDeviceOrDevicelessConfig());
   TF_EXPECT_OK(verifier.Run(module.get(), /*execution_threads=*/{}));
 }
 

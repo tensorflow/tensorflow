@@ -56,6 +56,57 @@ struct DevicelessConfig {
   se::DeviceDescription device_description;
 };
 
+class DeviceOrDevicelessConfig {
+ public:
+  DeviceOrDevicelessConfig(const DeviceOrDevicelessConfig& right)
+      : config_(right.config_) {}
+  explicit DeviceOrDevicelessConfig(
+      const std::variant<DeviceConfig, DevicelessConfig>& config)
+      : config_(config) {}
+
+  se::StreamExecutor* GetExecutor() const {
+    CHECK(std::holds_alternative<DeviceConfig>(config_));
+    return std::get<DeviceConfig>(config_).stream_exec;
+  }
+
+  se::DeviceMemoryAllocator* GetAllocator() const {
+    CHECK(std::holds_alternative<DeviceConfig>(config_));
+    auto& cf = std::get<DeviceConfig>(config_);
+    if (cf.allocator != nullptr) {
+      return cf.allocator;
+    }
+    if (allocator_ == nullptr) {
+      allocator_ =
+          std::make_unique<se::StreamExecutorMemoryAllocator>(GetExecutor());
+    }
+    return allocator_.get();
+  }
+
+  absl::StatusOr<se::Stream*> GetStream() const {
+    CHECK(std::holds_alternative<DeviceConfig>(config_));
+    return GetAllocator()->GetStream(GetExecutor()->device_ordinal());
+  }
+
+  const se::GpuComputeCapability& GetGpuComputeCapability() const {
+    return GetDeviceDescription().gpu_compute_capability();
+  }
+
+  const se::DeviceDescription& GetDeviceDescription() const {
+    if (auto* device_config = std::get_if<DeviceConfig>(&config_)) {
+      return device_config->stream_exec->GetDeviceDescription();
+    }
+    return std::get<DevicelessConfig>(config_).device_description;
+  }
+
+  bool IsDeviceless() const {
+    return std::holds_alternative<DevicelessConfig>(config_);
+  }
+
+ private:
+  std::variant<DeviceConfig, DevicelessConfig> config_;
+  mutable std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
+};
+
 class AutotuneCacheKey {
  public:
   // Tie a version to the cache key in order to invalidate the cache when
@@ -131,16 +182,6 @@ class AutotuneConfig {
     return autotune_cache_mode_;
   }
 
-  AutotuneConfig(const AutotuneConfig& right)
-      : config_(right.config_),
-        autotune_level_(right.autotune_level_),
-        should_crash_on_check_failure_(right.should_crash_on_check_failure_),
-        exhaustive_tiling_search_(right.exhaustive_tiling_search_),
-        require_complete_aot_autotune_results_(
-            right.require_complete_aot_autotune_results_),
-        autotune_cache_dir_(right.autotune_cache_dir_),
-        autotune_cache_mode_(right.autotune_cache_mode_) {}
-
   AutotuneConfig(const std::variant<DeviceConfig, DevicelessConfig>& config,
                  const DebugOptions& debug_options)
       : config_(config),
@@ -161,53 +202,34 @@ class AutotuneConfig {
         GetDeviceDescription());
   }
 
-  se::StreamExecutor* GetExecutor() const {
-    CHECK(std::holds_alternative<DeviceConfig>(config_));
-    return std::get<DeviceConfig>(config_).stream_exec;
-  }
+  se::StreamExecutor* GetExecutor() const { return config_.GetExecutor(); }
 
   se::DeviceMemoryAllocator* GetAllocator() const {
-    CHECK(std::holds_alternative<DeviceConfig>(config_));
-    auto& cf = std::get<DeviceConfig>(config_);
-    if (cf.allocator != nullptr) {
-      return cf.allocator;
-    }
-    if (allocator_ == nullptr) {
-      allocator_ =
-          std::make_unique<se::StreamExecutorMemoryAllocator>(GetExecutor());
-    }
-    return allocator_.get();
+    return config_.GetAllocator();
   }
 
-  absl::StatusOr<se::Stream*> GetStream() const {
-    CHECK(std::holds_alternative<DeviceConfig>(config_));
-    return GetAllocator()->GetStream(GetExecutor()->device_ordinal());
-  }
+  absl::StatusOr<se::Stream*> GetStream() const { return config_.GetStream(); }
 
   const se::GpuComputeCapability& GetGpuComputeCapability() const {
-    return GetDeviceDescription().gpu_compute_capability();
+    return config_.GetGpuComputeCapability();
   }
 
   const se::DeviceDescription& GetDeviceDescription() const {
-    if (auto* device_config = std::get_if<DeviceConfig>(&config_)) {
-      return device_config->stream_exec->GetDeviceDescription();
-    }
-    return std::get<DevicelessConfig>(config_).device_description;
+    return config_.GetDeviceDescription();
   }
 
-  bool IsDeviceless() const {
-    return std::holds_alternative<DevicelessConfig>(config_);
-  }
+  bool IsDeviceless() const { return config_.IsDeviceless(); }
+
+  const DeviceOrDevicelessConfig& DeviceConfig() const { return config_; }
 
   bool ExhaustiveTilingSearch() const { return exhaustive_tiling_search_; }
 
  private:
-  std::variant<DeviceConfig, DevicelessConfig> config_;
+  DeviceOrDevicelessConfig config_;
   int32_t autotune_level_;
   bool should_crash_on_check_failure_;
   bool exhaustive_tiling_search_;
   bool require_complete_aot_autotune_results_;
-  mutable std::unique_ptr<se::DeviceMemoryAllocator> allocator_;
   std::string autotune_cache_dir_;
   DebugOptions::AutotuneCacheMode autotune_cache_mode_;
 };

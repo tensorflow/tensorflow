@@ -1599,8 +1599,9 @@ absl::StatusOr<bool> GemmFusionAutotuner::Run(
       TF_RETURN_IF_ERROR(AutotunerUtil::AddResult(key, res, config_).status());
     }
   } else if (!config_.IsDeviceless()) {
-    TF_ASSIGN_OR_RETURN(AutotunerCompileUtil compile_util,
-                        AutotunerCompileUtil::Create(config_, debug_options));
+    TF_ASSIGN_OR_RETURN(
+        AutotunerCompileUtil compile_util,
+        AutotunerCompileUtil::Create(config_.DeviceConfig(), debug_options));
     std::string correctness_check_str = config_.should_check_correctness()
                                             ? "(with correctness check)"
                                             : "(without correctness check)";

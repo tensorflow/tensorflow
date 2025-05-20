@@ -146,7 +146,7 @@ namespace triton_fusion_numerics_pass_internal {
 
 absl::StatusOr<ScopedShapedBuffer> CompileAndRunFusion(
     AutotunerCompileUtil& util, const HloFusionInstruction& fusion,
-    const AutotuneConfig& config, const DebugOptions& debug_opts,
+    const DeviceOrDevicelessConfig& config, const DebugOptions& debug_opts,
     bool disable_triton) {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
@@ -221,7 +221,7 @@ absl::Status ForAllTritonFusions(
 namespace {
 absl::Status VerifyTritonFusion(AutotunerCompileUtil& util,
                                 const HloFusionInstruction& fusion,
-                                const AutotuneConfig& config,
+                                const DeviceOrDevicelessConfig& config,
                                 const DebugOptions& debug_opts) {
   TF_ASSIGN_OR_RETURN(auto triton_result,
                       triton_fusion_numerics_pass_internal::CompileAndRunFusion(

@@ -1262,7 +1262,8 @@ absl::Status RunPostFusionVerificationPasses(
         GetAutotuneConfig(stream_exec, hlo_module->config().debug_options(),
                           options, gpu_target_config));
 
-    pipeline.AddPass<TritonFusionNumericsVerifier>(autotune_config);
+    pipeline.AddPass<TritonFusionNumericsVerifier>(
+        autotune_config.DeviceConfig());
   }
 
   return pipeline.Run(hlo_module).status();

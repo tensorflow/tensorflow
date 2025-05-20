@@ -158,7 +158,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> AutotunerCompileUtil::ExtractModule(
 }
 
 /*static*/ absl::StatusOr<AutotunerCompileUtil> AutotunerCompileUtil::Create(
-    const AutotuneConfig& config, const DebugOptions& opts) {
+    const DeviceOrDevicelessConfig& config, const DebugOptions& opts) {
   tsl::profiler::TraceMe traceme("AutotunerCreate");
   if (config.IsDeviceless()) {
     return absl::InvalidArgumentError(

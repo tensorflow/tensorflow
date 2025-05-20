@@ -1072,7 +1072,8 @@ TEST_F(GemmFusionAutotunerTest, SplitKFLoatNormalization) {
                                     GetDebugOptionsForTest(), nullptr);
   TF_ASSERT_OK_AND_ASSIGN(
       AutotunerCompileUtil compile_util,
-      AutotunerCompileUtil::Create(autotune_config, GetDebugOptionsForTest()))
+      AutotunerCompileUtil::Create(autotune_config.DeviceConfig(),
+                                   GetDebugOptionsForTest()))
 
   std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
 HloModule module

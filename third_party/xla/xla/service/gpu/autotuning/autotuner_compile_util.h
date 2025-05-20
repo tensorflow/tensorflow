@@ -61,7 +61,7 @@ class AutotunerCompileUtil {
 
   // Generates a compile util for a platform associated with the `stream`.
   static absl::StatusOr<AutotunerCompileUtil> Create(
-      const AutotuneConfig& config, const DebugOptions& opts);
+      const DeviceOrDevicelessConfig& config, const DebugOptions& opts);
 
   struct ProfilingOutput {
     ProfilingOutput(absl::Duration duration, ScopedShapedBuffer&& buffer)

@@ -41,7 +41,7 @@ namespace xla::gpu {
 // generated with the regular emitters.
 class TritonFusionNumericsVerifier : public HloModulePass {
  public:
-  explicit TritonFusionNumericsVerifier(const AutotuneConfig& config)
+  explicit TritonFusionNumericsVerifier(const DeviceOrDevicelessConfig& config)
       : config_(config) {}
 
   static absl::string_view Name() { return "triton-numerics-verifier"; }
@@ -57,7 +57,7 @@ class TritonFusionNumericsVerifier : public HloModulePass {
   int CacheHitsForTestingOnly() const { return cache_hits_; }
 
  private:
-  AutotuneConfig config_;
+  DeviceOrDevicelessConfig config_;
 
   // In some models there are many identical fusions. These are cached to avoid
   // expensive recomputations.
@@ -69,7 +69,7 @@ namespace triton_fusion_numerics_pass_internal {
 // These are exposed only for testing. Do not use.
 absl::StatusOr<ScopedShapedBuffer> CompileAndRunFusion(
     AutotunerCompileUtil& util, const HloFusionInstruction& fusion,
-    const AutotuneConfig& config, const DebugOptions& debug_opts,
+    const DeviceOrDevicelessConfig& config, const DebugOptions& debug_opts,
     bool disable_triton);
 absl::Status CompareBuffers(const ScopedShapedBuffer& current,
                             const ScopedShapedBuffer& expected,
