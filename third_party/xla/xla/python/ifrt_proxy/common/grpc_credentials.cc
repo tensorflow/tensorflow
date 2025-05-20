@@ -15,7 +15,6 @@
 #include "xla/python/ifrt_proxy/common/grpc_credentials.h"
 
 #include <cstdlib>
-#include <cstring>
 #include <memory>
 
 #include "absl/log/check.h"
@@ -30,19 +29,9 @@ namespace proxy {
 
 namespace {
 
-// Returns true if either the environmental variable
-// `IFRT_PROXY_USE_INSECURE_GRPC_CREDENTIALS` has been set to `yes`, or if the
-// environmental variable `TEST_UNDECLARED_OUTPUTS_DIR` has been set to any
-// value.
 bool UseInsecureCredentials() {
-  bool env_use_insecure_grpc_credentials = false;
-  if (const char* p = getenv("IFRT_PROXY_USE_INSECURE_GRPC_CREDENTIALS"); p) {
-    env_use_insecure_grpc_credentials = (strcmp(p, "yes") == 0);
-  }
-
-  const bool test_env = getenv("TEST_UNDECLARED_OUTPUTS_DIR") != nullptr;
-
-  const bool insecure = env_use_insecure_grpc_credentials || test_env;
+  // Use insecure only with `bazel test`.
+  const bool insecure = (getenv("TEST_UNDECLARED_OUTPUTS_DIR") != nullptr);
 
   if (insecure) {
     // We should not be getting to this point at all in the google-internal
