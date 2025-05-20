@@ -936,6 +936,7 @@ cc_library(
         "//xla/service:collective_ops_utils",
         "//xla/service:rendezvous",
         "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu/transforms/collectives:collective_ops_utils",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_handle",
@@ -1678,6 +1679,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:types",
         "//xla:xla_data_proto_cc",
+        "//xla/service/gpu:launch_dimensions",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:stream",
@@ -1697,6 +1699,12 @@ cc_library(
 xla_test(
     name = "all_reduce_test",
     srcs = ["all_reduce_test.cc"],
+    backend_tags = {
+        "gpu": [
+            "multi_gpu",
+            "no_oss",
+        ],
+    },
     backends = ["gpu"],
     disabled_backends = [],
     deps = [
@@ -1704,6 +1712,7 @@ xla_test(
         "//xla:shape_util",
         "//xla:types",
         "//xla:xla_data_proto_cc",
+        "//xla/service/gpu:launch_dimensions",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_handle",
         "//xla/stream_executor:platform",
