@@ -17,7 +17,7 @@ limitations under the License.
 #define XLA_PJRT_PLUGIN_STATIC_REGISTRATION_H_
 
 #define REGISTER_PJRT_PLUGIN(plugin_name, get_plugin_api)        \
-  static bool already_registered = []() {                        \
+  [[maybe_unused]] static bool already_registered = []() {       \
     pjrt::SetPjrtApi(plugin_name, get_plugin_api).IgnoreError(); \
     return true;                                                 \
   }();
