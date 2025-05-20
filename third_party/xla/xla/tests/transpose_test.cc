@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
 #include "xla/error_spec.h"
@@ -204,8 +205,10 @@ TEST_F(TransposeTest, TransposeConstant210_DegenerateDim) {
 using HloTransposeTest = HloPjRtTestBase;
 
 // Disable HLO passes to verify the default behavior
-TEST_F(HloTransposeTest, DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(
-                             DISABLED_ON_TPU(HloPassesDisabled)))) {
+TEST_F(HloTransposeTest, DISABLED_ON_TPU(HloPassesDisabled)) {
+  if (test::DeviceIsOneOf({test::kGpu, test::kInterpreter})) {
+    GTEST_SKIP();
+  }
   const char* const kModuleStr = R"(
     HloModule Transpose
 

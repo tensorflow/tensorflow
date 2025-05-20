@@ -24,6 +24,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "xla/array.h"
 #include "xla/array2d.h"
 #include "xla/array4d.h"
@@ -97,7 +98,11 @@ TEST_P(SelectAndScatterTest, OVERSIZE_ON_GRM(ParamTest)) { DoIt(); }
 
 class SelectAndScatterLarge : public SelectAndScatterTest {};
 
-TEST_P(SelectAndScatterLarge, DISABLED_ON_ISS(OVERSIZE_ON_GRM(ParamTest))) {
+TEST_P(SelectAndScatterLarge, ParamTest) {
+  if (test::HasModifiers({test::kIss}) || test::HasModifiers({test::kGrm})) {
+    // Oversize on GRM.
+    GTEST_SKIP();
+  }
   DoIt();
 }
 

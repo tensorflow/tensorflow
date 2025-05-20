@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -154,7 +155,10 @@ class MemoryAlignmentTest : public HloTestBase {};
 // Test that dynamic padder will not cause memory misalignment in CUDA
 // when the read or write address is not aligned with 32 bits.
 // TODO(b/203599920): Disabled on CPU due to ASAN test failure.
-TEST_F(MemoryAlignmentTest, DISABLED_ON_CPU(TestDataTypeFP16)) {
+TEST_F(MemoryAlignmentTest, TestDataTypeFP16) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   const std::string hlo_text = R"(
     HloModule TestDataTypeFP16
 

@@ -22,6 +22,7 @@ limitations under the License.
 #include <numeric>
 #include <string>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -269,27 +270,45 @@ XLA_TEST_P(SliceR1Test, DoIt_S64) { Run<int64_t>(GetParam()); }
 
 // TODO(b/69425338): The following tests are disable on GPU because they use
 // too much GPU memory.
-XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_F32)) {
+XLA_TEST_P(SliceR1LargeTest, DoIt_F32) {
+  if (test::DeviceIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   Run<float>(GetParam());
 }
 
-XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_F64)) {
+XLA_TEST_P(SliceR1LargeTest, DoIt_F64) {
+  if (test::DeviceIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   Run<double>(GetParam());
 }
 
-XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_U32)) {
+XLA_TEST_P(SliceR1LargeTest, DoIt_U32) {
+  if (test::DeviceIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   Run<uint32_t>(GetParam());
 }
 
-XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_S32)) {
+XLA_TEST_P(SliceR1LargeTest, DoIt_S32) {
+  if (test::DeviceIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   Run<int32_t>(GetParam());
 }
 
-XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_U64)) {
+XLA_TEST_P(SliceR1LargeTest, DoIt_U64) {
+  if (test::DeviceIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   Run<uint64_t>(GetParam());
 }
 
-XLA_TEST_P(SliceR1LargeTest, DISABLED_ON_GPU(DoIt_S64)) {
+XLA_TEST_P(SliceR1LargeTest, DoIt_S64) {
+  if (test::DeviceIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   Run<int64_t>(GetParam());
 }
 

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/status/status.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -59,8 +60,10 @@ ENTRY %a_inference_call_110__.55 (arg0.1: f32[1,8], arg1.2: f32[8], arg2.3: f32[
 }
 
 TEST_F(GetDimensionSizeTest,
-       DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(
-           DISABLED_ON_TPU(ReturnsErrorWhenHloPassesDisabled)))) {
+       DISABLED_ON_TPU(ReturnsErrorWhenHloPassesDisabled)) {
+  if (test::DeviceIsOneOf({test::kGpu, test::kInterpreter})) {
+    GTEST_SKIP();
+  }
   const char* const kModuleStr = R"(
     HloModule m
 
