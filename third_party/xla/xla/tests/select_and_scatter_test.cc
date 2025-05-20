@@ -94,7 +94,12 @@ class SelectAndScatterTest
   XlaComputation min_f32_;
 };
 
-TEST_P(SelectAndScatterTest, OVERSIZE_ON_GRM(ParamTest)) { DoIt(); }
+TEST_P(SelectAndScatterTest, ParamTest) {
+  if (test::HasModifiers({test::kGrm})) {
+    GTEST_SKIP();
+  }
+  DoIt();
+}
 
 class SelectAndScatterLarge : public SelectAndScatterTest {};
 

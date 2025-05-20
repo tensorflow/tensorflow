@@ -312,7 +312,10 @@ XLA_TEST_P(ReduceWindowTest, PrimeWindowsInReductionDimension) {
                            DefaultErrorSpec());
 }
 
-XLA_TEST_P(ReduceWindowTest, OVERSIZE_ON_GRM(ReduceAlongLaneDimension)) {
+XLA_TEST_P(ReduceWindowTest, ReduceAlongLaneDimension) {
+  if (test::HasModifiers({test::kGrm})) {
+    GTEST_SKIP();
+  }
   Array4D<float> input_array(19, 17, 8, 256);
   input_array.FillWithMinorDimNum();
 
@@ -1108,7 +1111,12 @@ INSTANTIATE_TEST_CASE_P(
 
 class R3ReduceWindowLargeTest : public R3ReduceWindowTest {};
 
-XLA_TEST_P(R3ReduceWindowLargeTest, OVERSIZE_ON_GRM(DoIt)) { DoIt(); }
+XLA_TEST_P(R3ReduceWindowLargeTest, DoIt) {
+  if (test::HasModifiers({test::kGrm})) {
+    GTEST_SKIP();
+  }
+  DoIt();
+}
 
 // Test cases that are large/slow/failed.
 const R3ReduceWindowTestData kR3ReduceWindowLargeTestValues[] = {
