@@ -39,7 +39,7 @@ cc_library(
         ":passes_inc_gen",
         ":xla_cpu_rewrite_patterns",
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
-        "//xla/codegen/emitters/ir:xla_dialect_inc_gen",
+        "//xla/codegen/emitters/ir:xla",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",

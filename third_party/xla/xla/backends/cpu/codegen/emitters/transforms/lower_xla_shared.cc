@@ -35,7 +35,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "xla/codegen/emitters/ir/xla_dialect.h.inc"
+#include "xla/codegen/emitters/ir/xla_dialect.h"  // IWYU pragma: keep
 
 namespace xla::cpu {
 
