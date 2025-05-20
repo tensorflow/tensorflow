@@ -185,11 +185,6 @@ Thunk::ExecuteParams Thunk::ExecuteParams::Create(
                            ? run_options.run_options()
                                  .gpu_executable_run_options()
                                  ->enable_mock_collectives()
-                           : false,
-                       run_options.run_options().gpu_executable_run_options()
-                           ? run_options.run_options()
-                                 .gpu_executable_run_options()
-                                 ->requires_exclusive_lock_on_gpu()
                            : false);
 }
 
@@ -213,8 +208,7 @@ Thunk::ExecuteParams::ExecuteParams(
     SendDeviceMemoryFunction* send_device_memory_function,
     RecvDeviceMemoryFunction* recv_device_memory_function,
     const ffi::ExecutionContext* ffi_execution_context,
-    ExecutionStreamIdMap additional_compute_streams, bool mock_collectives,
-    bool requires_exclusive_lock_on_gpu)
+    ExecutionStreamIdMap additional_compute_streams, bool mock_collectives)
     : buffer_allocations(buffer_allocations),
       stream(stream),
       command_buffer_trace_stream(command_buffer_trace_stream),
@@ -226,8 +220,7 @@ Thunk::ExecuteParams::ExecuteParams(
       recv_device_memory_function(recv_device_memory_function),
       ffi_execution_context(ffi_execution_context),
       additional_compute_streams(additional_compute_streams),
-      mock_collectives(mock_collectives),
-      requires_exclusive_lock_on_gpu(requires_exclusive_lock_on_gpu) {}
+      mock_collectives(mock_collectives) {}
 
 //===----------------------------------------------------------------------===//
 
