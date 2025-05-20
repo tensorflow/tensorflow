@@ -737,6 +737,7 @@ cc_library(
         "//learning/processing/hydra/tensorflow:__pkg__",
         "//learning/sibyl/tfx/state/kernels:__pkg__",
         "//learning/sibyl/tfx/transformation/kernels:__pkg__",
+        "//robotics/datasets/stepstable/tensorflow:__pkg__",
         "//tensorflow/compiler/mlir/tools/kernel_gen:__pkg__",
         "//tensorflow/compiler/tf2xla:__pkg__",
         "//tensorflow/examples/custom_ops_doc/simple_hash_table:__pkg__",
