@@ -26,7 +26,6 @@ limitations under the License.
 #include <vector>
 
 #include "mhlo/transforms/passes.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -104,7 +103,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/types.h"
@@ -1035,7 +1033,7 @@ class ConvertToHloModule {
  public:
   using ValueLoweringMap = llvm::DenseMap<Value, xla::XlaOp>;
   using FunctionLoweringMap =
-      llvm::DenseMap<mlir::func::FuncOp, xla::XlaComputationId>;
+      llvm::DenseMap<mlir::func::FuncOp, xla::XlaComputation>;
 
   // If use_tuple_args is true, then the entry function's arguments are
   // converted to a tuple and passed as a single parameter.
@@ -1068,19 +1066,17 @@ class ConvertToHloModule {
   // Lower a specific function to HLO.
   LogicalResult RunOnFunction(mlir::func::FuncOp f);
 
-  absl::StatusOr<::xla::HloModuleProto> ConsumeMainProto() {
+  ::xla::HloModuleProto ConsumeMainProto() {
     auto main = module_.lookupSymbol<mlir::func::FuncOp>(kMain);
     // This is an invariant check as Run returns failure if there is no main
     // function and so the main proto shouldn't be consumed in that case.
-    TF_RET_CHECK(main) << "requires module to have main function";
-    TF_ASSIGN_OR_RETURN(xla::XlaComputation computation,
-                        module_builder_.Build(lowered_computation_[main]));
-    return computation.proto();
+    CHECK(main) << "requires module to have main function";  // Crash Ok.
+    return lowered_computation_[main].proto();
   }
 
   // Lower a `mlir::Region` to a `XlaComputation`
   LogicalResult LowerRegionAsComputation(
-      mlir::Region* region, xla::XlaComputationId& func,
+      mlir::Region* region, xla::XlaComputation* func,
       llvm::ArrayRef<mlir::Value> implicit_operands = {},
       llvm::ArrayRef<mlir::Value> implicit_results = {},
       bool ensure_single_arg = false,
@@ -1095,7 +1091,7 @@ class ConvertToHloModule {
       llvm::ArrayRef<std::optional<xla::OpSharding>> arg_shardings,
       llvm::ArrayRef<std::optional<xla::OpSharding>> ret_shardings,
       llvm::ArrayRef<std::optional<xla::FrontendAttributes>> fe_attrs,
-      xla::XlaComputationId& computation,
+      xla::XlaComputation* result,
       llvm::ArrayRef<mlir::Value> implicit_operands = {},
       llvm::ArrayRef<mlir::Value> implicit_results = {});
 
@@ -1152,7 +1148,7 @@ class ConvertToHloModule {
   }
 
   // Get Reference to lowered XLA computation for a function.
-  xla::XlaComputationId GetLoweredComputation(func::FuncOp func) {
+  xla::XlaComputation& GetLoweredComputation(func::FuncOp func) {
     return lowered_computation_[func];
   }
 
@@ -1168,8 +1164,6 @@ class ConvertToHloModule {
   xla::StackFrameIndexProto BuildStackFramesIndexProto() {
     return stack_frame_indexes_builder_.Build();
   }
-
-  xla::XlaBuilder& module_builder() { return module_builder_; }
 
  private:
   LogicalResult SetEntryTupleShapesAndLeafReplication(
@@ -1696,8 +1690,8 @@ LogicalResult ExportXlaOp(OptimizationBarrierOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(IfOp op, OpLoweringContext ctx) {
-  xla::XlaComputationId true_branch;
-  xla::XlaComputationId false_branch;
+  xla::XlaComputation true_branch;
+  xla::XlaComputation false_branch;
   auto& value_map = *ctx.values;
 
   // stablehlo.IfOp does not have any operands or blocks arguments.
@@ -1748,11 +1742,11 @@ LogicalResult ExportXlaOp(IfOp op, OpLoweringContext ctx) {
   // implicit captures operands. Also export the instructions within those
   // regions.
   if (failed(ctx.converter->LowerRegionAsComputation(
-          &op.getTrueBranch(), true_branch, implicit_true_operands,
+          &op.getTrueBranch(), &true_branch, implicit_true_operands,
           /*implicit_results=*/{}, /*ensure_single_arg=*/true,
           true_arg_shardings, ret_shardings)) ||
       failed(ctx.converter->LowerRegionAsComputation(
-          &op.getFalseBranch(), false_branch, implicit_false_operands,
+          &op.getFalseBranch(), &false_branch, implicit_false_operands,
           /*implicit_results=*/{}, /*ensure_single_arg=*/true,
           false_arg_shardings, ret_shardings))) {
     return failure();
@@ -1789,7 +1783,8 @@ LogicalResult ExportXlaOp(CaseOp op, OpLoweringContext ctx) {
   // OperandRange operands = op.branch_operands();
   MutableArrayRef<Region> branches = op.getBranches();
   llvm::SmallVector<xla::XlaOp, 4> branch_operands(branches.size());
-  std::vector<xla::XlaComputationId> computations(branches.size());
+  std::vector<xla::XlaComputation> computations(branches.size());
+  std::vector<xla::XlaComputation*> computations_p(branches.size());
 
   // stablehlo.CaseOp does not have any operands or blocks arguments.
   // The computation inside the region-blocks use implicit captures of values
@@ -1829,8 +1824,9 @@ LogicalResult ExportXlaOp(CaseOp op, OpLoweringContext ctx) {
     // Create xla parameters for functions corresponding to region branches[i]
     // using the implicit captures operands. Also export the instructions within
     // that region.
+    computations_p[i] = &computations[i];
     if (failed(ctx.converter->LowerRegionAsComputation(
-            &branches[i], computations[i], implicit_operands,
+            &branches[i], computations_p[i], implicit_operands,
             /*implicit_results=*/{}, /*ensure_single_arg=*/true, arg_shardings,
             ret_shardings)))
       return failure();
@@ -1839,7 +1835,7 @@ LogicalResult ExportXlaOp(CaseOp op, OpLoweringContext ctx) {
   xla::XlaOp index;
   if (failed(GetXlaOp(op.getIndex(), value_map, &index, op))) return failure();
 
-  xla::XlaOp caseop = xla::Conditional(index, computations, branch_operands);
+  xla::XlaOp caseop = xla::Conditional(index, computations_p, branch_operands);
 
   // stablehlo.CaseOp have multiple returns, untuple all the results of XLA's.
   if (op.getNumResults() == 1) {
@@ -1851,8 +1847,8 @@ LogicalResult ExportXlaOp(CaseOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
-  xla::XlaComputationId condition;
-  xla::XlaComputationId body;
+  xla::XlaComputation condition;
+  xla::XlaComputation body;
 
   // If the results of the while op have a sharding, we use those shardings for
   // the corresponding arguments and return shardings in the body and condition.
@@ -1897,12 +1893,12 @@ LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
   // arguments, as they are carried over to the next iteration. Thus, we pass
   // the `implicit_operands` as `implicit_results`, to carry them over as is.
   if (failed(ctx.converter->LowerRegionAsComputation(
-          &op.getBody(), body, implicit_operands,
+          &op.getBody(), &body, implicit_operands,
           /*implicit_results=*/implicit_operands,
           /*ensure_single_arg=*/true, /*arg_shardings=*/res_shardings,
           /*ret_shardings=*/res_shardings)) ||
       failed(ctx.converter->LowerRegionAsComputation(
-          &op.getCond(), condition, implicit_operands,
+          &op.getCond(), &condition, implicit_operands,
           /*implicit_results=*/{},
           /*ensure_single_arg=*/true, /*arg_shardings=*/res_shardings))) {
     return failure();
@@ -1911,15 +1907,11 @@ LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
   // In case StableHLO's whileOp has multiple operands, create xla::Tuple, using
   // those operands, to be used as sole operand of xla::While.
   llvm::SmallVector<xla::XlaOp> operands;
-  if (failed(GetTuple(op, op.getOperands(), ctx, operands))) {
-    return failure();
-  }
+  if (failed(GetTuple(op, op.getOperands(), ctx, operands))) return failure();
   operands.append(implicit_args.begin(), implicit_args.end());
 
   xla::XlaOp operand = operands[0];
-  if (operands.size() > 1) {
-    operand = Tuple(ctx.builder, operands);
-  }
+  if (operands.size() > 1) operand = Tuple(ctx.builder, operands);
 
   xla::XlaOp whileop = xla::While(condition, body, operand);
 
@@ -1945,9 +1937,9 @@ LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  xla::XlaComputationId computation;
+  xla::XlaComputation computation;
   if (failed(ctx.converter->LowerRegionAsComputation(&op.getComputation(),
-                                                     computation))) {
+                                                     &computation))) {
     return failure();
   }
 
@@ -1977,8 +1969,8 @@ LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(ReduceOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  xla::XlaComputationId body;
-  if (failed(ctx.converter->LowerRegionAsComputation(&op.getBody(), body))) {
+  xla::XlaComputation body;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.getBody(), &body))) {
     return failure();
   }
   llvm::SmallVector<xla::XlaOp> operands, init_values;
@@ -1999,9 +1991,9 @@ LogicalResult ExportXlaOp(ReduceOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(MapOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  xla::XlaComputationId computation;
+  xla::XlaComputation computation;
   if (failed(ctx.converter->LowerRegionAsComputation(&op.getComputation(),
-                                                     computation))) {
+                                                     &computation))) {
     return failure();
   }
   llvm::SmallVector<xla::XlaOp> operands;
@@ -2145,11 +2137,10 @@ mlir::LogicalResult ExportXlaOp(mlir::stablehlo::CompareOp op,
 }
 
 LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
-  xla::XlaComputationId comparator;
+  xla::XlaComputation comparator;
   if (failed(ctx.converter->LowerRegionAsComputation(&op.getComparator(),
-                                                     comparator))) {
+                                                     &comparator)))
     return failure();
-  }
 
   llvm::SmallVector<xla::XlaOp> operands;
   if (failed(GetTuple(op, op.getInputs(), ctx, operands))) return failure();
@@ -2439,7 +2430,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     }
 
     if (failed(ctx.converter->RunOnFunction(callee))) return failure();
-    xla::XlaComputationId comparator =
+    xla::XlaComputation& comparator =
         ctx.converter->GetLoweredComputation(callee);
 
     // (C6)
@@ -2561,7 +2552,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
         mlir::cast<FlatSymbolRefAttr>(op.getCalledComputations()[0]));
     if (failed(ctx.converter->RunOnFunction(callee))) return failure();
-    xla::XlaComputationId computation =
+    xla::XlaComputation& computation =
         ctx.converter->GetLoweredComputation(callee);
     custom_call = xla::CustomCallWithComputation(
         ctx.builder, call_target_name, args, computation, result_shape,
@@ -2764,9 +2755,9 @@ LogicalResult ExportXlaOp(ReduceScatterOp op, OpLoweringContext ctx) {
   int64_t shard_count = operand_type.getDimSize(scatter_dim) /
                         result_type.getDimSize(scatter_dim);
 
-  xla::XlaComputationId computation;
+  xla::XlaComputation computation;
   if (failed(ctx.converter->LowerRegionAsComputation(&op.getComputation(),
-                                                     computation))) {
+                                                     &computation))) {
     return failure();
   }
 
@@ -2780,8 +2771,8 @@ LogicalResult ExportXlaOp(ReduceScatterOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(ReduceWindowOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  xla::XlaComputationId body;
-  if (failed(ctx.converter->LowerRegionAsComputation(&op.getBody(), body))) {
+  xla::XlaComputation body;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.getBody(), &body))) {
     return failure();
   }
   llvm::SmallVector<xla::XlaOp> operands, init_values;
@@ -2835,9 +2826,9 @@ LogicalResult ExportXlaOp(RngBitGeneratorOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(ScatterOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  xla::XlaComputationId update_computation;
+  xla::XlaComputation update_computation;
   if (failed(ctx.converter->LowerRegionAsComputation(&op.getUpdateComputation(),
-                                                     update_computation))) {
+                                                     &update_computation))) {
     return failure();
   }
   xla::ScatterDimensionNumbers dimension_numbers =
@@ -2868,12 +2859,12 @@ LogicalResult ExportXlaOp(ScatterOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(SelectAndScatterOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  xla::XlaComputationId select;
-  xla::XlaComputationId scatter;
+  xla::XlaComputation select;
+  xla::XlaComputation scatter;
   if (failed(
-          ctx.converter->LowerRegionAsComputation(&op.getSelect(), select)) ||
-      failed(
-          ctx.converter->LowerRegionAsComputation(&op.getScatter(), scatter))) {
+          ctx.converter->LowerRegionAsComputation(&op.getSelect(), &select)) ||
+      failed(ctx.converter->LowerRegionAsComputation(&op.getScatter(),
+                                                     &scatter))) {
     return failure();
   }
   xla::XlaOp operand, source, init_value;
@@ -3113,9 +3104,9 @@ LogicalResult ExportXlaOp(AllGatherOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  xla::XlaComputationId computation;
+  xla::XlaComputation computation;
   if (failed(ctx.converter->LowerRegionAsComputation(&op.getComputation(),
-                                                     computation))) {
+                                                     &computation))) {
     return failure();
   }
 
@@ -3190,9 +3181,9 @@ LogicalResult ExportXlaOp(ReduceScatterOp op, OpLoweringContext ctx) {
   int64_t shard_count = operand_type.getDimSize(scatter_dim) /
                         result_type.getDimSize(scatter_dim);
 
-  xla::XlaComputationId computation;
+  xla::XlaComputation computation;
   if (failed(ctx.converter->LowerRegionAsComputation(&op.getComputation(),
-                                                     computation))) {
+                                                     &computation))) {
     return failure();
   }
 
@@ -3245,9 +3236,9 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
   auto all_reduce_op =
       dyn_cast_or_null<AllReduceOp>(callee.getBody().front().front());
   if (all_reduce_op && SimplyReturnedOp(all_reduce_op)) {
-    xla::XlaComputationId computation;
+    xla::XlaComputation computation;
     if (failed(ctx.converter->LowerRegionAsComputation(
-            &all_reduce_op.getComputation(), computation))) {
+            &all_reduce_op.getComputation(), &computation))) {
       return failure();
     }
     if (operands.size() != 1) return failure();
@@ -3314,19 +3305,16 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
   }
 
   if (failed(ctx.converter->RunOnFunction(callee))) return failure();
-  xla::XlaComputationId computation =
+  xla::XlaComputation& computation =
       ctx.converter->GetLoweredComputation(callee);
-  absl::Status status = xla::internal::XlaBuilderFriend::SetExecutionThread(
-      &ctx.converter->module_builder(), computation,
+  computation.mutable_proto()->mutable_computations(0)->set_execution_thread(
       op.getExecutionThread().str());
-  if (!status.ok()) {
-    return op.emitOpError()
-           << "Failed to set execution thread: " << status.ToString();
-  }
-  auto xla_op = xla::internal::XlaBuilderFriend::BuildAsyncStart(
-      ctx.builder, operands, op.getExecutionThread().str(), computation,
-      xla::TypeToShape(result.getType()));
+  auto [xla_op, computation_id] =
+      xla::internal::XlaBuilderFriend::BuildAsyncStart(
+          ctx.builder, operands, op.getExecutionThread().str(), computation,
+          xla::TypeToShape(result.getType()));
   value_map[result] = xla_op;
+  computation.mutable_proto()->mutable_computations(0)->set_id(computation_id);
   return success();
 }
 
@@ -3667,8 +3655,8 @@ LogicalResult ExportXlaOp(DomainOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(IfOp op, OpLoweringContext ctx) {
-  xla::XlaComputationId true_branch;
-  xla::XlaComputationId false_branch;
+  xla::XlaComputation true_branch;
+  xla::XlaComputation false_branch;
   auto& value_map = *ctx.values;
 
   // mhlo.IfOp does not have any operands or blocks arguments. The computation
@@ -3718,11 +3706,11 @@ LogicalResult ExportXlaOp(IfOp op, OpLoweringContext ctx) {
   // implicit captures operands. Also export the instructions within those
   // regions.
   if (failed(ctx.converter->LowerRegionAsComputation(
-          &op.getTrueBranch(), true_branch, implicit_true_operands,
+          &op.getTrueBranch(), &true_branch, implicit_true_operands,
           /*implicit_results=*/{}, /*ensure_single_arg=*/true,
           true_arg_shardings, ret_shardings)) ||
       failed(ctx.converter->LowerRegionAsComputation(
-          &op.getFalseBranch(), false_branch, implicit_false_operands,
+          &op.getFalseBranch(), &false_branch, implicit_false_operands,
           /*implicit_results=*/{}, /*ensure_single_arg=*/true,
           false_arg_shardings, ret_shardings))) {
     return failure();
@@ -3759,7 +3747,8 @@ LogicalResult ExportXlaOp(CaseOp op, OpLoweringContext ctx) {
   // OperandRange operands = op.branch_operands();
   MutableArrayRef<Region> branches = op.getBranches();
   llvm::SmallVector<xla::XlaOp, 4> branch_operands(branches.size());
-  std::vector<xla::XlaComputationId> computations(branches.size());
+  std::vector<xla::XlaComputation> computations(branches.size());
+  std::vector<xla::XlaComputation*> computations_p(branches.size());
 
   // mhlo.CaseOp does not have any operands or blocks arguments. The computation
   // inside the region-blocks use implicit captures of values defined above.
@@ -3798,8 +3787,9 @@ LogicalResult ExportXlaOp(CaseOp op, OpLoweringContext ctx) {
     // Create xla parameters for functions corresponding to region branches[i]
     // using the implicit captures operands. Also export the instructions within
     // that region.
+    computations_p[i] = &computations[i];
     if (failed(ctx.converter->LowerRegionAsComputation(
-            &branches[i], computations[i], implicit_operands,
+            &branches[i], computations_p[i], implicit_operands,
             /*implicit_results=*/{}, /*ensure_single_arg=*/true, arg_shardings,
             ret_shardings)))
       return failure();
@@ -3808,7 +3798,7 @@ LogicalResult ExportXlaOp(CaseOp op, OpLoweringContext ctx) {
   xla::XlaOp index;
   if (failed(GetXlaOp(op.getIndex(), value_map, &index, op))) return failure();
 
-  xla::XlaOp caseop = xla::Conditional(index, computations, branch_operands);
+  xla::XlaOp caseop = xla::Conditional(index, computations_p, branch_operands);
 
   // mhlo.CaseOp have multiple returns, untuple all the results of XLA's.
   if (op.getNumResults() == 1) {
@@ -4144,7 +4134,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     }
 
     if (failed(ctx.converter->RunOnFunction(callee))) return failure();
-    xla::XlaComputationId comparator =
+    xla::XlaComputation& comparator =
         ctx.converter->GetLoweredComputation(callee);
 
     // (C6)
@@ -4267,7 +4257,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
         mlir::cast<FlatSymbolRefAttr>(op.getCalledComputations()[0]));
     if (failed(ctx.converter->RunOnFunction(callee))) return failure();
-    xla::XlaComputationId computation =
+    xla::XlaComputation& computation =
         ctx.converter->GetLoweredComputation(callee);
     custom_call = xla::CustomCallWithComputation(
         ctx.builder, call_target_name, args, computation, result_shape,
@@ -4348,9 +4338,9 @@ LogicalResult ExportXlaOp(IotaOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(MapOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  xla::XlaComputationId computation;
+  xla::XlaComputation computation;
   if (failed(ctx.converter->LowerRegionAsComputation(&op.getComputation(),
-                                                     computation))) {
+                                                     &computation))) {
     return failure();
   }
   llvm::SmallVector<xla::XlaOp> operands;
@@ -4513,8 +4503,8 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(ReduceOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  xla::XlaComputationId body;
-  if (failed(ctx.converter->LowerRegionAsComputation(&op.getBody(), body))) {
+  xla::XlaComputation body;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.getBody(), &body))) {
     return failure();
   }
   llvm::SmallVector<xla::XlaOp> operands, init_values;
@@ -4535,8 +4525,8 @@ LogicalResult ExportXlaOp(ReduceOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(ReduceWindowOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  xla::XlaComputationId body;
-  if (failed(ctx.converter->LowerRegionAsComputation(&op.getBody(), body))) {
+  xla::XlaComputation body;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.getBody(), &body))) {
     return failure();
   }
   llvm::SmallVector<xla::XlaOp> operands, init_values;
@@ -4658,9 +4648,9 @@ LogicalResult ExportXlaOp(RngOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(ScatterOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  xla::XlaComputationId update_computation;
+  xla::XlaComputation update_computation;
   if (failed(ctx.converter->LowerRegionAsComputation(&op.getUpdateComputation(),
-                                                     update_computation))) {
+                                                     &update_computation))) {
     return failure();
   }
   xla::ScatterDimensionNumbers dimension_numbers =
@@ -4691,12 +4681,12 @@ LogicalResult ExportXlaOp(ScatterOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(SelectAndScatterOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  xla::XlaComputationId select;
-  xla::XlaComputationId scatter;
+  xla::XlaComputation select;
+  xla::XlaComputation scatter;
   if (failed(
-          ctx.converter->LowerRegionAsComputation(&op.getSelect(), select)) ||
-      failed(
-          ctx.converter->LowerRegionAsComputation(&op.getScatter(), scatter))) {
+          ctx.converter->LowerRegionAsComputation(&op.getSelect(), &select)) ||
+      failed(ctx.converter->LowerRegionAsComputation(&op.getScatter(),
+                                                     &scatter))) {
     return failure();
   }
   xla::XlaOp operand, source, init_value;
@@ -4806,11 +4796,10 @@ mlir::LogicalResult ExportXlaOp(mlir::mhlo::SineOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
-  xla::XlaComputationId comparator;
+  xla::XlaComputation comparator;
   if (failed(ctx.converter->LowerRegionAsComputation(&op.getComparator(),
-                                                     comparator))) {
+                                                     &comparator)))
     return failure();
-  }
 
   llvm::SmallVector<xla::XlaOp> operands;
   if (failed(GetTuple(op, op.getInputs(), ctx, operands))) return failure();
@@ -4854,8 +4843,8 @@ LogicalResult ExportXlaOp(TraceOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
-  xla::XlaComputationId condition;
-  xla::XlaComputationId body;
+  xla::XlaComputation condition;
+  xla::XlaComputation body;
 
   // If the results of the while op have a sharding, we use those shardings for
   // the corresponding arguments and return shardings in the body and condition.
@@ -4900,12 +4889,12 @@ LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
   // arguments, as they are carried over to the next iteration. Thus, we pass
   // the `implicit_operands` as `implicit_results`, to carry them over as is.
   if (failed(ctx.converter->LowerRegionAsComputation(
-          &op.getBody(), body, implicit_operands,
+          &op.getBody(), &body, implicit_operands,
           /*implicit_results=*/implicit_operands,
           /*ensure_single_arg=*/true, /*arg_shardings=*/res_shardings,
           /*ret_shardings=*/res_shardings)) ||
       failed(ctx.converter->LowerRegionAsComputation(
-          &op.getCond(), condition, implicit_operands,
+          &op.getCond(), &condition, implicit_operands,
           /*implicit_results=*/{},
           /*ensure_single_arg=*/true, /*arg_shardings=*/res_shardings))) {
     return failure();
@@ -4967,11 +4956,10 @@ LogicalResult ExportXlaOp(FusionOp op, OpLoweringContext ctx) {
     return failure();
   }
 
-  xla::XlaComputationId fused_computation;
+  xla::XlaComputation fused_computation;
   if (failed(ctx.converter->LowerRegionAsComputation(&op.getFusedComputation(),
-                                                     fused_computation))) {
+                                                     &fused_computation)))
     return failure();
-  }
 
   auto& values = *ctx.values;
   auto aliasInfo =
@@ -5288,7 +5276,7 @@ LogicalResult ConvertToHloModule::LowerStablehloCompositeCall(
   }
 
   auto composite_op = cast<stablehlo::CompositeOp>(inst);
-  xla::XlaComputationId computation;
+  xla::XlaComputation computation;
   if (failed(LowerBasicBlockAsFunction(
           /*block=*/&module_
               .lookupSymbol<mlir::func::FuncOp>(composite_op.getDecomposition())
@@ -5302,7 +5290,7 @@ LogicalResult ConvertToHloModule::LowerStablehloCompositeCall(
           /*ensure_single_arg=*/false,
           /*entry_args_same_across_replicas=*/{},
           /*arg_shardings=*/{}, /*ret_shardings=*/{},
-          /*fe_attrs=*/{}, /*computation=*/computation,
+          /*fe_attrs=*/{}, /*result=*/&computation,
           /*implicit_operands=*/{}))) {
     return failure();
   }
@@ -5346,13 +5334,12 @@ LogicalResult ConvertToHloModule::LowerCompositeCall(
   }
 
   auto composite_op = cast<mhlo::CompositeOp>(inst);
-  xla::XlaComputationId computation;
-  Block& block =
-      module_.lookupSymbol<mlir::func::FuncOp>(composite_op.getDecomposition())
-          .getBody()
-          .front();
+  xla::XlaComputation computation;
   if (failed(LowerBasicBlockAsFunction(
-          &block,
+          /*block=*/&module_
+              .lookupSymbol<mlir::func::FuncOp>(composite_op.getDecomposition())
+              .getBody()
+              .front(),
           /*builder=*/
           module_builder_
               .CreateSubBuilder(composite_op.getDecomposition().str())
@@ -5361,7 +5348,7 @@ LogicalResult ConvertToHloModule::LowerCompositeCall(
           /*ensure_single_arg=*/false,
           /*entry_args_same_across_replicas=*/{},
           /*arg_shardings=*/{}, /*ret_shardings=*/{},
-          /*fe_attrs=*/{}, /*computation=*/computation,
+          /*fe_attrs=*/{}, /*result=*/&computation,
           /*implicit_operands=*/{}))) {
     return failure();
   }
@@ -5699,9 +5686,13 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
   }
 
   // Create a sub-builder if this is not the main function.
+  std::unique_ptr<xla::XlaBuilder> builder_up;
   bool entry_function = f.getName() == kMain;
-  auto builder = module_builder_.CreateSubBuilder(f.getName().str());
+  if (!entry_function)
+    builder_up = module_builder_.CreateSubBuilder(f.getName().str());
+  auto& builder = entry_function ? module_builder_ : *builder_up;
 
+  xla::XlaComputation computation;
   std::vector<bool> entry_args_same_across_replicas;
   llvm::SmallVector<std::optional<xla::OpSharding>, 4> arg_shardings;
   llvm::SmallVector<std::optional<xla::OpSharding>, 4> ret_shardings;
@@ -5720,9 +5711,9 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
           f.getArgAttrOfType<mlir::BoolAttr>(i, kJaxBufferDonor);
       if (buffer_donor) {
         if (options_.use_tuple_args) {
-          builder->AddBufferDonor(/*param_number=*/0, /*param_index=*/{i});
+          builder.AddBufferDonor(/*param_number=*/0, /*param_index=*/{i});
         } else {
-          builder->AddBufferDonor(/*param_number=*/i, /*param_index=*/{});
+          builder.AddBufferDonor(/*param_number=*/i, /*param_index=*/{});
         }
       }
       auto aliasing_output =
@@ -5739,11 +5730,11 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
         output_index = {};
       }
       if (options_.use_tuple_args) {
-        builder->SetUpAlias(output_index, /*param_number=*/0,
-                            /*param_index=*/{i});
+        builder.SetUpAlias(output_index, /*param_number=*/0,
+                           /*param_index=*/{i});
       } else {
-        builder->SetUpAlias(output_index, /*param_number=*/i,
-                            /*param_index=*/{});
+        builder.SetUpAlias(output_index, /*param_number=*/i,
+                           /*param_index=*/{});
       }
     }
     // Do not populate this field when nothing is replicated, since empty field
@@ -5753,41 +5744,31 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
     ExtractFrontendAttributesFromFunction(f, &arg_fe_attrs);
   }
   ExtractShardingsFromFunction(f, &arg_shardings, &ret_shardings);
-  xla::XlaComputationId computation;
-  if (failed(LowerBasicBlockAsFunction(
-          &f.front(), builder.get(), entry_function, false,
-          entry_args_same_across_replicas, arg_shardings, ret_shardings,
-          arg_fe_attrs, computation))) {
+  if (failed(LowerBasicBlockAsFunction(&f.front(), &builder, entry_function,
+                                       false, entry_args_same_across_replicas,
+                                       arg_shardings, ret_shardings,
+                                       arg_fe_attrs, &computation))) {
     return failure();
   }
   if (auto execution_thread =
           f->getAttrOfType<mlir::StringAttr>(kExecutionThread)) {
-    absl::Status status = xla::internal::XlaBuilderFriend::SetExecutionThread(
-        &module_builder_, computation, execution_thread.str());
-    if (!status.ok()) {
-      return f.emitError(status.message());
-    }
+    computation.mutable_proto()->mutable_computations(0)->set_execution_thread(
+        execution_thread.str());
   }
-  absl::flat_hash_map<int, std::vector<bool>> parameter_replication;
   for (int i = 0; i < f.getNumArguments(); ++i) {
     if (auto pr =
             f.getArgAttrOfType<mlir::ArrayAttr>(i, kMhloParameterReplication)) {
-      auto& replicated_at_leaf_buffers = parameter_replication[i];
-      for (auto b : pr.getValue()) {
-        replicated_at_leaf_buffers.push_back(
-            cast<mlir::BoolAttr>(b).getValue());
-      }
+      for (auto b : pr.getValue())
+        for (auto& instr : *computation.mutable_proto()
+                                ->mutable_computations(0)
+                                ->mutable_instructions())
+          if (instr.parameter_number() == i)
+            instr.mutable_parameter_replication()
+                ->add_replicated_at_leaf_buffers(
+                    mlir::cast<mlir::BoolAttr>(b).getValue());
     }
   }
-  if (!parameter_replication.empty()) {
-    absl::Status status =
-        xla::internal::XlaBuilderFriend::SetParameterReplication(
-            &module_builder_, computation, parameter_replication);
-    if (!status.ok()) {
-      return f.emitError(status.message());
-    }
-  }
-  lowered_computation_[f] = computation;
+  lowered_computation_[f] = std::move(computation);
   return success();
 }
 
@@ -5881,8 +5862,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     llvm::ArrayRef<std::optional<xla::OpSharding>> arg_shardings,
     llvm::ArrayRef<std::optional<xla::OpSharding>> ret_shardings,
     llvm::ArrayRef<std::optional<xla::FrontendAttributes>> fe_attrs,
-    xla::XlaComputationId& computation,
-    llvm::ArrayRef<mlir::Value> implicit_operands,
+    xla::XlaComputation* result, llvm::ArrayRef<mlir::Value> implicit_operands,
     llvm::ArrayRef<mlir::Value> implicit_results) {
   // Mapping from the Value to lowered XlaOp.
   ValueLoweringMap lowering;
@@ -6016,35 +5996,32 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
                      builder, &lowering, &return_value)))
       return failure();
   }
-  auto computation_or = return_value.valid()
-                            ? builder->BuildSubComputation(return_value)
-                            : builder->BuildSubComputation();
+  // Build the XlaComputation and check for failures.
+  auto computation_or =
+      return_value.valid() ? builder->Build(return_value) : builder->Build();
   if (!computation_or.ok()) {
     block->back().emitError() << computation_or.status().message();
     return failure();
   }
-  computation = computation_or.value();
-  // LLVM_DEBUG(llvm::dbgs() << "Created: " << result->name() << "\n");
+  *result = std::move(computation_or.value());
+  LLVM_DEBUG(llvm::dbgs() << "Created: " << result->name() << "\n");
   return success();
 }
 
 LogicalResult ConvertToHloModule::LowerRegionAsComputation(
-    mlir::Region* region, xla::XlaComputationId& func,
+    mlir::Region* region, xla::XlaComputation* func,
     llvm::ArrayRef<mlir::Value> implicit_operands,
     llvm::ArrayRef<mlir::Value> implicit_results, bool ensure_single_arg,
     llvm::ArrayRef<std::optional<xla::OpSharding>> arg_shardings,
     llvm::ArrayRef<std::optional<xla::OpSharding>> ret_shardings) {
   std::unique_ptr<xla::XlaBuilder> builder = module_builder_.CreateSubBuilder(
       absl::StrCat(kRegionPrefix, region_id_++));
-  if (failed(LowerBasicBlockAsFunction(
-          &region->front(), builder.get(),
-          /*is_entry_function=*/false,
-          /*ensure_single_arg*/ ensure_single_arg,
-          /*entry_args_same_across_replicas=*/{}, arg_shardings, ret_shardings,
-          /*fe_attrs=*/{}, func, implicit_operands, implicit_results))) {
-    return failure();
-  }
-  return success();
+  return LowerBasicBlockAsFunction(
+      &region->front(), builder.get(),
+      /*is_entry_function=*/false,
+      /*ensure_single_arg*/ ensure_single_arg,
+      /*entry_args_same_across_replicas=*/{}, arg_shardings, ret_shardings,
+      /*fe_attrs=*/{}, func, implicit_operands, implicit_results);
 }
 
 // Runs the PrepareForExport pass on the ModuleOp.
@@ -6112,9 +6089,7 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
   xla::XlaBuilder module_builder(kMain);
   ConvertToHloModule converter(module, module_builder, options);
   if (failed(converter.Run())) return diag_handler.ConsumeStatus();
-
-  TF_ASSIGN_OR_RETURN(xla::HloModuleProto hlo_module,
-                      converter.ConsumeMainProto());
+  xla::HloModuleProto hlo_module = converter.ConsumeMainProto();
   StringRef module_name = module.getName() ? *module.getName() : kMain;
   hlo_module.set_name(module_name.str());
   if (auto cross_program_prefetches =

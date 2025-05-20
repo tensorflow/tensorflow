@@ -71,7 +71,7 @@ absl::Status TransferManager::TransferLiteralFromDevice(
   absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
 
   absl::Status ret;
-  tsl::Notification n;
+  absl::Notification n;
   TransferLiteralFromDevice(
       substream, device_buffer, literal,
       [&](absl::Status status) {

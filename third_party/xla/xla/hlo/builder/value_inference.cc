@@ -1439,8 +1439,7 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
                   bool lhs_value = lhs.Get<bool>(indices);
                   bool rhs_value = rhs.Get<bool>(indices);
                   if (optional_selector.has_value()) {
-                    // Manually evaluate the selection without using
-                    // Evaluator.
+                    // Manually evaluate the selection without using Evaluator.
                     if (*optional_selector) {
                       return lhs_value;
                     } else {
@@ -1665,9 +1664,7 @@ absl::StatusOr<Literal> ValueInference::AnalyzeIsDynamic(XlaOp op) {
       [&](int64_t handle) {
         return builder_->LookUpInstructionByHandle(handle);
       },
-      [&](int64_t handle) {
-        return &(builder_->embedded_[handle].computation);
-      });
+      [&](int64_t handle) { return &(builder_->embedded_[handle]); });
 
   auto result = visitor.PostOrderDFSVisit(
       op.handle(), PostorderDFSNodeType::kValueIsDynamic);
@@ -1832,9 +1829,7 @@ absl::StatusOr<OptionalLiteral> ValueInference::AnalyzeConstant(
       [&](int64_t handle) {
         return builder_->LookUpInstructionByHandle(handle);
       },
-      [&](int64_t handle) {
-        return &(builder_->embedded_[handle].computation);
-      });
+      [&](int64_t handle) { return &(builder_->embedded_[handle]); });
   TF_ASSIGN_OR_RETURN(Shape op_shape, builder_->GetShape(op));
   int64_t handle = op.handle();
   if (ShapeUtil::IsScalar(builder_->GetShape(op).value())) {
