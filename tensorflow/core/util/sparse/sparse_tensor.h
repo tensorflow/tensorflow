@@ -20,14 +20,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
-#include "absl/base/attributes.h"
 #include "absl/base/macros.h"
-#include "absl/container/inlined_vector.h"
-#include "absl/log/check.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/str_join.h"
-#include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/tensor.h"

@@ -15,20 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
-#include <algorithm>
-#include <cstddef>
-#include <cstdint>
+#include <string>
 #include <vector>
 
-#include "absl/container/inlined_vector.h"
-#include "absl/log/log.h"
-#include "absl/status/status.h"
-#include "absl/strings/str_join.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
-#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/str_util.h"
