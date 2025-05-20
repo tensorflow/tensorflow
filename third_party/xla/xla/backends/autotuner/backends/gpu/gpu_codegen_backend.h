@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/autotuner/codegen_backend.h"
@@ -64,6 +65,11 @@ class GpuCodegenBackend : public CodegenBackend {
                         RunHloPasses(std::move(hlo_module), options));
     return compiler_->RunBackend(std::move(optimized_module),
                                  /*executor=*/nullptr, options);
+  }
+
+  absl::Status ApplyConfig(HloInstruction& instr,
+                           const BackendConfig& config) override {
+    return absl::UnimplementedError("Not implemented.");
   }
 
  private:

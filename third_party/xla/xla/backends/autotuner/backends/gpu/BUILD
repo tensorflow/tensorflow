@@ -17,6 +17,7 @@ cc_library(
         "//xla/service:compiler",
         "//xla/service:executable",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
     ],
