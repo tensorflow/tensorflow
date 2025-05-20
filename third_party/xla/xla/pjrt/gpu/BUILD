@@ -270,7 +270,6 @@ xla_test(
         "multi_gpu_h100",
         "no_oss",
         "noasan",
-        "notap",  # TODO(b/399931591): Re-enable once flakiness is resolved.
         "nomsan",
     ]},
     backends = ["gpu"],
