@@ -260,8 +260,8 @@ class ScopedStreamCallback {
   ScopedStreamCallback() = default;
 
   // Moveable but not copyable.
-  ScopedStreamCallback(ScopedStreamCallback&& other);
-  ScopedStreamCallback& operator=(ScopedStreamCallback&& other);
+  ScopedStreamCallback(ScopedStreamCallback&& other) noexcept;
+  ScopedStreamCallback& operator=(ScopedStreamCallback&& other) noexcept;
 
   ~ScopedStreamCallback() { Unregister(); }
 
