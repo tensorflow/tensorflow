@@ -217,6 +217,7 @@ struct CuptiTracerEvent {
   int64_t stream_id = kInvalidStreamId;
   uint32_t graph_id = 0;
   int64_t scope_range_id = 0;
+  uint32_t graph_node_id = 0;
   union {
     // For Memcpy API and activities. `type` must be Memcpy*.
     MemcpyDetails memcpy_info;
