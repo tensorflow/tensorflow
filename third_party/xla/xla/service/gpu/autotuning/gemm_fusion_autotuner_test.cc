@@ -206,7 +206,8 @@ class StatelessAutotunerTest : public HloTestBase {
 
     DeviceConfig test_config{backend().default_stream_executor(),
                              backend().memory_allocator()};
-    AutotuneConfig autotune_config{test_config, debug_options};
+    AutotuneConfig autotune_config = AutotuneConfig::FromDebugOptions(
+        DeviceOrDevicelessConfig{test_config}, debug_options);
     GemmFusionAutotunerImpl autotuner(autotune_config, toolkit_version,
                                       debug_options, nullptr);
     return autotuner.GenerateConfigs(fusion);
@@ -242,7 +243,8 @@ class StatelessAutotunerTest : public HloTestBase {
   GetPossibleMatmulAutotuneConfigs(const HloModule& module) {
     DeviceConfig device_config{backend().default_stream_executor(),
                                backend().memory_allocator()};
-    AutotuneConfig autotune_config{device_config, GetDebugOptionsForTest()};
+    AutotuneConfig autotune_config = AutotuneConfig::FromDebugOptions(
+        DeviceOrDevicelessConfig{device_config}, GetDebugOptionsForTest());
     GemmFusionAutotunerImpl autotuner(autotune_config, GetToolkitVersion(),
                                       GetDebugOptionsForTest(), nullptr);
     const HloFusionInstruction& fusion = *Cast<HloFusionInstruction>(
@@ -361,9 +363,11 @@ class GemmFusionAutotunerTest : public StatelessAutotunerTest {
     DebugOptions opts;
     MultiProcessKeyValueStore key_value_store;
     pipeline.AddPass<GemmFusionAutotuner>(
-        AutotuneConfig{DeviceConfig{backend().default_stream_executor(),
-                                    backend().memory_allocator()},
-                       opts},
+        AutotuneConfig::FromDebugOptions(
+            DeviceOrDevicelessConfig{
+                DeviceConfig{backend().default_stream_executor(),
+                             backend().memory_allocator()}},
+            opts),
         GetToolkitVersion(), &thread_pool, key_value_store);
 
     RunAndFilecheckHloRewrite(
@@ -436,7 +440,8 @@ GetPossibleMatmulAutotuneTritonConfigs(
   device_description.set_threads_per_warp(32);
   device_description.set_shared_memory_per_block_optin(227 * 1024);
   DevicelessConfig test_config = {device_description};
-  AutotuneConfig autotune_config{test_config, debug_options};
+  AutotuneConfig autotune_config = AutotuneConfig::FromDebugOptions(
+      DeviceOrDevicelessConfig{test_config}, debug_options);
   GemmFusionAutotunerImpl autotuner(autotune_config, toolkit_version,
                                     debug_options, nullptr);
   return autotuner.GenerateTritonConfigs(dot);
@@ -751,10 +756,10 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(kHloText));
 
   DebugOptions opts;
-  AutotuneConfig autotune_config{
-      DeviceConfig{backend().default_stream_executor(),
-                   backend().memory_allocator()},
-      opts};
+  AutotuneConfig autotune_config = AutotuneConfig::FromDebugOptions(
+      DeviceOrDevicelessConfig{DeviceConfig{backend().default_stream_executor(),
+                                            backend().memory_allocator()}},
+      opts);
   AutotuneCacheKey cache_key(autotune_config.GetModelStr(),
                              *module->entry_computation()->root_instruction());
 
@@ -955,10 +960,10 @@ ENTRY e {
   DebugOptions opts;
   MultiProcessKeyValueStore key_value_store;
   pipeline.AddPass<GemmFusionAutotuner>(
-      AutotuneConfig{
-          DevicelessConfig{
-              backend().default_stream_executor()->GetDeviceDescription()},
-          opts},
+      AutotuneConfig::FromDebugOptions(
+          DeviceOrDevicelessConfig{DevicelessConfig{
+              backend().default_stream_executor()->GetDeviceDescription()}},
+          opts),
       GetToolkitVersion(), &thread_pool, key_value_store);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -1067,7 +1072,8 @@ TEST_F(GemmFusionAutotunerTest, SplitKFLoatNormalization) {
   ccc->set_minor(compute_capability.minor);
   DeviceConfig test_config{backend().default_stream_executor(),
                            backend().memory_allocator()};
-  AutotuneConfig autotune_config{test_config, GetDebugOptionsForTest()};
+  AutotuneConfig autotune_config = AutotuneConfig::FromDebugOptions(
+      DeviceOrDevicelessConfig{test_config}, GetDebugOptionsForTest());
   GemmFusionAutotunerImpl autotuner(autotune_config, GetToolkitVersion(),
                                     GetDebugOptionsForTest(), nullptr);
   TF_ASSERT_OK_AND_ASSIGN(
@@ -1373,9 +1379,10 @@ absl::StatusOr<MultiProcessKeyValueStore> KeyValueStoreFromAutotuneResults(
 class GemmFusionShardedAutotunerTest : public GemmFusionAutotunerTest {
  protected:
   AutotuneConfig GetAutotuneConfigForTest() const {
-    return AutotuneConfig{DeviceConfig{backend().default_stream_executor(),
-                                       backend().memory_allocator()},
-                          GetDebugOptionsForTest()};
+    return AutotuneConfig::FromDebugOptions(
+        DeviceOrDevicelessConfig{DeviceConfig{
+            backend().default_stream_executor(), backend().memory_allocator()}},
+        GetDebugOptionsForTest());
   }
 
   GemmFusionAutotuner GemmFusionAutotunerForKeyValueStore(
@@ -1554,10 +1561,10 @@ TEST_F(GemmFusionAutotunerTest, RewritesGemmFusionToCustomKernelFusion) {
       ParseAndReturnVerifiedModule(kHlo).value();
 
   DebugOptions opts;
-  AutotuneConfig autotune_config{
-      DeviceConfig{backend().default_stream_executor(),
-                   backend().memory_allocator()},
-      opts};
+  AutotuneConfig autotune_config = AutotuneConfig::FromDebugOptions(
+      DeviceOrDevicelessConfig{DeviceConfig{backend().default_stream_executor(),
+                                            backend().memory_allocator()}},
+      opts);
   AutotuneCacheKey cache_key(autotune_config.GetModelStr(),
                              *module->entry_computation()->root_instruction());
   TF_ASSERT_OK_AND_ASSIGN(AutotuneResults autotune_results_override,

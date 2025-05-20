@@ -166,15 +166,17 @@ using AutotuneCacheKeySet = absl::flat_hash_set<AutotuneCacheKey>;
 
 class AutotuneConfig {
  public:
-  bool should_init_buffers() const { return autotune_level_ >= 2; }
-  bool should_reinit_output_buffer() const { return autotune_level_ >= 3; }
-  bool should_check_correctness() const { return autotune_level_ >= 4; }
-  bool should_skip_wrong_results() const { return autotune_level_ >= 5; }
+  bool should_init_buffers() const { return should_init_buffers_; }
+  bool should_reinit_output_buffer() const {
+    return should_reinit_output_buffer_;
+  }
+  bool should_check_correctness() const { return should_check_correctness_; }
+  bool should_skip_wrong_results() const { return should_skip_wrong_results_; }
   bool should_crash_on_check_failure() const {
     return should_crash_on_check_failure_;
   }
   bool should_require_complete_aot_autotune_results() const {
-    return require_complete_aot_autotune_results_;
+    return should_require_complete_aot_autotune_results_;
   }
   // Empty string means no cache is used.
   const std::string& autotune_cache_dir() const { return autotune_cache_dir_; }
@@ -182,20 +184,29 @@ class AutotuneConfig {
     return autotune_cache_mode_;
   }
 
-  AutotuneConfig(const std::variant<DeviceConfig, DevicelessConfig>& config,
-                 const DebugOptions& debug_options)
+  AutotuneConfig(const DeviceOrDevicelessConfig& config,
+                 bool should_init_buffers, bool should_reinit_output_buffer,
+                 bool should_check_correctness, bool should_skip_wrong_results,
+                 bool should_crash_on_check_failure,
+                 bool exhaustive_tiling_search,
+                 bool should_require_complete_aot_autotune_results,
+                 absl::string_view autotune_cache_dir,
+                 DebugOptions::AutotuneCacheMode autotune_cache_mode)
       : config_(config),
-        autotune_level_(debug_options.xla_gpu_autotune_level()),
-        should_crash_on_check_failure_(
-            debug_options.xla_gpu_crash_on_verification_failures()),
-        exhaustive_tiling_search_(
-            debug_options.xla_gpu_exhaustive_tiling_search()),
-        require_complete_aot_autotune_results_(
-            debug_options.xla_gpu_require_complete_aot_autotune_results()),
-        autotune_cache_dir_(
-            debug_options.xla_gpu_per_fusion_autotune_cache_dir()),
-        autotune_cache_mode_(
-            debug_options.xla_gpu_experimental_autotune_cache_mode()) {}
+        should_init_buffers_(should_init_buffers),
+        should_reinit_output_buffer_(should_reinit_output_buffer),
+        should_check_correctness_(should_check_correctness),
+        should_skip_wrong_results_(should_skip_wrong_results),
+        should_crash_on_check_failure_(should_crash_on_check_failure),
+        exhaustive_tiling_search_(exhaustive_tiling_search),
+        should_require_complete_aot_autotune_results_(
+            should_require_complete_aot_autotune_results),
+        autotune_cache_dir_(autotune_cache_dir),
+        autotune_cache_mode_(autotune_cache_mode) {}
+
+  // Derives the autotune config parameters from the DebugOptions `opts`.
+  static AutotuneConfig FromDebugOptions(const DeviceOrDevicelessConfig& config,
+                                         const DebugOptions& opts);
 
   std::string GetModelStr() const {
     return AutotuneCacheKey::DeviceDescriptionToCacheKey(
@@ -226,10 +237,13 @@ class AutotuneConfig {
 
  private:
   DeviceOrDevicelessConfig config_;
-  int32_t autotune_level_;
+  bool should_init_buffers_;
+  bool should_reinit_output_buffer_;
+  bool should_check_correctness_;
+  bool should_skip_wrong_results_;
   bool should_crash_on_check_failure_;
   bool exhaustive_tiling_search_;
-  bool require_complete_aot_autotune_results_;
+  bool should_require_complete_aot_autotune_results_;
   std::string autotune_cache_dir_;
   DebugOptions::AutotuneCacheMode autotune_cache_mode_;
 };
