@@ -1195,12 +1195,13 @@ message OutputOperandAliasing {
   repeated int64 operand_shape_index = 3;
 }
 
-message OriginalArrayProto {
+message OriginalTensorProto {
   repeated int64 leaf_shape_index = 1;
   string instruction_name = 2;
   repeated int64 shape_index = 3;
 }
 
 message OriginalValueProto {
-  repeated OriginalArrayProto leaves = 1;
+  ShapeProto shape = 1;
+  repeated OriginalTensorProto leaves = 2;
 }

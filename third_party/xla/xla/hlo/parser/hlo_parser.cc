@@ -583,9 +583,7 @@ class HloParserImpl : public HloParser {
   bool ParseBool(bool* result);
   bool ParseToken(TokKind kind, const std::string& msg);
   bool ParseUnsignedIntegerType(PrimitiveType* primitive_type);
-  bool ParseOriginalValue(
-      optional<std::shared_ptr<OriginalValue>>* original_value,
-      const Shape& shape);
+  bool ParseOriginalValue(std::shared_ptr<OriginalValue>& original_value);
 
   using AliasingData =
       absl::flat_hash_map<ShapeIndex, HloInputOutputAliasConfig::Alias>;
@@ -5167,10 +5165,14 @@ bool HloParserImpl::ParseAttributeHelper(
         if (!shape) {
           return TokenError("expects instruction shape");
         }
-        return ParseOriginalValue(
-            static_cast<optional<std::shared_ptr<OriginalValue>>*>(
-                attr_out_ptr),
-            *shape);
+        std::shared_ptr<OriginalValue> result =
+            std::make_shared<OriginalValue>(*shape);
+        if (!ParseOriginalValue(result)) {
+          return false;
+        }
+        static_cast<optional<std::shared_ptr<OriginalValue>>*>(attr_out_ptr)
+            ->emplace(std::move(result));
+        return true;
       }
       case AttrTy::kMetadata: {
         OpMetadata result;
@@ -6481,18 +6483,15 @@ bool HloParserImpl::ParsePaddingConfig(PaddingConfig* padding) {
   return true;
 }
 
-// original_value ::= original_value | '{' [shape_index] ',' original_array '}'
-// [',']
+// original_tensor ::= '{' instruction_name [shape_index] '}'
+// original_value ::= '{' '('* original_tensor [','] ')'* | original_value '}'
 bool HloParserImpl::ParseOriginalValue(
-    optional<std::shared_ptr<OriginalValue>>* original_value,
-    const Shape& shape) {
+    std::shared_ptr<OriginalValue>& original_value) {
   VLOG(kDebugLevel) << "ParseOriginalValue";
 
   if (!ParseToken(TokKind::kLbrace, "Expects '{'")) {
     return false;
   }
-
-  *original_value = std::make_shared<OriginalValue>(shape);
 
   ShapeIndex leaf_shape_index;
   while (lexer_.GetKind() != TokKind::kRbrace) {
@@ -6518,16 +6517,16 @@ bool HloParserImpl::ParseOriginalValue(
             return false;
           }
         }
-        *(**original_value)->mutable_element(leaf_shape_index) = {
-            instruction_name, shape_index};
+        *original_value->mutable_element(leaf_shape_index) = {instruction_name,
+                                                              shape_index};
       } else {
-        // The original_value is not expected to have any leaf without values.
+        // The original value is not expected to have any leaf without values.
         // However we should not fail the execution here. This should
         // be done in HloVerifier instead.
         LOG(WARNING) << "Found an empty leaf node in an original value";
       }
       if (!ParseToken(TokKind::kRbrace,
-                      "Expects '} at end of each OriginalArray'")) {
+                      "Expects '} at end of each OriginalTensor'")) {
         return false;
       }
     } else {

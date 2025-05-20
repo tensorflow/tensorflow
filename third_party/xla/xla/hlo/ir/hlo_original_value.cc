@@ -30,25 +30,23 @@ limitations under the License.
 
 namespace xla {
 
-std::string OriginalValueToStringHelper(const OriginalValue& original_value,
-                                        const Shape& shape,
-                                        std::vector<int64_t>& shape_index) {
+std::string OriginalValueToString(const OriginalValue& original_value,
+                                  const Shape& shape,
+                                  std::vector<int64_t>& shape_index) {
   std::string result;
   if (shape.IsTuple()) {
     if (shape.tuple_shapes().empty()) {
       return "()";
     }
-    absl::StrAppend(&result, "(");
     shape_index.push_back(0);
-    absl::StrAppend(&result,
-                    OriginalValueToStringHelper(
-                        original_value, shape.tuple_shapes(0), shape_index));
+    absl::StrAppend(&result, "(",
+                    OriginalValueToString(original_value, shape.tuple_shapes(0),
+                                          shape_index));
     shape_index.pop_back();
     for (int64_t i = 1; i < shape.tuple_shapes().size(); ++i) {
-      absl::StrAppend(&result, ", ");
       shape_index.push_back(i);
-      absl::StrAppend(&result,
-                      OriginalValueToStringHelper(
+      absl::StrAppend(&result, ", ",
+                      OriginalValueToString(
                           original_value, shape.tuple_shapes(i), shape_index));
       shape_index.pop_back();
     }
@@ -68,24 +66,37 @@ std::string OriginalValueToStringHelper(const OriginalValue& original_value,
   return result;
 }
 
-std::string OriginalValueToString(const OriginalValue& original_value) {
+std::string OriginalValue::ToString() {
   std::vector<int64_t> shape_index;
-  return OriginalValueToStringHelper(original_value, original_value.shape(),
-                                     shape_index);
+  return OriginalValueToString(*this, shape(), shape_index);
 }
 
-OriginalValueProto OriginalValueToProto(const OriginalValue& original_value) {
+std::shared_ptr<OriginalValue> OriginalValue::FromProto(
+    const xla::OriginalValueProto& original_value_proto) {
+  xla::Shape original_value_shape(
+      Shape::FromProto(original_value_proto.shape()).value_or(Shape()));
+  auto original_value = std::make_shared<OriginalValue>(original_value_shape);
+
+  for (const auto& leaf : original_value_proto.leaves()) {
+    *original_value->mutable_element(ShapeIndex(leaf.leaf_shape_index())) = {
+        leaf.instruction_name(), ShapeIndex(leaf.shape_index())};
+  }
+  return original_value;
+}
+
+OriginalValueProto OriginalValue::ToProto() {
   OriginalValueProto original_value_proto;
-  for (const auto& leaf : original_value.leaves()) {
-    OriginalArrayProto* original_array_proto =
+  *original_value_proto.mutable_shape() = shape().ToProto();
+  for (const auto& leaf : leaves()) {
+    OriginalTensorProto* original_tensor_proto =
         original_value_proto.add_leaves();
     for (const auto& index : leaf.first) {
-      original_array_proto->add_leaf_shape_index(index);
+      original_tensor_proto->add_leaf_shape_index(index);
     }
-    *original_array_proto->mutable_instruction_name() =
+    *original_tensor_proto->mutable_instruction_name() =
         leaf.second->instruction_name;
     for (const auto& index : leaf.second->shape_index) {
-      original_array_proto->add_shape_index(index);
+      original_tensor_proto->add_shape_index(index);
     }
   }
   return original_value_proto;

@@ -5833,8 +5833,7 @@ TEST_F(HloParserTest,
   EXPECT_EQ(wrapped_instr->statistics_viz().statistics(1).stat_name(),
             "stat-2");
   EXPECT_EQ(wrapped_instr->statistics_viz().statistics(1).stat_val(), 44);
-  EXPECT_EQ(OriginalValueToString(*wrapped_instr->original_value()),
-            "{\"v3\"}");
+  EXPECT_EQ(wrapped_instr->original_value()->ToString(), "{\"v3\"}");
   // Check the async-start and async-done instructions.
   HloInstruction* async_done = m->entry_computation()->root_instruction();
   HloInstruction* async_start = async_done->async_chain_start();
@@ -5845,8 +5844,8 @@ TEST_F(HloParserTest,
               EqualsProto(wrapped_instr->frontend_attributes()));
   EXPECT_THAT(async_start->statistics_viz(),
               EqualsProto(wrapped_instr->statistics_viz()));
-  EXPECT_EQ(OriginalValueToString(*async_done->original_value()),
-            OriginalValueToString(*wrapped_instr->original_value()));
+  EXPECT_EQ(async_done->original_value()->ToString(),
+            wrapped_instr->original_value()->ToString());
 }
 
 TEST_F(HloParserTest, ResultAccuracyToProto) {
