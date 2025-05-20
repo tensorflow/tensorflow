@@ -62,6 +62,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
@@ -94,59 +95,10 @@ using ::mlir::sdy::DimensionShardingAttr;
 using ::mlir::sdy::kShardingAttr;
 using ::mlir::sdy::ManualAxesAttr;
 using ::mlir::sdy::MeshAttr;
-using ::mlir::sdy::MeshAxisAttr;
 using ::mlir::sdy::MeshOp;
 using ::mlir::sdy::SdyDialect;
 using ::mlir::sdy::SubAxisInfoAttr;
 using ::mlir::sdy::TensorShardingAttr;
-
-// Return all axes or sub-axes in the `mesh`, such that sub-axes are derived
-// from `dimShardings` and sorted by their order in the mesh. For example, given
-// mesh <"x"=2, "y"=16, "z"=4> and dimShardings [{"x"}, {"y":2(2)}], we would
-// return ["x", "y":1(2), "y":2(2), "y":4(4), "z"].
-SmallVector<AxisRefAttr> getOrderedAxisRefs(
-    ArrayRef<DimensionShardingAttr> dimShardings, MeshAttr mesh) {
-  // We use a map vector to maintain the order of mesh axes.
-  llvm::MapVector<StringRef, SmallVector<int64_t>> axisNameToPreSizes;
-  axisNameToPreSizes.reserve(mesh.getAxes().size());
-  for (MeshAxisAttr meshAxis : mesh.getAxes()) {
-    SmallVector<int64_t>& preSizes = axisNameToPreSizes[meshAxis.getName()];
-    preSizes.push_back(1);
-    preSizes.push_back(meshAxis.getSize());
-  }
-
-  for (const DimensionShardingAttr dimSharding : dimShardings) {
-    for (AxisRefAttr axisRef : dimSharding.getAxes()) {
-      // Add sub-axis pre-sizes to `axisNameToPreSizes`. We'll dedup later.
-      if (axisRef.getSubAxisInfo()) {
-        SmallVector<int64_t>& preSizes = axisNameToPreSizes[axisRef.getName()];
-        preSizes.push_back(axisRef.getSubAxisInfo().getPreSize());
-        preSizes.push_back(axisRef.getSubAxisInfo().getNextPreSize());
-      }
-    }
-  }
-
-  SmallVector<AxisRefAttr> axisRefs;
-  mlir::MLIRContext* ctx = mesh.getContext();
-  for (auto& [axisName, preSizes] : axisNameToPreSizes) {
-    if (preSizes.size() == 2) {
-      // Full axis
-      axisRefs.push_back(AxisRefAttr::get(ctx, axisName));
-      continue;
-    }
-    absl::c_sort(preSizes);
-    preSizes.erase(std::unique(preSizes.begin(), preSizes.end()),
-                   preSizes.end());
-    for (int64_t i = 0; i < preSizes.size() - 1; ++i) {
-      int64_t preSize = preSizes[i];
-      int64_t size = preSizes[i + 1] / preSize;
-      axisRefs.push_back(AxisRefAttr::get(
-          ctx, axisName, SubAxisInfoAttr::get(ctx, preSize, size)));
-    }
-  }
-
-  return axisRefs;
-}
 
 // Convert the shardings from kShardingAttr into kXlaShardingAttr.
 LogicalResult exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
@@ -367,8 +319,7 @@ HloSharding convertToHloSharding(
   }
 
   // We will add all axes and let canonicalization merge adjacent axes.
-  SmallVector<AxisRefAttr> meshAxisRefs =
-      getOrderedAxisRefs(sdySharding.getDimShardings(), mesh);
+  SmallVector<AxisRefAttr> meshAxisRefs = getOrderedAxisRefs(sdySharding, mesh);
   SmallVector<int64_t> reshapeDims(meshAxisRefs.size());
   SmallVector<int> transposePerm(meshAxisRefs.size());
 

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/spmd/shardy/utils.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -23,6 +24,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -58,6 +60,12 @@ using ::mlir::StringRef;
 using xla::sdy::kFrontendAttributesAttr;
 
 using ::mlir::func::FuncOp;
+using ::mlir::sdy::AxisRefAttr;
+using ::mlir::sdy::AxisRefListAttr;
+using ::mlir::sdy::DimensionShardingAttr;
+using ::mlir::sdy::MeshAttr;
+using ::mlir::sdy::MeshAxisAttr;
+using ::mlir::sdy::SubAxisInfoAttr;
 using ::mlir::sdy::TensorShardingAttr;
 using ::mlir::sdy::TensorShardingPerValueAttr;
 using ::mlir::stablehlo::CustomCallOp;
@@ -236,6 +244,59 @@ std::string duplicateShardingsAtIndices(
   }
   return mlir::sdy::attributeToString(
       TensorShardingPerValueAttr::get(context.get(), newShardings));
+}
+
+SmallVector<AxisRefAttr> getOrderedAxisRefs(Attribute shardingOrAxisList,
+                                            MeshAttr mesh) {
+  // We use a map vector to maintain the order of mesh axes.
+  llvm::MapVector<StringRef, SmallVector<int64_t>> axisNameToPreSizes;
+  axisNameToPreSizes.reserve(mesh.getAxes().size());
+  for (MeshAxisAttr meshAxis : mesh.getAxes()) {
+    SmallVector<int64_t>& preSizes = axisNameToPreSizes[meshAxis.getName()];
+    preSizes.push_back(1);
+    preSizes.push_back(meshAxis.getSize());
+  }
+
+  auto consumeAxisRefList = [&](ArrayRef<AxisRefAttr> axisRefs) {
+    for (AxisRefAttr axisRef : axisRefs) {
+      // Add sub-axis pre-sizes to `axisNameToPreSizes`. We'll dedup later.
+      if (axisRef.getSubAxisInfo()) {
+        SmallVector<int64_t>& preSizes = axisNameToPreSizes[axisRef.getName()];
+        preSizes.push_back(axisRef.getSubAxisInfo().getPreSize());
+        preSizes.push_back(axisRef.getSubAxisInfo().getNextPreSize());
+      }
+    }
+  };
+
+  if (auto sharding = mlir::dyn_cast<TensorShardingAttr>(shardingOrAxisList)) {
+    for (DimensionShardingAttr dimSharding : sharding.getDimShardings()) {
+      consumeAxisRefList(dimSharding.getAxes());
+    }
+  } else {
+    consumeAxisRefList(
+        mlir::cast<AxisRefListAttr>(shardingOrAxisList).getValue());
+  }
+
+  SmallVector<AxisRefAttr> axisRefs;
+  mlir::MLIRContext* ctx = mesh.getContext();
+  for (auto& [axisName, preSizes] : axisNameToPreSizes) {
+    if (preSizes.size() == 2) {
+      // Full axis
+      axisRefs.push_back(AxisRefAttr::get(ctx, axisName));
+      continue;
+    }
+    llvm::sort(preSizes);
+    preSizes.erase(std::unique(preSizes.begin(), preSizes.end()),
+                   preSizes.end());
+    for (int64_t i = 0; i < preSizes.size() - 1; ++i) {
+      int64_t preSize = preSizes[i];
+      int64_t size = preSizes[i + 1] / preSize;
+      axisRefs.push_back(AxisRefAttr::get(
+          ctx, axisName, SubAxisInfoAttr::get(ctx, preSize, size)));
+    }
+  }
+
+  return axisRefs;
 }
 
 }  // namespace sdy

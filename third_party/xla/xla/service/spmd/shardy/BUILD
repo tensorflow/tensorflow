@@ -149,6 +149,7 @@ xla_cc_binary(
         "//xla/service/spmd/shardy/sdy_round_trip/test_utils:stablehlo_to_hlo_to_stablehlo",
         "//xla/service/spmd/shardy/sdy_round_trip/test_utils:testing_pipeline",
         "//xla/service/spmd/shardy/stablehlo_round_trip:export_callback_custom_calls",
+        "//xla/service/spmd/shardy/stablehlo_round_trip:export_manual_reduction_collectives_cc",
         "//xla/service/spmd/shardy/stablehlo_round_trip:export_ops",
         "//xla/service/spmd/shardy/stablehlo_round_trip:export_shardings",
         "//xla/service/spmd/shardy/stablehlo_round_trip:shard_map_export",

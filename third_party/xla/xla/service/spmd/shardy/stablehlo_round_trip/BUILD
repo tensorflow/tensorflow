@@ -30,6 +30,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
         "//xla/service/spmd/shardy:constants",
+        "//xla/service/spmd/shardy:utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
@@ -166,6 +167,24 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:CallOpInterfaces",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
+    name = "export_manual_reduction_collectives_cc",
+    srcs = ["export_manual_reduction_collectives.cc"],
+    hdrs = ["export_manual_reduction_collectives.h"],
+    deps = [
+        "//xla:array",
+        "//xla/service/spmd/shardy:utils",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
