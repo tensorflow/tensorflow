@@ -1,0 +1,40 @@
+Fix for b/417948017
+Already upstreamed in https://github.com/triton-lang/triton/pull/6849
+
+diff --git a/include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td b/include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td
+--- a/include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td
++++ b/include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td
+@@ -322,7 +322,7 @@ When vec=2, elements are swizzled in pai
+ 
+         // ---- begin Ampere & Hopper ----
+         if (mmaEnc.isAmpere() || mmaEnc.isHopper()) {
+-          int perPhase = 128 / (shapePerCTA[order[0]] * 4 / dotOpEnc.getKWidth());
++          int perPhase = 128 / (std::max<int>(1, shapePerCTA[order[0]] * 4 / dotOpEnc.getKWidth()));
+           perPhase = std::max<int>(perPhase, 1);
+           std::vector<size_t> matShape = {8, 8, 4 * dotOpEnc.getKWidth()};
+           int vecWidth = 32 / typeWidthInBit;
+diff --git a/test/TritonGPU/reduce-data-duplication.mlir b/test/TritonGPU/reduce-data-duplication.mlir
+--- a/test/TritonGPU/reduce-data-duplication.mlir
++++ b/test/TritonGPU/reduce-data-duplication.mlir
+@@ -29,6 +29,21 @@ module attributes {"ttg.target" = "cuda:
+ 
+ // -----
+ 
++//       CHECK:   #[[$SHARED:.*]] = #ttg.swizzled_shared<{vec = 32, perPhase = 128, maxPhase = 1, order = [1, 0]}>
++//       CHECK-LABEL:   handles_small_contiguous_dim
++//       CHECK:   %{{.*}} = ttg.local_alloc %{{.*}} : (tensor<32x1xf16, #{{.*}}>) -> !ttg.memdesc<32x1xf16, #[[$SHARED]], #smem>
++
++#blocked = #ttg.blocked<{sizePerThread = [1, 8], threadsPerWarp = [8, 4], warpsPerCTA = [4, 1], order = [1, 0]}>
++#mma = #ttg.nvidia_mma<{versionMajor = 2, versionMinor = 0, warpsPerCTA = [2, 2], instrShape = [16, 8]}>
++module attributes {"ttg.target" = "cuda:80", "ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32, "ttg.threads-per-warp" = 32 : i32} {
++  tt.func @handles_small_contiguous_dim(%arg0: tensor<32x1xf16, #blocked>) {
++    %0 = ttg.convert_layout %arg0 : tensor<32x1xf16, #blocked> -> tensor<32x1xf16, #ttg.dot_op<{opIdx = 0, parent = #mma, kWidth = 8}>>
++    tt.return
++  }
++}
++
++// -----
++
+ //       CHECK-LABEL:   conversion_shortcut_blocked_dotop_warp64
+ //       CHECK-NOT:  ttg.local_alloc
+ //       CHECK: ttg.convert_layout
