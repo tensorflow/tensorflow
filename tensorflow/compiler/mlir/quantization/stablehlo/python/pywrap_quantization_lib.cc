@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/config.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_static_range_ptq.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/static_range_ptq.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_weight_only_ptq.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
@@ -29,7 +29,7 @@ limitations under the License.
 
 namespace stablehlo::quantization::pywrap {
 
-using ::mlir::tf_quant::stablehlo::QuantizeStaticRangePtq;
+using ::mlir::quant::stablehlo::QuantizeStaticRangePtq;
 using ::mlir::tf_quant::stablehlo::QuantizeWeightOnlyPtq;
 using ::tensorflow::SignatureDef;
 using ::tensorflow::quantization::PyFunctionLibrary;
