@@ -1028,18 +1028,10 @@ class ReadySetLt {
     //  TODO(maggioni): Develop a more complete analysis of the graph to
     //  prioritize candidates that would more likely unlock more async dones
     //  to be scheduled.
-    bool a_operands = absl::c_any_of(
-        a.node->GetInstr().operands(),
-        [async_tracker = sched_state_.async_tracker](const HloInstruction* i) {
-          return async_tracker->IsSupportedAsyncDone(*i);
-        });
-    bool b_operands = absl::c_any_of(
-        b.node->GetInstr().operands(),
-        [async_tracker = sched_state_.async_tracker](const HloInstruction* i) {
-          return async_tracker->IsSupportedAsyncDone(*i);
-        });
+
     if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-            a_operands, a, b_operands, b, "kUnlockDone")) {
+            a.node->HasOperandThatIsSupportedAsyncDone(), a,
+            b.node->HasOperandThatIsSupportedAsyncDone(), b, "kUnlockDone")) {
       return *value;
     }
     return std::nullopt;
@@ -1118,10 +1110,7 @@ class ReadySetLt {
   DefaultSchedulerCore::CandidateResult OriginalPosition(
       DefaultSchedulerCore::ScheduleCandidate& a,
       DefaultSchedulerCore::ScheduleCandidate& b) const {
-    if (sched_state_.sched_graph.OriginalInstructionPosition(
-            &a.node->GetInstr()) >
-        sched_state_.sched_graph.OriginalInstructionPosition(
-            &b.node->GetInstr())) {
+    if (a.node->GetOriginalPosition() > b.node->GetOriginalPosition()) {
       return {a, "kOriginalOrder"};
     }
     return {b, "kOriginalOrder"};
@@ -1175,13 +1164,13 @@ class ReadySetLt {
     // The following rule targets the async ops using resources that should be
     // released right after the op's estimated time cost has past. It prevents
     // increasing the overlaps of such async ops more than necessary.
+    HloGraphNode::TimeCost a_past_due =
+        PastDueCyclesForNonextendableResource(a);
+    HloGraphNode::TimeCost b_past_due =
+        PastDueCyclesForNonextendableResource(b);
     if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-            PastDueCyclesForNonextendableResource(a) >
-                PastDueCyclesForNonextendableResource(b),
-            a,
-            PastDueCyclesForNonextendableResource(b) >
-                PastDueCyclesForNonextendableResource(a),
-            b, "kReleaseNonextendable")) {
+            a_past_due > b_past_due, a, b_past_due > a_past_due, b,
+            "kReleaseNonextendable")) {
       return *value;
     }
 
@@ -1361,10 +1350,7 @@ class ReadySetLt {
 
   HloGraphNode::TimeCost PastDueCyclesForNonextendableResource(
       DefaultSchedulerCore::ScheduleCandidate& cand) const {
-    if (sched_state_.async_tracker
-            ->GetReleasedNonextendableResourcesFromVector(
-                cand.node->GetResources())
-            .empty()) {
+    if (cand.node->GetReleasedNonExtendableResources().empty()) {
       return 0.0;
     }
     return std::max(sched_state_.current_time - cand.node->GetReadyTime(), 0.0);
@@ -1417,16 +1403,15 @@ class ReadySetLt {
     // but its always a possible move to schedule the start immediately after,
     // so for memory pressure purpose in the scheduling heuristic actually use
     // the memory pressure change of the start rather than the -done.
-    if (this->sched_state_.async_tracker->IsSupportedAsyncDone(
-            cand.node->GetInstr())) {
-      const HloInstruction* start = cand.node->GetInstr().operand_count() > 0
-                                        ? cand.node->GetInstr().operand(0)
-                                        : nullptr;
-      if (start != nullptr &&
-          this->sched_state_.async_tracker->IsSupportedAsyncStart(*start)) {
+    if (cand.node->IsSupportedAsyncDone()) {
+      const HloGraphNode* start =
+          !cand.node->GetPredecessors().empty()
+              ? &cand.node->GetPredecessors()[0].Target()
+              : nullptr;
+      if (start != nullptr && start->IsSupportedAsyncStart()) {
         start_result =
             sched_state_.memory_pressure_tracker->MemoryPressureDifference(
-                start);
+                &start->GetInstr());
       }
     }
     cand.pressure_change =
@@ -1499,10 +1484,11 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
   for (auto ready_node_it = sched_state.ready_set.begin(),
             e = sched_state.ready_set.end();
        ready_node_it != e; ++ready_node_it) {
-    if (should_skip_node && should_skip_node(*ready_node_it)) {
+    HloGraphNode* ready_node = *ready_node_it;
+    if (should_skip_node && should_skip_node(ready_node)) {
       if (ready_chosen.node == nullptr) {
         skipped_nodes_and_reasons.push_back(
-            {*ready_node_it, SkipNodeReason::kShouldSkipNodeFunction});
+            {ready_node, SkipNodeReason::kShouldSkipNodeFunction});
       }
       continue;
     }
@@ -1510,25 +1496,25 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
     // the chosen node is nullptr because the annotation group is not ready to
     // be scheduled yet (because of the annotation roots' successors not being
     // scheduled yet). So we skip this node and continue to the next one.
-    if ((*ready_node_it)->GetAnnotation() != -1) {
+    if (ready_node->GetAnnotation() != -1) {
       if (ready_chosen.node == nullptr) {
         skipped_nodes_and_reasons.push_back(
-            {*ready_node_it, SkipNodeReason::kAnnotationGroupNotReady});
+            {ready_node, SkipNodeReason::kAnnotationGroupNotReady});
       }
       continue;
     }
     // If this node would cause the max_concurrent_resource count to go beyond
     // the limit do not schedule it and pass to the next node.
     if (scheduling_instruction_crosses_overlap_limit_(sched_state,
-                                                      *ready_node_it)) {
+                                                      ready_node)) {
       if (ready_chosen.node == nullptr) {
         skipped_nodes_and_reasons.push_back(
-            {*ready_node_it, SkipNodeReason::kExceedsOverlapLimit});
+            {ready_node, SkipNodeReason::kExceedsOverlapLimit});
       }
       continue;
     }
     ScheduleCandidate ready_candidate =
-        InitializeCandidate(*ready_node_it, sched_state);
+        InitializeCandidate(ready_node, sched_state);
     if (ready_chosen.node == nullptr) {
       ready_chosen = ready_candidate;
       chosen_it = ready_node_it;
@@ -1538,8 +1524,7 @@ DefaultSchedulerCore::FindAndExtractBestNodeAvailable(
     }
     // Compare the current candidate with the previous candidate.
     CandidateResult cand_result = ready_lt(ready_candidate, ready_chosen);
-    const bool new_candidate_selected =
-        cand_result.result.node == *ready_node_it;
+    const bool new_candidate_selected = cand_result.result.node == ready_node;
     auto print_pressure_change =
         [](const std::optional<std::pair<int64_t, int64_t>>& p) {
           if (p.has_value()) {
@@ -1959,7 +1944,7 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
   // been scheduled and the latency of the edge connecting this node to that
   // node.
   HloGraphNode::TimeCost schedule_time = sched_state->current_time;
-  for (const HloEdge& pred : n->GetSuccessors()) {
+  for (HloEdge& pred : n->GetSuccessors()) {
     const HloGraphNode::TimeCost time_from_edge =
         pred.Target().GetReadyTime() + pred.Latency();
     schedule_time = std::max(schedule_time, time_from_edge);
@@ -2062,7 +2047,7 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
     // not what the current time is we put it also in next_ready_stack.
     edge.Target().SetOutdegree(0);
     LatencyEstimator::TimeCost ready_time = current_time;
-    for (const HloEdge& pred : edge.Target().GetSuccessors()) {
+    for (HloEdge& pred : edge.Target().GetSuccessors()) {
       const LatencyEstimator::TimeCost edge_time =
           pred.Target().GetReadyTime() + pred.Latency();
       ready_time = std::max(ready_time, edge_time);
@@ -2131,7 +2116,7 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
     } else if (resource.second == ResourceUsageType::kResourceOccupy) {
       // For supported async collective done ops, save their corresponding start
       // ops in the map
-      if (async_tracker_->IsSupportedAsyncDone(n->GetInstr()) &&
+      if (n->IsSupportedAsyncDone() &&
           async_tracker_->IsSupportedAsyncStart(*n->GetInstr().operand(0))) {
         sched_state->resource_occupiers_in_flight[resource.first].insert(
             n->GetInstr().operand(0));
@@ -2208,9 +2193,23 @@ HloScheduleGraph::HloScheduleGraph(
     new_node_it->second->predecessors_.reserve(instr->operand_count());
     new_node_it->second->successors_.reserve(instr->user_count());
     new_node_it->second->cost_ = latency_estimator->NodeCost(instr);
+    new_node_it->second->recursive_resources_ =
+        async_tracker->GetNumResourcesPerInstruction(*instr);
+    new_node_it->second->is_supported_async_done_ =
+        async_tracker->IsSupportedAsyncDone(*instr);
+    new_node_it->second->is_supported_async_start_ =
+        async_tracker->IsSupportedAsyncStart(*instr);
+    new_node_it->second->has_operand_that_is_supported_async_done_ =
+        absl::c_any_of(instr->operands(),
+                       [async_tracker](const HloInstruction* i) {
+                         return async_tracker->IsSupportedAsyncDone(*i);
+                       });
     auto resources = async_tracker->GetResourcesFromInstruction(*instr);
     new_node_it->second->resources_ =
         ResourcesVector(resources.begin(), resources.end());
+    new_node_it->second->released_non_extendable_resources_ =
+        async_tracker->GetReleasedNonextendableResourcesFromVector(
+            new_node_it->second->GetResources());
     new_node_it->second->released_shareable_resources_ =
         async_tracker->GetReleasedShareableResourcesFromVector(
             new_node_it->second->GetResources());
@@ -2248,11 +2247,12 @@ HloScheduleGraph::HloScheduleGraph(
       HloGraphNode::AddDependency(instr_node, ctrl_succ_node,
                                   latency_estimator);
     }
+
     // To make sure an instruction that aliases with the buffer produced
     // by the async-done operation is not scheduled in between the start and the
     // done instruction as that buffer is in flux when the start happens.
     // Add an edge between this instruction and the start in this case.
-    if (async_tracker->IsSupportedAsyncDone(*instr)) {
+    if (instr_node->IsSupportedAsyncDone()) {
       const HloInstruction* async_start = instr->operand(0);
       if (alias_analysis != nullptr) {
         for (const HloBuffer* buffer :
@@ -2435,7 +2435,7 @@ void HloScheduleGraph::InitializeGraphAnalysis(
             closest_predecessor_distance + 1;
       }
     }
-    if (async_tracker->IsSupportedAsyncDone(node->GetInstr())) {
+    if (node->IsSupportedAsyncDone()) {
       for (auto& pred : node->GetPredecessors()) {
         node->SetAsyncDepth(
             std::max(pred.Target().GetAsyncDepth() + pred.Latency(),
@@ -2492,9 +2492,7 @@ absl::Status DefaultSchedulerCore::InitializeScheduler(
   if (!scheduling_instruction_crosses_overlap_limit_) {
     scheduling_instruction_crosses_overlap_limit_ =
         [](const SchedulingState& sched_state, const HloGraphNode* node) {
-          auto num_resources_needed =
-              sched_state.async_tracker->GetNumResourcesPerInstruction(
-                  node->GetInstr());
+          auto& num_resources_needed = node->GetRecursiveResources();
           for (const auto& [resource, count] : num_resources_needed) {
             auto it = sched_state.max_concurrent_resource.find(resource);
             if (it == sched_state.max_concurrent_resource.end()) {
@@ -2826,10 +2824,10 @@ LatencyHidingScheduler::LatencyHidingStatistics(
        module->schedule().sequence(computation).instructions()) {
     const HloGraphNode& instr_node = schedule_graph.GetNode(instr);
     current_time += instr_node.GetCost();
-    if (async_tracker->IsSupportedAsyncStart(*instr)) {
+    if (instr_node.IsSupportedAsyncStart()) {
       outstanding_collectives[async_tracker->GetCanonicalAsyncOp(*instr).inner]
           .push_back({instr, current_time, curr_pos});
-    } else if (async_tracker->IsSupportedAsyncDone(*instr)) {
+    } else if (instr_node.IsSupportedAsyncDone()) {
       const HloInstruction* start_instr = instr->operand(0);
       // TODO(b/329731042): Handle pipelined Send/Recv in while-body, which
       // is the only situation where an async done operand is not an async
