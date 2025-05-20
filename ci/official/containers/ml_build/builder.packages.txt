@@ -33,3 +33,4 @@ zip
 openjdk-21-jdk
 vim
 jq
+packer # for building VM images

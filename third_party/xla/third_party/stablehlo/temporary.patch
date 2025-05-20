@@ -18,6 +18,47 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/
    effects.emplace_back(MemoryEffects::Allocate::get());
    effects.emplace_back(MemoryEffects::Free::get());
    effects.emplace_back(MemoryEffects::Write::get());
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/dialect/StablehloOps.h
+--- stablehlo/stablehlo/dialect/StablehloOps.h
++++ stablehlo/stablehlo/dialect/StablehloOps.h
+@@ -24,6 +24,7 @@
+ #include "mlir/Dialect/Quant/IR/QuantTypes.h"
+ #include "mlir/Dialect/Shape/IR/Shape.h"
+ #include "mlir/IR/Attributes.h"
++#include "mlir/IR/Block.h"
+ #include "mlir/IR/Builders.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/BuiltinTypes.h"
+@@ -33,6 +34,7 @@
+ #include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/OpDefinition.h"
+ #include "mlir/IR/Operation.h"
++#include "mlir/IR/Region.h"
+ #include "mlir/IR/TensorEncoding.h"
+ #include "mlir/IR/TypeUtilities.h"
+ #include "mlir/IR/Types.h"
+@@ -174,6 +176,21 @@
+                     const llvm::ArrayRef<Type> &elementTypes, int64_t dimension,
+                     bool isStable, ComparisonDirection direction);
+ 
++template <typename OpTy>
++void buildReduceBody(Type elementType, Region &body, OpBuilder &builder) {
++  OpBuilder::InsertionGuard guard(builder);
++  Block *block = builder.createBlock(&body);
++
++  // Block arguments are scalars of the given element type.
++  Type type = RankedTensorType::get(/*shape=*/{}, elementType);
++  Location loc = body.getLoc();
++  block->addArguments({type, type}, {loc, loc});
++
++  auto reducer =
++      builder.create<OpTy>(loc, block->getArgument(0), block->getArgument(1));
++  builder.create<stablehlo::ReturnOp>(loc, reducer.getResult());
++}
++
+ }  // end namespace stablehlo
+ }  // end namespace mlir
+ 
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
 --- stablehlo/stablehlo/dialect/StablehloOps.td
 +++ stablehlo/stablehlo/dialect/StablehloOps.td

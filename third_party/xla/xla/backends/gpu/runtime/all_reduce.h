@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"  // IWYU pragma: keep
@@ -39,20 +40,25 @@ bool IsAllReduceKernelSupported(int64_t num_inputs, int64_t num_elements,
 // memory on different devices. The caller is responsible to gather pointers
 // from different devices.
 //
-// TODO(b/383125489): Add synchronization between blocks in the kernek.
-// The caller is also responsible to synchronize streams on all participating
-// devices before and after the kernel execution.
+// The kernel performs synchronization across devices at the start and the end
+// of the kernel. The synchronization happens between blocks with the same id.
 //
 // Input arguments:
 //  - input_buffers: A list of input buffers.
 //  - output_buffer: The buffer to store the result.
-//  - num_inputs: The number of input buffers.
+//  - rank: Identifier of the device.
+//  - num_ranks: The number of devices participating in the operation.
 //  - num_elements: The number of elements in each buffer.
+//  - signal_flags_buffers: A list of buffers with signal flags that are used to
+//    synchronize blocks on different devices. The size of each signal buffer
+//    should be equal to the `num_ranks * num_blocks`.
 absl::Status RunAllReduceKernel(
-    se::Stream* stream, PrimitiveType element_type,
+    se::Stream* stream, const LaunchDimensions& launch_dimensions,
+    PrimitiveType element_type,
     absl::Span<const se::DeviceMemoryBase> input_buffers,
-    se::DeviceMemoryBase output_buffer, int64_t num_inputs,
-    int64_t num_elements);
+    se::DeviceMemoryBase output_buffer, int64_t rank, int64_t num_ranks,
+    int64_t num_elements,
+    absl::Span<const se::DeviceMemoryBase> signal_flags_buffers);
 
 }  // namespace xla::gpu
 
