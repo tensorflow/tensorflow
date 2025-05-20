@@ -509,6 +509,7 @@ cc_library(
 tf_proto_library(
     name = "shape_util_proto",
     srcs = ["shape_util.proto"],
+    make_default_target_header_only = True,
 )
 
 cc_library(

@@ -1,5 +1,10 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test", "tf_python_pybind_extension")
+load(
+    "//tensorflow:tensorflow.default.bzl",
+    "tf_py_strict_test",
+    "tf_pybind_cc_library_wrapper",
+    "tf_python_pybind_extension",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -11,9 +16,22 @@ tf_python_pybind_extension(
     name = "_pywrap_server_lib",
     srcs = ["server_lib_wrapper.cc"],
     enable_stub_generation = True,
+    features = ["-layering_check"],
     pytype_srcs = [
         "_pywrap_server_lib.pyi",
     ],
+    deps = [
+        ":pywrap_server_lib_headers",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_status",
+        "@local_xla//third_party/python_runtime:headers",
+        "@pybind11",
+        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
+    ],
+)
+
+tf_pybind_cc_library_wrapper(
+    name = "pywrap_server_lib_headers",
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/data/service:common_proto_cc",
@@ -22,13 +40,8 @@ tf_python_pybind_extension(
         "//tensorflow/core/data/service:server_lib",
         "//tensorflow/core/data/service:server_lib_headers_lib",
         "//tensorflow/core/protobuf:for_core_protos_cc",
-        "//tensorflow/python/lib/core:pybind11_lib",
-        "//tensorflow/python/lib/core:pybind11_status",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_xla//third_party/python_runtime:headers",
-        "@pybind11",
-        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ],
 )
 
