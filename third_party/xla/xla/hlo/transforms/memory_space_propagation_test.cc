@@ -416,5 +416,46 @@ TEST_F(MemorySpacePropagationTest, BitcastInFusion) {
   EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
 }
 
+TEST_F(MemorySpacePropagationTest, PropagateMemorySpaceFromParameters) {
+  absl::string_view hlo_string = R"(
+  HloModule NoMemorySpace
+
+  %fused_computation {
+    %param_1.3 = s32[6]{0:T(128)S(1)} parameter(0)
+    ROOT %neg_1.3 = s32[6]{0:T(128)} negate(%param_1.3)
+  }
+
+  ENTRY %entry {
+    %param0 = s32[6]{0:T(128)} parameter(0)
+    %arg0 = s32[6]{0:T(128)S(1)} copy(%param0)
+    %fusion = s32[6]{0:T(128)S(1)} fusion(s32[6]{0:T(128)} %arg0), kind=kLoop, calls=%fused_computation
+    ROOT %root = s32[6]{0:T(128)} copy(%fusion)
+  }
+  )";
+  absl::string_view expected_hlo_string = R"(
+  HloModule NoMemorySpace
+
+  %fused_computation {
+    %param_1.3 = s32[6]{0:T(128)S(1)} parameter(0)
+    ROOT %neg_1.3 = s32[6]{0:T(128)S(1)} negate(%param_1.3)
+  }
+
+  ENTRY %entry {
+    %param0 = s32[6]{0:T(128)} parameter(0)
+    %arg0 = s32[6]{0:T(128)S(1)} copy(%param0)
+    %fusion = s32[6]{0:T(128)S(1)} fusion(s32[6]{0:T(128)} %arg0), kind=kLoop, calls=%fused_computation
+    ROOT %root = s32[6]{0:T(128)} copy(%fusion)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  MemorySpacePropagation memory_space_propagation;
+  memory_space_propagation.set_propagate_from_parameters(true);
+  EXPECT_TRUE(memory_space_propagation.Run(module.get()).value());
+  TF_ASSERT_OK_AND_ASSIGN(auto ref,
+                          ParseAndReturnVerifiedModule(expected_hlo_string));
+  EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
+}
+
 }  // namespace
 }  // namespace xla

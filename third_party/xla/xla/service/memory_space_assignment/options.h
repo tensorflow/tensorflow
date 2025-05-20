@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/hlo_value.h"
@@ -62,8 +63,6 @@ using ReservedScopedMemoryFunction = std::function<int64_t(
     const absl::flat_hash_set<ShapeIndex>& /*outputs_in_alternate_memory*/)>;
 using PositionRequiresContiguousAllocationFunction =
     std::function<bool(const HloPosition&)>;
-using WindowPrefetchDetailFunction =
-    std::function<WindowPrefetchDetail(const HloInstruction*)>;
 using WindowPrefetchNotifyOperandAppendedFunction =
     std::function<void(HloInstruction*, int64_t, int64_t)>;
 using IsAsyncSliceImplementedFunction =
@@ -79,6 +78,9 @@ using BitcastSplitFn = std::function<absl::StatusOr<int64_t>(
     const HloInstruction* instruction, int64_t split_dim)>;
 using ShapeSizeFn = std::function<int64_t(const Shape&)>;
 using HloPositionOrUse = std::variant<HloPosition, HloUse>;
+using OpSpanSizeFn =
+    std::function<int64_t(HloInstruction* original_hlo,
+                          HloInstruction* cloned_hlo, int64_t operand_index)>;
 
 // MSA allows for custom post-allocation transformations. When a post-allocation
 // transformation is performed on an instruction, this result is returned. It
@@ -171,9 +173,11 @@ struct Options {
       position_requires_contiguous_allocation_fn =
           [](const HloPosition&) { return false; };
 
-  // This function is called to get details about window prefetches.
-  WindowPrefetchDetailFunction window_prefetch_detail_fn =
-      [](const HloInstruction*) { return WindowPrefetchDetail(); };
+  // This function is used to determine the size of the span buffer for a given
+  // operand.
+  OpSpanSizeFn op_span_size_fn = [](HloInstruction* original_hlo,
+                                    HloInstruction* cloned_hlo,
+                                    int64_t operand_index) { return 0; };
 
   // This function is called to notify that an operand has been appended as a
   // window prefetch buffer.
@@ -389,6 +393,9 @@ struct Options {
           ExpandedScopedAlternateMemoryMode::DISABLED;
 
   std::vector<BufferColoring> buffer_colorings;
+
+  // A mutable instance of the HLO module to run MSA on.
+  HloModule* hlo_module = nullptr;
 
   // If set, this is the size of scoped alternate memory that we require MSA to
   // allocate for post-module operations.

@@ -775,13 +775,12 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // will prefetch even if the resource constraints for a prefetch are not met.
   AllocationResult Prefetch(const AllocationRequest& request,
                             Allocation& prev_allocation_in_default_mem,
-                            const Shape* shape = nullptr,
                             bool force_prefetch = false);
 
   // Prefetch to alternate memory iff the resource constraints are met.
   AllocationResult PrefetchWithResourceConstraints(
       const AllocationRequest& request,
-      Allocation& prev_allocation_in_default_mem, const Shape* shape = nullptr);
+      Allocation& prev_allocation_in_default_mem);
 
   // Helper methods used to implement Prefetch().
   //
@@ -811,13 +810,16 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   std::string AlternateMemoryAllocationAttemptToString(
       bool for_sliced_solution, const PrefetchContext& context) const;
 
-  // Try to prefetch a window worth of data into the alternate memory.
-  AllocationResult WindowPrefetch(const AllocationRequest& request,
-                                  Allocation& prev_allocation_in_default_mem);
+  // Perform window prefetching.
+  void WindowPrefetch();
 
-  // Find the best possible chunk candidate, where it has the longest possible
-  // availability if no preferred offset is given, or at the preferred_offset if
-  // it is given.
+  // Try window prefetching the operands of the given instruction.
+  void WindowPrefetchOperand(HloInstruction* instruction, int64_t operand_index,
+                             int64_t bytes);
+
+  // Find the best possible chunk candidate, where it has the longest
+  // possible availability if no preferred offset is given, or at the
+  // preferred_offset if it is given.
   std::optional<Chunk> FindBestChunkCandidate(
       const AllocationRequest& request, const AliasedOffset* preferred_offset,
       MsaBufferInterval* alternate_mem_interval) const;
