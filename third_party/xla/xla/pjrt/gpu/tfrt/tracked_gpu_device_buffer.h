@@ -87,6 +87,7 @@ class TrackedGpuDeviceBuffer {
   TrackedGpuDeviceBuffer(
       tsl::AsyncValueRef<GpuDeviceMemory> buffer,
       tsl::AsyncValueRef<GpuEvent> definition_event,
+      tsl::AsyncValueRef<GpuEvent> ready_event,
       absl::AnyInvocable<void() &&> on_delete_callback = nullptr);
 
   TrackedGpuDeviceBuffer(TrackedGpuDeviceBuffer&&) = default;
@@ -98,6 +99,10 @@ class TrackedGpuDeviceBuffer {
 
   const tsl::AsyncValueRef<GpuEvent>& definition_event() const {
     return definition_event_;
+  }
+
+  const tsl::AsyncValueRef<GpuEvent>& ready_event() const {
+    return ready_event_;
   }
 
   const tsl::AsyncValueRef<GpuEvent>& deallocation_event() const {
@@ -130,9 +135,13 @@ class TrackedGpuDeviceBuffer {
  private:
   tsl::AsyncValueRef<GpuDeviceMemory> buffer_;
 
-  // The definition event are associated with GPU operations that write to the
-  // buffers.
+  // The definition event are resolved when the GPU operations that write to the
+  // buffers are enqueued to the stream.
   tsl::AsyncValueRef<GpuEvent> definition_event_;
+
+  // The ready event is resolved when the GPU operations that write to the
+  // buffers are done executing on the stream.
+  tsl::AsyncValueRef<GpuEvent> ready_event_;
 
   // Usage events are associated with GPU operations that read from the buffers.
   TfrtEventSet usage_events_;

@@ -149,6 +149,27 @@ namespace {
 
 constexpr absl::string_view kPjRtClientName = "TfrtGpuClient";
 
+PjRtFuture<>::Promise CreatePromiseForEvent(
+    tsl::AsyncValueRef<xla::GpuEvent> event) {
+  PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
+  auto done_fn = [promise, event]() mutable {
+    if (const absl::Status* error = event.GetErrorIfPresent()) {
+      VLOG(3) << "Setting future: " << *error;
+      promise.Set(*error);
+    } else {
+      VLOG(3) << "Setting future to OK";
+      promise.Set();
+    }
+  };
+  if (event.IsAvailable()) {
+    // If the event is available, we can set the promise immediately.
+    done_fn();
+  } else {
+    event.AndThen(std::move(done_fn));
+  }
+  return promise;
+}
+
 absl::StatusOr<Shape> GetDestinationDeviceShape(const Shape& host_shape,
                                                 TfrtGpuDevice* device,
                                                 TfrtGpuClient* client,
@@ -202,10 +223,14 @@ absl::StatusOr<std::unique_ptr<TfrtGpuBuffer>> AllocateTfrtGpuDestinationBuffer(
   auto buffer_async_value_ref =
       tsl::MakeAvailableAsyncValueRef<GpuDeviceMemory>(
           std::move(device_buffer));
+
+  // TODO: Use the right ready event instead of the definition event.
+  tsl::AsyncValueRef<GpuEvent> ready_event = definition_event.CopyRef();
   return std::make_unique<TfrtGpuBuffer>(
       on_device_shape,
       std::make_unique<TrackedGpuDeviceBuffer>(buffer_async_value_ref,
-                                               std::move(definition_event)),
+                                               std::move(definition_event),
+                                               std::move(ready_event)),
       client, device, memory_space);
 }
 
@@ -1519,6 +1544,7 @@ TfrtGpuClient::CreateViewOfDeviceBuffer(
   auto tracked_device_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
       std::move(buffer_async_value_ref),
       /*definition_event=*/tsl::MakeAvailableAsyncValueRef<GpuEvent>(),
+      /*ready_event=*/tsl::MakeAvailableAsyncValueRef<GpuEvent>(),
       std::move(on_delete_callback));
   return std::make_unique<TfrtGpuBuffer>(
       shape, std::move(tracked_device_buffer), this,
@@ -1734,10 +1760,11 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::CreateErrorBuffer(
   VLOG(4) << "TfrtGpuClient::CreateErrorBuffer: shape: " << shape.ToString()
           << " device: " << device->DebugString() << " error: " << error;
 
-  auto buffer_async_value_ref = tsl::MakeErrorAsyncValueRef(error);
+  auto error_async_value_ref = tsl::MakeErrorAsyncValueRef(error);
   auto tracked_device_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
-      std::move(buffer_async_value_ref),
-      /*definition_event=*/tsl::MakeErrorAsyncValueRef(std::move(error)));
+      /*buffer=*/error_async_value_ref,
+      /*definition_event=*/error_async_value_ref,
+      /*ready_event=*/error_async_value_ref);
   return std::make_unique<TfrtGpuBuffer>(
       shape, std::move(tracked_device_buffer), this,
       tsl::down_cast<TfrtGpuDevice*>(device), memory_space);
@@ -2554,40 +2581,17 @@ absl::StatusOr<Shape> TfrtGpuBuffer::logical_on_device_shape() {
 
 PjRtFuture<> TfrtGpuBuffer::GetReadyFuture() {
   VLOG(4) << "TfrtGpuBuffer::GetReadyFuture";
-  tsl::AsyncValueRef<GpuEvent> definition_event;
   absl::MutexLock lock(&mu_);
   if (!tracked_device_buffer_) {
     return PjRtFuture<>(InvalidArgument(
         "GetReadyFuture() called on deleted or donated buffer"));
   }
-  definition_event = tracked_device_buffer_->definition_event();
-  DCHECK(definition_event);
-  if (!definition_promise_) {
-    definition_promise_ = PjRtFuture<>::CreatePromise();
-    if (definition_event.IsAvailable()) {
-      if (definition_event.IsError()) {
-        return PjRtFuture<>(
-            FailedPrecondition("Buffer Definition Event: %s",
-                               definition_event.GetError().message()));
-      }
-      definition_promise_.Set(absl::OkStatus());
-    } else {
-      definition_event.AndThen(
-          [definition_event,
-           definition_promise = definition_promise_]() mutable {
-            if (definition_event.IsError()) {
-              VLOG(3) << "definition_event.GetError(): "
-                      << definition_event.GetError();
-              definition_promise.Set(definition_event.GetError());
-            } else {
-              definition_promise.Set(absl::OkStatus());
-            }
-          });
-    }
+  if (!ready_promise_) {
+    ready_promise_ =
+        CreatePromiseForEvent(tracked_device_buffer_->ready_event());
   }
-
   return PjRtFuture<>(
-      definition_promise_,
+      ready_promise_,
       /*on_block_start=*/
       []() {
         tsl::profiler::TraceMeProducer traceme("TfrtGpuBuffer::Await");
@@ -2639,6 +2643,7 @@ TfrtGpuBuffer::DonateWithControlDependency(PjRtFuture<> dependency) {
       AfterAll({usage_definition_events, dependency_event});
   auto new_tracked_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
       tracked_buffer->buffer(), std::move(new_definition_event),
+      tracked_buffer->ready_event(),
       std::move(tracked_buffer->on_delete_callback_));
 
   auto new_pjrt_buffer = std::make_unique<TfrtGpuBuffer>(
@@ -3391,7 +3396,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
 
   // `complete_event` indicates whether gpu computation is complete and whether
   // there was an error.
-  auto complete_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
+  tsl::AsyncValueRef<GpuEvent> complete_event =
+      tsl::MakeConstructedAsyncValueRef<GpuEvent>();
 
   absl::InlinedVector<TfrtGpuBuffer::DonationTransaction, 4>
       donation_transactions;
@@ -3523,7 +3529,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
       // event.
       auto leaf_tracked_device_buffer =
           std::make_unique<TrackedGpuDeviceBuffer>(
-              output_buffers.back().CopyRef(), scheduled_event.CopyRef());
+              output_buffers.back().CopyRef(), scheduled_event.CopyRef(),
+              complete_event.CopyRef());
       VLOG(4) << "created leaf_tracked_device_buffer: "
               << leaf_tracked_device_buffer.get();
 
@@ -3547,7 +3554,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     // Program execution writes to output buffers so it's a definition event.
     auto tracked_device_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
         output_buffers.back().CopyRef(),
-        /*definition_event=*/scheduled_event.CopyRef());
+        /*definition_event=*/scheduled_event.CopyRef(),
+        complete_event.CopyRef());
     VLOG(4) << "created tracked_device_buffer: " << tracked_device_buffer.get();
 
     const Shape& shape = result_shape;
@@ -3842,17 +3850,9 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
   // Create output TFRT buffers.
   std::optional<PjRtFuture<>> future;
   if (fill_future) {
-    auto promise = PjRtFuture<>::CreatePromise();
-    future = PjRtFuture<>(promise);
-    complete_event.AndThen([promise = std::move(promise),
-                            event = complete_event.CopyRef()]() mutable {
-      absl::Status s;
-      if (auto* error = event.GetErrorIfPresent()) {
-        s = *error;
-      }
-      VLOG(1) << "Setting future: " << s;
-      promise.Set(s);
-    });
+    PjRtFuture<>::Promise complete_promise =
+        CreatePromiseForEvent(complete_event);
+    future = PjRtFuture<>(complete_promise);
   }
   return Result({/*future=*/std::move(future),
                  /*buffers=*/std::move(outputs)});

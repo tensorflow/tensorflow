@@ -63,6 +63,7 @@ TEST(TfrtGpuBufferTest, CreateBuffer) {
           std::move(device_buffer));
   auto tracked_device_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
       std::move(buffer_async_value_ref),
+      tsl::MakeAvailableAsyncValueRef<GpuEvent>(),
       tsl::MakeAvailableAsyncValueRef<GpuEvent>());
   auto memory_space = device->default_memory_space().value();
   auto buffer = std::make_unique<TfrtGpuBuffer>(
@@ -94,7 +95,7 @@ TEST(TfrtGpuBufferTest, AcquireExternalReference) {
           std::move(device_buffer));
   auto definition_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   auto tracked_device_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
-      std::move(buffer_async_value_ref), definition_event);
+      std::move(buffer_async_value_ref), definition_event, definition_event);
   auto memory_space = device->default_memory_space().value();
   auto buffer = std::make_unique<TfrtGpuBuffer>(
       on_device_shape, std::move(tracked_device_buffer),
@@ -142,7 +143,7 @@ TEST(TfrtGpuBufferTest, ReleaseDeviceMemoryOwnershipNoWait) {
 
   auto definition_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   auto tracked_device_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
-      std::move(buffer_async_value_ref), definition_event);
+      std::move(buffer_async_value_ref), definition_event, definition_event);
 
   auto usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   std::array usage_events{usage_event.CopyRef()};
@@ -190,7 +191,7 @@ TEST(TfrtGpuBufferTest, ReleaseDeviceMemoryOwnershipWait) {
 
   auto definition_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   auto tracked_device_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
-      std::move(buffer_async_value_ref), definition_event);
+      std::move(buffer_async_value_ref), definition_event, definition_event);
 
   auto usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   std::array usage_events{usage_event.CopyRef()};
@@ -258,7 +259,7 @@ TEST(TfrtGpuBufferTest, Delete) {
 
   auto definition_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   auto tracked_device_buffer = std::make_unique<TrackedGpuDeviceBuffer>(
-      std::move(buffer_async_value_ref), definition_event);
+      std::move(buffer_async_value_ref), definition_event, definition_event);
 
   auto usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   std::array usage_events{usage_event.CopyRef()};
