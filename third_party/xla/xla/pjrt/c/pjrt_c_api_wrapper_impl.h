@@ -61,6 +61,16 @@ struct PJRT_TopologyDescription {
   std::vector<PJRT_NamedValue> attributes;
 };
 
+struct PJRT_PartialProgram {
+  const char* program = nullptr;
+  size_t program_size = 0;
+  size_t format = 0;
+  char* generating_phase = nullptr;
+  const char** next_phases = nullptr;
+  size_t num_next_phases = 0;
+  char* version = nullptr;
+};
+
 struct PJRT_Client {
   std::unique_ptr<xla::PjRtClient> client;
   std::vector<PJRT_Device> owned_devices;

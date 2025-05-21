@@ -383,6 +383,12 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "pjrt_partial_program",
+    hdrs = ["pjrt_partial_program.h"],
+    visibility = internal_visibility([":friends"]),
+)
+
 xla_cc_test(
     name = "pjrt_executable_test",
     srcs = ["pjrt_executable_test.cc"],
@@ -421,6 +427,8 @@ cc_library(
         ":metrics",
         ":pjrt_device_description",
         ":pjrt_executable",
+        ":pjrt_partial_program",
+        "//xla:shape_util",
         "//xla/hlo/builder:xla_computation",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
@@ -428,6 +436,8 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:fingerprint",
     ],
