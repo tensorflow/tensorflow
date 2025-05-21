@@ -902,8 +902,8 @@ message DebugOptions {
   reserved 93;  // Was xla_hlo_tfgraph_device_scopes
   reserved 94;  // Was xla_gpu_use_cudnn_batchnorm
 
-  // Generate calls to MKL-DNN in the CPU backend.
-  bool xla_cpu_use_mkl_dnn = 97;
+  // Call oneDNN thunks for matmul and convolution fusions in the CPU backend.
+  bool xla_cpu_use_onednn = 97;
 
   reserved 177;  // Was xla_cpu_use_xla_runtime
   reserved 98;   // Was xla_gpu_max_kernel_unroll_factor

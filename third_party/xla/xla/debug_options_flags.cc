@@ -94,9 +94,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_dump_full_hlo_config(true);
   opts.set_xla_gpu_unsupported_annotate_with_emitter_loc(false);
   opts.set_xla_debug_buffer_assignment_show_max(15);
-#ifdef ENABLE_MKL
-  opts.set_xla_cpu_use_mkl_dnn(true);
-#endif  // ENABLE_MKL
+  opts.set_xla_cpu_use_onednn(false);
 #ifdef XLA_CPU_USE_ACL
   opts.set_xla_cpu_use_acl(true);
 #endif
@@ -970,10 +968,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Extra options to pass to a backend; comma-separated list of 'key=val' "
       "strings (=val may be omitted); no whitespace around commas."));
   flag_list->push_back(
-      tsl::Flag("xla_cpu_use_mkl_dnn",
-                bool_setter_for(&DebugOptions::set_xla_cpu_use_mkl_dnn),
-                debug_options->xla_cpu_use_mkl_dnn(),
-                "Generate calls to MKL-DNN in the CPU backend."));
+      tsl::Flag("xla_cpu_use_onednn",
+                bool_setter_for(&DebugOptions::set_xla_cpu_use_onednn),
+                debug_options->xla_cpu_use_onednn(),
+                "Call oneDNN thunks for matmul and convolution fusions in the "
+                "CPU backend."));
   flag_list->push_back(tsl::Flag(
       "xla_cpu_use_acl", bool_setter_for(&DebugOptions::set_xla_cpu_use_acl),
       debug_options->xla_cpu_use_acl(),
