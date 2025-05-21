@@ -1800,6 +1800,7 @@ tf_proto_library(
     srcs = ["backend_config.proto"],
     protodeps = [
         ":onednn_config_proto",
+        "//xla/backends/cpu:xnnpack_config_proto",
     ],
 )
 
