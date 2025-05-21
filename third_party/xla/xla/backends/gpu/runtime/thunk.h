@@ -344,8 +344,6 @@ class Thunk {
 
     // Total local device count.
     int local_device_count = 0;
-
-    bool requires_exclusive_lock_on_gpu = false;
   };
 
   //===--------------------------------------------------------------------===//
@@ -403,8 +401,6 @@ class Thunk {
 
     bool mock_collectives = false;
 
-    bool requires_exclusive_lock_on_gpu = false;
-
    private:
     friend class CommandBufferThunk;
 
@@ -418,8 +414,7 @@ class Thunk {
                   RecvDeviceMemoryFunction* recv_device_memory_function,
                   const ffi::ExecutionContext* ffi_execution_context,
                   ExecutionStreamIdMap additional_compute_streams = {},
-                  bool mock_collectives = false,
-                  bool requires_exclusive_lock_on_gpu = false);
+                  bool mock_collectives = false);
   };
 
   //===--------------------------------------------------------------------===//

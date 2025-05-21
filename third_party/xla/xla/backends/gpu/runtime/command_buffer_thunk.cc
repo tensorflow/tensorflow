@@ -156,8 +156,7 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
       /*host_to_device_stream=*/nullptr,
       /*send_device_memory_function=*/nullptr,
       /*recv_device_memory_function=*/nullptr, params.ffi_execution_context,
-      /*additional_compute_streams=*/{}, /*mock_collectives=*/false,
-      /*requires_exclusive_lock_on_gpu=*/params.requires_exclusive_lock_on_gpu);
+      /*additional_compute_streams=*/{}, /*mock_collectives=*/false);
 
   // If command buffer is in `kCreate` state it means that command buffer
   // sequence was never recorded into it. We initialize all command buffers
@@ -166,17 +165,14 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   // NCCL operations in flight. If command buffer in any other state we check it
   // is has to be updated after updated buffer allocations.
   if ((cmd_buffer->command_buffer->state() ==
-           se::CommandBuffer::State::kCreate ||
-       params.requires_exclusive_lock_on_gpu) &&
+       se::CommandBuffer::State::kCreate) &&
       (!cmd_buffer->UpdateBufferAllocations(commands_, execute_params)
             .empty() ||
        commands_.force_update())) {
     VLOG(3) << "Initialize/Update command buffer on device #"
             << params.executor->device_ordinal()
             << " by recoding command buffer cmd sequence"
-            << "; num_commands=" << commands_.size()
-            << " requires_exclusive_lock_on_gpu="
-            << params.requires_exclusive_lock_on_gpu;
+            << "; num_commands=" << commands_.size();
 
     TraceMe trace([&] {
       return TraceMeEncode("command_buffer::initialize",
@@ -229,8 +225,7 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   // the last command buffer execution.
   auto updated_allocs = cmd_buffer->UpdateBufferAllocations(commands_, params);
 
-  if ((!params.requires_exclusive_lock_on_gpu) &&
-      (!updated_allocs.empty() || commands_.force_update())) {
+  if (!updated_allocs.empty() || commands_.force_update()) {
     VLOG(3) << "Update command buffer on device #" << executor->device_ordinal()
             << " by recoding command buffer cmd sequence after "
             << cmd_buffer->num_executions << " executions since last update"
