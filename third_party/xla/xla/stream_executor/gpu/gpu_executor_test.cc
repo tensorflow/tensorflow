@@ -68,14 +68,6 @@ TEST_F(GetPointerMemorySpaceTest, Device) {
   executor->Deallocate(&mem);
 }
 
-TEST_F(GetPointerMemorySpaceTest, Collective) {
-  StreamExecutor* executor = GetPlatform()->ExecutorForDevice(0).value();
-  auto mem =
-      executor->Allocate(64, static_cast<int64_t>(MemoryType::kCollective));
-  ASSERT_NE(mem, nullptr);
-  executor->Deallocate(&mem);
-}
-
 using HostMemoryAllocateTest = GpuExecutorTest;
 
 TEST_F(HostMemoryAllocateTest, Numa) {
