@@ -177,15 +177,6 @@ absl::Status RunOneShotAllReduce(
 
   const DeviceBufferPair& buffer = buffers[0];
 
-  // Buffer assignment aliases the source buffer to the destination buffer. This
-  // works for NCCL implementation, but for one-shot kernel, input and output
-  // buffers should be different. We do not have enough information at buffer
-  // assignement time to change aliasing, so we allocate a new device buffer
-  // ourselves and copy the data to it.
-  // TODO(b/407736956): Fuse the copy into the one-shot kernel.
-  TF_RETURN_IF_ERROR(stream.MemcpyD2D(&local_buffer, buffer.source_buffer,
-                                      buffer.source_buffer.size()));
-
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<std::vector<RendezvousValue>> rendezvous_values,
       RendezvousBeforeKernelStart(clique_key, rank, num_ranks, local_buffer,
@@ -205,10 +196,10 @@ absl::Status RunOneShotAllReduce(
   LaunchDimensions launch_dimensions(/*block_x_count=*/kLaunchBlockCountX,
                                      /*thread_x_count_per_block=*/512);
 
-  TF_RETURN_IF_ERROR(
-      RunAllReduceKernel(&stream, launch_dimensions, buffer.element_type,
-                         input_ptrs, buffer.destination_buffer, rank.value(),
-                         num_ranks, buffer.element_count, signal_flags_ptrs));
+  TF_RETURN_IF_ERROR(RunAllReduceKernel(
+      &stream, launch_dimensions, buffer.element_type, input_ptrs,
+      buffer.source_buffer, buffer.destination_buffer, rank.value(), num_ranks,
+      buffer.element_count, signal_flags_ptrs));
 
   TF_RETURN_IF_ERROR(RendezvousAfterKernelFinish(
       clique_key, rank, num_ranks, stream, end_event, rendezvous_values));

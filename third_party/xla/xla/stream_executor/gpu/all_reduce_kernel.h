@@ -33,7 +33,8 @@ inline constexpr int64_t kMaxNumAllReduceInputPtrs = 8;
 template <typename ElementT>
 struct AllReduceKernel {
   using KernelType = stream_executor::TypedKernel<
-      /*input_ptrs=*/std::array<ElementT*, kMaxNumAllReduceInputPtrs>,
+      /*remove_input_ptrs=*/std::array<ElementT*, kMaxNumAllReduceInputPtrs>,
+      /*local_input_ptr=*/stream_executor::DeviceMemoryBase,
       /*output_ptr=*/stream_executor::DeviceMemoryBase, /*rank=*/int64_t,
       /*num_ranks=*/int64_t, /*num_elements=*/int64_t,
       /*signal_flags_ptrs=*/std::array<uint32_t*, kMaxNumAllReduceInputPtrs>>;

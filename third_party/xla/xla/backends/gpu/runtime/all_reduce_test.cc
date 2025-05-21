@@ -80,12 +80,12 @@ TYPED_TEST(AllReduceKernelTest, SimpleKernelTest) {
 
   std::vector<se::StreamExecutor*> executors;
   std::vector<std::unique_ptr<se::Stream>> streams;
-  std::vector<se::DeviceMemoryHandle> input_buffers;
-  std::vector<se::DeviceMemoryHandle> output_buffers;
+  std::vector<se::DeviceMemoryHandle> local_input_buffers;
+  std::vector<se::DeviceMemoryHandle> data_buffers;
   std::vector<se::DeviceMemoryHandle> signal_flags_buffers;
   std::vector<T> output_data(kNumElements);
 
-  std::vector<se::DeviceMemoryBase> input_buffers_span;
+  std::vector<se::DeviceMemoryBase> remote_input_buffers_span;
   std::vector<se::DeviceMemoryBase> signal_flags_buffers_span;
 
   for (int i = 0; i < kNumRanks; ++i) {
@@ -93,13 +93,13 @@ TYPED_TEST(AllReduceKernelTest, SimpleKernelTest) {
     executors.push_back(executor);
     streams.push_back(executor->CreateStream().value());
 
-    input_buffers.emplace_back(executor,
-                               executor->AllocateArray<T>(kNumElements));
-    ASSERT_TRUE(!input_buffers[i].memory().is_null());
+    local_input_buffers.emplace_back(executor,
+                                     executor->AllocateArray<T>(kNumElements));
+    ASSERT_TRUE(!local_input_buffers[i].memory().is_null());
 
-    output_buffers.emplace_back(executor,
-                                executor->AllocateArray<T>(kNumElements));
-    ASSERT_TRUE(!output_buffers[i].memory().is_null());
+    data_buffers.emplace_back(executor,
+                              executor->AllocateArray<T>(kNumElements));
+    ASSERT_TRUE(!data_buffers[i].memory().is_null());
 
     signal_flags_buffers.emplace_back(
         executor, executor->AllocateArray<uint32_t>(
@@ -111,11 +111,11 @@ TYPED_TEST(AllReduceKernelTest, SimpleKernelTest) {
     std::transform(input_data.begin(), input_data.end(), output_data.begin(),
                    output_data.begin(), std::plus<T>());
 
-    TF_ASSERT_OK(streams[i]->Memcpy(input_buffers[i].memory_ptr(),
+    TF_ASSERT_OK(streams[i]->Memcpy(local_input_buffers[i].memory_ptr(),
                                     input_data.data(),
                                     kNumElements * sizeof(T)));
 
-    input_buffers_span.push_back(input_buffers[i].memory());
+    remote_input_buffers_span.push_back(data_buffers[i].memory());
     signal_flags_buffers_span.push_back(signal_flags_buffers[i].memory());
   }
 
@@ -132,12 +132,12 @@ TYPED_TEST(AllReduceKernelTest, SimpleKernelTest) {
 
   for (int i = 0; i < kNumRanks; ++i) {
     auto active_context = executors[i]->Activate();
-    TF_ASSERT_OK(RunAllReduceKernel(streams[i].get(), launch_dimensions,
-                                    primitive_util::NativeToPrimitiveType<T>(),
-                                    input_buffers_span,
-                                    output_buffers[i].memory(),
-                                    /*rank=*/i, /*num_ranks=*/kNumRanks,
-                                    kNumElements, signal_flags_buffers_span));
+    TF_ASSERT_OK(RunAllReduceKernel(
+        streams[i].get(), launch_dimensions,
+        primitive_util::NativeToPrimitiveType<T>(), remote_input_buffers_span,
+        local_input_buffers[i].memory(), data_buffers[i].memory(),
+        /*rank=*/i, /*num_ranks=*/kNumRanks, kNumElements,
+        signal_flags_buffers_span));
   }
 
   for (int i = 0; i < kNumRanks; ++i) {
@@ -147,7 +147,7 @@ TYPED_TEST(AllReduceKernelTest, SimpleKernelTest) {
   for (int i = 0; i < kNumRanks; ++i) {
     std::vector<T> output_results(kNumElements);
     TF_ASSERT_OK(streams[i]->Memcpy(output_results.data(),
-                                    output_buffers[i].memory(),
+                                    data_buffers[i].memory(),
                                     kNumElements * sizeof(T)));
 
     EXPECT_EQ(output_results, output_data);

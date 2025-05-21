@@ -40,11 +40,18 @@ bool IsAllReduceKernelSupported(int64_t num_inputs, int64_t num_elements,
 // memory on different devices. The caller is responsible to gather pointers
 // from different devices.
 //
+// The kernel copies data from local input buffer to remote input buffer of the
+// current rank at the start of the kernel.
+//
 // The kernel performs synchronization across devices at the start and the end
 // of the kernel. The synchronization happens between blocks with the same id.
 //
 // Input arguments:
-//  - input_buffers: A list of input buffers.
+//  - remove_input_buffers: A list of buffers with inputs on other devices.
+//    The data in the buffers maybe not be initialized until blocks on different
+//    devices are synchronized.
+//  - local_input_buffer: The buffer with local input. Can be the same as
+//    the output buffer.
 //  - output_buffer: The buffer to store the result.
 //  - rank: Identifier of the device.
 //  - num_ranks: The number of devices participating in the operation.
@@ -55,9 +62,9 @@ bool IsAllReduceKernelSupported(int64_t num_inputs, int64_t num_elements,
 absl::Status RunAllReduceKernel(
     se::Stream* stream, const LaunchDimensions& launch_dimensions,
     PrimitiveType element_type,
-    absl::Span<const se::DeviceMemoryBase> input_buffers,
-    se::DeviceMemoryBase output_buffer, int64_t rank, int64_t num_ranks,
-    int64_t num_elements,
+    absl::Span<const se::DeviceMemoryBase> remote_input_buffers,
+    se::DeviceMemoryBase local_input_buffer, se::DeviceMemoryBase output_buffer,
+    int64_t rank, int64_t num_ranks, int64_t num_elements,
     absl::Span<const se::DeviceMemoryBase> signal_flags_buffers);
 
 }  // namespace xla::gpu

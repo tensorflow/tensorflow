@@ -103,31 +103,33 @@ __device__ __forceinline__ void SyncRemoteBlocks(
 
 template <typename T>
 __global__ void AllReduceKernelImpl(
-    std::array<T* __restrict__, kMaxNumAllReduceInputPtrs> input_ptrs,
-    T* __restrict__ output_ptr, int64_t rank, int64_t num_ranks,
-    int64_t num_elements,
+    std::array<T* __restrict__, kMaxNumAllReduceInputPtrs> remote_input_ptrs,
+    T* __restrict__ local_input_ptr, T* __restrict__ output_ptr, int64_t rank,
+    int64_t num_ranks, int64_t num_elements,
     std::array<uint32_t* __restrict__, kMaxNumAllReduceInputPtrs>
         signal_flags_ptrs) {
   int64_t offset =
       kNumElementsPerThread * (blockIdx.x * blockDim.x + threadIdx.x);
   int64_t stride = kNumElementsPerThread * blockDim.x * gridDim.x;
 
+  // Copy data from local input buffer to remote input buffer.
+  for (int i = offset; i < num_elements; i += stride) {
+    VecStore(remote_input_ptrs[rank] + i, VecLoad(local_input_ptr + i));
+  }
+
   SyncRemoteBlocks(signal_flags_ptrs, rank, num_ranks);
   __syncthreads();
 
   for (int i = offset; i < num_elements; i += stride) {
-    Vec<T> sum;
-    sum.data[0] = 0;
-    sum.data[1] = 0;
-    sum.data[2] = 0;
-    sum.data[3] = 0;
+    Vec<T> sum = VecLoad(remote_input_ptrs[0] + i);
 
+    // Since `remote_input_ptrs` are provided in rank order, we get stable
+    // reduction results on all devices.
 #pragma unroll
-    for (int j = 0; j < kMaxNumAllReduceInputPtrs; ++j) {
-      if (j >= num_ranks) break;
-
-      Vec<T> input_vec = VecLoad(input_ptrs[j] + i);
-      VecAdd(sum, input_vec);
+    for (int j = 1; j < kMaxNumAllReduceInputPtrs; ++j) {
+      if (j < num_ranks) {
+        VecAdd(sum, VecLoad(remote_input_ptrs[j] + i));
+      }
     }
 
     VecStore(output_ptr + i, sum);
