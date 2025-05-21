@@ -590,18 +590,10 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
                                    transfer_size))
             << "Failed to copy data to GPU";
 
-        auto status = stream->DoHostCallback([buffer_index, is_last_transfer,
-                                              on_done = std::move(on_done),
-                                              this]() mutable {
-          CleanUp(buffer_index, is_last_transfer, std::move(on_done));
-        });
-
-        if (!status.ok()) {
-          LOG(ERROR) << "Failed to do host callback for copy_to_gpu";
-        }
-      } else {
-        CleanUp(buffer_index, is_last_transfer, std::move(on_done));
+        absl::Status status = stream->BlockHostUntilDone();
+        CHECK_OK(status) << "Failed to block host until done";
       }
+      CleanUp(buffer_index, is_last_transfer, std::move(on_done));
     };
     // Enqueue the transfer to the h2d thread.
     h2d_thread_->Schedule(std::move(copy_to_gpu));
