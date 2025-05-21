@@ -367,7 +367,7 @@ cuda_stub(
 )
 
 cc_library(
-    name = "nvshmem_stub",
+    name = "nvshmem",  # buildifier: disable=duplicated-name
     srcs = if_cuda_is_configured([
         "nvshmem_stub.cc",
         "nvshmem.tramp.S",
@@ -384,4 +384,10 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:load_library",
     ]),
+)
+
+alias(
+    name = "nvshmem_stub",  # buildifier: disable=duplicated-name
+    actual = if_cuda_libs("@nvidia_nvshmem//:nvshmem", ":nvshmem"),
+    visibility = ["//visibility:public"],
 )

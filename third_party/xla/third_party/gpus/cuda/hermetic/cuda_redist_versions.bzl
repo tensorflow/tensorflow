@@ -303,6 +303,41 @@ CUDA_NCCL_WHEELS = {
     "12.8.1": CUDA_12_NCCL_WHEEL_DICT,
 }
 
+NVSHMEM_3_1_WHEEL_DICT = {
+    "x86_64-unknown-linux-gnu": {
+        "version": "3.1.7",
+        "url": "https://files.pythonhosted.org/packages/a8/16/3148701dcd8f35296acbc6d26b8722ccac813f2c7794fad5a39679bb2186/nvidia_nvshmem_cu12-3.1.7-py3-none-manylinux2014_x86_64.whl",
+        "sha256": "aca00190141b803ce4e41109ebd04addee0c0f8b471d9863aee157adc1a30db9",
+    },
+    "aarch64-unknown-linux-gnu": {
+        "version": "3.1.7",
+        "url": "https://files.pythonhosted.org/packages/2f/f7/ea027d66f340008ccfa9bf9d424a92f1f0075139de5555029fb8afb1e3cf/nvidia_nvshmem_cu12-3.1.7-py3-none-manylinux2014_aarch64.whl",
+        "sha256": "f119554a0047f3213e16329c8cf7f30c41c69d2d7ec8cc4f46c2533fa7abfbc7",
+    },
+}
+
+NVSHMEM_3_2_WHEEL_DICT = {
+    "x86_64-unknown-linux-gnu": {
+        "version": "3.2.5",
+        "url": "https://files.pythonhosted.org/packages/14/c6/b8964791afb59207765ddbcfeeda1ad50c134b039e62a3ccfb16808407e0/nvidia_nvshmem_cu12-3.2.5-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+        "sha256": "e076957d5cc72e51061a04f2d46f55df477be53e8a55d0d621be08f7aefe1d00",
+    },
+    "aarch64-unknown-linux-gnu": {
+        "version": "3.2.5",
+        "url": "https://files.pythonhosted.org/packages/11/11/8e5881d502b42b2622dff6990cd3ca0cd1fac305a0a6a00f0ad21eec473d/nvidia_nvshmem_cu12-3.2.5-py3-none-manylinux_2_29_aarch64.whl",
+        "sha256": "2f5798d65f1a08f9878aae17cf4d3dcbfe884d1f12cf170556cd40f2be90ca96",
+    },
+}
+
+CUDA_NVSHMEM_WHEELS = {
+    "12.6.0": NVSHMEM_3_1_WHEEL_DICT,
+    "12.6.1": NVSHMEM_3_1_WHEEL_DICT,
+    "12.6.2": NVSHMEM_3_1_WHEEL_DICT,
+    "12.6.3": NVSHMEM_3_1_WHEEL_DICT,
+    "12.8.0": NVSHMEM_3_2_WHEEL_DICT,
+    "12.8.1": NVSHMEM_3_2_WHEEL_DICT,
+}
+
 # Ensures PTX version compatibility w/ Clang & ptxas in cuda_configure.bzl
 PTX_VERSION_DICT = {
     # To find, invoke `llc -march=nvptx64 -mcpu=help 2>&1 | grep ptx | sort -V | tail -n 1`
@@ -456,6 +491,13 @@ REDIST_VERSIONS_TO_BUILD_TEMPLATES = {
             "13": "//third_party/gpus/cuda/hermetic:cuda_nvtx.BUILD.tpl",
             "12": "//third_party/gpus/cuda/hermetic:cuda_nvtx.BUILD.tpl",
             "11": "//third_party/gpus/cuda/hermetic:cuda_nvtx.BUILD.tpl",
+        },
+    },
+    "libnvshmem": {
+        "repo_name": "nvidia_nvshmem",
+        "version_to_template": {
+            "3.1": "//third_party/nvshmem/hermetic:nvidia_nvshmem_3_1.BUILD.tpl",
+            "3.2": "//third_party/nvshmem/hermetic:nvidia_nvshmem_3_2.BUILD.tpl",
         },
     },
 }

@@ -82,25 +82,30 @@ def _get_lib_name_and_version(path):
     lib_version = path[extension_index + len(LIB_EXTENSION):]
     return (lib_name, lib_version)
 
+def _get_common_lib_name(repository_ctx):
+    return repository_ctx.name.split("_")[1].lower()
+
 def _get_main_lib_name(repository_ctx):
     if repository_ctx.name == "cuda_driver":
         return "libcuda"
+    if repository_ctx.name == "nvidia_nvshmem":
+        return "libnvshmem_host"
     else:
         return "lib{}".format(
-            repository_ctx.name.split("_")[1],
-        ).lower()
+            _get_common_lib_name(repository_ctx),
+        )
 
 def _get_libraries_by_redist_name_in_dir(repository_ctx):
     lib_dir_path = repository_ctx.path("lib")
     if not lib_dir_path.exists:
         return []
-    main_lib_name = _get_main_lib_name(repository_ctx)
+    common_lib_name = _get_common_lib_name(repository_ctx)
     lib_dir_content = lib_dir_path.readdir()
     return [
         str(f)
         for f in lib_dir_content
         if (LIB_EXTENSION in str(f) and
-            main_lib_name in str(f).lower())
+            common_lib_name in str(f).lower())
     ]
 
 def get_lib_name_to_version_dict(repository_ctx):
@@ -148,7 +153,7 @@ def _get_build_template(repository_ctx, major_lib_version):
     template = None
     for i in range(0, len(repository_ctx.attr.versions)):
         for dist_version in repository_ctx.attr.versions[i].split(","):
-            if dist_version == major_lib_version:
+            if major_lib_version.startswith(dist_version):
                 template = repository_ctx.attr.build_templates[i]
                 break
     if not template:
@@ -163,7 +168,10 @@ def get_major_library_version(repository_ctx, lib_name_to_version_dict):
     # buildifier: disable=function-docstring-args
     """Returns the major library version provided the versions dict."""
     main_lib_name = _get_main_lib_name(repository_ctx)
-    key = "%%{%s_version}" % main_lib_name
+    if repository_ctx.name == "nvidia_nvshmem":
+        key = "%%{%s_minor_version}" % main_lib_name
+    else:
+        key = "%%{%s_version}" % main_lib_name
     if key not in lib_name_to_version_dict:
         return ""
     return lib_name_to_version_dict[key]
@@ -183,10 +191,16 @@ def create_build_file(
         else:
             create_dummy_build_file(repository_ctx)
         return
-    build_template = _get_build_template(
-        repository_ctx,
-        major_lib_version.split(".")[0],
-    )
+    if repository_ctx.name == "nvidia_nvshmem":
+        build_template = _get_build_template(
+            repository_ctx,
+            ".".join(major_lib_version.split(".")[:2]),
+        )
+    else:
+        build_template = _get_build_template(
+            repository_ctx,
+            major_lib_version.split(".")[0],
+        )
     repository_ctx.template(
         "BUILD",
         build_template,
@@ -591,7 +605,7 @@ def cuda_redist_init_repositories(
     # buildifier: disable=function-docstring-args
     """Initializes CUDA repositories."""
     for redist_name, _ in redist_versions_to_build_templates.items():
-        if redist_name in ["cudnn", "cuda_nccl"]:
+        if redist_name in ["cudnn", "cuda_nccl", "libnvshmem"]:
             continue
         if redist_name in cuda_redistributions.keys():
             url_dict = _get_redistribution_urls(cuda_redistributions[redist_name])
