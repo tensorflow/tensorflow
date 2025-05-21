@@ -51,8 +51,6 @@ void MatchInstructionsWithMultipleCandidates(
     std::vector<const HloInstructionNode*> right_candidates;
     for (const HloInstructionNode* right : right_instructions) {
       double similarity = property_matches_fn(left, right);
-      LOG(INFO) << left->GetName() << "--" << right->GetName()
-                << "similarity: " << similarity;
       if (similarity > max_match_score) {
         max_match_score = similarity;
         right_candidates.clear();

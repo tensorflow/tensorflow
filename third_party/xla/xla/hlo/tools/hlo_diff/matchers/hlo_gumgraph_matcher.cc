@@ -64,42 +64,6 @@ struct NodePairSimilarity {
   double similarity;
 };
 
-// Returns true if the two subgraphs have a diff.
-bool HasDiff(const HloInstructionNode* absl_nonnull left, int left_graph_size,
-             const HloInstructionNode* absl_nonnull right,
-             int right_graph_size) {
-  if (left->props.subgraph_fingerprint != right->props.subgraph_fingerprint) {
-    return true;
-  }
-  // TODO(b/365855856): Make sure there's no hash collision before removing the
-  // following extra comparison code.
-  std::vector<const HloInstructionNode*> left_subgraph = GetAllNodesInBfsOrder(
-      *left, BfsTraversalDirection::kForward, left_graph_size);
-  std::vector<const HloInstructionNode*> right_subgraph = GetAllNodesInBfsOrder(
-      *right, BfsTraversalDirection::kForward, right_graph_size);
-  if (left_subgraph.size() != right_subgraph.size()) {
-    LOG(WARNING) << "Subgraph (" << left->instruction->name() << " vs "
-                 << right->instruction->name() << ") with same fingerprint "
-                 << left->props.subgraph_fingerprint
-                 << " but different size: " << left_subgraph.size() << " vs "
-                 << right_subgraph.size();
-    return true;
-  }
-  for (int i = 0; i < left_subgraph.size(); ++i) {
-    if (left_subgraph[i]->instruction->opcode() !=
-        right_subgraph[i]->instruction->opcode()) {
-      LOG(WARNING) << "Subgraph (" << left->instruction->name() << " vs "
-                   << right->instruction->name() << ") with same fingerprint "
-                   << left->props.subgraph_fingerprint << " and size "
-                   << left_subgraph.size() << " but has diff type at node " << i
-                   << ":" << left_subgraph[i]->instruction->name() << " vs "
-                   << right_subgraph[i]->instruction->name();
-      return true;
-    }
-  }
-  return false;
-};
-
 // Maps the two subgraphs starting from the given nodes.
 void MapSubgraph(const HloInstructionNode* absl_nonnull left,
                  int left_graph_size,
@@ -111,9 +75,24 @@ void MapSubgraph(const HloInstructionNode* absl_nonnull left,
   std::vector<const HloInstructionNode*> right_subgraph = GetAllNodesInBfsOrder(
       *right, BfsTraversalDirection::kForward, right_graph_size);
   if (left_subgraph.size() != right_subgraph.size()) {
-    LOG(WARNING) << "Unable to map subgraphs due to size mismatch: "
-                 << left_subgraph.size() << " vs " << right_subgraph.size();
+    LOG(WARNING) << "Subgraph (" << left->instruction->name() << " vs "
+                 << right->instruction->name() << ") with same fingerprint "
+                 << left->props.subgraph_fingerprint
+                 << " but different size: " << left_subgraph.size() << " vs "
+                 << right_subgraph.size();
     return;
+  }
+  for (int i = 0; i < left_subgraph.size(); ++i) {
+    if (left_subgraph[i]->instruction->opcode() !=
+        right_subgraph[i]->instruction->opcode()) {
+      LOG(WARNING) << "Subgraph (" << left->instruction->name() << " vs "
+                   << right->instruction->name() << ") with same fingerprint "
+                   << left->props.subgraph_fingerprint << " and size "
+                   << left_subgraph.size() << " but has diff type at node " << i
+                   << ":" << left_subgraph[i]->instruction->name() << " vs "
+                   << right_subgraph[i]->instruction->name();
+      return;
+    }
   }
   for (int i = 0; i < left_subgraph.size(); ++i) {
     mappings.MapInstructionsIfAbsent(left_subgraph[i], right_subgraph[i],
@@ -339,22 +318,40 @@ void GreedySubGraphExactMatcher::Match(HloGumgraphMappings& mappings) const {
     }
     absl::flat_hash_set<const HloInstructionNode*> found;
     // Find exact match left-right subgraph candidates at the current height.
+    absl::flat_hash_map<uint64_t,
+                        absl::flat_hash_set<const HloInstructionNode*>>
+        source_by_fingerprint;
+    absl::flat_hash_map<uint64_t,
+                        absl::flat_hash_set<const HloInstructionNode*>>
+        target_by_fingerprint;
     for (const HloInstructionNode* source_node : source_subgraphs[height]) {
-      if (ignored.contains(source_node)) {
+      if (ignored.contains(source_node) ||
+          mappings.InstructionMapContainsLeft(source_node)) {
         continue;
       }
-      for (const HloInstructionNode* target_node : target_subgraphs[height]) {
-        if (ignored.contains(target_node)) {
-          continue;
+      source_by_fingerprint[source_node->props.subgraph_fingerprint].insert(
+          source_node);
+    }
+    for (const HloInstructionNode* target_node : target_subgraphs[height]) {
+      if (ignored.contains(target_node) ||
+          mappings.InstructionMapContainsRight(target_node)) {
+        continue;
+      }
+      target_by_fingerprint[target_node->props.subgraph_fingerprint].insert(
+          target_node);
+    }
+    for (const auto& [fingerprint, source_nodes] : source_by_fingerprint) {
+      if (auto it = target_by_fingerprint.find(fingerprint);
+          it != target_by_fingerprint.end()) {
+        // Map 1:1 candidates. Check if the source and target subgraphs are
+        // exactly the same, if so, map them.
+        if (source_nodes.size() == 1 && it->second.size() == 1) {
+          MapSubgraph(*source_nodes.begin(), left_.GetNodeCount(),
+                      *it->second.begin(), right_.GetNodeCount(), type_,
+                      mappings);
         }
-        if (HasDiff(source_node, left_.GetNodeCount(), target_node,
-                    right_.GetNodeCount())) {
-          continue;
-        }
-        candidates[source_node].push_back(target_node);
-        candidates_reverse[target_node].push_back(source_node);
-        found.insert(source_node);
-        found.insert(target_node);
+        found.insert(source_nodes.begin(), source_nodes.end());
+        found.insert(it->second.begin(), it->second.end());
       }
     }
     // Ignore all nodes in the subgraphs that matched in later traversals.
@@ -367,13 +364,6 @@ void GreedySubGraphExactMatcher::Match(HloGumgraphMappings& mappings) const {
           },
           BfsTraversalDirection::kForward,
           std::max(left_.GetNodeCount(), right_.GetNodeCount()));
-    }
-  }
-  // Map 1:1 candidates.
-  for (auto& [left, right] : candidates) {
-    if (right.size() == 1 && candidates_reverse[right[0]].size() == 1) {
-      MapSubgraph(left, left_.GetNodeCount(), right[0], right_.GetNodeCount(),
-                  type_, mappings);
     }
   }
 
