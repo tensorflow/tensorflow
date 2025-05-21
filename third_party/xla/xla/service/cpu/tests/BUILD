@@ -500,7 +500,9 @@ xla_cc_test(
         "//xla/service:cpu_plugin",
         "//xla/tests:hlo_test_base",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:platform_port",
     ],
 )
