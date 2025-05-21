@@ -18,13 +18,16 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/pjrt/metrics.h"
+#include "xla/pjrt/proto/pjrt_partial_program.pb.h"
 
 namespace xla {
 
@@ -104,10 +107,115 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
   const auto* compiler_registry = CompilerRegistry();
   auto it = compiler_registry->find(topology.platform_name());
   if (it == compiler_registry->end()) {
-    return tsl::errors::NotFound(absl::StrCat(
+    return absl::NotFoundError(absl::StrCat(
         "No compiler registered for platform ", topology.platform_name()));
   }
   return it->second->Compile(std::move(options), module, topology, client);
+}
+
+// Phase compile API.
+
+absl::Status PjRtPhaseCompiler::RegisterPhase(const std::string& phase_name,
+                                              PhaseCompiler phase_compiler,
+                                              PhaseValidator phase_validator) {
+  if (phase_name.empty()) {
+    return absl::InvalidArgumentError("Phase name cannot be empty");
+  }
+  if (!phase_compiler || !phase_validator) {
+    return absl::InvalidArgumentError(
+        "Phase compiler or validator cannot be null");
+  }
+  if (!phase_map_
+           .insert(
+               {phase_name, std::make_pair(phase_compiler, phase_validator)})
+           .second) {
+    return absl::AlreadyExistsError(
+        absl::StrCat("A phase compiler/validator with Phase name ", phase_name,
+                     " already exists"));
+  }
+  phase_names_.push_back(phase_name);
+  return absl::OkStatus();
+}
+
+absl::StatusOr<std::vector<std::string>> PjRtPhaseCompiler::GetPhaseNames() {
+  return phase_names_;
+}
+
+absl::StatusOr<std::vector<PjRtPartialProgramProto>>
+PjRtPhaseCompiler::CompilePhase(
+    CompileOptions options,
+    const std::vector<PjRtPartialProgramProto>& input_programs,
+    const PjRtTopologyDescription& topology,
+    const std::vector<std::string>& phases_to_run) {
+  if (phases_to_run.empty()) {
+    return absl::InvalidArgumentError("Phase name cannot be empty");
+  }
+
+  std::vector<PjRtPartialProgramProto> programs = input_programs;
+  for (const auto& phase_name : phases_to_run) {
+    auto it = phase_map_.find(phase_name);
+    if (it == phase_map_.end()) {
+      return absl::NotFoundError(absl::StrCat(
+          "No phase compiler/validator registered with phase name ",
+          phase_name));
+    }
+
+    // Validate (plugin specific) the input programs.
+    auto validation_status = it->second.second(input_programs);
+    if (!validation_status.ok()) {
+      return validation_status;
+    }
+
+    // Run the phase.
+    auto out_programs = it->second.first(options, programs, topology);
+    if (!out_programs.ok()) {
+      return out_programs.status();
+    }
+    programs = out_programs.value();
+  }
+
+  return programs;
+}
+
+absl::StatusOr<std::vector<PjRtPartialProgramProto>> PjRtPhaseCompile(
+    CompileOptions options,
+    const std::vector<PjRtPartialProgramProto>& input_programs,
+    const PjRtTopologyDescription& topology,
+    const std::vector<std::string>& phases_to_run) {
+  absl::ReaderMutexLock l(&registry_mutex);
+  const auto* compiler_registry = CompilerRegistry();
+  auto it = compiler_registry->find(topology.platform_name());
+  if (it == compiler_registry->end()) {
+    return absl::NotFoundError(
+        absl::StrCat("No pjrt phase compiler registered for platform ",
+                     topology.platform_name()));
+  }
+  PjRtPhaseCompiler* compiler =
+      dynamic_cast<PjRtPhaseCompiler*>(it->second.get());
+  if (!compiler) {
+    return absl::InvalidArgumentError(
+        "Registered compiler is null or not a PjRtPhaseCompiler");
+  }
+  return compiler->CompilePhase(std::move(options), input_programs, topology,
+                                phases_to_run);
+}
+
+absl::StatusOr<std::vector<std::string>> PjRtGetPhaseNames(
+    const std::string& platform_name) {
+  absl::ReaderMutexLock l(&registry_mutex);
+  const auto* compiler_registry = CompilerRegistry();
+  auto it = compiler_registry->find(platform_name);
+  if (it == compiler_registry->end()) {
+    return absl::NotFoundError(absl::StrCat(
+        "No pjrt phase compiler registered for platform ", platform_name));
+  }
+  PjRtPhaseCompiler* compiler =
+      static_cast<PjRtPhaseCompiler*>(it->second.get());
+  if (!compiler) {
+    return absl::InvalidArgumentError(
+        "Registered compiler is null or not a PjRtPhaseCompiler");
+  }
+  return compiler->GetPhaseNames();
 }
 
 }  // namespace xla

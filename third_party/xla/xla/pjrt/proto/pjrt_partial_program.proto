@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package xla;
+
+// A partial program represents a program that is not yet fully compiled.
+// It is used to store and transfer intermediate compilation states.
+message PjRtPartialProgramProto {
+  bytes program = 1;
+  int32 program_format = 2;
+  string generating_phase = 3;
+  repeated string next_phases = 4;
+  string version = 5;
+}
