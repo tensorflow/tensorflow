@@ -117,6 +117,49 @@ class TilingSpecification {
       num_tile_sizes_by_instruction_;
 };
 
+// `Tiling`s are instantiations of `TilingSpecification`s, and the conformance
+// of a `Tiling` `t` to a `TilingSpecification` `spec` can be checked by calling
+// `t.ConformsTo(spec)`.
+//
+// A given instruction may be mapped to either
+//  1. a sequence of "output" tile sizes, corresponding to tiling of its output
+//     shape;
+//  2. a sequence of "hidden" tile sizes, corresponding to tiling of its
+//     contraction dimensions;
+//  3. both of the above.
+//
+// In the case of 3., the parameters are ordered such that the "hidden" tile
+// sizes are listed first.
+//
+// Given a HLO opcode in isolation, there is never any ambiguity about which
+// tile sizes are "output" or "hidden": if an opcode can be assigned "hidden"
+// tile sizes, then we can always expect them to have a mapping---while "output"
+// tile sizes only appear optionally.
+//
+// TODO(b/419026602): reductions are ignored for now. This will need to handle
+// them.
+class Tiling {
+ public:
+  using TileMapping = absl::flat_hash_map<const HloInstruction*,
+                                          absl::InlinedVector<int64_t, 4>>;
+  explicit Tiling(TileMapping tile_sizes)
+      : tile_sizes_(std::move(tile_sizes)) {}
+
+  // Returns `true` if the tiling conforms to the given tiling specification.
+  // To conform to a tiling specification, the tiling must specify exactly the
+  // right number of tile sizes for each exposed parameter in the tiling
+  // specification.
+  bool ConformsTo(const TilingSpecification& tiling_specification) const;
+
+  // Returns the tile sizes for the given instruction. Raises an error if the
+  // queried instruction should not be assigned tile sizes.
+  absl::StatusOr<absl::Span<const int64_t>> TileSizesForInstruction(
+      const HloInstruction* hlo) const;
+
+ private:
+  TileMapping tile_sizes_;
+};
+
 // Holds the indexing information for the roots of the computation.
 struct RootIndexing {
   RootIndexing(int64_t real_root_index,

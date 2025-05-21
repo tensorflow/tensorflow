@@ -598,6 +598,32 @@ TilingSpecification::FromFusionAdaptor(const HloFusionAdaptor& fusion_adaptor) {
   return TilingSpecification::FromFusionAdaptor(*fusion_adaptor);
 }
 
+absl::StatusOr<absl::Span<const int64_t>> Tiling::TileSizesForInstruction(
+    const HloInstruction* hlo) const {
+  if (auto it = tile_sizes_.find(hlo); it != tile_sizes_.end()) {
+    return it->second;
+  }
+
+  return absl::NotFoundError(
+      absl::StrCat("No tile sizes found for instruction: ", hlo->ToString()));
+}
+
+bool Tiling::ConformsTo(const TilingSpecification& tiling_specification) const {
+  const absl::flat_hash_map<const HloInstruction*, int64_t>&
+      num_tile_sizes_by_instruction =
+          tiling_specification.num_tile_sizes_by_instruction();
+  if (tile_sizes_.size() != num_tile_sizes_by_instruction.size()) {
+    return false;
+  }
+  for (const auto& [hlo, num_parameters] : num_tile_sizes_by_instruction) {
+    auto it = tile_sizes_.find(hlo);
+    if (it == tile_sizes_.end() || it->second.size() != num_parameters) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // Extracts `HloInstruction`s from a span of `HloInstructionAdaptor`s.
 absl::InlinedVector<const HloInstruction*, 2> ToInstructions(
     absl::Span<const HloInstructionAdaptor> instruction_adaptors) {
