@@ -102,6 +102,65 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
      ]> {
    let summary = "Recv operation";
    let description = [{
+diff --ruN a/stablehlo/stablehlo/integrations/c/StablehloDialectApi.cpp b/stablehlo/stablehlo/integrations/c/StablehloDialectApi.cpp
+--- stablehlo/stablehlo/integrations/c/StablehloDialectApi.cpp
++++ stablehlo/stablehlo/integrations/c/StablehloDialectApi.cpp
+@@ -78,10 +78,11 @@
+ 
+ MlirLogicalResult stablehloSerializePortableArtifactFromModule(
+     MlirModule moduleStr, MlirStringRef targetVersion,
+-    MlirStringCallback callback, void *userData) {
++    MlirStringCallback callback, void *userData, bool allowOtherDialects) {
+   mlir::detail::CallbackOstream stream(callback, userData);
+   if (failed(mlir::stablehlo::serializePortableArtifact(
+-          unwrap(moduleStr), unwrap(targetVersion), stream)))
++          unwrap(moduleStr), unwrap(targetVersion), stream,
++          allowOtherDialects)))
+     return mlirLogicalResultFailure();
+   return mlirLogicalResultSuccess();
+ }
+diff --ruN a/stablehlo/stablehlo/integrations/c/StablehloDialectApi.h b/stablehlo/stablehlo/integrations/c/StablehloDialectApi.h
+--- stablehlo/stablehlo/integrations/c/StablehloDialectApi.h
++++ stablehlo/stablehlo/integrations/c/StablehloDialectApi.h
+@@ -92,7 +92,8 @@
+ stablehloSerializePortableArtifactFromModule(MlirModule moduleStr,
+                                              MlirStringRef targetVersion,
+                                              MlirStringCallback callback,
+-                                             void* userData);
++                                             void* userData,
++                                             bool allowOtherDialects = false);
+ 
+ // Read a StableHLO program from a portable artifact, returning the module as
+ // MLIR bytecode. Note, this bytecode returned is not a portable artifact,
+diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloApi.cpp b/stablehlo/stablehlo/integrations/python/StablehloApi.cpp
+--- stablehlo/stablehlo/integrations/python/StablehloApi.cpp
++++ stablehlo/stablehlo/integrations/python/StablehloApi.cpp
+@@ -102,20 +102,22 @@
+   //
+   m.def(
+       "serialize_portable_artifact",
+-      [](MlirModule module, std::string_view target) -> nb::bytes {
++      [](MlirModule module, std::string_view target,
++         bool allowOtherDialects) -> nb::bytes {
+         StringWriterHelper accumulator;
+         if (mlirLogicalResultIsFailure(
+                 stablehloSerializePortableArtifactFromModule(
+                     module, toMlirStringRef(target),
+                     accumulator.getMlirStringCallback(),
+-                    accumulator.getUserData()))) {
++                    accumulator.getUserData(), allowOtherDialects))) {
+           throw nb::value_error("failed to serialize module");
+         }
+ 
+         std::string serialized = accumulator.toString();
+         return nb::bytes(serialized.data(), serialized.size());
+       },
+-      nb::arg("module"), nb::arg("target"));
++      nb::arg("module"), nb::arg("target"),
++      nb::arg("allow_other_dialects") = false);
+ 
+   m.def(
+       "deserialize_portable_artifact",
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
