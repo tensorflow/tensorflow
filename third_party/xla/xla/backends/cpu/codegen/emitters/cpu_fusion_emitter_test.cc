@@ -120,7 +120,7 @@ TEST_F(CpuFusionEmitterTest, ScatterMlir) {
     CHECK:       @wrapped_scatter(
     CHECK-SAME:    %[[CALL_FRAME:.+]]: !xla_cpu.call_frame)
     CHECK-SAME:    -> !xla_cpu.error
-    CHECK-DAG:       xla_cpu.thread_id %[[CALL_FRAME]]
+    CHECK-DAG:       xla.workgroup_id  x
     CHECK-DAG:       xla_cpu.load %[[CALL_FRAME]], 0
     CHECK-DAG:       xla_cpu.load %[[CALL_FRAME]], 1
     CHECK-DAG:       xla_cpu.load %[[CALL_FRAME]], 2

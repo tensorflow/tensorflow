@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/emitters/transforms/xla_cpu_rewrite_patterns.h"
 
+#include <cstdint>
+
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -27,6 +29,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_dialect.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_ops.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_types.h"
+#include "xla/codegen/emitters/ir/xla_ops.h"
 
 namespace xla::cpu {
 namespace {
@@ -93,13 +96,26 @@ struct LowerLoadOp : public mlir::OpRewritePattern<LoadOp> {
   }
 };
 
-struct LowerThreadId : public mlir::OpRewritePattern<ThreadIdOp> {
+struct LowerWorkGroupIdOp : public mlir::OpRewritePattern<WorkGroupIdOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
   mlir::LogicalResult matchAndRewrite(
-      cpu::ThreadIdOp op, mlir::PatternRewriter& rewriter) const override {
+      WorkGroupIdOp op, mlir::PatternRewriter& rewriter) const override {
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    auto func = op->getParentOfType<mlir::func::FuncOp>();
+    if (func == nullptr) {
+      return rewriter.notifyMatchFailure(op, "No parent func found.");
+    }
+
+    if (func.getArguments().empty()) {
+      return rewriter.notifyMatchFailure(op, "Parent func has no operands.");
+    }
+
+    // TODO(willfroom) Add some verification that the first operand is a
+    // call_frame.
+    mlir::Value first_arg = func.getArgument(0);
 
     auto ptr = b.getType<mlir::LLVM::LLVMPointerType>();
     auto kernel_call_frame = KernelCallFrameType(b.getContext());
@@ -108,32 +124,40 @@ struct LowerThreadId : public mlir::OpRewritePattern<ThreadIdOp> {
         mlir::DataLayout::closest(b.getInsertionBlock()->getParentOp())
             .getTypeSizeInBits(b.getI64Type()));
 
-    // Get a pointer to the `KernelThread` struct.
-    auto cast = b.create<mlir::UnrealizedConversionCastOp>(op.getLoc(), ptr,
-                                                           op.getCallFrame())
-                    .getResult(0);
-    auto tid_gep = b.create<mlir::LLVM::GEPOp>(
-        ptr, kernel_call_frame, cast, mlir::LLVM::GEPArg(1),
+    // Get a pointer to the `WorkGroupThread` struct.
+    auto cast =
+        b.create<mlir::UnrealizedConversionCastOp>(op.getLoc(), ptr, first_arg)
+            .getResult(0);
+    auto workgroup_gep = b.create<mlir::LLVM::GEPOp>(
+        ptr, kernel_call_frame, cast,
+        mlir::ArrayRef<mlir::LLVM::GEPArg>{mlir::LLVM::GEPArg(0),
+                                           mlir::LLVM::GEPArg(1)},
         mlir::LLVM::GEPNoWrapFlags::inbounds);
-    auto tid_ptr = b.create<mlir::LLVM::LoadOp>(ptr, tid_gep);
+    auto workgroup_ptr = b.create<mlir::LLVM::LoadOp>(ptr, workgroup_gep);
 
-    // Load 'x'.
-    auto thread_x_get = b.create<mlir::LLVM::GEPOp>(
-        ptr, kernel_dim, tid_ptr, mlir::LLVM::GEPArg(0),
+    WorkGroupDimension dim = op.getDimension();
+    int32_t workgroup_dim_idx = dim == WorkGroupDimension::x   ? 0
+                                : dim == WorkGroupDimension::y ? 1
+                                                               : 2;
+    auto workgroup_dim_gep = b.create<mlir::LLVM::GEPOp>(
+        ptr, kernel_dim, workgroup_ptr,
+        mlir::ArrayRef<mlir::LLVM::GEPArg>{
+            mlir::LLVM::GEPArg(0), mlir::LLVM::GEPArg(workgroup_dim_idx)},
         mlir::LLVM::GEPNoWrapFlags::inbounds);
-    auto thread_id = b.create<mlir::LLVM::LoadOp>(i64_ty, thread_x_get);
+    auto workgroup_dim =
+        b.create<mlir::LLVM::LoadOp>(i64_ty, workgroup_dim_gep);
 
-    mlir::Value tix = thread_id.getResult();
+    mlir::Value tix = workgroup_dim.getResult();
     auto index_ty = b.getIntegerType(
         mlir::DataLayout::closest(b.getInsertionBlock()->getParentOp())
             .getTypeSizeInBits(op.getType()));
     if (index_ty != i64_ty) {
       tix = b.create<mlir::LLVM::TruncOp>(index_ty, tix);
     }
-    auto thread_id_cast = b.create<mlir::UnrealizedConversionCastOp>(
+    auto workgroup_dim_cast = b.create<mlir::UnrealizedConversionCastOp>(
         op.getLoc(), op->getResult(0).getType(), tix);
 
-    rewriter.replaceOp(op, thread_id_cast.getResult(0));
+    rewriter.replaceOp(op, workgroup_dim_cast.getResult(0));
     return mlir::success();
   }
 };
@@ -194,7 +218,7 @@ struct RewriteFunctionSignatures : mlir::OpRewritePattern<mlir::func::FuncOp> {
 }  // namespace
 
 void PopulateXlaCpuConversionPatterns(mlir::RewritePatternSet& patterns) {
-  patterns.add<LowerLoadOp, LowerStoreOp, LowerThreadId, LowerSuccessOp,
+  patterns.add<LowerLoadOp, LowerStoreOp, LowerWorkGroupIdOp, LowerSuccessOp,
                RewriteFunctionSignatures>(patterns.getContext());
 }
 

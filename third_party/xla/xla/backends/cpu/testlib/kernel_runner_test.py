@@ -101,7 +101,7 @@ class MlirKernelRunnerTest(absltest.TestCase):
           return %inserted : tensor<1xf32>
         }
         func.func @sum_kernel(%call_frame: !xla_cpu.call_frame) -> !xla_cpu.error {
-          %thread_idx = xla_cpu.thread_id %call_frame : index
+          %workgroup_id = xla.workgroup_id x
           %input_buffer = xla_cpu.load %call_frame, 0 : tensor<1024x32xf32>
           %output_buffer = xla_cpu.load %call_frame, 1 : tensor<1xf32>
           %sum = xla.pure_call @sum_kernel_entry(%input_buffer, %output_buffer)

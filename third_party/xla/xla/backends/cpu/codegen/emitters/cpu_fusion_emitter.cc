@@ -285,8 +285,8 @@ absl::StatusOr<mlir::func::FuncOp> EmitFusionKernelApi(
   mlir::Value call_frame_arg = call_frame_func.getArgument(0);
   SmallVector<mlir::Value> extracted_values;
   extracted_values.reserve(arguments.size() + results.size() + 1);
-  extracted_values.push_back(builder.create<cpu::ThreadIdOp>(
-      loc, builder.getIndexType(), call_frame_arg));
+  extracted_values.push_back(
+      builder.create<WorkGroupIdOp>(loc, WorkGroupDimension::x));
 
   for (int i = 1; i < param_types.size(); ++i) {
     extracted_values.push_back(builder.create<cpu::LoadOp>(

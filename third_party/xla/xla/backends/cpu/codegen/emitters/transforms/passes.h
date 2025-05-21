@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "mlir/Pass/Pass.h"
+#include "xla/codegen/emitters/ir/xla_dialect.h"  // IWYU pragma: keep
 
 namespace xla::cpu {
 
