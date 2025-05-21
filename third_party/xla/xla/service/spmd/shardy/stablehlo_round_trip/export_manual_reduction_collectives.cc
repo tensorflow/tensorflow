@@ -61,22 +61,6 @@ using ::mlir::StringRef;
 using ::mlir::func::FuncOp;
 using ::mlir::sdy::AxisRefAttr;
 
-template <typename Op>
-void buildReduceBody(mlir::Type elementType, mlir::Region& body,
-                     mlir::OpBuilder& builder) {
-  mlir::OpBuilder::InsertionGuard guard(builder);
-  mlir::Block* block = builder.createBlock(&body);
-
-  // Block arguments are scalars of the given element type.
-  mlir::Type type = mlir::RankedTensorType::get(/*shape=*/{}, elementType);
-  mlir::Location loc = body.getLoc();
-  block->addArguments({type, type}, {loc, loc});
-
-  auto reducer =
-      builder.create<Op>(loc, block->getArgument(0), block->getArgument(1));
-  builder.create<stablehlo::ReturnOp>(loc, reducer.getResult());
-}
-
 // Builds the replica groups for a `stablehlo::AllReduceOp`.
 //
 // For example, given:
@@ -162,8 +146,8 @@ class AllReducePattern : public OpConversionPattern<sdy::AllReduceOp> {
         /*use_global_device_ids=*/true);
     auto elementType =
         mlir::cast<mlir::ShapedType>(op.getType()).getElementType();
-    buildReduceBody<stablehlo::AddOp>(elementType,
-                                      newAllReduce.getComputation(), rewriter);
+    stablehlo::buildReduceBody<stablehlo::AddOp>(
+        elementType, newAllReduce.getComputation(), rewriter);
     return mlir::success();
   }
 };
