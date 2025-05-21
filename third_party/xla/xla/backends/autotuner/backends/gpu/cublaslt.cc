@@ -48,6 +48,8 @@ using se::gpu::BlasLt;
 
 using CublasLtBackendConfig = AutotuneResult::GemmKey;
 
+namespace {
+
 absl::StatusOr<BlasLt::Epilogue> AsBlasLtEpilogue(
     GemmBackendConfig_Epilogue epilogue) {
   switch (epilogue) {
@@ -75,6 +77,8 @@ absl::StatusOr<BlasLt::Epilogue> AsBlasLtEpilogue(
 bool IsSupported(const HloInstruction& instr) {
   return IsCublasLtMatmul(instr) || IsCublasLtMatmulF8(instr);
 }
+
+}  // namespace
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
 CublasLtBackend::GetSupportedConfigs(

@@ -22,6 +22,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/autotuner/backends/gpu/cublas.h"
+#include "xla/backends/autotuner/backends/gpu/cublaslt.h"
+#include "xla/backends/autotuner/backends/gpu/custom_kernel.h"
 #include "xla/backends/autotuner/backends/gpu/gpu_codegen_backend.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -40,7 +43,10 @@ class FissionBackend : public GpuCodegenBackend {
  public:
   explicit FissionBackend(const Compiler::TargetConfig* target_config,
                           const DebugOptions* debug_options, Compiler* compiler)
-      : GpuCodegenBackend("Fission", target_config, debug_options, compiler) {}
+      : GpuCodegenBackend("Fission", target_config, debug_options, compiler),
+        cublas_backend_(target_config, debug_options, compiler),
+        cublaslt_backend_(target_config, debug_options, compiler),
+        custom_kernel_backend_(target_config, debug_options, compiler) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(
@@ -61,6 +67,10 @@ class FissionBackend : public GpuCodegenBackend {
       const Compiler::CompileOptions& options) override {
     return absl::UnimplementedError("Not implemented.");
   }
+
+  CublasBackend cublas_backend_;
+  CublasLtBackend cublaslt_backend_;
+  CustomKernelBackend custom_kernel_backend_;
 };
 
 }  // namespace gpu

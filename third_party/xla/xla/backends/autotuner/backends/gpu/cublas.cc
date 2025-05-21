@@ -113,6 +113,7 @@ CublasBackend::GetSupportedConfigs(
   return configs;
 }
 
+namespace {
 HloCostAnalysis::Options PriorityFusionOptions() {
   // The real pointer size is set in GpuCompiler. In HloCostAnalysis, the
   // pointer size is used only to determine the size of tuple types. We
@@ -122,6 +123,7 @@ HloCostAnalysis::Options PriorityFusionOptions() {
   options.count_multiple_input_accesses = true;
   return options;
 }
+}  // namespace
 
 absl::StatusOr<std::unique_ptr<HloModule>> RewriteToCublasCustomCall(
     std::unique_ptr<HloModule> hlo_module,
