@@ -29,7 +29,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -110,8 +112,14 @@ CommonPjRtClient::CreateUninitializedBuffer(const Shape& shape,
   if (!primitive_util::IsArrayType(shape.element_type())) {
     device_shape = shape;
   } else {
-    TF_ASSIGN_OR_RETURN(device_shape, MakeDefaultShapeForMemorySpace(
-                                          memory_space, shape, nullptr));
+    if (shape.has_layout()) {
+      TF_ASSIGN_OR_RETURN(
+          device_shape,
+          MakeDefaultShapeForMemorySpace(memory_space, shape, &shape.layout()));
+    } else {
+      TF_ASSIGN_OR_RETURN(device_shape, MakeDefaultShapeForMemorySpace(
+                                            memory_space, shape, nullptr));
+    }
   }
   TF_ASSIGN_OR_RETURN(int64_t on_device_bytes_count,
                       GetOnDeviceBytesCount(memory_space, device_shape));
