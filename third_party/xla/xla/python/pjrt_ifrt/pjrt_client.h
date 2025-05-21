@@ -121,6 +121,8 @@ class PjRtClient final
     // My process ID. Ignored if kv_store is omitted.
     int process_id = 0;
 
+    // DO NOT SUBMIT: Verify with phawkins@ that exposing these options as JAX
+    // state is the right thing to do (vs. hardcoding them to larger values).
     absl::Duration get_local_topology_timeout = absl::Minutes(2);
     absl::Duration get_global_topology_timeout = absl::Minutes(5);
 
