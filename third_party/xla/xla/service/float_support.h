@@ -78,6 +78,11 @@ class FloatSupport {
     return false;
   }
 
+  // Returns whether FloatNormalization should skip custom fusion computations.
+  virtual bool ShouldSkipComputationsOf(const HloInstruction& hlo) const {
+    return false;
+  }
+
  private:
   PrimitiveType low_precision_type_;
   PrimitiveType high_precision_type_;

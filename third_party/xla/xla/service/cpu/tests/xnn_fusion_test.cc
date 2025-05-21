@@ -46,7 +46,7 @@ class XnnFusionTest
   }
 
  protected:
-  void RunTest(absl::string_view hlo_template) {
+  void RunTest(absl::string_view hlo_template, absl::string_view check_str) {
     XnnFusionTestParams params = GetParam();
     std::string hlo_text =
         absl::StrReplaceAll(hlo_template, {{"$dtype", params.in_dtype},
@@ -54,14 +54,15 @@ class XnnFusionTest
                                            {"$out_dtype", params.out_dtype}});
     bool bf16_compute = params.in_dtype == "bf16" || params.out_dtype == "bf16";
     double tolerance = bf16_compute ? 1e-2 : 1e-7;
-    if (bf16_compute) {
-      // TODO(penporn): Use `RunAndCompare` when we have prevented the pipeline
-      // from upcast/downcasting custom fusions.
-      EXPECT_TRUE(RunAndCompareNoHloPasses(
-          hlo_text, ErrorSpec{/*aabs=*/tolerance, /*arel=*/tolerance}));
-    } else {
-      EXPECT_TRUE(RunAndCompare(
-          hlo_text, ErrorSpec{/*aabs=*/tolerance, /*arel=*/tolerance}));
+    EXPECT_TRUE(RunAndCompare(
+        hlo_text, ErrorSpec{/*aabs=*/tolerance, /*arel=*/tolerance}));
+
+    if (bf16_compute && !check_str.empty()) {
+      std::string check_text =
+          absl::StrReplaceAll(check_str, {{"$dtype", params.in_dtype},
+                                          {"$in_dtype", params.in_dtype},
+                                          {"$out_dtype", params.out_dtype}});
+      MatchOptimizedHlo(hlo_text, check_text);
     }
   }
 };
@@ -115,7 +116,14 @@ TEST_P(SameTypeTest, AddAndMultiply) {
         backend_config={"fusion_config": {kind: "__xnn_fusion"}}
     })";
 
-  RunTest(kModuleStr);
+  // Optimized HLO shouldn't have any convert.
+  constexpr absl::string_view kCheckStr = R"(
+    CHECK:      %xnn_fusion
+    CHECK-NOT:  convert
+    CHECK:      multiply
+  )";
+
+  RunTest(kModuleStr, kCheckStr);
 }
 
 TEST_P(SameTypeTest, DotAddMultiply) {
@@ -153,8 +161,16 @@ TEST_P(SameTypeTest, DotAddMultiply) {
   constexpr absl::string_view kConvertStr =
       "%convert = $dtype[4,6] convert(%dot)";
 
+  // Optimized HLO shouldn't have any convert before the dot.
+  constexpr absl::string_view kCheckStr = R"(
+    CHECK:      %xnn_fusion
+    CHECK-NOT:  convert
+    CHECK:      dot
+  )";
+
   RunTest(InsertConvertIfNecessary(kModuleStr, params.in_dtype,
-                                   params.out_dtype, kConvertStr));
+                                   params.out_dtype, kConvertStr),
+          kCheckStr);
 }
 
 TEST_P(SameTypeTest, DotRhsTransposedAndMultiply) {
@@ -189,8 +205,16 @@ TEST_P(SameTypeTest, DotRhsTransposedAndMultiply) {
   constexpr absl::string_view kConvertStr =
       "%convert = $dtype[4,6] convert(%dot)";
 
+  // Optimized HLO shouldn't have any convert before the dot.
+  constexpr absl::string_view kCheckStr = R"(
+    CHECK:      %xnn_fusion
+    CHECK-NOT:  convert
+    CHECK:      dot
+  )";
+
   RunTest(InsertConvertIfNecessary(kModuleStr, params.in_dtype,
-                                   params.out_dtype, kConvertStr));
+                                   params.out_dtype, kConvertStr),
+          kCheckStr);
 }
 
 std::vector<XnnFusionTestParams> GetSameTypeTestCases() {
@@ -237,8 +261,16 @@ TEST_P(MixedTypesTest, BatchedDot) {
   constexpr absl::string_view kConvertStr =
       "ROOT %convert = $out_dtype[2,3,4,6] convert(%dot)";
 
+  // Optimized HLO shouldn't have any convert before the dot.
+  constexpr absl::string_view kCheckStr = R"(
+    CHECK:      %xnn_fusion
+    CHECK-NOT:  convert
+    CHECK:      dot
+  )";
+
   RunTest(InsertConvertIfNecessary(kModuleStr, params.in_dtype,
-                                   params.out_dtype, kConvertStr));
+                                   params.out_dtype, kConvertStr),
+          kCheckStr);
 }
 
 std::vector<XnnFusionTestParams> GetMixedTypesTestCases() {
