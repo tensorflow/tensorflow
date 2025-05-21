@@ -87,6 +87,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -2732,9 +2733,41 @@ PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
           << ", device=" << device->DebugString()
           << ", run_id=" << run_options.run_id().ToInt();
 
+  if (VLOG_IS_ON(3)) {
+    auto executable_name =
+        executables_[executable_idx]->executable()->module().name();
+    absl::Status host_callback_status = run_options.stream()->DoHostCallback(
+        [executable_name, launch_id(run_options.run_id().ToInt()), device]() {
+          VLOG(3) << "Start device execution for " << executable_name
+                  << ", launch_id: " << launch_id
+                  << ", device: " << device->DebugString();
+        });
+    if (!host_callback_status.ok()) {
+      LOG(WARNING)
+          << "Failed to do host callback for start device execution for "
+          << executable_name << ", status = " << host_callback_status;
+    }
+  }
+
   absl::StatusOr<PjRtStreamExecutorExecutionOutput> result_buffer_or_status =
       client_->RunAsync(*executables_[executable_idx], device,
                         std::move(execution_inputs), run_options);
+
+  if (VLOG_IS_ON(3)) {
+    auto executable_name =
+        executables_[executable_idx]->executable()->module().name();
+    absl::Status host_callback_status = run_options.stream()->DoHostCallback(
+        [executable_name, launch_id(run_options.run_id().ToInt()), device]() {
+          VLOG(3) << "Finish device execution for " << executable_name
+                  << ", launch_id: " << launch_id
+                  << ", device: " << device->DebugString();
+        });
+    if (!host_callback_status.ok()) {
+      LOG(WARNING)
+          << "Failed to do host callback for start device execution for "
+          << executable_name << ", status = " << host_callback_status;
+    }
+  }
 
   VLOG(1) << "Finish calling RunAsync for "
           << executables_[executable_idx]->executable()->module().name()
