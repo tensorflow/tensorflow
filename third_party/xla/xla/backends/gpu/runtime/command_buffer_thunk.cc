@@ -162,14 +162,10 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   // sequence was never recorded into it. We initialize all command buffers
   // before execution, because command buffers when instantiated will allocate
   // memory on device and this might lead to deadlocks when we have concurrent
-  // NCCL operations in flight. If command buffer in any other state we check it
-  // is has to be updated after updated buffer allocations.
-  if ((cmd_buffer->command_buffer->state() ==
-       se::CommandBuffer::State::kCreate) &&
-      (!cmd_buffer->UpdateBufferAllocations(commands_, execute_params)
-            .empty() ||
-       commands_.force_update())) {
-    VLOG(3) << "Initialize/Update command buffer on device #"
+  // NCCL operations in flight.
+  if (cmd_buffer->command_buffer->state() ==
+      se::CommandBuffer::State::kCreate) {
+    VLOG(3) << "Initialize command buffer on device #"
             << params.executor->device_ordinal()
             << " by recoding command buffer cmd sequence"
             << "; num_commands=" << commands_.size();
@@ -192,6 +188,9 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
             << (end_micros - start_micros)
             << " μs; num_commands=" << commands_.size();
     cmd_buffer->num_executions = 0;
+
+    // Update recorded buffer allocations.
+    cmd_buffer->UpdateBufferAllocations(commands_, execute_params);
   }
 
   return absl::OkStatus();
