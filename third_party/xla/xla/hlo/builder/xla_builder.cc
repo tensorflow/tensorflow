@@ -140,7 +140,7 @@ XlaOp XlaBuilderFriend::BuildAddDependency(XlaBuilder* builder, XlaOp operand,
 
 XlaOp XlaBuilderFriend::BuildFusion(
     XlaBuilder* builder, absl::Span<const XlaOp> operands,
-    absl::string_view fusion_kind, XlaComputationId fused_computation,
+    absl::string_view fusion_kind, const XlaComputation& fused_computation,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
         output_operand_aliasing) {
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
@@ -159,30 +159,30 @@ XlaOp XlaBuilderFriend::BuildFusion(
       }
     }
     std::vector<const Shape*> operand_shape_ptrs;
-    TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
-                        builder->GetSubcomputationShape(fused_computation));
+    TF_ASSIGN_OR_RETURN(auto program_shape,
+                        fused_computation.GetProgramShape());
     *instr.mutable_shape() = program_shape.result().ToProto();
-    TF_RETURN_IF_ERROR(builder->AddCalledComputation(fused_computation, instr));
+    builder->AddCalledComputation(fused_computation, &instr);
     return builder->AddInstruction(std::move(instr), HloOpcode::kFusion,
                                    operands);
   });
 }
 
-XlaOp XlaBuilderFriend::BuildAsyncStart(XlaBuilder* builder,
-                                        absl::Span<const XlaOp> operands,
-                                        std::string execution_thread,
-                                        XlaComputationId called_computation,
-                                        const Shape& shape) {
+std::pair<XlaOp, int64_t> XlaBuilderFriend::BuildAsyncStart(
+    XlaBuilder* builder, absl::Span<const XlaOp> operands,
+    std::string execution_thread, const XlaComputation& called_computation,
+    const Shape& shape) {
+  int64_t called_computation_id;
   auto start_op = builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     HloInstructionProto instr;
     *instr.mutable_shape() = shape.ToProto();
     instr.set_async_execution_thread(execution_thread);
-    TF_RETURN_IF_ERROR(
-        builder->AddCalledComputation(called_computation, instr));
+    builder->AddCalledComputation(called_computation, &instr);
+    called_computation_id = instr.called_computation_ids()[0];
     return builder->AddInstruction(std::move(instr), HloOpcode::kAsyncStart,
                                    operands);
   });
-  return start_op;
+  return {start_op, called_computation_id};
 }
 
 XlaOp XlaBuilderFriend::BuildAsyncUpdate(XlaBuilder* builder,
@@ -229,7 +229,7 @@ XlaOp XlaBuilderFriend::BuildAllGatherDone(XlaBuilder* builder,
 }
 
 XlaOp XlaBuilderFriend::BuildAllReduceStart(
-    XlaBuilder* builder, XlaOp operand, XlaComputationId computation,
+    XlaBuilder* builder, XlaOp operand, const XlaComputation& computation,
     absl::Span<const ReplicaGroup> replica_groups,
     const std::optional<ChannelHandle>& channel_id,
     const std::optional<Shape>& layout,
@@ -432,31 +432,6 @@ HloInstructionProto* XlaBuilderFriend::GetInstructionByHandle(
   return &builder->instructions_[builder->handle_to_index_[handle]];
 }
 
-absl::Status XlaBuilderFriend::SetExecutionThread(
-    XlaBuilder* builder, XlaComputationId computation,
-    const std::string& thread_name) {
-  TF_ASSIGN_OR_RETURN(HloComputationProto * computation_proto,
-                      builder->GetSubcomputation(computation));
-  computation_proto->set_execution_thread(thread_name);
-  return absl::OkStatus();
-}
-
-absl::Status XlaBuilderFriend::SetParameterReplication(
-    XlaBuilder* builder, XlaComputationId computation,
-    const absl::flat_hash_map<int, std::vector<bool>>& replication) {
-  TF_ASSIGN_OR_RETURN(HloComputationProto * computation_proto,
-                      builder->GetSubcomputation(computation));
-  for (auto& instr : *computation_proto->mutable_instructions()) {
-    auto it = replication.find(instr.parameter_number());
-    if (it != replication.end()) {
-      instr.mutable_parameter_replication()
-          ->mutable_replicated_at_leaf_buffers()
-          ->Add(it->second.begin(), it->second.end());
-    }
-  }
-  return absl::OkStatus();
-}
-
 }  // namespace internal
 
 XlaOp operator-(XlaOp x) { return Neg(x); }
@@ -513,46 +488,6 @@ absl::StatusOr<std::vector<Shape>> XlaBuilder::GetOperandShapes(
     operand_shapes.push_back(*shape);
   }
   return operand_shapes;
-}
-
-absl::StatusOr<HloComputationProto*> XlaBuilder::GetSubcomputation(
-    XlaComputationId id) {
-  for (XlaBuilder* b = this; b != nullptr; b = b->parent_builder_) {
-    auto it = b->embedded_.find(id.handle());
-    if (it != b->embedded_.end()) {
-      return &it->second.computation;
-    }
-  }
-  return InvalidArgument("Computation %d not found in builder", id.handle());
-}
-
-absl::StatusOr<const HloComputationProto*> XlaBuilder::GetSubcomputation(
-    XlaComputationId id) const {
-  for (const XlaBuilder* b = this; b != nullptr; b = b->parent_builder_) {
-    auto it = b->embedded_.find(id.handle());
-    if (it != b->embedded_.end()) {
-      return &it->second.computation;
-    }
-  }
-  return InvalidArgument("Computation %d not found in builder", id.handle());
-}
-
-absl::StatusOr<ProgramShape> XlaBuilder::GetSubcomputationShape(
-    XlaComputationId id) const {
-  TF_RETURN_IF_ERROR(first_error_);
-  TF_ASSIGN_OR_RETURN(const HloComputationProto* computation_proto,
-                      GetSubcomputation(id));
-  return ProgramShape(computation_proto->program_shape());
-}
-
-absl::Status XlaBuilder::AddCalledComputation(XlaComputationId computation,
-                                              HloInstructionProto& instr) {
-  TF_RETURN_IF_ERROR(GetSubcomputation(computation).status());
-  calls_computations_from_parent_ =
-      calls_computations_from_parent_ ||
-      (embedded_.find(computation.handle()) == embedded_.end());
-  instr.add_called_computation_ids(computation.handle());
-  return absl::OkStatus();
 }
 
 absl::StatusOr<std::optional<OpSharding>> XlaBuilder::GetOpSharding(
@@ -813,90 +748,13 @@ absl::StatusOr<XlaComputation> XlaBuilder::Build(
   if (root.builder_ != this) {
     return InvalidArgument("Given root operation is not in this computation.");
   }
-  TF_RETURN_IF_ERROR(GetCurrentStatus());
   return Build(root.handle(), remove_dynamic_dimensions);
-}
-
-absl::StatusOr<XlaComputationId> XlaBuilder::BuildSubComputation(
-    std::optional<XlaOp> root, bool remove_dynamic_dimensions) {
-  TF_RET_CHECK(parent_builder_ != nullptr);
-  TF_RETURN_IF_ERROR(GetCurrentStatus());
-  int64_t root_id =
-      root.has_value() ? root.value().handle() : instructions_.back().id();
-  HloComputationProto proto;
-  TF_RETURN_IF_ERROR(
-      BuildComputationProto(root_id, remove_dynamic_dimensions, proto));
-  int64_t id = proto.id();
-  auto& c = parent_builder_->embedded_[id];
-  c.computation = std::move(proto);
-  c.input_output_aliases = std::move(input_output_aliases_);
-  c.buffer_donors = std::move(buffer_donors_);
-  for (auto& entry : embedded_) {
-    auto [it, inserted] = parent_builder_->embedded_.emplace(
-        entry.first, std::move(entry.second));
-    TF_RET_CHECK(inserted) << "Duplicate computation id: " << entry.first;
-  }
-  return XlaComputationId(id);
 }
 
 absl::StatusOr<XlaComputation> XlaBuilder::Build(
     int64_t root_id, bool remove_dynamic_dimensions) {
-  if (calls_computations_from_parent_) {
-    // We could implement this case by finding the set of transitive
-    // computations this computation uses, including from the parent if
-    // applicable, but it seems unlikely anyone would want to do this.
-    return Unimplemented(
-        "Build() is not supported when the builder calls "
-        "computations from its parent.");
-  }
-  HloComputationProto entry;
-  TF_RETURN_IF_ERROR(
-      BuildComputationProto(root_id, remove_dynamic_dimensions, entry));
-  XlaComputation computation(entry.id());
-  HloModuleProto* module = computation.mutable_proto();
-  module->set_name(entry.name());
-  module->set_id(entry.id());
-  module->set_entry_computation_name(entry.name());
-  module->set_entry_computation_id(entry.id());
-  *module->mutable_host_program_shape() = entry.program_shape();
-  for (auto& e : embedded_) {
-    module->add_computations()->Swap(&e.second.computation);
-  }
-  if (!input_output_aliases_.empty() || !buffer_donors_.empty()) {
-    TF_RETURN_IF_ERROR(PopulateInputOutputAliasAndBufferDonor(
-        module, ProgramShape(entry.program_shape()), input_output_aliases_,
-        buffer_donors_));
-  }
-  module->add_computations()->Swap(&entry);
-  embedded_.clear();
-  return std::move(computation);
-}
+  TF_RETURN_IF_ERROR(GetCurrentStatus());
 
-absl::StatusOr<XlaComputation> XlaBuilder::Build(XlaComputationId entry_id) {
-  const auto& computation = embedded_.at(entry_id.handle());
-  const HloComputationProto& entry = computation.computation;
-  HloModuleProto module;
-  module.set_name(entry.name());
-  module.set_id(entry.id());
-  module.set_entry_computation_name(entry.name());
-  module.set_entry_computation_id(entry.id());
-  *module.mutable_host_program_shape() = entry.program_shape();
-  if (!computation.input_output_aliases.empty() ||
-      !computation.buffer_donors.empty()) {
-    TF_RETURN_IF_ERROR(PopulateInputOutputAliasAndBufferDonor(
-        &module, ProgramShape(entry.program_shape()),
-        computation.input_output_aliases, computation.buffer_donors));
-  }
-  for (auto& e : embedded_) {
-    module.add_computations()->Swap(&e.second.computation);
-  }
-  embedded_.clear();
-  return XlaComputation(std::move(module));
-}
-
-absl::Status XlaBuilder::BuildComputationProto(int64_t root_id,
-                                               bool remove_dynamic_dimensions,
-                                               HloComputationProto& proto) {
   // TODO(b/121223198): XLA backend cannot handle dynamic dimensions yet, remove
   // all dynamic dimensions before building xla program until we have support in
   // the backend.
@@ -920,24 +778,43 @@ absl::Status XlaBuilder::BuildComputationProto(int64_t root_id,
     }
   }
 
-  SetProtoIdAndName(&proto, name_, kNameSeparator, GetNextId());
+  HloComputationProto entry;
+  SetProtoIdAndName(&entry, name_, kNameSeparator, GetNextId());
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape, GetProgramShape(root_id));
-  *proto.mutable_program_shape() = program_shape.ToProto();
-  proto.set_root_id(root_id);
+  *entry.mutable_program_shape() = program_shape.ToProto();
+  entry.set_root_id(root_id);
 
   for (auto& instruction : instructions_) {
     // Ensures that the instruction names are unique among the whole graph.
     instruction.set_name(
         GetFullName(instruction.name(), kNameSeparator, instruction.id()));
-    proto.add_instructions()->Swap(&instruction);
+    entry.add_instructions()->Swap(&instruction);
+  }
+
+  XlaComputation computation(entry.id());
+  HloModuleProto* module = computation.mutable_proto();
+  module->set_name(entry.name());
+  module->set_id(entry.id());
+  module->set_entry_computation_name(entry.name());
+  module->set_entry_computation_id(entry.id());
+  *module->mutable_host_program_shape() = entry.program_shape();
+  for (auto& e : embedded_) {
+    module->add_computations()->Swap(&e.second);
+  }
+  module->add_computations()->Swap(&entry);
+  if (!input_output_aliases_.empty() || !buffer_donors_.empty()) {
+    TF_RETURN_IF_ERROR(PopulateInputOutputAliasAndBufferDonor(
+        module, program_shape, input_output_aliases_, buffer_donors_));
   }
 
   // Clear data held by this builder.
   this->instructions_.clear();
   this->instruction_shapes_.clear();
   this->handle_to_index_.clear();
+  this->embedded_.clear();
   this->parameter_numbers_.clear();
-  return absl::OkStatus();
+
+  return computation;
 }
 
 /* static */ absl::Status XlaBuilder::PopulateInputOutputAliasAndBufferDonor(
@@ -1568,7 +1445,7 @@ XlaOp XlaBuilder::Iota(PrimitiveType type, int64_t size) {
   return Iota(ShapeUtil::MakeShape(type, {size}), /*iota_dimension=*/0);
 }
 
-XlaOp XlaBuilder::Call(XlaComputationId computation,
+XlaOp XlaBuilder::Call(const XlaComputation& computation,
                        absl::Span<const XlaOp> operands) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     HloInstructionProto instr;
@@ -1576,19 +1453,20 @@ XlaOp XlaBuilder::Call(XlaComputationId computation,
     TF_ASSIGN_OR_RETURN(const auto& operand_shapes, GetOperandShapes(operands));
     absl::c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
                       [](const Shape& shape) { return &shape; });
-    TF_ASSIGN_OR_RETURN(ProgramShape called_program_shape,
-                        GetSubcomputationShape(computation));
+    TF_ASSIGN_OR_RETURN(const ProgramShape& called_program_shape,
+                        computation.GetProgramShape());
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferCallShape(
                                          operand_shape_ptrs,
                                          /*to_apply=*/called_program_shape));
     *instr.mutable_shape() = shape.ToProto();
-    TF_RETURN_IF_ERROR(AddCalledComputation(computation, instr));
+
+    AddCalledComputation(computation, &instr);
 
     return AddInstruction(std::move(instr), HloOpcode::kCall, operands);
   });
 }
 
-XlaOp XlaBuilder::CompositeCall(XlaComputationId computation,
+XlaOp XlaBuilder::CompositeCall(const XlaComputation& computation,
                                 absl::Span<const XlaOp> operands,
                                 const std::string& name,
                                 std::optional<absl::string_view> attributes,
@@ -1599,14 +1477,14 @@ XlaOp XlaBuilder::CompositeCall(XlaComputationId computation,
     TF_ASSIGN_OR_RETURN(const auto& operand_shapes, GetOperandShapes(operands));
     absl::c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
                       [](const Shape& shape) { return &shape; });
-    TF_ASSIGN_OR_RETURN(ProgramShape called_program_shape,
-                        GetSubcomputationShape(computation));
+    TF_ASSIGN_OR_RETURN(const ProgramShape& called_program_shape,
+                        computation.GetProgramShape());
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferCallShape(
                                          operand_shape_ptrs,
                                          /*to_apply=*/called_program_shape));
     *instr.mutable_shape() = shape.ToProto();
 
-    TF_RETURN_IF_ERROR(AddCalledComputation(computation, instr));
+    AddCalledComputation(computation, &instr);
     instr.set_is_composite(true);
 
     TF_ASSIGN_OR_RETURN(
@@ -2001,22 +1879,24 @@ XlaOp XlaBuilder::Collapse(XlaOp operand,
   });
 }
 
+// Dummy pass-through computation returning it's parameter of shape `shape`.
+static absl::StatusOr<XlaComputation> PassthroughComputation(
+    const Shape& shape) {
+  XlaBuilder builder("dummy");
+  XlaOp out = Parameter(&builder, 0, shape, "p");
+  return builder.Build(out);
+}
+
 XlaOp XlaBuilder::Select(XlaOp pred, XlaOp on_true, XlaOp on_false) {
-  // Dummy pass-through computation returning it's parameter of shape `shape`.
-  auto passthrough_computation = [this](const Shape& shape) {
-    auto builder = CreateSubBuilder("dummy");
-    XlaOp out = builder->Parameter(0, shape, "p");
-    return builder->BuildSubComputation(out);
-  };
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* true_shape, GetShapePtr(on_true));
     TF_ASSIGN_OR_RETURN(const Shape* false_shape, GetShapePtr(on_false));
     TF_RET_CHECK(true_shape->IsTuple() == false_shape->IsTuple());
     if (true_shape->IsTuple()) {
-      TF_ASSIGN_OR_RETURN(XlaComputationId passthrough_true,
-                          passthrough_computation(*true_shape));
-      TF_ASSIGN_OR_RETURN(XlaComputationId passthrough_false,
-                          passthrough_computation(*false_shape));
+      TF_ASSIGN_OR_RETURN(XlaComputation passthrough_true,
+                          PassthroughComputation(*true_shape));
+      TF_ASSIGN_OR_RETURN(XlaComputation passthrough_false,
+                          PassthroughComputation(*false_shape));
       return Conditional(pred, on_true, passthrough_true, on_false,
                          passthrough_false);
     }
@@ -2849,7 +2729,7 @@ XlaOp XlaBuilder::CustomCall(
       }
     }
     return CustomCallInternal(
-        call_target_name, operands, /*computation=*/std::nullopt, shape, opaque,
+        call_target_name, operands, /*computation=*/nullptr, shape, opaque,
         operand_shapes_with_layout, has_side_effect, output_operand_aliasing,
         literal, window, dnums, schedule, api_version);
   });
@@ -2857,7 +2737,7 @@ XlaOp XlaBuilder::CustomCall(
 
 absl::StatusOr<XlaOp> XlaBuilder::CustomCallInternal(
     const std::string& call_target_name, absl::Span<const XlaOp> operands,
-    std::optional<XlaComputationId> computation, const Shape& shape,
+    const XlaComputation* computation, const Shape& shape,
     const std::string& opaque,
     std::optional<absl::Span<const Shape>> operand_shapes_with_layout,
     bool has_side_effect,
@@ -2892,8 +2772,8 @@ absl::StatusOr<XlaOp> XlaBuilder::CustomCallInternal(
     *instr.mutable_literal() = literal->ToProto();
   }
   instr.set_custom_call_has_side_effect(has_side_effect);
-  if (computation) {
-    TF_RETURN_IF_ERROR(AddCalledComputation(computation.value(), instr));
+  if (computation != nullptr && !computation->IsNull()) {
+    AddCalledComputation(*computation, &instr);
   }
   for (const auto& pair : output_operand_aliasing) {
     auto aliasing = instr.add_output_operand_aliasing();
@@ -2918,7 +2798,8 @@ absl::StatusOr<XlaOp> XlaBuilder::CustomCallInternal(
 
 XlaOp XlaBuilder::CustomCall(
     const std::string& call_target_name, absl::Span<const XlaOp> operands,
-    XlaComputationId computation, const Shape& shape, const std::string& opaque,
+    const XlaComputation& computation, const Shape& shape,
+    const std::string& opaque,
     std::optional<absl::Span<const Shape>> operand_shapes_with_layout,
     bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
@@ -2956,7 +2837,7 @@ XlaOp XlaBuilder::CustomCall(
       }
     }
     return CustomCallInternal(
-        call_target_name, operands, computation, shape, opaque,
+        call_target_name, operands, &computation, shape, opaque,
         operand_shapes_with_layout, has_side_effect, output_operand_aliasing,
         literal, /*window=*/{}, /*dnums=*/{}, schedule, api_version);
   });
@@ -3013,7 +2894,7 @@ absl::StatusOr<XlaOp> XlaBuilder::RevInternal(
 }
 
 XlaOp XlaBuilder::Sort(absl::Span<const XlaOp> operands,
-                       XlaComputationId comparator, int64_t dimension,
+                       const XlaComputation& comparator, int64_t dimension,
                        bool is_stable) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     std::vector<const Shape*> operand_shape_ptrs;
@@ -3029,7 +2910,7 @@ XlaOp XlaBuilder::Sort(absl::Span<const XlaOp> operands,
 
 absl::StatusOr<XlaOp> XlaBuilder::SortInternal(const Shape& shape,
                                                absl::Span<const XlaOp> operands,
-                                               XlaComputationId comparator,
+                                               const XlaComputation& comparator,
                                                int64_t dimension,
                                                bool is_stable) {
   HloInstructionProto instr;
@@ -3040,7 +2921,7 @@ absl::StatusOr<XlaOp> XlaBuilder::SortInternal(const Shape& shape,
     dimension = keys_shape->dimensions().size() - 1;
   }
   instr.add_dimensions(dimension);
-  TF_RETURN_IF_ERROR(AddCalledComputation(comparator, instr));
+  AddCalledComputation(comparator, &instr);
   return AddInstruction(std::move(instr), HloOpcode::kSort, operands);
 }
 
@@ -3114,7 +2995,7 @@ XlaOp XlaBuilder::Clamp(XlaOp min, XlaOp operand, XlaOp max) {
 }
 
 XlaOp XlaBuilder::Map(absl::Span<const XlaOp> operands,
-                      XlaComputationId computation,
+                      const XlaComputation& computation,
                       absl::Span<const int64_t> dimensions,
                       absl::Span<const XlaOp> static_operands) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
@@ -3127,8 +3008,8 @@ XlaOp XlaBuilder::Map(absl::Span<const XlaOp> operands,
     TF_ASSIGN_OR_RETURN(const auto& operand_shapes, GetOperandShapes(operands));
     absl::c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
                       [](const Shape& shape) { return &shape; });
-    TF_ASSIGN_OR_RETURN(ProgramShape called_program_shape,
-                        GetSubcomputationShape(computation));
+    TF_ASSIGN_OR_RETURN(const ProgramShape& called_program_shape,
+                        computation.GetProgramShape());
     TF_ASSIGN_OR_RETURN(
         Shape shape, ShapeInference::InferMapShape(
                          operand_shape_ptrs, called_program_shape, dimensions));
@@ -3136,7 +3017,7 @@ XlaOp XlaBuilder::Map(absl::Span<const XlaOp> operands,
 
     TF_ASSIGN_OR_RETURN(Shape output_shape, Shape::FromProto(instr.shape()));
     const int64_t output_rank = output_shape.dimensions().size();
-    TF_RETURN_IF_ERROR(AddCalledComputation(computation, instr));
+    AddCalledComputation(computation, &instr);
     std::vector<XlaOp> new_operands(operands.begin(), operands.end());
     for (XlaOp& new_operand : new_operands) {
       TF_ASSIGN_OR_RETURN(const Shape* shape, GetShapePtr(new_operand));
@@ -3231,14 +3112,13 @@ absl::StatusOr<XlaOp> XlaBuilder::RngBitGeneratorInternal(
                         {initial_state});
 }
 
-XlaOp XlaBuilder::While(XlaComputationId condition, XlaComputationId body,
-                        XlaOp init) {
+XlaOp XlaBuilder::While(const XlaComputation& condition,
+                        const XlaComputation& body, XlaOp init) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     // Infer shape.
-    TF_ASSIGN_OR_RETURN(ProgramShape body_program_shape,
-                        GetSubcomputationShape(body));
-    TF_ASSIGN_OR_RETURN(ProgramShape condition_program_shape,
-                        GetSubcomputationShape(condition));
+    TF_ASSIGN_OR_RETURN(const auto& body_program_shape, body.GetProgramShape());
+    TF_ASSIGN_OR_RETURN(const auto& condition_program_shape,
+                        condition.GetProgramShape());
     TF_ASSIGN_OR_RETURN(const Shape* init_shape, GetShapePtr(init));
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferWhileShape(
                                          condition_program_shape,
@@ -3248,14 +3128,14 @@ XlaOp XlaBuilder::While(XlaComputationId condition, XlaComputationId body,
 }
 
 absl::StatusOr<XlaOp> XlaBuilder::WhileInternal(const Shape& shape,
-                                                XlaComputationId condition,
-                                                XlaComputationId body,
+                                                const XlaComputation& condition,
+                                                const XlaComputation& body,
                                                 XlaOp init) {
   HloInstructionProto instr;
   *instr.mutable_shape() = shape.ToProto();
   // Body comes before condition computation in the vector.
-  TF_RETURN_IF_ERROR(AddCalledComputation(body, instr));
-  TF_RETURN_IF_ERROR(AddCalledComputation(condition, instr));
+  AddCalledComputation(body, &instr);
+  AddCalledComputation(condition, &instr);
   return AddInstruction(std::move(instr), HloOpcode::kWhile, {init});
 }
 
@@ -3292,7 +3172,7 @@ absl::StatusOr<XlaOp> XlaBuilder::GatherInternal(
 }
 
 XlaOp XlaBuilder::Scatter(XlaOp input, XlaOp scatter_indices, XlaOp updates,
-                          XlaComputationId update_computation,
+                          const XlaComputation& update_computation,
                           const ScatterDimensionNumbers& dimension_numbers,
                           bool indices_are_sorted, bool unique_indices) {
   return Scatter(absl::MakeConstSpan(&input, 1), scatter_indices,
@@ -3302,7 +3182,7 @@ XlaOp XlaBuilder::Scatter(XlaOp input, XlaOp scatter_indices, XlaOp updates,
 
 XlaOp XlaBuilder::Scatter(absl::Span<const XlaOp> inputs, XlaOp scatter_indices,
                           absl::Span<const XlaOp> updates,
-                          XlaComputationId update_computation,
+                          const XlaComputation& update_computation,
                           const ScatterDimensionNumbers& dimension_numbers,
                           bool indices_are_sorted, bool unique_indices) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
@@ -3327,8 +3207,8 @@ XlaOp XlaBuilder::Scatter(absl::Span<const XlaOp> inputs, XlaOp scatter_indices,
       TF_ASSIGN_OR_RETURN(const Shape* update_shape, GetShapePtr(update));
       operand_shapes.push_back(update_shape);
     }
-    TF_ASSIGN_OR_RETURN(ProgramShape to_apply_shape,
-                        GetSubcomputationShape(update_computation));
+    TF_ASSIGN_OR_RETURN(const ProgramShape& to_apply_shape,
+                        update_computation.GetProgramShape());
     TF_ASSIGN_OR_RETURN(Shape shape,
                         ShapeInference::InferScatterShape(
                             operand_shapes, to_apply_shape, dimension_numbers));
@@ -3340,7 +3220,7 @@ XlaOp XlaBuilder::Scatter(absl::Span<const XlaOp> inputs, XlaOp scatter_indices,
 
 absl::StatusOr<XlaOp> XlaBuilder::ScatterInternal(
     const Shape& shape, absl::Span<const XlaOp> inputs, XlaOp scatter_indices,
-    absl::Span<const XlaOp> updates, XlaComputationId update_computation,
+    absl::Span<const XlaOp> updates, const XlaComputation& update_computation,
     const ScatterDimensionNumbers& dimension_numbers, bool indices_are_sorted,
     bool unique_indices) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
@@ -3350,7 +3230,7 @@ absl::StatusOr<XlaOp> XlaBuilder::ScatterInternal(
     *instr.mutable_shape() = shape.ToProto();
     *instr.mutable_scatter_dimension_numbers() = dimension_numbers;
 
-    TF_RETURN_IF_ERROR(AddCalledComputation(update_computation, instr));
+    AddCalledComputation(update_computation, &instr);
     absl::InlinedVector<XlaOp, 3> operands;
     operands.reserve(inputs.size() + 1 + updates.size());
     absl::c_copy(inputs, std::back_inserter(operands));
@@ -3361,9 +3241,9 @@ absl::StatusOr<XlaOp> XlaBuilder::ScatterInternal(
 }
 
 XlaOp XlaBuilder::Conditional(XlaOp predicate, XlaOp true_operand,
-                              XlaComputationId true_computation,
+                              const XlaComputation& true_computation,
                               XlaOp false_operand,
-                              XlaComputationId false_computation) {
+                              const XlaComputation& false_computation) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* shape, GetShapePtr(predicate));
 
@@ -3375,13 +3255,14 @@ XlaOp XlaBuilder::Conditional(XlaOp predicate, XlaOp true_operand,
     }
     // The index of true_computation must be 0 and that of false computation
     // must be 1.
-    return ConditionalImpl(predicate, {true_computation, false_computation},
+    return ConditionalImpl(predicate, {&true_computation, &false_computation},
                            {true_operand, false_operand});
   });
 }
 
 XlaOp XlaBuilder::Conditional(
-    XlaOp branch_index, absl::Span<XlaComputationId const> branch_computations,
+    XlaOp branch_index,
+    absl::Span<const XlaComputation* const> branch_computations,
     absl::Span<const XlaOp> branch_operands) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* shape, GetShapePtr(branch_index));
@@ -3395,7 +3276,8 @@ XlaOp XlaBuilder::Conditional(
   });
 }
 
-XlaOp XlaBuilder::AllReduceImpl(XlaOp operand, XlaComputationId computation,
+XlaOp XlaBuilder::AllReduceImpl(XlaOp operand,
+                                const XlaComputation& computation,
                                 absl::Span<const ReplicaGroup> replica_groups,
                                 const std::optional<ChannelHandle>& channel_id,
                                 const std::optional<Shape>& layout,
@@ -3463,7 +3345,7 @@ XlaOp XlaBuilder::AllReduceImpl(XlaOp operand, XlaComputationId computation,
       instr.set_use_global_device_ids(*use_global_device_ids);
     }
 
-    TF_RETURN_IF_ERROR(AddCalledComputation(computation, instr));
+    AddCalledComputation(computation, &instr);
 
     TF_ASSIGN_OR_RETURN(auto all_reduce,
                         AddInstruction(std::move(instr),
@@ -3537,7 +3419,8 @@ XlaOp XlaBuilder::AllGatherImpl(const XlaOp operand,
 }
 
 XlaOp XlaBuilder::ConditionalImpl(
-    XlaOp branch_index, absl::Span<XlaComputationId const> branch_computations,
+    XlaOp branch_index,
+    absl::Span<const XlaComputation* const> branch_computations,
     absl::Span<const XlaOp> branch_operands) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     HloInstructionProto instr;
@@ -3551,7 +3434,7 @@ XlaOp XlaBuilder::ConditionalImpl(
       TF_ASSIGN_OR_RETURN(branch_operand_shapes[j],
                           GetShape(branch_operands[j]));
       TF_ASSIGN_OR_RETURN(branch_computation_shapes[j],
-                          GetSubcomputationShape(branch_computations[j]));
+                          branch_computations[j]->GetProgramShape());
     }
     TF_ASSIGN_OR_RETURN(const Shape shape,
                         ShapeInference::InferConditionalShape(
@@ -3559,8 +3442,8 @@ XlaOp XlaBuilder::ConditionalImpl(
                             branch_operand_shapes));
     *instr.mutable_shape() = shape.ToProto();
 
-    for (XlaComputationId branch_computation : branch_computations) {
-      TF_RETURN_IF_ERROR(AddCalledComputation(branch_computation, instr));
+    for (const XlaComputation* branch_computation : branch_computations) {
+      AddCalledComputation(*branch_computation, &instr);
     }
 
     std::vector<XlaOp> operands(1, branch_index);
@@ -3582,13 +3465,21 @@ absl::Status XlaBuilder::CheckOpBuilder(XlaOp op) const {
   return absl::OkStatus();
 }
 
+XlaOp XlaBuilder::Reduce(XlaOp operand, XlaOp init_value,
+                         const XlaComputation& computation,
+                         absl::Span<const int64_t> dimensions_to_reduce) {
+  return Reduce(absl::Span<const XlaOp>({operand}),
+                absl::Span<const XlaOp>({init_value}), computation,
+                dimensions_to_reduce);
+}
+
 XlaOp XlaBuilder::Reduce(absl::Span<const XlaOp> operands,
                          absl::Span<const XlaOp> init_values,
-                         XlaComputationId computation,
+                         const XlaComputation& computation,
                          absl::Span<const int64_t> dimensions_to_reduce) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(ProgramShape called_program_shape,
-                        GetSubcomputationShape(computation));
+    TF_ASSIGN_OR_RETURN(const ProgramShape& called_program_shape,
+                        computation.GetProgramShape());
 
     std::vector<XlaOp> all_operands;
     all_operands.insert(all_operands.end(), operands.begin(), operands.end());
@@ -3612,7 +3503,7 @@ XlaOp XlaBuilder::Reduce(absl::Span<const XlaOp> operands,
 
 absl::StatusOr<XlaOp> XlaBuilder::ReduceInternal(
     const Shape& shape, absl::Span<const XlaOp> all_operands,
-    XlaComputationId computation,
+    const XlaComputation& computation,
     absl::Span<const int64_t> dimensions_to_reduce) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     HloInstructionProto instr;
@@ -3622,25 +3513,23 @@ absl::StatusOr<XlaOp> XlaBuilder::ReduceInternal(
       instr.add_dimensions(dim);
     }
 
-    TF_RETURN_IF_ERROR(AddCalledComputation(computation, instr));
+    AddCalledComputation(computation, &instr);
     return AddInstruction(std::move(instr), HloOpcode::kReduce, all_operands);
   });
 }
 
 XlaOp XlaBuilder::ReduceAll(XlaOp operand, XlaOp init_value,
-                            XlaComputationId computation) {
+                            const XlaComputation& computation) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     std::vector<int64_t> all_dimnos(operand_shape->dimensions().size());
     std::iota(all_dimnos.begin(), all_dimnos.end(), 0);
-    return Reduce(absl::Span<XlaOp const>({operand}),
-                  absl::Span<XlaOp const>({init_value}), computation,
-                  all_dimnos);
+    return Reduce(operand, init_value, computation, all_dimnos);
   });
 }
 
 XlaOp XlaBuilder::ReduceWindow(XlaOp operand, XlaOp init_value,
-                               XlaComputationId computation,
+                               const XlaComputation& computation,
                                absl::Span<const int64_t> window_dimensions,
                                absl::Span<const int64_t> window_strides,
                                Padding padding) {
@@ -3651,7 +3540,7 @@ XlaOp XlaBuilder::ReduceWindow(XlaOp operand, XlaOp init_value,
 
 XlaOp XlaBuilder::ReduceWindow(absl::Span<const XlaOp> operands,
                                absl::Span<const XlaOp> init_values,
-                               XlaComputationId computation,
+                               const XlaComputation& computation,
                                absl::Span<const int64_t> window_dimensions,
                                absl::Span<const int64_t> window_strides,
                                Padding padding) {
@@ -3702,7 +3591,8 @@ XlaOp XlaBuilder::ReduceWindow(absl::Span<const XlaOp> operands,
 
 XlaOp XlaBuilder::ReduceWindowWithGeneralPadding(
     absl::Span<const XlaOp> operands, absl::Span<const XlaOp> init_values,
-    XlaComputationId computation, absl::Span<const int64_t> window_dimensions,
+    const XlaComputation& computation,
+    absl::Span<const int64_t> window_dimensions,
     absl::Span<const int64_t> window_strides,
     absl::Span<const int64_t> base_dilations,
     absl::Span<const int64_t> window_dilations,
@@ -3717,8 +3607,8 @@ XlaOp XlaBuilder::ReduceWindowWithGeneralPadding(
       TF_ASSIGN_OR_RETURN(const Shape* init_shape, GetShapePtr(init_value));
       init_shapes.push_back(init_shape);
 
-      TF_ASSIGN_OR_RETURN(ProgramShape to_apply_shape,
-                          GetSubcomputationShape(computation));
+      TF_ASSIGN_OR_RETURN(const ProgramShape& to_apply_shape,
+                          computation.GetProgramShape());
       TF_ASSIGN_OR_RETURN(auto window,
                           ShapeInference::InferWindowFromDimensions(
                               window_dimensions, window_strides, padding,
@@ -3746,7 +3636,8 @@ XlaOp XlaBuilder::ReduceWindowWithGeneralPadding(
 
 absl::StatusOr<HloInstructionProto> XlaBuilder::ReduceWindowInternal(
     absl::Span<const XlaOp> operands, absl::Span<const XlaOp> init_values,
-    XlaComputationId computation, absl::Span<const int64_t> window_dimensions,
+    const XlaComputation& computation,
+    absl::Span<const int64_t> window_dimensions,
     absl::Span<const int64_t> window_strides,
     absl::Span<const int64_t> base_dilations,
     absl::Span<const int64_t> window_dilations,
@@ -3760,8 +3651,8 @@ absl::StatusOr<HloInstructionProto> XlaBuilder::ReduceWindowInternal(
     TF_ASSIGN_OR_RETURN(const Shape* init_shape, GetShapePtr(init_value));
     init_shapes.push_back(init_shape);
   }
-  TF_ASSIGN_OR_RETURN(ProgramShape to_apply_shape,
-                      GetSubcomputationShape(computation));
+  TF_ASSIGN_OR_RETURN(const ProgramShape& to_apply_shape,
+                      computation.GetProgramShape());
   TF_ASSIGN_OR_RETURN(auto window,
                       ShapeInference::InferWindowFromDimensions(
                           window_dimensions, window_strides, padding,
@@ -3774,17 +3665,18 @@ absl::StatusOr<HloInstructionProto> XlaBuilder::ReduceWindowInternal(
   HloInstructionProto instr;
   *instr.mutable_shape() = shape.ToProto();
   *instr.mutable_window() = std::move(window);
-  TF_RETURN_IF_ERROR(AddCalledComputation(computation, instr));
+  AddCalledComputation(computation, &instr);
   return instr;
 }
 
 absl::StatusOr<XlaOp> XlaBuilder::ReduceWindowInternal(
     const Shape& shape, XlaOp operand, XlaOp init_value,
-    XlaComputationId computation, Window window) {
+    const XlaComputation& computation, Window window) {
   HloInstructionProto instr;
   *instr.mutable_shape() = shape.ToProto();
   *instr.mutable_window() = std::move(window);
-  TF_RETURN_IF_ERROR(AddCalledComputation(computation, instr));
+
+  AddCalledComputation(computation, &instr);
   return AddInstruction(std::move(instr), HloOpcode::kReduceWindow,
                         {operand, init_value});
 }
@@ -3897,13 +3789,13 @@ XlaOp XlaBuilder::CrossReplicaSum(
     } else {
       Add(x, y);
     }
-    TF_ASSIGN_OR_RETURN(auto computation, b->BuildSubComputation());
+    TF_ASSIGN_OR_RETURN(auto computation, b->Build());
     return AllReduce(operand, computation, replica_groups,
                      /*channel_id=*/std::nullopt);
   });
 }
 
-XlaOp XlaBuilder::AllReduce(XlaOp operand, XlaComputationId computation,
+XlaOp XlaBuilder::AllReduce(XlaOp operand, const XlaComputation& computation,
                             absl::Span<const ReplicaGroup> replica_groups,
                             const std::optional<ChannelHandle>& channel_id,
                             const std::optional<Shape>& shape_with_layout,
@@ -3914,7 +3806,7 @@ XlaOp XlaBuilder::AllReduce(XlaOp operand, XlaComputationId computation,
 }
 
 XlaOp XlaBuilder::ReduceScatter(
-    XlaOp operand, XlaComputationId computation, int64_t scatter_dimension,
+    XlaOp operand, const XlaComputation& computation, int64_t scatter_dimension,
     int64_t shard_count, absl::Span<const ReplicaGroup> replica_groups,
     const std::optional<ChannelHandle>& channel_id,
     const std::optional<Layout>& layout,
@@ -3952,7 +3844,7 @@ XlaOp XlaBuilder::ReduceScatter(
     }
     *instr.mutable_shape() = inferred_shape.ToProto();
 
-    TF_RETURN_IF_ERROR(AddCalledComputation(computation, instr));
+    AddCalledComputation(computation, &instr);
 
     instr.add_dimensions(scatter_dimension);
     for (const ReplicaGroup& group : replica_groups) {
@@ -4318,11 +4210,12 @@ XlaOp XlaBuilder::ReplicaId() {
   });
 }
 
-XlaOp XlaBuilder::SelectAndScatter(XlaOp operand, XlaComputationId select,
+XlaOp XlaBuilder::SelectAndScatter(XlaOp operand, const XlaComputation& select,
                                    absl::Span<const int64_t> window_dimensions,
                                    absl::Span<const int64_t> window_strides,
                                    Padding padding, XlaOp source,
-                                   XlaOp init_value, XlaComputationId scatter) {
+                                   XlaOp init_value,
+                                   const XlaComputation& scatter) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
 
@@ -4363,20 +4256,20 @@ XlaOp XlaBuilder::SelectAndScatter(XlaOp operand, XlaComputationId select,
 }
 
 absl::StatusOr<HloInstructionProto> XlaBuilder::SelectAndScatterInternal(
-    XlaOp operand, XlaComputationId select,
+    XlaOp operand, const XlaComputation& select,
     absl::Span<const int64_t> window_dimensions,
     absl::Span<const int64_t> window_strides,
     absl::Span<const std::pair<int64_t, int64_t>> padding, XlaOp source,
-    XlaOp init_value, XlaComputationId scatter) {
+    XlaOp init_value, const XlaComputation& scatter) {
   HloInstructionProto instr;
 
   TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
   TF_ASSIGN_OR_RETURN(const Shape* source_shape, GetShapePtr(source));
   TF_ASSIGN_OR_RETURN(const Shape* init_shape, GetShapePtr(init_value));
-  TF_ASSIGN_OR_RETURN(ProgramShape select_shape,
-                      GetSubcomputationShape(select));
-  TF_ASSIGN_OR_RETURN(ProgramShape scatter_shape,
-                      GetSubcomputationShape(scatter));
+  TF_ASSIGN_OR_RETURN(const ProgramShape& select_shape,
+                      select.GetProgramShape());
+  TF_ASSIGN_OR_RETURN(const ProgramShape& scatter_shape,
+                      scatter.GetProgramShape());
   TF_ASSIGN_OR_RETURN(*instr.mutable_window(),
                       ShapeInference::InferWindowFromDimensions(
                           window_dimensions, window_strides, padding,
@@ -4387,17 +4280,17 @@ absl::StatusOr<HloInstructionProto> XlaBuilder::SelectAndScatterInternal(
                           *source_shape, *init_shape, scatter_shape));
   *instr.mutable_shape() = shape.ToProto();
 
-  TF_RETURN_IF_ERROR(AddCalledComputation(select, instr));
-  TF_RETURN_IF_ERROR(AddCalledComputation(scatter, instr));
+  AddCalledComputation(select, &instr);
+  AddCalledComputation(scatter, &instr);
   return instr;
 }
 
 XlaOp XlaBuilder::SelectAndScatterWithGeneralPadding(
-    XlaOp operand, XlaComputationId select,
+    XlaOp operand, const XlaComputation& select,
     absl::Span<const int64_t> window_dimensions,
     absl::Span<const int64_t> window_strides,
     absl::Span<const std::pair<int64_t, int64_t>> padding, XlaOp source,
-    XlaOp init_value, XlaComputationId scatter) {
+    XlaOp init_value, const XlaComputation& scatter) {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(HloInstructionProto instr,
                         SelectAndScatterInternal(
@@ -4846,8 +4739,8 @@ absl::StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
   module->set_entry_computation_id(entry.id());
   *module->mutable_host_program_shape() = *program_shape;
   for (auto& e : embedded_) {
-    if (related_calls.find(e.second.computation.id()) != related_calls.end()) {
-      *module->add_computations() = e.second.computation;
+    if (related_calls.find(e.second.id()) != related_calls.end()) {
+      *module->add_computations() = e.second;
     }
   }
   *module->add_computations() = std::move(entry);
@@ -4994,11 +4887,8 @@ absl::StatusOr<XlaOp> XlaBuilder::AddOpWithShape(
   return AddInstruction(std::move(instr), opcode, operands);
 }
 
-XlaComputationId XlaBuilder::AddSubComputation(
-    const XlaComputation& computation) {
-  if (!GetCurrentStatus().ok()) {
-    return XlaComputationId();
-  }
+void XlaBuilder::AddCalledComputation(const XlaComputation& computation,
+                                      HloInstructionProto* instr) {
   absl::flat_hash_map<int64_t, int64_t> remapped_ids;
   std::vector<HloComputationProto> imported_computations;
   imported_computations.reserve(computation.proto().computations_size());
@@ -5024,6 +4914,8 @@ XlaComputationId XlaBuilder::AddSubComputation(
   }
   // Once we have imported all the computations, and captured all the ID
   // mappings, we go back and fixup the IDs in the imported computations.
+  instr->add_called_computation_ids(
+      remapped_ids.at(computation.proto().entry_computation_id()));
   for (auto& imported_computation : imported_computations) {
     for (auto& instruction : *imported_computation.mutable_instructions()) {
       for (auto& operand_id : *instruction.mutable_operand_ids()) {
@@ -5047,11 +4939,8 @@ XlaComputationId XlaBuilder::AddSubComputation(
       handle_to_imported_index_.insert(
           {imported_computation.instructions(i).id(), imported_instruction});
     }
-    embedded_.emplace(computation_id,
-                      Subcomputation{std::move(imported_computation), {}, {}});
+    embedded_.insert({computation_id, std::move(imported_computation)});
   }
-  return XlaComputationId(
-      remapped_ids.at(computation.proto().entry_computation_id()));
 }
 
 absl::StatusOr<const HloInstructionProto*> XlaBuilder::LookUpInstruction(
@@ -5496,17 +5385,12 @@ void Outfeed(const XlaOp operand, const Shape& shape_with_layout,
   return operand.builder()->Outfeed(operand, shape_with_layout, outfeed_config);
 }
 
-XlaOp Call(XlaBuilder* builder, XlaComputationId computation,
+XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
            absl::Span<const XlaOp> operands) {
   return builder->Call(computation, operands);
 }
 
-XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
-           absl::Span<const XlaOp> operands) {
-  return Call(builder, builder->AddSubComputation(computation), operands);
-}
-
-XlaOp CompositeCall(XlaBuilder* builder, XlaComputationId computation,
+XlaOp CompositeCall(XlaBuilder* builder, const XlaComputation& computation,
                     absl::Span<const XlaOp> operands, const std::string& name,
                     std::optional<absl::string_view> attributes,
                     std::optional<int64_t> version) {
@@ -5514,13 +5398,6 @@ XlaOp CompositeCall(XlaBuilder* builder, XlaComputationId computation,
                                 version);
 }
 
-XlaOp CompositeCall(XlaBuilder* builder, const XlaComputation& computation,
-                    absl::Span<const XlaOp> operands, const std::string& name,
-                    std::optional<absl::string_view> attributes,
-                    std::optional<int64_t> version) {
-  return CompositeCall(builder, builder->AddSubComputation(computation),
-                       operands, name, attributes, version);
-}
 XlaOp CustomCall(
     XlaBuilder* builder, const std::string& call_target_name,
     absl::Span<const XlaOp> operands, const Shape& shape,
@@ -5539,20 +5416,6 @@ XlaOp CustomCall(
 XlaOp CustomCallWithComputation(
     XlaBuilder* builder, const std::string& call_target_name,
     absl::Span<const XlaOp> operands, const XlaComputation& computation,
-    const Shape& shape, const std::string& opaque, bool has_side_effect,
-    absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
-        output_operand_aliasing,
-    const Literal* literal, CustomCallSchedule schedule,
-    CustomCallApiVersion api_version) {
-  return CustomCallWithComputation(
-      builder, call_target_name, operands,
-      builder->AddSubComputation(computation), shape, opaque, has_side_effect,
-      output_operand_aliasing, literal, schedule, api_version);
-}
-
-XlaOp CustomCallWithComputation(
-    XlaBuilder* builder, const std::string& call_target_name,
-    absl::Span<const XlaOp> operands, XlaComputationId computation,
     const Shape& shape, const std::string& opaque, bool has_side_effect,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
         output_operand_aliasing,
@@ -5701,42 +5564,32 @@ XlaOp ShiftRightLogical(const XlaOp lhs, const XlaOp rhs,
 XlaOp Reduce(const XlaOp operand, const XlaOp init_value,
              const XlaComputation& computation,
              absl::Span<const int64_t> dimensions_to_reduce) {
-  return Reduce(operand.builder(), absl::Span<const XlaOp>({operand}),
-                absl::Span<const XlaOp>({init_value}),
-                operand.builder()->AddSubComputation(computation),
-                dimensions_to_reduce);
+  return operand.builder()->Reduce(operand, init_value, computation,
+                                   dimensions_to_reduce);
 }
 
 // Reduces several arrays simultaneously among the provided dimensions, given
 // "computation" as a reduction operator.
 XlaOp Reduce(XlaBuilder* builder, absl::Span<const XlaOp> operands,
-             absl::Span<const XlaOp> init_values, XlaComputationId computation,
+             absl::Span<const XlaOp> init_values,
+             const XlaComputation& computation,
              absl::Span<const int64_t> dimensions_to_reduce) {
   return builder->Reduce(operands, init_values, computation,
                          dimensions_to_reduce);
 }
 
-XlaOp Reduce(XlaBuilder* builder, absl::Span<const XlaOp> operands,
-             absl::Span<const XlaOp> init_values,
-             const XlaComputation& computation,
-             absl::Span<const int64_t> dimensions_to_reduce) {
-  return Reduce(builder, operands, init_values,
-                builder->AddSubComputation(computation), dimensions_to_reduce);
-}
-
 XlaOp ReduceAll(const XlaOp operand, const XlaOp init_value,
                 const XlaComputation& computation) {
-  return operand.builder()->ReduceAll(
-      operand, init_value, operand.builder()->AddSubComputation(computation));
+  return operand.builder()->ReduceAll(operand, init_value, computation);
 }
 
 XlaOp ReduceWindow(const XlaOp operand, const XlaOp init_value,
                    const XlaComputation& computation,
                    absl::Span<const int64_t> window_dimensions,
                    absl::Span<const int64_t> window_strides, Padding padding) {
-  return operand.builder()->ReduceWindow(
-      operand, init_value, operand.builder()->AddSubComputation(computation),
-      window_dimensions, window_strides, padding);
+  return operand.builder()->ReduceWindow(operand, init_value, computation,
+                                         window_dimensions, window_strides,
+                                         padding);
 }
 
 XlaOp ReduceWindow(absl::Span<const XlaOp> operands,
@@ -5745,10 +5598,9 @@ XlaOp ReduceWindow(absl::Span<const XlaOp> operands,
                    absl::Span<const int64_t> window_dimensions,
                    absl::Span<const int64_t> window_strides, Padding padding) {
   CHECK(!operands.empty());
-  return operands[0].builder()->ReduceWindow(
-      operands, init_values,
-      operands[0].builder()->AddSubComputation(computation), window_dimensions,
-      window_strides, padding);
+  return operands[0].builder()->ReduceWindow(operands, init_values, computation,
+                                             window_dimensions, window_strides,
+                                             padding);
 }
 
 XlaOp ReduceWindowWithGeneralPadding(
@@ -5760,22 +5612,9 @@ XlaOp ReduceWindowWithGeneralPadding(
     absl::Span<const int64_t> window_dilations,
     absl::Span<const std::pair<int64_t, int64_t>> padding) {
   return operand.builder()->ReduceWindowWithGeneralPadding(
-      absl::MakeSpan(&operand, 1), absl::MakeSpan(&init_value, 1),
-      operand.builder()->AddSubComputation(computation), window_dimensions,
-      window_strides, base_dilations, window_dilations, padding);
-}
-
-XlaOp ReduceWindowWithGeneralPadding(
-    absl::Span<const XlaOp> operands, absl::Span<const XlaOp> init_values,
-    XlaComputationId computation, absl::Span<const int64_t> window_dimensions,
-    absl::Span<const int64_t> window_strides,
-    absl::Span<const int64_t> base_dilations,
-    absl::Span<const int64_t> window_dilations,
-    absl::Span<const std::pair<int64_t, int64_t>> padding) {
-  CHECK(!operands.empty());
-  return operands[0].builder()->ReduceWindowWithGeneralPadding(
-      operands, init_values, computation, window_dimensions, window_strides,
-      base_dilations, window_dilations, padding);
+      absl::MakeSpan(&operand, 1), absl::MakeSpan(&init_value, 1), computation,
+      window_dimensions, window_strides, base_dilations, window_dilations,
+      padding);
 }
 
 XlaOp ReduceWindowWithGeneralPadding(
@@ -5786,10 +5625,10 @@ XlaOp ReduceWindowWithGeneralPadding(
     absl::Span<const int64_t> base_dilations,
     absl::Span<const int64_t> window_dilations,
     absl::Span<const std::pair<int64_t, int64_t>> padding) {
-  return ReduceWindowWithGeneralPadding(
-      operands, init_values,
-      operands[0].builder()->AddSubComputation(computation), window_dimensions,
-      window_strides, base_dilations, window_dilations, padding);
+  CHECK(!operands.empty());
+  return operands[0].builder()->ReduceWindowWithGeneralPadding(
+      operands, init_values, computation, window_dimensions, window_strides,
+      base_dilations, window_dilations, padding);
 }
 
 XlaOp AllGather(const XlaOp operand, int64_t all_gather_dimension,
@@ -5820,7 +5659,7 @@ XlaOp CrossReplicaSum(const XlaOp operand,
   return operand.builder()->CrossReplicaSum(operand, replica_groups);
 }
 
-XlaOp AllReduce(const XlaOp operand, XlaComputationId computation,
+XlaOp AllReduce(const XlaOp operand, const XlaComputation& computation,
                 absl::Span<const ReplicaGroup> replica_groups,
                 const std::optional<ChannelHandle>& channel_id,
                 const std::optional<Shape>& shape_with_layout,
@@ -5830,29 +5669,8 @@ XlaOp AllReduce(const XlaOp operand, XlaComputationId computation,
                                       use_global_device_ids);
 }
 
-XlaOp AllReduce(const XlaOp operand, const XlaComputation& computation,
-                absl::Span<const ReplicaGroup> replica_groups,
-                const std::optional<ChannelHandle>& channel_id,
-                const std::optional<Shape>& shape_with_layout,
-                const std::optional<bool> use_global_device_ids) {
-  return AllReduce(operand, operand.builder()->AddSubComputation(computation),
-                   replica_groups, channel_id, shape_with_layout,
-                   use_global_device_ids);
-}
-
 XlaOp AllReduceTuple(absl::Span<const XlaOp> operands,
                      const XlaComputation& computation,
-                     absl::Span<const ReplicaGroup> replica_groups,
-                     const std::optional<ChannelHandle>& channel_id,
-                     const std::optional<Shape>& shape_with_layout,
-                     const std::optional<bool> use_global_device_ids) {
-  return AllReduceTuple(
-      operands, operands[0].builder()->AddSubComputation(computation),
-      replica_groups, channel_id, shape_with_layout, use_global_device_ids);
-}
-
-XlaOp AllReduceTuple(absl::Span<const XlaOp> operands,
-                     XlaComputationId computation,
                      absl::Span<const ReplicaGroup> replica_groups,
                      const std::optional<ChannelHandle>& channel_id,
                      const std::optional<Shape>& shape_with_layout,
@@ -5863,7 +5681,7 @@ XlaOp AllReduceTuple(absl::Span<const XlaOp> operands,
       channel_id, shape_with_layout, use_global_device_ids);
 }
 
-XlaOp ReduceScatter(const XlaOp operand, XlaComputationId computation,
+XlaOp ReduceScatter(const XlaOp operand, const XlaComputation& computation,
                     int64_t scatter_dimension, int64_t shard_count,
                     absl::Span<const ReplicaGroup> replica_groups,
                     const std::optional<ChannelHandle>& channel_id,
@@ -5874,17 +5692,6 @@ XlaOp ReduceScatter(const XlaOp operand, XlaComputationId computation,
       channel_id, layout, use_global_device_ids);
 }
 
-XlaOp ReduceScatter(const XlaOp operand, const XlaComputation& computation,
-                    int64_t scatter_dimension, int64_t shard_count,
-                    absl::Span<const ReplicaGroup> replica_groups,
-                    const std::optional<ChannelHandle>& channel_id,
-                    const std::optional<Layout>& layout,
-                    const std::optional<bool> use_global_device_ids) {
-  return ReduceScatter(operand,
-                       operand.builder()->AddSubComputation(computation),
-                       scatter_dimension, shard_count, replica_groups,
-                       channel_id, layout, use_global_device_ids);
-}
 XlaOp AllToAll(const XlaOp operand, int64_t split_dimension,
                int64_t concat_dimension, int64_t split_count,
                absl::Span<const ReplicaGroup> replica_groups,
@@ -5941,36 +5748,14 @@ XlaOp MultiCollectivePermute(
 
 XlaOp ReplicaId(XlaBuilder* builder) { return builder->ReplicaId(); }
 
-XlaOp SelectAndScatter(const XlaOp operand, XlaComputationId select,
-                       absl::Span<const int64_t> window_dimensions,
-                       absl::Span<const int64_t> window_strides,
-                       Padding padding, const XlaOp source,
-                       const XlaOp init_value, XlaComputationId scatter) {
-  return operand.builder()->SelectAndScatter(operand, select, window_dimensions,
-                                             window_strides, padding, source,
-                                             init_value, scatter);
-}
-
 XlaOp SelectAndScatter(const XlaOp operand, const XlaComputation& select,
                        absl::Span<const int64_t> window_dimensions,
                        absl::Span<const int64_t> window_strides,
                        Padding padding, const XlaOp source,
                        const XlaOp init_value, const XlaComputation& scatter) {
-  return SelectAndScatter(operand, operand.builder()->AddSubComputation(select),
-                          window_dimensions, window_strides, padding, source,
-                          init_value,
-                          operand.builder()->AddSubComputation(scatter));
-}
-
-XlaOp SelectAndScatterWithGeneralPadding(
-    const XlaOp operand, XlaComputationId select,
-    absl::Span<const int64_t> window_dimensions,
-    absl::Span<const int64_t> window_strides,
-    absl::Span<const std::pair<int64_t, int64_t>> padding, const XlaOp source,
-    const XlaOp init_value, XlaComputationId scatter) {
-  return operand.builder()->SelectAndScatterWithGeneralPadding(
-      operand, select, window_dimensions, window_strides, padding, source,
-      init_value, scatter);
+  return operand.builder()->SelectAndScatter(operand, select, window_dimensions,
+                                             window_strides, padding, source,
+                                             init_value, scatter);
 }
 
 XlaOp SelectAndScatterWithGeneralPadding(
@@ -5979,10 +5764,9 @@ XlaOp SelectAndScatterWithGeneralPadding(
     absl::Span<const int64_t> window_strides,
     absl::Span<const std::pair<int64_t, int64_t>> padding, const XlaOp source,
     const XlaOp init_value, const XlaComputation& scatter) {
-  return SelectAndScatterWithGeneralPadding(
-      operand, operand.builder()->AddSubComputation(select), window_dimensions,
-      window_strides, padding, source, init_value,
-      operand.builder()->AddSubComputation(scatter));
+  return operand.builder()->SelectAndScatterWithGeneralPadding(
+      operand, select, window_dimensions, window_strides, padding, source,
+      init_value, scatter);
 }
 
 XlaOp Abs(const XlaOp operand) {
@@ -6132,12 +5916,6 @@ XlaOp Rev(const XlaOp operand, absl::Span<const int64_t> dimensions) {
 
 XlaOp Sort(absl::Span<const XlaOp> operands, const XlaComputation& comparator,
            int64_t dimension, bool is_stable) {
-  return Sort(operands, operands[0].builder()->AddSubComputation(comparator),
-              dimension, is_stable);
-}
-
-XlaOp Sort(absl::Span<const XlaOp> operands, XlaComputationId comparator,
-           int64_t dimension, bool is_stable) {
   return operands[0].builder()->Sort(operands, comparator, dimension,
                                      is_stable);
 }
@@ -6151,17 +5929,10 @@ XlaOp Clamp(const XlaOp min, const XlaOp operand, const XlaOp max) {
 }
 
 XlaOp Map(XlaBuilder* builder, absl::Span<const XlaOp> operands,
-          XlaComputationId computation, absl::Span<const int64_t> dimensions,
-          absl::Span<const XlaOp> static_operands) {
-  return builder->Map(operands, computation, dimensions, static_operands);
-}
-
-XlaOp Map(XlaBuilder* builder, absl::Span<const XlaOp> operands,
           const XlaComputation& computation,
           absl::Span<const int64_t> dimensions,
           absl::Span<const XlaOp> static_operands) {
-  return Map(builder, operands, builder->AddSubComputation(computation),
-             dimensions, static_operands);
+  return builder->Map(operands, computation, dimensions, static_operands);
 }
 
 XlaOp RngNormal(const XlaOp mu, const XlaOp sigma, const Shape& shape) {
@@ -6178,52 +5949,25 @@ XlaOp RngBitGenerator(RandomAlgorithm algorithm, const XlaOp initial_state,
                                                   shape);
 }
 
-XlaOp While(XlaComputationId condition, XlaComputationId body,
-            const XlaOp init) {
-  return init.builder()->While(condition, body, init);
-}
-
 XlaOp While(const XlaComputation& condition, const XlaComputation& body,
             const XlaOp init) {
-  return While(init.builder()->AddSubComputation(condition),
-               init.builder()->AddSubComputation(body), init);
-}
-
-XlaOp Conditional(const XlaOp predicate, const XlaOp true_operand,
-                  XlaComputationId true_computation, const XlaOp false_operand,
-                  XlaComputationId false_computation) {
-  return predicate.builder()->Conditional(predicate, true_operand,
-                                          true_computation, false_operand,
-                                          false_computation);
+  return init.builder()->While(condition, body, init);
 }
 
 XlaOp Conditional(const XlaOp predicate, const XlaOp true_operand,
                   const XlaComputation& true_computation,
                   const XlaOp false_operand,
                   const XlaComputation& false_computation) {
-  XlaBuilder* builder = predicate.builder();
-  return Conditional(
-      predicate, true_operand, builder->AddSubComputation(true_computation),
-      false_operand, builder->AddSubComputation(false_computation));
-}
-
-XlaOp Conditional(const XlaOp branch_index,
-                  absl::Span<XlaComputationId const> branch_computations,
-                  absl::Span<const XlaOp> branch_operands) {
-  return branch_index.builder()->Conditional(branch_index, branch_computations,
-                                             branch_operands);
+  return predicate.builder()->Conditional(predicate, true_operand,
+                                          true_computation, false_operand,
+                                          false_computation);
 }
 
 XlaOp Conditional(const XlaOp branch_index,
                   absl::Span<const XlaComputation* const> branch_computations,
                   absl::Span<const XlaOp> branch_operands) {
-  std::vector<XlaComputationId> branch_computation_ids;
-  branch_computation_ids.reserve(branch_computations.size());
-  for (const XlaComputation* computation : branch_computations) {
-    branch_computation_ids.push_back(
-        branch_index.builder()->AddSubComputation(*computation));
-  }
-  return Conditional(branch_index, branch_computation_ids, branch_operands);
+  return branch_index.builder()->Conditional(branch_index, branch_computations,
+                                             branch_operands);
 }
 
 XlaOp ReducePrecision(const XlaOp operand, const int exponent_bits,
@@ -6240,7 +5984,7 @@ XlaOp Gather(const XlaOp input, const XlaOp start_indices,
 }
 
 XlaOp Scatter(const XlaOp input, const XlaOp scatter_indices,
-              const XlaOp updates, XlaComputationId update_computation,
+              const XlaOp updates, const XlaComputation& update_computation,
               const ScatterDimensionNumbers& dimension_numbers,
               bool indices_are_sorted, bool unique_indices) {
   return input.builder()->Scatter(input, scatter_indices, updates,
@@ -6248,35 +5992,14 @@ XlaOp Scatter(const XlaOp input, const XlaOp scatter_indices,
                                   indices_are_sorted, unique_indices);
 }
 
-XlaOp Scatter(const XlaOp input, const XlaOp scatter_indices,
-              const XlaOp updates, const XlaComputation& update_computation,
-              const ScatterDimensionNumbers& dimension_numbers,
-              bool indices_are_sorted, bool unique_indices) {
-  return Scatter(
-      input, scatter_indices, updates,
-      scatter_indices.builder()->AddSubComputation(update_computation),
-      dimension_numbers, indices_are_sorted, unique_indices);
-}
-
-XlaOp Scatter(absl::Span<const XlaOp> inputs, XlaOp scatter_indices,
-              absl::Span<const XlaOp> updates,
-              XlaComputationId update_computation,
-              const ScatterDimensionNumbers& dimension_numbers,
-              bool indices_are_sorted, bool unique_indices) {
-  return scatter_indices.builder()->Scatter(
-      inputs, scatter_indices, updates, update_computation, dimension_numbers,
-      indices_are_sorted, unique_indices);
-}
-
 XlaOp Scatter(absl::Span<const XlaOp> inputs, XlaOp scatter_indices,
               absl::Span<const XlaOp> updates,
               const XlaComputation& update_computation,
               const ScatterDimensionNumbers& dimension_numbers,
               bool indices_are_sorted, bool unique_indices) {
-  return Scatter(
-      inputs, scatter_indices, updates,
-      scatter_indices.builder()->AddSubComputation(update_computation),
-      dimension_numbers, indices_are_sorted, unique_indices);
+  return scatter_indices.builder()->Scatter(
+      inputs, scatter_indices, updates, update_computation, dimension_numbers,
+      indices_are_sorted, unique_indices);
 }
 
 void Send(const XlaOp operand, const ChannelHandle& handle) {
