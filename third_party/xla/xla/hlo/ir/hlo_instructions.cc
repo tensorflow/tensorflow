@@ -449,6 +449,13 @@ HloAsyncStartInstruction::CloneWithNewOperandsImpl(
   if (new_wrapped_computation == nullptr) {
     new_wrapped_computation = module->AddEmbeddedComputation(
         async_wrapped_computation()->Clone("clone", context));
+    // Give the trampoline a trivial schedule if it already had one.
+    if (module->has_schedule() && module->schedule().is_computation_scheduled(
+                                      async_wrapped_computation())) {
+      module->schedule().set_sequence(
+          new_wrapped_computation,
+          new_wrapped_computation->MakeInstructionPostOrder());
+    }
   }
 
   return std::make_unique<HloAsyncStartInstruction>(

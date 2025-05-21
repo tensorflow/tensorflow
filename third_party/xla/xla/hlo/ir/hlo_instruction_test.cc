@@ -13,19 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/hlo/ir/hlo_instruction.h"
+
 #include <memory>
 
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
 
-TEST(HloInstruction, SetFrontendAttribute) {
+using HloInstructionTest = HloHardwareIndependentTestBase;
+
+TEST_F(HloInstructionTest, SetFrontendAttribute) {
   HloConstantInstruction instr(ShapeUtil::MakeShape(U32, {3, 2}));
   instr.set_frontend_attribute("key1", "value1");
   EXPECT_EQ(instr.get_frontend_attribute("key1").value(), "value1");
@@ -33,7 +43,7 @@ TEST(HloInstruction, SetFrontendAttribute) {
   EXPECT_EQ(instr.get_frontend_attribute("key1").value(), "value2");
 }
 
-TEST(HloInstruction, AddFrontendAttribute) {
+TEST_F(HloInstructionTest, AddFrontendAttribute) {
   HloConstantInstruction instr(ShapeUtil::MakeShape(U32, {3, 2}));
   EXPECT_TRUE(instr.add_frontend_attribute("key1", "value1"));
   EXPECT_EQ(instr.get_frontend_attribute("key1").value(), "value1");
@@ -41,7 +51,7 @@ TEST(HloInstruction, AddFrontendAttribute) {
   EXPECT_EQ(instr.get_frontend_attribute("key1").value(), "value1");
 }
 
-TEST(HloInstruction, SetFrontendAttributes) {
+TEST_F(HloInstructionTest, SetFrontendAttributes) {
   HloConstantInstruction instr(ShapeUtil::MakeShape(U32, {3, 2}));
   instr.add_frontend_attribute("key1", "value1");
   FrontendAttributes attributes;
@@ -53,7 +63,7 @@ TEST(HloInstruction, SetFrontendAttributes) {
   EXPECT_EQ(instr.get_frontend_attribute("key2").value(), "value2");
 }
 
-TEST(HloInstruction, AddFrontendAttributes) {
+TEST_F(HloInstructionTest, AddFrontendAttributes) {
   HloConstantInstruction instr(ShapeUtil::MakeShape(U32, {3, 2}));
   instr.add_frontend_attribute("key1", "value1");
   FrontendAttributes attributes;
@@ -65,7 +75,7 @@ TEST(HloInstruction, AddFrontendAttributes) {
   EXPECT_EQ(instr.get_frontend_attribute("key2").value(), "value2");
 }
 
-TEST(HloInstruction, CustomCallInstructionStorage) {
+TEST_F(HloInstructionTest, CustomCallInstructionStorage) {
   HloCustomCallInstruction instr(ShapeUtil::MakeShape(U32, {3, 2}),
                                  /*operands=*/{}, "custom_call_target",
                                  /*opaque=*/"",
@@ -84,7 +94,7 @@ TEST(HloInstruction, CustomCallInstructionStorage) {
   EXPECT_EQ(instr.GetPerInstructionStorage(), storage1);
 }
 
-TEST(HloInstruction, DeriveComputeTypeAttribute) {
+TEST_F(HloInstructionTest, DeriveComputeTypeAttribute) {
   HloConstantInstruction instr0(ShapeUtil::MakeShape(U32, {3, 2}));
   instr0.add_frontend_attribute(kXlaComputeTypeAttr, kXlaComputeTypeHost);
   HloConstantInstruction instr1(ShapeUtil::MakeShape(U32, {3, 2}));
@@ -92,5 +102,41 @@ TEST(HloInstruction, DeriveComputeTypeAttribute) {
   EXPECT_FALSE(instr1.has_frontend_attributes());
 }
 
+TEST_F(HloInstructionTest, CloneImplScheduledAsyncOp) {
+  constexpr absl::string_view kHlo = R"(
+HloModule main, is_scheduled=true
+
+ENTRY main {
+  arg.0 = s32[] parameter(0)
+  call-start.0 = ((s32[]), s32[], s32[]) call-start(arg.0), to_apply={
+    arg.0 = s32[] parameter(0)
+    ROOT abs.0 = abs(arg.0)
+  }, async_execution_thread="thread"
+  ROOT call-done.0 = s32[] call-done(call-start.0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_TRUE(module->has_schedule());
+  TF_ASSERT_OK(module->schedule().Verify());
+
+  HloInstruction* async_done = module->entry_computation()->root_instruction();
+  ASSERT_EQ(async_done->opcode(), HloOpcode::kAsyncDone);
+  HloInstruction* async_start = async_done->async_chain_start();
+  HloInstruction* clone = module->entry_computation()->AddInstruction(
+      async_start->CloneWithNewOperands(async_start->shape(),
+                                        {async_start->mutable_operand(0)}));
+  TF_ASSERT_OK(async_start->ReplaceAllUsesWith(clone));
+
+  // Cleanup the main thread.
+  TF_ASSERT_OK(HloDCE()
+                   .Run(module.get(), {HloInstruction::kMainExecutionThread})
+                   .status());
+  TF_ASSERT_OK(
+      module->schedule().Update({HloInstruction::kMainExecutionThread}));
+
+  // The schedule for the entire module should still be valid.
+  TF_EXPECT_OK(module->schedule().Verify());
+}
 }  // namespace
 }  // namespace xla
