@@ -1,4 +1,4 @@
-// RUN: tf-opt "-tfl-lower-static-tensor-list=allow-tensorlist-pass-through default-to-single-batch" -split-input-file %s | FileCheck %s
+// RUN: litert-opt "-tfl-lower-static-tensor-list=allow-tensorlist-pass-through default-to-single-batch" -split-input-file %s | FileCheck %s
 
 // -----
 

@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range="enable-float16-quantization" -tfl-quantize="enable-dynamic-range-quantization=true" | FileCheck --check-prefix=CHECK %s
+// RUN: litert-opt %s -tfl-prepare-quantize-dynamic-range="enable-float16-quantization" -tfl-quantize="enable-dynamic-range-quantization=true" | FileCheck --check-prefix=CHECK %s
 
 // CHECK-LABEL: QuantizeUnidirectionalLstm
 func.func @QuantizeUnidirectionalLstm(%arg0: tensor<1x2x3xf32>) -> (tensor<1x2x3xf32>) {

@@ -1,5 +1,5 @@
-// RUN: tf-opt -tfl-prepare-tf %s | FileCheck %s
-// RUN: tf-opt %s -tf-layout-optimization=force-data-format=NHWC -tfl-prepare-tf  | FileCheck --check-prefix=LAYOUT --dump-input=always %s
+// RUN: litert-opt -tfl-prepare-tf %s | FileCheck %s
+// RUN: litert-opt %s -tf-layout-optimization=force-data-format=NHWC -tfl-prepare-tf  | FileCheck --check-prefix=LAYOUT --dump-input=always %s
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
 

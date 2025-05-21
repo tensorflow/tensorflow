@@ -903,7 +903,7 @@ tf_cc_binary(
         ":tfl_stablehlo",
         ":uniform_quantized_stablehlo_to_tfl_pass",
         "//tensorflow/compiler/mlir:passes",
-        "//tensorflow/compiler/mlir:tf_mlir_opt_main",
+        "//tensorflow/compiler/mlir/lite:litert_mlir_opt_main",
         "//tensorflow/compiler/mlir/stablehlo:fold_broadcast_pass",
         "//tensorflow/compiler/mlir/stablehlo:fuse_convolution_pass",
         "//tensorflow/compiler/mlir/stablehlo:tf_stablehlo",

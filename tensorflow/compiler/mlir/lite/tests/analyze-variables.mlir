@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -tfl-analyze-variables-pass --cse | FileCheck %s
+// RUN: litert-opt %s -split-input-file -tfl-analyze-variables-pass --cse | FileCheck %s
 
 // CHECK: module attributes {tfl._legalize_tfl_variables = true}
 module {

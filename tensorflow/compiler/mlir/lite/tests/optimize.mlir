@@ -1,11 +1,11 @@
 // Run optimize pass only and check the results.
-// RUN: tf-opt %s -tfl-optimize='enable-canonicalization=false' | FileCheck %s
+// RUN: litert-opt %s -tfl-optimize='enable-canonicalization=false' | FileCheck %s
 // Run optimize pass and then canonicalize pass, and make sure some folding is applied.
-// RUN: tf-opt %s -tfl-optimize | FileCheck --check-prefix=FOLD %s
+// RUN: litert-opt %s -tfl-optimize | FileCheck --check-prefix=FOLD %s
 // Run legalize pass and then optimize pass, and make sure some fusing is applied.
-// RUN: tf-opt %s -tfl-legalize-tf -tfl-optimize='enable-canonicalization=false' | FileCheck --check-prefix=Fusing %s
+// RUN: litert-opt %s -tfl-legalize-tf -tfl-optimize='enable-canonicalization=false' | FileCheck --check-prefix=Fusing %s
 // Run legalize pass and then optimize pass, and make sure some fusing is applied, but no mul->fc.
-// RUN: tf-opt %s -tfl-legalize-tf -tfl-optimize='enable-canonicalization=false disable-fuse-mul-and-fc=true'  | FileCheck --check-prefix=NoFusing %s
+// RUN: litert-opt %s -tfl-legalize-tf -tfl-optimize='enable-canonicalization=false disable-fuse-mul-and-fc=true'  | FileCheck --check-prefix=NoFusing %s
 
 // CHECK-LABEL: fusedConv2dRelu
 func.func @fusedConv2dRelu(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<16x3x3x3xf32>, %arg2: tensor<16xf32>) -> tensor<256x32x32x16xf32> {
