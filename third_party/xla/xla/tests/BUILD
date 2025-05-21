@@ -1430,7 +1430,7 @@ xla_test(
         "cpu",
         "gpu",
     ],
-    shard_count = 50,
+    shard_count = 41,
     tags = [
         "cuda-only",
         "optonly",
@@ -3412,7 +3412,7 @@ xla_cc_test(
 xla_test(
     name = "transfer_manager_test",
     srcs = ["transfer_manager_test.cc"],
-    shard_count = 16,
+    shard_count = 15,
     tags = ["test_xla_cpu_no_thunks"],
     deps = [
         ":literal_test_util",
