@@ -522,7 +522,7 @@ xla_test(
     srcs = [
         "conv_depthwise_test.cc",
     ],
-    shard_count = 50,
+    shard_count = 30,
     tags = ["test_xla_cpu_no_thunks"],
     deps = [
         ":client_library_test_base",
@@ -567,7 +567,7 @@ xla_test(
         # disabled because it times out.
         "cpu",
     ],
-    shard_count = 50,
+    shard_count = 23,
     tags = ["test_xla_cpu_no_thunks"],
     deps = [
         ":client_library_test_base",
@@ -713,7 +713,7 @@ xla_test(
     name = "params_test",
     timeout = "long",
     srcs = ["params_test.cc"],
-    shard_count = 30,
+    shard_count = 15,
     tags = [
         "optonly",
         "test_xla_cpu_no_thunks",
@@ -1661,7 +1661,7 @@ xla_test(
     name = "convolution_dimension_numbers_test",
     timeout = "long",
     srcs = ["convolution_dimension_numbers_test.cc"],
-    shard_count = 20,
+    shard_count = 4,
     tags = [
         "test_migrated_to_hlo_runner_pjrt",
         "test_xla_cpu_no_thunks",
@@ -1750,7 +1750,7 @@ xla_test(
 xla_test(
     name = "bfloat16_test",
     srcs = ["bfloat16_test.cc"],
-    shard_count = 40,
+    shard_count = 5,
     tags = [
         "test_migrated_to_hlo_runner_pjrt",
         "test_xla_cpu_no_thunks",
@@ -3412,7 +3412,7 @@ xla_cc_test(
 xla_test(
     name = "transfer_manager_test",
     srcs = ["transfer_manager_test.cc"],
-    shard_count = 50,
+    shard_count = 16,
     tags = ["test_xla_cpu_no_thunks"],
     deps = [
         ":literal_test_util",
