@@ -607,7 +607,7 @@ cc_library(
         ":tf_saved_model_import",
         ":types",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:tf_component",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:component",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",

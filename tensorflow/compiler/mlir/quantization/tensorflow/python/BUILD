@@ -34,7 +34,6 @@ cc_library(
     ],
     deps = [
         ":py_function_lib",
-        ":tf_unfreeze_constants",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:config",
@@ -47,8 +46,8 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:tf_saved_model_import",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:tf_weight_only_ptq",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:types",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:component",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:statistics",
-        "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:tf_component",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:tf_passes",
@@ -56,7 +55,6 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow:tf_quantize_preprocess",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibration_statistics_saver_op",  # Required for CalibrationStatisticsSaver op registration.
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op",  # Required for CustomAggregator op registration.
-        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:convert_asset_args",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow/debugging:dump_tensor_op",  # Required for DumpTensor op registration.
         "//tensorflow/compiler/mlir/tensorflow:mlir_import_options",

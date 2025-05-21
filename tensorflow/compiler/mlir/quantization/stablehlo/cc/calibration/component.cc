@@ -39,9 +39,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/statistics.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/debugger.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_export.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_saved_model_export.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/types.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/tf_passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
@@ -97,8 +97,9 @@ absl::Status RunCalibrationPasses(
       CalibrationComponent::kName,
       /*add_passes_func=*/
       [calibration_data_dir, &skipping_aggregator_ops](PassManager& pm) {
-        pm.addPass(CreateInsertCalibrationStatisticsSaverPass(
-            calibration_data_dir, skipping_aggregator_ops));
+        pm.addPass(
+            tf_quant::stablehlo::CreateInsertCalibrationStatisticsSaverPass(
+                calibration_data_dir, skipping_aggregator_ops));
       },
       ctx, module_op);
 }
@@ -139,16 +140,17 @@ absl::Status CalibrationComponent::ExportToSavedModel(
 
   // `duplicate_shape_determining_constants = false` because the
   // resulting graph of this step is not expected to be loaded on TPU.
-  const ExportOptions export_opts = {
+  const tf_quant::stablehlo::ExportOptions export_opts = {
       /*duplicate_shape_determining_constants=*/false,
       /*unfreeze_constants=*/false, checkpoint_dir,
-      /*debug_name=*/absl::StrCat(kName, kExportStepSuffix)};
+      /*debug_name=*/
+      absl::StrCat(kName, tf_quant::stablehlo::kExportStepSuffix)};
 
   TF_ASSIGN_OR_RETURN(const SmallVector<AssetFileDef> asset_file_defs,
                       RunExportPasses(export_opts, *ctx_, *cloned_module_ref));
 
   TF_ASSIGN_OR_RETURN(ExportedModel exported_model,
-                      ConvertMlirModuleToExportedModel(
+                      tf_quant::stablehlo::ConvertMlirModuleToExportedModel(
                           *cloned_module_ref, checkpoint_dir, function_aliases_,
                           {asset_file_defs.begin(), asset_file_defs.end()}));
 

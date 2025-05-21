@@ -36,8 +36,8 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/loader.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/component.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/statistics.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/tf_component.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/context.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/debugger.h"
@@ -71,13 +71,13 @@ namespace {
 using ::mlir::quant::stablehlo::CreateMlirContextForQuantization;
 using ::mlir::quant::stablehlo::FunctionAlias;
 using ::mlir::quant::stablehlo::FunctionName;
+using ::mlir::quant::stablehlo::RunCalibrationPasses;
 using ::mlir::tf_quant::stablehlo::ConvertMlirModuleToExportedModel;
 using ::mlir::tf_quant::stablehlo::ExportOptions;
 using ::mlir::tf_quant::stablehlo::GetFunctionAliases;
 using ::mlir::tf_quant::stablehlo::kExportStepSuffix;
 using ::mlir::tf_quant::stablehlo::PostCalibrationComponent;
 using ::mlir::tf_quant::stablehlo::PreCalibrationComponent;
-using ::mlir::tf_quant::stablehlo::RunCalibrationPasses;
 using ::mlir::tf_quant::stablehlo::UpdateFunctionAliases;
 using ::mlir::tf_quant::stablehlo::WeightOnlyPtqComponent;
 using ::stablehlo::quantization::AddCalibrationStatistics;

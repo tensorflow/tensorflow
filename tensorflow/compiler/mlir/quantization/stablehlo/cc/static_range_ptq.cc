@@ -31,7 +31,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/tf_component.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/component.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/component.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/context.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_post_calibration.h"
@@ -50,7 +50,6 @@ limitations under the License.
 
 namespace mlir::quant::stablehlo {
 
-using ::mlir::tf_quant::stablehlo::CalibrationComponent;
 using ::mlir::tf_quant::stablehlo::CreateExportedModel;
 using ::mlir::tf_quant::stablehlo::GetFunctionAliases;
 using ::mlir::tf_quant::stablehlo::ImportSavedModel;
