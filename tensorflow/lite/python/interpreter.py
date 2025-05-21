@@ -409,6 +409,7 @@ class Interpreter:
       experimental_preserve_all_tensors=False,
       experimental_disable_delegate_clustering=False,
       experimental_default_delegate_latest_features=False,
+      experimental_stable_delegates=None,
   ):
     """Constructor.
 
@@ -449,6 +450,12 @@ class Interpreter:
         model. Default is False.
       experimental_default_delegate_latest_features: If true, default delegates
         may enable all flag protected features. Default is False;
+      experimental_stable_delegates: List of file paths to stable delegate
+        configuration files in JSON format. Each file describes a stable
+        delegate, including the shared library to load and its initialization
+        parameters. The stable delegate should conform to the interface defined
+        in tensorflow/lite/delegates/utils/experimental/stable_delegate/
+        stable_delegate_interface.h
 
     Raises:
       ValueError: If the interpreter was unable to create.
@@ -535,6 +542,12 @@ class Interpreter:
       for delegate in self._delegates:
         self._interpreter.ModifyGraphWithDelegate(
             delegate._get_native_delegate_pointer())  # pylint: disable=protected-access
+
+    if experimental_stable_delegates:
+      for delegate in experimental_stable_delegates:
+        self._interpreter.ModifyGraphWithDelegate(
+            self._interpreter.LoadStableDelegate(delegate))
+
     self._signature_defs = self.get_signature_list()
 
     self._metrics = metrics.TFLiteMetrics()
