@@ -111,11 +111,13 @@ namespace xla::cpu {
 ThunkEmitter::ThunkEmitter(IrEmitter2& ir_emitter,
                            const BufferAssignment& buffer_assignment,
                            const TargetMachineFeatures& target_machine_features,
-                           const HloModuleConfig& hlo_module_config)
+                           const HloModuleConfig& hlo_module_config,
+                           const Options& options)
     : ir_emitter_(ir_emitter),
       buffer_assignment_(buffer_assignment),
       target_machine_features_(target_machine_features),
       hlo_module_config_(hlo_module_config),
+      options_(options),
       communicator_resource_(
           Resource::Create(Resource::kCollectiveCommunicator)) {}
 
@@ -357,8 +359,12 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kConvolution:
       return EmitConvolutionThunk(instruction);
 
-    case HloOpcode::kCopy:
+    case HloOpcode::kCopy: {
+      if (options_.compile_copy_as_llvm_kernel) {
+        return EmitElementalKernelThunk(instruction);
+      }
       return EmitCopyThunk(instruction);
+    }
 
     case HloOpcode::kDot:
       return EmitDotThunk(instruction);

@@ -2190,11 +2190,14 @@ CpuCompiler::CompileAheadOfTimeThunks(
   // corresponding HLO instructions (fusions, elemental instructions, etc.).
   IrEmitter2 ir_emitter2(*module, llvm_module.get(), &nested_ir_emitter);
 
+  ThunkEmitter::Options thunk_emitter_options = {
+      /*compile_copy_as_llvm_kernel=*/aot_options
+          .compile_copy_as_llvm_kernel()};
   // Thunk emitter is responsible for building a Thunk sequence that will
   // resolved kernels in the compiled LLVM module and execute them together
   // with Thunks implemented as library calls (e.g. oneDNN or Eigen).
   ThunkEmitter thunk_emitter(ir_emitter2, *assignment, target_machine_features,
-                             module->config());
+                             module->config(), thunk_emitter_options);
   TF_ASSIGN_OR_RETURN(ThunkSequence thunks,
                       thunk_emitter.EmitEntryComputation(*module));
 

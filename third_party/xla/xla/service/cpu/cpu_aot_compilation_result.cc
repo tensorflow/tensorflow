@@ -58,12 +58,14 @@ using BufferInfo = cpu_function_runtime::BufferInfo;
 
 CpuAotCompilationOptions::CpuAotCompilationOptions(
     std::string triple, std::string cpu_name, std::string features,
-    std::string entry_point_name, RelocationModel relocation_model)
+    std::string entry_point_name, RelocationModel relocation_model,
+    bool compile_copy_as_llvm_kernel)
     : triple_(std::move(triple)),
       cpu_name_(std::move(cpu_name)),
       features_(std::move(features)),
       entry_point_name_(std::move(entry_point_name)),
-      relocation_model_(relocation_model) {}
+      relocation_model_(relocation_model),
+      compile_copy_as_llvm_kernel_(compile_copy_as_llvm_kernel) {}
 
 CpuAotCompilationOptions::~CpuAotCompilationOptions() = default;
 

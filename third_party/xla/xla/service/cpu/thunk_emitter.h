@@ -54,6 +54,12 @@ namespace xla::cpu {
 // multiple LLVM modules compiled to object files).
 class ThunkEmitter {
  public:
+  struct Options {
+    // Whether to compile copy as LLVM kernel. This is used to avoid
+    // dependencies on pjrt/transpose for tfcompiled models.
+    bool compile_copy_as_llvm_kernel;
+  };
+
   struct EmittedKernel {
     std::string kernel_name;
     llvm::orc::ThreadSafeModule module;
@@ -62,7 +68,9 @@ class ThunkEmitter {
   ThunkEmitter(IrEmitter2& ir_emitter,
                const BufferAssignment& buffer_assignment,
                const TargetMachineFeatures& target_machine_features,
-               const HloModuleConfig& hlo_module_config);
+               const HloModuleConfig& hlo_module_config,
+               const Options& options = {
+                   /*compile_copy_as_llvm_kernel=*/false});
 
   // Emits HLO module entry computation as a sequence of thunks.
   absl::StatusOr<ThunkSequence> EmitEntryComputation(const HloModule& module);
@@ -232,6 +240,8 @@ class ThunkEmitter {
 
   const TargetMachineFeatures& target_machine_features_;
   const HloModuleConfig& hlo_module_config_;
+
+  const Options options_;
 
   // A global resource that is used to order all collective operations.
   std::shared_ptr<Resource> communicator_resource_;
