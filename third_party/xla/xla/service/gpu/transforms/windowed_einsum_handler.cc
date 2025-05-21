@@ -1404,10 +1404,9 @@ absl::StatusOr<bool> WindowedEinsumHandler::Run(
     // Since we get the loop directly from SPMD patitioner,
     // the induction variable pattern doesn't conform to what unroller
     // expects until the passes are applied.
-    AlgebraicSimplifierOptions options;
-    options.set_run_to_fixed_point(false);
-    TF_ASSIGN_OR_RETURN(bool applied_algsimp, AlgebraicSimplifier(options).Run(
-                                                  module, execution_threads));
+    TF_ASSIGN_OR_RETURN(bool applied_algsimp,
+                        AlgebraicSimplifier(AlgebraicSimplifierOptions())
+                            .Run(module, execution_threads));
     changed |= applied_algsimp;
     TF_ASSIGN_OR_RETURN(bool applied_cf,
                         HloConstantFolding().Run(module, execution_threads));
