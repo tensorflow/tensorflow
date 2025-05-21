@@ -59,9 +59,7 @@ class CublasBackend : public GpuCodegenBackend {
       const HloInstruction& instr) override;
 
   absl::Status ApplyConfig(HloInstruction& instr,
-                           const BackendConfig& config) override {
-    return absl::UnimplementedError("Not implemented.");
-  }
+                           const BackendConfig& config) override;
 
  private:
   absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
