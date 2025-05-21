@@ -540,6 +540,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   } else {
     HloPassPipeline sharding_removal_pipeline("sharding-removal");
     AddHloVerifier(&sharding_removal_pipeline);
+    sharding_removal_pipeline.AddPass<FlattenCallGraph>();
     // Remove redundant sharding ops when partition_count == 1.
     sharding_removal_pipeline.AddPass<ShardingRemover>();
     // Run ShardyXLA without propagation, which enforces use-tuple-args.
