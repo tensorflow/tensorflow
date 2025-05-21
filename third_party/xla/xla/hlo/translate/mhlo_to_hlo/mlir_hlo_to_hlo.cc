@@ -82,6 +82,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/hlo/translate/mhlo_to_hlo/layout_util.h"
 #include "xla/hlo/translate/mhlo_to_hlo/literal_exporter.h"
@@ -5765,7 +5766,7 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
     absl::Status status = xla::internal::XlaBuilderFriend::SetExecutionThread(
         &module_builder_, computation, execution_thread.str());
     if (!status.ok()) {
-      return f.emitError(status.message());
+      return f.emitError(xla::ToStringRef(status.message()));
     }
   }
   absl::flat_hash_map<int, std::vector<bool>> parameter_replication;
@@ -5784,7 +5785,7 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
         xla::internal::XlaBuilderFriend::SetParameterReplication(
             &module_builder_, computation, parameter_replication);
     if (!status.ok()) {
-      return f.emitError(status.message());
+      return f.emitError(xla::ToStringRef(status.message()));
     }
   }
   lowered_computation_[f] = computation;
