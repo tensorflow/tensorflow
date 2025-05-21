@@ -175,16 +175,6 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> CublasBackend::GetDefaultConfig(
   return gemm_key;
 }
 
-absl::StatusOr<std::unique_ptr<HloModule>> CublasBackend::WrapInModule(
-    const HloInstruction& hlo_instruction, const BackendConfig& config) {
-  return absl::UnimplementedError("Not implemented.");
-}
-
-absl::StatusOr<std::unique_ptr<HloModule>> CublasBackend::RunHloPasses(
-    std::unique_ptr<HloModule> hlo_module,
-    const Compiler::CompileOptions& options) {
-  return absl::UnimplementedError("Not implemented.");
-}
 
 }  // namespace gpu
 }  // namespace xla

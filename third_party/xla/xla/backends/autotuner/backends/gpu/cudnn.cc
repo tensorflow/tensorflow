@@ -123,16 +123,5 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> CudnnBackend::GetDefaultConfig(
       "Cudnn backend doesn't support getting a default config.");
 }
 
-absl::StatusOr<std::unique_ptr<HloModule>> CudnnBackend::WrapInModule(
-    const HloInstruction& hlo_instruction, const BackendConfig& config) {
-  return absl::UnimplementedError("Not implemented.");
-}
-
-absl::StatusOr<std::unique_ptr<HloModule>> CudnnBackend::RunHloPasses(
-    std::unique_ptr<HloModule> hlo_module,
-    const Compiler::CompileOptions& options) {
-  return absl::UnimplementedError("Not implemented.");
-}
-
 }  // namespace gpu
 }  // namespace xla

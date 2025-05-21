@@ -21,7 +21,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/autotuner/codegen_backend.h"
@@ -29,6 +28,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
+#include "xla/tools/hlo_decomposer.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
@@ -55,7 +56,13 @@ class GpuCodegenBackend : public CodegenBackend {
   absl::StatusOr<std::unique_ptr<Executable>> Compile(
       const HloInstruction& hlo_instruction,
       const BackendConfig& config) override {
-    TF_ASSIGN_OR_RETURN(auto hlo_module, WrapInModule(hlo_instruction, config));
+    std::unique_ptr<HloModule> hlo_module =
+        ExtractInstructionIntoNewModule(hlo_instruction);
+
+    HloComputation* entry_computation = hlo_module->entry_computation();
+    HloInstruction* root_instruction = entry_computation->root_instruction();
+    TF_RETURN_IF_ERROR(ApplyConfig(*root_instruction, config));
+
     hlo_module->mutable_config().set_debug_options(debug_options_);
 
     Compiler::CompileOptions options;
@@ -67,16 +74,7 @@ class GpuCodegenBackend : public CodegenBackend {
                                  /*executor=*/nullptr, options);
   }
 
-  absl::Status ApplyConfig(HloInstruction& instr,
-                           const BackendConfig& config) override {
-    return absl::UnimplementedError("Not implemented.");
-  }
-
  private:
-  // TODO(b/407494653): Provide a default implementation.
-  virtual absl::StatusOr<std::unique_ptr<HloModule>> WrapInModule(
-      const HloInstruction& hlo_instruction, const BackendConfig& config) = 0;
-
   // Optimize the HLO module.
   // TODO(b/407494653): Remove this when XLA pipelines is fixed and we autotune
   // only optimized and fused HLOs.

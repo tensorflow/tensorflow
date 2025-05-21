@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/autotuner/backends/gpu/gpu_codegen_backend.h"
 #include "xla/backends/autotuner/codegen_backend.h"
@@ -45,14 +46,18 @@ class CustomKernelBackend : public GpuCodegenBackend {
   absl::StatusOr<std::unique_ptr<BackendConfig>> GetDefaultConfig(
       const HloInstruction& instr) override;
 
- private:
-  absl::StatusOr<std::unique_ptr<HloModule>> WrapInModule(
-      const HloInstruction& hlo_instruction,
-      const BackendConfig& config) override;
+  absl::Status ApplyConfig(HloInstruction& instr,
+                           const BackendConfig& config) override {
+    return absl::UnimplementedError("Not implemented.");
+  }
 
+ private:
   absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> hlo_module,
-      const Compiler::CompileOptions& options) override;
+      const Compiler::CompileOptions& options) override {
+    return absl::InvalidArgumentError(
+        "CustomKernelBackend doesn't support wrapping in a module.");
+  }
 };
 
 }  // namespace gpu

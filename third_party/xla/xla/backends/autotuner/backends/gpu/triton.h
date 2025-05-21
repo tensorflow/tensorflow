@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/autotuner/backends/gpu/gpu_codegen_backend.h"
 #include "xla/backends/autotuner/codegen_backend.h"
@@ -44,10 +45,10 @@ class TritonBackend : public GpuCodegenBackend {
   absl::StatusOr<std::unique_ptr<BackendConfig>> GetDefaultConfig(
       const HloInstruction& instr) override;
 
- private:
-  absl::StatusOr<std::unique_ptr<HloModule>> WrapInModule(
-      const HloInstruction& instr, const BackendConfig& config) override;
+  absl::Status ApplyConfig(HloInstruction& instr,
+                           const BackendConfig& config) override;
 
+ private:
   absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> hlo_module,
       const Compiler::CompileOptions& options) override;

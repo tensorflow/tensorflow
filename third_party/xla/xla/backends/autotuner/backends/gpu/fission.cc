@@ -208,16 +208,5 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> FissionBackend::GetDefaultConfig(
       "FissionBackend doesn't support getting a default config.");
 }
 
-absl::StatusOr<std::unique_ptr<HloModule>> FissionBackend::WrapInModule(
-    const HloInstruction& hlo_instruction, const BackendConfig& config) {
-  return absl::UnimplementedError("Not implemented.");
-}
-
-absl::StatusOr<std::unique_ptr<HloModule>> FissionBackend::RunHloPasses(
-    std::unique_ptr<HloModule> hlo_module,
-    const Compiler::CompileOptions& options) {
-  return absl::UnimplementedError("Not implemented.");
-}
-
 }  // namespace gpu
 }  // namespace xla

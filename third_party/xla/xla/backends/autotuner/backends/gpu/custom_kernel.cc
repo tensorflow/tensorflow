@@ -124,18 +124,5 @@ CustomKernelBackend::GetDefaultConfig(const HloInstruction& instr) {
   return config;
 }
 
-absl::StatusOr<std::unique_ptr<HloModule>> CustomKernelBackend::WrapInModule(
-    const HloInstruction& hlo_instruction, const BackendConfig& config) {
-  return absl::InvalidArgumentError(
-      "CustomKernelBackend doesn't support wrapping in a module.");
-}
-
-absl::StatusOr<std::unique_ptr<HloModule>> CustomKernelBackend::RunHloPasses(
-    std::unique_ptr<HloModule> hlo_module,
-    const Compiler::CompileOptions& options) {
-  return absl::InvalidArgumentError(
-      "CustomKernelBackend doesn't support wrapping in a module.");
-}
-
 }  // namespace gpu
 }  // namespace xla
