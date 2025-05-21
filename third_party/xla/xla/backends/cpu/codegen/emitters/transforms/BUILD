@@ -60,6 +60,7 @@ cc_library(
     hdrs = ["xla_cpu_rewrite_patterns.h"],
     deps = [
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
+        "//xla/codegen/emitters/ir:xla",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

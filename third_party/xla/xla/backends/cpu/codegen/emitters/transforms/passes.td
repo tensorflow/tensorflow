@@ -24,10 +24,11 @@ def LowerToLLVMPass : Pass<"xla-cpu-lower-to-llvm", "mlir::ModuleOp"> {
   }];
 
   let dependentDialects = [
-    "mlir::LLVM::LLVMDialect",
     "mlir::func::FuncDialect",
+    "mlir::LLVM::LLVMDialect",
     "mlir::tensor::TensorDialect",
     "xla::cpu::XlaCpuDialect",
+    "xla::XlaDialect",
   ];
 
   let constructor = "::xla::cpu::CreateLowerToLLVMPass()";

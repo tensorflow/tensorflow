@@ -75,17 +75,6 @@ def XLACPU_StoreOp : XLACPU_Op<"store"> {
 }
 
 //===----------------------------------------------------------------------===//
-// !xla_cpu.thread_id
-//===----------------------------------------------------------------------===//
-
-def XLACPU_ThreadIdOp : XLACPU_Op<"thread_id"> {
-  let summary = "Extracts thread_id from the call frame";
-  let arguments = (ins XLACPU_CallFrame:$call_frame);
-  let results = (outs Index:$result);
-  let assemblyFormat = [{ $call_frame  attr-dict `:` type($result) }];
-}
-
-//===----------------------------------------------------------------------===//
 // !xla_cpu.success
 //===----------------------------------------------------------------------===//
 

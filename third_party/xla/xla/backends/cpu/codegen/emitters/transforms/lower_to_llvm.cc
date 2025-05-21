@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_dialect.h"  // IWYU pragma: keep
 #include "xla/backends/cpu/codegen/emitters/transforms/xla_cpu_rewrite_patterns.h"
+#include "xla/codegen/emitters/ir/xla_dialect.h"  // IWYU pragma: keep
 
 namespace xla::cpu {
 

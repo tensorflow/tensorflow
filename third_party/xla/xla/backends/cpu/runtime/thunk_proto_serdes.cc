@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/xnnpack/xnn_convolution_thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_dot_thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_fusion_thunk.h"
+#include "xla/backends/cpu/xnnpack_config.pb.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"

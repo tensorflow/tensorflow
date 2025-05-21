@@ -2,6 +2,7 @@ load("//xla/backends/cpu:package_groups.bzl", "xla_cpu_backend_access")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load("//xla/tsl/mkl:graph.bzl", "onednn_graph_cc_library")
+load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -67,6 +68,11 @@ onednn_graph_cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@onednn//:mkl_dnn",
     ],
+)
+
+tf_proto_library(
+    name = "xnnpack_config_proto",
+    srcs = ["xnnpack_config.proto"],
 )
 
 cc_library(
