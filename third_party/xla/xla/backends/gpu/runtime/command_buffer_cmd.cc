@@ -433,8 +433,16 @@ absl::Status CommandBufferCmdExecutor::RecordUpdate(
   // outside of a lambda to avoid repeated heap allocations on every call.
   std::vector<BufferAllocation::Index> alloc_intersection;
   auto skip_command_update = [&](CommandId id) {
+    // If we don't know what allocations changed since the last call to
+    // `Record` we must always update the command.
+    if (!record_params.updated_allocs) {
+      return false;
+    }
+
+    // We always update commands that require initialization, even if buffer
+    // allocations didn't change.
     CommandBufferCmd* command = commands_[id].get();
-    if (command->force_update() || !record_params.updated_allocs) {
+    if (command->requires_initialization() && record_params.is_initialization) {
       return false;
     }
 
@@ -1086,9 +1094,9 @@ absl::StatusOr<const se::CommandBuffer::Command*> CaseCmd::Record(
       });
 }
 
-bool CaseCmd::force_update() {
-  return absl::c_any_of(branches_,
-                        [](const auto& seq) { return seq.force_update(); });
+bool CaseCmd::requires_initialization() {
+  return absl::c_any_of(
+      branches_, [](const auto& seq) { return seq.requires_initialization(); });
 }
 
 CommandBufferCmd::BufferUseVector CaseCmd::buffers() const {
@@ -1147,8 +1155,9 @@ absl::StatusOr<const se::CommandBuffer::Command*> WhileCmd::Record(
       });
 }
 
-bool WhileCmd::force_update() {
-  return (cond_commands_.force_update() || body_commands_.force_update());
+bool WhileCmd::requires_initialization() {
+  return (cond_commands_.requires_initialization() ||
+          body_commands_.requires_initialization());
 }
 
 CommandBufferCmd::BufferUseVector WhileCmd::buffers() const {
@@ -1951,7 +1960,7 @@ DynamicSliceFusionCmd::DynamicSliceFusionCmd(
 // because the memory address might changed if the offset is loop
 // iterator or operator outputs even if the parent command's memory pointers
 // do not change.
-bool DynamicSliceFusionCmd::force_update() {
+bool DynamicSliceFusionCmd::requires_initialization() {
   return !absl::c_all_of(slices_, [](const DynamicSliceThunk::SliceDef& slice) {
     if (!slice.offsets.has_value()) {
       return true;

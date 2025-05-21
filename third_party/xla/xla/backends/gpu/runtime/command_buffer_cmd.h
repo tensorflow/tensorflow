@@ -59,7 +59,6 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
-#include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
@@ -207,6 +206,10 @@ class CommandBufferCmd {
     // allocation indices are sorted. CommandBufferCmdExecutor and individual
     // commands rely on this information to skip unnecessary updates.
     std::optional<std::vector<BufferAllocation::Index>> updated_allocs;
+
+    // A flag indicating whether we record comands at command buffer thunk
+    // initialization time.
+    bool is_initialization = false;
   };
 
   // Create new commands in the command buffer using the given dependencies.
@@ -254,10 +257,16 @@ class CommandBufferCmd {
       const RecordParams& record_params, RecordAction record_action,
       se::CommandBuffer* command_buffer) = 0;
 
-  // For some commands need to force update on Record even the input device
-  // pointers do not change, e.g. command that has state that can be changed by
-  // CPU code.
-  virtual bool force_update() { return false; }
+  // Returns true if command requires initialization (has to be recorded at
+  // command buffer thunk initialization).
+  //
+  // Today this is only true for collective commands that might use NCCL for
+  // communication. With NCCL, all participating ranks must record collective
+  // commands at the same time, if some ranks will skip command updates (because
+  // they got lucky and got the same buffer allocations), it will lead to
+  // deadlocks. By forcing the command update at thunk initialization time, we
+  // ensure that all ranks execute NCCL command update.
+  virtual bool requires_initialization() { return false; }
 
   // Returns all buffers used by the cmd. These will be used to track cmd
   // updates, thus they need to be consistent across calls to the function.
@@ -380,9 +389,10 @@ class CommandBufferCmdExecutor {
   bool empty() const { return commands_.empty(); }
   size_t size() const { return commands_.size(); }
 
-  bool force_update() const {
-    return absl::c_any_of(commands_,
-                          [](const auto& cmd) { return cmd->force_update(); });
+  bool requires_initialization() const {
+    return absl::c_any_of(commands_, [](const auto& cmd) {
+      return cmd->requires_initialization();
+    });
   }
 
  private:
@@ -657,7 +667,7 @@ class CaseCmd : public CommandBufferCmd {
       const RecordParams& record_params, RecordAction record_action,
       se::CommandBuffer* command_buffer) override;
 
-  bool force_update() override;
+  bool requires_initialization() override;
 
   BufferUseVector buffers() const override;
 
@@ -685,7 +695,7 @@ class WhileCmd : public CommandBufferCmd {
       const RecordParams& record_params, RecordAction record_action,
       se::CommandBuffer* command_buffer) override;
 
-  bool force_update() override;
+  bool requires_initialization() override;
 
   BufferUseVector buffers() const override;
 
@@ -883,7 +893,7 @@ class CollectiveCmd : public CommandBufferCmd {
       const Thunk::PrepareParams& params,
       Thunk::ResourceRequestsInterface& resource_requests) final;
 
-  bool force_update() override { return true; }
+  bool requires_initialization() override { return true; }
 
   bool IsNestedCommandBuffer() const final { return true; }
 
@@ -1074,7 +1084,7 @@ class DynamicSliceFusionCmd : public CommandBufferCmd {
 
   BufferUseVector buffers() const override;
 
-  bool force_update() override;
+  bool requires_initialization() override;
 
   bool IsNestedCommandBuffer() const final { return true; }
 
