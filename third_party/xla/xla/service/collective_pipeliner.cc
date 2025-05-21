@@ -2638,8 +2638,8 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
             transpose_instruction->dimensions().begin(),
             transpose_instruction->dimensions().end());
         new_dims.insert(new_dims.begin(), 0);
-        for (int64_t& dim : new_dims) {
-          ++dim;
+        for (int64_t i = 1; i < new_dims.size(); ++i) {
+          ++new_dims[i];
         }
         HloInstruction* expanded_transpose =
             loop_computation->AddInstruction(HloInstruction::CreateTranspose(
