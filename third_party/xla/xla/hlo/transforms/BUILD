@@ -303,6 +303,8 @@ cc_library(
         "//xla/service:host_offload_utils",
         "//xla/service:memory_annotations_hdr",
         "//xla/service:pattern_matcher",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
