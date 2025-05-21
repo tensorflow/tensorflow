@@ -35,9 +35,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/component.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/context.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_export.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_import.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_post_calibration.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_pre_calibration.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_saved_model_import.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/types.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
@@ -50,8 +50,6 @@ limitations under the License.
 
 namespace mlir::quant::stablehlo {
 
-using ::mlir::tf_quant::stablehlo::GetFunctionAliases;
-using ::mlir::tf_quant::stablehlo::ImportSavedModel;
 using ::mlir::tf_quant::stablehlo::PostCalibrationComponent;
 using ::mlir::tf_quant::stablehlo::PreCalibrationComponent;
 using ::stablehlo::quantization::QuantizationConfig;

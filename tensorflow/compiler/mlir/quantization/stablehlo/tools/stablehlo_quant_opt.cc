@@ -27,7 +27,6 @@ limitations under the License.
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
 #include "stablehlo/transforms/Passes.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/init_mlir.h"
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pass_pipeline.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
@@ -64,7 +63,6 @@ int main(int argc, char** argv) {
                   mlir::func::FuncDialect, mlir::shape::ShapeDialect,
                   mlir::arith::ArithDialect, mlir::tf_type::TFTypeDialect,
                   mlir::quant::QuantDialect, mlir::tensor::TensorDialect,
-                  mlir::quantfork::QuantizationForkDialect,
                   mlir::stablehlo::StablehloDialect,
                   mlir::tf_executor::TensorFlowExecutorDialect,
                   mlir::vhlo::VhloDialect, mlir::quant::ir::TFQuantDialect>();

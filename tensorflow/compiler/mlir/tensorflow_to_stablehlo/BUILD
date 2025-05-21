@@ -33,7 +33,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:tf_saved_model_import",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:saved_model_import",
         "//tensorflow/compiler/mlir/quantization/tensorflow:tf_quantize_preprocess",
         "//tensorflow/compiler/mlir/tensorflow/transforms:shape_inference_pass",
         "//tensorflow/core:core_cpu_base",
