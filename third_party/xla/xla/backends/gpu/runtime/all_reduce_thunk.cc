@@ -49,7 +49,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_handle.h"
-#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -70,8 +69,6 @@ constexpr int64_t kLaunchBlockCountX = 8;
 struct RendezvousValue {
   RankId rank;
   se::DeviceMemoryBase input_buffer;
-  se::Event* start_event;
-  se::Event* end_event;
   se::DeviceMemoryBase signal_flags_buffer;
 
   bool operator<(const RendezvousValue& other) const {
@@ -86,20 +83,12 @@ absl::StatusOr<std::shared_ptr<std::vector<RendezvousValue>>>
 RendezvousBeforeKernelStart(const GpuCliqueKey& clique_key, RankId rank,
                             int64_t num_ranks,
                             const se::DeviceMemoryBase& input_buffer,
-                            se::Stream& stream, se::Event* start_event,
-                            se::Event* end_event,
+                            se::Stream& stream,
                             const se::DeviceMemoryBase& signal_flags_buffer) {
   RendezvousValue rendezvous_value;
   rendezvous_value.rank = rank;
   rendezvous_value.input_buffer = input_buffer;
-  rendezvous_value.start_event = start_event;
-  rendezvous_value.end_event = end_event;
   rendezvous_value.signal_flags_buffer = signal_flags_buffer;
-
-  // Record that this device has started executing the kernel. We do
-  // this before the rendezvous to make sure that RecordEvent is called before
-  // WaitFor on another stream.
-  TF_RETURN_IF_ERROR(stream.RecordEvent(start_event));
 
   auto rendezvous_fn = [](absl::Span<const RendezvousValue* const> values) {
     std::vector<RendezvousValue> values_copy;
@@ -115,54 +104,16 @@ RendezvousBeforeKernelStart(const GpuCliqueKey& clique_key, RankId rank,
   std::string start_rendezvous_key =
       absl::StrFormat("start one-shot all-reduce for rank %d, clique %s",
                       rank.value(), clique_key.ToString());
-  TF_ASSIGN_OR_RETURN(
-      std::shared_ptr<std::vector<RendezvousValue>> rendezvous_values,
-      Rendezvous<std::vector<RendezvousValue>>(
-          /*name=*/start_rendezvous_key, /*key=*/clique_key,
-          /*value=*/rendezvous_value, /*num_threads=*/num_ranks,
-          rendezvous_fn));
 
-  // Wait for all devices to reach the start event. This indicates that all
-  // output buffers are ready for transfer.
-  for (auto& value : *rendezvous_values) {
-    TF_RETURN_IF_ERROR(stream.WaitFor(value.start_event));
-  }
-
-  return rendezvous_values;
-}
-
-// Executes the rendezvous after the kernel finish. Waits for all devices to
-// reach the end event.
-absl::Status RendezvousAfterKernelFinish(
-    const GpuCliqueKey& clique_key, RankId rank, int64_t num_ranks,
-    se::Stream& stream, se::Event* end_event,
-    const std::shared_ptr<std::vector<RendezvousValue>>& rendezvous_values) {
-  // Record that this device has finished executing the kernel.
-  TF_RETURN_IF_ERROR(stream.RecordEvent(end_event));
-
-  // Do another rendezvous to make sure that we call RecordEvent for end_event
-  // before WaitFor on another stream.
-  std::string finish_rendezvous_key =
-      absl::StrFormat("finish one-shot all-reduce for rank %d, clique %s",
-                      rank.value(), clique_key.ToString());
-  TF_RETURN_IF_ERROR(Rendezvous(/*name=*/finish_rendezvous_key,
-                                /*key=*/clique_key,
-                                /*num_threads=*/num_ranks));
-
-  // Wait for all devices to reach the end event. This indicates that all
-  // updates from other devices have arrived.
-  for (auto& value : *rendezvous_values) {
-    TF_RETURN_IF_ERROR(stream.WaitFor(value.end_event));
-  }
-
-  return absl::OkStatus();
+  return Rendezvous<std::vector<RendezvousValue>>(
+      /*name=*/start_rendezvous_key, /*key=*/clique_key,
+      /*value=*/rendezvous_value, /*num_threads=*/num_ranks, rendezvous_fn);
 }
 
 absl::Status RunOneShotAllReduce(
     const GpuCliqueKey& clique_key, RankId rank,
     std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
     Communicator* comm, se::DeviceMemoryBase local_buffer,
-    se::Event* start_event, se::Event* end_event,
     const se::DeviceMemoryBase& signal_flags_buffer) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing one-shot all-reduce from device ordinal: "
@@ -180,8 +131,7 @@ absl::Status RunOneShotAllReduce(
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<std::vector<RendezvousValue>> rendezvous_values,
       RendezvousBeforeKernelStart(clique_key, rank, num_ranks, local_buffer,
-                                  stream, start_event, end_event,
-                                  signal_flags_buffer));
+                                  stream, signal_flags_buffer));
 
   absl::InlinedVector<se::DeviceMemoryBase, 4> input_ptrs;
   for (auto& value : *rendezvous_values) {
@@ -196,15 +146,10 @@ absl::Status RunOneShotAllReduce(
   LaunchDimensions launch_dimensions(/*block_x_count=*/kLaunchBlockCountX,
                                      /*thread_x_count_per_block=*/512);
 
-  TF_RETURN_IF_ERROR(RunAllReduceKernel(
-      &stream, launch_dimensions, buffer.element_type, input_ptrs,
-      buffer.source_buffer, buffer.destination_buffer, rank.value(), num_ranks,
-      buffer.element_count, signal_flags_ptrs));
-
-  TF_RETURN_IF_ERROR(RendezvousAfterKernelFinish(
-      clique_key, rank, num_ranks, stream, end_event, rendezvous_values));
-
-  return absl::OkStatus();
+  return RunAllReduceKernel(&stream, launch_dimensions, buffer.element_type,
+                            input_ptrs, buffer.source_buffer,
+                            buffer.destination_buffer, rank.value(), num_ranks,
+                            buffer.element_count, signal_flags_ptrs);
 }
 
 absl::Status CheckImplementableInst(const HloInstruction* inst,
@@ -369,18 +314,6 @@ absl::Status AllReduceStartThunk::Initialize(const InitializeParams& params) {
                                    std::move(local_buffer_alloc));
     }
 
-    if (!start_events_.contains(params.executor)) {
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Event> event,
-                          params.executor->CreateEvent());
-      start_events_.emplace(params.executor, std::move(event));
-    }
-
-    if (!end_events_.contains(params.executor)) {
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Event> event,
-                          params.executor->CreateEvent());
-      end_events_.emplace(params.executor, std::move(event));
-    }
-
     if (!signal_flags_allocs_.contains(params.executor)) {
       // We needs 1 atomic flag per block per device on each device.
       int64_t num_signal_flags =
@@ -424,15 +357,11 @@ absl::StatusOr<bool> AllReduceStartThunk::RunCollective(
                           comm_handle.clique_key, params.collective_cliques));
 
   if (use_one_shot_kernel) {
-    se::Event* start_event = nullptr;
-    se::Event* end_event = nullptr;
     se::DeviceMemoryBase local_buffer;
     se::DeviceMemoryBase signal_flags_buffer;
     {
       absl::MutexLock lock(&mutex_);
       local_buffer = local_buffer_allocs_[stream.parent()].memory();
-      start_event = start_events_[stream.parent()].get();
-      end_event = end_events_[stream.parent()].get();
       signal_flags_buffer = signal_flags_allocs_[stream.parent()].memory();
     }
 
@@ -441,7 +370,7 @@ absl::StatusOr<bool> AllReduceStartThunk::RunCollective(
 
     TF_RETURN_IF_ERROR(RunOneShotAllReduce(
         comm_handle.clique_key, *rank, device_buffers, stream, comm_handle.comm,
-        local_buffer, start_event, end_event, signal_flags_buffer));
+        local_buffer, signal_flags_buffer));
     return false;
   }
 
