@@ -105,7 +105,6 @@ TEST(CudaExecutorTest, CreateUnifiedMemoryAllocatorWorks) {
                           allocator->Allocate(1024));
   EXPECT_NE(allocation->opaque(), nullptr);
   EXPECT_EQ(allocation->size(), 1024);
-  allocation.reset();
 }
 
 TEST(CudaExecutorTest, CreateHostMemoryAllocatorWorks) {
@@ -119,7 +118,6 @@ TEST(CudaExecutorTest, CreateHostMemoryAllocatorWorks) {
                           allocator->Allocate(1024));
   EXPECT_NE(allocation->opaque(), nullptr);
   EXPECT_EQ(allocation->size(), 1024);
-  allocation.reset();
 }
 
 TEST(CudaExecutorTest, CreateCollectiveMemoryAllocatorWorks) {
@@ -130,6 +128,25 @@ TEST(CudaExecutorTest, CreateCollectiveMemoryAllocatorWorks) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<MemoryAllocator> allocator,
       executor->CreateMemoryAllocator(MemoryType::kCollective));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                          allocator->Allocate(1024));
+  EXPECT_NE(allocation->opaque(), nullptr);
+  EXPECT_EQ(allocation->size(), 1024);
+}
+
+TEST(CudaExecutorTest, CreateCollectiveMemoryAllocatorFailsForExcessiveSize) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          PlatformManager::PlatformWithName("CUDA"));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(0));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<MemoryAllocator> allocator,
+      executor->CreateMemoryAllocator(MemoryType::kCollective));
+  constexpr uint64_t kTooBig = 1125899906842624;  // 1 PiB
+  auto should_fail = allocator->Allocate(kTooBig);
+  EXPECT_THAT(should_fail.status().ToString(),
+              testing::HasSubstr("failed to allocate 1.00PiB (1125899906842624 "
+                                 "bytes) from device collective memory:"));
 }
 
 TEST(CudaExecutorTest, CreateUnsupportedMemoryAllocatorsFail) {
