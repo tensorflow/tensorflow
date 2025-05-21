@@ -40,6 +40,7 @@ limitations under the License.
 #include "pthreadpool.h"  // from @pthreadpool
 #include "tensorflow/compiler/mlir/lite/kernels/internal/compatibility_macros.h"
 #include "tensorflow/compiler/mlir/lite/tools/optimize/reduced_precision_metadata.h"
+#include "tensorflow/lite/array.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_types.h"
@@ -467,6 +468,75 @@ class ResourceInfo {
   int proxy_value_ = -1;
   uint32_t value_flags_ = 0;
 };
+
+TfLiteStatus DefineXNNPACKValue(TfLiteContext* context, xnn_subgraph_t subgraph,
+                                const TfLiteTensor& tensor, int tensor_index,
+                                const void* data, uint32_t flags,
+                                uint32_t* xnnpack_id) {
+  const xnn_datatype datatype =
+      GetXNNPackDatatype(context, tensor, tensor_index);
+  if (datatype == xnn_datatype_invalid) {
+    TF_LITE_KERNEL_LOG(
+        context, "unsupported datatype (%s) of tensor %d in XNNPACK delegate",
+        TfLiteTypeGetName(tensor.type), tensor_index);
+    return kTfLiteError;
+  }
+
+  std::vector<size_t> dims(&tensor.dims->data[0],
+                           &tensor.dims->data[NumDimensions(&tensor)]);
+
+  xnn_status status = xnn_status_success;
+  switch (datatype) {
+    case xnn_datatype_qint8:
+    case xnn_datatype_quint8:
+    case xnn_datatype_qint32:
+      status = xnn_define_quantized_tensor_value(
+          subgraph, datatype,
+          static_cast<const TfLiteAffineQuantization*>(
+              tensor.quantization.params)
+              ->zero_point->data[0],
+          static_cast<const TfLiteAffineQuantization*>(
+              tensor.quantization.params)
+              ->scale->data[0],
+          dims.size(), dims.data(), data, XNN_INVALID_VALUE_ID, flags,
+          xnnpack_id);
+      break;
+    case xnn_datatype_qcint4:
+    case xnn_datatype_qcint8:
+    case xnn_datatype_qcint32:
+      status = xnn_define_channelwise_quantized_tensor_value(
+          subgraph, datatype,
+          static_cast<const TfLiteAffineQuantization*>(
+              tensor.quantization.params)
+              ->scale->data,
+          dims.size(),
+          static_cast<const TfLiteAffineQuantization*>(
+              tensor.quantization.params)
+              ->quantized_dimension,
+          dims.data(), data, XNN_INVALID_VALUE_ID, flags, xnnpack_id);
+      break;
+    case xnn_datatype_qbint4: {
+      const auto* quantization_params =
+          reinterpret_cast<const TfLiteBlockwiseQuantization*>(
+              tensor.quantization.params);
+      const TfLiteTensor& scale_tensor =
+          context->tensors[quantization_params->scale];
+      status = xnn_define_blockwise_quantized_tensor_value_v2(
+          subgraph, datatype, 0,
+          reinterpret_cast<const uint16_t*>(scale_tensor.data.data),
+          dims.size(), quantization_params->quantized_dimension,
+          quantization_params->blocksize, dims.data(), data,
+          XNN_INVALID_VALUE_ID, flags, xnn_datatype_fp16, xnnpack_id);
+      break;
+    }
+    default:
+      status = xnn_define_tensor_value(subgraph, datatype, dims.size(),
+                                       dims.data(), data, XNN_INVALID_VALUE_ID,
+                                       flags, xnnpack_id);
+      break;
+  }
+  return kTfLiteOk;
+}
 
 class Subgraph;
 
@@ -1002,61 +1072,9 @@ class Subgraph {
         external_outputs.push_back(t);
       }
 
-      std::vector<size_t> dims(&tensor->dims->data[0],
-                               &tensor->dims->data[NumDimensions(tensor)]);
-
-      xnn_status status = xnn_status_success;
       uint32_t xnnpack_id = XNN_INVALID_VALUE_ID;
-      switch (datatype) {
-        case xnn_datatype_qint8:
-        case xnn_datatype_quint8:
-        case xnn_datatype_qint32:
-          status = xnn_define_quantized_tensor_value(
-              subgraph.get(), datatype,
-              static_cast<const TfLiteAffineQuantization*>(
-                  tensor->quantization.params)
-                  ->zero_point->data[0],
-              static_cast<const TfLiteAffineQuantization*>(
-                  tensor->quantization.params)
-                  ->scale->data[0],
-              dims.size(), dims.data(), data, XNN_INVALID_VALUE_ID, flags,
-              &xnnpack_id);
-          break;
-        case xnn_datatype_qcint4:
-        case xnn_datatype_qcint8:
-        case xnn_datatype_qcint32:
-          status = xnn_define_channelwise_quantized_tensor_value(
-              subgraph.get(), datatype,
-              static_cast<const TfLiteAffineQuantization*>(
-                  tensor->quantization.params)
-                  ->scale->data,
-              dims.size(),
-              static_cast<const TfLiteAffineQuantization*>(
-                  tensor->quantization.params)
-                  ->quantized_dimension,
-              dims.data(), data, XNN_INVALID_VALUE_ID, flags, &xnnpack_id);
-          break;
-        case xnn_datatype_qbint4: {
-          const auto* quantization_params =
-              reinterpret_cast<const TfLiteBlockwiseQuantization*>(
-                  tensor->quantization.params);
-          const TfLiteTensor& scale_tensor =
-              context->tensors[quantization_params->scale];
-          status = xnn_define_blockwise_quantized_tensor_value_v2(
-              subgraph.get(), datatype, 0,
-              reinterpret_cast<const uint16_t*>(scale_tensor.data.data),
-              dims.size(), quantization_params->quantized_dimension,
-              quantization_params->blocksize, dims.data(), data,
-              XNN_INVALID_VALUE_ID, flags, xnn_datatype_fp16, &xnnpack_id);
-          break;
-        }
-        default:
-          status = xnn_define_tensor_value(
-              subgraph.get(), datatype, dims.size(), dims.data(), data,
-              XNN_INVALID_VALUE_ID, flags, &xnnpack_id);
-          break;
-      }
-      if (status != xnn_status_success) {
+      if (DefineXNNPACKValue(context, subgraph.get(), *tensor, t, data, flags,
+                             &xnnpack_id) != kTfLiteOk) {
         TF_LITE_KERNEL_LOG(context,
                            "failed to create XNNPACK Value for tensor %d", t);
         return nullptr;
@@ -4383,7 +4401,8 @@ class Subgraph {
         CheckNumInputsAndOutputs(logging_context, node, 2, 3, 1,
                                  BuiltinOperator_FULLY_CONNECTED, node_index));
 
-    const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
+    const int input_tensor_id = node->inputs->data[0];
+    const TfLiteTensor& input_tensor = tensors[input_tensor_id];
     TF_LITE_ENSURE_STATUS(
         CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input_tensor,
                                        node->inputs->data[0], node_index));
@@ -4477,6 +4496,33 @@ class Subgraph {
 
     uint32_t dq_quantized_id = XNN_INVALID_VALUE_ID;
     if (subgraph != nullptr) {
+      uint32_t input_value_id = input_output_tensors.at(node->inputs->data[0]);
+      if (!fc_params->keep_num_dims) {
+        // We need to reshape the input to be 2D.
+        TfLiteTensor reshaped_tensor = input_tensor;
+        auto reshaped_tflite_dims = BuildTfLiteArray<int>({0, input_channels});
+        reshaped_tensor.dims = reshaped_tflite_dims.get();
+        uint32_t reshaped_id = XNN_INVALID_VALUE_ID;
+        TF_LITE_ENSURE_STATUS(
+            DefineXNNPACKValue(logging_context, subgraph, reshaped_tensor,
+                               input_tensor_id, nullptr, 0, &reshaped_id));
+
+        const size_t reshaped_dims[2] = {0,
+                                         static_cast<size_t>(input_channels)};
+        xnn_status status =
+            xnn_define_static_reshape(subgraph, 2, reshaped_dims,
+                                      /*input_id=*/input_value_id,
+                                      /*output_id=*/reshaped_id,
+                                      /*flags=*/0);
+        if (status != xnn_status_success) {
+          TF_LITE_KERNEL_LOG(
+              logging_context, "failed to delegate %s node #%d",
+              EnumNameBuiltinOperator(BuiltinOperator_FULLY_CONNECTED),
+              node_index);
+          return kTfLiteError;
+        }
+        input_value_id = reshaped_id;
+      }
       if (dynamically_quantized) {
         TfLiteAffineQuantization* filter_params =
             reinterpret_cast<TfLiteAffineQuantization*>(
@@ -4509,10 +4555,10 @@ class Subgraph {
                              -1);
           return kTfLiteError;
         }
-        status = xnn_define_convert(
-            subgraph,
-            /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
-            dq_quantized_id, /*flags=*/0);
+        status =
+            xnn_define_convert(subgraph,
+                               /*input_id=*/input_value_id, dq_quantized_id,
+                               /*flags=*/0);
         if (status != xnn_status_success) {
           TF_LITE_KERNEL_LOG(
               logging_context, "failed to delegate %s node #%d",
@@ -4567,9 +4613,7 @@ class Subgraph {
                 ? input_output_tensors.at(bias_tensor_id)
                 : XNN_INVALID_VALUE_ID,
             /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
-            /*flags=*/fc_params->keep_num_dims
-                ? 0
-                : XNN_FLAG_TENSORFLOW_RESHAPE_2D);
+            /*flags=*/0);
         if (status != xnn_status_success) {
           TF_LITE_KERNEL_LOG(
               logging_context, "failed to delegate %s node #%d",
@@ -4580,15 +4624,13 @@ class Subgraph {
       } else {
         const xnn_status status = xnn_define_fully_connected(
             subgraph, output_min, output_max,
-            /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
+            /*input_id=*/input_value_id,
             /*filter_id=*/input_output_tensors.at(node->inputs->data[1]),
             /*bias_id=*/bias_tensor_id >= 0
                 ? input_output_tensors.at(bias_tensor_id)
                 : XNN_INVALID_VALUE_ID,
             /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
-            /*flags=*/fc_params->keep_num_dims
-                ? 0
-                : XNN_FLAG_TENSORFLOW_RESHAPE_2D);
+            /*flags=*/0);
         if (status != xnn_status_success) {
           TF_LITE_KERNEL_LOG(
               logging_context, "failed to delegate %s node #%d",
