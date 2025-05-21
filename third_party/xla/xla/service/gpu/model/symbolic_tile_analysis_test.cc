@@ -33,6 +33,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -59,6 +61,8 @@ using ::testing::ExplainMatchResult;
 using ::testing::IsEmpty;
 using ::testing::Matcher;
 using ::testing::Not;
+using ::testing::Pair;
+using ::testing::UnorderedElementsAre;
 using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 using TilingVector = std::vector<SymbolicTileAnalysis::Tiling>;
@@ -1831,6 +1835,124 @@ ENTRY main {
                   /*tile_offsets_indexing=*/
                   "(pid_0) -> (0, (pid_0 mod 4) * 32), domain: "
                   "pid_0 in [0, 35]"));
+}
+
+using TilingSpecificationTest = HloHardwareIndependentTestBase;
+
+TEST_F(TilingSpecificationTest, TilingSpecificationDerivesOutputParameters) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+computation {
+  ROOT p0 = f32[137,115] parameter(0)
+}
+
+ENTRY main {
+  p0 = f32[137,115] parameter(0)
+  ROOT fusion = f32[137,115] fusion(p0), kind=kLoop, calls=computation
+})"));
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TilingSpecification tiling_spec,
+      TilingSpecification::FromFusion(*xla::Cast<HloFusionInstruction>(root)));
+
+  EXPECT_THAT(tiling_spec.num_tile_sizes_by_instruction(),
+              UnorderedElementsAre(Pair(root->fused_expression_root(), 2)));
+}
+
+TEST_F(TilingSpecificationTest, TilingSpecificationDerivesHiddenDotParameters) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+computation {
+  p0 = f32[137,115] parameter(0)
+  p1 = f32[115,137] parameter(1)
+  dot = f32[137,137] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT abs = f32[137,137] abs(dot)
+}
+
+ENTRY main {
+  p0 = f32[137,115] parameter(0)
+  p1 = f32[115,137] parameter(1)
+  ROOT fusion = f32[137,137] fusion(p0, p1), kind=kLoop, calls=computation
+})"));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TilingSpecification tiling_spec,
+      TilingSpecification::FromFusion(*xla::Cast<HloFusionInstruction>(root)));
+
+  const HloInstruction* abs = root->fused_expression_root();
+  const HloInstruction* dot = abs->operand(0);
+
+  EXPECT_THAT(tiling_spec.num_tile_sizes_by_instruction(),
+              UnorderedElementsAre(Pair(abs, 2), Pair(dot, 1)));
+}
+
+TEST_F(TilingSpecificationTest,
+       TilingSpecificationDerivesOutputAndHiddenParametersOnTheSameOperation) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+computation {
+  p0 = f32[137,115] parameter(0)
+  p1 = f32[115,137] parameter(1)
+  ROOT dot = f32[137,137] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY main {
+  p0 = f32[137,115] parameter(0)
+  p1 = f32[115,137] parameter(1)
+  ROOT fusion = f32[137,137] fusion(p0, p1), kind=kLoop, calls=computation
+})"));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TilingSpecification tiling_spec,
+      TilingSpecification::FromFusion(*xla::Cast<HloFusionInstruction>(root)));
+
+  const HloInstruction* dot = root->fused_expression_root();
+
+  EXPECT_THAT(tiling_spec.num_tile_sizes_by_instruction(),
+              UnorderedElementsAre(Pair(dot, 3)));
+}
+
+TEST_F(TilingSpecificationTest,
+       TilingSpecificationDerivesHiddenParametersInNestedFusions) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+nested_computation {
+  p0 = f32[137,115] parameter(0)
+  p1 = f32[115,137] parameter(1)
+  ROOT dot = f32[137,137] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+computation {
+  p0 = f32[137,115] parameter(0)
+  p1 = f32[115,137] parameter(1)
+  dot_output = f32[137,137] fusion(p0, p1), kind=kLoop, calls=nested_computation
+  ROOT abs = f32[137,137] abs(dot_output)
+}
+
+ENTRY main {
+  p0 = f32[137,115] parameter(0)
+  p1 = f32[115,137] parameter(1)
+  ROOT fusion = f32[137,137] fusion(p0, p1), kind=kLoop, calls=computation
+})"));
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TilingSpecification tiling_spec,
+      TilingSpecification::FromFusion(*xla::Cast<HloFusionInstruction>(root)));
+
+  const HloInstruction* abs = root->fused_expression_root();
+  const HloInstruction* dot = abs->operand(0)->fused_expression_root();
+
+  EXPECT_THAT(tiling_spec.num_tile_sizes_by_instruction(),
+              UnorderedElementsAre(Pair(abs, 2), Pair(dot, 1)));
 }
 
 }  // namespace
