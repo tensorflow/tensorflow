@@ -65,7 +65,8 @@ EIGEN_DEVICE_FUNC inline PacketXf pexpand_bf16_l(const PacketXf& from) {
 
   // Unpack lower 16-bit halves to 32-bit ints, shift into float32 format
   svuint32_t unpacked_lo = svunpklo_u32(from_u16);
-  svuint32_t widened = svlsl_n_u32_x(pg, unpacked_lo, 16);  // shift left to match float layout
+  svuint32_t widened =
+      svlsl_n_u32_x(pg, unpacked_lo, 16);  // shift left to match float layout
 
   return svreinterpret_f32_u32(widened);
 }
@@ -80,7 +81,8 @@ EIGEN_DEVICE_FUNC inline PacketXf pexpand_bf16_u(const PacketXf& from) {
 
   // Unpack upper 16-bit halves to 32-bit ints, shift into float32 format
   svuint32_t unpacked_hi = svunpkhi_u32(from_u16);
-  svuint32_t widened = svlsl_n_u32_x(pg, unpacked_hi, 16);  // shift left to match float layout
+  svuint32_t widened =
+      svlsl_n_u32_x(pg, unpacked_hi, 16);  // shift left to match float layout
 
   return svreinterpret_f32_u32(widened);
 }
