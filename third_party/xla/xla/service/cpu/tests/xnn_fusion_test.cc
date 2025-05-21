@@ -122,6 +122,25 @@ TEST_F(XnnFusionTest, DotRhsTransposedAndMultiply) {
   EXPECT_TRUE(RunAndCompare(kModuleStr, ErrorSpec{1e-7}));
 }
 
+TEST_F(XnnFusionTest, ConvertF32ToBF16) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule convert
+
+    xnn_fusion {
+      %input = f32[2,3,4,5] parameter(0)
+      ROOT %dot = bf16[2,3,4,5] convert(%input)
+    }
+
+    ENTRY entry {
+      %input = f32[2,3,4,5] parameter(0)
+      ROOT %fusion = bf16[2,3,4,5] fusion(%input),
+        kind=kCustom, calls=xnn_fusion,
+        backend_config={"fusion_config": {kind: "__xnn_fusion"}}
+    })";
+
+  EXPECT_TRUE(RunAndCompare(kModuleStr, ErrorSpec{1e-2}));
+}
+
 TEST_F(XnnFusionTest, UnsupportedDot) {
   constexpr absl::string_view kModuleStr = R"(
     HloModule unsupported_dot
