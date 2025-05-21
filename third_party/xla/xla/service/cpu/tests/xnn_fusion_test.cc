@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
@@ -70,6 +71,29 @@ bool ShouldSkipDotBf16Test(absl::string_view in_dtype) {
          !tsl::port::TestCPUFeature(tsl::port::AVX512_BF16);
 }
 
+absl::string_view GetOutputTypeSupportedByXnnBatchMatMul(
+    absl::string_view in_dtype) {
+  static const auto* kSupportedOutputTypes =
+      new absl::flat_hash_map<absl::string_view, absl::string_view>(
+          {{"f32", "f32"}, {"bf16", "f32"}});
+
+  return kSupportedOutputTypes->at(in_dtype);
+}
+
+std::string InsertConvertIfNecessary(absl::string_view hlo_text,
+                                     absl::string_view in_dtype,
+                                     absl::string_view out_dtype,
+                                     absl::string_view convert_text) {
+  absl::string_view supported_dtype =
+      GetOutputTypeSupportedByXnnBatchMatMul(in_dtype);
+  bool need_convert = out_dtype != supported_dtype;
+  return absl::StrReplaceAll(
+      hlo_text, {{"$root ", need_convert ? "" : "ROOT "},
+                 {"$dot_dtype", need_convert ? supported_dtype : "$out_dtype"},
+                 {"$convert_if_necessary", need_convert ? convert_text : ""},
+                 {"$dot_or_convert", need_convert ? "%convert" : "%dot"}});
+}
+
 // For tests that always have same input/output types.
 using SameTypeTest = XnnFusionTest;
 
@@ -90,11 +114,13 @@ TEST_P(SameTypeTest, AddAndMultiply) {
       ROOT %fusion = $dtype[4] fusion(%p0, %p1), kind=kCustom, calls=xnn_fusion,
         backend_config={"fusion_config": {kind: "__xnn_fusion"}}
     })";
+
   RunTest(kModuleStr);
 }
 
 TEST_P(SameTypeTest, DotAddMultiply) {
-  if (ShouldSkipDotBf16Test(GetParam().in_dtype)) {
+  XnnFusionTestParams params = GetParam();
+  if (ShouldSkipDotBf16Test(params.in_dtype)) {
     GTEST_SKIP() << "XNNPACK bf16 matmul requires AVX512_BF16 which this CPU "
                     "doesn't have.";
   }
@@ -107,9 +133,10 @@ TEST_P(SameTypeTest, DotAddMultiply) {
       %rhs = $dtype[5,6] parameter(1)
       %addend = $dtype[4,6] parameter(2)
       %multiplier = $dtype[4,6] parameter(3)
-      %dot = $dtype[4,6] dot(%lhs, %rhs),
+      %dot = $dot_dtype[4,6] dot(%lhs, %rhs),
         lhs_contracting_dims={1}, rhs_contracting_dims={0}
-      %add = $dtype[4,6] add(%dot, %addend)
+      $convert_if_necessary
+      %add = $dtype[4,6] add($dot_or_convert, %addend)
       ROOT %mul = $dtype[4,6] multiply(%add, %multiplier)
     }
 
@@ -123,11 +150,16 @@ TEST_P(SameTypeTest, DotAddMultiply) {
         backend_config={"fusion_config": {kind: "__xnn_fusion"}}
     })";
 
-  RunTest(kModuleStr);
+  constexpr absl::string_view kConvertStr =
+      "%convert = $dtype[4,6] convert(%dot)";
+
+  RunTest(InsertConvertIfNecessary(kModuleStr, params.in_dtype,
+                                   params.out_dtype, kConvertStr));
 }
 
 TEST_P(SameTypeTest, DotRhsTransposedAndMultiply) {
-  if (ShouldSkipDotBf16Test(GetParam().in_dtype)) {
+  XnnFusionTestParams params = GetParam();
+  if (ShouldSkipDotBf16Test(params.in_dtype)) {
     GTEST_SKIP() << "XNNPACK bf16 matmul requires AVX512_BF16 which this CPU "
                     "doesn't have.";
   }
@@ -139,9 +171,10 @@ TEST_P(SameTypeTest, DotRhsTransposedAndMultiply) {
       %lhs = $dtype[4,5] parameter(0)
       %rhs = $dtype[6,5] parameter(1)
       %multiplier = $dtype[4,6] parameter(2)
-      %dot = $dtype[4,6] dot(%lhs, %rhs),
+      %dot = $dot_dtype[4,6] dot(%lhs, %rhs),
         lhs_contracting_dims={1}, rhs_contracting_dims={1}
-      ROOT %mul = $dtype[4,6] multiply(%dot, %multiplier)
+      $convert_if_necessary
+      ROOT %mul = $dtype[4,6] multiply($dot_or_convert, %multiplier)
     }
 
     ENTRY entry {
@@ -153,12 +186,17 @@ TEST_P(SameTypeTest, DotRhsTransposedAndMultiply) {
         backend_config={"fusion_config": {kind: "__xnn_fusion"}}
     })";
 
-  RunTest(kModuleStr);
+  constexpr absl::string_view kConvertStr =
+      "%convert = $dtype[4,6] convert(%dot)";
+
+  RunTest(InsertConvertIfNecessary(kModuleStr, params.in_dtype,
+                                   params.out_dtype, kConvertStr));
 }
 
 std::vector<XnnFusionTestParams> GetSameTypeTestCases() {
   return std::vector<XnnFusionTestParams>({
       XnnFusionTestParams{"f32", "f32" /*unused*/},
+      XnnFusionTestParams{"bf16", "bf16" /*unused*/},
   });
 }
 
@@ -170,8 +208,9 @@ INSTANTIATE_TEST_SUITE_P(SameTypeTestInstantiation, SameTypeTest,
 using MixedTypesTest = XnnFusionTest;
 
 TEST_P(MixedTypesTest, BatchedDot) {
-  if (ShouldSkipDotBf16Test(GetParam().in_dtype)) {
-    GTEST_SKIP() << "XNNPACK bf16 matmul requires AVX512_BF16 which this CPU "
+  XnnFusionTestParams params = GetParam();
+  if (ShouldSkipDotBf16Test(params.in_dtype)) {
+    GTEST_SKIP() << "XNNPACK bf16 matmul requires AVX512_BF16 which this CPU"
                     "doesn't have.";
   }
 
@@ -181,9 +220,10 @@ TEST_P(MixedTypesTest, BatchedDot) {
     xnn_fusion {
       %lhs = $in_dtype[2,3,4,5] parameter(0)
       %rhs = $in_dtype[2,3,5,6] parameter(1)
-      ROOT %dot = $out_dtype[2,3,4,6] dot(%lhs, %rhs),
+      $root %dot = $dot_dtype[2,3,4,6] dot(%lhs, %rhs),
         lhs_batch_dims={0,1}, rhs_batch_dims={0,1},
         lhs_contracting_dims={3}, rhs_contracting_dims={2}
+      $convert_if_necessary
     }
 
     ENTRY entry {
@@ -194,13 +234,18 @@ TEST_P(MixedTypesTest, BatchedDot) {
         backend_config={"fusion_config": {kind: "__xnn_fusion"}}
     })";
 
-  RunTest(kModuleStr);
+  constexpr absl::string_view kConvertStr =
+      "ROOT %convert = $out_dtype[2,3,4,6] convert(%dot)";
+
+  RunTest(InsertConvertIfNecessary(kModuleStr, params.in_dtype,
+                                   params.out_dtype, kConvertStr));
 }
 
 std::vector<XnnFusionTestParams> GetMixedTypesTestCases() {
   return std::vector<XnnFusionTestParams>({
       XnnFusionTestParams{"f32", "f32"},
       XnnFusionTestParams{"bf16", "f32"},
+      XnnFusionTestParams{"bf16", "bf16"},
   });
 }
 
