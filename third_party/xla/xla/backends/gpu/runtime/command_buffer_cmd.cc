@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_broadcast_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
+#include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
@@ -75,7 +76,6 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
-#include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
@@ -273,13 +273,26 @@ CommandBufferCmdExecutor::CommandBufferCmdExecutor(
     : synchronization_mode_(synchronization_mode),
       commands_(std::move(commands)),
       execution_graph_(std::move(execution_graph)) {
-  // Record all buffers used by commands in the sequence.
+  // Buffer allocations referenced by commands in this sequence.
+  absl::flat_hash_set<BufferAllocation::Index> allocs_indices;
+
   for (const std::unique_ptr<CommandBufferCmd>& cmd : commands_) {
+    absl::flat_hash_set<BufferAllocation::Index> cmd_allocs_indices;
+
     for (const BufferUse& buffer : cmd->buffers()) {
       buffers_.insert(buffer);
-      allocs_indices_.insert(buffer.slice().index());
+      allocs_indices.insert(buffer.slice().index());
+      cmd_allocs_indices.insert(buffer.slice().index());
     }
+
+    // Record buffer allocations indices referenced by the `cmd`.
+    cmd_allocs_indices_.emplace_back(cmd_allocs_indices.begin(),
+                                     cmd_allocs_indices.end());
   }
+
+  // Record all buffer allocations indices referenced by all commands in this
+  // sequence.
+  allocs_indices_.assign(allocs_indices.begin(), allocs_indices.end());
 }
 
 absl::Status CommandBufferCmdExecutor::Prepare(
@@ -511,7 +524,7 @@ const absl::flat_hash_set<BufferUse>& CommandBufferCmdExecutor::buffers()
   return buffers_;
 }
 
-const absl::flat_hash_set<BufferAllocation::Index>&
+absl::Span<const BufferAllocation::Index>
 CommandBufferCmdExecutor::allocs_indices() const {
   return allocs_indices_;
 }
@@ -528,7 +541,9 @@ TracedCommandBuffer::TracedCommandBuffer(
   // Collect unique buffer allocation indices in a set first and convert to
   // vector as flat hash set iteration has measurable overheads.
   absl::flat_hash_set<BufferAllocation::Index> allocs_indices;
-  for (auto& buffer : buffers) allocs_indices.insert(buffer.slice().index());
+  for (auto& buffer : buffers) {
+    allocs_indices.insert(buffer.slice().index());
+  }
   allocs_indices_.assign(allocs_indices.begin(), allocs_indices.end());
 }
 
@@ -545,7 +560,9 @@ absl::StatusOr<se::CommandBuffer*> TracedCommandBuffer::GetOrTraceCommandBuffer(
   // Moves entry at `i` position to front and moves entries in `[0, i)` range
   // one element to the right. Returns reference to the first entry.
   auto shift_right = [&](size_t i) -> Entry& {
-    if (i == 0) return entries_[0];
+    if (i == 0) {
+      return entries_[0];
+    }
 
     Entry entry = std::move(entries_[i]);
     do {
@@ -697,7 +714,9 @@ absl::Status LaunchCmd::Initialize(const Thunk::InitializeParams& params,
                                    StateManager& state) {
   {
     absl::MutexLock lock(&mutex_);
-    if (kernels_.contains(params.executor)) return absl::OkStatus();
+    if (kernels_.contains(params.executor)) {
+      return absl::OkStatus();
+    }
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -779,7 +798,9 @@ absl::Status CustomKernelLaunchCmd::Initialize(
     const Thunk::InitializeParams& params, StateManager& state) {
   {
     absl::MutexLock lock(&mutex_);
-    if (kernels_.contains(params.executor)) return absl::OkStatus();
+    if (kernels_.contains(params.executor)) {
+      return absl::OkStatus();
+    }
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -1010,25 +1031,21 @@ absl::StatusOr<const se::CommandBuffer::Command*> CaseCmd::Record(
               se::DeviceMemory<bool>(index),
               CreateCommands(branches_, &execute_params, &record_params),
               dependencies);
-
-        } else {
-          return command_buffer->CreateCase(
-              se::DeviceMemory<int32_t>(index),
-              CreateCommands(branches_, &execute_params, &record_params),
-              dependencies);
         }
+        return command_buffer->CreateCase(
+            se::DeviceMemory<int32_t>(index),
+            CreateCommands(branches_, &execute_params, &record_params),
+            dependencies);
       },
       [&](const se::CommandBuffer::Command* command) {
         if (index_is_bool_) {
           return command_buffer->UpdateCase(
               command, se::DeviceMemory<bool>(index),
               UpdateCommands(branches_, &execute_params, &record_params));
-
-        } else {
-          return command_buffer->UpdateCase(
-              command, se::DeviceMemory<int32_t>(index),
-              UpdateCommands(branches_, &execute_params, &record_params));
         }
+        return command_buffer->UpdateCase(
+            command, se::DeviceMemory<int32_t>(index),
+            UpdateCommands(branches_, &execute_params, &record_params));
       });
 }
 
@@ -1482,8 +1499,9 @@ CommandBufferCmd::BufferUseVector CustomCallCmd::buffers() const {
   CommandBufferCmd::BufferUseVector buffer_usage;
   for (auto& slices : {operands_, results_}) {
     for (const std::optional<Slice>& slice : slices) {
-      if (!slice.has_value()) continue;
-      buffer_usage.push_back({slice->slice, MemoryAccess::kWrite});
+      if (slice.has_value()) {
+        buffer_usage.push_back({slice->slice, MemoryAccess::kWrite});
+      }
     }
   }
   return buffer_usage;
@@ -1898,7 +1916,9 @@ DynamicSliceFusionCmd::DynamicSliceFusionCmd(
 // do not change.
 bool DynamicSliceFusionCmd::force_update() {
   return !absl::c_all_of(slices_, [](const DynamicSliceThunk::SliceDef& slice) {
-    if (!slice.offsets.has_value()) return true;
+    if (!slice.offsets.has_value()) {
+      return true;
+    }
     return absl::c_all_of(slice.offsets.value(),
                           [](DynamicSliceThunk::Offset offset) {
                             return std::holds_alternative<int64_t>(offset);
@@ -1910,7 +1930,9 @@ absl::Status DynamicSliceFusionCmd::Initialize(
     const Thunk::InitializeParams& params, StateManager& state) {
   TF_RETURN_IF_ERROR(embedded_commands_.Initialize(params, state));
   absl::MutexLock lock(&mutex_);
-  if (offsets_allocs_.contains(params.executor)) return absl::OkStatus();
+  if (offsets_allocs_.contains(params.executor)) {
+    return absl::OkStatus();
+  }
 
   VLOG(2) << "Allocate " << offsets_allocs_size_
           << " bytes for transferring offsets on executor: " << params.executor;
