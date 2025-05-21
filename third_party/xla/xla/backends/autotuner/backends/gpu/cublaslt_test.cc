@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
@@ -43,6 +45,7 @@ namespace gpu {
 
 using CublasLtBackendConfig = AutotuneResult::GemmKey;
 using ::tsl::testing::IsOk;
+using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
 const char kCublasLtCustomCallHlo[] = R"(
@@ -148,6 +151,21 @@ TEST_F(CublasLtBackendTest, GetDefaultConfigFailsWithoutACublasLtCustomCall) {
       backend_.GetDefaultConfig(
           (*module->entry_computation()->root_instruction()));
   EXPECT_THAT(config, StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(CublasLtBackendTest, ApplyConfig) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kCublasLtCustomCallHlo));
+  CublasLtBackendConfig config;
+  config.set_algorithm(2);
+  TF_EXPECT_OK(backend_.ApplyConfig(*hlo_module->entry_computation()
+                                         ->root_instruction()
+                                         ->mutable_operands()
+                                         .at(0),
+                                    config));
+  EXPECT_THAT(RunFileCheck(hlo_module->ToString(),
+                           "CHECK: \"selected_algorithm\":\"2\""),
+              IsOkAndHolds(true));
 }
 
 }  // namespace gpu
