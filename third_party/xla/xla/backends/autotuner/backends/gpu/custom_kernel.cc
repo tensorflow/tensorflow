@@ -44,6 +44,7 @@ namespace se = ::stream_executor;
 
 using CustomKernelBackendConfig = AutotuneResult::CustomKernelFusionKey;
 
+namespace {
 bool IsSupported(const HloInstruction& instr) {
   if (instr.opcode() != HloOpcode::kFusion) {
     LOG(ERROR)
@@ -60,6 +61,7 @@ bool IsSupported(const HloInstruction& instr) {
 
   return true;
 }
+}  // namespace
 
 absl::StatusOr<std::vector<CustomKernel>> LoadKernels(
     const HloInstruction* fusion_instruction,

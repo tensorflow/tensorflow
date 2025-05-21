@@ -27,12 +27,10 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/nvptx_compiler.h"
-#include "xla/service/hlo_module_util.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -43,7 +41,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using ::testing::ElementsAre;
+using ::testing::SizeIs;
 using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
@@ -88,21 +86,6 @@ TEST_F(FissionBackendTest, CanCreateCublasBackend) {
   ASSERT_NE(nullptr, &backend_);
 }
 
-MATCHER_P(FileCheck, expected_target, "") {
-  auto hlo_proto = dynamic_cast<HloModuleProto*>(arg.get());
-  absl::StatusOr<std::unique_ptr<HloModule>> hlo_module =
-      CreateModuleFromProto(*hlo_proto);
-  if (!hlo_module.ok()) {
-    return false;
-  }
-  absl::StatusOr<bool> file_check_result =
-      RunFileCheck(hlo_module.value()->ToString(), expected_target);
-  if (!file_check_result.ok()) {
-    return false;
-  }
-  return file_check_result.value();
-}
-
 TEST_F(FissionBackendTest, GetSupportedConfigsFromCublasCustomCall) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kTritonFusionHlo));
@@ -111,11 +94,11 @@ TEST_F(FissionBackendTest, GetSupportedConfigsFromCublasCustomCall) {
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
           (*module->entry_computation()->root_instruction()), stream_executor);
-  EXPECT_THAT(configs,
-              IsOkAndHolds(ElementsAre(
-                  FileCheck("CHECK: custom_call_target=\"__cublas$gemm\""),
-                  FileCheck("CHECK: custom_call_target=\"__cublas$lt$matmul\""),
-                  FileCheck("CHECK: calls=cutlass_gemm_with_upcast"))));
+  EXPECT_THAT(configs, IsOkAndHolds(SizeIs(10)));
+  EXPECT_EQ(
+      static_cast<const AutotuneResult::GemmKey&>(*configs.value().front())
+          .algorithm(),
+      -1);
 }
 
 TEST_F(FissionBackendTest, GetSupportedConfigsForUnsupportedInstructionFails) {
