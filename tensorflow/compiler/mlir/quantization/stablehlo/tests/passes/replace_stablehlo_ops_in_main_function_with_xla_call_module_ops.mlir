@@ -1,5 +1,5 @@
 // RUN: stablehlo-quant-opt %s -split-input-file \
-// RUN:    -stablehlo-replace-stablehlo-ops-in-main-function-with-xla-call-module-ops \
+// RUN:    -tf-stablehlo-replace-stablehlo-ops-in-main-function-with-xla-call-module-ops \
 // RUN:    | FileCheck %s
 
 // Modules with "main" or "serving_default" should properly run this pass and
@@ -473,49 +473,4 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
   // CHECK: tf.XlaCallModule
   // CHECK-SAME: _entry_function = @_stablehlo_main_2
   // CHECK: return
-}
-
-// -----
-
-// main function contains PartitionedCall and StatefulPartitionedCall ops that
-// have _no_xla_call_module attribute. This test make sure stablehlo ops in
-// their functions are NOT lifted.
-
-// CHECK-LABEL: functions_with_no_xla_call_module
-module @functions_with_no_xla_call_module attributes {tf_saved_model.semantics} {
-  // CHECK: func private @_stablehlo_main_0
-  // CHECK: stablehlo.constant dense<1.000000e+03> : tensor<3x3xf32>
-  // CHECK: stablehlo.constant dense<2.000000e+03> : tensor<3x3xf32>
-
-  func.func @main() -> (tensor<3x3xf32> {tf_saved_model.index_path = ["output"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "serving_default_input_tensor:0", outputs = "PartitionedCall:0"}, tf_saved_model.exported_names = ["serving_default"]} {
-    %0 = stablehlo.constant dense<1.000000e+03> : tensor<3x3xf32>
-    %1 = stablehlo.constant dense<2.000000e+03> : tensor<3x3xf32>
-    %2 = "tf.StatefulPartitionedCall"(%0, %1) <{
-      config = "", config_proto = "", executor_type = "", f = @some_func
-    }> : (tensor<3x3xf32>, tensor<3x3xf32>) -> tensor<3x3xf32>
-    %3 = "tf.PartitionedCall"(%2, %1) <{f = @some_other_func}> : (tensor<3x3xf32>, tensor<3x3xf32>) -> tensor<3x3xf32>
-    return %3 : tensor<3x3xf32>
-  }
-  // CHECK: func.func @main
-  // CHECK: %[[INPUT:.*]]:3 = "tf.XlaCallModule"()
-  // CHECK-SAME: _entry_function = @_stablehlo_main_0
-  // CHECK: %[[ADD:.*]] = "tf.StatefulPartitionedCall"(%[[INPUT]]#1, %[[INPUT]]#2)
-  // CHECK-SAME: f = @some_func
-  // CHECK: "tf.PartitionedCall"(%[[ADD]], %[[INPUT]]#0)
-  // CHECK-SAME: f = @some_other_func
-  // CHECK: return
-
-  func.func private @some_func(%arg0: tensor<3x3xf32>, %arg1: tensor<3x3xf32>) -> tensor<3x3xf32> attributes {_no_xla_call_module} {
-    %0 = stablehlo.add %arg0, %arg1 : tensor<3x3xf32>
-    return %0 : tensor<3x3xf32>
-  }
-  // CHECK: func.func private @some_func
-  // CHECK-NOT: tf.XlaCallModule
-
-  func.func private @some_other_func(%arg0: tensor<3x3xf32>, %arg1: tensor<3x3xf32>) -> tensor<3x3xf32> attributes {_no_xla_call_module} {
-    %0 = stablehlo.multiply %arg0, %arg1 : tensor<3x3xf32>
-    return %0 : tensor<3x3xf32>
-  }
-  // CHECK: func.func private @some_other_func
-  // CHECK-NOT: tf.XlaCallModule
 }

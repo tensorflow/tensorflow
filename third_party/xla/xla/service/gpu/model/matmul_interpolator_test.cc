@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -254,6 +255,169 @@ INSTANTIATE_TEST_SUITE_P(
     [](const TestParamInfo<MatmulInterpolatorParamTest::ParamType>& info) {
       return info.param.test_name;
     });
+
+class MatmulInterpolatorDefaultTableTest
+    : public TestWithParam<ParametrizedTestCase> {
+ public:
+  MatmulInterpolatorDefaultTableTest()
+      : device_info_(TestGpuDeviceInfo::RTXA6000DeviceInfo(
+            se::CudaComputeCapability(9, 0))) {}
+
+  void SetUp() override {
+    absl::StatusOr<std::unique_ptr<MatmulInterpolator>> interpolator_status =
+        MatmulInterpolator::Create(device_info_);
+    CHECK_OK(interpolator_status.status())
+        << "Cannot construct interpolator from default table.";
+    interpolator_ = std::move(*interpolator_status);
+  }
+
+ protected:
+  // Generates a Dot HLO instruction with BF16 data type.
+  absl::StatusOr<DotContext> DotBF16(int b, int m, int n, int k) {
+    // Template uses $0=b, $1=m, $2=k, $3=n for dimensions.
+    absl::string_view kTemplate = R"(
+    HloModule m
+
+    ENTRY r {
+      lhs = bf16[$0,$1,$2] parameter(0)
+      rhs = bf16[$0,$2,$3] parameter(1)
+      ROOT _ = bf16[$0,$1,$3] dot(lhs,rhs),
+       lhs_contracting_dims={2}, rhs_contracting_dims={1},
+       lhs_batch_dims={0}, rhs_batch_dims={0}
+    })";
+    TF_ASSIGN_OR_RETURN(auto module,
+                        ParseAndReturnUnverifiedModule(
+                            absl::Substitute(kTemplate, b, m, k, n)));
+    return DotContext{
+        /*dot=*/module->entry_computation()->root_instruction(),
+        /*module=*/std::move(module),
+    };
+  }
+
+  // Generates a Dot HLO instruction with FP8 data type.
+  absl::StatusOr<DotContext> DotFP8(int b, int m, int n, int k) {
+    // Template uses $0=b, $1=m, $2=k, $3=n for dimensions.
+    absl::string_view kTemplate = R"(
+    HloModule m
+
+    ENTRY r {
+      lhs = s8[$0,$1,$2] parameter(0)
+      rhs = s8[$0,$2,$3] parameter(1)
+      ROOT _ = s8[$0,$1,$3] dot(lhs,rhs),
+       lhs_contracting_dims={2}, rhs_contracting_dims={1},
+       lhs_batch_dims={0}, rhs_batch_dims={0}
+    })";
+    TF_ASSIGN_OR_RETURN(auto module,
+                        ParseAndReturnUnverifiedModule(
+                            absl::Substitute(kTemplate, b, m, k, n)));
+    return DotContext{
+        /*dot=*/module->entry_computation()->root_instruction(),
+        /*module=*/std::move(module),
+    };
+  }
+
+  const MatmulInterpolator& interpolator() { return *interpolator_; }
+
+ private:
+  const se::DeviceDescription device_info_;
+  std::unique_ptr<const MatmulInterpolator> interpolator_;
+};
+
+using BF16Test = MatmulInterpolatorDefaultTableTest;
+
+TEST_P(BF16Test, EstimatesRuntimeForBF16) {
+  const auto& [_, spec, expected_duration] = GetParam();
+  TF_ASSERT_OK_AND_ASSIGN(DotContext context,
+                          DotBF16(spec.b, spec.m, spec.n, spec.k));
+  // Compare with nanosecond precision.
+  EXPECT_EQ(absl::Trunc(*interpolator().EstimatedRuntime(*context.dot),
+                        absl::Microseconds(1)),
+            expected_duration);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    MatmulInterpolatorDefaultTableTestInstantiation, BF16Test,
+    ValuesIn<ParametrizedTestCase>({
+        {
+            /*test_name=*/"exact_match1_bf16",
+            /*spec=*/
+            {/*b=*/1, /*m=*/1024, /*n=*/4096, /*k=*/512, /*clock_cycles=*/0},
+            /*expected_duration=*/absl::Microseconds(12),
+        },
+        {
+            /*test_name=*/"exact_match2_bf16",
+            /*spec=*/
+            {/*b=*/4, /*m=*/256, /*n=*/1024, /*k=*/256, /*clock_cycles=*/0},
+            /*expected_duration=*/absl::Microseconds(6),
+        },
+        {
+            /*test_name=*/"exact_match3_bf16",
+            /*spec=*/
+            {/*b=*/1, /*m=*/4096, /*n=*/2048, /*k=*/4096, /*clock_cycles=*/0},
+            /*expected_duration=*/absl::Microseconds(89),
+        },
+        {
+            /*test_name=*/"extrapolate_small_bf16",
+            /*spec=*/
+            {/*b=*/1, /*m=*/64, /*n=*/64, /*k=*/64, /*clock_cycles=*/0},
+            // Expected duration based on nearest point (1,256,256,256)
+            // flops/sec and scaling by new dimensions.
+            /*expected_duration=*/absl::Microseconds(0),
+        },
+        {
+            /*test_name=*/"extrapolate_slightly_larger_k_bf16",
+            /*spec=*/
+            {/*b=*/1, /*m=*/1024, /*n=*/4096, /*k=*/513, /*clock_cycles=*/0},
+            // Expected duration based on (1,1024,4096,512) flops/sec and
+            // scaling k.
+            /*expected_duration=*/absl::Microseconds(12),
+        },
+        {
+            /*test_name=*/"interpolate_mid_n_bf16",
+            /*spec=*/
+            {/*b=*/1, /*m=*/1024, /*n=*/2048, /*k=*/512, /*clock_cycles=*/0},
+            // Expected duration based on linear interpolation of flops/sec
+            // between (1,1024,1024,512) and (1,1024,4096,512).
+            /*expected_duration=*/absl::Microseconds(9),
+        },
+    }),
+    [](const TestParamInfo<MatmulInterpolatorDefaultTableTest::ParamType>&
+           info) { return info.param.test_name; });
+
+using F8Test = MatmulInterpolatorDefaultTableTest;
+
+TEST_P(F8Test, EstimatesRuntimeForFP8) {
+  const auto& [_, spec, expected_duration] = GetParam();
+  TF_ASSERT_OK_AND_ASSIGN(DotContext context,
+                          DotFP8(spec.b, spec.m, spec.n, spec.k));
+  // Compare with nanosecond precision.
+  EXPECT_EQ(absl::Trunc(*interpolator().EstimatedRuntime(*context.dot),
+                        absl::Microseconds(1)),
+            expected_duration);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    MatmulInterpolatorDefaultTableTestInstantiationFP8, F8Test,
+    ValuesIn<ParametrizedTestCase>({
+        {
+            /*test_name=*/"extrapolate_small_fp8",
+            /*spec=*/
+            {/*b=*/1, /*m=*/64, /*n=*/64, /*k=*/64, /*clock_cycles=*/0},
+            // Expected duration based on nearest point (1,512,512,512)
+            // flops/sec and scaling by new dimensions.
+            /*expected_duration=*/absl::Microseconds(0),
+        },
+        {
+            /*test_name=*/"interpolate_larger_fp8",
+            /*spec=*/
+            {/*b=*/1, /*m=*/2048, /*n=*/2048, /*k=*/2048, /*clock_cycles=*/0},
+            // Expected duration based on nearest point (1,2048,2048,2048)
+            // flops/sec and scaling by new dimensions.
+            /*expected_duration=*/absl::Microseconds(69),
+        },
+    }),
+    [](const TestParamInfo<MatmulInterpolatorDefaultTableTest::ParamType>&
+           info) { return info.param.test_name; });
 
 class MatmulInterpolatorTest : public Test {
  public:

@@ -30,12 +30,12 @@ jobs:
         job_info: [
           {
             os: "linux-x86-g2-48-l4-4gpu",
-            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
             pretty_name: "XLA Linux x86 GPU L4 48 vcpu Presubmit",
           },
           {
             os: "linux-x86-g2-16-l4-1gpu",
-            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
             pretty_name: "XLA Linux x86 GPU L4 16 vcpu Presubmit",
           },
           {

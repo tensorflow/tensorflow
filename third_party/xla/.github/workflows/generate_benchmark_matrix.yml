@@ -44,7 +44,7 @@ jobs:
   generate:
     name: Generate Matrix (${{ inputs.workflow_type }})
     runs-on: linux-x86-n2-64
-    container: us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest
+    container: us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest
     outputs:
       matrix_json_output: ${{ steps.run_generator.outputs.matrix_json }}
     defaults:
