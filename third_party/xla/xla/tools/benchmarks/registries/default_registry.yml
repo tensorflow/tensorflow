@@ -37,7 +37,7 @@ benchmarks: [
     }]
     run_frequencies: [PRESUBMIT, POSTSUBMIT]
     update_frequency_policy: QUARTERLY
-    runtime_flags: ["--num_repeats=5"]
+    runtime_flags: ["--num_repeats=5", "--xla_gpu_exhaustive_tiling_search=true"]
     github_labels: ["blocking_presubmit_test"] # Github label for presubmit triggering
   },
   {
