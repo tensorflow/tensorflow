@@ -21,3 +21,13 @@ def ifrt_package_groups(name = "ifrt_package_groups"):
         name = "internal",
         packages = ["//..."],
     )
+
+    native.package_group(
+        name = "serdes_any_version_users",
+        packages = ["//..."],
+    )
+
+    native.package_group(
+        name = "serdes_week_4_old_version_users",
+        packages = ["//..."],
+    )
