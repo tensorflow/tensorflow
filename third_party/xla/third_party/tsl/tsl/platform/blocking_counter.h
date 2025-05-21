@@ -18,8 +18,9 @@ limitations under the License.
 
 #include <atomic>
 
+#include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "xla/tsl/platform/logging.h"
-#include "tsl/platform/mutex.h"
 
 namespace tsl {
 
@@ -39,18 +40,18 @@ class BlockingCounter {
       DCHECK_NE(((v + 2) & ~1), 0);
       return;  // either count has not dropped to 0, or waiter is not waiting
     }
-    mutex_lock l(mu_);
+    absl::MutexLock l(&mu_);
     DCHECK(!notified_);
     notified_ = true;
-    cond_var_.notify_all();
+    cond_var_.SignalAll();
   }
 
   inline void Wait() {
     unsigned int v = state_.fetch_or(1, std::memory_order_acq_rel);
     if ((v >> 1) == 0) return;
-    mutex_lock l(mu_);
+    absl::MutexLock l(&mu_);
     while (!notified_) {
-      cond_var_.wait(l);
+      cond_var_.Wait(&mu_);
     }
   }
   // Wait for the specified time, return false iff the count has not dropped to
@@ -58,10 +59,10 @@ class BlockingCounter {
   inline bool WaitFor(std::chrono::milliseconds ms) {
     unsigned int v = state_.fetch_or(1, std::memory_order_acq_rel);
     if ((v >> 1) == 0) return true;
-    mutex_lock l(mu_);
+    absl::MutexLock l(&mu_);
     while (!notified_) {
-      const std::cv_status status = cond_var_.wait_for(l, ms);
-      if (status == std::cv_status::timeout) {
+      bool timeout = cond_var_.WaitWithTimeout(&mu_, absl::FromChrono(ms));
+      if (timeout) {
         return false;
       }
     }
@@ -69,8 +70,8 @@ class BlockingCounter {
   }
 
  private:
-  mutex mu_;
-  condition_variable cond_var_;
+  absl::Mutex mu_;
+  absl::CondVar cond_var_;
   std::atomic<int> state_;  // low bit is waiter flag
   bool notified_;
 };
