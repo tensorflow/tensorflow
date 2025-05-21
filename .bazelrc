@@ -256,13 +256,15 @@ build:mkl_threadpool --define=build_with_mkl_opensource=true
 build:mkl_threadpool -c opt
 
 # Config setting to build oneDNN with Compute Library for the Arm Architecture (ACL).
+build:mkl_aarch64 --define=build_with_mkl_aarch64=true
+build:mkl_aarch64 --define=build_with_openmp=true
+build:mkl_aarch64 --define=build_with_acl=true
+build:mkl_aarch64 -c opt
+
+# Config setting to build oneDNN with Compute Library for the Arm Architecture (ACL).
 # with Eigen threadpool support
 build:mkl_aarch64_threadpool --define=build_with_mkl_aarch64=true
-build:mkl_aarch64_threadpool --define=build_with_acl=true
 build:mkl_aarch64_threadpool -c opt
-
-# This is an alias for the mkl_aarch64_threadpool build.
-build:mkl_aarch64 --config=mkl_aarch64_threadpool
 
 # Default CUDA and CUDNN versions.
 build:cuda_version --repo_env=HERMETIC_CUDA_VERSION="12.5.1"
