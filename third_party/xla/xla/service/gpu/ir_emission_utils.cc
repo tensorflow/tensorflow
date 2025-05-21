@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
@@ -71,19 +72,22 @@ namespace gpu {
 
 namespace {
 
-// Return whether the given shape is rank 2 excluding the batch dimensions.
-bool IsRank2(const Shape& shape, int64_t batch_dimensions_size) {
-  return shape.dimensions().size() == batch_dimensions_size + 2;
+bool DimensionIsUniqueAndNonSingleton(const Shape& shape,
+                                      absl::Span<const int64_t> dimensions) {
+  if (dimensions.size() != 1) {
+    return false;
+  }
+  return shape.dimensions(dimensions[0]) != 1;
 }
 
-// Return whether the given shape is rank 1 excluding the batch dimensions.
-bool IsRank1(const Shape& shape, int64_t batch_dimensions_size) {
-  return shape.dimensions().size() == batch_dimensions_size + 1;
+bool DimensionIsSingletonOrAbsent(const Shape& shape,
+                                  absl::Span<const int64_t> dimensions) {
+  return dimensions.empty() || shape.dimensions(dimensions[0]) == 1;
 }
 
 }  // namespace
 
-bool IsMatrixMultiplication(const HloInstruction& dot) {
+absl::StatusOr<bool> IsMatrixMultiplication(const HloInstruction& dot) {
   if (dot.opcode() != HloOpcode::kDot) {
     return false;
   }
@@ -92,7 +96,7 @@ bool IsMatrixMultiplication(const HloInstruction& dot) {
   const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
 
   PrimitiveType output_primitive_type = dot.shape().element_type();
-  bool type_is_allowed =
+  const bool type_is_allowed =
       (output_primitive_type == F8E3M4 || output_primitive_type == F8E4M3 ||
        output_primitive_type == F8E4M3FN || output_primitive_type == F8E5M2 ||
        output_primitive_type == F8E4M3FNUZ ||
@@ -102,18 +106,29 @@ bool IsMatrixMultiplication(const HloInstruction& dot) {
        output_primitive_type == C128) ||
       (output_primitive_type == S32 && lhs_shape.element_type() == S8 &&
        rhs_shape.element_type() == S8);
-  bool shapes_are_valid =
-      type_is_allowed &&
-      IsRank2(lhs_shape, dim_numbers.lhs_batch_dimensions_size()) &&
-      IsRank2(rhs_shape, dim_numbers.lhs_batch_dimensions_size()) &&
-      IsRank2(dot.shape(), dim_numbers.lhs_batch_dimensions_size()) &&
-      !ShapeUtil::IsZeroElementArray(lhs_shape) &&
-      !ShapeUtil::IsZeroElementArray(rhs_shape);
 
-  return shapes_are_valid;
+  if (!type_is_allowed) {
+    return false;
+  }
+  TF_ASSIGN_OR_RETURN(
+      const std::vector<int64_t> lhs_non_contracting_dims,
+      GetNonContractingDims(lhs_shape, dim_numbers.lhs_batch_dimensions(),
+                            dim_numbers.lhs_contracting_dimensions()));
+  TF_ASSIGN_OR_RETURN(
+      const std::vector<int64_t> rhs_non_contracting_dims,
+      GetNonContractingDims(rhs_shape, dim_numbers.rhs_batch_dimensions(),
+                            dim_numbers.rhs_contracting_dimensions()));
+
+  return DimensionIsUniqueAndNonSingleton(
+             lhs_shape, dim_numbers.lhs_contracting_dimensions()) &&
+         DimensionIsUniqueAndNonSingleton(lhs_shape,
+                                          lhs_non_contracting_dims) &&
+         DimensionIsUniqueAndNonSingleton(
+             rhs_shape, dim_numbers.rhs_contracting_dimensions()) &&
+         DimensionIsUniqueAndNonSingleton(rhs_shape, rhs_non_contracting_dims);
 }
 
-bool IsMatrixVectorMultiplication(const HloInstruction& dot) {
+absl::StatusOr<bool> IsMatrixVectorMultiplication(const HloInstruction& dot) {
   if (dot.opcode() != HloOpcode::kDot) {
     return false;
   }
@@ -122,25 +137,37 @@ bool IsMatrixVectorMultiplication(const HloInstruction& dot) {
   const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
 
   PrimitiveType output_primitive_type = dot.shape().element_type();
-  bool type_is_allowed =
+
+  const bool type_is_allowed =
       (output_primitive_type == F8E4M3FN || output_primitive_type == F8E5M2 ||
        output_primitive_type == F16 || output_primitive_type == BF16 ||
        output_primitive_type == F32 || output_primitive_type == F64 ||
-       output_primitive_type == C64 || output_primitive_type == C128) ||
+       output_primitive_type == C64) ||
       (output_primitive_type == S32 && lhs_shape.element_type() == S8 &&
        rhs_shape.element_type() == S8);
+  if (!type_is_allowed) {
+    return false;
+  }
 
-  bool shapes_are_valid =
-      type_is_allowed &&
-      ((IsRank2(lhs_shape, dim_numbers.lhs_batch_dimensions_size()) &&
-        IsRank1(rhs_shape, dim_numbers.lhs_batch_dimensions_size())) ||
-       (IsRank1(lhs_shape, dim_numbers.lhs_batch_dimensions_size()) &&
-        IsRank2(rhs_shape, dim_numbers.lhs_batch_dimensions_size()))) &&
-      IsRank1(dot.shape(), dim_numbers.lhs_batch_dimensions_size()) &&
-      !ShapeUtil::IsZeroElementArray(lhs_shape) &&
-      !ShapeUtil::IsZeroElementArray(rhs_shape);
+  TF_ASSIGN_OR_RETURN(
+      const std::vector<int64_t> lhs_non_contracting_dims,
+      GetNonContractingDims(lhs_shape, dim_numbers.lhs_batch_dimensions(),
+                            dim_numbers.lhs_contracting_dimensions()));
+  TF_ASSIGN_OR_RETURN(
+      const std::vector<int64_t> rhs_non_contracting_dims,
+      GetNonContractingDims(rhs_shape, dim_numbers.rhs_batch_dimensions(),
+                            dim_numbers.rhs_contracting_dimensions()));
 
-  return shapes_are_valid;
+  return DimensionIsUniqueAndNonSingleton(
+             lhs_shape, dim_numbers.lhs_contracting_dimensions()) &&
+         DimensionIsUniqueAndNonSingleton(
+             rhs_shape, dim_numbers.rhs_contracting_dimensions()) &&
+         (DimensionIsUniqueAndNonSingleton(lhs_shape,
+                                           lhs_non_contracting_dims) ||
+          DimensionIsUniqueAndNonSingleton(rhs_shape,
+                                           rhs_non_contracting_dims)) &&
+         (DimensionIsSingletonOrAbsent(lhs_shape, lhs_non_contracting_dims) ||
+          DimensionIsSingletonOrAbsent(rhs_shape, rhs_non_contracting_dims));
 }
 
 const char* const kCusolverCholeskyCallTarget = "__cusolver$cholesky";

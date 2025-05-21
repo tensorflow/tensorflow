@@ -582,8 +582,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         options_(options) {}
 
   absl::Status HandleDot(HloInstruction *instr) override {
-    if (!IsMatrixMultiplication(*instr) &&
-        !IsMatrixVectorMultiplication(*instr)) {
+    TF_ASSIGN_OR_RETURN(bool is_matmul, IsMatrixMultiplication(*instr));
+    TF_ASSIGN_OR_RETURN(bool is_matvecmul,
+                        IsMatrixVectorMultiplication(*instr));
+    if (!is_matmul && !is_matvecmul) {
       return absl::OkStatus();
     }
     // Sparse dot is not supported.

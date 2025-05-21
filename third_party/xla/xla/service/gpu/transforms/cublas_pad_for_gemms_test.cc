@@ -125,12 +125,12 @@ TEST_F(CublasGemmPadForTensorCoresTest, TwoDotsComputation) {
   ENTRY TestComputation {
     %param1 = f16[2048, 1024] parameter(0)
     %param2 = f16[1024, 33708] parameter(1)
-    %param3 = f16[33708, 1] parameter(2)
+    %param3 = f16[33708, 2] parameter(2)
     %dot1 = f16[2048, 33708]{1,0} dot(f16[2048, 1024]{1,0} %param1,
                 f16[1024, 33708]{0,1} %param2),
                 lhs_contracting_dims={1}, rhs_contracting_dims={0}
-    ROOT %dot2 = f16[2048, 1]{1,0} dot(f16[2048, 33708]{1,0} %dot1,
-                f16[33708, 1]{0,1} %param3),
+    ROOT %dot2 = f16[2048, 2]{1,0} dot(f16[2048, 33708]{1,0} %dot1,
+                f16[33708, 2]{0,1} %param3),
                 lhs_contracting_dims={1}, rhs_contracting_dims={0}
   })")
                     .value();
@@ -156,13 +156,13 @@ TEST_F(CublasGemmPadForTensorCoresTest, TwoDotsComputation) {
                          m::Constant().WithShape(F16, {}))
                       .WithShape(F16, {2048, 33712}),
 
-                  m::Pad(m::Parameter().WithShape(F16, {33708, 1}),
+                  m::Pad(m::Parameter().WithShape(F16, {33708, 2}),
                          m::Constant().WithShape(F16, {}))
                       .WithShape(F16, {33712, 8}))
                   .WithShape(F16, {2048, 8})
                   .WithContractingDims(/*lhs_contracting_dims=*/{1},
                                        /*rhs_contracting_dims=*/{0}))
-              .WithShape(F16, {2048, 1})));
+              .WithShape(F16, {2048, 2})));
 
   EXPECT_THAT(
       dot2,
