@@ -287,7 +287,7 @@ bool PjRtBufferEntry::Handle(tsl::RCReference<ConnectionState> state,
     ++base_req_id;
     for (size_t i = 0; i * xfer_size_ < arrs_[bid].buf_size; ++i) {
       DmaCopyChunk blob;
-      blob.copy_fn = [buffer = std::move(arrs_[bid].buffer)](
+      blob.copy_fn = [buffer = arrs_[bid].buffer](
                          void* dst, int64_t offset,
                          int64_t transfer_size) -> xla::PjRtFuture<> {
         return buffer->CopyRawToHost(dst, offset, transfer_size);
