@@ -33,6 +33,7 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/LogicalResult.h"
@@ -282,9 +283,16 @@ SmallVector<SubDimInfo> getOrderedSubDimsFromIotaTileAssignment(
 AnalyzeTileAssignmentResult analyzeTileAssignment(
     const TileAssignment& tileAssignment) {
   // If the input has iota tile assignment (the corresponding HloSharding is in
-  // V2 format), we use getOrderedSubDimsFromIotaTileAssignment.
+  // V2 format), we use getOrderedSubDimsFromIotaTileAssignment. If the input
+  // is not an iota tile assignment, but the device list is an iota ordering, we
+  // create an iota tile assignment.
   // TODO(zixuanjiang). We may handle HloShardingV1 in the future.
-  const std::optional<IotaTileAssignment>& iota = tileAssignment.iota();
+  std::optional<IotaTileAssignment> iota = tileAssignment.iota();
+  if (!iota.has_value() &&
+      llvm::equal(tileAssignment.array(),
+                  llvm::seq<int64_t>(0, tileAssignment.num_elements()))) {
+    iota = IotaTileAssignment::Create(tileAssignment.dimensions());
+  }
   CHECK(iota.has_value()) << "tile assignment: " << tileAssignment.ToString();
   const SmallVector<SubDimInfo> subDims =
       getOrderedSubDimsFromIotaTileAssignment(*iota);
