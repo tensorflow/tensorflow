@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/gpu/gpu_asm_opts_util.h"
-#include "xla/service/gpu/llvm_gpu_backend/amdgpu_backend.h"
 #include "xla/service/gpu/target_constants.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
@@ -43,6 +42,7 @@ limitations under the License.
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_backend.h"
 #include "xla/stream_executor/cuda/cuda_asm_compiler.h"
 #elif TENSORFLOW_USE_ROCM
+#include "xla/service/gpu/llvm_gpu_backend/amdgpu_backend.h"
 #include "tensorflow/core/platform/rocm_rocdl_path.h"
 #include "xla/stream_executor/gpu/asm_compiler.h"
 #endif
