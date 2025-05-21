@@ -485,7 +485,7 @@ std::string TagWithFingerprint(HloModule* module) {
 // each instruction takes. If we return a PGO based estimator then we will
 // additionally add fail-fast/warn checks to the pipeline which act in the
 // absence of instruction in the profile. See `PGLEAccuracyChecker` for details.
-std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
+absl::StatusOr<std::unique_ptr<LatencyEstimator>> GetLatencyEstimator(
     const HloModule& module, int pointer_size,
     const se::DeviceDescription& gpu_device_info, absl::string_view fingerprint,
     const SchedulerConfig& config) {
@@ -514,9 +514,10 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
         ShapeSizeBytesFunction(pointer_size), module.entry_computation());
   }
 
+  // Consider a fallback to T-shirt sizes if this becomes a default.
   if (options.xla_gpu_enable_analytical_sol_latency_estimator()) {
     LOG(INFO) << "Using Speed-of-Light (SoL) analytical latency estimator";
-    return std::make_unique<SolLatencyEstimator>(
+    return SolLatencyEstimator::Create(
         config, std::move(gpu_latency_estimator), gpu_device_info,
         ShapeSizeBytesFunction(pointer_size), module.entry_computation());
   }
@@ -577,8 +578,10 @@ absl::Status RunLatencyHidingSchedulerPasses(
 
   auto shape_size_in_bytes = ShapeSizeBytesFunction(pointer_size);
 
-  std::unique_ptr<LatencyEstimator> estimator = GetLatencyEstimator(
-      *module, pointer_size, gpu_device_info, fingerprint, config);
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<LatencyEstimator> estimator,
+      GetLatencyEstimator(*module, pointer_size, gpu_device_info, fingerprint,
+                          config));
 
   if (NeedAccuracyChecker(options, *estimator)) {
     pipeline.AddPass<PGLEAccuracyChecker>(
