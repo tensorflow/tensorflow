@@ -17,6 +17,7 @@ syntax = "proto3";
 
 package xla.cpu;
 
+import "xla/backends/cpu/xnnpack_config.proto";
 import "xla/service/buffer_assignment.proto";
 import "xla/service/hlo.proto";
 import "xla/xla_data.proto";
@@ -167,11 +168,7 @@ message XnnFusionThunkProtoImpl {
 }
 
 message XnnFusionThunkProto {
-  message Options {
-    bool use_threadpool = 1;
-  }
-
-  Options options = 1;
+  XnnFusionBackendConfig options = 1;
 
   oneof impl {
     XnnDotThunkProto xnn_dot_thunk = 2;
