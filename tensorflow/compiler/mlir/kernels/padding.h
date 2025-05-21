@@ -12,12 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_KERNELS_PADDING_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_KERNELS_PADDING_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_KERNELS_PADDING_H_
+#define TENSORFLOW_COMPILER_MLIR_KERNELS_PADDING_H_
+
+// Possible padding types (for convolutions)
+typedef enum {
+  kTfLitePaddingUnknown = 0,
+  kTfLitePaddingSame,
+  kTfLitePaddingValid,
+} TfLitePadding;
 
 // LINT.IfChange
-#include "tensorflow/compiler/mlir/lite/core/c/builtin_op_data.h"
-
 namespace tflite_migration {
 
 // Matching GetWindowedOutputSize in TensorFlow.
@@ -56,4 +61,4 @@ inline int ComputePaddingWithOffset(int stride, int dilation_rate, int in_size,
 
 // LINT.ThenChange(//tensorflow/lite/kernels/padding.h)
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_KERNELS_PADDING_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_KERNELS_PADDING_H_
