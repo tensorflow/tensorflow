@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -1953,6 +1954,147 @@ ENTRY main {
 
   EXPECT_THAT(tiling_spec.num_tile_sizes_by_instruction(),
               UnorderedElementsAre(Pair(abs, 2), Pair(dot, 1)));
+}
+
+TEST_F(TilingSpecificationTest,
+       TilingWithIncorrectSetOfNestedTileSizesDoesNotConformToSpecification) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+computation {
+  p0 = f32[137,115] parameter(0)
+  p1 = f32[115,137] parameter(1)
+  ROOT dot = f32[137,137] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY main {
+  p0 = f32[137,115] parameter(0)
+  p1 = f32[115,137] parameter(1)
+  ROOT fusion = f32[137,137] fusion(p0, p1), kind=kLoop, calls=computation
+})"));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TilingSpecification tiling_spec,
+      TilingSpecification::FromFusion(*xla::Cast<HloFusionInstruction>(root)));
+
+  const HloInstruction* dot = root->fused_expression_root();
+  ASSERT_EQ(dot->opcode(), HloOpcode::kDot);
+
+  // An underspecified tiling does not conform to a tiling specification.
+  Tiling underspecified_nested_tiling(Tiling::TileMapping{{dot, {1}}});
+  EXPECT_FALSE(underspecified_nested_tiling.ConformsTo(tiling_spec));
+
+  // An overspecified tiling does not conform to a tiling specification either.
+  Tiling overspecified_nested_tiling(Tiling::TileMapping{{dot, {1, 1, 1, 1}}});
+  EXPECT_FALSE(overspecified_nested_tiling.ConformsTo(tiling_spec));
+}
+
+TEST_F(TilingSpecificationTest,
+       TilingWithIncorrectSetOfOutputTileSizesDoesNotConformToSpecification) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+computation {
+  p0 = f32[137,115] parameter(0)
+  p1 = f32[115,137] parameter(1)
+  dot = f32[137,137] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT abs = f32[137,137] abs(dot)
+}
+
+ENTRY main {
+  p0 = f32[137,115] parameter(0)
+  p1 = f32[115,137] parameter(1)
+  ROOT fusion = f32[137,137] fusion(p0, p1), kind=kLoop, calls=computation
+})"));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TilingSpecification tiling_spec,
+      TilingSpecification::FromFusion(*xla::Cast<HloFusionInstruction>(root)));
+
+  const HloInstruction* abs = root->fused_expression_root();
+  const HloInstruction* dot = abs->operand(0);
+
+  // An underspecified tiling does not conform to a tiling specification.
+  Tiling underspecified_output_tiling(
+      Tiling::TileMapping{{dot, {1}}, {abs, {1}}});
+  EXPECT_FALSE(underspecified_output_tiling.ConformsTo(tiling_spec));
+
+  // An overspecified tiling does not conform to a tiling specification either.
+  Tiling overspecified_output_tiling(
+      Tiling::TileMapping{{dot, {1}}, {abs, {1, 1, 1}}});
+  EXPECT_FALSE(overspecified_output_tiling.ConformsTo(tiling_spec));
+}
+
+TEST_F(TilingSpecificationTest,
+       TilingWithIncorrectSetOfTiledInstructionsDoesNotConformToSpecification) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+computation {
+  p0 = f32[137,115] parameter(0)
+  p1 = f32[115,137] parameter(1)
+  ROOT dot = f32[137,137] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY main {
+  p0 = f32[137,115] parameter(0)
+  p1 = f32[115,137] parameter(1)
+  ROOT fusion = f32[137,137] fusion(p0, p1), kind=kLoop, calls=computation
+})"));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TilingSpecification tiling_spec,
+      TilingSpecification::FromFusion(*xla::Cast<HloFusionInstruction>(root)));
+
+  const HloInstruction* dot = root->fused_expression_root();
+  ASSERT_EQ(dot->opcode(), HloOpcode::kDot);
+
+  // An underspecified tiling does not conform to a tiling specification.
+  Tiling underspecified_tiling(Tiling::TileMapping{{}});
+  EXPECT_FALSE(underspecified_tiling.ConformsTo(tiling_spec));
+
+  // A tiling along of irrelevant operations does not conform to a tiling
+  // specification.
+  Tiling off_topic_tiling(Tiling::TileMapping{{dot->operand(0), {1}}});
+  EXPECT_FALSE(off_topic_tiling.ConformsTo(tiling_spec));
+
+  // An overspecified tiling does not conform to a tiling specification either.
+  Tiling overspecified_tiling(
+      Tiling::TileMapping{{dot, {1, 1, 1}}, {dot->operand(0), {1}}});
+
+  EXPECT_FALSE(overspecified_tiling.ConformsTo(tiling_spec));
+}
+
+TEST_F(TilingSpecificationTest,
+       TilingWithExactlyConformantSetOfParametersConformsToSpecification) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+computation {
+  p0 = f32[137,115] parameter(0)
+  p1 = f32[115,137] parameter(1)
+  ROOT dot = f32[137,137] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY main {
+  p0 = f32[137,115] parameter(0)
+  p1 = f32[115,137] parameter(1)
+  ROOT fusion = f32[137,137] fusion(p0, p1), kind=kLoop, calls=computation
+})"));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TilingSpecification tiling_spec,
+      TilingSpecification::FromFusion(*xla::Cast<HloFusionInstruction>(root)));
+
+  const HloInstruction* dot = root->fused_expression_root();
+  ASSERT_EQ(dot->opcode(), HloOpcode::kDot);
+
+  Tiling exact_tiling(Tiling::TileMapping{{dot, {1, 1, 1}}});
+  EXPECT_TRUE(exact_tiling.ConformsTo(tiling_spec));
 }
 
 }  // namespace
