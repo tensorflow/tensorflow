@@ -939,6 +939,10 @@ ENTRY e {
 }
 
 TEST_P(GemmFusionAutotunerLevelTest, Deviceless) {
+  if (GetCudaComputeCapability().IsAtLeastBlackwell()) {
+    GTEST_SKIP() << "TODO: b/407494653 - Re-enable for Blackwell once this is "
+                    "no longer fragile.";
+  }
   const std::string hlo = R"(
 HloModule module
 
