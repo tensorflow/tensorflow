@@ -153,6 +153,14 @@ func.func @softmax(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
 // CHECK:  "tfl.softmax"(%arg0) <{beta = 1.000000e+00 : f32}> : (tensor<8x16xf32>) -> tensor<8x16xf32>
 }
 
+func.func @softsign(%arg0: tensor<f32>) -> tensor<f32> {
+  %0 = "tf.Softsign"(%arg0) : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+
+// CHECK-LABEL: softsign
+// CHECK:  "tfl.softsign"(%arg0) : (tensor<f32>) -> tensor<f32>
+}
+
 func.func @softplus(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
   %0 = "tf.Softplus"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
   func.return %0 : tensor<8x16xf32>
