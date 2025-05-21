@@ -210,8 +210,7 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
       !enable_command_buffers_during_profiling_) {
     VLOG(1) << "Execute command buffer thunk as a regular thunk sequence "
                "because we detected active profiling session";
-    TF_RETURN_IF_ERROR(thunks_->ExecuteOnStream(params));
-    return absl::OkStatus();
+    return thunks_->ExecuteOnStream(params);
   }
 
   se::StreamExecutor* executor = params.stream->parent();
@@ -241,7 +240,8 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
 
     uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
-    CommandBufferCmd::RecordParams record_params = {cmd_buffer->state};
+    CommandBufferCmd::RecordParams record_params = {cmd_buffer->state,
+                                                    std::move(updated_allocs)};
     TF_RETURN_IF_ERROR(commands_.Record(params, record_params,
                                         cmd_buffer->command_buffer.get()));
 

@@ -20,6 +20,7 @@ limitations under the License.
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -29,6 +30,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/optimization.h"
+#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -38,6 +40,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -274,10 +277,10 @@ CommandBufferCmdExecutor::CommandBufferCmdExecutor(
       commands_(std::move(commands)),
       execution_graph_(std::move(execution_graph)) {
   // Buffer allocations referenced by commands in this sequence.
-  absl::flat_hash_set<BufferAllocation::Index> allocs_indices;
+  absl::btree_set<BufferAllocation::Index> allocs_indices;
 
   for (const std::unique_ptr<CommandBufferCmd>& cmd : commands_) {
-    absl::flat_hash_set<BufferAllocation::Index> cmd_allocs_indices;
+    absl::btree_set<BufferAllocation::Index> cmd_allocs_indices;
 
     for (const BufferUse& buffer : cmd->buffers()) {
       buffers_.insert(buffer);
@@ -344,7 +347,7 @@ CommandBufferCmdExecutor::RecordCreate(
   TF_RETURN_IF_ERROR(CheckCommandBufferState(
       command_buffer, se::CommandBuffer::State::kCreate));
 
-  VLOG(3) << "Create " << commands_.size() << " commands";
+  VLOG(1) << "Create " << commands_.size() << " commands";
   uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
   // Short-circuit if there are no commands to record.
@@ -399,7 +402,7 @@ CommandBufferCmdExecutor::RecordCreate(
   }
 
   uint64_t end_micros = tsl::Env::Default()->NowMicros();
-  VLOG(3) << absl::StrFormat(
+  VLOG(1) << absl::StrFormat(
       "Created %d commands in %d μs (num sink commands: %d)", commands_.size(),
       end_micros - start_micros, sink_commands.size());
 
@@ -414,7 +417,7 @@ absl::Status CommandBufferCmdExecutor::RecordUpdate(
   TF_RETURN_IF_ERROR(CheckCommandBufferState(
       command_buffer, se::CommandBuffer::State::kUpdate));
 
-  VLOG(3) << "Update " << commands_.size() << " commands";
+  VLOG(1) << "Update " << commands_.size() << " commands";
   uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
   // Short-circuit if there are no commands to update.
@@ -425,6 +428,33 @@ absl::Status CommandBufferCmdExecutor::RecordUpdate(
   // Keep a state associated with commands in the sequence in the state manager.
   CommandBufferCmd::StateManager& state = record_params.state;
 
+  // Check if command `id` has to be updated based on the buffer allocations
+  // that changed since the last call to `Record`. We keep intersection vector
+  // outside of a lambda to avoid repeated heap allocations on every call.
+  std::vector<BufferAllocation::Index> alloc_intersection;
+  auto skip_command_update = [&](CommandId id) {
+    CommandBufferCmd* command = commands_[id].get();
+    if (command->force_update() || !record_params.updated_allocs) {
+      return false;
+    }
+
+    DCHECK(absl::c_is_sorted(*record_params.updated_allocs))
+        << "Updated allocs must be sorted: "
+        << absl::StrJoin(*record_params.updated_allocs, ", ");
+
+    DCHECK(absl::c_is_sorted(cmd_allocs_indices_[id]))
+        << "Command allocs must be sorted: "
+        << absl::StrJoin(cmd_allocs_indices_[id], ", ");
+
+    alloc_intersection.clear();
+    absl::c_set_intersection(cmd_allocs_indices_[id],
+                             *record_params.updated_allocs,
+                             std::back_inserter(alloc_intersection));
+    return alloc_intersection.empty();
+  };
+
+  size_t num_skipped_command_updates = 0;
+
   for (CommandId id = 0; id < commands_.size(); ++id) {
     CommandBufferCmd* command = commands_[id].get();
 
@@ -434,6 +464,12 @@ absl::Status CommandBufferCmdExecutor::RecordUpdate(
     // Skip updating collective commands if mock collectives are enabled.
     if (execute_params.mock_collectives &&
         dynamic_cast<CollectiveCmd*>(command)) {
+      continue;
+    }
+
+    // Skip updating command if it doesn't use any of the updated allocations.
+    if (skip_command_update(id)) {
+      ++num_skipped_command_updates;
       continue;
     }
 
@@ -450,8 +486,9 @@ absl::Status CommandBufferCmdExecutor::RecordUpdate(
   }
 
   uint64_t end_micros = tsl::Env::Default()->NowMicros();
-  VLOG(3) << "Updated " << commands_.size() << " commands in "
-          << (end_micros - start_micros) << " μs";
+  VLOG(1) << "Updated " << commands_.size() << " commands in "
+          << (end_micros - start_micros) << " μs (skipped "
+          << num_skipped_command_updates << " command updates)";
 
   return absl::OkStatus();
 }

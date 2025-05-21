@@ -202,6 +202,11 @@ class CommandBufferCmd {
     // An external state manager that gives efficient access to per-device state
     // to commands without a need to add expensive synchronization.
     StateManager& state;
+
+    // Buffer allocations that changed since the last call to `Record`. Buffer
+    // allocation indices are sorted. CommandBufferCmdExecutor and individual
+    // commands rely on this information to skip unnecessary updates.
+    std::optional<std::vector<BufferAllocation::Index>> updated_allocs;
   };
 
   // Create new commands in the command buffer using the given dependencies.
