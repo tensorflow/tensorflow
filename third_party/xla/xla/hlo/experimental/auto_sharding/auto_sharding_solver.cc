@@ -1266,24 +1266,6 @@ std::optional<AutoShardingViolationCode> ShardingStrategyHasViolation(
   return std::nullopt;
 }
 
-// TODO(ykook): Change the name of a function calling this to
-// ComputeShardingCostWithNegativeErrorCodes().
-double ComputeShardingCost(
-    const AutoShardingSolverRequest& request,
-    const std::vector<NodeStrategyIdx>& node_strategies) {
-  double cost = 0.0;
-  for (NodeIdx v = 0; v < request.num_nodes(); ++v) {
-    NodeStrategyIdx strategy = node_strategies[v];
-    cost += request.computation_costs(v).costs(strategy) +
-            request.communication_costs(v).costs(strategy);
-  }
-  for (EdgeIdx e = 0; e < request.edges_size(); ++e) {
-    EdgeStrategyIdx strategy = GetEdgeStrategy(request, node_strategies, e);
-    cost += request.resharding_costs(e).costs(strategy);
-  }
-  return cost;
-}
-
 // Assigns all nodes to their first sharding configuration. If the assignment is
 // infeasible, the output cost is negative and encodes the violation code.
 AutoShardingSolverOutput SolveTrivial(
@@ -1292,7 +1274,7 @@ AutoShardingSolverOutput SolveTrivial(
 
   AutoShardingSolverOutput output;
   output.s_val = node_strategies;
-  output.cost = ComputeShardingStrategyCost(request, node_strategies);
+  output.cost = ComputeShardingCost(request, node_strategies);
   return output;
 }
 
@@ -1311,7 +1293,7 @@ AutoShardingSolverOutput SolveRandom(const AutoShardingSolverRequest& request,
       NodeStrategyIdx strategy = dist(rng);
       node_strategies[v] = strategy;
     }
-    double cost = ComputeShardingStrategyCost(request, node_strategies);
+    double cost = ComputeShardingCost(request, node_strategies);
 
     bool have_feasible_solution = (best_cost >= 0.0);
     bool candidate_is_feasible = (cost >= 0.0);
@@ -1374,7 +1356,7 @@ AutoShardingSolverOutput SolveGreedy(const AutoShardingSolverRequest& request,
 
   AutoShardingSolverOutput output;
   output.s_val = node_strategies;
-  output.cost = ComputeShardingStrategyCost(request, node_strategies);
+  output.cost = ComputeShardingCost(request, node_strategies);
   return output;
 }
 
@@ -1405,7 +1387,8 @@ AutoShardingSolverOutput SolveRandomPathGreedy(
       GetAdjacencyMatrix(request);
   std::vector<std::vector<LivenessIdx>> node_to_active_times;
   std::vector<double> memory_slack;
-  double current_cost = ComputeShardingCost(request, node_strategies);
+  double current_cost = ComputeShardingCost(
+      request, node_strategies, /*use_negative_violation_codes=*/false);
   if (memory_mode == "active") {
     node_to_active_times = GetNodeToActiveTimes(request);
     memory_slack = TrackMemorySlack(request, node_strategies);
@@ -1454,7 +1437,7 @@ AutoShardingSolverOutput SolveRandomPathGreedy(
   }
 
   output.s_val = node_strategies;
-  output.cost = ComputeShardingStrategyCost(request, node_strategies);
+  output.cost = ComputeShardingCost(request, node_strategies);
   return output;
 }
 
@@ -1487,8 +1470,7 @@ absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
   auto duration = absl::Now() - start_time;
   LOG(INFO) << "Solver took " << absl::ToInt64Milliseconds(duration) << " ms";
   LOG(INFO) << "Objective value: " << output.cost;
-  LOG(INFO) << "Total Cost: "
-            << ComputeShardingStrategyCost(request, output.s_val);
+  LOG(INFO) << "Total Cost: " << ComputeShardingCost(request, output.s_val);
   return output;
 }
 
@@ -1633,14 +1615,25 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
   return evaluation;
 }
 
-double ComputeShardingStrategyCost(
-    const AutoShardingSolverRequest& request,
-    const std::vector<NodeStrategyIdx>& node_strategies) {
-  double cost = ComputeShardingCost(request, node_strategies);
-  std::optional<AutoShardingViolationCode> violation_code =
-      ShardingStrategyHasViolation(request, node_strategies);
-  if (violation_code.has_value()) {
-    cost = -1 * (*violation_code);
+double ComputeShardingCost(const AutoShardingSolverRequest& request,
+                           const std::vector<NodeStrategyIdx>& node_strategies,
+                           const bool use_negative_violation_codes) {
+  double cost = 0.0;
+  for (NodeIdx v = 0; v < request.num_nodes(); ++v) {
+    NodeStrategyIdx strategy = node_strategies[v];
+    cost += request.computation_costs(v).costs(strategy) +
+            request.communication_costs(v).costs(strategy);
+  }
+  for (EdgeIdx e = 0; e < request.edges_size(); ++e) {
+    EdgeStrategyIdx strategy = GetEdgeStrategy(request, node_strategies, e);
+    cost += request.resharding_costs(e).costs(strategy);
+  }
+  if (use_negative_violation_codes) {
+    std::optional<AutoShardingViolationCode> violation_code =
+        ShardingStrategyHasViolation(request, node_strategies);
+    if (violation_code.has_value()) {
+      cost = -1 * (*violation_code);
+    }
   }
   return cost;
 }

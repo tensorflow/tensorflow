@@ -13,7 +13,6 @@ limitations under the License.
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
 
 #include <cstdint>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -46,15 +45,6 @@ void AddCosts(proto2::RepeatedPtrField<AutoShardingSolverRequest_Costs>* costs,
   }
 }
 
-void AddNodes(proto2::RepeatedPtrField<AutoShardingSolverRequest_Nodes>* nodes,
-              const NodeMatrix& node_matrix) {
-  for (const auto& node_row : node_matrix) {
-    AutoShardingSolverRequest_Nodes node;
-    node.mutable_nodes()->Add(node_row.begin(), node_row.end());
-    nodes->Add(std::move(node));
-  }
-}
-
 void AddEdges(proto2::RepeatedPtrField<AutoShardingSolverRequest_Edges>* edges,
               const EdgeMatrix& edge_matrix) {
   for (const auto& edge_row : edge_matrix) {
@@ -84,8 +74,6 @@ void AddGroups(
     groups->Add(std::move(group));
   }
 }
-
-// clang-format off
 
 AutoShardingSolverRequest DefaultAutoShardingSolverRequest() {
   // The problem below is partially inspired by 'DotLHSTwoNonContractingDims'
@@ -846,12 +834,13 @@ TEST(AutoShardingEvaluatorTest, ViolatesMaxDepartures) {
   EXPECT_EQ(evaluation, expected_evaluation);
 }
 
-TEST(MinimumMemoryBudgetRequired, HandlesLiveMatrix) {
+TEST(MinimumMemoryBudgetRequiredTest, HandlesLiveMatrix) {
   const AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
   EXPECT_EQ(MinimumMemoryBudgetRequired(request), 1000000.0);
 }
 
-TEST(DISABLED_MinimumMemoryBudgetRequired, HandlesReducedIntervalsAndGroups) {
+TEST(DISABLED_MinimumMemoryBudgetRequiredTest,
+     HandlesReducedIntervalsAndGroups) {
   AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
   const std::vector<std::pair<int64_t, int64_t>> node_intervals =
       {{5, -1}, {5, -1}, {2, 3}, {3, 4}, {100, -1}, {0, 4}};
@@ -863,7 +852,7 @@ TEST(DISABLED_MinimumMemoryBudgetRequired, HandlesReducedIntervalsAndGroups) {
   EXPECT_EQ(MinimumMemoryBudgetRequired(request), 1000000.0);
 }
 
-TEST(StableMap, IterationOrderDeterminism) {
+TEST(StableMapTest, IterationOrderDeterminism) {
   StableMap<int, int> map;
   std::vector<int> insertion_order = {6, 3, 1, 2, 4, 5, 10, 0, 7, 9, 8};
   for (int key : insertion_order) {
@@ -878,11 +867,25 @@ TEST(StableMap, IterationOrderDeterminism) {
               ::testing::ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10));
 }
 
-TEST(ValidateRequest, AcceptsAutoShardingSolverRequest) {
-  CHECK_OK(ValidateRequest(DefaultAutoShardingSolverRequest()));
+TEST(ComputeShardingCostTest, HandlesNegativeViolationCodes) {
+  AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
+  // Require that all nodes are active for one time step.
+  const std::vector<NodeIdx> live = {0, 1, 2, 3, 4};
+  request.mutable_live()->Add()->mutable_nodes()->Add(live.begin(), live.end());
+  const std::vector<NodeStrategyIdx> s_val = {0, 0, 0, 0, 0};
+
+  EXPECT_EQ(ComputeShardingCost(request, s_val), 7650.0);
+
+  request.set_memory_budget(0);
+  EXPECT_EQ(ComputeShardingCost(request, s_val), -1 * kMemoryViolationCode);
+  EXPECT_EQ(ComputeShardingCost(request, s_val,
+                                /*use_negative_violation_codes=*/false),
+            7650.0);
 }
 
-// clang-format on
+TEST(ValidateRequestTest, AcceptsAutoShardingSolverRequest) {
+  CHECK_OK(ValidateRequest(DefaultAutoShardingSolverRequest()));
+}
 
 }  // namespace
 }  // namespace spmd

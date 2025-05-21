@@ -111,12 +111,12 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
 
 // Computes the objective value of the sharding strategy. If the objective value
 // is infinite or the sharding is infeasible (e.g., violates the peak-memory
-// constraint), then a negated `AutoShardingViolationCode` value is returned.
-// This function is used instead of `Evaluate` for faster iteration loops in the
-// heuristic solver library.
-double ComputeShardingStrategyCost(
-    const AutoShardingSolverRequest& request,
-    const std::vector<NodeStrategyIdx>& node_strategies);
+// constraint), the negative `AutoShardingViolationCode` value is returned.
+// We use this function instead of `Evaluate()` for faster iteration loops in
+// the heuristic solver library.
+double ComputeShardingCost(const AutoShardingSolverRequest& request,
+                           const std::vector<NodeStrategyIdx>& node_strategies,
+                           bool use_negative_violation_codes = true);
 
 // Determines if strategy 'first' is dominated by strategy 'second' (i.e., its
 // costs are all equal or worse, and it has identical alias mappings).
