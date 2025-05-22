@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_CPU_AUTOTUNER_BACKENDS_CPU_CODEGEN_BACKEND_H_
-#define XLA_BACKENDS_CPU_AUTOTUNER_BACKENDS_CPU_CODEGEN_BACKEND_H_
+#ifndef XLA_BACKENDS_CPU_AUTOTUNER_CPU_CODEGEN_BACKEND_H_
+#define XLA_BACKENDS_CPU_AUTOTUNER_CPU_CODEGEN_BACKEND_H_
 
 #include <memory>
 #include <string>
@@ -91,4 +91,4 @@ class CpuCodegenBackend : public CodegenBackend {
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // XLA_BACKENDS_CPU_AUTOTUNER_BACKENDS_CPU_CODEGEN_BACKEND_H_
+#endif  // XLA_BACKENDS_CPU_AUTOTUNER_CPU_CODEGEN_BACKEND_H_
