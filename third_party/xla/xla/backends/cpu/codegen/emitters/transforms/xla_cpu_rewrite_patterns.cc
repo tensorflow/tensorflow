@@ -17,16 +17,19 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_dialect.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_ops.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_types.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
@@ -34,24 +37,33 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
+static mlir::LLVM::LLVMStructType getNewOrExistingStruct(
+    mlir::MLIRContext* ctx, absl::string_view name,
+    llvm::ArrayRef<mlir::Type> types) {
+  mlir::LLVM::LLVMStructType struct_type =
+      mlir::LLVM::LLVMStructType::getIdentified(ctx, name);
+  if (struct_type.isIdentified() && struct_type.getBody().equals(types)) {
+    return struct_type;
+  }
+  return mlir::LLVM::LLVMStructType::getNewIdentified(ctx, name, types);
+}
+
 static mlir::LLVM::LLVMStructType KernelDim3Type(mlir::MLIRContext* ctx) {
   auto i64 = mlir::IntegerType::get(ctx, 64);
-  return mlir::LLVM::LLVMStructType::getNewIdentified(ctx, "kernel_dim3",
-                                                      {i64, i64, i64});
+  return getNewOrExistingStruct(ctx, "kernel_dim3", {i64, i64, i64});
 }
 
 static mlir::LLVM::LLVMStructType KernelArgType(mlir::MLIRContext* ctx) {
   auto ptr = mlir::LLVM::LLVMPointerType::get(ctx);
   auto i64 = mlir::IntegerType::get(ctx, 64);
-  return mlir::LLVM::LLVMStructType::getNewIdentified(ctx, "XLA_CPU_KernelArg",
-                                                      {ptr, i64});
+  return getNewOrExistingStruct(ctx, "XLA_CPU_KernelArg", {ptr, i64});
 }
 
 static mlir::LLVM::LLVMStructType KernelCallFrameType(mlir::MLIRContext* ctx) {
   auto ptr = mlir::LLVM::LLVMPointerType::get(ctx);
   auto i64 = mlir::IntegerType::get(ctx, 64);
-  return mlir::LLVM::LLVMStructType::getNewIdentified(
-      ctx, "XLA_CPU_KernelCallFrame", {ptr, ptr, i64, ptr});
+  return getNewOrExistingStruct(ctx, "XLA_CPU_KernelCallFrame",
+                                {ptr, ptr, i64, ptr});
 }
 
 struct LowerLoadOp : public mlir::OpRewritePattern<LoadOp> {
