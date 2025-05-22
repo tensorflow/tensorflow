@@ -168,7 +168,7 @@ Range RecursivelyIdentifyRange(
     }
     case HloOpcode::kConstant: {
       if (instr->shape().element_type() == PRED &&
-          instr->shape().dimensions().size() == 0) {
+          instr->shape().dimensions().empty()) {
         if (instr->literal().IsAll(true)) {
           return RecordAndReturnRange(
               Range{ConstantValue::GetOne(/*bitwidth=*/1, /*is_signed=*/false),
