@@ -74,8 +74,8 @@ class MlirKernelRunnerTest(absltest.TestCase):
     ir = """
       #indexing_map = #xla.indexing_map<"()[s0, s1] -> (s0, s1), domain: s0 in [0, 1023], s1 in [0, 31]">
       module attributes {dlti.dl_spec = #dlti.dl_spec<index = 32 : i32>} {
-        func.func private
-        @sum_kernel_entry(%input_buffer: tensor<1024x32xf32>,
+        func.func
+        @sum(%input_buffer: tensor<1024x32xf32>,
                           %output_buffer: tensor<1xf32>) -> tensor<1xf32>
                             attributes {xla.backend_kind = #xla.backend_kind<cpu>, xla.entry} {
           // Initial sum set to 0.
@@ -99,16 +99,6 @@ class MlirKernelRunnerTest(absltest.TestCase):
           %inserted = tensor.insert %sum into %output_buffer[%zero_index] : tensor<1xf32>
 
           return %inserted : tensor<1xf32>
-        }
-        func.func @sum_kernel(%call_frame: !xla_cpu.call_frame) -> !xla_cpu.error {
-          %workgroup_id = xla.workgroup_id x
-          %input_buffer = xla_cpu.load %call_frame, 0 : tensor<1024x32xf32>
-          %output_buffer = xla_cpu.load %call_frame, 1 : tensor<1xf32>
-          %sum = xla.pure_call @sum_kernel_entry(%input_buffer, %output_buffer)
-            {noinline} : (tensor<1024x32xf32>, tensor<1xf32>) -> tensor<1xf32>
-          xla_cpu.store %sum into %call_frame, 1 : tensor<1xf32>
-          %success = xla_cpu.success : !xla_cpu.error
-          return %success : !xla_cpu.error
         }
       }
     """

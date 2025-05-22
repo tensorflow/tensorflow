@@ -13,16 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
 #include <utility>
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // IWYU pragma: keep
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // IWYU pragma: keep
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // IWYU pragma: keep
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/Pass.h"  // IWYU pragma: keep
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_dialect.h"  // IWYU pragma: keep
@@ -37,10 +35,14 @@ namespace xla::cpu {
 
 namespace {
 class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
+ public:
+  using LowerToLLVMPassBase::LowerToLLVMPassBase;
+
+ private:
   void runOnOperation() override {
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
-    PopulateXlaCpuConversionPatterns(patterns);
+    PopulateXlaCpuConversionPatterns(patterns, prefer_vector_width_);
     mlir::GreedyRewriteConfig config;
     config.enableFolding(true);
     if (mlir::failed(mlir::applyPatternsGreedily(
@@ -51,9 +53,5 @@ class LowerToLLVMPass : public impl::LowerToLLVMPassBase<LowerToLLVMPass> {
   }
 };
 }  // namespace
-
-std::unique_ptr<mlir::Pass> CreateLowerToLLVMPass() {
-  return std::make_unique<LowerToLLVMPass>();
-}
 
 }  // namespace xla::cpu

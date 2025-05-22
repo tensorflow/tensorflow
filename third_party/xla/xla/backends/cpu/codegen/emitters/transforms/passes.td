@@ -23,6 +23,11 @@ def LowerToLLVMPass : Pass<"xla-cpu-lower-to-llvm", "mlir::ModuleOp"> {
       dialect and pointers.
   }];
 
+  let options = [
+    Option<"prefer_vector_width_", "prefer_vector_width", "int32_t", "256",
+           "prefer-vector-width value to set on entry function">,
+  ];
+
   let dependentDialects = [
     "mlir::func::FuncDialect",
     "mlir::LLVM::LLVMDialect",
@@ -30,8 +35,6 @@ def LowerToLLVMPass : Pass<"xla-cpu-lower-to-llvm", "mlir::ModuleOp"> {
     "xla::cpu::XlaCpuDialect",
     "xla::XlaDialect",
   ];
-
-  let constructor = "::xla::cpu::CreateLowerToLLVMPass()";
 }
 
 def LowerXlaSharedPass :

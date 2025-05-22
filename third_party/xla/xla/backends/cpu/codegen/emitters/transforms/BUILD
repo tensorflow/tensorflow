@@ -61,6 +61,7 @@ cc_library(
     deps = [
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
         "//xla/codegen/emitters/ir:xla",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:DataLayoutInterfaces",

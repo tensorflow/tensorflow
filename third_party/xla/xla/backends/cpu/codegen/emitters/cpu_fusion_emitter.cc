@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter.h"
 
 #include <cstdint>
-#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -26,22 +25,18 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/Linker/Linker.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
 #include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/LLVMIR/LLVMAttrs.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -62,8 +57,6 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
 #include "xla/backends/cpu/alignment.h"
-#include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_ops.h"
-#include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_types.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/symbol_name_util.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
@@ -134,32 +127,6 @@ bool Needs64BitIndices(const HloComputation* computation) {
   return false;
 }
 
-absl::Status SetKernelFunctionAttributes(const HloFusionInstruction& fusion,
-                                         mlir::Builder& builder,
-                                         mlir::func::FuncOp& func) {
-  const HloModule* hlo_module = fusion.GetModule();
-  if (hlo_module == nullptr) {
-    return Internal("HloModule is null");
-  }
-
-  mlir::MLIRContext* context = func->getContext();
-
-  int32_t vector_width =
-      hlo_module->config().debug_options().xla_cpu_prefer_vector_width();
-  mlir::ArrayAttr prefer_vector_width_attr = builder.getStrArrayAttr(
-      {"prefer-vector-width", absl::StrCat(vector_width)});
-  func->setAttr("passthrough",
-                builder.getArrayAttr({prefer_vector_width_attr}));
-  func->setAttr(
-      "frame_pointer",
-      mlir::LLVM::FramePointerKindAttr::get(
-          context, mlir::LLVM::framePointerKind::FramePointerKind::All));
-  func->setAttr("uwtable_kind",
-                mlir::LLVM::UWTableKindAttr::get(
-                    context, mlir::LLVM::uwtable::UWTableKind::Async));
-
-  return absl::OkStatus();
-}
 }  // namespace
 
 using mlir::AffineExpr;
@@ -201,7 +168,7 @@ IndexingMap GetDefaultIndexingMap(absl::Span<const int64_t> thread_tile_sizes,
       constraints);
 }
 
-absl::StatusOr<mlir::func::FuncOp> EmitFusionKernelApi(
+absl::StatusOr<mlir::func::FuncOp> EmitEntryFunctionApi(
     mlir::ModuleOp fusion_module, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
     const BufferAssignment& buffer_assignment) {
@@ -240,9 +207,8 @@ absl::StatusOr<mlir::func::FuncOp> EmitFusionKernelApi(
   };
 
   // First argument is the thread id.
-  SmallVector<mlir::Attribute> arg_attrs{builder.getDictionaryAttr(
-      builder.getNamedAttr("xla.invariant", builder.getUnitAttr()))};
-  SmallVector<mlir::Type> param_types{builder.getIndexType()};
+  SmallVector<mlir::Attribute> arg_attrs;
+  SmallVector<mlir::Type> param_types;
 
   for (const auto& [index, arg] : llvm::enumerate(arguments)) {
     param_types.push_back(emitters::TensorShapeToMlirType(arg.shape, builder));
@@ -266,41 +232,8 @@ absl::StatusOr<mlir::func::FuncOp> EmitFusionKernelApi(
       mlir::ArrayAttr::get(context, arg_attrs),
       /*res_attrs=*/mlir::ArrayAttr{});
   entry_func->setAttr("xla.entry", mlir::UnitAttr::get(context));
+  // TODO(willfroom): Remove backend kind.
   SetBackendKind(context, entry_func, xla::BackendKind::kCpu);
-  entry_func.setPrivate();
-
-  // Create wrapper for the entry function. This function has one call_frame
-  // argument and call the entry function.
-  auto error_type = cpu::ErrorType::get(context);
-  auto call_frame_type = CallFrameType::get(context);
-  auto call_frame_func = builder.create<FuncOp>(
-      loc, module_name,
-      builder.getFunctionType(/*arg_types=*/{call_frame_type},
-                              /*result_types=*/{error_type}));
-
-  TF_RETURN_IF_ERROR(
-      SetKernelFunctionAttributes(fusion, builder, call_frame_func));
-
-  builder.setInsertionPointToStart(call_frame_func.addEntryBlock());
-  mlir::Value call_frame_arg = call_frame_func.getArgument(0);
-  SmallVector<mlir::Value> extracted_values;
-  extracted_values.reserve(arguments.size() + results.size() + 1);
-  extracted_values.push_back(
-      builder.create<WorkGroupIdOp>(loc, WorkGroupDimension::x));
-
-  for (int i = 1; i < param_types.size(); ++i) {
-    extracted_values.push_back(builder.create<cpu::LoadOp>(
-        loc, param_types[i], call_frame_arg, i - 1));
-  }
-  auto call_results =
-      builder.create<xla::PureCallOp>(loc, entry_func, extracted_values);
-  call_results->setAttr("noinline", mlir::UnitAttr::get(context));
-  for (auto [index, call_result] : llvm::enumerate(call_results.getResults())) {
-    builder.create<cpu::StoreOp>(loc, call_result, call_frame_arg,
-                                 index + arguments.size());
-  }
-  auto error = builder.create<cpu::SuccessOp>(loc, error_type);
-  builder.create<mlir::func::ReturnOp>(loc, error.getResult());
 
   return entry_func;
 }

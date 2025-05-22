@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -57,6 +58,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_dialect.h"
 #include "xla/backends/cpu/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/emitters/ir/xla_attrs.h.inc"
+#include "xla/codegen/emitters/ir/xla_dialect.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
@@ -120,10 +122,11 @@ static void AddLoopTransformationPasses(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createCSEPass());
 }
 
-static void AddLoweringPasses(mlir::OpPassManager& pm) {
+static void AddLoweringPasses(mlir::OpPassManager& pm, int32_t vector_width) {
   pm.addNestedPass<mlir::func::FuncOp>(
       emitters::CreateConvertPureCallOpsPass());
-  pm.addPass(cpu::CreateLowerToLLVMPass());
+  pm.addPass(cpu::createLowerToLLVMPass(
+      cpu::LowerToLLVMPassOptions{/*prefer_vector_width =*/vector_width}));
   pm.addPass(emitters::CreateLowerTensorsPass(/*target_type=*/"cpu"));
   pm.addPass(mlir::createConvertComplexToStandardPass());
   pm.addPass(emitters::CreateMergePointersToSameSlicePass());
@@ -173,7 +176,7 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
 
   AddXlaOpsOptimizationPasses(pass_manager);
   AddLoopTransformationPasses(pass_manager);
-  AddLoweringPasses(pass_manager);
+  AddLoweringPasses(pass_manager, options_.vector_width);
 
   TF_RETURN_IF_ERROR(RunPassPipeline(mlir_module, pass_manager, nullptr));
 

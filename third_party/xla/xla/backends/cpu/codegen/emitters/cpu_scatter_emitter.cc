@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
@@ -259,10 +260,10 @@ absl::StatusOr<KernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
       builder.getAttr<xla::ExtraBackendOptionsAttr>(
           llvm::ArrayRef{disable_loop_unrolling_attr}));
 
-  TF_ASSIGN_OR_RETURN(mlir::func::FuncOp entry_func,
-                      EmitFusionKernelApi(mlir_module.get(), *fusion_,
-                                          std::string(module_name) + "_entry",
-                                          buffer_assignment_));
+  TF_ASSIGN_OR_RETURN(
+      mlir::func::FuncOp entry_func,
+      EmitEntryFunctionApi(mlir_module.get(), *fusion_,
+                           std::string(module_name), buffer_assignment_));
 
   std::vector<emitters::EpilogueSpecification> epilogues =
       GetEpilogues(*fusion_, context.get());
@@ -310,7 +311,7 @@ absl::StatusOr<KernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
     }
   }
 
-  KernelSpec kernel_spec(module_name,
+  KernelSpec kernel_spec(absl::StrCat(module_name, "_kernel"),
                          NumWorkGroups{static_cast<uint64_t>(num_threads_)},
                          std::move(argument_buffers), std::move(result_buffers),
                          std::move(invariant_arguments));
@@ -345,7 +346,7 @@ absl::Status CpuScatterFusion::EmitEntryFunction(
   SmallVector<Value> output_tensors;
   output_tensors.reserve(scatter_operands.size());
   for (int i = 0; i < scatter_operands.size(); ++i) {
-    output_tensors.push_back(entry_function.getArgument(1 + i));
+    output_tensors.push_back(entry_function.getArgument(i));
   }
 
   const auto& root_computation = computations.FindPartitionedComputation(
@@ -353,15 +354,12 @@ absl::Status CpuScatterFusion::EmitEntryFunction(
   CHECK(ScatterSimplifier::IsSimplifiedScatter(scatter))
       << "Non-simplified HLO Scatter is not supported.";
 
-  // For now, thread_id is hardcoded to 0.
-  entry_function.setArgAttr(0, "xla.range", b.getIndexArrayAttr({0, 0}));
-
   const Shape& update_shape = scatter_updates.front()->shape();
 
-  Value thread_id = entry_function.getArgument(0);
-  // Set range for the func thread id arg.
-  entry_function.setArgAttr(0, "xla.range",
-                            b.getIndexArrayAttr({0, num_threads_ - 1}));
+  WorkGroupIdOp workgroup_id = b.create<WorkGroupIdOp>(WorkGroupDimension::x);
+  workgroup_id->setAttr("xla.range",
+                        b.getIndexArrayAttr({0, num_threads_ - 1}));
+
   IndexingMap map = GetScatterIndexingMap(
       update_shape.dimensions(), num_threads_, vector_size_, mlir_context);
   map.Simplify();
@@ -371,7 +369,7 @@ absl::Status CpuScatterFusion::EmitEntryFunction(
   int64_t index_vector_dim = scatter_dims.index_vector_dim();
 
   auto results = emitters::EmitXlaLoopOp(
-      b, {thread_id}, output_tensors, map,
+      b, {workgroup_id}, output_tensors, map,
       [&](ImplicitLocOpBuilder nested_b, ValueRange iv,
           ValueRange update_indices,
           ValueRange output_tensors) -> SmallVector<Value> {
