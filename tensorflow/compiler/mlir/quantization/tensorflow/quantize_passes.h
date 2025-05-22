@@ -24,6 +24,8 @@ limitations under the License.
 namespace tensorflow {
 namespace quantization {
 
+using ::tensorflow::quantization::QuantizationOptions;
+
 // mlir_dump_file_prefix is an optional field that is used for debugging to save
 // mlir dump files.
 void AddQuantizeQatPasses(mlir::OpPassManager &pm,
