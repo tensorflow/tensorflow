@@ -777,8 +777,10 @@ TEST_F(DynamicOpsTest, AddOfDUS) {
 // disabling them when the backend is not a GPU. These tests verify that single
 // and multiple output fusions of dynamic update slices produce the right
 // results. On some backends (e.g. GPU), this is done inplace.
-#ifdef XLA_TEST_BACKEND_GPU
 TEST_F(DynamicOpsTest, MultipleOutputFusedDynamicUpdateSlices) {
+  if (!test::DeviceIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   const char* hlo_string = R"(
 HloModule MultipleInplaceDus, input_output_alias={ {0}: (0, {}), {1}: (2, {}) }
 

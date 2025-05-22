@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
@@ -64,12 +65,7 @@ using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 using HloModuleAndArguments = ::xla::FunctionalHloRunner::HloModuleAndArguments;
 
-bool IsTestingCpu() {
-#ifdef XLA_TEST_BACKEND_CPU
-  return true;
-#endif
-  return false;
-}
+bool IsTestingCpu() { return test::DeviceIs(test::kCpu); }
 
 std::string GetHloPath(std::string file_name) {
   return tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",

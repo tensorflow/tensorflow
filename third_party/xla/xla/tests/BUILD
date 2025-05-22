@@ -512,6 +512,7 @@ xla_test(
         "//xla/service:backend",
         "//xla/service:executable",
         "//xla/stream_executor:stream_executor_memory_allocator",
+        "//xla/tests:xla_test_backend_predicates",
         "//xla/tsl/lib/core:status_test_util",
     ],
 )
