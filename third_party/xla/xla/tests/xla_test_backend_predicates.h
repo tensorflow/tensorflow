@@ -69,5 +69,7 @@ bool BackendIsExactly(absl::string_view device,
 
 // Returns true only for base variant hardware + emulation.
 bool BackendIsStrict(absl::string_view device);
+
+bool BackendIsTpu();
 }  // namespace xla::test
 #endif  // XLA_TESTS_XLA_TEST_BACKEND_PREDICATES_H_

@@ -93,4 +93,6 @@ bool BackendIsStrict(absl::string_view device) {
   return device_matches && modifiers_match;
 }
 
+bool BackendIsTpu() { return GetEnvOrDie("XLA_TEST_BACKEND_TPU") == "1"; }
+
 }  // namespace xla::test

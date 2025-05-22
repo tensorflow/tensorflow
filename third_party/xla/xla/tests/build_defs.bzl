@@ -375,6 +375,7 @@ def xla_test(
             env = env | {
                 "XLA_TEST_DEVICE": device,
                 "XLA_TEST_MODIFIERS": ",".join(modifiers),
+                "XLA_TEST_BACKEND_TPU": "0",
             },
             linkstatic = linkstatic,
             fail_if_no_test_linked = fail_if_no_test_linked,
