@@ -28,7 +28,6 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -38,6 +37,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
@@ -302,34 +302,39 @@ size_t GetDotCount(HloComputation* computation) {
                           HloPredicateIsOp<HloOpcode::kDot>);
 }
 
+using HloInstructionSetVector =
+    llvm::SetVector<HloInstruction*, std::vector<HloInstruction*>,
+                    HloInstructionSet>;
+
 // Returns the set of instructions that are reachable from 'instruction' using
 // the given accessor.
 template <typename T>
-HloInstructionSet GetTransitiveInstructionSet(const HloInstruction* instruction,
-                                              T (HloInstruction::*get)()
-                                                  const) {
+HloInstructionSetVector GetTransitiveInstructionSet(
+    const HloInstruction* instruction, T (HloInstruction::*get)() const) {
   std::deque<HloInstruction*> worklist;
   auto append = [&](const auto& instructions) {
     worklist.insert(worklist.end(), instructions.begin(), instructions.end());
   };
   append((instruction->*get)());
-  HloInstructionSet result;
+  HloInstructionSetVector result;
   while (!worklist.empty()) {
     HloInstruction* front = worklist.front();
     worklist.pop_front();
-    if (result.insert(front).second) {
+    if (result.insert(front)) {
       append((front->*get)());
     }
   }
   return result;
 }
 
-// Returns the set of producers reachable from 'instruction'.
-HloInstructionSet GetProducerSet(const HloInstruction* instruction) {
+// Returns the set of producers reachable from 'instruction' in use-before-def
+// order.
+HloInstructionSetVector GetProducerSet(const HloInstruction* instruction) {
   return GetTransitiveInstructionSet(instruction, &HloInstruction::operands);
 }
-// Returns the set of consumers reachable from 'instruction'.
-HloInstructionSet GetConsumerSet(const HloInstruction* instruction) {
+// Returns the set of consumers reachable from 'instruction' in def-before-use
+// order.
+HloInstructionSetVector GetConsumerSet(const HloInstruction* instruction) {
   return GetTransitiveInstructionSet(instruction, &HloInstruction::users);
 }
 
@@ -337,9 +342,9 @@ HloInstructionSet GetConsumerSet(const HloInstruction* instruction) {
 // i.e. that the set of instructions reachable through the given accessor are
 // either in the set itself or the root.
 template <typename T>
-absl::Status VerifyIsClosedInstructionSet(const HloInstructionSet& instructions,
-                                          const HloInstruction* root,
-                                          T (HloInstruction::*get)() const) {
+absl::Status VerifyIsClosedInstructionSet(
+    const HloInstructionSetVector& instructions, const HloInstruction* root,
+    T (HloInstruction::*get)() const) {
   for (HloInstruction* instruction : instructions) {
     for (HloInstruction* reachable : (instruction->*get)()) {
       if (reachable != root && instructions.count(reachable) == 0) {
@@ -355,13 +360,13 @@ absl::Status VerifyIsClosedInstructionSet(const HloInstructionSet& instructions,
   return absl::OkStatus();
 }
 
-absl::Status VerifyIsClosedProducerSet(const HloInstructionSet& instructions,
-                                       const HloInstruction* root) {
+absl::Status VerifyIsClosedProducerSet(
+    const HloInstructionSetVector& instructions, const HloInstruction* root) {
   return VerifyIsClosedInstructionSet(instructions, root,
                                       &HloInstruction::users);
 }
-absl::Status VerifyIsClosedConsumerSet(const HloInstructionSet& instructions,
-                                       const HloInstruction* root) {
+absl::Status VerifyIsClosedConsumerSet(
+    const HloInstructionSetVector& instructions, const HloInstruction* root) {
   return VerifyIsClosedInstructionSet(instructions, root,
                                       &HloInstruction::operands);
 }
@@ -376,10 +381,11 @@ bool IsSafeToSinkBitcastBelow(HloInstruction* instruction) {
   }
 }
 
-// Parameters to rewrite a broadcast + reshape as reshape + broadcast.
-struct ReshapeBroadcastOutputParams {
-  std::vector<int64_t> new_broadcast_dim_map;
-  Shape new_operand_shape;
+// Parameters to rewrite a
+// reshape(broadcast/tanspose) as broadcast/transpose(reshape).
+struct ReshapeOutputParams {
+  Shape new_shape;                // The reshape output shape.
+  std::vector<int64_t> new_dims;  // The dims of the broadcast/transpose.
 };
 
 // Returns parameters to rewrite a broadcast + reshape as reshape + broadcast.
@@ -397,7 +403,7 @@ struct ReshapeBroadcastOutputParams {
 // Assumes that:
 // - broadcast does not transpose dimensions (checked by hlo_verifier);
 // - reshape does not mix operand and broadcast dimensions (checks);
-absl::StatusOr<ReshapeBroadcastOutputParams> CalculateBroadcastOutputReshape(
+absl::StatusOr<ReshapeOutputParams> CalculateBroadcastOutputReshape(
     const HloBroadcastInstruction* broadcast,
     absl::Span<const int64_t> target_dims) {
   // The rewrite works by splitting the broadcast output dimensions and the
@@ -406,11 +412,11 @@ absl::StatusOr<ReshapeBroadcastOutputParams> CalculateBroadcastOutputReshape(
   // the operand is used to construct the new operand shape.
   auto broadcast_dims = broadcast->shape().dimensions();
   QCHECK_EQ(broadcast->dimensions().size(),
-            broadcast->operands()[0]->shape().dimensions().size())
+            broadcast->operand(0)->shape().dimensions().size())
       << absl::StrCat("Broadcast 'dimensions' parameter size ",
                       broadcast->dimensions().size(),
                       " does not the match the operand rank ",
-                      broadcast->operands()[0]->shape().dimensions().size());
+                      broadcast->operand(0)->shape().dimensions().size());
   if (Product(broadcast_dims) != Product(target_dims)) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Broadcast shape dimensions product ", Product(broadcast_dims), " (",
@@ -424,42 +430,114 @@ absl::StatusOr<ReshapeBroadcastOutputParams> CalculateBroadcastOutputReshape(
         absl::StrCat("Not-default layouts for broadcast is not supported yet: ",
                      broadcast->shape().layout().ToString()));
   }
-  std::vector<bool> output_dim_from_operand(broadcast_dims.size(), false);
+  llvm::SmallVector<bool> is_broadcast_dim(broadcast_dims.size(), true);
   for (const int64_t i : broadcast->dimensions()) {
-    output_dim_from_operand[i] = true;
+    is_broadcast_dim[i] = false;
   }
-  ReshapeBroadcastOutputParams result;
+  ReshapeOutputParams result;
   std::vector<int64_t> new_operand_dims;
   absl::InlinedVector<std::pair<int64_t, int64_t>, 8> factors =
       CommonFactors(broadcast_dims, target_dims);
-  for (int64_t i = 0; i + 1 < factors.size(); ++i) {
-    bool has_broadcasted_dim = false;
-    bool has_operand_dim = false;
-    auto [broadcast_from, target_from] = factors[i];
-    auto [broadcast_to, target_to] = factors[i + 1];
-    for (int64_t j = broadcast_from; j < broadcast_to; ++j) {
-      has_operand_dim |= output_dim_from_operand[j];
-      has_broadcasted_dim |= !output_dim_from_operand[j];
-    }
-    if (!has_operand_dim) {
-      // Group of dimensions is coming from the broadcast, skip it as it will
-      // be simply introduced by the new broadcast.
+  for (int64_t i = 1; i < factors.size(); ++i) {
+    auto [broadcast_from, target_from] = factors[i - 1];
+    auto [broadcast_to, target_to] = factors[i];
+    auto subspan = absl::MakeSpan(is_broadcast_dim)
+                       .subspan(broadcast_from, broadcast_to - broadcast_from);
+    auto identity = [](bool b) { return b; };
+    if (absl::c_all_of(subspan, identity)) {
+      // Group of dimensions is coming broadcasted, skip it as it will be simply
+      // introduced by the new broadcast.
       continue;
     }
-    if (has_broadcasted_dim) {
+    if (!absl::c_none_of(subspan, identity)) {
       return absl::InvalidArgumentError(
           absl::StrCat("Cannot reshape broadcast for ", broadcast->ToString(),
                        " as it mixes operand and broadcast dimensions."));
     }
     // Update the expected operand shape.
     for (int64_t j = target_from; j < target_to; ++j) {
-      result.new_broadcast_dim_map.push_back(j);
+      result.new_dims.push_back(j);
       new_operand_dims.push_back(target_dims[j]);
     }
   }
-  result.new_operand_shape = ShapeUtil::MakeShape(
-      broadcast->operand(0)->shape().element_type(), new_operand_dims);
+  result.new_shape =
+      ShapeUtil::MakeShape(broadcast->shape().element_type(), new_operand_dims);
   return std::move(result);
+}
+
+absl::StatusOr<ReshapeOutputParams> CalculateTransposeOutputReshape(
+    const HloTransposeInstruction* transpose,
+    absl::Span<const int64_t> target_dims) {
+  absl::Span<const int64_t> transpose_dims = transpose->shape().dimensions();
+  QCHECK_EQ(transpose->dimensions().size(),
+            transpose->operand(0)->shape().dimensions().size())
+      << absl::StrCat("Transpose 'dimensions' parameter size ",
+                      transpose->dimensions().size(),
+                      " does not the match the operand rank ",
+                      transpose->operand(0)->shape().dimensions().size());
+  if (Product(transpose_dims) != Product(target_dims)) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Transpose shape dimensions product ", Product(transpose_dims), " (",
+        transpose->shape().ToString(),
+        ") does not match target shape dimensions product ",
+        Product(target_dims), " (", absl::StrJoin(target_dims, ","), ")"));
+  }
+  if (!LayoutUtil::IsMonotonicWithDim0Major(transpose->shape().layout())) {
+    // TODO(b/393299275): do we need to support non-default layouts?
+    return absl::UnimplementedError(
+        absl::StrCat("Not-default layouts for transpose is not supported yet: ",
+                     transpose->shape().layout().ToString()));
+  }
+  absl::InlinedVector<std::pair<int64_t, int64_t>, 8> factors =
+      CommonFactors(transpose_dims, target_dims);
+  for (int64_t i = 1; i < factors.size(); ++i) {
+    auto [transpose_from, target_from] = factors[i - 1];
+    auto [transpose_to, target_to] = factors[i];
+    const auto& permutation = transpose->dimensions();
+    for (int64_t j = transpose_from + 1; j < transpose_to; ++j) {
+      if (permutation[j - 1] + 1 != permutation[j]) {
+        return absl::InvalidArgumentError(
+            absl::StrCat("Cannot hoist reshape across ", transpose->ToString(),
+                         " becaues input dimensions are not contiguous."));
+      }
+    };
+  }
+  struct IntermediateDims {
+    int64_t input_index;   // The index of the first input dimension.
+    int64_t target_index;  // The index of the intermediate dimension.
+    int64_t target_dim;    // The size of the intermediate dimension.
+  };
+  absl::InlinedVector<IntermediateDims, 8> intermediate_dims;
+  intermediate_dims.reserve(target_dims.size());
+  // Transform adjacent factors into intermediate dimensions, holding the
+  // information to construct the operand shape and permutation of the transpose
+  // after the reshape.
+  for (int64_t i = 1; i < factors.size(); ++i) {
+    auto [transpose_from, target_from] = factors[i - 1];
+    auto [transpose_to, target_to] = factors[i];
+    int64_t input_index = transpose->dimensions()[transpose_from];
+    for (int64_t j = target_from; j < target_to; ++j) {
+      intermediate_dims.emplace_back(IntermediateDims{
+          input_index,
+          static_cast<int64_t>(intermediate_dims.size()),
+          target_dims[j],
+      });
+    }
+  }
+  // Sort by the input index, which is the order after the reshape.
+  absl::c_stable_sort(intermediate_dims, [](const auto& a, const auto& b) {
+    return a.input_index < b.input_index;
+  });
+  std::vector<int64_t> permutation(intermediate_dims.size());
+  absl::InlinedVector<int64_t, 8> reshape_dims;
+  reshape_dims.reserve(intermediate_dims.size());
+  for (const auto& dim : intermediate_dims) {
+    permutation[dim.target_index] = static_cast<int64_t>(reshape_dims.size());
+    reshape_dims.push_back(dim.target_dim);
+  }
+  return ReshapeOutputParams{
+      ShapeUtil::MakeShape(transpose->shape().element_type(), reshape_dims),
+      std::move(permutation)};
 }
 
 // Simulates a rewrite of all producers of a given bitcast, moving the bitcast
@@ -473,7 +551,7 @@ PlanHoistBitcastToCallers(const HloInstruction* bitcast) {
   // other users: refuse the hoisting.
   // It is possible to support more cases by sinking the bitcast from such
   // producers downward.
-  HloInstructionSet producers = GetProducerSet(bitcast);
+  HloInstructionSetVector producers = GetProducerSet(bitcast);
   TF_RETURN_IF_ERROR(VerifyIsClosedProducerSet(producers, bitcast));
   if (bitcast->shape().element_type() !=
       bitcast->operand(0)->shape().element_type()) {
@@ -536,12 +614,21 @@ PlanHoistBitcastToCallers(const HloInstruction* bitcast) {
         // its operand.
         break;
       case HloOpcode::kBroadcast: {
-        TF_ASSIGN_OR_RETURN(ReshapeBroadcastOutputParams params,
+        TF_ASSIGN_OR_RETURN(ReshapeOutputParams params,
                             CalculateBroadcastOutputReshape(
                                 Cast<HloBroadcastInstruction>(instruction),
                                 shape.dimensions()));
         TF_RETURN_IF_ERROR(
-            set_shape(instruction->operands(), params.new_operand_shape));
+            set_shape(instruction->operands(), params.new_shape));
+        break;
+      }
+      case HloOpcode::kTranspose: {
+        TF_ASSIGN_OR_RETURN(ReshapeOutputParams params,
+                            CalculateTransposeOutputReshape(
+                                Cast<HloTransposeInstruction>(instruction),
+                                shape.dimensions()));
+        TF_RETURN_IF_ERROR(
+            set_shape(instruction->operands(), params.new_shape));
         break;
       }
       default:
@@ -585,7 +672,16 @@ absl::Status HoistBitcastUpwardsToCallers(
             CalculateBroadcastOutputReshape(broadcast, shape.dimensions());
         QCHECK_OK(params);  // This must be OK as we have already ran this in
                             // AssignShapesToHoistBitcastToCallers.
-        *broadcast->mutable_dimensions() = params.value().new_broadcast_dim_map;
+        *broadcast->mutable_dimensions() = params.value().new_dims;
+        break;
+      }
+      case HloOpcode::kTranspose: {
+        auto* transpose = Cast<HloTransposeInstruction>(instruction);
+        auto params =
+            CalculateTransposeOutputReshape(transpose, shape.dimensions());
+        QCHECK_OK(params);  // This must be OK as we have already ran this in
+                            // AssignShapesToHoistBitcastToCallers.
+        *transpose->mutable_dimensions() = params.value().new_dims;
         break;
       }
       default:
@@ -598,13 +694,13 @@ absl::Status HoistBitcastUpwardsToCallers(
   return absl::OkStatus();
 }
 
-// Hoists the given 'bitcast' downwards out of its computation, to the parent of
-// each caller.
+// Hoists the given 'bitcast' downwards out of its computation, to the parent
+// of each caller.
 absl::Status HoistBitcastDownwardsToCallers(
     HloInstruction* bitcast, const std::vector<HloInstruction*>& callers) {
-  HloInstructionSet consumers = GetConsumerSet(bitcast);
-  // Check whether all operands of consumers are within the set of consumers, or
-  // the bitcast itself.
+  HloInstructionSetVector consumers = GetConsumerSet(bitcast);
+  // Check whether all operands of consumers are within the set of consumers,
+  // or the bitcast itself.
   TF_RETURN_IF_ERROR(VerifyIsClosedConsumerSet(consumers, bitcast));
   auto is_root = [](HloInstruction* instr) { return instr->IsRoot(); };
   CHECK(is_root(bitcast) || absl::c_any_of(consumers, is_root))
@@ -646,8 +742,8 @@ absl::Status HoistBitcastDownwardsToCallers(
 
 // Try hoisting bitcasts in the computation away from 'dot' to the callers of
 // the computation. Some bitcasts may remain in the computation, because they
-// cannot be hoisted across all ops (e.g. across a transpose). This is not
-// reported as an error.
+// cannot be hoisted across all ops, e.g. across some transposes and broadcasts.
+// This is not reported as an error.
 absl::Status TryHoistBitcastsInComputationToCallers(HloInstruction* dot,
                                                     CallGraph* call_graph) {
   auto callers = call_graph->GetComputationCallers(dot->parent());
@@ -713,9 +809,9 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
     // constructed and this pass should only be applied to the known supported
     // HLO. Currently though, we are at mercy of what GemmFusion pass thinks
     // legacy emitter can handle. We change the kind of the fusion here and
-    // switch the track. Thus it is on us to make sure that the generic emitter
-    // will be able to handle the result. That is an early check to make sure
-    // that that nesting did not produce an unsupported HLO.
+    // switch the track. Thus it is on us to make sure that the generic
+    // emitter will be able to handle the result. That is an early check to
+    // make sure that that nesting did not produce an unsupported HLO.
     CodegenDecision can_codegen_computation =
         IsTritonSupportedComputation(*computation, compute_capability_);
     if (!can_codegen_computation) {

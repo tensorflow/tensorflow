@@ -715,8 +715,8 @@ gemm_dot {
   p0 = pred[3,122,96,12] parameter(0)
   bitcast0 = pred[3,122,1152] bitcast(p0)
   transpose0 = pred[3,1152,122] transpose(bitcast0), dimensions={0,2,1}
-  bitcast1 = pred[3,96,12,122] bitcast(transpose0)
-  bitcast2 = pred[3456,122] bitcast(bitcast1)
+  // bitcast1 = pred[3,96,12,122] bitcast(transpose0)
+  bitcast2 = pred[3456,122] bitcast(transpose0)
   convert0 = f16[3456,122] convert(bitcast2)
   p1 = pred[1,5,122] parameter(1)
   bitcast3 = pred[5,122] bitcast(p1)
@@ -790,6 +790,109 @@ ENTRY entry {
       RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
 CHECK: bf16[1,2,4,8]{{.*}} broadcast({{.*}}), dimensions={0,3}
 CHECK: bf16[1,2,4,8]{{.*}} broadcast({{.*}}), dimensions={0,3}
+)"),
+      IsOkAndHolds(true));
+}
+
+TEST_F(NestGemmFusionTest, BitcastsAreHoistedUpThroughTransposes) {
+  absl::string_view hlo = R"(
+triton_dot {
+  p0 = f32[7,6] parameter(0)
+  transpose = f32[6,7] transpose(p0), dimensions={1,0}
+  bitcast = f32[2,3,7] bitcast(transpose)
+  p1 = f32[2,5,7] parameter(1)
+  ROOT result = f32[2,3,5] dot(bitcast, p1),
+    lhs_contracting_dims={2}, lhs_batch_dims={0}, 
+    rhs_contracting_dims={2}, rhs_batch_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[7,6] parameter(0)
+  p1 = f32[2,5,7] parameter(1)
+  ROOT result = f32[2,3,5] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":16,"block_n":16,"block_k":8,
+    "split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  EXPECT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
+              IsOkAndHolds(true));
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  EXPECT_THAT(
+      RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
+CHECK:      ROOT transpose
+CHECK-SAME: f32[2,3,7]{2,1,0} transpose
+CHECK-SAME: dimensions={1,2,0}
+)"),
+      IsOkAndHolds(true));
+}
+
+TEST_F(NestGemmFusionTest,
+       RankReducingBitcastsAreNotHoistedUpThroughTransposes) {
+  absl::string_view hlo = R"(
+triton_dot {
+  p0 = f32[2,3,7] parameter(0)
+  transpose = f32[3,2,7] transpose(p0), dimensions={1,0,2}
+  bitcast = f32[1,6,7] bitcast(transpose)
+  p1 = f32[1,5,7] parameter(1)
+  ROOT result = f32[1,6,5] dot(bitcast, p1),
+    lhs_contracting_dims={2}, lhs_batch_dims={0}, 
+    rhs_contracting_dims={2}, rhs_batch_dims={0}
+}
+
+ENTRY e {
+  p0 = f32[2,3,7] parameter(0)
+  p1 = f32[1,5,7] parameter(1)
+  ROOT result = f32[1,6,5] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":16,"block_n":16,"block_k":8,
+    "split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  EXPECT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
+              IsOkAndHolds(true));
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  EXPECT_THAT(
+      RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
+CHECK:      transpose
+CHECK-SAME: f32[3,2,7]{2,1,0} transpose
+CHECK-SAME: dimensions={1,0,2}
+)"),
+      IsOkAndHolds(true));
+}
+
+TEST_F(NestGemmFusionTest, HoistingBitcastDoesNotIntroduceArtificialDimension) {
+  absl::string_view hlo = R"(
+gemm_dot {
+  p0 = f16[3,122,1152] parameter(0)
+  transpose = f16[3,1152,122] transpose(p0), dimensions={0,2,1}
+  bitcast0 = f16[3,96,12,122] bitcast(transpose)
+  bitcast1 = f16[3456,122] bitcast(bitcast0)
+  p1 = f16[122,5] parameter(1)
+  ROOT dot = f16[3456,5]{1,0} dot(bitcast1, p1), 
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY e {
+  p0 = f16[3,122,1152] parameter(0)
+  p1 = f16[122,5] parameter(1)
+  ROOT fusion = f16[3456,5] fusion(p0, p1), kind=kCustom, calls=gemm_dot,
+    backend_config={"fusion_backend_config":{kind:"__triton_gemm",
+    triton_gemm_config: {"block_m":32,"block_n":16,"block_k":32,
+    "split_k":1,"num_stages":1,"num_warps":4,"num_ctas":1}}}
+}
+          )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  EXPECT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
+              IsOkAndHolds(true));
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  // Checks that transpose is on rank 3 tensor from hoisting bitcast1, not rank
+  // 4 tensor from hoisting bitcast0 first and then failing to hoist bitcast1.
+  EXPECT_THAT(
+      RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
+CHECK:      transpose
+CHECK-SAME: f16[3,1152,122]{2,1,0} transpose
+CHECK-SAME: dimensions={0,2,1}
 )"),
       IsOkAndHolds(true));
 }
