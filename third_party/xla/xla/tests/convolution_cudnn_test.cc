@@ -101,7 +101,7 @@ ENTRY TestComputation {
       window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, custom_call_target="__cudnn$convBiasActivationForward",
       backend_config="{\"cudnn_conv_backend_config\":{\"activation_mode\":\"2\",\"conv_result_scale\":1,\"side_input_scale\":0,\"algorithm\":{
         \"algo_id\":\"38\",\"math_type\":\"DEFAULT_MATH\",\"tuning_knobs\":{\"14\":\"5\",\"13\":\"1\",\"23\":\"0\",\"2\":\"1\"},
-        \"is_cudnn_frontend\":true,\"workspace_size\":\"0\"}}}"
+        \"workspace_size\":\"0\"}}}"
   ROOT get-tuple-element.1 = s8[4,48,48,64]{3,2,1,0} get-tuple-element(cudnn-conv-bias-activation.3), index=0
 })";
   constexpr char kHloVectorized[] = R"(
@@ -124,7 +124,7 @@ ENTRY TestComputation {
       window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01, custom_call_target="__cudnn$convBiasActivationForward",
       backend_config="{\"cudnn_conv_backend_config\":{\"activation_mode\":\"2\",\"conv_result_scale\":1,\"side_input_scale\":0,\"algorithm\":{
         \"algo_id\":\"7\",\"math_type\":\"DEFAULT_MATH\",\"tuning_knobs\":{\"7\":\"3\",\"2\":\"0\",\"5\":\"4\",\"6\":\"4\",\"4\":\"2\",\"21\":\"0\"},
-        \"is_cudnn_frontend\":true,\"workspace_size\":\"51328\"},\"reordered_int8_nchw_vect\":true}}"
+        \"workspace_size\":\"51328\"},\"reordered_int8_nchw_vect\":true}}"
   get-tuple-element.6 = s8[4,2,48,48,32]{4,3,2,1,0} get-tuple-element(cudnn-conv-bias-activation.4), index=0
   transpose.1 = s8[4,48,48,2,32]{4,3,2,1,0} transpose(get-tuple-element.6), dimensions={0,2,3,1,4}
   ROOT bitcast.1 = s8[4,48,48,64]{3,2,1,0} bitcast(transpose.1)
