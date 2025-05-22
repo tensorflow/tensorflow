@@ -1,7 +1,7 @@
-// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range -tfl-quantize="enable-dynamic-range-quantization=true" -tfl-post-quantize  | FileCheck %s
-// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range="enable-custom-op-quantization=CustomTestOp=1" -tfl-quantize="enable-dynamic-range-quantization=true enable-custom-op-weight-only=CustomTestOp=false" -tfl-post-quantize="enable-no-side-effect=CustomTestOp=false" | FileCheck --check-prefix=NotPrune %s
-// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range="enable-custom-op-quantization=CustomTestOp=1" -tfl-quantize="enable-dynamic-range-quantization=true enable-custom-op-weight-only=CustomTestOp=false" -tfl-post-quantize="enable-no-side-effect=CustomTestOp=true" | FileCheck --check-prefix=NoSideEffect %s
-// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range="enable-custom-op-quantization=CustomTestOp=1" -tfl-quantize="enable-dynamic-range-quantization=true enable-custom-op-weight-only=CustomTestOp=true"  -tfl-post-quantize="enable-no-side-effect=CustomTestOp=true" | FileCheck --check-prefix=NoSideEffectWeightOnly %s
+// RUN: litert-opt %s -tfl-prepare-quantize-dynamic-range -tfl-quantize="enable-dynamic-range-quantization=true" -tfl-post-quantize  | FileCheck %s
+// RUN: litert-opt %s -tfl-prepare-quantize-dynamic-range="enable-custom-op-quantization=CustomTestOp=1" -tfl-quantize="enable-dynamic-range-quantization=true enable-custom-op-weight-only=CustomTestOp=false" -tfl-post-quantize="enable-no-side-effect=CustomTestOp=false" | FileCheck --check-prefix=NotPrune %s
+// RUN: litert-opt %s -tfl-prepare-quantize-dynamic-range="enable-custom-op-quantization=CustomTestOp=1" -tfl-quantize="enable-dynamic-range-quantization=true enable-custom-op-weight-only=CustomTestOp=false" -tfl-post-quantize="enable-no-side-effect=CustomTestOp=true" | FileCheck --check-prefix=NoSideEffect %s
+// RUN: litert-opt %s -tfl-prepare-quantize-dynamic-range="enable-custom-op-quantization=CustomTestOp=1" -tfl-quantize="enable-dynamic-range-quantization=true enable-custom-op-weight-only=CustomTestOp=true"  -tfl-post-quantize="enable-no-side-effect=CustomTestOp=true" | FileCheck --check-prefix=NoSideEffectWeightOnly %s
 
 // CHECK-LABEL: PruneUnusedCustomOp
 func.func @PruneUnusedCustomOp(%arg0: tensor<1x1x1x1xf32>) -> tensor<*xf32> attributes {tf.entry_function = {inputs = "input", outputs = "custom_op"}} {

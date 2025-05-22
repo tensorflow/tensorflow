@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tfl-quantize='qdq-conversion-mode=Strict' | FileCheck %s
+// RUN: litert-opt %s -tfl-quantize='qdq-conversion-mode=Strict' | FileCheck %s
 // CHECK-LABEL: QuantizeConvDRQ
 func.func private @XlaCallModule_quant.fake_quant.impl_0(%arg0: tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32>
 func.func @QuantizeConvDRQ(%arg0: tensor<1x4x4x3xf32>) -> (tensor<1x4x4x1xf32>) {

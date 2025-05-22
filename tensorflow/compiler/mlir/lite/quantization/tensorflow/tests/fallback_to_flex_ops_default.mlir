@@ -1,4 +1,4 @@
-// RUN: tf-opt -quant-raise-flex-fallback %s | FileCheck %s
+// RUN: litert-opt -quant-raise-flex-fallback %s | FileCheck %s
 
 // CHECK-LABEL: bias_add
 func.func @bias_add(%arg0: tensor<1x10x10x32xf32>, %arg1: tensor<32xf32>) -> tensor<1x10x10x32xf32> {
