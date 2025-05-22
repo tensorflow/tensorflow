@@ -34,6 +34,7 @@ cc_library(
         "spmd_partitioner_util.h",
     ],
     deps = [
+        "//util/symbolize",
         "//xla:array",
         "//xla:comparison_util",
         "//xla:literal",

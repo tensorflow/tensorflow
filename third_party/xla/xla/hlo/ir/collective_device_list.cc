@@ -86,6 +86,18 @@ IotaReplicaGroupList IotaReplicaGroupList::FromProto(
                        proto.iota_transpose_perm().end()));
 }
 
+std::vector<std::vector<int64_t>>
+IotaReplicaGroupList::flattened_replica_groups() const {
+  std::vector<std::vector<int64_t>> result;
+  result.reserve(num_replica_groups());
+  Array<int64_t> array = ToArray();
+  for (auto it = array.begin(); it != array.end();
+       it += num_devices_per_group()) {
+    result.emplace_back(it, it + num_devices_per_group());
+  }
+  return result;
+}
+
 namespace {
 std::shared_ptr<std::vector<ReplicaGroup>> ExpandIota(
     const IotaReplicaGroupList& iota) {
