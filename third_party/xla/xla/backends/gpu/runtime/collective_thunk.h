@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -213,11 +214,11 @@ class CollectiveThunk : public Thunk {
                                              CommunicatorHandle comm) = 0;
   virtual const CollectiveConfig& config() const = 0;
   virtual AsyncStreamKind GetAsyncStreamKind() const { return stream_kind_; }
+  bool IsAsync() const { return async_events_ != nullptr; }
 
  private:
   const AsyncStreamKind stream_kind_;
 
-  bool IsAsync() const { return async_events_ != nullptr; }
   std::shared_ptr<AsyncEvents> async_events_;
 
   // After a first call to this particular instance of a collective thunk we do
@@ -300,6 +301,11 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
     const std::vector<ReplicaGroup>& replica_groups,
     CollectiveOpGroupMode group_mode, AsyncStreamKind stream_kind,
     bool use_nccl = true);
+
+// Helper over GetGpuCliqueKey that builds key for AsyncStreamKind::kCollective.
+absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
+    const CollectiveThunk::CollectiveExecuteParams& params,
+    const CollectiveConfig& collective_config, bool use_nccl = true);
 
 // Returns a communicator and additional information about the clique.
 absl::StatusOr<CommunicatorHandle> GetComm(

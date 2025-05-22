@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
@@ -131,6 +132,7 @@ class Thunk {
     kCollectiveBroadcast,
     kCollectiveBroadcastDone,
     kCollectiveBroadcastStart,
+    kCollectiveKernel,
     kCollectivePermute,
     kCollectivePermuteDone,
     kCollectivePermuteStart,
@@ -481,17 +483,19 @@ class Thunk {
   virtual void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const;
 
   // A helper function to get the `GpuCollectives*` pointer from the
+  // CollectiveExecuteParams.
+  static absl::StatusOr<GpuCollectives* absl_nonnull> GetGpuCollectives(
+      CollectiveExecuteParams const& params);
+
+  // A helper function to get the `GpuCollectives*` pointer from the
   // thunk parameters. Returns an error if collectives API is not provided.
   template <typename Params>
-  static absl::StatusOr<GpuCollectives*> GetGpuCollectives(
+  static absl::StatusOr<GpuCollectives* absl_nonnull> GetGpuCollectives(
       const Params& params) {
     if (params.collective_params == nullptr) {
       return Internal("Collective params are not provided");
     }
-    if (params.collective_params->collectives == nullptr) {
-      return Internal("Collectives API is not provided");
-    }
-    return params.collective_params->collectives;
+    return GetGpuCollectives(*params.collective_params);
   }
 
   // Serializes the thunk into a `ThunkProto`.

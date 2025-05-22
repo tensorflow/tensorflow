@@ -17,23 +17,18 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_ALL_REDUCE_THUNK_H_
 
 #include <cstdint>
-#include <memory>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/runtime/collective_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/collective_ops_utils.h"
-#include "xla/stream_executor/device_memory_handle.h"
-#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 
 namespace xla {
@@ -85,6 +80,8 @@ class AllReduceStartThunk : public AllReduceReduceScatterThunkBase {
       const GpuCliqueKey& clique_key,
       const CollectiveCliques* collective_cliques);
 
+  absl::Status Prepare(const PrepareParams& params,
+                       ResourceRequestsInterface& resource_requests) override;
   absl::Status Initialize(const InitializeParams& params) override;
 
  protected:
@@ -94,16 +91,7 @@ class AllReduceStartThunk : public AllReduceReduceScatterThunkBase {
 
  private:
   bool one_shot_kernel_enabled_ = false;
-
-  absl::Mutex mutex_;
-
-  // Local buffer allocations to copy input data for the one-shot kernel.
-  absl::flat_hash_map<se::StreamExecutor*, se::DeviceMemoryHandle>
-      local_buffer_allocs_ ABSL_GUARDED_BY(mutex_);
-
-  // Allocation for signal flags to synchronize blocks on different devices.
-  absl::flat_hash_map<se::StreamExecutor*, se::DeviceMemoryHandle>
-      signal_flags_allocs_ ABSL_GUARDED_BY(mutex_);
+  CollectiveKernelThunk collective_kernel_thunk_;
 };
 
 // -----------------------------------------------------------------------------

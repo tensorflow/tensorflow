@@ -42,8 +42,9 @@ struct Dim3D {
 // Thread dimensionality for use in a kernel launch.
 // details.
 struct ThreadDim : Dim3D {
-  explicit ThreadDim(uint64_t x = 1, uint64_t y = 1, uint64_t z = 1)
-      : Dim3D({x, y, z}) {}
+  explicit constexpr ThreadDim(uint64_t x_arg = 1, uint64_t y_arg = 1,
+                               uint64_t z_arg = 1)
+      : Dim3D({x_arg, y_arg, z_arg}) {}
 
   std::string ToString() const {
     return absl::StrCat("ThreadDim{", x, ", ", y, ", ", z, "}");
@@ -53,8 +54,9 @@ struct ThreadDim : Dim3D {
 // Block dimensionality for use in a kernel launch.
 // details.
 struct BlockDim : Dim3D {
-  explicit BlockDim(uint64_t x = 1, uint64_t y = 1, uint64_t z = 1)
-      : Dim3D({x, y, z}) {}
+  explicit constexpr BlockDim(uint64_t x_arg = 1, uint64_t y_arg = 1,
+                              uint64_t z_arg = 1)
+      : Dim3D({x_arg, y_arg, z_arg}) {}
 
   std::string ToString() const {
     return absl::StrCat("BlockDim{", x, ", ", y, ", ", z, "}");
@@ -63,8 +65,9 @@ struct BlockDim : Dim3D {
 
 // Cluster dimensionality for use in a kernel launch.
 struct ClusterDim : Dim3D {
-  explicit ClusterDim(uint64_t x = 1, uint64_t y = 1, uint64_t z = 1)
-      : Dim3D({x, y, z}) {}
+  explicit ClusterDim(uint64_t x_arg = 1, uint64_t y_arg = 1,
+                      uint64_t z_arg = 1)
+      : Dim3D({x_arg, y_arg, z_arg}) {}
 
   std::string ToString() const {
     return absl::StrCat("ClusterDim{", x, ", ", y, ", ", z, "}");

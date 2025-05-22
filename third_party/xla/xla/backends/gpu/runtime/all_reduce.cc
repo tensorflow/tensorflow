@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/device_memory.h"
@@ -81,7 +82,7 @@ absl::Status RunAllReduceKernel(
     PrimitiveType element_type,
     absl::Span<const se::DeviceMemoryBase> remote_input_buffers,
     se::DeviceMemoryBase local_input_buffer, se::DeviceMemoryBase output_buffer,
-    int64_t rank, int64_t num_ranks, int64_t num_elements,
+    RankId rank, int64_t num_ranks, int64_t num_elements,
     absl::Span<const se::DeviceMemoryBase> signal_flags_buffers) {
   if (remote_input_buffers.size() >
       stream_executor::gpu::kMaxNumAllReduceInputPtrs) {
@@ -113,7 +114,8 @@ absl::Status RunAllReduceKernel(
     return LaunchTypedKernel<T>(
         stream, executor, launch_dimensions.thread_counts_per_block(),
         launch_dimensions.block_counts(), remote_input_ptrs, local_input_buffer,
-        output_buffer, rank, num_ranks, num_elements, signal_flags_ptrs);
+        output_buffer, rank.value(), num_ranks, num_elements,
+        signal_flags_ptrs);
   };
 
   switch (element_type) {

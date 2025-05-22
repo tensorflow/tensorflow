@@ -26,6 +26,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/device_memory.h"
@@ -139,7 +140,7 @@ TYPED_TEST(AllReduceKernelTest, SimpleKernelTest) {
         // would do).
         /*local_input_buffer=*/local_input_buffers[i].memory(),
         /*output_buffer=*/local_input_buffers[i].memory(),
-        /*rank=*/i, /*num_ranks=*/kNumRanks, kNumElements,
+        /*rank=*/RankId(i), /*num_ranks=*/kNumRanks, kNumElements,
         signal_flags_buffers_span));
   }
 

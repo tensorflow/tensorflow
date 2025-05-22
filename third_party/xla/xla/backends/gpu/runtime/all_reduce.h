@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
@@ -64,7 +65,7 @@ absl::Status RunAllReduceKernel(
     PrimitiveType element_type,
     absl::Span<const se::DeviceMemoryBase> remote_input_buffers,
     se::DeviceMemoryBase local_input_buffer, se::DeviceMemoryBase output_buffer,
-    int64_t rank, int64_t num_ranks, int64_t num_elements,
+    RankId rank, int64_t num_ranks, int64_t num_elements,
     absl::Span<const se::DeviceMemoryBase> signal_flags_buffers);
 
 }  // namespace xla::gpu

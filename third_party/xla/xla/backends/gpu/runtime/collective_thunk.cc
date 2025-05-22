@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/layout_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
@@ -212,7 +211,7 @@ CollectiveThunk::CollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_sync,
                                  AsyncStreamKind stream_kind)
     : Thunk(kind, thunk_info),
       stream_kind_(stream_kind),
-      async_events_(is_sync ? nullptr : new AsyncEvents()) {}
+      async_events_(is_sync ? nullptr : std::make_shared<AsyncEvents>()) {}
 
 absl::StatusOr<int64_t> GetNumLocalParticipants(
     const Thunk::CollectiveExecuteParams& params,
@@ -268,6 +267,16 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
 
   return GpuCliqueKey(std::move(participants), num_local_participants,
                       kNoStreamId, stream_kind, std::move(participant_groups));
+}
+
+absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
+    const Thunk::CollectiveExecuteParams& params,
+    const CollectiveConfig& collective_config, bool use_nccl) {
+  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives,
+                      CollectiveThunk::GetGpuCollectives(params));
+  return GetGpuCliqueKey(collectives, params, collective_config.replica_groups,
+                         collective_config.group_mode,
+                         AsyncStreamKind::kCollective, use_nccl);
 }
 
 absl::StatusOr<CommunicatorHandle> GetComm(
