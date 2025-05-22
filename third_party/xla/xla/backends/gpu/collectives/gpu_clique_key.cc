@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -71,12 +72,14 @@ CollectiveStreamId GpuCliqueKey::stream_id() const { return stream_id_; }
 GlobalDeviceId GpuCliqueKey::root_device() const { return root_device_; }
 
 bool GpuCliqueKey::IsSubsetOf(const CliqueKey& other) const {
-  auto* other_nccl = tsl::down_cast<const GpuCliqueKey*>(&other);
-  if (other_nccl == nullptr) return false;
+  auto* other_gpu = tsl::down_cast<const GpuCliqueKey*>(&other);
+  if (other_gpu == nullptr) {
+    return false;
+  }
 
-  return stream_id_ == other_nccl->stream_id_ &&
+  return stream_id_ == other_gpu->stream_id_ &&
          absl::c_all_of(devices(), [&](GlobalDeviceId id) {
-           return absl::c_linear_search(other_nccl->devices(), id);
+           return absl::c_linear_search(other_gpu->devices(), id);
          });
 }
 
@@ -129,38 +132,18 @@ bool operator==(const GpuCliqueKey& a, const GpuCliqueKey& b) {
          a.root_device_ == b.root_device_;
 }
 
+// Constructs a tuple from the clique key for comparison purposes.
+static auto CmpKey(const GpuCliqueKey& key) {
+  return std::make_tuple(key.devices().size(), key.devices(), key.root_device(),
+                         key.num_local_participants(), key.stream_id().value());
+}
+
 bool operator<(const GpuCliqueKey& a, const GpuCliqueKey& b) {
-  if (a.devices().size() < b.devices().size()) return true;
-  if (b.devices().size() < a.devices().size()) return false;
-
-  if (a.devices() < b.devices()) return true;
-  if (b.devices() < a.devices()) return false;
-
-  if (a.root_device_ < b.root_device_) return true;
-  if (b.root_device_ < a.root_device_) return false;
-
-  if (a.num_local_participants_ < b.num_local_participants_) return true;
-  if (b.num_local_participants_ < a.num_local_participants_) return false;
-
-  return a.stream_id_.value() < b.stream_id_.value();
+  return CmpKey(a) < CmpKey(b);
 }
 
 bool operator>(const GpuCliqueKey& a, const GpuCliqueKey& b) {
-  if (a.devices().size() > b.devices().size()) return true;
-  if (b.devices().size() > a.devices().size()) return false;
-
-  if (a.devices() > b.devices()) return true;
-  if (b.devices() > a.devices()) return false;
-
-  if (a.root_device_ > b.root_device_) return true;
-  if (b.root_device_ > a.root_device_) return false;
-
-  if (a.num_local_participants_ > b.num_local_participants_) return true;
-  if (b.num_local_participants_ > a.num_local_participants_) return false;
-
-  // We still use `<` to order by stream id as we want to acquire sync cliques
-  // before async ones.
-  return a.stream_id_.value() < b.stream_id_.value();
+  return CmpKey(a) > CmpKey(b);
 }
 
 }  // namespace xla::gpu
