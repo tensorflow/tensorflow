@@ -63,10 +63,13 @@ class CopyInsertion : public HloModulePass {
   // buffer.
   explicit CopyInsertion(
       const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr,
-      int64_t use_region_based_live_range_analysis = kUseRegionAnalysisLimit)
+      int64_t use_region_based_live_range_analysis = kUseRegionAnalysisLimit,
+      bool insert_post_scheduling_control_dependencies = false)
       : can_share_buffer_(can_share_buffer),
         use_region_based_live_range_analysis_(
-            use_region_based_live_range_analysis) {}
+            use_region_based_live_range_analysis),
+        insert_post_scheduling_control_dependencies_(
+            insert_post_scheduling_control_dependencies) {}
 
   // Run the pass on the given module. Returns whether the module was changed
   // (copies were inserted).
@@ -123,6 +126,7 @@ class CopyInsertion : public HloModulePass {
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
   int64_t use_region_based_live_range_analysis_;
+  bool insert_post_scheduling_control_dependencies_;
 };
 
 }  // namespace xla
