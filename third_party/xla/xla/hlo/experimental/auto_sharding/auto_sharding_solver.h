@@ -50,6 +50,7 @@ struct AutoShardingSolverParams {
   std::optional<double> max_departures;
   bool minimize_departures = false;
   std::optional<double> overbudget_coeff;
+  bool shave_strategies = false;
   absl::Duration solver_timeout = absl::InfiniteDuration();
 };
 

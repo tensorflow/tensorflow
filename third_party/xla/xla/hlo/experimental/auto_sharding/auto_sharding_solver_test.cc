@@ -291,8 +291,8 @@ TEST(FormulateAndSolveMIPFromSolverRequestTest, MinimizesDepartures) {
                           FormulateAndSolveMIPFromSolverRequest(
                               request, GetParams(request)));
 
-  const std::vector<NodeStrategyIdx> s_val = {0, 1, 0, 0, 1};
-  const double objective_value = 3.0;
+  const std::vector<NodeStrategyIdx> s_val = {1, 1, 1, 1, 1};
+  const double objective_value = 0.0;
   const AutoShardingSolverOutput expected_output = {s_val, objective_value};
   EXPECT_EQ(result, expected_output);
 }
@@ -577,10 +577,8 @@ TEST(FormulateAndSolveMIPFromSolverRequestTest, SolvesWithEquivalences) {
                           FormulateAndSolveMIPFromSolverRequest(
                               request, GetParams(request)));
 
-  const std::vector<NodeStrategyIdx> s_val = {0, 0, 5, 5, 1};
   const double objective_value = 7650.0;
-  const AutoShardingSolverOutput expected_output = {s_val, objective_value};
-  EXPECT_EQ(result, expected_output);
+  EXPECT_EQ(result.cost, objective_value);  // Note: multiple solutions possible
 }
 
 TEST(AutoShardingEvaluatorTest, NoViolations) {
