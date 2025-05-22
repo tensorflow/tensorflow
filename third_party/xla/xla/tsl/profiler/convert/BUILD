@@ -32,6 +32,7 @@ cc_library(
     srcs = [tf_profiler_alias("//xla/tsl/profiler/convert/", "xla_op_utils.cc")],
     hdrs = ["xla_op_utils.h"],
     visibility = internal_visibility([
+        "//xla/tsl/profiler:friends",
         "//xla/tsl/profiler:internal",
         "//xla/tsl/profiler:xla_profiler_backends",
         "//xla/python:__pkg__",
