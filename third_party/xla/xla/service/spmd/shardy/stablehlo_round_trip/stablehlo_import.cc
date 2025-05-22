@@ -385,11 +385,12 @@ MeshAxesAndIds findMeshAxesAndIds(ModuleOp moduleOp) {
     // TODO(zixuanjiang). Support cases without common factorizations.
   }
 
-  // 3. Create a mesh.
+  // 3. Create a mesh with fake axis names that starts with and underscore so
+  //    that we can replace the fake axis names with real axis names later.
   namedAxes.reserve(axes.size());
   for (auto [axisIndex, axisSize] : llvm::enumerate(axes)) {
     auto name = StringAttr::get(moduleOp->getContext(),
-                                absl::StrCat("axis_", axisIndex));
+                                absl::StrCat("_axis_", axisIndex));
     namedAxes.push_back(
         MeshAxisAttr::get(moduleOp->getContext(), name, axisSize));
   }
