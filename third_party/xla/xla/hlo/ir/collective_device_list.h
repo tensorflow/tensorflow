@@ -121,6 +121,18 @@ class CollectiveDeviceList {
     return iota_replica_group_list_;
   }
 
+  int64_t num_replica_groups() const {
+    return iota_replica_group_list_.has_value()
+               ? iota_replica_group_list_->num_replica_groups()
+               : replica_groups_->size();
+  }
+
+  int64_t num_devices_per_group() const {
+    return iota_replica_group_list_.has_value()
+               ? iota_replica_group_list_->num_devices_per_group()
+               : replica_groups_->begin()->replica_ids_size();
+  }
+
   void Print(Printer* printer,
              bool print_full_replica_group_list = false) const;
 
