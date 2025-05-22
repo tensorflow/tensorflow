@@ -9,6 +9,7 @@ load(
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 default_visibility = [
+    "//smartass/brain/jax/embeddings:__pkg__",
     "//tensorflow/dtensor:dtensor-internal",
     "//tensorflow:__pkg__",
 ]
