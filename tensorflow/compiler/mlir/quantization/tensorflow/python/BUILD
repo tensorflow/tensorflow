@@ -176,33 +176,12 @@ cc_library(
 )
 
 cc_library(
-    name = "tf_unfreeze_constants",
-    srcs = ["tf_unfreeze_constants.cc"],
-    hdrs = ["tf_unfreeze_constants.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//tensorflow/compiler/mlir/quantization/tensorflow:tf_passes",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:save_variables",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@local_xla//xla/tsl/platform:errors",
-        "@local_xla//xla/tsl/platform:status",
-        "@local_xla//xla/tsl/platform:statusor",
-    ],
-)
-
-cc_library(
     name = "unfreeze_constants",
     srcs = ["unfreeze_constants.cc"],
     hdrs = ["unfreeze_constants.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:tf_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:save_variables",
         "//tensorflow/core:lib",

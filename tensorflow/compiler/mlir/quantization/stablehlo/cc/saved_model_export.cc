@@ -45,7 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/constants.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_passes.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/python/tf_unfreeze_constants.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/python/unfreeze_constants.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
@@ -78,7 +78,7 @@ using ::tensorflow::OpRegistry;
 using ::tensorflow::SaverDef;
 using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::RunPasses;
-using ::tensorflow::tf_quantization::UnfreezeConstantsAndSaveVariables;
+using ::tensorflow::quantization::UnfreezeConstantsAndSaveVariables;
 
 // Finds and returns the name of the node from a set of control output nodes.
 // The name should contain the string `contains`. Returns an empty string if no
