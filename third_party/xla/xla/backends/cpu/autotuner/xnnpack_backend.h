@@ -41,14 +41,14 @@ class XnnpackBackend : public CpuCodegenBackend {
 
   bool IsSupported(const HloInstruction& instr);
 
-  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
+  absl::StatusOr<std::vector<std::unique_ptr<xla::BackendConfig>>>
   GetSupportedConfigs(const HloInstruction& instr) final;
 
-  absl::StatusOr<std::unique_ptr<BackendConfig>> GetDefaultConfig(
+  absl::StatusOr<std::unique_ptr<xla::BackendConfig>> GetDefaultConfig(
       const HloInstruction& instr) final;
 
   absl::Status ApplyConfig(HloInstruction& instr,
-                           const BackendConfig& config) final;
+                           const xla::BackendConfig& config) final;
 
  protected:
   explicit XnnpackBackend(Compiler* compiler)
