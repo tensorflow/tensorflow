@@ -2154,9 +2154,6 @@ TEST_F(ShapeInferenceTest, DotWithIncorrectSparseDimensionSizeRatio) {
 }
 
 TEST_F(ShapeInferenceTest, SparseDotMetadata) {
-  DotDimensionNumbers dot_dnums;
-  dot_dnums.add_lhs_batch_dimensions(0);
-  dot_dnums.add_lhs_contracting_dimensions(2);
   SparsityDescriptor sparsity_descriptor;
   sparsity_descriptor.set_type(SparsityType::SPARSITY_STRUCTURED_N_M);
   sparsity_descriptor.set_n(2);
@@ -2166,8 +2163,8 @@ TEST_F(ShapeInferenceTest, SparseDotMetadata) {
 
   TF_ASSERT_OK_AND_ASSIGN(const Shape inferred_shape,
                           ShapeInference::InferSparseDotMetadataShape(
-                              ShapeUtil::MakeShape(F32, {5, 10, 16}), dot_dnums,
-                              sparsity_descriptor));
+                              ShapeUtil::MakeShape(F32, {5, 10, 16}),
+                              std::vector<int64_t>{2}, sparsity_descriptor));
   EXPECT_TRUE(
       ShapeUtil::Equal(inferred_shape, ShapeUtil::MakeShape(U16, {5, 10, 2})));
 }
