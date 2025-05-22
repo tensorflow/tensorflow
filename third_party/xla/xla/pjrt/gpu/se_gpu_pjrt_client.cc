@@ -47,6 +47,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "xla/backends/gpu/collectives/gpu_cliques.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/client/local_client.h"
 #include "xla/core/collectives/collectives.h"
@@ -56,6 +57,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/topology_util.h"
@@ -93,8 +95,10 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
@@ -531,6 +535,55 @@ static absl::flat_hash_map<std::string, PjRtDeviceAttribute> GetAttrsForDevices(
   return attrs;
 }
 
+// Aborts all NCCL collectives when a task fails, as reported by the
+// JobStateUpdate.
+absl::Status AbortOnFailure(
+    const tsl::CoordinationServiceAgent::JobStateUpdate& update) {
+  if (update.previous_state.empty()) {
+    // When a job first starts, there is no previous job state.
+    return absl::OkStatus();
+  }
+
+  // We expect update.previous_state and update.current_state to have the same
+  // size, and we expect for every i, previous_state[i] and current_state[i]
+  // correspond to the same task.
+  if (update.previous_state.size() != update.current_state.size()) {
+    return FailedPrecondition(
+        "Previous and current job states have different sizes: %d vs %d",
+        update.previous_state.size(), update.current_state.size());
+  }
+
+  bool task_failed = false;
+  for (int i = 0; i < update.previous_state.size(); ++i) {
+    const tensorflow::CoordinatedTaskStateInfo& previous =
+        update.previous_state[i];
+    const tensorflow::CoordinatedTaskStateInfo& current =
+        update.current_state[i];
+    if (previous.task().task_id() != current.task().task_id()) {
+      return FailedPrecondition(
+          "Previous and current job states have mismatched task ids: %d vs %d",
+          previous.task().task_id(), current.task().task_id());
+    }
+    if (previous.state() !=
+        tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED) {
+      // A task that was not previously connected cannot fail.
+      continue;
+    }
+    if (current.state() !=
+            tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED ||
+        previous.incarnation() != current.incarnation()) {
+      // The task is either failed, or restarted with a different incarnation.
+      VLOG(1) << "Task " << previous.task().task_id() << " failed";
+      task_failed = true;
+    }
+  }
+
+  if (task_failed) {
+    return xla::gpu::AbortAllCliques();
+  }
+  return absl::OkStatus();
+}
+
 StreamExecutorGpuClient::StreamExecutorGpuClient(
     std::string platform_name, LocalClient* client,
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
@@ -539,6 +592,8 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
     bool should_stage_host_to_device_transfers,
     std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
     std::shared_ptr<KeyValueStoreInterface> kv_store,
+    std::shared_ptr<DistributedRuntimeClient> distributed_client,
+    bool abort_collectives_on_failure,
     std::shared_ptr<const GpuTopology> gpu_topology)
     : xla::PjRtStreamExecutorClient(
           platform_name, client, std::move(devices), process_index,
@@ -549,7 +604,8 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
           tsl::Fingerprint64(platform_name), platform_name,
           std::move(gpu_topology), GetAttrsForDevices(addressable_devices()),
           GetTargetConfigForDevices(addressable_devices()))),
-      kv_store_(std::move(kv_store)) {
+      kv_store_(std::move(kv_store)),
+      distributed_client_(std::move(distributed_client)) {
   const int basePinnedId = device_count();
   for (auto* device : addressable_devices()) {
     // Use the device id to construct a globally unique memory space id. We do
@@ -577,6 +633,20 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
                [](const PjRtMemorySpace* a, const PjRtMemorySpace* b) {
                  return a->id() < b->id();
                });
+
+  // Add a JobStateCallback to abort collectives when tasks fail.
+  if (distributed_client_) {
+    absl::StatusOr<tsl::CoordinationServiceAgent*> agent =
+        distributed_client_->GetCoordinationServiceAgent();
+    if (agent.ok()) {
+      (*agent)->AddJobStateCallback(
+          [](const tsl::CoordinationServiceAgent::JobStateUpdate& update) {
+            if (absl::Status s = AbortOnFailure(update); !s.ok()) {
+              LOG(ERROR) << "Error aborting on failure: " << s;
+            }
+          });
+    }
+  }
 }
 
 absl::string_view StreamExecutorGpuClient::platform_version() const {
@@ -1407,7 +1477,8 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
       pjrt_platform_name, xla_client, std::move(device_topology_pair.first),
       options.node_id, std::move(allocator), std::move(host_memory_allocator),
       options.should_stage_host_to_device_transfers, std::move(gpu_run_options),
-      std::move(kv_store), std::move(gpu_topology)));
+      std::move(kv_store), std::move(options.distributed_runtime_client),
+      options.abort_collectives_on_failure, std::move(gpu_topology)));
 }
 
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
