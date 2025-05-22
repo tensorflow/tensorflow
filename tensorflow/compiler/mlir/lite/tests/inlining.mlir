@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -inline='default-pipeline=''' | FileCheck %s
+// RUN: litert-opt %s -inline='default-pipeline=''' | FileCheck %s
 
 // Inline a function that contains only tfl ops.
 func.func @func_with_tfl_ops(%arg0 : tensor<2xi32>) -> tensor<2xi32> {

@@ -1,4 +1,4 @@
-// RUN: tf-opt -tfl-reduce-while %s | FileCheck %s
+// RUN: litert-opt -tfl-reduce-while %s | FileCheck %s
 
 // The original func we want to optimize is:
 //

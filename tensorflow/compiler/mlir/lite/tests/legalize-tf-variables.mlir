@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -tfl-legalize-variables-tf --cse | FileCheck %s
+// RUN: litert-opt %s -split-input-file -tfl-legalize-variables-tf --cse | FileCheck %s
 
 // Test for case with no session initialize op.
 module attributes {tf_saved_model.semantics} {

@@ -32,6 +32,7 @@ filegroup(
         ":reducer_tester",
         "//tensorflow/compiler/mlir:tf-opt",
         "//tensorflow/compiler/mlir:tf-reduce",
+        "//tensorflow/compiler/mlir/lite:litert-opt",
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//llvm:not",
     ],

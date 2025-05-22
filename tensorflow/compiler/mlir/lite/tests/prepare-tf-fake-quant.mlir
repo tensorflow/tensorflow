@@ -1,5 +1,5 @@
-// RUN: tf-opt %s -split-input-file -tfl-raise-custom-ops="test-raise-tf-targets=tf.FakeQuantWithMinMaxVarsPerChannel,tf.FakeQuantWithMinMaxVars" -tfl-prepare-tf | FileCheck --dump-input=always %s
-// RUN: tf-opt %s -split-input-file -tfl-raise-custom-ops="test-raise-tf-targets=tf.FakeQuantWithMinMaxVarsPerChannel,tf.FakeQuantWithMinMaxVars" -tfl-prepare-tf=use-fake-quant-num-bits=true | FileCheck --check-prefix LOBIT --dump-input=always %s
+// RUN: litert-opt %s -split-input-file -tfl-raise-custom-ops="test-raise-tf-targets=tf.FakeQuantWithMinMaxVarsPerChannel,tf.FakeQuantWithMinMaxVars" -tfl-prepare-tf | FileCheck --dump-input=always %s
+// RUN: litert-opt %s -split-input-file -tfl-raise-custom-ops="test-raise-tf-targets=tf.FakeQuantWithMinMaxVarsPerChannel,tf.FakeQuantWithMinMaxVars" -tfl-prepare-tf=use-fake-quant-num-bits=true | FileCheck --check-prefix LOBIT --dump-input=always %s
 
 // CHECK-LABEL: fakeQuantPerChannelForActivation
 func.func @fakeQuantPerChannelForActivation(%arg0: tensor<8x4xf32>) -> (tensor<8x4xf32>) {

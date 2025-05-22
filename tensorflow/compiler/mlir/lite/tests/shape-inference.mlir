@@ -1,4 +1,4 @@
-// RUN: tf-opt -split-input-file -verify-diagnostics --tf-shape-inference %s | FileCheck %s
+// RUN: litert-opt -split-input-file -verify-diagnostics --tf-shape-inference %s | FileCheck %s
 
 module attributes {tf.versions = {producer = 888 : i32}} {
 // CHECK-LABEL: testConv2dShapeValidPadding

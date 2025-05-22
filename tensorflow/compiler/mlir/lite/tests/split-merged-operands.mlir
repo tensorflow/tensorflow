@@ -1,4 +1,4 @@
-// RUN: tf-opt -tfl-split-merged-operands %s | FileCheck %s
+// RUN: litert-opt -tfl-split-merged-operands %s | FileCheck %s
 
 func.func @testSingleLstm(%arg0: tensor<4x4xf32>, %arg1: tensor<4xf32>, %arg2: tensor<4x4x4xf32>) -> tensor<4x4x4xf32> {
   // CHECK-LABEL: testSingleLstm

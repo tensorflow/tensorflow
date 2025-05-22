@@ -73,6 +73,7 @@ tool_names = [
     'hlo_to_kernel',
     'json_to_flatbuffer',
     'kernel-gen-opt',
+    'litert-opt',
     'mlir-hlo-opt',
     'mlir-opt',
     'mlir-tflite-runner',

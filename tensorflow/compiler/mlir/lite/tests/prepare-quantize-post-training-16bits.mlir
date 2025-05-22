@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tfl-prepare-quantize="quantize-signed=true post-training-quantize=true activation-number-of-bits=16" -cse | FileCheck %s
+// RUN: litert-opt %s -tfl-prepare-quantize="quantize-signed=true post-training-quantize=true activation-number-of-bits=16" -cse | FileCheck %s
 
 // CHECK-LABEL: QuantizeUnidirectionalLstmFullPerTensor
 func.func @QuantizeUnidirectionalLstmFullPerTensor(%arg0: tensor<1x2x3xf32>) -> (tensor<1x2x3xf32>) {

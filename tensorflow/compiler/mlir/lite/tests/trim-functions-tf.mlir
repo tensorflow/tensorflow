@@ -1,4 +1,4 @@
-// RUN: tf-opt -tfl-trim-funcs-tf="trim-funcs-allowlist=bar,foobar" %s | FileCheck %s
+// RUN: litert-opt -tfl-trim-funcs-tf="trim-funcs-allowlist=bar,foobar" %s | FileCheck %s
 
 func.func @foo(%arg0: tensor<1x4xf32>, %arg1: tensor<1x4xf32>) -> tensor<1x4xf32> {
   func.return %arg0 : tensor<1x4xf32>

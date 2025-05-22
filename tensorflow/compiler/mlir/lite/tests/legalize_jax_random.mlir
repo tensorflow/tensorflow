@@ -1,4 +1,4 @@
-// RUN: tf-opt -tfl-legalize-random %s | FileCheck %s
+// RUN: litert-opt -tfl-legalize-random %s | FileCheck %s
 
 
 // CHECK-LABEL:   func @tfl_wrapped_jax_random_normal(

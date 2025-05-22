@@ -1,6 +1,6 @@
 // Test to verify if region outlining.
 
-// RUN: tf-opt --split-input-file --tfl-if-outline %s | FileCheck %s
+// RUN: litert-opt --split-input-file --tfl-if-outline %s | FileCheck %s
 
 
 // CHECK-LABEL: func @if1

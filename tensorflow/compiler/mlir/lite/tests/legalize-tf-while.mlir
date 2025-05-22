@@ -1,6 +1,6 @@
-// RUN: tf-opt --tfl-legalize-tf-while %s -o - | FileCheck %s
-// RUN: tf-opt --tfl-legalize-tf-while %s -o - --tfl-legalize-tf-while --inline='default-pipeline=''' | FileCheck %s --check-prefix=INLINE
-// RUN: tf-opt --tfl-legalize-tf-while %s -o - --tfl-legalize-tf-while --inline | FileCheck %s --check-prefix=CANON
+// RUN: litert-opt --tfl-legalize-tf-while %s -o - | FileCheck %s
+// RUN: litert-opt --tfl-legalize-tf-while %s -o - --tfl-legalize-tf-while --inline='default-pipeline=''' | FileCheck %s --check-prefix=INLINE
+// RUN: litert-opt --tfl-legalize-tf-while %s -o - --tfl-legalize-tf-while --inline | FileCheck %s --check-prefix=CANON
 
 func.func @while_main(%arg0: tensor<?x256x256xf32>) -> (tensor<i32>, tensor<256x256xf32>, tensor<?x256x256xf32>) attributes {tf.entry_function = {inputs = "input", outputs = "Identity,Identity_1,Identity_2"}} {
   %cst = arith.constant dense<1.000000e+00> : tensor<256x256xf32>

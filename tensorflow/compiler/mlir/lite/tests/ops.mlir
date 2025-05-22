@@ -1,4 +1,4 @@
-// RUN: tf-opt -split-input-file -verify-diagnostics -tfl-runtime-verify %s | FileCheck %s
+// RUN: litert-opt -split-input-file -verify-diagnostics -tfl-runtime-verify %s | FileCheck %s
 
 // Unary math ops
 // -----

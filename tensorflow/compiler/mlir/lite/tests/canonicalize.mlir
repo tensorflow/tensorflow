@@ -1,4 +1,4 @@
-// RUN: tf-opt -canonicalize=test-convergence -tfl-runtime-verify -split-input-file -verify-diagnostics %s | FileCheck %s
+// RUN: litert-opt -canonicalize=test-convergence -tfl-runtime-verify -split-input-file -verify-diagnostics %s | FileCheck %s
 
 // CHECK-LABEL: @squeeze_folder
 func.func @squeeze_folder(%arg0 : tensor<?x?xf32>) -> tensor<?x?xf32> {

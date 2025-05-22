@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tfl-legalize-tf --cse -split-input-file| FileCheck %s --dump-input=fail
+// RUN: litert-opt %s -tfl-legalize-tf --cse -split-input-file| FileCheck %s --dump-input=fail
 
 func.func @add(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
   %0 = "tf.Add"(%arg0, %arg1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>

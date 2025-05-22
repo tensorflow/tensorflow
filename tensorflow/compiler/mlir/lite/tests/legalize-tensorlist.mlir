@@ -1,5 +1,5 @@
 
-// RUN: tf-opt -tfl-legalize-tensorlist -canonicalize -split-input-file %s | FileCheck %s
+// RUN: litert-opt -tfl-legalize-tensorlist -canonicalize -split-input-file %s | FileCheck %s
 
 // CHECK-LABEL: listReserveScalarShapeI32
 func.func @listReserveScalarShapeI32(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<!tf_type.variant<tensor<*xi32>>> {

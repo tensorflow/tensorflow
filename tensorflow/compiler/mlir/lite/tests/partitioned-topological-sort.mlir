@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tfl-partitioned-topological-sort | FileCheck %s
+// RUN: litert-opt %s -tfl-partitioned-topological-sort | FileCheck %s
 
 // CHECK-LABEL: @tf_ops_will_be_partitioned
 func.func @tf_ops_will_be_partitioned() -> tensor<1xf32> {
