@@ -25,8 +25,8 @@ limitations under the License.
   GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(                       \
       RaggedAllToAllKernelRocmUInt##BITS,                               \
       stream_executor::gpu::RaggedAllToAllKernel<TYPE>,                 \
-      stream_executor::rocm::kROCmPlatformId, ([] {                     \
-        stream_executor::MultiKernelLoaderSpec spec(7);                 \
+      stream_executor::rocm::kROCmPlatformId, ([](size_t arity) {       \
+        stream_executor::MultiKernelLoaderSpec spec(arity);             \
         spec.AddInProcessSymbol(                                        \
             absl::bit_cast<void*>(                                      \
                 &stream_executor::gpu::RaggedAllToAllKernelImpl<TYPE>), \

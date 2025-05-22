@@ -34,8 +34,8 @@ __global__ void MakeBatchPointers(char* base, size_t stride, size_t n,
 
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
     MakeBatchPointersKernelRocm, stream_executor::gpu::MakeBatchPointersKernel,
-    stream_executor::rocm::kROCmPlatformId, ([] {
-      stream_executor::MultiKernelLoaderSpec spec(4);
+    stream_executor::rocm::kROCmPlatformId, ([](size_t arity) {
+      stream_executor::MultiKernelLoaderSpec spec(arity);
       spec.AddInProcessSymbol(
           absl::bit_cast<void*>(&stream_executor::rocm::MakeBatchPointers),
           "make_batch_pointers");
