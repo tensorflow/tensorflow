@@ -35,6 +35,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -223,9 +224,10 @@ SmallVector<int64_t> shortestCommonFactorization(ArrayRef<int64_t> array1,
 // returns an empty vector, such as {devices=[2,3]<=[2,3]T(1,0)}.
 SmallVector<SubDimInfo> getOrderedSubDimsFromIotaTileAssignment(
     const xla::IotaTileAssignment& iota) {
-  SmallVector<int64_t> deviceShape(iota.transpose_perm().size());
-  for (auto [index, perm_i] : llvm::enumerate(iota.transpose_perm())) {
-    deviceShape[index] = iota.reshape_dims()[perm_i];
+  SmallVector<int64_t> deviceShape;
+  deviceShape.reserve(iota.transpose_perm().size());
+  for (const int permIndex : iota.transpose_perm()) {
+    deviceShape.emplace_back(iota.reshape_dims()[permIndex]);
   }
 
   const SmallVector<int64_t> axisSizes = shortestCommonFactorization(
@@ -278,7 +280,7 @@ SmallVector<SubDimInfo> getOrderedSubDimsFromIotaTileAssignment(
 // Analyze the input tile assignment to obtain the information on the mesh and
 // sub dimensions.
 AnalyzeTileAssignmentResult analyzeTileAssignment(
-    const xla::TileAssignment& tileAssignment) {
+    const TileAssignment& tileAssignment) {
   // If the input has iota tile assignment (the corresponding HloSharding is in
   // V2 format), we use getOrderedSubDimsFromIotaTileAssignment.
   // TODO(zixuanjiang). We may handle HloShardingV1 in the future.
@@ -398,6 +400,10 @@ MeshAxesAndIds findMeshAxesAndIds(ModuleOp moduleOp) {
 }
 
 }  // namespace
+
+SmallVector<int64_t> getAxisSizes(const TileAssignment& tileAssignment) {
+  return analyzeTileAssignment(tileAssignment).localMesh;
+}
 
 // Convert the `hloSharding` into a `TensorShardingAttr` based on the
 // `globalMesh`.

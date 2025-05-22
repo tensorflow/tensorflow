@@ -15,6 +15,7 @@ package_group(
         "//learning/deepmind/partir/...",
         "//learning/deepmind/partir/compiler/mpmd/export/...",
         "//third_party/openxla/shardy/tools/...",
+        "//third_party/py/jax/...",
         "//xla/service/spmd/shardy/...",
     ],
 )
