@@ -471,6 +471,10 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
                          literal = std::move(literal),
                          buffer = std::move(buffer),
                          on_done = std::move(on_done)]() mutable {
+      VLOG(3) << "Start transfer h2d for literal with shape "
+              << literal.shape().ToString() << " on device "
+              << device_->DebugString();
+
       tsl::profiler::TraceMe traceme(
           "TfrtGpuAsyncHostToDeviceTransferManager::TransferLiteralToBuffer::"
           "transfer_h2d");
@@ -492,14 +496,14 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
       TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
           stream, literal, shaped_buffer, transfer_metadata_ptr));
 
-      auto status = stream->DoHostCallback(
-          [buffer_index, on_done = std::move(on_done), this]() mutable {
-            CleanUp(buffer_index, true, std::move(on_done));
-          });
+      absl::Status status = stream->BlockHostUntilDone();
+      VLOG(3) << "Finish transfer h2d for literal with shape "
+              << literal.shape().ToString() << " on device "
+              << device_->DebugString() << " with status " << status;
 
-      if (!status.ok()) {
-        LOG(ERROR) << "Failed to do host callback for transfer_h2d";
-      }
+      CHECK_OK(status) << "Failed to block host until done";
+
+      CleanUp(buffer_index, true, std::move(on_done));
     };
     // Enqueue the transfer to the h2d thread.
     h2d_thread_->Schedule(std::move(transfer_h2d));
