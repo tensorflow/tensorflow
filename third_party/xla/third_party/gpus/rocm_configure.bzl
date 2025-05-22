@@ -176,7 +176,7 @@ def _amdgpu_targets(repository_ctx, rocm_toolkit_path, bash_bin):
         targets = {x: None for x in targets}
         targets = list(targets.keys())
         amdgpu_targets_str = ",".join(targets)
-    amdgpu_targets = amdgpu_targets_str.split(",")
+    amdgpu_targets = [amdgpu for amdgpu in amdgpu_targets_str.split(",") if amdgpu]
     for amdgpu_target in amdgpu_targets:
         if amdgpu_target[:3] != "gfx":
             auto_configure_fail("Invalid AMDGPU target: %s" % amdgpu_target)
