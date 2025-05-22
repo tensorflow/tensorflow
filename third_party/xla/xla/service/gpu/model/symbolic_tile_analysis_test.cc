@@ -1772,7 +1772,8 @@ lhs {
 }
 
 rhs {
-  ROOT p0 = f32[1,115] parameter(0)
+  p0 = f32[1,115] parameter(0)
+  ROOT root = f32[1,115] convert(p0)
 }
 
 dot {

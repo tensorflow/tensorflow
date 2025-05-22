@@ -330,8 +330,8 @@ class SymbolicTileAnalysis {
   static SymbolicTileAnalysisOrError AnalyzeFusionImpl(
       const HloFusionAdaptor& fusion, mlir::MLIRContext* ctx,
       const RootIndexing& root_indexing,
-      EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder =
-          nullptr);
+      IndexingMap::SimplifyPointDimensions simplification_mode,
+      EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder);
 
   // The tiled HLO instructions in def-before-use order.
   std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>

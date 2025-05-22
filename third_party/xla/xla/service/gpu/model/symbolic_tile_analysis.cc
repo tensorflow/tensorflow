@@ -689,15 +689,10 @@ absl::StatusOr<int64_t> GetRealRootIndex(
 /*static*/ SymbolicTileAnalysisOrError SymbolicTileAnalysis::AnalyzeFusionImpl(
     const HloFusionAdaptor& fusion, MLIRContext* ctx,
     const RootIndexing& root_indexing,
+    IndexingMap::SimplifyPointDimensions simplification_mode,
     EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder) {
   OrderedUniquePtrValueHashSet<SymbolicTiledHloInstruction>
       tiled_hlo_instructions_set;
-
-  IndexingMap::SimplifyPointDimensions simplification_mode =
-      IndexingMap::SimplifyPointDimensions::kPreserve;
-  if (ShouldDerivationSimplifyPointDimensions(fusion)) {
-    simplification_mode = IndexingMap::SimplifyPointDimensions::kReplace;
-  }
 
   // TODO(b/372454662): Once we get rid of the restriction of only one real
   // root, this needs to be adapted.
@@ -769,7 +764,7 @@ absl::StatusOr<int64_t> GetRealRootIndex(
 
         auto analysis_or = SymbolicTileAnalysis::AnalyzeFusionImpl(
             *nested_fusion_adaptor, ctx, nested_root_indexing,
-            emitter_specific_constraints_builder);
+            simplification_mode, emitter_specific_constraints_builder);
         if (std::holds_alternative<FusionDecision>(analysis_or)) {
           return analysis_or;
         }
@@ -828,7 +823,11 @@ absl::StatusOr<int64_t> GetRealRootIndex(
   if (!root_indexing_or.ok()) {
     return FusionDecision::Forbid(root_indexing_or.status().message());
   }
-  return AnalyzeFusionImpl(fusion, ctx, *root_indexing_or,
+  IndexingMap::SimplifyPointDimensions simplification_mode =
+      ShouldDerivationSimplifyPointDimensions(fusion)
+          ? IndexingMap::SimplifyPointDimensions::kReplace
+          : IndexingMap::SimplifyPointDimensions::kPreserve;
+  return AnalyzeFusionImpl(fusion, ctx, *root_indexing_or, simplification_mode,
                            emitter_specific_constraints_builder);
 }
 

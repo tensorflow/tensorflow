@@ -825,21 +825,17 @@ std::vector<I4TestParams> Int4TestCases() {
       {"int4_dot_128_16_x_256_128", "128,16", "256,128", 0, 1, "16,256"},
       {"int4_dot_16_128_x_256_128", "16,128", "256,128", 1, 1, "16,256"},
       {"int4_dot_16_128_x_128_256", "16,128", "128,256", 1, 0, "16,256"},
-      // These fail for Int4WeightsOnTheRhs only.
-      {"DISABLED_int4_dot_1_128_x_256_128", "1,128", "256,128", 1, 1, "1,256"},
-      {"DISABLED_int4_dot_128_1_x_256_128", "128,1", "256,128", 0, 1, "1,256"},
-      // These fail for Int4WeightsOnTheLhs only.
-      {"DISABLED_int4_dot_16_128_x_128_1", "16,128", "128,1", 1, 0, "16,1"},
-      {"DISABLED_int4_dot_16_128_x_1_128", "16,128", "1,128", 1, 1, "16,1"},
+      {"int4_dot_1_128_x_256_128", "1,128", "256,128", 1, 1, "1,256"},
+      {"int4_dot_128_1_x_256_128", "128,1", "256,128", 0, 1, "1,256"},
+      {"int4_dot_16_128_x_128_1", "16,128", "128,1", 1, 0, "16,1"},
+      {"int4_dot_16_128_x_1_128", "16,128", "1,128", 1, 1, "16,1"},
 
       {"dot_8_128_16_x_8_128_256", "8,128,16", "8,128,256", 1, 1, "8,16,256"},
       {"dot_8_128_16_x_8_256_128", "8,128,16", "8,256,128", 1, 2, "8,16,256"},
       {"dot_8_16_128_x_8_256_128", "8,16,128", "8,256,128", 2, 2, "8,16,256"},
       {"dot_8_16_128_x_8_128_256", "8,16,128", "8,128,256", 2, 1, "8,16,256"},
-      {"DISABLED_dot_8_1_128_x_8_256_128", "8,1,128", "8,256,128", 2, 2,
-       "8,1,256"},
-      {"DISABLED_dot_8_128_1_x_8_256_128", "8,128,1", "8,256,128", 1, 2,
-       "8,1,256"},
+      {"dot_8_1_128_x_8_256_128", "8,1,128", "8,256,128", 2, 2, "8,1,256"},
+      {"dot_8_128_1_x_8_256_128", "8,128,1", "8,256,128", 1, 2, "8,1,256"},
       {"dot_8_16_128_x_8_128_1", "8,16,128", "8,128,1", 2, 1, "8,16,1"},
       {"dot_8_16_128_x_8_1_128", "8,16,128", "8,1,128", 2, 2, "8,16,1"},
   };
@@ -921,7 +917,7 @@ TEST_F(TritonTest, RejectTritonFusionForWithMinorBatchDim) {
   EXPECT_TRUE(*RunFileCheck(module->ToString(), pattern));
 }
 
-TEST_F(TritonTest, DISABLED_LHSWithMinorDimEqualTo1) {
+TEST_F(TritonTest, LHSWithMinorDimEqualTo1) {
   // We prove that triton can handle int4 dot with non contracting dim size
   // equal to 1.
   constexpr absl::string_view kHloText = R"(
@@ -948,7 +944,7 @@ TEST_F(TritonTest, DISABLED_LHSWithMinorDimEqualTo1) {
       kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonTest, DISABLED_RHSWithMinorDimEqualTo1) {
+TEST_F(TritonTest, RHSWithMinorDimEqualTo1) {
   // We prove that triton can handle int4 dot with non contracting dim size
   // equal to 1.
   constexpr absl::string_view kHloText = R"(
