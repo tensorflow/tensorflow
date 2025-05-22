@@ -57,7 +57,7 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:component",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:debugger",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:io",
-        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:tf_saved_model_export",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:saved_model_export",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:types",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",

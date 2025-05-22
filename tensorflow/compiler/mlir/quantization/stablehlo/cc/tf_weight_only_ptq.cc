@@ -30,8 +30,8 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/context.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_export.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_pass_pipeline.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_saved_model_export.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_saved_model_import.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/types.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/instrumentations/tf_save_report.h"
@@ -107,9 +107,9 @@ absl::Status QuantizeWeightOnlyPtq(
 
   TF_ASSIGN_OR_RETURN(
       const ExportedModel post_calibrated_exported_model,
-      CreateExportedModel(signature_keys, tags, quantization_config,
-                          WeightOnlyPtqComponent::kName, *function_aliases,
-                          *ctx, *module));
+      quant::stablehlo::CreateExportedModel(
+          signature_keys, tags, quantization_config,
+          WeightOnlyPtqComponent::kName, *function_aliases, *ctx, *module));
 
   // Remove the `tpu` tag for exporting because the output quantized model is
   // essentially a CPU model.

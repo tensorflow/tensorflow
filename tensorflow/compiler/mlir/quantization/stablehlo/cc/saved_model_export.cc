@@ -37,15 +37,15 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pass_pipeline.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_pass_pipeline.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/types.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/convert_asset_args.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/constants.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/python/unfreeze_constants.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/python/tf_unfreeze_constants.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
@@ -78,7 +78,7 @@ using ::tensorflow::OpRegistry;
 using ::tensorflow::SaverDef;
 using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::RunPasses;
-using ::tensorflow::quantization::UnfreezeConstantsAndSaveVariables;
+using ::tensorflow::tf_quantization::UnfreezeConstantsAndSaveVariables;
 
 // Finds and returns the name of the node from a set of control output nodes.
 // The name should contain the string `contains`. Returns an empty string if no
@@ -175,21 +175,21 @@ ExportedModel CreateExportedModelFromGraphDef(
 
 void AddExportPasses(mlir::PassManager& pm,
                      const bool duplicate_shape_determining_constants) {
-  AddCallModuleSerializationPasses(pm);
+  tf_quant::stablehlo::AddCallModuleSerializationPasses(pm);
   if (duplicate_shape_determining_constants) {
     pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::quant::CreateDuplicateShapeDeterminingConstantsPass());
+        mlir::tf_quant::CreateDuplicateShapeDeterminingConstantsPass());
   }
 
-  pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
-  pm.addPass(mlir::quant::CreateLiftHashTableOpsAsArgsPass());
+  pm.addPass(mlir::tf_quant::CreateInsertMainFunctionPass());
+  pm.addPass(mlir::tf_quant::CreateLiftHashTableOpsAsArgsPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());
   pm.addPass(mlir::CreateBreakUpIslandsPass());
-  pm.addPass(mlir::quant::CreateMergeInitializerFunctionOpsToMainPass());
-  pm.addPass(mlir::quant::CreateMergeSaveFunctionOpsToMainPass());
+  pm.addPass(mlir::tf_quant::CreateMergeInitializerFunctionOpsToMainPass());
+  pm.addPass(mlir::tf_quant::CreateMergeSaveFunctionOpsToMainPass());
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::quant::CreateMergeDuplicateResourceOpsPass());
+      mlir::tf_quant::CreateMergeDuplicateResourceOpsPass());
 
   // Used to clean up the "tf._noinliner" attribute that is previously used to
   // prevent certain functions from being inlined (see
