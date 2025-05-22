@@ -2619,6 +2619,42 @@ ChooseBestHeapAlgorithm<BufferType>::Finish() {
   return results[min_size_index];
 }
 
+BreadthFirstMidpointIterator::BreadthFirstMidpointIterator(int start, int end)
+    : initial_work_item_({start, end}) {
+  Begin();
+}
+
+int BreadthFirstMidpointIterator::value() const {
+  CHECK(value_.has_value());
+  return *value_;
+}
+
+void BreadthFirstMidpointIterator::Begin() {
+  work_items_.clear();
+  value_ = std::nullopt;
+
+  work_items_.push_back(initial_work_item_);
+  Next();
+}
+
+void BreadthFirstMidpointIterator::Next() {
+  if (work_items_.empty()) {
+    value_ = std::nullopt;
+    return;
+  }
+
+  WorkItem work_item = work_items_.front();
+  work_items_.pop_front();
+  if (work_item.start > work_item.end) {
+    Next();
+    return;
+  }
+  int midpoint = CeilOfRatio(work_item.start + work_item.end, 2);
+  value_ = midpoint;
+  work_items_.push_back({work_item.start, midpoint - 1});
+  work_items_.push_back({midpoint + 1, work_item.end});
+}
+
 template class GlobalDecreasingSizeBestFitHeap<HloValue>;
 template class GlobalDecreasingSizeBestFitHeap<AllocationBlock>;
 template class ChooseBestHeapAlgorithm<HloValue>;
