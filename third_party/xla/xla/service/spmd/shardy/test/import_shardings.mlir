@@ -197,3 +197,20 @@ func.func @maximal_sharding_on_op(%arg0: tensor<8x8xf32> {mhlo.sharding = "{devi
   %1 = stablehlo.multiply %0, %0 {mhlo.sharding = "{maximal device=0}"} : tensor<8x8xf32>
   return %1 : tensor<8x8xf32>
 }
+
+// -----
+
+// CHECK-LABEL: sdy.mesh @mesh = <["_axis_0"=8, "_axis_1"=4]>
+// CHECK-LABEL: func @import_sharding_with_token_types
+// CHECK-SAME{LITERAL}:      %arg0: !stablehlo.token {sdy.sharding = #sdy.sharding<@mesh, []>}
+// CHECK-SAME{LITERAL}:      %arg1: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"_axis_1"}, {"_axis_0"}]>}
+func.func @import_sharding_with_token_types(%arg0: !stablehlo.token {mhlo.sharding = "{replicated}"},
+                                           %arg1: tensor<8x8xf32> {mhlo.sharding = "{devices=[4,8]<=[8,4]T(1,0)}"})
+                                           -> (tensor<f32>, !stablehlo.token) {
+// CHECK-NEXT: %[[CALL1:.*]]:2 = stablehlo.custom_call @foo(%arg0, %arg1)
+// CHECK-NEXT: %{{.*}} = stablehlo.custom_call @Sharding(%[[CALL1]]#1)
+// CHECK-SAME{LITERAL}: {sdy.sharding = #sdy.sharding_per_value<[<@mesh, []>]>}
+  %0:2 = stablehlo.custom_call @foo(%arg0, %arg1) : (!stablehlo.token, tensor<8x8xf32>) -> (tensor<f32>, !stablehlo.token)
+  %1 = stablehlo.custom_call @Sharding(%0#1) {mhlo.sharding = "{replicated}"} : (!stablehlo.token) -> !stablehlo.token
+  func.return %0#0, %1 : tensor<f32>, !stablehlo.token
+}
