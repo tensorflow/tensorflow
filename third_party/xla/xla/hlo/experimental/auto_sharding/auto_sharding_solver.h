@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_SOLVER_H_
 #define XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_SOLVER_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
+#include "xla/hlo/experimental/auto_sharding/iopddl.h"
 
 namespace xla {
 namespace spmd {
@@ -140,6 +142,43 @@ class StrategyShaverForRequest {
  private:
   const AutoShardingSolverParams& params_;    // NOLINT
   const AutoShardingSolverRequest& request_;  // NOLINT
+  std::vector<std::vector<EdgeIdx>> src_edge_map_;
+  std::vector<std::vector<EdgeIdx>> dst_edge_map_;
+  std::vector<std::vector<AliasIdx>> src_alias_map_;
+  std::vector<std::vector<AliasIdx>> dst_alias_map_;
+  std::vector<std::vector<NodeIdx>> followers_;
+};
+
+// Determines if strategy 'first' is dominated by strategy 'second' (i.e., its
+// costs are all equal or worse, and it has identical alias mappings).
+bool CheckDominance(const AutoShardingSolverParams& params,
+                    const iopddl::Problem& problem,
+                    const std::vector<iopddl::Edge>& aliases,
+                    const std::vector<iopddl::Edge>& deduplicated_edges,
+                    const std::vector<EdgeIdx>& src_edges,
+                    const std::vector<EdgeIdx>& dst_edges,
+                    const std::vector<AliasIdx>& src_aliases,
+                    const std::vector<AliasIdx>& dst_aliases, NodeIdx node_idx,
+                    NodeStrategyIdx first, NodeStrategyIdx second);
+
+class StrategyShaverForProblem {
+ public:
+  explicit StrategyShaverForProblem(
+      const AutoShardingSolverParams& params, const iopddl::Problem& problem,
+      const std::vector<int64_t>& s_follow,
+      const std::vector<iopddl::Edge>& aliases,
+      const std::vector<iopddl::Edge>& deduplicated_edges);
+
+  // For every node, examine each sharding strategy to see if it is dominated by
+  // another.
+  NodeStrategies FindShavedStrategies() const;
+
+ private:
+  const AutoShardingSolverParams& params_;               // NOLINT
+  const iopddl::Problem& problem_;                       // NOLINT
+  const std::vector<int64_t>& s_follow_;                 // NOLINT
+  const std::vector<iopddl::Edge>& aliases_;             // NOLINT
+  const std::vector<iopddl::Edge>& deduplicated_edges_;  // NOLINT
   std::vector<std::vector<EdgeIdx>> src_edge_map_;
   std::vector<std::vector<EdgeIdx>> dst_edge_map_;
   std::vector<std::vector<AliasIdx>> src_alias_map_;

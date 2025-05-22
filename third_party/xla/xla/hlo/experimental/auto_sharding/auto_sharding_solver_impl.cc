@@ -13,11 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <vector>
 
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
+#include "xla/hlo/experimental/auto_sharding/iopddl.h"
 #include "ortools/linear_solver/linear_solver.h"
 
 namespace xla {
@@ -44,6 +46,21 @@ StrategyShaverForRequest::StrategyShaverForRequest(
     : params_(params), request_(request) {}
 
 NodeStrategies StrategyShaverForRequest::FindShavedStrategies() const {
+  return {};  // TODO(moffitt): Implement this.
+}
+
+StrategyShaverForProblem::StrategyShaverForProblem(
+    const AutoShardingSolverParams& params, const iopddl::Problem& problem,
+    const std::vector<int64_t>& s_follow,
+    const std::vector<iopddl::Edge>& aliases,
+    const std::vector<iopddl::Edge>& deduplicated_edges)
+    : params_(params),
+      problem_(problem),
+      s_follow_(s_follow),
+      aliases_(aliases),
+      deduplicated_edges_(deduplicated_edges) {}
+
+NodeStrategies StrategyShaverForProblem::FindShavedStrategies() const {
   return {};  // TODO(moffitt): Implement this.
 }
 

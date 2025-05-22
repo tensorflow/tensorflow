@@ -97,6 +97,7 @@ cc_library(
     deps = [
         ":auto_sharding_proto_cc",
         ":auto_sharding_strategy",
+        ":iopddl_lib",
         "@com_google_absl//absl/log:check",
     ] + if_google(
         ["@com_google_ortools//ortools/linear_solver:linear_solver_wrapper"],
@@ -155,6 +156,7 @@ cc_library(
     deps = [
         ":auto_sharding_device_mesh",
         ":auto_sharding_proto_cc",
+        ":iopddl_lib",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_value",
