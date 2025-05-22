@@ -186,6 +186,43 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "kernel_arguments",
+    srcs = ["kernel_arguments.cc"],
+    hdrs = ["kernel_arguments.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "kernel_api_builder",
+    srcs = ["kernel_api_builder.cc"],
+    hdrs = ["kernel_api_builder.h"],
+    deps = [
+        ":kernel_arguments",
+        ":type_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+    ],
+)
+
 xla_cc_test(
     name = "type_util_test",
     srcs = ["type_util_test.cc"],
