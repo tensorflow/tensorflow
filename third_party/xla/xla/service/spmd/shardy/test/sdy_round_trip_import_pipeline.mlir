@@ -403,3 +403,18 @@ module @maximal_sharding_module attributes {mhlo.frontend_attributes = {xla.sdy.
     return %arg0 : tensor<2xi64>
   }
 }
+
+// -----
+module @send_with_sdy_sharding_module {
+  // CHECK: sdy.mesh @maximal_mesh_0
+  sdy.mesh @maximal_mesh_0 = <[], device_ids=[0]>
+  // CHECK-LABEL: func.func @send_with_sdy_sharding
+  func.func @send_with_sdy_sharding(%arg0: tensor<i32>,
+                                     %arg1: !stablehlo.token) -> !stablehlo.token {
+  // CHECK-NEXT: %0 = "stablehlo.send"(%arg0, %arg1) <{channel_handle = #stablehlo.channel_handle<handle = 1, type = 2>, is_host_transfer = true}> {mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "_host_callback_dtoh_0"}, sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_0, []>]>, xla_shape = "token[]"}
+    %1 = "stablehlo.send"(%arg0, %arg1) <{channel_handle = #stablehlo.channel_handle<handle = 1, type = 2>, is_host_transfer = true}>
+      {mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "_host_callback_dtoh_0"},
+      sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_0, []>]>, xla_shape = "token[]"} : (tensor<i32>, !stablehlo.token) -> !stablehlo.token
+    return %1 : !stablehlo.token
+  }
+}

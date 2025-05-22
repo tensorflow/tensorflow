@@ -187,7 +187,7 @@ void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter) {
         resNum, StringAttr::get(funcOp.getContext(), kXlaShardingAttr));
   }
 
-  // Extract the round-tripped SDY shardy attributes from the operations.
+  // Extract the round-tripped shardy attributes from the operations.
   funcOp.front().walk([&](Operation* op) {
     op->removeAttr(kXlaShardingAttr);
     DictionaryAttr dictAttr = getFrontendAttrs(op);
@@ -197,10 +197,10 @@ void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter) {
     // `SendOp` and `RecvOp` can have a sharding when doing TPU callbacks
     // through JAX.
     if (mlir::isa<stablehlo::SendOp, stablehlo::RecvOp>(op)) {
-      auto sharding = parseStringAttr<TensorShardingPerValueAttr>(
-          dictAttr, kShardingRoundTripAttr);
-      CHECK(sharding) << "Expect sharding to exist for SendOp/RecvOp.";
-      op->setAttr(kShardingAttr, sharding);
+      if (auto sharding = parseStringAttr<TensorShardingPerValueAttr>(
+              dictAttr, kShardingRoundTripAttr)) {
+        op->setAttr(kShardingAttr, sharding);
+      }
     }
     // NOTE: we are only setting the sharding on known custom-calls. For any
     // other op that has a `kShardingRoundTripAttr` we discard it. XLA sometimes
