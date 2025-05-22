@@ -479,6 +479,8 @@ class HloComputation {
             HloInstructionConstIterator(&instructions_, end, end)};
   }
 
+  size_t instructions_size() const { return instructions_.size(); }
+
   using ChannelDependencies =
       absl::flat_hash_map<const HloInstruction*,
                           absl::InlinedVector<HloInstruction*, 1>>;

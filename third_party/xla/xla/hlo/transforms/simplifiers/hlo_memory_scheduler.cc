@@ -41,14 +41,18 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/pjrt/semaphore.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
+#include "tsl/platform/cpu_info.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
@@ -123,18 +127,36 @@ class ListScheduler {
     // instruction. An HLO instruction "uses" a LogicalBuffer if the
     // LogicalBuffer is in an operand of the instruction as indicated by
     // points-to analysis.
+    buffer_uses_.reserve(computation->instructions_size());
+    static auto* thread_pool = new tsl::thread::ThreadPool(
+        tsl::Env::Default(), "ListScheduler_constructor",
+        tsl::port::MaxParallelism());
+    xla::Semaphore semaphore(0);
     for (auto* instruction : computation->instructions()) {
-      absl::flat_hash_set<const LogicalBuffer*> instr_uses;
-      for (auto* operand : instruction->operands()) {
-        points_to_analysis.GetPointsToSet(operand).ForEachElement(
-            [&](const ShapeIndex& /*index*/,
-                const PointsToSet::BufferList& buffers) {
-              instr_uses.insert(buffers.begin(), buffers.end());
-            });
-      }
-      buffer_uses_[instruction] = std::vector<const LogicalBuffer*>(
-          instr_uses.begin(), instr_uses.end());
+      std::vector<const LogicalBuffer*>& buffer_uses_for_instruction =
+          buffer_uses_[instruction];
+      thread_pool->Schedule([&, instruction]() {
+        absl::flat_hash_set<const LogicalBuffer*> instr_uses;
+        for (const auto* operand : instruction->operands()) {
+          points_to_analysis.GetPointsToSet(operand).ForEachElement(
+              [&](const ShapeIndex& /*index*/,
+                  const PointsToSet::BufferList& buffers) {
+                instr_uses.insert(buffers.begin(), buffers.end());
+              });
+        }
+        // Note: `std::vector<T>(my_flat_hash_set.begin(),
+        // my_flat_hash_set.end())` is not the most efficient way to convert a
+        // set to a vector as the begin and end set iterators are not random
+        // access iterators and so the distance calculation is O(n) instead of
+        // O(1).
+        buffer_uses_for_instruction.reserve(instr_uses.size());
+        for (const LogicalBuffer* buffer : instr_uses) {
+          buffer_uses_for_instruction.push_back(buffer);
+        }
+        semaphore.Release(1);
+      });
     }
+    semaphore.Acquire(computation->instructions_size());
 
     // Create map containing the number of unscheduled uses (hlo instructions)
     // of each logical buffer.
