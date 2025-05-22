@@ -547,12 +547,11 @@ cc_library(
         ":thunk",
         ":thunk_proto_cc",
         ":while_thunk",
-        "//xla:literal_util",
-        "//xla/hlo/evaluator:hlo_evaluator",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:event",
+        "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -564,6 +563,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -577,7 +577,9 @@ xla_cc_test(
         "//xla/service:buffer_assignment",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/log:check",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -1850,6 +1852,7 @@ cc_library(
     srcs = ["thunk_proto_deserialization.cc"],
     hdrs = ["thunk_proto_deserialization.h"],
     deps = [
+        ":copy_thunk",
         ":gemm_thunk",
         ":sequential_thunk",
         ":thunk",
@@ -1865,13 +1868,17 @@ xla_cc_test(
     name = "thunk_proto_deserialization_test",
     srcs = ["thunk_proto_deserialization_test.cc"],
     deps = [
+        ":copy_thunk",
         ":sequential_thunk",
         ":thunk",
+        ":thunk_proto_cc",
         ":thunk_proto_deserialization",
-        "//xla/tsl/lib/core:status_test_util",
+        "//xla/service:buffer_assignment",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 

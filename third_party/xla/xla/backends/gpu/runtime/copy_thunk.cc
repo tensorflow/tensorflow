@@ -23,14 +23,15 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -117,6 +118,20 @@ absl::StatusOr<ThunkProto> CopyThunk::ToProto() const {
   return proto;
 }
 
+absl::StatusOr<std::unique_ptr<CopyThunk>> CopyThunk::FromProto(
+    ThunkInfo thunk_info, const CopyThunkProto& thunk_proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice src_slice,
+                      BufferAllocation::Slice::FromProto(
+                          thunk_proto.source_buffer(), buffer_allocations));
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice dst_slice,
+      BufferAllocation::Slice::FromProto(thunk_proto.destination_buffer(),
+                                         buffer_allocations));
+  return std::make_unique<CopyThunk>(std::move(thunk_info), src_slice,
+                                     dst_slice, thunk_proto.mem_size());
+}
+
 //===----------------------------------------------------------------------===//
 // DeviceToHostCopyThunk
 //===----------------------------------------------------------------------===//
@@ -168,6 +183,25 @@ absl::StatusOr<ThunkProto> DeviceToHostCopyThunk::ToProto() const {
   return proto;
 }
 
+absl::StatusOr<std::unique_ptr<DeviceToHostCopyThunk>>
+DeviceToHostCopyThunk::FromProto(
+    ThunkInfo thunk_info, const DeviceToHostCopyThunkProto& thunk_proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice src_slice,
+      BufferAllocation::Slice::FromProto(
+          thunk_proto.copy_thunk().source_buffer(), buffer_allocations));
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice dst_slice,
+      BufferAllocation::Slice::FromProto(
+          thunk_proto.copy_thunk().destination_buffer(), buffer_allocations));
+  return std::make_unique<DeviceToHostCopyThunk>(
+      std::move(thunk_info), src_slice, dst_slice,
+      thunk_proto.copy_thunk().mem_size(),
+      /*events=*/nullptr,
+      /*instr=*/nullptr);
+}
+
 //===----------------------------------------------------------------------===//
 // HostToDeviceCopyThunk
 //===----------------------------------------------------------------------===//
@@ -217,6 +251,25 @@ absl::StatusOr<ThunkProto> HostToDeviceCopyThunk::ToProto() const {
                       destination().ToProto());
   copy_thunk_proto->set_mem_size(size_bytes());
   return proto;
+}
+
+absl::StatusOr<std::unique_ptr<HostToDeviceCopyThunk>>
+HostToDeviceCopyThunk::FromProto(
+    ThunkInfo thunk_info, const HostToDeviceCopyThunkProto& thunk_proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice src_slice,
+      BufferAllocation::Slice::FromProto(
+          thunk_proto.copy_thunk().source_buffer(), buffer_allocations));
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice dst_slice,
+      BufferAllocation::Slice::FromProto(
+          thunk_proto.copy_thunk().destination_buffer(), buffer_allocations));
+  return std::make_unique<HostToDeviceCopyThunk>(
+      std::move(thunk_info), src_slice, dst_slice,
+      thunk_proto.copy_thunk().mem_size(),
+      /*events=*/nullptr,
+      /*instr=*/nullptr);
 }
 
 //===----------------------------------------------------------------------===//
