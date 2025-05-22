@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -82,7 +83,19 @@ class ExecutionGraph {
     virtual absl::Span<const BufferUse> BufferUses() const = 0;
     virtual absl::Span<const ResourceUse> ResourceUses() const = 0;
 
+    const std::vector<
+        std::pair<std::string, std::vector<std::unique_ptr<Operation>>>>&
+    named_nested_operations() const {
+      return named_nested_operations_;
+    }
+
    protected:
+    std::vector<
+        std::pair<std::string, std::vector<std::unique_ptr<Operation>>>>&
+    named_nested_operations() {
+      return named_nested_operations_;
+    }
+
     Operation() = default;
 
     Operation(const Operation&) = default;
@@ -90,6 +103,10 @@ class ExecutionGraph {
 
     Operation(Operation&&) = default;
     Operation& operator=(Operation&&) = default;
+
+   private:
+    std::vector<std::pair<std::string, std::vector<std::unique_ptr<Operation>>>>
+        named_nested_operations_;
   };
 
   // An edge between two nodes created for the execution graph operations.
