@@ -1,4 +1,4 @@
-// RUN: sdy_opt %s -xla-sdy-stablehlo-export-manual-reduction-collectives 2>&1 | FileCheck %s
+// RUN: sdy_opt %s --split-input-file -xla-sdy-stablehlo-export-manual-reduction-collectives 2>&1 | FileCheck %s
 
 sdy.mesh @mesh_x_2_y_2 = <["x"=2, "y"=2]>
 sdy.mesh @mesh_x_2_y_4_z_2 = <["x"=2, "y"=4, "z"=2]>
@@ -22,7 +22,7 @@ func.func @all_reduce_f32(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@
 // CHECK-LABEL: func @all_reduce_i64
 func.func @all_reduce_i64(%arg0: tensor<8x8xi64> {sdy.sharding = #sdy.sharding<@mesh_x_2_y_2, [{"y"}, {}]>}) -> tensor<8x8xi64> {
   // CHECK-NEXT:          %[[ALL_REDUCE:.*]] = "stablehlo.all_reduce"(%arg0) <{
-  // CHECK-SAME:            channel_handle = #stablehlo.channel_handle<handle = 1, type = 1>,
+  // CHECK-SAME:            channel_handle = #stablehlo.channel_handle<handle = 2, type = 1>,
   // CHECK-SAME{LITERAL}:   replica_groups = dense<[[0, 2], [1, 3]]> : tensor<2x2xi64>, use_global_device_ids}> ({
   // CHECK-NEXT:          ^bb0(%arg1: tensor<i64>, %arg2: tensor<i64>):
   // CHECK-NEXT:            %[[ADD:.*]] = stablehlo.add %arg1, %arg2 : tensor<i64>
@@ -80,5 +80,46 @@ func.func @all_reduce_non_iota_device_order(%arg0: tensor<8x8xf32> {sdy.sharding
 func.func @all_reduce_sub_axis(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_x_4_y_6, [{}, {}]>}) -> tensor<8x8xf32> {
   // CHECK{LITERAL}: replica_groups = dense<[[0, 6, 12, 18, 1, 7, 13, 19, 2, 8, 14, 20], [3, 9, 15, 21, 4, 10, 16, 22, 5, 11, 17, 23]]>
   %0 = sdy.all_reduce {"y":(2)3, "x"} %arg0 out_sharding=<@mesh_x_4_y_6, [{}, {}]> : tensor<8x8xf32>
+  return %0 : tensor<8x8xf32>
+}
+
+// -----
+
+sdy.mesh @mesh = <["x"=2, "y"=2]>
+
+// CHECK-LABEL: func @unique_channel_handle
+func.func @unique_channel_handle(%arg0: tensor<8x8xf32>, %arg1: !stablehlo.token) -> tensor<16x16xf32> {
+  %token = "stablehlo.send"(%arg0, %arg1) <{
+      channel_handle = #stablehlo.channel_handle<handle = 5, type = 2>,
+      is_host_transfer = true}> :
+      (tensor<8x8xf32>, !stablehlo.token) -> !stablehlo.token
+  // CHECK:               "stablehlo.all_reduce"
+  // CHECK-SAME:            channel_handle = #stablehlo.channel_handle<handle = 6, type = 1>,
+  // CHECK-SAME{LITERAL}:   replica_groups = dense<[[0, 2], [1, 3]]> : tensor<2x2xi64>, use_global_device_ids
+  %0 = sdy.all_reduce {"x"} %arg0 out_sharding=<@mesh, [{}, {}]> : tensor<8x8xf32>
+  %1 = stablehlo.add %0, %0 : tensor<8x8xf32>
+  %2 = "stablehlo.all_gather"(%1) <{
+      all_gather_dim = 0 : i64,
+      replica_groups = dense<[[0, 1], [2, 3]]> : tensor<2x2xi64>
+    }> : (tensor<8x8xf32>) -> tensor<16x8xf32>
+  %3 = "stablehlo.all_gather"(%2) <{
+      all_gather_dim = 1 : i64,
+      channel_handle = #stablehlo.channel_handle<handle = 1, type = 1>,
+      replica_groups = dense<[[0, 2], [1, 3]]> : tensor<2x2xi64>,
+      use_global_device_ids
+    }> : (tensor<16x8xf32>) -> tensor<16x16xf32>
+  // CHECK:               "stablehlo.all_reduce"
+  // CHECK-SAME:            channel_handle = #stablehlo.channel_handle<handle = 7, type = 1>,
+  // CHECK-SAME{LITERAL}:   replica_groups = dense<[[0, 1], [2, 3]]> : tensor<2x2xi64>, use_global_device_ids
+  %4 = sdy.all_reduce {"y"} %3 out_sharding=<@mesh, [{}, {}]> : tensor<16x16xf32>
+  return %4 : tensor<16x16xf32>
+}
+
+// CHECK-LABEL: func @unique_channel_handle_2
+func.func @unique_channel_handle_2(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
+  // CHECK:               "stablehlo.all_reduce"
+  // CHECK-SAME:            channel_handle = #stablehlo.channel_handle<handle = 8, type = 1>,
+  // CHECK-SAME{LITERAL}:   replica_groups = dense<[[0, 2], [1, 3]]> : tensor<2x2xi64>, use_global_device_ids
+  %0 = sdy.all_reduce {"x"} %arg0 out_sharding=<@mesh, [{}, {}]> : tensor<8x8xf32>
   return %0 : tensor<8x8xf32>
 }

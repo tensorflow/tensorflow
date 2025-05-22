@@ -15,26 +15,24 @@ limitations under the License.
 
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_manual_reduction_collectives.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
-#include <utility>
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/LogicalResult.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/Region.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/TypeID.h"
-#include "mlir/Transforms/DialectConversion.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/array.h"
@@ -49,17 +47,27 @@ namespace sdy = ::mlir::sdy;
 namespace stablehlo = ::mlir::stablehlo;
 
 using ::mlir::ArrayRef;
-using ::mlir::ConversionPatternRewriter;
-using ::mlir::LogicalResult;
-using ::mlir::OpConversionPattern;
+using ::mlir::ModuleOp;
 using ::mlir::OperationPass;
 using ::mlir::Pass;
 using ::mlir::PassWrapper;
 using ::mlir::SmallVector;
 using ::mlir::StringRef;
 
-using ::mlir::func::FuncOp;
 using ::mlir::sdy::AxisRefAttr;
+
+// Returns the channel ID after the maximum channel ID in the given `moduleOp`.
+// TODO(b/419222666): remove dependency on `channel_handle` attribute name.
+int64_t getNextChannelId(ModuleOp moduleOp) {
+  int64_t maxChannelId = 0;
+  moduleOp->walk([&](mlir::Operation* op) {
+    if (auto channelHandle =
+            op->getAttrOfType<stablehlo::ChannelHandleAttr>("channel_handle")) {
+      maxChannelId = std::max(maxChannelId, channelHandle.getHandle());
+    }
+  });
+  return maxChannelId + 1;
+}
 
 // Builds the replica groups for a `stablehlo::AllReduceOp`.
 //
@@ -122,56 +130,41 @@ mlir::DenseIntElementsAttr getReplicaGroups(sdy::AllReduceOp op,
                                          llvm::to_vector(array));
 }
 
-class AllReducePattern : public OpConversionPattern<sdy::AllReduceOp> {
- public:
-  using OpConversionPattern::OpConversionPattern;
-
- private:
-  LogicalResult matchAndRewrite(
-      sdy::AllReduceOp op, OpAdaptor adaptor,
-      ConversionPatternRewriter& rewriter) const override {
-    // TODO(tomnatan): Insert inside `sdy.manual_computation`.
-    // TODO(tomnatan): Add a sharding to all-reduce if not fully manual.
-    // TODO(tomnatan): Support sdy.reduce_scatter.
-    // TODO(tomnatan): add unique channel id for each all-reduce, w.r.t to
-    // existing collectives.
-    // Channel type is DEVICE_TO_DEVICE.
-    auto channelHandle = stablehlo::ChannelHandleAttr::get(
-        op->getContext(), /*channelId=*/1, /*channelType=*/1);
-    // Setting `use_global_device_ids=true` as we are targeting the
-    // `CollectiveOpGroupMode::kFlattenedID` mode.
-    auto newAllReduce = rewriter.replaceOpWithNewOp<stablehlo::AllReduceOp>(
-        op, op.getType(), adaptor.getTensor(), getReplicaGroups(op, rewriter),
-        channelHandle,
-        /*use_global_device_ids=*/true);
-    auto elementType =
-        mlir::cast<mlir::ShapedType>(op.getType()).getElementType();
-    stablehlo::buildReduceBody<stablehlo::AddOp>(
-        elementType, newAllReduce.getComputation(), rewriter);
-    return mlir::success();
-  }
-};
+void convertAllReduce(sdy::AllReduceOp op, int64_t channelId,
+                      mlir::IRRewriter& rewriter) {
+  // TODO(tomnatan): Insert inside `sdy.manual_computation`.
+  // TODO(tomnatan): Add a sharding to all-reduce if not fully manual.
+  // TODO(tomnatan): Support sdy.reduce_scatter.
+  // Channel type is DEVICE_TO_DEVICE.
+  auto channelHandle = stablehlo::ChannelHandleAttr::get(
+      op->getContext(), /*handle=*/channelId, /*type=*/1);
+  // Setting `use_global_device_ids=true` as we are targeting the
+  // `CollectiveOpGroupMode::kFlattenedID` mode.
+  rewriter.setInsertionPoint(op);
+  mlir::Type tensorType = op.getTensor().getType();
+  auto newAllReduce = rewriter.replaceOpWithNewOp<stablehlo::AllReduceOp>(
+      op, tensorType, op.getTensor(), getReplicaGroups(op, rewriter),
+      channelHandle, /*use_global_device_ids=*/true);
+  auto elementType = mlir::cast<mlir::ShapedType>(tensorType).getElementType();
+  stablehlo::buildReduceBody<stablehlo::AddOp>(
+      elementType, newAllReduce.getComputation(), rewriter);
+}
 
 class StablehloExportManualReductionCollectivesPass
     : public mlir::PassWrapper<StablehloExportManualReductionCollectivesPass,
-                               OperationPass<FuncOp>> {
+                               OperationPass<ModuleOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
       StablehloExportManualReductionCollectivesPass)
 
   void runOnOperation() final {
-    mlir::MLIRContext& context = getContext();
-    mlir::ConversionTarget target(context);
-    // TODO(tomnatan): Only convert all-reduce ops that are marked by Shardy.
-    target.addIllegalOp<sdy::AllReduceOp>();
-    target.addLegalOp<sdy::ManualComputationOp, sdy::ReturnOp>();
-    target.addLegalDialect<stablehlo::StablehloDialect>();
-    mlir::RewritePatternSet patterns(&context);
-    patterns.add<AllReducePattern>(&context);
-    if (mlir::failed(mlir::applyPartialConversion(getOperation(), target,
-                                                  std::move(patterns)))) {
-      signalPassFailure();
-    }
+    ModuleOp moduleOp = getOperation();
+    mlir::IRRewriter rewriter(moduleOp.getContext());
+    int64_t nextChannelId = getNextChannelId(moduleOp);
+    moduleOp.walk([&](sdy::AllReduceOp allReduce) {
+      // TODO(tomnatan): Only convert all-reduce ops that are marked by Shardy.
+      convertAllReduce(allReduce, nextChannelId++, rewriter);
+    });
   }
 
   StringRef getArgument() const override {
