@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -43,6 +45,7 @@ using CustomKernelBackendConfig = AutotuneResult::CustomKernelFusionKey;
 
 using ::tsl::proto_testing::EqualsProto;
 using tsl::testing::IsOk;
+using tsl::testing::IsOkAndHolds;
 using tsl::testing::StatusIs;
 
 const char kCustomKernelFusionHlo[] = R"(
@@ -167,6 +170,17 @@ TEST_F(CustomKernelBackendTest,
       backend_.GetDefaultConfig(
           (*module->entry_computation()->root_instruction()));
   EXPECT_THAT(config, StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(CustomKernelBackendTest, ApplyConfig) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kCustomKernelFusionHlo));
+  CustomKernelBackendConfig config;
+  config.set_kernel_index(2);
+  TF_EXPECT_OK(backend_.ApplyConfig(
+      *hlo_module->entry_computation()->root_instruction(), config));
+  EXPECT_THAT(RunFileCheck(hlo_module->ToString(), "CHECK: \"kernel_index\":2"),
+              IsOkAndHolds(true));
 }
 
 }  // namespace gpu
