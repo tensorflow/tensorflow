@@ -15,11 +15,7 @@ cc_library(
     hdrs = ["padding.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = [
-        "//tensorflow/compiler/mlir/lite/kernels:__pkg__",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:__pkg__",
-    ],
-    deps = [
-        "//tensorflow/compiler/mlir/lite/core/c:tflite_common",
     ],
 )
 # LINT.ThenChange(//tensorflow/lite/kernels/BUILD)
