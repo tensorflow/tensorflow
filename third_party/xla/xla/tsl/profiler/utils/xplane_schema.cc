@@ -367,7 +367,8 @@ const StatTypeMap& GetStatTypeMap() {
        {"device_offset_ps", kDeviceOffsetPs},
        {"device_duration_ps", kDeviceDurationPs},
        {"scope_range_id", kScopeRangeId},
-       {"core_details", kCoreDetails}});
+       {"core_details", kCoreDetails},
+       {"mlir_program", kMlIRProgram}});
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
 }
