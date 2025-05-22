@@ -523,7 +523,7 @@ XlaOpRegistry& XlaOpRegistry::Instance() {
 }
 
 XlaOpRegistrationBuilder::XlaOpRegistrationBuilder(absl::string_view name) {
-  registration_.reset(new XlaOpRegistry::OpRegistration);
+  registration_ = std::make_unique<XlaOpRegistry::OpRegistration>();
   registration_->name = string(name);
 }
 

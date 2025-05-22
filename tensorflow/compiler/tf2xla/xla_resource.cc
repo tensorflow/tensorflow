@@ -90,11 +90,11 @@ XlaResource::XlaResource(
   CHECK(kind_ != kInvalid);
 
   for (const string& gradient : tensor_array_gradients) {
-    tensor_array_gradients_[gradient].reset(new XlaResource(
+    tensor_array_gradients_[gradient] = std::make_unique<XlaResource>(
         /*kind=*/kTensorArray, /*arg_num=*/-1,
         /*name=*/absl::StrCat("TensorArrayGrad: ", name_), type_, shape_,
         xla::XlaOp(), max_array_size_, /*tensor_array_gradients=*/{},
-        /*tensor_array_multiple_writes_aggregate=*/true));
+        /*tensor_array_multiple_writes_aggregate=*/true);
   }
 }
 
@@ -187,12 +187,12 @@ absl::Status XlaResource::GetOrCreateTensorArrayGradient(
     ta_shape.AppendShape(shape_);
     xla::XlaOp gradient_value =
         xla::Broadcast(XlaHelpers::Zero(builder, type_), ta_shape.dim_sizes());
-    gradient.reset(
-        new XlaResource(/*kind=*/kTensorArray, /*arg_num=*/-1,
-                        /*name=*/absl::StrCat("TensorArrayGrad: ", name_),
-                        type_, shape_, gradient_value, max_array_size_,
-                        /*tensor_array_gradients=*/{},
-                        /*tensor_array_multiple_writes_aggregate=*/true));
+    gradient = std::make_unique<XlaResource>(
+        /*kind=*/kTensorArray, /*arg_num=*/-1,
+        /*name=*/absl::StrCat("TensorArrayGrad: ", name_), type_, shape_,
+        gradient_value, max_array_size_,
+        /*tensor_array_gradients=*/{},
+        /*tensor_array_multiple_writes_aggregate=*/true);
   }
   *gradient_out = gradient.get();
   return absl::OkStatus();

@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/functionalize_cond.h"
 
+#include <memory>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/cc/framework/ops.h"
@@ -37,9 +39,9 @@ namespace functionalize_cond {
 class FunctionalizeCondTest : public ::testing::Test {
  protected:
   FunctionalizeCondTest() {
-    graph_.reset(new Graph(OpRegistry::Global()));
-    flib_def_.reset(
-        new FunctionLibraryDefinition(OpRegistry::Global(), fdef_lib_));
+    graph_ = std::make_unique<Graph>(OpRegistry::Global());
+    flib_def_ = std::make_unique<FunctionLibraryDefinition>(
+        OpRegistry::Global(), fdef_lib_);
     fc_.reset(new functionalize_cond::FunctionalizeCond(
         graph_.get(), flib_def_.get(), NodeFilter{}));
   }

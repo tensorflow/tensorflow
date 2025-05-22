@@ -541,14 +541,14 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
         (*options_.populate_resource_manager)(device_->resource_manager());
   }
 
-  local_flib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(),
-                                                      FunctionDefLibrary()));
-  local_pflr_.reset(new ProcessFunctionLibraryRuntime(
+  local_flib_def_ = std::make_unique<FunctionLibraryDefinition>(
+      OpRegistry::Global(), FunctionDefLibrary());
+  local_pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
       &device_mgr_, Env::Default(), /*config=*/nullptr,
-      options.graph_def_version, local_flib_def_.get(), OptimizerOptions()));
-  pflr_.reset(new ProcessFunctionLibraryRuntime(
+      options.graph_def_version, local_flib_def_.get(), OptimizerOptions());
+  pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
       &device_mgr_, Env::Default(), /*config=*/nullptr,
-      options.graph_def_version, options.flib_def, OptimizerOptions()));
+      options.graph_def_version, options.flib_def, OptimizerOptions());
 
   local_flib_runtime_ = local_pflr_->GetFLR(device_->name());
   flib_runtime_ = pflr_->GetFLR(device_->name());
