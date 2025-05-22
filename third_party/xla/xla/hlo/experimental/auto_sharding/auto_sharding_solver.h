@@ -45,11 +45,16 @@ struct AutoShardingSolverOutput {
 double MinimumMemoryBudgetRequired(const AutoShardingSolverRequest& request);
 
 struct AutoShardingSolverParams {
+  bool compute_iis = false;
+  bool crash_at_infinity_costs_check = false;
   std::vector<std::vector<double>> departure_costs;
   bool deterministic_mode = false;
+  bool enable_output = false;
+  std::optional<double> max_cost;
   std::optional<double> max_departures;
   bool minimize_departures = false;
   std::optional<double> overbudget_coeff;
+  std::vector<int64_t> s_hint;
   bool shave_strategies = false;
   absl::Duration solver_timeout = absl::InfiniteDuration();
 };
