@@ -769,6 +769,10 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     LOG(INFO) << " GpuTracer max callback_events: "
               << options_.max_activity_api_events
               << ", max activity events: " << options_.max_activity_api_events;
+    if (std::string num_events_dropped_message = ReportNumEventsIfDropped();
+        !num_events_dropped_message.empty()) {
+      space->add_warnings(num_events_dropped_message);
+    }
     ExportScopeRangeIdTree(space);
     size_t num_events = 0;
     XPlaneBuilder host_plane(
