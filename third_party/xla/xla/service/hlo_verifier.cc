@@ -3203,13 +3203,15 @@ absl::Status VerifyUnpin(const HloCustomCallInstruction* inst) {
   return absl::OkStatus();
 }
 
-absl::Status VerifyNoBuffers(const Shape& shape,
-                             absl::string_view error_message) {
+absl::Status VerifyNoBuffers(const Shape& shape, const HloInstruction* inst) {
   return ShapeUtil::ForEachSubshapeWithStatus(
       shape,
       [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
         if (subshape.IsBuffer()) {
-          return InvalidArgument("%s", error_message);
+          return InvalidArgument(
+              "Seen buffers while buffers aren't allowed "
+              "in this context: %s",
+              inst->ToString());
         }
         return absl::OkStatus();
       });
@@ -3336,12 +3338,9 @@ absl::Status VerifyCustomCall(const HloCustomCallInstruction* inst) {
 }
 
 absl::Status VerifyNoBuffersInContext(const HloInstruction* inst) {
-  std::string error_message =
-      "Seen buffers while buffers aren't allowed in this context:" +
-      inst->ToString();
-  TF_RETURN_IF_ERROR(VerifyNoBuffers(inst->shape(), error_message));
+  TF_RETURN_IF_ERROR(VerifyNoBuffers(inst->shape(), inst));
   for (auto* operand : inst->operands()) {
-    TF_RETURN_IF_ERROR(VerifyNoBuffers(operand->shape(), error_message));
+    TF_RETURN_IF_ERROR(VerifyNoBuffers(operand->shape(), inst));
   }
   return absl::OkStatus();
 }
