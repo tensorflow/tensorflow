@@ -183,7 +183,8 @@ HloComputation* HloModule::AddComputationInternal(
     computation_name_uniquer_.GetUniqueName(computation->name());
     for (auto* instruction : computation->instructions()) {
       instruction_name_uniquer_.GetUniqueName(instruction->name());
-      next_unique_id_ = std::max(next_unique_id_, instruction->unique_id() + 1);
+      next_unique_id_ =
+          std::max(next_unique_id_, instruction->unique_id_64_bits() + 1);
     }
     if (next_unique_id_ < computation->unique_id() + 1) {
       next_unique_id_ = computation->unique_id() + 1;
@@ -620,9 +621,9 @@ HloModuleProtoWithConfig HloModule::ToProtoWithConfig() const {
 absl::Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions()
     const {
   absl::flat_hash_set<absl::string_view> computation_names;
-  absl::flat_hash_set<int> computation_ids;
+  absl::flat_hash_set<int64_t> computation_ids;
   absl::flat_hash_set<absl::string_view> instruction_names;
-  absl::flat_hash_set<int> instruction_ids;
+  absl::flat_hash_set<int64_t> instruction_ids;
 
   for (const HloComputation* computation : computations()) {
     TF_RET_CHECK(!ContainsKey(computation_names, computation->name()))
@@ -638,9 +639,11 @@ absl::Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions()
           << "Instruction name is not unique: " << instruction->name();
       instruction_names.insert(instruction->name());
 
-      TF_RET_CHECK(!ContainsKey(instruction_ids, instruction->unique_id()))
-          << "Instruction id is not unique: " << instruction->unique_id();
-      instruction_ids.insert(instruction->unique_id());
+      TF_RET_CHECK(
+          !ContainsKey(instruction_ids, instruction->unique_id_64_bits()))
+          << "Instruction id is not unique: "
+          << instruction->unique_id_64_bits();
+      instruction_ids.insert(instruction->unique_id_64_bits());
     }
   }
   return absl::OkStatus();

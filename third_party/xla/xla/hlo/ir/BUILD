@@ -221,6 +221,7 @@ xla_cc_test(
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/utils:hlo_query",
         "//xla/service:hlo_module_config",
+        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",

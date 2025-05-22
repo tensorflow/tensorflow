@@ -1357,8 +1357,12 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 
   TF_RET_CHECK(proto.id() >= 0)
       << "Instruction with negative id: " << proto.id();
-  TF_RET_CHECK(proto.id() <= INT_MAX)
-      << "Instruction with id > INT_MAX: " << proto.id();
+  // TODO(b/399394039): Reinforce the condition on INT64_MAX when upgrading
+  // unique_id_ to int64_t.
+  LOG_IF(INFO, proto.id() > INT_MAX)
+      << "Instruction with id > INT_MAX: " << proto.id()
+      << " this is not intended behavior and might indicate a bug in the HLO "
+         "proto serialization.";
   instruction->unique_id_ = proto.id();
 
   if (proto.has_sharding()) {
