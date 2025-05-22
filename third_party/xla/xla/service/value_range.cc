@@ -267,6 +267,10 @@ Range RecursivelyIdentifyRange(
                                       instr, known_ranges);
         }
         ConstantValue step = operand_range.step()->mul(single_value);
+        // Zero step makes it difficult to simulate the range; update it to 1.
+        if (step.GetSignedValue() == 0) {
+          step = ConstantValue::GetOne(/*bitwidth=*/64, /*is_signed=*/true);
+        }
         return RecordAndReturnRange(
             Range{min, max, step, operand_range.IsLinear()}, instr,
             known_ranges);
@@ -277,6 +281,10 @@ Range RecursivelyIdentifyRange(
             known_ranges);
       }
       ConstantValue step = operand_range.step()->mul(single_value);
+      // Zero step makes it difficult to simulate the range; update it to 1.
+      if (step.GetSignedValue() == 0) {
+        step = ConstantValue::GetOne(/*bitwidth=*/64, /*is_signed=*/true);
+      }
       return RecordAndReturnRange(
           Range{min, std::nullopt, step, operand_range.IsLinear()}, instr,
           known_ranges);
