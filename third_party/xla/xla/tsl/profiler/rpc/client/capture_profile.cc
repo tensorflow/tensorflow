@@ -272,8 +272,8 @@ absl::Status ExportToTensorBoard(const XSpace& xspace,
 absl::Status CaptureRemoteTrace(
     const char* service_addr, const char* logdir, const char* worker_list,
     bool include_dataset_ops, int duration_ms, int num_tracing_attempts,
-    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
-        options) {
+    const absl::flat_hash_map<std::string,
+                              std::variant<bool, int, std::string>>& options) {
   // TPU capture is true if the user sets worker_list.
   bool is_cloud_tpu_session = false;
   RemoteProfilerSessionManagerOptions opts =

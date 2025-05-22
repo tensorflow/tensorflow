@@ -20,6 +20,8 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_split.h"
 #include "xla/tsl/platform/errors.h"
 #include "tsl/profiler/lib/profiler_session.h"
@@ -73,8 +75,8 @@ void AddServiceAddresses(absl::string_view service_addresses,
 // RemoteProfilerSessionManagerOptions.
 RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
     absl::string_view logdir,
-    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
-        opts) {
+    const absl::flat_hash_map<std::string,
+                              std::variant<bool, int, std::string>>& opts) {
   RemoteProfilerSessionManagerOptions options;
   *options.mutable_profiler_options() = tsl::ProfilerSession::DefaultOptions();
   // Store a timestamp of when this session was created. This will be the basis
@@ -93,21 +95,37 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
   for (const auto& kw : opts) {
     absl::string_view key = kw.first;
     if (key == "host_tracer_level") {
-      int value = std::get<int>(kw.second);
-      options.mutable_profiler_options()->set_host_tracer_level(value);
-      VLOG(1) << "host_tracer_level set to " << value;
+      if (std::holds_alternative<int>(kw.second)) {
+        int value = std::get<int>(kw.second);
+        options.mutable_profiler_options()->set_host_tracer_level(value);
+        VLOG(1) << "host_tracer_level set to " << value;
+      } else {
+        LOG(WARNING) << "host_tracer_level expects an integer value.";
+      }
     } else if (key == "device_tracer_level") {
-      int value = std::get<int>(kw.second);
-      options.mutable_profiler_options()->set_device_tracer_level(value);
-      VLOG(1) << "device_tracer_level set to " << value;
+      if (std::holds_alternative<int>(kw.second)) {
+        int value = std::get<int>(kw.second);
+        options.mutable_profiler_options()->set_device_tracer_level(value);
+        VLOG(1) << "device_tracer_level set to " << value;
+      } else {
+        LOG(WARNING) << "device_tracer_level expects an integer value.";
+      }
     } else if (key == "python_tracer_level") {
-      int value = std::get<int>(kw.second);
-      options.mutable_profiler_options()->set_python_tracer_level(value);
-      VLOG(1) << "python_tracer_level set to " << value;
+      if (std::holds_alternative<int>(kw.second)) {
+        int value = std::get<int>(kw.second);
+        options.mutable_profiler_options()->set_python_tracer_level(value);
+        VLOG(1) << "python_tracer_level set to " << value;
+      } else {
+        LOG(WARNING) << "python_tracer_level expects an integer value.";
+      }
     } else if (key == "delay_ms") {
-      int value = std::get<int>(kw.second);
-      options.set_delay_ms(value);
-      VLOG(1) << "delay_ms was set to " << value;
+      if (std::holds_alternative<int>(kw.second)) {
+        int value = std::get<int>(kw.second);
+        options.set_delay_ms(value);
+        VLOG(1) << "delay_ms was set to " << value;
+      } else {
+        LOG(WARNING) << "delay_ms expects an integer value.";
+      }
     } else {
       LOG(WARNING) << "Unrecognised key: " << key;
     }
@@ -120,8 +138,8 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
     absl::string_view service_addresses, absl::string_view logdir,
     absl::string_view worker_list, bool include_dataset_ops,
     int32_t duration_ms,
-    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
-        opts,
+    const absl::flat_hash_map<std::string,
+                              std::variant<bool, int, std::string>>& opts,
     bool* is_cloud_tpu_session) {
   auto options = GetRemoteSessionManagerOptionsLocked(logdir, opts);
 
