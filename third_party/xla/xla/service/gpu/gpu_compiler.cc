@@ -712,7 +712,7 @@ absl::Status RunOptimizationPasses(
         !cuda_cc->IsAtLeast(se::CudaComputeCapability::kVolta)) {
       return true;
     }
-    return !gpu::IsMatrixMultiplication(*instr);
+    return !gpu::IsMatrixMultiplication(*instr).value_or(false);
   };
   pipeline.AddPass<ResultCaster>(upcaster_filter);
   pipeline.AddPass<OperandUpcaster>(upcaster_filter);
