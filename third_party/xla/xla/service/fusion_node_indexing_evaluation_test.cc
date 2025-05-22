@@ -19,13 +19,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/instruction_fusion.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
 
-using FusionNodeIndexingEvaluationTest = HloTestBase;
+using FusionNodeIndexingEvaluationTest = HloHardwareIndependentTestBase;
 
 // Subclass of InstructionFusion exposing the protected methods Fuse and
 // FuseInstruction for testing. Also adds the FusionNodeIndexingEvaluation to

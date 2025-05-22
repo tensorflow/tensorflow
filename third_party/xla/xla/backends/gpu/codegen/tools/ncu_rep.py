@@ -15,17 +15,16 @@
 """Print metrics from ncu-rep file.
 
 Usage:
-  ncu_rep -i <ncu-rep-file> [metrics|kernels|value]
+  ncu_rep <ncu-rep-file> [--list_kernels] [--list_metrics]
+    [--filter <filter kernels>]
     [-f <format>] [-k <kernel name>]
-    [-m metric1] [-m metric2]
-  metrics: print all metric names
-  kernels: print all kernel names
-  value (default): print values of metrics as in -m
+    [-m metric1] [-m metric2]f metrics: print all metric names
 """
 
 from collections.abc import Sequence
 import csv
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -33,9 +32,6 @@ from absl import app
 from absl import flags
 from xla.backends.gpu.codegen.tools import ncu_rep_lib
 
-_INPUT_FILE = flags.DEFINE_string(
-    "i", None, "Input .ncu-rep file", required=False
-)
 _METRICS = flags.DEFINE_multi_string(
     "m",
     [
@@ -45,18 +41,28 @@ _METRICS = flags.DEFINE_multi_string(
         "dram__bytes_write.sum",
         "launch__registers_per_thread",
     ],
-    "Input .ncu-rep file",
+    "Names of metrics to print",
 )
 _FORMAT = flags.DEFINE_enum(
     "f",
     "md",
     ["md", "csv", "json", "raw"],
-    "Output format: md (default), csv, or json",
+    "Output format: md (default), csv, json or plain text",
 )
-_KERNEL = flags.DEFINE_string(
-    "k",
+_KERNEL_FILTER = flags.DEFINE_list(
+    "filter",
     None,
-    "kernel to print (prints first kernel if empty)",
+    "kernel filter: comma-separated list of kernel predicates:\n-"
+    " 'name:<regex>' matches part of the name, case sensitive. Use"
+    " 'name:^<regex>$' to match the whole string\n- 'id:<number>' - numeric"
+    " kernel id\n- 'after:<matcher>' - match all kernels after the all matces"
+    " of the matcher\nFilters are applied in order they are specified",
+)
+_LIST_KERNELS = flags.DEFINE_bool(
+    "list_kernels", None, "print kernel names and exit", required=False
+)
+_LIST_METRICS = flags.DEFINE_bool(
+    "list_metrics", None, "print metric names and exit", required=False
 )
 
 ncu_bin = shutil.which("ncu")
@@ -66,32 +72,61 @@ logging.info("ncu binary: %s", ncu_bin)
 
 
 def main(argv: Sequence[str]) -> None:
-  input_name = _INPUT_FILE.value
-  if not input_name:
-    # We can't use required=True due to unit tests.
-    raise app.UsageError("input file (-i) is required")
-  cmd = [ncu_bin, "-i", input_name, "--csv", "--page", "raw"]
-  out = subprocess.check_output(cmd, text=True).strip()
+  if len(argv) != 2:
+    raise app.UsageError("provide .ncu-rep file path")
+  input_file_name = argv[1]
+  if not os.path.exists(input_file_name):
+    raise app.UsageError(f"file '{input_file_name}' does not exist")
+  cmd = [
+      ncu_bin,
+      "-i",
+      input_file_name,
+      "--csv",
+      "--print-units",
+      "base",
+      "--page",
+      "raw",
+  ]
+  env_with_locale = os.environ.copy()
+  # Force locale to en_US.UTF-8 to get consistent output.
+  env_with_locale["LC_ALL"] = "en_US.UTF-8"
+  # env_with_locale["LC_ALL"] = "de_DE.UTF-8"
+  out = subprocess.check_output(cmd, text=True, env=env_with_locale).strip()
   rows = list(csv.reader(out.splitlines()))
   name_index = {}
   for i, name in enumerate(rows[0]):
     name_index[name] = i
 
-  op = argv[1] if len(argv) > 1 else "value"
-  if op == "metrics":
+  if _LIST_METRICS.value:
     for name in rows[0]:
       print(name)
     return
 
-  metrics_by_kernel = ncu_rep_lib.get_metrics_by_kernel(rows)
+  all_kernels = ncu_rep_lib.get_metrics_by_kernel(rows)
+  filtered_kernels = all_kernels
+  for f in _KERNEL_FILTER.value or []:
+    filtered_kernels = ncu_rep_lib.filter_kernels(filtered_kernels, f)
+  if not filtered_kernels:
+    raise app.UsageError(
+        "No kernels matched the filter, use --list_kernels without --filter to"
+        " see all kernels"
+    )
 
-  if op == "kernels":
-    for name in metrics_by_kernel:
-      print(name)
+  if _LIST_KERNELS.value:
+    for row in filtered_kernels:
+      print(
+          row[ncu_rep_lib.KERNEL_ID_FIELD][0],
+          row[ncu_rep_lib.KERNEL_NAME_FIELD][0],
+      )
     return
 
-  metrics = ncu_rep_lib.get_kernel_metrics_rows(
-      _METRICS.value, metrics_by_kernel, _KERNEL.value
+  if len(filtered_kernels) > 1:
+    sys.stderr.write(
+        f"aggregating {len(filtered_kernels)} kernels\n",
+    )
+
+  metrics = ncu_rep_lib.aggregate_kernel_metrics(
+      _METRICS.value, filtered_kernels
   )
 
   fmt = _FORMAT.value

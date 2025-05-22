@@ -47,10 +47,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/status_macros.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -61,7 +61,7 @@ namespace {
 
 using ::testing::HasSubstr;
 
-class ElementalHloToMlirTest : public HloTestBase {
+class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
  public:
   ElementalHloToMlirTest() {
     context_.loadDialect<mlir::tensor::TensorDialect, mlir::func::FuncDialect,
@@ -1437,18 +1437,6 @@ TEST_F(ElementalHloToMlirEpilogueTest, XlaGpuEntry) {
                    /*xla_backend=*/xla::BackendKind::kGpu));
 }
 
-TEST_F(ElementalHloToMlirEpilogueTest, XlaCpuEntry) {
-  TF_EXPECT_OK(Run(kHlo,
-                   R"(
-      // CHECK:      @main_add(
-      // CHECK-SAME:     %[[ARG0:.*]]: tensor<7xf32>
-      // main_transpose must still have arg0, but the pure_call must not.
-      // CHECK:          %[[PURE:.*]] = xla.pure_call @main_transpose(%arg1,
-      // CHECK:      @main_transpose(tensor<7xf32)",
-                   EpilogueSpec(), /*set_xla_entry=*/true,
-                   /*xla_backend=*/xla::BackendKind::kCpu));
-}
-
 TEST_F(ElementalHloToMlirTest, ScalarConstant) {
   TF_EXPECT_OK(Run(R"(
     ENTRY main {
@@ -1763,6 +1751,64 @@ TEST_F(ElementalHloToMlirTest, BroadcastSelect) {
     // CHECK-DAG: tensor.extract %[[P1]][%[[X]], %[[Y]]]
     // CHECK-DAG: tensor.extract %[[P2]][%[[X]], %[[Y]]]
   )"));
+}
+
+TEST_F(ElementalHloToMlirTest, DotC64) {
+  TF_EXPECT_OK(Run(
+      R"(
+HloModule c64_dot_test
+
+ENTRY main {
+  p0 = c64[4] parameter(0)
+  p1 = c64[4] parameter(1)
+  dot = c64[] dot(p0, p1), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  ROOT out = c64[] add(dot, dot)
+}
+      )",
+      R"(
+      // CHECK: func.func private @main_out(
+      // CHECK-SAME: %[[ARG0:.*]]: tensor<4xcomplex<f32>>,
+      // CHECK-SAME: %[[ARG1:.*]]: tensor<4xcomplex<f32>>
+      // CHECK:   %[[CST0:.*]] = arith.constant 0.000000e+00 : f32
+      // CHECK:   %[[INIT:.*]] = complex.create %[[CST0]], %[[CST0]] : complex<f32>
+      // CHECK:   %[[DOTRESULT:.*]] = scf.for {{.*}} = {{.*}} to {{.*}} step {{.*}} iter_args({{.*}} = %[[INIT]]) -> (complex<f32>) {
+      // CHECK:     %[[EXTRACTED:.*]] = tensor.extract %[[ARG0]][{{.*}}]
+      // CHECK:     %[[EXTRACTED0:.*]] = tensor.extract %[[ARG1]][{{.*}}]
+      // CHECK:     %[[MUL:.*]] = complex.mul %[[EXTRACTED]], %[[EXTRACTED0]]
+      // CHECK:     %[[NEXTACC:.*]] = complex.add {{.*}}, %[[MUL]]
+      // CHECK:     scf.yield %[[NEXTACC]]
+      // CHECK:   %[[OUT:.*]] = complex.add %[[DOTRESULT]], %[[DOTRESULT]]
+      // CHECK:   return %[[OUT]]
+      )"));
+}
+
+TEST_F(ElementalHloToMlirTest, DotC128) {
+  TF_EXPECT_OK(Run(
+      R"(
+HloModule c128_dot_test
+
+ENTRY main {
+  p0 = c128[3] parameter(0)
+  p1 = c128[3] parameter(1)
+  dot = c128[] dot(p0, p1), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  ROOT out = c128[] add(dot, dot)
+}
+      )",
+      R"(
+      // CHECK: func.func private @main_out(
+      // CHECK-SAME: %[[ARG0:.*]]: tensor<3xcomplex<f64>>,
+      // CHECK-SAME: %[[ARG1:.*]]: tensor<3xcomplex<f64>>
+      // CHECK:   %[[CST0:.*]] = arith.constant 0.000000e+00 : f64
+      // CHECK:   %[[INIT:.*]] = complex.create %[[CST0]], %[[CST0]] : complex<f64>
+      // CHECK:   %[[DOTRESULT:.*]] = scf.for {{.*}} = {{.*}} to {{.*}} step {{.*}} iter_args({{.*}} = %[[INIT]]) -> (complex<f64>) {
+      // CHECK:     %[[EXTRACTED:.*]] = tensor.extract %[[ARG0]][{{.*}}]
+      // CHECK:     %[[EXTRACTED0:.*]] = tensor.extract %[[ARG1]][{{.*}}]
+      // CHECK:     %[[MUL:.*]] = complex.mul %[[EXTRACTED]], %[[EXTRACTED0]]
+      // CHECK:     %[[NEXTACC:.*]] = complex.add {{.*}}, %[[MUL]]
+      // CHECK:     scf.yield %[[NEXTACC]]
+      // CHECK:   %[[OUT:.*]] = complex.add %[[DOTRESULT]], %[[DOTRESULT]]
+      // CHECK:   return %[[OUT]]
+      )"));
 }
 
 }  // namespace

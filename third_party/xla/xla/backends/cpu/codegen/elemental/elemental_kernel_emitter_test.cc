@@ -28,16 +28,18 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_value.h"
+#include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/target_machine_features_stub.h"
 #include "xla/service/logical_buffer.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
-class ElementalKernelEmitterTest : public HloTestBase {
+class ElementalKernelEmitterTest : public HloHardwareIndependentTestBase {
  public:
   ElementalKernelEmitterTest()
       : target_machine_features_([](int64_t size) { return 1; }) {}
@@ -54,7 +56,9 @@ class ElementalKernelEmitterTest : public HloTestBase {
       const HloModule& hlo) {
     return BufferAssigner::Run(
         &hlo, std::make_unique<DependencyHloOrdering>(&hlo),
-        backend().compiler()->BufferSizeBytesFunction(),
+        [](const BufferValue& buffer) {
+          return CpuExecutable::ShapeSizeBytes(buffer.shape());
+        },
         [](LogicalBuffer::Color) { return /*alignment=*/1; });
   }
 
@@ -109,14 +113,15 @@ TEST_F(ElementalKernelEmitterTest, EmitParallelKernel) {
     CHECK: @convert_parallel_bounds = private constant [8 x [4 x [2 x i64]]]
 
     CHECK: define ptr @convert_kernel(ptr %0) #0 {
-    CHECK:   %lo_dim_0_gep = getelementptr{{.*}} i32 0, i64 %tid_x, i32 0, i32 0
-    CHECK:   %up_dim_0_gep = getelementptr{{.*}} i32 0, i64 %tid_x, i32 0, i32 1
-    CHECK:   %lo_dim_1_gep = getelementptr{{.*}} i32 0, i64 %tid_x, i32 1, i32 0
-    CHECK:   %up_dim_1_gep = getelementptr{{.*}} i32 0, i64 %tid_x, i32 1, i32 1
-    CHECK:   %lo_dim_2_gep = getelementptr{{.*}} i32 0, i64 %tid_x, i32 2, i32 0
-    CHECK:   %up_dim_2_gep = getelementptr{{.*}} i32 0, i64 %tid_x, i32 2, i32 1
-    CHECK:   %lo_dim_3_gep = getelementptr{{.*}} i32 0, i64 %tid_x, i32 3, i32 0
-    CHECK:   %up_dim_3_gep = getelementptr{{.*}} i32 0, i64 %tid_x, i32 3, i32 1
+    CHECK:   %[[X:.*]] = load i64, ptr %workgroup_id_x_gep, align 4
+    CHECK:   %lo_dim_0_gep = getelementptr{{.*}} i32 0, i64 %[[X]], i32 0, i32 0
+    CHECK:   %up_dim_0_gep = getelementptr{{.*}} i32 0, i64 %[[X]], i32 0, i32 1
+    CHECK:   %lo_dim_1_gep = getelementptr{{.*}} i32 0, i64 %[[X]], i32 1, i32 0
+    CHECK:   %up_dim_1_gep = getelementptr{{.*}} i32 0, i64 %[[X]], i32 1, i32 1
+    CHECK:   %lo_dim_2_gep = getelementptr{{.*}} i32 0, i64 %[[X]], i32 2, i32 0
+    CHECK:   %up_dim_2_gep = getelementptr{{.*}} i32 0, i64 %[[X]], i32 2, i32 1
+    CHECK:   %lo_dim_3_gep = getelementptr{{.*}} i32 0, i64 %[[X]], i32 3, i32 0
+    CHECK:   %up_dim_3_gep = getelementptr{{.*}} i32 0, i64 %[[X]], i32 3, i32 1
     CHECK:   fptosi float {{.*}} to i32
     CHECK: }
   )"));

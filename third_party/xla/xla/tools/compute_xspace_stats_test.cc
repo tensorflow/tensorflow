@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "xla/tsl/platform/statusor.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla::gpu {
 namespace {

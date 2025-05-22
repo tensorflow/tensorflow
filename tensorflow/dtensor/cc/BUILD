@@ -1,7 +1,6 @@
 #include "third_party/absl/strings/str_cat.h"
 #DTensor C++ runtime and libraries.
 
-load("//tensorflow:tensorflow.bzl", "if_google", "if_libtpu")
 load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -289,13 +288,7 @@ cc_library(
 
 cc_library(
     name = "default_parallel_executor_lib",
-    deps = if_libtpu(
-        if_false = if_google(
-            google_value = ["//tensorflow/dtensor/cc/google:default_parallel_executor"],
-            oss_value = [":default_parallel_executor"],
-        ),
-        if_true = [":default_parallel_executor"],
-    ),
+    deps = [":default_parallel_executor"],
 )
 
 cc_library(

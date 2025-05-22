@@ -86,8 +86,8 @@ absl::InlinedVector<int64_t, 3> GetNormalizedTransposeShapeHelper(
     return normalized_dims;
   }
   // Derive the permutation from the segments.
-  std::vector<int64_t> segment_to_normalized_dim(output_shape.dimensions_size(),
-                                                 -1);
+  std::vector<int64_t> segment_to_normalized_dim(
+      output_shape.dimensions().size(), -1);
   for (size_t segment : segments) {
     segment_to_normalized_dim[output_to_input[segment]] = 0;
   }
@@ -137,10 +137,11 @@ absl::InlinedVector<int64_t, 3> GetNormalizedLogicalTransposeShape(
     absl::InlinedVector<int64_t, 3> &permutation) {
   permutation.clear();
   // Drop degenerate dimensions.
-  absl::InlinedVector<int64_t, 3> delta(output_shape.dimensions_size() + 1, 0);
+  absl::InlinedVector<int64_t, 3> delta(output_shape.dimensions().size() + 1,
+                                        0);
   auto input_dimensions = ComposePermutations(output_shape.dimensions(),
                                               InversePermutation(dimensions));
-  for (int i = 0; i < output_shape.dimensions_size(); ++i) {
+  for (int i = 0; i < output_shape.dimensions().size(); ++i) {
     delta[i + 1] = delta[i];
     if (input_dimensions[i] == static_cast<int64_t>(1)) {
       ++delta[i + 1];

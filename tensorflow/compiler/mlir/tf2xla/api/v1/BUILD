@@ -68,16 +68,17 @@ cc_library(
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/hlo/builder:xla_computation",
         "@local_xla//xla/hlo/ir:hlo",
+        "@local_xla//xla/hlo/translate:stablehlo",
         "@local_xla//xla/hlo/translate/mhlo_to_hlo:layout_util",
         "@local_xla//xla/hlo/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
         "@local_xla//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
         "@local_xla//xla/mlir_hlo",
-        "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
         "@local_xla//xla/mlir_hlo:mhlo_passes",
+        "@local_xla//xla/mlir_hlo:stablehlo_extension_passes",
         "@local_xla//xla/service:hlo_proto_cc",
         "@local_xla//xla/tsl/platform:errors",
         "@local_xla//xla/tsl/platform:statusor",
-        "@stablehlo//:register",
+        "@stablehlo//:base",
     ],
 )
 
@@ -156,7 +157,7 @@ cc_library(
         "@local_xla//xla/client:compile_only_client",
         "@local_xla//xla/hlo/ir:hlo",
         "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
-        "@local_xla//xla/pjrt:compile_options_proto_cc",
+        "@local_xla//xla/pjrt/proto:compile_options_proto_cc",
         "@local_xla//xla/service:hlo_proto_cc",
     ],
 )

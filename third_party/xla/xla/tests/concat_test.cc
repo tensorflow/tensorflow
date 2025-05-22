@@ -13,30 +13,35 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
+#include <numeric>
+#include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
-#include "xla/client/local_client.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal_util.h"
 #include "xla/reference_util.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/hlo_test_base.h"
-#include "xla/tests/literal_test_util.h"
+#include "xla/shape_util.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/client_library_test_runner_utils.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_macros.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-using ConcatTest = ClientLibraryTestBase;
-using ConcatTestHlo = HloTestBase;
+using ConcatTest = ClientLibraryTestRunnerMixin<
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
+using ConcatTestHlo = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
 using ::testing::HasSubstr;
 
 // Concatenate expects at least one argument.
@@ -492,7 +497,7 @@ XLA_TEST_F(ConcatTest, ConcatR3WeirdDims) {
 
   ConcatInDim(&builder, {h0, h1}, 2);
 
-  ComputeAndCompareR3<float>(&builder, expected, {p0.get(), p1.get()});
+  ComputeAndCompareR3<float>(&builder, expected, {&p0, &p1});
 }
 
 XLA_TEST_F(ConcatTest, ConcatDeeplyNested) {
@@ -517,8 +522,7 @@ XLA_TEST_F(ConcatTest, ConcatDeeplyNested) {
   auto q = ConcatInDim(&builder, {p, p}, 0);
   ConcatInDim(&builder, {q, q}, 0);
   std::vector<float> expected(131072, 256.0);
-  auto a_data = client_->TransferToServer(a_literal).value();
-  ComputeAndCompareR1<float>(&builder, expected, {a_data.get()});
+  ComputeAndCompareR1<float>(&builder, expected, {&a_literal});
 }
 
 XLA_TEST_F(ConcatTestHlo, ConcatWithBitcast) {
@@ -761,7 +765,7 @@ ENTRY jit_broken.874 {
   auto input_array = std::make_unique<Array2D<float>>(4, 2);
   input_array->FillUnique(1.0f);
   auto input = LiteralUtil::CreateR2FromArray2D<float>(*input_array);
-  EXPECT_TRUE(RunAndCompare(std::move(module), {&input}, error_spec_));
+  EXPECT_TRUE(RunAndCompare(std::move(module), {&input}, kDefaultErrorSpec));
 }
 
 // Describes a binary rank-2 concatenation test.
@@ -774,7 +778,7 @@ struct R2BinarySpec {
 };
 
 // TEST_P harness for binary rank-2 concatenation.
-class ConcatR2BinaryTest : public ClientLibraryTestBase,
+class ConcatR2BinaryTest : public ConcatTest,
                            public ::testing::WithParamInterface<R2BinarySpec> {
 };
 
@@ -808,8 +812,6 @@ XLA_TEST_F(ConcatTest, ConcatOperandsOfSameOperand) {
   auto f32_scalar = ShapeUtil::MakeShape(xla::F32, {});
   auto x_literal = LiteralUtil::CreateR0<float>(2.f);
   auto y_literal = LiteralUtil::CreateR0<float>(3.f);
-  auto x_data = client_->TransferToServer(x_literal).value();
-  auto y_data = client_->TransferToServer(y_literal).value();
 
   XlaBuilder builder(TestName());
   auto x = Parameter(&builder, 0, f32_scalar, "x");
@@ -821,7 +823,7 @@ XLA_TEST_F(ConcatTest, ConcatOperandsOfSameOperand) {
   ConcatInDim(&builder, {add1, add2, add3}, /*dimension=*/0);
 
   ComputeAndCompareR1<float>(&builder, {7., 8., 9., 10., 11., 12.},
-                             {x_data.get(), y_data.get()}, ErrorSpec(1e-4));
+                             {&x_literal, &y_literal}, ErrorSpec(1e-4));
 }
 
 // Test that the HLO optimization to replace a concat of a broadcasted scalar
@@ -831,9 +833,6 @@ XLA_TEST_F(ConcatTest, ConcatBroadcastArgument) {
   auto x_literal = LiteralUtil::CreateR1<float>({2.0f, 3.0f, 5.0f, 6.0f});
   auto y_literal = LiteralUtil::CreateR0<float>(1.5f);
   auto z_literal = LiteralUtil::CreateR0<float>(5.5f);
-  auto x_data = client_->TransferToServer(x_literal).value();
-  auto y_data = client_->TransferToServer(y_literal).value();
-  auto z_data = client_->TransferToServer(z_literal).value();
 
   XlaBuilder builder(TestName());
   auto x = Parameter(&builder, 0, x_literal.shape(), "x");
@@ -847,7 +846,7 @@ XLA_TEST_F(ConcatTest, ConcatBroadcastArgument) {
   ComputeAndCompareR1<float>(
       &builder,
       {1.5f, 1.5f, 1.5f, 1.5f, 1.5f, 2.0f, 3.0f, 5.0f, 6.0f, 5.5f, 5.5f, 5.5f},
-      {x_data.get(), y_data.get(), z_data.get()}, ErrorSpec(1e-4));
+      {&x_literal, &y_literal, &z_literal}, ErrorSpec(1e-4));
 }
 
 // Test that the HLO optimization to replace a concat of a broadcasted scalar
@@ -859,9 +858,6 @@ XLA_TEST_F(ConcatTest, ConcatBroadcastArgumentR3) {
   auto x_literal = LiteralUtil::CreateR3FromArray3D<float>(x3d);
   auto y_literal = LiteralUtil::CreateR0<float>(1.5f);
   auto z_literal = LiteralUtil::CreateR0<float>(5.5f);
-  auto x_data = client_->TransferToServer(x_literal).value();
-  auto y_data = client_->TransferToServer(y_literal).value();
-  auto z_data = client_->TransferToServer(z_literal).value();
 
   XlaBuilder builder(TestName());
   auto x = Parameter(&builder, 0, x_literal.shape(), "x");
@@ -877,7 +873,7 @@ XLA_TEST_F(ConcatTest, ConcatBroadcastArgumentR3) {
   auto concat1 = ReferenceUtil::Concat3D(*concat0, z_bcast3d, 1);
 
   ComputeAndCompareR3<float>(&builder, *concat1,
-                             {x_data.get(), y_data.get(), z_data.get()},
+                             {&x_literal, &y_literal, &z_literal},
                              ErrorSpec(1e-4));
 }
 

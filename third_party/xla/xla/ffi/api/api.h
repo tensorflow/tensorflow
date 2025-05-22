@@ -25,6 +25,7 @@ limitations under the License.
 #include <cstdlib>
 #include <functional>
 #include <initializer_list>
+#include <iostream>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -263,6 +264,33 @@ class Ffi {
                                        std::string_view name,
                                        XLA_FFI_TypeId* type_id);
 
+  // This is a helper template that allows to convert function pointers from
+  // the run time values to compile time values (template arguments) with
+  // automatic template arguments deduction.
+  //
+  // Example:
+  //
+  //   static Error Foo(int32_t arg) {... }
+  //
+  //   template<typename Callable>
+  //   void call(Callable callable) { callable(42); }
+  //
+  //   call(Foo);                  // `Foo` passed as a runtime value
+  //   call(Ffi::Wrapper<Foo>())   // `Foo` passed as a template argument
+  //
+  // In the first case compiler will not be able to inline `Foo` into the `call`
+  // body. However in the second case it can do that, because function pointer
+  // is a statically known value (template non-type argument).
+  template <auto fn>
+  struct Wrapper;
+
+  template <typename Ret, typename... Args, Ret (*fn)(Args...)>
+  struct Wrapper<fn> {
+    XLA_FFI_ATTRIBUTE_ALWAYS_INLINE Ret operator()(Args... args) const {
+      return fn(std::forward<Args>(args)...);
+    }
+  };
+
  protected:
   template <typename... Args>
   static std::string StrCat(Args... args);
@@ -338,7 +366,7 @@ inline XLA_FFI_Error* Ffi::InvalidArgument(const XLA_FFI_Api* api,
 inline XLA_FFI_Error* Ffi::CheckStructSize(const XLA_FFI_Api* api,
                                            std::string_view struct_name,
                                            size_t expected, size_t actual) {
-  if (expected != actual) {
+  if (XLA_FFI_PREDICT_FALSE(expected != actual)) {
     return InvalidArgument(
         api, StrCat("Unexpected ", struct_name, " size: expected ", expected,
                     " got ", actual, ". Check installed software versions."));
@@ -349,7 +377,7 @@ inline XLA_FFI_Error* Ffi::CheckStructSize(const XLA_FFI_Api* api,
 inline XLA_FFI_Error* Ffi::StructSizeIsGreaterOrEqual(
     const XLA_FFI_Api* api, std::string_view struct_name, size_t expected,
     size_t actual) {
-  if (actual < expected) {
+  if (XLA_FFI_PREDICT_FALSE(actual < expected)) {
     return InvalidArgument(
         api, StrCat("Unexpected ", struct_name, " size: expected at least ",
                     expected, " got ", actual,
@@ -461,8 +489,10 @@ using HasRemainingRetsTag =
 //----------------------------------------------------------------------------//
 
 template <typename T>
-XLA_FFI_DataType NativeTypeToCApiDataType() {
-  if constexpr (std::is_same_v<T, bool>) {
+constexpr XLA_FFI_DataType NativeTypeToCApiDataType() {
+  if constexpr (std::is_same_v<T, char>) {
+    return XLA_FFI_DataType_U8;
+  } else if constexpr (std::is_same_v<T, bool>) {
     return XLA_FFI_DataType_PRED;
   } else if constexpr (std::is_same_v<T, int8_t>) {
     return XLA_FFI_DataType_S8;
@@ -1026,7 +1056,7 @@ struct DecodingOffsets {
 };
 
 struct DecodingContext {
-  const XLA_FFI_CallFrame* call_frame;
+  XLA_FFI_CallFrame* call_frame;
 
   const std::string* attrs_names;  // not owned
   const std::size_t* attrs_idx;    // not owned
@@ -1045,10 +1075,11 @@ struct Decode {
 
 template <typename T>
 struct Decode<OptionalArgTag<T>> {
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<std::optional<T>> call(DecodingOffsets& offsets,
                                               DecodingContext& ctx,
                                               DiagnosticEngine& diagnostic) {
-    if (offsets.args >= ctx.call_frame->args.size) {
+    if (XLA_FFI_PREDICT_FALSE(offsets.args >= ctx.call_frame->args.size)) {
       return std::optional<T>(std::nullopt);
     }
     return Decode<T>::call(offsets, ctx, diagnostic);
@@ -1057,6 +1088,7 @@ struct Decode<OptionalArgTag<T>> {
 
 template <typename T>
 struct Decode<RetTag<T>> {
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<Result<T>> call(DecodingOffsets& offsets,
                                        DecodingContext& ctx,
                                        DiagnosticEngine& diagnostic) {
@@ -1068,10 +1100,11 @@ struct Decode<RetTag<T>> {
 
 template <typename T>
 struct Decode<OptionalRetTag<T>> {
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<std::optional<Result<T>>> call(
       DecodingOffsets& offsets, DecodingContext& ctx,
       DiagnosticEngine& diagnostic) {
-    if (offsets.rets >= ctx.call_frame->rets.size) {
+    if (XLA_FFI_PREDICT_FALSE(offsets.rets >= ctx.call_frame->rets.size)) {
       return std::optional<Result<T>>(std::nullopt);
     }
     return Decode<RetTag<T>>::call(offsets, ctx, diagnostic);
@@ -1082,6 +1115,7 @@ template <typename T>
 struct Decode<AttrTag<T>> {
   using R = typename AttrDecoding<T>::Type;
 
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<R> call(DecodingOffsets& offsets, DecodingContext& ctx,
                                DiagnosticEngine& diagnostic) {
     // Find decoded attribute corresponding to the given attribute index.
@@ -1095,15 +1129,28 @@ struct Decode<AttrTag<T>> {
     XLA_FFI_ByteSpan* attr_name = ctx.call_frame->attrs.names[idx];
     void* attr = ctx.call_frame->attrs.attrs[idx];
 
+    // We use a handwritten string comparison function because calling builtin
+    // string compare function adds a function call overhead on a hot path, and
+    // we expect all attribute names to be short and equal.
+    auto eq = [](XLA_FFI_ByteSpan* a, std::string_view b) {
+      if (XLA_FFI_PREDICT_FALSE(a->len != b.size())) {
+        return false;
+      }
+      for (size_t i = 0; i < a->len; ++i) {
+        if (XLA_FFI_PREDICT_FALSE(a->ptr[i] != b.data()[i])) {
+          return false;
+        }
+      }
+      return true;
+    };
+
     // TODO(ezhulenev): Currently we require that attributes passed to the FFI
     // handler must match attributes referenced in a binding, however
     // we could safely ignore extra attributes. Relax this if needed.
-
-    // Attribute name does not match.
-    std::string_view attr_name_view = {attr_name->ptr, attr_name->len};
-    if (attr_name_view != ctx.attrs_names[i]) {
+    if (XLA_FFI_PREDICT_FALSE(!eq(attr_name, ctx.attrs_names[i]))) {
       return diagnostic.Emit("Attribute name mismatch: ")
-             << attr_name_view << " vs " << ctx.attrs_names[i];
+             << std::string_view{attr_name->ptr, attr_name->len} << " vs "
+             << ctx.attrs_names[i];
     }
 
     return AttrDecoding<T>::Decode(attr_type, attr, diagnostic);
@@ -1114,6 +1161,7 @@ template <typename T>
 struct Decode<CtxTag<T>> {
   using R = typename CtxDecoding<T>::Type;
 
+  XLA_FFI_ATTRIBUTE_ALWAYS_INLINE
   static std::optional<R> call(DecodingOffsets& offsets, DecodingContext& ctx,
                                DiagnosticEngine& diagnostic) {
     return CtxDecoding<T>::Decode(ctx.call_frame->api, ctx.call_frame->ctx,
@@ -1221,13 +1269,13 @@ class DictionaryBase {
       return std::string_view{a->ptr, a->len} == b;
     };
 
-    auto cmp = [](XLA_FFI_ByteSpan* a, std::string_view b) {
+    auto lt = [](XLA_FFI_ByteSpan* a, std::string_view b) {
       return std::string_view{a->ptr, a->len} < b;
     };
 
     // Lower bound can be `end` if the attribute is not found, or the first
     // attribute not ordered before the `name`.
-    auto lower_bound = std::lower_bound(begin, end, name, cmp);
+    auto lower_bound = std::lower_bound(begin, end, name, lt);
     return lower_bound == end || !eq(*lower_bound, name)
                ? std::nullopt
                : std::make_optional(std::distance(begin, lower_bound));
@@ -1247,9 +1295,8 @@ template <typename T>
 struct internal::Decode<internal::AttrsTag<T>> {
   static std::optional<T> call(DecodingOffsets& offsets, DecodingContext& ctx,
                                DiagnosticEngine& diagnostic) {
-    return AttrDecoding<T>::Decode(
-        XLA_FFI_AttrType_DICTIONARY,
-        const_cast<XLA_FFI_Attrs*>(&ctx.call_frame->attrs), diagnostic);
+    return AttrDecoding<T>::Decode(XLA_FFI_AttrType_DICTIONARY,
+                                   &ctx.call_frame->attrs, diagnostic);
   }
 };
 
@@ -1399,14 +1446,16 @@ class Handler : public Ffi {
     // Sanity checking call frame struct size.
     if (XLA_FFI_Error* err = CheckStructSize(
             call_frame->api, "XLA_FFI_CallFrame", XLA_FFI_CallFrame_STRUCT_SIZE,
-            call_frame->struct_size)) {
+            call_frame->struct_size);
+        XLA_FFI_PREDICT_FALSE(err)) {
       return err;
     }
 
     // If passed a call frame with the metadata extension, just return the
     // metadata.
-    if (call_frame->extension_start != nullptr &&
-        call_frame->extension_start->type == XLA_FFI_Extension_Metadata) {
+    if (XLA_FFI_PREDICT_FALSE(call_frame->extension_start != nullptr &&
+                              call_frame->extension_start->type ==
+                                  XLA_FFI_Extension_Metadata)) {
       return PopulateMetadata(call_frame->api,
                               reinterpret_cast<XLA_FFI_Metadata_Extension*>(
                                   call_frame->extension_start));
@@ -1594,11 +1643,10 @@ class Handler : public Ffi {
     if constexpr (kIsEncodedErrorOrFuture) {
       if (encoded.index() == 0) {
         return std::get<0>(encoded);
-      } else {
-        call_frame->future = std::get<1>(encoded);
-        assert(call_frame->future != nullptr);
-        return nullptr;
       }
+      call_frame->future = std::get<1>(encoded);
+      assert(call_frame->future != nullptr);
+      return nullptr;
     }
 
     std::abort();  // unreachable
@@ -1612,7 +1660,9 @@ class Handler : public Ffi {
             << "Failed to decode all FFI handler operands (bad operands at: ";
     for (size_t cnt = 0, idx = 0; idx < kSize; ++idx) {
       if (!decoded[idx]) {
-        if (cnt++) message << ", ";
+        if (cnt++) {
+          message << ", ";
+        }
         message << std::to_string(idx);
       }
     }
@@ -1663,25 +1713,25 @@ class Handler : public Ffi {
 // Builtin attributes decoding
 //===----------------------------------------------------------------------===//
 
-#define XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(T, TYPE)                \
-  template <>                                                         \
-  struct AttrDecoding<T> {                                            \
-    using Type = T;                                                   \
-    static std::optional<T> Decode(XLA_FFI_AttrType type, void* attr, \
-                                   DiagnosticEngine& diagnostic) {    \
-      if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_SCALAR)) {   \
-        return diagnostic.Emit("Wrong attribute type: expected ")     \
-               << XLA_FFI_AttrType_SCALAR << " but got " << type;     \
-      }                                                               \
-                                                                      \
-      auto* scalar = reinterpret_cast<XLA_FFI_Scalar*>(attr);         \
-      if (XLA_FFI_PREDICT_FALSE(scalar->dtype != TYPE)) {             \
-        return diagnostic.Emit("Wrong scalar data type: expected ")   \
-               << TYPE << " but got " << scalar->dtype;               \
-      }                                                               \
-                                                                      \
-      return *reinterpret_cast<T*>(scalar->value);                    \
-    }                                                                 \
+#define XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(T, TYPE)                     \
+  template <>                                                              \
+  struct AttrDecoding<T> {                                                 \
+    using Type = T;                                                        \
+    XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<T> Decode(        \
+        XLA_FFI_AttrType type, void* attr, DiagnosticEngine& diagnostic) { \
+      if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_SCALAR)) {        \
+        return diagnostic.Emit("Wrong attribute type: expected ")          \
+               << XLA_FFI_AttrType_SCALAR << " but got " << type;          \
+      }                                                                    \
+                                                                           \
+      auto* scalar = reinterpret_cast<XLA_FFI_Scalar*>(attr);              \
+      if (XLA_FFI_PREDICT_FALSE(scalar->dtype != TYPE)) {                  \
+        return diagnostic.Emit("Wrong scalar data type: expected ")        \
+               << TYPE << " but got " << scalar->dtype;                    \
+      }                                                                    \
+                                                                           \
+      return *reinterpret_cast<T*>(scalar->value);                         \
+    }                                                                      \
   }
 
 XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(bool, XLA_FFI_DataType_PRED);
@@ -1751,7 +1801,9 @@ struct DecodeDictionaryAttr {
     std::tuple<std::optional<Ts>...> members = {
         dict.get<Ts>(names[Is], diagnostic)...};
     bool all_decoded = (std::get<Is>(members).has_value() && ...);
-    if (XLA_FFI_PREDICT_FALSE(!all_decoded)) return std::nullopt;
+    if (XLA_FFI_PREDICT_FALSE(!all_decoded)) {
+      return std::nullopt;
+    }
 
     return T{std::move(*std::get<Is>(members))...};
   }
@@ -1791,8 +1843,8 @@ auto DictionaryDecoder(Members... m) {
   template <>                                                                 \
   struct AttrDecoding<T> {                                                    \
     using Type = T;                                                           \
-    static std::optional<T> Decode(XLA_FFI_AttrType type, void* attr,         \
-                                   DiagnosticEngine& diagnostic) {            \
+    XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<T> Decode(           \
+        XLA_FFI_AttrType type, void* attr, DiagnosticEngine& diagnostic) {    \
       if (XLA_FFI_PREDICT_FALSE(type != XLA_FFI_AttrType_DICTIONARY)) {       \
         diagnostic.Emit("Wrong attribute type: expected ")                    \
             << XLA_FFI_AttrType_DICTIONARY << " but got " << type;            \
@@ -1811,34 +1863,35 @@ auto DictionaryDecoder(Members... m) {
 
 // Registers decoding for a user-defined enum class type. Uses enums underlying
 // type to decode the attribute as a scalar value and cast it to the enum type.
-#define XLA_FFI_REGISTER_ENUM_ATTR_DECODING(T)                                \
-  namespace xla::ffi {                                                        \
-  template <>                                                                 \
-  struct AttrDecoding<T> {                                                    \
-    using Type = T;                                                           \
-    using U = std::underlying_type_t<Type>;                                   \
-    static_assert(std::is_enum<Type>::value, "Expected enum class");          \
-                                                                              \
-    static std::optional<Type> Decode(XLA_FFI_AttrType attr_type, void* attr, \
-                                      DiagnosticEngine& diagnostic) {         \
-      if (XLA_FFI_PREDICT_FALSE(attr_type != XLA_FFI_AttrType_SCALAR)) {      \
-        return diagnostic.Emit("Wrong attribute type: expected ")             \
-               << XLA_FFI_AttrType_SCALAR << " but got " << attr_type;        \
-      }                                                                       \
-                                                                              \
-      auto* scalar = reinterpret_cast<XLA_FFI_Scalar*>(attr);                 \
-      auto expected_dtype =                                                   \
-          ::xla::ffi::internal::NativeTypeToCApiDataType<U>();                \
-      if (XLA_FFI_PREDICT_FALSE(scalar->dtype != expected_dtype)) {           \
-        return diagnostic.Emit("Wrong scalar data type: expected ")           \
-               << expected_dtype << " but got " << scalar->dtype;             \
-      }                                                                       \
-                                                                              \
-      auto underlying = *reinterpret_cast<U*>(scalar->value);                 \
-      return static_cast<Type>(underlying);                                   \
-    }                                                                         \
-  };                                                                          \
-  } /* namespace xla::ffi */                                                  \
+#define XLA_FFI_REGISTER_ENUM_ATTR_DECODING(T)                           \
+  namespace xla::ffi {                                                   \
+  template <>                                                            \
+  struct AttrDecoding<T> {                                               \
+    using Type = T;                                                      \
+    using U = std::underlying_type_t<Type>;                              \
+    static_assert(std::is_enum<Type>::value, "Expected enum class");     \
+                                                                         \
+    XLA_FFI_ATTRIBUTE_ALWAYS_INLINE static std::optional<Type> Decode(   \
+        XLA_FFI_AttrType attr_type, void* attr,                          \
+        DiagnosticEngine& diagnostic) {                                  \
+      if (XLA_FFI_PREDICT_FALSE(attr_type != XLA_FFI_AttrType_SCALAR)) { \
+        return diagnostic.Emit("Wrong attribute type: expected ")        \
+               << XLA_FFI_AttrType_SCALAR << " but got " << attr_type;   \
+      }                                                                  \
+                                                                         \
+      auto* scalar = reinterpret_cast<XLA_FFI_Scalar*>(attr);            \
+      constexpr auto expected_dtype =                                    \
+          ::xla::ffi::internal::NativeTypeToCApiDataType<U>();           \
+      if (XLA_FFI_PREDICT_FALSE(scalar->dtype != expected_dtype)) {      \
+        return diagnostic.Emit("Wrong scalar data type: expected ")      \
+               << expected_dtype << " but got " << scalar->dtype;        \
+      }                                                                  \
+                                                                         \
+      auto underlying = *reinterpret_cast<U*>(scalar->value);            \
+      return static_cast<Type>(underlying);                              \
+    }                                                                    \
+  };                                                                     \
+  } /* namespace xla::ffi */                                             \
   static_assert(std::is_class_v<::xla::ffi::AttrDecoding<T>>)
 
 //===----------------------------------------------------------------------===//

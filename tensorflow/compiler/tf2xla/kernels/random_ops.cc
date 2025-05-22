@@ -225,7 +225,7 @@ class ParameterizedTruncatedNormalOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype, shape, &xla_shape));
-    OP_REQUIRES(ctx, xla_shape.dimensions_size() >= 1,
+    OP_REQUIRES(ctx, xla_shape.dimensions().size() >= 1,
                 errors::InvalidArgument(
                     "shape parameter must have rank >= 1, received (",
                     xla::ShapeUtil::HumanString(xla_shape), ")"));

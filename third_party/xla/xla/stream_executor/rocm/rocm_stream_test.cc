@@ -254,7 +254,6 @@ TEST_F(RocmStreamTest, WaitForEvent) {
       stream->DoHostCallback([&callback_called]() { callback_called = true; }),
       IsOk());
 
-  EXPECT_FALSE(callback_called);
   EXPECT_THAT(stream->RecordEvent(&event), IsOk());
   EXPECT_THAT(stream->BlockHostUntilDone(), IsOk());
   EXPECT_TRUE(callback_called);

@@ -23,9 +23,9 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"  // IWYU pragma: keep
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -34,7 +34,7 @@ namespace {
 
 using ::testing::HasSubstr;
 
-class TiledHloInstructionTest : public HloTestBase {
+class TiledHloInstructionTest : public HloHardwareIndependentTestBase {
  public:
   mlir::MLIRContext mlir_context_;
 };
@@ -72,8 +72,8 @@ TEST_F(TiledHloInstructionTest,
       ShapeUtil::MakeShape(PrimitiveType::F32, {32, 64}), "p0");
 
   IndexingMap tile_offsets_indexing = IndexingMap::FromTensorSizes(
-      ParseAffineMap("(d0, d1) -> (2 * d0)", &mlir_context_),
-      /*dim_upper_bounds=*/{2, 4},
+      ParseAffineMap("(d0) -> (2 * d0)", &mlir_context_),
+      /*dim_upper_bounds=*/{2},
       /*symbol_upper_bounds=*/{});
 
   EXPECT_THAT(
@@ -84,6 +84,18 @@ TEST_F(TiledHloInstructionTest,
           .message(),
       HasSubstr(
           "must have the same number of results as the rank of the hlo shape"));
+
+  IndexingMap tile_offsets_indexing2 = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0, d1) -> (d0, d1)", &mlir_context_),
+      /*dim_upper_bounds=*/{8, 4},
+      /*symbol_upper_bounds=*/{});
+
+  EXPECT_THAT(TiledHloInstruction::Create(
+                  hlo.get(), /*operands=*/{}, /*tile_sizes=*/{16, 16},
+                  /*tile_strides=*/{1, 1}, tile_offsets_indexing2)
+                  .status()
+                  .message(),
+              ::testing::HasSubstr("must have 1 dim"));
 }
 
 using TiledHloFusionInstructionTest = TiledHloInstructionTest;

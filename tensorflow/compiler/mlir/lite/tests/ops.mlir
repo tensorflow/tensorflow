@@ -1759,6 +1759,14 @@ func.func @testStridedSliceWithInvalidOutputType(%arg0: tensor<12x2x2x5xf32>, %a
 
 // -----
 
+func.func @testStridedSliceWithInvalidInputRank(%arg0: tensor<12x2x2x5xf32>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>) -> tensor<1x1x1x2x2x5xf32> {
+  // expected-error @+1 {{op failed to verify that input (with new_axis) must have rank at most 5}}
+  %0 = "tfl.strided_slice"(%arg0, %arg1, %arg2, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 6 : i32, shrink_axis_mask = 0 : i32, offset = false} : (tensor<12x2x2x5xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x1x1x2x2x5xf32>
+  func.return %0 : tensor<1x1x1x2x2x5xf32>
+}
+
+// -----
+
 // CHECK-LABEL: testOneHot
 func.func @testOneHot(%arg0: tensor<3xi32>, %arg1: tensor<i32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<*xf32> {
   // CHECK: "tfl.one_hot"(%arg0, %arg1, %arg2, %arg3) <{axis = -1 : i32}> : (tensor<3xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<*xf32>
@@ -2597,6 +2605,13 @@ func.func @testNonMaxSuppressionV5WithWrongBoxShape(%arg0: tensor<3x2xf32>, %arg
 func.func @fully_connected(%arg0: tensor<1x37xf32>, %arg1: tensor<40x37xf32>, %arg2: tensor<40xf32>) -> tensor<1x40xf32> {
   %0 = "tfl.fully_connected"(%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x37xf32>, tensor<40x37xf32>, tensor<40xf32>) -> tensor<1x40xf32>
   func.return %0 : tensor<1x40xf32>
+}
+
+// -----
+
+func.func @fully_connected_with_int64_num_elements(%arg0: tensor<2048x128xf32>, %arg1: tensor<1049088x128xf32>, %arg2: none) -> tensor<2048x1049088xf32> {
+  %0 = "tfl.fully_connected"(%arg0, %arg1, %arg2) <{fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"}> : (tensor<2048x128xf32>, tensor<1049088x128xf32>, none) -> tensor<2048x1049088xf32>
+  func.return %0 : tensor<2048x1049088xf32>
 }
 
 // -----

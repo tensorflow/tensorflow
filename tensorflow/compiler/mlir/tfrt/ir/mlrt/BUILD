@@ -23,16 +23,10 @@ td_library(
 
 gentbl_cc_library(
     name = "mlrt_ops_inc_gen",
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "mlrt_ops.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "mlrt_ops.cpp.inc",
-        ),
-    ],
+    tbl_outs = {
+        "mlrt_ops.h.inc": ["-gen-op-decls"],
+        "mlrt_ops.cpp.inc": ["-gen-op-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "mlrt_ops.td",
     deps = [":mlrt_td_files"],
@@ -96,16 +90,10 @@ td_library(
 
 gentbl_cc_library(
     name = "tf_mlrt_ops_inc_gen",
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "tf_mlrt_ops.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "tf_mlrt_ops.cpp.inc",
-        ),
-    ],
+    tbl_outs = {
+        "tf_mlrt_ops.h.inc": ["-gen-op-decls"],
+        "tf_mlrt_ops.cpp.inc": ["-gen-op-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "tf_mlrt_ops.td",
     deps = [":tf_mlrt_td_files"],
@@ -113,16 +101,10 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "tf_mlrt_tpu_ops_inc_gen",
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "tf_mlrt_tpu_ops.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "tf_mlrt_tpu_ops.cpp.inc",
-        ),
-    ],
+    tbl_outs = {
+        "tf_mlrt_tpu_ops.h.inc": ["-gen-op-decls"],
+        "tf_mlrt_tpu_ops.cpp.inc": ["-gen-op-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "tf_mlrt_tpu_ops.td",
     deps = [":tf_mlrt_tpu_td_files"],
@@ -130,16 +112,10 @@ gentbl_cc_library(
 
 gentbl_cc_library(
     name = "tf_ops_inc_gen",
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "tf_ops.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "tf_ops.cpp.inc",
-        ),
-    ],
+    tbl_outs = {
+        "tf_ops.h.inc": ["-gen-op-decls"],
+        "tf_ops.cpp.inc": ["-gen-op-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "tf_ops.td",
     deps = [":tf_mlrt_td_files"],

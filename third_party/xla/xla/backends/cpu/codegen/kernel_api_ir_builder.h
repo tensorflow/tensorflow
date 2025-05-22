@@ -54,15 +54,15 @@ class KernelApiIrBuilder {
                 // arguments and results is the same buffer)
   };
 
-  // Thread dimensions of the kernel invocation.
-  struct ThreadDims {
+  // Number of the kernel invocation work groups.
+  struct NumWorkGroups {
     llvm::Value* x;
     llvm::Value* y;
     llvm::Value* z;
   };
 
-  // Thread coordinates of the kernel invocation.
-  struct ThreadId {
+  // Work group id of the kernel invocation.
+  struct WorkGroupId {
     llvm::Value* x;
     llvm::Value* y;
     llvm::Value* z;
@@ -82,9 +82,9 @@ class KernelApiIrBuilder {
     llvm::Function* function;
     llvm::BasicBlock* return_block;
 
-    // LLVM values identifying kernel invocation thread coordinates.
-    ThreadDims thread_dims;
-    ThreadId thread_id;
+    // LLVM values identifying kernel invocation workgroup parameters.
+    NumWorkGroups num_workgroups;
+    WorkGroupId workgroup_id;
 
     // LLVM values corresponding to the kernel arguments and results arrays. All
     // tuples are flattened as we do not have any tuples at run time and only
@@ -140,13 +140,16 @@ class KernelApiIrBuilder {
   void SetKernelFunctionAttributes(llvm::Function* function);
 
  private:
-  ThreadDims EmitKernelThreadDims(llvm::IRBuilderBase& builder,
-                                  llvm::Value* call_frame);
-  ThreadId EmitKernelThread(llvm::IRBuilderBase& builder,
-                            llvm::Value* call_frame);
+  NumWorkGroups EmitKernelNumWorkGroups(llvm::IRBuilderBase& builder,
+                                        llvm::Value* call_frame);
+
+  WorkGroupId EmitKernelWorkGroupId(llvm::IRBuilderBase& builder,
+                                    llvm::Value* call_frame);
+
   llvm_ir::IrArray EmitKernelArgument(llvm::IRBuilderBase& builder,
                                       llvm::Value* call_frame, int64_t index,
                                       const Shape& shape);
+
   llvm::Function* EmitKernelFunction(llvm::Module& module,
                                      absl::string_view name);
 
@@ -157,8 +160,8 @@ class KernelApiIrBuilder {
 
   BufferValidation buffer_validation_;
 
-  llvm::StructType* thread_dim_ty_;
-  llvm::StructType* thread_ty_;
+  llvm::StructType* num_workgroups_ty_;
+  llvm::StructType* workgroup_id_ty_;
   llvm::StructType* arg_ty_;
   llvm::StructType* call_frame_ty_;
   llvm::FunctionType* kernel_function_ty_;

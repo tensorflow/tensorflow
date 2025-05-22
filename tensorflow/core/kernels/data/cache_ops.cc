@@ -94,7 +94,7 @@ void DeleteMemoryCacheOp::Compute(OpKernelContext* ctx) {
   const ResourceHandle& handle = ctx->input(0).flat<ResourceHandle>()(0);
   // The resource might have been already deleted by the dataset.
   absl::Status s = ctx->resource_manager()->Delete(handle);
-  if (!errors::IsNotFound(s)) {
+  if (!absl::IsNotFound(s)) {
     OP_REQUIRES_OK(ctx, s);
   }
 }

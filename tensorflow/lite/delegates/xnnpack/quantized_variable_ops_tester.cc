@@ -52,7 +52,6 @@ constexpr uint32_t CALL_ONCE = 3;
 std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
 NewXnnPackDelegateSupportingVariableOps() {
   TfLiteXNNPackDelegateOptions options = TfLiteXNNPackDelegateOptionsDefault();
-  options.flags |= TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS;
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(&options),
                        TfLiteXNNPackDelegateDelete);

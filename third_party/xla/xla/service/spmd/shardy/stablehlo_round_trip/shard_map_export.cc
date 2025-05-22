@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/spmd/shardy/stablehlo_round_trip/shard_map_export.h"
 
 #include <cassert>
-#include <functional>
 #include <memory>
 #include <tuple>
 #include <utility>
@@ -32,10 +31,12 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
@@ -52,10 +53,8 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
-#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/spmd/shardy/constants.h"
-#include "xla/service/spmd/shardy/stablehlo_round_trip/export_shardings.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -63,9 +62,9 @@ namespace sdy {
 
 namespace {
 
+using ::mlir::ArrayRef;
 using ::mlir::MLIRContext;
 using ::mlir::ModuleOp;
-using ::mlir::NamedAttribute;
 using ::mlir::Operation;
 using ::mlir::OperationPass;
 using ::mlir::SmallVector;
@@ -76,9 +75,12 @@ using ::mlir::mhlo::CopyOp;
 using ::mlir::stablehlo::CustomCallOp;
 
 namespace sdy = ::mlir::sdy;
+
 using sdy::kShardingAttr;
+using sdy::ManualAxesAttr;
 using sdy::ManualComputationOp;
 using sdy::MeshAttr;
+using sdy::NamedComputationOp;
 using sdy::SdyDialect;
 using sdy::TensorShardingAttr;
 using sdy::TensorShardingPerValueAttr;
@@ -87,22 +89,29 @@ using sdy::TensorShardingPerValueAttr;
 using ManualComputationToParentManualAxes =
     llvm::SmallDenseMap<ManualComputationOp, SmallVector<StringAttr>>;
 
-// Populates `regionManualAxes` with the manual axes of `op`. If `op` is nested
-// in another manual computation, also returns the manual axes of the parent
-// computation.
-mlir::ArrayRef<StringAttr> populateRegionManualAxes(
-    SmallVector<StringAttr>& regionManualAxes, ManualComputationOp op,
+// Given an ManualComputationOp `op`, `op.getManualAxes()` is the local manual
+// axes. `parent` is the manual axes of its parent ManualComputationOp,
+// recursively. `region` is the concatenation of `parent` and
+// `op.getManualAxes()`.
+struct ManualAxesHierarchy {
+  ArrayRef<StringAttr> parent;
+  SmallVector<StringAttr> region;
+};
+
+ManualAxesHierarchy getManualAxesHierarchy(
+    ManualComputationOp op,
     const ManualComputationToParentManualAxes& parentManualCompAxes) {
-  regionManualAxes = SmallVector<StringAttr>(op.getManualAxes().begin(),
-                                             op.getManualAxes().end());
-  mlir::ArrayRef<StringAttr> parentManualAxesRef;
+  ManualAxesHierarchy hierarchy;
+
   if (auto parentManualAxes = parentManualCompAxes.find(op);
       parentManualAxes != parentManualCompAxes.end()) {
-    parentManualAxesRef = parentManualAxes->getSecond();
-    regionManualAxes.append(parentManualAxes->getSecond().begin(),
-                            parentManualAxes->getSecond().end());
+    hierarchy.parent = parentManualAxes->getSecond();
   }
-  return parentManualAxesRef;
+
+  hierarchy.region =
+      SmallVector<StringAttr>(hierarchy.parent.begin(), hierarchy.parent.end());
+  hierarchy.region.append(op.getManualAxes().begin(), op.getManualAxes().end());
+  return hierarchy;
 }
 
 // Returns the first sharding of `op`. If there are no in/out shardings, returns
@@ -116,72 +125,94 @@ TensorShardingAttr getFirstSharding(ManualComputationOp op) {
   return *inOutShardings.begin();
 }
 
-// Converts the shardings of all operations in `op`'s body to StableHLO
-// shardings.
-void convertShardingsToStablehloShardings(
+void setFullyClosedShardingsIfMissing(Operation* op, StringRef meshName) {
+  MLIRContext* context = op->getContext();
+
+  if (NamedComputationOp namedComputationOp =
+          mlir::dyn_cast<NamedComputationOp>(op)) {
+    if (!namedComputationOp.getInShardings().has_value()) {
+      namedComputationOp.setInShardingsAttr(
+          TensorShardingPerValueAttr::getFullyClosed(
+              context, op->getOperandTypes(), meshName));
+    }
+    if (!namedComputationOp.getOutShardings().has_value()) {
+      namedComputationOp.setOutShardingsAttr(
+          TensorShardingPerValueAttr::getFullyClosed(
+              context, op->getResultTypes(), meshName));
+    }
+    return;
+  }
+
+  if (!op->hasAttrOfType<TensorShardingPerValueAttr>(kShardingAttr)) {
+    SmallVector<TensorShardingAttr> shardings =
+        sdy::getFullyClosedShardings(context, op->getResultTypes(), meshName);
+    if (shardings.empty() && !op->hasTrait<mlir::OpTrait::IsTerminator>()) {
+      shardings = {TensorShardingAttr::getFullyReplicated(
+          context, /*rank=*/0, meshName, /*isClosed=*/true)};
+    }
+    sdy::setShardings(op, shardings);
+  }
+}
+
+// Sets the manual axes of all operations in `op`'s body.
+void setManualAxesForOpsInBody(
     ManualComputationOp op,
     const ManualComputationToParentManualAxes& parentManualCompAxes,
     const mlir::SymbolTable& symbolTable) {
   TensorShardingAttr sharding = getFirstSharding(op);
   if (!sharding) {
-    // If there are no in/out shardings, op.getManualAxes() must be empty. No
-    // sharding conversion is needed.
+    // If there are no in/out shardings, op.getManualAxes() must be empty. We do
+    // not need to set the manual axes of the body.
     return;
   }
 
-  // For a ManualComputationOp, all in/out shardings, shardings in the body,
-  // and manual axes must refer to the same mesh.
-  StringRef meshName = sharding.getMeshName();
-  MeshAttr mesh = sharding.getMesh(symbolTable);
-  CHECK(mesh);
+  ManualAxesHierarchy manualAxes =
+      getManualAxesHierarchy(op, parentManualCompAxes);
+  if (manualAxes.region.empty()) {
+    return;
+  }
 
-  // The axes that are manual inside `op`'s region.
-  SmallVector<StringAttr> regionManualAxes;
-  (void)populateRegionManualAxes(regionManualAxes, op, parentManualCompAxes);
   MLIRContext* context = op.getContext();
-  std::function<StringAttr(const HloSharding&)> getStringAttr =
-      [&](const HloSharding& hloSharding) {
-        return StringAttr::get(context, hloSharding.ToString());
-      };
+  StringRef meshName = sharding.getMeshName();
+  ManualAxesAttr manualAxesAttr =
+      ManualAxesAttr::get(context, manualAxes.region);
 
-  if (mesh.getAxes().size() == regionManualAxes.size()) {
-    // All operations in the body have fully manual sharding.
-    StringAttr fullyManualSharding = getStringAttr(HloSharding::Manual());
-    op.getBody().front().walk<mlir::WalkOrder::PreOrder>(
-        [&](Operation* opInBody) {
-          if (mlir::isa<ManualComputationOp>(opInBody)) {
-            // Skip `ManualComputationOp`s, they will be converted separately.
-            return mlir::WalkResult::skip();
+  // Set the manual axes of all operations in the body.
+  op.getBody().front().walk<mlir::WalkOrder::PreOrder>(
+      [&](Operation* opInBody) {
+        if (mlir::isa<ManualComputationOp>(opInBody)) {
+          // Skip `ManualComputationOp`s and their nested operations, they will
+          // be handled separately.
+          return mlir::WalkResult::skip();
+        }
+
+        // TODO(b/415378067). Polish how we handle shardings with different
+        // meshes.
+        bool hasOtherMesh = false;
+        for (TensorShardingAttr opInBodySharding :
+             mlir::sdy::getShardings(opInBody)) {
+          if (opInBodySharding.getMeshName() != meshName) {
+            hasOtherMesh = true;
+            MeshAttr otherMesh = opInBodySharding.getMesh(opInBody);
+            CHECK(otherMesh.getAxes().empty() || otherMesh.isMaximal());
           }
-          opInBody->setAttr(kXlaShardingAttr, fullyManualSharding);
-          // Remove the possible fully replicated sdy.sharding attribute.
+        }
+        if (hasOtherMesh) {
+          // Must be fully manual.
+          CHECK(manualAxes.region.size() ==
+                sharding.getMesh(symbolTable).getAxes().size());
           opInBody->removeAttr(kShardingAttr);
-          return mlir::WalkResult::advance();
-        });
-  } else {
-    auto getMeshAttr = [&](TensorShardingAttr) { return mesh; };
-    // All operations in the body must be sharded or replicated along free
-    // axes. If an operation does not have sharding annotation, it is fully
-    // replicated along free axes.
-    op.getBody().front().walk<mlir::WalkOrder::PreOrder>(
-        [&](Operation* opInBody) {
-          if (mlir::isa<ManualComputationOp>(opInBody)) {
-            return mlir::WalkResult::skip();
-          }
-          TensorShardingPerValueAttr shardingPerValue =
-              opInBody->getAttrOfType<TensorShardingPerValueAttr>(
-                  kShardingAttr);
-          if (!shardingPerValue) {
-            shardingPerValue = TensorShardingPerValueAttr::getFullyOpen(
-                context, opInBody->getResultTypes(), meshName);
-          }
-          opInBody->setAttr(kXlaShardingAttr,
-                            convertToHloShardingAttr(
-                                opInBody, shardingPerValue.getShardings(),
-                                getMeshAttr, getStringAttr, regionManualAxes));
-          opInBody->removeAttr(kShardingAttr);
-          return mlir::WalkResult::advance();
-        });
+        }
+
+        setFullyClosedShardingsIfMissing(opInBody, meshName);
+        opInBody->setAttr(kManualAxes, manualAxesAttr);
+        return mlir::WalkResult::advance();
+      });
+}
+
+void setNonEmptyManualAxes(Operation* op, ManualAxesAttr manualAxesAttr) {
+  if (!manualAxesAttr.empty()) {
+    op->setAttr(kManualAxes, manualAxesAttr);
   }
 }
 
@@ -194,12 +225,13 @@ void convertShardingsToStablehloShardings(
 // 4. Copy for each result.
 // 5. CustomCall @SPMDShardToFullShape for each result.
 //
-// The shardings of the Copy and CustomCall ops are set based on the in/out
-// shardings of `op`.
+// The shardings and manual axes of the Copy and CustomCall ops are set based on
+// the in/out shardings of `op`.
 void convertManualComputationOp(
     ManualComputationOp op,
     const ManualComputationToParentManualAxes& parentManualCompAxes,
     const mlir::SymbolTable& symbolTable) {
+  MLIRContext* context = op.getContext();
   mlir::IRRewriter rewriter(op);
   TensorShardingAttr sharding = getFirstSharding(op);
   if (!sharding) {
@@ -217,69 +249,60 @@ void convertManualComputationOp(
   CHECK(mesh);
 
   // The axes that are manual inside `op`'s region.
-  SmallVector<StringAttr> regionManualAxes;
-  mlir::ArrayRef<StringAttr> parentManualAxes =
-      populateRegionManualAxes(regionManualAxes, op, parentManualCompAxes);
-  std::function<StringAttr(const HloSharding&)> getStringAttr =
-      [&](const HloSharding& hloSharding) {
-        return rewriter.getStringAttr(hloSharding.ToString());
-      };
+  ManualAxesHierarchy manualAxes =
+      getManualAxesHierarchy(op, parentManualCompAxes);
+  ManualAxesAttr parentManualAxesAttr =
+      ManualAxesAttr::get(context, manualAxes.parent);
+  ManualAxesAttr regionManualAxesAttr =
+      ManualAxesAttr::get(context, manualAxes.region);
 
-  StringAttr fullyManualSharding = getStringAttr(HloSharding::Manual());
-  auto createAttributes =
-      [&](StringRef callTargetName) -> SmallVector<NamedAttribute, 2> {
-    return {rewriter.getNamedAttr("call_target_name",
-                                  rewriter.getStringAttr(callTargetName)),
-            rewriter.getNamedAttr(kXlaShardingAttr, fullyManualSharding)};
-  };
-  SmallVector<NamedAttribute, 2> fullToShardAttributes =
-      createAttributes(kSPMDFullToShardShapeCallTargetName);
-  SmallVector<NamedAttribute, 2> shardToFullAttributes =
-      createAttributes(kSPMDShardToFullShapeCallTargetName);
-
-  bool fullyManual = mesh.getAxes().size() == regionManualAxes.size();
   mlir::Location loc = op.getLoc();
-  auto getMeshAttr = [&](TensorShardingAttr) { return mesh; };
   // Add copy and custom_call @SPMDFullToShardShape for each operand. The
   // copy corresponds to custom_call @Sharding before sharding propagation.
   SmallVector<Value> fullToShardResults;
-  for (auto [operand_index, args] : llvm::enumerate(
-           llvm::zip_equal(op.getOperands(), op.getBody().getArgumentTypes(),
-                           op.getInShardings().getShardings()))) {
-    auto [globalOperand, localArgumentType, inSharding] = args;
+  for (auto [globalOperand, localArgumentType, inSharding] :
+       llvm::zip_equal(op.getOperands(), op.getBody().getArgumentTypes(),
+                       op.getInShardings().getShardings())) {
+    if (!mlir::isa<mlir::ShapedType>(localArgumentType)) {
+      fullToShardResults.push_back(globalOperand);
+      continue;
+    }
     auto copy = rewriter.create<CopyOp>(loc, globalOperand);
-    copy->setAttr(kXlaShardingAttr,
-                  getStringAttr(convertToHloSharding(inSharding, getMeshAttr,
-                                                     parentManualAxes)));
-    fullToShardAttributes.back() = rewriter.getNamedAttr(
-        kXlaShardingAttr,
-        fullyManual ? fullyManualSharding
-                    : getStringAttr(convertToHloSharding(
-                          op.getInShardingWithoutManualAxes(operand_index),
-                          getMeshAttr, regionManualAxes)));
-    auto fullToShard = rewriter.create<CustomCallOp>(
-        loc, localArgumentType, copy.getResult(), fullToShardAttributes);
+    sdy::setShardings(copy, inSharding);
+    setNonEmptyManualAxes(copy, parentManualAxesAttr);
+
+    auto fullToShard =
+        rewriter.create<CustomCallOp>(loc, localArgumentType, copy.getResult());
+    fullToShard.setCallTargetName(kSPMDFullToShardShapeCallTargetName);
+    sdy::setShardings(fullToShard,
+                      eraseManualAxes(inSharding, manualAxes.region));
+    setNonEmptyManualAxes(fullToShard, regionManualAxesAttr);
+
     fullToShardResults.push_back(fullToShard.getResult(0));
   }
+
   Operation* terminator = getBodyTerminator(op);
   // Add custom_call @SPMDShardToFullShape and copy for each operand of
   // terminator.
   rewriter.setInsertionPointAfter(op);
+
   for (auto [terminatorOperand, opResult, outSharding] :
        llvm::zip_equal(terminator->getOpOperands(), op.getResults(),
                        op.getOutShardings().getShardings())) {
+    if (!mlir::isa<mlir::ShapedType>(opResult.getType())) {
+      opResult.replaceAllUsesWith(terminatorOperand.get());
+      continue;
+    }
     auto copy = rewriter.create<CopyOp>(loc, terminatorOperand.get());
-    copy->setAttr(kXlaShardingAttr,
-                  fullyManual ? fullyManualSharding
-                              : getStringAttr(convertToHloSharding(
-                                    op.getOutShardingWithoutManualAxes(
-                                        terminatorOperand.getOperandNumber()),
-                                    getMeshAttr, regionManualAxes)));
-    shardToFullAttributes.back() = rewriter.getNamedAttr(
-        kXlaShardingAttr, getStringAttr(convertToHloSharding(
-                              outSharding, getMeshAttr, parentManualAxes)));
-    auto shardToFull = rewriter.create<CustomCallOp>(
-        loc, opResult.getType(), copy.getResult(), shardToFullAttributes);
+    sdy::setShardings(copy, eraseManualAxes(outSharding, manualAxes.region));
+    setNonEmptyManualAxes(copy, regionManualAxesAttr);
+
+    auto shardToFull = rewriter.create<CustomCallOp>(loc, opResult.getType(),
+                                                     copy.getResult());
+    shardToFull.setCallTargetName(kSPMDShardToFullShapeCallTargetName);
+    sdy::setShardings(shardToFull, outSharding);
+    setNonEmptyManualAxes(shardToFull, parentManualAxesAttr);
+
     opResult.replaceAllUsesWith(shardToFull.getResult(0));
   }
   rewriter.inlineBlockBefore(&op.getBody().front(), op, fullToShardResults);
@@ -307,8 +330,7 @@ class ShardMapExportPass
         parentAxes.insert(parentAxes.end(), parentOp.getManualAxes().begin(),
                           parentOp.getManualAxes().end());
       }
-      convertShardingsToStablehloShardings(op, parentManualCompAxes,
-                                           symbolTable);
+      setManualAxesForOpsInBody(op, parentManualCompAxes, symbolTable);
     });
 
     // Need to do a separate post order walk to inline the
@@ -330,7 +352,8 @@ class ShardMapExportPass
   }
 
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
-    registry.insert<SdyDialect, mlir::mhlo::MhloDialect>();
+    registry.insert<SdyDialect, mlir::mhlo::MhloDialect,
+                    mlir::stablehlo::StablehloDialect>();
   }
 };
 

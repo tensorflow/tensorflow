@@ -25,11 +25,15 @@ limitations under the License.
 #include "xla/hlo/builder/padding.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/shape.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/test_macros.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
+
+constexpr ErrorSpec kErrorSpec{0.0001};
 
 TensorFormat MakeNCHWFormat(int num_spatial_dims) {
   absl::InlinedVector<int64_t, 4> spatial_dimensions;
@@ -66,12 +70,10 @@ std::vector<int64_t> ExpandWithBatchAndFeatureDimensions(
   return tensor_sizes;
 }
 
-class PoolingTest : public ClientLibraryTestBase {
- public:
-  ErrorSpec error_spec_{0.0001};
-};
+using PoolingTest = ClientLibraryTestRunnerMixin<
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
 
-XLA_TEST_F(PoolingTest, MaxPool2D) {
+TEST_F(PoolingTest, MaxPool2D) {
   XlaBuilder builder(TestName());
 
   XlaOp input = ConstantR4FromArray4D<float>(
@@ -81,10 +83,10 @@ XLA_TEST_F(PoolingTest, MaxPool2D) {
   auto stride = kernel_size;
   MaxPool(input, kernel_size, stride, Padding::kValid, data_format);
 
-  ComputeAndCompareR4<float>(&builder, {{{{5, 4}}}}, {}, error_spec_);
+  ComputeAndCompareR4<float>(&builder, {{{{5, 4}}}}, {}, kErrorSpec);
 }
 
-XLA_TEST_F(PoolingTest, MaxPool2DWithPadding) {
+TEST_F(PoolingTest, MaxPool2DWithPadding) {
   XlaBuilder builder(TestName());
 
   XlaOp input = ConstantR4FromArray4D<float>(
@@ -94,10 +96,10 @@ XLA_TEST_F(PoolingTest, MaxPool2DWithPadding) {
   auto stride = kernel_size;
   MaxPool(input, kernel_size, stride, Padding::kSame, data_format);
 
-  ComputeAndCompareR4<float>(&builder, {{{{5, 4, 5}}}}, {}, error_spec_);
+  ComputeAndCompareR4<float>(&builder, {{{{5, 4, 5}}}}, {}, kErrorSpec);
 }
 
-XLA_TEST_F(PoolingTest, MaxPool2DWithPaddingAndStride) {
+TEST_F(PoolingTest, MaxPool2DWithPaddingAndStride) {
   XlaBuilder builder(TestName());
 
   XlaOp input = ConstantR4FromArray4D<float>(
@@ -108,10 +110,10 @@ XLA_TEST_F(PoolingTest, MaxPool2DWithPaddingAndStride) {
   MaxPool(input, kernel_size, stride, Padding::kSame, data_format);
 
   ComputeAndCompareR4<float>(&builder, {{{{5, 4, 4, 5, 5}, {5, 4, 3, 2, 1}}}},
-                             {}, error_spec_);
+                             {}, kErrorSpec);
 }
 
-XLA_TEST_F(PoolingTest, AvgPool2D) {
+TEST_F(PoolingTest, AvgPool2D) {
   XlaBuilder builder(TestName());
 
   XlaOp input = ConstantR4FromArray4D<float>(
@@ -124,10 +126,10 @@ XLA_TEST_F(PoolingTest, AvgPool2D) {
   AvgPool(input, kernel_size, stride, padding, data_format,
           /*counts_include_padding=*/true);
 
-  ComputeAndCompareR4<float>(&builder, {{{{3, 3}}}}, {}, error_spec_);
+  ComputeAndCompareR4<float>(&builder, {{{{3, 3}}}}, {}, kErrorSpec);
 }
 
-XLA_TEST_F(PoolingTest, AvgPool2DWithPadding) {
+TEST_F(PoolingTest, AvgPool2DWithPadding) {
   XlaBuilder builder(TestName());
 
   XlaOp input = ConstantR4FromArray4D<float>(
@@ -140,10 +142,10 @@ XLA_TEST_F(PoolingTest, AvgPool2DWithPadding) {
   AvgPool(input, kernel_size, stride, padding, data_format,
           /*counts_include_padding=*/false);
 
-  ComputeAndCompareR4<float>(&builder, {{{{3, 3, 3}}}}, {}, error_spec_);
+  ComputeAndCompareR4<float>(&builder, {{{{3, 3, 3}}}}, {}, kErrorSpec);
 }
 
-XLA_TEST_F(PoolingTest, AvgPool2DWithPaddingAndStride) {
+TEST_F(PoolingTest, AvgPool2DWithPaddingAndStride) {
   XlaBuilder builder(TestName());
 
   XlaOp input = ConstantR4FromArray4D<float>(
@@ -156,12 +158,11 @@ XLA_TEST_F(PoolingTest, AvgPool2DWithPaddingAndStride) {
   AvgPool(input, kernel_size, stride, padding, data_format,
           /*counts_include_padding=*/false);
 
-  ComputeAndCompareR4<float>(&builder,
-                             {{{{3, 3, 3, 3, 3}, {4.5, 3.5, 2.5, 1.5, 1}}}}, {},
-                             error_spec_);
+  ComputeAndCompareR4<float>(
+      &builder, {{{{3, 3, 3, 3, 3}, {4.5, 3.5, 2.5, 1.5, 1}}}}, {}, kErrorSpec);
 }
 
-XLA_TEST_F(PoolingTest, AvgPool2DWithGeneralPaddingCountNotIncludePadding) {
+TEST_F(PoolingTest, AvgPool2DWithGeneralPaddingCountNotIncludePadding) {
   XlaBuilder builder(TestName());
 
   XlaOp input = ConstantR4FromArray4D<float>(
@@ -172,11 +173,11 @@ XLA_TEST_F(PoolingTest, AvgPool2DWithGeneralPaddingCountNotIncludePadding) {
   AvgPool(input, kernel_size, stride, {{1, 1}, {2, 1}}, data_format,
           /*counts_include_padding=*/false);
 
-  ComputeAndCompareR4<float>(&builder, {{{{3, 3}}}}, {}, error_spec_);
+  ComputeAndCompareR4<float>(&builder, {{{{3, 3}}}}, {}, kErrorSpec);
 }
 
-XLA_TEST_F(PoolingTest,
-           AvgPool2DWithGeneralPaddingCountNotIncludePaddingAndStride) {
+TEST_F(PoolingTest,
+       AvgPool2DWithGeneralPaddingCountNotIncludePaddingAndStride) {
   XlaBuilder builder(TestName());
 
   XlaOp input = ConstantR4FromArray4D<float>(
@@ -188,10 +189,10 @@ XLA_TEST_F(PoolingTest,
           /*counts_include_padding=*/false);
 
   ComputeAndCompareR4<float>(&builder, {{{{1.5, 3, 4.5}, {3, 3, 3}}}}, {},
-                             error_spec_);
+                             kErrorSpec);
 }
 
-XLA_TEST_F(PoolingTest, AvgPool2DGradNoPadding) {
+TEST_F(PoolingTest, AvgPool2DGradNoPadding) {
   XlaBuilder builder(TestName());
   for (bool counts_include_padding : {false, true}) {
     XlaOp out_backprop = ConstantR4FromArray4D<float>(&builder, {{{{1.}}}});
@@ -204,11 +205,11 @@ XLA_TEST_F(PoolingTest, AvgPool2DGradNoPadding) {
     // Without padding, counts_include_padding makes no difference.
     ComputeAndCompareR4<float>(
         &builder, {{{{0.25, 0.25, 0.}, {0.25, 0.25, 0.}, {0., 0., 0.}}}}, {},
-        error_spec_);
+        kErrorSpec);
   }
 }
 
-XLA_TEST_F(PoolingTest, AvgPool2DGradNoPaddingWithStride) {
+TEST_F(PoolingTest, AvgPool2DGradNoPaddingWithStride) {
   XlaBuilder builder(TestName());
   for (bool counts_include_padding : {false, true}) {
     XlaOp out_backprop =
@@ -222,11 +223,11 @@ XLA_TEST_F(PoolingTest, AvgPool2DGradNoPaddingWithStride) {
     // Without padding, counts_include_padding makes no difference.
     ComputeAndCompareR4<float>(
         &builder, {{{{0.25, 0.5, 0.25}, {0.5, 1., 0.5}, {0.25, 0.5, 0.25}}}},
-        {}, error_spec_);
+        {}, kErrorSpec);
   }
 }
 
-XLA_TEST_F(PoolingTest, AvgPool2DGradWithPadding) {
+TEST_F(PoolingTest, AvgPool2DGradWithPadding) {
   XlaBuilder builder(TestName());
 
   XlaOp out_backprop =
@@ -240,10 +241,10 @@ XLA_TEST_F(PoolingTest, AvgPool2DGradWithPadding) {
   ComputeAndCompareR4<float>(
       &builder,
       {{{{0.25, 0.25, 0.25}, {0.25, 0.25, 0.25}, {0.25, 0.25, 0.25}}}}, {},
-      error_spec_);
+      kErrorSpec);
 }
 
-XLA_TEST_F(PoolingTest, AvgPool2DGradWithPaddingCountNotIncludePadding) {
+TEST_F(PoolingTest, AvgPool2DGradWithPaddingCountNotIncludePadding) {
   XlaBuilder builder(TestName());
 
   XlaOp out_backprop =
@@ -255,10 +256,10 @@ XLA_TEST_F(PoolingTest, AvgPool2DGradWithPaddingCountNotIncludePadding) {
               MakeNCHWFormat(2), false);
   ComputeAndCompareR4<float>(
       &builder, {{{{1., 0.5, 0.5}, {0.5, 0.25, 0.25}, {0.5, 0.25, 0.25}}}}, {},
-      error_spec_);
+      kErrorSpec);
 }
 
-XLA_TEST_F(PoolingTest, AvgPool2DGradWithPaddingCountWithStride) {
+TEST_F(PoolingTest, AvgPool2DGradWithPaddingCountWithStride) {
   XlaBuilder builder(TestName());
 
   XlaOp out_backprop =
@@ -271,13 +272,11 @@ XLA_TEST_F(PoolingTest, AvgPool2DGradWithPaddingCountWithStride) {
   auto stride = ExpandWithBatchAndFeatureDimensions({1, 1}, data_format);
   AvgPoolGrad(out_backprop, {1, 1, 3, 3}, kernel_size, stride, {{1, 1}, {1, 1}},
               MakeNCHWFormat(2), true);
-  ComputeAndCompareR4<float>(&builder,
-                             {{{{1., 1., 1.}, {1., 1., 1.}, {1., 1., 1.}}}}, {},
-                             error_spec_);
+  ComputeAndCompareR4<float>(
+      &builder, {{{{1., 1., 1.}, {1., 1., 1.}, {1., 1., 1.}}}}, {}, kErrorSpec);
 }
 
-XLA_TEST_F(PoolingTest,
-           AvgPool2DGradWithPaddingCountWithStrideNotIncludePadding) {
+TEST_F(PoolingTest, AvgPool2DGradWithPaddingCountWithStrideNotIncludePadding) {
   XlaBuilder builder(TestName());
 
   XlaOp out_backprop =
@@ -292,7 +291,7 @@ XLA_TEST_F(PoolingTest,
               MakeNCHWFormat(2), false);
   ComputeAndCompareR4<float>(
       &builder, {{{{2.25, 1.5, 2.25}, {1.5, 1., 1.5}, {2.25, 1.5, 2.25}}}}, {},
-      error_spec_);
+      kErrorSpec);
 }
 
 }  // namespace

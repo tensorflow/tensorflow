@@ -250,6 +250,52 @@ ENTRY entry {
   EXPECT_TRUE(IsWeight(*hlo_value_semantics_analysis, module.get(), "dot.2"));
 }
 
+TEST_F(HloValueSemanticsAnalysisTest, OneRaggedDot) {
+  const std::string module_str = R"(
+HloModule OneMatmul
+
+region_0.39 {
+  Arg_0.40 = f32[] parameter(0)
+  Arg_1.41 = f32[] parameter(1)
+  ROOT add.42 = f32[] add(Arg_0.40, Arg_1.41)
+}
+
+ENTRY entry {
+  Arg_1.2 = f32[8,32,128]{2,1,0} parameter(0), sharding={devices=[1,2,1]0,1}
+  Arg_7.8 = f32[4,32]{1,0} parameter(1), sharding={devices=[2,1]0,1}
+  G = s32[8]{0} parameter(2), sharding={replicated}
+  copy = f32[4,32]{1,0} copy(Arg_7.8), sharding={devices=[2,1]0,1}
+  dot.0 = f32[4,128]{1,0} ragged-dot(copy, Arg_1.2, G), lhs_contracting_dims={1}, rhs_contracting_dims={1}, lhs_ragged_dims={0}, rhs_group_dims={0}, sharding={devices=[2,1]0,1}
+  constant.5 = f32[] constant(0), sharding={replicated}
+  broadcast.2 = f32[4,128]{1,0} broadcast(constant.5), dimensions={}, sharding={devices=[2,1]0,1}
+  maximum.33 = f32[4,128]{1,0} maximum(dot.0, broadcast.2), sharding={devices=[2,1]0,1}
+  compare.34 = pred[4,128]{1,0} compare(dot.0, maximum.33), direction=EQ, sharding={devices=[2,1]0,1}
+  constant.4 = f32[] constant(1), sharding={replicated}
+  broadcast.1 = f32[4,128]{1,0} broadcast(constant.4), dimensions={}, sharding={devices=[2,1]0,1}
+  select.35 = f32[4,128]{1,0} select(compare.34, broadcast.1, broadcast.2), sharding={devices=[2,1]0,1}
+  dot.2 = f32[32,128]{0,1} dot(copy, select.35), lhs_contracting_dims={0}, rhs_contracting_dims={0}, sharding={devices=[2,1]0,1}
+  constant.11 = f32[] constant(-0.01), sharding={replicated}
+  broadcast.12 = f32[32,128]{1,0} broadcast(constant.11), dimensions={}, sharding={devices=[2,1]0,1}
+  multiply.52 = f32[32,128]{0,1} multiply(dot.2, broadcast.12), sharding={devices=[2,1]0,1}
+  reduce.43 = f32[] reduce(maximum.33, constant.5), dimensions={0,1}, to_apply=region_0.39, sharding={replicated}
+  ROOT tuple.109 = (f32[32,128]{1,0}, f32[]) tuple(multiply.52, reduce.43), sharding={{devices=[2,1]0,1}, {replicated}}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(module_str, /*replica_count=*/1,
+                                                /*num_partitions=*/2));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloValueSemanticsAnalysis> hlo_value_semantics_analysis,
+      HloValueSemanticsAnalysis::Run(*module));
+  EXPECT_TRUE(IsWeight(*hlo_value_semantics_analysis, module.get(), "copy"));
+  EXPECT_TRUE(IsWeight(*hlo_value_semantics_analysis, module.get(), "Arg_1.2"));
+  EXPECT_TRUE(
+      IsActivation(*hlo_value_semantics_analysis, module.get(), "dot.0"));
+  EXPECT_TRUE(
+      IsStatic(*hlo_value_semantics_analysis, module.get(), "select.35"));
+  EXPECT_TRUE(IsWeight(*hlo_value_semantics_analysis, module.get(), "dot.2"));
+}
 TEST_F(HloValueSemanticsAnalysisTest, HandleConditional) {
   const std::string module_str = R"(
     HloModule Module

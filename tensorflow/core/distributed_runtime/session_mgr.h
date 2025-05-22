@@ -134,7 +134,7 @@ class SessionMgr {
 
   std::unique_ptr<WorkerCacheInterface> default_worker_cache_;
   std::shared_ptr<WorkerSession> legacy_session_;
-  std::unique_ptr<tsl::CoordinationServiceInterface> coordination_service_;
+  std::unique_ptr<tsl::CoordinationService> coordination_service_;
   std::unique_ptr<tsl::CoordinationServiceAgent> coordination_service_agent_;
 
   bool is_logging_active_ = false;

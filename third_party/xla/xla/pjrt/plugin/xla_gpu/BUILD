@@ -19,7 +19,6 @@ cc_library(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
         "//xla/pjrt/gpu/tfrt:tfrt_gpu_client",
-        "//xla/tsl/util:env_var",
         "@com_google_absl//absl/status:statusor",
     ],
 )
@@ -51,11 +50,22 @@ xla_test(
         "no_oss",
     ] + if_google(["config-cuda-only"]),
     deps = [
-        ":xla_gpu_client_options",
         ":xla_gpu_pjrt_client",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
         "//xla/pjrt/gpu/tfrt:tfrt_gpu_client",
         "//xla/tests:xla_internal_test_main",
         "@com_google_googletest//:gtest",
     ],
+)
+
+cc_library(
+    name = "gpu_static_registration",
+    srcs = ["gpu_static_registration.cc"],
+    deps = [
+        "//xla/pjrt:pjrt_api",
+        "//xla/pjrt/c:pjrt_c_api_gpu",
+        "//xla/pjrt/plugin:plugin_names",
+        "//xla/pjrt/plugin:static_registration",
+    ],
+    alwayslink = True,
 )

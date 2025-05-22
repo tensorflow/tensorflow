@@ -901,6 +901,22 @@ TEST(ConstInt8SumOpTest, Rescale) {
       ElementsAreArray(ArrayFloatNear(expected_sum, kQuantizedTolerance)));
 }
 
+TEST(ConstInt16SumOpTest, Rescale) {
+  const std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.3};
+  BaseConstOpModel<BuiltinOperator_SUM, /*symmetric_int16_scaling=*/true> m(
+      {TensorType_INT16, {1, 3, 2}, -1.0, 1.0},
+      {TensorType_INT16, {2}, -2.0, 2.0}, {1}, {1}, false);
+  // Expect the sum to be 0.4 + 0.3 + 0.5 = 1.2 and 0.2 + 0.4 + 0.3 = 0.9.
+  const std::vector<float> expected_sum = {1.2, 0.9};
+  const float kQuantizedTolerance = GetTolerance(-5.0, 5.0);
+  m.QuantizeAndPopulate<int16_t>(m.Input(), data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
+  EXPECT_THAT(
+      m.GetDequantizedOutput<int16_t>(),
+      ElementsAreArray(ArrayFloatNear(expected_sum, kQuantizedTolerance)));
+}
+
 // Tests for reduce_prod
 TEST(FullyConstFloatProdOpTest, SmallInput) {
   const std::vector<int32_t> data = {2, 3, 4};

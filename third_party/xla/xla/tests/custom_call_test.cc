@@ -880,7 +880,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiUnknownTarget) {
   module->AddEntryComputation(builder.Build());
 
   auto status = Execute(std::move(module), {}).status();
-  EXPECT_THAT(status.message(), HasSubstr("No registered implementation"));
+  EXPECT_THAT(status.message(), HasSubstr("No FFI handler registered for"));
 }
 
 XLA_TEST_F(FfiCustomCallTest, FfiReportsFailure) {

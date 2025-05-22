@@ -27,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
@@ -2258,8 +2259,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, MaxF32s) {
                              error_spec_);
 }
 
-XLA_TEST_F(ArrayElementwiseOpTest,
-           DISABLED_ON_CPU(DefaultMaxF32sNaNPropagation)) {
+XLA_TEST_F(ArrayElementwiseOpTest, DefaultMaxF32sNaNPropagation) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   XlaBuilder builder(TestName());
   auto lhs = ConstantR1<float>(&builder, {1.0f, 1.0f, 2.25f, NAN, 6.0f});
   auto rhs = ConstantR1<float>(&builder, {2.0f, -5.0f, 1.0f, 10.0f, NAN});

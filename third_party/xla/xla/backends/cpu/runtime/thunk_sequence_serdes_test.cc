@@ -16,7 +16,9 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -51,6 +53,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/serdes_base.h"
 #include "xla/backends/cpu/runtime/sort_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
 #include "xla/backends/cpu/runtime/thunk_proto_serdes.h"
 #include "xla/backends/cpu/runtime/thunk_testlib.h"
@@ -59,9 +62,12 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/xnnpack/xnn_convolution_thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_dot_thunk.h"
 #include "xla/backends/cpu/runtime/xnnpack/xnn_fusion_thunk.h"
+#include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/runtime/resource_use.h"
+#include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/hlo.pb.h"
@@ -76,6 +82,11 @@ limitations under the License.
 
 namespace xla::cpu {
 namespace {
+
+// Register a no-op FFI handler for testing custom call thunk.
+static absl::Status NoOp() { return absl::OkStatus(); }
+XLA_FFI_DEFINE_HANDLER(kNoOp, NoOp, ffi::Ffi::Bind());
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "no_op", "Host", kNoOp);
 
 template <typename T>
 class FixedCapacityVector {
@@ -169,6 +180,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
                         CreateRngGetAndUpdateStateThunk());
     TF_ASSIGN_OR_RETURN(thunk_sequence.emplace_back(), CreateTopKThunk());
     TF_ASSIGN_OR_RETURN(thunk_sequence.emplace_back(), CreateWhileThunk());
+    TF_ASSIGN_OR_RETURN(thunk_sequence.emplace_back(), CreateWhileThunk(1));
     TF_ASSIGN_OR_RETURN(thunk_sequence.emplace_back(), CreateXnnDotThunk());
     TF_ASSIGN_OR_RETURN(thunk_sequence.emplace_back(),
                         CreateXnnConvolutionThunk());
@@ -180,12 +192,12 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::string> Serialize(const ThunkSequence& thunk_sequence) {
-    return thunk_sequence_serdes_->Serialize(thunk_sequence);
+    return thunk_sequence_serdes()->Serialize(thunk_sequence);
   }
 
   absl::StatusOr<std::unique_ptr<ThunkSequence>> Deserialize(
       const std::string& serialized) {
-    return thunk_sequence_serdes_->Deserialize(serialized);
+    return thunk_sequence_serdes()->Deserialize(serialized);
   }
 
   bool VerifyThunkSequenceEquality(const ThunkSequence& thunk_sequence_1,
@@ -207,7 +219,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
         std::make_unique<T>(&buffer_allocations_.GetUnderlyingVector());
   }
 
- private:
+ protected:
   absl::Status AddBufferAllocations(const size_t no_of_allocations_to_add) {
     for (size_t i = 0; i < no_of_allocations_to_add; ++i) {
       literals_.push_back(LiteralUtil::CreateFull<float>({2, 4}, 0.0));
@@ -217,9 +229,11 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
 
     return absl::OkStatus();
   }
+
   // Thunk creation helper functions.
   absl::StatusOr<std::unique_ptr<Thunk>> CreateAllGatherThunk(
-      std::shared_ptr<Resource> communicator_resource = nullptr) {
+      std::shared_ptr<Resource> communicator_resource =
+          Resource::Create(Resource::Kind::kCollectiveCommunicator)) {
     TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return AllGatherThunk::Create(
@@ -248,7 +262,8 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateAllReduceThunk(
-      std::shared_ptr<Resource> communicator_resource = nullptr) {
+      std::shared_ptr<Resource> communicator_resource =
+          Resource::Create(Resource::Kind::kCollectiveCommunicator)) {
     TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return AllReduceThunk::Create(
@@ -278,7 +293,8 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateAllToAllThunk(
-      std::shared_ptr<Resource> communicator_resource = nullptr) {
+      std::shared_ptr<Resource> communicator_resource =
+          Resource::Create(Resource::Kind::kCollectiveCommunicator)) {
     TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return AllToAllThunk::Create(
@@ -307,7 +323,8 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateReduceScatterThunk(
-      std::shared_ptr<Resource> communicator_resource = nullptr) {
+      std::shared_ptr<Resource> communicator_resource =
+          Resource::Create(Resource::Kind::kCollectiveCommunicator)) {
     TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return ReduceScatterThunk::Create(
@@ -341,12 +358,12 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
     TF_ASSIGN_OR_RETURN(called_sequence.emplace_back(), CreateAllReduceThunk());
     TF_ASSIGN_OR_RETURN(called_sequence.emplace_back(), CreateAllToAllThunk());
     return CallThunk::Create(Thunk::Info(),
-                             /*called_sequence=*/
-                             std::move(called_sequence));
+                             /*called_sequence=*/std::move(called_sequence));
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateCollectivePermuteThunk(
-      std::shared_ptr<Resource> communicator_resource = nullptr) {
+      std::shared_ptr<Resource> communicator_resource =
+          Resource::Create(Resource::Kind::kCollectiveCommunicator)) {
     TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return CollectivePermuteThunk::Create(
@@ -417,7 +434,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
     TF_RETURN_IF_ERROR(AddBufferAllocations(2));
 
     return CustomCallThunk::Create(
-        Thunk::Info(), "custom_call_thunk_test",
+        Thunk::Info(), "no_op",
         {
             /*arguments_buffers=*/{CreateBufferAllocationSlice(
                 buffer_allocations_[buffer_allocations_.size() - 2])},
@@ -430,7 +447,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
             {literals_[buffer_allocations_.size() - 1].shape()},
             /*is_tuple_result=*/false,
         },
-        /*backend_config=*/"", CustomCallApiVersion::API_VERSION_ORIGINAL);
+        /*backend_config=*/"", CustomCallApiVersion::API_VERSION_TYPED_FFI);
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateDotThunk() {
@@ -558,7 +575,8 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
     );
   }
 
-  absl::StatusOr<std::unique_ptr<Thunk>> CreateWhileThunk() {
+  absl::StatusOr<std::unique_ptr<Thunk>> CreateWhileThunk(
+      std::optional<int64_t> trip_count = std::nullopt) {
     ThunkSequence cond_sequence;
     TF_ASSIGN_OR_RETURN(cond_sequence.emplace_back(), CreateAllGatherThunk());
     ThunkSequence body_sequence;
@@ -574,7 +592,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
             buffer_allocations_[buffer_allocations_.size() - 1]),
         /*cond_sequence=*/std::move(cond_sequence),
         /*body_sequence=*/std::move(body_sequence),
-        /*trip_count=*/1);
+        /*trip_count=*/trip_count);
   }
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateXnnDotThunk() {
@@ -661,7 +679,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
         {CreateBufferAllocationSlice(
             buffer_allocations_[buffer_allocations_.size() - 1])},
         /*kernel_name=*/"test",
-        /*thread_dim=*/se::ThreadDim(1),
+        /*num_workgroups=*/NumWorkGroups{1},
         /*invariant_arguments=*/{0},
         /*min_alignment=*/8);
   }
@@ -1176,7 +1194,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   bool VerifyKernelThunkEquality(const KernelThunkBase& thunk_1,
                                  const KernelThunkBase& thunk_2) {
     return thunk_1.kernel_name() == thunk_2.kernel_name() &&
-           thunk_1.thread_dim() == thunk_2.thread_dim() &&
+           thunk_1.num_workgroups() == thunk_2.num_workgroups() &&
            thunk_1.min_alignment() == thunk_2.min_alignment() &&
            absl::c_equal(thunk_1.arguments_buffers(),
                          thunk_2.arguments_buffers(),
@@ -1406,6 +1424,10 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
     return true;
   }
 
+  SerDesBase<ThunkSequence>* thunk_sequence_serdes() {
+    return thunk_sequence_serdes_.get();
+  }
+
   std::unique_ptr<SerDesBase<ThunkSequence>> thunk_sequence_serdes_;
   FixedCapacityVector<BufferAllocation> buffer_allocations_;
   std::vector<Literal> literals_;
@@ -1505,6 +1527,85 @@ TYPED_TEST(ThunkSequenceSerdesTest, ResourceSharingRecounstruction) {
     }
   }
 }
+
+void ForEachThunkProtoCountTestHelper(
+    SerDesBase<ThunkSequence>* thunk_sequence_serdes,
+    const ThunkSequence& thunk_sequence, int expected_thunk_count) {
+  auto thunk_sequence_proto_serdes =
+      tsl::down_cast<ThunkSequenceSerDesProtobuf*>(thunk_sequence_serdes);
+
+  EXPECT_TRUE(thunk_sequence_proto_serdes != nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(ThunkSequenceProto thunk_sequence_proto,
+                          thunk_sequence_proto_serdes->ToProto(thunk_sequence));
+
+  int count = 0;
+  ForEachThunkProto(thunk_sequence_proto,
+                    [&count](const ThunkProto& proto) { count++; });
+
+  EXPECT_EQ(count, expected_thunk_count);
+}
+
+TYPED_TEST(ThunkSequenceSerdesTest, CallThunkForEachThunkProto) {
+  if (!std::is_same<TypeParam, ThunkSequenceSerDesProtobuf>::value) {
+    GTEST_SKIP() << "This test is intended only for "
+                    "ThunkSequenceSerDesProtobuf. Skipping for "
+                 << typeid(TypeParam).name();
+  }
+
+  ThunkSequence thunk_sequence;
+
+  TF_ASSERT_OK_AND_ASSIGN(thunk_sequence.emplace_back(),
+                          this->CreateCallThunk());
+
+  // NOTE: We expect 4 thunks: 1 for the call thunk, and 3 for the
+  // nested thunk sequence.
+  constexpr int kExpectedCountValue = 4;
+
+  ForEachThunkProtoCountTestHelper(this->thunk_sequence_serdes(),
+                                   thunk_sequence, kExpectedCountValue);
+}
+
+TYPED_TEST(ThunkSequenceSerdesTest, WhileThunkForEachThunkProto) {
+  if (!std::is_same<TypeParam, ThunkSequenceSerDesProtobuf>::value) {
+    GTEST_SKIP() << "This test is intended only for "
+                    "ThunkSequenceSerDesProtobuf. Skipping for "
+                 << typeid(TypeParam).name();
+  }
+
+  ThunkSequence thunk_sequence;
+
+  TF_ASSERT_OK_AND_ASSIGN(thunk_sequence.emplace_back(),
+                          this->CreateWhileThunk());
+
+  // NOTE: We expect 5 thunks: 1 for the while thunk, and 1 for the
+  // condition thunk, and 3 for the body thunk.
+  constexpr int kExpectedCountValue = 5;
+
+  ForEachThunkProtoCountTestHelper(this->thunk_sequence_serdes(),
+                                   thunk_sequence, kExpectedCountValue);
+}
+
+TYPED_TEST(ThunkSequenceSerdesTest, ConditionalThunkForEachThunkProto) {
+  if (!std::is_same<TypeParam, ThunkSequenceSerDesProtobuf>::value) {
+    GTEST_SKIP() << "This test is intended only for "
+                    "ThunkSequenceSerDesProtobuf. Skipping for "
+                 << typeid(TypeParam).name();
+  }
+
+  ThunkSequence thunk_sequence;
+
+  TF_ASSERT_OK_AND_ASSIGN(thunk_sequence.emplace_back(),
+                          this->CreateConditionalThunk());
+
+  // NOTE: We expect 7 thunks: 1 for the conditional thunk, and 6 for
+  // the branch thunk sequences.
+  constexpr int kExpectedCountValue = 7;
+
+  ForEachThunkProtoCountTestHelper(this->thunk_sequence_serdes(),
+                                   thunk_sequence, kExpectedCountValue);
+}
+
 }  // namespace
 
 }  // namespace xla::cpu

@@ -19,7 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 
 namespace xla {
 namespace {
@@ -45,7 +45,7 @@ constexpr absl::string_view kModuleStr =
     ROOT %select-and-scatter = f32[4,5,1,1]{3,2,1,0} select-and-scatter(f32[4,5,1,1]{3,2,1,0} %constant, f32[2,2,1,1]{3,2,1,0} %constant.1, f32[] %constant.2), window={size=2x3x1x1 stride=2x2x1x1}, select=%ge_F32.v3, scatter=%add_F32.v3
   })";
 
-class SelectAndScatterExpanderTest : public HloTestBase {
+class SelectAndScatterExpanderTest : public HloHardwareIndependentTestBase {
  protected:
   // The HLO parser changes all no layout shapes from the input to have a
   // default layout. Clear the layout of the scatter operand for testing.

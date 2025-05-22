@@ -148,7 +148,7 @@ TEST_F(MasterTest, CreateClose) {
   string handle;
   int64_t initial_version;
   TF_ASSERT_OK(CreateSession(def, &handle, &initial_version));
-  EXPECT_TRUE(errors::IsAborted(CloseSession("randombits")));
+  EXPECT_TRUE(absl::IsAborted(CloseSession("randombits")));
   EXPECT_TRUE(CloseSession(handle).ok());
 }
 
@@ -169,8 +169,8 @@ TEST_F(MasterTest, Reset) {
   TF_ASSERT_OK(CreateSession(def, &s1, &initial_version1));
   TF_ASSERT_OK(CreateSession(def, &s2, &initial_version2));
   EXPECT_TRUE(Reset().ok());
-  EXPECT_TRUE(errors::IsAborted(CloseSession(s1)));
-  EXPECT_TRUE(errors::IsAborted(CloseSession(s2)));
+  EXPECT_TRUE(absl::IsAborted(CloseSession(s1)));
+  EXPECT_TRUE(absl::IsAborted(CloseSession(s2)));
 }
 
 TEST_F(MasterTest, Extend) {
@@ -201,7 +201,7 @@ TEST_F(MasterTest, Extend) {
   GraphDef def_2;
   test::graph::ToGraphDef(&graph_2, &def_2);
   int64_t version_2;
-  EXPECT_TRUE(errors::IsAborted(
+  EXPECT_TRUE(absl::IsAborted(
       ExtendSession("randombits", def_2, version_1, &version_2)));
   TF_ASSERT_OK(ExtendSession(handle, def_2, version_1, &version_2));
   EXPECT_GT(version_2, version_1);
@@ -228,7 +228,7 @@ TEST_F(MasterTest, ExtendUpdateStatefulFails) {
   int64_t version_1, version_2;
   TF_ASSERT_OK(ExtendSession(handle, def_1, initial_version, &version_1));
   EXPECT_GT(version_1, initial_version);
-  EXPECT_TRUE(errors::IsInvalidArgument(
+  EXPECT_TRUE(absl::IsInvalidArgument(
       ExtendSession(handle, def_1, version_1, &version_2)));
   TF_ASSERT_OK(CloseSession(handle));
 }
@@ -247,7 +247,7 @@ TEST_F(MasterTest, ExtendTwiceFails) {
   int64_t version_1;
   TF_ASSERT_OK(ExtendSession(handle, def_1, initial_version, &version_1));
   EXPECT_GT(version_1, initial_version);
-  EXPECT_TRUE(errors::IsAborted(
+  EXPECT_TRUE(absl::IsAborted(
       ExtendSession(handle, def_1, initial_version, &version_1)));
   TF_ASSERT_OK(CloseSession(handle));
 }
@@ -273,7 +273,7 @@ TEST_F(MasterTest, ConcurrentExtendOnlyOneSucceeds) {
     int64_t new_version;
     absl::Status s =
         ExtendSession(handle, def_1, initial_version, &new_version);
-    EXPECT_TRUE(s.ok() || errors::IsAborted(s));
+    EXPECT_TRUE(s.ok() || absl::IsAborted(s));
     {
       mutex_lock l(mu);
       if (s.ok()) {
@@ -335,14 +335,14 @@ TEST_F(MasterTest, ConcurrentExtendAndRun) {
 
     // Run at least once before the Extend has completed.
     EXPECT_TRUE(
-        errors::IsNotFound(RunStep(handle, {}, {{"A:0", &A}, {"B:0", &B}})));
+        absl::IsNotFound(RunStep(handle, {}, {{"A:0", &A}, {"B:0", &B}})));
     extend_can_start.Notify();
 
     // Concurrent with the Extend, we will either fail (as above), or
     // succeed (as below).
     while (!extend_done.HasBeenNotified()) {
       absl::Status s = RunStep(handle, {}, {{"A:0", &A}, {"B:0", &B}});
-      EXPECT_TRUE(errors::IsNotFound(s) || s.ok());
+      EXPECT_TRUE(absl::IsNotFound(s) || s.ok());
     }
 
     // Run at least once after the Extend has completed.

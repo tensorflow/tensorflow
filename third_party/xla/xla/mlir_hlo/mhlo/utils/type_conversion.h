@@ -82,8 +82,12 @@ class HloToStablehloTypeConverter : public HloTypeConverter {
 class StablehloToHloTypeConverter : public HloTypeConverter {
  public:
   StablehloToHloTypeConverter();
+  explicit StablehloToHloTypeConverter(bool convertXlaSupportedStablehlo);
   bool isSourceDialect(Dialect& dialect) override;
   Attribute convertSourceDialectEncoding(Attribute attr) override;
+
+ private:
+  bool convert_xla_supported_stablehlo_;
 };
 
 // Complements StableHLO <=> MHLO conversion patterns with boilerplate that

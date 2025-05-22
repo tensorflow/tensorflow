@@ -2,6 +2,7 @@
 
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load("@rules_java//java:defs.bzl", "java_library")
+load("@rules_python//python:defs.bzl", "py_library")
 
 flatc_path = "@flatbuffers//:flatc"
 zip_files = "//tensorflow/lite/tools:zip_files"
@@ -457,7 +458,7 @@ def flatbuffer_py_library(
             ":{}".format(all_srcs_no_include),
         ],
     )
-    native.py_library(
+    py_library(
         name = name,
         srcs = [
             ":{}".format(concat_py_srcs),

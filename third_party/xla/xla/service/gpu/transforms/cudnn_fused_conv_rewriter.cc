@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -55,7 +56,9 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/ml_dtypes.h"
@@ -832,8 +835,8 @@ CaptureConvGraph(HloInstruction* instr, HloInstruction* convolution,
 }
 
 // Matches convolutions operating on FP8 inputs and filters and rewrites into a
-// ForwardGraph Custom Call. For scaled FP8 convolutions on Hopper systems, the
-// following steps are elided and rewritten into a ForwardGraph Custom Call:
+// ForwardGraph Custom Call. For scaled FP8 convolutions, the following steps
+// are elided and rewritten into a ForwardGraph Custom Call:
 //
 // 1. Cast the filter and input from FP8 to a wider type such as FP16 or FP32.
 // 2. Optionally unscale the filter and input by multiplying or dividing by
@@ -848,13 +851,15 @@ absl::StatusOr<bool> F8GraphConv(HloComputation* comp,
                                  const se::SemanticVersion& toolkit_version) {
   bool changed = false;
 
-  if (dnn_version < se::dnn::VersionInfo(8, 9, 0)) {
-    return false;
-  }
   if (toolkit_version < se::SemanticVersion{12, 0, 0}) {
     return false;
   }
-  if (!cc.IsAtLeast(se::CudaComputeCapability::kHopper)) {
+  if (!cc.IsAtLeastAda()) {
+    return false;
+  }
+  if (dnn_version < se::dnn::VersionInfo{9, 8, 0} && !cc.IsAtLeastHopper()) {
+    // Ada is not supported on older cuDNN versions, and instead Hopper or later
+    // is required.
     return false;
   }
   for (auto instr : comp->MakeInstructionPostOrder()) {

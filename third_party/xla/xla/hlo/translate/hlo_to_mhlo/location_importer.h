@@ -21,14 +21,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 
 namespace mlir {
-namespace mhlo {
+namespace hlo {
 
 // Returns an MLIR Location generated from HLO Instruction. Uses instruction
 // metadata if present or instruction name.
 mlir::Location GenerateInstructionLocation(
     const xla::HloInstruction* instruction, mlir::MLIRContext* context);
 
-}  // namespace mhlo
+}  // namespace hlo
 }  // namespace mlir
 
 #endif  // XLA_HLO_TRANSLATE_HLO_TO_MHLO_LOCATION_IMPORTER_H_

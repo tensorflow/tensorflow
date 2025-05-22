@@ -67,12 +67,8 @@ std::optional<std::unique_ptr<FusionInterface>> HloFusionInfo::GetCopyFusion()
       return std::nullopt;
     }
 
-    auto dynamic_memcpy =
-        DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(*instr_);
-    if (dynamic_memcpy) {
-      return std::make_unique<DynamicMemcpyFusion>(
-          analysis(), buffer_assignment_, std::move(*dynamic_memcpy));
-    }
+    return std::make_unique<DynamicMemcpyFusion>(analysis(),
+                                                 buffer_assignment_);
   }
 
   for (const HloInstructionAdaptor& root_adaptor : analysis().fusion_roots()) {
@@ -134,13 +130,14 @@ std::unique_ptr<FusionInterface> GetFusionEmitter(
       }
       return std::make_unique<LoopFusion>(analysis);
     }
-    case HloFusionAnalysis::EmitterFusionKind::kReduction:
+    case HloFusionAnalysis::EmitterFusionKind::kReduction: {
       return CreateReductionFusion(analysis);
+    }
     case HloFusionAnalysis::EmitterFusionKind::kScatter: {
       return CreateScatterFusion(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kTranspose: {
-      return std::make_unique<TransposeFusion>(analysis);
+      return CreateTransposeFusion(analysis);
     }
     case HloFusionAnalysis::EmitterFusionKind::kConcatenate: {
       return std::make_unique<ConcatenateFusion>(analysis);

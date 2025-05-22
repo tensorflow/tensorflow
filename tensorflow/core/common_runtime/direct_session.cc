@@ -904,7 +904,7 @@ absl::Status DirectSession::Run(
     }
   }
   const absl::Status s = call_frame.SetArgs(feed_args);
-  if (errors::IsInternal(s)) {
+  if (absl::IsInternal(s)) {
     return errors::InvalidArgument(s.message());
   } else if (!s.ok()) {
     return s;
@@ -925,7 +925,7 @@ absl::Status DirectSession::Run(
     std::vector<Tensor> sorted_outputs;
     const absl::Status s = call_frame.ConsumeRetvals(
         &sorted_outputs, /* allow_dead_tensors = */ false);
-    if (errors::IsInternal(s)) {
+    if (absl::IsInternal(s)) {
       return errors::InvalidArgument(s.message());
     } else if (!s.ok()) {
       return s;
@@ -1856,9 +1856,8 @@ void DirectSession::WaitForNotification(Notification* n, RunState* run_state,
 absl::Status DirectSession::WaitForNotification(Notification* notification,
                                                 int64_t timeout_in_ms) {
   if (timeout_in_ms > 0) {
-    const int64_t timeout_in_us = timeout_in_ms * 1000;
-    const bool notified =
-        WaitForNotificationWithTimeout(notification, timeout_in_us);
+    const bool notified = notification->WaitForNotificationWithTimeout(
+        absl::Milliseconds(timeout_in_ms));
     if (!notified) {
       return absl::Status(absl::StatusCode::kDeadlineExceeded,
                           "Timed out waiting for notification");

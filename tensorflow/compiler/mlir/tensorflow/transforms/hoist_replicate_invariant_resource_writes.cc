@@ -52,9 +52,10 @@ struct HoistReplicateInvariantResourceWritesPass
 // TODO(prakalps): This is a common utility and other passes use something
 // similar. Move to common utils.
 bool IsResourceType(Type type) {
-  return type.isa<TF::ResourceType>() ||
-         (type.isa<TensorType>() &&
-          type.cast<TensorType>().getElementType().isa<TF::ResourceType>());
+  return llvm::isa<TF::ResourceType>(type) ||
+         (llvm::isa<TensorType>(type) &&
+          llvm::isa<TF::ResourceType>(
+              llvm::cast<TensorType>(type).getElementType()));
 }
 
 SmallVector<Value> GetAccessedResources(Operation& op) {

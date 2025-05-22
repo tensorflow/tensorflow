@@ -75,6 +75,8 @@ absl::Status SetTpuOpsStructFns(void* library_handle) {  // TENSORFLOW_STATUS_OK
 
   TFTPU_SET_FN(ops_api_fn, TpuTopology_AvailableCoreCount);
   TFTPU_SET_FN(ops_api_fn, TpuTopology_AvailableCoresPerChip);
+  TFTPU_SET_FN(ops_api_fn,
+               TpuTopology_MaybeAvailableSparseCoresPerLogicalDevice);
   TFTPU_SET_FN(ops_api_fn, TpuNetUtil_RecycleUnusedPort);
   TFTPU_SET_FN(ops_api_fn, TpuCompile_IsTpuCompilationEnabled);
   TFTPU_SET_FN(ops_api_fn, TpuCompile_ShouldTpuCompileOpIgnoreCancellation);

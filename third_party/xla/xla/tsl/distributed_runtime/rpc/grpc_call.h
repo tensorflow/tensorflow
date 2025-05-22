@@ -16,13 +16,13 @@ limitations under the License.
 #ifndef XLA_TSL_DISTRIBUTED_RUNTIME_RPC_GRPC_CALL_H_
 #define XLA_TSL_DISTRIBUTED_RUNTIME_RPC_GRPC_CALL_H_
 
+#include "absl/synchronization/mutex.h"
 #include "grpcpp/completion_queue.h"
 #include "grpcpp/impl/service_type.h"
 #include "grpcpp/server_builder.h"
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/async_stream.h"
 #include "grpcpp/support/async_unary_call.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/refcount.h"
 
 namespace tsl {
@@ -86,7 +86,7 @@ class GrpcCallTag {
 template <class Service>
 class UntypedCall : public core::RefCounted {
  public:
-  virtual ~UntypedCall() {}
+  ~UntypedCall() override {}
 
   // The implementation of this method should use `service` to handle
   // an incoming request, and (perhaps asynchronously) send the
@@ -162,7 +162,7 @@ class Call : public UntypedCall<Service> {
   Call(HandleRequestFunction handle_request_function)
       : handle_request_function_(handle_request_function), responder_(&ctx_) {}
 
-  virtual ~Call() {}
+  ~Call() override {}
 
   void RequestReceived(Service* service, bool ok) override {
     if (ok) {
@@ -179,7 +179,7 @@ class Call : public UntypedCall<Service> {
 
   void RequestCancelled(Service* service, bool ok) override {
     if (ctx_.IsCancelled()) {
-      mutex_lock l(mu_);
+      absl::MutexLock l(&mu_);
       if (cancel_callback_) {
         cancel_callback_();
       }
@@ -189,13 +189,13 @@ class Call : public UntypedCall<Service> {
   // Registers `callback` as the function that should be called if and when this
   // call is canceled by the client.
   void SetCancelCallback(std::function<void()> callback) {
-    mutex_lock l(mu_);
+    absl::MutexLock l(&mu_);
     cancel_callback_ = std::move(callback);
   }
 
   // Clears any cancellation callback that has been registered for this call.
   void ClearCancelCallback() {
-    mutex_lock l(mu_);
+    absl::MutexLock l(&mu_);
     cancel_callback_ = nullptr;
   }
 
@@ -270,7 +270,7 @@ class Call : public UntypedCall<Service> {
   Tag response_sent_tag_{this, Tag::kResponseSent};
   Tag cancelled_tag_{this, Tag::kCancelled};
 
-  mutex mu_;
+  absl::Mutex mu_;
   std::function<void()> cancel_callback_ TF_GUARDED_BY(mu_);
 };
 

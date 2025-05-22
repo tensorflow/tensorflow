@@ -20,8 +20,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/compiler/mlir/lite/integrations:__subpackages__",
-        "//tensorflow/lite/experimental/litert/python/google/tools/model_utils:__subpackages__",
-        "//third_party/odml/litert/litert/python/google/tools/model_utils:__subpackages__",
+        "//third_party/odml/litert/litert/python/tools/model_utils:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -41,7 +40,6 @@ pybind_extension(
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/python/lib/core:ndarray_tensor",
         "//tensorflow/python/lib/core:py_func_lib",
-        "//third_party/python_runtime:headers",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:ArithDialect",
@@ -57,6 +55,7 @@ pybind_extension(
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
+        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
         "@stablehlo//:register",
         "@stablehlo//:stablehlo_ops",

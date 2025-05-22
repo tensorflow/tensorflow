@@ -39,12 +39,11 @@ namespace stream_executor {
 template <typename... Args>
 static absl::StatusOr<TypedKernel<Args...>*> LoadKernelOrGetPtr(
     StreamExecutor* executor, absl::string_view kernel_name, void* kernel_ptr) {
-  using KernelPtrCacheKey =
-      std::tuple<StreamExecutor*, absl::string_view, void*>;
+  using KernelPtrCacheKey = std::tuple<StreamExecutor*, std::string, void*>;
 
   static absl::Mutex kernel_ptr_cache_mutex(absl::kConstInit);
   static auto& kernel_ptr_cache ABSL_GUARDED_BY(kernel_ptr_cache_mutex) =
-      *new absl::node_hash_map<KernelPtrCacheKey, TypedKernel<Args...>>();
+      *new std::map<KernelPtrCacheKey, TypedKernel<Args...>>;
   KernelPtrCacheKey kernel_ptr_cache_key{executor, kernel_name, kernel_ptr};
   absl::MutexLock lock(&kernel_ptr_cache_mutex);
 

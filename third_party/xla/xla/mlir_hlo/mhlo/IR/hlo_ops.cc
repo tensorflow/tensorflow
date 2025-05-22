@@ -85,6 +85,7 @@ limitations under the License.
 #include "mlir/Transforms/InliningUtils.h"
 #include "stablehlo/dialect/AssemblyFormat.h"
 #include "stablehlo/dialect/Base.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/dialect/TypeInference.h"
 #include "utils/convert_op_folder.h"
 #include "utils/hlo_utils.h"
@@ -3477,7 +3478,7 @@ OpFoldResult DynamicSliceOp::fold(FoldAdaptor adaptor) {
   auto operands = adaptor.getOperands();
   if (!operands[0]) return nullptr;
 
-  auto cst_attr = operands[0].dyn_cast<DenseElementsAttr>();
+  auto cst_attr = mlir::dyn_cast<DenseElementsAttr>(operands[0]);
   if (cst_attr && cst_attr.isSplat()) {
     return cst_attr.resizeSplat(getResult().getType());
   }
@@ -3762,12 +3763,6 @@ LogicalResult RecvOp::verify() {
                            isDeviceToDevice, isHostToDevice,
                            getIsHostTransfer(), getResults());
 }
-
-//===----------------------------------------------------------------------===//
-// CopyOp
-//===----------------------------------------------------------------------===//
-
-OpFoldResult CopyOp::fold(FoldAdaptor) { return getOperand(); }
 
 //===----------------------------------------------------------------------===//
 // ReduceWindowOp

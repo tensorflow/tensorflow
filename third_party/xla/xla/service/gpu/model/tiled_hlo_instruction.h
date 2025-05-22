@@ -37,10 +37,8 @@ namespace gpu {
 //
 // The class contains information required to emit this instruction in
 // block-level codegen. Tile sizes and strides are constants and do not depend
-// on the multidimensional tile index. Tile offsets are computed using an
-// indexing map of the form:
-//   `(d0, d1, ...) -> (tile_offset0, tile_offset1, ...)`
-// where (d0, d1, ...) is the tile multi-index.
+// on the block id. Tile offsets are computed using an indexing map of the form:
+// `(block_id) -> (tile_offset0, tile_offset1, ...)`
 class TiledHloInstruction {
  public:
   virtual ~TiledHloInstruction() = default;
@@ -49,8 +47,7 @@ class TiledHloInstruction {
   // following preconditions is not met:
   // * Number of tile sizes, strides should match HLO shape rank.
   // * Number of results of `tile_offsets_indexing` should match HLO shape rank.
-  // * `tile_offsets_indexing` should have the number of dimensions equal to the
-  //   rank of the output tile and 0 symbols.
+  // * `tile_offsets_indexing` should have only 1 dimension.
   static absl::StatusOr<std::unique_ptr<TiledHloInstruction>> Create(
       const HloInstruction* hlo,
       llvm::SmallVector<const TiledHloInstruction*> operands,
@@ -82,10 +79,9 @@ class TiledHloInstruction {
   }
   int64_t tile_stride(int64_t dim_idx) const { return tile_strides_[dim_idx]; }
 
-  // Returns the indexing map from tile multi-index to tile offsets. The map has
-  // a form of `(d0, d1, ...) -> (tile_offset0, tile_offset1, ...)`. The number
-  // of input dimensions is equal to the rank of output tile of the computation.
-  // The number of tile offsets is equal to the rank of the tiled hlo.
+  // Returns the indexing map from block_id to tile offsets. The map has a form
+  // of `(block_id) -> (tile_offset0, tile_offset1, ...)`. The number of tile
+  // offsets is equal to the rank of the tiled hlo.
   //
   // The indexing map is not computed by default.
   absl::StatusOr<IndexingMap> tile_offsets_indexing() const {

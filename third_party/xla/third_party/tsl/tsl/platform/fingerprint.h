@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_FINGERPRINT_H_
 #define TENSORFLOW_TSL_PLATFORM_FINGERPRINT_H_
 
+#include <array>
+#include <climits>
+#include <cstdint>
+
 #include "xla/tsl/platform/types.h"
 #include "tsl/platform/platform.h"
 #include "tsl/platform/stringpiece.h"
@@ -120,6 +124,19 @@ inline Fprint128 FingerprintCat128(const Fprint128& a, const Fprint128& b) {
 inline Fprint128 FingerprintCat128(const Fprint128& a, const uint64_t b) {
   auto x = FingerprintCat64(a.low64, b);
   return {x, FingerprintCat64(a.high64, x)};
+}
+
+inline std::array<char, 16> Fprint128ToBytes(tsl::Fprint128 fprint) {
+  static_assert(sizeof(char) == 1, "Size of char is not 1 bytes.");
+  static_assert(CHAR_BIT == 8, "Size of byte is not 8 bits.");
+  std::array<char, 16> result;
+  for (int i = 0; i < 8; ++i) {
+    result[8 - i - 1] = fprint.low64 & 0xFF;
+    result[16 - i - 1] = fprint.high64 & 0xFF;
+    fprint.low64 >>= 8;
+    fprint.high64 >>= 8;
+  }
+  return result;
 }
 
 }  // namespace tsl

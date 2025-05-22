@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass_options.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 
 namespace mlir {
@@ -55,8 +56,10 @@ using BroadcastedShapeFunction =
 
 class ConvertResultsBroadcastableShapeOp : public RewritePattern {
  public:
-  explicit ConvertResultsBroadcastableShapeOp(MLIRContext* context)
-      : RewritePattern(MatchAnyOpTypeTag(), /*PatternBenefit*/ 1, context) {}
+  explicit ConvertResultsBroadcastableShapeOp(
+      MLIRContext* context, const OptimizeBroadcastLikePassOptions& options)
+      : RewritePattern(MatchAnyOpTypeTag(), /*PatternBenefit*/ 1, context),
+        options_(options) {}
 
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override;
@@ -65,6 +68,9 @@ class ConvertResultsBroadcastableShapeOp : public RewritePattern {
   LogicalResult RewriteOp(
       Operation* op, PatternRewriter& rewriter,
       BroadcastedShapeFunction& get_broadcasted_shape) const;
+
+ private:
+  const OptimizeBroadcastLikePassOptions& options_;
 };
 
 // Some tfl ops only support implicit broadcasting up to a certain rank.
@@ -191,7 +197,8 @@ LogicalResult ConvertResultsBroadcastableShapeOp::RewriteOp(
 
   // Check that the result shape is fully defined.
   auto result_type = llvm::cast<ShapedType>(op->getResultTypes().front());
-  if (!result_type || !result_type.hasStaticShape())
+  if (!result_type || (!options_.unsafe_fuse_dynamic_shaped_broadcast &&
+                       !result_type.hasStaticShape()))
     return rewriter.notifyMatchFailure(
         op, "Unsupported result shape for broadcasting on op: " +
                 op->getName().getStringRef());
@@ -224,7 +231,10 @@ LogicalResult ConvertResultsBroadcastableShapeOp::RewriteOp(
     // Check that the operand of the broadcast has fully defined shape.
     auto broadcast_arg_type =
         llvm::cast<ShapedType>(broadcast_like_op_input.getType());
-    if (!broadcast_arg_type || !broadcast_arg_type.hasStaticShape()) continue;
+    if (!broadcast_arg_type ||
+        (!options_.unsafe_fuse_dynamic_shaped_broadcast &&
+         !broadcast_arg_type.hasStaticShape()))
+      continue;
 
     auto other_arg = op->getOpOperand(1 - i).get();
     // If non-splat operand is not fusable affine ops, then no need to apply
@@ -238,7 +248,9 @@ LogicalResult ConvertResultsBroadcastableShapeOp::RewriteOp(
 
     // Check that the other argument has fully defined shape.
     auto other_arg_type = llvm::cast<ShapedType>(other_arg.getType());
-    if (!other_arg_type || !other_arg_type.hasStaticShape()) continue;
+    if (!other_arg_type || (!options_.unsafe_fuse_dynamic_shaped_broadcast &&
+                            !other_arg_type.hasStaticShape()))
+      continue;
 
     // Get the unbroadcasted shapes in the operand order.
     std::array<llvm::ArrayRef<int64_t>, 2> operand_shapes;
@@ -268,8 +280,9 @@ LogicalResult ConvertResultsBroadcastableShapeOp::RewriteOp(
 class ConvertResultsBroadcastableBatchMatMulShapeOp
     : public ConvertResultsBroadcastableShapeOp {
  public:
-  explicit ConvertResultsBroadcastableBatchMatMulShapeOp(MLIRContext* context)
-      : ConvertResultsBroadcastableShapeOp(context) {}
+  explicit ConvertResultsBroadcastableBatchMatMulShapeOp(
+      MLIRContext* context, const OptimizeBroadcastLikePassOptions& options)
+      : ConvertResultsBroadcastableShapeOp(context, options) {}
 
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override;
@@ -384,9 +397,10 @@ void OptimizeBroadcastLikePass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto func = getOperation();
 
-  patterns.add<ConvertResultsBroadcastableShapeOp>(func.getContext());
-  patterns.add<ConvertResultsBroadcastableBatchMatMulShapeOp>(
-      func.getContext());
+  patterns.add<ConvertResultsBroadcastableShapeOp>(func.getContext(),
+                                                   GetOptions());
+  patterns.add<ConvertResultsBroadcastableBatchMatMulShapeOp>(func.getContext(),
+                                                              GetOptions());
   patterns.add<ReorderBroadcastToCast>(func.getContext());
   TFL::populateWithGenerated(patterns);
   (void)applyPatternsGreedily(getOperation(), std::move(patterns));

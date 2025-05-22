@@ -23,7 +23,6 @@ include "mlir/Interfaces/SideEffectInterfaces.td" // Pure
 include "mlir/Interfaces/InferTypeOpInterface.td" // SameOperandsAndResultType
 include "mlir/Interfaces/ViewLikeInterface.td" // OffsetSizeAndStrideOpInterface
 include "xla/backends/gpu/codegen/triton/ir/triton_xla_dialect.td"
-include "xla/backends/gpu/codegen/triton/ir/triton_xla_types.td"
 include "triton/Dialect/Triton/IR/TritonInterfaces.td"
 include "triton/Dialect/Triton/IR/TritonOpInterfaces.td"
 include "triton/Dialect/Triton/IR/TritonTypes.td"
@@ -37,13 +36,59 @@ class TTXLA_Op<string mnemonic, list<Trait> traits = []> :
       Op<XlaTritonDialect, mnemonic, traits> {
 }
 
-def TTXLA_TileOp : TTXLA_Op<"tile", [Pure, SameVariadicOperandSize,
-    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
-  let summary = "Capture the tiling information of a tensor.";
+// Base class for ops with static/dynamic offset, sizes and strides
+// attributes/arguments.
+class TTXLA_OpWithOffsetSizesAndStrides<string mnemonic,
+                                        list<Trait> traits = []>
+    : TTXLA_Op<mnemonic, !listconcat(traits, [
+      Pure,
+      AttrSizedOperandSegments,
+      OffsetSizeAndStrideOpInterface,
+      DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>
+  ])> {
+  let results = (outs AnyRankedTensor:$result);
+  code extraBaseClassDeclaration = [{
+    /// Return the type of the base tensor operand.
+    ::mlir::RankedTensorType getSrcType() {
+      return ::llvm::cast<RankedTensorType>(getSrc().getType());
+    }
+
+    /// Return the type of the result tensor.
+    ::mlir::RankedTensorType getResultType() {
+      return ::llvm::cast<RankedTensorType>(getResult().getType());
+    }
+
+    SmallVector<Value> getOffsetsAsValues(::mlir::ImplicitLocOpBuilder &b) {
+      return ::mlir::getValueOrCreateConstantIndexOp(b, b.getLoc(),
+        getMixedOffsets());
+    }
+
+    SmallVector<Value> getSizesAsValues(::mlir::ImplicitLocOpBuilder &b) {
+      return ::mlir::getValueOrCreateConstantIndexOp(b, b.getLoc(),
+        getMixedSizes());
+    }
+
+    SmallVector<Value> getStridesAsValues(::mlir::ImplicitLocOpBuilder &b) {
+      return ::mlir::getValueOrCreateConstantIndexOp(b, b.getLoc(),
+        getMixedStrides());
+    }
+
+    /// Return the expected rank of each of the `static_offsets`, `static_sizes`
+    /// and `static_strides` attributes.
+    std::array<unsigned, 3> getArrayAttrMaxRanks() {
+      unsigned rank = getResultType().getRank();
+      return {rank, rank, rank};
+    }
+  }];
+  let hasVerifier = 1;
+  let hasCanonicalizer = 1;
+}
+
+def TTXLA_ExtractOp : TTXLA_OpWithOffsetSizesAndStrides<"extract", []> {
+  let summary = "Extract a tile from a tensor.";
   let description = [{
-    This op captures the tiling information of a tensor, which can be used to
-    extract/insert tiles with the `triton_xla.extract` and `triton_xla.insert`
-    ops.
+    Offsets, strides, and destination tensor size are used to specify the tile
+    to extract. Minor-to-major layout should also be specified.
 
     Example:
       ```
@@ -52,72 +97,102 @@ def TTXLA_TileOp : TTXLA_Op<"tile", [Pure, SameVariadicOperandSize,
       %st1 = arith.constant 120 : index
       %st2 = arith.constant 1 : index
       ...
-      %tiled_tensor = triton_xla.tile %tensor [%of, %of][%st1, %st2]
-        {layout = array<i64:1, 0>}: !triton_xla.tiled_tensor<16x64|120x320xbf16>
+      %extracted_tensor = triton_xla.extract %tensor [%of, %of][%st1, %st2]
+        {layout = array<i64:1, 0>} : tensor<120x320xbf16> to tensor<16x64xbf16>
       ```
   }];
+  let builders = [
+    OpBuilder<(ins "RankedTensorType":$result_type, "Value":$src,
+      "ValueRange":$offsets,  "ValueRange":$strides,
+      CArg<"ArrayRef<int64_t>", "{}">:$layout,
+      CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>,
+    OpBuilder<(ins "RankedTensorType":$result_type, "Value":$src,
+      "ArrayRef<OpFoldResult>":$offsets,  "ArrayRef<OpFoldResult>":$strides,
+      CArg<"ArrayRef<int64_t>", "{}">:$layout,
+      CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>
+  ];
 
   let arguments = (ins
-    AnyRankedTensor:$tensor,
+    AnyStaticShapeTensor:$src,
     Variadic<Index>:$offsets,
+    Variadic<Index>:$sizes,
     Variadic<Index>:$strides,
+    DenseI64ArrayAttr:$static_offsets,
+    DenseI64ArrayAttr:$static_sizes,
+    DenseI64ArrayAttr:$static_strides,
     DenseI64ArrayAttr:$layout
   );
-  let results = (outs TTXLA_TiledTensorType:$tiled_tensor);
-  let hasCustomAssemblyFormat = 1;
-  let hasVerifier = 1;
-}
-
-def TTXLA_ExtractOp : TTXLA_Op<"extract", [Pure,
-    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
-  let summary = "Extract a tile from a tensor.";
-  let description = [{
-    This op is used to extract a tile from a tiled tensor.
-
-    Example:
-      ```
-      %tiled_tensor = triton_xla.tile ...
-      : !triton_xla.tiled_tensor<16x64|120x320xbf16>
-      ...
-      %extracted_tensor = triton_xla.extract %tiled_tensor [%cst, %cst]
-        : tensor<120x320xbf16> to tensor<16x64xbf16>
-      ```
+  let assemblyFormat = [{
+    $src ``
+    custom<DynamicIndexList>($offsets, $static_offsets)
+    custom<DynamicIndexList>($sizes, $static_sizes)
+    custom<DynamicIndexList>($strides, $static_strides)
+    attr-dict `:` type($src) `to` type($result)
   }];
-
-  let arguments = (ins
-    TTXLA_TiledTensorType:$src,
-    Variadic<Index>:$offsets
-  );
-  let results = (outs AnyRankedTensor:$result);
-  let hasCustomAssemblyFormat = 1;
-  let hasVerifier = 1;
+  let extraClassDeclaration = extraBaseClassDeclaration # [{
+    /// Return the number of leading operands before the `offsets`, `sizes` and
+    /// and `strides` operands.
+    static unsigned getOffsetSizeAndStrideStartOperandIndex() { return 1; }
+  }];
 }
 
-def TTXLA_InsertOp : TTXLA_Op<"insert", [Pure,
-    DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
+def TTXLA_InsertOp : TTXLA_OpWithOffsetSizesAndStrides<"insert", [
+    TypesMatchWith<"expected result type to match dest type",
+                   "dst", "result", "$_self">
+  ]> {
   let summary = "Insert a tile into a tensor.";
   let description = [{
-    This op is used to insert a tile into a tensor. The tiling information can
-    be captured using triton_xla.tile and passed to this op.
+    Offsets, strides, and source tensor size are used to specify the tile to
+    insert into. Minor-to-major layout should also be specified.
 
     Example:
       ```
-      %tiled_tensor = triton_xla.tile ...
-      : !triton_xla.tiled_tensor<16x64|120x320xbf16>
+      %src: tensor<16x64xbf16>
+      %dst: tensor<120x320xbf16>
+      %of = arith.constant 0 : index
+      %st1 = arith.constant 120 : index
+      %st2 = arith.constant 1 : index
       ...
-      %updated_tensor = triton_xla.insert %arg0 into %tiled_tensor[%cst, %cst]
-        : tensor<16x64xbf16> into tensor<120x320xbf16>
+      %updated_tensor = triton_xla.insert %src into %dst [%of, %of][%st1, %st2]
+        {layout = array<i64:1, 0>} : tensor<16x64xbf16> into tensor<120x320xbf16>
       ```
   }];
+  let builders = [
+    OpBuilder<(ins "Value":$src, "Value":$dst,
+      "ValueRange":$offsets,  "ValueRange":$strides,
+      CArg<"ArrayRef<int64_t>", "{}">:$layout,
+      CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>,
+    OpBuilder<(ins "Value":$src, "Value":$dst,
+      "ArrayRef<OpFoldResult>":$offsets,  "ArrayRef<OpFoldResult>":$strides,
+      CArg<"ArrayRef<int64_t>", "{}">:$layout,
+      CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>
+  ];
 
   let arguments = (ins
-    AnyRankedTensor:$src,
-    TTXLA_TiledTensorType:$dst,
-    Variadic<Index>:$offsets
+    AnyStaticShapeTensor:$src,
+    AnyStaticShapeTensor:$dst,
+    Variadic<Index>:$offsets,
+    Variadic<Index>:$sizes,
+    Variadic<Index>:$strides,
+    DenseI64ArrayAttr:$static_offsets,
+    DenseI64ArrayAttr:$static_sizes,
+    DenseI64ArrayAttr:$static_strides,
+    DenseI64ArrayAttr:$layout
   );
-  let results = (outs AnyRankedTensor:$result);
-  let hasCustomAssemblyFormat = 1;
-  let hasVerifier = 1;
+
+  let assemblyFormat = [{
+    $src `into` $dst ``
+    custom<DynamicIndexList>($offsets, $static_offsets)
+    custom<DynamicIndexList>($sizes, $static_sizes)
+    custom<DynamicIndexList>($strides, $static_strides)
+    attr-dict `:` type($src) `into` type($dst)
+  }];
+
+  let extraClassDeclaration = extraBaseClassDeclaration # [{
+    /// Return the number of leading operands before the `offsets`, `sizes` and
+    /// and `strides` operands.
+    static unsigned getOffsetSizeAndStrideStartOperandIndex() { return 2; }
+  }];
 }
 
 #endif // XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_OPS_TD_

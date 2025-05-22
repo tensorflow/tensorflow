@@ -30,54 +30,79 @@ class NcuRepTest(absltest.TestCase):
     ])
     self.assertEqual(
         by_kernel,
-        {
-            "kernel1": {
+        [
+            {
                 "Kernel Name": ("kernel1", ""),
                 "Metric 1": ("1", "s"),
                 "Metric 2": ("2", "Gb"),
             },
-            "kernel2": {
+            {
                 "Kernel Name": ("kernel2", ""),
                 "Metric 1": ("3", "s"),
                 "Metric 2": ("4", "Gb"),
             },
-        },
+        ],
     )
 
-  def test_get_kernel_metrics_to_print(self):
-    by_kernel = {
-        "kernel1": {
+  def test_aggregate_kernel_metrics(self):
+    data = [
+        {
+            "ID": ("1", ""),
             "Kernel Name": ("kernel1", ""),
-            "Metric 1": ("1", "s"),
-            "Metric 2": ("2", "Gb"),
+            "a.sum": ("12,345", "s"),
+            "b.max": ("2", "registers"),
+            "c.min": ("3", "b"),
+            "d": ("4", "b"),
+            "e": ("10", "b"),
         },
-        "kernel2": {
+        {
+            "ID": ("2", ""),
             "Kernel Name": ("kernel2", ""),
-            "Metric 1": ("3", "s"),
-            "Metric 2": ("4", "Gb"),
+            "a.sum": ("345,678.1", "s"),
+            "b.max": ("4", "registers"),
+            "c.min": ("5.0", "b"),
+            "d": ("6", "b"),
+            "e": ("11", "b"),
         },
-    }
+    ]
     self.assertEqual(
-        ncu_rep_lib.get_kernel_metrics_rows(
-            ["Metric 1", "Metric 2"], by_kernel, ""
+        ncu_rep_lib.aggregate_kernel_metrics(
+            ["a.sum", "b.max", "c.min", "d"], data
         ),
         [
-            ["Metric 1", "1", "s"],
-            ["Metric 2", "2", "Gb"],
+            ["a.sum", "358023.1", "s"],
+            ["b.max", "4", "registers"],
+            ["c.min", "3", "b"],
+            ["d", "4", "b"],
         ],
     )
-    self.assertEqual(
-        ncu_rep_lib.get_kernel_metrics_rows(["Metric 1"], by_kernel, "kernel1"),
-        [
-            ["Metric 1", "1", "s"],
-        ],
-    )
-    self.assertEqual(
-        ncu_rep_lib.get_kernel_metrics_rows(["Metric 2"], by_kernel, "kernel2"),
-        [
-            ["Metric 2", "4", "Gb"],
-        ],
-    )
+
+  def test_filter_kernels(self):
+    data = [
+        {
+            "ID": ("1", ""),
+            "Kernel Name": ("kernel1", ""),
+            "a.sum": ("1,000.0", "s"),
+            "b.max": ("2", "registers"),
+            "c.min": ("3", "b"),
+            "d": ("4", "b"),
+            "e": ("10", "b"),
+        },
+        {
+            "ID": ("2", ""),
+            "Kernel Name": ("kernel2", ""),
+            "a.sum": ("3.0", "s"),
+            "b.max": ("4", "registers"),
+            "c.min": ("5.0", "b"),
+            "d": ("6", "b"),
+            "e": ("11", "b"),
+        },
+    ]
+    self.assertEqual(ncu_rep_lib.filter_kernels(data, "id:1"), [data[0]])
+    self.assertEqual(ncu_rep_lib.filter_kernels(data, "name:^k.*2$"), [data[1]])
+    self.assertEqual(ncu_rep_lib.filter_kernels(data, "name:2"), [data[1]])
+    self.assertEqual(ncu_rep_lib.filter_kernels(data, "name:kernel"), data)
+    self.assertEqual(ncu_rep_lib.filter_kernels(data, "after:id:1"), [data[1]])
 
   def test_write_metrics_markdown(self):
     with io.StringIO() as f:

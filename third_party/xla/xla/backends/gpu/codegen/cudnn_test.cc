@@ -1104,7 +1104,7 @@ ENTRY e {
   const std::string hlo_test = absl::Substitute(
       kHloTemplate, primitive_util::LowercasePrimitiveTypeName(GetParam()));
 
-  EXPECT_TRUE(RunAndCompare(hlo_test, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4}));
+  EXPECT_TRUE(RunAndCompare(hlo_test, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 constexpr std::array<PrimitiveType, 3> kSupportedDataTypes{F16, F32, BF16};

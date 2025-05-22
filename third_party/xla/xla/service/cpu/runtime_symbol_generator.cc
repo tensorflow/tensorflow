@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/service/cpu/cpu_runtime.h"
 #include "xla/service/cpu/runtime_conv2d.h"
 #include "xla/service/cpu/runtime_conv2d_acl.h"
-#include "xla/service/cpu/runtime_conv2d_mkl.h"
 #include "xla/service/cpu/runtime_conv3d.h"
 #include "xla/service/cpu/runtime_custom_call_status.h"
 #include "xla/service/cpu/runtime_fft.h"
@@ -168,7 +167,6 @@ static bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(ReduceScatter);
   REGISTER_CPU_RUNTIME_SYMBOL(PartitionId);
   REGISTER_CPU_RUNTIME_SYMBOL(ReplicaId);
-  REGISTER_CPU_RUNTIME_SYMBOL(MKLConv2DF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenConv2DF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenConv2DF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenConv3DF16);

@@ -16,7 +16,8 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_pjrt_compiler.h"
 
 #include <memory>
-#include <utility>
+#include <optional>
+#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -36,18 +37,21 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
+#include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/tests/literal_test_util.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
 using ::tsl::testing::StatusIs;
+
+constexpr absl::string_view kFakeDeviceName = "Fake_device";
 
 constexpr absl::string_view kProgram = R"(HloModule Computation
 
@@ -83,7 +87,8 @@ std::shared_ptr<xla::GpuTopology> GetGpuTopology(
 TEST(StreamExecutorGpuCompilerTest, NoClientXla) {
   StreamExecutorGpuCompiler compiler;
   StreamExecutorGpuTopologyDescription topology(
-      CudaId(), CudaName(), GetGpuTopology({0, 1}, "Fake_device", 1, 1, 2, 10));
+      CudaId(), CudaName(),
+      GetGpuTopology({0, 1}, kFakeDeviceName, 1, 1, 2, 10));
 
   TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
   EXPECT_THAT(compiler.Compile(xla::CompileOptions(), computation, topology,
@@ -94,14 +99,15 @@ TEST(StreamExecutorGpuCompilerTest, NoClientXla) {
 TEST(StreamExecutorGpuCompilerTest, TopologyNotSameXla) {
   StreamExecutorGpuCompiler compiler;
   StreamExecutorGpuTopologyDescription topology(
-      CudaId(), CudaName(), GetGpuTopology({0, 1}, "Fake_device", 1, 1, 2, 10));
+      CudaId(), CudaName(),
+      GetGpuTopology({0, 1}, kFakeDeviceName, 1, 1, 2, 10));
 
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
   TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
   EXPECT_THAT(compiler.Compile(xla::CompileOptions(), computation, topology,
                                client.get()),
-              StatusIs(absl::StatusCode::kUnimplemented));
+              StatusIs(absl::StatusCode::kOk));
 }
 
 TEST(StreamExecutorGpuCompilerTest, SuccessXla) {
@@ -110,16 +116,13 @@ TEST(StreamExecutorGpuCompilerTest, SuccessXla) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
   TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
-  TF_ASSERT_OK_AND_ASSIGN(auto topology, client->GetTopologyDescription());
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          compiler.Compile(xla::CompileOptions(), computation,
-                                           *topology, client.get()));
-  const LoadOptions load_options;
-  TF_ASSERT_OK_AND_ASSIGN(auto loaded_executable,
-                          client->Load(std::move(executable), load_options));
-
   TF_ASSERT_OK_AND_ASSIGN(
-      auto result, loaded_executable->Execute(/*argument_handles=*/{{}}, {}));
+      std::unique_ptr<xla::PjRtLoadedExecutable> loaded_executable,
+      client->CompileAndLoad(computation, xla::CompileOptions()));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          loaded_executable->Execute(
+                              /*argument_handles=*/{{}}, /*options=*/{}));
 
   ASSERT_EQ(result.size(), 1);
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];
@@ -140,7 +143,8 @@ TEST(StreamExecutorGpuCompilerTest, NoClientMlir) {
       mlir::parseSourceString<mlir::ModuleOp>(mlir_str, &context);
 
   StreamExecutorGpuTopologyDescription topology(
-      CudaId(), CudaName(), GetGpuTopology({0, 1}, "Fake_device", 1, 1, 2, 10));
+      CudaId(), CudaName(),
+      GetGpuTopology({0, 1}, kFakeDeviceName, 1, 1, 2, 10));
 
   EXPECT_THAT(
       compiler.Compile(xla::CompileOptions(), mlir_module.get(), topology,
@@ -158,13 +162,14 @@ TEST(StreamExecutorGpuCompilerTest, TopologyNotSameMlir) {
       mlir::parseSourceString<mlir::ModuleOp>(mlir_str, &context);
 
   StreamExecutorGpuTopologyDescription topology(
-      CudaId(), CudaName(), GetGpuTopology({0, 1}, "Fake_device", 1, 1, 2, 10));
+      CudaId(), CudaName(),
+      GetGpuTopology({0, 1}, kFakeDeviceName, 1, 1, 2, 10));
 
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
   EXPECT_THAT(compiler.Compile(xla::CompileOptions(), mlir_module.get(),
                                topology, client.get()),
-              StatusIs(absl::StatusCode::kUnimplemented));
+              StatusIs(absl::StatusCode::kOk));
 }
 
 TEST(StreamExecutorGpuCompilerTest, SuccessMlir) {
@@ -178,17 +183,55 @@ TEST(StreamExecutorGpuCompilerTest, SuccessMlir) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
-  TF_ASSERT_OK_AND_ASSIGN(auto topology, client->GetTopologyDescription());
   TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      compiler.Compile(xla::CompileOptions(), mlir_module.get(), *topology,
-                       client.get()));
-  const LoadOptions load_options;
-  TF_ASSERT_OK_AND_ASSIGN(auto loaded_executable,
-                          client->Load(std::move(executable), load_options));
+      std::unique_ptr<xla::PjRtLoadedExecutable> loaded_executable,
+      client->CompileAndLoad(mlir_module.get(), xla::CompileOptions()));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          loaded_executable->Execute(
+                              /*argument_handles=*/{{}}, /*options=*/{}));
+
+  ASSERT_EQ(result.size(), 1);
+  std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];
+  ASSERT_EQ(result_buffers.size(), 1);
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::Literal> result_literal,
+                          result_buffers[0]->ToLiteralSync());
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(LiteralUtil::CreateR0(2), *result_literal));
+}
+
+TEST(StreamExecutorGpuCompilerTest, SuccessMlirCanBeSerialized) {
+  StreamExecutorGpuCompiler compiler;
+
+  mlir::MLIRContext context;
+  context.loadDialect<mlir::mhlo::MhloDialect, mlir::func::FuncDialect>();
+
+  auto mlir_module =
+      mlir::parseSourceString<mlir::ModuleOp>(mlir_str, &context);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+
+  StreamExecutorGpuTopologyDescription topology(
+      CudaId(), CudaName(),
+      GetGpuTopology({0, 1}, kFakeDeviceName, 1, 1, 2, 10));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto result, loaded_executable->Execute(/*argument_handles=*/{{}}, {}));
+      std::unique_ptr<xla::PjRtExecutable> executable,
+      compiler.Compile(xla::CompileOptions(), mlir_module.get(), topology,
+                       client.get()));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::string serialized,
+                          executable->SerializeExecutable());
+  ASSERT_FALSE(serialized.empty());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto loaded_executable_from_serialized,
+                          client->LoadSerializedExecutable(
+                              serialized, std::nullopt, xla::LoadOptions()));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          loaded_executable_from_serialized->Execute(
+                              /*argument_handles=*/{{}}, /*options=*/{}));
 
   ASSERT_EQ(result.size(), 1);
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];

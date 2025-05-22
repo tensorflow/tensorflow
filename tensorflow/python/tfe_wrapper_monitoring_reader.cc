@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-
 #include "Python.h"
 #include "pybind11/complex.h"  // from @pybind11
 #include "pybind11/functional.h"  // from @pybind11

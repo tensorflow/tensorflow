@@ -20,10 +20,8 @@ package_group(
     ] + if_google([
         "//learning/brain/tfrt/cpp_tests/...",
         "//learning/serving/servables/tfrt/...",
-        "//learning/pathways/serving/runtime/...",
-        "//learning/pathways/serving/tests/...",
         "//learning/brain/tfrt/ifrt/...",
-        "//learning/brain/tfrt/mlir/mlrt/application/pathways/compiler/...",
+        "//learning/brain/tfrt/tfrt_session/...",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
         "//learning/infra/mira/experimental/orbax_model/serving/sidecar/...",
@@ -33,15 +31,10 @@ package_group(
 
 gentbl_cc_library(
     name = "pass_inc_gen",
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=TfrtIfrtServing",
-            ],
-            "passes.h.inc",
-        ),
-    ],
+    tbl_outs = {"passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=TfrtIfrtServing",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes.td",
     deps = [

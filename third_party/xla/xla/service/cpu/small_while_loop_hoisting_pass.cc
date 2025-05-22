@@ -127,6 +127,7 @@ absl::StatusOr<bool> SmallWhileLoopHoistingPass::Run(
     call_instruction->add_frontend_attribute("xla_cpu_small_call", "true");
 
     TF_RETURN_IF_ERROR(while_instr->ReplaceAllUsesWith(call_instruction));
+    TF_RETURN_IF_ERROR(while_instr->SafelyDropAllControlDependencies());
     TF_RETURN_IF_ERROR(while_instr->parent()->RemoveInstruction(while_instr));
 
     changed = true;

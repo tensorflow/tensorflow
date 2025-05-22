@@ -661,6 +661,7 @@ cc_library(
 filegroup(
     name = "xla_cpu_runtime_srcs",
     srcs = [
+        "context.h",
         "env_time.h",
         "macros.h",
         "platform.h",
@@ -693,7 +694,12 @@ cc_library(
         "numa.h",
         "snappy.h",
     ],
-    deps = tf_windows_aware_platform_deps("platform_port"),
+    deps = tf_windows_aware_platform_deps("platform_port") + [
+        ":platform",
+        "@local_xla//xla/tsl/platform:byte_order",
+        "@local_xla//xla/tsl/platform:dynamic_annotations",
+        "@local_xla//xla/tsl/platform:types",
+    ],
 )
 
 cc_library(
@@ -773,7 +779,9 @@ cc_library(
     deps = [
         ":numbers",
         ":stringpiece",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/meta:type_traits",
+        "@com_google_absl//absl/strings",
         "@local_xla//xla/tsl/platform:logging",
         "@local_xla//xla/tsl/platform:macros",
         "@local_xla//xla/tsl/platform:types",
@@ -1116,6 +1124,7 @@ tsl_cc_test(
         ":platform",
         ":stringpiece",
         ":tstring",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@local_xla//xla/tsl/platform:test",
     ],
@@ -1135,6 +1144,7 @@ cc_library(
     hdrs = ["notification.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
     ],
@@ -1364,6 +1374,7 @@ tsl_cc_test(
         "strcat_test.cc",
     ],
     deps = [
+        ":bfloat16",
         ":strcat",
         ":stringprintf",
         "@com_google_absl//absl/strings",

@@ -12,6 +12,7 @@ package(
 
 exports_files([
     "mhlo/IR/hlo_ops.td",
+    "mhlo/IR/hlo_utils.td",
 ])
 
 # Python extension sources.
@@ -48,15 +49,10 @@ gentbl_cc_library(
     name = "mhlo_pass_inc_gen",
     compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=AllMhlo",
-            ],
-            "mhlo/transforms/mhlo_passes.h.inc",
-        ),
-    ],
+    tbl_outs = {"mhlo/transforms/mhlo_passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=AllMhlo",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "mhlo/transforms/mhlo_passes.td",
     deps = ["@llvm-project//mlir:PassBaseTdFiles"],
@@ -66,16 +62,10 @@ gentbl_cc_library(
     name = "hlo_ops_inc_gen",
     compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "mhlo/IR/hlo_ops.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "mhlo/IR/hlo_ops.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "mhlo/IR/hlo_ops.h.inc": ["-gen-op-decls"],
+        "mhlo/IR/hlo_ops.cc.inc": ["-gen-op-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "mhlo/IR/hlo_ops.td",
     deps = [":hlo_ops_td_files"],
@@ -85,16 +75,10 @@ gentbl_cc_library(
     name = "hlo_ops_attrs_inc_gen",
     compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            ["-gen-attrdef-decls"],
-            "mhlo/IR/hlo_ops_attrs.h.inc",
-        ),
-        (
-            ["-gen-attrdef-defs"],
-            "mhlo/IR/hlo_ops_attrs.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "mhlo/IR/hlo_ops_attrs.h.inc": ["-gen-attrdef-decls"],
+        "mhlo/IR/hlo_ops_attrs.cc.inc": ["-gen-attrdef-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "mhlo/IR/hlo_ops.td",
     deps = [":hlo_ops_td_files"],
@@ -104,16 +88,10 @@ gentbl_cc_library(
     name = "hlo_ops_enums_inc_gen",
     compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            ["-gen-enum-decls"],
-            "mhlo/IR/hlo_ops_enums.h.inc",
-        ),
-        (
-            ["-gen-enum-defs"],
-            "mhlo/IR/hlo_ops_enums.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "mhlo/IR/hlo_ops_enums.h.inc": ["-gen-enum-decls"],
+        "mhlo/IR/hlo_ops_enums.cc.inc": ["-gen-enum-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "mhlo/IR/hlo_ops.td",
     deps = [":hlo_ops_td_files"],
@@ -123,22 +101,16 @@ gentbl_cc_library(
     name = "hlo_ops_typedefs_inc_gen",
     compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            [
-                "-gen-typedef-decls",
-                "--typedefs-dialect=mhlo",
-            ],
-            "mhlo/IR/hlo_ops_typedefs.h.inc",
-        ),
-        (
-            [
-                "-gen-typedef-defs",
-                "--typedefs-dialect=mhlo",
-            ],
-            "mhlo/IR/hlo_ops_typedefs.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "mhlo/IR/hlo_ops_typedefs.h.inc": [
+            "-gen-typedef-decls",
+            "--typedefs-dialect=mhlo",
+        ],
+        "mhlo/IR/hlo_ops_typedefs.cc.inc": [
+            "-gen-typedef-defs",
+            "--typedefs-dialect=mhlo",
+        ],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "mhlo/IR/hlo_ops.td",
     deps = [":hlo_ops_td_files"],
@@ -148,12 +120,7 @@ gentbl_cc_library(
     name = "hlo_ops_pattern_inc_gen",
     compatible_with = get_compatible_with_portable(),
     strip_include_prefix = "mhlo/IR/",
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "mhlo/IR/hlo_patterns.cc.inc",
-        ),
-    ],
+    tbl_outs = {"mhlo/IR/hlo_patterns.cc.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "mhlo/IR/hlo_patterns.td",
     deps = [
@@ -197,12 +164,7 @@ gentbl_cc_library(
     name = "canonicalize_inc_gen",
     compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "mhlo/IR/mhlo_canonicalize.inc",
-        ),
-    ],
+    tbl_outs = {"mhlo/IR/mhlo_canonicalize.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "mhlo/IR/mhlo_canonicalize.td",
     deps = [":hlo_ops_td_files"],
@@ -245,15 +207,10 @@ gentbl_cc_library(
     name = "deallocation_passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=Deallocation",
-            ],
-            "deallocation/transforms/passes.h.inc",
-        ),
-    ],
+    tbl_outs = {"deallocation/transforms/passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=Deallocation",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "deallocation/transforms/passes.td",
     deps = ["@llvm-project//mlir:PassBaseTdFiles"],
@@ -327,7 +284,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:InliningUtils",
-        "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
@@ -339,9 +295,9 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@stablehlo//:base",
-        "@stablehlo//:broadcast_utils",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_assembly_format",
+        "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_type_inference",
     ],
 )
@@ -363,7 +319,6 @@ cc_library(
 cc_library(
     name = "mhlo_passes",
     srcs = [
-        "mhlo/transforms/broadcast_propagation/broadcast_propagation.cc",
         "mhlo/transforms/chlo_legalize_to_hlo/chlo_legalize_to_hlo_pass.cc",
         "mhlo/transforms/collapse_elementwise_map/collapse_elementwise_map.cc",
         "mhlo/transforms/convert_to_signless/convert_to_signless_pass.cc",
@@ -378,12 +333,10 @@ cc_library(
         "mhlo/transforms/legalize_trigonometric_to_approximation/legalize_trigonometric_to_approximation.cc",
         "mhlo/transforms/materialize_broadcasts/materialize_broadcasts.cc",
         "mhlo/transforms/materialize_broadcasts/materialize_broadcasts_pass.cc",
-        "mhlo/transforms/merge_assuming_ops/merge_assuming_ops.cc",
         "mhlo/transforms/mhlo_flatten_tuple/mhlo_flatten_tuple.cc",
         "mhlo/transforms/mhlo_passes.h.inc",
         "mhlo/transforms/optimize_mhlo/optimize_mhlo.cc",
         "mhlo/transforms/prepare_for_export/prepare_for_export.cc",
-        "mhlo/transforms/shape_simplification/shape_simplification.cc",
         "mhlo/transforms/sink_constants_to_control_flow/sink_constants_to_control_flow.cc",
         "mhlo/transforms/stablehlo_legalize_to_hlo/stablehlo_legalize_to_hlo_pass.cc",
         "mhlo/transforms/test_infer_shaped_type/test_infer_shaped_type_pass.cc",
@@ -616,7 +569,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
-        "@llvm-project//mlir:Transforms",
     ],
 )
 
@@ -624,12 +576,7 @@ gentbl_cc_library(
     name = "chlo_legalize_to_hlo_inc_gen",
     compatible_with = get_compatible_with_portable(),
     strip_include_prefix = "mhlo/transforms",
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "mhlo/transforms/chlo_legalize_to_hlo/generated_chlo_legalize_to_hlo.inc",
-        ),
-    ],
+    tbl_outs = {"mhlo/transforms/chlo_legalize_to_hlo/generated_chlo_legalize_to_hlo.inc": ["-gen-rewriters"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "mhlo/transforms/chlo_legalize_to_hlo/chlo_legalize_to_hlo_patterns.td",
     deps = [":hlo_ops_td_files"],
@@ -814,6 +761,7 @@ cc_library(
         ":mlir_hlo",
         ":transforms_passes",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AMDGPUUtils",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:AffineToStandard",
         "@llvm-project//mlir:ArithDialect",
@@ -859,15 +807,10 @@ gentbl_cc_library(
     name = "transforms_passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=LMHLOTransforms",
-            ],
-            "transforms/passes.h.inc",
-        ),
-    ],
+    tbl_outs = {"transforms/passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=LMHLOTransforms",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/passes.td",
     deps = ["@llvm-project//mlir:PassBaseTdFiles"],
@@ -877,15 +820,10 @@ gentbl_cc_library(
     name = "gpu_transforms_passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=LMHLOGPUTransforms",
-            ],
-            "transforms/gpu_passes.h.inc",
-        ),
-    ],
+    tbl_outs = {"transforms/gpu_passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=LMHLOGPUTransforms",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/gpu_passes.td",
     deps = ["@llvm-project//mlir:PassBaseTdFiles"],
@@ -1065,14 +1003,9 @@ gentbl_cc_library(
     name = "stablehlo_extension_pass_inc_gen",
     compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-            ],
-            "stablehlo_ext/transforms/passes.h.inc",
-        ),
-    ],
+    tbl_outs = {"stablehlo_ext/transforms/passes.h.inc": [
+        "-gen-pass-decls",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "stablehlo_ext/transforms/passes.td",
     deps = ["@llvm-project//mlir:PassBaseTdFiles"],

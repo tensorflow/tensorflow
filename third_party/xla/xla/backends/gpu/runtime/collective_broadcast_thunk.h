@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/core/collectives/communicator.h"
@@ -51,8 +52,9 @@ class CollectiveBroadcastStartThunk : public CollectiveThunk {
                                 bool p2p_memcpy_enabled = false);
 
  protected:
-  absl::Status RunCollective(const ExecuteParams& params, se::Stream& stream,
-                             CommunicatorHandle comm_handle) override;
+  absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
+                                     se::Stream& stream,
+                                     CommunicatorHandle comm_handle) override;
 
  private:
   const CollectiveConfig config_;

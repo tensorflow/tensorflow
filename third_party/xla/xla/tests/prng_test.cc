@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/SpecialFunctions"
 #include "xla/client/local_client.h"
@@ -94,8 +95,10 @@ class ScalarBF16Test
     : public PrngTest,
       public ::testing::WithParamInterface<ScalarBF16TestCase> {};
 
-XLA_TEST_P(ScalarBF16Test,
-           DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(DISABLED_ON_CPU(DoIt)))) {
+XLA_TEST_P(ScalarBF16Test, DoIt) {
+  if (test::DeviceIsOneOf({test::kCpu, test::kGpu, test::kInterpreter})) {
+    GTEST_SKIP();
+  }
   auto test_params = GetParam();
   UniformTest<bfloat16>(static_cast<bfloat16>(std::get<1>(test_params).first),
                         static_cast<bfloat16>(std::get<1>(test_params).second),
@@ -120,8 +123,10 @@ INSTANTIATE_TEST_SUITE_P(
 
 // TODO(b/71543667): Fix Rng ops on LLVM backends.
 // TODO(b/122047800): Interpreter does not support BF16 for RNG ops.
-XLA_TEST_F(PrngTest, DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(
-                         DISABLED_ON_CPU(ScalarBF16CountTests)))) {
+XLA_TEST_F(PrngTest, ScalarBF16CountTests) {
+  if (test::DeviceIsOneOf({test::kCpu, test::kGpu, test::kInterpreter})) {
+    GTEST_SKIP();
+  }
   // There are 3 BF16 values in the range of [32.25, 33): 32.25, 32.5, 32.75,
   // they should get similar counts.
   bfloat16 low = static_cast<bfloat16>(32.25);
@@ -230,7 +235,10 @@ XLA_TEST_F(PrngTest, Uniformity256) { UniformChiSquared(256, 256); }
 
 // TODO(b/134770669): May remove this test if we decide not to support map
 //                    computations with kRng instructions.
-XLA_TEST_F(PrngTest, DISABLED_ON_GPU(DISABLED_ON_CPU(MapUsingRng))) {
+XLA_TEST_F(PrngTest, MapUsingRng) {
+  if (test::DeviceIsOneOf({test::kCpu, test::kGpu})) {
+    GTEST_SKIP();
+  }
   // Build a x -> (x + U[0,1)) computation.
   auto build_sum_rng = [](XlaBuilder& builder) {
     auto b = builder.CreateSubBuilder("sum_with_rng");

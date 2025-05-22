@@ -19,7 +19,10 @@ limitations under the License.
 #include <optional>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/matmul_utils.h"
 
@@ -52,6 +55,12 @@ class GemmThunk : public Thunk {
     return workspace_;
   }
   bool deterministic() const { return deterministic_; }
+
+  static absl::StatusOr<std::unique_ptr<GemmThunk>> FromProto(
+      ThunkInfo thunk_info, const GemmThunkProto& proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
 
  private:
   const GemmConfig config_;

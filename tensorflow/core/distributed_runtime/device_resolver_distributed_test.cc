@@ -83,7 +83,7 @@ TEST_F(DeviceResDistTest, GetDeviceAttributesLocal) {
 
 TEST_F(DeviceResDistTest, GetDeviceAttributesLocalUnknown) {
   DeviceAttributes attributes;
-  EXPECT_TRUE(errors::IsNotFound(dev_resolver_->GetDeviceAttributes(
+  EXPECT_TRUE(absl::IsNotFound(dev_resolver_->GetDeviceAttributes(
       "/job:worker/replica:0/task:0/device:CPU:9", &attributes)));
 }
 
@@ -109,7 +109,7 @@ TEST_F(DeviceResDistTest, GetAllDeviceAttributes) {
 
 TEST_F(DeviceResDistTest, GetAllDeviceAttributesUnknown) {
   std::vector<DeviceAttributes> attributes;
-  EXPECT_TRUE(errors::IsNotFound(dev_resolver_->GetAllDeviceAttributes(
+  EXPECT_TRUE(absl::IsNotFound(dev_resolver_->GetAllDeviceAttributes(
       "/job:worker/replica:0/task:3", &attributes)));
 }
 
@@ -157,7 +157,7 @@ TEST_F(DeviceResDistTest, UpdateDeviceAttributesDifferentIncarnation) {
   attributes.push_back(
       NewDevice("CPU", "/job:worker/replica:0/task:0/device:CPU:1")
           ->attributes());
-  EXPECT_TRUE(errors::IsFailedPrecondition(
+  EXPECT_TRUE(absl::IsFailedPrecondition(
       dev_resolver_->UpdateDeviceAttributes(attributes)));
 }
 

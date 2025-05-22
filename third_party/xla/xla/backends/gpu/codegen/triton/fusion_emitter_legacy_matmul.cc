@@ -51,7 +51,9 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
+#include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/codegen/triton/dot_algorithms.h"
 #include "xla/backends/gpu/codegen/triton/emitter_helpers.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
@@ -71,6 +73,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/transforms/transformation_helpers.h"
 #include "xla/primitive_util.h"
 #include "xla/service/algorithm_util.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_indexing_utils.h"
@@ -732,9 +735,9 @@ ma::ConstantOp Cst64(EmitterLocOpBuilder b, int64_t v) {
   //   split-K, batch, non-contracting LHS, non-contracting RHS,
   // where split-K and batch are optional.
   matmul_dims.out_rhs_noncontracting_dim_idx =
-      dot.shape().dimensions_size() - 1;
+      dot.shape().dimensions().size() - 1;
   matmul_dims.out_lhs_noncontracting_dim_idx =
-      dot.shape().dimensions_size() - 2;
+      dot.shape().dimensions().size() - 2;
 
   auto* root = dot.parent()->root_instruction();
   auto iter_spec =
@@ -849,7 +852,7 @@ absl::Status ValidateMatMulConfig(const TritonGemmConfig& config,
   TF_RET_CHECK(dims.lhs_contracting_dimensions_size() == 1);
   TF_RET_CHECK(dims.rhs_contracting_dimensions_size() == 1);
 
-  TF_RET_CHECK(dot.operand(0)->shape().dimensions_size() ==
+  TF_RET_CHECK(dot.operand(0)->shape().dimensions().size() ==
                2 + (config.split_k > 1 ? 1 : 0) + num_batch_dims);
   return absl::OkStatus();
 }
@@ -1473,7 +1476,7 @@ class MatMulEmitterHelper {
   MatMulLaunchConfig launch_config_;
 };
 
-absl::StatusOr<SmallVector<Value>> GetArguments(mlir::triton::FuncOp fn,
+absl::StatusOr<SmallVector<Value>> GetArguments(mlir::FunctionOpInterface fn,
                                                 const HloInstruction& input) {
   if (input.opcode() == HloOpcode::kParameter) {
     return {{fn.getArgument(input.parameter_number())}};
@@ -1517,7 +1520,6 @@ ConstHloInstructionSet ScopeInputs(const TritonFusionAnalysis& analysis,
   }
   return result;
 }
-
 
 // This is a heuristic that serves as a proxy for register usage and code size.
 //
@@ -1899,14 +1901,12 @@ absl::Status EmitForLoopBody(EmitterLocOpBuilder& b,
 // Use tiling and execution parameters from 'config'. BlockLevelParameters are
 // ignored.
 // Variable naming: lhs [m, k] x rhs [k, n] -> out [m, n].
-absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
-    EmitterLocOpBuilder& b, absl::string_view libdevice_path,
-    const se::DeviceDescription& device_info,
-    const HloFusionInstruction* fusion, mlir::triton::FuncOp fn,
-    const BlockLevelParameters&) {
-  // TODO b/315957220: Populate tma_metadata.
-  stream_executor::gpu::TmaMetadata tma_metadata;
-
+absl::Status EmitMatMul(EmitterLocOpBuilder& b,
+                        absl::string_view libdevice_path,
+                        const se::DeviceDescription& device_info,
+                        const HloFusionInstruction* fusion,
+                        mlir::FunctionOpInterface fn,
+                        const BlockLevelParameters&) {
   TF_ASSIGN_OR_RETURN(TritonGemmConfig config, GetTritonGemmConfig(fusion));
   TF_ASSIGN_OR_RETURN(auto analysis,
                       TritonFusionAnalysis::Execute(
@@ -2026,7 +2026,7 @@ absl::StatusOr<std::optional<stream_executor::gpu::TmaMetadata>> EmitMatMul(
     b.create<mt::StoreOp>(tensor_pointer, values_out[producer], boundary_checks,
                           mt::CacheModifier::NONE, mt::EvictionPolicy::NORMAL);
   }
-  return tma_metadata;
+  return absl::OkStatus();
 }
 
 absl::StatusOr<LaunchDimensions> GetMatMulLaunchDimensions(

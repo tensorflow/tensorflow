@@ -25,9 +25,9 @@ include "mlir/IR/PatternBase.td"
 ////////////////////////////////////////////////////////////////////////////////
 
 def IsQuantized : Constraint<CPred<
-  "$0.getType().dyn_cast<ShapedType>() && "
-  "$0.getType().dyn_cast<ShapedType>().getElementType()"
-  ".isa<quant::UniformQuantizedType>()">>;
+  "llvm::dyn_cast<ShapedType>($0.getType()) && "
+  "llvm::isa<quant::UniformQuantizedType>("
+  "llvm::dyn_cast<ShapedType>($0.getType()).getElementType())">>;
 
 def IsNotQuantized : Constraint<Neg<IsQuantized.predicate>>;
 
@@ -38,42 +38,42 @@ def IsNotQuantized : Constraint<Neg<IsQuantized.predicate>>;
 // Checks if the rank of the value is less than or equal to the rank of the
 // other value.
 def IsRankLessThanEqualTo : Constraint<CPred<
-  "$0.getType().cast<ShapedType>().getRank() <= "
-  "$1.getType().cast<ShapedType>().getRank()">>;
+  "llvm::cast<ShapedType>($0.getType()).getRank() <= "
+  "llvm::cast<ShapedType>($1.getType()).getRank()">>;
 
 // Checks if the value has rank at most 'n'.
 class HasRankAtMost<int n> : Constraint<
-    CPred<"$0.getType().cast<ShapedType>().hasRank() && "
-          "$0.getType().cast<ShapedType>().getRank() <= " # n>>;
+    CPred<"llvm::cast<ShapedType>($0.getType()).hasRank() && "
+          "llvm::cast<ShapedType>($0.getType()).getRank() <= " # n>>;
 
 ////////////////////////////////////////////////////////////////////////////////
 ///////////////// DENSE UTILITIES /////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-def DenseFPElementsAttrPred : CPred<"$_self.isa<DenseFPElementsAttr>()">;
-def DenseIntElementsAttrPred : CPred<"$_self.isa<DenseIntElementsAttr>()">;
+def DenseFPElementsAttrPred : CPred<"llvm::isa<DenseFPElementsAttr>($_self)">;
+def DenseIntElementsAttrPred : CPred<"llvm::isa<DenseIntElementsAttr>($_self)">;
 
 ////////////////////////////////////////////////////////////////////////////////
 ///////////////// SPLAT CONSTANT UTILITIES /////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
 def DenseElementsAttrIsSplatPred
-    : CPred<"$_self.cast<DenseElementsAttr>().isSplat()">;
+    : CPred<"llvm::cast<DenseElementsAttr>($_self).isSplat()">;
 
 class DenseFPElementsAttrSplatValueEqualToPred<string val>
-    : CPred<"$_self.cast<DenseFPElementsAttr>().getSplatValue<FloatAttr>()"
+    : CPred<"llvm::cast<DenseFPElementsAttr>($_self).getSplatValue<FloatAttr>()"
             ".getValueAsDouble() == " # val>;
 
 class DenseFPElementsAttrSplatValueEqualToPredWithTolerance<string val, string tolerance>
-    : CPred<"std::abs($_self.cast<DenseFPElementsAttr>().getSplatValue<FloatAttr>()"
+    : CPred<"std::abs(llvm::cast<DenseFPElementsAttr>($_self).getSplatValue<FloatAttr>()"
             ".getValueAsDouble() - " # val # ") <= "#tolerance>;
 
 class DenseIntElementsAttrSplatValueEqualToPred<string val>
-    : CPred<"$_self.isa<DenseIntElementsAttr>() && "
-            "$_self.cast<DenseIntElementsAttr>().getElementType()"
-            "  .isa<IntegerType>() && "
-            "$_self.cast<DenseIntElementsAttr>().isSplat() && "
-            "$_self.cast<DenseIntElementsAttr>().getSplatValue<IntegerAttr>()"
+    : CPred<"llvm::isa<DenseIntElementsAttr>($_self) && "
+            "llvm::isa<IntegerType>("
+	    "llvm::cast<DenseIntElementsAttr>($_self).getElementType()) && "
+            "llvm::cast<DenseIntElementsAttr>($_self).isSplat() && "
+            "llvm::cast<DenseIntElementsAttr>($_self).getSplatValue<IntegerAttr>()"
             "  .getValue().getSExtValue() == " # val>;
 
 // AttrConstraint to match a floating point dense elements attribute with a
@@ -110,8 +110,8 @@ def SplatIntElementsAttr : ElementsAttrBase<
 def GetScalarElementsAttrFromSplat : NativeCodeCall<
     "DenseElementsAttr::get("
     " RankedTensorType::get({},"
-        " $0.cast<mlir::DenseElementsAttr>().getType().getElementType()),"
-    " $0.cast<mlir::DenseElementsAttr>().getSplatValue<mlir::Attribute>())">;
+        " llvm::cast<mlir::DenseElementsAttr>($0).getType().getElementType()),"
+    " llvm::cast<mlir::DenseElementsAttr>($0).getSplatValue<mlir::Attribute>())">;
 
 ////////////////////////////////////////////////////////////////////////////////
 ///////////////// OP BROADCASTING UTILITIES ////////////////////////////////////
@@ -129,10 +129,10 @@ def OperandsDontBroadcastToOutputType : Constraint<Neg<
 ////////////////////////////////////////////////////////////////////////////////
 
 def HasSameStaticShapes : Constraint<
-    CPred<"$0.getType().cast<ShapedType>().hasStaticShape() && "
-          "$1.getType().cast<ShapedType>().hasStaticShape() && "
-          "$0.getType().cast<ShapedType>().getShape() =="
-          "$1.getType().cast<ShapedType>().getShape()">,
+    CPred<"llvm::cast<ShapedType>($0.getType()).hasStaticShape() && "
+          "llvm::cast<ShapedType>($1.getType()).hasStaticShape() && "
+          "llvm::cast<ShapedType>($0.getType()).getShape() =="
+          "llvm::cast<ShapedType>($1.getType()).getShape()">,
     "have the same static shape">;
 
 def CreateNoneValue : NativeCodeCall<
@@ -159,7 +159,7 @@ def IsAllOnesConstant : Constraint<CPred<"TFL::IsAllOnesConstant($0)">>;
 // the permutation is a cyclic permutation of the original shape with only the
 // identity dimensions permuted.
 def IsTransposeTrivial : Constraint<CPred<
-  "TFL::IsTransposeTrivial($0.getType().cast<ShapedType>().getShape(), $1)">>;
+  "TFL::IsTransposeTrivial(llvm::cast<ShapedType>($0.getType()).getShape(), $1)">>;
 
 // Constraint that checks if the transpose op is a no-op.
 def IsTransposeNoop : Constraint<CPred<"TFL::IsTransposeNoop($0)">>;
@@ -169,15 +169,15 @@ def IsTransposeNoop : Constraint<CPred<"TFL::IsTransposeNoop($0)">>;
 // the order of non-identity dimensions.
 def IsReshapeEquivalentToTranspose : Constraint<CPred<
   "TFL::IsReshapeEquivalentToTranspose("
-    "$0.getType().cast<ShapedType>(),"
-    "$1.getType().cast<ShapedType>())">>;
+    "llvm::cast<ShapedType>($0.getType()),"
+    "llvm::cast<ShapedType>($1.getType()))">>;
 
 // Returns the permutation of the trivial reshape op, this will be used to
 // construct the transpose op.
 def GetPermutationFromTrivialReshape : NativeCodeCall<
   "TFL::GetPermutationFromTrivialReshape("
-    "$0.getType().cast<ShapedType>(),"
-    "$1.getType().cast<ShapedType>())">;
+    "llvm::cast<ShapedType>($0.getType()),"
+    "llvm::cast<ShapedType>($1.getType()))">;
 
 // Constraint that checks if all values in offset between two
 // attributes are non-negative.
@@ -191,12 +191,12 @@ def GetOffSet : NativeCodeCall<"TFL::GetOffSet($0, $1)">;
 
 // Attribute Constraint that checks if the attribute value is zero.
 def ZeroIntAttr
-  : AttrConstraint<CPred<"$_self.cast<::mlir::IntegerAttr>().getInt() == 0">>;
+  : AttrConstraint<CPred<"llvm::cast<::mlir::IntegerAttr>($_self).getInt() == 0">>;
 
 // Checks if the value has rank at most 'n'.
 class HasRankAtLeast<int n> : Constraint<
-    CPred<"$0.getType().cast<ShapedType>().hasRank() && "
-          "$0.getType().cast<ShapedType>().getRank() >= " # n>>;
+    CPred<"llvm::cast<ShapedType>($0.getType()).hasRank() && "
+          "llvm::cast<ShapedType>($0.getType()).getRank() >= " # n>>;
 
 // Accepts two inputs and check if both have the same element type.
 def SameElementType : Constraint<
@@ -227,7 +227,7 @@ def AreLastTwoDimsTransposed : Constraint<CPred<
   "TFL::AreLastTwoDimsTransposed($0)">>;
 
 // Checks if the param passed is of NoneType.
-def IsNoneType : Constraint<CPred<"$0.getType().isa<NoneType>()">>;
+def IsNoneType : Constraint<CPred<"llvm::isa<NoneType>($0.getType())">>;
 
 def ConstantLikePred : CPred<"::mlir::matchPattern($0, ::mlir::m_Constant())">;
 def IsConstantLike : Constraint<ConstantLikePred>;

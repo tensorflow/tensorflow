@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/base/optimization.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
-#include "absl/synchronization/blocking_counter.h"
+#include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -42,7 +42,7 @@ uint16_t AsyncValue::CreateTypeInfoAndReturnTypeIdImpl(
 
 AsyncValue::TypeInfoTable* AsyncValue::GetTypeInfoTableSingleton() {
   constexpr int kInitialCapacity = 64;
-  static auto* type_info_table = new TypeInfoTable(kInitialCapacity);
+  static auto* const type_info_table = new TypeInfoTable(kInitialCapacity);
   return type_info_table;
 }
 
@@ -157,35 +157,41 @@ void IndirectAsyncValue::ForwardTo(RCReference<AsyncValue> value) {
 //===----------------------------------------------------------------------===//
 
 void BlockUntilReady(AsyncValue* async_value) {
-  if (ABSL_PREDICT_TRUE(async_value->IsAvailable())) return;
+  if (ABSL_PREDICT_TRUE(async_value->IsAvailable())) {
+    return;
+  }
 
-  absl::BlockingCounter cnt(1);
-  async_value->AndThen([&] { cnt.DecrementCount(); });
-  cnt.Wait();
+  absl::Notification notification;
+  async_value->AndThen([&notification] { notification.Notify(); });
+  notification.WaitForNotification();
 }
 
 void RunWhenReady(absl::Span<AsyncValue* const> values,
-                  absl::AnyInvocable<void()> callee) {
+                  absl::AnyInvocable<void() &&> callee) {
   // Perform a quick scan of the arguments.  If they are all available,
   // then we can run the callee synchronously.
   absl::InlinedVector<AsyncValue*, 4> unavailable_values;
-  for (auto i : values) {
-    if (!i->IsAvailable()) unavailable_values.push_back(i);
+  for (AsyncValue* value : values) {
+    if (!value->IsAvailable()) {
+      unavailable_values.push_back(value);
+    }
   }
 
   // If we can synchronously call 'callee', then do it and we're done.
-  if (unavailable_values.empty()) return callee();
+  if (unavailable_values.empty()) {
+    return std::move(callee)();
+  }
 
   // If there is exactly one unavailable value, then we can just AndThen it.
   if (unavailable_values.size() == 1) {
     unavailable_values[0]->AndThen(
-        [callee = std::move(callee)]() mutable { callee(); });
+        [callee = std::move(callee)]() mutable { std::move(callee)(); });
     return;
   }
 
   struct CounterAndCallee {
     std::atomic<size_t> counter;
-    absl::AnyInvocable<void()> callee;
+    absl::AnyInvocable<void() &&> callee;
   };
 
   // Otherwise, we have multiple unavailable values.  Put a counter on the heap
@@ -196,17 +202,19 @@ void RunWhenReady(absl::Span<AsyncValue* const> values,
   for (auto* val : unavailable_values) {
     val->AndThen([data]() {
       // Decrement the counter unless we're the last to be here.
-      if (data->counter.fetch_sub(1) != 1) return;
+      if (data->counter.fetch_sub(1) != 1) {
+        return;
+      }
 
       // If we are the last one, then run the callee and free the data.
-      data->callee();
+      std::move(data->callee)();
       delete data;
     });
   }
 }
 
 void RunWhenReady(absl::Span<RCReference<AsyncValue> const> values,
-                  absl::AnyInvocable<void()> callee) {
+                  absl::AnyInvocable<void() &&> callee) {
   absl::InlinedVector<AsyncValue*, 8> pointers;
   pointers.reserve(values.size());
   for (const auto& ref : values) {

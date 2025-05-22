@@ -86,7 +86,7 @@ std::optional<StringRef> GetCompsiteFunctionName(Operation *op) {
     return entry_function_attr.getValue();
   } else {
     TF::PartitionedCallOp call_op = dyn_cast_or_null<TF::PartitionedCallOp>(op);
-    const auto f_attr = call_op.getFAttr().dyn_cast<FlatSymbolRefAttr>();
+    const auto f_attr = mlir::dyn_cast<FlatSymbolRefAttr>(call_op.getFAttr());
     if (!f_attr) return std::nullopt;
     return f_attr.getValue();
   }

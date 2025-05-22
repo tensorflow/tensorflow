@@ -57,7 +57,6 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_memory_descriptions_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_stream_extension.h"
-#include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_api.h"
@@ -68,6 +67,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
@@ -360,8 +360,7 @@ InitializeArgsAndCompile(PjRtCApiClient* api_client, const PJRT_Api* c_api,
   args.struct_size = PJRT_Client_Compile_Args_STRUCT_SIZE;
   PJRT_Profiler_Extension profiler_extension =
       pjrt::CreatePjrtProfilerExtension("PJRT_Client_Compile linkage");
-  args.extension_start =
-      reinterpret_cast<PJRT_Extension_Base*>(&profiler_extension);
+  args.extension_start = &profiler_extension.base;
   args.client = client;
   TF_ASSIGN_OR_RETURN(const CompileOptionsProto options_proto,
                       options.ToProto());
@@ -1875,8 +1874,7 @@ PjRtCApiLoadedExecutable::Execute(
   PJRT_Profiler_Extension profiler_extension =
       pjrt::CreatePjrtProfilerExtension(
           "PJRT_LoadedExecutable_Execute linkage");
-  args.extension_start =
-      reinterpret_cast<PJRT_Extension_Base*>(&profiler_extension);
+  args.extension_start = &profiler_extension.base;
 
   RETURN_STATUS_IF_PJRT_ERROR(
       pjrt_c_api()->PJRT_LoadedExecutable_Execute(&args), pjrt_c_api());
@@ -1947,8 +1945,7 @@ PjRtCApiLoadedExecutable::ExecuteWithSingleDevice(
   PJRT_Profiler_Extension profiler_extension =
       pjrt::CreatePjrtProfilerExtension(
           "PJRT_LoadedExecutable_Execute linkage");
-  args.extension_start =
-      reinterpret_cast<PJRT_Extension_Base*>(&profiler_extension);
+  args.extension_start = &profiler_extension.base;
 
   RETURN_STATUS_IF_PJRT_ERROR(
       pjrt_c_api()->PJRT_LoadedExecutable_Execute(&args), pjrt_c_api());
@@ -2322,7 +2319,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::CopyToMemorySpace(
     // Copy across PjRtClients by copying through host
     TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteralSync());
     absl::InlinedVector<int64_t, 4> byte_strides(
-        literal->shape().dimensions_size());
+        literal->shape().dimensions().size());
     TF_RETURN_IF_ERROR(
         ShapeUtil::ByteStrides(literal->shape(), absl::MakeSpan(byte_strides)));
     // Avoid use-after-free on `literal` due to unsequenced move and use.

@@ -32,7 +32,7 @@ namespace internal {
 
 namespace {
 
-using mlir::mhlo::test::GetMlirModuleFromString;
+using mlir::hlo::test::GetMlirModuleFromString;
 
 class VerifyClusteringPassTest : public testing::Test {
  protected:

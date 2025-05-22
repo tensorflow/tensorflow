@@ -24,8 +24,8 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -33,7 +33,7 @@ namespace xla {
 namespace cpu {
 namespace {
 
-class ShapePartitionAssignerTest : public HloTestBase {
+class ShapePartitionAssignerTest : public HloHardwareIndependentTestBase {
  protected:
   typedef std::vector<int64_t> Vec;
 
@@ -98,7 +98,7 @@ TEST_F(ShapePartitionAssignerTest, Shape532WithLayout201) {
             expected_partitions);
 }
 
-class ShapePartitionIteratorTest : public HloTestBase {
+class ShapePartitionIteratorTest : public HloHardwareIndependentTestBase {
  protected:
   typedef std::vector<std::pair<int64_t, int64_t>> Partition;
 };
@@ -152,7 +152,7 @@ TEST_F(ShapePartitionIteratorTest, Shape532WithLayout210) {
   }
 }
 
-class RandomShapePartitionIteratorTest : public HloTestBase {
+class RandomShapePartitionIteratorTest : public HloHardwareIndependentTestBase {
  protected:
   typedef std::vector<std::pair<int64_t, int64_t>> Partition;
   RandomShapePartitionIteratorTest()
@@ -179,7 +179,7 @@ TEST_F(RandomShapePartitionIteratorTest, RandomShapeAndPartitions) {
   int64_t total_dim_size = 1;
   for (int i = 0; i < num_outer_dims_to_partition; ++i) {
     const int64_t dimension = shape.layout().minor_to_major(
-        shape.layout().minor_to_major_size() - 1 - i);
+        shape.layout().minor_to_major().size() - 1 - i);
     dim_sizes[i] = shape.dimensions(dimension);
     total_dim_size *= dim_sizes[i];
     // Choose dimension partition count in [1, dim_size]

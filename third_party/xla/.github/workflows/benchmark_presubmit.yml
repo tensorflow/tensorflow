@@ -129,6 +129,6 @@ jobs:
 
           echo "Running test with binary: $HLO_RUNNER_BINARY"
           pwd #print working directory
-          $HLO_RUNNER_BINARY --device_type=$DEVICE_TYPE --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to="$XSPACE_FILE_PATH" "$TEST_HLO_FILE" > "$OUTPUT_FILE_PATH"
+          $HLO_RUNNER_BINARY --device_type=$DEVICE_TYPE --use_spmd_partitioning --num_repeats=5 --profile_execution=True --xla_gpu_dump_xspace_to="$XSPACE_FILE_PATH" "$TEST_HLO_FILE" > "$OUTPUT_FILE_PATH"
           $COMPUTE_XSPACE_STATS_BINARY --input="$XSPACE_FILE_PATH" --device_type="${{ matrix.job_info.platform }}" >> "$OUTPUT_FILE_PATH"
           cat "$OUTPUT_FILE_PATH"

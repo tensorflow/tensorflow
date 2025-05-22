@@ -34,6 +34,8 @@ namespace gpu {
 // Thread-safe.
 class KernelArgument {
  public:
+  KernelArgument(Shape shape, BufferAllocation::Slice slice, bool written)
+      : shape_(shape), slice_(slice), written_(written) {}
   const Shape& shape() const { return shape_; }
   const BufferAllocation::Slice& slice() const { return slice_; }
   bool written() const { return written_; }
@@ -45,9 +47,6 @@ class KernelArgument {
   int llvm_arg_index() const { return llvm_arg_index_; }
 
  private:
-  KernelArgument(Shape shape, BufferAllocation::Slice slice, bool written)
-      : shape_(shape), slice_(slice), written_(written) {}
-
   Shape shape_;
   BufferAllocation::Slice slice_;
   bool aliased_ = true;

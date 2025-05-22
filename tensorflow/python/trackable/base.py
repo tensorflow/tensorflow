@@ -79,7 +79,7 @@ class WeakTrackableReference(TrackableReference):
   __slots__ = ()
 
   def __init__(self, name, ref):
-    if not isinstance(self, weakref.ref):
+    if not isinstance(ref, weakref.ref):
       ref = weakref.ref(ref)
     super(WeakTrackableReference, self).__init__(name=name, ref=ref)
 

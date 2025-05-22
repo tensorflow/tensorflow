@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
@@ -67,7 +67,7 @@ class CallOptions {
   void SetTimeout(int64_t ms);
 
  private:
-  mutex mu_;
+  absl::Mutex mu_;
   CancelFunction cancel_func_ TF_GUARDED_BY(mu_);
 
   // RPC operation timeout in milliseconds.

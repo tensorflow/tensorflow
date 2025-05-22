@@ -132,9 +132,6 @@ class GpuCliqueKey : public CliqueKey {
   GlobalDeviceId root_device_;
 };
 
-bool operator==(const GpuCliqueKey& a, const GpuCliqueKey& b);
-bool operator<(const GpuCliqueKey& a, const GpuCliqueKey& b);
-
 }  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_COLLECTIVES_GPU_CLIQUE_KEY_H_

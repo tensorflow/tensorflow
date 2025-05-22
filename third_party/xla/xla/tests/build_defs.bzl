@@ -1,5 +1,11 @@
-"""Build rules for XLA testing. This file is only used for the OSS build."""
+"""Build rules for XLA testing. This file is only used for the OSS build and running tests on
+github.
+"""
 
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "is_rocm_configured",
+)
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tests:plugin.bzl", "plugins")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
@@ -8,6 +14,7 @@ load(
     "tf_gpu_tests_tags",
 )
 load("//xla/tsl/platform/default:build_config.bzl", "strict_cc_test")
+load("//xla/tsl/platform/default:cuda_build_defs.bzl", "is_cuda_configured")
 
 visibility(DEFAULT_LOAD_VISIBILITY)
 
@@ -42,10 +49,10 @@ DEFAULT_DISABLED_BACKENDS = []
 _ALL_BACKENDS = ["cpu", "interpreter"] + NVIDIA_GPU_BACKENDS + AMD_GPU_DEFAULT_BACKENDS + list(plugins.keys())
 
 # buildifier: disable=function-docstring
-def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args):
-    # Expand "gpu" backend name into device specific backend names.
+def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args, common_tags):
+    # Expand "gpu" backend name into device specific backend names unless it's tagged rocm-only
     new_backends = [name for name in backends if name != "gpu"]
-    if len(new_backends) < len(backends):
+    if len(new_backends) < len(backends) and "rocm-only" not in common_tags:
         new_backends.extend(NVIDIA_GPU_DEFAULT_BACKENDS)
 
     new_disabled_backends = [name for name in disabled_backends if name != "gpu"]
@@ -109,9 +116,11 @@ def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, b
     return new_backends, new_disabled_backends, new_backend_tags, new_backend_args
 
 # buildifier: disable=function-docstring
-def prepare_amd_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args):
+def prepare_amd_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args, common_tags):
     new_backends = [name for name in backends if name != "gpu"]
-    if len(new_backends) < len(backends):
+
+    # Expand "gpu" backend name into device specific backend names unless it's tagged cuda-only
+    if len(new_backends) < len(backends) and "cuda-only" not in common_tags:
         new_backends.extend(AMD_GPU_DEFAULT_BACKENDS)
 
     new_disabled_backends = [name for name in disabled_backends if name != "gpu"]
@@ -137,15 +146,13 @@ def prepare_amd_gpu_backend_data(backends, disabled_backends, backend_tags, back
         new_backend_tags.setdefault(key, gpu_backend_tags[:])
 
     for backend in AMD_GPU_DEFAULT_BACKENDS:
-        if "cuda-only" not in gpu_backend_tags:
-            new_backend_tags[backend].append("requires-gpu-amd")
-        new_backend_tags[backend].append("notap")
+        new_backend_tags[backend].append("requires-gpu-amd")
         new_backend_tags[backend].append("rocm-only")
 
     return new_backends, new_disabled_backends, new_backend_tags, backend_args
 
 # buildifier: disable=function-docstring
-def prepare_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args):
+def prepare_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args, common_tags):
     nvidia_backends = [
         backend
         for backend in backends
@@ -163,9 +170,9 @@ def prepare_gpu_backend_data(backends, disabled_backends, backend_tags, backend_
     ]
 
     nvidia_backends, nvidia_disabled_backends, nvidia_backend_tags, nvidia_backend_args = \
-        prepare_nvidia_gpu_backend_data(nvidia_backends, disabled_backends, backend_tags, backend_args)
+        prepare_nvidia_gpu_backend_data(nvidia_backends, disabled_backends, backend_tags, backend_args, common_tags)
     amd_backends, amd_disabled_backends, amd_backend_tags, amd_backend_args = \
-        prepare_amd_gpu_backend_data(amd_backends, disabled_backends, backend_tags, {})
+        prepare_amd_gpu_backend_data(amd_backends, disabled_backends, backend_tags, {}, common_tags)
 
     new_backends = [
         backend
@@ -192,16 +199,17 @@ def xla_test(
         tags = [],
         copts = [],
         data = [],
+        env = {},
         backend_tags = {},
         backend_args = {},
         backend_kwargs = {},
-        # Inside Google, we link statically to catch duplicate main() definitions.
-        # However, this increases the size of the test binary, which breaks Nvidia's build.
-        # Therefore we use dynamic linking outside Google.
-        linkstatic = False,
+        linkstatic = None,
         fail_if_no_test_linked = True,
         **kwargs):
     """Generates strict_cc_test targets for the given XLA backends.
+
+    This rule is similar to platforms/.../build_defs.bzl but only meant for running the tests on
+    github.
 
     This rule generates a cc_test target for one or more XLA backends. The arguments
     are identical to cc_test with two additions: 'backends' and 'backend_args'.
@@ -262,6 +270,7 @@ def xla_test(
       tags: Tags for the target.
       copts: Additional copts to pass to the build.
       data: Additional data to pass to the build.
+      env: Env vars to set for the test.
       backend_tags: A dict mapping backend name to list of additional tags to
         use for that target.
       backend_args: A dict mapping backend name to list of additional args to
@@ -269,7 +278,8 @@ def xla_test(
       backend_kwargs: A dict mapping backend name to list of additional keyword
         arguments to pass to strict_cc_test. Only use for kwargs that don't have a
         dedicated argument, like setting per-backend flaky or timeout attributes.
-      linkstatic: Whether to link the test statically.
+      linkstatic: Whether to link the test statically. Can be set to None to use
+        the default value decided by strict_cc_test.
       fail_if_no_test_linked: Whether to fail if no test case is linked into the test.
       **kwargs: Additional keyword arguments to pass to strict_cc_test.
     """
@@ -280,7 +290,7 @@ def xla_test(
 
     # Expand "gpu" backend name to specific GPU backends and update tags.
     backends, disabled_backends, backend_tags, backend_args = \
-        prepare_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args)
+        prepare_gpu_backend_data(backends, disabled_backends, backend_tags, backend_args, tags)
 
     backends = [
         backend
@@ -349,6 +359,10 @@ def xla_test(
             for lib_dep in xla_test_library_deps:
                 backend_deps += ["%s_%s" % (lib_dep, backend)]  # buildifier: disable=list-append
 
+        device_and_modifiers = backend.split("_")
+        device = device_and_modifiers[0]
+        modifiers = device_and_modifiers[1:]
+
         xla_cc_test(
             name = test_name,
             srcs = srcs,
@@ -358,12 +372,17 @@ def xla_test(
             args = args + this_backend_args,
             deps = deps + backend_deps,
             data = data + this_backend_data,
+            env = env | {
+                "XLA_TEST_DEVICE": device,
+                "XLA_TEST_MODIFIERS": ",".join(modifiers),
+            },
             linkstatic = linkstatic,
             fail_if_no_test_linked = fail_if_no_test_linked,
             **this_backend_kwargs
         )
-
-        test_names.append(test_name)
+        if ((backend in NVIDIA_GPU_BACKENDS and is_cuda_configured()) or
+            (backend in AMD_GPU_DEFAULT_BACKENDS and is_rocm_configured())):
+            test_names.append(test_name)
 
     # Notably, a test_suite with `tests = []` is not empty:
     # https://bazel.build/reference/be/general#test_suite_args and the default
@@ -398,7 +417,6 @@ def xla_test(
             # --build_tag_filters (see above). Therefore we don't want to fail
             # if no test case is linked in.
             fail_if_no_test_linked = False,
-            **kwargs
         )
 
 def xla_test_library(

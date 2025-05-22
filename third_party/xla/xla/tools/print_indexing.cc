@@ -58,7 +58,7 @@ absl::Status Run(const std::string& filename, int operand_id, int output_id) {
   if (output_id < 0) {
     // Enumerate all outputs.
     if (root->shape().IsTuple()) {
-      for (int i = 0; i < root->shape().tuple_shapes_size(); ++i) {
+      for (int i = 0; i < root->shape().tuple_shapes().size(); ++i) {
         output_ids.push_back(i);
       }
     } else {

@@ -20,8 +20,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/runtime/collective_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -73,9 +76,22 @@ class AllReduceStartThunk : public AllReduceReduceScatterThunkBase {
   static CollectiveOpGroupMode GetGroupMode(
       const HloAllReduceInstruction* inst);
 
+  absl::StatusOr<bool> ShouldUseOneShotAllReduceKernel(
+      const GpuCliqueKey& clique_key,
+      const CollectiveCliques* collective_cliques);
+
+  absl::Status Prepare(const PrepareParams& params,
+                       ResourceRequestsInterface& resource_requests) override;
+  absl::Status Initialize(const InitializeParams& params) override;
+
  protected:
-  absl::Status RunCollective(const ExecuteParams& params, se::Stream& stream,
-                             CommunicatorHandle comm_handle) override;
+  absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
+                                     se::Stream& stream,
+                                     CommunicatorHandle comm) override;
+
+ private:
+  bool one_shot_kernel_enabled_ = false;
+  CollectiveKernelThunk collective_kernel_thunk_;
 };
 
 // -----------------------------------------------------------------------------
@@ -99,8 +115,9 @@ class ReduceScatterStartThunk : public AllReduceReduceScatterThunkBase {
       const HloReduceScatterInstruction* inst);
 
  protected:
-  absl::Status RunCollective(const ExecuteParams& params, se::Stream& stream,
-                             CommunicatorHandle comm_handle) override;
+  absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
+                                     se::Stream& stream,
+                                     CommunicatorHandle comm) override;
 };
 
 // -----------------------------------------------------------------------------

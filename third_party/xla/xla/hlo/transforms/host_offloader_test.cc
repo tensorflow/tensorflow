@@ -52,15 +52,13 @@ namespace {
 
 class HostOffloaderTest : public HloHardwareIndependentTestBase {
  protected:
-  absl::StatusOr<bool> RunHostOffloader(HloModule* module,
-                                        bool after_layout = false) {
+  absl::StatusOr<bool> RunHostOffloader(HloModule* module) {
     TF_EXPECT_OK(verifier().Run(module).status());
     if (module->has_schedule()) {
       return absl::InternalError("Expected a non-scheduled module");
     }
     bool changed = false;
-    HostOffloadLegalize host_offload_legalize(Layout::kHostMemorySpace,
-                                              after_layout);
+    HostOffloadLegalize host_offload_legalize;
     TF_ASSIGN_OR_RETURN(bool legal_changed, host_offload_legalize.Run(module));
     changed |= legal_changed;
     HostOffloader host_offloader;
@@ -435,8 +433,7 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, RunHostOffloader(module.get(), /*after_layout=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
   HloVerifier verifier(/*layout_sensitive=*/true,
@@ -483,8 +480,7 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, RunHostOffloader(module.get(), /*after_layout=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
   HloVerifier verifier(/*layout_sensitive=*/true,
@@ -547,8 +543,7 @@ ENTRY e {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, RunHostOffloader(module.get(), /*after_layout=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
   HloVerifier verifier(/*layout_sensitive=*/true,
@@ -616,8 +611,7 @@ ENTRY e {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, RunHostOffloader(module.get(), /*after_layout=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
   HloVerifier verifier(/*layout_sensitive=*/true,

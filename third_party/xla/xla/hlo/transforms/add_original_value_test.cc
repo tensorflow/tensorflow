@@ -51,6 +51,25 @@ ENTRY test {
   EXPECT_TRUE(changed);
 }
 
+TEST_F(AddOriginalValueTest, ShapeIndex) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule test
+ENTRY test (tuple: ((f32[], f32[]), f32[])) -> f32[] {
+  // CHECK: %[[TUPLE:.*]] =
+  tuple = ((f32[], f32[]), f32[]) parameter(0)
+  // CHECK: %[[TUPLE1:.*]] =
+  tuple.1 = (f32[], f32[]) get-tuple-element(tuple), index=0
+  // CHECK: f32[] get-tuple-element(%[[TUPLE1]]), index=0, origin={{[{]}}{"[[TUPLE]]" {0,0}
+  ROOT v1 = f32[] get-tuple-element(tuple.1), index=0
+}
+
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  RunAndFilecheckHloRewrite(hlo_string, AddOriginalValue());
+}
+
 TEST_F(AddOriginalValueTest, Tuple) {
   constexpr absl::string_view hlo_string = R"(
 HloModule test, entry_computation_layout={(f32[], f32[3]{0}, f32[2,3]{1,0})->((f32[], f32[3]{0}), f32[2,3]{1,0})}

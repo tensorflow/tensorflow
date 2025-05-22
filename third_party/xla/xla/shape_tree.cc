@@ -42,8 +42,8 @@ void IndexTable::CreateEntry(Entry& entry, const Shape& shape,
   size_t children_start_id = entries_.size();
   entry.children_start_id = children_start_id;
   // Add entry for children first, before recursing, so they are consecutive.
-  entries_.resize(entries_.size() + shape.tuple_shapes_size());
-  for (size_t i = 0; i < shape.tuple_shapes_size(); ++i) {
+  entries_.resize(entries_.size() + shape.tuple_shapes().size());
+  for (size_t i = 0; i < shape.tuple_shapes().size(); ++i) {
     CreateEntry(entries_[children_start_id + i], shape.tuple_shapes(i),
                 next_node_id);
   }

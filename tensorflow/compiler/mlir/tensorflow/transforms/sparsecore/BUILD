@@ -5,7 +5,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        "//tensorflow/compiler/mlir:__pkg__",
+        "//tensorflow/compiler/mlir:__subpackages__",
         "//tensorflow/compiler/mlir/tensorflow/transforms:__pkg__",
         "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:__pkg__",
         "//tensorflow/compiler/mlir/tf2xla/internal:__pkg__",
@@ -16,15 +16,10 @@ package(
 gentbl_cc_library(
     name = "sparsecore_passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=SparseCore",
-            ],
-            "sparsecore_passes.h.inc",
-        ),
-    ],
+    tbl_outs = {"sparsecore_passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=SparseCore",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "sparsecore_passes.td",
     deps = [

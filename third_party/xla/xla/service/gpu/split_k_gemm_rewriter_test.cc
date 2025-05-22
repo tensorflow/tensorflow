@@ -27,22 +27,19 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
-#include "xla/layout.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/layout_assignment.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -68,70 +65,8 @@ TEST(HasDivisibleSuffixAllowingSplitTest, AllTests) {
   EXPECT_FALSE(HasDivisibleSuffixAllowingSplit({2, 3}, 2));
 }
 
-using SplitKTest = HloTestBase;
+using SplitKTest = HloHardwareIndependentTestBase;
 
-TEST_F(SplitKTest, MakeSplitK) {
-  const std::string hlo_text = R"(
-HloModule t
-
-triton_gemm_dot {
-  parameter_0 = s8[3,128,5,32]{3,2,1,0} parameter(0)
-  bitcast.1 = s8[3,5,32,128]{2,1,3,0} bitcast(parameter_0)
-  copy.1 = s8[3,5,32,128]{3,2,1,0} copy(bitcast.1)
-  reshape.5 = s8[480,128]{1,0} reshape(copy.1)
-  convert.8 = bf16[480,128]{1,0} convert(reshape.5)
-  parameter_1 = bf16[16,128]{1,0} parameter(1)
-  ROOT dot.0 = bf16[480,16]{1,0} dot(convert.8, parameter_1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={1}
-}
-
-ENTRY e {
-  p0 = s8[3,128,5,32]{3,2,1,0} parameter(0)
-  p1 = bf16[16,128]{1,0} parameter(1)
-  ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
-    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm",
-    metadata={op_name="foo"}
-})";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  TritonGemmConfig config(16, 16, 16, 4, 1, 4);
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
-  const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_EQ(root->opcode(), HloOpcode::kReduce);
-  EXPECT_EQ(root->metadata().op_name(), "foo");
-}
-
-TEST_F(SplitKTest, MakeSplitKWithOutputFusion) {
-  const std::string hlo_text = R"(
-HloModule t
-
-triton_gemm_dot {
-  p0 = f16[480,128]{1,0} parameter(0)
-  p1 = f16[16,128]{1,0} parameter(1)
-  d = f16[480,16]{1,0} dot(p0, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={1}
-  c = bf16[] constant(123)
-  n = bf16[] negate(c)
-  bc = bf16[480,16]{1,0} broadcast(n)
-  cv = bf16[480,16]{1,0} convert(d)
-  ROOT a = bf16[480,16]{1,0} multiply(bc, cv)
-}
-
-ENTRY e {
-  p0 = f16[480,128]{1,0} parameter(0)
-  p1 = f16[16,128]{1,0} parameter(1)
-  ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
-    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
-})";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  TritonGemmConfig config(16, 16, 16, 4, 1, 4);
-  TF_EXPECT_OK(MakeDotSplitKBatch(
-      module->entry_computation()->root_instruction(), config));
-  EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
-            HloOpcode::kReduce);
-}
 
 TEST_F(SplitKTest, PreventSplitKWithNonDistributiveOperations) {
   const std::string hlo_text = R"(
@@ -222,21 +157,21 @@ TEST_F(SplitKTest, MakeSplitKWithNonStandardOutputLayout) {
 HloModule t
 
 triton_gemm_dot {
-  parameter_0 = s8[3,128,5,32]{3,2,1,0} parameter(0)
-  bitcast.1 = s8[3,5,32,128]{2,1,3,0} bitcast(parameter_0)
-  copy.1 = s8[3,5,32,128]{3,2,1,0} copy(bitcast.1)
-  reshape.5 = s8[480,128]{1,0} reshape(copy.1)
-  convert.8 = bf16[480,128]{1,0} convert(reshape.5)
-  parameter_1 = bf16[16,128]{1,0} parameter(1)
-  ROOT dot.0 = bf16[480,16]{0,1} dot(convert.8, parameter_1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+parameter_0 = s8[3,128,5,32]{3,2,1,0} parameter(0)
+bitcast.1 = s8[3,5,32,128]{2,1,3,0} bitcast(parameter_0)
+copy.1 = s8[3,5,32,128]{3,2,1,0} copy(bitcast.1)
+reshape.5 = s8[480,128]{1,0} reshape(copy.1)
+convert.8 = bf16[480,128]{1,0} convert(reshape.5)
+parameter_1 = bf16[16,128]{1,0} parameter(1)
+ROOT dot.0 = bf16[480,16]{0,1} dot(convert.8, parameter_1),
+lhs_contracting_dims={1}, rhs_contracting_dims={1}
 }
 
 ENTRY e {
-  p0 = s8[3,128,5,32]{3,2,1,0} parameter(0)
-  p1 = bf16[16,128]{1,0} parameter(1)
-  ROOT fusion = bf16[480,16]{0,1} fusion(p0, p1),
-    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
+p0 = s8[3,128,5,32]{3,2,1,0} parameter(0)
+p1 = bf16[16,128]{1,0} parameter(1)
+ROOT fusion = bf16[480,16]{0,1} fusion(p0, p1),
+kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
@@ -245,10 +180,9 @@ ENTRY e {
   TF_EXPECT_OK(MakeDotSplitKBatch(
       module->entry_computation()->root_instruction(), config));
 
-  EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
-            HloOpcode::kReduce);
-  EXPECT_EQ(module->entry_computation()->root_instruction()->shape().layout(),
-            Layout({0, 1}));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Convert(
+                  m::Reduce().WithShape(m::Shape().WithLayout({0, 1})))));
 }
 
 TEST_F(SplitKTest, MakeSplitKWithExistingBatchDim) {
@@ -536,18 +470,18 @@ ENTRY e {
   config.split_k = 8;
   TF_EXPECT_OK(MakeDotSplitKBatch(
       module->entry_computation()->root_instruction(), config));
-  const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_EQ(root->opcode(), HloOpcode::kReduce);
-  const HloComputation* dot_computation = module->entry_computation()
-                                              ->root_instruction()
-                                              ->operand(0)
-                                              ->called_computations()[0];
+  HloInstruction* dot_fusion;
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Convert(
+                  m::Reduce(m::Fusion(&dot_fusion), m::ConstantScalar()))))
+      << module->ToString();
+  const HloComputation* dot_computation = dot_fusion->called_computations()[0];
   const HloInstruction* p0 = dot_computation->parameter_instruction(0);
   TF_ASSERT_OK_AND_ASSIGN(
       const auto analysis,
       TritonFusionAnalysis::Execute(*dot_computation, config.split_k));
   EXPECT_EQ(dot_computation->root_instruction()->shape(),
-            ShapeUtil::MakeShapeWithDescendingLayout(F16, {8, 7, 5}));
+            ShapeUtil::MakeShapeWithDescendingLayout(F32, {8, 7, 5}));
   EXPECT_THAT(
       *analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 1),
       ElementsAre(FieldsAre(/*stride=*/1, /*count=*/2560, /*slice_start=*/0,
@@ -608,12 +542,13 @@ ENTRY e {
   TritonGemmConfig config(16, 16, 16, 2, 1, 4);
   TF_EXPECT_OK(MakeDotSplitKBatch(
       module->entry_computation()->root_instruction(), config));
-  EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
-            HloOpcode::kReduce);
-  const HloComputation* dot_computation = module->entry_computation()
-                                              ->root_instruction()
-                                              ->operand(0)
-                                              ->called_computations()[0];
+  HloInstruction* dot_fusion;
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Convert(
+                  m::Reduce(m::Fusion(&dot_fusion), m::ConstantScalar()))))
+      << module->ToString();
+  const HloComputation* dot_computation =
+      dot_fusion->fused_instructions_computation();
   TF_ASSERT_OK_AND_ASSIGN(const auto analysis,
                           TritonFusionAnalysis::Execute(*dot_computation));
 }
@@ -684,19 +619,7 @@ ENTRY e {
   EXPECT_FALSE(result.ok());
 }
 
-class SplitKTestWithMorePreciseReduction
-    : public HloTestBase,
-      public ::testing::WithParamInterface<int> {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_triton_gemm_disable_reduced_precision_reduction(
-        true);
-    return debug_options;
-  }
-};
-
-TEST_F(SplitKTestWithMorePreciseReduction, MakeSplitK) {
+TEST_F(SplitKTest, MakeSplitK) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -715,6 +638,42 @@ ENTRY e {
   p0 = s8[3,128,5,32]{3,2,1,0} parameter(0)
   p1 = bf16[16,128]{1,0} parameter(1)
   ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
+    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm",
+    metadata={op_name="foo"}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+
+  TritonGemmConfig config(16, 16, 16, 4, 1, 4);
+  TF_EXPECT_OK(MakeDotSplitKBatch(
+      module->entry_computation()->root_instruction(), config));
+
+  HloInstruction* reduce;
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Convert().WithElementType(BF16).WithOperand(
+                  0, m::Op(&reduce)
+                         .WithOpcode(HloOpcode::kReduce)
+                         .WithElementType(F32)
+                         .WithOperand(0, m::Fusion().WithElementType(F32)))))
+      << module->ToString();
+  EXPECT_EQ(reduce->metadata().op_name(), "foo");
+}
+
+TEST_F(SplitKTest, MakeSplitKForInt32Dot) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+triton_gemm_dot {
+  parameter_0 = s8[480,128]{1,0} parameter(0)
+  parameter_1 = s8[16,128]{1,0} parameter(1)
+  ROOT dot.0 = s32[480,16]{1,0} dot(parameter_0, parameter_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = s8[480,128]{1,0} parameter(0)
+  p1 = s8[16,128]{1,0} parameter(1)
+  ROOT fusion = s32[480,16]{1,0} fusion(p0, p1),
     kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
 })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -725,10 +684,49 @@ ENTRY e {
       module->entry_computation()->root_instruction(), config));
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Convert(m::Reduce(m::Fusion(), m::Constant()))));
+              GmockMatch(m::Reduce()
+                             .WithElementType(S32)
+                             .WithOpcode(HloOpcode::kReduce)
+                             .WithOperand(0, m::Fusion().WithElementType(S32))))
+      << module->ToString();
 }
 
-TEST_F(SplitKTestWithMorePreciseReduction, MakeSplitKWithOutputFusion) {
+TEST_F(SplitKTest, MakeSplitKHonorsDotAlgorithm) {
+  constexpr absl::string_view kHloText = R"(
+HloModule t
+
+triton_gemm_dot {
+  parameter_0 = s8[3,128,5,32]{3,2,1,0} parameter(0)
+  bitcast.1 = s8[3,5,32,128]{2,1,3,0} bitcast(parameter_0)
+  copy.1 = s8[3,5,32,128]{3,2,1,0} copy(bitcast.1)
+  reshape.5 = s8[480,128]{1,0} reshape(copy.1)
+  convert.8 = bf16[480,128]{1,0} convert(reshape.5)
+  parameter_1 = bf16[16,128]{1,0} parameter(1)
+  ROOT dot.0 = bf16[480,16]{1,0} dot(convert.8, parameter_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1},
+    algorithm=dot_bf16_bf16_bf16
+}
+
+ENTRY e {
+  p0 = s8[3,128,5,32]{3,2,1,0} parameter(0)
+  p1 = bf16[16,128]{1,0} parameter(1)
+  ROOT fusion = bf16[480,16]{1,0} fusion(p0, p1),
+    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm"
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+
+  TritonGemmConfig config(16, 16, 16, 4, 1, 4);
+  TF_EXPECT_OK(MakeDotSplitKBatch(
+      module->entry_computation()->root_instruction(), config));
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Reduce().WithElementType(BF16).WithOperand(
+                  0, m::Fusion().WithElementType(BF16))))
+      << module->ToString();
+}
+
+TEST_F(SplitKTest, MakeSplitKWithOutputFusion) {
   const std::string hlo_text = R"(
 HloModule t
 
@@ -755,8 +753,54 @@ ENTRY e {
   TritonGemmConfig config(16, 16, 16, 4, 1, 4);
   TF_EXPECT_OK(MakeDotSplitKBatch(
       module->entry_computation()->root_instruction(), config));
+  HloInstruction* dot_fusion;
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Convert(m::Reduce(m::Fusion(&dot_fusion), m::Constant()))));
+  EXPECT_THAT(
+      dot_fusion->fused_instructions_computation()->root_instruction(),
+      GmockMatch(
+          m::MultiplyAnyOrder(
+              m::Broadcast().WithElementType(F32),
+              m::Convert(m::Dot().WithElementType(F32)).WithElementType(F32))
+              .WithElementType(F32)))
+      << module->ToString();
+}
+
+TEST_F(SplitKTest, MakeSplitKTuple) {
+  const std::string hlo_text = R"(
+HloModule t
+
+triton_gemm_dot {
+  parameter_0 = s8[3,128,5,32]{3,2,1,0} parameter(0)
+  bitcast.1 = s8[3,5,32,128]{2,1,3,0} bitcast(parameter_0)
+  copy.1 = s8[3,5,32,128]{3,2,1,0} copy(bitcast.1)
+  reshape.5 = s8[480,128]{1,0} reshape(copy.1)
+  convert.8 = bf16[480,128]{1,0} convert(reshape.5)
+  parameter_1 = bf16[16,128]{1,0} parameter(1)
+  ROOT dot.0 = bf16[480,16]{1,0} dot(convert.8, parameter_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = s8[3,128,5,32]{3,2,1,0} parameter(0)
+  p1 = bf16[16,128]{1,0} parameter(1)
+  fusion = bf16[480,16]{1,0} fusion(p0, p1),
+    kind=kCustom, calls=triton_gemm_dot, backend_config="__triton_gemm",
+    metadata={op_name="foo"}
+  ROOT tuple = (bf16[480,16]{1,0}, bf16[16,128]{1,0}) tuple(fusion, p1)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  TritonGemmConfig config(16, 16, 16, 4, 1, 4);
+  TF_EXPECT_OK(MakeDotSplitKBatch(
+      module->entry_computation()->root_instruction()->mutable_operand(0),
+      config));
+
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Convert(m::Reduce(m::Fusion(), m::Constant()))));
+              GmockMatch(m::Tuple().WithOperand(
+                  0, m::Convert(m::Reduce().WithOperand(0, m::Fusion())))))
+      << module->ToString();
 }
 
 TEST_F(SplitKTest, MakeSplitKWithTransposeAfterDot) {
@@ -781,12 +825,13 @@ ENTRY e {
   TritonGemmConfig config(16, 128, 32, 8, 1, 4);
   TF_EXPECT_OK(MakeDotSplitKBatch(
       module->entry_computation()->root_instruction(), config));
-  const auto* transpose =
-      Cast<HloTransposeInstruction>(module->entry_computation()
-                                        ->root_instruction()
-                                        ->operand(0)
-                                        ->fused_instructions_computation()
-                                        ->root_instruction());
+  HloInstruction* dot_fusion;
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Convert(
+                  m::Reduce(m::Fusion(&dot_fusion), m::ConstantScalar()))))
+      << module->ToString();
+  const auto* transpose = Cast<HloTransposeInstruction>(
+      dot_fusion->fused_instructions_computation()->root_instruction());
   EXPECT_THAT(transpose->dimensions(), ElementsAre(0, 2, 1, 3));
 }
 

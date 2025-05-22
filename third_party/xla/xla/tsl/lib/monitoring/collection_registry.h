@@ -107,6 +107,7 @@ class CollectionRegistry {
 #include <memory>
 #include <utility>
 
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/lib/monitoring/collected_metrics.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
 #include "xla/tsl/lib/monitoring/types.h"
@@ -115,7 +116,6 @@ class CollectionRegistry {
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/protobuf/histogram.pb.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/stringpiece.h"
 #include "tsl/platform/thread_annotations.h"
 
@@ -264,7 +264,7 @@ class CollectionRegistry {
   // TF environment, mainly used for timestamping.
   Env* const env_;
 
-  mutable mutex mu_;
+  mutable absl::Mutex mu_;
 
   // Information required for collection.
   struct CollectionInfo {
@@ -385,7 +385,7 @@ class Collector {
       const uint64 registration_time_millis,
       internal::Collector* const collector) TF_LOCKS_EXCLUDED(mu_) {
     auto* const point_set = [&]() {
-      mutex_lock l(mu_);
+      absl::MutexLock l(&mu_);
       return collected_metrics_->point_set_map
           .insert(std::make_pair(std::string(metric_def->name()),
                                  std::unique_ptr<PointSet>(new PointSet())))
@@ -407,7 +407,7 @@ class Collector {
       TF_LOCKS_EXCLUDED(mu_);
 
  private:
-  mutable mutex mu_;
+  mutable absl::Mutex mu_;
   std::unique_ptr<CollectedMetrics> collected_metrics_ TF_GUARDED_BY(mu_);
   const uint64 collection_time_millis_;
 

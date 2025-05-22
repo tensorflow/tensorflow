@@ -52,6 +52,8 @@ enum DataType {
 
   DT_INT4 = 29;
   DT_UINT4 = 30;
+  DT_INT2 = 31;
+  DT_UINT2 = 32;
 
   // Do not use!  These are only for TF1's obsolete reference Variables.
   // Every enum above should have a corresponding value below (verified by
@@ -87,6 +89,8 @@ enum DataType {
   DT_FLOAT8_E5M2FNUZ_REF = 128;
   DT_INT4_REF = 129;
   DT_UINT4_REF = 130;
+  DT_INT2_REF = 131;
+  DT_UINT2_REF = 132;
 }
 // LINT.ThenChange(
 //    https://www.tensorflow.org/code/tensorflow/c/tf_datatype.h,

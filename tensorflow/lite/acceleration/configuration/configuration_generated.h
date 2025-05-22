@@ -1701,6 +1701,7 @@ struct XNNPackSettingsT : public ::flatbuffers::NativeTable {
   int32_t num_threads = 0;
   tflite::XNNPackFlags flags = tflite::XNNPackFlags_TFLITE_XNNPACK_DELEGATE_NO_FLAGS;
   std::string weight_cache_file_path{};
+  int32_t runtime_flags = 0;
 };
 
 struct XNNPackSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -1709,7 +1710,8 @@ struct XNNPackSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_NUM_THREADS = 4,
     VT_FLAGS = 6,
-    VT_WEIGHT_CACHE_FILE_PATH = 8
+    VT_WEIGHT_CACHE_FILE_PATH = 8,
+    VT_RUNTIME_FLAGS = 10
   };
   int32_t num_threads() const {
     return GetField<int32_t>(VT_NUM_THREADS, 0);
@@ -1720,12 +1722,16 @@ struct XNNPackSettings FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const ::flatbuffers::String *weight_cache_file_path() const {
     return GetPointer<const ::flatbuffers::String *>(VT_WEIGHT_CACHE_FILE_PATH);
   }
+  int32_t runtime_flags() const {
+    return GetField<int32_t>(VT_RUNTIME_FLAGS, 0);
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_NUM_THREADS, 4) &&
            VerifyField<int32_t>(verifier, VT_FLAGS, 4) &&
            VerifyOffset(verifier, VT_WEIGHT_CACHE_FILE_PATH) &&
            verifier.VerifyString(weight_cache_file_path()) &&
+           VerifyField<int32_t>(verifier, VT_RUNTIME_FLAGS, 4) &&
            verifier.EndTable();
   }
   XNNPackSettingsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -1746,6 +1752,9 @@ struct XNNPackSettingsBuilder {
   void add_weight_cache_file_path(::flatbuffers::Offset<::flatbuffers::String> weight_cache_file_path) {
     fbb_.AddOffset(XNNPackSettings::VT_WEIGHT_CACHE_FILE_PATH, weight_cache_file_path);
   }
+  void add_runtime_flags(int32_t runtime_flags) {
+    fbb_.AddElement<int32_t>(XNNPackSettings::VT_RUNTIME_FLAGS, runtime_flags, 0);
+  }
   explicit XNNPackSettingsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -1761,8 +1770,10 @@ inline ::flatbuffers::Offset<XNNPackSettings> CreateXNNPackSettings(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     int32_t num_threads = 0,
     tflite::XNNPackFlags flags = tflite::XNNPackFlags_TFLITE_XNNPACK_DELEGATE_NO_FLAGS,
-    ::flatbuffers::Offset<::flatbuffers::String> weight_cache_file_path = 0) {
+    ::flatbuffers::Offset<::flatbuffers::String> weight_cache_file_path = 0,
+    int32_t runtime_flags = 0) {
   XNNPackSettingsBuilder builder_(_fbb);
+  builder_.add_runtime_flags(runtime_flags);
   builder_.add_weight_cache_file_path(weight_cache_file_path);
   builder_.add_flags(flags);
   builder_.add_num_threads(num_threads);
@@ -1773,13 +1784,15 @@ inline ::flatbuffers::Offset<XNNPackSettings> CreateXNNPackSettingsDirect(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     int32_t num_threads = 0,
     tflite::XNNPackFlags flags = tflite::XNNPackFlags_TFLITE_XNNPACK_DELEGATE_NO_FLAGS,
-    const char *weight_cache_file_path = nullptr) {
+    const char *weight_cache_file_path = nullptr,
+    int32_t runtime_flags = 0) {
   auto weight_cache_file_path__ = weight_cache_file_path ? _fbb.CreateString(weight_cache_file_path) : 0;
   return tflite::CreateXNNPackSettings(
       _fbb,
       num_threads,
       flags,
-      weight_cache_file_path__);
+      weight_cache_file_path__,
+      runtime_flags);
 }
 
 ::flatbuffers::Offset<XNNPackSettings> CreateXNNPackSettings(::flatbuffers::FlatBufferBuilder &_fbb, const XNNPackSettingsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -4971,7 +4984,8 @@ inline bool operator==(const XNNPackSettingsT &lhs, const XNNPackSettingsT &rhs)
   return
       (lhs.num_threads == rhs.num_threads) &&
       (lhs.flags == rhs.flags) &&
-      (lhs.weight_cache_file_path == rhs.weight_cache_file_path);
+      (lhs.weight_cache_file_path == rhs.weight_cache_file_path) &&
+      (lhs.runtime_flags == rhs.runtime_flags);
 }
 
 inline bool operator!=(const XNNPackSettingsT &lhs, const XNNPackSettingsT &rhs) {
@@ -4991,6 +5005,7 @@ inline void XNNPackSettings::UnPackTo(XNNPackSettingsT *_o, const ::flatbuffers:
   { auto _e = num_threads(); _o->num_threads = _e; }
   { auto _e = flags(); _o->flags = _e; }
   { auto _e = weight_cache_file_path(); if (_e) _o->weight_cache_file_path = _e->str(); }
+  { auto _e = runtime_flags(); _o->runtime_flags = _e; }
 }
 
 inline ::flatbuffers::Offset<XNNPackSettings> XNNPackSettings::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const XNNPackSettingsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
@@ -5004,11 +5019,13 @@ inline ::flatbuffers::Offset<XNNPackSettings> CreateXNNPackSettings(::flatbuffer
   auto _num_threads = _o->num_threads;
   auto _flags = _o->flags;
   auto _weight_cache_file_path = _o->weight_cache_file_path.empty() ? 0 : _fbb.CreateString(_o->weight_cache_file_path);
+  auto _runtime_flags = _o->runtime_flags;
   return tflite::CreateXNNPackSettings(
       _fbb,
       _num_threads,
       _flags,
-      _weight_cache_file_path);
+      _weight_cache_file_path,
+      _runtime_flags);
 }
 
 

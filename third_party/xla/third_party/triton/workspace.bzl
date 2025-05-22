@@ -8,12 +8,12 @@ load("//third_party/triton:xla_extensions/series.bzl", "extensions_files_patch_l
 def repo():
     """Imports Triton."""
 
-    TRITON_COMMIT = "triton_integrate_branch/1.1"
-    TRITON_SHA256 = "66666f46227b4ab10b6c5ff26bfa57446b0621ef13ebae407861328dd2dfe550"
+    TRITON_COMMIT = "triton_integrate_branch-1.6"
+    TRITON_SHA256 = "323e1f04c5eaade72cf69fbe719487681d2a5108a86f82d0ed4c7ea61dfcea27"
     tf_http_archive(
         name = "triton",
         sha256 = TRITON_SHA256,
-        strip_prefix = "triton-" + TRITON_COMMIT.replace("/", "-"),
-        urls = tf_mirror_urls("https://github.com/openxla/triton/archive/{commit}.tar.gz".format(commit = TRITON_COMMIT)),
+        strip_prefix = "triton-" + TRITON_COMMIT,
+        urls = tf_mirror_urls("https://github.com/openxla/triton/archive/{}.tar.gz".format(TRITON_COMMIT)),
         patch_file = extensions_files_patch_list + llvm_patch_list + temporary_patch_list,
     )

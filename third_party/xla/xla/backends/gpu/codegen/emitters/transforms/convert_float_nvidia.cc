@@ -31,12 +31,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
-#include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/semantic_version.h"
 
-#ifdef GOOGLE_CUDA
-#include "xla/service/gpu/llvm_gpu_backend/nvptx_backend.h"
-#endif
 
 namespace xla {
 namespace gpu {
@@ -84,7 +79,7 @@ struct RewriteTruncFPattern : public mlir::OpRewritePattern<ma::TruncFOp> {
     if (value.getType() == b.getF16Type()) {
       // Fast path for truncating F16 type.
       Value vec =
-          b.create<ml::UndefOp>(ml::getFixedVectorType(value.getType(), 2));
+          b.create<ml::UndefOp>(mlir::VectorType::get(2, value.getType()));
       vec = b.create<ml::InsertElementOp>(vec, value,
                                           b.create<ma::ConstantIntOp>(0, 8));
       auto cvtIntr = llvm::isa<mlir::Float8E4M3FNType>(to_ty)
@@ -220,9 +215,9 @@ struct RewriteExtFPattern : public mlir::OpRewritePattern<ma::ExtFOp> {
                        ? "llvm.nvvm.e4m3x2.to.f16x2.rn"
                        : "llvm.nvvm.e5m2x2.to.f16x2.rn";
     mlir::FloatType f16_ty = b.getF16Type();
-    auto cvtOp = b.create<ml::CallIntrinsicOp>(
-        ml::getFixedVectorType(f16_ty, 2), b.getStringAttr(cvtIntr),
-        mlir::ValueRange{input});
+    auto cvtOp = b.create<ml::CallIntrinsicOp>(mlir::VectorType::get(2, f16_ty),
+                                               b.getStringAttr(cvtIntr),
+                                               mlir::ValueRange{input});
     Value res = b.create<ml::ExtractElementOp>(
         cvtOp.getResults(), b.create<ma::ConstantIntOp>(0, 8));
     if (to_ty.getWidth() > f16_ty.getWidth()) {
@@ -256,24 +251,6 @@ class ConvertFloatNvidiaPass
 
 std::unique_ptr<mlir::Pass> CreateConvertFloatNvidiaPass() {
   return std::make_unique<ConvertFloatNvidiaPass>();
-}
-
-std::optional<std::unique_ptr<mlir::Pass>> MaybeCreateConvertFloatNvidiaPass(
-    const se::DeviceDescription& device_description) {
-#ifdef GOOGLE_CUDA
-  se::SemanticVersion ptx_version =
-      nvptx::DetermineHighestSupportedPtxVersionFromCudaVersion(
-          device_description.runtime_version());
-  se::CudaComputeCapability cc = device_description.cuda_compute_capability();
-
-  // FP8 conversion intrinsics are available on sm89 since ptx 8.1
-  // Older ptx versions only support FP8 conversion for sm90
-  if ((ptx_version >= se::SemanticVersion(8, 1, 0) && cc.IsAtLeast(8, 9)) ||
-      (ptx_version >= se::SemanticVersion(7, 8, 0) && cc.IsAtLeast(9, 0))) {
-    return CreateConvertFloatNvidiaPass();
-  }
-#endif
-  return std::nullopt;
 }
 
 }  // namespace gpu

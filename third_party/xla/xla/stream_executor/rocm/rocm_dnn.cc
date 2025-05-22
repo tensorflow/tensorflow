@@ -551,6 +551,10 @@ namespace wrap {
 // clang-format on
 #endif
 
+#if (MIOPEN_BETA_API && TF_ROCM_VERSION >= 60300)
+STREAM_EXECUTOR_MIOPEN_WRAP(miopenSetTensorDescriptorV2)
+#endif
+
 MIOPEN_DNN_ROUTINE_EACH(STREAM_EXECUTOR_MIOPEN_WRAP)
 
 #undef MIOPEN_DNN_ROUTINE_EACH
@@ -872,7 +876,7 @@ struct ScopedDescriptor {
   }
 
   ~ScopedDescriptor() {
-    if (handle_ != nullptr) return;
+    if (handle_ == nullptr) return;
 
     auto status = miDestroyObject(
         handle_);  // wrap::miopenDestroyTensorDescriptor(handle_);
@@ -917,6 +921,11 @@ absl::StatusOr<ScopedTensorDescriptor> scope(
       std::vector<int64_t> dims64 =
           batch_descriptor.full_dims(dnn::DataLayout::kBatchDepthYX);
 
+#if (MIOPEN_BETA_API && TF_ROCM_VERSION >= 60300)
+      status = wrap::miopenSetTensorDescriptorV2(
+          obj.handle_, data_type, nd, (const size_t*)dims64.data(),
+          (const size_t*)strides64.data());
+#else
       // MIOpen requires arrays of ints.
       std::vector<int> strides(nd);
       std::vector<int> dims(nd);
@@ -926,7 +935,7 @@ absl::StatusOr<ScopedTensorDescriptor> scope(
                      &CheckedNarrowing<int64_t, int>);
       status = wrap::miopenSetTensorDescriptor(obj.handle_, data_type, nd,
                                                dims.data(), strides.data());
-
+#endif
       if (status != miopenStatusSuccess) {
         return absl::InternalError(
             "could not convert BatchDescriptor " + batch_descriptor.ToString() +
@@ -994,6 +1003,11 @@ absl::StatusOr<ScopedFilterDescriptor> scope(
       std::vector<int64_t> dims64 =
           filter_descriptor.full_dims(dnn::FilterLayout::kOutputInputYX);
 
+#if (MIOPEN_BETA_API && TF_ROCM_VERSION >= 60300)
+      status = wrap::miopenSetTensorDescriptorV2(
+          obj.handle_, data_type, nd, (const size_t*)dims64.data(),
+          (const size_t*)strides64.data());
+#else
       // MIOpen requires arrays of ints.
       std::vector<int> strides;
       std::vector<int> dims;
@@ -1003,7 +1017,7 @@ absl::StatusOr<ScopedFilterDescriptor> scope(
                         &CheckedNarrowing<int64_t, int>);
       status = wrap::miopenSetTensorDescriptor(obj.handle_, data_type, nd,
                                                dims.data(), strides.data());
-
+#endif
       if (status != miopenStatusSuccess) {
         LOG(FATAL) << "could not convert FilterDescriptor "
                    << filter_descriptor.ToString()
@@ -3484,8 +3498,8 @@ absl::Status MIOpenSupport::DoConvolve(
 }
 
 absl::Status MIOpenSupport::GetConvolveRunners(
-    bool use_cudnn_frontend, dnn::ConvolutionKind kind,
-    dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
+    dnn::ConvolutionKind kind, dnn::DataType input_type,
+    dnn::DataType output_type, Stream* stream,
     const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
     const dnn::FilterDescriptor& filter_descriptor,
     DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
@@ -4347,7 +4361,7 @@ absl::Status ROCmFusedMatmulRunner::operator()(
 }
 
 absl::Status MIOpenSupport::GetFusedMatmulRunners(
-    bool use_cudnn_frontend, dnn::DataType input_type, dnn::DataType bias_type,
+    dnn::DataType input_type, dnn::DataType bias_type,
     dnn::DataType output_type, Stream* stream, bool trans_a, bool trans_b,
     uint64_t m, uint64_t n, uint64_t k, int64_t lda, int64_t ldb, int64_t ldc,
     dnn::ActivationMode activation_mode, bool use_fallback,
@@ -4355,12 +4369,14 @@ absl::Status MIOpenSupport::GetFusedMatmulRunners(
     std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
         out_exec_plans) {
   out_exec_plans->clear();
-  if (input_type != output_type)
+  if (input_type != output_type) {
     return absl::InvalidArgumentError(
         "ROCm fused matmul does not support input/output type mismatch");
-  if (input_type != bias_type)
+  }
+  if (input_type != bias_type) {
     return absl::InvalidArgumentError(
         "ROCm fused matmul does not support input/bias type mismatch");
+  }
   auto runner_ptr = new ROCmFusedMatmulRunner(
       stream, input_type, bias_type, output_type, trans_a, trans_b, m, n, k,
       lda, ldb, ldc, activation_mode);
@@ -5160,10 +5176,9 @@ MIOpenSupport::FusedConvolveRunnerFromDesc(
 }
 
 absl::Status MIOpenSupport::GetFusedConvolveRunners(
-    bool use_cudnn_frontend, dnn::ConvolutionKind kind,
-    dnn::DataType input_type, dnn::DataType bias_type,
-    dnn::DataType output_type, double conv_scale, double side_input_scale,
-    double leakyrelu_alpha, Stream* stream,
+    dnn::ConvolutionKind kind, dnn::DataType input_type,
+    dnn::DataType bias_type, dnn::DataType output_type, double conv_scale,
+    double side_input_scale, double leakyrelu_alpha, Stream* stream,
     const dnn::BatchDescriptor& input_descriptor,
     const dnn::FilterDescriptor& filter_descriptor,
     const dnn::BatchDescriptor& bias_descriptor,

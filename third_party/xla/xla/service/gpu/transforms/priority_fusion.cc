@@ -161,6 +161,8 @@ class PriorityFusionQueue {
         fusion_process_dump_(fusion_process_dump),
         thread_pool_(thread_pool),
         fusion_analysis_cache_(fusion_analysis_cache),
+        gpu_performance_model_(*device_info, fusion_analysis_cache,
+                               gpu_performance_model_cache_),
         fusion_deduplication_cache_(fusion_deduplication_cache),
         fusion_info_cache_(*device_info_),
         reachability_(HloDfsReachability::Build(computation)),
@@ -296,10 +298,8 @@ class PriorityFusionQueue {
           runtime_data,
           gpu_indexing_performance_model_.EstimateRunTimeForTriton(producer));
     } else {
-      auto config = GpuPerformanceModelOptions::Default(
-          &fusion_analysis_cache_, &gpu_performance_model_cache_);
-      runtime_data = GpuPerformanceModel::EstimateRunTimeForInstruction(
-          producer, *device_info_, &cost_analysis_, config);
+      runtime_data = gpu_performance_model_.EstimateRunTimeForInstruction(
+          producer, &cost_analysis_);
     }
 
     gpu_performance_model_cache_.Set(*producer, runtime_data);
@@ -542,10 +542,8 @@ class PriorityFusionQueue {
       if (CanFuseTritonMultiOutputWithSingleUser(producer,
                                                  possible_consumers)) {
         GpuPerformanceModel::RunTimes run_times =
-            GpuPerformanceModel::EstimateRunTimes(
-                producer, *device_info_, &cost_analysis_,
-                GpuPerformanceModelOptions::Default(
-                    &fusion_analysis_cache_, &gpu_performance_model_cache_),
+            gpu_performance_model_.EstimateRunTimes(
+                producer, &cost_analysis_,
                 /*fused_consumers=*/possible_consumers);
         preferred_consumer_[producer] = possible_consumers[0];
         return run_times.time_unfused - run_times.time_fused;
@@ -572,11 +570,8 @@ class PriorityFusionQueue {
     // Note that `gpu_performance_model_cache_` may contain a runtime estimate
     // from the Triton cost model.
     GpuPerformanceModel::RunTimes run_times =
-        GpuPerformanceModel::EstimateRunTimes(
-            producer, *device_info_, &cost_analysis_,
-            GpuPerformanceModelOptions::Default(&fusion_analysis_cache_,
-                                                &gpu_performance_model_cache_),
-            fused_consumers);
+        gpu_performance_model_.EstimateRunTimes(producer, &cost_analysis_,
+                                                fused_consumers);
     Priority current_priority;
     if (is_incremental_update) {
       // subtract the runtimes of removed consumers
@@ -983,6 +978,9 @@ class PriorityFusionQueue {
   tsl::thread::ThreadPool* thread_pool_;
 
   HloFusionAnalysisCache& fusion_analysis_cache_;
+  // The GpuPerformance model cache must outlive the GpuPerformanceModel.
+  GpuPerformanceModelCache gpu_performance_model_cache_;
+  GpuPerformanceModel gpu_performance_model_;
 
   FusionDeduplicationCache& fusion_deduplication_cache_;
   absl::Mutex fusion_deduplication_cache_mutex_;
@@ -1007,8 +1005,6 @@ class PriorityFusionQueue {
                       TiledRunTimeDataOrError>
       tiled_run_time_data_cache_;
   absl::Mutex tiled_run_time_data_cache_mutex_;
-
-  GpuPerformanceModelCache gpu_performance_model_cache_;
 
   // Cache for `FusionFitsInBudget` to avoid recomputing expensive properties
   // like shared memory usage or number of unnested reductions of fusion nodes.

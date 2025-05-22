@@ -17,6 +17,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/refcount.h"
 
@@ -243,8 +244,7 @@ absl::Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
           VLOG(3) << "Failed to hash tensor: " << s;
         }
       }
-      string graph_hash =
-          strings::StrCat(strings::Hex(hash, strings::kZeroPad16));
+      std::string graph_hash = absl::StrCat(absl::Hex(hash, absl::kZeroPad16));
       metrics::RecordTFDataFingerprint(graph_hash);
     });
   }

@@ -16,13 +16,13 @@ limitations under the License.
 #include "xla/service/gpu/transforms/conv_padding_legalization.h"
 
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
 
@@ -32,7 +32,7 @@ namespace {
 
 namespace m = ::xla::match;
 
-using ConvPaddingLegalizationTest = HloTestBase;
+using ConvPaddingLegalizationTest = HloHardwareIndependentTestBase;
 
 TEST_F(ConvPaddingLegalizationTest, BackwardInputConvolve) {
   auto module = ParseAndReturnVerifiedModule(R"(

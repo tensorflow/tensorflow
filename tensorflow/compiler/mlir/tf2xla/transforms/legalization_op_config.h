@@ -19,7 +19,7 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 
 namespace mlir {
-namespace mhlo {
+namespace hlo {
 
 // Given the type ID, check if it's legalized with MLIR.
 bool IsTypeLegalizedWithMlir(const TypeID& type_id);
@@ -39,7 +39,7 @@ bool IsOpAllowedTf2xlaFallback(const TypeID& type_id);
 // used over the MLIR lowering.
 bool IsOpAllowedTf2xlaPreferred(const TypeID& type_id);
 
-}  // namespace mhlo
+}  // namespace hlo
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TF2XLA_TRANSFORMS_LEGALIZATION_OP_CONFIG_H_

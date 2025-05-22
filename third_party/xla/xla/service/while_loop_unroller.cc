@@ -117,7 +117,7 @@ absl::Status HandleDynamicGteOrTuple(HloInstruction* instr) {
     auto index = LiteralUtil::LiteralAsScalarInt64(std::move(index_lit));
     // The index must have a compile-time integer value at this point.
     TF_RET_CHECK(index.has_value());
-    for (int64_t i = 0; i < instr->operand(0)->shape().tuple_shapes_size();
+    for (int64_t i = 0; i < instr->operand(0)->shape().tuple_shapes().size();
          i++) {
       if (i == index.value()) {
         tuple_operands.push_back(instr->mutable_operand(1));
@@ -221,13 +221,15 @@ UnrollSingleIterationOfTrivialLoop(HloInstruction* while_op,
 
     // We need to assign a unique id to each scheduling group (of instructions)
     // that are unrolled within the while loop body.
-    std::optional<int64_t> scheduling_id = GetSchedulingAnnotation(body_inst);
+    TF_ASSIGN_OR_RETURN(std::optional<int64_t> scheduling_id,
+                        GetSchedulingAnnotationGroupId(body_inst));
     if (scheduling_id.has_value()) {
       if (!seen_scheduling_ids.contains(scheduling_id.value())) {
         seen_scheduling_ids.insert(scheduling_id.value());
         next_scheduling_id++;
       }
-      SetSchedulingAnnotation(body_inst, next_scheduling_id);
+      TF_RETURN_IF_ERROR(
+          SetSchedulingAnnotationGroupId(body_inst, next_scheduling_id));
     }
 
     // Handle DynamicGte and DynamicTuple custom-calls created during unstacking
@@ -293,7 +295,8 @@ absl::StatusOr<bool> UnrollInternal(HloInstruction* while_op,
   HloInstruction* unrolled_body_call_op;
   std::vector<HloInstruction*> call_operands = {while_op->operands().at(0)};
 
-  int64_t next_scheduling_id = NextSchedulingId(*while_op->GetModule());
+  TF_ASSIGN_OR_RETURN(int64_t next_scheduling_id,
+                      NextSchedulingGroupId(*while_op->GetModule()));
   for (int64_t i = config.init; i < config.trip_count + config.init; ++i) {
     CHECK(OverflowSafeAdd(i, (int64_t)1).has_value());
 
@@ -335,7 +338,8 @@ absl::StatusOr<UnrollResult> UnrollInternalWrappedAndReturnReplacement(
   // We assume while has only one tuple parameter
   call_operands.emplace_back(std::move(p.value()));
 
-  int64_t next_scheduling_id = NextSchedulingId(*while_op->GetModule());
+  TF_ASSIGN_OR_RETURN(int64_t next_scheduling_id,
+                      NextSchedulingGroupId(*while_op->GetModule()));
   for (int64_t i = config.init; i < config.trip_count + config.init; ++i) {
     CHECK(OverflowSafeAdd(i, (int64_t)1).has_value());
 
@@ -585,8 +589,9 @@ std::optional<int64_t> MatchShapeCoveringDynamicIndexInstruction(
     }
 
     const Shape& operand_shape = operand->shape();
-    CHECK_EQ(result_shape.dimensions_size(), operand_shape.dimensions_size());
-    for (int64_t i = 0; i < result_shape.dimensions_size(); ++i) {
+    CHECK_EQ(result_shape.dimensions().size(),
+             operand_shape.dimensions().size());
+    for (int64_t i = 0; i < result_shape.dimensions().size(); ++i) {
       if (i != dynamic_index &&
           result_shape.dimensions(i) != operand_shape.dimensions(i)) {
         VLOG(3) << "The slice sizes must match the operand-shape on "
@@ -633,8 +638,8 @@ std::optional<int64_t> AdvancedMatchShapeCoveringDynamicIndexInstruction(
   input = instr->operand(0);
   const Shape& input_shape = input->shape();
 
-  const int64_t num_indices = slice_shape->dimensions_size();
-  CHECK_EQ(num_indices, input_shape.dimensions_size());
+  const int64_t num_indices = slice_shape->dimensions().size();
+  CHECK_EQ(num_indices, input_shape.dimensions().size());
   CHECK_EQ(num_indices, instr->operand_count() - start_indices_offset);
 
   std::vector<int64_t> dynamic_indices;

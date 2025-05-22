@@ -18,7 +18,11 @@ limitations under the License.
 
 #include <functional>
 
+#include "xla/backends/cpu/codegen/target_machine_features.h"
+#include "xla/backends/cpu/xnn_fusion.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/float_support.h"
 
@@ -30,17 +34,32 @@ class CpuFloatSupport : public FloatSupport {
   using DotStrategyChecker = std::function<bool(const HloInstruction& hlo)>;
 
   explicit CpuFloatSupport(PrimitiveType low_precision_type,
-                           DotStrategyChecker call_library_for_dot)
+                           DotStrategyChecker call_library_for_dot,
+                           TargetMachineFeatures* cpu_features)
       : FloatSupport(low_precision_type),
-        call_library_for_dot_(call_library_for_dot) {}
+        call_library_for_dot_(call_library_for_dot),
+        cpu_features_(cpu_features) {}
 
-  // A hatch to skip FloatNormalization for certain instructions.
+  // Skip trying to upcast the dot if XNNPACK is enabled and the dot is
+  // supported by XNNPACK.
   bool ShouldSkipInstruction(const HloInstruction& hlo) const override {
-    return hlo.opcode() == HloOpcode::kDot && call_library_for_dot_(hlo);
+    return hlo.opcode() == HloOpcode::kDot && call_library_for_dot_(hlo) &&
+           IsXnnDotSupported(hlo.dot_dimension_numbers(),
+                             hlo.operand(0)->shape(), hlo.operand(1)->shape(),
+                             hlo.shape(), cpu_features_)
+               .value_or(false);
+  }
+
+  // Makes FloatNormalization skip custom fusion computations for CPU backend.
+  bool ShouldSkipComputationsOf(const HloInstruction& hlo) const override {
+    return hlo.opcode() == HloOpcode::kFusion &&
+           Cast<HloFusionInstruction>(&hlo)->fusion_kind() ==
+               HloInstruction::FusionKind::kCustom;
   }
 
  private:
   DotStrategyChecker call_library_for_dot_;
+  TargetMachineFeatures* cpu_features_;
 };
 
 }  // namespace cpu

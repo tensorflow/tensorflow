@@ -101,7 +101,7 @@ class BasicDeviceList : public llvm::RTTIExtends<BasicDeviceList, DeviceList> {
   // Cached hash. 0 indicates the hash needs to be computed and cached.
   // May be written multiple times with the same non-zero value.
   static constexpr uint64_t kUnsetHash = 0;
-  mutable std::atomic<uint64_t> hash_;
+  mutable std::atomic<uint64_t> hash_ = kUnsetHash;
 };
 
 }  // namespace ifrt

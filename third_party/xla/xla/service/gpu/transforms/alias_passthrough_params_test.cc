@@ -15,14 +15,14 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/alias_passthrough_params.h"
 
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
 
-class AliasPassthroughParamsTest : public HloTestBase {};
+class AliasPassthroughParamsTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(AliasPassthroughParamsTest, AliasPassThroughParams) {
   auto module = ParseAndReturnVerifiedModule(R"(

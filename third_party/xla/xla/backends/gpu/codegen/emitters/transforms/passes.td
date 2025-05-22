@@ -37,14 +37,37 @@ def ConvertIndexTypePass : Pass<"xla-gpu-convert-index-type", "mlir::ModuleOp"> 
 }
 
 def ConvertFloatNvidiaPass : Pass<"xla-gpu-convert-float-nvidia", "mlir::ModuleOp"> {
-  let summary = "Convert floating point types using NVidia intrinsics.";
+  let summary = "Convert floating point types using NVPTX intrinsics.";
 
   let dependentDialects = [
     "mlir::LLVM::LLVMDialect",
     "mlir::arith::ArithDialect",
   ];
-
   let constructor = "CreateConvertFloatNvidiaPass()";
+}
+
+def ConvertFloatAMDPass : Pass<"xla-gpu-convert-float-amd", "mlir::ModuleOp"> {
+  let summary = "Convert floating point types using AMDGCN intrinsics.";
+
+  let dependentDialects = [
+    "mlir::LLVM::LLVMDialect",
+    "mlir::arith::ArithDialect",
+  ];
+  let options = [
+    Option<"gpu_device_info_", "gpu_device_info", "std::string", /*default=*/"",
+           "Serialized stream_executor::GPUDeviceInfo proto.">,
+  ];
+  let constructor = "CreateConvertFloatAMDPass()";
+}
+def RecoverExp2Pass : Pass<"xla-gpu-recover-exp2", "mlir::ModuleOp"> {
+  let summary = "Recovers exp2(x) from exp(x*log(2))";
+
+  let dependentDialects = [
+    "mlir::LLVM::LLVMDialect",
+    "mlir::arith::ArithDialect",
+    "mlir::math::MathDialect",
+  ];
+  let constructor = "CreateRecoverExp2Pass()";
 }
 
 def FuseLoopsPass : Pass<"xla-gpu-fuse-loops", "mlir::func::FuncOp"> {
@@ -106,6 +129,24 @@ def OptimizeLoopsPass :
   ];
 
   let constructor = "CreateOptimizeLoopsPass()";
+}
+
+
+def LowerXlaSharedPass :
+   Pass<"xla-gpu-lower-xla-shared", "mlir::func::FuncOp"> {
+  let summary = "Lowers XLA shared dialect ops to XLA GPU ops.";
+
+  let description = [{
+    Lowers XLA shared dialect ops to XLA GPU ops.
+  }];
+
+  let dependentDialects = [
+    "xla::XlaDialect",
+    "mlir::gpu::GPUDialect",
+    "mlir::scf::SCFDialect",
+  ];
+
+  let constructor = "CreateLowerXlaSharedPass()";
 }
 
 #endif  // XLA_SERVICE_GPU_FUSIONS_TRANSFORMS_PASSES_TD_

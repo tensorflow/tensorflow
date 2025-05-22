@@ -591,6 +591,7 @@ message HloModuleProto {
     DOT = 4;
     FLAGNET = 5;
     SHARDING = 6;
+    SCHEDULE = 7;
   }
   // The type of profile generation strategy used to generate the profile.
   enum ProfileGenerationStrategy {
@@ -614,6 +615,10 @@ message HloModuleProto {
     string fingerprint = 5;
     // The type of profile generation strategy used to generate the profile.
     ProfileGenerationStrategy profile_generation_strategy = 6;
+    // The original changelist the profile was generated at.
+    int64 original_changelist = 7;
+    // The changelist this profile was last updated at.
+    int64 changelist = 8;
   }
 
   // Profile information for the HLO module.
@@ -672,6 +677,7 @@ message BufferAllocationProto {
   bool is_constant = 12;
   int64 parameter_number = 6;
   repeated int64 parameter_shape_index = 10;
+  bool is_parameter_aliased_with_output = 13;
   bool maybe_live_out = 7;
   int64 color = 8;
   repeated Assigned assigned = 9;

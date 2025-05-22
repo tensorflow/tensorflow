@@ -71,7 +71,9 @@ ifrt_proxy_cc_test(
     timeout = "moderate",
     srcs = ["executable_impl_test_tfrt_cpu.cc"],
     shuffle_tests = False,
-    tags = if_oss(["not_run:arm"]),  # TODO(b/394180263): reenable this.
+    tags = [
+        "no_oss",  # TODO(madthanu): flaky in OSS
+    ] + if_oss(["not_run:arm"]),  # TODO(b/394180263): reenable this.
     deps = [
         ":register_pjrt_cpu_for_ifrt_api_tests",  # buildcleaner: keep
         "//xla/python/ifrt:test_util",

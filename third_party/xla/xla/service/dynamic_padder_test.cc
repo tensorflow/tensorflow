@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -33,6 +34,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/dynamic_dimension_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
@@ -42,11 +46,8 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/dynamic_dimension_inference.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/llvm_irgen_test_base.h"
 #include "xla/tests/test_macros.h"
@@ -154,7 +155,10 @@ class MemoryAlignmentTest : public HloTestBase {};
 // Test that dynamic padder will not cause memory misalignment in CUDA
 // when the read or write address is not aligned with 32 bits.
 // TODO(b/203599920): Disabled on CPU due to ASAN test failure.
-TEST_F(MemoryAlignmentTest, DISABLED_ON_CPU(TestDataTypeFP16)) {
+TEST_F(MemoryAlignmentTest, TestDataTypeFP16) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   const std::string hlo_text = R"(
     HloModule TestDataTypeFP16
 

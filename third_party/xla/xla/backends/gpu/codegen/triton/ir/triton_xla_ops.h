@@ -15,15 +15,18 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_OPS_H_
 #define XLA_BACKENDS_GPU_CODEGEN_TRITON_IR_TRITON_XLA_OPS_H_
 
+#include "mlir/Dialect/Utils/StaticValueUtils.h"  // IWYU pragma: keep
 #include "mlir/IR/Attributes.h"  // IWYU pragma: keep
 #include "mlir/IR/BuiltinTypes.h"  // IWYU pragma: keep
 #include "mlir/IR/Dialect.h"  // IWYU pragma: keep
+#include "mlir/IR/ImplicitLocOpBuilder.h"  // IWYU pragma: keep
 #include "mlir/IR/MLIRContext.h"  // IWYU pragma: keep
 #include "mlir/IR/OpDefinition.h"  // IWYU pragma: keep
 #include "mlir/IR/OpImplementation.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // IWYU pragma: keep
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // IWYU pragma: keep
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_dialect.h.inc"  // IWYU pragma: keep
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_enums.h.inc"
 #include "triton/Dialect/Triton/IR/Dialect.h"       // IWYU pragma: keep
 #include "triton/Dialect/Triton/IR/OpInterfaces.h"  // IWYU pragma: keep
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"    // IWYU pragma: keep
@@ -31,8 +34,6 @@ limitations under the License.
 
 #define GET_ATTRDEF_CLASSES
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_attrs.h.inc"
-#define GET_TYPEDEF_CLASSES
-#include "xla/backends/gpu/codegen/triton/ir/triton_xla_types.h.inc"
 #define GET_OP_CLASSES
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h.inc"
 

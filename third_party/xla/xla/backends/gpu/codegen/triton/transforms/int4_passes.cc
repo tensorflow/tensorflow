@@ -12,12 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <algorithm>
 #include <cstdint>
+#include <functional>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -32,12 +36,14 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
@@ -75,7 +81,7 @@ class I4ToI8Converter : public TypeConverter {
       return type;  // Only handle static shapes for simplicity
 
     std::vector<int64_t> new_shape = shape;
-    new_shape[new_shape.size() - packed_dim_idx_ - 1] /= 2;
+    new_shape[packed_dimension()] /= 2;
 
     auto new_type = RankedTensorType::get(
         new_shape, IntegerType::get(type.getContext(), 8));
@@ -113,8 +119,8 @@ class I4ToI8Converter : public TypeConverter {
     return new_func_type;
   }
 
-  explicit I4ToI8Converter(int packed_dim_idx)
-      : packed_dim_idx_(packed_dim_idx) {
+  explicit I4ToI8Converter(int packed_dimension)
+      : packed_dimension_(packed_dimension) {
     // Passthrough for other types.
     addConversion([](Type type) {
       VLOG(2) << "I4ToI8Converter: passthrough for " << DumpToString(type);
@@ -138,24 +144,24 @@ class I4ToI8Converter : public TypeConverter {
     addConversion(
         [this](FunctionType type) { return this->convertFunctionType(type); });
   }
-  int packed_dim_idx() const { return packed_dim_idx_; }
+  int packed_dimension() const { return packed_dimension_; }
 
  private:
-  int packed_dim_idx_;
+  int packed_dimension_;
 };
 
 // Divides a value by an integer constant.
 Value div(ConversionPatternRewriter &r, Value value, int64_t constant) {
   auto const_attr = r.getIntegerAttr(value.getType(), constant);
   auto const_op = r.template create<ma::ConstantOp>(value.getLoc(), const_attr);
-  return r.template create<arith::DivSIOp>(value.getLoc(), value, const_op);
+  return r.template create<ma::DivSIOp>(value.getLoc(), value, const_op);
 }
 
 // Divides a value by an integer constant.
 Value ceilDiv(ConversionPatternRewriter &r, Value value, int64_t constant) {
   auto const_attr = r.getIntegerAttr(value.getType(), constant);
   auto const_op = r.template create<ma::ConstantOp>(value.getLoc(), const_attr);
-  return r.template create<arith::CeilDivSIOp>(value.getLoc(), value, const_op);
+  return r.template create<ma::CeilDivSIOp>(value.getLoc(), value, const_op);
 }
 
 // Returns the integer value of a constant op.
@@ -191,9 +197,9 @@ class MakeTensorPtrOpConversionPattern
     }
 
     SmallVector<Value, 2> shape = adaptor.getShape();
-    int affected_dim_idx = shape.size() - 1 - converter_.packed_dim_idx();
+    int packed_dimension = converter_.packed_dimension();
     // The shape of the i8 tensor is half of the i4 tensor but at least 1.
-    shape[affected_dim_idx] = ceilDiv(r, shape[affected_dim_idx], 2);
+    shape[packed_dimension] = ceilDiv(r, shape[packed_dimension], 2);
 
     // The stride of the i8 tensor is half of the i4 tensor but at least 1.
     SmallVector<Value, 2> new_strides = adaptor.getStrides();
@@ -249,7 +255,7 @@ class AdvanceOpConversionPattern : public OpConversionPattern<AdvanceOp> {
       AdvanceOp op, typename OpConversionPattern<AdvanceOp>::OpAdaptor adaptor,
       ConversionPatternRewriter &r) const override {
     VLOG(2) << "AvanceOpConversionPattern: matching\n"
-            << DumpToString(static_cast<Operation *>(op.getOperation()));
+            << DumpToString(op.getOperation());
     // Convert the tensor type using the TypeConverter
     auto new_type = converter_.convertType(op.getType());
     if (op.getType() == new_type) {
@@ -258,13 +264,13 @@ class AdvanceOpConversionPattern : public OpConversionPattern<AdvanceOp> {
       return r.notifyMatchFailure(op, "no conversion needed");
     }
     SmallVector<Value, 2> offsets = adaptor.getOffsets();
-    int affected_dim_idx = offsets.size() - 1 - converter_.packed_dim_idx();
-    offsets[affected_dim_idx] = div(r, offsets[affected_dim_idx], 2);
+    int packed_dimension = converter_.packed_dimension();
+    offsets[packed_dimension] = div(r, offsets[packed_dimension], 2);
     auto new_op = r.replaceOpWithNewOp<AdvanceOp>(op, new_type,
                                                   adaptor.getPtr(), offsets);
     VLOG(2) << "AdvanceOpConversionPattern: replaced "
             << DumpToString(op.getOperation()) << " with "
-            << DumpToString(static_cast<Operation *>(new_op));
+            << DumpToString(new_op.getOperation());
     return success();
   }
 
@@ -318,7 +324,7 @@ class ExtSIInt4ToInt8Pattern : public OpConversionPattern<ma::ExtSIOp> {
   LogicalResult matchAndRewrite(ma::ExtSIOp op, OpAdaptor adaptor,
                                 ConversionPatternRewriter &r) const override {
     VLOG(2) << "ExtSIInt4ToInt8Pattern: matching\n"
-            << DumpToString(static_cast<Operation *>(op));
+            << DumpToString(op.getOperation());
     auto input_type = cast<RankedTensorType>(op.getIn().getType());
     auto packed_type = converter_.convertType(input_type);
     if (input_type == packed_type) {
@@ -336,8 +342,13 @@ class ExtSIInt4ToInt8Pattern : public OpConversionPattern<ma::ExtSIOp> {
     Value lo = r.create<ma::ShRSIOp>(loc, packed_type, shifted_lo, shift4);
     Value hi = r.create<ma::ShRSIOp>(loc, packed_type, adaptor.getIn(), shift4);
     Value hi_lo = r.create<mt::JoinOp>(loc, lo, hi);
-    if (converter_.packed_dim_idx() != 0) {
-      auto trans_attr = r.getDenseI32ArrayAttr({0, 2, 1});
+    if (converter_.packed_dimension() + 1 != input_type.getRank()) {
+      // Move the minor (joined) dimension to just after the packed dimension.
+      SmallVector<int32_t> trans_order(input_type.getRank() + 1);
+      absl::c_iota(trans_order, 0);
+      std::rotate(trans_order.begin() + converter_.packed_dimension() + 1,
+                  std::prev(trans_order.end()), trans_order.end());
+      auto trans_attr = r.getDenseI32ArrayAttr(trans_order);
       hi_lo = r.create<mt::TransOp>(loc, hi_lo, trans_attr);
     }
     auto unpacked_type = input_type.clone(r.getI8Type());
@@ -386,10 +397,10 @@ std::vector<Operation *> TraverseUpwards(Operation *op) {
 std::vector<Operation *> FindInt4ExtSIOp(const ModuleOp &module) {
   // It does not matter which packed dimension idx we use here, because use the
   // converter to detect that the conversion is needed.
-  I4ToI8Converter converter(/*packed_dim_idx=*/0);
+  I4ToI8Converter converter(/*packed_dimension=*/0);
   std::vector<Operation *> result;
   module->walk([&](Operation *op) {
-    if (auto extSI = dyn_cast<arith::ExtSIOp>(op)) {
+    if (auto extSI = dyn_cast<ma::ExtSIOp>(op)) {
       VLOG(2) << "found ExtSI: " << DumpToString(op);
       auto input_type = extSI.getIn().getType();
       if (input_type != converter.convertType(input_type)) {
@@ -401,31 +412,53 @@ std::vector<Operation *> FindInt4ExtSIOp(const ModuleOp &module) {
   return result;
 }
 
-// Finds the packed dimension idx from the MakeTensorPtrOp.
+// Finds the packed dimension from the MakeTensorPtrOp.
 // The tensor is packed along the minor dimension. Minor dimension is the one
-// that has the stride 1. If there are two dimensions with the stride 1, then we
-// need to check which exact shape dim is equal to 1.
-// We relay on the fact that shape and strides are the const values.
-int GetPackedDimIdx(MLIRContext *ctx, const std::vector<Operation *> &ops) {
+// that has a stride of 1 but a shape that is not 1. For a shape dimension of 1
+// the stride can be any value.
+int GetPackedDimension(MLIRContext *ctx, const std::vector<Operation *> &ops) {
   for (auto *op : ops) {
-    if (!isa<MakeTensorPtrOp>(op)) continue;
-
     auto make_tensor_ptr = dyn_cast<MakeTensorPtrOp>(op);
+    if (!make_tensor_ptr) {
+      continue;
+    }
+    // The order attribute is ignored in Triton, check for default order here.
+    CHECK(absl::c_is_sorted(make_tensor_ptr.getOrder(), std::greater<int>()))
+        << "Not default order: " << DumpToString(op);
     auto shape = make_tensor_ptr.getShape();
     auto strides = make_tensor_ptr.getStrides();
-    int stride_0 = GetConstValue(strides[0]).value_or(1);
-    int stride_1 = GetConstValue(strides[1]).value_or(1);
-    int dim_0 = GetConstValue(shape[0]).value_or(1);
-    int dim_1 = GetConstValue(shape[1]).value_or(1);
-    if (stride_0 != 1 && stride_1 == 1) return 0;
-    if (stride_0 == 1 && stride_1 != 1) return 1;
-    if (stride_0 == 1 && stride_1 == 1 && dim_0 == 1 && dim_1 != 1) return 0;
-    if (stride_0 == 1 && stride_1 == 1 && dim_0 != 1 && dim_1 == 1) return 1;
-    LOG(FATAL) << "Unsupported case for the MakeTensorPtrOp: "
-               << DumpToString(static_cast<Operation *>(make_tensor_ptr));
+    for (auto dim : make_tensor_ptr.getOrder()) {
+      if (GetConstValue(strides[dim]).value_or(1) == 1 &&
+          GetConstValue(shape[dim]).value_or(0) != 1) {
+        return dim;
+      }
+    }
   }
   LOG(FATAL) << "No MakeTensorPtrOp found";
-  return 0;  // Default to minor dimension.
+}
+
+LogicalResult SitofpInt4ToInt8Rewrite(ma::SIToFPOp op, PatternRewriter &r) {
+  if (!getElementTypeOrSelf(op.getIn().getType()).isInteger(4)) {
+    return r.notifyMatchFailure(op, "not an i4 argument");
+  }
+  Type type = r.getI8Type();
+  if (auto tensor_type = dyn_cast<RankedTensorType>(op.getType())) {
+    type = tensor_type.clone(type);
+  }
+  auto ext_si_op = r.create<ma::ExtSIOp>(op.getLoc(), type, op.getIn());
+  r.replaceOpWithNewOp<ma::SIToFPOp>(op, op.getType(), ext_si_op);
+  return success();
+}
+
+LogicalResult TruncfSitofpToSitofpRewrite(ma::TruncFOp trunc_op,
+                                          PatternRewriter &rewriter) {
+  auto sitofp_op = trunc_op.getIn().getDefiningOp<ma::SIToFPOp>();
+  if (!sitofp_op) {
+    return rewriter.notifyMatchFailure(trunc_op, "not preceded by sitofp");
+  }
+  rewriter.replaceOpWithNewOp<ma::SIToFPOp>(trunc_op, trunc_op.getType(),
+                                            sitofp_op.getIn());
+  return success();
 }
 
 struct PlainInt4ToPackedInt4RewritePass
@@ -441,18 +474,26 @@ struct PlainInt4ToPackedInt4RewritePass
     auto *ctx = &getContext();
     auto module = getOperation();
 
+    RewritePatternSet normalize_patterns(ctx);
+    normalize_patterns.add(SitofpInt4ToInt8Rewrite);
+    normalize_patterns.add(TruncfSitofpToSitofpRewrite);
+    if (failed(applyPatternsGreedily(module, std::move(normalize_patterns)))) {
+      VLOG(2) << "failed to apply patterns";
+      signalPassFailure();
+    }
+
     auto ext_ops = FindInt4ExtSIOp(module);
-    int packed_dim_idx = 0;
+    int packed_dimension = 0;
     // TODO(b/383255324): Support the case when both sides of the dot are packed
     // differently.
     for (auto *op : ext_ops) {
       VLOG(2) << "ext_op: " << DumpToString(op);
       auto ops = TraverseUpwards(op);
-      packed_dim_idx = GetPackedDimIdx(ctx, ops);
+      packed_dimension = GetPackedDimension(ctx, ops);
     }
 
     ConversionTarget target(*ctx);
-    I4ToI8Converter converter(packed_dim_idx);
+    I4ToI8Converter converter(packed_dimension);
     target.markUnknownOpDynamicallyLegal([&](Operation *op) {
       if (auto func_op = dyn_cast<FuncOp>(op)) {
         VLOG(2) << "check funcOp: " << DumpToString(func_op);

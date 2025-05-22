@@ -100,12 +100,12 @@ class Gauge {
 #include <memory>
 #include <string>
 
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/lib/monitoring/collection_registry.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
@@ -133,7 +133,7 @@ class GaugeCell {
 
  private:
   T value_ TF_GUARDED_BY(mu_);
-  mutable mutex mu_;
+  mutable absl::Mutex mu_;
 
   GaugeCell(const GaugeCell&) = delete;
   void operator=(const GaugeCell&) = delete;
@@ -235,7 +235,7 @@ class Gauge {
             &metric_def_, [&](MetricCollectorGetter getter) {
               auto metric_collector = getter.Get(&metric_def_);
 
-              mutex_lock l(mu_);
+              absl::MutexLock l(&mu_);
               for (const auto& cell : cells_) {
                 metric_collector.CollectValue(cell.first, cell.second.value());
               }
@@ -249,7 +249,7 @@ class Gauge {
     }
   }
 
-  mutable mutex mu_;
+  mutable absl::Mutex mu_;
 
   absl::Status status_;
 
@@ -271,13 +271,13 @@ class Gauge {
 ////
 template <typename T>
 void GaugeCell<T>::Set(const T& value) {
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   value_ = value;
 }
 
 template <typename T>
 T GaugeCell<T>::value() const {
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   return value_;
 }
 
@@ -320,7 +320,7 @@ GaugeCell<ValueType>* Gauge<ValueType, NumLabels>::GetCell(
       "provided in GetCell(...).");
 
   const LabelArray& label_array = {{labels...}};
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   const auto found_it = cells_.find(label_array);
   if (found_it != cells_.end()) {
     return &(found_it->second);

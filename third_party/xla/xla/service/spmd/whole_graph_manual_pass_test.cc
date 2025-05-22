@@ -27,8 +27,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -40,7 +40,7 @@ using ::testing::_;
 using ::testing::AllOf;
 namespace op = xla::testing::opcode_matchers;
 
-class WholeGraphManualPassTest : public HloTestBase {
+class WholeGraphManualPassTest : public HloHardwareIndependentTestBase {
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> RunPass(
       absl::string_view hlo_module) {

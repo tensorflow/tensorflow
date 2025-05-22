@@ -18,31 +18,41 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
-// Stores information of original values.
-struct OriginalArray {
+
+// The information of a tensor in an unoptimized HLO module.
+struct OriginalTensor {
+  // The name of the instruction that produces this tensor or a tuple that
+  // includes this tensor.
   std::string instruction_name;
+  // Shape index of the tensor if the instruction produces a tuple.
   ShapeIndex shape_index;
 };
 
-using OriginalValue = ShapeTree<std::optional<OriginalArray>>;
+// The information of an HLO value produced by an instruction in an unoptimized
+// HLO module.
+class OriginalValue : public ShapeTree<std::optional<OriginalTensor>> {
+ public:
+  explicit OriginalValue(Shape shape) : ShapeTree(std::move(shape)) {}
+  std::string ToString();
+  OriginalValueProto ToProto();
+  static std::shared_ptr<OriginalValue> FromProto(
+      const xla::OriginalValueProto& original_value_proto);
+};
 
-std::string OriginalValueToString(const OriginalValue& original_value);
-
-OriginalValueProto OriginalValueToProto(const OriginalValue& original_value);
-
-// Copy the original value from the source to the destination instruction. Note
-// the original values of fused instructions are copied when they are added
-// into a fusion, so it's not required to copy the value if the target is a
+// Associates the original value of the source to the destination instruction.
+// Note the original values of fused instructions are copied when they are added
+// into a fusion, so it's not required to move the value if the target is a
 // fusion instruction, which should have the same original value as the root of
-// the fused computation anyway. However, we will copy the value nontheless to
+// the fused computation anyway. However, we will move the value nontheless to
 // simplify some use cases that involve fusions.
-void CopyOriginalValue(const HloInstruction* src_instruction,
+void MoveOriginalValue(const HloInstruction* src_instruction,
                        HloInstruction* dest_instruction);
 }  // namespace xla
 

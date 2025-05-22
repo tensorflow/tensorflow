@@ -64,9 +64,8 @@ void ReadInputData(const ParsedTocoFlags& parsed_toco_flags,
 
   // Checks the input file permissions and reads the contents.
   CheckFrozenModelPermissions(parsed_toco_flags.input_file);
-  CHECK(port::file::GetContents(parsed_toco_flags.input_file.value(),
-                                graph_def_contents, port::file::Defaults())
-            .ok());
+  CHECK_OK(port::file::GetContents(parsed_toco_flags.input_file.value(),
+                                   graph_def_contents, port::file::Defaults()));
 }
 }  // namespace
 

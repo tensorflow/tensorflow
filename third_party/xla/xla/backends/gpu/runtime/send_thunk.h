@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
@@ -43,9 +44,9 @@ class SendThunk : public CollectiveThunk {
 
  protected:
   const CollectiveConfig& config() const override { return config_.config; }
-  absl::Status RunCollective(const ExecuteParams& params, se::Stream& stream,
-                             CommunicatorHandle comm_handle) override;
-  bool NeedFirstCallRendzevous() const override { return false; }
+  absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
+                                     se::Stream& stream,
+                                     CommunicatorHandle comm) override;
 
  private:
   const P2PConfig config_;

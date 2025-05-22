@@ -16,6 +16,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/error_payloads.h"
@@ -45,7 +46,7 @@ class CheckPreemptionOp : public OpKernel {
     auto status_or_task = agent->TryGetKeyValue(preemption_key_);
 
     // No-op if preemption key is not found.
-    if (errors::IsNotFound(status_or_task.status())) {
+    if (absl::IsNotFound(status_or_task.status())) {
       return;
     }
 

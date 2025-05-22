@@ -164,6 +164,57 @@ TEST_F(GpuIrEmitterUnnestedTest,
                      /*match_optimized_ir=*/false);
 }
 
+TEST_F(GpuIrEmitterUnnestedTest,
+       EmitTritonCustomCallWithCorrectKernelParamAttributes) {
+  if (!GetCudaComputeCapability().IsAtLeastAmpere()) {
+    GTEST_SKIP() << "Triton support is only enabled for Ampere GPUs and up.";
+  }
+
+  constexpr absl::string_view kMLIRTextWithTMAAttributes = R"(
+    module {
+      tt.func public @add_one(%arg0: !tt.ptr<f32, 1> {tt.nv_tma_desc = 1 : i32},
+      %arg1: !tt.ptr<f32, 1> {tt.nv_tma_desc = 1 : i32},
+      %arg2: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32},
+      %arg3: !tt.ptr<f32, 1> {tt.divisibility = 32 : i32}) {
+        %0 = tt.get_program_id x : i32
+        %1 = tt.load %arg0 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
+        %cst = arith.constant 1.000000e+00 : f32
+        %3 = arith.addf %1, %cst : f32
+        %4 = tt.load %arg2 {cache = 1 : i32, evict = 1 : i32, isVolatile = false} : !tt.ptr<f32>
+        tt.store %arg2, %3 {cache = 1 : i32, evict = 1 : i32} : !tt.ptr<f32>
+        tt.return
+      }
+    }
+    )";
+
+  // Check that the compiled LLVM IR retains the ByVal attribute that we expect
+  // to be added in the TTIR lowering when we use tt.nv_tma_desc.
+  HloComputation::Builder computation_builder(TestName());
+
+  // Create parameters and custom call in the computation builder.
+  Shape shape = xla::ShapeUtil::MakeShape(xla::F32, {32, 256});
+  HloInstruction* param_0 = computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "arg_0"));
+  HloInstruction* param_1 = computation_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, shape, "arg_1"));
+
+  computation_builder.AddInstruction(CreateTritonCustomCall(
+      ShapeUtil::MakeTupleShape({shape, std::move(shape)}), param_0, param_1,
+      kMLIRTextWithTMAAttributes, kCallName));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(computation_builder.Build());
+
+  // TODO(b/412980654): for custom kernels, the alignment attribute is getting
+  // dropped for compile time so we do not check for this.
+  CompileAndVerifyIr(std::move(module),
+                     R"(
+  ; CHECK: @add_one
+  ; CHECK: byval([128 x i8])
+        )",
+                     /*match_optimized_ir=*/false);
+}
+
 TEST_F(GpuIrEmitterUnnestedTest, CanNotEmitTritonCustomCallOnPreAmpereGpu) {
   if (GetCudaComputeCapability().IsAtLeastAmpere()) {
     GTEST_SKIP() << "Running on Ampere or more recent GPU, skipping.";

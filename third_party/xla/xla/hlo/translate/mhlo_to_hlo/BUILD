@@ -34,6 +34,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@stablehlo//:base",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -64,7 +65,6 @@ cc_library(
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
-        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -81,7 +81,6 @@ cc_library(
     deps = [
         ":stack_frame_index_builder",
         "//xla:xla_data_proto_cc",
-        "@com_google_absl//absl/log",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -150,6 +149,7 @@ cc_library(
         "//xla/hlo/builder/lib:slicing",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/translate/hlo_to_mhlo:hlo_utils",
         "//xla/mlir/utils:error_util",
         "//xla/mlir/utils:type_util",
         "//xla/mlir_hlo",
@@ -162,6 +162,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:types",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -196,6 +197,7 @@ cc_binary(
     name = "gen_hlo_op_writer",
     srcs = ["gen_hlo_op_writer.cc"],
     deps = [
+        "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TableGen",
         "@llvm-project//mlir:TableGen",
@@ -205,7 +207,7 @@ cc_binary(
 gentbl_cc_library(
     name = "hlo_op_writer_inc",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [([], "hlo_op_writer.inc")],
+    tbl_outs = {"hlo_op_writer.inc": []},
     tblgen = ":gen_hlo_op_writer",
     td_file = "gen_hlo_op_writer.td",
     deps = [
@@ -213,6 +215,7 @@ gentbl_cc_library(
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:SideEffectInterfacesTdFiles",
+        "@stablehlo//:stablehlo_ops_td_filegroup",
     ],
 )
 
@@ -226,7 +229,6 @@ xla_cc_test(
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
-        "@com_google_googletest//:gtest",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",

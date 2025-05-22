@@ -60,7 +60,7 @@ absl::Status OverrideConfig(const hlo_module_loader_details::Config& ovr_config,
 
 std::string StripLogHeaders(absl::string_view hlo_string) {
   // I0521 12:04:45.883483    1509 service.cc:186] ...
-  static RE2* matcher = new RE2(
+  static RE2* const matcher = new RE2(
       "[IWEF]\\d{4} "
       "\\d{2}:\\d{2}:\\d{2}\\.\\d+\\s+\\d+\\s+[^:]+:\\d+\\]\\s?(.*)");
   absl::string_view matches[4];

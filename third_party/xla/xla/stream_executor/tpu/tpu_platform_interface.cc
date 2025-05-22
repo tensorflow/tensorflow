@@ -92,7 +92,7 @@ TpuPlatformInterface* GetRegisteredPlatformStatic(bool initialize_platform,
 /* static */
 TpuPlatformInterface* TpuPlatformInterface::GetRegisteredPlatform(
     bool initialize_platform, int num_tries) {
-  static auto* mu = new absl::Mutex;
+  static auto* const mu = new absl::Mutex;
   static bool requested_initialize_platform = initialize_platform;
   static TpuPlatformInterface* tpu_registered_platform =
       GetRegisteredPlatformStatic(initialize_platform, num_tries);

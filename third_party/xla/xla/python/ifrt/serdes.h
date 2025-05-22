@@ -63,7 +63,7 @@ class SerDes : public llvm::RTTIExtends<SerDes, llvm::RTTIRoot> {
   virtual absl::string_view type_name() const = 0;
 
   virtual absl::StatusOr<std::string> Serialize(
-      Serializable& serializable,
+      const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) = 0;
 
   virtual absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(
@@ -104,7 +104,7 @@ absl::StatusOr<std::unique_ptr<Serializable>> DeserializeUnchecked(
 //
 // Returns an error if the `Serializable` type does not have a corresponding
 // `SerDes` registered or the `SerDes` returns an error.
-absl::StatusOr<Serialized> Serialize(Serializable& serializable,
+absl::StatusOr<Serialized> Serialize(const Serializable& serializable,
                                      std::unique_ptr<SerializeOptions> options);
 
 // Deserializes the given proto message produced by `Serialize()` back to an

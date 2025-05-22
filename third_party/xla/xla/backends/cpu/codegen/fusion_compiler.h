@@ -16,13 +16,17 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_CODEGEN_FUSION_COMPILER_H_
 #define XLA_BACKENDS_CPU_CODEGEN_FUSION_COMPILER_H_
 
+#include <cstdint>
 #include <memory>
+#include <utility>
 
 #include "absl/status/statusor.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/codegen/mlir_kernel_source.h"
 
 namespace xla::cpu {
 
@@ -31,20 +35,24 @@ namespace xla::cpu {
 class FusionCompiler {
  public:
   struct Options {
-    // Placeholder for now, but will be used in the future.
+    int32_t vector_width;
   };
 
-  explicit FusionCompiler(Options options) {}
+  explicit FusionCompiler(Options options) : options_(std::move(options)) {}
 
   // Compile a given MLIR module to LLVM, using the provided LLVM context.
   absl::StatusOr<std::unique_ptr<llvm::Module>> Compile(
       llvm::LLVMContext& llvm_context, mlir::ModuleOp mlir_module);
+  // Compile a MLIR kernel source to a LLVM kernel source.
+  absl::StatusOr<LlvmIrKernelSource> Compile(
+      MlirKernelSource mlir_kernel_source);
 
   // Create a new MLIR context for the compiler with the required dialects for
   // compiling an XLA:CPU fusion.
   static std::unique_ptr<mlir::MLIRContext> CreateContext();
 
  private:
+  Options options_;
 };
 
 }  // namespace xla::cpu

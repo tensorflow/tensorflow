@@ -64,7 +64,7 @@ XlaOp GetDiagonalMask(XlaOp x, int diagonal) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    auto n_dims = static_cast<int32_t>(shape.dimensions_size());
+    auto n_dims = static_cast<int32_t>(shape.dimensions().size());
     TF_RET_CHECK(n_dims >= 2);
     auto m = shape.dimensions(n_dims - 2);
     auto n = shape.dimensions(n_dims - 1);
@@ -82,7 +82,7 @@ XlaOp GetMatrixDiagonal(XlaOp x, int k) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    auto n_dims = static_cast<int32_t>(shape.dimensions_size());
+    auto n_dims = static_cast<int32_t>(shape.dimensions().size());
     TF_RET_CHECK(n_dims >= 2);
     const int64_t m = shape.dimensions(n_dims - 2);
     const int64_t n = shape.dimensions(n_dims - 1);
@@ -116,7 +116,7 @@ XlaOp GetMatrixDiagonalViaGather(XlaOp x, int k) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    auto n_dims = static_cast<int32_t>(shape.dimensions_size());
+    auto n_dims = static_cast<int32_t>(shape.dimensions().size());
     TF_RET_CHECK(n_dims >= 2);
     const int64_t m = shape.dimensions(n_dims - 2);
     const int64_t n = shape.dimensions(n_dims - 1);
@@ -180,7 +180,7 @@ XlaOp SetMatrixDiagonal(XlaOp matrix, XlaOp diag, int k) {
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(matrix));
     TF_ASSIGN_OR_RETURN(Shape diag_shape, builder->GetShape(diag));
-    auto n_dims = static_cast<int32_t>(shape.dimensions_size());
+    auto n_dims = static_cast<int32_t>(shape.dimensions().size());
     TF_RET_CHECK(n_dims >= 2);
     const int64_t m = shape.dimensions(n_dims - 2);
     const int64_t n = shape.dimensions(n_dims - 1);
@@ -195,7 +195,7 @@ XlaOp SetMatrixDiagonal(XlaOp matrix, XlaOp diag, int k) {
 
     if (pad_high != 0) {
       PaddingConfig padding_config;
-      for (int64_t i = 0; i < diag_shape.dimensions_size() - 1; ++i) {
+      for (int64_t i = 0; i < diag_shape.dimensions().size() - 1; ++i) {
         auto* dims = padding_config.add_dimensions();
         dims->set_edge_padding_low(0);
         dims->set_interior_padding(0);
@@ -218,7 +218,7 @@ XlaOp TriangleMask(XlaOp x, int diagonal) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    const int64_t n_dims = shape.dimensions_size();
+    const int64_t n_dims = shape.dimensions().size();
     TF_RET_CHECK(n_dims >= 2);
     const int64_t m = shape.dimensions(n_dims - 2);
     const int64_t n = shape.dimensions(n_dims - 1);
@@ -245,7 +245,7 @@ XlaOp Symmetrize(XlaOp x, bool lower) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    if (shape.dimensions_size() < 2) {
+    if (shape.dimensions().size() < 2) {
       return InvalidArgument(
           "Argument to symmetrize must have >= 2 dimensions, got %s",
           shape.ToString());
@@ -734,8 +734,8 @@ XlaOp Einsum(XlaOp x, XlaOp y, absl::string_view einsum_config,
     TF_ASSIGN_OR_RETURN(Shape y_shape, builder->GetShape(y));
     TF_ASSIGN_OR_RETURN(
         auto einsum_config_numeric,
-        ParseEinsumString(einsum_config, x_shape.dimensions_size(),
-                          y_shape.dimensions_size()));
+        ParseEinsumString(einsum_config, x_shape.dimensions().size(),
+                          y_shape.dimensions().size()));
     return Einsum(x, einsum_config_numeric[0], y, einsum_config_numeric[1],
                   einsum_config_numeric[2], precision, preferred_element_type,
                   grad_x, grad_y);
@@ -752,7 +752,7 @@ XlaOp TransposeInMinorDims(XlaOp x) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
-    const int64_t n_dims = shape.dimensions_size();
+    const int64_t n_dims = shape.dimensions().size();
     TF_RET_CHECK(n_dims >= 2);
     std::vector<int64_t> permutation(n_dims);
     std::iota(permutation.begin(), permutation.end(), 0);

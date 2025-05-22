@@ -109,7 +109,6 @@ class CustomBufferizeTypeConverter : public mlir::TypeConverter {
     addConversion([](UnrankedTensorType type) -> Type {
       return UnrankedMemRefType::get(type.getElementType(), 0);
     });
-    addArgumentMaterialization(materializeToTensor);
     addSourceMaterialization(materializeToTensor);
     addTargetMaterialization([](OpBuilder& builder, BaseMemRefType type,
                                 ValueRange inputs, Location loc) -> Value {
@@ -129,7 +128,7 @@ class CustomBufferizeTypeConverter : public mlir::TypeConverter {
       }
       if (isa<TensorType>(inputs[0].getType())) {
         // Tensor to MemRef cast.
-        return builder.create<bufferization::ToMemrefOp>(loc, type, inputs[0]);
+        return builder.create<bufferization::ToBufferOp>(loc, type, inputs[0]);
       }
       llvm_unreachable("only tensor/memref input types supported");
     });
@@ -146,7 +145,7 @@ class CustomBufferizeTypeConverter : public mlir::TypeConverter {
         return inputs[0];
       }
       assert(mlir::isa<TensorType>(inputs[0].getType()));
-      return builder.create<bufferization::ToMemrefOp>(loc, type, inputs[0]);
+      return builder.create<bufferization::ToBufferOp>(loc, type, inputs[0]);
     });
   }
 };
@@ -225,7 +224,7 @@ struct ComputeOpAndFuncBufferizePass
     populateReturnOpTypeConversionPattern(patterns, converter);
 
     // Configure legality and structural patterns.
-    target.addLegalOp<bufferization::ToTensorOp, bufferization::ToMemrefOp>();
+    target.addLegalOp<bufferization::ToTensorOp, bufferization::ToBufferOp>();
     scf::populateSCFStructuralTypeConversionsAndLegality(converter, patterns,
                                                          target);
 
@@ -311,11 +310,11 @@ class BufferizeToTensorOp
 // In a finalizing bufferize conversion, we know that all tensors have been
 // converted to memrefs, thus, this op becomes an identity.
 class BufferizeToMemrefOp
-    : public OpConversionPattern<bufferization::ToMemrefOp> {
+    : public OpConversionPattern<bufferization::ToBufferOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
-      bufferization::ToMemrefOp op, OpAdaptor adaptor,
+      bufferization::ToBufferOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
     rewriter.replaceOp(op, adaptor.getTensor());
     return success();
@@ -392,7 +391,7 @@ struct FinalBufferizePass
     target.addIllegalOp<tensor::GenerateOp, tensor::ExtractOp,
                         tensor::FromElementsOp, tensor::CastOp, tensor::DimOp,
                         tensor::RankOp, mhlo::MinimumBroadcastShapesOp,
-                        bufferization::ToTensorOp, bufferization::ToMemrefOp,
+                        bufferization::ToTensorOp, bufferization::ToBufferOp,
                         tensor::ExpandShapeOp, tensor::CollapseShapeOp>();
     CustomBufferizeTypeConverter converter;
     auto typesAreLegal = [&converter](Operation* op) {

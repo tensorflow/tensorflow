@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/type_util.h"
+#include "xla/codegen/emitters/utils.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -636,23 +637,6 @@ void ScatterWithDistributedIndices::ComputeIndexing(
   }
 }
 
-DenseElementsAttr GetShapedZeroConstantAttr(VectorType vector_type) {
-  auto elem_type = vector_type.getElementType();
-  if (auto float_type = mlir::dyn_cast<mlir::FloatType>(elem_type)) {
-    std::vector<llvm::APFloat> values(
-        vector_type.getNumElements(),
-        APFloat::getZero(float_type.getFloatSemantics()));
-    return DenseElementsAttr::get(vector_type, values);
-  }
-  if (auto int_type = mlir::dyn_cast<mlir::IntegerType>(elem_type)) {
-    std::vector<llvm::APInt> values(
-        vector_type.getNumElements(),
-        APInt::getZero(int_type.getIntOrFloatBitWidth()));
-    return DenseElementsAttr::get(vector_type, values);
-  }
-  llvm_unreachable("Unsupported vector element type");
-}
-
 Value ScatterWithDistributedIndices::InitializeAccumulator(
     ImplicitLocOpBuilder& b) const {
   auto elem_type = emitters::PrimitiveTypeToMlirType(description_.elem_type, b);
@@ -662,7 +646,7 @@ Value ScatterWithDistributedIndices::InitializeAccumulator(
   auto accumulator_type =
       VectorType::get({update_iterations_per_thread, vector_size_}, elem_type);
   return b.create<arith::ConstantOp>(
-      accumulator_type, GetShapedZeroConstantAttr(accumulator_type));
+      accumulator_type, emitters::GetZeroDenseElementsAttr(accumulator_type));
 }
 
 absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
@@ -910,45 +894,40 @@ std::unique_ptr<ScatterFusion> CreateScatterFusion(
   int64_t max_vectorized_elements = kMaxVectorizedBits / elem_type_bits;
   int64_t vector_size = GetSingleSliceVectorSize(
       num_elements_per_slice, max_vectorized_elements, warp_size);
-  int64_t num_active_threads_per_warp =
-      std::min(warp_size, num_elements_per_slice / vector_size);
-
   int64_t max_active_warps =
       kNumWarpsPerBlock * analysis.device_info().core_count();
-  // TODO(b/385081952): Investigate why bf16 and f64 leads to incorrect results.
-  // If we have enough data, we assign each warp to process a single
-  // slice.
-  if (num_slices > max_active_warps &&
-      num_active_threads_per_warp > warp_size / 2) {
+
+  // If indices are sorted and not unique, we can use the distributed indices
+  // implementation to accumulate the updates before writing them to the output
+  // tensor.
+  if (description.scatter->indices_are_sorted() &&
+      !description.scatter->unique_indices() && num_slices > max_active_warps) {
     int64_t num_indices_per_warp = 1;
     int64_t indices_vector_size = 1;
     int64_t num_warps_per_slice = 1;
-    // For sorted scatter, we try to estimate the number of updates per warp by
-    // computing the ratio of the number of the given updates to the number of
-    // the possible valid indices. If we do not have multiple updates per warp,
-    // there is no reason to use this algorithm.
-    if (description.scatter->indices_are_sorted()) {
-      num_indices_per_warp = CeilOfRatio(
-          num_slices,
-          std::max(max_active_warps,
-                   GetNumPossibleValidIndices(
-                       description.slice_shape, description.output_shape,
-                       description.index_vector_length)));
+    // We try to estimate the number of updates per warp by computing the ratio
+    // of the number of the given updates to the number of the possible valid
+    // indices. If we do not have multiple updates per warp, there is no reason
+    // to use this algorithm.
+    num_indices_per_warp = CeilOfRatio(
+        num_slices,
+        std::max(max_active_warps,
+                 GetNumPossibleValidIndices(description.slice_shape,
+                                            description.output_shape,
+                                            description.index_vector_length)));
 
-      // If the index_vector_length is 1, we can vectorize the indices read.
-      int64_t index_elem_type_bits = primitive_util::BitWidth(
-          description.scatter->scatter_indices()->shape().element_type());
-      int64_t max_vectorized_indices =
-          kMaxVectorizedBits / index_elem_type_bits;
-      if (description.index_vector_length == 1 &&
-          num_indices_per_warp > max_vectorized_indices) {
-        // Pad num_indices_per_warp to the next multiple of
-        // max_vectorized_indices.
-        num_indices_per_warp =
-            CeilOfRatio(num_indices_per_warp, max_vectorized_indices) *
-            max_vectorized_indices;
-        indices_vector_size = max_vectorized_indices;
-      }
+    // If the index_vector_length is 1, we can vectorize the indices read.
+    int64_t index_elem_type_bits = primitive_util::BitWidth(
+        description.scatter->scatter_indices()->shape().element_type());
+    int64_t max_vectorized_indices = kMaxVectorizedBits / index_elem_type_bits;
+    if (description.index_vector_length == 1 &&
+        num_indices_per_warp > max_vectorized_indices) {
+      // Pad num_indices_per_warp to the next multiple of
+      // max_vectorized_indices.
+      num_indices_per_warp =
+          CeilOfRatio(num_indices_per_warp, max_vectorized_indices) *
+          max_vectorized_indices;
+      indices_vector_size = max_vectorized_indices;
     }
     return std::make_unique<ScatterWithDistributedIndices>(
         analysis, description, vector_size, num_warps_per_slice,

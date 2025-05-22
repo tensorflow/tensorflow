@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu::triton {
 
@@ -105,7 +106,7 @@ absl::StatusOr<mlir::Type> TritonType(EmitterLocOpBuilder& b, PrimitiveType t);
 // Triton type -> XLA type conversions.
 absl::StatusOr<PrimitiveType> GetPrimitiveType(mlir::Type t);
 
-mlir::Type StorageType(EmitterLocOpBuilder& b, mlir::Type t);
+mlir::Type StorageType(mlir::Type t);
 
 // Get the value of the scalar constant's literal in a C++ type.
 template <typename T>

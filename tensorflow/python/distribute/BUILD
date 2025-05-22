@@ -2578,6 +2578,9 @@ distribute_py_strict_test(
 tpu_py_strict_test(
     name = "tpu_strategy_model_parallelism_test",
     srcs = ["tpu_strategy_model_parallelism_test.py"],
+    args = [
+        "--xla_tpu_reserve_recv_ready_sync_flags=true",
+    ],
     disable_experimental = True,  # b/202779350
     disable_mlir_bridge = False,
     disable_v3_4chips = False,

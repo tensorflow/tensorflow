@@ -181,7 +181,7 @@ void GenerateStaticQuantOp(std::vector<const Record *> &defs,
 
   for (const auto *def : defs) {
     Operator op(def);
-    if (!op.getTrait("::mlir::OpTrait::quant::QuantizableResult")) continue;
+    if (!op.getTrait("::mlir::OpTrait::TFL::QuantizableResult")) continue;
 
     const llvm::DagInit *args_in_dag = def->getValueAsDag("arguments");
     // Assumes argument name is "input" for input activations. Otherwise, assume

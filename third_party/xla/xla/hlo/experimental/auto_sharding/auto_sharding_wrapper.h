@@ -45,10 +45,6 @@ absl::StatusOr<AutoShardingSolverOutput> Solve(
     const HloModule& hlo_module, const HloLiveRange& hlo_live_range,
     const StrategyMap& strategy_map, const StrategyGroups& strategy_groups,
     const CostGraph& cost_graph, const AliasSet& alias_set,
-    const std::vector<std::pair<LivenessIdx, LivenessIdx>>& node_intervals,
-    const std::vector<std::pair<LivenessIdx, LivenessIdx>>& edge_intervals,
-    const std::vector<absl::btree_set<int64_t>>& node_groups,
-    const std::vector<absl::btree_set<int64_t>>& edge_groups,
     const AutoShardingOption& option, absl::string_view request_prefix,
     const absl::flat_hash_map<std::string, HloSharding>&
         sharding_propagation_solution = {});
@@ -60,10 +56,6 @@ CreateAutoShardingSolverRequestAndCallSolver(
     const HloModule& hlo_module, const HloLiveRange& hlo_live_range,
     const StrategyMap& strategy_map, const StrategyGroups& strategy_groups,
     const CostGraph& cost_graph, const AliasSet& alias_set,
-    const std::vector<std::pair<LivenessIdx, LivenessIdx>>& node_intervals,
-    const std::vector<std::pair<LivenessIdx, LivenessIdx>>& edge_intervals,
-    const std::vector<absl::btree_set<int64_t>>& node_groups,
-    const std::vector<absl::btree_set<int64_t>>& edge_groups,
     const std::vector<NodeStrategyIdx>& s_hint, bool compute_iis,
     int64_t solver_timeout_in_seconds, const AutoShardingOption& option,
     std::optional<double> max_cost, absl::string_view request_name,

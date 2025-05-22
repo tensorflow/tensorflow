@@ -26,6 +26,22 @@ limitations under the License.
 #define _TF_STR_HELPER(x) #x
 #define _TF_STR(x) _TF_STR_HELPER(x)
 
+#ifndef TF_MAJOR_VERSION
+#error "TF_MAJOR_VERSION is not defined!"
+#endif
+
+#ifndef TF_MINOR_VERSION
+#error "TF_MINOR_VERSION is not defined!"
+#endif
+
+#ifndef TF_PATCH_VERSION
+#error "TF_PATCH_VERSION is not defined!"
+#endif
+
+#ifndef TF_VERSION_SUFFIX
+#error "TF_VERSION_SUFFIX is not defined!"
+#endif
+
 // e.g. "0.5.0" or "0.6.0-alpha".
 #define TF_VERSION_STRING                                            \
   (_TF_STR(TF_MAJOR_VERSION) "." _TF_STR(TF_MINOR_VERSION) "." _TF_STR( \

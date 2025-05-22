@@ -34,7 +34,7 @@ class GetI64ScalarElementsAttr<int value> :
 class GetF32Scalar<int value> :
   NativeCodeCall<"GetF32Scalar(&$_builder, " # value # ")">;
 
-def TrueBoolAttr : AttrConstraint<CPred<"$_self.cast<::mlir::BoolAttr>().getValue()">>;
+def TrueBoolAttr : AttrConstraint<CPred<"llvm::cast<::mlir::BoolAttr>($_self).getValue()">>;
 
 def CreateTFShapeOp : NativeCodeCall<
     "$_builder.create<TF::ShapeOp>($0.getLoc(), $1, $2)">;
@@ -74,7 +74,7 @@ def LowerAddOp : Pat<(TF_AddOp TF_NumberNotQuantizedTensor:$x,
 
 def GetBiasAddGradReductionIndices : NativeCodeCall<
   "GetBiasAddGradReductionIndices("
-  "$0.getType().cast<RankedTensorType>().getRank(), $1, &$_builder)">;
+  "llvm::cast<RankedTensorType>($0.getType()).getRank(), $1, &$_builder)">;
 
 def LowerBiasAddGradOp :
   Pat<(TF_BiasAddGradOp AnyRankedTensor:$out_backprop, $data_format),
@@ -120,12 +120,12 @@ def LowerSoftmaxCrossEntropyWithLogitsOp : Pattern<
 // dimension should be known.
 class GetDimSizeOfType<int dim> : NativeCodeCall<
   "GetScalarOfType(getElementTypeOrSelf($1), "
-  "$0.getType().cast<RankedTensorType>().getDimSize(" # dim # "))">;
+  "llvm::cast<RankedTensorType>($0.getType()).getDimSize(" # dim # "))">;
 
 // Same as the above with i32 element type.
 class GetDimSizeAsI32<int dim> : NativeCodeCall<
   "GetScalarOfType($_builder.getIntegerType(32), "
-  "$0.getType().cast<RankedTensorType>().getDimSize(" # dim # "))">;
+  "llvm::cast<RankedTensorType>($0.getType()).getDimSize(" # dim # "))">;
 
 // Sparse version of SoftmaxCrossEntropyWithLogits is lowered to dense by
 // expanding the sparse labels using:
@@ -285,7 +285,7 @@ def LowerIsNanOp : Pat<(TF_IsNanOp $x),
 
 def GetAllAxes : NativeCodeCall<
   "GetI64ElementsAttrForSeq("
-  "0, $0.getType().cast<RankedTensorType>().getRank(), &$_builder)">;
+  "0, llvm::cast<RankedTensorType>($0.getType()).getRank(), &$_builder)">;
 
 // L2Loss is lowered using the formula,
 // L2Loss(input) = Sum(input * input) / 2

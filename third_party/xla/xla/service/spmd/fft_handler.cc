@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -78,7 +79,7 @@ std::optional<HloInstruction*> PadEachPartitionWithHaloExchange(
   // 3. Halo exchange.
   auto halo_exchange_result =
       ExchangeHalo(hlo, left_halo_size_function, right_halo_size_function,
-                   hlo->shape().dimensions_size() - 1, sharding,
+                   hlo->shape().dimensions().size() - 1, sharding,
                    collective_ops_creator, next_channel_id, b);
 
   if (halo_exchange_result.has_value()) {
@@ -93,17 +94,17 @@ std::optional<HloInstruction*> PadEachPartitionWithHaloExchange(
       OffsetCalculation(MultiplyAddDivideOffsetCalculation(
           size_padded_per_partition - size_per_partition, 0, 1));
   auto slice_shape = concat->shape();
-  slice_shape.set_dimensions(concat->shape().dimensions_size() - 1,
+  slice_shape.set_dimensions(concat->shape().dimensions().size() - 1,
                              size_padded_per_partition);
   auto zero_s32 =
       b->AddInstruction(HloInstruction::CreateConstant(LiteralUtil::Zero(S32)));
-  std::vector<HloInstruction*> slice_offsets(concat->shape().dimensions_size(),
-                                             zero_s32);
+  std::vector<HloInstruction*> slice_offsets(
+      concat->shape().dimensions().size(), zero_s32);
   auto partition_ordinals =
       MakeTiledPartitionOrdinals(sharding, partition_id, b);
-  slice_offsets[concat->shape().dimensions_size() - 1] =
+  slice_offsets[concat->shape().dimensions().size() - 1] =
       start_offset_on_padded_concat_calculation.Calculate(
-          partition_ordinals[concat->shape().dimensions_size() - 1], b);
+          partition_ordinals[concat->shape().dimensions().size() - 1], b);
   return b->AddInstruction(HloInstruction::CreateDynamicSlice(
       slice_shape, concat, slice_offsets, slice_shape.dimensions()));
 }
@@ -144,7 +145,8 @@ HloInstruction* ShuffleWithinEachPartitionUsingOneHot(HloInstruction* hlo,
           one_hot_indices, partition_indices, ComparisonDirection::kEq))));
 
   DotDimensionNumbers dot_dnums;
-  dot_dnums.add_lhs_contracting_dimensions(hlo->shape().dimensions_size() - 1);
+  dot_dnums.add_lhs_contracting_dimensions(hlo->shape().dimensions().size() -
+                                           1);
   dot_dnums.add_rhs_contracting_dimensions(0);
   PrecisionConfig precision_config;
   precision_config.mutable_operand_precision()->Resize(
@@ -161,14 +163,11 @@ HloInstruction* ShuffleDataWithAllToAll(
     HloInstruction* hlo, int64_t num_partitions,
     const SPMDCollectiveOpsCreator& collective_ops_creator,
     int64_t* next_channel_id, SpmdBuilder* b) {
-  std::vector<std::vector<int64_t>> groups(1);
-  std::vector<int64_t> partition_subgroups(num_partitions);
-  std::iota(partition_subgroups.begin(), partition_subgroups.end(), 0);
-  groups[0] = partition_subgroups;
-  auto all_to_all = collective_ops_creator.create_cross_partition_all_to_all(
-      b, {hlo}, groups, (*next_channel_id)++,
-      hlo->shape().dimensions_size() - 1);
-  return all_to_all;
+  IotaReplicaGroupList groups(1, num_partitions);
+  return collective_ops_creator
+      .create_cross_partition_all_to_all_with_iota_device_list(
+          b, {hlo}, groups, (*next_channel_id)++,
+          hlo->shape().dimensions().size() - 1);
 }
 
 HloInstruction* GetCorrectionFactor(HloInstruction* hlo, int64_t num_partitions,
@@ -201,7 +200,7 @@ HloInstruction* GetCorrectionFactor(HloInstruction* hlo, int64_t num_partitions,
       HloInstruction::CreateBinary(hlo->shape(), HloOpcode::kMultiply,
                                    constant_factor, broadcast_partition_id));
   auto iota = add_hlo(HloInstruction::CreateIota(
-      hlo->shape(), hlo->shape().dimensions_size() - 1));
+      hlo->shape(), hlo->shape().dimensions().size() - 1));
   exp_operand = add_hlo(HloInstruction::CreateBinary(
       hlo->shape(), HloOpcode::kMultiply, exp_operand, iota));
   return add_hlo(
@@ -341,8 +340,8 @@ HloInstruction* GetFinalFftUsingCollectivePermute(
 // Slice valid data in each partition.
 HloInstruction* SliceValidData(HloInstruction* hlo, const Shape& target_shape,
                                SpmdBuilder* b) {
-  std::vector<int64_t> start_indices(target_shape.dimensions_size(), 0);
-  std::vector<int64_t> strides(target_shape.dimensions_size(), 1);
+  std::vector<int64_t> start_indices(target_shape.dimensions().size(), 0);
+  std::vector<int64_t> strides(target_shape.dimensions().size(), 1);
   return b->AddInstruction(HloInstruction::CreateSlice(
       target_shape, hlo, start_indices, target_shape.dimensions(), strides));
 }
@@ -351,7 +350,7 @@ HloInstruction* SliceValidData(HloInstruction* hlo, const Shape& target_shape,
 
 // Distributed FFT using the algorithm described in go/tpu-spmd-fft.
 absl::Status SpmdPartitioningVisitor::HandleFft(HloInstruction* hlo) {
-  if (hlo->operand(0)->shape().dimensions_size() < 3 ||
+  if (hlo->operand(0)->shape().dimensions().size() < 3 ||
       hlo->fft_type() != FftType::FFT) {
     return DefaultAction(hlo);
   }

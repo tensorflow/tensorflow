@@ -19,6 +19,8 @@ load(
     "//third_party/gpus/cuda/hermetic:cuda_redist_versions.bzl",
     "CUDA_REDIST_PATH_PREFIX",
     "CUDNN_REDIST_PATH_PREFIX",
+    "MIRRORED_TAR_CUDA_REDIST_PATH_PREFIX",
+    "MIRRORED_TAR_CUDNN_REDIST_PATH_PREFIX",
     "REDIST_VERSIONS_TO_BUILD_TEMPLATES",
 )
 
@@ -232,6 +234,12 @@ def _create_cuda_version_file(repository_ctx, lib_name_to_version_dict):
             "MAJOR_CUDA_VERSION = \"{}\"".format(major_cudart_version),
         )
 
+def create_version_file(repository_ctx, major_lib_version):
+    repository_ctx.file(
+        "version.bzl",
+        "VERSION = \"{}\"".format(major_lib_version),
+    )
+
 def use_local_path(repository_ctx, local_path, dirs):
     # buildifier: disable=function-docstring-args
     """Creates repository using local redistribution paths."""
@@ -255,7 +263,7 @@ def use_local_path(repository_ctx, local_path, dirs):
         lib_name_to_version_dict,
     )
     _create_cuda_version_file(repository_ctx, lib_name_to_version_dict)
-    repository_ctx.file("version.txt", major_version)
+    create_version_file(repository_ctx, major_version)
 
 def _use_local_cuda_path(repository_ctx, local_cuda_path):
     # buildifier: disable=function-docstring-args
@@ -271,18 +279,30 @@ def _use_local_cudnn_path(repository_ctx, local_cudnn_path):
     """ Creates symlinks and initializes hermetic CUDNN repository."""
     use_local_path(repository_ctx, local_cudnn_path, ["include", "lib"])
 
-def _download_redistribution(repository_ctx, arch_key, path_prefix):
+def _download_redistribution(
+        repository_ctx,
+        arch_key,
+        path_prefix,
+        mirrored_tar_path_prefix):
     (url, sha256) = repository_ctx.attr.url_dict[arch_key]
+    use_cuda_tars = get_env_var(
+        repository_ctx,
+        "USE_CUDA_TAR_ARCHIVE_FILES",
+    )
 
     # If url is not relative, then appending prefix is not needed.
     if not (url.startswith("http") or url.startswith("file:///")):
-        url = path_prefix + url
+        if use_cuda_tars:
+            url = mirrored_tar_path_prefix + url
+        else:
+            url = path_prefix + url
     archive_name = get_archive_name(url)
     file_name = _get_file_name(url)
+    urls = [url] if use_cuda_tars else tf_mirror_urls(url)
 
     print("Downloading and extracting {}".format(url))  # buildifier: disable=print
     repository_ctx.download(
-        url = tf_mirror_urls(url),
+        url = urls,
         output = file_name,
         sha256 = sha256,
     )
@@ -329,7 +349,7 @@ def _use_downloaded_cuda_redistribution(repository_ctx):
         # If no CUDA version is found, comment out all cc_import targets.
         create_dummy_build_file(repository_ctx)
         _create_cuda_version_file(repository_ctx, {})
-        repository_ctx.file("version.txt", major_version)
+        create_version_file(repository_ctx, major_version)
         return
 
     if len(repository_ctx.attr.url_dict) == 0:
@@ -338,7 +358,7 @@ def _use_downloaded_cuda_redistribution(repository_ctx):
         ))  # buildifier: disable=print
         create_dummy_build_file(repository_ctx)
         _create_cuda_version_file(repository_ctx, {})
-        repository_ctx.file("version.txt", major_version)
+        create_version_file(repository_ctx, major_version)
         return
 
     # Download archive only when GPU config is used.
@@ -357,6 +377,7 @@ def _use_downloaded_cuda_redistribution(repository_ctx):
         repository_ctx,
         arch_key,
         repository_ctx.attr.cuda_redist_path_prefix,
+        repository_ctx.attr.mirrored_tar_cuda_redist_path_prefix,
     )
     lib_name_to_version_dict = get_lib_name_to_version_dict(repository_ctx)
     major_version = get_major_library_version(repository_ctx, lib_name_to_version_dict)
@@ -371,7 +392,7 @@ def _use_downloaded_cuda_redistribution(repository_ctx):
     )
     _create_cuda_header_symlinks(repository_ctx)
     _create_cuda_version_file(repository_ctx, lib_name_to_version_dict)
-    repository_ctx.file("version.txt", major_version)
+    create_version_file(repository_ctx, major_version)
 
 def _cuda_repo_impl(repository_ctx):
     local_cuda_path = get_env_var(repository_ctx, "LOCAL_CUDA_PATH")
@@ -388,12 +409,14 @@ cuda_repo = repository_rule(
         "build_templates": attr.label_list(mandatory = True),
         "override_strip_prefix": attr.string(),
         "cuda_redist_path_prefix": attr.string(),
+        "mirrored_tar_cuda_redist_path_prefix": attr.string(mandatory = False),
     },
     environ = [
         "HERMETIC_CUDA_VERSION",
         "TF_CUDA_VERSION",
         "LOCAL_CUDA_PATH",
         "CUDA_REDIST_TARGET_PLATFORM",
+        "USE_CUDA_TAR_ARCHIVE_FILES",
     ],
 )
 
@@ -409,7 +432,7 @@ def _use_downloaded_cudnn_redistribution(repository_ctx):
     if not cudnn_version:
         # If no CUDNN version is found, comment out cc_import targets.
         create_dummy_build_file(repository_ctx)
-        repository_ctx.file("version.txt", major_version)
+        create_version_file(repository_ctx, major_version)
         return
 
     if len(repository_ctx.attr.url_dict) == 0:
@@ -417,7 +440,7 @@ def _use_downloaded_cudnn_redistribution(repository_ctx):
             repository_ctx.name,
         ))  # buildifier: disable=print
         create_dummy_build_file(repository_ctx)
-        repository_ctx.file("version.txt", major_version)
+        create_version_file(repository_ctx, major_version)
         return
 
     # Download archive only when GPU config is used.
@@ -442,6 +465,7 @@ def _use_downloaded_cudnn_redistribution(repository_ctx):
         repository_ctx,
         arch_key,
         repository_ctx.attr.cudnn_redist_path_prefix,
+        repository_ctx.attr.mirrored_tar_cudnn_redist_path_prefix,
     )
 
     lib_name_to_version_dict = get_lib_name_to_version_dict(repository_ctx)
@@ -455,7 +479,7 @@ def _use_downloaded_cudnn_redistribution(repository_ctx):
         major_version,
     )
 
-    repository_ctx.file("version.txt", major_version)
+    create_version_file(repository_ctx, major_version)
 
 def _cudnn_repo_impl(repository_ctx):
     local_cudnn_path = get_env_var(repository_ctx, "LOCAL_CUDNN_PATH")
@@ -472,6 +496,7 @@ cudnn_repo = repository_rule(
         "build_templates": attr.label_list(mandatory = True),
         "override_strip_prefix": attr.string(),
         "cudnn_redist_path_prefix": attr.string(),
+        "mirrored_tar_cudnn_redist_path_prefix": attr.string(),
     },
     environ = [
         "HERMETIC_CUDNN_VERSION",
@@ -480,6 +505,7 @@ cudnn_repo = repository_rule(
         "TF_CUDA_VERSION",
         "LOCAL_CUDNN_PATH",
         "CUDA_REDIST_TARGET_PLATFORM",
+        "USE_CUDA_TAR_ARCHIVE_FILES",
     ],
 )
 
@@ -536,6 +562,7 @@ def get_version_and_template_lists(version_to_template):
 def cudnn_redist_init_repository(
         cudnn_redistributions,
         cudnn_redist_path_prefix = CUDNN_REDIST_PATH_PREFIX,
+        mirrored_tar_cudnn_redist_path_prefix = MIRRORED_TAR_CUDNN_REDIST_PATH_PREFIX,
         redist_versions_to_build_templates = REDIST_VERSIONS_TO_BUILD_TEMPLATES):
     # buildifier: disable=function-docstring-args
     """Initializes CUDNN repository."""
@@ -553,11 +580,13 @@ def cudnn_redist_init_repository(
         build_templates = templates,
         url_dict = url_dict,
         cudnn_redist_path_prefix = cudnn_redist_path_prefix,
+        mirrored_tar_cudnn_redist_path_prefix = mirrored_tar_cudnn_redist_path_prefix,
     )
 
 def cuda_redist_init_repositories(
         cuda_redistributions,
         cuda_redist_path_prefix = CUDA_REDIST_PATH_PREFIX,
+        mirrored_tar_cuda_redist_path_prefix = MIRRORED_TAR_CUDA_REDIST_PATH_PREFIX,
         redist_versions_to_build_templates = REDIST_VERSIONS_TO_BUILD_TEMPLATES):
     # buildifier: disable=function-docstring-args
     """Initializes CUDA repositories."""
@@ -578,4 +607,5 @@ def cuda_redist_init_repositories(
             build_templates = templates,
             url_dict = url_dict,
             cuda_redist_path_prefix = cuda_redist_path_prefix,
+            mirrored_tar_cuda_redist_path_prefix = mirrored_tar_cuda_redist_path_prefix,
         )

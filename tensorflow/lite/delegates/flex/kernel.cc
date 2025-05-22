@@ -14,7 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/flex/kernel.h"
 
+#include <inttypes.h>
+
 #include <algorithm>
+#include <cstdint>
+#include <cstring>
 #include <map>
 #include <memory>
 #include <set>
@@ -22,23 +26,38 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def_builder.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/core/public/version.h"
+#include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/delegates/flex/buffer_map.h"
 #include "tensorflow/lite/delegates/flex/delegate.h"
 #include "tensorflow/lite/delegates/flex/delegate_data.h"
 #include "tensorflow/lite/delegates/flex/util.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/string_type.h"
+#include "tensorflow/lite/util.h"
 
 // Note: this is part of TF Lite's Flex delegation code which is to be
 // completed soon.
@@ -343,7 +362,7 @@ class OpNode {
         tf_tensor->TotalBytes() != tensor->bytes) {
       TF_LITE_KERNEL_LOG(context,
                          "FlexDelegate: Tensor %s(%d) buffer size mismatch "
-                         "%zu(%lld) != %ld(%ld)",
+                         "%zu(%" PRId64 ") != %zu(%" PRId64 ")",
                          tensor->name, tensor_index, tf_tensor->TotalBytes(),
                          tf_tensor->NumElements(), tensor->bytes,
                          NumElements(tensor));
@@ -466,14 +485,14 @@ TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
   op_data_->shared_info.tensor_release_map =
       flex_delegate_data->GetTensorReleaseMap(context);
 
-  CHECK(params->output_tensors);
+  TF_LITE_ENSURE(context, params->output_tensors != nullptr);
   std::set<int> output_set;
   for (auto tensor_index : TfLiteIntArrayView(params->output_tensors)) {
     op_data_->subgraph_outputs.push_back(tensor_index);
     output_set.insert(tensor_index);
   }
 
-  CHECK(params->input_tensors);
+  TF_LITE_ENSURE(context, params->input_tensors != nullptr);
   for (auto tensor_index : TfLiteIntArrayView(params->input_tensors)) {
     op_data_->subgraph_inputs.push_back(tensor_index);
   }
@@ -482,7 +501,7 @@ TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
 
   op_data_->nodes.reserve(params->nodes_to_replace->size);
 
-  CHECK(params->nodes_to_replace);
+  TF_LITE_ENSURE(context, params->nodes_to_replace != nullptr);
   absl::Status status;
 
   // Now we explicitly disable reusing TFLite tensor buffers for certain TF ops,
@@ -813,7 +832,7 @@ TfLiteStatus DelegateKernel::Eval(TfLiteContext* context, TfLiteNode* node) {
         tf_tensor.TotalBytes() != tensor->bytes) {
       TF_LITE_KERNEL_LOG(context,
                          "FlexDelegate: Tensor %s(%d) buffer size mismatch "
-                         "%zu(%lld) != %ld(%ld)",
+                         "%zu(%" PRId64 ") != %zu(%" PRId64 ")",
                          tensor->name, tensor_index, tf_tensor.TotalBytes(),
                          tf_tensor.NumElements(), tensor->bytes,
                          NumElements(tensor));

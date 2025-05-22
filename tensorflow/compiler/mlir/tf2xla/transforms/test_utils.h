@@ -24,7 +24,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 
 namespace mlir {
-namespace mhlo {
+namespace hlo {
 namespace test {
 
 // Given a raw string, return a ModuleOp that can be used with the given
@@ -33,7 +33,7 @@ absl::StatusOr<OwningOpRef<ModuleOp>> GetMlirModuleFromString(
     absl::string_view module_string, MLIRContext* mlir_context);
 
 }  // namespace test
-}  // namespace mhlo
+}  // namespace hlo
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TF2XLA_TRANSFORMS_TEST_UTILS_H_

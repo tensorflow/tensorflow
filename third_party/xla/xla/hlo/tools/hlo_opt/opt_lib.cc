@@ -81,7 +81,6 @@ limitations under the License.
 #include "xla/hlo/transforms/literal_canonicalizer.h"
 #include "xla/hlo/transforms/memory_space_propagation.h"
 #include "xla/hlo/transforms/operand_upcaster.h"
-#include "xla/hlo/transforms/sharding_format_picker.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/all_reduce_folder.h"
 #include "xla/hlo/transforms/simplifiers/ar_crs_combiner.h"
@@ -122,6 +121,7 @@ limitations under the License.
 #include "xla/hlo/transforms/while_loop_trip_count_annotator.h"
 #include "xla/literal_pool.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/dump.h"
 #include "xla/service/float_support.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
@@ -181,6 +181,7 @@ absl::StatusOr<std::optional<std::string>> OptProvider::GenerateStage(
 
 absl::StatusOr<std::string> OptProvider::BuildAndRunTransformPipeline(
     std::unique_ptr<HloModule> module, const std::string& input_pass_names) {
+  DumpHloModuleIfEnabled(*module, "before_optimization");
   HloPassPipeline transforms_pipeline{"transforms_pipeline"};
   for (const auto& pass_name :
        std::vector<std::string>(absl::StrSplit(input_pass_names, ','))) {
@@ -193,6 +194,7 @@ absl::StatusOr<std::string> OptProvider::BuildAndRunTransformPipeline(
     }
   }
   CHECK_OK(transforms_pipeline.Run(module.get(), {}));
+  DumpHloModuleIfEnabled(*module, "after_optimization");
   return module->ToString();
 }
 
@@ -295,8 +297,7 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   RegisterPass<HloMemoryScheduler>(/*size_fn*/ size_fn);
   RegisterPass<HloTrivialScheduler>();
   RegisterPass<HostMemoryTransferAsyncifier>(/*host_memory_space_color=*/5);
-  RegisterPass<HostOffloadLegalize>(
-      /*host_memory_space_color=*/5, /*after_layout=*/false);
+  RegisterPass<HostOffloadLegalize>();
   RegisterPass<HostOffloader>();
   RegisterPass<HostOffloadingPrepare>(
       /*rewrite=*/HostOffloadingPrepare::Rewrite::kElideMoveToHost);
@@ -322,8 +323,6 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   RegisterPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_THREE_FRY);
   RegisterPass<RngExpander>();
   RegisterPass<RootInstructionSinker>();
-  RegisterPass<ShardingFormatPicker>(
-      /*sharding_type=*/ShardingFormatPicker::ShardingType::kBestEffortV2);
   RegisterPass<SimplifyFPConversions>();
   RegisterPass<SliceSinker>();
   RegisterPass<SortSimplifier>();
@@ -343,13 +342,17 @@ void OptProvider::RegisterAllHardwareIndependentPasses() {
   //   pass specific customization to the `RegisterPass`.
 
   // Dummy passes for unit-testing the `hlo-opt` tool itself.
-  RegisterPass<test_only::FooToBarModulePass>();
+  // go/keep-sorted start
   RegisterPass<test_only::BarToHelloModulePass>();
+  RegisterPass<test_only::FooToBarModulePass>();
+  // go/keep-sorted end
 
   // Test-only passes exposing behavior that isn't easily testable through
   // standard passes, e.g. internal or config-dependent behavior.
+  // go/keep-sorted start
   RegisterPass<test_only::AlgebraicSimplifierWithOnednnEnabled>();
   RegisterPass<test_only::XlaBuilderTestPass>();
+  // go/keep-sorted end
 }
 
 }  // namespace xla

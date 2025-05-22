@@ -66,9 +66,10 @@ class IfrtIrExecutableImplTestBase : public testing::Test {
   // Creates an Array from per shard data.
   // TODO(hyeontaek): Remove this when MakeArrayFromHostBuffer supports it
   // directly.
-  absl::StatusOr<tsl::RCReference<Array>> CreateArray(
-      absl::Span<void* const> per_shard_data, Shape shape, DType dtype,
-      ShardingParam sharding_param, DeviceListRef device_list);
+  absl::StatusOr<ArrayRef> CreateArray(absl::Span<void* const> per_shard_data,
+                                       Shape shape, DType dtype,
+                                       ShardingParam sharding_param,
+                                       DeviceListRef device_list);
 
   // Picks a given number of devices.
   // Error when `count` is larger than the total number of devices.

@@ -50,8 +50,8 @@ absl::Status Table::Open(const Options& options, RandomAccessFile* file,
   char footer_space[Footer::kEncodedLength];
   absl::string_view footer_input;
   absl::Status s =
-      file->Read(size - Footer::kEncodedLength, Footer::kEncodedLength,
-                 &footer_input, footer_space);
+      file->Read(size - Footer::kEncodedLength, footer_input,
+                 absl::MakeSpan(footer_space, Footer::kEncodedLength));
   if (!s.ok()) return s;
 
   Footer footer;

@@ -27,16 +27,10 @@ td_library(
 gentbl_cc_library(
     name = "triton_xla_dialect_inc_gen",
     strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            ["-gen-dialect-decls"],
-            "triton_xla_dialect.h.inc",
-        ),
-        (
-            ["-gen-dialect-defs"],
-            "triton_xla_dialect.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "triton_xla_dialect.h.inc": ["-gen-dialect-decls"],
+        "triton_xla_dialect.cc.inc": ["-gen-dialect-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "triton_xla_dialect.td",
     deps = [":triton_xla_td_files"],
@@ -45,16 +39,10 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "triton_xla_ops_inc_gen",
     strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "triton_xla_ops.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "triton_xla_ops.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "triton_xla_ops.h.inc": ["-gen-op-decls"],
+        "triton_xla_ops.cc.inc": ["-gen-op-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "triton_xla_ops.td",
     deps = [
@@ -67,48 +55,20 @@ gentbl_cc_library(
 )
 
 gentbl_cc_library(
-    name = "triton_xla_types_inc_gen",
-    strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            [
-                "-gen-typedef-decls",
-                "-typedefs-dialect=triton_xla",
-            ],
-            "triton_xla_types.h.inc",
-        ),
-        (
-            [
-                "-gen-typedef-defs",
-                "-typedefs-dialect=triton_xla",
-            ],
-            "triton_xla_types.cc.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "triton_xla_types.td",
-    deps = [":triton_xla_td_files"],
-)
-
-gentbl_cc_library(
     name = "triton_xla_attrs_inc_gen",
     strip_include_prefix = ".",
-    tbl_outs = [
-        (
-            [
-                "-gen-attrdef-decls",
-                "-attrdefs-dialect=triton_xla",
-            ],
-            "triton_xla_attrs.h.inc",
-        ),
-        (
-            [
-                "-gen-attrdef-defs",
-                "-attrdefs-dialect=triton_xla",
-            ],
-            "triton_xla_attrs.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "triton_xla_enums.h.inc": ["-gen-enum-decls"],
+        "triton_xla_enums.cc.inc": ["-gen-enum-defs"],
+        "triton_xla_attrs.h.inc": [
+            "-gen-attrdef-decls",
+            "-attrdefs-dialect=triton_xla",
+        ],
+        "triton_xla_attrs.cc.inc": [
+            "-gen-attrdef-defs",
+            "-attrdefs-dialect=triton_xla",
+        ],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "triton_xla_attrs.td",
     deps = [
@@ -123,19 +83,19 @@ cc_library(
         "triton_xla_attrs.cc",
         "triton_xla_dialect.cc",
         "triton_xla_ops.cc",
-        "triton_xla_types.cc",
     ],
     hdrs = ["triton_xla_ops.h"],
     deps = [
         ":triton_xla_attrs_inc_gen",
         ":triton_xla_dialect_inc_gen",
         ":triton_xla_ops_inc_gen",
-        ":triton_xla_types_inc_gen",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:ViewLikeInterface",
         "@triton//:TritonDialects",
     ],
 )

@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/Constants.h"
@@ -35,20 +36,22 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/buffer_value.h"
+#include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/logical_buffer.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
 template <bool ValidateBuffers>
-class KernelApiIrBuilderTestBase : public HloTestBase {
+class KernelApiIrBuilderTestBase : public HloHardwareIndependentTestBase {
  public:
   KernelApiIrBuilderTestBase()
       : module_("KernelApiIrBuilderTest", context_),
@@ -77,7 +80,9 @@ class KernelApiIrBuilderTestBase : public HloTestBase {
       const HloModule& hlo) {
     return BufferAssigner::Run(
         &hlo, std::make_unique<DependencyHloOrdering>(&hlo),
-        backend().compiler()->BufferSizeBytesFunction(),
+        [](const BufferValue& buffer) {
+          return CpuExecutable::ShapeSizeBytes(buffer.shape());
+        },
         [](LogicalBuffer::Color) { return /*alignment=*/1; });
   }
 
@@ -140,17 +145,17 @@ TEST_F(KernelApiIrBuilderTest, BuildKernelPrototype) {
     CHECK: define ptr @test(ptr %0) #0 {
 
     CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 0
-    CHECK:      getelementptr inbounds nuw %XLA_CPU_KernelThreadDim, {{.*}} i32 0
-    CHECK:      getelementptr inbounds nuw %XLA_CPU_KernelThreadDim, {{.*}} i32 1
-    CHECK:      getelementptr inbounds nuw %XLA_CPU_KernelThreadDim, {{.*}} i32 2
+    CHECK:      getelementptr inbounds nuw %XLA_CPU_NumWorkGroups, {{.*}} i32 0
+    CHECK:      getelementptr inbounds nuw %XLA_CPU_NumWorkGroups, {{.*}} i32 1
+    CHECK:      getelementptr inbounds nuw %XLA_CPU_NumWorkGroups, {{.*}} i32 2
     CHECK:      load i64
     CHECK:      load i64
     CHECK:      load i64
 
     CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 1
-    CHECK:      getelementptr inbounds nuw %XLA_CPU_KernelThread, {{.*}} i32 0
-    CHECK:      getelementptr inbounds nuw %XLA_CPU_KernelThread, {{.*}} i32 1
-    CHECK:      getelementptr inbounds nuw %XLA_CPU_KernelThread, {{.*}} i32 2
+    CHECK:      getelementptr inbounds nuw %XLA_CPU_WorkGroupId, {{.*}} i32 0
+    CHECK:      getelementptr inbounds nuw %XLA_CPU_WorkGroupId, {{.*}} i32 1
+    CHECK:      getelementptr inbounds nuw %XLA_CPU_WorkGroupId, {{.*}} i32 2
     CHECK:      load i64
     CHECK:      load i64
     CHECK:      load i64
@@ -351,17 +356,17 @@ TEST_F(KernelApiIrBuilderTestNoBufferValidation, PartialOverlap) {
     CHECK: define ptr @test(ptr %0) #0 {
 
     CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 0
-    CHECK:      getelementptr inbounds nuw %XLA_CPU_KernelThreadDim, {{.*}} i32 0
-    CHECK:      getelementptr inbounds nuw %XLA_CPU_KernelThreadDim, {{.*}} i32 1
-    CHECK:      getelementptr inbounds nuw %XLA_CPU_KernelThreadDim, {{.*}} i32 2
+    CHECK:      getelementptr inbounds nuw %XLA_CPU_NumWorkGroups, {{.*}} i32 0
+    CHECK:      getelementptr inbounds nuw %XLA_CPU_NumWorkGroups, {{.*}} i32 1
+    CHECK:      getelementptr inbounds nuw %XLA_CPU_NumWorkGroups, {{.*}} i32 2
     CHECK:      load i64
     CHECK:      load i64
     CHECK:      load i64
 
     CHECK-NEXT: getelementptr inbounds nuw %XLA_CPU_KernelCallFrame, {{.*}} i32 1
-    CHECK:      getelementptr inbounds nuw %XLA_CPU_KernelThread, {{.*}} i32 0
-    CHECK:      getelementptr inbounds nuw %XLA_CPU_KernelThread, {{.*}} i32 1
-    CHECK:      getelementptr inbounds nuw %XLA_CPU_KernelThread, {{.*}} i32 2
+    CHECK:      getelementptr inbounds nuw %XLA_CPU_WorkGroupId, {{.*}} i32 0
+    CHECK:      getelementptr inbounds nuw %XLA_CPU_WorkGroupId, {{.*}} i32 1
+    CHECK:      getelementptr inbounds nuw %XLA_CPU_WorkGroupId, {{.*}} i32 2
     CHECK:      load i64
     CHECK:      load i64
     CHECK:      load i64

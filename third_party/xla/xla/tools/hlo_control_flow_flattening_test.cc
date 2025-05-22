@@ -27,12 +27,12 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/despecializer.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/spmd/spmd_partitioner.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 
 namespace xla {
@@ -40,7 +40,7 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 
-class HloControlFlowFlatteningTest : public HloTestBase {
+class HloControlFlowFlatteningTest : public HloHardwareIndependentTestBase {
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
       std::unique_ptr<VerifiedHloModule> hlo_module, int64_t num_devices = 2) {

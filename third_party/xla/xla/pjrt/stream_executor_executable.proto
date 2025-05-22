@@ -17,7 +17,7 @@ syntax = "proto3";
 
 package xla;
 
-import "xla/pjrt/compile_options.proto";
+import "xla/pjrt/proto/compile_options.proto";
 
 message StreamExecutorExecutableProto {
   CompileOptionsProto compile_options = 1;

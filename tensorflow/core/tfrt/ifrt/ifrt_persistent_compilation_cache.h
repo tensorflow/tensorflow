@@ -44,7 +44,7 @@ class IfrtPersistentCompilationCache {
   // for looking up the executable in the persistent cache and it will return
   // the LoadedExecutable if hits cache. Otherwise, it will call the `value_fn`
   // to generate and return the LoadedExecutable.
-  virtual absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>>
+  virtual absl::StatusOr<xla::ifrt::LoadedExecutableRef>
   LookupLoadedExecutableOrCreate(
       std::unique_ptr<xla::ifrt::HloProgram> hlo_program,
       xla::ifrt::DeviceListRef device_list,
@@ -52,10 +52,9 @@ class IfrtPersistentCompilationCache {
       const std::vector<tsl::RCReference<xla::ifrt::LoadedHostCallback>>&
           loaded_host_callbacks,
       xla::ifrt::Client* client,
-      absl::AnyInvocable<
-          absl::StatusOr<std::unique_ptr<xla::ifrt::LoadedExecutable>>(
-              std::unique_ptr<xla::ifrt::Program> program,
-              std::unique_ptr<xla::ifrt::CompileOptions> options)>
+      absl::AnyInvocable<absl::StatusOr<xla::ifrt::LoadedExecutableRef>(
+          std::unique_ptr<xla::ifrt::Program> program,
+          std::unique_ptr<xla::ifrt::CompileOptions> options)>
           value_fn);
 
   // The implementation of this API should be thread-safe. It generates a key

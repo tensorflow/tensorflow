@@ -27,9 +27,9 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/env_time.h"
 #include "xla/tsl/platform/macros.h"
-#include "tsl/platform/mutex.h"
 
 #if defined(PLATFORM_POSIX_ANDROID)
 #include <android/log.h>
@@ -93,26 +93,26 @@ class TFLogSinks {
   std::queue<TFLogEntry> log_entry_queue_;
   static const size_t kMaxLogEntryQueueSize = 128;
 
-  mutable tsl::mutex mutex_;
+  mutable absl::Mutex mutex_;
   std::vector<TFLogSink*> sinks_;
 };
 
 TFLogSinks::TFLogSinks() {
 #ifndef NO_DEFAULT_LOGGER
-  static TFDefaultLogSink* default_sink = new TFDefaultLogSink();
+  static TFDefaultLogSink* const default_sink = new TFDefaultLogSink();
   sinks_.push_back(default_sink);
 #endif
 }
 
 TFLogSinks& TFLogSinks::Instance() {
-  static TFLogSinks* instance = new TFLogSinks();
+  static TFLogSinks* const instance = new TFLogSinks();
   return *instance;
 }
 
 void TFLogSinks::Add(TFLogSink* sink) {
   assert(sink != nullptr && "The sink must not be a nullptr");
 
-  tsl::mutex_lock lock(mutex_);
+  absl::MutexLock lock(&mutex_);
   sinks_.push_back(sink);
 
   // If this is the only sink log all the queued up messages to this sink
@@ -129,18 +129,18 @@ void TFLogSinks::Add(TFLogSink* sink) {
 void TFLogSinks::Remove(TFLogSink* sink) {
   assert(sink != nullptr && "The sink must not be a nullptr");
 
-  tsl::mutex_lock lock(mutex_);
+  absl::MutexLock lock(&mutex_);
   auto it = std::find(sinks_.begin(), sinks_.end(), sink);
   if (it != sinks_.end()) sinks_.erase(it);
 }
 
 std::vector<TFLogSink*> TFLogSinks::GetSinks() const {
-  tsl::mutex_lock lock(mutex_);
+  absl::MutexLock lock(&mutex_);
   return sinks_;
 }
 
 void TFLogSinks::Send(const TFLogEntry& entry) {
-  tsl::mutex_lock lock(mutex_);
+  absl::MutexLock lock(&mutex_);
 
   // If we don't have any sinks registered, queue them up
   if (sinks_.empty()) {

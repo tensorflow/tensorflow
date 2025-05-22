@@ -1,5 +1,5 @@
-// RUN: tf-opt --split-input-file --tosa-lower-complex-types --verify-each %s | FileCheck %s
-// REQUIRES: tf_tosa
+// RUN: tf-tosa-opt --split-input-file --tosa-lower-complex-types --verify-each %s | FileCheck %s
+
 
 // CHECK-LABEL: test_complex_input
 // CHECK-SAME: %[[VAL_0:.*]]: tensor<1x4x4x2xf32>

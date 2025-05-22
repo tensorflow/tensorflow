@@ -124,10 +124,10 @@ xla::XlaOp GetU64FromS32Seeds(xla::XlaOp seed0, xla::XlaOp seed1) {
 
 absl::StatusOr<int> GetAlgId(XlaOpKernelContext* ctx, int alg_input_idx) {
   TF_ASSIGN_OR_RETURN(auto alg_shape, ctx->InputXlaShape(alg_input_idx));
-  if (alg_shape.dimensions_size() != 0) {
+  if (alg_shape.dimensions().size() != 0) {
     return absl::InvalidArgumentError(
         absl::StrCat("The algorithm argument must be of shape [], not ",
-                     alg_shape.DebugString()));
+                     alg_shape.ToString()));
   }
   auto alg_dtype = ctx->input_type(alg_input_idx);
   if (alg_dtype != DT_INT32 && alg_dtype != DT_INT64) {

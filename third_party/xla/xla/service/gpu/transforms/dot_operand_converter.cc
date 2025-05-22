@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/dot_operand_converter.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 
 namespace xla::gpu {
@@ -39,7 +41,8 @@ bool DotOperandConverter::InstructionMatchesPattern(
   }
 
   // Exclude conversions between FP8 types.
-  absl::flat_hash_set<PrimitiveType> non_converting = {F8E4M3FN, F8E5M2};
+  absl::flat_hash_set<PrimitiveType> non_converting = {F8E4M3FN, F8E5M2,
+                                                       F8E4M3FNUZ, F8E5M2FNUZ};
   if (non_converting.contains(lhs_type) && non_converting.contains(rhs_type)) {
     return false;
   }

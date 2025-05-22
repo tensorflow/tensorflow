@@ -78,7 +78,7 @@ template <typename T, template <typename _> class rng_t>
 mlir::interpreter::InterpreterValue RandomTensor(absl::BitGenRef bitgen,
                                                  mlir::Type type) {
   llvm::SmallVector<int64_t> shape;
-  auto shaped_ty = type.dyn_cast<mlir::ShapedType>();
+  auto shaped_ty = mlir::dyn_cast<mlir::ShapedType>(type);
   if (shaped_ty) {
     shape = llvm::to_vector(shaped_ty.getShape());
   }
@@ -102,8 +102,9 @@ mlir::interpreter::InterpreterValue RandomTensor(absl::BitGenRef bitgen,
 
 mlir::FailureOr<mlir::interpreter::InterpreterValue> MakeRandomInput(
     absl::BitGenRef bitgen, mlir::Type type) {
-  auto elem_ty =
-      type.isa<ShapedType>() ? type.cast<ShapedType>().getElementType() : type;
+  auto elem_ty = mlir::isa<ShapedType>(type)
+                     ? mlir::cast<ShapedType>(type).getElementType()
+                     : type;
   if (elem_ty.isF32()) {
     return RandomTensor<float, absl::gaussian_distribution>(bitgen, type);
   }
@@ -120,7 +121,8 @@ mlir::FailureOr<mlir::interpreter::InterpreterValue> MakeRandomInput(
     return RandomTensor<int64_t, absl::uniform_int_distribution>(bitgen, type);
   }
   if (elem_ty.isInteger(1)) {
-    return {{TensorOrMemref<bool>::Empty(type.cast<ShapedType>().getShape())}};
+    return {
+        {TensorOrMemref<bool>::Empty(mlir::cast<ShapedType>(type).getShape())}};
   }
 
   llvm::errs() << "Unsupported type: ";

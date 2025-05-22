@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/map_util.h"
+#include "xla/service/buffer_assignment.pb.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/heap_simulator/heap_simulator.h"
@@ -237,6 +238,29 @@ std::string BufferAllocation::Slice::ToString() const {
                       ", offset:", offset_, ", size:", size_, "}");
 }
 
+absl::StatusOr<xla::buffer_assignment::BufferAllocationSliceProto>
+BufferAllocation::Slice::ToProto() const {
+  xla::buffer_assignment::BufferAllocationSliceProto proto;
+  proto.set_offset(offset());
+  proto.set_size(size());
+  proto.set_buffer_allocation_index(allocation() == nullptr ? -1 : index());
+  return proto;
+}
+
+absl::StatusOr<BufferAllocation::Slice> BufferAllocation::Slice::FromProto(
+    const xla::buffer_assignment::BufferAllocationSliceProto& proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  if (proto.buffer_allocation_index() < 0 ||
+      proto.buffer_allocation_index() >= buffer_allocations.size()) {
+    return absl::OutOfRangeError(absl::StrCat("Buffer allocation index ",
+                                              proto.buffer_allocation_index(),
+                                              " is out of range."));
+  }
+  const BufferAllocation& allocation =
+      buffer_allocations[proto.buffer_allocation_index()];
+  return BufferAllocation::Slice(&allocation, proto.offset(), proto.size());
+}
+
 BufferAllocation::Slice BufferAllocation::GetSlice(
     const HloValue& buffer) const {
   const OffsetSize os = FindOrDie(assigned_buffers_, &buffer);
@@ -289,6 +313,8 @@ BufferAllocationProto BufferAllocation::ToProto() const {
       proto.add_parameter_shape_index(idx);
     }
     proto.set_parameter_number(parameter_number_);
+    proto.set_is_parameter_aliased_with_output(
+        is_parameter_aliased_with_output_);
   }
   proto.set_is_constant(is_constant_);
   proto.set_maybe_live_out(maybe_live_out_);
@@ -305,6 +331,24 @@ BufferAllocationProto BufferAllocation::ToProto() const {
                         assign2.logical_buffer_id();
                });
   return proto;
+}
+
+BufferAllocation BufferAllocation::FromProto(
+    const BufferAllocationProto& proto) {
+  BufferAllocation allocation{proto.index(), proto.size(), proto.color()};
+  allocation.set_constant(proto.is_constant());
+  allocation.set_is_thread_local(proto.is_thread_local());
+  allocation.set_is_tuple(proto.is_tuple());
+  if (proto.is_entry_computation_parameter()) {
+    ShapeIndex shape_index{proto.parameter_shape_index().begin(),
+                           proto.parameter_shape_index().end()};
+    allocation.set_entry_computation_parameter(
+        proto.parameter_number(), std::move(shape_index),
+        proto.is_parameter_aliased_with_output());
+  }
+  allocation.set_maybe_live_out(proto.maybe_live_out());
+
+  return allocation;
 }
 
 static bool CompareHloValuesById(const HloValue* a, const HloValue* b) {

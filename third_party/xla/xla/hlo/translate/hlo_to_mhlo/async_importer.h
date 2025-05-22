@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Value.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -62,7 +63,7 @@ absl::StatusOr<mlir::Operation*> ImportAllReduceStart(
     const llvm::SmallVectorImpl<mlir::Value>& operands,
     llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes,
     mlir::Type result_type, mlir::OpBuilder* builder,
-    std::function<absl::Status(mlir::mhlo::AllReduceOp)> mutate_op,
+    std::function<absl::Status(mlir::stablehlo::AllReduceOp)> mutate_op,
     mlir::SymbolTable& symbol_table);
 
 absl::StatusOr<mlir::Operation*> ImportCollectivePermuteStart(

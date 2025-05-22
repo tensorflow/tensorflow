@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
+#include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
@@ -56,6 +57,10 @@ int64_t IotaReplicaGroupList::num_devices_per_group() const {
 
 std::string IotaReplicaGroupList::ToString() const {
   return iota_tile_assignment_.ToString();
+}
+
+void IotaReplicaGroupList::Print(Printer* printer) const {
+  iota_tile_assignment_.Print(printer);
 }
 
 IotaReplicaGroupListProto IotaReplicaGroupList::ToProto() const {
@@ -120,6 +125,21 @@ std::string CollectiveDeviceList::ToString(
   }
 
   return ReplicaGroupsToString(replica_groups());
+}
+
+void CollectiveDeviceList::Print(Printer* printer,
+                                 bool print_full_replica_group_list) const {
+  if (iota_replica_group_list_.has_value() && !print_full_replica_group_list) {
+    iota_replica_group_list_->Print(printer);
+    return;
+  }
+  printer->Append("{");
+  bool leading_comma = false;
+  for (const ReplicaGroup& group : replica_groups()) {
+    printer->AppendInt64List(group.replica_ids(), leading_comma);
+    leading_comma = true;
+  }
+  printer->Append("}");
 }
 
 CollectiveDeviceListProto CollectiveDeviceList::ToProto() const {

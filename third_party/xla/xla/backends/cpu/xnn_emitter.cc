@@ -48,6 +48,8 @@ using TensorIdMap = absl::flat_hash_map<const HloInstruction*, uint32_t>;
 
 static absl::StatusOr<xnn_datatype> XnnDatatype(const PrimitiveType& type) {
   switch (type) {
+    case BF16:
+      return xnn_datatype_bf16;
     case F16:
       return xnn_datatype_fp16;
     case F32:
@@ -55,6 +57,17 @@ static absl::StatusOr<xnn_datatype> XnnDatatype(const PrimitiveType& type) {
     default:
       return InvalidArgument("Unsupported XNNPACK data type: %s",
                              primitive_util::LowercasePrimitiveTypeName(type));
+  }
+}
+
+static absl::StatusOr<xnn_unary_operator> XnnUnaryOperator(
+    const HloOpcode& opcode) {
+  switch (opcode) {
+    case HloOpcode::kConvert:
+      return xnn_unary_convert;
+    default:
+      return InvalidArgument("Unsupported XNNPACK unary operator: %s",
+                             HloOpcodeString(opcode));
   }
 }
 
@@ -139,6 +152,25 @@ static absl::StatusOr<uint32_t> DefineParameter(xnn_subgraph_t subgraph,
   return tensor_id;
 }
 
+static absl::StatusOr<uint32_t> DefineUnaryOp(xnn_subgraph_t subgraph,
+                                              TensorIdMap& tensor_ids,
+                                              const HloInstruction* instr) {
+  VLOG(3) << absl::StreamFormat("Define tensor value for unary op: %s",
+                                instr->ToString());
+  TF_ASSIGN_OR_RETURN(auto unary_op, XnnUnaryOperator(instr->opcode()));
+
+  TF_ASSIGN_OR_RETURN(auto in, FindTensorValue(tensor_ids, instr->operand(0)));
+  TF_ASSIGN_OR_RETURN(auto out, DefineTensorValue(subgraph, instr));
+
+  VLOG(3) << absl::StreamFormat("  tensors: in=%d, out=%d", in, out);
+
+  xnn_unary_params params;
+  XNN_RETURN_IF_ERROR(
+      xnn_define_unary(subgraph, unary_op, &params, in, out, /*flags=*/0));
+
+  return out;
+}
+
 static absl::StatusOr<uint32_t> DefineBinaryOp(xnn_subgraph_t subgraph,
                                                TensorIdMap& tensor_ids,
                                                const HloInstruction* instr) {
@@ -192,7 +224,8 @@ static absl::StatusOr<uint32_t> DefineBatchMatMul(xnn_subgraph_t subgraph,
                                 out);
 
   // IsXnnDotSupported has verified that rhs_contracting_dimensions has size 1.
-  bool rhs_canonical = dnums.rhs_contracting_dimensions(0) == 0;
+  bool rhs_canonical =
+      dnums.rhs_contracting_dimensions(0) == dnums.rhs_batch_dimensions_size();
   XNN_RETURN_IF_ERROR(xnn_define_batch_matrix_multiply(
       subgraph, lhs, rhs, out,
       /*flags=*/rhs_canonical ? 0 : XNN_FLAG_TRANSPOSE_B));
@@ -223,6 +256,11 @@ static absl::StatusOr<xnn_subgraph_t> EmitXnnSubgraph(
       case HloOpcode::kParameter: {
         TF_ASSIGN_OR_RETURN(tensor_ids[instr],
                             DefineParameter(subgraph, instr));
+      } break;
+
+      case HloOpcode::kConvert: {
+        TF_ASSIGN_OR_RETURN(tensor_ids[instr],
+                            DefineUnaryOp(subgraph, tensor_ids, instr));
       } break;
 
       case HloOpcode::kAdd:

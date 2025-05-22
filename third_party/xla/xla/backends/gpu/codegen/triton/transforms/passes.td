@@ -19,11 +19,11 @@ limitations under the License.
 include "mlir/Pass/PassBase.td"
 
 def TritonXLAExtractInsertToTritonPass : Pass<"triton-xla-extract-insert-to-triton", "mlir::ModuleOp"> {
-  let summary = "Convert XLA Triton tile, extract and, insert ops to Triton ops.";
+  let summary = "Convert Triton XLA extract and insert ops to Triton ops.";
   let description = [{
-    This pass converts `triton_xla.extract`, `triton_xla.insert` and
-    `triton_xla.tile` ops to Triton ops. It also rewrites `func` args to
-    `tt.ptr` types and removes function return args.
+    This pass converts `triton_xla.extract` and `triton_xla.insert` ops to
+    Triton ops. It also rewrites `func` args to `tt.ptr` types and removes
+    function return args.
   }];
   let dependentDialects = [
     "triton::TritonDialect",
@@ -58,6 +58,17 @@ def PreventMmaV3LoopUnrollingPass
     this pragma prevents ptxas from doing more.
   }];
   let constructor = "CreatePreventMmaV3LoopUnrollingPass()";
+}
+
+def ExtractTmaInfoPass
+    : Pass<"extract-tma-info", "mlir::ModuleOp"> {
+  let summary = "Extract TMA info during Triton lowering.";
+  let description = [{
+    Some information needed from TMA is created mid-pipeline by Triton. This
+    pass extracts the information while it still exists and copies it into XLA's
+    tma_descriptor attribute to be read at the LLVM IR level.
+  }];
+  let constructor = "CreateExtractTmaInfoPass()";
 }
 
 def LoadInt4RewritePass

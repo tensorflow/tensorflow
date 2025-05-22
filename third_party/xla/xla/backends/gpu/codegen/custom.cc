@@ -111,10 +111,10 @@ absl::StatusOr<BufferAllocation::Slice> GetOperandSlice(
   }
 
   // Walk through ShapeIndex to find the real starting point.
-  auto* start = const_cast<HloInstruction*>(&start_instr);
+  const auto* start = &start_instr;
   for (auto idx : shape_idx) {
     CHECK(start->shape().IsTuple());
-    start = const_cast<HloInstruction*>(start->operand(idx));
+    start = start->operand(idx);
   }
 
   if (const auto* param = DynCast<HloParameterInstruction>(start)) {
@@ -264,8 +264,9 @@ std::unique_ptr<HloModule> ExtractOffsetModule(
 std::unique_ptr<HloModule> ExtractWhileUpdateModule(
     const HloInstruction* while_op) {
   std::optional<int64_t> tuple_idx = GetLoopInductionVarTupleIdx(while_op);
-  CHECK(tuple_idx != std::nullopt)
-      << "Unable to get tuple idx for whileop " << while_op->ToString();
+  if (tuple_idx == std::nullopt) {
+    return nullptr;
+  }
   const HloInstruction* update =
       while_op->while_body()->root_instruction()->operand(*tuple_idx);
   return ExtractOffsetModule(update, while_op);
@@ -277,8 +278,9 @@ std::unique_ptr<HloModule> ExtractWhileUpdateModule(
 std::unique_ptr<HloModule> ExtractWhileInitModule(
     const HloInstruction* while_op) {
   std::optional<int64_t> tuple_idx = GetLoopInductionVarTupleIdx(while_op);
-  CHECK(tuple_idx != std::nullopt)
-      << "Unable to get tuple idx for while op: " << while_op->ToString();
+  if (tuple_idx == std::nullopt) {
+    return nullptr;
+  }
   const HloInstruction* init = while_op->operand(0)->operand(*tuple_idx);
   std::unique_ptr<HloModule> init_module = ExtractModule(
       /*instruction=*/init, /*height=*/-1, /*extract_selector=*/nullptr,
@@ -311,10 +313,8 @@ absl::Status CollectSliceInfo(
   }
   auto* arg_slice_instr =
       Cast<HloDynamicIndexInstruction>(slice_instrs[arg_idx]);
-  std::optional<HloInstruction*> async_caller = std::nullopt;
-  if (fusion_instr.parent()->IsAsyncComputation()) {
-    async_caller = fusion_instr.parent()->AsyncStart();
-  }
+  std::optional<HloInstruction*> async_caller =
+      fusion_instr.parent()->GetUniqueCaller(HloOpcode::kAsyncStart);
 
   std::vector<DynamicSliceThunk::Offset> arg_offsets;
   for (auto idx_op : arg_slice_instr->index_operands()) {
@@ -1251,8 +1251,11 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
     seq.emplace_back(std::move(collective_start_thunk));
     // If the fusion is async, we do not emit the done thunk at the end.
     if (fusion_instr.parent()->IsAsyncComputation()) {
+      auto async_start =
+          fusion_instr.parent()->GetUniqueCaller(HloOpcode::kAsyncStart);
+      CHECK(async_start) << "Async computations should have a unique caller.";
       ir_emitter_context.collectives_async_events().insert(
-          {fusion_instr.parent()->AsyncStart(), async_events});
+          {*async_start, async_events});
     } else {
       auto collective_done_thunk = std::make_unique<CollectiveDoneThunk>(
           /*kind=*/collective_done_thunk_kind,

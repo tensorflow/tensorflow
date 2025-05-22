@@ -58,14 +58,14 @@ HloDotInstruction* MakeDotWithSwappedOperands(HloInstruction* dot) {
   const DotDimensionNumbers& dot_dims = dot->dot_dimension_numbers();
   const size_t num_batch_dims = dot_dims.lhs_batch_dimensions_size();
   const size_t num_lhs_noncontracting_dims =
-      dot->operand(0)->shape().dimensions_size() - num_batch_dims -
+      dot->operand(0)->shape().dimensions().size() - num_batch_dims -
       dot_dims.lhs_contracting_dimensions_size();
   const size_t num_rhs_noncontracting_dims =
-      dot->operand(1)->shape().dimensions_size() - num_batch_dims -
+      dot->operand(1)->shape().dimensions().size() - num_batch_dims -
       dot_dims.rhs_contracting_dimensions_size();
 
   std::vector<int64_t> out_shape_permutation;
-  out_shape_permutation.reserve(dot->shape().dimensions_size());
+  out_shape_permutation.reserve(dot->shape().dimensions().size());
   auto fill_permutation = [&](int64_t count, int64_t start) {
     while (count--) out_shape_permutation.push_back(start++);
   };
@@ -139,7 +139,7 @@ absl::StatusOr<int64_t> GetNonContractingDimsNumElements(
       operand_index == 0 ? dot_dims.lhs_contracting_dimensions()
                          : dot_dims.rhs_contracting_dimensions();
   const DimensionVector noncontracting_dim_indices = GetNonContractingDims(
-      shape.dimensions_size(), batch_dim_indices, contracting_dim_indices);
+      shape.dimensions().size(), batch_dim_indices, contracting_dim_indices);
   return absl::c_accumulate(
       noncontracting_dim_indices, int64_t{1},
       [&](int64_t acc, int64_t dim) { return acc * shape.dimensions(dim); });

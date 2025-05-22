@@ -20,16 +20,23 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
 
-class CommandBufferTest : public HloTestBase {};
+class CommandBufferTest : public HloPjRtTestBase,
+                          public ::testing::WithParamInterface<bool> {
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_graph_enable_concurrent_region(GetParam());
+    return debug_options;
+  }
+};
 
-TEST_F(CommandBufferTest, Fusions) {
+TEST_P(CommandBufferTest, Fusions) {
   constexpr absl::string_view hlo_text = R"(
   HloModule m, is_scheduled=true
 
@@ -70,7 +77,7 @@ TEST_F(CommandBufferTest, Fusions) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
-TEST_F(CommandBufferTest, TrueFalseConditional) {
+TEST_P(CommandBufferTest, TrueFalseConditional) {
   constexpr absl::string_view hlo_text = R"(
   HloModule m, is_scheduled=true
 
@@ -129,7 +136,7 @@ TEST_F(CommandBufferTest, TrueFalseConditional) {
   }
 }
 
-TEST_F(CommandBufferTest, IndexConditional) {
+TEST_P(CommandBufferTest, IndexConditional) {
   constexpr absl::string_view hlo_text = R"(
   HloModule m, is_scheduled=true
 
@@ -196,7 +203,7 @@ TEST_F(CommandBufferTest, IndexConditional) {
   }
 }
 
-TEST_F(CommandBufferTest, WhileLoop) {
+TEST_P(CommandBufferTest, WhileLoop) {
   constexpr absl::string_view hlo_text = R"(
   HloModule m, is_scheduled=true
 
@@ -256,6 +263,9 @@ TEST_F(CommandBufferTest, WhileLoop) {
   Literal result = ExecuteNoHloPasses(std::move(module), {&argument});
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
+
+INSTANTIATE_TEST_SUITE_P(CommandBufferTests, CommandBufferTest,
+                         ::testing::Values(false, true));
 
 }  // namespace
 }  // namespace xla::gpu

@@ -101,6 +101,7 @@ class BuildType(enum.Enum):
 
   Should be named as `REPO,OS,HOST_TYPE,BACKEND,GPU_TYPE,CI_TYPE`.
   """
+
   XLA_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_T4_GITHUB_ACTIONS = enum.auto()
@@ -134,20 +135,22 @@ class BuildType(enum.Enum):
 @dataclasses.dataclass(frozen=True, **_KW_ONLY_IF_PYTHON310)
 class Build:
   """Class representing a build of XLA."""
+
   _builds: ClassVar[Dict[BuildType, "Build"]] = {}
 
   type_: BuildType
   repo: str
   target_patterns: Tuple[str, ...]
+  subcommand: str = "test"
   configs: Tuple[str, ...] = ()
   build_tag_filters: Tuple[str, ...] = ()
   test_tag_filters: Tuple[str, ...] = ()
   action_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
   test_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
   repo_env: Dict[str, Any] = dataclasses.field(default_factory=dict)
+  override_repository: Dict[str, str] = dataclasses.field(default_factory=dict)
   options: Dict[str, Any] = dataclasses.field(default_factory=dict)
   extra_setup_commands: Tuple[List[str], ...] = ()
-  subcommand: str = "test"
 
   def __post_init__(self):
     # pylint: disable=protected-access
@@ -178,6 +181,10 @@ class Build:
     action_env = [f"--action_env={k}={v}" for k, v in self.action_env.items()]
     test_env = [f"--test_env={k}={v}" for k, v in self.test_env.items()]
     repo_env = [f"--repo_env={k}={v}" for k, v in self.repo_env.items()]
+    override_repository = [
+        f"--override_repository={k}={v}"
+        for k, v in self.override_repository.items()
+    ]
 
     tag_filters = [build_tag_filters, test_tag_filters]
     all_options = (
@@ -186,6 +193,7 @@ class Build:
         + action_env
         + test_env
         + repo_env
+        + override_repository
         + options
         + list(extra_options)
     )
@@ -463,10 +471,10 @@ Build(
         JAX_NUM_GENERATED_CASES=25,
         JAX_SKIP_SLOW_TESTS=1,
     ),
-    options=dict(
-        **_DEFAULT_BAZEL_OPTIONS,
-        override_repository=f"xla={_GITHUB_WORKSPACE}/openxla/xla",
+    override_repository=dict(
+        xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
     ),
+    options=_DEFAULT_BAZEL_OPTIONS,
     repo_env={"HERMETIC_PYTHON_VERSION": "3.12"},
 )
 
@@ -482,11 +490,12 @@ Build(
         TF_CPP_MIN_LOG_LEVEL=0,
         JAX_EXCLUDE_TEST_TARGETS="PmapTest.testSizeOverflow",
     ),
-    options=dict(
-        **_DEFAULT_BAZEL_OPTIONS,
-        override_repository=f"xla={_GITHUB_WORKSPACE}/openxla/xla",
+    override_repository=dict(
+        xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
     ),
+    options=_DEFAULT_BAZEL_OPTIONS,
     repo_env={"HERMETIC_PYTHON_VERSION": "3.10"},
+    extra_setup_commands=(["nvidia-smi"],),
 )
 
 tensorflow_tag_filters = (
@@ -528,12 +537,39 @@ Build(
     options=dict(
         verbose_failures=True,
         test_output="errors",
-        override_repository=f"xla={_GITHUB_WORKSPACE}/openxla/xla",
         profile="profile.json.gz",
         test_lang_filters="cc,py",
         color="yes",
     ),
     repo_env={"USE_PYWRAP_RULES": "True"},
+    extra_setup_commands=(
+        # This is pretty devious - but we have to do some adhoc extra Copybara
+        # work here to get XLA into the shape TF expects. b/407638223
+        # pyformat:disable
+        [
+            "find",
+            f"{_GITHUB_WORKSPACE}/openxla/xla",
+            "-type", "f",
+            "-exec", "sed", "-i", "s/@local_xla/@local_xla/g", "{}", "+",
+        ],
+        [
+            "find",
+            f"{_GITHUB_WORKSPACE}/openxla/xla",
+            "-type", "f",
+            "-exec", "sed", "-i", "s/@local_tsl/@local_tsl/g", "{}", "+",
+        ],
+        [
+            "cp", "-r",
+            f"{_GITHUB_WORKSPACE}/openxla/xla",
+            f"{_GITHUB_WORKSPACE}/tensorflow/tensorflow/third_party",
+        ],
+        [
+            "find",
+            f"{_GITHUB_WORKSPACE}/openxla/xla/third_party/",
+            "-maxdepth", "1", "-exec", "cp", "-r", "{}",
+            f"{_GITHUB_WORKSPACE}/tensorflow/tensorflow/third_party", ";",
+        ],
+    ),
 )
 
 Build(
@@ -557,12 +593,40 @@ Build(
     options=dict(
         verbose_failures=True,
         test_output="errors",
-        override_repository=f"xla={_GITHUB_WORKSPACE}/openxla/xla",
         profile="profile.json.gz",
         test_lang_filters="cc,py",
         color="yes",
     ),
     repo_env={"USE_PYWRAP_RULES": "True"},
+    extra_setup_commands=(
+        # This is pretty devious - but we have to do some adhoc extra Copybara
+        # work here to get XLA into the shape TF expects. b/407638223
+        # pyformat:disable
+        [
+            "find",
+            f"{_GITHUB_WORKSPACE}/openxla/xla",
+            "-type", "f",
+            "-exec", "sed", "-i", "s/@local_xla/@local_xla/g", "{}", "+",
+        ],
+        [
+            "find",
+            f"{_GITHUB_WORKSPACE}/openxla/xla",
+            "-type", "f",
+            "-exec", "sed", "-i", "s/@local_tsl/@local_tsl/g", "{}", "+",
+        ],
+        [
+            "cp", "-r",
+            f"{_GITHUB_WORKSPACE}/openxla/xla",
+            f"{_GITHUB_WORKSPACE}/tensorflow/tensorflow/third_party",
+        ],
+        [
+            "find",
+            f"{_GITHUB_WORKSPACE}/openxla/xla/third_party/",
+            "-maxdepth", "1", "-exec", "cp", "-r", "{}",
+            f"{_GITHUB_WORKSPACE}/tensorflow/tensorflow/third_party", ";",
+        ],
+        ["nvidia-smi"],
+    ),
 )
 
 
@@ -605,6 +669,7 @@ def main():
   else:
     for cmd in Build.all_builds()[args.build].commands():
       sh(cmd)
+
 
 if __name__ == "__main__":
   main()

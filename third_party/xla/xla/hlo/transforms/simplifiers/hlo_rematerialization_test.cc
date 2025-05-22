@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/hlo/transforms/simplifiers/hlo_rematerialization_test_utils.h"
 #include "xla/hlo/utils/hlo_matchers.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -50,6 +52,7 @@ namespace {
 namespace op = xla::testing::opcode_matchers;
 
 using ::testing::_;
+using tsl::testing::IsOkAndHolds;
 
 class AsyncRematerializationTest : public RematerializationTestBase {
  protected:
@@ -165,7 +168,7 @@ class RecomputeAndCompressHloRematerializationTest
         /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
         min_remat_size, /*compact_shape_function=*/nullptr,
         /*host_memory_offload_config=*/std::nullopt,
-        /*async_threads=*/{});
+        /*async_computation_parallelism=*/{});
     HloRematerialization::RematerializationSizes sizes;
     HloRematerialization remat(options, sizes);
     absl::StatusOr<bool> result = remat.Run(module);
@@ -1191,7 +1194,7 @@ class CompressingRematerializationTest : public RematerializationTestBase {
         /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
         min_remat_size, ChooseCompactLayoutForShape,
         /*host_memory_offload_config=*/std::nullopt,
-        /*async_threads=*/{});
+        /*async_computation_parallelism=*/{});
     HloRematerialization::RematerializationSizes sizes;
     HloRematerialization remat(options, sizes);
     return remat.Run(module);
@@ -1400,7 +1403,7 @@ class OffloadingRematerializationTest : public RematerializationTestBase {
         /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
         min_remat_size, /*compact_shape_function=*/nullptr,
         host_memory_offload_config,
-        /*async_threads=*/{});
+        /*async_computation_parallelism=*/{});
     HloRematerialization::RematerializationSizes sizes;
     HloRematerialization remat(options, sizes);
     return remat.Run(module);
@@ -1633,6 +1636,60 @@ TEST_P(IndirectUseTest, IndirectUseRematerialized) {
 INSTANTIATE_TEST_SUITE_P(IndirectUseTestInstantiation, IndirectUseTest,
                          ::testing::Values(true, false));
 
-}  // namespace
+using RematerializationDCETest = HloHardwareIndependentTestBase;
 
+TEST_F(RematerializationDCETest, DCEHasToRunTillFixedPoint) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m, is_scheduled=true
+
+f1 {
+  tmp_0 = f32[3,9] parameter(0)
+  tmp_2 = s32[] parameter(1)
+  tmp_4 = s32[] constant(0)
+  tmp_5 = f32[1,9] dynamic-slice(tmp_0, tmp_2, tmp_4), dynamic_slice_sizes={1,9}
+  tmp_6 = f32[9] bitcast(tmp_5)
+  tmp_7 = f32[] constant(-inf)
+  tmp_8 = f32[] reduce(tmp_6, tmp_7), dimensions={0}, to_apply={
+    tmp_0 = f32[] parameter(0)
+    tmp_1 = f32[] parameter(1)
+    tmp_2 = f32[] maximum(tmp_0, tmp_1)
+  }
+}
+
+f2 {
+  a = f32[] parameter(0)
+  b = f32[] constant(1)
+  c = f32[] divide(b, a)
+  d = f32[1] bitcast(c)
+  e = tuple(d, b)
+}
+
+e {
+  a = s32[] parameter(1)
+  b = f32[3,9] parameter(0)
+  c = f32[] fusion(b, a), kind=kInput, calls=f1
+  d = (f32[1], f32[]) fusion(c),
+    kind=kLoop, calls=f2
+  e = f32[] get-tuple-element(d), index=1
+})"));
+
+  HloCostAnalysis cost_analysis(HloCostAnalysis::DefaultShapeSize);
+  HloRematerialization::RematerializationSizes sizes;
+  HloRematerialization remat(
+      HloRematerialization::Options(
+          cost_analysis,
+          HloRematerialization::RematerializationModeConfig(
+              /*recompute=*/true,
+              /*compress=*/false,
+              /*host_offload=*/false),
+          /*memory_limit_bytes=*/1,
+          /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
+          /*min_remat_size=*/0, /*compact_shape_function=*/nullptr),
+      sizes);
+  EXPECT_THAT(remat.Run(module.get(), {HloInstruction::kMainExecutionThread}),
+              IsOkAndHolds(true));
+  EXPECT_THAT(HloDCE().Run(module.get()), IsOkAndHolds(false));
+}
+
+}  // namespace
 }  // namespace xla

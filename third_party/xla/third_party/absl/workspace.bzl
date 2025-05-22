@@ -47,5 +47,6 @@ def repo():
         patch_file = [
             "//third_party/absl:nvidia_jetson.patch",
             "//third_party/absl:build_dll.patch",
+            "//third_party/absl:nullability_macros.patch",
         ],
     )

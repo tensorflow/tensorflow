@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
@@ -61,6 +62,7 @@ int main(int argc, char **argv) {
                   mlrt::compiler::MlrtDialect>();
   tensorflow::RegisterTPUDialects(&registry);
   tensorflow::RegisterGpuDialects(&registry);
+  mlir::stablehlo::registerAllDialects(registry);
 
   tfrt::RegisterTFRTDialects(registry);
   tensorflow::tfrt_compiler::RegisterTPULowerClusterToRuntimeOpsPassPipeline();

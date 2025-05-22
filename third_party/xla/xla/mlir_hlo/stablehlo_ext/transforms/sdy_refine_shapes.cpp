@@ -256,14 +256,14 @@ LogicalResult applyShapeRefinementPatterns(OpTy regionOp) {
   // The algorithm behind this pass consists of a single traversal of the
   // function. This is sufficient because we only support one function per
   // program at the moment.
-  // TODO(#1048): Find out why .maxIterations = 1 no longer works.
+  // TODO(#1048): Find out why .setMaxIterations(1) no longer works.
   // There have been recent refactors to applyPatternsGreedily
   // upstream, and that might be the reason.
-  config.useTopDownTraversal = true;
-  config.enableRegionSimplification = GreedySimplifyRegionLevel::Aggressive;
-  config.maxIterations = 2;
-  config.maxNumRewrites = GreedyRewriteConfig::kNoLimit;
-  config.strictMode = GreedyRewriteStrictness::AnyOp;
+  config.setUseTopDownTraversal(true)
+      .setRegionSimplificationLevel(GreedySimplifyRegionLevel::Aggressive)
+      .setMaxIterations(2)
+      .setMaxNumRewrites(GreedyRewriteConfig::kNoLimit)
+      .setStrictness(GreedyRewriteStrictness::AnyOp);
 
   populateStablehloExtRefineShapesPatterns(&patterns, context);
   patterns.add<RefineManualComputationOpPattern>(context);
@@ -272,11 +272,11 @@ LogicalResult applyShapeRefinementPatterns(OpTy regionOp) {
   // which is a critical part of implementing type refinement for ops like
   // dynamic_broadcast_in_dim, dynamic_iota and dynamic_reshape whose shape
   // depends on the value of their shape operands.
-  stablehlo::populateStablehloShapeFolderPatterns(&patterns, context);
+  stablehlo::populateStablehloShapeFolderPatterns(context, &patterns);
 
   if (failed(applyPatternsGreedily(regionOp, std::move(patterns), config)))
     regionOp.emitError("Failed to converge StablehloRefineShapes in ")
-        << config.maxIterations << " iterations";
+        << config.getMaxIterations() << " iterations";
 
   return success();
 }
@@ -401,8 +401,8 @@ struct RefineInferTypeOpInterfacePattern
 }  // namespace
 
 /// Patterns for refining shapes of Shardy ops.
-void populateSdyShapeRefinementPatterns(RewritePatternSet* patterns,
-                                        MLIRContext* context) {
+void populateSdyShapeRefinementPatterns(MLIRContext* context,
+                                        RewritePatternSet* patterns) {
   patterns->add<RefineManualComputationOpPattern>(context);
   patterns->add<RefineNamedComputationOpPattern>(context);
   patterns->add<RefineInferTypeOpInterfacePattern>(context);

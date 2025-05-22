@@ -45,8 +45,8 @@ _DT_HEARTBEAT_ENABLED = "DTENSOR_ENABLE_HEARTBEAT"
 
 @tf_export("experimental.dtensor.local_devices", v1=[])
 def local_devices(
-    device_type: str,
-    for_client_id: Optional[int] = None) -> List[tf_device.DeviceSpec]:
+    device_type: str, for_client_id: Optional[int] = None
+) -> List[tf_device.DeviceSpec]:
   """Returns a list of device specs configured on this client."""
   if device_type.upper() not in ["CPU", "GPU", "TPU"]:
     raise ValueError(f"Device type {device_type} is not CPU, GPU, or TPU.")
@@ -61,7 +61,9 @@ def local_devices(
           replica=0,  # replica is deprecated and mostly hard-coded now.
           task=for_client_id,
           device_type=device_type,
-          device_index=i) for i in range(num_local_devices(device_type))
+          device_index=i,
+      )
+      for i in range(num_local_devices(device_type))
   ]
 
 
@@ -89,11 +91,15 @@ def client_id() -> int:
   # If missing, assume running with a single client with client_id of 0.
   client_id_value = int(os.environ.get(_DT_CLIENT_ID, "0"))
   if client_id_value < 0:
-    raise ValueError(f"Environment variable {_DT_CLIENT_ID} "
-                     f"must be >= 0, got {client_id_value}. ")
+    raise ValueError(
+        f"Environment variable {_DT_CLIENT_ID} "
+        f"must be >= 0, got {client_id_value}. "
+    )
   if client_id_value >= num_clients():
-    raise ValueError(f"Environment variable {_DT_CLIENT_ID} "
-                     f"must be < {num_clients()}, got {client_id_value}")
+    raise ValueError(
+        f"Environment variable {_DT_CLIENT_ID} "
+        f"must be < {num_clients()}, got {client_id_value}"
+    )
   return client_id_value
 
 
@@ -110,8 +116,9 @@ def job_name() -> str:
   """Returns the job name used by all clients in this DTensor cluster."""
   # If missing, assumes the program runs locally and use localhost as job name
   # per TensorFlow convention.
-  return os.environ.get(_DT_JOB_NAME,
-                        "localhost" if num_clients() == 1 else "worker")
+  return os.environ.get(
+      _DT_JOB_NAME, "localhost" if num_clients() == 1 else "worker"
+  )
 
 
 @tf_export("experimental.dtensor.full_job_name", v1=[])
@@ -160,7 +167,8 @@ def jobs() -> List[str]:
       raise ValueError(
           f"Unexpected DTENSOR_JOBS content {d_jobs}. Sort entries "
           "in DTENSOR_JOBS because cluster construction relies on "
-          "the order.")
+          "the order."
+      )
 
   return d_jobs_list
 
@@ -212,8 +220,3 @@ def use_multi_device_mode() -> bool:
 def gpu_use_nccl_communication() -> bool:
   """Return True if environment indicates NCCL shall be used for GPU."""
   return os.environ.get("DTENSOR_GPU_USE_NCCL_COMMUNICATION", "0") != "0"
-
-
-def backend_is_pw() -> bool:
-  """Return True if environment indicates the backend is Pathways."""
-  return os.environ.get("DTENSOR_USE_PARALLEL_EXECUTOR") == "pw"

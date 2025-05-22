@@ -148,6 +148,7 @@ enum CPUFeature {
   AARCH64_NEON = 1000,
   AARCH64_SVE = 1001,
   AARCH64_SVE2 = 1002,
+  AARCH64_BF16 = 1003,  // BF16 on AArch64 systems
 };
 
 enum Aarch64CPU {

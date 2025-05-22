@@ -26,7 +26,10 @@ namespace gpu {
 std::string SymbolicTiledHloInstruction::ToString() const {
   std::stringstream ss;
   ss << "\thlo: " << hlo_->ToString() << "\n";
-  ss << "\t" << symbolic_tile().ToString() << "\n";
+  ss << "\t"
+     << (symbolic_tile_.has_value() ? symbolic_tile_->ToString()
+                                    : "symbolic tile not computed")
+     << "\n";
   ss << "\tindexing map: " << indexing_map_ << "\n";
   return ss.str();
 }

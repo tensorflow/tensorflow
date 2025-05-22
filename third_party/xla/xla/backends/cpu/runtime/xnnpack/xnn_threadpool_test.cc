@@ -25,7 +25,12 @@ limitations under the License.
 #include "pthreadpool.h"
 #include "xla/backends/cpu/runtime/parallel_loop_runner.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/platform/threadpool.h"
+
+#define EIGEN_USE_THREADS
+#include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla::cpu {
 namespace {
@@ -125,8 +130,34 @@ static xnn_status CreateDotSubgraph(xnn_subgraph_t subgraph, size_t m, size_t n,
   return xnn_status_success;
 }
 
-TEST(XnnThreadPoolTest, Binary) {
-  pthreadpool_t threadpool = pthreadpool_create(8);
+class XnnThreadPoolTest : public testing::TestWithParam<bool> {
+ public:
+  XnnThreadPoolTest()
+      : thread_pool_(tsl::Env::Default(), "xnn-threadpool-test", 8),
+        device_(thread_pool_.AsEigenThreadPool(), thread_pool_.NumThreads()),
+        runner_(&device_) {}
+
+  pthreadpool_t CreateThreadPool() {
+    return GetParam() ? pthreadpool_create(8)
+                      : CreateCustomPthreadpool(&runner_);
+  }
+
+  void DestroyThreadPool(pthreadpool_t threadpool) {
+    if (GetParam()) {
+      pthreadpool_destroy(threadpool);
+    } else {
+      DestroyCustomPthreadpool(threadpool);
+    }
+  }
+
+ private:
+  tsl::thread::ThreadPool thread_pool_;
+  Eigen::ThreadPoolDevice device_;
+  ParallelLoopRunner runner_;
+};
+
+TEST_P(XnnThreadPoolTest, Binary) {
+  pthreadpool_t threadpool = CreateThreadPool();
   ASSERT_NE(threadpool, nullptr);
 
   ASSERT_EQ(xnn_initialize(/*allocator=*/nullptr), xnn_status_success);
@@ -178,11 +209,11 @@ TEST(XnnThreadPoolTest, Binary) {
   ASSERT_EQ(xnn_delete_subgraph(subgraph), xnn_status_success);
   ASSERT_EQ(xnn_release_workspace(workspace), xnn_status_success);
 
-  pthreadpool_destroy(threadpool);
+  DestroyThreadPool(threadpool);
 }
 
-TEST(XnnThreadPoolTest, Dot) {
-  pthreadpool_t threadpool = pthreadpool_create(8);
+TEST_P(XnnThreadPoolTest, Dot) {
+  pthreadpool_t threadpool = CreateThreadPool();
   ASSERT_NE(threadpool, nullptr);
 
   ASSERT_EQ(xnn_initialize(/*allocator=*/nullptr), xnn_status_success);
@@ -231,8 +262,11 @@ TEST(XnnThreadPoolTest, Dot) {
   ASSERT_EQ(xnn_delete_subgraph(subgraph), xnn_status_success);
   ASSERT_EQ(xnn_release_workspace(workspace), xnn_status_success);
 
-  pthreadpool_destroy(threadpool);
+  DestroyThreadPool(threadpool);
 }
+
+INSTANTIATE_TEST_SUITE_P(XnnThreadPool, XnnThreadPoolTest, testing::Bool(),
+                         testing::PrintToStringParamName());
 
 }  // namespace
 }  // namespace xla::cpu

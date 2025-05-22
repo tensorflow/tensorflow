@@ -337,22 +337,6 @@ absl::Status RocmCommandBuffer::UpdateKernelNode(
                   "Failed to set HIP graph kernel node params");
 }
 
-absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateBarrierNode(
-    absl::Span<const GraphNodeHandle> dependencies) {
-  VLOG(2) << "Add empty node to a graph " << graph_
-          << "; deps: " << dependencies.size();
-
-  hipGraphNode_t barrier_handle = nullptr;
-  std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
-
-  TF_RETURN_IF_ERROR(
-      ToStatus(wrap::hipGraphAddEmptyNode(&barrier_handle, graph_, deps.data(),
-                                          deps.size()),
-               "Failed to add empty node to a HIP graph"));
-
-  return FromHipGraphHandle(barrier_handle);
-}
-
 absl::Status RocmCommandBuffer::Trace(
     Stream* stream, absl::AnyInvocable<absl::Status()> function) {
   TF_RETURN_IF_ERROR(CheckNotFinalized());
@@ -394,17 +378,6 @@ absl::Status RocmCommandBuffer::Trace(
           << (end_nanos - start_nanos) / 1000 << " μs)";
 
   return absl::OkStatus();
-}
-
-absl::Status RocmCommandBuffer::SetNodeExecutionEnabled(
-    GraphNodeHandle node_handle, bool enabled) {
-  // Node is enabled if value != 0, otherwise the node is disabled.
-  unsigned value = enabled ? 1 : 0;
-  VLOG(2) << "Set HIP executable graph " << exec_ << " node " << node_handle
-          << " enabled flag to " << value;
-  return ToStatus(
-      wrap::hipGraphNodeSetEnabled(exec_, ToHipGraphHandle(node_handle), value),
-      "Failed to set HIP graph node enabled flag");
 }
 
 absl::Status RocmCommandBuffer::LaunchGraph(Stream* stream) {
@@ -491,29 +464,4 @@ absl::Status RocmCommandBuffer::CheckCanBeUpdated() {
   return absl::OkStatus();
 }
 
-absl::StatusOr<std::vector<GraphNodeHandle>>
-RocmCommandBuffer::GetNodeDependencies(const GraphNodeHandle node) {
-  VLOG(2) << "Get HIP graph node " << node << " dependencies";
-
-  std::vector<hipGraphNode_t> dependencies;
-
-  size_t num_dependencies = 0;
-  TF_RETURN_IF_ERROR(
-      ToStatus(hipGraphNodeGetDependencies(ToHipGraphHandle(node), nullptr,
-                                           &num_dependencies),
-               "Failed to get HIP graph node depedencies size"));
-
-  dependencies.resize(num_dependencies, nullptr);
-  TF_RETURN_IF_ERROR(ToStatus(
-      hipGraphNodeGetDependencies(ToHipGraphHandle(node), dependencies.data(),
-                                  &num_dependencies),
-      "Failed to get HIP graph node depedencies"));
-
-  std::vector<GraphNodeHandle> result;
-  result.reserve(dependencies.size());
-  absl::c_transform(
-      dependencies, std::back_inserter(result),
-      static_cast<GraphNodeHandle (*)(hipGraphNode_t)>(&FromHipGraphHandle));
-  return result;
-}
 }  // namespace stream_executor::gpu

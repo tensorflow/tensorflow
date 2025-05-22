@@ -21,13 +21,13 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
 
-class GemvRewriterTest : public HloTestBase {};
+class GemvRewriterTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(GemvRewriterTest, RewriteMatrixVectorMultiplicationToGemm) {
   const char* hlo = R"(

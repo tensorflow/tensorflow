@@ -256,9 +256,9 @@ class RaggedTensor(
 
   """
 
-  #=============================================================================
+  # =============================================================================
   # Constructor (private)
-  #=============================================================================
+  # =============================================================================
   @doc_controls.do_not_generate_docs
   def __init__(self, values, row_partition, internal=False):
     """Creates a `RaggedTensor` with a specified partitioning for `values`.
@@ -307,9 +307,9 @@ class RaggedTensor(
     self._values = values
     self._row_partition = row_partition
 
-  #=============================================================================
+  # =============================================================================
   # Factory Methods
-  #=============================================================================
+  # =============================================================================
 
   @classmethod
   def _from_row_partition(cls, values, row_partition, validate=True):
@@ -863,7 +863,7 @@ class RaggedTensor(
     If `values` is a `RaggedTensor`, then converts `values` and `partition`
     to have compatible row-partitioning dtypes.  In particular, if any of the
     row partitioning tensors are `int64`, then all of the other row
-    partitioning tensors wil be cast to `int64` (if auto_cast_partition_dtype()
+    partitioning tensors will be cast to `int64` (if auto_cast_partition_dtype()
     is true) or an error will be raised (if auto_cast_partition_dtype() is
     false).
 
@@ -895,9 +895,9 @@ class RaggedTensor(
 
     return (values, row_partition)
 
-  #=============================================================================
+  # =============================================================================
   # Accessors
-  #=============================================================================
+  # =============================================================================
 
   @property
   def dtype(self):
@@ -1384,9 +1384,9 @@ class RaggedTensor(
           [array_ops_stack.stack(ragged_dimensions), inner_dimensions], axis=0)
       return bbox if axis is None else array_ops.gather(bbox, axis)
 
-  #=============================================================================
+  # =============================================================================
   # Transformation
-  #=============================================================================
+  # =============================================================================
 
   def with_values(self, new_values):
     """Returns a copy of `self` with `values` replaced by `new_value`.
@@ -1575,9 +1575,9 @@ class RaggedTensor(
       flat_shape = tensor_shape.as_shape([None] + shape[self.ragged_rank + 1:])
       self.flat_values.set_shape(flat_shape)
 
-  #=============================================================================
+  # =============================================================================
   # Tensor Type Conversions
-  #=============================================================================
+  # =============================================================================
 
   @classmethod
   @dispatch.add_dispatch_support
@@ -1737,7 +1737,7 @@ class RaggedTensor(
         # If the padding isn't a scalar, then require that all values in the
         # padding match each item in the tensor.  After this block of code,
         # `has_default.shape = tensor.shape[:2]`.  (Unfortunately, we can't just
-        # use reduce_all for both cases, becaue when you pass an empty `axis`
+        # use reduce_all for both cases, because when you pass an empty `axis`
         # list to reduce_all, it reduces all axes; but we want it to reduce no
         # axes -- i.e., to be a no-op.)
         tensor_rank = array_ops.rank(tensor)
@@ -1929,7 +1929,7 @@ class RaggedTensor(
       with ops.control_dependencies(
           _assert_sparse_indices_are_ragged_right(st_input.indices)):
         # Treat sparse row indices as segment ids to generate a splits tensor
-        # thta we can pair with the sparse tensor values.  (Ignore sparse column
+        # that we can pair with the sparse tensor values.  (Ignore sparse column
         # indices.)
         segment_ids = math_ops.cast(st_input.indices[:, 0], row_splits_dtype)
         num_segments = math_ops.cast(st_input.dense_shape[0], row_splits_dtype)
@@ -2061,9 +2061,9 @@ class RaggedTensor(
       return gen_ragged_conversion_ops.ragged_tensor_to_variant(
           self.nested_row_splits, self.flat_values, batched_input, name)
 
-  #=============================================================================
+  # =============================================================================
   # String Encoding
-  #=============================================================================
+  # =============================================================================
   def __repr__(self):
     if self._is_eager():
       # The np.array2string in _formatter provides a separator argument, but
@@ -2082,9 +2082,9 @@ class RaggedTensor(
       return "tf.RaggedTensor(values=%s, row_splits=%s)" % (self.values,
                                                             self.row_splits)
 
-  #=============================================================================
+  # =============================================================================
   # Eager Execution Mode
-  #=============================================================================
+  # =============================================================================
 
   def numpy(self):
     """Returns a numpy `array` with the values for this `RaggedTensor`.
@@ -2178,9 +2178,9 @@ class RaggedTensor(
       rt = rt.values
     return isinstance(rt, ops.EagerTensor)
 
-  #=============================================================================
+  # =============================================================================
   # Operators
-  #=============================================================================
+  # =============================================================================
   # To avoid circular dependencies, we define stub methods for operators here,
   # and then override them when the ragged_operators module is imported.
 
@@ -2226,9 +2226,9 @@ class RaggedTensor(
   __rtruediv__ = _overloaded_operator("__rtruediv__")
   del _overloaded_operator
 
-  #=============================================================================
+  # =============================================================================
   # Name Scope
-  #=============================================================================
+  # =============================================================================
 
   # This private function is used by ops.name_scope to ensure that all of the
   # input tensors for the scope belong to the same graph.  Defining this means
@@ -2241,9 +2241,9 @@ class RaggedTensor(
       values = values.values
     return values
 
-  #=============================================================================
+  # =============================================================================
   # Composite Tensor
-  #=============================================================================
+  # =============================================================================
 
   @property
   def _type_spec(self):
@@ -2726,12 +2726,12 @@ def _convert_to_ragged_tensor_values(value):
   * Otherwise convert it to Tensor or RaggedTensor.
 
   Args:
-    value: An object of `Tensor`, `RaggedTensor` or registerred RaggedTensor
+    value: An object of `Tensor`, `RaggedTensor` or registered RaggedTensor
       value types, or an object whose type has a registered `Tensor` conversion
       function.
 
   Returns:
-    An object of `Tensor`, `RaggedTensor` or registerred RaggedTensor
+    An object of `Tensor`, `RaggedTensor` or registered RaggedTensor
     value types
   """
   if _is_supported_ragged_values_type(value):

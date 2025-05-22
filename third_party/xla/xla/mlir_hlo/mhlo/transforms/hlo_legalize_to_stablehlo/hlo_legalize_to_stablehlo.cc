@@ -87,11 +87,6 @@ bool hasPrivateFeaturesNotInStablehlo(HloOpTy hloOp) {
 // for StableHLO, and they are usually accompanied by a StableHLO GitHub ticket.
 template <typename HloOpTy>
 bool hasExperimentalFeaturesNotInStablehlo(HloOpTy hloOp) {
-  if constexpr (std::is_same<HloOpTy, mhlo::AllReduceOp>::value) {
-    // StableHLO AllReduce doesn't support the tuple form yet.
-    // Proposal: https://github.com/openxla/stablehlo/issues/1370.
-    if (hloOp.getNumOperands() != 1) return true;
-  }
   if constexpr (std::is_same<HloOpTy, mhlo::AllToAllOp>::value) {
     // StableHLO AllToAll doesn't support the tuple form yet.
     // Proposal: https://github.com/openxla/stablehlo/issues/574.
@@ -360,7 +355,7 @@ Attribute encodePrecisionConfig(ArrayAttr precisionConfigAttr) {
 template <typename FailedToConvertTy>
 LogicalResult notifyConversionFailure(ConversionPatternRewriter& rewriter,
                                       Operation* op,
-                                      std::string const& errorMessage,
+                                      const std::string& errorMessage,
                                       FailedToConvertTy ty) {
   return rewriter.notifyMatchFailure(
       op, [=](Diagnostic& diag) { diag << errorMessage << ": " << ty; });

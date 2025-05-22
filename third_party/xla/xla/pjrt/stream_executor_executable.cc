@@ -18,31 +18,50 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "absl/log/check.h"
+#include "xla/client/local_client.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/stream_executor_executable.pb.h"
 #include "xla/service/compiler.h"
+#include "xla/service/executable.h"
 #include "xla/shape.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 absl::StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable()
     const {
-  if (aot_executables_.empty()) {
-    return absl::InternalError("No local executable");
-  }
-  if (aot_executables_.size() != 1) {
-    return absl::UnimplementedError(
-        "PjRtStreamExecutorClient::SerializeExecutable unimplemented for MPMD "
-        "executables");
+  std::string serialized;
+  if (std::holds_alternative<
+          std::vector<std::unique_ptr<xla::AotCompilationResult>>>(
+          executables_)) {
+    const auto& aot_executables =
+        std::get<std::vector<std::unique_ptr<xla::AotCompilationResult>>>(
+            executables_);
+    if (aot_executables.empty()) {
+      return absl::InternalError("No local executable");
+    }
+    if (aot_executables.size() != 1) {
+      return absl::UnimplementedError(
+          "PjRtStreamExecutorClient::SerializeExecutable unimplemented for "
+          "MPMD executables");
+    }
+    TF_ASSIGN_OR_RETURN(serialized, aot_executables[0]->SerializeAsString());
+  } else {
+    const auto& local_executables =
+        std::get<std::vector<std::unique_ptr<LocalExecutable>>>(executables_);
+    Executable* built_executable = local_executables[0]->executable();
+    CHECK(local_client_ != nullptr);
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<AotCompilationResult> aot_result,
+        local_client_->backend().compiler()->Export(built_executable));
+
+    TF_ASSIGN_OR_RETURN(serialized, aot_result->SerializeAsString());
   }
 
-  TF_ASSIGN_OR_RETURN(std::string serialized,
-                      aot_executables_[0]->SerializeAsString());
   if (serialized.empty()) {
     return absl::InternalError(
         "PjRtStreamExecutorClient::SerializeExecutable proto serialization "
@@ -82,7 +101,7 @@ absl::StatusOr<std::vector<absl::string_view>> MemoryKindsFromShape(
     return {{memory_kind}};
   }
   std::vector<absl::string_view> result;
-  result.reserve(shape.tuple_shapes_size());
+  result.reserve(shape.tuple_shapes().size());
   for (const auto& element_shape : shape.tuple_shapes()) {
     TF_ASSIGN_OR_RETURN(
         absl::string_view element_memory_kind,
@@ -105,6 +124,33 @@ StreamExecutorExecutable::GetOutputMemoryKinds() const {
     out.push_back(memory_kind);
   }
   return out;
+}
+
+absl::StatusOr<std::vector<std::unique_ptr<LocalExecutable>>>
+StreamExecutorExecutable::ConsumeExecutable(
+    LocalClient* client, const CompileOptions& compile_options) {
+  if (std::holds_alternative<std::vector<std::unique_ptr<LocalExecutable>>>(
+          executables_)) {
+    return std::get<std::vector<std::unique_ptr<LocalExecutable>>>(
+        std::move(executables_));
+  } else if (std::holds_alternative<
+                 std::vector<std::unique_ptr<xla::AotCompilationResult>>>(
+                 executables_)) {
+    auto aot_executables =
+        std::get<std::vector<std::unique_ptr<xla::AotCompilationResult>>>(
+            std::move(executables_));
+    std::vector<std::unique_ptr<LocalExecutable>> local_executables;
+    local_executables.reserve(aot_executables.size());
+    for (int i = 0; i < aot_executables.size(); ++i) {
+      TF_ASSIGN_OR_RETURN(
+          std::unique_ptr<LocalExecutable> local_executable,
+          client->Load(std::move(aot_executables[i]),
+                       compile_options.executable_build_options));
+      local_executables.push_back(std::move(local_executable));
+    }
+    return local_executables;
+  }
+  return absl::UnimplementedError("Unsupported executable type.");
 }
 
 }  // namespace xla

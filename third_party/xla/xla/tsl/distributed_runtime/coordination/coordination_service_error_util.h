@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
-#include <string_view>
 
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
@@ -43,7 +42,7 @@ inline absl::Status MakeCoordinationError(absl::Status s) {
 }
 
 inline absl::Status MakeBarrierError(absl::Status s,
-                                     std::string_view barrier_id,
+                                     absl::string_view barrier_id,
                                      int64_t counter) {
   tensorflow::BarrierError error;
   error.set_barrier_id(std::string(barrier_id));

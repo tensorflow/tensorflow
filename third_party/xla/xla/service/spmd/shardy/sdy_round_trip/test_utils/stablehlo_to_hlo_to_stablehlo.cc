@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
@@ -101,6 +102,8 @@ class SdyRoundTripStablehloToHloToStablehloPass
 
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
     xla::RegisterMlirToHloDependentDialects(registry);
+    // TODO(tomnatan): Cleanup once no longer needed.
+    registry.insert<mlir::ub::UBDialect>();
   }
 };
 

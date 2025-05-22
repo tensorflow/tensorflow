@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -65,7 +66,7 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
         graph_(graph),
         is_owned_graph_(is_owned_graph) {
     VLOG(5) << "Created command buffer for graph " << graph_
-            << "; mode=" << ModeToString(mode)
+            << "; mode=" << absl::StrCat(mode)
             << "; is_owned_graph=" << is_owned_graph_;
   }
 
@@ -123,6 +124,13 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
                                    DeviceMemoryBase source,
                                    uint64_t size) override;
 
+  absl::Status PopulateDnnGraphNode(
+      dnn::DnnGraph&, Stream&, absl::Span<DeviceMemoryBase> operands) override;
+
+  absl::Status UpdateDnnGraphNode(dnn::DnnGraph&, Stream&,
+                                  absl::Span<DeviceMemoryBase> operands,
+                                  GraphNodeHandle) override;
+
   absl::StatusOr<GraphNodeHandle> CreateChildNode(
       absl::Span<const GraphNodeHandle> dependencies,
       const CommandBuffer& nested) override;
@@ -140,14 +148,8 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
                                 const BlockDim& blocks, const Kernel& kernel,
                                 const KernelArgsPackedArrayBase& args) override;
 
-  absl::StatusOr<GraphNodeHandle> CreateBarrierNode(
-      absl::Span<const GraphNodeHandle> dependencies) override;
-
   absl::Status Trace(Stream* stream,
                      absl::AnyInvocable<absl::Status()> function) override;
-
-  absl::Status SetNodeExecutionEnabled(GraphNodeHandle node_handle,
-                                       bool enabled) override;
 
   absl::Status LaunchGraph(Stream* stream) override;
 
@@ -166,9 +168,6 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
       GpuCommandBuffer* nested_cmd_buffer) override;
 
   absl::Status CheckCanBeUpdated() override;
-
-  absl::StatusOr<std::vector<GraphNodeHandle>> GetNodeDependencies(
-      GraphNodeHandle node) override;
 
   // A signature of a device kernels updating conditional handle(s).
   using SetCaseConditionKernel =

@@ -140,10 +140,10 @@ jobs:
           pwd #print working directory
 
           if [[ "$platform" == "CPU" ]]; then
-            $binary_dir/multihost_hlo_runner/$runner_binary --device_type=host --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to="$xspace_file" "$test_hlo_file" > "$output_file"
+            $binary_dir/multihost_hlo_runner/$runner_binary --device_type=host --num_repeats=5 --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to="$xspace_file" "$test_hlo_file" > "$output_file"
             $binary_dir/compute_xspace_stats_main --input="$xspace_file" --device_type=CPU >> "$output_file"
           elif [[ "$platform" == "GPU" ]]; then
-            $binary_dir/multihost_hlo_runner/$runner_binary --device_type=gpu --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to="$xspace_file" "$test_hlo_file" > "$output_file"
+            $binary_dir/multihost_hlo_runner/$runner_binary --device_type=gpu --num_repeats=5 --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to="$xspace_file" "$test_hlo_file" > "$output_file"
             $binary_dir/compute_xspace_stats_main_gpu --input="$xspace_file" --device_type=GPU >> "$output_file"
           else
             echo "Unsupported platform: $platform"
@@ -196,10 +196,10 @@ jobs:
           xspace_file="$GITHUB_WORKSPACE/xspace.pb"
 
           if [[ "$platform" == "CPU" ]]; then
-            $binary_dir/multihost_hlo_runner/$runner_binary --device_type=host --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to="$xspace_file" "$test_hlo_file" > "$output_file"
+            $binary_dir/multihost_hlo_runner/$runner_binary --device_type=host --num_repeats=5 --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to="$xspace_file" "$test_hlo_file" > "$output_file"
             $binary_dir/compute_xspace_stats_main --input="$xspace_file" --device_type=CPU >> "$output_file"
           elif [[ "$platform" == "GPU" ]]; then
-            $binary_dir/multihost_hlo_runner/$runner_binary --device_type=gpu --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to="$xspace_file" "$test_hlo_file" > "$output_file"
+            $binary_dir/multihost_hlo_runner/$runner_binary --device_type=gpu --num_repeats=5 --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to="$xspace_file" "$test_hlo_file" > "$output_file"
             $binary_dir/compute_xspace_stats_main_gpu --input="$xspace_file" --device_type=GPU >> "$output_file"
           else
             echo "Unsupported platform: $platform"

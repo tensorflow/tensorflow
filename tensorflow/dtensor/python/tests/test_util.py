@@ -35,7 +35,6 @@ from tensorflow.dtensor.python.config import is_gpu_present  # pylint: disable=u
 from tensorflow.dtensor.python.config import is_tpu_present  # pylint: disable=unused-import
 from tensorflow.dtensor.python.config import preferred_device_type  # pylint: disable=unused-import
 from tensorflow.dtensor.python.config import use_multi_device_mode  # pylint: disable=unused-import
-from tensorflow.dtensor.python.tests import test_backend_util
 from tensorflow.dtensor.python.tests.test_backend_name import DTENSOR_TEST_UTIL_BACKEND
 from tensorflow.dtensor.python.tests.test_backend_name import DTensorTestUtilBackend
 from tensorflow.dtensor.python.tests.test_backend_util import DTensorTestBackendConfigurator
@@ -83,7 +82,9 @@ def create_device_array(shape, device_type):
       tf_device.DeviceSpec(  # pylint: disable=g-complex-comprehension
           job='localhost/replica:0/task:0',
           device_type=device_type,
-          device_index=i) for i in range(device_count)
+          device_index=i,
+      )
+      for i in range(device_count)
   ]).reshape(shape)
 
 
@@ -110,8 +111,10 @@ def reset_logical_devices(device_type, count):
   reset_context()
   devices = tf_config.list_physical_devices(device_type)
   if device_type.upper() not in ('CPU', 'GPU'):
-    raise ValueError('resetting logical device for non-supported device type : '
-                     '%s' % device_type)
+    raise ValueError(
+        'resetting logical device for non-supported device type : %s'
+        % device_type
+    )
 
   if count < len(devices):
     devices = devices[:count]
@@ -125,7 +128,8 @@ def reset_logical_devices(device_type, count):
       if device_type.upper() == 'GPU':
         dev_config = context.LogicalDeviceConfiguration(
             memory_limit=_DEFAULT_GPU_MEMORY_LIMIT,
-            experimental_device_ordinal=ordinal)
+            experimental_device_ordinal=ordinal,
+        )
       else:
         dev_config = context.LogicalDeviceConfiguration()
       configs.append(dev_config)
@@ -183,7 +187,7 @@ class DTensorBaseTest(tf_test.TestCase, parameterized.TestCase):
 
   @staticmethod
   def configTestMesh(  # pylint: disable=invalid-name
-      device_type_mesh_map: typing.Dict[typing.Text, layout_lib.Mesh]
+      device_type_mesh_map: typing.Dict[typing.Text, layout_lib.Mesh],
   ) -> layout_lib.Mesh:
     """Configs corresponding mesh given test context.
 
@@ -202,8 +206,9 @@ class DTensorBaseTest(tf_test.TestCase, parameterized.TestCase):
     def get_mesh(device_type):
       mesh = device_type_mesh_map.get(device_type, None)
       if mesh is None:
-        raise ValueError('Requires a %s mesh to run test on %s.' %
-                         (device_type, device_type))
+        raise ValueError(
+            'Requires a %s mesh to run test on %s.' % (device_type, device_type)
+        )
       return mesh
 
     mesh = None
@@ -220,15 +225,14 @@ class DTensorBaseTest(tf_test.TestCase, parameterized.TestCase):
       reset_logical_devices('CPU', np.prod(mesh.shape()))
       accelerator_util.initialize_accelerator_system('CPU')
 
-    test_backend_util.config_test_mesh(mesh)
-
     return mesh
 
   def skipForDeviceType(  # pylint: disable=invalid-name
       self,
       device_type: typing.List[str],
       reason: str,
-      unless_device_count_equals_to=None):
+      unless_device_count_equals_to=None,
+  ):
     """Skip the test for the specific device_type.
 
     Args:
@@ -239,16 +243,22 @@ class DTensorBaseTest(tf_test.TestCase, parameterized.TestCase):
         of TPUs equals to the specified count.
     """
     physical_device_types = set(
-        [d.device_type for d in tf_config.list_physical_devices()])
+        [d.device_type for d in tf_config.list_physical_devices()]
+    )
     for device in device_type:
       if device == 'TPU' and is_tpu_present():
         if unless_device_count_equals_to is None:
           self.skipTest(reason)
-        elif len(list_local_logical_devices(
-            device)) != unless_device_count_equals_to:
+        elif (
+            len(list_local_logical_devices(device))
+            != unless_device_count_equals_to
+        ):
           self.skipTest(reason)
-      if device == 'CPU' and len(
-          physical_device_types) == 1 and 'CPU' in physical_device_types:
+      if (
+          device == 'CPU'
+          and len(physical_device_types) == 1
+          and 'CPU' in physical_device_types
+      ):
         # Make sure we skip when only `CPU` is present.
         self.skipTest(reason)
       if device == 'GPU' and 'GPU' in physical_device_types:
@@ -264,19 +274,17 @@ class DTensorBaseTest(tf_test.TestCase, parameterized.TestCase):
       self._backend_configurator.tearDown()
     super().skipTest(reason)
 
-  def skipForPathways(self, reason: str):  # pylint: disable=invalid-name
-    if config.backend_is_pw():
-      self.skipTest(reason)
-
   def assertDTensorEqual(
       self,  # pylint: disable=invalid-name
       expected_result,
       expected_layout,
       result_dtensor,
-      tol=DEFAULT_TOL):
+      tol=DEFAULT_TOL,
+  ):
     """Asserts DTensor is of the particular value."""
     if issubclass(
-        type(result_dtensor), resource_variable_ops.BaseResourceVariable):
+        type(result_dtensor), resource_variable_ops.BaseResourceVariable
+    ):
       result_dtensor = result_dtensor.value()
     if expected_layout is not None:
       # This, the assertEqual, is a pure proto raw bytes comparison. To make it
@@ -288,11 +296,13 @@ class DTensorBaseTest(tf_test.TestCase, parameterized.TestCase):
       expected_str = expected_layout.to_string()
       got_str = api.fetch_layout(result_dtensor).to_string()
       index_for_mesh = expected_str.find('mesh:')
-      if index_for_mesh != -1 and got_str.find(
-          expected_str[index_for_mesh:]) != -1:
+      if (
+          index_for_mesh != -1
+          and got_str.find(expected_str[index_for_mesh:]) != -1
+      ):
         # the mesh part is same. cut them so it is more readable.
         expected_str = expected_str[:index_for_mesh]
-        got_str = got_str[:got_str.find('mesh:')]
+        got_str = got_str[: got_str.find('mesh:')]
 
       self.assertEqual(
           api.fetch_layout(result_dtensor),
@@ -375,9 +385,7 @@ def product(*lists):
   # (("test1", ...), ("test2", ...), ...).
   # Function returns the product of the lists with the labels concatenated.
   return [  # pylint: disable=g-complex-comprehension
-      (''.join(p[0]
-               for p in elt), *sum((p[1:]
-                                    for p in elt), ()))
+      (''.join(p[0] for p in elt), *sum((p[1:] for p in elt), ()))
       for elt in itertools.product(*lists)
   ]
 

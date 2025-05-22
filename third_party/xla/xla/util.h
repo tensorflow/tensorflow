@@ -23,6 +23,7 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <initializer_list>
 #include <limits>
@@ -50,6 +51,7 @@ limitations under the License.
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/platform/errors.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/bfloat16.h"
@@ -160,7 +162,8 @@ class ScopedLoggingTimer {
 template <typename T>
 absl::Span<const uint8_t> CastToByteSlice(absl::Span<const T> slice) {
   return absl::Span<const uint8_t>(
-      reinterpret_cast<const uint8_t*>(slice.data()), slice.size() * sizeof(T));
+      tsl::safe_reinterpret_cast<const uint8_t*>(slice.data()),
+      slice.size() * sizeof(T));
 }
 
 // Casts a byte slice to a non-byte type T, checking that the original slice
@@ -168,7 +171,7 @@ absl::Span<const uint8_t> CastToByteSlice(absl::Span<const T> slice) {
 template <typename T>
 absl::Span<const T> CastByteSlice(absl::Span<const uint8_t> slice) {
   CHECK_EQ(0, slice.size() % sizeof(T));
-  return absl::Span<const T>(reinterpret_cast<const T*>(slice.data()),
+  return absl::Span<const T>(tsl::safe_reinterpret_cast<const T*>(slice.data()),
                              slice.size() / sizeof(T));
 }
 
@@ -762,7 +765,7 @@ std::vector<int64_t> ElemwiseProduct(absl::Span<const int64_t> a,
 // and `b` with the same product, i.e. `(i, j)` so
 // • a = {a[0 = i_0], ..., a[i_1 - 1], a[i_1], ... , a[i_2 - 1], ...}
 // • b = {b[0 = j_0], ..., b[j_1 - 1], b[j_1], ... , b[j_2 - 1], ...}
-// • ∀ k . 0 <= k < CommonFactors(a, b).size - 1 =>
+// • ∀ k . 0 <= k < CommonFactors(a, b).size =>
 //         a[i_k] × a[i_k + 1] × ... × a[i_(k+1) - 1] =
 //         b[j_k] × b[j_k + 1] × ... × b[j_(k+1) - 1]
 // where `CommonFactors(a, b)[CommonFactors(a, b).size - 1] = (a.size, b.size)`
@@ -988,6 +991,32 @@ using Vector2 = std::array<int64_t, 2>;
 using Vector3 = std::array<int64_t, 3>;
 
 std::string PrintAllFields(const tsl::protobuf::Message& message);
+
+// Returns true if x is a power of 2.
+constexpr bool IsPowerOf2(size_t x) noexcept {
+  // Checks that x is non-zero and has only a single bit set.
+  return x != 0 && (x & (x - 1)) == 0;
+}
+
+// A custom deleter that frees the pointer via std::free().
+struct FreeDeleter {
+  void operator()(void* ptr) {
+#if defined(_WIN32)
+    _aligned_free(ptr);
+#else
+    std::free(ptr);
+#endif
+  }
+};
+
+/**
+ * @brief Allocates memory with specified alignment.
+ * @param alignment Specifies the alignment. Power of two.
+ * @param size The number of bytes to allocate. Integral multiple of alignment
+ * @return A unique_ptr managing the allocated memory.
+ */
+std::unique_ptr<void, FreeDeleter> AlignedAlloc(std::size_t alignment,
+                                                std::size_t size);
 
 }  // namespace xla
 

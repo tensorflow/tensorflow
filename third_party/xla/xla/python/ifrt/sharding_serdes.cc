@@ -51,7 +51,8 @@ class SingleDeviceShardingSerDes
   }
 
   absl::StatusOr<std::string> Serialize(
-      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
+      const Serializable& serializable,
+      std::unique_ptr<SerializeOptions>) override {
     const SingleDeviceSharding& sharding =
         llvm::cast<SingleDeviceSharding>(serializable);
     SingleDeviceShardingProto proto;
@@ -95,7 +96,8 @@ class OpaqueShardingSerDes
   }
 
   absl::StatusOr<std::string> Serialize(
-      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
+      const Serializable& serializable,
+      std::unique_ptr<SerializeOptions>) override {
     const OpaqueSharding& sharding = llvm::cast<OpaqueSharding>(serializable);
     OpaqueShardingProto proto;
     *proto.mutable_devices() = sharding.devices()->ToProto();
@@ -138,7 +140,8 @@ class ConcreteShardingSerDes
   }
 
   absl::StatusOr<std::string> Serialize(
-      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
+      const Serializable& serializable,
+      std::unique_ptr<SerializeOptions>) override {
     const ConcreteSharding& sharding =
         llvm::cast<ConcreteSharding>(serializable);
     ConcreteShardingProto proto;
@@ -222,7 +225,8 @@ class ConcreteEvenShardingSerDes
   }
 
   absl::StatusOr<std::string> Serialize(
-      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
+      const Serializable& serializable,
+      std::unique_ptr<SerializeOptions>) override {
     const ConcreteEvenSharding& sharding =
         llvm::cast<ConcreteEvenSharding>(serializable);
     ConcreteEvenShardingProto proto;
@@ -273,7 +277,8 @@ class ShardingParamShardingSerDes
   }
 
   absl::StatusOr<std::string> Serialize(
-      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
+      const Serializable& serializable,
+      std::unique_ptr<SerializeOptions>) override {
     const ShardingParamSharding& sharding =
         llvm::cast<ShardingParamSharding>(serializable);
     ShardingParamShardingProto proto;

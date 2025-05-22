@@ -44,14 +44,9 @@ namespace xla {
 namespace gpu {
 // Maps async start ops to their async events so we can emit done thunk
 // sharing events with corresponding start thunk. Async events may be null if
-// the start op is degenerate (so not emitted). For Send and Recv, this maps
-// <isRecv, channel_id> to the asyn events, as multiple Recv and Recv-done or
-// multiple Send and Send-done may map to the same async events and a Recv-done
-// or Send-done operand may not be its corresponding Recv or Send, when a
-// Send-Recv chain inside a loop is pipelined.
+// the start op is degenerate (so not emitted).
 using CollectivesAsyncEvents =
-    absl::flat_hash_map<std::variant<mlir::Operation*, const HloInstruction*,
-                                     std::pair<bool, uint64_t>>,
+    absl::flat_hash_map<std::variant<mlir::Operation*, const HloInstruction*>,
                         std::shared_ptr<CollectiveThunk::AsyncEvents>>;
 
 // IrEmitterContext encapsulates common (mutable and immutable) data structures

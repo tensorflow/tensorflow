@@ -489,17 +489,13 @@ bool RuntimeFusionEnabled(const Cluster* cluster) {
         }
       }
     }
-    bool runtime_fusion_enabled = CudnnUseRuntimeFusion() &&
-                                  CudnnUseFrontend() && num_gpus > 0 &&
-                                  num_gpus == num_ampere;
+    bool runtime_fusion_enabled =
+        CudnnUseRuntimeFusion() && num_gpus > 0 && num_gpus == num_ampere;
 
     if (CudnnUseRuntimeFusion() && !runtime_fusion_enabled) {
-      VLOG(1) << "Enabling Cudnn with runtime compilation requires the "
-              << "Cudnn frontend and Ampere GPUs or later, but we got "
-              << "Cudnn frontend is "
-              << (CudnnUseFrontend() ? "enabled" : "disabled") << " and "
-              << num_ampere << " Ampere GPU(s) out of total " << num_gpus
-              << " GPU(s)";
+      VLOG(1) << "Enabling Cudnn with runtime compilation requires "
+              << "Ampere (sm_80) GPUs or later, but we got " << num_ampere
+              << " sm_80+ GPU(s) out of total " << num_gpus << " GPU(s)";
     }
 
     return runtime_fusion_enabled;

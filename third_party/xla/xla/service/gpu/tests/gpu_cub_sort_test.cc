@@ -52,13 +52,12 @@ class CubSortKeysTest : public HloTestBase,
  public:
   void SetUp() override {
     HloTestBase::SetUp();
-    SortRewriter::SetSortSizeThresholdForTestingOnly(
-        0);  // Always use CUB sort.
+    SortRewriter::SetSortModeForTestingOnly(SortRewriter::Mode::kAlways);
   }
 };
 
 TEST_F(CubSortKeysTest, AlwaysUsesCubSort) {
-  EXPECT_EQ(SortRewriter::SortSizeThreshold(), 0);
+  EXPECT_EQ(SortRewriter::SortMode(), SortRewriter::Mode::kAlways);
 }
 
 TEST_P(CubSortKeysTest, CompareToReference) {
@@ -208,13 +207,12 @@ class CubSortPairsTest
  public:
   void SetUp() override {
     HloTestBase::SetUp();
-    SortRewriter::SetSortSizeThresholdForTestingOnly(
-        0);  // Always use CUB sort.
+    SortRewriter::SetSortModeForTestingOnly(SortRewriter::Mode::kAlways);
   }
 };
 
 TEST_F(CubSortPairsTest, AlwaysUsesCubSort) {
-  EXPECT_EQ(SortRewriter::SortSizeThreshold(), 0);
+  EXPECT_EQ(SortRewriter::SortMode(), SortRewriter::Mode::kAlways);
 }
 
 TEST_P(CubSortPairsTest, CompareToReference) {
@@ -308,7 +306,7 @@ ENTRY m {
 
 INSTANTIATE_TEST_SUITE_P(
     CubSort, CubSortPairsTest,
-    ::testing::Combine(::testing::Values(U8, U16, U32, U64),
+    ::testing::Combine(::testing::Values(U8, U16, U32, U64, F32),
                        ::testing::Values(F16, F32, F64), ::testing::Bool(),
                        ::testing::Values(1, 10)),
     [](const ::testing::TestParamInfo<CubSortPairsTest::ParamType>& info) {

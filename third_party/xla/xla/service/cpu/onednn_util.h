@@ -53,6 +53,10 @@ inline bool IsSupportedType(xla::PrimitiveType dtype) {
   return false;
 }
 
+inline bool HasAMXTile() {
+  return TestCPUFeature(tsl::port::CPUFeature::AMX_TILE);
+}
+
 struct FusedOperandsRef {
   const std::vector<void*>& bufs;
   std::vector<std::pair<int, dnnl::memory>>& postop_args;

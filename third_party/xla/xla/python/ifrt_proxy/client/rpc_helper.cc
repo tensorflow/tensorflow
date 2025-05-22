@@ -342,6 +342,7 @@ RPC(LoadedExecutableIsDeleted, loaded_executable_is_deleted);
 RPC(LoadedExecutableDestruct, loaded_executable_destruct);
 RPC(LoadedHostCallbackPoll, loaded_host_callback_poll);
 RPC(LoadedHostCallbackReturn, loaded_host_callback_return);
+RPC(GetDefaultLayout, get_default_layout);
 
 Future<> RpcHelper::CheckFuture(uint64_t handle) {
   auto req = std::make_unique<CheckFutureRequest>();

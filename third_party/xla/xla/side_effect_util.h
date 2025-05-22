@@ -45,6 +45,10 @@ extern const char kXlaMaxIdsPerPartitionAttr[];
 // partition *after* an input batch is partitioned.
 extern const char kXlaMaxUniqueIdsPerPartitionAttr[];
 
+// XLA frontend attribute name for the maximum valency of a sample. Currently
+// only used for the custom combiner coarse-grain op.
+extern const char kXlaMaxValencyAttr[];
+
 // XLA frontend attribute for how to assign ids to partitions.
 extern const char kXlaShardingStrategyAttr[];
 
@@ -85,6 +89,8 @@ extern const char kXlaMultiRecvCountAttr[];
 
 // XLA frontend attribute for specifying the scheduling group id annotations.
 extern const char kXlaSchedulingGroupIdAttr[];
+// XLA frontend attribute value for a group that will not actually be scheduled.
+extern const char kXlaNoOpSchedulingGroup[];
 
 // XLA frontend attributes for specifying fusion directives.
 // MUST_FUSE: all ops labeled so should form as single fusion,
@@ -96,6 +102,7 @@ extern const char kXlaSchedulingGroupIdAttr[];
 // are added.
 extern const char kMustFuseAttr[];
 extern const char kMaximalFuseAttr[];
+extern const char kFuseLimitAttr[];
 
 // XLA frontend attribute for specifying groups of collectives that should be
 // launched together.

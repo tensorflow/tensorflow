@@ -127,12 +127,11 @@ void ApplyTacFilter(
   }
 
   auto should_filter_op = [](mlir::Operation* op) {
-    return IsNonConstOp(op) && NotTFLQuantDequantizeOp(op) &&
-           !IsTerminatorOp(op) &&
+    return IsNonConstOp(op) && !IsTerminatorOp(op) &&
            !llvm::isa<func::ReturnOp, func::FuncOp, CallOpInterface>(op);
   };
 
-  auto map_op_to_cpu = [&](mlir::Operation* op, std::string name) {
+  auto map_op_to_cpu = [&](mlir::Operation* op) {
     if (!should_filter_op(op)) {
       return;
     }
@@ -181,7 +180,7 @@ void ApplyTacFilter(
       switch (match_type) {
         case OpFilter::MATCH:
           if (device_type == OpFilter::CPU) {
-            map_op_to_cpu(op, loc.getName().str());
+            map_op_to_cpu(op);
             return;
           }
           map_op_to_custom_device(op);
@@ -193,7 +192,7 @@ void ApplyTacFilter(
       switch (match_type) {
         case OpFilter::INVERT_MATCH:
           if (device_type == OpFilter::CPU) {
-            map_op_to_cpu(op, loc.getName().str());
+            map_op_to_cpu(op);
             return;
           }
           map_op_to_custom_device(op);

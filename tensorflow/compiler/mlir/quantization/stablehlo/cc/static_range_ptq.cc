@@ -34,10 +34,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/component.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/component.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/context.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/post_calibration.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pre_calibration.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_export.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_import.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_post_calibration.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_pre_calibration.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_saved_model_export.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_saved_model_import.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/types.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
@@ -50,14 +50,19 @@ limitations under the License.
 
 namespace mlir::quant::stablehlo {
 
+using ::mlir::tf_quant::stablehlo::CreateExportedModel;
+using ::mlir::tf_quant::stablehlo::GetFunctionAliases;
+using ::mlir::tf_quant::stablehlo::ImportSavedModel;
+using ::mlir::tf_quant::stablehlo::PostCalibrationComponent;
+using ::mlir::tf_quant::stablehlo::PreCalibrationComponent;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::tensorflow::SignatureDef;
 using ::tensorflow::quantization::ExportedModel;
 using ::tensorflow::quantization::PyFunctionLibrary;
 
 StaticRangePtqComponent::StaticRangePtqComponent(
-    absl::Nonnull<MLIRContext*> ctx,
-    absl::Nonnull<const PyFunctionLibrary*> py_function_library,
+    MLIRContext* absl_nonnull ctx,
+    const PyFunctionLibrary* absl_nonnull py_function_library,
     const absl::string_view src_saved_model_path,
     std::vector<std::string> signature_keys,
     std::unordered_set<std::string> tags,

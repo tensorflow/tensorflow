@@ -1,5 +1,5 @@
-// RUN: tf-opt --split-input-file --pass-pipeline='builtin.module(func.func(tosa-tflite-convert-function-metadata))' %s | FileCheck %s
-// REQUIRES: tf_tosa
+// RUN: tf-tosa-opt --split-input-file --pass-pipeline='builtin.module(func.func(tosa-tflite-convert-function-metadata))' %s | FileCheck %s
+
 
 module attributes {tfl.schema_version = 3 : i32} {
   // CHECK: func.func @main(

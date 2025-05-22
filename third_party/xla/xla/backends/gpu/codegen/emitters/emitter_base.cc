@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -83,6 +84,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/transforms/passes.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
@@ -105,12 +107,15 @@ limitations under the License.
 #include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/llvm_gpu_backend/ptx_version_util.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -250,6 +255,17 @@ absl::Status RunPassPipeline(mlir::ModuleOp module, const HloModule& hlo_module,
 
 }  // namespace
 
+Value EmitterBase::EmitWorkGroupId(mlir::ImplicitLocOpBuilder& builder,
+                                   WorkGroupDimension dim) const {
+  const auto& counts = launch_dimensions().block_counts();
+  int64_t count = dim == WorkGroupDimension::x   ? counts.x
+                  : dim == WorkGroupDimension::y ? counts.y
+                                                 : counts.z;
+  auto block_id = builder.create<WorkGroupIdOp>(dim);
+  block_id->setAttr("xla.range", builder.getIndexArrayAttr({0, count - 1}));
+  return block_id;
+}
+
 Value EmitterBase::EmitBlockId(mlir::ImplicitLocOpBuilder& builder,
                                int dim) const {
   const auto& counts = launch_dimensions().block_counts();
@@ -275,6 +291,13 @@ llvm::SmallVector<Value> EmitterBase::EmitThreadAndBlockIds(
   auto& b = builder;
   return {EmitThreadId(b, 0), EmitThreadId(b, 1), EmitThreadId(b, 2),
           EmitBlockId(b, 0),  EmitBlockId(b, 1),  EmitBlockId(b, 2)};
+}
+
+llvm::SmallVector<mlir::Value> EmitterBase::EmitWorkGroupIds(
+    mlir::ImplicitLocOpBuilder& builder) const {
+  return {EmitWorkGroupId(builder, WorkGroupDimension::x),
+          EmitWorkGroupId(builder, WorkGroupDimension::y),
+          EmitWorkGroupId(builder, WorkGroupDimension::z)};
 }
 
 absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
@@ -335,8 +358,8 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
 
   FusionEmissionResult result;
   result.thunks.emplace_back(std::make_unique<KernelThunk>(
-      &fusion, entry->kernel_name, args.args(), launch_dims, entry->cluster_dim,
-      entry->shmem_bytes));
+      Thunk::ThunkInfo::WithProfileAnnotation(&fusion), entry->kernel_name,
+      args.args(), launch_dims, entry->cluster_dim, entry->shmem_bytes));
   return result;
 }
 
@@ -367,8 +390,7 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> EmitterBase::CreateLLVMModule(
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitterBase::CreateMLIRModule(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
-    const BufferAssignment* buffer_assignment,
-    mlir::interpreter::MlirCompilationTrace* trace) const {
+    const BufferAssignment* buffer_assignment) const {
   context.loadDialect<
       mlir::DLTIDialect, mlir::NVVM::NVVMDialect, mlir::ROCDL::ROCDLDialect,
       mlir::affine::AffineDialect, mlir::arith::ArithDialect,
@@ -398,13 +420,10 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitterBase::CreateMLIRModule(
   }
   // Annotate tensors with the buffer indices. This way, the buffer propagation
   // pass can clean them up later.
-  int next_slice_index = 0;
-  absl::flat_hash_map<BufferAllocation::Slice, std::optional<int>>
-      slice_indices;
-  auto get_arg_attrs = [&](int index) -> absl::StatusOr<mlir::Attribute> {
+  auto get_arg_attrs = [&](int index) -> mlir::Attribute {
     if (!args) {
       return builder.getDictionaryAttr({builder.getNamedAttr(
-          "xla.slice_index", builder.getIndexAttr(next_slice_index++))});
+          "xla.slice_index", builder.getIndexAttr(index))});
     }
 
     const auto& arg = args->args()[index];
@@ -424,24 +443,21 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitterBase::CreateMLIRModule(
     return builder.getDictionaryAttr(attrs);
   };
 
+  auto result_types = emitters::ShapeToMlirTypes(fusion.shape(), builder);
+
   SmallVector<mlir::Attribute> arg_attrs;
-  int arg_index = 0;
-  for (auto* param : fusion.operands()) {
+  arg_attrs.reserve(fusion.operands().size() + result_types.size());
+
+  for (auto [arg_index, param] : llvm::enumerate(fusion.operands())) {
     param_types.push_back(
         emitters::TensorShapeToMlirType(param->shape(), builder));
-    TF_ASSIGN_OR_RETURN(arg_attrs.emplace_back(), get_arg_attrs(arg_index++));
+    arg_attrs.push_back(get_arg_attrs(arg_index));
   }
 
-  auto result_types = emitters::ShapeToMlirTypes(fusion.shape(), builder);
-  param_types.append(result_types.begin(), result_types.end());
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-      fusion.shape(), [&](const auto& shape, const ShapeIndex& index) {
-        if (shape.IsArray()) {
-          TF_ASSIGN_OR_RETURN(arg_attrs.emplace_back(),
-                              get_arg_attrs(arg_index++));
-        }
-        return absl::OkStatus();
-      }));
+  for (auto [result_index, type] : llvm::enumerate(result_types)) {
+    param_types.push_back(type);
+    arg_attrs.push_back(get_arg_attrs(fusion.operands().size() + result_index));
+  }
 
   builder.setInsertionPointToStart(module->getBody());
   auto entry_func = builder.create<FuncOp>(
@@ -605,6 +621,7 @@ void AddXlaGpuOpsOptimizationPasses(mlir::OpPassManager& pm) {
 
 void AddLoopTransformationPasses(mlir::OpPassManager& pm,
                                  const se::DeviceDescription& device) {
+  pm.addNestedPass<FuncOp>(CreateLowerXlaSharedPass());
   pm.addNestedPass<FuncOp>(
       emitters::CreateLowerXlaToScfPass(device.threads_per_warp()));
   pm.addNestedPass<FuncOp>(CreateFuseLoopsPass());
@@ -656,9 +673,24 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
   pm.addPass(mlir::createCSEPass());
 
   // This pass has to run before `ExpandFloatOpsPass`.
-  auto maybe_convert_fp8 = MaybeCreateConvertFloatNvidiaPass(device);
-  if (maybe_convert_fp8.has_value()) {
-    pm.addPass(std::move(*maybe_convert_fp8));
+  if (auto* cc = std::get_if<se::CudaComputeCapability>(
+          &device.gpu_compute_capability())) {
+    se::SemanticVersion ptx_version =
+        nvptx::DetermineHighestSupportedPtxVersionFromCudaVersion(
+            device.runtime_version());
+
+    // FP8 conversion intrinsics are available on sm89 since ptx 8.1
+    // Older ptx versions only support FP8 conversion for sm90
+    if ((ptx_version >= se::SemanticVersion(8, 1, 0) && cc->IsAtLeast(8, 9)) ||
+        (ptx_version >= se::SemanticVersion(7, 8, 0) && cc->IsAtLeast(9, 0))) {
+      pm.addPass(CreateConvertFloatNvidiaPass());
+    }
+  } else if (auto* cc = std::get_if<se::RocmComputeCapability>(
+                 &device.gpu_compute_capability())) {
+    if (cc->has_fp8_support()) {
+      pm.addPass(CreateConvertFloatAMDPass(*cc));
+    }
+    pm.addPass(CreateRecoverExp2Pass());
   }
 
   pm.addPass(emitters::CreateExpandFloatOpsPass());

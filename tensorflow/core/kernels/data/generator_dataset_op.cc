@@ -144,7 +144,7 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
           ctx, state_, out_tensors, model_node());
       if (s.ok()) {
         *end_of_sequence = false;
-      } else if (errors::IsOutOfRange(s)) {
+      } else if (absl::IsOutOfRange(s)) {
         // `next_func` may deliberately raise `errors::OutOfRange`
         // to indicate that we should terminate the iteration.
         s = absl::OkStatus();

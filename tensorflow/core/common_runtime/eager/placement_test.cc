@@ -128,7 +128,7 @@ TEST_F(PlacementTest, SelectDeviceExplicitHardPlacement) {
 
   absl::Status status = context()->SelectDevice(requested, invalid_op, &dev);
   LOG(ERROR) << status;
-  EXPECT_TRUE(errors::IsNotFound(status));
+  EXPECT_TRUE(absl::IsNotFound(status));
   EXPECT_TRUE(
       absl::StrContains(status.message(), "Could not find device for node"))
       << "unexpected error message " << status.message();
@@ -138,7 +138,7 @@ TEST_F(PlacementTest, SelectDeviceExplicitHardPlacement) {
   NodeDef node = NDef("x", "TestOp", {}, {});
   status = context()->SelectDevice(requested, node, &dev);
 
-  EXPECT_TRUE(errors::IsInvalidArgument(status));
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
   EXPECT_TRUE(absl::StrContains(status.message(),
                                 "Could not satisfy device specification"))
       << "unexpected error message " << status.message();
@@ -169,7 +169,7 @@ TEST_F(PlacementTest, SelectDeviceExplicitSoftPlacement) {
 
   absl::Status status = context()->SelectDevice(requested, invalid_op, &dev);
   LOG(ERROR) << status;
-  EXPECT_TRUE(errors::IsNotFound(status));
+  EXPECT_TRUE(absl::IsNotFound(status));
   EXPECT_TRUE(
       absl::StrContains(status.message(), "Could not find device for node"))
       << "unexpected error message " << status.message();

@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -31,6 +30,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
@@ -69,10 +69,23 @@ enum class Int64BasedEnum : int64_t {
   kTwo = kI32MaxValue + 2,
 };
 
+// Enums for performance benchmark defined below.
+enum class Enum0 : int32_t { kA = 0, kB = 1, kC = 2, kD = 3 };
+enum class Enum1 : int32_t { kA = 0, kB = 1, kC = 2, kD = 3 };
+enum class Enum2 : int32_t { kA = 0, kB = 1, kC = 2, kD = 3 };
+enum class Enum3 : int32_t { kA = 0, kB = 1, kC = 2, kD = 3 };
+enum class Enum4 : int32_t { kA = 0, kB = 1, kC = 2, kD = 3 };
+
 }  // namespace xla::ffi
 
 XLA_FFI_REGISTER_ENUM_ATTR_DECODING(::xla::ffi::Int32BasedEnum);
 XLA_FFI_REGISTER_ENUM_ATTR_DECODING(::xla::ffi::Int64BasedEnum);
+
+XLA_FFI_REGISTER_ENUM_ATTR_DECODING(::xla::ffi::Enum0);
+XLA_FFI_REGISTER_ENUM_ATTR_DECODING(::xla::ffi::Enum1);
+XLA_FFI_REGISTER_ENUM_ATTR_DECODING(::xla::ffi::Enum2);
+XLA_FFI_REGISTER_ENUM_ATTR_DECODING(::xla::ffi::Enum3);
+XLA_FFI_REGISTER_ENUM_ATTR_DECODING(::xla::ffi::Enum4);
 
 namespace xla::ffi {
 
@@ -949,9 +962,17 @@ TEST(FfiTest, AttrsAsDictionary) {
     EXPECT_TRUE(f32.has_value());
     EXPECT_TRUE(str.has_value());
 
-    if (i32.has_value()) EXPECT_EQ(*i32, 42);
-    if (f32.has_value()) EXPECT_EQ(*f32, 42.0f);
-    if (str.has_value()) EXPECT_EQ(*str, "foo");
+    if (i32.has_value()) {
+      EXPECT_EQ(*i32, 42);
+    }
+
+    if (f32.has_value()) {
+      EXPECT_EQ(*f32, 42.0f);
+    }
+
+    if (str.has_value()) {
+      EXPECT_EQ(*str, "foo");
+    }
 
     EXPECT_FALSE(dict.contains("i64"));
     EXPECT_FALSE(dict.get<int64_t>("i32").has_value());
@@ -994,8 +1015,13 @@ TEST(FfiTest, DictionaryAttr) {
     EXPECT_TRUE(i32.has_value());
     EXPECT_TRUE(f32.has_value());
 
-    if (i32.has_value()) EXPECT_EQ(*i32, 42);
-    if (f32.has_value()) EXPECT_EQ(*f32, 42.0f);
+    if (i32.has_value()) {
+      EXPECT_EQ(*i32, 42);
+    }
+
+    if (f32.has_value()) {
+      EXPECT_EQ(*f32, 42.0f);
+    }
 
     return Error::Success();
   };
@@ -1615,5 +1641,63 @@ void BM_TupleOfI32Attrs(benchmark::State& state) {
 }
 
 BENCHMARK(BM_TupleOfI32Attrs);
+
+//===----------------------------------------------------------------------===//
+// BM_EnumAttrs
+//===----------------------------------------------------------------------===//
+
+static Error EnumAttrsFunction(Enum0 e0, Enum1 e1, Enum2 e2, Enum3 e3,
+                               Enum4 e4) {
+  benchmark::DoNotOptimize(e0);
+  benchmark::DoNotOptimize(e1);
+  benchmark::DoNotOptimize(e2);
+  benchmark::DoNotOptimize(e3);
+  benchmark::DoNotOptimize(e4);
+  return Error::Success();
+}
+
+template <typename F>
+void BM_EnumAttrs(benchmark::State& state, F&& f) {
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("e0", int32_t{0});
+  attrs.Insert("e1", int32_t{0});
+  attrs.Insert("e2", int32_t{0});
+  attrs.Insert("e3", int32_t{0});
+  attrs.Insert("e4", int32_t{0});
+
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  auto handler = Ffi::Bind()
+                     .Attr<Enum0>("e0")
+                     .Attr<Enum1>("e1")
+                     .Attr<Enum2>("e2")
+                     .Attr<Enum3>("e3")
+                     .Attr<Enum4>("e4")
+                     .To(std::forward<F>(f));
+
+  for (auto _ : state) {
+    CHECK_OK(Call(*handler, call_frame));
+  }
+}
+
+static void BM_EnumAttrs(benchmark::State& state) {
+  BM_EnumAttrs(state, [](Enum0 e0, Enum1 e1, Enum2 e2, Enum3 e3, Enum4 e4) {
+    return EnumAttrsFunction(e0, e1, e2, e3, e4);
+  });
+}
+
+static void BM_EnumAttrsFunction(benchmark::State& state) {
+  BM_EnumAttrs(state, EnumAttrsFunction);
+}
+
+static void BM_EnumAttrsFunctionWrapper(benchmark::State& state) {
+  BM_EnumAttrs(state, Ffi::Wrapper<EnumAttrsFunction>());
+}
+
+BENCHMARK(BM_EnumAttrs);
+BENCHMARK(BM_EnumAttrsFunction);
+BENCHMARK(BM_EnumAttrsFunctionWrapper);
 
 }  // namespace xla::ffi

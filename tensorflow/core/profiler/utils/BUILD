@@ -1,4 +1,3 @@
-load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
@@ -301,12 +300,9 @@ cc_library(
     ],
 )
 
-tf_cuda_library(
+cc_library(
     name = "hlo_module_map",
     hdrs = ["hlo_module_map.h"],
-    cuda_deps = [
-        "@local_xla//xla/service/gpu/model:gpu_hlo_cost_analysis",
-    ],
     visibility = [
         "//perftools/accelerators/xprof/convert:__pkg__",
         "//tensorflow/core/profiler/convert:__pkg__",
@@ -333,7 +329,10 @@ cc_library(
 cc_library(
     name = "xprof_gpu_cost_analysis",
     hdrs = ["xprof_gpu_cost_analysis.h"],
-    visibility = ["//perftools/accelerators/xprof/convert:__pkg__"],
+    visibility = [
+        "//perftools/accelerators/xprof/convert:__pkg__",
+        "//perftools/accelerators/xprof/xplane:__pkg__",
+    ],
     deps = [
         "@org_xprof//xprof/utils:xprof_gpu_cost_analysis",
     ],

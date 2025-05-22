@@ -34,11 +34,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_op_metadata.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/hlo_constant_splitter.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -61,7 +61,7 @@ using ::testing::Values;
 using ::testing::WithParamInterface;
 using ::tsl::proto_testing::EqualsProto;
 
-using ShardingPropagationTest = HloTestBase;
+using ShardingPropagationTest = HloHardwareIndependentTestBase;
 
 void ClearMetadata(HloModule* module) {
   for (HloComputation* computation : module->computations()) {
@@ -100,11 +100,11 @@ struct MetadataTestParameterWithOutput {
 };
 
 class ParameterizedMetadataTest
-    : public HloTestBase,
+    : public HloHardwareIndependentTestBase,
       public WithParamInterface<MetadataTestParameter> {};
 
 class ParameterizedMetadataTestWithOutput
-    : public HloTestBase,
+    : public HloHardwareIndependentTestBase,
       public WithParamInterface<MetadataTestParameterWithOutput> {};
 
 std::string OpMetadataListToString(absl::Span<const OpMetadata> metadata) {

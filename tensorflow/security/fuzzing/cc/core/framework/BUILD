@@ -10,6 +10,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_fuzztest//fuzztest",
         "@local_xla//xla/tsl/platform:errors",
     ],

@@ -24,19 +24,23 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -76,7 +80,8 @@ class CollectiveInterpolationTest : public TestWithParam<ParametrizedTestCase> {
           space_spec.network_througput_bytes);
       *profiles.add_entries() = entry;
     }
-    device_info_ = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+    device_info_ = TestGpuDeviceInfo::RTXA6000DeviceInfo(
+        stream_executor::CudaComputeCapability::Hopper());
     interpolator_ = *CollectiveInterpolator::Create(profiles, device_info_);
   }
 
@@ -886,6 +891,36 @@ INSTANTIATE_TEST_SUITE_P(
     [](const TestParamInfo<CollectiveInterpolationTest::ParamType>& info) {
       return info.param.test_name;
     });
+
+TEST(CollectiveInterpolatorTest, LoadsDefaultProfile) {
+  auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo(
+      stream_executor::CudaComputeCapability::Hopper());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CollectiveInterpolator> interpolator,
+                          CollectiveInterpolator::Create(device_info));
+  absl::string_view kHlo = R"(
+    HloModule m, num_partitions=8
+
+    wrapped_add {
+        a = f32[] parameter(0)
+        b = f32[] parameter(1)
+        ROOT _ = f32[] add(a,b)
+    }
+
+    ENTRY main {
+        p = f32[256] parameter(0)
+        ROOT _ = f32[256] all-reduce(p),
+        to_apply=wrapped_add,
+        replica_groups=[1,8]<=[8],
+        use_global_device_ids=true,
+        channel_id=1
+    }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHlo));
+  HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
+      module->entry_computation()->root_instruction());
+
+  EXPECT_TRUE(interpolator->EstimatedRuntime(*instr).has_value());
+}
 
 }  // namespace
 }  // namespace xla::gpu

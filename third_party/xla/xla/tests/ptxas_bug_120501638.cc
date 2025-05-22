@@ -13,15 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+
 #include "xla/debug_options_flags.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class PtxasBugTest : public HloTestBase {};
+using PtxasBugTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
 
 // Checks for a bug in ptxas, tracked as Google bug 120501638, and nvidia bug
 // 2459377.  We never received an explanation of what exactly was going wrong

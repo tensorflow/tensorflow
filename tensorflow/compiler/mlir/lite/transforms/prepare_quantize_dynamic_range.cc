@@ -23,14 +23,16 @@ limitations under the License.
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/tfl_to_std.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/prepare_quantize_helper.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -68,8 +70,7 @@ class PrepareDynamicRangeQuantizePass
   }
 
   // Constructor used by manually creating the pass.
-  explicit PrepareDynamicRangeQuantizePass(
-      const quant::QuantizationSpecs& quant_specs)
+  explicit PrepareDynamicRangeQuantizePass(const QuantizationSpecs& quant_specs)
       : quant_specs_(quant_specs) {
     enable_dynamic_range_per_channel_quantization_ =
         !quant_specs_.disable_per_channel;
@@ -91,7 +92,7 @@ class PrepareDynamicRangeQuantizePass
   // minimum_elements_for_weights threshold. Prevents emitting duplicate
   // warnings for the same op, once deemed ineligible for quantization.
   llvm::SetVector<Operation*> visited_nonquantizable_ops_;
-  quant::QuantizationSpecs quant_specs_;
+  QuantizationSpecs quant_specs_;
 };
 
 #include "tensorflow/compiler/mlir/lite/utils/generated_op_quant_spec_getters.inc"
@@ -102,7 +103,7 @@ class PrepareDynamicRangeQuantizableOp
     : public OpRewritePattern<arith::ConstantOp> {
  public:
   explicit PrepareDynamicRangeQuantizableOp(
-      MLIRContext* context, const quant::QuantizationSpecs& quant_specs,
+      MLIRContext* context, const QuantizationSpecs& quant_specs,
       llvm::SetVector<Operation*>* const visited_nonquantizable_ops)
       : OpRewritePattern<arith::ConstantOp>(context),
         visited_nonquantizable_ops_(visited_nonquantizable_ops),
@@ -300,13 +301,13 @@ class PrepareDynamicRangeQuantizableOp
 
     if (op_with_per_axis_support) {
       quant_type = mlir::dyn_cast<quant::QuantizedType>(
-          quant::GetUniformQuantizedPerAxisTypeForWeight(
+          GetUniformQuantizedPerAxisTypeForWeight(
               attr, affine_user.GetQuantizationDimIndex(),
               /*symmetric=*/true, bit_width, is_signed, is_narrow_range,
               is_legacy_float));
     } else {
-      quant_type = mlir::dyn_cast<quant::QuantizedType>(
-          quant::GetUniformQuantizedTypeForWeight(
+      quant_type =
+          mlir::dyn_cast<quant::QuantizedType>(GetUniformQuantizedTypeForWeight(
               attr, is_narrow_range && is_signed, bit_width, is_signed,
               is_narrow_range, is_legacy_float));
     }
@@ -459,7 +460,7 @@ class PrepareDynamicRangeQuantizableOp
   }
 
  protected:
-  quant::QuantizationSpecs quant_specs_;
+  QuantizationSpecs quant_specs_;
 };
 
 // Remove all the stats ops which are redundant for dynamic range quantizaiton.
@@ -486,7 +487,7 @@ void PrepareDynamicRangeQuantizePass::runOnOperation() {
 
   if (!enable_custom_op_quantization_.empty()) {
     ParseCustomOpSpecs(enable_custom_op_quantization_,
-                       quant::CustomOpUpdateOptions::kInputIndices,
+                       CustomOpUpdateOptions::kInputIndices,
                        quant_specs_.custom_map);
   }
 
@@ -506,8 +507,7 @@ void PrepareDynamicRangeQuantizePass::runOnOperation() {
 // Creates an instance of the TensorFlow Lite dialect
 // PrepareDynamicRangeQuantize pass.
 std::unique_ptr<OperationPass<func::FuncOp>>
-CreatePrepareDynamicRangeQuantizePass(
-    const quant::QuantizationSpecs& quant_specs) {
+CreatePrepareDynamicRangeQuantizePass(const QuantizationSpecs& quant_specs) {
   return std::make_unique<PrepareDynamicRangeQuantizePass>(quant_specs);
 }
 

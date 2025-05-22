@@ -137,7 +137,7 @@ InterpreterValue Concatenate(InterpreterState&, mhlo::ConcatenateOp concat,
 
 InterpreterValue Reshape(InterpreterState&, mhlo::ReshapeOp reshape,
                          const InterpreterValue& in) {
-  auto ty = reshape->getResultTypes()[0].cast<mlir::ShapedType>();
+  auto ty = mlir::cast<mlir::ShapedType>(reshape->getResultTypes()[0]);
   return ReshapeTensor(in, ty.getShape());
 }
 
@@ -214,7 +214,7 @@ InterpreterValue Slice(InterpreterState&, mhlo::SliceOp slice,
 
 llvm::SmallVector<InterpreterValue> Constant(InterpreterState&,
                                              mhlo::ConstantOp constant) {
-  auto ty = constant->getResultTypes()[0].cast<ShapedType>();
+  auto ty = mlir::cast<ShapedType>(constant->getResultTypes()[0]);
   return {DispatchScalarType(ty, [&](auto dummy) -> InterpreterValue {
     if (ty.getElementType().isUnsignedInteger()) {
       if constexpr (!std::is_same_v<decltype(dummy), bool> &&
@@ -507,7 +507,7 @@ InterpreterValue Transpose(InterpreterState&, mhlo::TransposeOp transpose,
 
 InterpreterValue Iota(InterpreterState&, mhlo::IotaOp iota) {
   auto dim = iota.getIotaDimension();
-  auto ty = iota->getResultTypes()[0].cast<ShapedType>();
+  auto ty = mlir::cast<ShapedType>(iota->getResultTypes()[0]);
   return DispatchScalarType(ty, [&](auto dummy) -> InterpreterValue {
     auto result = TensorOrMemref<decltype(dummy)>::Empty({ty.getShape()[dim]});
     for (const auto& index : result.view.Indices()) {
@@ -834,7 +834,7 @@ InterpreterValue DotGeneral(InterpreterState&, mhlo::DotGeneralOp op,
       lhs, rhs, dims.getLhsContractingDimensions(),
       dims.getRhsContractingDimensions(), dims.getLhsBatchingDimensions(),
       dims.getRhsBatchingDimensions(),
-      op->getResultTypes()[0].cast<ShapedType>().getElementType());
+      mlir::cast<ShapedType>(op->getResultTypes()[0]).getElementType());
 }
 
 // TODO(jreiffers): Migrate remaining ops to the safer signature.

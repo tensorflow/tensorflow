@@ -555,7 +555,7 @@ absl::Status HorizontalLoopFusionImpl::CreateFusedComputation(
         const HloInstruction* old_output =
             GetOutputsOfFusible(*fused_fusion_instrs[j])[i];
         HloInstruction* new_output = clone_map[old_output];
-        if (new_output->shape().dimensions_size() == 1) {
+        if (new_output->shape().dimensions().size() == 1) {
           instr_outputs[j] = new_output;
         } else {
           if (!LayoutUtil::IsMonotonicWithDim0Major(
@@ -671,7 +671,7 @@ absl::Status HorizontalLoopFusionImpl::Fuse(
           HloInstruction * gep,
           MakeGetTupleElementHlo(hori_fusion_instr, total_output_id++));
       // This pass runs late, so useless bitcast won't be cleaned up.
-      if (output->shape().dimensions_size() == 1) {
+      if (output->shape().dimensions().size() == 1) {
         bitcasts_or_gte.push_back(gep);
       } else {
         bitcasts_or_gte.push_back(computation_->AddInstruction(

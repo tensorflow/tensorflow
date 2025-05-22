@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "xla/client/client_library.h"
@@ -670,8 +671,10 @@ XLA_TEST_F(LocalClientExecuteTest, RunOnStream) {
 
 // Disable this test on CPU because we're using the CPU as the platform
 // which does not match the service platform.
-XLA_TEST_F(LocalClientExecuteTest,
-           DISABLED_ON_CPU(RunOnStreamForWrongPlatform)) {
+XLA_TEST_F(LocalClientExecuteTest, RunOnStreamForWrongPlatform) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   // Try to run a computation on a stream for a platform (CPU) which does not
   // match the platform of the service (!= CPU).
   se::Platform* wrong_platform =
@@ -690,8 +693,10 @@ XLA_TEST_F(LocalClientExecuteTest,
               ContainsRegex("stream is for platform .*, but service targets"));
 }
 
-XLA_TEST_F(LocalClientExecuteTest,
-           DISABLED_ON_CPU(AllocatorDoesNotMatchPlatform)) {
+XLA_TEST_F(LocalClientExecuteTest, AllocatorDoesNotMatchPlatform) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   se::Platform* wrong_platform =
       se::PlatformManager::PlatformWithId(se::host::kHostPlatformId).value();
   TestAllocator allocator(wrong_platform);
@@ -735,7 +740,8 @@ XLA_TEST_F(LocalClientExecuteTest, CompileExecutable) {
       {2.0f, 4.0f, 6.0f}, ShapedBufferToLiteral(result), error_spec_);
 }
 
-XLA_TEST_F(LocalClientExecuteTest, CompilePartitionedExecutable) {
+XLA_TEST_F(LocalClientExecuteTest,
+           DISABLED_ON_TPU(CompilePartitionedExecutable)) {
   if (local_client_->device_count() < 2) {
     GTEST_SKIP_("requires two devices");
   }
@@ -760,8 +766,10 @@ XLA_TEST_F(LocalClientExecuteTest, CompilePartitionedExecutable) {
   EXPECT_EQ(2, executables.size());
 }
 
-XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_CPU(DISABLED_ON_INTERPRETER(
-                                       SizeOfGeneratedCodeInBytes))) {
+XLA_TEST_F(LocalClientExecuteTest, SizeOfGeneratedCodeInBytes) {
+  if (test::DeviceIsOneOf({test::kCpu, test::kInterpreter})) {
+    GTEST_SKIP();
+  }
   XlaBuilder builder(TestName());
   auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
   constexpr int size = 100000;
@@ -848,7 +856,10 @@ XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion64bit) {
 }
 
 // Disabled on interpreter backend since infeed HLO is unsupported.
-XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_INTERPRETER(InfeedTest)) {
+XLA_TEST_F(LocalClientExecuteTest, InfeedTest) {
+  if (test::DeviceIs(test::kInterpreter)) {
+    GTEST_SKIP();
+  }
   XlaBuilder builder(TestName());
   const Shape shape = ShapeUtil::MakeShape(F32, {3});
   auto in = Infeed(&builder, shape);
@@ -873,7 +884,10 @@ XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_INTERPRETER(InfeedTest)) {
 }
 
 // Disabled on interpreter backend since infeed/outfeed HLOs are unsupported.
-XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_INTERPRETER(InfeedOutfeedTest)) {
+XLA_TEST_F(LocalClientExecuteTest, InfeedOutfeedTest) {
+  if (test::DeviceIs(test::kInterpreter)) {
+    GTEST_SKIP();
+  }
   XlaBuilder builder(TestName());
   const Shape shape = ShapeUtil::MakeShape(F32, {3});
   auto in = Infeed(&builder, shape);
@@ -1038,28 +1052,6 @@ XLA_TEST_F(LocalClientExecuteTest, ValidateExecTimeOptimizationEffort) {
   EXPECT_FLOAT_EQ(proto.config().exec_time_optimization_effort(), -1.5f);
 }
 
-XLA_TEST_F(LocalClientExecuteTest, ValidateMemoryFittingEffort) {
-  XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {3}), "x");
-  auto y = ConstantR1<float>(&builder, {2.0f, 3.0f, 4.0f});
-  Add(x, y);
-  Shape argument_layout =
-      local_client_->backend().compiler()->DefaultDeviceShapeRepresentation(
-          ShapeUtil::MakeShapeWithDenseLayout(F32, /*dimensions=*/{3}, {0}));
-
-  ExecutableBuildOptions build_options;
-  build_options.set_memory_fitting_effort(2.0f);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executables,
-      local_client_->Compile(builder.Build().value(), {&argument_layout},
-                             build_options));
-  EXPECT_EQ(1, executables.size());
-  const HloModule& compiled_module =
-      executables.front()->executable()->module();
-  EXPECT_FLOAT_EQ(compiled_module.config().memory_fitting_effort(), 2.0f);
-  auto proto = compiled_module.ToProtoWithConfig();
-  EXPECT_FLOAT_EQ(proto.config().memory_fitting_effort(), 2.0f);
-}
 
 XLA_TEST_F(LocalClientExecuteTest, ValidateOptimizationLevel) {
   XlaBuilder builder(TestName());

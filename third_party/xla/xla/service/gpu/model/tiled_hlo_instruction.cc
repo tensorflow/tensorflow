@@ -47,7 +47,8 @@ absl::Status VerifyTiledHloInstructionConstructorPreconditions(
     const HloInstruction* hlo, llvm::SmallVector<int64_t> tile_sizes,
     llvm::SmallVector<int64_t> tile_strides,
     std::optional<IndexingMap> tile_offsets_indexing) {
-  int rank = hlo->shape().dimensions_size();
+  const int rank =
+      hlo->shape().IsArray() ? hlo->shape().dimensions().size() : 0;
 
   if (tile_sizes.size() != rank) {
     return absl::InvalidArgumentError(
@@ -61,6 +62,14 @@ absl::Status VerifyTiledHloInstructionConstructorPreconditions(
         absl::StrCat("Number of tile strides must be equal to the rank of the "
                      "hlo shape. tile_sizes = ",
                      tile_strides.size(), ", hlo = ", hlo->ToString()));
+  }
+
+  if (tile_offsets_indexing.has_value() &&
+      tile_offsets_indexing->GetDimensionCount() != 1) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("tile_offsets_indexing must have 1 dim. "
+                     "tile_offsets_indexing = ",
+                     ToString(*tile_offsets_indexing)));
   }
 
   if (tile_offsets_indexing.has_value() &&

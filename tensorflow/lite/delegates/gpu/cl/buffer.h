@@ -97,8 +97,9 @@ template <typename T>
 absl::Status Buffer::WriteData(CLCommandQueue* queue,
                                const absl::Span<T> data) {
   if (size_ != sizeof(T) * data.size()) {
-    return absl::InvalidArgumentError(
-        "absl::Span<T> data size is different from buffer allocated size.");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "absl::Span<T> data size is different from buffer allocated size: ",
+        size_, " vs ", sizeof(T) * data.size()));
   }
   RETURN_IF_ERROR(queue->EnqueueWriteBuffer(buffer_, size_, data.data()));
   return absl::OkStatus();

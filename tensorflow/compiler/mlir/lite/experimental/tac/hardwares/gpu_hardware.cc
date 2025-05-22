@@ -59,6 +59,15 @@ double GpuHardware::GetHardwareSwitchingCost(const TargetHardware* from,
          kCrossHardwareTransferFixedCost;
 }
 
+bool GpuHardware::IsOpSupported(mlir::Operation* op) const {
+  if (TargetHardware::IsOpSupported(op)) {
+    return true;
+  }
+
+  // We also support quantized ops.
+  return !NotTFLQuantDequantizeOp(op);
+}
+
 namespace {
 // GPU
 constexpr float kGPUArithmeticUnitCost = 0.2;

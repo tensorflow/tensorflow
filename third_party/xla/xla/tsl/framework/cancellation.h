@@ -19,11 +19,11 @@ limitations under the License.
 #include <atomic>
 #include <functional>
 
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/lib/gtl/flatmap.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/types.h"
 #include "tsl/platform/hash.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/notification.h"
 #include "tsl/platform/stringpiece.h"
 #include "tsl/platform/thread_annotations.h"
@@ -90,13 +90,13 @@ class CancellationManager {
   // is recommended:
   //
   // class ObjectWithCancellableOperation {
-  //   mutex mu_;
+  //   absl::Mutex mu_;
   //   void CancellableOperation(CancellationManager* cm,
   //                             std::function<void(Status)> callback) {
   //     bool already_cancelled;
   //     CancellationToken token = cm->get_cancellation_token();
   //     {
-  //       mutex_lock(mu_);
+  //       absl::MutexLock lock(&mu_);
   //       already_cancelled = !cm->RegisterCallback(
   //           [this, token]() { Cancel(token); });
   //       if (!already_cancelled) {
@@ -114,7 +114,7 @@ class CancellationManager {
   //   }
   //
   //   void Cancel(CancellationToken token) {
-  //     mutex_lock(mu_);
+  //     absl::MutexLock lock(&mu_);
   //     // Take action to cancel the operation with the given cancellation
   //     // token.
   //   }
@@ -168,7 +168,7 @@ class CancellationManager {
   };
 
   struct State {
-    Notification cancelled_notification;
+    absl::Notification cancelled_notification;
     gtl::FlatMap<CancellationToken, CallbackConfiguration> callbacks;
 
     // If this CancellationManager has any children, this member points to the
@@ -201,7 +201,7 @@ class CancellationManager {
   CancellationManager* next_sibling_ TF_GUARDED_BY(parent_->mu_) =
       nullptr;  // Not owned.
 
-  mutex mu_;
+  absl::Mutex mu_;
   std::unique_ptr<State> state_ TF_GUARDED_BY(mu_);
 };
 

@@ -15,12 +15,13 @@ limitations under the License.
 
 #include <utility>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/status/status.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal_util.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_macros.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -37,7 +38,7 @@ ENTRY entry {
 }
 )";
 
-class BatchNormTrainingTest : public HloTestBase {};
+class BatchNormTrainingTest : public HloPjRtTestBase {};
 
 TEST_F(BatchNormTrainingTest, CorrectComputation) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -79,8 +80,10 @@ TEST_F(BatchNormTrainingTest, CorrectComputation) {
 }
 
 TEST_F(BatchNormTrainingTest,
-       DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(
-           DISABLED_ON_TPU(ReturnsErrorWhenHloPassesDisabled)))) {
+       DISABLED_ON_TPU(ReturnsErrorWhenHloPassesDisabled)) {
+  if (test::DeviceIsOneOf({test::kGpu, test::kInterpreter})) {
+    GTEST_SKIP();
+  }
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
 

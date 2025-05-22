@@ -59,6 +59,9 @@ class ShapeLayout {
   // Clears (Layout::Clear) all the Layouts stored in this object.
   void Clear();
   void Clear(ShapeIndexView shape_index);
+  // Clears all the tiles in the layouts stored in this object.
+  void ClearTiles();
+  void ClearTiles(ShapeIndexView shape_index);
 
   // Sets all Layouts stored in this object to the default layout.
   void SetToDefaultLayout();

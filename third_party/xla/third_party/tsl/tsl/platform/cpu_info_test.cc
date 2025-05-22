@@ -33,4 +33,10 @@ TEST(CPUInfo, Aarch64NeoverseV1CPU) {
   }
 }
 
+TEST(CPUInfo, Aarch64Bf16) {
+  if (port::TestCPUFeature(port::CPUFeature::AARCH64_BF16)) {
+    EXPECT_TRUE(port::IsAarch64CPU());
+  }
+}
+
 }  // namespace tsl

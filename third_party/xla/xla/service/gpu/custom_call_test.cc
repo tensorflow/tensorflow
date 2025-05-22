@@ -16,10 +16,11 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <ostream>
 #include <sstream>
 #include <string>
 #include <vector>
+
+#include "xla/shape.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"  // IWYU pragma: keep
@@ -31,12 +32,11 @@ limitations under the License.
 #define PLATFORM "ROCM"
 #endif
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/ffi.h"
@@ -46,19 +46,19 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/service/custom_call_status.h"
 #include "xla/service/custom_call_target_registry.h"
-#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA
 #define gpuSuccess cudaSuccess
@@ -93,125 +93,7 @@ XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(::xla::Range, StructMember<int64_t>("lo"),
 namespace xla {
 namespace {
 
-class CustomCallTest : public ClientLibraryTestBase {};
-
-bool is_invoked_called = false;
-void Callback_IsInvoked(se::gpu::GpuStreamHandle /*stream*/, void** /*buffers*/,
-                        const char* /*opaque*/, size_t /*opaque_len*/) {
-  is_invoked_called = true;
-}
-XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_IsInvoked, PLATFORM);
-
-TEST_F(CustomCallTest, IsInvoked) {
-  XlaBuilder b(TestName());
-  CustomCall(&b, "Callback_IsInvoked", /*operands=*/{},
-             ShapeUtil::MakeShape(F32, {}),
-             /*opaque=*/"");
-  EXPECT_FALSE(is_invoked_called);
-  TF_ASSERT_OK(Execute(&b, {}).status());
-  EXPECT_TRUE(is_invoked_called);
-}
-
-TEST_F(CustomCallTest, UnknownTarget) {
-  XlaBuilder b(TestName());
-  CustomCall(&b, "UnknownTarget", /*operands=*/{},
-             ShapeUtil::MakeShape(F32, {}),
-             /*opaque=*/"");
-  ASSERT_FALSE(Execute(&b, {}).ok());
-}
-void Callback_Memcpy(se::gpu::GpuStreamHandle stream, void** buffers,
-                     const char* /*opaque*/, size_t /*opaque_len*/) {
-  void* src = buffers[0];
-  void* dst = buffers[1];
-  auto err = gpuMemcpyAsync(dst, src, /*count=*/sizeof(float) * 128,
-                            gpuMemcpyDeviceToDevice, stream);
-  ASSERT_EQ(err, gpuSuccess);
-}
-XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_Memcpy, PLATFORM);
-TEST_F(CustomCallTest, Memcpy) {
-  XlaBuilder b(TestName());
-  CustomCall(&b, "Callback_Memcpy",
-             /*operands=*/{Broadcast(ConstantR0WithType(&b, F32, 42.0), {128})},
-             ShapeUtil::MakeShape(F32, {128}), /*opaque=*/"");
-  TF_ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
-  EXPECT_THAT(result.data<float>(), ::testing::Each(42));
-}
-
-// Check that opaque handles nulls within the string.
-std::string& kExpectedOpaque = *new std::string("abc\0def", 7);
-void Callback_Opaque(se::gpu::GpuStreamHandle /*stream*/, void** /*buffers*/,
-                     const char* opaque, size_t opaque_len) {
-  std::string opaque_str(opaque, opaque_len);
-  ASSERT_EQ(opaque_str, kExpectedOpaque);
-}
-XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_Opaque, PLATFORM);
-TEST_F(CustomCallTest, Opaque) {
-  XlaBuilder b(TestName());
-  CustomCall(&b, "Callback_Opaque", /*operands=*/{},
-             ShapeUtil::MakeShape(F32, {}), kExpectedOpaque);
-  TF_ASSERT_OK(Execute(&b, {}).status());
-}
-
-void Callback_SubBuffers(se::gpu::GpuStreamHandle stream, void** buffers,
-                         const char* /*opaque*/, size_t /*opaque_len*/) {
-  // `buffers` is a flat array containing device pointers to the following.
-  //
-  //  0:  param 0 at tuple index {0}, shape f32[128]
-  //  1:  param 0 at tuple index {1}, shape f32[256]
-  //  2:  param 1 at tuple index {0}, shape f32[1024]
-  //  3:  param 1 at tuple index {1}, shape f32[8]
-  //  4:  result at tuple index {0}, shape f32[8]
-  //  5:  result at tuple index {1, 0}, shape f32[128]
-  //  6:  result at tuple index {1, 1}, shape f32[256]
-  //  7:  result at tuple index {2}, shape f32[1024]
-  //
-
-  // Set output leaf buffers, copying data from the corresponding same-sized
-  // inputs.
-  auto err = gpuMemcpyAsync(buffers[4], buffers[3], 8 * sizeof(float),
-                            gpuMemcpyDeviceToDevice, stream);
-  ASSERT_EQ(err, gpuSuccess);
-  err = gpuMemcpyAsync(buffers[5], buffers[0], 128 * sizeof(float),
-                       gpuMemcpyDeviceToDevice, stream);
-  ASSERT_EQ(err, gpuSuccess);
-  err = gpuMemcpyAsync(buffers[6], buffers[1], 256 * sizeof(float),
-                       gpuMemcpyDeviceToDevice, stream);
-  ASSERT_EQ(err, gpuSuccess);
-  err = gpuMemcpyAsync(buffers[7], buffers[2], 1024 * sizeof(float),
-                       gpuMemcpyDeviceToDevice, stream);
-  ASSERT_EQ(err, gpuSuccess);
-}
-XLA_REGISTER_CUSTOM_CALL_TARGET(Callback_SubBuffers, PLATFORM);
-TEST_F(CustomCallTest, SubBuffers) {
-  XlaBuilder b(TestName());
-  CustomCall(&b, "Callback_SubBuffers", /*operands=*/
-             {
-                 Tuple(&b,
-                       {
-                           Broadcast(ConstantR0WithType(&b, F32, 1), {128}),
-                           Broadcast(ConstantR0WithType(&b, F32, 2), {256}),
-                       }),
-                 Tuple(&b,
-                       {
-                           Broadcast(ConstantR0WithType(&b, F32, 3), {1024}),
-                           Broadcast(ConstantR0WithType(&b, F32, 4), {8}),
-                       }),
-             },
-             ShapeUtil::MakeTupleShape({
-                 ShapeUtil::MakeShape(F32, {8}),
-                 ShapeUtil::MakeTupleShape({
-                     ShapeUtil::MakeShape(F32, {128}),
-                     ShapeUtil::MakeShape(F32, {256}),
-                 }),
-                 ShapeUtil::MakeShape(F32, {1024}),
-             }),
-             /*opaque=*/"");
-  TF_ASSERT_OK_AND_ASSIGN(auto result, ExecuteAndTransfer(&b, {}));
-  EXPECT_THAT(result.data<float>({0}), ::testing::Each(4));
-  EXPECT_THAT(result.data<float>({1, 0}), ::testing::Each(1));
-  EXPECT_THAT(result.data<float>({1, 1}), ::testing::Each(2));
-  EXPECT_THAT(result.data<float>({2}), ::testing::Each(3));
-}
+using CustomCallTest = ClientLibraryTestRunnerMixin<HloTestBase>;
 
 // The test case for custom call with tokens encodes the arguments and result
 // type using a string with A(=Array), T(=Token) and {} for Tuples. It also
@@ -229,11 +111,6 @@ struct TokenTestCase {
   std::string output;
   std::string opaque;
 };
-
-std::ostream& operator<<(std::ostream& s, const TokenTestCase& tc) {
-  s << tc.input << "x" << tc.output << "x" << tc.opaque;
-  return s;
-}
 
 void Callback_Tokens(se::gpu::GpuStreamHandle stream, void** buffers,
                      const char* opaque, size_t opaque_len) {
@@ -260,7 +137,7 @@ std::vector<TokenTestCase> GetTokenTestCases() {
 
 class CustomCallTokensTest
     : public ::testing::WithParamInterface<TokenTestCase>,
-      public ClientLibraryTestBase {
+      public ClientLibraryTestRunnerMixin<HloTestBase> {
  public:
   static std::vector<XlaOp> BuildInputs(XlaBuilder& b,
                                         std::istringstream& str) {
@@ -302,25 +179,6 @@ class CustomCallTokensTest
   }
 };
 
-TEST_P(CustomCallTokensTest, TokensTest) {
-  const TokenTestCase& tc = GetParam();
-
-  XlaBuilder b("CustomCallTokens");
-
-  std::istringstream input(tc.input);
-  std::istringstream output(tc.output);
-  std::vector<XlaOp> call_inputs = BuildInputs(b, input);
-  std::vector<Shape> call_output = BuildOutputType(output);
-  ASSERT_EQ(call_output.size(), 1);
-
-  CustomCall(&b, "Callback_Tokens", call_inputs, call_output.front(),
-             tc.opaque);
-  TF_ASSERT_OK(Execute(&b, {}).status());
-}
-
-INSTANTIATE_TEST_CASE_P(CustomCallTokens, CustomCallTokensTest,
-                        ::testing::ValuesIn(GetTokenTestCases()));
-
 void Callback_WithStatusSucceeded(se::gpu::GpuStreamHandle /*stream*/,
                                   void** /*buffers*/, const char* /*opaque*/,
                                   size_t /*opaque_len*/,
@@ -338,7 +196,7 @@ TEST_F(CustomCallTest, WithStatusSucceeded) {
       /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
       /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
       /*api_version=*/CustomCallApiVersion::API_VERSION_STATUS_RETURNING);
-  TF_ASSERT_OK(Execute(&b, {}).status());
+  TF_ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
 }
 
 void Callback_WithStatusFailed(se::gpu::GpuStreamHandle /*stream*/,
@@ -358,7 +216,7 @@ TEST_F(CustomCallTest, WithStatusFailed) {
       /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
       /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
       /*api_version=*/CustomCallApiVersion::API_VERSION_STATUS_RETURNING);
-  auto status = Execute(&b, {}).status();
+  auto status = ExecuteAndTransfer(&b, {}).status();
   EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
   EXPECT_THAT(status.message(), ::testing::HasSubstr("Failed"));
 }
@@ -387,7 +245,7 @@ TEST_F(CustomCallTest, RuntimeCustomCallAlwaysFail) {
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  auto status = Execute(&b, {}).status();
+  auto status = ExecuteAndTransfer(&b, {}).status();
   EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
   EXPECT_THAT(status.message(), ::testing::HasSubstr("Uh oh, wrong value: 42"));
 }
@@ -404,7 +262,7 @@ TEST_F(CustomCallTest, PassAttributesByBackendConfig) {
       /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
       /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  auto status = Execute(&b, {}).status();
+  auto status = ExecuteAndTransfer(&b, {}).status();
   EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
   EXPECT_THAT(status.message(), ::testing::HasSubstr("Uh oh, wrong value: 42"));
 }
@@ -464,7 +322,7 @@ TEST_F(CustomCallTest, PassUserPointerWithAttrs) {
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  auto status = Execute(&b, {}).status();
+  auto status = ExecuteAndTransfer(&b, {}).status();
   EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
   EXPECT_THAT(status.message(), ::testing::HasSubstr("User-defined message"));
 }
@@ -502,7 +360,7 @@ TEST_F(CustomCallTest, ExportedFfiUnknownTarget) {
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  auto status = Execute(&b, {}).status();
+  auto status = ExecuteAndTransfer(&b, {}).status();
   EXPECT_EQ(status.code(), absl::StatusCode::kUnimplemented);
   EXPECT_THAT(status.message(),
               ::testing::HasSubstr("No registered implementation"));
@@ -511,14 +369,16 @@ TEST_F(CustomCallTest, ExportedFfiUnknownTarget) {
 // Memcpy and SubBuffers tests are already ported in
 // fusions/address_computation_fusion_test.cc
 
-// Reusing kExpectedOpaque from the original test.
+std::string& kExpectedOpaque = *new std::string("abc\0def", 7);
+
 static absl::Status Opaque(ffi::Result<ffi::AnyBuffer>,
                            const std::string* str) {
   std::string opaque(*str);
-  if (opaque != kExpectedOpaque)
+  if (opaque != kExpectedOpaque) {
     return absl::InternalError(absl::StrFormat(
         "Opaque string does not match. Expected `%s` but got `%s`",
         kExpectedOpaque, opaque));
+  }
   return absl::OkStatus();
 }
 
@@ -541,7 +401,7 @@ TEST_F(CustomCallTest, ExportedFfiOpaque) {
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  TF_ASSERT_OK(Execute(&b, {}).status());
+  TF_ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
 }
 
 static absl::Status CheckTokens(std::vector<PrimitiveType> args,
@@ -612,7 +472,7 @@ TEST_P(CustomCallTokensTest, ExportedTokensTest) {
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
 
-  TF_ASSERT_OK(Execute(&b, {}).status());
+  TF_ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
 }
 
 INSTANTIATE_TEST_SUITE_P(CustomCallTokensTest, CustomCallTokensTest,
@@ -636,7 +496,7 @@ TEST_F(CustomCallTest, ExportedFfiWithStatusSucceeded) {
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  TF_ASSERT_OK(Execute(&b, {}).status());
+  TF_ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
 }
 
 //===----------------------------------------------------------------------===//
@@ -646,11 +506,14 @@ TEST_F(CustomCallTest, ExportedFfiWithStatusSucceeded) {
 static absl::Status FfiAttributes(ffi::Result<ffi::AnyBuffer>,
                                   absl::Span<const int32_t> i32_arr,
                                   Range range) {
-  if (i32_arr.size() != 4)
+  if (i32_arr.size() != 4) {
     return absl::InternalError("i32_arr size does not match");
+  }
 
-  if (i32_arr[0] != 1 || i32_arr[1] != 2 || i32_arr[2] != 3 || i32_arr[3] != 4)
+  if (i32_arr[0] != 1 || i32_arr[1] != 2 || i32_arr[2] != 3 ||
+      i32_arr[3] != 4) {
     return absl::InternalError("i32_arr values do not match");
+  }
 
   if (range.lo != 0 || range.hi != 42) {
     return absl::InternalError("range values do not match");
@@ -679,7 +542,7 @@ TEST_F(CustomCallTest, FfiAttributes) {
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  TF_ASSERT_OK(Execute(&b, {}).status());
+  TF_ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
 }
 
 //===----------------------------------------------------------------------===//
@@ -690,18 +553,24 @@ static absl::Status MemcpyWithCalledComputation(
     se::Stream* stream, int32_t device_ordinal,
     se::OwningScratchAllocator<> scratch_allocator, ffi::AnyBuffer src,
     ffi::Result<ffi::AnyBuffer> dst, const HloComputation* called_computation) {
-  if (called_computation == nullptr)
+  if (called_computation == nullptr) {
     return absl::InternalError("Called computation is not defined");
+  }
 
-  if (called_computation->instruction_count() != 1)
+  if (called_computation->instruction_count() != 1) {
     return absl::InternalError("Unexpected number of instructions");
+  }
 
-  if (!DynCast<HloParameterInstruction>(called_computation->root_instruction()))
+  if (!DynCast<HloParameterInstruction>(
+          called_computation->root_instruction())) {
     return absl::InternalError("ROOT must be a paremeter");
+  }
 
   // Check that scratch allocator is working.
   auto scratch = scratch_allocator.AllocateBytes(1024);
-  if (!scratch.ok()) return scratch.status();
+  if (!scratch.ok()) {
+    return scratch.status();
+  }
 
   return Memcpy(stream, src, dst);
 }
@@ -759,7 +628,9 @@ struct SomeExtraContext {
 template <ffi::ExecutionStage stage>
 static absl::Status ExecutionContext(ffi::Result<ffi::AnyBuffer>,
                                      SomeExtraContext* ctx) {
-  if (ctx->value != 42) return absl::InternalError("Unexpected value");
+  if (ctx->value != 42) {
+    return absl::InternalError("Unexpected value");
+  }
   if constexpr (stage == ffi::ExecutionStage::kPrepare) {
     ctx->prepared = true;
   } else if constexpr (stage == ffi::ExecutionStage::kInitialize) {
@@ -816,7 +687,7 @@ TEST_F(CustomCallTest, FfiExecutionContext) {
   ffi::internal::ScopedExecutionContext scoped_execution_context(
       &execution_context);
 
-  TF_ASSERT_OK(Execute(&b, {}).status());
+  TF_ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
 
   // Check that FFI handler was called during initialization and execution.
   TF_ASSERT_OK_AND_ASSIGN(auto* user_context,
@@ -876,7 +747,7 @@ TEST_F(CustomCallTest, FfiExecutionState) {
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
 
-  TF_ASSERT_OK(Execute(&b, {}).status());
+  TF_ASSERT_OK(ExecuteAndTransfer(&b, {}).status());
 }
 
 }  // anonymous namespace

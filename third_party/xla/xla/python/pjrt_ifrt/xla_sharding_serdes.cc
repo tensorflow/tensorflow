@@ -44,7 +44,8 @@ class HloShardingSerDes : public llvm::RTTIExtends<HloSharding, SerDes> {
   }
 
   absl::StatusOr<std::string> Serialize(
-      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
+      const Serializable& serializable,
+      std::unique_ptr<SerializeOptions>) override {
     const HloSharding& sharding = llvm::cast<HloSharding>(serializable);
     HloShardingProto proto;
     *proto.mutable_devices() = sharding.devices()->ToProto();

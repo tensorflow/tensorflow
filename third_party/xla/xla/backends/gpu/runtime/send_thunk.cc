@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -66,9 +67,9 @@ absl::Status SendThunk::Initialize(const InitializeParams& params) {
   return absl::OkStatus();
 }
 
-absl::Status SendThunk::RunCollective(const ExecuteParams& params,
-                                      se::Stream& stream,
-                                      CommunicatorHandle comm_handle) {
+absl::StatusOr<bool> SendThunk::RunCollective(const ExecuteParams& params,
+                                              se::Stream& stream,
+                                              CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, {buffer_},
@@ -131,15 +132,20 @@ absl::Status SendThunk::RunCollective(const ExecuteParams& params,
     }
 
     if (should_run) {
-      TF_RETURN_IF_ERROR(comm_handle.comm->Send(
+      auto event = comm_handle.comm->Send(
           src_addr, buffer.element_type, buffer.element_count,
-          RankId(*target_id), GpuCollectives::On(stream)));
+          RankId(*target_id), GpuCollectives::On(stream));
+
+      tsl::BlockUntilReady(event);
+      if (event.IsError()) {
+        return event.GetError();
+      }
     } else {
       VLOG(3) << "Skipping Send";
     }
   }
 
-  return absl::OkStatus();
+  return false;
 }
 
 }  // namespace gpu

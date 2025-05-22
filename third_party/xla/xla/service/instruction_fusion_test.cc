@@ -24,16 +24,16 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 
 namespace op = xla::testing::opcode_matchers;
 
-using InstructionFusionTest = HloTestBase;
+using InstructionFusionTest = HloHardwareIndependentTestBase;
 
 // Subclass of InstructionFusion exposing the protected methods Fuse and
 // FuseIntoMultiOutput for testing.
@@ -793,7 +793,7 @@ TEST_F(InstructionFusionTest, DontFuseProducerIfInplaceConflict) {
   EXPECT_FALSE(fusion_decision.CanFuse());
 }
 
-class FusionDecisionTest : public HloTestBase {};
+class FusionDecisionTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(FusionDecisionTest, NotFusionPossibleDisjunction) {
   FusionDecision a = FusionDecision::Allow();

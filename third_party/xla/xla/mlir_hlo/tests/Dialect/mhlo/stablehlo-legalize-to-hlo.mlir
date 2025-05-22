@@ -442,6 +442,22 @@ func.func @op_add(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 
 // -----
 
+// Tokens flow between StableHLO and MHLO ops, so need to have special converson
+// logic. AddDependencyOp is the only op that doesn't exist in StableHLO but
+// uses token types, so it can have either StableHLO or MHLO token types as
+// input.
+
+// CHECK-LABEL: "add_dependency"
+func.func @add_dependency(%arg0: tensor<3x4xf32>) -> tensor<3x4xf32> {
+  // CHECK:      %[[TOK:.*]] = "mhlo.create_token"() {{.*}} : () -> !mhlo.token
+  // CHECK-NEXT: %[[COPY:.*]] = "mhlo.add_dependency"(%arg0, %[[TOK]]) : (tensor<3x4xf32>, !mhlo.token) -> tensor<3x4xf32>
+  %0 = stablehlo.create_token {xla_shape = "token[]"} : !stablehlo.token
+  %1 = mhlo.add_dependency %arg0, %0 : (tensor<3x4xf32>, !stablehlo.token) -> tensor<3x4xf32>
+  return %1 : tensor<3x4xf32>
+}
+
+// -----
+
 // CHECK-LABEL: "op_after_all"
 func.func @op_after_all(%arg0: !stablehlo.token) -> !stablehlo.token {
   // CHECK: "mhlo.after_all"([[ARG0:%arg[0-9]+]]) : (!mhlo.token) -> !mhlo.token
@@ -2077,6 +2093,14 @@ func.func @bounded_dynamism_broadcast_in_dim(%arg0: tensor<1x?xf32, #stablehlo.b
   // CHECK: mhlo.broadcast_in_dim{{.*}}tensor<2x1x?xf32, #mhlo.type_extensions<bounds = [?, ?, 5]>>
   %0 = stablehlo.broadcast_in_dim %arg0, dims = [0, 1] : (tensor<1x?xf32, #stablehlo.bounds<?, 5>>) -> tensor<2x1x?xf32, #stablehlo.bounds<?, ?, 5>>
   return %0 : tensor<2x1x?xf32, #stablehlo.bounds<?, ?, 5>>
+}
+
+// CHECK-LABEL: bounded_dynamism_with_unknown_op
+func.func @bounded_dynamism_with_unknown_op(%arg0: tensor<1x4xi32>, %arg1: tensor<i32>) -> tensor<1x4xi32> {
+  %0 = "stablehlo.set_dimension_size"(%arg0, %arg1) <{dimension = 1 : i64}> : (tensor<1x4xi32>, tensor<i32>) -> tensor<1x?xi32, #stablehlo.bounds<?, 4>>
+  // CHECK: "tensor.cast"({{.*}}) : (tensor<1x?xi32, #mhlo.type_extensions<bounds = [?, 4]>>) -> tensor<1x4xi32>
+  %cast = tensor.cast %0 : tensor<1x?xi32, #stablehlo.bounds<?, 4>> to tensor<1x4xi32>
+  return %cast : tensor<1x4xi32>
 }
 
 // ============ TYPES ============

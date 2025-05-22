@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
-namespace mhlo {
+namespace hlo {
 
 ConversionTarget GetDefaultLegalConversionTargets(MLIRContext& mlir_context,
                                                   bool legalize_chlo) {
@@ -39,7 +39,7 @@ ConversionTarget GetDefaultLegalConversionTargets(MLIRContext& mlir_context,
   } else {
     target.addLegalDialect<chlo::ChloDialect>();
   }
-  target.addLegalDialect<MhloDialect>();
+  target.addLegalDialect<mhlo::MhloDialect>();
   target.addLegalDialect<arith::ArithDialect>();
   target.addLegalDialect<func::FuncDialect>();
   target.addLegalDialect<tensor::TensorDialect>();
@@ -54,5 +54,5 @@ ConversionTarget GetDefaultLegalConversionTargets(MLIRContext& mlir_context,
   return target;
 }
 
-}  // namespace mhlo
+}  // namespace hlo
 }  // namespace mlir

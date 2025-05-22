@@ -94,8 +94,8 @@ SubProcess::SubProcess(int nfds)
 }
 
 SubProcess::~SubProcess() {
-  mutex_lock procLock(proc_mu_);
-  mutex_lock dataLock(data_mu_);
+  absl::MutexLock procLock(&proc_mu_);
+  absl::MutexLock dataLock(&data_mu_);
   pid_ = -1;
   running_ = false;
   FreeArgs();
@@ -134,8 +134,8 @@ void SubProcess::ClosePipes() {
 
 void SubProcess::SetProgram(const string& file,
                             const std::vector<string>& argv) {
-  mutex_lock procLock(proc_mu_);
-  mutex_lock dataLock(data_mu_);
+  absl::MutexLock procLock(&proc_mu_);
+  absl::MutexLock dataLock(&data_mu_);
   if (running_) {
     LOG(FATAL) << "SetProgram called after the process was started.";
     return;
@@ -161,8 +161,8 @@ void SubProcess::SetProgram(const string& file,
 }
 
 void SubProcess::SetChannelAction(Channel chan, ChannelAction action) {
-  mutex_lock procLock(proc_mu_);
-  mutex_lock dataLock(data_mu_);
+  absl::MutexLock procLock(&proc_mu_);
+  absl::MutexLock dataLock(&data_mu_);
   if (running_) {
     LOG(FATAL) << "SetChannelAction called after the process was started.";
   } else if (!chan_valid(chan)) {
@@ -182,8 +182,8 @@ void SubProcess::SetChannelAction(Channel chan, ChannelAction action) {
 // pthread_atfork() handlers. POSIX does not guarantee this, but for example,
 // glibc 2.24 or newer do so, as does the FreeBSD libc.
 bool SubProcess::Start() {
-  mutex_lock procLock(proc_mu_);
-  mutex_lock dataLock(data_mu_);
+  absl::MutexLock procLock(&proc_mu_);
+  absl::MutexLock dataLock(&data_mu_);
   if (running_) {
     LOG(ERROR) << "Start called after the process was started.";
     return false;
@@ -334,8 +334,8 @@ bool SubProcess::Start() {
 // Implementation based on fork() and exec(); used when posix_spawn() is not
 // available.
 bool SubProcess::Start() {
-  mutex_lock procLock(proc_mu_);
-  mutex_lock dataLock(data_mu_);
+  absl::MutexLock procLock(&proc_mu_);
+  absl::MutexLock dataLock(&data_mu_);
   if (running_) {
     LOG(ERROR) << "Start called after the process was started.";
     return false;
@@ -477,10 +477,10 @@ bool SubProcess::Wait() {
 
 bool SubProcess::WaitInternal(int* status) {
   // The waiter must release proc_mu_ while waiting in order for Kill() to work.
-  proc_mu_.lock();
+  proc_mu_.Lock();
   bool running = running_;
   pid_t pid = pid_;
-  proc_mu_.unlock();
+  proc_mu_.Unlock();
 
   bool ret = false;
   if (running && (pid > 1)) {
@@ -499,20 +499,20 @@ bool SubProcess::WaitInternal(int* status) {
     }
   }
 
-  proc_mu_.lock();
+  proc_mu_.Lock();
   if ((running_ == running) && (pid_ == pid)) {
     running_ = false;
     pid_ = -1;
   }
-  proc_mu_.unlock();
+  proc_mu_.Unlock();
   return ret;
 }
 
 bool SubProcess::Kill(int signal) {
-  proc_mu_.lock();
+  proc_mu_.Lock();
   bool running = running_;
   pid_t pid = pid_;
-  proc_mu_.unlock();
+  proc_mu_.Unlock();
 
   bool ret = false;
   if (running && (pid > 1)) {
@@ -528,9 +528,9 @@ int SubProcess::Communicate(const string* stdin_input, string* stdout_output,
   string* iobufs[kNFds];
   int fd_count = 0;
 
-  proc_mu_.lock();
+  proc_mu_.Lock();
   bool running = running_;
-  proc_mu_.unlock();
+  proc_mu_.Unlock();
   if (!running) {
     LOG(ERROR) << "Communicate called without a running process.";
     return 1;
@@ -559,7 +559,7 @@ int SubProcess::Communicate(const string* stdin_input, string* stdout_output,
 
   // Lock data_mu_ but not proc_mu_ while communicating with the child process
   // in order for Kill() to be able to terminate the child from another thread.
-  data_mu_.lock();
+  data_mu_.Lock();
 
   // Initialize the poll() structures and buffer tracking.
   for (int i = 0; i < kNFds; i++) {
@@ -650,7 +650,7 @@ int SubProcess::Communicate(const string* stdin_input, string* stdout_output,
     }
   }
 
-  data_mu_.unlock();
+  data_mu_.Unlock();
 
   // Wait for the child process to exit and return its status.
   int status;

@@ -75,7 +75,12 @@ class MemoryUsageMonitor {
   }
 
   float GetCurrentInUseMemoryInMB() const {
-    return BytesToMegabytes(sampler_->GetMemoryUsage().in_use_allocated_bytes);
+    int64_t in_use_mem_bytes =
+        sampler_->GetMemoryUsage().in_use_allocated_bytes;
+    if (in_use_mem_bytes < 0) {
+      return kInvalidMemUsageMB;
+    }
+    return BytesToMegabytes(in_use_mem_bytes);
   }
 
   float GetPeakInUseMemoryInMB() const {

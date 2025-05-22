@@ -53,6 +53,10 @@ filegroup(
         "//tensorflow/compiler/mlir/lite/core/c:lite_headers_filegroup",
         "//tensorflow/lite/core/async/c:types.h",
     ],
+    visibility = [
+        # Temporary workaround to make visible to litert in OSS (default vis is not transformed correctly.)
+        "//visibility:public",
+    ],
 )
 
 filegroup(
@@ -618,6 +622,7 @@ cc_test(
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/delegates:delegate_test_util",
         "//tensorflow/lite/testing:util",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -396,6 +397,7 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
   if (options_.verify) {
     TF_RETURN_IF_ERROR(VerifyAllocations());
   }
+
   // DEBUG_LOG_ALLOCATIONS_AT
   //
   // Uncomment the following to log the alternate memory allocations that MSA
@@ -447,7 +449,7 @@ absl::Status MemorySpaceAssignment::FindAllocationSequence(
     const HloLiveRange& hlo_live_range,
     const HloAliasAnalysis& alias_analysis) {
   auto algorithm = std::make_unique<MsaAlgorithm>(
-      &allocations_, options_, alias_analysis, hlo_live_range);
+      module_, &allocations_, options_, alias_analysis, hlo_live_range);
 
   HeapSimulator::Options heap_simulator_options;
   heap_simulator_options.may_reuse_operand_buffers = false;
@@ -458,6 +460,24 @@ absl::Status MemorySpaceAssignment::FindAllocationSequence(
                                         heap_simulator_options)
                          .status());
   return absl::OkStatus();
+}
+
+MemorySpaceAssignment::ScopedMemorySource
+MemorySpaceAssignment::ScopedMemorySource::ForInstruction(
+    HloInstruction* instruction) {
+  return ScopedMemorySource{false, instruction};
+}
+
+MemorySpaceAssignment::ScopedMemorySource
+MemorySpaceAssignment::ScopedMemorySource::ForPostModule() {
+  return ScopedMemorySource{true, nullptr};
+}
+
+std::string MemorySpaceAssignment::ScopedMemorySource::ToString() const {
+  if (is_post_module) {
+    return "<post-module>";
+  }
+  return std::string(instruction->name());
 }
 
 absl::Status MemorySpaceAssignment::Process(
@@ -486,8 +506,17 @@ absl::Status MemorySpaceAssignment::Process(
     // the output map.
     if (allocation->is_scoped_allocation()) {
       CHECK(allocation->memory_space() == MemorySpace::kAlternate);
-      scoped_memory_assignments_.emplace_back(
-          allocation->defining_position().instruction, allocation->chunk());
+      ScopedAllocation* scoped_allocation =
+          static_cast<ScopedAllocation*>(allocation.get());
+      if (scoped_allocation->is_post_module()) {
+        scoped_memory_assignments_.emplace_back(
+            ScopedMemorySource::ForPostModule(), allocation->chunk());
+      } else {
+        scoped_memory_assignments_.emplace_back(
+            ScopedMemorySource::ForInstruction(
+                scoped_allocation->defining_position().instruction),
+            allocation->chunk());
+      }
       alternate_memory_size_ =
           std::max(alternate_memory_size_, allocation->chunk().chunk_end());
     } else if (allocation->memory_space() == MemorySpace::kAlternate) {
@@ -509,7 +538,14 @@ absl::Status MemorySpaceAssignment::Process(
           allocation->defining_position(), allocation->chunk());
       alternate_memory_size_ =
           std::max(alternate_memory_size_, allocation->chunk().chunk_end());
-
+      if (allocation->split_shape().has_value()) {
+        auto result = split_map_.insert({allocation->defining_position(),
+                                         &allocation->split_shape()->layout()});
+        if (!result.second) {
+          CHECK_EQ(*result.first->second,
+                   allocation->split_shape().value().layout());
+        }
+      }
       if (allocation->cross_program_prefetch_index().has_value()) {
         TF_RETURN_IF_ERROR(module_->SetCrossProgramPrefetchOffset(
             *allocation->cross_program_prefetch_index(),
@@ -565,11 +601,16 @@ absl::Status MemorySpaceAssignment::ExportAndColorBuffers(
 
   VLOG(3) << "Exported scoped allocations in alternate memory:";
   for (const auto& instruction_and_chunk : scoped_memory_assignments_) {
-    HloInstruction* instruction = instruction_and_chunk.first;
+    ScopedMemorySource scoped_memory_source = instruction_and_chunk.first;
     const HeapSimulator::Chunk& chunk = instruction_and_chunk.second;
+    if (scoped_memory_source.is_post_module) {
+      preset_assignments_->set_post_module_scoped_alternate_memory_chunk(chunk);
+    } else {
+      preset_assignments_->add_scoped_allocation_chunk(
+          scoped_memory_source.instruction, chunk);
+    }
     VLOG(3) << " [" << chunk.offset << ", " << chunk.size
-            << "] : " << instruction->name();
-    preset_assignments_->add_scoped_allocation_chunk(instruction, chunk);
+            << "] : " << scoped_memory_source.ToString();
   }
 
   if (!preset_assignments_->chunks().empty() ||
@@ -589,6 +630,7 @@ absl::Status MemorySpaceAssignment::ExportAndColorBuffers(
   for (const auto& defining_position_and_chunk :
        preset_assignments_->chunks()) {
     const HloPosition& defining_position = defining_position_and_chunk.first;
+    auto split_result = split_map_.find(defining_position);
     for (auto& buffer : alias_analysis.ComputeBuffersAt(
              defining_position.instruction, defining_position.index)) {
       for (auto& value : buffer->values()) {
@@ -600,10 +642,16 @@ absl::Status MemorySpaceAssignment::ExportAndColorBuffers(
                                   << position.ToString();
           shape->mutable_layout()->set_memory_space(
               options_.alternate_memory_space);
+          if (split_result != split_map_.end()) {
+            CHECK_EQ(shape->layout().split_configs().size(), 0);
+            shape->mutable_layout()->add_split_configs(
+                split_result->second->split_configs(0));
+          }
         }
       }
     }
   }
+
   return absl::OkStatus();
 }
 
@@ -693,14 +741,14 @@ absl::Status MemorySpaceAssignment::SimplifyGraph() {
         } else if (instruction->opcode() == HloOpcode::kTuple) {
           // Replace Tuple(GetTupleElement(x), ..., GetTupleElement(x)) pattern
           // with x.
-          bool can_replace =
-              instruction->operand_count() > 0 &&
-              instruction->operand(0)->opcode() ==
-                  HloOpcode::kGetTupleElement &&
-              instruction->operand(0)
-                      ->operand(0)
-                      ->shape()
-                      .tuple_shapes_size() == instruction->operand_count();
+          bool can_replace = instruction->operand_count() > 0 &&
+                             instruction->operand(0)->opcode() ==
+                                 HloOpcode::kGetTupleElement &&
+                             instruction->operand(0)
+                                     ->operand(0)
+                                     ->shape()
+                                     .tuple_shapes()
+                                     .size() == instruction->operand_count();
           for (int operand_number = 0;
                operand_number < instruction->operand_count();
                ++operand_number) {

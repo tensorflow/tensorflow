@@ -6,6 +6,7 @@ load(
     "HERMETIC_PYTHON_SHA256",
     "HERMETIC_PYTHON_URL",
     "HERMETIC_PYTHON_VERSION",
+    "HERMETIC_PYTHON_VERSION_KIND",
 )
 load("@rules_python//python:repositories.bzl", "python_register_toolchains")
 load("@rules_python//python:versions.bzl", "MINOR_MAPPING", "PLATFORMS")
@@ -61,4 +62,5 @@ def python_init_toolchains(name = "python", python_version = None, **kwargs):
             name = name,
             ignore_root_user_error = True,
             python_version = HERMETIC_PYTHON_VERSION,
+            python_version_kind = HERMETIC_PYTHON_VERSION_KIND,
         )

@@ -20,6 +20,7 @@ load(
     "OS_ARCH_DICT",
     "create_build_file",
     "create_dummy_build_file",
+    "create_version_file",
     "get_archive_name",
     "get_env_var",
     "get_lib_name_to_version_dict",
@@ -42,7 +43,7 @@ def _use_downloaded_nccl_wheel(repository_ctx):
     if not cuda_version:
         # If no CUDA version is found, comment out cc_import targets.
         create_dummy_build_file(repository_ctx)
-        repository_ctx.file("version.txt", major_version)
+        create_version_file(repository_ctx, major_version)
         return
 
     # Download archive only when GPU config is used.
@@ -105,7 +106,7 @@ def _use_downloaded_nccl_wheel(repository_ctx):
         major_version,
     )
 
-    repository_ctx.file("version.txt", major_version)
+    create_version_file(repository_ctx, major_version)
 
 def _use_local_nccl_path(repository_ctx, local_nccl_path):
     # buildifier: disable=function-docstring-args

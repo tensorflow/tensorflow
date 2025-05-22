@@ -15,22 +15,31 @@ limitations under the License.
 
 // This transformation pass applies some clean up steps after quantization.
 
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 
 //===----------------------------------------------------------------------===//
 // The post-quantize Passes.
@@ -52,7 +61,7 @@ class PostQuantizePass : public impl::PostQuantizePassBase<PostQuantizePass> {
 
   // Constructor used by manually creating the pass.
   explicit PostQuantizePass(bool emit_quant_adaptor_ops,
-                            const quant::CustomOpMap& custom_op_map)
+                            const CustomOpMap& custom_op_map)
       : custom_op_map_(custom_op_map) {
     // Set this flag to true if the inputs and outputs are in floating point.
     // The quant adaptor ops convert them to fixed point values (i.e. quantize)
@@ -64,7 +73,7 @@ class PostQuantizePass : public impl::PostQuantizePassBase<PostQuantizePass> {
   void runOnOperation() override;
 
  private:
-  quant::CustomOpMap custom_op_map_;
+  CustomOpMap custom_op_map_;
 };
 
 // Cleans up unnecessary QDQ pattern for input/output ops.
@@ -155,6 +164,92 @@ enum RemoveVolatileOpsType {
   kPreserveInputsAndOutputs,
 };
 
+// Returns a constant tensor with the given scalar/vector value and shape.
+template <typename T>
+std::optional<mlir::Value> GetConstTensor(PatternRewriter& rewriter,
+                                          Location loc, llvm::ArrayRef<T> vec,
+                                          llvm::ArrayRef<int64_t> shape) {
+  int64_t num_total_elements = 1;
+  for (int64_t a : shape) {
+    num_total_elements *= a;
+  }
+
+  if (vec.size() != num_total_elements) {
+    return std::nullopt;
+  }
+
+  auto const_type = tensorflow::GetTypeFromTFTensorShape(
+      shape, rewriter.getIntegerType(sizeof(T) * 8));
+  auto const_attr = DenseElementsAttr::get(const_type, vec);
+
+  auto const_op =
+      rewriter.create<arith::ConstantOp>(loc, const_type, const_attr);
+  return const_op.getResult();
+}
+
+// Converts a dequantize op to a (scale * (input - zeropoint)). The expectation
+// is that the qconst value will be constant folded to retain the original
+// constant value. This is essentially a constant fold of the dequantize op,
+// privided that the value, zp and scale are all constants.
+std::optional<mlir::Value> ConvertDequantizeOp(
+    PatternRewriter& rewriter, mlir::Operation* op,
+    mlir::ShapedType output_type, mlir::Value input_value,
+    llvm::ArrayRef<double> scale, llvm::ArrayRef<int64_t> zeropoint,
+    int64_t dim) {
+  RankedTensorType input_type =
+      dyn_cast<RankedTensorType>(input_value.getType());
+  if (!input_type) return std::nullopt;
+
+  std::optional<mlir::Value> zp_val;
+  if (zeropoint.size() == 1) {
+    auto const_type =
+        tensorflow::GetTypeFromTFTensorShape({}, rewriter.getF32Type());
+    auto const_attr =
+        DenseElementsAttr::get(const_type, static_cast<float>(zeropoint[0]));
+
+    auto const_op = rewriter.create<arith::ConstantOp>(op->getLoc(), const_type,
+                                                       const_attr);
+    zp_val = const_op.getResult();
+  } else {
+    SmallVector<int64_t> shape;
+    shape.resize(input_type.getRank(), 1);
+    shape[dim] = zeropoint.size();
+    zp_val = GetConstTensor(rewriter, op->getLoc(), zeropoint, shape);
+  }
+
+  std::optional<mlir::Value> scale_val;
+  if (scale.size() == 1) {
+    auto const_type =
+        tensorflow::GetTypeFromTFTensorShape({}, rewriter.getF32Type());
+    auto const_attr =
+        DenseElementsAttr::get(const_type, static_cast<float>(scale[0]));
+
+    auto const_op = rewriter.create<arith::ConstantOp>(op->getLoc(), const_type,
+                                                       const_attr);
+    scale_val = const_op.getResult();
+  } else {
+    SmallVector<int64_t> shape;
+    shape.resize(input_type.getRank(), 1);
+    shape[dim] = scale.size();
+    scale_val = GetConstTensor(rewriter, op->getLoc(), scale, shape);
+  }
+
+  if (!zp_val || !scale_val) return std::nullopt;
+
+  auto op1_cast_in =
+      rewriter.create<TFL::CastOp>(op->getLoc(), output_type, input_value);
+
+  auto op2_sub_op1 = rewriter.create<TFL::SubOp>(
+      op->getLoc(), output_type, op1_cast_in.getResult(), zp_val.value(),
+      /*fused_activation_function=*/rewriter.getStringAttr("NONE"));
+
+  return rewriter
+      .create<TFL::MulOp>(
+          op->getLoc(), output_type, op2_sub_op1.getResult(), scale_val.value(),
+          /*fused_activation_function=*/rewriter.getStringAttr("NONE"))
+      .getResult();
+}
+
 // Remove the back-to-back quantize and dequantize ops with volatile attribute.
 template <RemoveVolatileOpsType remove_volatile_ops_type>
 struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
@@ -165,7 +260,7 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
                                 PatternRewriter& rewriter) const override {
     auto input_op = op.getInput().getDefiningOp();
     if (auto q = llvm::dyn_cast_or_null<QuantizeOp>(input_op)) {
-      if (!q->getAttr(mlir::quant::kVolatileOpAttrName)) return failure();
+      if (!q->getAttr(kVolatileOpAttrName)) return failure();
 
       if (remove_volatile_ops_type == kPreserveInputsAndOutputs) {
         // Don't remove leading and trailing QDQ for PTQ workflow, so the io
@@ -187,6 +282,47 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
       }
 
       op.replaceAllUsesWith(q.getInput());
+      return success();
+    } else if (auto qconst_op = llvm::dyn_cast_or_null<QConstOp>(input_op)) {
+      if (!qconst_op->getAttr(kVolatileOpAttrName)) return failure();
+
+      auto qtype =
+          quant::QuantizedType::getQuantizedElementType(qconst_op.getType());
+      if (!qtype) return failure();
+      SmallVector<double, 1> scale;
+      SmallVector<int64_t, 1> zeropoint;
+      int64_t dim = 0;
+
+      if (auto uniform_qtype =
+              mlir::dyn_cast<quant::UniformQuantizedType>(qtype)) {
+        scale.push_back(uniform_qtype.getScale());
+        zeropoint.push_back(uniform_qtype.getZeroPoint());
+      } else if (auto per_axis_qtype =
+                     mlir::dyn_cast<quant::UniformQuantizedPerAxisType>(
+                         qtype)) {
+        scale.assign(per_axis_qtype.getScales().begin(),
+                     per_axis_qtype.getScales().end());
+        zeropoint.assign(per_axis_qtype.getZeroPoints().begin(),
+                         per_axis_qtype.getZeroPoints().end());
+        dim = per_axis_qtype.getQuantizedDimension();
+      } else {
+        return failure();
+      }
+
+      auto output_type = mlir::cast<mlir::ShapedType>(op.getOutput().getType());
+
+      auto const_type = tensorflow::GetTypeFromTFTensorShape(
+          output_type.getShape(), qtype.getStorageType());
+      auto const_op = rewriter.create<arith::ConstantOp>(
+          op->getLoc(), const_type, qconst_op.getValue());
+
+      auto new_value =
+          ConvertDequantizeOp(rewriter, op, output_type, const_op.getResult(),
+                              scale, zeropoint, dim);
+      if (!new_value) return failure();
+
+      op.replaceAllUsesWith(new_value.value());
+      op->erase();
       return success();
     }
     return failure();
@@ -358,8 +494,8 @@ struct FoldReshapeOp : public OpRewritePattern<ReshapeOp> {
 template <typename OpTy>
 struct PruneUnusedOpsWithSideEffect : public OpRewritePattern<OpTy> {
  public:
-  explicit PruneUnusedOpsWithSideEffect(
-      MLIRContext* context, const quant::CustomOpMap& custom_op_map = {})
+  explicit PruneUnusedOpsWithSideEffect(MLIRContext* context,
+                                        const CustomOpMap& custom_op_map = {})
       : OpRewritePattern<OpTy>(context), custom_op_map(custom_op_map) {}
 
   LogicalResult matchAndRewrite(OpTy op,
@@ -384,7 +520,7 @@ struct PruneUnusedOpsWithSideEffect : public OpRewritePattern<OpTy> {
     rewriter.eraseOp(op);
     return success();
   }
-  quant::CustomOpMap custom_op_map;
+  CustomOpMap custom_op_map;
 };
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_post_quantize.inc"
@@ -392,15 +528,14 @@ struct PruneUnusedOpsWithSideEffect : public OpRewritePattern<OpTy> {
 void PostQuantizePass::runOnOperation() {
   if (!enable_custom_op_no_side_effect_.empty()) {
     ParseCustomOpSpecs(enable_custom_op_no_side_effect_,
-                       quant::CustomOpUpdateOptions::kNoSideEffect,
-                       custom_op_map_);
+                       CustomOpUpdateOptions::kNoSideEffect, custom_op_map_);
   }
 
   RewritePatternSet patterns(&getContext());
   auto func = getOperation();
   auto* ctx = func.getContext();
   TFL::populateWithGenerated(patterns);
-  patterns.add<quant::FoldTrivalRequantizeOp<QuantizeOp>>(ctx);
+  patterns.add<FoldTrivalRequantizeOp<QuantizeOp>>(ctx);
   patterns.add<PruneUnusedOpsWithSideEffect<TFL::LSTMOp>>(ctx);
   patterns.add<PruneUnusedOpsWithSideEffect<TFL::UnidirectionalSequenceLSTMOp>>(
       ctx);
@@ -415,7 +550,7 @@ void PostQuantizePass::runOnOperation() {
 
   RewritePatternSet phase_2_patterns(&getContext());
   TFL::populateWithGenerated(phase_2_patterns);
-  phase_2_patterns.add<quant::FoldTrivalRequantizeOp<QuantizeOp>,
+  phase_2_patterns.add<FoldTrivalRequantizeOp<QuantizeOp>,
                        RemoveVolatileOps<kPreserveInputsAndOutputs>,
                        FoldTransposeOp, FoldReshapeOp>(ctx);
   (void)applyPatternsGreedily(func, std::move(phase_2_patterns));
@@ -434,7 +569,7 @@ void PostQuantizeRemoveQDQPass::runOnOperation() {
 
 // Creates an instance of the TensorFlow Lite dialect PostQuantize pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePostQuantizePass(
-    bool emit_quant_adaptor_ops, const quant::CustomOpMap& custom_op_map) {
+    bool emit_quant_adaptor_ops, const CustomOpMap& custom_op_map) {
   return std::make_unique<PostQuantizePass>(emit_quant_adaptor_ops,
                                             custom_op_map);
 }

@@ -70,8 +70,10 @@ message IfrtRequest {
     // ===== LoadedExecutable =====
     LoadedExecutableMetadataRequest loaded_executable_metadata_request = 14;
     LoadedExecutableExecuteRequest loaded_executable_execute_request = 15;
-    LoadedExecutableDeleteRequest loaded_executable_delete_request = 16;
-    LoadedExecutableIsDeletedRequest loaded_executable_is_deleted_request = 17;
+    LoadedExecutableDeleteRequest loaded_executable_delete_request = 16
+        [deprecated = true];
+    LoadedExecutableIsDeletedRequest loaded_executable_is_deleted_request = 17
+        [deprecated = true];
     LoadedExecutableDestructRequest loaded_executable_destruct_request = 18;
 
     // ===== LoadedHostCallback =====
@@ -81,6 +83,7 @@ message IfrtRequest {
     // ===== Client =====
     GetDefaultDeviceAssignmentRequest get_default_device_assignment_request =
         19;
+    GetDefaultLayoutRequest get_default_layout_request = 27;
   }
 
   reserved 10;
@@ -133,6 +136,7 @@ message IfrtResponse {
     // ===== Client =====
     GetDefaultDeviceAssignmentResponse get_default_device_assignment_response =
         19;
+    GetDefaultLayoutResponse get_default_layout_response = 27;
   }
 
   reserved 10;
@@ -570,4 +574,13 @@ message GetDefaultDeviceAssignmentRequest {
 }
 message GetDefaultDeviceAssignmentResponse {
   xla.DeviceAssignmentProto device_assignment = 1;
+}
+message GetDefaultLayoutRequest {
+  DTypeProto dtype = 1;
+  repeated int64 dims = 2;
+  int32 device_id = 3;
+  string memory_kind = 4;
+}
+message GetDefaultLayoutResponse {
+  bytes serialized_pjrt_layout = 1;
 }

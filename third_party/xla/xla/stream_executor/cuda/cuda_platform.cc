@@ -24,16 +24,16 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_executor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -50,7 +50,7 @@ static absl::Status InternalInit() {
 
   LOG(ERROR) << "failed call to cuInit: " << status;
 
-  Diagnostician::LogDiagnosticInformation();
+  cuda::Diagnostician::LogDiagnosticInformation();
   return status;
 }
 
@@ -72,7 +72,9 @@ Platform::Id CudaPlatform::id() const { return cuda::kCudaPlatformId; }
 int CudaPlatform::VisibleDeviceCount() const {
   // Initialized in a thread-safe manner the first time this is run.
   static const int num_devices = [] {
-    if (!PlatformInitialize().ok()) return -1;
+    if (!PlatformInitialize().ok()) {
+      return -1;
+    }
     int device_count = 0;
     auto status = cuda::ToStatus(cuDeviceGetCount(&device_count));
     if (!status.ok()) {

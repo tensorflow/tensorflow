@@ -16,10 +16,10 @@
 #include "tensorflow/core/transforms/utils/pdll/utils.pdll"
 
 Constraint AttrIsF32OrBF16(attr: Attr) [{
-  TypeAttr type_attr = attr.dyn_cast<TypeAttr>();
+  TypeAttr type_attr = llvm::dyn_cast<TypeAttr>(attr);
   if (!type_attr) return failure();
-  return success(type_attr.getValue().isa<Float32Type>() ||
-                 type_attr.getValue().isa<BFloat16Type>());
+  return success(llvm::isa<Float32Type>(type_attr.getValue()) ||
+                 llvm::isa<BFloat16Type>(type_attr.getValue()));
 }];
 
 Rewrite ReplaceMulWith_MklSwish(op: Op, arg: Value, controls: ValueRange) -> Op [{

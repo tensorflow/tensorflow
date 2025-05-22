@@ -18,21 +18,22 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
-#include <string>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/PassManager.h"
 #include "xla/autotuning.pb.h"
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace mlir {
 namespace triton {
@@ -59,13 +59,11 @@ struct TritonWrapperResult {
   int64_t shmem_bytes = 0;
   std::optional<se::ClusterDim> cluster_dim;
   std::optional<stream_executor::gpu::TmaMetadata> tma_metadata;
-};
 
-// A wrapper containing a Triton module and optional TmaMetadata, which must be
-// extracted from compile-time and passed to the runtime.
-struct TritonModule {
-  mlir::OwningOpRef<mlir::ModuleOp> module;
-  std::optional<stream_executor::gpu::TmaMetadata> tma_metadata;
+  // The captured nvvm.annotations from the lowest level LLVM IR coming from
+  // Triton. We need to propagate them because we later create the kernel and
+  // splice the impl_fn into it.
+  std::vector<llvm::Metadata*> nvvm_annotations;
 };
 
 // Load the MLIR dialects required for Triton IR generation.
@@ -82,7 +80,7 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
 
 // Creates the initial Triton module for the given fusion. Visible for testing,
 // use TritonWrapper instead.
-absl::StatusOr<TritonModule> CreateTritonModule(
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     absl::string_view fn_name, const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
@@ -111,19 +109,6 @@ namespace ir_emitter_triton_internal {
 // Computes the transformation from a 1-d program_id to a tile multi-index.
 llvm::SmallVector<mlir::Value, 3> ComputeDelinearizedTileIndex(
     EmitterLocOpBuilder& b, absl::Span<const int64_t> num_output_tiles_per_dim);
-
-// Used for creating Triton Load and Store ops.
-struct MakeTensorPtrOpAndBoundaryChecks {
-  ::mlir::triton::MakeTensorPtrOp op;
-
-  // Indices of dimensions where the original tile size is not a power of 2 and
-  // requires a boundary check.
-  llvm::SmallVector<int32_t> boundary_checks;
-};
-
-absl::StatusOr<MakeTensorPtrOpAndBoundaryChecks> CreateMakeTensorPtrOp(
-    EmitterLocOpBuilder& b, mlir::ValueRange tile_multi_index,
-    const TiledHloInstruction& tiled_hlo, mlir::Value parent_base_ptr);
 
 // Dumps the Triton IR to a string.
 //

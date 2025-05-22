@@ -879,8 +879,8 @@ optional<int64_t> ComputeWhileLoopTripCount(const HloInstruction* while_op,
 
   for (int64_t trip_count = 0; trip_count != max_brute_force_iters + 1;
        ++trip_count) {
-    absl::StatusOr<Literal> result = evaluator.EvaluateWithSubstitutions(
-        while_cond_root, {{while_cond_indvar, &indvar_iter_val}});
+    absl::StatusOr<Literal> result = evaluator.Evaluate(
+        while_cond_root, {}, false, {{while_cond_indvar, &indvar_iter_val}});
     if (!result.ok()) {
       VLOG(2) << "Couldn't evaluate while cond: " << result.status();
       return nullopt;
@@ -893,8 +893,8 @@ optional<int64_t> ComputeWhileLoopTripCount(const HloInstruction* while_op,
     // Calculate the value of the induction variable after one iteration of the
     // loop, and check whether the while condition is true with this new value.
     absl::StatusOr<Literal> indvar_next_result =
-        evaluator.EvaluateWithSubstitutions(
-            while_body_indvar_update, {{while_body_indvar, &indvar_iter_val}});
+        evaluator.Evaluate(while_body_indvar_update, {}, false,
+                           {{while_body_indvar, &indvar_iter_val}});
     if (!indvar_next_result.ok()) {
       VLOG(2) << "Couldn't evaluate induction variable update: "
               << indvar_next_result.status();

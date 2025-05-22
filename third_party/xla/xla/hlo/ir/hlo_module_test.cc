@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
@@ -66,6 +68,29 @@ TEST(HloModuleTest, AbslHashValue) {
                           ParseAndReturnUnverifiedModule(hlo));
   EXPECT_EQ(absl::HashOf(*module3), absl::HashOf(*module4));
   EXPECT_NE(absl::HashOf(module1), absl::HashOf(*module4));
+}
+
+TEST(HloModuleTest, ToFingerprint) {
+  auto fp = [](const HloModule& module) {
+    return module.ToFingerprint(HloPrintOptions::ModuleFingerprint());
+  };
+  HloModule module1("m1", HloModuleConfig());
+  HloModule module2("m2", HloModuleConfig());
+  EXPECT_EQ(fp(module1), fp(module2));
+
+  absl::string_view hlo = R"(
+      HloModule m3
+        ENTRY main {
+          a = f32[] parameter(0)
+          b = f32[] parameter(1)
+        ROOT res = f32[] multiply(a, b)
+      })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module3,
+                          ParseAndReturnUnverifiedModule(hlo));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module4,
+                          ParseAndReturnUnverifiedModule(hlo));
+  EXPECT_EQ(fp(*module3), fp(*module4));
+  EXPECT_NE(fp(module1), fp(*module4));
 }
 
 TEST(HloModuleTest, MutableAndReadOnlyConfigEquals) {

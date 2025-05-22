@@ -64,6 +64,12 @@ def if_rocm_is_configured(if_true, if_false = []):
       return select({"//conditions:default": if_true})
     return select({"//conditions:default": if_false})
 
+def is_rocm_configured():
+    """
+    Returns True if ROCm is configured. False otherwise.
+    """
+    return %{rocm_is_configured}
+
 def rocm_hipblaslt():
     return %{rocm_is_configured} and %{rocm_hipblaslt}
 

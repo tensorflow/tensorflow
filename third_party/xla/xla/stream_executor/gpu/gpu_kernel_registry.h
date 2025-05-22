@@ -87,10 +87,7 @@ class GpuKernelRegistry {
   }
 
   // Returns a reference to the process-wide instance of the registry.
-  static GpuKernelRegistry& GetGlobalRegistry() {
-    static auto registry = new GpuKernelRegistry();
-    return *registry;
-  }
+  static GpuKernelRegistry& GetGlobalRegistry();
 
  private:
   absl::Status RegisterKernel(const std::type_info& type,
@@ -106,17 +103,19 @@ class GpuKernelRegistry {
       ABSL_GUARDED_BY(mutex_);
 };
 
-#define GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(              \
-    identifier, KernelTrait, platform_id, kernel)                    \
-  static void RegisterKernel##identifier##Impl() {                   \
-    absl::Status result =                                            \
-        stream_executor::gpu::GpuKernelRegistry::GetGlobalRegistry() \
-            .RegisterKernel<KernelTrait>(platform_id, kernel());     \
-    if (!result.ok()) {                                              \
-      LOG(FATAL) << "Failed to register kernel: " << result;         \
-    }                                                                \
-  }                                                                  \
-  STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(                       \
+#define GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(                \
+    identifier, KernelTrait, platform_id, kernel)                      \
+  static void RegisterKernel##identifier##Impl() {                     \
+    absl::Status result =                                              \
+        stream_executor::gpu::GpuKernelRegistry::GetGlobalRegistry()   \
+            .RegisterKernel<KernelTrait>(                              \
+                platform_id,                                           \
+                kernel(KernelTrait::KernelType::kNumberOfParameters)); \
+    if (!result.ok()) {                                                \
+      LOG(FATAL) << "Failed to register kernel: " << result;           \
+    }                                                                  \
+  }                                                                    \
+  STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(                         \
       RegisterKernel##identifier, RegisterKernel##identifier##Impl());
 
 }  // namespace stream_executor::gpu

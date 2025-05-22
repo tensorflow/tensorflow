@@ -214,7 +214,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
         absl::Status s =
             input_impl_->Skip(ctx, dataset()->num_shards_ - next_index_,
                               end_of_sequence, &num_skipped);
-        if (*end_of_sequence || errors::IsOutOfRange(s)) {
+        if (*end_of_sequence || absl::IsOutOfRange(s)) {
           // `dataset()->require_non_empty_` implies that this transformation
           // was introduced by auto_sharding rewrite, so it's acceptable
           // produce an error message that assumes auto-sharding context.

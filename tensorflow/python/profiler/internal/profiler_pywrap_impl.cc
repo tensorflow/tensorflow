@@ -21,16 +21,12 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/profiler/convert/xplane_to_trace_events.h"
 #include "xla/tsl/profiler/rpc/client/capture_profile.h"
 #include "xla/tsl/profiler/utils/session_manager.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/convert/xplane_to_tools_data.h"
-#include "tensorflow/core/profiler/rpc/client/save_profile.h"
-#include "tensorflow/core/profiler/rpc/profiler_server.h"
+#include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
@@ -38,7 +34,6 @@ namespace profiler {
 namespace pywrap {
 
 using tsl::profiler::GetRemoteSessionManagerOptionsLocked;
-using tsl::profiler::ValidateHostPortPair;
 
 absl::Status ProfilerSessionWrapper::Start(
     const char* logdir,

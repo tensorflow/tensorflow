@@ -24,14 +24,15 @@ include "mlir/IR/PatternBase.td"
 def NullArrayAttr : NativeCodeCall<"ArrayAttr()">;
 
 def NullChannelHandleAttr : NativeCodeCall<"mhlo::ChannelHandleAttr()">;
+def StableHLO_NullChannelHandleAttr : NativeCodeCall<"stablehlo::ChannelHandleAttr()">;
 
 def CastIntElementsAttr : NativeCodeCall<"cast<DenseIntElementsAttr>($0)">;
 
 class ConstantSplat<string value> : NativeCodeCall<
     "hlo::getSplat(&$_builder, $0, " # value # ")">;
 
-class MHLO_ConstantLike<string value> : NativeCodeCall<
-    "chlo::getConstantLike($_builder, $_loc, " # value # ", $0)">;
+class StableHLO_ConstantLike<string value> : NativeCodeCall<
+    "::mlir::stablehlo::getConstantLike($_builder, $_loc, " # value # ", $0)">;
 
 def MHLO_ConstantLikeMaxFiniteValue : NativeCodeCall<
     "chlo::getConstantLikeMaxFiniteValue($_builder, $_loc, $0)">;

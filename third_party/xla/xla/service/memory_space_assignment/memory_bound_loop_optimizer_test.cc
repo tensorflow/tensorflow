@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/service/buffer_value.h"
@@ -56,7 +57,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -261,7 +261,7 @@ TEST_F(LoopOptimizerBestFitHeapTest, TestRemoveChunk) {
   EXPECT_EQ(heap_.LastMemoryOffsetOccupied(), 0);
 }
 
-class MemoryBoundLoopOptimizerTest : public HloTestBase {
+class MemoryBoundLoopOptimizerTest : public HloHardwareIndependentTestBase {
  public:
   MemoryBoundLoopOptimizerTest() = default;
 

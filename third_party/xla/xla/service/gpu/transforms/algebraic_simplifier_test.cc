@@ -19,12 +19,15 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -32,7 +35,7 @@ namespace {
 
 namespace m = ::xla::match;
 
-class GpuAlgebraicSimplifierTest : public HloTestBase {
+class GpuAlgebraicSimplifierTest : public HloHardwareIndependentTestBase {
  public:
   se::CudaComputeCapability Ampere() {
     return se::CudaComputeCapability::Ampere();
@@ -358,6 +361,28 @@ TEST_F(GpuAlgebraicSimplifierTest,
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   AlgebraicSimplifierOptions options;
   ASSERT_TRUE(GpuAlgebraicSimplifier(options, Ampere()).Run(m.get()).value());
+}
+
+TEST_F(
+    GpuAlgebraicSimplifierTest,
+    DotToMultiplyRewriteForZeroContractingDimWith_BF16_BF16_F32_X6_Algorithm) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test
+    ENTRY dot {
+    a = f32[] parameter(0)
+    b = f32[] parameter(1)
+    ROOT dot = f32[] dot(a, b),
+      algorithm=dot_bf16_bf16_f32_x6
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  ASSERT_TRUE(GpuAlgebraicSimplifier(options, Ampere()).Run(m.get()).value());
+  constexpr absl::string_view kPattern = R"(
+    CHECK-COUNT-6: %[[partial_result:.*]] = bf16[] multiply
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(bool matched, RunFileCheck(m->ToString(), kPattern));
+  EXPECT_TRUE(matched);
 }
 
 }  // namespace

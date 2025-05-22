@@ -137,7 +137,7 @@ llvm::CallInst* EmitCallToIntrinsic(
   llvm::Module* module = ModuleFromIRBuilder(b);
   llvm::Function* intrinsic = llvm::Intrinsic::getOrInsertDeclaration(
       module, intrinsic_id, AsArrayRef(overloaded_types));
-  return b->CreateCall(intrinsic, AsArrayRef(operands), name.data());
+  return b->CreateCall(intrinsic, AsArrayRef(operands), AsStringRef(name));
 }
 
 llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
@@ -145,7 +145,7 @@ llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
                           absl::string_view name) {
   if (b->getFastMathFlags().noNaNs() || enable_fast_min_max) {
     auto cmp = b->CreateFCmpUGE(lhs_value, rhs_value);
-    return b->CreateSelect(cmp, lhs_value, rhs_value, name.data());
+    return b->CreateSelect(cmp, lhs_value, rhs_value, AsStringRef(name));
   }
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::maximum,
                                       {lhs_value, rhs_value},
@@ -157,7 +157,7 @@ llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
                           absl::string_view name) {
   if (b->getFastMathFlags().noNaNs() || enable_fast_min_max) {
     auto cmp = b->CreateFCmpULE(lhs_value, rhs_value);
-    return b->CreateSelect(cmp, lhs_value, rhs_value, name.data());
+    return b->CreateSelect(cmp, lhs_value, rhs_value, AsStringRef(name));
   }
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::minimum,
                                       {lhs_value, rhs_value},
@@ -285,7 +285,8 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::LLVMContext& context) {
       PrimitiveTypeToIrType(shape.element_type(), context);
   if (shape.IsTuple()) {
     // A tuple buffer is an array of pointers.
-    result_type = llvm::ArrayType::get(result_type, shape.tuple_shapes_size());
+    result_type =
+        llvm::ArrayType::get(result_type, shape.tuple_shapes().size());
   } else if (shape.IsArray()) {
     for (int64_t dimension : LayoutUtil::MinorToMajor(shape)) {
       result_type =
@@ -297,7 +298,7 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::LLVMContext& context) {
 
 absl::StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(
     const Shape& shape, int32_t* shape_size, llvm::IRBuilderBase* b) {
-  std::string encoded_shape = shape.SerializeAsString();
+  const std::string encoded_shape = shape.ToProto().SerializeAsString();
   if (encoded_shape.size() > std::numeric_limits<int32_t>::max()) {
     return Internal("Encoded shape size exceeded int32_t size limit.");
   }
@@ -467,10 +468,10 @@ llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
   llvm::Value* comparison_result;
   if (lhs_value->getType()->isIntegerTy()) {
     comparison_result =
-        b->CreateICmp(predicate, lhs_value, rhs_value, name.data());
+        b->CreateICmp(predicate, lhs_value, rhs_value, AsStringRef(name));
   } else {
     comparison_result =
-        b->CreateFCmp(predicate, lhs_value, rhs_value, name.data());
+        b->CreateFCmp(predicate, lhs_value, rhs_value, AsStringRef(name));
   }
   // comparison_result is i1, but the NVPTX codegen incorrectly lowers i1
   // arrays. So we extend it to i8 so that it's addressable.

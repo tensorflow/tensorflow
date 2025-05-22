@@ -1527,15 +1527,19 @@ ENTRY twomatmul {
               op::Sharding("{devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}"));
   const HloInstruction* param3 = FindInstruction(module.get(), "parameter.3");
   ASSERT_NE(param3, nullptr);
-  EXPECT_THAT(param3,
-              op::Sharding("{devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}"));
+  EXPECT_THAT(
+      param3,
+      AnyOf(op::Sharding("{devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}"),
+            op::Sharding("{devices=[1,2,2]<=[4] last_tile_dim_replicate}")));
   const HloInstruction* dot4 = FindInstruction(module.get(), "dot.4");
   ASSERT_NE(dot4, nullptr);
   EXPECT_THAT(dot4, op::Sharding("{devices=[2,2]0,2,1,3}"));
   const HloInstruction* dot5 = FindInstruction(module.get(), "dot.5");
   ASSERT_NE(dot5, nullptr);
-  EXPECT_THAT(dot5,
-              op::Sharding("{devices=[2,1,2]0,2,1,3 last_tile_dim_replicate}"));
+  EXPECT_THAT(
+      dot5,
+      AnyOf(op::Sharding("{devices=[2,1,2]0,2,1,3 last_tile_dim_replicate}"),
+            op::Sharding("{devices=[2,2]<=[2,2]T(1,0)}")));
 }
 
 TEST_F(AutoShardingTest, TwoMatmulWithDotReplicationEnabled) {

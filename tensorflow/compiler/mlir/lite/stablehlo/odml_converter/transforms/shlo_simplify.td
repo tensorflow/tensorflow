@@ -19,10 +19,10 @@ include "mlir/IR/CommonAttrConstraints.td"
 include "mlir/IR/CommonTypeConstraints.td"
 
 def CloneF32ElementsAttrWithOnes
-  : NativeCodeCall<"DenseElementsAttr::get($0.getType().cast<ShapedType>(), (float)1.0)">;
+  : NativeCodeCall<"DenseElementsAttr::get(llvm::cast<ShapedType>($0.getType()), (float)1.0)">;
 
 def NotConstant : Constraint<
-    CPred<"$0.isa<BlockArgument>() || !llvm::isa<stablehlo::ConstantOp>($0.getDefiningOp())">,
+    CPred<"llvm::isa<BlockArgument>($0) || !llvm::isa<stablehlo::ConstantOp>($0.getDefiningOp())">,
     "Is not a constant.">;
 
 def : Pat<(StableHLO_DivOp $l,

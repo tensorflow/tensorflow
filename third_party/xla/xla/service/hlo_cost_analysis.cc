@@ -175,9 +175,6 @@ int64_t HloCostAnalysis::GetShapeSize(const Shape& shape) const {
   if (!LayoutUtil::HasLayout(shape)) {
     return 0;
   }
-  if (LayoutUtil::IsSparseArray(shape)) {
-    return 0;
-  }
   return options_.shape_size(shape);
 }
 
@@ -1170,6 +1167,9 @@ absl::Status HloCostAnalysis::FusionProcessOutputBytesAccessed(
       if (bytes_accessed != 0) {
         return bytes_accessed;
       }
+      if (!shape.IsTuple()) {
+        return bytes_accessed;
+      }
       for (int i = 0; i < shape.tuple_shapes_size(); ++i) {
         const Shape& subshape = shape.tuple_shapes(i);
         if (!subshape.IsTuple() && ShouldFilterFusionOutputIndex(fusion, {i})) {
@@ -1456,7 +1456,7 @@ int64_t HloCostAnalysis::bytes_accessed(const HloInstruction& hlo) const {
 
 int64_t HloCostAnalysis::operand_bytes_accessed(const HloInstruction& hlo,
                                                 int64_t operand_num,
-                                                ShapeIndex index) const {
+                                                const ShapeIndex& index) const {
   return GetPropertyForHlo(hlo, GetOperandBytesAccessedKey(operand_num, index),
                            hlo_properties_);
 }

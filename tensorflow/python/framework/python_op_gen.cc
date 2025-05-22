@@ -98,6 +98,8 @@ const std::unordered_map<string, string> dtype_type{
     {"_dtypes.float8_e5m2fnuz", "_atypes.Float8e5m2fnuz"},
     {"_dtypes.int4", "_atypes.Int4"},
     {"_dtypes.uint4", "_atypes.UInt4"},
+    {"_dtypes.int2", "_atypes.Int2"},
+    {"_dtypes.uint2", "_atypes.UInt2"},
 };
 
 string AttrVarName(const string& attr_name,

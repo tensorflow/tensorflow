@@ -152,7 +152,7 @@ class GrpcRemoteMaster : public MasterInterface {
         ctx.set_deadline(absl::ToChronoTime(absl::Now() + timeout));
       }
       s = FromGrpcStatus((stub_.get()->*pfunc)(&ctx, *request, response));
-      if (!errors::IsUnavailable(s)) {
+      if (!absl::IsUnavailable(s)) {
         return s;
       }
       // TODO(b/117162170): we may want to make this configurable.

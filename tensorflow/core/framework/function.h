@@ -641,6 +641,15 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
     return std::nullopt;
   }
 
+  // Returns true if this library contains an OptimizedFunctionGraph for the
+  // given `function_name`, otherwise false.
+  bool HasOptimizedFunctionGraph(const std::string& function_name) const
+      TF_LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock l(mu_);
+    return optimized_function_graph_creator_map_.find(function_name) !=
+           optimized_function_graph_creator_map_.end();
+  }
+
   // Creates a map of function names to stack traces for a FunctionDefLibrary.
   static FunctionDefLibraryStackTraces CreateStackTracesForFunctionDefLibrary(
       const FunctionDefLibrary& library, const GraphDebugInfo& debug_info);

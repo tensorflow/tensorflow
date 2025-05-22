@@ -22,24 +22,13 @@ limitations under the License.
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
-#include "xla/tsl/util/env_var.h"
 
 namespace xla {
-
-bool UseTfrtGpuClient() {
-  bool xla_pjrt_gpu_host_memory_preallocate;
-  if (!tsl::ReadBoolFromEnvVar("USE_TFRT_GPU_CLIENT", false,
-                               &xla_pjrt_gpu_host_memory_preallocate)
-           .ok()) {
-    return false;
-  }
-  return xla_pjrt_gpu_host_memory_preallocate;
-}
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetXlaPjrtGpuClient(
     GpuClientOptions options) {
   // TODO(masonchang): Wrap the GPU Client inside the PJRT Sandwich
-  if (UseTfrtGpuClient()) {
+  if (options.use_tfrt_gpu_client) {
     return GetTfrtGpuClient(options);
   }
   return GetStreamExecutorGpuClient(options);

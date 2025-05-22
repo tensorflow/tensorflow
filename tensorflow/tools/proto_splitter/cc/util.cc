@@ -35,6 +35,7 @@ limitations under the License.
 #include "riegeli/base/maker.h"  // from @riegeli
 #include "riegeli/base/types.h"  // from @riegeli
 #include "riegeli/bytes/fd_reader.h"  // from @riegeli
+#include "riegeli/bytes/string_reader.h"  // from @riegeli
 #include "riegeli/records/record_reader.h"  // from @riegeli
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system_helper.h"
@@ -741,6 +742,16 @@ std::string HumanReadableDuration(int64_t microseconds) {
 absl::StatusOr<riegeli::RecordReader<riegeli::FdReader<>>> GetRiegeliReader(
     absl::string_view cpb_file) {
   riegeli::RecordReader reader(riegeli::Maker<riegeli::FdReader>(cpb_file));
+  if (!reader.ok()) {
+    return reader.status();
+  }
+  return reader;
+}
+
+absl::StatusOr<riegeli::RecordReader<riegeli::StringReader<>>>
+GetRiegeliStringReader(absl::string_view cpb_data) {
+  riegeli::RecordReader reader(
+      riegeli::Maker<riegeli::StringReader<>>(cpb_data));
   if (!reader.ok()) {
     return reader.status();
   }

@@ -6,6 +6,8 @@ import "google/protobuf/any.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 
+// internal imports
+
 // Defines generic pass stats.
 message KeyValueMetric {
   string key = 1;

@@ -1,3 +1,5 @@
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_xla//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
 load(
     "@local_xla//xla/tsl:tsl.bzl",
@@ -106,6 +108,10 @@ cc_library(
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
         "@local_xla//xla/service:gpu_plugin",
         "//tensorflow/core/tfrt/common:pjrt_gpu_client_registration",
+    ]) + if_cuda([
+        "@local_xla//xla/stream_executor/cuda:all_runtime",  # buildcleaner: keep
+    ]) + if_rocm([
+        "@local_xla//xla/stream_executor/rocm:all_runtime",  # buildcleaner: keep
     ]),
     alwayslink = 1,
 )

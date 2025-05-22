@@ -142,7 +142,7 @@ absl::StatusOr<ReplacedAsync> CreateAsyncStartDone(
 int64_t GetShapeSize(const Shape& shape) {
   int64_t size_in_bytes = 0;
   if (shape.IsTuple()) {
-    for (int64_t i = 0; i < shape.tuple_shapes_size(); ++i) {
+    for (int64_t i = 0; i < shape.tuple_shapes().size(); ++i) {
       size_in_bytes += GetShapeSize(shape.tuple_shapes(i));
     }
     return size_in_bytes;
@@ -219,6 +219,8 @@ absl::StatusOr<bool> AsyncCollectiveCreator::ReplaceCollectives(
     TF_RETURN_IF_ERROR(async_pair.status());
     async_pair->start->set_metadata(instruction->metadata());
     async_pair->start->CopyBackendConfigFrom(instruction);
+    async_pair->done->set_metadata(instruction->metadata());
+    async_pair->done->CopyBackendConfigFrom(instruction);
     if (should_update_schedule) {
       replaced_pairs[instruction] = *async_pair;
     }

@@ -45,10 +45,10 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantizeUtils.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/portable_tensor_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/QuantizeUtils.h"
 #include "tensorflow/compiler/mlir/quantization/common/ir/UniformSupport.h"
 #include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_traits.h"
 #include "tensorflow/compiler/mlir/tools/optimize/quantization_utils.h"
@@ -712,7 +712,7 @@ ElementsAttr Quantize(const Attribute real_value, const Type tensor_type) {
           quant::QuantizedType::getQuantizedElementType(tensor_type)) {
     Type converted_type;
     return dyn_cast_or_null<ElementsAttr>(
-        quantfork::quantizeAttr(real_value, q_type, converted_type));
+        mlir::quant::ir::quantizeAttr(real_value, q_type, converted_type));
   }
   return {};
 }

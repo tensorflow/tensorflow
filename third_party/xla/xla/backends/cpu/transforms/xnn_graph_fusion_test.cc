@@ -25,9 +25,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/cpu/backend_config.pb.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -36,7 +36,7 @@ namespace op = xla::testing::opcode_matchers;
 namespace xla::cpu {
 namespace {
 
-using XnnGraphFusionTest = HloTestBase;
+using XnnGraphFusionTest = HloHardwareIndependentTestBase;
 
 TEST_F(XnnGraphFusionTest, BasicFusion) {
   std::string hlo_string = R"(

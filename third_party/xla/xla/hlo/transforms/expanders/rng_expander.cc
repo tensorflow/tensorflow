@@ -38,8 +38,8 @@ namespace xla {
 namespace {
 
 int64_t GlobalRandomValue() {
-  static auto* mu = new absl::Mutex();
-  static std::mt19937_64 rng{42};
+  static auto* const mu = new absl::Mutex();
+  static std::mt19937_64 rng{8};
   absl::MutexLock l(mu);
   return rng();
 }

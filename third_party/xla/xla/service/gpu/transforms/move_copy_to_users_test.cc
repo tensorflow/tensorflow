@@ -21,19 +21,20 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/layout_assignment.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-class MoveCopyToUsersTest : public HloTestBase {
+class MoveCopyToUsersTest : public HloHardwareIndependentTestBase {
  public:
   MoveCopyToUsersTest()
-      : HloTestBase(/*verifier_layout_sensitive=*/true,
-                    /*allow_mixed_precision_in_hlo_verifier=*/true,
-                    LayoutAssignment::InstructionCanChangeLayout) {}
+      : HloHardwareIndependentTestBase(
+            /*verifier_layout_sensitive=*/true,
+            /*allow_mixed_precision_in_hlo_verifier=*/true,
+            LayoutAssignment::InstructionCanChangeLayout) {}
   void CheckMoveCopyToUsers(absl::string_view hlo,
                             std::optional<absl::string_view> expected) {
     RunAndFilecheckHloRewrite(hlo, MoveCopyToUsers{}, expected);

@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/tsl/util/reporter.h"
 
 #include "xla/tsl/platform/errors.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/str_util.h"
 
 namespace tsl {
@@ -25,12 +24,16 @@ TestReportFile::TestReportFile(const string& fname, const string& test_name)
     : closed_(true), fname_(fname), test_name_(test_name) {}
 
 absl::Status TestReportFile::Append(const string& content) {
-  if (closed_) return absl::OkStatus();
+  if (closed_) {
+    return absl::OkStatus();
+  }
   return log_file_->Append(content);
 }
 
 absl::Status TestReportFile::Close() {
-  if (closed_) return absl::OkStatus();
+  if (closed_) {
+    return absl::OkStatus();
+  }
   closed_ = true;
   return log_file_->Close();
 }
@@ -59,7 +62,9 @@ TestReporter::TestReporter(const string& fname, const string& test_name)
 }
 
 absl::Status TestReporter::Close() {
-  if (report_file_.IsClosed()) return absl::OkStatus();
+  if (report_file_.IsClosed()) {
+    return absl::OkStatus();
+  }
 
   tensorflow::BenchmarkEntries entries;
   *entries.add_entry() = benchmark_entry_;
@@ -71,7 +76,9 @@ absl::Status TestReporter::Close() {
 
 absl::Status TestReporter::Benchmark(int64_t iters, double cpu_time,
                                      double wall_time, double throughput) {
-  if (report_file_.IsClosed()) return absl::OkStatus();
+  if (report_file_.IsClosed()) {
+    return absl::OkStatus();
+  }
   benchmark_entry_.set_iters(iters);
   benchmark_entry_.set_cpu_time(cpu_time / iters);
   benchmark_entry_.set_wall_time(wall_time / iters);
@@ -81,19 +88,25 @@ absl::Status TestReporter::Benchmark(int64_t iters, double cpu_time,
 
 absl::Status TestReporter::SetProperty(const string& name,
                                        const string& value) {
-  if (report_file_.IsClosed()) return absl::OkStatus();
+  if (report_file_.IsClosed()) {
+    return absl::OkStatus();
+  }
   (*benchmark_entry_.mutable_extras())[name].set_string_value(value);
   return absl::OkStatus();
 }
 
 absl::Status TestReporter::SetProperty(const string& name, double value) {
-  if (report_file_.IsClosed()) return absl::OkStatus();
+  if (report_file_.IsClosed()) {
+    return absl::OkStatus();
+  }
   (*benchmark_entry_.mutable_extras())[name].set_double_value(value);
   return absl::OkStatus();
 }
 
 absl::Status TestReporter::AddMetric(const string& name, double value) {
-  if (report_file_.IsClosed()) return absl::OkStatus();
+  if (report_file_.IsClosed()) {
+    return absl::OkStatus();
+  }
   auto* metric = benchmark_entry_.add_metrics();
   metric->set_name(name);
   metric->set_value(value);

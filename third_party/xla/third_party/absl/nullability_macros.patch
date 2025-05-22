@@ -1,0 +1,24 @@
+# absl_nonnull, absl_nullable, and absl_nullability_unknown are not yet present
+# in the version of absl we are using. This patch can be removed when the absl
+# version used is bumped to commit 48f0f91 or newer, unless the check for
+# `ABSL_HAVE_FEATURE(nullability_on_classes)` is critical, which was added in
+# commit 9e660cf.
+diff --git a/absl/base/nullability.h b/absl/base/nullability.h
+--- a/absl/base/nullability.h
++++ b/absl/base/nullability.h
+@@ -221,4 +221,15 @@ using NullabilityUnknown = nullability_internal::NullabilityUnknownImpl<T>;
+ 
+ }  // namespace absl
+ 
++#if defined(__clang__) && !defined(__OBJC__) && \
++ABSL_HAVE_FEATURE(nullability_on_classes)
++#define absl_nonnull _Nonnull
++#define absl_nullable _Nullable
++#define absl_nullability_unknown _Null_unspecified
++#else
++#define absl_nonnull
++#define absl_nullable
++#define absl_nullability_unknown
++#endif
++
+ #endif  // ABSL_BASE_NULLABILITY_H_

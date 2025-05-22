@@ -114,8 +114,8 @@ BlockArgument InsertFilePrefixArgument(func::FuncOp func_op,
 
   const int insert_idx = func_op.getNumArguments();
 
-  func_op.insertArgument(insert_idx, /*argType=*/filename_op_type, arg_attrs,
-                         NameLoc::get(file_prefix_attr));
+  (void)func_op.insertArgument(insert_idx, /*argType=*/filename_op_type,
+                               arg_attrs, NameLoc::get(file_prefix_attr));
 
   return func_op.getArgument(insert_idx);
 }

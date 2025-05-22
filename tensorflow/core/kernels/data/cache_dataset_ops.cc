@@ -1195,7 +1195,7 @@ void CacheDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
       auto handle = HandleFromInput(ctx, 2);
       absl::Status s = ctx->resource_manager()->Lookup<MemoryCacheManager>(
           handle.container(), handle.name(), &manager);
-      if (errors::IsNotFound(s)) {
+      if (absl::IsNotFound(s)) {
         owns_resource = true;
         OP_REQUIRES_OK(
             ctx,

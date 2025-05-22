@@ -46,11 +46,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/converter_flags.pb.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export_flags.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
-#include "tensorflow/compiler/mlir/lite/tools/tf_mlir_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "xla/hlo/translate/hlo_to_mhlo/translate.h"
@@ -58,8 +57,14 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 
+using llvm::cl::opt;
 using mlir::MLIRContext;
 using mlir::ModuleOp;
+
+// NOLINTNEXTLINE
+opt<bool> upgrade_legacy("tf-upgrade-legacy",
+                         llvm::cl::desc("Upgrade legacy TF graph behavior"),
+                         llvm::cl::init(false));
 
 // NOLINTNEXTLINE
 static llvm::cl::opt<std::string> weight_quantization(
@@ -184,9 +189,9 @@ int main(int argc, char **argv) {
   if (!module.ok()) return kTrFailure;
 
   // Set the quantization specifications from the command line flags.
-  mlir::quant::QuantizationSpecs quant_specs;
-  if (mlir::quant::ParseInputNodeQuantSpecs(
-          input_arrays, min_values, max_values, inference_type, &quant_specs)) {
+  mlir::TFL::QuantizationSpecs quant_specs;
+  if (mlir::TFL::ParseInputNodeQuantSpecs(input_arrays, min_values, max_values,
+                                          inference_type, &quant_specs)) {
     llvm::errs() << "Failed to get input quant spec.";
     return kTrFailure;
   }

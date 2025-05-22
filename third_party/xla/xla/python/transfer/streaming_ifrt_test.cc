@@ -46,17 +46,17 @@ limitations under the License.
 namespace aux {
 namespace {
 
-xla::ifrt::PjRtDevice* GetOtherDevice(tsl::RCReference<xla::ifrt::Array> arr) {
+xla::ifrt::PjRtDevice* GetOtherDevice(xla::ifrt::ArrayRef arr) {
   auto* ifrt_client =
       llvm::dyn_cast_or_null<xla::ifrt::PjRtClient>(arr->client());
   return llvm::dyn_cast<xla::ifrt::PjRtDevice>(ifrt_client->devices()[1]);
 }
 
-xla::ifrt::PjRtClient* GetIfrtClient(tsl::RCReference<xla::ifrt::Array> arr) {
+xla::ifrt::PjRtClient* GetIfrtClient(xla::ifrt::ArrayRef arr) {
   return llvm::dyn_cast_or_null<xla::ifrt::PjRtClient>(arr->client());
 }
 
-xla::Shape ShapeFromIfrt(tsl::RCReference<xla::ifrt::Array> arr) {
+xla::Shape ShapeFromIfrt(xla::ifrt::ArrayRef arr) {
   auto* pjrt_arr =
       llvm::dyn_cast_or_null<xla::ifrt::PjRtCompatibleArray>(arr.get());
   auto buffer = pjrt_arr->pjrt_buffers()[0].get();
@@ -65,7 +65,7 @@ xla::Shape ShapeFromIfrt(tsl::RCReference<xla::ifrt::Array> arr) {
 
 struct SingleBufferCopyPlan {
   std::vector<tsl::RCReference<ChunkDestination>> dests;
-  std::vector<tsl::RCReference<xla::ifrt::Array>> arrays;
+  std::vector<xla::ifrt::ArrayRef> arrays;
 };
 
 // Single buffer copy plan example.
@@ -119,7 +119,7 @@ TEST(PremappedCopierState, RoundTrip) {
 
   for (size_t i = 0; i < src_work_units.size(); ++i) {
     cstate->ScheduleCopy(
-        src_work_units[i],
+        std::move(src_work_units[i]),
         [&mu, &local_queue](PremappedCopierState* state, void* buf,
                             const DmaCopyChunk& chunk) {
           absl::MutexLock l(&mu);

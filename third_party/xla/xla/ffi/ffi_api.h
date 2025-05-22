@@ -18,12 +18,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
-#include <string_view>
 #include <variant>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
@@ -150,12 +150,12 @@ bool IsCommandBufferCompatible(XLA_FFI_Handler_Traits traits);
 
 // Returns registered FFI handler for a given name and platform, or an error if
 // it's not found in the static registry.
-absl::StatusOr<HandlerRegistration> FindHandler(std::string_view name,
-                                                std::string_view platform);
+absl::StatusOr<HandlerRegistration> FindHandler(absl::string_view name,
+                                                absl::string_view platform);
 
 // Returns all registered calls in the static registry for a given platform.
 absl::StatusOr<absl::flat_hash_map<std::string, HandlerRegistration>>
-StaticRegisteredHandlers(std::string_view platform);
+StaticRegisteredHandlers(absl::string_view platform);
 
 //===----------------------------------------------------------------------===//
 // XLA FFI Api Implementation

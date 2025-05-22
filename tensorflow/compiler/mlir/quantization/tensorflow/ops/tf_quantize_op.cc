@@ -153,8 +153,8 @@ QuantizedType CalculateUniformQuantParams(
   DenseFPElementsAttr attr;
   if (!matchPattern(op->getResult(0), m_Constant(&attr))) return nullptr;
 
-  QuantizedType quant_type = mlir::dyn_cast<quant::QuantizedType>(
-      quant::GetUniformQuantizedTypeForWeight(
+  QuantizedType quant_type =
+      mlir::dyn_cast<quant::QuantizedType>(GetUniformQuantizedTypeForWeight(
           attr, /*symmetric=*/kIsNarrowRange && kIsSigned, kBitWidth, kIsSigned,
           kIsNarrowRange, /*is_legacy_float*/ false));
 

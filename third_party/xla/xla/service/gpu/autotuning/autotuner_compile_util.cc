@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace gpu {
@@ -70,14 +71,12 @@ std::vector<ExecutionInput> ExecutionInputsFromBuffers(
 
 }  // namespace
 
-AutotunerCompileUtil::AutotunerCompileUtil(const AutotuneConfig& config,
-                                           Compiler* compiler,
+AutotunerCompileUtil::AutotunerCompileUtil(std::unique_ptr<Compiler> compiler,
                                            se::StreamExecutor& stream_executor,
                                            se::Stream& stream,
                                            se::DeviceMemoryAllocator& allocator,
                                            const DebugOptions& opts)
-    : config_(config),
-      compiler_(compiler),
+    : compiler_(std::move(compiler)),
       stream_executor_(stream_executor),
       stream_(stream),
       allocator_(allocator),
@@ -104,6 +103,7 @@ AutotunerCompileUtil::ProfileExecutable(
     Executable* executable, se::Stream* stream,
     absl::Span<se::DeviceMemoryBase const> input_buffers,
     absl::Span<Shape const> input_shapes) {
+  tsl::profiler::TraceMe traceme("ProfileExecutable");
   {
     std::vector<ExecutionInput> execution_inputs =
         ExecutionInputsFromBuffers(input_buffers, input_shapes);
@@ -129,6 +129,7 @@ AutotunerCompileUtil::ProfileExecutable(
 
 absl::StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::Compile(
     GenerateModuleFn extractor) {
+  tsl::profiler::TraceMe traceme("AutotunerCompile");
   absl::StatusOr<std::unique_ptr<HloModule>> new_hlo_module = extractor(opts_);
   if (new_hlo_module.status().GetPayload(kUncompilableFusion).has_value()) {
     // Incompatible value of split-k is an example of an expected failure.
@@ -157,7 +158,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> AutotunerCompileUtil::ExtractModule(
 }
 
 /*static*/ absl::StatusOr<AutotunerCompileUtil> AutotunerCompileUtil::Create(
-    const AutotuneConfig& config, const DebugOptions& opts) {
+    const DeviceOrDevicelessConfig& config, const DebugOptions& opts) {
+  tsl::profiler::TraceMe traceme("AutotunerCreate");
   if (config.IsDeviceless()) {
     return absl::InvalidArgumentError(
         "Deviceless autotuning is not supported.");
@@ -165,15 +167,16 @@ absl::StatusOr<std::unique_ptr<HloModule>> AutotunerCompileUtil::ExtractModule(
   se::StreamExecutor* stream_exec = config.GetExecutor();
   se::DeviceMemoryAllocator* allocator = config.GetAllocator();
   TF_ASSIGN_OR_RETURN(se::Stream* const stream, config.GetStream());
-  TF_ASSIGN_OR_RETURN(Compiler * compiler,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
                       Compiler::GetForPlatform(stream_exec->GetPlatform()));
-  return AutotunerCompileUtil(config, compiler, *stream_exec, *stream,
+  return AutotunerCompileUtil(std::move(compiler), *stream_exec, *stream,
                               *allocator, opts);
 }
 
 absl::StatusOr<ExecutionOutput> AutotunerCompileUtil::Execute(
     Executable& executable, std::vector<ExecutionInput> arguments,
     ExecutionProfile* profile) {
+  tsl::profiler::TraceMe traceme("AutotunerExecute");
   // Require exclusive GPU lock to prevent other runs during autotuning.
   GpuExecutableRunOptions gpu_opts;
   gpu_opts.set_requires_exclusive_lock_on_gpu();
@@ -190,86 +193,6 @@ absl::StatusOr<ExecutionOutput> AutotunerCompileUtil::Execute(
                           &service_run_options, std::move(arguments)));
 
   return std::move(output);
-}
-
-absl::StatusOr<RedzoneBuffers> RedzoneBuffers::FromInstruction(
-    const HloInstruction& instruction, const AutotuneConfig& config,
-    const DebugOptions& debug_options, BuffersToCreate buffers_to_create) {
-  RedzoneBuffers buffers;
-  TF_ASSIGN_OR_RETURN(se::Stream * stream, config.GetStream());
-  buffers.redzone_allocator_ = std::make_unique<se::RedzoneAllocator>(
-      stream, config.GetAllocator(),
-      /*memory_limit=*/std::numeric_limits<int64_t>::max(),
-      /*redzone_size=*/config.should_check_correctness()
-          ? debug_options.xla_gpu_redzone_padding_bytes()
-          : 0);
-
-  int64_t rng_state = 0;
-
-  TF_RETURN_IF_ERROR(
-      buffers.CreateInputs(instruction, config, debug_options, rng_state));
-
-  if (buffers_to_create == BuffersToCreate::kAllInputsAllOutputs ||
-      buffers_to_create == BuffersToCreate::kAllInputsOutputsNoScratch) {
-    TF_RETURN_IF_ERROR(buffers.CreateOutputs(instruction, config, debug_options,
-                                             buffers_to_create, rng_state));
-  }
-
-  return buffers;
-}
-
-absl::Status RedzoneBuffers::CreateInputs(const HloInstruction& instruction,
-                                          const AutotuneConfig& config,
-                                          const DebugOptions& debug_options,
-                                          int64_t& rng_state) {
-  for (const auto* operand : instruction.operands()) {
-    TF_ASSIGN_OR_RETURN(
-        se::DeviceMemoryBase buf,
-        redzone_allocator_->CreateBuffer(
-            operand->shape(), config.should_init_buffers(), rng_state));
-    input_buffers_.push_back(buf);
-    input_shapes_.push_back(operand->shape());
-  }
-  return absl::OkStatus();
-}
-
-absl::Status RedzoneBuffers::CreateOutputs(const HloInstruction& instruction,
-                                           const AutotuneConfig& config,
-                                           const DebugOptions& debug_options,
-                                           BuffersToCreate buffers_to_create,
-                                           int64_t& rng_state) {
-  if (!instruction.shape().IsTuple()) {
-    TF_ASSIGN_OR_RETURN(
-        se::DeviceMemoryBase buf,
-        redzone_allocator_->CreateBuffer(
-            instruction.shape(), config.should_init_buffers(), rng_state));
-    output_buffers_.push_back(buf);
-    output_shape_ = instruction.shape();
-    return absl::OkStatus();
-  }
-
-  // The output is a tuple.
-
-  auto current_shape_it = instruction.shape().tuple_shapes().begin();
-  auto end = instruction.shape().tuple_shapes().end();
-  end -= buffers_to_create == kAllInputsAllOutputs ? 0 : 1;
-
-  output_shape_ = std::distance(current_shape_it, end) == 1
-                      ? output_shape_ = *current_shape_it
-                      : ShapeUtil::MakeTupleShape(
-                            std::vector<Shape>{current_shape_it, end});
-
-  for (; current_shape_it < end; current_shape_it++) {
-    if (current_shape_it->IsTuple()) {
-      return Unimplemented("Nested tuples are unsupported by RedzoneBuffers.");
-    }
-    TF_ASSIGN_OR_RETURN(
-        se::DeviceMemoryBase buf,
-        redzone_allocator_->CreateBuffer(
-            *current_shape_it, config.should_init_buffers(), rng_state));
-    output_buffers_.push_back(buf);
-  }
-  return absl::OkStatus();
 }
 
 }  // namespace gpu

@@ -20,7 +20,6 @@ limitations under the License.
 #include <optional>
 #include <string>
 
-#include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
@@ -31,10 +30,11 @@ limitations under the License.
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 
 namespace xla::cpu {
 
-class TargetMachineTestBase : public ::testing::Test {
+class TargetMachineTestBase : public HloHardwareIndependentTestBase {
  protected:
   void SetUp() override {
     LLVMInitializeX86Target();

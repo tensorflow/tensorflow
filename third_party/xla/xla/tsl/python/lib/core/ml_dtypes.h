@@ -35,6 +35,8 @@ struct NumpyDtypes {
   int float8_e8m0fnu;
   int int4;
   int uint4;
+  int int2;
+  int uint2;
 };
 
 // RegisterTypes imports the ml_dtypes module. It should be called before using

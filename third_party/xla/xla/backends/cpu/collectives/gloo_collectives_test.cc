@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/global_device_id.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -110,9 +111,15 @@ absl::StatusOr<std::vector<uint8_t>> AllReduce(
       GetCommunicator(kNumParticipants, global_devices, kv_store, rank));
 
   CpuCollectives::Executor executor(rendezvous_key, kTimeout);
-  TF_RETURN_IF_ERROR(communicator->AllReduce(
+  auto event = communicator->AllReduce(
       AsDeviceMemory(input_buffer), AsDeviceMemory(output_buffer),
-      xla::PrimitiveType::U8, kBufferSize, xla::ReductionKind::SUM, executor));
+      xla::PrimitiveType::U8, kBufferSize, xla::ReductionKind::SUM, executor);
+
+  tsl::BlockUntilReady(event);
+
+  if (event.IsError()) {
+    return event.GetError();
+  }
 
   return output_buffer;
 }

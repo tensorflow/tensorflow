@@ -110,9 +110,7 @@ typedef PJRT_Error* PJRT_RawBuffer_CopyRawHostToDevice(
 #define _PJRT_API_STRUCT_FIELD(fn_type) fn_type* fn_type
 
 typedef struct PJRT_RawBuffer_Extension {
-  size_t struct_size;
-  PJRT_Extension_Type type;
-  PJRT_Extension_Base* next;
+  PJRT_Extension_Base base;
   _PJRT_API_STRUCT_FIELD(PJRT_RawBuffer_CreateRawAliasOfBuffer);
   _PJRT_API_STRUCT_FIELD(PJRT_RawBuffer_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_RawBuffer_GetOnDeviceSizeInBytes);

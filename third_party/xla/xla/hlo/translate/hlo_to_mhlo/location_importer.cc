@@ -26,9 +26,8 @@ limitations under the License.
 #include "xla/hlo/translate/hlo_to_mhlo/stack_location_utils.h"
 
 namespace mlir {
-namespace mhlo {
+namespace hlo {
 
-// TODO(herhut): Refactor the format.
 mlir::Location GenerateInstructionLocation(
     const xla::HloInstruction* instruction, mlir::MLIRContext* context) {
   mlir::Builder b(context);
@@ -61,5 +60,5 @@ mlir::Location GenerateInstructionLocation(
                                  instruction->metadata().source_line(), 0)});
 }
 
-}  // namespace mhlo
+}  // namespace hlo
 }  // namespace mlir

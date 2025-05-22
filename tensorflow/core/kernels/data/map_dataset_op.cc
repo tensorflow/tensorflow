@@ -190,7 +190,7 @@ class MapDatasetOp::Dataset : public DatasetBase {
 
       absl::Status s = instantiated_captured_func_->Run(
           ctx, std::move(args), out_tensors, model_node());
-      if (errors::IsOutOfRange(s)) {
+      if (absl::IsOutOfRange(s)) {
         if (dataset()->preserve_cardinality_) {
           // To guarantee that the transformation preserves the cardinality of
           // the dataset, we convert `OutOfRange` to `InvalidArgument` as the

@@ -1,4 +1,4 @@
-// RUN: xla-opt --int4-to-packed-int4-rewrite --canonicalize -- %s | FileCheck --dump-input=never %s
+// RUN: xla-opt --int4-to-packed-int4-rewrite --canonicalize -- %s | FileCheck --dump-input=fail %s
 
 module {
   tt.func @minor_2d(%arg0: !tt.ptr<i4> {tt.divisibility = 16 : i32}, %arg1: !tt.ptr<i8> {tt.divisibility = 16 : i32}) {
@@ -9,7 +9,7 @@ module {
     %c64_i32 = arith.constant 64 : i32
     %cst = arith.constant dense<0> : tensor<64x64xi8>
 
-                     %0 = tt.make_tensor_ptr %arg0, [%c1_i64, %c128_i64], [%c128_i64, %c1_i64], [%c0_i32, %c0_i32] {order = array<i32: 1, 0>, packed_dim = 0 } : <tensor<64x64xi4>>
+                     %0 = tt.make_tensor_ptr %arg0, [%c1_i64, %c128_i64], [%c128_i64, %c1_i64], [%c0_i32, %c0_i32] {order = array<i32: 1, 0>} : <tensor<64x64xi4>>
 // CHECK:            %0 = tt.make_tensor_ptr %arg0, [%c1_i64, %c64_i64], [%c64_i64, %c1_i64], [%c0_i32, %c0_i32] {order = array<i32: 1, 0>} : <tensor<64x32xi8>>
 
                      %1 = tt.advance %0, [%c64_i32, %c0_i32] : <tensor<64x64xi4>>

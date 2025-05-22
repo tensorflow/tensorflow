@@ -18,12 +18,13 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "xla/hlo/testlib/filecheck.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/stream_executor/device_description.h"
@@ -37,6 +38,9 @@ namespace {
 
 constexpr const char* kFile = "profiles.pbtxt";
 
+using ::testing::DoubleNear;
+using ::testing::ElementsAre;
+using ::testing::Property;
 using ::testing::Test;
 
 DeviceHloInstructionProfiles TestProfiles(
@@ -96,9 +100,9 @@ DeviceHloInstructionProfiles TestProfiles(
   return profiles;
 }
 
-class MatmulPerfTableStatsCollectionTest : public Test {
+class MatmulStatsCollectionTest : public Test {
  public:
-  explicit MatmulPerfTableStatsCollectionTest()
+  explicit MatmulStatsCollectionTest()
       : device_info_(TestGpuDeviceInfo::RTXA6000DeviceInfo()),
         profiles_path_(tsl::io::JoinPath(tsl::testing::TmpDir(), kFile)) {}
 
@@ -112,7 +116,7 @@ class MatmulPerfTableStatsCollectionTest : public Test {
   const std::string profiles_path_;
 };
 
-TEST_F(MatmulPerfTableStatsCollectionTest,
+TEST_F(MatmulStatsCollectionTest,
        CollectsMatmulPerfTableDataForGemmCustomCalls) {
   absl::string_view hlo = R"(
     HloModule m
@@ -147,14 +151,16 @@ TEST_F(MatmulPerfTableStatsCollectionTest,
   VLOG(1) << module->ToString();
 
   EXPECT_FALSE(changed);
-  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
-  CHECK: dot
-  CHECK-SAME: gemm_backend_config
-  CHECK-SAME: "exec_time_us":1000000
-  )"));
+  EXPECT_THAT(
+      module->entry_computation()
+          ->root_instruction()
+          ->backend_config<GpuBackendConfig>()
+          ->reification_cost(),
+      ElementsAre(Property(&ReificationCost::exec_time_us,
+                           DoubleNear(1000000, /*max_abs_error=*/0.01))));
 }
 
-TEST_F(MatmulPerfTableStatsCollectionTest,
+TEST_F(MatmulStatsCollectionTest,
        CollectsMatmulPerfTableDataForTritonFusionConfig) {
   absl::string_view hlo = R"(
     HloModule m
@@ -199,11 +205,64 @@ TEST_F(MatmulPerfTableStatsCollectionTest,
   VLOG(1) << module->ToString();
 
   EXPECT_FALSE(changed);
-  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
-  CHECK: triton_gemm
-  CHECK-SAME: fusion_backend_config
-  CHECK-SAME: "exec_time_us":1000000
-  )"));
+  EXPECT_EQ(module->entry_computation()
+                ->root_instruction()
+                ->backend_config<GpuBackendConfig>()
+                ->reification_cost_size(),
+            0);
+}
+
+TEST_F(MatmulStatsCollectionTest,
+       CollectsMatmulGEMMCostModelDataForTritonFusionConfig) {
+  absl::string_view hlo = R"(
+    HloModule m
+
+    comp {
+      p0 = bf16[1024,1024] parameter(0)
+      p1 = bf16[1024,1024] parameter(1)
+      ROOT _ = bf16[1024,1024] dot(p0,p1),
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+
+    ENTRY e {
+      p0 = bf16[1024,1024] parameter(0)
+      p1 = bf16[1024,1024] parameter(1)
+      ROOT triton_gemm =  bf16[1024,1024] fusion(p0,p1),
+        kind=kCustom,
+        calls=comp,
+        backend_config={
+          "operation_queue_id":"0",
+          "wait_on_operation_queues":[],
+          "fusion_backend_config": {
+            "kind":"__triton_gemm",
+            "triton_gemm_config":{
+              "block_m":"128",
+              "block_n":"128",
+              "block_k":"64",
+              "split_k":"1",
+              "num_stages":"1",
+              "num_warps":"8",
+              "num_ctas":"1"
+            }
+          },
+        }
+    }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, MatmulPerfTableStatsCollection(profiles_path_, device_info_)
+                        .Run(module.get()));
+
+  VLOG(1) << module->ToString();
+
+  EXPECT_FALSE(changed);
+  EXPECT_THAT(module->entry_computation()
+                  ->root_instruction()
+                  ->backend_config<GpuBackendConfig>()
+                  ->reification_cost(),
+              ElementsAre(Property(&ReificationCost::exec_time_us,
+                                   DoubleNear(199, /*max_abs_error=*/1))));
 }
 
 }  // namespace

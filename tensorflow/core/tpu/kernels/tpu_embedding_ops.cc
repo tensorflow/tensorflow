@@ -484,7 +484,7 @@ class SplitDedupDataOp : public XlaOpKernel {
     absl::StatusOr<xla::Shape> tuple_shape = builder->GetShape(input_tuple);
     OP_REQUIRES_OK(ctx, tuple_shape.status());
 
-    const int num_tuple_elements = tuple_shape->tuple_shapes_size();
+    const int num_tuple_elements = tuple_shape->tuple_shapes().size();
     OP_REQUIRES(
         ctx,
         tuple_mask_tensor_.tensor_shape().dim(0).size() == num_tuple_elements,
@@ -712,8 +712,8 @@ class MergeDedupDataOp : public XlaOpKernel {
           ctx, num_integers == 0 && num_floats == 0,
           errors::InvalidArgument(
               "Tuple mask indicates empty tuple, but integer_tensor ",
-              "shape is ", integer_tensor_shape->DebugString(),
-              " float_tensor shape is ", float_tensor_shape->DebugString()));
+              "shape is ", integer_tensor_shape->ToString(),
+              " float_tensor shape is ", float_tensor_shape->ToString()));
       ctx->SetOutput(0, xla::Tuple(builder, {}));
       return;
     }

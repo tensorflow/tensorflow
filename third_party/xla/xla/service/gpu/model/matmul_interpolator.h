@@ -37,7 +37,8 @@ class MatmulInterpolator {
       const se::DeviceDescription& device_info);
 
   // Returns the estimated runtime for a supported `collective`.
-  std::optional<absl::Duration> EstimatedRuntime(const HloInstruction& instr);
+  std::optional<absl::Duration> EstimatedRuntime(
+      const HloInstruction& instr) const;
 
  private:
   // Uses `EuclideanNNInterpolator` to figure get the closest neighbour from

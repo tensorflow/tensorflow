@@ -128,8 +128,8 @@ class Worker {
                                     ParallelTask&& parallel_task);
 
   template <typename ParallelTask>
-  static void ParallelizeWithContext(ParallelizeContext<ParallelTask>* ctx,
-                                     uint16_t start_index, uint16_t end_index);
+  static void Parallelize(ParallelizeContext<ParallelTask>* ctx,
+                          uint16_t start_index, uint16_t end_index);
 
   size_t worker_index_;
   size_t partition_index_;
@@ -201,7 +201,9 @@ inline Worker::Worker(size_t worker_index, WorkQueue* queue)
 
 inline std::optional<size_t> Worker::Pop() {
   std::optional<size_t> task = queue_->Pop(partition_index_);
-  if (ABSL_PREDICT_TRUE(task)) return task;
+  if (ABSL_PREDICT_TRUE(task)) {
+    return task;
+  }
 
   // If we didn't find a task in the initially assigned partition, notify the
   // work queue that we are switching to work stealing mode.
@@ -252,8 +254,8 @@ Worker::ParallelizeContext<ParallelTask>::ParallelizeContext(
 
 template <typename ParallelTask>
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
-void Worker::ParallelizeWithContext(ParallelizeContext<ParallelTask>* ctx,
-                                    uint16_t start_index, uint16_t end_index) {
+void Worker::Parallelize(ParallelizeContext<ParallelTask>* ctx,
+                         uint16_t start_index, uint16_t end_index) {
   DCHECK_LT(start_index, end_index) << "Invalid worker index range";
 
   using R = std::invoke_result_t<ParallelTask, size_t>;
@@ -262,7 +264,9 @@ void Worker::ParallelizeWithContext(ParallelizeContext<ParallelTask>* ctx,
 
   auto count_down = [&](size_t count, absl::Status status) {
     // If count down is completed, delete the context.
-    if (ctx->count_down.CountDown(count, std::move(status))) delete ctx;
+    if (ctx->count_down.CountDown(count, std::move(status))) {
+      delete ctx;
+    }
   };
 
   // Recursively split assigned workers into two halves and schedule the
@@ -285,14 +289,22 @@ void Worker::ParallelizeWithContext(ParallelizeContext<ParallelTask>* ctx,
       count_down(skip_workers, absl::OkStatus());
 
       end_index -= skip_workers;
-      if (start_index == end_index) return;
-      if (end_index - start_index == 1) break;
+
+      // Return if there is no more work to do.
+      if (start_index == end_index) {
+        return;
+      }
+
+      // Execute the last remaining worker in the caller thread.
+      if (end_index - start_index == 1) {
+        break;
+      }
     }
 
     DCHECK_GE(end_index - start_index, 1);
     uint16_t mid_index = (start_index + end_index) / 2;
     ctx->device->enqueueNoNotification([ctx, mid_index, end_index] {
-      ParallelizeWithContext(ctx, mid_index, end_index);
+      Parallelize(ctx, mid_index, end_index);
     });
     end_index = mid_index;
   }
@@ -360,7 +372,7 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE void Worker::Parallelize(
       device, std::move(count_down), num_tasks,
       std::forward<ParallelTask>(parallel_task));
 
-  ParallelizeWithContext(ctx.release(), 0, num_workers);
+  Parallelize(ctx.release(), 0, num_workers);
 }
 
 template <typename ParallelTask>

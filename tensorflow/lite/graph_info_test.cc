@@ -18,7 +18,6 @@ limitations under the License.
 #include <stddef.h>
 
 #include <algorithm>
-#include <memory>
 #include <tuple>
 #include <vector>
 

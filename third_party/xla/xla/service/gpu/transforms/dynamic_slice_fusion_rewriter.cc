@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -27,9 +28,12 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/ffi/ffi_api.h"
@@ -47,9 +51,11 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -408,7 +414,7 @@ absl::Status CreateRootTuple(
     DataflowPathsView sliced_user_paths,
     absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
         instr_mapping) {
-  unsigned tuple_size = hero->shape().tuple_shapes_size();
+  unsigned tuple_size = hero->shape().tuple_shapes().size();
 
   std::vector<HloInstruction*> sliced_elems(tuple_size, nullptr);
   for (auto& sliced_user_path : sliced_user_paths) {
@@ -481,7 +487,7 @@ absl::StatusOr<HloComputation*> CreateFusionBody(
 
   // Create a tuple if the hero is a tuple to make sure there's a buffer
   // assigned for each of the elements. Make sure the tuple is not nil first.
-  if (hero->shape().IsTuple() && hero->shape().tuple_shapes_size() > 0) {
+  if (hero->shape().IsTuple() && hero->shape().tuple_shapes().size() > 0) {
     TF_RETURN_IF_ERROR(
         CreateRootTuple(hero, builder, sliced_user_paths, instr_mapping));
   }

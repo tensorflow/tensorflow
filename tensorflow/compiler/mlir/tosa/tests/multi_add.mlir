@@ -1,5 +1,5 @@
-// RUN: tf-opt --tfl-to-tosa-pipeline=target-compilation-backend %s | FileCheck %s
-// REQUIRES: tf_tosa
+// RUN: tf-tosa-opt --tfl-to-tosa-pipeline=target-compilation-backend %s | FileCheck %s
+
 
 // CHECK:      tensor<1x8x8x3xf32> {ml_program.identifier = "a"}
 // CHECK-SAME: tensor<1x8x8x3xf32> {ml_program.identifier = "b"}

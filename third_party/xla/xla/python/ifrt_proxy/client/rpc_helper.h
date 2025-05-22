@@ -144,6 +144,9 @@ class RpcHelper {
   ResponseFuture<LoadedHostCallbackReturnResponse> LoadedHostCallbackReturn(
       std::unique_ptr<LoadedHostCallbackReturnRequest> req);
 
+  ResponseFuture<GetDefaultLayoutResponse> GetDefaultLayout(
+      std::unique_ptr<GetDefaultLayoutRequest> req);
+
   // Utility functions.
 
   // Generates a handle for new arrays, array data stored in HostBufferStore,

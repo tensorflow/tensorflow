@@ -19,8 +19,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
@@ -435,6 +438,104 @@ TEST_F(BFloat16PropagationTest, PropagateThroughFusion) {
   EXPECT_TRUE(OutputsBF16(b_f0));
   EXPECT_TRUE(OutputsBF16(a_f1));
   EXPECT_TRUE(OutputsBF16(b_f1));
+}
+
+// Tests that BF16 is propagated properly through called fused computations.
+TEST_F(BFloat16PropagationTest, PropagateThroughCalledFusion) {
+  constexpr absl::string_view kHlo = R"(
+HloModule main
+
+ENTRY main {
+  arg.0 = f32[4,4] parameter(0)
+  add.0 = f32[4,4] add(arg.0, arg.0)
+  call.0 = call(add.0, add.0), to_apply={
+    arg.0 = f32[4,4] parameter(0)
+    arg.1 = f32[4,4] parameter(1)
+    ROOT fusion.0 = (f32[4,4], f32[4,4]) fusion(arg.0, arg.1), kind=kCustom, calls={
+      arg.0 = f32[4,4] parameter(0)
+      arg.1 = f32[4,4] parameter(1)
+      ROOT tuple.0 = tuple(arg.0, arg.1)
+    }
+  }
+  ROOT fusion.1 = f32[4,4] fusion(call.0), kind=kCustom, calls={
+    arg.0 = (f32[4,4], f32[4,4]) parameter(0)
+    gte.0 = get-tuple-element(arg.0), index=0
+    gte.1 = get-tuple-element(arg.0), index=1
+    ROOT dot.0 = dot(gte.0, gte.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  }
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+
+  EXPECT_TRUE(PropagatePrecision(module.get()));
+
+  HloInstruction* add0 = FindInstruction(module.get(), "add.0");
+  ASSERT_NE(add0, nullptr);
+  EXPECT_TRUE(OutputsBF16(add0));
+  HloInstruction* call = FindInstruction(module.get(), "call.0");
+  ASSERT_NE(call, nullptr);
+  HloInstruction* arg0 = call->to_apply()->parameter_instruction(0);
+  EXPECT_TRUE(OutputsBF16(arg0));
+  HloInstruction* arg1 = call->to_apply()->parameter_instruction(1);
+  EXPECT_TRUE(OutputsBF16(arg1));
+  HloInstruction* gte0 = FindInstruction(module.get(), "gte.0");
+  ASSERT_NE(gte0, nullptr);
+  EXPECT_TRUE(OutputsBF16(gte0));
+  HloInstruction* gte1 = FindInstruction(module.get(), "gte.1");
+  ASSERT_NE(gte1, nullptr);
+  EXPECT_TRUE(OutputsBF16(gte1));
+}
+
+// Tests that BF16 is propagated properly through async fused computations.
+TEST_F(BFloat16PropagationTest, PropagateThroughAsyncFusion) {
+  constexpr absl::string_view kHlo = R"(
+HloModule main
+
+ENTRY main {
+  arg.0 = f32[4,4] parameter(0)
+  add.0 = f32[4,4] add(arg.0, arg.0)
+  fusion-start.0 = ((f32[4,4], f32[4,4]), (f32[4,4], f32[4,4]), s32[]) fusion-start(add.0, add.0), kind=kCustom, calls={
+    arg.0 = f32[4,4] parameter(0)
+    arg.1 = f32[4,4] parameter(1)
+    ROOT tuple.0 = tuple(arg.0, arg.1)
+  }, async_execution_thread="main"
+  fusion-done.0 = (f32[4,4], f32[4,4]) fusion-done(fusion-start.0)
+  ROOT fusion.1 = f32[4,4] fusion(fusion-done.0), kind=kCustom, calls={
+    arg.0 = (f32[4,4], f32[4,4]) parameter(0)
+    gte.0 = get-tuple-element(arg.0), index=0
+    gte.1 = get-tuple-element(arg.0), index=1
+    ROOT dot.0 = dot(gte.0, gte.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  }
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+
+  EXPECT_TRUE(PropagatePrecision(module.get()));
+
+  HloInstruction* add0 = FindInstruction(module.get(), "add.0");
+  ASSERT_NE(add0, nullptr);
+  EXPECT_TRUE(OutputsBF16(add0));
+  HloInstruction* fusion0 = FindInstruction(module.get(), "fusion-start.0");
+  HloInstruction* async_arg0 =
+      fusion0->async_wrapped_computation()->parameter_instruction(0);
+  EXPECT_TRUE(OutputsBF16(async_arg0));
+  HloInstruction* async_arg1 =
+      fusion0->async_wrapped_computation()->parameter_instruction(1);
+  EXPECT_TRUE(OutputsBF16(async_arg1));
+  HloInstruction* arg0 = fusion0->async_wrapped_instruction()
+                             ->called_computations()[0]
+                             ->parameter_instruction(0);
+  EXPECT_TRUE(OutputsBF16(arg0));
+  HloInstruction* arg1 = fusion0->async_wrapped_instruction()
+                             ->called_computations()[0]
+                             ->parameter_instruction(1);
+  EXPECT_TRUE(OutputsBF16(arg1));
+  HloInstruction* gte0 = FindInstruction(module.get(), "gte.0");
+  ASSERT_NE(gte0, nullptr);
+  EXPECT_TRUE(OutputsBF16(gte0));
+  HloInstruction* gte1 = FindInstruction(module.get(), "gte.1");
+  ASSERT_NE(gte1, nullptr);
+  EXPECT_TRUE(OutputsBF16(gte1));
 }
 
 // Tests that a fusion with a bitcast-convert as its root is changed via adding

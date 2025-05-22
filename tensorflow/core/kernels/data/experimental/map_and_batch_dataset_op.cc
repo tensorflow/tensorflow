@@ -451,7 +451,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
           std::make_shared<std::vector<Tensor>>();
       auto done = [this, ctx, result, return_values,
                    offset](absl::Status status) {
-        if (dataset()->preserve_cardinality_ && errors::IsOutOfRange(status)) {
+        if (dataset()->preserve_cardinality_ && absl::IsOutOfRange(status)) {
           // To guarantee that the transformation preserves the cardinality of
           // the dataset, we convert `OutOfRange` to `InvalidArgument` as the
           // former may be interpreted by a caller as the end of sequence.

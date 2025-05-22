@@ -326,7 +326,7 @@ struct RewriteVectorTransferRead : OpRewritePattern<mv::TransferReadOp> {
     if (vector_type.getRank() != 1) {
       return rewriter.notifyMatchFailure(op, "the vector should be 1D");
     }
-    auto tensor = op.getSource();
+    auto tensor = op.getBase();
     auto tensor_type = tensor.getType();
     if (tensor_type.getRank() < 2) {
       return rewriter.notifyMatchFailure(op,
@@ -411,7 +411,7 @@ struct RewriteVectorInsert : OpRewritePattern<mv::InsertOp> {
                           GetFlattenedType(vector_type), vector)
                          .getResult(0);
     auto new_insert =
-        b.create<mv::InsertOp>(op.getSource(), vector_1D, linear_index);
+        b.create<mv::InsertOp>(op.getValueToStore(), vector_1D, linear_index);
     auto cast_to_orig_type = b.create<UnrealizedConversionCastOp>(
         vector_type, new_insert.getResult());
     rewriter.replaceOp(op, cast_to_orig_type.getResult(0));

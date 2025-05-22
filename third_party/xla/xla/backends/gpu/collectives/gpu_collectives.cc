@@ -20,8 +20,10 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
@@ -70,6 +72,21 @@ absl::StatusOr<const GpuCollectives::Config*> GpuCollectives::TryCast(
     const Collectives::Config* config) {
   if (auto* gpu_config = tsl::down_cast<const Config*>(config)) {
     return gpu_config;
+  }
+  return InvalidArgument("Collectvies config is not a GPU config");
+}
+
+absl::StatusOr<GpuCommunicator*> GpuCollectives::TryCast(Communicator* comm) {
+  if (auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm)) {
+    return gpu_comm;
+  }
+  return InvalidArgument("Collectvies config is not a GPU config");
+}
+
+absl::StatusOr<const GpuCommunicator*> GpuCollectives::TryCast(
+    const Communicator* comm) {
+  if (auto* gpu_comm = tsl::down_cast<const GpuCommunicator*>(comm)) {
+    return gpu_comm;
   }
   return InvalidArgument("Collectvies config is not a GPU config");
 }

@@ -103,10 +103,10 @@ class ShardingConversionsTest : public testing::TestWithParam<int> {
   void AssertSameTiling(const ShardingParam& sharding_param,
                         const HloSharding& hlo_sharding, const Shape& shape) {
     auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
-    TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const Sharding> sharding,
+    TF_ASSERT_OK_AND_ASSIGN(ShardingRef sharding,
                             ShardingParamSharding::Create(
                                 sharding_param, device_list, MemoryKind()));
-    const xla::Shape xla_shape(PrimitiveType::F16, shape.dims(), {});
+    const xla::Shape xla_shape(PrimitiveType::F16, shape.dims());
 
     TF_ASSERT_OK_AND_ASSIGN(const std::vector<IndexDomain> index_domains,
                             sharding->IndexDomains(shape));

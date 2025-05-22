@@ -46,7 +46,7 @@ absl::StatusOr<ShapeHandle> _ComputeOutputShape(
   int rank = InferenceContext::Rank(handle);
   if (partition_dims.empty()) {
     return handle;  // no partitioning; input and output shapes same
-  } else if (rank > partition_dims.size()) {
+  } else if (rank > (int)(partition_dims.size())) {
     return absl::InvalidArgumentError(
         absl::StrCat("Need at least ", rank, " partition dimensions."));
   }
@@ -188,7 +188,6 @@ REGISTER_OP("TPUPartitionedInputV2")
             "Expected at least one input to TPUPartitionedInputV2.");
       }
 
-      ShapeHandle output_shape;
       if (dtype == DT_RESOURCE) {
         ShapeHandle previous_shape_handle;
         const std::vector<shape_inference::ShapeAndType>* shapes_and_types =
@@ -217,19 +216,17 @@ REGISTER_OP("TPUPartitionedInputV2")
 
         if (shapes_and_types) {
           TF_ASSIGN_OR_RETURN(
-              output_shape,
+              ShapeHandle output_handle_shape,
               _ComputeOutputShape(c, previous_shape_handle, partition_dims));
           std::vector<shape_inference::ShapeAndType> output_shapes_and_types;
           output_shapes_and_types.push_back(shape_inference::ShapeAndType(
-              output_shape, shapes_and_types->at(0).dtype));
+              output_handle_shape, shapes_and_types->at(0).dtype));
           c->set_output_handle_shapes_and_types(0, output_shapes_and_types);
         }
       }
 
-      if (!c->FullyDefined(output_shape)) {
-        TF_ASSIGN_OR_RETURN(
-            output_shape, _ComputeOutputShape(c, c->input(0), partition_dims));
-      }
+      TF_ASSIGN_OR_RETURN(ShapeHandle output_shape,
+                          _ComputeOutputShape(c, c->input(0), partition_dims));
 
       c->set_output(0, output_shape);
 

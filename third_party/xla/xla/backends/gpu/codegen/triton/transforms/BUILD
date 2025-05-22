@@ -15,16 +15,11 @@ package_group(
 
 gentbl_cc_library(
     name = "passes_inc_gen",
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=TritonXlaTransforms",
-                "-attrdefs-dialect=triton_xla",
-            ],
-            "passes.h.inc",
-        ),
-    ],
+    tbl_outs = {"passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=TritonXlaTransforms",
+        "-attrdefs-dialect=triton_xla",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "passes.td",
     visibility = ["//visibility:private"],
@@ -34,6 +29,7 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "extract_tma_info_pass.cc",
         "generalize_kernel_signature.cc",
         "int4_passes.cc",
         "prevent_mmav3_loop_unrolling_pass.cc",
@@ -45,7 +41,6 @@ cc_library(
         ":passes_inc_gen",
         "//xla:shape_util",
         "//xla/backends/gpu/codegen/triton:emitter_helpers",
-        "//xla/backends/gpu/codegen/triton:tma_utils",
         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
         "//xla/codegen:emitter_loc_op_builder",
         "//xla/codegen/emitters/ir:xla",
@@ -53,6 +48,7 @@ cc_library(
         "//xla/service/llvm_ir:llvm_util",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
@@ -68,6 +64,8 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
+        "@llvm-project//mlir:ViewLikeInterface",
         "@triton//:TritonDialects",
+        "@triton//:TritonGPUTransforms",
     ],
 )
