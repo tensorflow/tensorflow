@@ -3382,7 +3382,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
   std::unique_ptr<Semaphore::ScopedReservation> compute_reservation;
   {
     tsl::profiler::TraceMe traceme_compute_reservation(
-        "TfrtGpuExecutable::ExecuteHelper::acquire_sempahore");
+        "TfrtGpuExecutable::ExecuteHelper::acquire_semaphore");
 
     VLOG(1) << "Trying to acquire semaphore for " << name() << " on device "
             << device->DebugString();
@@ -3769,7 +3769,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         }
 
         VLOG(1) << "execute_fn for " << executable_name
-                << ", launch_id: " << launch_id
+                << ", launch_id: " << launch_id << ", replica=" << replica
+                << ", partition=" << partition
                 << ", device: " << device->DebugString()
                 << " is done with status " << status;
       };
