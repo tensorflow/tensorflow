@@ -197,3 +197,15 @@ func.func @maximal_sharding_on_op(%arg0: tensor<8x8xf32> {mhlo.sharding = "{devi
   %1 = stablehlo.multiply %0, %0 {mhlo.sharding = "{maximal device=0}"} : tensor<8x8xf32>
   return %1 : tensor<8x8xf32>
 }
+
+// -----
+
+// CHECK: sdy.mesh @mesh = <["_axis_0"=2]>
+// CHECK-LABEL: func.func @v1_sharding_simple_case
+// CHECK-SAME{LITERAL}: %arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"_axis_0"}]>}
+// CHECK-SAME: %arg1: tensor<8xf32>
+func.func @v1_sharding_simple_case(%arg0: tensor<8xf32> {mhlo.sharding = "{devices=[2]0,1}"},
+                                   %arg1: tensor<8xf32>) -> tensor<8xf32> {
+  %0 = stablehlo.add %arg0, %arg1 : tensor<8xf32>
+  return %0 : tensor<8xf32>
+}
