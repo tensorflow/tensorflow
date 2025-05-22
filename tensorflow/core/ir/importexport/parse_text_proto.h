@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_IR_IMPORTEXPORT_PARSE_TEXT_PROTO_H_
 #define TENSORFLOW_CORE_IR_IMPORTEXPORT_PARSE_TEXT_PROTO_H_
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "third_party/protobuf/message.h"
+#include "third_party/protobuf/message_lite.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/protobuf.h"
