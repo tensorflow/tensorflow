@@ -228,6 +228,12 @@ class StrictQuantizationPattern : public RewritePattern {
 
       auto op_quant_type = GetOpQuantizationType(quantizing_op);
 
+      if (op_quant_type == OpQuantizationType::kWeightOnly) {
+        return rewriter.notifyMatchFailure(
+            quantizing_op,
+            "Weight only op does not need any Q-DQ fused to it.");
+      }
+
       if (op_quant_type == OpQuantizationType::kUnsupported) {
         return rewriter.notifyMatchFailure(
             quantizing_op, "Unsupported quantization type for op: " +
@@ -247,13 +253,11 @@ class StrictQuantizationPattern : public RewritePattern {
         }
 
         if (Value dq_input; HasDQParent(operand, dq_input).succeeded()) {
-          if (op_quant_type == OpQuantizationType::kWeightOnly) {
-            inputs.push_back(operand);
-          } else {
-            // In both SRQ and DRQ cases, the DQ is fused in.
-            is_operand_or_result_modified = true;
-            inputs.push_back(dq_input);
-          }
+          // In both SRQ and DRQ cases, the DQ is fused in.
+          // At this stage, we know it is not weight only as we have explicitly
+          // returned from this function above if it is weight only.
+          is_operand_or_result_modified = true;
+          inputs.push_back(dq_input);
         } else if (Value fq_input; IsDrqTensor(operand, fq_input).succeeded()) {
           is_operand_or_result_modified = true;
           inputs.push_back(fq_input);
