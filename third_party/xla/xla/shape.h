@@ -105,9 +105,6 @@ class Shape {
   // opposed to crashing) if the proto has logically invalid fields.
   static absl::StatusOr<Shape> FromProto(const ShapeProto& shape_proto);
 
-  // Creates a buffer shape. `element_shape` must be a valid array shape.
-  static Shape MakeBufferShape(Shape element_shape);
-
   // Returns a ShapeProto representation of the Shape.
   ShapeProto ToProto() const;
 
@@ -534,6 +531,7 @@ class Shape {
   }
 
  private:
+  friend class ShapeUtil;
   friend absl::Status ValidateNonLayoutProperties(const Shape& shape);
 
   // Define one state struct for each shape category. Depending on the element

@@ -84,14 +84,6 @@ Shape::Shape(std::vector<Shape> tuple_shapes) {
   tuple_state().tuple_shapes = std::move(tuple_shapes);
 }
 
-/* static */ Shape Shape::MakeBufferShape(Shape element_shape) {
-  CHECK(element_shape.IsArray())
-      << "element_shape must be an array shape to create a buffer shape.";
-  Shape shape(BUFFER);
-  shape.buffer_state().buffer_shape = {std::move(element_shape)};
-  return shape;
-}
-
 absl::StatusOr<Shape> Shape::FromProto(const ShapeProto& shape_proto) {
   Shape shape;
   shape.set_element_type(shape_proto.element_type());
