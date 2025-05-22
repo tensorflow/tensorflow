@@ -16,9 +16,13 @@ limitations under the License.
 #ifndef XLA_HLO_ANALYSIS_WHILE_LOOP_ANALYSIS_H_
 #define XLA_HLO_ANALYSIS_WHILE_LOOP_ANALYSIS_H_
 
+#include <cstdint>
 #include <optional>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/literal.h"
 #include "xla/service/value_range.h"
 
 namespace xla {
@@ -49,6 +53,13 @@ std::vector<const HloInstruction *> GetAuxiliaryLoopInductionVars(
 std::optional<int64_t> GetLoopInductionVarTupleIdx(
     const HloInstruction *while_op);
 
+// Same as above, but also handles cases where the range of the induction
+// variable depends on previously known values rather than constants. This is
+// useful for unrolling nested loops.
+std::optional<int64_t> GetLoopInductionVarTupleIdxWithKnownValues(
+    const HloInstruction *while_op,
+    const absl::flat_hash_map<const HloInstruction *, Range> &known_values);
+
 // Checks the following conditions:
 //  - `i`, the induction variable, is initialized to a scalar constant K
 //    (namely, `indvar_init`),
@@ -63,6 +74,12 @@ std::optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction *while_op,
 // Same as above, but returns the loop range, i.e., start (inclusive), end
 // (inclusive) and step instead of the trip count.
 std::optional<Range> MatchTrivialLoopRange(const HloInstruction *while_op);
+
+// Same as above, but matches loops whose initial values or termination
+// conditions depend on known values rather than constants.
+std::optional<Range> MatchLoopRangeWithKnownValues(
+    const HloInstruction *while_op, int64_t induction_var_idx,
+    const absl::flat_hash_map<const HloInstruction *, Range> &known_values);
 }  // namespace xla
 
 #endif  // XLA_HLO_ANALYSIS_WHILE_LOOP_ANALYSIS_H_
