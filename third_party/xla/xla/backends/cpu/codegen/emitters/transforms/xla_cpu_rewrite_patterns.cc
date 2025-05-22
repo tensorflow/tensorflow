@@ -146,17 +146,6 @@ struct LowerWorkGroupIdOp : public mlir::OpRewritePattern<WorkGroupIdOp> {
   }
 };
 
-struct LowerStoreOp : public mlir::OpRewritePattern<StoreOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-
-  mlir::LogicalResult matchAndRewrite(
-      StoreOp op, mlir::PatternRewriter& rewriter) const override {
-    rewriter.eraseOp(op);
-    return mlir::success();
-  }
-};
-
 struct LowerSuccessOp : public mlir::OpRewritePattern<SuccessOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
@@ -366,7 +355,7 @@ class WrapEntryWithCallFrame
 
 void PopulateXlaCpuConversionPatterns(mlir::RewritePatternSet& patterns,
                                       int32_t vector_width) {
-  patterns.add<LowerLoadOp, LowerStoreOp, LowerWorkGroupIdOp, LowerSuccessOp,
+  patterns.add<LowerLoadOp, LowerWorkGroupIdOp, LowerSuccessOp,
                RewriteFunctionSignatures>(patterns.getContext());
   patterns.add<WrapEntryWithCallFrame>(patterns.getContext(), vector_width);
 }
