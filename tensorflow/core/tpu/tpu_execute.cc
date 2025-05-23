@@ -435,10 +435,11 @@ absl::StatusOr<xla::ExecutionOutput> TPUExecute(
   std::unique_ptr<xla::HloModule> module;
   std::vector<xla::Shape> input_shapes;
   {
-    xla::ComputationLayout computation_layout(
-        xla::ShapeLayout(xla::Shape(executable.output_shape())));
+    TF_ASSIGN_OR_RETURN(xla::Shape output_shape,
+                        xla::Shape::FromProto(executable.output_shape()));
+    xla::ComputationLayout computation_layout(xla::ShapeLayout{output_shape});
     for (const xla::ShapeProto& shape_proto : executable.input_shapes()) {
-      xla::Shape shape(shape_proto);
+      TF_ASSIGN_OR_RETURN(xla::Shape shape, xla::Shape::FromProto(shape_proto));
       computation_layout.add_parameter_layout(xla::ShapeLayout(shape));
       input_shapes.push_back(std::move(shape));
     }

@@ -1243,6 +1243,7 @@ cc_library(
         "//tensorflow/core/tpu:tpu_configuration",
         "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/core/tpu:tpu_execute",
+        "@local_xla//xla:shape_util",
         "@local_xla//xla/service:maybe_owning_device_memory",
         "@local_xla//xla/stream_executor:device_memory_allocator",
         "@local_xla//xla/stream_executor/tpu:tpu_executor_hdrs",

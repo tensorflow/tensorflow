@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -79,13 +80,15 @@ absl::Status CompileXla(xla::CompileOnlyClient* client,
   std::vector<const xla::Shape*> arg_layout_ptrs(pshape->parameters_size());
   std::vector<xla::Shape> arg_layouts(pshape->parameters_size());
   for (int i = 0; i < pshape->parameters_size(); ++i) {
-    arg_layouts[i] = xla::Shape(*pshape->mutable_parameters(i));
+    TF_ASSIGN_OR_RETURN(arg_layouts[i],
+                        xla::Shape::FromProto(pshape->parameters(i)));
     arg_layout_ptrs[i] = &arg_layouts[i];
   }
   xla::CompileOnlyClient::AotXlaComputationInstance instance;
   instance.computation = &computation;
   instance.argument_layouts = std::move(arg_layout_ptrs);
-  xla::Shape result_shape(pshape->result());
+  TF_ASSIGN_OR_RETURN(xla::Shape result_shape,
+                      xla::Shape::FromProto(pshape->result()));
   instance.result_layout = &result_shape;
   absl::StatusOr<std::vector<std::unique_ptr<xla::AotCompilationResult>>>
       aot_or = client->CompileAheadOfTime({instance}, aot_opts);

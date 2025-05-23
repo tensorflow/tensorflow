@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/platform/test.h"
@@ -633,12 +634,15 @@ TEST(TFCompileTest, ProgramShape) {
   const xla::ProgramShapeProto* muladd_shape = muladd.ProgramShape();
   ASSERT_TRUE(muladd_shape != nullptr);
   ASSERT_EQ(muladd_shape->parameters_size(), 2);
-  EXPECT_TRUE(
-      ShapeUtil::Compatible(xla::Shape(muladd_shape->parameters(0)), f32_2x2));
-  EXPECT_TRUE(
-      ShapeUtil::Compatible(xla::Shape(muladd_shape->parameters(1)), f32_2x2));
+  TF_ASSERT_OK_AND_ASSIGN(xla::Shape muladd_arg0,
+                          xla::Shape::FromProto(muladd_shape->parameters(0)));
+  TF_ASSERT_OK_AND_ASSIGN(xla::Shape muladd_arg1,
+                          xla::Shape::FromProto(muladd_shape->parameters(1)));
+  EXPECT_TRUE(ShapeUtil::Compatible(muladd_arg0, f32_2x2));
+  EXPECT_TRUE(ShapeUtil::Compatible(muladd_arg1, f32_2x2));
 
-  const xla::Shape muladd_result(muladd_shape->result());
+  TF_ASSERT_OK_AND_ASSIGN(xla::Shape muladd_result,
+                          xla::Shape::FromProto(muladd_shape->result()));
   ASSERT_EQ(muladd_result.element_type(), xla::TUPLE);
   ASSERT_EQ(ShapeUtil::TupleElementCount(muladd_result), 2);
   const xla::Shape& muladd_result0 =
