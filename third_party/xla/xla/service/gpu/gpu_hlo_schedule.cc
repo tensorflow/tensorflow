@@ -590,9 +590,7 @@ absl::Status RunLatencyHidingSchedulerPasses(
       shape_size_in_bytes, async_tracker.get(), estimator.get(), config,
       /*target_scheduling_rule=*/nullptr,
       /*early_target_scheduling_rule=*/nullptr,
-      /*post_processing_fn=*/nullptr,
-      /*scheduling_instruction_crosses_overlap_limit=*/
-      GpuScheduleCrossesOverlapLimit);
+      /*post_processing_fn=*/nullptr);
 
   pipeline.AddPass<LatencyHidingScheduler>(
       std::move(estimator), std::move(async_tracker), std::move(scheduler_core),
