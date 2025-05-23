@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -383,6 +384,15 @@ absl::Status EinsumDepthAnalysis::HandleDepthIncrementInstruction(
 
 absl::Status EinsumDepthAnalysis::HandleDot(HloInstruction* dot) {
   return HandleDepthIncrementInstruction(dot);
+}
+
+absl::Status EinsumDepthAnalysis::HandleCustomCall(
+    HloInstruction* custom_call) {
+  if (absl::StartsWith(custom_call->custom_call_target(),
+                       "SparseDenseMatmul")) {
+    return HandleDot(custom_call);
+  }
+  return DefaultAction(custom_call);
 }
 
 absl::Status EinsumDepthAnalysis::HandleCall(HloInstruction* call) {
@@ -765,6 +775,16 @@ absl::Status EinsumHeightAnalysis::HandleGetTupleElement(
 absl::Status EinsumHeightAnalysis::HandleDot(HloInstruction* dot) {
   RETURN_IF_HEIGHT_EXISTS(dot);
   return HandleHeightIncrementInstruction(dot);
+}
+
+absl::Status EinsumHeightAnalysis::HandleCustomCall(
+    HloInstruction* custom_call) {
+  RETURN_IF_HEIGHT_EXISTS(custom_call);
+  if (absl::StartsWith(custom_call->custom_call_target(),
+                       "SparseDenseMatmul")) {
+    return HandleDot(custom_call);
+  }
+  return DefaultAction(custom_call);
 }
 
 absl::Status EinsumHeightAnalysis::HandleCall(HloInstruction* call) {
@@ -1168,6 +1188,14 @@ const HloValueSemantics* HloValueSemanticsPropagation::AddSemantics(
 
 namespace {
 bool IsDotOrConvolution(const HloInstruction* instruction) {
+  // Generic catch all for current and future SC matmul ops.
+  if (instruction->opcode() == HloOpcode::kCustomCall &&
+      absl::StartsWith(instruction->custom_call_target(),
+                       "SparseDenseMatmul")) {
+    VLOG(3) << "Treating " << instruction->custom_call_target()
+            << " as dot or convolution.";
+    return true;
+  }
   return HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kConvolution,
                           HloOpcode::kRaggedDot>(instruction);
 }

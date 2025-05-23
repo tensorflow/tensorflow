@@ -24,7 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -763,6 +763,65 @@ TEST_F(EinsumDepthAnalysisTest, SendWithRecv) {
             0);
 }
 
+TEST_F(EinsumDepthAnalysisTest, SparseDenseMatmulDepth) {
+  constexpr const char kHloModuleStr[] = R"(
+    HloModule fuse_two_forward_passes
+
+    ENTRY main {
+      %concatenated_csr_pointers = s32[<=24] parameter(0)
+      %concatenated_embedding_ids = s32[<=1024] parameter(1)
+      %concatenated_sample_ids = s32[<=1024] parameter(2)
+      %concatenated_gain_values = f32[<=1024] parameter(3)
+      %num_minibatches_per_physical_sparse_core = s32[] parameter(4)
+      %embedding_table = f32[16, 8] parameter(5)
+      %activations_init = f32[16, 8] parameter(6)
+
+      %concatenated_csr_pointers_2 = s32[<=24] parameter(7)
+      %concatenated_embedding_ids_2 = s32[<=1024] parameter(8)
+      %concatenated_sample_ids_2 = s32[<=1024] parameter(9)
+      %concatenated_gain_values_2 = f32[<=1024] parameter(10)
+      %embedding_table_2 = f32[16, 8] parameter(11)
+      %activations_init_2 = f32[16, 8] parameter(12)
+
+      %num_minibatches_per_physical_sparse_core_2 = s32[] constant(4)
+
+      %sc_output = f32[16, 8]
+                     custom-call(concatenated_csr_pointers, concatenated_embedding_ids,
+                     concatenated_sample_ids, concatenated_gain_values, num_minibatches_per_physical_sparse_core,
+                     embedding_table, activations_init),
+                     custom_call_target="SparseDenseMatmulWithMinibatchingOp", backend_config="{sparse_dense_matmul_config:{
+                        max_ids_per_partition: 10,
+                        max_unique_ids_per_partition: 5,
+                        sharding_strategy: 0}, device_type: \"DEVICE_TYPE_SPARSECORE\"}"
+
+      %sc_output_2 = f32[16, 8]
+                     custom-call(concatenated_csr_pointers_2, concatenated_embedding_ids_2,
+                     concatenated_sample_ids_2, concatenated_gain_values_2, num_minibatches_per_physical_sparse_core_2,
+                     embedding_table_2, activations_init_2),
+                     custom_call_target="SparseDenseMatmulWithMinibatchingOp", backend_config="{sparse_dense_matmul_config:{
+                        max_ids_per_partition: 10,
+                        max_unique_ids_per_partition: 5,
+                        sharding_strategy: 0}, device_type: \"DEVICE_TYPE_SPARSECORE\"}"
+
+      ROOT %output = tuple(%sc_output, %sc_output_2)
+    }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloModuleStr,
+                                                       /*replica_count=*/1,
+                                                       /*num_partitions=*/1));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<EinsumDepthAnalysis> einsum_depth_analysis,
+      EinsumDepthAnalysis::Run(*module->entry_computation(),
+                               SendRecvGroupMap(*module)));
+  const EinsumDepthMap& einsum_depth_map =
+      einsum_depth_analysis->GetEinsumDepthMap();
+  HloComputation* computation = module->GetComputationWithName("main");
+  EXPECT_EQ(GetInstructionDepth(einsum_depth_map, computation, "sc_output"), 0);
+  EXPECT_EQ(GetInstructionDepth(einsum_depth_map, computation, "sc_output_2"),
+            0);
+}
+
 class EinsumHeightAnalysisTest : public HloHardwareIndependentTestBase {
  public:
   int GetInstructionHeight(const EinsumHeightMap& height_map,
@@ -795,6 +854,66 @@ TEST_F(EinsumHeightAnalysisTest, MnistTrainingLoop) {
   EXPECT_EQ(GetInstructionHeight(einsum_height_map, computation, "dot.92"), 5);
   EXPECT_EQ(GetInstructionHeight(einsum_height_map, computation, "dot.99"), 6);
   EXPECT_EQ(GetInstructionHeight(einsum_height_map, computation, "dot.85"), 4);
+}
+
+TEST_F(EinsumHeightAnalysisTest, SparseDenseMatmulDepth) {
+  constexpr const char kHloModuleStr[] = R"(
+    HloModule fuse_two_forward_passes
+
+    ENTRY main {
+      %concatenated_csr_pointers = s32[<=24] parameter(0)
+      %concatenated_embedding_ids = s32[<=1024] parameter(1)
+      %concatenated_sample_ids = s32[<=1024] parameter(2)
+      %concatenated_gain_values = f32[<=1024] parameter(3)
+      %num_minibatches_per_physical_sparse_core = s32[] parameter(4)
+      %embedding_table = f32[16, 8] parameter(5)
+      %activations_init = f32[16, 8] parameter(6)
+
+      %concatenated_csr_pointers_2 = s32[<=24] parameter(7)
+      %concatenated_embedding_ids_2 = s32[<=1024] parameter(8)
+      %concatenated_sample_ids_2 = s32[<=1024] parameter(9)
+      %concatenated_gain_values_2 = f32[<=1024] parameter(10)
+      %embedding_table_2 = f32[16, 8] parameter(11)
+      %activations_init_2 = f32[16, 8] parameter(12)
+
+      %num_minibatches_per_physical_sparse_core_2 = s32[] constant(4)
+
+      %sc_output = f32[16, 8]
+                     custom-call(concatenated_csr_pointers, concatenated_embedding_ids,
+                     concatenated_sample_ids, concatenated_gain_values, num_minibatches_per_physical_sparse_core,
+                     embedding_table, activations_init),
+                     custom_call_target="SparseDenseMatmulWithMinibatchingOp", backend_config="{sparse_dense_matmul_config:{
+                        max_ids_per_partition: 10,
+                        max_unique_ids_per_partition: 5,
+                        sharding_strategy: 0}, device_type: \"DEVICE_TYPE_SPARSECORE\"}"
+
+      %sc_output_2 = f32[16, 8]
+                     custom-call(concatenated_csr_pointers_2, concatenated_embedding_ids_2,
+                     concatenated_sample_ids_2, concatenated_gain_values_2, num_minibatches_per_physical_sparse_core_2,
+                     embedding_table_2, activations_init_2),
+                     custom_call_target="SparseDenseMatmulWithMinibatchingOp", backend_config="{sparse_dense_matmul_config:{
+                        max_ids_per_partition: 10,
+                        max_unique_ids_per_partition: 5,
+                        sharding_strategy: 0}, device_type: \"DEVICE_TYPE_SPARSECORE\"}"
+
+      ROOT %output = tuple(%sc_output, %sc_output_2)
+    }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloModuleStr,
+                                                       /*replica_count=*/1,
+                                                       /*num_partitions=*/1));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<EinsumHeightAnalysis> einsum_height_analysis,
+      EinsumHeightAnalysis::Run(*module->entry_computation(),
+                                SendRecvGroupMap(*module)));
+  const EinsumHeightMap& einsum_height_map =
+      einsum_height_analysis->GetEinsumHeightMap();
+  HloComputation* computation = module->GetComputationWithName("main");
+  EXPECT_EQ(GetInstructionHeight(einsum_height_map, computation, "sc_output"),
+            1);
+  EXPECT_EQ(GetInstructionHeight(einsum_height_map, computation, "sc_output_2"),
+            1);
 }
 
 TEST_F(HloValueSemanticsAnalysisTest,
