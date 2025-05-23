@@ -1369,8 +1369,8 @@ absl::Status TfrtCpuExecutable::CheckBufferCompatibilities(
 absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
     const RunId& run_id, const ExecuteOptions& options,
-    tsl::AsyncValueRef<CpuEvent> last_collective_launch_event, bool fill_future,
-    TfrtCpuDevice* device) {
+    TfrtCpuClient::CollectiveLaunchEvent last_collective_launch_event,
+    bool fill_future, TfrtCpuDevice* device) {
   tsl::profiler::TraceMe traceme("TfrtCpuExecutable::ExecuteHelper");
 
   std::shared_ptr<DeviceAssignment> device_assignment;
@@ -1572,11 +1572,12 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
   }
 
   // Schedule only one collective at a time.
-  bool is_a_collective_launch = !!last_collective_launch_event;
+  bool is_a_collective_launch =
+      static_cast<bool>(last_collective_launch_event.first);
   // Add additional dependency conditioned on whether this is a collective
   // launch or not.
   if (is_a_collective_launch) {
-    input_deps.push_back(std::move(last_collective_launch_event));
+    input_deps.push_back(std::move(last_collective_launch_event.first));
   } else {
     // This is a non-parallel computation. Add the last enqueue event as a
     // dependency with any error cleared.
@@ -1701,7 +1702,10 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     // The next collective launch will not be scheduled onto threadpool until
     // this one completes.
     if (is_a_collective_launch) {
-      client_->SetLastCollectiveLaunchEvent(execute_event.CopyRef());
+      execute_event.AndThen(
+          [count_down = last_collective_launch_event.second]() mutable {
+            count_down.CountDown();
+          });
     } else {
       // This is a non-parallel computation. Set the execute event as the new
       // last enqueue event.
@@ -1976,8 +1980,7 @@ TfrtCpuExecutable::Execute(
                          {});
     auto statusor = ExecuteHelper(
         argument_handles[0], replica, partition, run_id, options,
-        /*last_collective_launch_event=*/tsl::AsyncValueRef<CpuEvent>(),
-        returned_futures.has_value());
+        /*last_collective_launch_event=*/{}, returned_futures.has_value());
 
     if (!statusor.ok()) {
       return std::move(statusor).status();
@@ -1995,8 +1998,8 @@ TfrtCpuExecutable::Execute(
     // are run at the same time. We conservatively run only one collective at a
     // time, because we may not have enough threads to run arbitrary number of
     // collectives concurrently.
-    tsl::AsyncValueRef<CpuEvent> last_collective_launch_event =
-        client_->GetLastCollectiveLaunchEvent();
+    TfrtCpuClient::CollectiveLaunchEvent last_collective_launch_event =
+        client_->GetLastCollectiveLaunchEvent(num_addressable_devices);
 
     absl::Mutex mu;
     int running = num_addressable_devices;
@@ -2009,10 +2012,9 @@ TfrtCpuExecutable::Execute(
 
       auto* thread_pool = client()->pjrt_client_thread_pool();
       EnqueueWork(thread_pool, [&, replica, partition, i] {
-        auto statusor =
-            ExecuteHelper(argument_handles[i], replica, partition, run_id,
-                          options, last_collective_launch_event.CopyRef(),
-                          returned_futures.has_value());
+        auto statusor = ExecuteHelper(
+            argument_handles[i], replica, partition, run_id, options,
+            last_collective_launch_event, returned_futures.has_value());
         if (statusor.ok()) {
           wrapped_results[i] = std::move(statusor->buffers);
           if (returned_futures.has_value()) {
@@ -2083,8 +2085,7 @@ TfrtCpuExecutable::ExecuteSharded(
           ExecuteHelper(
               argument_handles, addressable_device_logical_ids_[i].replica,
               addressable_device_logical_ids_[i].partition, run_id, options,
-              /*last_collective_launch_event=*/
-              tsl::AsyncValueRef<CpuEvent>(), fill_future));
+              /*last_collective_launch_event=*/{}, fill_future));
       returned_future = std::move(result.future);
       return std::move(result.buffers);
     }
@@ -2120,12 +2121,11 @@ TfrtCpuExecutable::ExecutePortable(
           << name();
   TF_ASSIGN_OR_RETURN(
       auto result,
-      ExecuteHelper(
-          argument_handles,
-          /*replica=*/0,
-          /*partition=*/0, run_id, options,
-          /*last_collective_launch_event=*/tsl::AsyncValueRef<CpuEvent>(),
-          fill_future, tensorflow::down_cast<TfrtCpuDevice*>(device)));
+      ExecuteHelper(argument_handles,
+                    /*replica=*/0,
+                    /*partition=*/0, run_id, options,
+                    /*last_collective_launch_event=*/{}, fill_future,
+                    tensorflow::down_cast<TfrtCpuDevice*>(device)));
   returned_future = std::move(result.future);
   return std::move(result.buffers);
 }
