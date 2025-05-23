@@ -146,9 +146,10 @@ public class OvicClassifier {
     return inputDims;
   }
 
-  /*
+  /**
    * Get native inference latency of last image classification run.
-   *  @throws RuntimeException if model is uninitialized.
+   *
+   * @throws RuntimeException if model is uninitialized.
    */
   public Long getLastNativeInferenceLatencyMilliseconds() {
     if (tflite == null) {
@@ -158,9 +159,10 @@ public class OvicClassifier {
     return (latency == null) ? null : (Long) (latency / 1000000);
   }
 
-  /*
+  /**
    * Get native inference latency of last image classification run.
-   *  @throws RuntimeException if model is uninitialized.
+   *
+   * @throws RuntimeException if model is uninitialized.
    */
   public Long getLastNativeInferenceLatencyNanoseconds() {
     if (tflite == null) {
