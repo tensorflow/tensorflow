@@ -57,6 +57,14 @@ namespace {
 absl::Status StablehloToMhlo(mlir::ModuleOp module, bool run_canonicalizer) {
   mlir::MLIRContext* context = module->getContext();
   mlir::PassManager pm(context);
+
+  // Only enable verifier in debug builds.
+  bool enableVerifier = false;
+#ifndef NDEBUG
+  enableVerifier = true;
+#endif
+  pm.enableVerifier(enableVerifier);
+
   // CHLO -> MHLO for high level ops (TopK, Erf, RaggedDot, etc.)
   // CHLO -> StableHLO otherwise
   pm.addNestedPass<mlir::func::FuncOp>(

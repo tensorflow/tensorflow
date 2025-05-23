@@ -6056,6 +6056,14 @@ absl::Status PrepareForExport(mlir::ModuleOp module) {
     return hasShapeOps ? WalkResult::interrupt() : WalkResult::advance();
   });
   mlir::PassManager pm(module.getContext());
+
+  // Only enable verifier in debug builds.
+  bool enableVerifier = false;
+#ifndef NDEBUG
+  enableVerifier = true;
+#endif
+  pm.enableVerifier(enableVerifier);
+
   pm.addNestedPass<mlir::func::FuncOp>(mhlo::createPrepareForExportPass());
   if (hasShapeOps) {
     // Experimental support for exporting dynamic MHLO programs to HLO.
@@ -6100,6 +6108,14 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
   // temporarily support StableHLO to MHLO lowering here as well to ensure
   // a smooth migration.
   mlir::PassManager pm(module->getContext());
+
+  // Only enable verifier in debug builds.
+  bool enableVerifier = false;
+#ifndef NDEBUG
+  enableVerifier = true;
+#endif
+  pm.enableVerifier(enableVerifier);
+
   mhlo::StablehloLegalizeToHloPassOptions shlo_pass_opts;
   shlo_pass_opts.convert_xla_supported_stablehlo_ =
       !options.direct_stablehlo_to_hlo;
