@@ -30,9 +30,9 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
@@ -72,7 +72,7 @@ class KernelThunk : public Thunk {
   // directly, not to their base allocation (e.g. they can be the result of an
   // `mlir::memref::ViewOp`).
   KernelThunk(Thunk::ThunkInfo thunk_info, std::string kernel_name,
-              absl::Span<const KernelArgument> kernel_arguments,
+              absl::Span<const emitters::KernelArgument> kernel_arguments,
               LaunchDimensions launch_dimensions,
               std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes,
               std::optional<stream_executor::gpu::TmaMetadata> tma_metadata =
@@ -140,8 +140,9 @@ class KernelThunk : public Thunk {
 // compiled by XLA and loaded from an executable source.
 class CustomKernelThunk : public Thunk {
  public:
-  CustomKernelThunk(const HloInstruction* inst, CustomKernel custom_kernel,
-                    absl::Span<const KernelArgument> kernel_arguments);
+  CustomKernelThunk(
+      const HloInstruction* inst, CustomKernel custom_kernel,
+      absl::Span<const emitters::KernelArgument> kernel_arguments);
 
   std::string ToString(int indent) const override;
 
