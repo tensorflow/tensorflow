@@ -68,11 +68,31 @@ void MapSubgraph(const HloInstructionNode* absl_nonnull left,
                  int left_graph_size,
                  const HloInstructionNode* absl_nonnull right,
                  int right_graph_size, const MatcherType matcher_type,
-                 HloGumgraphMappings& mappings) {
-  std::vector<const HloInstructionNode*> left_subgraph = GetAllNodesInBfsOrder(
-      *left, BfsTraversalDirection::kForward, left_graph_size);
-  std::vector<const HloInstructionNode*> right_subgraph = GetAllNodesInBfsOrder(
-      *right, BfsTraversalDirection::kForward, right_graph_size);
+                 HloGumgraphMappings& mappings,
+                 absl::flat_hash_set<const HloInstructionNode*>&
+                     exact_mapped_subgraph_roots) {
+  std::vector<const HloInstructionNode*> left_subgraph;
+  HloGumgraphBfs(
+      *left,
+      [&left_subgraph](const HloInstructionNode& node) {
+        left_subgraph.push_back(&node);
+        return true;
+      },
+      BfsTraversalDirection::kForward, left_graph_size,
+      [&exact_mapped_subgraph_roots](const HloInstructionNode& node) {
+        return !exact_mapped_subgraph_roots.contains(&node);
+      });
+  std::vector<const HloInstructionNode*> right_subgraph;
+  HloGumgraphBfs(
+      *right,
+      [&right_subgraph](const HloInstructionNode& node) {
+        right_subgraph.push_back(&node);
+        return true;
+      },
+      BfsTraversalDirection::kForward, right_graph_size,
+      [&exact_mapped_subgraph_roots](const HloInstructionNode& node) {
+        return !exact_mapped_subgraph_roots.contains(&node);
+      });
   if (left_subgraph.size() != right_subgraph.size()) {
     LOG(WARNING) << "Subgraph (" << left->instruction->name() << " vs "
                  << right->instruction->name() << ") with same fingerprint "
@@ -96,6 +116,8 @@ void MapSubgraph(const HloInstructionNode* absl_nonnull left,
   for (int i = 0; i < left_subgraph.size(); ++i) {
     mappings.MapInstructionsIfAbsent(left_subgraph[i], right_subgraph[i],
                                      matcher_type);
+    exact_mapped_subgraph_roots.insert(left_subgraph[i]);
+    exact_mapped_subgraph_roots.insert(right_subgraph[i]);
     // Mark all nodes except the root as unchanged.
     if (i != 0) {
       mappings.left_to_right_instruction_map.left.find(left_subgraph[i])
@@ -288,7 +310,7 @@ void GreedySubGraphExactMatcher::Match(HloGumgraphMappings& mappings) const {
       source_subgraphs;
   HloGumgraphBfs(
       left_.GetRoot(),
-      [&](const HloInstructionNode& node) {
+      [&source_subgraphs](const HloInstructionNode& node) {
         if (!node.is_root) {
           source_subgraphs[node.props.height].push_back(&node);
         }
@@ -299,7 +321,7 @@ void GreedySubGraphExactMatcher::Match(HloGumgraphMappings& mappings) const {
       target_subgraphs;
   HloGumgraphBfs(
       right_.GetRoot(),
-      [&](const HloInstructionNode& node) {
+      [&target_subgraphs](const HloInstructionNode& node) {
         if (!node.is_root) {
           target_subgraphs[node.props.height].push_back(&node);
         }
@@ -308,6 +330,7 @@ void GreedySubGraphExactMatcher::Match(HloGumgraphMappings& mappings) const {
       BfsTraversalDirection::kForward, right_.GetNodeCount());
 
   absl::flat_hash_set<const HloInstructionNode*> ignored;
+  absl::flat_hash_set<const HloInstructionNode*> exact_mapped_subgraph_roots;
   // Find exact match left-right subgraphs candidates greedly from high to low
   // height.
   for (int height = max_height; height >= 0; --height) {
@@ -347,7 +370,7 @@ void GreedySubGraphExactMatcher::Match(HloGumgraphMappings& mappings) const {
         if (source_nodes.size() == 1 && it->second.size() == 1) {
           MapSubgraph(*source_nodes.begin(), left_.GetNodeCount(),
                       *it->second.begin(), right_.GetNodeCount(), type_,
-                      mappings);
+                      mappings, exact_mapped_subgraph_roots);
         }
         found.insert(source_nodes.begin(), source_nodes.end());
         found.insert(it->second.begin(), it->second.end());
@@ -356,13 +379,16 @@ void GreedySubGraphExactMatcher::Match(HloGumgraphMappings& mappings) const {
     // Ignore all nodes in the subgraphs that matched in later traversals.
     for (const HloInstructionNode* found_node : found) {
       HloGumgraphBfs(
-          *found_node,
-          [&](const HloInstructionNode& node) {
+          *found_node, [](const HloInstructionNode& node) { return true; },
+          BfsTraversalDirection::kForward,
+          std::max(left_.GetNodeCount(), right_.GetNodeCount()),
+          [&ignored](const HloInstructionNode& node) {
+            if (ignored.contains(&node)) {
+              return false;
+            }
             ignored.insert(&node);
             return true;
-          },
-          BfsTraversalDirection::kForward,
-          std::max(left_.GetNodeCount(), right_.GetNodeCount()));
+          });
     }
   }
 

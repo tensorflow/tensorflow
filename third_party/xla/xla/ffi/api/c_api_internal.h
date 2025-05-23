@@ -57,6 +57,11 @@ typedef void* XLA_FFI_INTERNAL_Stream_Get(XLA_FFI_ExecutionContext* ctx);
 typedef int32_t XLA_FFI_INTERNAL_DeviceOrdinal_Get(
     XLA_FFI_ExecutionContext* ctx);
 
+// Returns a pointer to the global device id map associated with the execution
+// context.
+typedef void* XLA_FFI_INTERNAL_GlobalDeviceIdMap_Get(
+    XLA_FFI_ExecutionContext* ctx);
+
 // Returns the run id associated with the execution context.
 typedef int64_t XLA_FFI_INTERNAL_RunId_Get(XLA_FFI_ExecutionContext* ctx);
 
@@ -97,6 +102,7 @@ struct XLA_FFI_InternalApi {
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_Future_Forward);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_Stream_Get);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_DeviceOrdinal_Get);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_GlobalDeviceIdMap_Get);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_RunId_Get);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(
       XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get);

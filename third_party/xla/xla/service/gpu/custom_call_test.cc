@@ -15,11 +15,13 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
 
+#include "xla/runtime/device_id.h"
 #include "xla/shape.h"
 
 #if GOOGLE_CUDA
@@ -551,6 +553,7 @@ TEST_F(CustomCallTest, FfiAttributes) {
 
 static absl::Status MemcpyWithCalledComputation(
     se::Stream* stream, int32_t device_ordinal,
+    const std::map<int32_t, GlobalDeviceId>* global_device_id_map,
     se::OwningScratchAllocator<> scratch_allocator, ffi::AnyBuffer src,
     ffi::Result<ffi::AnyBuffer> dst, const HloComputation* called_computation) {
   if (called_computation == nullptr) {
@@ -575,15 +578,16 @@ static absl::Status MemcpyWithCalledComputation(
   return Memcpy(stream, src, dst);
 }
 
-XLA_FFI_DEFINE_HANDLER(kMemcpyWithCalledComputation,
-                       MemcpyWithCalledComputation,
-                       ffi::Ffi::Bind()
-                           .Ctx<ffi::Stream>()
-                           .Ctx<ffi::DeviceOrdinal>()     // device_ordinal
-                           .Ctx<ffi::ScratchAllocator>()  // scratch
-                           .Arg<ffi::AnyBuffer>()         // src
-                           .Ret<ffi::AnyBuffer>()         // dst
-                           .Ctx<ffi::CalledComputation>());
+XLA_FFI_DEFINE_HANDLER(
+    kMemcpyWithCalledComputation, MemcpyWithCalledComputation,
+    ffi::Ffi::Bind()
+        .Ctx<ffi::Stream>()
+        .Ctx<ffi::DeviceOrdinal>()      // device_ordinal
+        .Ctx<ffi::GlobalDeviceIdMap>()  // global_device_id_map
+        .Ctx<ffi::ScratchAllocator>()   // scratch
+        .Arg<ffi::AnyBuffer>()          // src
+        .Ret<ffi::AnyBuffer>()          // dst
+        .Ctx<ffi::CalledComputation>());
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
                          "xla.gpu.ext.memcpy_with_called_computation", PLATFORM,
