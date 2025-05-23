@@ -14,43 +14,27 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include <string>
-#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
-#include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/plugin/test/plugin_test_fixture.h"
 #include "xla/tsl/platform/status_matchers.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
 namespace {
 
 using ::tsl::testing::StatusIs;
+using ::xla::PluginTestFixture;
 
-absl::StatusOr<std::string> GetRegisteredPluginName() {
-  TF_ASSIGN_OR_RETURN(std::vector<std::string> pjrt_apis,
-                      pjrt::GetRegisteredPjrtApis());
-  if (pjrt_apis.size() != 1) {
-    return absl::InvalidArgumentError(
-        "Expected exactly one plugin to be registered.");
-  }
-  return pjrt_apis[0];
-}
-
-TEST(PluginRegistrationTest, PluginReportsValidName) {
-  TF_ASSERT_OK_AND_ASSIGN(absl::string_view plugin_name,
-                          GetRegisteredPluginName());
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
-                          xla::GetCApiClient(plugin_name, {}, nullptr));
-  ASSERT_FALSE(client->platform_name().empty());
-  LOG(INFO) << "Plugin: " << plugin_name
-            << " Platform name: " << client->platform_name();
+TEST_F(PluginTestFixture, PluginReportsValidName) {
+  auto platform_name = client_->platform_name();
+  ASSERT_FALSE(platform_name.empty());
+  LOG(INFO) << "Plugin reports platform_name: " << platform_name;
 }
 
 TEST(PluginRegistrationTest, InvalidPluginName) {
