@@ -15,15 +15,20 @@ limitations under the License.*/
 #ifndef XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_KERNEL_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_KERNEL_THUNK_H_
 
+#include <cstdint>
 #include <utility>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/core/collectives/rank_id.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/stream.h"
 
@@ -59,6 +64,10 @@ class CollectiveKernelThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams& params) final;
 
  private:
+  // Internal method to sync thread after Initialize.
+  absl::Status RendezvousAfterInit(const GpuCliqueKey& clique_key, RankId rank,
+                                   int64_t num_ranks);
+
   // Whether the collective is run on an async stream.
   const bool is_async_;
   // Collective config being used. Copied over to avoid lifetime issues.
@@ -66,15 +75,24 @@ class CollectiveKernelThunk : public Thunk {
   // Reference to the buffer related information required for the collective.
   CollectiveThunk::Buffer buffer_;
 
-  // Guard access to the local buffer allocations and events across
-  // different threads (which control different streams).
+  // Per-executor state that needs to be synchronized for access.
+  struct StreamState {
+    RankId rank;
+    // Buffers and signal flags allocated for the collective.
+    se::DeviceMemoryHandle local_buffer;
+    se::DeviceMemoryHandle signal_buffer;
+  };
+  // Guard access to the stream state across different threads (which control
+  // different streams).
   absl::Mutex mutex_;
-  // Local buffer allocations to copy input data for the one-shot kernel.
-  absl::flat_hash_map<se::StreamExecutor*, se::DeviceMemoryHandle>
-      local_buffer_allocs_ ABSL_GUARDED_BY(mutex_);
-  // Allocation for signal flags to synchronize blocks on different devices.
-  absl::flat_hash_map<se::StreamExecutor*, se::DeviceMemoryHandle>
-      signal_flags_allocs_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<se::StreamExecutor*, StreamState> per_stream_state_
+      ABSL_GUARDED_BY(mutex_);
+
+  // These vectors are merely pointers into the StreamState(s) above ordered by
+  // RankId. They are initialized once at the end of Initialize() and never
+  // changed.
+  std::vector<se::DeviceMemoryBase> local_buffer_ptrs_;
+  std::vector<se::DeviceMemoryBase> signal_buffer_ptrs_;
 };
 }  // namespace xla::gpu
 
