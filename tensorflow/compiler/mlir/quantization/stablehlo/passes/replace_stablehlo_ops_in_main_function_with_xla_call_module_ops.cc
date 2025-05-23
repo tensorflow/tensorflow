@@ -49,6 +49,7 @@ namespace {
 
 constexpr StringRef kStablehloModuleAttrsAttrName = "_stablehlo_module_attrs";
 constexpr StringRef kUsesShapePolymorphismAttr = "jax.uses_shape_polymorphism";
+constexpr StringRef kNoXlaCallModuleAttrName = "_no_xla_call_module";
 
 // Default version number for native serialization.
 constexpr int64_t kDefaultVersion = 9;
@@ -501,22 +502,29 @@ void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass::
   func_ops.push_back(main_func);
   int stablehlo_func_id = -1;
   while (!func_ops.empty()) {
-    auto main_func = func_ops.back();
+    auto func_op = func_ops.back();
     func_ops.pop_back();
-    if (!main_func) continue;
+    if (!func_op) continue;
+
+    // If the function has the _no_xla_call_module attribute, we don't need to
+    // replace StableHLO ops in this function with XlaCallModuleOps (including
+    // the functions called by this function).
+    if (func_op->getAttrOfType<mlir::UnitAttr>(kNoXlaCallModuleAttrName)) {
+      continue;
+    }
 
     SymbolTable symbol_table(module_op);
-    for (auto call_op : main_func.getOps<TF::PartitionedCallOp>()) {
+    for (auto call_op : func_op.getOps<TF::PartitionedCallOp>()) {
       func_ops.push_back(dyn_cast_or_null<func::FuncOp>(symbol_table.lookup(
           mlir::cast<FlatSymbolRefAttr>(call_op.getFAttr()).getValue())));
     }
-    for (auto call_op : main_func.getOps<TF::StatefulPartitionedCallOp>()) {
+    for (auto call_op : func_op.getOps<TF::StatefulPartitionedCallOp>()) {
       func_ops.push_back(
           dyn_cast_or_null<func::FuncOp>(symbol_table.lookup(call_op.getF())));
     }
 
-    DuplicateSmallConstantOps(module_op, main_func);
-    ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOps(module_op, main_func,
+    DuplicateSmallConstantOps(module_op, func_op);
+    ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOps(module_op, func_op,
                                                           stablehlo_func_id);
   }
 
