@@ -211,11 +211,14 @@ build:cuda_nvcc --@local_config_cuda//:cuda_compiler=nvcc
 # Old config for backward compatibility
 build:nvcc_clang --config=cuda_nvcc
 
-# Debug config
+# Debug config. Enables Bazel's 'dbg' compilation mode, build with debugging enabled
 build:dbg -c dbg
-# Only include debug info for files under xla/, to reduce the size of the debug
-# info in the binary. This is because if the debug sections in the ELF binary
-# are too large, errors can occur. See https://github.com/tensorflow/tensorflow/issues/48919.
+# Compiling all dependencies with debug info can cause linker failures
+# and significantly increase binary size.
+# The following setting disables debug info (-g0) for all files,
+# except those under the xla/* path. This helps reduce the size of debug sections
+# in the ELF binary, which can otherwise become too large and lead to errors.
+# For more details, see: https://github.com/tensorflow/tensorflow/issues/48919.
 build:dbg --per_file_copt=+.*,-xla.*@-g0
 # AWS SDK must be compiled in release mode. see: https://github.com/tensorflow/tensorflow/issues/37498
 build:dbg --copt -DDEBUG_BUILD
