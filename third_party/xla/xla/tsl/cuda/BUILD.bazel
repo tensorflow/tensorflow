@@ -385,3 +385,9 @@ cc_library(
         "@local_tsl//tsl/platform:load_library",
     ]),
 )
+
+alias(
+    name = "nvshmem",  # buildifier: disable=duplicated-name
+    actual = if_cuda_libs("@nvidia_nvshmem//:nvshmem", ":nvshmem_stub"),
+    visibility = ["//visibility:public"],
+)
