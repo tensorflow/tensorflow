@@ -217,9 +217,17 @@ PartitionedHlo ClampGatherIndices(const PartitionedHlo& indices,
         max_indices = CreateMaxIndicesConstant<int32_t>(operand_base_shape,
                                                         start_index_map, b);
         break;
+      case U32:
+        max_indices = CreateMaxIndicesConstant<uint32_t>(operand_base_shape,
+                                                         start_index_map, b);
+        break;
       case S64:
         max_indices = CreateMaxIndicesConstant<int64_t>(operand_base_shape,
                                                         start_index_map, b);
+        break;
+      case U64:
+        max_indices = CreateMaxIndicesConstant<uint64_t>(operand_base_shape,
+                                                         start_index_map, b);
         break;
       default:
         LOG(FATAL) << "Unsupported indices type: "
