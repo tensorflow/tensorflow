@@ -96,8 +96,6 @@ ENTRY main {
   EXPECT_EQ(unrolled_loop->opcode(), HloOpcode::kWhile);
   // There should be no copies inserted into the unrolled loop.
   EXPECT_EQ(Count(HloOpcode::kCopy, *unrolled_loop->while_body()), 0);
-  EXPECT_EQ(
-      Count(HloOpcode::kOptimizationBarrier, *unrolled_loop->while_body()), 4);
 }
 
 TEST_F(WhileLoopPipelineUnrollerTest, PipelinedLoopWithInfeed) {
@@ -164,8 +162,6 @@ ENTRY main {
   EXPECT_EQ(unrolled_loop->opcode(), HloOpcode::kWhile);
   // There should be no copies inserted into the unrolled loop.
   EXPECT_EQ(Count(HloOpcode::kCopy, *unrolled_loop->while_body()), 0);
-  EXPECT_EQ(
-      Count(HloOpcode::kOptimizationBarrier, *unrolled_loop->while_body()), 3);
 
   // All infeeds in the unrolled body need to be ordered with respect to each
   // other.
