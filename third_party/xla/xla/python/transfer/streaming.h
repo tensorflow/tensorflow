@@ -42,6 +42,8 @@ class ChunkDestination : public tsl::ReferenceCounted<ChunkDestination> {
   virtual absl::Status Put(const void* data, int64_t offset, size_t size,
                            absl::AnyInvocable<void() &&> on_done) = 0;
 
+  virtual void Poison(absl::Status s) = 0;
+
   // For testing.
   static std::pair<xla::PjRtFuture<std::string>,
                    tsl::RCReference<ChunkDestination>>

@@ -56,6 +56,8 @@ class SocketServer {
     void Pull(uint64_t uuid, int buffer_id,
               tsl::RCReference<ChunkDestination> dest);
 
+    void InjectFailure();
+
    private:
     SocketNetworkState* local_;
   };
