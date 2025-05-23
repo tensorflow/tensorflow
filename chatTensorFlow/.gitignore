@@ -1,0 +1,5 @@
+__pycache__/
+tensorflow_docs/
+DATA/
+logs/
+.env

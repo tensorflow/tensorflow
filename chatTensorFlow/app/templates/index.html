@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TensorFlow Chat</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div id="app">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h2>Chat History</h2>
+                <button class="clear-button">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="9" y1="9" x2="15" y2="15"></line>
+                        <line x1="15" y1="9" x2="9" y2="15"></line>
+                    </svg>
+                </button>
+            </div>
+            <div id="chat-history">
+                <!-- Chat history items will be added here -->
+            </div>
+        </div>
+        
+
+        
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Chat Header -->
+            <div class="chat-header">
+                <div class="chat-title">
+                    <div class="logo-placeholder">
+                        <img src="{{ url_for('static', filename='images/logo.png') }}" alt="TensorFlow Logo" class="logo-image">
+                    </div>
+                    <h1>Chat TensorFlow</h1>
+                    <span class="verified-icon"></span>
+                </div>
+            </div>
+            
+            <!-- Model Selection -->
+            <div class="model-selection">
+                <div class="model-dropdown">
+                    <select id="model-selector">
+                        {% for model_id, model_name in models.items() %}
+                            <option value="{{ model_id }}" {% if model_id == selected_model %}selected{% endif %}>{{ model_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button id="clear-chat" class="clear-button" title="Clear chat history">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        <line x1="10" y1="11" x2="10" y2="17"></line>
+                        <line x1="14" y1="11" x2="14" y2="17"></line>
+                    </svg>
+                </button>
+            </div>
+            
+            <!-- Messages -->
+            <div id="messages" class="messages-container">
+                <!-- Messages will be added here dynamically -->
+                
+                <!-- Processing Feedback Area -->
+                <div id="processing-feedback" class="processing-feedback" style="display: none;">
+                    <div class="processing-header">
+                        <span>Doing research</span>
+                        <div class="progress-container">
+                            <div id="progress-bar" class="progress-bar" style="width: 0%;"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="research-plan">
+                        <div class="research-plan-header">
+                            <span class="research-icon">🔍</span>
+                            <span>Research Plan & Sources</span>
+                        </div>
+                        
+                        <div id="document-selection" class="document-selection">
+                            <!-- Document cards will be added here dynamically -->
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Suggestions (shown when no messages exist) -->
+                <div id="suggestions" class="suggestions">
+                    <!-- Suggestions will be loaded dynamically -->
+                </div>
+            </div>
+            
+            <!-- Input Area -->
+            <div class="input-container">
+                <input 
+                    type="text" 
+                    id="message-input" 
+                    class="message-input" 
+                    placeholder="How can I..." 
+                    autocomplete="off"
+                >
+                <button id="send-button" class="send-button" disabled>
+                    <svg class="send-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
