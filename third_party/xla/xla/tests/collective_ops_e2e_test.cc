@@ -654,7 +654,7 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllWithSplitDim) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({15, 16}, results[1]);
 }
 
-TEST_F(CollectiveOpsTestE2E, AsyncAllToAllMemCpy) {
+TEST_F(CollectiveOpsTestE2E, AsyncAllToAllMemCpyWithSplitDim) {
   const absl::string_view kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -734,6 +734,47 @@ XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllWithoutSplitDim) {
   HloAsyncInstruction* a2a_start_async = Cast<HloAsyncInstruction>(a2a_start);
   EXPECT_EQ(a2a_start_async->async_wrapped_opcode(), HloOpcode::kAllToAll);
   EXPECT_EQ(IsAsync(a2a_start_async), enable_async_all_to_all);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(executable.get(), kNumReplicas));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({40, 60, 44, 64}, results[1]);
+}
+
+XLA_TEST_P(AsyncCollectiveOps, AsyncAllToAllMemCpyWithoutSplitDim) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id2 = u32[2] broadcast(id), dimensions={}
+    a0 = u32[2] constant({10, 15})
+    a1 = u32[2] add(id2, a0)
+    a2 = u32[2] constant({4, 4})
+    a3 = u32[2] multiply(a1, a2)
+    // r0 : a1 = {10, 15}, a2 = {40, 60)
+    // r1 : a1 = {11, 16}, a1 = {44, 64}
+    // r0: a2a element 0 = {10, 15}, a2a element 1 = {11, 16}
+    // r0: a2a element 0 = {40, 60}, a2a element 1 = {44, 64}
+    a2a = (u32[2], u32[2]) all-to-all(u32[2] a1, u32[2] a3), replica_groups={{0,1}}
+    gte0 = get-tuple-element(a2a), index=0
+    gte1 = get-tuple-element(a2a), index=1
+    ROOT x = u32[4] concatenate(gte0, gte1), dimensions={0}
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_use_memcpy_local_p2p(true);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
 
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
                           ExecuteReplicated(executable.get(), kNumReplicas));
