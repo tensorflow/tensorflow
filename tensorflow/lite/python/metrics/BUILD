@@ -38,6 +38,7 @@ pybind_extension(
     ],
     visibility = [
         "__subpackages__",
+        "//tensorflow/lite/python:__subpackages__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/tools/pip_package:__subpackages__",
     ],
