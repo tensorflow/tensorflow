@@ -35,6 +35,7 @@ cc_library(
     deps = [
         "//xla:printer",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_longest_prefix",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
