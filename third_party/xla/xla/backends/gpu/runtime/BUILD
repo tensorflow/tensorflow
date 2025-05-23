@@ -638,6 +638,7 @@ cc_library(
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:stream",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",

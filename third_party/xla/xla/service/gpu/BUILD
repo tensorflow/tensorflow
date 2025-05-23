@@ -158,6 +158,7 @@ xla_test(
         "//xla/hlo/builder/lib:constants",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:test_helpers",
+        "//xla/runtime:device_id",
         "//xla/service:custom_call_status",
         "//xla/service:custom_call_target_registry",
         "//xla/service:executable",

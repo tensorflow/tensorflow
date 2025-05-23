@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_FFI_FFI_API_H_
 
 #include <cstdint>
+#include <map>
 #include <string>
 #include <variant>
 
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/runtime/device_id.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/chain.h"
@@ -61,6 +63,7 @@ struct CallOptions {
   struct GpuOptions {
     se::Stream* stream = nullptr;
     se::DeviceMemoryAllocator* allocator = nullptr;
+    const std::map<int32_t, GlobalDeviceId>* global_device_id_map = nullptr;
   };
 
   using BackendOptions = std::variant<std::monostate, CpuOptions, GpuOptions>;

@@ -25,6 +25,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -47,6 +48,7 @@ limitations under the License.
 #include "xla/ffi/execution_state.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/primitive_util.h"
+#include "xla/runtime/device_id.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/scratch_allocator.h"
@@ -56,13 +58,13 @@ limitations under the License.
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
 
 namespace xla::ffi {
 
 // Type tags to bind parameters passed via execution context to FFI handler.
 struct Stream {};               // binds `se::Stream*`
 struct DeviceOrdinal {};        // binds `int32_t` with device ordinal
+struct GlobalDeviceIdMap {};    // binds `const GlobalDeviceIdMap*`
 struct Allocator {};            // binds `se::DeviceMemoryAllocator*`
 struct ScratchAllocator {};     // binds `se::OwningScratchAllocator`
 struct CalledComputation {};    // binds `HloComputation*`
@@ -529,6 +531,19 @@ struct CtxDecoding<DeviceOrdinal> {
                                     XLA_FFI_ExecutionContext* ctx,
                                     DiagnosticEngine&) {
     return api->internal_api->XLA_FFI_INTERNAL_DeviceOrdinal_Get(ctx);
+  }
+};
+
+template <>
+struct CtxDecoding<GlobalDeviceIdMap> {
+  using Type = const std::map<int32_t, GlobalDeviceId>*;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine&) {
+    void* global_device_id_map =
+        api->internal_api->XLA_FFI_INTERNAL_GlobalDeviceIdMap_Get(ctx);
+    return reinterpret_cast<Type>(global_device_id_map);
   }
 };
 
