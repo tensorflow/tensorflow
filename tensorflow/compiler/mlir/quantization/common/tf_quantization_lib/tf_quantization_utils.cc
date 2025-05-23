@@ -45,11 +45,11 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy/portable_tensor_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/ir/FakeQuantSupport.h"
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantizeUtils.h"
 #include "tensorflow/compiler/mlir/quantization/common/ir/UniformSupport.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/portable_tensor_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_traits.h"
 #include "tensorflow/compiler/mlir/tools/optimize/quantization_utils.h"
 
@@ -635,7 +635,7 @@ ElementsAttr QuantizeLegacy(const Attribute real_value,
     std::vector<int8_t> quantized_values(real_values_attr.getNumElements());
     if (auto uniform_type = dyn_cast<UniformQuantizedType>(q_type)) {
       float min, max, scale;
-      mlir::lite::toco_legacy::PortableSymmetricQuantizeFloats(
+      mlir::quant::PortableSymmetricQuantizeFloats(
           real_values.data(), real_values.size(), quantized_values.data(), &min,
           &max, &scale);
       // The scale has been adjusted, so the adjusted scale should be respected.
