@@ -19,12 +19,16 @@ limitations under the License.
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/cpu/runtime/rng_state_lib.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/buffer_desc.h"
@@ -109,6 +113,17 @@ class XlaCompiledCpuFunction {
 
     // The raw function to call.
     RawFunction raw_function_ = nullptr;
+
+    // Serialized thunk execution specific (used for AOT to avoid binary size
+    // issues)
+    std::function<bool(void** buffer_table, xla::ExecutableRunOptions*,
+                       std::vector<std::unique_ptr<xla::cpu::RngState>>&)>
+        thunk_run_impl_ = nullptr;
+
+    std::vector<std::pair<uint64_t, char*>> embedded_constant_buffers_;
+
+    std::vector<int64_t> rng_state_deltas_;
+    // End serialized thunk execution specific
 
     // Contains information about the buffers used by the XLA computation.
     const xla::cpu_function_runtime::BufferInfo* buffer_infos_ = nullptr;
@@ -334,6 +349,15 @@ class XlaCompiledCpuFunction {
     return *hlo_profile_printer_data_;
   }
 
+  const absl::flat_hash_map<
+      std::string,
+      /*xla::cpu::AotCompiledFunctionLibrary::FunctionPtr*/ void*>&
+  function_library_symbol_map() const {
+    return function_library_symbol_map_;
+  }
+
+  const xla::ExecutableRunOptions* run_options() const { return &run_options_; }
+
  protected:
   virtual bool is_thunk_mode() const { return false; }
 
@@ -344,6 +368,8 @@ class XlaCompiledCpuFunction {
   const xla::cpu_function_runtime::BufferInfo* buffer_infos() const {
     return buffer_infos_;
   }
+
+  int32 num_buffers() const { return num_buffers_; }
 
   void** buffer_table() const { return buffer_table_; }
 
@@ -373,6 +399,26 @@ class XlaCompiledCpuFunction {
   static void set_static_data_raw_function(StaticData* static_data,
                                            RawFunction raw_function) {
     static_data->raw_function_ = raw_function;
+  }
+
+  static void set_static_data_thunk_run_impl(
+      StaticData* static_data,
+      std::function<bool(void** buffer_table, xla::ExecutableRunOptions*,
+                         std::vector<std::unique_ptr<xla::cpu::RngState>>&)>
+          thunk_run_impl) {
+    static_data->thunk_run_impl_ = std::move(thunk_run_impl);
+  }
+
+  static void set_static_data_embedded_constant_buffers(
+      StaticData* static_data,
+      std::vector<std::pair<uint64_t, char*>> embedded_constant_buffers) {
+    static_data->embedded_constant_buffers_ =
+        std::move(embedded_constant_buffers);
+  }
+
+  static void set_static_data_rng_state_deltas(
+      StaticData* static_data, std::vector<int64_t> rng_state_deltas) {
+    static_data->rng_state_deltas_ = std::move(rng_state_deltas);
   }
 
   static void set_static_data_buffer_infos(
@@ -473,9 +519,20 @@ class XlaCompiledCpuFunction {
   static void set_static_data_use_xla_runtime(StaticData* static_data, bool) {}
 
  private:
+  absl::flat_hash_map<
+      std::string,
+      /*xla::cpu::AotCompiledFunctionLibrary::FunctionPtr*/ void*>
+      function_library_symbol_map_;
+
   const std::optional<size_t> temp_allocation_index_;
 
   const RawFunction raw_function_ = nullptr;
+  std::function<bool(void** buffer_table, xla::ExecutableRunOptions*,
+                     std::vector<std::unique_ptr<xla::cpu::RngState>>&)>
+      thunk_run_impl_ = nullptr;
+
+  std::vector<std::unique_ptr<xla::cpu::RngState>> rng_states_;
+
   const size_t result_index_;
 
   // Array containing pointers to argument and temp buffers (slots corresponding

@@ -158,6 +158,7 @@ def saved_model_compile_aot(
             [
                 ":{}.o".format(name),
                 ":{}_metadata.o".format(name),
+                ":{}.constants.o".format(name),
             ],
             force_compile = force_without_xla_support_flag,
         ),
