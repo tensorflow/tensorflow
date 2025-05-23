@@ -161,6 +161,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                     GetOutputSafe(context, node, kOutputTensor, &output));
   if (output->type != kTfLiteString) {
     const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+    TF_LITE_ENSURE(context, input != nullptr);
     const TfLiteTensor* shape = GetInput(context, node, kShapeTensor);
     if (NumInputs(node) == 1 || IsConstantOrPersistentTensor(shape)) {
       op_data->output_shape_known = true;
