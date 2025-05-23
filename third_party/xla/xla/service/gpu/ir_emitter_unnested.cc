@@ -96,6 +96,7 @@ limitations under the License.
 #include "xla/service/global_device_id.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/gpu_constants.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #ifdef GOOGLE_CUDA
 #include "xla/stream_executor/cuda/cuda_solver_context.h"
@@ -104,6 +105,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
 #include "xla/backends/gpu/runtime/topk.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/gpu_norm_runner.h"
@@ -112,7 +114,6 @@ limitations under the License.
 #include "xla/service/gpu/ir_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_nested.h"
-#include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -947,8 +948,9 @@ absl::Status IrEmitterUnnested::EmitCuDnnThunk(
     const HloCustomCallInstruction* instr) {
   TF_ASSIGN_OR_RETURN(
       auto kernel_arguments,
-      KernelArguments::Create(ir_emitter_context_->buffer_assignment(), instr,
-                              instr->operands()));
+      emitters::KernelArguments::Create(
+          ir_emitter_context_->buffer_assignment(), GetDefaultBufferAlignment(),
+          instr, instr->operands()));
   TF_ASSIGN_OR_RETURN(const std::string fingerprint,
                       FingerprintWithBackendConfig<GpuBackendConfig>(*instr));
   // check if sdpa dropout is enabled
@@ -1369,10 +1371,10 @@ absl::Status IrEmitterUnnested::EmitTopKCustomCall(
                                   batch_size, platform_name(), wavefront_size));
 
   // Prepare kernel arguments.
-  TF_ASSIGN_OR_RETURN(
-      auto kernel_arguments,
-      KernelArguments::Create(ir_emitter_context_->buffer_assignment(), instr,
-                              operands));
+  TF_ASSIGN_OR_RETURN(auto kernel_arguments,
+                      emitters::KernelArguments::Create(
+                          ir_emitter_context_->buffer_assignment(),
+                          GetDefaultBufferAlignment(), instr, operands));
 
   auto thunk = std::make_unique<CustomKernelThunk>(
       instr, std::move(kernel), std::move(kernel_arguments.args()));
@@ -1435,9 +1437,10 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
 
     TF_ASSIGN_OR_RETURN(
         auto kernel_arguments,
-        KernelArguments::Create(ir_emitter_context_->buffer_assignment(), instr,
-                                instr->operands(),
-                                /*dedup=*/false));
+        emitters::KernelArguments::Create(
+            ir_emitter_context_->buffer_assignment(),
+            GetDefaultBufferAlignment(), instr, instr->operands(),
+            /*dedup=*/false));
     auto launch_dimensions =
         LaunchDimensions(se::BlockDim(call.grid_x, call.grid_y, call.grid_z),
                          se::ThreadDim(call.num_warps * 32));
@@ -1498,11 +1501,11 @@ absl::Status IrEmitterUnnested::EmitTritonCustomCall(
           instr->raw_backend_config_string(), generate);
   TF_ASSIGN_OR_RETURN(const KernelReuseCache::Entry* entry, status_or_entry);
 
-  TF_ASSIGN_OR_RETURN(
-      auto kernel_arguments,
-      KernelArguments::Create(ir_emitter_context_->buffer_assignment(), instr,
-                              instr->operands(),
-                              /*dedup=*/false));
+  TF_ASSIGN_OR_RETURN(auto kernel_arguments,
+                      emitters::KernelArguments::Create(
+                          ir_emitter_context_->buffer_assignment(),
+                          GetDefaultBufferAlignment(), instr, instr->operands(),
+                          /*dedup=*/false));
 
   AddThunkToThunkSequence(std::make_unique<KernelThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), entry->kernel_name,
@@ -2292,10 +2295,10 @@ IrEmitterUnnested::BuildKernelThunkForNonFusionOp(
     const LaunchDimensions& launch_dimensions) {
   std::string suggested_kernel_name(instr->name());
 
-  TF_ASSIGN_OR_RETURN(
-      auto kernel_arguments,
-      KernelArguments::Create(ir_emitter_context_->buffer_assignment(), instr,
-                              needed_operands));
+  TF_ASSIGN_OR_RETURN(auto kernel_arguments,
+                      emitters::KernelArguments::Create(
+                          ir_emitter_context_->buffer_assignment(),
+                          GetDefaultBufferAlignment(), instr, needed_operands));
 
   VLOG(3) << "Generating (without reuse check): " << suggested_kernel_name;
 

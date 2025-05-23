@@ -22,8 +22,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -70,11 +70,11 @@ TEST(KernelThunkTest, CreateAndGettersAndToString) {
   BufferAllocation alloc1(/*index=*/0, /*size=*/256, /*color=*/0);
   BufferAllocation::Slice slice1(&alloc1, /*offset=*/0, /*size=*/256);
 
-  std::vector<KernelArgument> kernel_arguments = {
-      KernelArgument(ShapeUtil::MakeShape(F32, {1024}), slice0,
-                     /*written=*/false),
-      KernelArgument(ShapeUtil::MakeShape(F32, {256}), slice1,
-                     /*written=*/true)};
+  std::vector<emitters::KernelArgument> kernel_arguments = {
+      emitters::KernelArgument(ShapeUtil::MakeShape(F32, {1024}), slice0,
+                               /*written=*/false),
+      emitters::KernelArgument(ShapeUtil::MakeShape(F32, {256}), slice1,
+                               /*written=*/true)};
 
   LaunchDimensions launch_dimensions(se::BlockDim(32, 31, 30),
                                      se::ThreadDim(256, 255, 254));
@@ -113,11 +113,11 @@ TEST(KernelThunkTest, ToProto) {
   BufferAllocation alloc1(/*index=*/0, /*size=*/256, /*color=*/0);
   BufferAllocation::Slice slice1(&alloc1, /*offset=*/0, /*size=*/256);
 
-  std::vector<KernelArgument> kernel_arguments = {
-      KernelArgument(ShapeUtil::MakeShape(F32, {1024}), slice0,
-                     /*written=*/false),
-      KernelArgument(ShapeUtil::MakeShape(F32, {256}), slice1,
-                     /*written=*/true)};
+  std::vector<emitters::KernelArgument> kernel_arguments = {
+      emitters::KernelArgument(ShapeUtil::MakeShape(F32, {1024}), slice0,
+                               /*written=*/false),
+      emitters::KernelArgument(ShapeUtil::MakeShape(F32, {256}), slice1,
+                               /*written=*/true)};
 
   LaunchDimensions launch_dimensions(se::BlockDim(32, 31, 30),
                                      se::ThreadDim(256, 255, 254));
