@@ -23,11 +23,13 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -44,6 +46,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla::gpu {
 namespace {
@@ -59,6 +62,11 @@ struct DummyThunk : public Thunk {
       : Thunk(kind, std::move(thunk_info)) {}
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
     return absl::OkStatus();
+  }
+  static absl::StatusOr<std::unique_ptr<DummyThunk>> FromProto(
+      const ThunkProto& thunk_proto, Thunk::Kind kind) {
+    return std::make_unique<DummyThunk>(
+        kind, Thunk::ThunkInfo::FromProto(thunk_proto.thunk_info()));
   }
 };
 
@@ -313,6 +321,130 @@ TEST(WhileThunkTest, ToProto) {
   )pb";
 
   EXPECT_THAT(proto, EqualsProto(expected));
+}
+
+TEST(WhileThunkTest, FromProto) {
+  ThunkProto proto;
+  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        thunk_info {
+          profile_annotation: "profile_annotation"
+          execution_stream_id: 123
+        }
+        while_thunk {
+          condition_result_buffer_index {
+            buffer_allocation_index: 1
+            offset: 16
+            size: 256
+          }
+          condition_thunk_sequence {
+            thunks {
+              thunk_info {
+                profile_annotation: "profile_annotation"
+                execution_stream_id: 123
+              }
+              sequential_thunk {
+                thunks {
+                  thunk_info {
+                    profile_annotation: "profile_annotation"
+                    execution_stream_id: 123
+                  }
+                }
+                thunks {
+                  thunk_info {
+                    profile_annotation: "profile_annotation"
+                    execution_stream_id: 123
+                  }
+                }
+              }
+            }
+          }
+          body_thunk_sequence {
+            thunks {
+              thunk_info {
+                profile_annotation: "profile_annotation"
+                execution_stream_id: 123
+              }
+              sequential_thunk {
+                thunks {
+                  thunk_info {
+                    profile_annotation: "profile_annotation"
+                    execution_stream_id: 123
+                  }
+                }
+                thunks {
+                  thunk_info {
+                    profile_annotation: "profile_annotation"
+                    execution_stream_id: 123
+                  }
+                }
+              }
+            }
+          }
+          trip_count: 10
+        }
+      )pb",
+      &proto));
+
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.profile_annotation = "profile_annotation";
+  thunk_info.execution_stream_id = 123;
+  std::vector<BufferAllocation> buffer_allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
+      BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
+  Thunk::Deserializer sequential_thunk_deserializer =
+      [&](const ThunkProto& proto) -> absl::StatusOr<std::unique_ptr<Thunk>> {
+    if (!proto.has_sequential_thunk()) {
+      return absl::InvalidArgumentError("This should be a sequential thunk!");
+    }
+    return SequentialThunk::FromProto(
+        thunk_info, proto.sequential_thunk(),
+        [](const ThunkProto& proto)
+            -> absl::StatusOr<std::unique_ptr<DummyThunk>> {
+          return DummyThunk::FromProto(proto, Kind::kCustomCall);
+        });
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<WhileThunk> thunk,
+      WhileThunk::FromProto(thunk_info, proto.while_thunk(), buffer_allocations,
+                            sequential_thunk_deserializer));
+  ASSERT_NE(thunk, nullptr);
+  EXPECT_EQ(thunk->profile_annotation(), "profile_annotation");
+  EXPECT_EQ(thunk->execution_stream_id(), 123);
+  EXPECT_EQ(thunk->condition_result_buffer().index(), 1);
+  EXPECT_EQ(thunk->condition_result_buffer().offset(), 16);
+  EXPECT_EQ(thunk->condition_result_buffer().size(), 256);
+  EXPECT_EQ(thunk->trip_count(), 10);
+  ASSERT_NE(thunk->condition_thunk_sequence(), nullptr);
+  ASSERT_NE(thunk->body_thunk_sequence(), nullptr);
+  EXPECT_EQ(thunk->condition_thunk_sequence()->profile_annotation(),
+            "profile_annotation");
+  EXPECT_EQ(thunk->condition_thunk_sequence()->execution_stream_id(), 123);
+  EXPECT_EQ(thunk->body_thunk_sequence()->profile_annotation(),
+            "profile_annotation");
+  EXPECT_EQ(thunk->body_thunk_sequence()->execution_stream_id(), 123);
+  ASSERT_EQ(thunk->condition_thunk_sequence()->thunks().size(), 1);
+  ASSERT_EQ(thunk->body_thunk_sequence()->thunks().size(), 1);
+  const SequentialThunk* condition_seq_ptr =
+      dynamic_cast<const SequentialThunk*>(
+          thunk->condition_thunk_sequence()->thunks().front().get());
+  ASSERT_NE(condition_seq_ptr, nullptr);
+  const SequentialThunk* body_seq_ptr = dynamic_cast<const SequentialThunk*>(
+      thunk->body_thunk_sequence()->thunks().front().get());
+  ASSERT_NE(body_seq_ptr, nullptr);
+  ASSERT_EQ(condition_seq_ptr->thunks().size(), 2);
+  ASSERT_EQ(body_seq_ptr->thunks().size(), 2);
+  for (const auto& thunk : condition_seq_ptr->thunks()) {
+    EXPECT_EQ(thunk->profile_annotation(), "profile_annotation");
+    EXPECT_EQ(thunk->execution_stream_id(), 123);
+    EXPECT_EQ(thunk->kind(), Kind::kCustomCall);
+  }
+  for (const auto& thunk : body_seq_ptr->thunks()) {
+    EXPECT_EQ(thunk->profile_annotation(), "profile_annotation");
+    EXPECT_EQ(thunk->execution_stream_id(), 123);
+    EXPECT_EQ(thunk->kind(), Kind::kCustomCall);
+  }
 }
 
 }  // namespace

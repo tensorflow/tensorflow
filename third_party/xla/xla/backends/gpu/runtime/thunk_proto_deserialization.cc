@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/service/buffer_assignment.h"
 
 namespace xla::gpu {
@@ -37,10 +38,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
         "The thunk execution stream ID must be non-negative.");
   }
 
-  Thunk::ThunkInfo thunk_info;
-  thunk_info.execution_stream_id =
-      thunk_proto.thunk_info().execution_stream_id();
-  thunk_info.profile_annotation = thunk_proto.thunk_info().profile_annotation();
+  Thunk::ThunkInfo thunk_info =
+      Thunk::ThunkInfo::FromProto(thunk_proto.thunk_info());
 
   if (thunk_proto.has_sequential_thunk()) {
     auto deserializer = [&buffer_allocations](const ThunkProto& thunk_proto) {
@@ -63,6 +62,13 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
     return HostToDeviceCopyThunk::FromProto(
         std::move(thunk_info), thunk_proto.host_to_device_copy_thunk(),
         buffer_allocations);
+  }
+  if (thunk_proto.has_while_thunk()) {
+    return WhileThunk::FromProto(
+        thunk_info, thunk_proto.while_thunk(), buffer_allocations,
+        [&buffer_allocations](const ThunkProto& thunk_proto) {
+          return DeserializeThunkProto(thunk_proto, buffer_allocations);
+        });
   }
   if (thunk_proto.has_gemm_thunk()) {
     return GemmThunk::FromProto(std::move(thunk_info), thunk_proto.gemm_thunk(),

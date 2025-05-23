@@ -317,6 +317,13 @@ bool IsReductionCollective(Thunk::Kind kind) {
          kind == Thunk::kReduceScatter || kind == Thunk::kReduceScatterStart;
 }
 
+Thunk::ThunkInfo Thunk::ThunkInfo::FromProto(const ThunkInfoProto& proto) {
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.profile_annotation = proto.profile_annotation();
+  thunk_info.execution_stream_id = proto.execution_stream_id();
+  return thunk_info;
+}
+
 Thunk::ThunkInfo Thunk::ThunkInfo::WithProfileAnnotation(
     const HloInstruction* instr) {
   ThunkInfo thunk_info;

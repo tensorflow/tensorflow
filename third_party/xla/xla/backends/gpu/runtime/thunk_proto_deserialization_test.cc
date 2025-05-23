@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/protobuf.h"
@@ -38,6 +39,7 @@ using ::testing::IsEmpty;
 using ::testing::Pointer;
 using ::testing::Property;
 using ::testing::WhenDynamicCastTo;
+using Kind = Thunk::Kind;
 
 TEST(ThunkProtoDeserializationTest, SequentialThunkChain) {
   constexpr ExecutionStreamId kExecutionStreamId{123};
@@ -194,6 +196,117 @@ TEST(ThunkProtoDeserializationTest, HostToDeviceCopyThunk) {
                 /*mem_size=*/256,
                 /*events=*/nullptr,
                 /*instr=*/nullptr));
+}
+
+TEST(ThunkProtoDeserializationTest, WhileThunk) {
+  ThunkProto proto;
+  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        thunk_info {
+          profile_annotation: "profile_annotation"
+          execution_stream_id: 123
+        }
+        while_thunk {
+          condition_result_buffer_index {
+            buffer_allocation_index: 1
+            offset: 16
+            size: 256
+          }
+          condition_thunk_sequence {
+            thunks {
+              thunk_info {
+                profile_annotation: "profile_annotation"
+                execution_stream_id: 123
+              }
+              sequential_thunk {
+                thunks {
+                  thunk_info {
+                    profile_annotation: "profile_annotation"
+                    execution_stream_id: 123
+                  }
+                  copy_thunk {}
+                }
+                thunks {
+                  thunk_info {
+                    profile_annotation: "profile_annotation"
+                    execution_stream_id: 123
+                  }
+                  copy_thunk {}
+                }
+              }
+            }
+          }
+          body_thunk_sequence {
+            thunks {
+              thunk_info {
+                profile_annotation: "profile_annotation"
+                execution_stream_id: 123
+              }
+              sequential_thunk {
+                thunks {
+                  thunk_info {
+                    profile_annotation: "profile_annotation"
+                    execution_stream_id: 123
+                  }
+                  copy_thunk {}
+                }
+                thunks {
+                  thunk_info {
+                    profile_annotation: "profile_annotation"
+                    execution_stream_id: 123
+                  }
+                  copy_thunk {}
+                }
+              }
+            }
+          }
+          trip_count: 10
+        }
+      )pb",
+      &proto));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Thunk> athunk,
+      DeserializeThunkProto(
+          proto, {BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
+                  BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)}));
+  auto* thunk = dynamic_cast<WhileThunk*>(athunk.get());
+  ASSERT_NE(thunk, nullptr);
+  EXPECT_EQ(thunk->profile_annotation(), "profile_annotation");
+  EXPECT_EQ(thunk->execution_stream_id(), 123);
+  EXPECT_EQ(thunk->condition_result_buffer().index(), 1);
+  EXPECT_EQ(thunk->condition_result_buffer().offset(), 16);
+  EXPECT_EQ(thunk->condition_result_buffer().size(), 256);
+  EXPECT_EQ(thunk->trip_count(), 10);
+  ASSERT_NE(thunk->condition_thunk_sequence(), nullptr);
+  ASSERT_NE(thunk->body_thunk_sequence(), nullptr);
+  EXPECT_EQ(thunk->condition_thunk_sequence()->profile_annotation(),
+            "profile_annotation");
+  EXPECT_EQ(thunk->condition_thunk_sequence()->execution_stream_id(), 123);
+  EXPECT_EQ(thunk->body_thunk_sequence()->profile_annotation(),
+            "profile_annotation");
+  EXPECT_EQ(thunk->body_thunk_sequence()->execution_stream_id(), 123);
+  ASSERT_EQ(thunk->condition_thunk_sequence()->thunks().size(), 1);
+  ASSERT_EQ(thunk->body_thunk_sequence()->thunks().size(), 1);
+  const SequentialThunk* condition_seq_ptr =
+      dynamic_cast<const SequentialThunk*>(
+          thunk->condition_thunk_sequence()->thunks().front().get());
+  ASSERT_NE(condition_seq_ptr, nullptr);
+  const SequentialThunk* body_seq_ptr = dynamic_cast<const SequentialThunk*>(
+      thunk->body_thunk_sequence()->thunks().front().get());
+  ASSERT_NE(body_seq_ptr, nullptr);
+  ASSERT_EQ(condition_seq_ptr->thunks().size(), 2);
+  ASSERT_EQ(body_seq_ptr->thunks().size(), 2);
+  for (const auto& thunk : condition_seq_ptr->thunks()) {
+    EXPECT_EQ(thunk->profile_annotation(), "profile_annotation");
+    EXPECT_EQ(thunk->execution_stream_id(), 123);
+    EXPECT_EQ(thunk->kind(), Kind::kCopy);
+  }
+  for (const auto& thunk : body_seq_ptr->thunks()) {
+    EXPECT_EQ(thunk->profile_annotation(), "profile_annotation");
+    EXPECT_EQ(thunk->execution_stream_id(), 123);
+    EXPECT_EQ(thunk->kind(), Kind::kCopy);
+  }
 }
 
 }  // namespace

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/host_memory_pool.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -94,6 +95,11 @@ class WhileThunk : public Thunk {
   std::string ToString(int indent) const override;
 
   absl::StatusOr<ThunkProto> ToProto() const override;
+
+  static absl::StatusOr<std::unique_ptr<WhileThunk>> FromProto(
+      ThunkInfo thunk_info, const WhileThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations,
+      const Deserializer& deserializer);
 
  private:
   const HloInstruction* loop_;

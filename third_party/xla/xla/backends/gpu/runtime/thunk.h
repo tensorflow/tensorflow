@@ -193,6 +193,7 @@ class Thunk {
 
   struct ThunkInfo {
     ThunkInfo() = default;  // Disable implicit constructors.
+    static ThunkInfo FromProto(const ThunkInfoProto& proto);
     static ThunkInfo WithProfileAnnotation(const HloInstruction* instr);
 
     std::string profile_annotation;
