@@ -947,10 +947,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
 
       if (use_xnn) {
         XnnDotThunk::Options options = {XnnShouldUseThreadPool(instruction)};
+        bool capture_rhs = HloPredicateIsOp<HloOpcode::kParameter>(rhs);
         return ThunkSequence::Of<XnnDotThunk>(
             std::move(options), ThunkInfo(instruction), dnums, lhs_slice,
             lhs->shape(), rhs_slice, rhs->shape(), out_slice,
-            instruction->shape());
+            instruction->shape(), capture_rhs);
       } else {
         return ThunkSequence::Of<DotThunk>(
             ThunkInfo(instruction), dnums, lhs_slice, lhs->shape(), rhs_slice,

@@ -742,6 +742,7 @@ static absl::Status ToProto(const XnnDotThunk& thunk, ThunkProto& proto) {
       xnn_dot_thunk_proto->mutable_out_buffer_shape()));
   proto.mutable_xnn_fusion_thunk()->mutable_options()->set_use_threadpool(
       thunk.options().use_threadpool);
+  xnn_dot_thunk_proto->set_capture_rhs(thunk.capture_rhs());
   return absl::OkStatus();
 }
 
@@ -1542,10 +1543,12 @@ static absl::StatusOr<std::unique_ptr<XnnDotThunk>> XnnDotThunkFromProto(
   const auto& [rhs_buffer, rhs_shape] = rhs_slice_shape;
   const auto& [out_buffer, out_shape] = out_slice_shape;
 
+  bool capture_rhs = proto.xnn_fusion_thunk().xnn_dot_thunk().capture_rhs();
+
   return XnnDotThunk::Create(
       std::move(options), std::move(info),
       proto.xnn_fusion_thunk().xnn_dot_thunk().dot_dimensions(), lhs_buffer,
-      lhs_shape, rhs_buffer, rhs_shape, out_buffer, out_shape);
+      lhs_shape, rhs_buffer, rhs_shape, out_buffer, out_shape, capture_rhs);
 }
 
 static absl::StatusOr<std::unique_ptr<XnnConvolutionThunk>>

@@ -149,6 +149,7 @@ message XnnDotThunkProto {
   ShapeBufferAllocationSliceProto lhs_buffer_shape = 2;
   ShapeBufferAllocationSliceProto rhs_buffer_shape = 3;
   ShapeBufferAllocationSliceProto out_buffer_shape = 4;
+  bool capture_rhs = 5;
 }
 
 message XnnConvolutionThunkProto {
