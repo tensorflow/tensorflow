@@ -302,6 +302,46 @@ ENTRY main {
   EXPECT_FALSE(Normalize(module.get(), cc, BF16, F32));
 }
 
+TEST_F(FloatSupportTest, Bf16MinimumIsOnlyNormalizedPreAmpere) {
+  constexpr absl::string_view kHloModule = R"(
+HloModule m
+
+ENTRY main {
+  p0 = bf16[] parameter(0)
+  p1 = bf16[] parameter(1)
+  ROOT r = bf16[] minimum(p0, p1)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  EXPECT_FALSE(
+      Normalize(module.get(), se::CudaComputeCapability::Hopper(), BF16, F32));
+  EXPECT_FALSE(
+      Normalize(module.get(), se::CudaComputeCapability::Ampere(), BF16, F32));
+  EXPECT_TRUE(
+      Normalize(module.get(), se::CudaComputeCapability::Volta(), BF16, F32));
+}
+
+TEST_F(FloatSupportTest, Bf16MaximumIsOnlyNormalizedPreAmpere) {
+  constexpr absl::string_view kHloModule = R"(
+HloModule m
+
+ENTRY main {
+  p0 = bf16[] parameter(0)
+  p1 = bf16[] parameter(1)
+  ROOT r = bf16[] maximum(p0, p1)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  EXPECT_FALSE(
+      Normalize(module.get(), se::CudaComputeCapability::Hopper(), BF16, F32));
+  EXPECT_FALSE(
+      Normalize(module.get(), se::CudaComputeCapability::Ampere(), BF16, F32));
+  EXPECT_TRUE(
+      Normalize(module.get(), se::CudaComputeCapability::Volta(), BF16, F32));
+}
+
 TEST_F(FloatSupportTest,
        BF16ReductionOnHopperIsOnlyNormalizedIfReducerIsUnsupported) {
   auto cc = se::CudaComputeCapability::Hopper();

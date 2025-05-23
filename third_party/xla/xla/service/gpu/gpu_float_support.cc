@@ -112,6 +112,15 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
         return cuda_compute_capability != nullptr;
       }
       return false;
+    case HloOpcode::kMaximum:
+    case HloOpcode::kMinimum:
+      if (LowPrecisionType() == BF16) {
+        auto* cuda_compute_capability =
+            std::get_if<se::CudaComputeCapability>(&compute_capability_);
+        return cuda_compute_capability != nullptr &&
+               cuda_compute_capability->IsAtLeastAmpere();
+      }
+      return false;
     case HloOpcode::kAdd:
     case HloOpcode::kMultiply:
     case HloOpcode::kSubtract: {
