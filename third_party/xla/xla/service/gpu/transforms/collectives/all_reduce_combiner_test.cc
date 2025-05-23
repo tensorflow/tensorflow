@@ -114,16 +114,15 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloString, config));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
+  EXPECT_THAT(
       GpuAllReduceCombiner(device_info, /*default_combine_threshold_in_bytes=*/
                            threshold_bytes,
                            /*combine_threshold_in_bytes=*/threshold_bytes,
                            /*combine_threshold_count=*/256, pointer_size)
-          .Run(module.get()));
+          .Run(module.get()),
+      IsOkAndHolds(true));
 
   VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
   // Pipelined all gathers were combined up to the predefined max available
   // device mem limit.
   const absl::string_view kExpected = R"(
@@ -210,17 +209,16 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloString, config));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
+  EXPECT_THAT(
       GpuAllReduceCombiner(
           device_info, /*default_combine_threshold_in_bytes=*/
           kDefaultAllReduceCombineThreshold,
           /*combine_threshold_in_bytes=*/kDefaultAllReduceCombineThreshold,
           /*combine_threshold_count=*/256, pointer_size)
-          .Run(module.get()));
+          .Run(module.get()),
+      IsOkAndHolds(true));
 
   VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
   const absl::string_view kExpected = R"(
     // CHECK-DAG: %[[NONPIPELINED_PARAM_0:.*]] = {{.*}} index=1
     // CHECK-DAG: %[[NONPIPELINED_PARAM_1:.*]] = {{.*}} index=2
@@ -313,16 +311,15 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloString, config));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
+  EXPECT_THAT(
       GpuAllReduceCombiner(device_info, /*default_combine_threshold_in_bytes=*/
                            kDefaultAllReduceCombineThreshold,
                            /*combine_threshold_in_bytes=*/threshold_bytes,
                            /*combine_threshold_count=*/256, pointer_size)
-          .Run(module.get()));
+          .Run(module.get()),
+      IsOkAndHolds(true));
 
   VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
   // Pipelined all gathers were combined up to the predefined max available
   // device mem limit.
   const absl::string_view kExpected = R"(
@@ -333,8 +330,9 @@ ENTRY entry {
     // CHECK-DAG: %[[NONPIPELINED_PARAM_1:.*]] = {{.*}} index=5
     // CHECK-DAG: %[[NONPIPELINED_PARAM_2:.*]] = {{.*}} index=6
     // CHECK-DAG: all-reduce(%[[PIPELINED_PARAM_0]], %[[PIPELINED_PARAM_1]])
-    // CHECK-DAG: all-reduce(%[[PIPELINED_PARAM_2]], %[[NONPIPELINED_PARAM_0]])
-    // CHECK-DAG: all-reduce(%[[NONPIPELINED_PARAM_1]], %[[NONPIPELINED_PARAM_2]])
+    // CHECK-DAG: all-reduce(%[[PIPELINED_PARAM_2]])
+    // CHECK-DAG: all-reduce(%[[NONPIPELINED_PARAM_0]], %[[NONPIPELINED_PARAM_1]])
+    // CHECK-DAG: all-reduce(%[[NONPIPELINED_PARAM_2]])
   )";
 
   EXPECT_TRUE(
@@ -423,7 +421,8 @@ TEST_F(GpuAllReduceCombinerTest,
   EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(false));
 }
 
-TEST_F(GpuAllReduceCombinerTest, FavorsPipelinedCollectivesOverSynchronous) {
+TEST_F(GpuAllReduceCombinerTest,
+       DontCombinePipelinedAndSynchronousCollectives) {
   absl::string_view kHloText = R"(
     HloModule m
 
@@ -436,17 +435,14 @@ TEST_F(GpuAllReduceCombinerTest, FavorsPipelinedCollectivesOverSynchronous) {
     ENTRY main {
       p0 = f16[1000000]{0} parameter(0)
       p1 = f16[1000000]{0} parameter(1)
-      p2 = f16[1000000]{0} parameter(2)
 
       ar0 = f16[1000000]{0} all-reduce(p0), replica_groups={}, to_apply=add,
         frontend_attributes={sync_collective="true"},
         backend_config={"collective_backend_config": {"is_pipelined": true}}
       ar1 = f16[1000000]{0} all-reduce(p1), replica_groups={}, to_apply=add,
-        frontend_attributes={sync_collective="true"},
-        backend_config={"collective_backend_config": {"is_pipelined": true}}
-      ar2 = f16[1000000]{0} all-reduce(p2), replica_groups={}, to_apply=add,
-        backend_config={"collective_backend_config": {"is_pipelined": true}}
-      ROOT result = tuple(ar0, ar1, ar2)
+        frontend_attributes={sync_collective="true"}
+
+      ROOT result = tuple(ar0, ar1)
     }
   )";
   DeviceDescription device_info;
@@ -459,13 +455,7 @@ TEST_F(GpuAllReduceCombinerTest, FavorsPipelinedCollectivesOverSynchronous) {
       /*combine_threshold_in_bytes=*/kDefaultAllReduceCombineThreshold,
       /*combine_threshold_count=*/256, /*pointer_size=*/4);
 
-  EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(true));
-  Matcher<const HloInstruction*> combined_all_reduce =
-      op::AllReduce(op::Parameter(0), op::Parameter(1), op::Parameter(2));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Tuple(op::GetTupleElement(combined_all_reduce, 0),
-                        op::GetTupleElement(combined_all_reduce, 1),
-                        op::GetTupleElement(combined_all_reduce, 2)));
+  EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(false));
 }
 
 }  // namespace

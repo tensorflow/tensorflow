@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -34,13 +35,24 @@ namespace xla::gpu {
 
 namespace {
 
-std::optional<AllReduceCombiner::GroupKey> PipelinedCombinerKey(
+std::optional<AllReduceCombiner::GroupKey> DefaultCombinerKey(
     const HloInstruction* instruction, const HloDomainMap& domain_map) {
-  auto backend_config = instruction->backend_config<GpuBackendConfig>();
-  if (!backend_config.ok()) {
+  std::optional<AllReduceCombiner::GroupKey> key =
+      AllReduceCombiner::CombineKey(instruction, domain_map);
+  if (!key.has_value()) {
     return std::nullopt;
   }
-  if (!backend_config->collective_backend_config().is_pipelined()) {
+  // Don't combine pipelined and non-pipelined collectives.
+  if (IsPipelinedCollective(*instruction)) {
+    absl::StrAppend(&AllReduceCombiner::GetGroupKeyExtraArgs(*key),
+                    " pipelined=true");
+  }
+  return key;
+}
+
+std::optional<AllReduceCombiner::GroupKey> PipelinedCombinerKey(
+    const HloInstruction* instruction, const HloDomainMap& domain_map) {
+  if (!IsPipelinedCollective(*instruction)) {
     return std::nullopt;
   }
   return AllReduceCombiner::CombineKey(instruction, domain_map);
@@ -49,6 +61,10 @@ std::optional<AllReduceCombiner::GroupKey> PipelinedCombinerKey(
 std::optional<AllReduceCombiner::GroupKey> SynchronousCombinerKey(
     const HloInstruction* instruction, const HloDomainMap& domain_map) {
   if (!IsCombinableSyncCollective(*instruction)) {
+    return std::nullopt;
+  }
+  // Exclude pipelined collectives.
+  if (IsPipelinedCollective(*instruction)) {
     return std::nullopt;
   }
   return AllReduceCombiner::CombineKey(instruction, domain_map);
@@ -61,15 +77,12 @@ absl::StatusOr<bool> GpuAllReduceCombiner::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Combiner threshold is specified. Running parent pass code.
   if (combine_threshold_in_bytes_ != default_combine_threshold_in_bytes_) {
-    return AllReduceCombiner::Run(module, execution_threads);
+    return RunWithKeyCombiner(module, execution_threads, DefaultCombinerKey);
   }
 
   // Combiner threshold is not specified. We use heuristics.
   // We sequentially combine pipelined collectives then synchronous collectives
   // and finally the rest.
-  // We currently don't support combining a collective that was previously
-  // combined (see b/415761650). We favor combining pipelined collectives over
-  // synchronous collectives.
 
   bool changed = false;
 
@@ -97,8 +110,9 @@ absl::StatusOr<bool> GpuAllReduceCombiner::Run(
   // Use default combiner thresholds after we combine pipelined collectives.
   // The rest is combined by the parent pass code.
   combine_threshold_in_bytes_ = default_combine_threshold_in_bytes_;
-  TF_ASSIGN_OR_RETURN(bool combined_rest,
-                      AllReduceCombiner::Run(module, execution_threads));
+  TF_ASSIGN_OR_RETURN(
+      bool combined_rest,
+      RunWithKeyCombiner(module, execution_threads, DefaultCombinerKey));
   changed |= combined_rest;
   return changed;
 }

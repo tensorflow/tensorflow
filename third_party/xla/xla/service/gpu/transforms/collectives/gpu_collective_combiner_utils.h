@@ -46,6 +46,9 @@ int64_t ComputeSuggestedCombinerThreshold(
 absl::Status AppendPipelinedInstruction(HloInstruction* instr,
                                         HloInstruction* new_while_instr);
 
+// Returns true if `instr` is a pipelined collective instruction.
+bool IsPipelinedCollective(const HloInstruction& instr);
+
 // Returns true if module contains any pipelined instruction. False otherwise.
 bool ContainsPipelinedInstruction(const HloModule& module);
 

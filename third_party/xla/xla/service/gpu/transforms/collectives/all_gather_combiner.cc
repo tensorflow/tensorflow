@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -34,14 +35,27 @@ namespace xla::gpu {
 
 namespace {
 
+std::optional<AllGatherCombiner::GroupKey> DefaultCombinerKey(
+    const HloInstruction* instruction, const HloDomainMap& domain_map,
+    bool combine_by_dim, bool combine_different_dtypes) {
+  std::optional<AllGatherCombiner::GroupKey> key =
+      AllGatherCombiner::CombineKey(instruction, domain_map, combine_by_dim,
+                                    combine_different_dtypes);
+  if (!key.has_value()) {
+    return std::nullopt;
+  }
+  // Don't combine pipelined and non-pipelined collectives.
+  if (IsPipelinedCollective(*instruction)) {
+    absl::StrAppend(&AllGatherCombiner::GetGroupKeyExtraArgs(*key),
+                    " pipelined=true");
+  }
+  return key;
+}
+
 std::optional<AllGatherCombiner::GroupKey> PipelinedCombinerKey(
     const HloInstruction* instruction, const HloDomainMap& domain_map,
     bool combine_by_dim, bool combine_different_dtypes) {
-  auto backend_config = instruction->backend_config<GpuBackendConfig>();
-  if (!backend_config.ok()) {
-    return std::nullopt;
-  }
-  if (!backend_config->collective_backend_config().is_pipelined()) {
+  if (!IsPipelinedCollective(*instruction)) {
     return std::nullopt;
   }
   return AllGatherCombiner::CombineKey(instruction, domain_map, combine_by_dim,
@@ -52,6 +66,10 @@ std::optional<AllGatherCombiner::GroupKey> SynchronousCombinerKey(
     const HloInstruction* instruction, const HloDomainMap& domain_map,
     bool combine_by_dim, bool combine_different_dtypes) {
   if (!IsCombinableSyncCollective(*instruction)) {
+    return std::nullopt;
+  }
+  // Exclude pipelined collectives.
+  if (IsPipelinedCollective(*instruction)) {
     return std::nullopt;
   }
   return AllGatherCombiner::CombineKey(instruction, domain_map, combine_by_dim,
@@ -65,15 +83,12 @@ absl::StatusOr<bool> GpuAllGatherCombiner::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Combiner threshold is specified. Running parent pass code.
   if (combine_threshold_in_bytes_ != default_combine_threshold_in_bytes_) {
-    return AllGatherCombiner::Run(module, execution_threads);
+    return RunWithKeyCombiner(module, execution_threads, DefaultCombinerKey);
   }
 
   // Combiner threshold is not specified. We use heuristics.
   // We sequentially combine pipelined collectives then synchronous collectives
   // and finally the rest.
-  // We currently don't support combining a collective that was previously
-  // combined (see b/415761650). We favor combining pipelined collectives over
-  // synchronous collectives.
 
   bool changed = false;
 
@@ -101,9 +116,10 @@ absl::StatusOr<bool> GpuAllGatherCombiner::Run(
   // Use default combiner thresholds after we combine pipelined collectives.
   // The rest is combined by the parent pass code.
   combine_threshold_in_bytes_ = default_combine_threshold_in_bytes_;
-  TF_ASSIGN_OR_RETURN(bool combined_rest,
-                      AllGatherCombiner::Run(module, execution_threads));
-  changed |= combined_rest;
+  TF_ASSIGN_OR_RETURN(
+      bool combined,
+      RunWithKeyCombiner(module, execution_threads, DefaultCombinerKey));
+  changed |= combined;
   return changed;
 }
 

@@ -52,7 +52,7 @@ class AllReduceCombiner : public HloModulePass {
 
   using GroupKey = std::tuple<AllReduceKey, /*extra_args*/ std::string>;
 
-  static std::string GetGroupKeyExtraArgs(AllReduceCombiner::GroupKey& key);
+  static std::string& GetGroupKeyExtraArgs(AllReduceCombiner::GroupKey& key);
 
   // Returns a key that will be equal for instructions that might be combined,
   // or different if not.
