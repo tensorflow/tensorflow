@@ -48,15 +48,14 @@ cc_library(
     srcs = ["hlo_computation_graph_matcher.cc"],
     hdrs = ["hlo_computation_graph_matcher.h"],
     deps = [
+        ":bipartite",
         ":similarity",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/tools/hlo_diff:hlo_gumgraph_mappings",
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph",
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph_node",
         "//xla/service:call_graph",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
     ],
 )
@@ -127,6 +126,7 @@ cc_library(
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:function_ref",
     ],
 )
 
@@ -142,5 +142,22 @@ xla_cc_test(
         "//xla/hlo/tools/hlo_diff/utils:test_util",
         "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "bipartite",
+    srcs = ["bipartite.cc"],
+    hdrs = ["bipartite.h"],
+    deps = [
+        ":similarity",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/tools/hlo_diff:hlo_gumgraph_mappings",
+        "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph",
+        "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph_node",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log:check",
     ],
 )
