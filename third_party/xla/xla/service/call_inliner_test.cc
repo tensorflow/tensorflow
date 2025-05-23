@@ -19,15 +19,18 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
 #include "xla/shape.h"
@@ -599,6 +602,149 @@ ENTRY main {
   EXPECT_THAT(ag, op::AllGather());
   EXPECT_THAT(ag2, op::AllGather());
   EXPECT_NE(ag->channel_id(), ag2->channel_id());
+}
+
+TEST_F(CallInlinerTest, InlineScheduledModule) {
+  constexpr absl::string_view kHlo = R"(
+HloModule main, is_scheduled=true
+
+ENTRY main {
+  arg.0 = (s32[], s32[]) parameter(0)
+  call.0 = call(arg.0), to_apply={
+    arg.0 = (s32[], s32[]) parameter(0)
+    gte.0 = get-tuple-element(arg.0), index=0
+    call-start.0 = ((s32[]), s32[], s32[]) call-start(gte.0), to_apply={
+      arg.0 = s32[] parameter(0)
+      one.0 = s32[] constant(1)
+      ROOT add.0 = add(arg.0, one.0)
+    }, async_execution_thread="thread"
+    gte.1 = get-tuple-element(arg.0), index=1
+    one.0 = s32[] constant(1)
+    add.0 = add(gte.1, one.0)
+    call-done.0 = s32[] call-done(call-start.0)
+    ROOT tuple.0 = tuple(call-done.0, add.0)
+  }
+  ROOT call.1 = call(call.0), to_apply={
+    arg.0 = (s32[], s32[]) parameter(0)
+    gte.0 = get-tuple-element(arg.0), index=0
+    call-start.0 = ((s32[]), s32[], s32[]) call-start(gte.0), to_apply={
+      arg.0 = s32[] parameter(0)
+      one.0 = s32[] constant(1)
+      ROOT add.0 = add(arg.0, one.0)
+    }, async_execution_thread="thread"
+    gte.1 = get-tuple-element(arg.0), index=1
+    one.0 = s32[] constant(1)
+    add.0 = add(gte.1, one.0)
+    call-done.0 = s32[] call-done(call-start.0)
+    ROOT tuple.0 = tuple(call-done.0, add.0)
+  }
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_TRUE(module->has_schedule());
+  TF_ASSERT_OK(module->schedule().Verify());
+
+  // Inline the main thread.
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool modified,
+      CallInliner().Run(module.get(), {HloInstruction::kMainExecutionThread}));
+  EXPECT_TRUE(modified);
+
+  // Module should still be sequenced and valid on all threads after inlining.
+  ASSERT_TRUE(module->has_schedule());
+  const HloSchedule& schedule = module->schedule();
+  TF_ASSERT_OK(schedule.Verify());
+
+  // A side effect of copying async ops is that the trampoline computation will
+  // be cloned, but the original will not be removed, since it resides on a
+  // thread that the pass did not run on. We need to run an extra pass of DCE to
+  // clean up the async thread.
+  TF_ASSERT_OK(HloDCE().Run(module.get(), {"thread"}));
+
+  // The post-inline instruction sequence should mimic that of the pre-inline
+  // computations - we expect to see the same scheduling overlap with respect to
+  // the async instruction pairs.
+  constexpr absl::string_view kExpectedHlo = R"(
+HloModule main, is_scheduled=true
+
+ENTRY main {
+  arg.0 = (s32[], s32[]) parameter(0)
+  gte.0.0 = get-tuple-element(arg.0), index=0
+  call-start.0.0 = ((s32[]), s32[], s32[]) call-start(gte.0.0), to_apply={
+    arg.0 = s32[] parameter(0)
+    one.0 = s32[] constant(1)
+    ROOT add.0 = add(arg.0, one.0)
+  }, async_execution_thread="thread"
+  gte.0.1 = get-tuple-element(arg.0), index=1
+  one.0.0 = s32[] constant(1)
+  add.0.0 = add(gte.0.1, one.0.0)
+  call-done.0.0 = s32[] call-done(call-start.0.0)
+  tuple.0.0 = tuple(call-done.0.0, add.0.0)
+  gte.1.0 = get-tuple-element(tuple.0.0), index=0
+  call-start.1.0 = ((s32[]), s32[], s32[]) call-start(gte.1.0), to_apply={
+    arg.0 = s32[] parameter(0)
+    one.0 = s32[] constant(1)
+    ROOT add.0 = add(arg.0, one.0)
+  }, async_execution_thread="thread"
+  gte.1.1 = get-tuple-element(tuple.0.0), index=1
+  one.1.0 = s32[] constant(1)
+  add.1.0 = add(gte.1.1, one.1.0)
+  call-done.1.0 = s32[] call-done(call-start.1.0)
+  ROOT tuple.1.0 = tuple(call-done.1.0, add.1.0)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> expected_module,
+                          ParseAndReturnVerifiedModule(kExpectedHlo));
+  const HloPrintOptions options =
+      HloPrintOptions().set_syntax_sugar_async_ops(false).set_print_ids(false);
+  EXPECT_EQ(module->ToFingerprint(options),
+            expected_module->ToFingerprint(options));
+}
+
+TEST_F(CallInlinerTest, InlineNestedScheduledModule) {
+  constexpr absl::string_view kHlo = R"(
+HloModule main, is_scheduled=true
+
+ENTRY main {
+  arg.0 = (s32[], s32[]) parameter(0)
+  ROOT call.0 = call(arg.0), to_apply={
+    arg.0 = (s32[], s32[]) parameter(0)
+    ROOT call.0 = call(arg.0), to_apply={
+      arg.0 = (s32[], s32[]) parameter(0)
+      gte.0 = get-tuple-element(arg.0), index=0
+      gte.1 = get-tuple-element(arg.0), index=1
+      ROOT add.0 = add(gte.0, gte.1)
+    }
+  }
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_TRUE(module->has_schedule());
+  TF_ASSERT_OK(module->schedule().Verify());
+
+  TF_ASSERT_OK_AND_ASSIGN(bool modified, CallInliner().Run(module.get()));
+  EXPECT_TRUE(modified);
+
+  // Module should still be sequenced and valid after inlining.
+  ASSERT_TRUE(module->has_schedule());
+  const HloSchedule& schedule = module->schedule();
+  TF_ASSERT_OK(schedule.Verify());
+
+  // The post-inline instruction sequence should mimic that of the pre-inline
+  // computations.
+  constexpr absl::string_view kExpectedHlo = R"(
+HloModule main, is_scheduled=true
+
+ENTRY main {
+  arg.0 = (s32[], s32[]) parameter(0)
+  gte.0 = get-tuple-element(arg.0), index=0
+  gte.1 = get-tuple-element(arg.0), index=1
+  ROOT add.0 = add(gte.0, gte.1)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> expected_module,
+                          ParseAndReturnVerifiedModule(kExpectedHlo));
+  const HloPrintOptions options = HloPrintOptions().set_print_ids(false);
+  EXPECT_EQ(module->ToFingerprint(options),
+            expected_module->ToFingerprint(options));
 }
 
 }  // namespace

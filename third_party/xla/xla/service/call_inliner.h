@@ -23,9 +23,11 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/call_graph.h"
 
 namespace xla {
 
@@ -67,6 +69,10 @@ class CallInliner : public HloModulePass {
   virtual bool IsInlineableCallOp(HloInstruction* instruction) const;
 
  private:
+  absl::StatusOr<bool> InlineAndLegalize(
+      const CallGraph& call_graph, HloComputation* computation,
+      absl::Span<HloInstruction* const> instruction_sequence) const;
+
   bool single_call_site_;
   bool update_domain_;
   bool uniquify_channel_ids_;
