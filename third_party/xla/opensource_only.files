@@ -165,6 +165,9 @@ xla/third_party/nccl/hermetic/cuda_nccl.BUILD.tpl:
 xla/third_party/nccl/hermetic/nccl_configure.bzl:
 xla/third_party/nccl/nccl_configure.bzl:
 xla/third_party/nccl/system.BUILD.tpl:
+xla/third_party/nvshmem/hermetic/nvidia_nvshmem_3_1.BUILD.tpl:
+xla/third_party/nvshmem/hermetic/nvidia_nvshmem_3_2.BUILD.tpl:
+xla/third_party/nvshmem/hermetic/nvshmem_redist_init_repository.bzl:
 xla/third_party/nvshmem/nvshmem.BUILD:
 xla/third_party/nvshmem/workspace.bzl:
 xla/third_party/nvtx/LICENSE:
