@@ -3,19 +3,14 @@ load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [":friends"],
+    default_visibility = internal_visibility([":friends"]),
     licenses = ["notice"],
 )
 
 package_group(
     name = "friends",
-    packages = [
-        "//learning/deepmind/partir/compiler/mpmd/...",
-        "//learning/deepmind/partir/compiler/shardonnay/...",
-        "//third_party/australis/google/ifrt/...",
-        "//third_party/openxla/shardy/tools/...",
-        "//third_party/py/jax/...",
-        "//xla/...",
+    includes = [
+        "//xla:friends",
     ],
 )
 

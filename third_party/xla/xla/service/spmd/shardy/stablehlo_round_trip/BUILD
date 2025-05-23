@@ -6,18 +6,14 @@ load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [":friends"],
+    default_visibility = internal_visibility([":friends"]),
     licenses = ["notice"],
 )
 
 package_group(
     name = "friends",
-    packages = [
-        "//learning/deepmind/partir/...",
-        "//learning/deepmind/partir/compiler/mpmd/export/...",
-        "//third_party/openxla/shardy/tools/...",
-        "//third_party/py/jax/...",
-        "//xla/service/spmd/shardy/...",
+    includes = [
+        "//xla:friends",
     ],
 )
 
@@ -117,7 +113,6 @@ cc_library(
     name = "stablehlo_import",
     srcs = ["stablehlo_import.cc"],
     hdrs = ["stablehlo_import.h"],
-    visibility = internal_visibility([":friends"]),
     deps = [
         ":shard_map_import",
         "//xla:util",
