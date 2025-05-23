@@ -13,6 +13,8 @@
 // limitations under the License.
 // ==============================================================================
 
+#include <algorithm>
+#include <cctype>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -31,81 +33,83 @@
 
 namespace {
 constexpr char kUsageText[] = R"(
-Usage: bazel run //third_party/tensorflow/compiler/xla/tools/benchmarks/utils:generate_benchmark_matrices_main -- --registry_file=/path/to/registry.yml --workflow_type=presubmit
+  Usage: bazel run //third_party/tensorflow/compiler/xla/tools/benchmarks/utils:generate_benchmark_matrices_main -- --registry_file=/path/to/registry.yml --workflow_type=PRESUBMIT
 
-Example output:
-{
-  "benchmarks": [
+  Example output (an array of matrix entries):
+  [
     {
-      "artifact_location" : "https://storage.googleapis.com/xla-benchmarking-temp/gemma3_1b_flax_call.hlo",
-      "benchmark_name" : "gemma3_1b_flax_call",
-      "container_image" : "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-cuda12.8-cudnn9.8:latest",
-      "github_labels" :
-      [
-        "blocking_presubmit_test"
-      ],
-      "hardware_category" : "GPU_B200",
-      "input_format" : "HLO_TEXT",
-      "is_gcs_artifact" : true,
-      "run_frequency" : "PRESUBMIT",
-      "runner_label" : "linux-x86-a4-224-b200-1gpu",
-      "runtime_flags" :
-      [
-        "--num_repeat=5"
-      ],
-      "target_metrics" :
-      [
-        "WALL_TIME",
-        "GPU_DEVICE_TIME",
-        "GPU_DEVICE_MEMCPY_TIME",
-        "PEAK_GPU_MEMORY"
-      ],
-      "topology" :
-      {
-        "multi_device" : false,
-        "multi_host" : false,
-        "num_devices_per_host" : 1,
-        "num_hosts" : 1
+      "benchmark_name": "gemma3_1b_flax_call",
+      "config_id": "gemma3_1b_flax_call_l4_1h1d_presubmit",
+      "container_image": "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-cuda12.8-cudnn9.8:latest",
+      "description": "Benchmarks Gemma3 1b in Flax",
+      "github_labels": [ "blocking_presubmit_test" ],
+      "hardware_category": "GPU_L4",
+      "input_format": "HLO_TEXT",
+      "is_gcs_artifact": true,
+      "artifact_location": "https://storage.googleapis.com/xla-benchmarking-temp/gemma3_1b_flax_call.hlo",
+      "model_source_info": [ "Gemma3 1B" ],
+      "owner": "juliagmt-google@",
+      "runner_label": "linux-x86-g2-16-l4-1gpu",
+      "runtime_flags": [ "--num_repeats=5" ],
+      "target_metrics": [ "GPU_DEVICE_TIME", "GPU_DEVICE_MEMCPY_TIME" ],
+      "topology": {
+        "devices_per_host": 1, // Corrected key
+        "multi_device": false,
+        "multi_host": false,
+        "num_hosts": 1
       },
-      "xla_compilation_flags" : []
-    },
-)";
+      "workflow_type": "PRESUBMIT", // The workflow type this entry is for
+      "xla_compilation_flags": [ "--xla_gpu_enable_cudnn_fusion=true", "--xla_gpu_enable_latency_hiding_scheduler=true" ]
+    },...
+  ]
+  )";
 
-absl::StatusOr<xla::RunFrequency> GetRunFrequencyFromStr(
-    const std::string& workflow_type_arg_str) {
-  static const auto* const workflow_type_to_run_frequency =
-      new absl::flat_hash_map<std::string, xla::RunFrequency>{
-          {"presubmit", xla::RunFrequency::PRESUBMIT},
-          {"postsubmit", xla::RunFrequency::POSTSUBMIT},
-          {"nightly", xla::RunFrequency::SCHEDULED},
-          {"scheduled", xla::RunFrequency::SCHEDULED},
-          {"manual", xla::RunFrequency::MANUAL},
+// Parses the string argument for workflow_type into the WorkflowType enum.
+// Accepts both lowercase (e.g., "presubmit") and uppercase (e.g., "PRESUBMIT")
+// for convenience, as GitHub Actions inputs are often lowercase.
+absl::StatusOr<xla::WorkflowType> GetWorkflowTypeFromStr(
+    std::string workflow_type_arg_str) {
+  // Convert to uppercase for matching with enum names
+  std::transform(workflow_type_arg_str.begin(), workflow_type_arg_str.end(),
+                 workflow_type_arg_str.begin(), ::toupper);
+
+  static const auto* const kWorkflowAliasMap =
+      new absl::flat_hash_map<std::string, xla::WorkflowType>{
+          {"NIGHTLY", xla::WorkflowType::SCHEDULED},
+          {"PRESUBMIT", xla::WorkflowType::PRESUBMIT},
+          {"POSTSUBMIT", xla::WorkflowType::POSTSUBMIT},
+          {"SCHEDULED", xla::WorkflowType::SCHEDULED},
+          {"MANUAL", xla::WorkflowType::MANUAL},
+          // Add other aliases if needed
       };
-  auto it = workflow_type_to_run_frequency->find(workflow_type_arg_str);
-  if (it == workflow_type_to_run_frequency->end()) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Invalid --workflow_type: ", workflow_type_arg_str));
+  auto it = kWorkflowAliasMap->find(workflow_type_arg_str);
+  if (it != kWorkflowAliasMap->end()) {
+    return it->second;
   }
-  return it->second;
+
+  // If no match was found, return an error.
+  return absl::InvalidArgumentError(absl::StrCat(
+      "Invalid --workflow_type: ", workflow_type_arg_str,
+      ". Valid options are PRESUBMIT, POSTSUBMIT, SCHEDULED, MANUAL, or their "
+      "aliases."));
 }
 
 }  // namespace
 
 int main(int argc, char* argv[]) {
   std::string registry_file_path_arg;
-  // "presubmit", "postsubmit", "nightly", "manual"
+  // Input string values like "PRESUBMIT", "POSTSUBMIT", "SCHEDULED", "MANUAL"
+  // or lowercase versions.
   std::string workflow_type_arg_str;
 
   std::vector<tsl::Flag> flag_list = {
       tsl::Flag("registry_file", &registry_file_path_arg,
                 "Path to the benchmark registry file."),
       tsl::Flag("workflow_type", &workflow_type_arg_str,
-                "Current workflow type (e.g., presubmit, postsubmit, nightly, "
-                "manual). Used to filter benchmarks.")};
+                "Current workflow type (e.g., PRESUBMIT, POSTSUBMIT, "
+                "SCHEDULED, MANUAL). Used to filter benchmarks.")};
   bool parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
   if (!parse_ok) {
-    // Note: tsl::Flags::Parse usually prints usage on error,
-    // but adding a QFATAL provides explicit failure logging.
     LOG(QFATAL) << "Failed to parse command-line flags using tsl::Flags::Parse";
   }
   tsl::port::InitMain(argv[0], &argc, &argv);
@@ -117,28 +121,41 @@ int main(int argc, char* argv[]) {
                 << kUsageString;
   }
   if (workflow_type_arg_str.empty()) {
-    LOG(QFATAL) << "Required flag --workflow_type is missing.";
+    std::string kUsageString =
+        absl::StrCat(kUsageText, "\n\n", tsl::Flags::Usage(argv[0], flag_list));
+    LOG(QFATAL) << "Required flag --workflow_type is missing.\n"
+                << kUsageString;
   }
 
-  // Convert workflow_type_arg_str to RunFrequency enum.
-  absl::StatusOr<xla::RunFrequency> current_run_frequency_status =
-      GetRunFrequencyFromStr(workflow_type_arg_str);
-  TF_QCHECK_OK(current_run_frequency_status.status());
-  xla::RunFrequency current_run_frequency = *current_run_frequency_status;
+  // Resolve registry file path.
+  absl::StatusOr<std::string> resolved_registry_path =
+      xla::tools::benchmarks::FindRegistryFile(registry_file_path_arg);
+  TF_QCHECK_OK(resolved_registry_path.status())
+      << "Failed to find or access registry file: " << registry_file_path_arg
+      << "; Error: " << resolved_registry_path.status();
+
+  absl::StatusOr<xla::WorkflowType> current_workflow_type_status =
+      GetWorkflowTypeFromStr(workflow_type_arg_str);
+  TF_QCHECK_OK(current_workflow_type_status.status());
+  xla::WorkflowType current_workflow_type = *current_workflow_type_status;
+
+  LOG(INFO) << "Loading benchmark suite from: " << *resolved_registry_path;
+  LOG(INFO) << "Filtering for workflow type: "
+            << xla::WorkflowType_Name(current_workflow_type);
 
   absl::StatusOr<xla::tools::benchmarks::BenchmarkSuite> suite_status =
       xla::tools::benchmarks::LoadBenchmarkSuiteFromFile(
-          registry_file_path_arg);
-  TF_QCHECK_OK(suite_status.status()) << "Failed to load benchmark suite";
+          *resolved_registry_path);
+  TF_QCHECK_OK(suite_status.status())
+      << "Failed to load benchmark suite: " << suite_status.status();
   xla::tools::benchmarks::BenchmarkSuite suite = *suite_status;
 
   absl::StatusOr<Json::Value> matrix_output =
       xla::tools::benchmarks::BuildGitHubActionsMatrix(suite,
-                                                       current_run_frequency);
+                                                       current_workflow_type);
   TF_QCHECK_OK(matrix_output.status())
-      << "Failed to build GitHub Actions matrix";
+      << "Failed to build GitHub Actions matrix: " << matrix_output.status();
 
-  // Dump JSON matrix to stdout.
   Json::StreamWriterBuilder writer_builder;
   writer_builder["indentation"] = "  ";
   std::string output_string = Json::writeString(writer_builder, *matrix_output);

@@ -25,20 +25,24 @@ benchmarks: [
       artifact_gcs_bucket_path: "https://storage.googleapis.com/xla-benchmarking-temp/gemma3_1b_flax_call.hlo"
     }
     model_source_info: ["Gemma3 1B"]
-    hardware_targets: [{
+    hardware_execution_configs: [{
       hardware_category: GPU_L4
-      topology: { num_hosts: 1, num_devices_per_host: 1 }
+      topology: { num_hosts: 1, num_devices_per_host: 1, multi_host: false, multi_device: false }
       target_metrics: [GPU_DEVICE_TIME, GPU_DEVICE_MEMCPY_TIME]
+      workflow_type: [PRESUBMIT, POSTSUBMIT]
+      runtime_flags: ["--num_repeats=5"]
     },
     {
       hardware_category: CPU_X86
-      topology: { num_hosts: 1, num_devices_per_host: 1 }
+      topology: { num_hosts: 1, num_devices_per_host: 1, multi_host: false, multi_device: false }
       target_metrics: [CPU_TIME]
-    }]
-    run_frequencies: [PRESUBMIT, POSTSUBMIT]
+      workflow_type: [PRESUBMIT, POSTSUBMIT]
+      runtime_flags: ["--num_repeats=5"]
+    }
+    ]
     update_frequency_policy: QUARTERLY
-    runtime_flags: ["--num_repeats=5"]
-    github_labels: ["blocking_presubmit_test"] # Github label for presubmit triggering
+    # TODO(juliagmt): remove this label once the benchmark is stable.
+    github_labels: ["blocking_presubmit_test"]
   },
   {
     name: "gemma2_2b_keras_jax"
@@ -49,20 +53,22 @@ benchmarks: [
       artifact_gcs_bucket_path: "https://storage.googleapis.com/xla-benchmarking-temp/gemma2_2b_keras_jax.hlo"
     }
     model_source_info: ["Gemma2 2B"]
-    hardware_targets: [{
+    hardware_execution_configs: [{
       hardware_category: GPU_B200
-      topology: { num_hosts: 1, num_devices_per_host: 1 }
+      topology: { num_hosts: 1, num_devices_per_host: 1, multi_host: false, multi_device: false }
       target_metrics: [GPU_DEVICE_TIME, GPU_DEVICE_MEMCPY_TIME]
+      workflow_type: [POSTSUBMIT]
+      runtime_flags: ["--num_repeats=5"]
     },
     {
       hardware_category: CPU_X86
-      topology: { num_hosts: 1, num_devices_per_host: 1 }
+      topology: { num_hosts: 1, num_devices_per_host: 1, multi_host: false, multi_device: false }
       target_metrics: [CPU_TIME]
-    }
-    ]
-    run_frequencies: [POSTSUBMIT]
+      workflow_type: [POSTSUBMIT]
+      runtime_flags: ["--num_repeats=5"]
+    }]
     update_frequency_policy: QUARTERLY
-    runtime_flags: ["--num_repeats=5"]
-    github_labels: ["blocking_presubmit_test"] # Github label for presubmit triggering
+    # TODO(juliagmt): remove this label once the benchmark is stable.
+    github_labels: ["blocking_presubmit_test"]
   }
 ]
