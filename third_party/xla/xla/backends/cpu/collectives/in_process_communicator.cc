@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/core/collectives/rank_id.h"
@@ -49,6 +50,9 @@ limitations under the License.
 
 namespace xla::cpu {
 namespace {
+
+static absl::Duration kWarnStuckTimeout = absl::Seconds(5);
+static absl::Duration kTerminateTimeout = absl::Seconds(10);
 
 // In-process collective operation participants.
 //
@@ -407,10 +411,11 @@ InProcessCommunicator::AllReduce(se::DeviceMemoryBase send_buffer,
   std::string name = absl::StrCat("all reduce ", key.ToString());
   AllReduceParticipant partiticipant{rank_, send_buffer, recv_buffer};
 
-  TF_ASSIGN_OR_RETURN(auto op,
-                      Rendezvous<OpParticipants<AllReduceParticipant>>(
-                          name, key, partiticipant, key.num_local_participants,
-                          CollectParticipants<AllReduceParticipant>));
+  TF_ASSIGN_OR_RETURN(
+      auto op, Rendezvous<OpParticipants<AllReduceParticipant>>(
+                   name, key, partiticipant, key.num_local_participants,
+                   CollectParticipants<AllReduceParticipant>, kWarnStuckTimeout,
+                   kTerminateTimeout));
 
   TF_RETURN_IF_ERROR(
       op->Invoke(AllReduceOp, rank_, dtype, count, reduction_kind));
@@ -433,7 +438,8 @@ InProcessCommunicator::ReduceScatter(se::DeviceMemoryBase send_buffer,
   TF_ASSIGN_OR_RETURN(auto op,
                       Rendezvous<OpParticipants<ReduceScatterParticipant>>(
                           name, key, partiticipant, key.num_local_participants,
-                          CollectParticipants<ReduceScatterParticipant>));
+                          CollectParticipants<ReduceScatterParticipant>,
+                          kWarnStuckTimeout, kTerminateTimeout));
 
   TF_RETURN_IF_ERROR(
       op->Invoke(ReduceScatterOp, rank_, dtype, count, reduction_kind));
@@ -458,7 +464,8 @@ InProcessCommunicator::CollectivePermute(se::DeviceMemoryBase send_buffer,
   TF_ASSIGN_OR_RETURN(auto op,
                       Rendezvous<OpParticipants<CollectivePermuteParticipant>>(
                           name, key, partiticipant, key.num_local_participants,
-                          CollectParticipants<CollectivePermuteParticipant>));
+                          CollectParticipants<CollectivePermuteParticipant>,
+                          kWarnStuckTimeout, kTerminateTimeout));
 
   size_t num_bytes = count * primitive_util::ByteWidth(dtype);
 
@@ -480,10 +487,11 @@ InProcessCommunicator::AllToAll(
                                     {send_buffers.begin(), send_buffers.end()},
                                     {recv_buffers.begin(), recv_buffers.end()}};
 
-  TF_ASSIGN_OR_RETURN(auto op,
-                      Rendezvous<OpParticipants<AllToAllParticipant>>(
-                          name, key, partiticipant, key.num_local_participants,
-                          CollectParticipants<AllToAllParticipant>));
+  TF_ASSIGN_OR_RETURN(
+      auto op, Rendezvous<OpParticipants<AllToAllParticipant>>(
+                   name, key, partiticipant, key.num_local_participants,
+                   CollectParticipants<AllToAllParticipant>, kWarnStuckTimeout,
+                   kTerminateTimeout));
 
   size_t num_bytes = count * primitive_util::ByteWidth(dtype);
 
@@ -503,10 +511,11 @@ InProcessCommunicator::AllGather(se::DeviceMemoryBase send_buffer,
   std::string name = absl::StrCat("all gather ", key.ToString());
   AllGatherParticipant partiticipant{rank_, send_buffer, recv_buffer};
 
-  TF_ASSIGN_OR_RETURN(auto op,
-                      Rendezvous<OpParticipants<AllGatherParticipant>>(
-                          name, key, partiticipant, key.num_local_participants,
-                          CollectParticipants<AllGatherParticipant>));
+  TF_ASSIGN_OR_RETURN(
+      auto op, Rendezvous<OpParticipants<AllGatherParticipant>>(
+                   name, key, partiticipant, key.num_local_participants,
+                   CollectParticipants<AllGatherParticipant>, kWarnStuckTimeout,
+                   kTerminateTimeout));
 
   size_t num_bytes = count * primitive_util::ByteWidth(dtype);
 

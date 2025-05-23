@@ -174,14 +174,21 @@ class TfrtCpuClient final : public CommonPjRtClient {
     return eigen_intraop_device_.get();
   }
 
-  tsl::AsyncValueRef<CpuEvent> GetLastCollectiveLaunchEvent() {
-    absl::MutexLock lock(&mu_);
-    return last_collective_launch_event_.CopyRef();
-  }
+  // Returns a pair of async events:
+  // - async event that signals the completion of the last collective launch
+  // - count down event that must be signalled when each rank completes
+  //   a collective launch
+  using CollectiveLaunchEvent =
+      std::pair<tsl::AsyncValueRef<CpuEvent>,
+                tsl::CountDownAsyncValueRef<CpuEvent>>;
 
-  void SetLastCollectiveLaunchEvent(tsl::AsyncValueRef<CpuEvent> event) {
+  CollectiveLaunchEvent GetLastCollectiveLaunchEvent(
+      size_t num_addressable_devices) {
+    tsl::CountDownAsyncValueRef<CpuEvent> count_down(num_addressable_devices);
     absl::MutexLock lock(&mu_);
-    last_collective_launch_event_ = std::move(event);
+    auto last_launch = std::move(last_collective_launch_event_);
+    last_collective_launch_event_ = count_down.AsRef();
+    return std::make_pair(std::move(last_launch), std::move(count_down));
   }
 
   tsl::AsyncValueRef<CpuEvent> GetLastEnqueueEvent() {
@@ -474,7 +481,7 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   absl::StatusOr<Result> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, const RunId& run_id, const ExecuteOptions& options,
-      tsl::AsyncValueRef<CpuEvent> last_collective_launch_event,
+      TfrtCpuClient::CollectiveLaunchEvent last_collective_launch_event,
       bool fill_future, TfrtCpuDevice* device = nullptr);
 
   TfrtCpuClient* client_;
