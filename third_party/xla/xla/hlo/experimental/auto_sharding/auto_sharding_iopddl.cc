@@ -212,13 +212,16 @@ static bool IsEdgeFollower(const iopddl::Problem& problem,
   return true;
 }
 
-static bool IsEdgeAlias(const iopddl::Edge& edge) {
+bool IsEdgeAlias(const iopddl::Edge& edge) {
+  bool has_infinity = false;
   for (const iopddl::Strategy& strategy : edge.strategies) {
     if (strategy.cost == kInfinityInt) {
-      return true;
+      has_infinity = true;
+    } else if (strategy.cost > 0) {
+      return false;
     }
   }
-  return false;
+  return has_infinity;
 }
 
 AutoShardingSolverRequest ConvertToSolverRequest(
