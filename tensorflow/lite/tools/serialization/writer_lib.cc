@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/serialization/writer_lib.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
@@ -245,8 +246,13 @@ SubgraphWriter::ExportTensors(flatbuffers::FlatBufferBuilder* fbb) {
 
           std::vector<float> scale_vector(params->scale->data,
                                           params->scale->data + num_scales);
-          std::vector<int64_t> zero_point_vector(
-              params->zero_point->data, params->zero_point->data + num_scales);
+          std::vector<int64_t> zero_point_vector(num_scales, 0);
+          zero_point_vector.resize(num_scales, 0);
+          if (params->zero_point) {
+            std::copy(params->zero_point->data,
+                      params->zero_point->data + num_scales,
+                      zero_point_vector.data());
+          }
           scale_array = fbb->CreateVector<float>(scale_vector);
           zero_point_array = fbb->CreateVector<int64_t>(zero_point_vector);
           quantization_params = CreateQuantizationParameters(
