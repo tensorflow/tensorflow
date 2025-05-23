@@ -1357,7 +1357,7 @@ PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
             }
           };
       for (const auto& stream_and_event : events) {
-        VLOG(2)
+        VLOG(4)
             << "Checking whether need to wait for stream_and_event: stream: "
             << stream_and_event.stream
             << "; event: " << stream_and_event.event.get()
@@ -1373,7 +1373,7 @@ PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
         }
       }
       for (const auto& definition_event : device_buffer->definition_events()) {
-        VLOG(2) << "Checking whether need to wait for definition_event: "
+        VLOG(4) << "Checking whether need to wait for definition_event: "
                 << definition_event.get() << "; is_predetermined_error: "
                 << definition_event->IsPredeterminedError();
         // Here we wait for the definition events to complete on block_stream as
@@ -1382,7 +1382,7 @@ PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
             definition_event);
       }
       if (!events_to_wait_for_in_a_different_thread.empty()) {
-        VLOG(1) << "Going to wait for "
+        VLOG(3) << "Going to wait for "
                 << events_to_wait_for_in_a_different_thread.size()
                 << " events in a different thread.";
         // We always use the cleanup_thread instead of using the
@@ -1416,7 +1416,7 @@ PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
 }
 
 void PjRtStreamExecutorBuffer::Delete() {
-  VLOG(1) << "PjRtStreamExecutorBuffer::Delete";
+  VLOG(3) << "PjRtStreamExecutorBuffer::Delete";
 
   // When wait_for_reads_to_complete is false, Release should never fail.
   //
@@ -1446,7 +1446,7 @@ PjRtFuture<> PjRtStreamExecutorBuffer::LazyToLiteral(
 }
 
 PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteral(MutableLiteralBase* literal) {
-  VLOG(1) << "PjRtStreamExecutorBuffer::ToLiteral";
+  VLOG(3) << "PjRtStreamExecutorBuffer::ToLiteral";
   if (IsEmptyTuple()) {
     return PjRtFuture<>(InvalidArgument("ToLiteral called on empty tuple"));
   }
@@ -1604,7 +1604,7 @@ PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteral(MutableLiteralBase* literal) {
       []() {
         tsl::profiler::TraceMeProducer traceme(
             "PjRtStreamExecutorBuffer::ToLiteral");
-        VLOG(1) << "PjRtStreamExecutorBuffer::ToLiteral";
+        VLOG(3) << "PjRtStreamExecutorBuffer::ToLiteral";
         return PjRtFutureHelpers::ProfilingKeys(
             {/*traceme_context_id =*/traceme.GetContextId()});
       },
@@ -1682,7 +1682,7 @@ PjRtStreamExecutorBuffer::CopyToDeviceHelper(
     tsl::profiler::TraceMe traceme(
         "PjRtStreamExecutorBuffer::CopyToDeviceHelper::async_copy_to_"
         "device");
-    VLOG(1)
+    VLOG(3)
         << "PjRtStreamExecutorBuffer::CopyToDeviceHelper::async_copy_to_device";
 
     absl::Status defined_status = src_definition_events[0]->GetDefinedStatus();
@@ -1821,7 +1821,7 @@ PjRtStreamExecutorBuffer::CopyToMemorySpace(PjRtMemorySpace* dst_memory_space) {
 
 void PjRtStreamExecutorBuffer::CopyToRemoteDevice(
     PjRtFuture<std::string> serialized_descriptor, RemoteSendCallback on_done) {
-  VLOG(1) << "PjRtStreamExecutorBuffer::CopyToRemoteDevice";
+  VLOG(3) << "PjRtStreamExecutorBuffer::CopyToRemoteDevice";
   auto desc = serialized_descriptor.Await();
   if (desc.ok()) {
     client_->CopyToRemoteDevice(this, *desc, std::move(on_done));
@@ -1905,7 +1905,7 @@ PjRtFuture<> PjRtStreamExecutorBuffer::GetReadyFuture() {
       []() {
         tsl::profiler::TraceMeProducer traceme(
             "PjRtStreamExecutorBuffer::Await");
-        VLOG(1) << "PjRtStreamExecutorBuffer::Await";
+        VLOG(3) << "PjRtStreamExecutorBuffer::Await";
         return PjRtFutureHelpers::ProfilingKeys(
             {/*traceme_context_id=*/traceme.GetContextId()});
       },
