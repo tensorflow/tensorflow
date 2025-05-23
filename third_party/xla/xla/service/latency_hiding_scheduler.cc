@@ -1274,8 +1274,8 @@ class ReadySetLt {
     if (sched_state_.config.aggressive_scheduling_policies) {
       // Favor nodes that unlock other nodes to be scheduled if possible.
       // This makes us more flexible in what we can use in scheduling.
-      int ready_if_a_scheduled = ReadyIfScheduled(*a.node);
-      int ready_if_b_scheduled = ReadyIfScheduled(*b.node);
+      int ready_if_a_scheduled = a.node->GetReadyNodesIfScheduled();
+      int ready_if_b_scheduled = b.node->GetReadyNodesIfScheduled();
       if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
               ready_if_a_scheduled > ready_if_b_scheduled, a,
               ready_if_b_scheduled > ready_if_a_scheduled, b,
@@ -1304,15 +1304,6 @@ class ReadySetLt {
   DefaultSchedulerCore::OverlapLimitRule
       scheduling_instruction_crosses_overlap_limit_;
 
-  int ReadyIfScheduled(const HloGraphNode& gn) const {
-    int ready_nodes_if_scheduled = 0;
-    for (auto& pred : gn.GetPredecessors()) {
-      if (pred.Target().GetOutdegree() == 1) {
-        ++ready_nodes_if_scheduled;
-      }
-    }
-    return ready_nodes_if_scheduled;
-  }
   static bool IsNop(const HloGraphNode& gn) {
     return IsNopInstruction(gn.GetInstr());
   }
@@ -2220,6 +2211,14 @@ HloScheduleGraph::HloScheduleGraph(
         async_tracker->ReleasesSelectiveResource(new_node_it->second.get());
     new_node_it->second->occupies_selective_resource_ =
         async_tracker->OccupiesSelectiveResource(new_node_it->second.get());
+    new_node_it->second->does_occupy_any_resource_ = absl::c_any_of(
+        new_node_it->second->resources_, [](const ResourcePair& resource) {
+          return resource.second == ResourceUsageType::kResourceOccupy;
+        });
+    new_node_it->second->does_release_any_resource_ = absl::c_any_of(
+        new_node_it->second->resources_, [](const ResourcePair& resource) {
+          return resource.second == ResourceUsageType::kResourceRelease;
+        });
     // Gather while instructions for subsequent send-done dependency checks.
     if (instr->opcode() == HloOpcode::kWhile) {
       while_instrs.push_back(instr);
@@ -2338,6 +2337,10 @@ HloScheduleGraph::HloScheduleGraph(
         break;
       }
     }
+  }
+  // Initialize ready_nodes_if_scheduled_ for all nodes.
+  for (const auto& [_, node] : nodes_) {
+    node->UpdateReadyNodesIfScheduled();
   }
 }
 

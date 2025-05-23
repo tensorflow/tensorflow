@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_LATENCY_HIDING_SCHEDULER_H_
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -501,14 +502,29 @@ class HloGraphNode {
                             const LatencyEstimator* latency_estimator) {
     AddDependency(from, to, latency_estimator->GetLatencyBetween(*from, *to));
   }
-
+  size_t GetReadyNodesIfScheduled() const { return ready_nodes_if_scheduled_; }
+  void UpdateReadyNodesIfScheduled() {
+    ready_nodes_if_scheduled_ = 0;
+    for (auto& pred : GetPredecessors()) {
+      if (pred.Target().GetOutdegree() == 1) {
+        ++ready_nodes_if_scheduled_;
+      }
+    }
+  }
   const HloInstruction& GetInstr() const { return *instr_; }
   bool IsScheduled() const { return scheduled_; }
   int32_t GetIndegree() const { return indegree_; }
   int32_t GetOutdegree() const { return outdegree_; }
   TimeCost GetReadyTime() const { return ready_time_; }
-  void SetIndegree(int64_t indeg) { indegree_ = indeg; }
-  void SetOutdegree(int64_t outdeg) { outdegree_ = outdeg; }
+  void SetIndegree(int32_t indeg) { indegree_ = indeg; }
+  void SetOutdegree(int32_t outdeg) {
+    outdegree_ = outdeg;
+    if (outdeg == 1) {
+      for (HloEdge& succ : GetSuccessors()) {
+        succ.Target().UpdateReadyNodesIfScheduled();
+      }
+    }
+  }
   void SetScheduled() { scheduled_ = true; }
   void SetReadyTime(TimeCost ready_time) { ready_time_ = ready_time; }
   TimeCost GetCost() const { return cost_; }
@@ -552,24 +568,8 @@ class HloGraphNode {
         num_hops_to_closest_selective_resource_occupier;
   }
   ResourcesVector GetResources() const { return resources_; }
-  bool DoesOccupyAnyResource() {
-    if (!does_occupy_any_resource_.has_value()) {
-      does_occupy_any_resource_.emplace(
-          absl::c_any_of(resources_, [](const ResourcePair& resource) {
-            return resource.second == ResourceUsageType::kResourceOccupy;
-          }));
-    }
-    return *does_occupy_any_resource_;
-  }
-  bool DoesReleaseAnyResource() {
-    if (!does_release_any_resource_.has_value()) {
-      does_release_any_resource_.emplace(
-          absl::c_any_of(resources_, [](const ResourcePair& resource) {
-            return resource.second == ResourceUsageType::kResourceRelease;
-          }));
-    }
-    return *does_release_any_resource_;
-  }
+  bool DoesOccupyAnyResource() { return does_occupy_any_resource_; }
+  bool DoesReleaseAnyResource() { return does_release_any_resource_; }
   bool DoesOccupyShareableResource(int64_t resource) const {
     return absl::c_linear_search(occupied_shareable_resources_, resource);
   }
@@ -739,9 +739,9 @@ class HloGraphNode {
   // AsyncResources used by the node.
   ResourcesVector resources_;
   // Does the node occupy any resource.
-  std::optional<bool> does_occupy_any_resource_;
+  bool does_occupy_any_resource_ = false;
   // Does the node release any resource.
-  std::optional<bool> does_release_any_resource_;
+  bool does_release_any_resource_ = false;
   // Recursive resources used by the node.
   absl::flat_hash_map<int64_t, int64_t> recursive_resources_;
   // Is the node a supported async done.
@@ -773,6 +773,8 @@ class HloGraphNode {
   int64_t num_hops_to_closest_selective_resource_occupier_ =
       std::numeric_limits<int64_t>::max();
   int64_t annotation_ = kInvalidAnnotation;
+  // Number of ready nodes if this node is scheduled.
+  size_t ready_nodes_if_scheduled_ = 0;
 };
 
 // Schedule graph that can be used to drive scheduling
@@ -888,7 +890,7 @@ class MemoryPressureTracker {
         pressure_state_cache_(pressure_state_cache),
         live_memory_usage_(0),
         initial_memory_pressure_(0) {}
-  // Intiialize object to be ready to start tracking of computation.
+  // Initialize object to be ready to start tracking of computation.
   void Initialize(const HloComputation* computation,
                   const LiveBufferSet& initial_live_buffers);
   // After an instruction is scheduled, update the memory pressure effect on
@@ -1109,7 +1111,6 @@ class DefaultSchedulerCore : public SchedulerCore {
 
   // Returns nullopt if both conditions are equal, otherwise returns the
   // candidate corresponding to the true condition.
-
   static inline std::optional<CandidateResult> ChooseBestCandidate(
       bool first_cond, const ScheduleCandidate& first_candidate,
       bool second_cond, const ScheduleCandidate& second_candidate,
