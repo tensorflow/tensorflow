@@ -6511,18 +6511,21 @@ bool HloParserImpl::ParseOriginalValue(
     } else if (lexer_.GetKind() == TokKind::kLbrace) {
       lexer_.Lex();
       if (lexer_.GetKind() != TokKind::kRbrace) {
-        std::string instruction_name;
+        std::string instruction_name, call_history;
         ShapeIndex shape_index;
         if (!ParseString(&instruction_name)) {
           return false;
         }
-        if (lexer_.GetKind() != TokKind::kRbrace) {
-          if (!ParseShapeIndex(&shape_index)) {
-            return false;
-          }
+        if (lexer_.GetKind() == TokKind::kLbrace &&
+            !ParseShapeIndex(&shape_index)) {
+          return false;
         }
-        *original_value->mutable_element(leaf_shape_index) = {instruction_name,
-                                                              shape_index};
+        if (lexer_.GetKind() == TokKind::kString &&
+            !ParseString(&call_history)) {
+          return false;
+        }
+        *original_value->mutable_element(leaf_shape_index) = {
+            instruction_name, shape_index, call_history};
       } else {
         // The original value is not expected to have any leaf without values.
         // However we should not fail the execution here. This should
