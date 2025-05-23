@@ -641,7 +641,7 @@ cc_library(
         ":tf_stablehlo_test_passes_inc_gen",
         "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:config",
-        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:tf_post_calibration",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:post_calibration",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:tf_pre_calibration",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:tf_quantize_preprocess",

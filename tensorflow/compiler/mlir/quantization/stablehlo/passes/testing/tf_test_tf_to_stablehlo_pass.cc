@@ -41,8 +41,8 @@ namespace mlir::tf_quant::stablehlo::testing {
 
 namespace {
 
-using ::tensorflow::quantization::AddTFToStablehloPasses;
 using ::tensorflow::quantization::RunPassesOnModuleOp;
+using ::tensorflow::tf_quantization::AddTFToStablehloPasses;
 
 class TestTFToStablehloPass
     : public impl::TestTFToStablehloPassBase<TestTFToStablehloPass> {

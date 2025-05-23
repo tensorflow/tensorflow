@@ -33,7 +33,7 @@ namespace mlir::quant::stablehlo {
 // `TF::XlaCallModuleOp`s. They are quantized using the statistics collected
 // after the calibration step, corresponding to each `TF::CustomAggregatorOp`s
 // in the input module op.
-class PostCalibrationComponent : public Component {
+class PostCalibrationComponent : public quant::stablehlo::Component {
  public:
   // Name of the post-training quantization post-calibration step. Used for
   // debugging purposes.
