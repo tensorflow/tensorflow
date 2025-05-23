@@ -421,7 +421,7 @@ class Variant {
       return *this;
     }
 
-    InlineValue& operator=(InlineValue&& other) {
+    InlineValue& operator=(InlineValue&& other) noexcept {
       if (&other == this) return *this;
       if (AsValueInterface()->TypeId() == other.AsValueInterface()->TypeId()) {
         other.AsValueInterface()->MoveAssign(AsValueInterface());
