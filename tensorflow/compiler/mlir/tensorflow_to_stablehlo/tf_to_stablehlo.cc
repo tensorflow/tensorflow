@@ -36,7 +36,7 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_saved_model_import.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_import.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/tf_quantize_preprocess.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/shape_inference.h"
 #include "xla/tsl/platform/errors.h"
@@ -48,8 +48,7 @@ namespace {
 
 // Extract the mlir TF module and optionally a ::tensorflow::SavedModelBundle
 // from a saved model or from an mlir file.
-absl::StatusOr<tf_quant::stablehlo::ImportedMlirModuleOp>
-ImportSavedModelOrTfMlir(
+absl::StatusOr<quant::stablehlo::ImportedMlirModuleOp> ImportSavedModelOrTfMlir(
     absl::string_view input_path, MLIRContext* context,
     const std::vector<std::string>& exported_model_signatures,
     const std::vector<std::string>& tag_names, bool is_input_mlir_module) {
@@ -69,18 +68,17 @@ ImportSavedModelOrTfMlir(
       return absl::AbortedError("Failed to parse input MLIR model.");
     }
 
-    return tf_quant::stablehlo::ImportedMlirModuleOp(std::move(module),
-                                                     nullptr);
+    return quant::stablehlo::ImportedMlirModuleOp(std::move(module), nullptr);
   }
 
   std::unordered_set<std::string> tag_set(tag_names.begin(), tag_names.end());
-  return tf_quant::stablehlo::SavedModelToMlirModuleOp(
+  return quant::stablehlo::SavedModelToMlirModuleOp(
       input_path, tag_set, exported_model_signatures, *context);
 }
 
 // Convert an TF module to a StableHLO module
 absl::StatusOr<OwningOpRef<ModuleOp>> ConvertTFToStablehlo(
-    tf_quant::stablehlo::ImportedMlirModuleOp imported_module,
+    quant::stablehlo::ImportedMlirModuleOp imported_module,
     absl::string_view input_path, MLIRContext* context,
     const std::vector<std::string>& tag_names,
     absl::string_view input_arg_shapes_str, bool is_input_mlir_module) {
@@ -93,8 +91,8 @@ absl::StatusOr<OwningOpRef<ModuleOp>> ConvertTFToStablehlo(
     std::unordered_set<std::string> tag_set(tag_names.begin(), tag_names.end());
     TF_ASSIGN_OR_RETURN(
         auto function_aliases,
-        tf_quant::stablehlo::GetFunctionAliases(input_path, tag_set));
-    tf_quant::stablehlo::UpdateFunctionAliases(function_aliases, *module_op);
+        quant::stablehlo::GetFunctionAliases(input_path, tag_set));
+    quant::stablehlo::UpdateFunctionAliases(function_aliases, *module_op);
     absl::c_for_each(function_aliases, [&](const auto& aliases) {
       return aliased_function_names.insert(aliases.first);
     });
