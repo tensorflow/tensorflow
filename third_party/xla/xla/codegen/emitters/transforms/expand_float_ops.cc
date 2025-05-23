@@ -20,7 +20,6 @@ limitations under the License.
 #include <optional>
 #include <utility>
 
-#include "absl/log/check.h"
 #include "llvm/ADT/APFloat.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
