@@ -134,10 +134,8 @@ AllReduceStartThunk::AllReduceStartThunk(ThunkInfo thunk_info,
               .debug_options()
               .xla_gpu_unsupported_use_all_reduce_one_shot_kernel()),
       collective_kernel_thunk_{
-          thunk_info,
-          config_.config,
-          IsAsync(),
-          buffers_[0],
+          thunk_info, config_.config, config_.reduction_kind,
+          IsAsync(),  buffers_[0],
       } {}
 
 absl::Status AllReduceStartThunk::CheckImplementable(
@@ -184,9 +182,9 @@ absl::StatusOr<bool> AllReduceStartThunk::ShouldUseOneShotAllReduceKernel(
     return false;
   }
 
-  return IsAllReduceKernelSupported(clique_key.num_local_participants(),
-                                    num_elements,
-                                    config().operand_element_type[0]);
+  return IsAllReduceKernelSupported(
+      clique_key.num_local_participants(), num_elements,
+      config().operand_element_type[0], reduction_kind());
 }
 
 absl::Status AllReduceStartThunk::Prepare(
