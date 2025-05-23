@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <memory>
 
+#include "absl/log/check.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -29,11 +31,13 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/TypeID.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
+#include "shardy/dialect/sdy/ir/utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/array.h"
 #include "xla/service/spmd/shardy/utils.h"
@@ -48,13 +52,19 @@ namespace stablehlo = ::mlir::stablehlo;
 
 using ::mlir::ArrayRef;
 using ::mlir::ModuleOp;
+using ::mlir::OpBuilder;
 using ::mlir::OperationPass;
 using ::mlir::Pass;
 using ::mlir::PassWrapper;
+using ::mlir::RankedTensorType;
 using ::mlir::SmallVector;
 using ::mlir::StringRef;
+using ::mlir::Value;
 
 using ::mlir::sdy::AxisRefAttr;
+using ::mlir::sdy::ManualComputationOp;
+using ::mlir::sdy::MeshAttr;
+using ::mlir::sdy::TensorShardingAttr;
 
 // Returns the channel ID after the maximum channel ID in the given `moduleOp`.
 // TODO(b/419222666): remove dependency on `channel_handle` attribute name.
@@ -80,9 +90,8 @@ int64_t getNextChannelId(ModuleOp moduleOp) {
 // ```
 //
 // Returns `[[0, 1], [2, 3]]`.
-mlir::DenseIntElementsAttr getReplicaGroups(sdy::AllReduceOp op,
-                                            mlir::OpBuilder& rewriter) {
-  sdy::MeshAttr mesh = op.getOutSharding().getMesh(op);
+mlir::DenseIntElementsAttr getReplicaGroups(sdy::AllReduceOp op, MeshAttr mesh,
+                                            OpBuilder& rewriter) {
   SmallVector<AxisRefAttr> meshAxisRefs =
       getOrderedAxisRefs(op.getReductionAxesAttr(), mesh);
 
@@ -124,30 +133,68 @@ mlir::DenseIntElementsAttr getReplicaGroups(sdy::AllReduceOp op,
   }
   array.TransposeDimensions(transposePerm);
   array.Reshape({totalSize});
-  auto replicaGroupsType = mlir::RankedTensorType::get(
-      {numGroups, groupSize}, rewriter.getIntegerType(64));
+  auto replicaGroupsType = RankedTensorType::get({numGroups, groupSize},
+                                                 rewriter.getIntegerType(64));
   return mlir::DenseIntElementsAttr::get(replicaGroupsType,
                                          llvm::to_vector(array));
 }
 
+// Creates a manual computation, with all axes in `mesh` as manual, and
+// populates its body via the `bodyPopulator` function.
+ManualComputationOp createFullyManualComputation(
+    mlir::Location loc, Value input, TensorShardingAttr outSharding,
+    MeshAttr mesh, OpBuilder& builder,
+    std::function<Value(mlir::BlockArgument arg, OpBuilder& blockBuilder)>
+        bodyPopulator) {
+  SmallVector<mlir::StringAttr> manualAxes;
+  manualAxes.reserve(mesh.getAxes().size());
+  for (sdy::MeshAxisAttr axis : mesh.getAxes()) {
+    manualAxes.push_back(builder.getStringAttr(axis.getName()));
+  }
+  TensorShardingAttr inSharding = sdy::getOrCreateSharding(input, mesh);
+  auto op = builder.create<ManualComputationOp>(
+      loc, input.getType(), input, inSharding, outSharding, manualAxes);
+
+  mlir::Block& block = op.getBody().emplaceBlock();
+  auto globalType = mlir::dyn_cast<RankedTensorType>(input.getType());
+  CHECK(globalType);
+  auto localType = inSharding.getLocalTensorType(globalType, mesh,
+                                                 /*allowNonDivisible=*/false);
+  CHECK(localType) << "Non-divisible sharding with unreduced axes isn't "
+                      "supported. Please file a bug with a reproducer.";
+
+  OpBuilder blockBuilder = OpBuilder::atBlockBegin(&block);
+  blockBuilder.create<sdy::ReturnOp>(
+      loc, bodyPopulator(block.addArgument(localType, input.getLoc()),
+                         blockBuilder));
+  return op;
+}
+
 void convertAllReduce(sdy::AllReduceOp op, int64_t channelId,
                       mlir::IRRewriter& rewriter) {
-  // TODO(tomnatan): Insert inside `sdy.manual_computation`.
-  // TODO(tomnatan): Add a sharding to all-reduce if not fully manual.
+  MeshAttr mesh = op.getOutSharding().getMesh(op);
   // TODO(tomnatan): Support sdy.reduce_scatter.
-  // Channel type is DEVICE_TO_DEVICE.
-  auto channelHandle = stablehlo::ChannelHandleAttr::get(
-      op->getContext(), /*handle=*/channelId, /*type=*/1);
-  // Setting `use_global_device_ids=true` as we are targeting the
-  // `CollectiveOpGroupMode::kFlattenedID` mode.
   rewriter.setInsertionPoint(op);
-  mlir::Type tensorType = op.getTensor().getType();
-  auto newAllReduce = rewriter.replaceOpWithNewOp<stablehlo::AllReduceOp>(
-      op, tensorType, op.getTensor(), getReplicaGroups(op, rewriter),
-      channelHandle, /*use_global_device_ids=*/true);
-  auto elementType = mlir::cast<mlir::ShapedType>(tensorType).getElementType();
-  stablehlo::buildReduceBody<stablehlo::AddOp>(
-      elementType, newAllReduce.getComputation(), rewriter);
+  ManualComputationOp manualComputation = createFullyManualComputation(
+      op.getLoc(), op.getTensor(), op.getOutSharding(), mesh, rewriter,
+      [&](mlir::BlockArgument arg, OpBuilder& blockBuilder) {
+        // Channel type is DEVICE_TO_DEVICE.
+        auto channelHandle = stablehlo::ChannelHandleAttr::get(
+            op->getContext(), /*handle=*/channelId, /*type=*/1);
+        // Setting `use_global_device_ids=true` as we are targeting the
+        // `CollectiveOpGroupMode::kFlattenedID` mode.
+        auto newAllReduce = blockBuilder.create<stablehlo::AllReduceOp>(
+            op.getLoc(), arg.getType(), arg,
+            getReplicaGroups(op, mesh, blockBuilder), channelHandle,
+            /*use_global_device_ids=*/true);
+        // No need to add a sharding to the all-reduce, since it's inside a
+        // fully manual computation.
+        stablehlo::buildReduceBody<stablehlo::AddOp>(
+            mlir::cast<mlir::ShapedType>(arg.getType()).getElementType(),
+            newAllReduce.getComputation(), blockBuilder);
+        return newAllReduce.getResult(0);
+      });
+  rewriter.replaceOp(op, manualComputation);
 }
 
 class StablehloExportManualReductionCollectivesPass
