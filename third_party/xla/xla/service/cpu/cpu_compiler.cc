@@ -1521,8 +1521,21 @@ CpuCompiler::CompileCpuExecutable(std::unique_ptr<HloModule> module) {
     }
 
     TF_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
-    for (const auto& [name, module] : thunk_emitter.kernels()) {
+    absl::flat_hash_map<const llvm::Module*, LLVMCompilationOptions>
+        llvm_module_compilation_options_overrides;
+    for (const auto& [name, module, llvm_compilation_options] :
+         thunk_emitter.kernels()) {
       TF_RETURN_IF_ERROR(VerifyLlvmModule(*module.getModuleUnlocked()));
+      if (llvm_compilation_options.has_value()) {
+        llvm_module_compilation_options_overrides[module.getModuleUnlocked()] =
+            *llvm_compilation_options;
+      }
+    }
+
+    {
+      tsl::down_cast<IrCompiler&>(jit_compiler.ir_compiler())
+          .SetCompilationOptionsOverrides(
+              llvm_module_compilation_options_overrides);
     }
 
     // Some kernels have to be compiled separately because they have
@@ -1654,7 +1667,8 @@ CpuCompiler::CompileCpuExecutable(std::unique_ptr<HloModule> module) {
     int num_default_so_far = dylib_index - num_extra_parts;
     int kernel_dylib_index =
         num_default_so_far < num_default_parts ? num_default_so_far : 0;
-    for (auto& [name, module] : thunk_emitter.kernels()) {
+    for (auto& [name, module, llvm_compilation_options] :
+         thunk_emitter.kernels()) {
       compiled_symbols.push_back(
           FunctionLibrary::Sym<FunctionLibrary::Kernel>(name));
       symbol_type_id_to_function_type_id.emplace(
@@ -2222,7 +2236,8 @@ CpuCompiler::CompileAheadOfTimeThunks(
   }
 
   TF_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
-  for (const auto& [name, module] : thunk_emitter.kernels()) {
+  for (const auto& [name, module, llvm_compilation_options] :
+       thunk_emitter.kernels()) {
     TF_RETURN_IF_ERROR(VerifyLlvmModule(*module.getModuleUnlocked()));
   }
 
@@ -2312,7 +2327,8 @@ CpuCompiler::CompileAheadOfTimeThunks(
 
   llvm::Linker linker(*llvm_module);
 
-  for (auto& [name, module] : thunk_emitter.kernels()) {
+  for (auto& [name, module, llvm_compilation_options] :
+       thunk_emitter.kernels()) {
     compiled_symbols.push_back(
         FunctionLibrary::Sym<FunctionLibrary::Kernel>(name));
     symbol_type_id_to_function_type_id.emplace(compiled_symbols.back().type_id,

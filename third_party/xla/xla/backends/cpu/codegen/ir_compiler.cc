@@ -166,7 +166,7 @@ IrCompiler::IrCompiler(TargetMachineBuilder target_machine_builder,
                        Options options, CompilationHooks hooks)
     : IRCompiler(llvm::orc::IRSymbolMapper::ManglingOptions()),
       target_machine_builder_(std::move(target_machine_builder)),
-      options_(std::move(options)),
+      default_options_(std::move(options)),
       hooks_(std::move(hooks)) {}
 
 // Initialize LLVM the first time `InferTargetMachine` is called.
@@ -220,6 +220,17 @@ IrCompiler::TargetMachineBuilder IrCompiler::InferTargetMachineBuilder(
 
 llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
     llvm::Module& module) {
+  Options options = default_options_;
+  if (auto it = llvm_module_compilation_options_overrides_.find(&module);
+      it != llvm_module_compilation_options_overrides_.end()) {
+    VLOG(1) << "Overriding LLVM compilation options for module: "
+            << absl::string_view(it->first->getName())
+            << " with: " << it->second.DebugString();
+    options.disable_slp_vectorizer = it->second.slp_vectorizer_disabled();
+    options.disable_loop_unrolling = it->second.disable_loop_unrolling();
+    options.optimize_for_size = it->second.optimize_for_size();
+  }
+
   VLOG(2) << "IR before optimizations";
   XLA_VLOG_LINES(2, llvm_ir::DumpToString(&module));
 
@@ -246,7 +257,7 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
   }
 
   if (llvm::Error ir_passes_error =
-          RunIrPasses(module, target_machine->get())) {
+          RunIrPasses(module, target_machine->get(), options)) {
     return ir_passes_error;
   }
 
@@ -280,8 +291,9 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
 }
 
 llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
-                                    llvm::TargetMachine* target_machine) const {
-  llvm::PipelineTuningOptions pto = GetPipelineTuningOptions(module, options_);
+                                    llvm::TargetMachine* target_machine,
+                                    const Options& options) const {
+  llvm::PipelineTuningOptions pto = GetPipelineTuningOptions(module, options);
   llvm::LoopAnalysisManager lam;
   llvm::FunctionAnalysisManager fam;
   llvm::CGSCCAnalysisManager cgam;
@@ -311,11 +323,11 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
 
   llvm::ModulePassManager pm;
 
-  if (options_.dfsan_enabled) {
-    pm.addPass(llvm::DataFlowSanitizerPass(options_.dfsan_abi_list_files));
+  if (options.dfsan_enabled) {
+    pm.addPass(llvm::DataFlowSanitizerPass(options.dfsan_abi_list_files));
   }
 
-  llvm::OptimizationLevel opt_level = GetOptimizationLevel(options_);
+  llvm::OptimizationLevel opt_level = GetOptimizationLevel(options);
   if (opt_level == llvm::OptimizationLevel::O0) {
     pm.addPass(pb.buildO0DefaultPipeline(opt_level));
   } else {
@@ -346,7 +358,7 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
     }
   }
 
-  RewriteToPolynomialApproximations(&module, options_.fast_math_flags);
+  RewriteToPolynomialApproximations(&module, options.fast_math_flags);
 
   return llvm::Error::success();
 }

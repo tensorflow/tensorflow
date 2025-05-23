@@ -16,7 +16,7 @@
 name: Presubmit - Run Benchmarks
 
 permissions:
-  contents: read # Default for checkout, other permissions are job-specific
+  contents: read
 
 on:
   workflow_dispatch:
@@ -50,28 +50,34 @@ jobs:
   # ================================================================
   generate_matrix:
     name: Generate Presubmit Matrix
-    # Add a condition here to only run if the PR has the label or it's a manual dispatch
+    # Condition: Run if manually dispatched OR if it's a PR event AND the PR has the 'blocking_presubmit' label.
+    # The `github.event.label.name` is only available for 'labeled'/'unlabeled' events.
+    # For 'opened'/'reopened'/'synchronize', we need to check `github.event.pull_request.labels`.
     if: |
       github.event_name == 'workflow_dispatch' ||
-      contains(github.event.pull_request.labels.*.name, 'blocking_presubmit')
+      (
+        github.event_name == 'pull_request' &&
+        (
+          (github.event.action == 'labeled' && github.event.label.name == 'blocking_presubmit') ||
+          contains(github.event.pull_request.labels.*.name, 'blocking_presubmit')
+        )
+      )
     uses: ./.github/workflows/generate_benchmark_matrix.yml
     with:
-      workflow_type: 'presubmit'
+      workflow_type: 'PRESUBMIT'
       registry_file: 'xla/tools/benchmarks/registries/default_registry.yml'
       checkout_ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-  # ================================================================
-  # Job 2: Run benchmarks based on the generated matrix
-  # ================================================================
   run_benchmarks:
-    name: Run Benchmark (${{ matrix.benchmark_entry.benchmark_name }} / ${{ matrix.benchmark_entry.hardware_category }})
+    name: Run Benchmark (${{ matrix.benchmark_entry.config_id }}) # Use the full config_id: {name}_{hw-short}_{topo}_{workflow} e.g., gemma3_1b_flax_call_l4_1h1d_presubmit
     needs: generate_matrix
-    if: success() && needs.generate_matrix.outputs.matrix_include_json != '[]' && needs.generate_matrix.outputs.matrix_include_json != ''
+    # Also check if the generate_matrix job itself was skipped due to its `if` condition
+    if: success() && needs.generate_matrix.result != 'skipped' && needs.generate_matrix.outputs.matrix_include_json != '[]' && needs.generate_matrix.outputs.matrix_include_json != ''
 
     strategy:
       fail-fast: false
       matrix:
-         benchmark_entry: ${{ fromJson(needs.generate_matrix.outputs.matrix_include_json) }}
+         benchmark_entry: ${{ fromJson(needs.generate_matrix.outputs.matrix_include_json || '[]') }}
 
     runs-on: ${{ matrix.benchmark_entry.runner_label }}
     container: ${{ matrix.benchmark_entry.container_image }}
@@ -79,14 +85,12 @@ jobs:
     defaults:
       run:
         shell: bash
-        # working-directory: ${{ github.workspace }}
 
     timeout-minutes: 60
 
     env:
-      # --- Pass all Matrix and GitHub context info via ENV ---
       BENCHMARK_NAME: ${{ matrix.benchmark_entry.benchmark_name }}
-      CONFIG_ID: ${{ matrix.benchmark_entry.config_id || matrix.benchmark_entry.benchmark_name }}
+      CONFIG_ID: ${{ matrix.benchmark_entry.config_id }} 
       RUNNER_LABEL: ${{ matrix.benchmark_entry.runner_label }}
       CONTAINER_IMAGE: ${{ matrix.benchmark_entry.container_image }}
       ARTIFACT_LOCATION: ${{ matrix.benchmark_entry.artifact_location }}
@@ -97,12 +101,14 @@ jobs:
       TARGET_METRICS_JSON: ${{ toJson(matrix.benchmark_entry.target_metrics) }}
       TOPOLOGY_JSON: ${{ toJson(matrix.benchmark_entry.topology) }}
       HARDWARE_CATEGORY: ${{ matrix.benchmark_entry.hardware_category }}
-      GITHUB_LABELS_JSON: ${{ toJson(matrix.benchmark_entry.github_labels) }}
+
+
       CHECKOUT_REF: ${{ github.event.pull_request.head.sha || github.sha }}
       COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       WORKFLOW_RUN_ID: ${{ github.run_id }}
-      OUTPUT_DIR_NAME: benchmark_output_${{ matrix.benchmark_entry.config_id || matrix.benchmark_entry.benchmark_name }}_${{ matrix.benchmark_entry.hardware_category }}
-      SCRIPT_DIR_RELATIVE: .github/workflows/benchmarks
+
+      OUTPUT_DIR_NAME: benchmark_output_${{ matrix.benchmark_entry.config_id }}
+      SCRIPT_DIR_RELATIVE: .github/workflows/benchmarks 
       BASELINE_YAML_FILE_RELATIVE: xla/tools/benchmarks/baseline/presubmit_baseline.yml
       COMPARISON_SCRIPT_RELATIVE: .github/workflows/benchmarks/compare_with_baseline.py
 
@@ -118,10 +124,11 @@ jobs:
           RESOLVED_SCRIPT_DIR_PATH="${GITHUB_WORKSPACE}/${SCRIPT_DIR_RELATIVE}"
           RESOLVED_BASELINE_YAML_PATH="${GITHUB_WORKSPACE}/${BASELINE_YAML_FILE_RELATIVE}"
           RESOLVED_COMPARISON_SCRIPT_PATH="${GITHUB_WORKSPACE}/${COMPARISON_SCRIPT_RELATIVE}"
-          RESOLVED_COMPARE_RESULTS_SCRIPT_PATH="${GITHUB_WORKSPACE}/${SCRIPT_DIR_RELATIVE}/run_comparison.sh"
+          RESOLVED_RUN_COMPARISON_SCRIPT_PATH="${GITHUB_WORKSPACE}/${SCRIPT_DIR_RELATIVE}/run_comparison.sh"
+
 
           echo "--- Benchmark Job Info ---"
-          echo "Config ID: $CONFIG_ID"
+          echo "Config ID (from matrix, used for dir): $CONFIG_ID"
           echo "Benchmark Name: $BENCHMARK_NAME"
           echo "Runner Label: $RUNNER_LABEL"
           echo "Hardware Category: $HARDWARE_CATEGORY"
@@ -140,7 +147,7 @@ jobs:
           echo "RESOLVED_SCRIPT_DIR=$RESOLVED_SCRIPT_DIR_PATH" >> $GITHUB_ENV
           echo "RESOLVED_BASELINE_YAML=$RESOLVED_BASELINE_YAML_PATH" >> $GITHUB_ENV
           echo "RESOLVED_COMPARISON_SCRIPT=$RESOLVED_COMPARISON_SCRIPT_PATH" >> $GITHUB_ENV
-          echo "RESOLVED_COMPARE_RESULTS_SCRIPT=$RESOLVED_COMPARE_RESULTS_SCRIPT_PATH" >> $GITHUB_ENV
+          echo "RESOLVED_RUN_COMPARISON_SCRIPT=$RESOLVED_RUN_COMPARISON_SCRIPT_PATH" >> $GITHUB_ENV
 
           # Create the output directory - scripts will assume it exists
           mkdir -p "$FULL_OUTPUT_DIR_PATH"
@@ -201,12 +208,10 @@ jobs:
            echo "---------------------------------------------"
 
       - name: Compare Results to Baseline
-        # Run if benchmark step finished (even if it failed but produced a results file)
-        # AND PyYAML installation didn't cause a skip
         if: (steps.run_hlo.outcome == 'success' || (steps.run_hlo.outcome == 'failure' && (hashFiles(format('{0}/results.json', env.RESOLVED_OUTPUT_DIR)) != '' || hashFiles(format('{0}/results.json.txt', env.RESOLVED_OUTPUT_DIR)) != ''))) && env.skip_comparison_due_to_yaml_install_failure != 'true'
         run: |
           echo "Starting baseline comparison..."
-          bash "$RESOLVED_COMPARE_RESULTS_SCRIPT"
+          bash "$RESOLVED_RUN_COMPARISON_SCRIPT"
           echo "Baseline comparison finished."
           echo "---------------------------------------------"
 
@@ -214,8 +219,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
         with:
-          name: results-${{ env.CONFIG_ID }}-${{ env.HARDWARE_CATEGORY }}
-          # Use the RESOLVED_OUTPUT_DIR that was set in GITHUB_ENV
+          name: results-${{ env.CONFIG_ID }} 
           path: ${{ env.RESOLVED_OUTPUT_DIR }}
           retention-days: 7
           if-no-files-found: error
