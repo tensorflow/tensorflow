@@ -21,6 +21,8 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 #include "third_party/gpus/cuda/include/nvtx3/nvToolsExt.h"
@@ -70,6 +72,11 @@ class CuptiDriverApiHook {
 // per process.
 class CuptiTracer {
  public:
+  // map from original graph id to graph id when graph is created or cloned.
+  absl::flat_hash_map<uint32_t, uint32_t> GetGraphIdMap() const;
+  // map from original node id to node id when node is created or cloned.
+  absl::flat_hash_map<uint64_t, uint64_t> GetNodeIdMap() const;
+
   // Not copyable or movable
   CuptiTracer(const CuptiTracer&) = delete;
   CuptiTracer& operator=(const CuptiTracer&) = delete;
@@ -139,6 +146,12 @@ class CuptiTracer {
   explicit CuptiTracer(CuptiInterface* cupti_interface);
 
  private:
+  mutable absl::Mutex graph_id_mutex_;
+  mutable absl::Mutex node_id_mutex_;
+  absl::flat_hash_map<uint32_t, uint32_t> graph_id_to_orig_graph_id_
+      ABSL_GUARDED_BY(graph_id_mutex_);
+  absl::flat_hash_map<uint64_t, uint64_t> node_id_to_orig_node_id_
+      ABSL_GUARDED_BY(node_id_mutex_);
   // Buffer size and alignment, 32K and 8 as in CUPTI samples.
   static constexpr size_t kBufferSizeInBytes = 32 * 1024;
 

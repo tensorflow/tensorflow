@@ -246,6 +246,21 @@ class PerDeviceCollector {
                               GetStatTypeStr(StatType::kCudaGraphId)),
                           event.graph_id);
     }
+    if (event.graph_node_id != 0) {
+      xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
+                              GetStatTypeStr(StatType::kCudaGraphNodeId)),
+                          event.graph_node_id);
+    }
+    if (event.orig_graph_id != 0) {
+      xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
+                              GetStatTypeStr(StatType::kCudaOrigGraphId)),
+                          event.orig_graph_id);
+    }
+    if (event.orig_graph_node_id != 0) {
+      xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
+                              GetStatTypeStr(StatType::kCudaGraphOrigNodeId)),
+                          event.orig_graph_node_id);
+    }
     if (event.type == CuptiTracerEventType::Kernel &&
         event.source == CuptiTracerEventSource::Activity) {
       DeviceOccupancyParams params{};
@@ -414,6 +429,34 @@ class PerDeviceCollector {
     // Tracking event types per line.
     absl::flat_hash_map<int64_t, absl::flat_hash_set<CuptiTracerEventType>>
         events_types_per_line;
+    // captures all cpu graph launch events.
+    std::vector<CuptiTracerEvent> graph_launch_events;
+    for (auto& event : events_) {
+      if (event.type == CuptiTracerEventType::CudaGraph &&
+          event.source == CuptiTracerEventSource::DriverCallback &&
+          event.cuda_graph_info.orig_graph_id != 0) {
+        graph_launch_events.push_back(event);
+      }
+    }
+    // Add cuda graph kernel events to the graph launch events.
+    for (auto& event : events_) {
+      if (event.graph_id != 0 &&
+          event.source == CuptiTracerEventSource::Activity) {
+        for (const auto& graph_launch_event : graph_launch_events) {
+          if (event.graph_id == graph_launch_event.graph_id &&
+              event.start_time_ns >= graph_launch_event.start_time_ns) {
+            XLineBuilder line =
+                host_plane->GetOrCreateLine(graph_launch_event.thread_id);
+            line.SetTimestampNs(start_gpu_ns);
+            CuptiTracerEvent cuda_graph_kernel_event = event;
+            cuda_graph_kernel_event.name =
+                absl::StrCat("CudaGraphKernel:", event.name);
+            CreateXEvent(cuda_graph_kernel_event, host_plane, start_gpu_ns,
+                         end_gpu_ns, &line);
+          }
+        }
+      }
+    }
     for (auto& event : events_) {
       int64_t line_id = CuptiTracerEvent::kInvalidThreadId;
       bool is_host_event = IsHostEvent(event, &line_id);
@@ -699,11 +742,14 @@ void CuptiTraceCollector::OnTracerCollectedCallbackData(
 
 void CuptiTraceCollector::OnTracerCachedActivityBuffers(
     std::list<CuptiActivityBufferManager::ActivityBufferAndSize>
-        activity_buffers) {
+        activity_buffers,
+    absl::flat_hash_map<uint32_t, uint32_t> graph_id_to_orig_graph_id,
+    absl::flat_hash_map<uint64_t, uint64_t> node_id_to_orig_node_id) {
   size_t dropped_activity_event_count = 0;
   CuptiEventCollectorDelegate collector(
       *annotation_map(),
-      [this](CuptiTracerEvent&& ev) { this->AddEvent(std::move(ev)); });
+      [this](CuptiTracerEvent&& ev) { this->AddEvent(std::move(ev)); },
+      std::move(graph_id_to_orig_graph_id), std::move(node_id_to_orig_node_id));
   AddActivityBufferListEventsTo(collector, activity_buffers,
                                 options_.max_activity_api_events,
                                 dropped_activity_event_count);

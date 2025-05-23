@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
@@ -34,6 +35,11 @@ using absl::StatusCode;
 
 template <typename CuptiActivity>
 struct CuptiActivityHasGraphId {
+  static constexpr bool value = false;
+};
+
+template <typename CuptiActivity>
+struct CuptiActivityHasGraphNodeId {
   static constexpr bool value = false;
 };
 
@@ -55,7 +61,15 @@ struct CuptiActivityHasGraphId<CuptiActivityKernelTy> {
   static constexpr bool value = true;
 };
 template <>
+struct CuptiActivityHasGraphNodeId<CuptiActivityKernelTy> {
+  static constexpr bool value = true;
+};
+template <>
 struct CuptiActivityHasGraphId<CuptiActivityMemcpyTy> {
+  static constexpr bool value = true;
+};
+template <>
+struct CuptiActivityHasGraphNodeId<CuptiActivityMemcpyTy> {
   static constexpr bool value = true;
 };
 template <>
@@ -63,7 +77,15 @@ struct CuptiActivityHasGraphId<CuptiActivityMemcpyP2PTy> {
   static constexpr bool value = true;
 };
 template <>
+struct CuptiActivityHasGraphNodeId<CuptiActivityMemcpyP2PTy> {
+  static constexpr bool value = true;
+};
+template <>
 struct CuptiActivityHasGraphId<CuptiActivityMemsetTy> {
+  static constexpr bool value = true;
+};
+template <>
+struct CuptiActivityHasGraphNodeId<CuptiActivityMemsetTy> {
   static constexpr bool value = true;
 };
 #elif CUDA_VERSION >= 11060  // CUDA 11.6
@@ -78,7 +100,15 @@ struct CuptiActivityHasGraphId<CuptiActivityKernelTy> {
   static constexpr bool value = true;
 };
 template <>
+struct CuptiActivityHasGraphNodeId<CuptiActivityKernelTy> {
+  static constexpr bool value = true;
+};
+template <>
 struct CuptiActivityHasGraphId<CuptiActivityMemcpyTy> {
+  static constexpr bool value = true;
+};
+template <>
+struct CuptiActivityHasGraphNodeId<CuptiActivityKernelTy> {
   static constexpr bool value = true;
 };
 template <>
@@ -86,7 +116,15 @@ struct CuptiActivityHasGraphId<CuptiActivityMemcpyP2PTy> {
   static constexpr bool value = true;
 };
 template <>
+struct CuptiActivityHasGraphNodeId<CuptiActivityMemcpyP2PTy> {
+  static constexpr bool value = true;
+};
+template <>
 struct CuptiActivityHasGraphId<CuptiActivityMemsetTy> {
+  static constexpr bool value = true;
+};
+template <>
+struct CuptiActivityHasGraphNodeId<CuptiActivityMemsetTy> {
   static constexpr bool value = true;
 };
 #else
@@ -159,6 +197,28 @@ void SetEventGraphId(CuptiTracerEvent &event,
   }
 }
 
+template <typename CuptiActivity>
+void SetEventGraphNodeId(CuptiTracerEvent &event,
+                         const CuptiActivity *cupti_activity) {
+  if constexpr (CuptiActivityHasGraphNodeId<CuptiActivity>::value) {
+    event.graph_node_id = cupti_activity->graphNodeId;
+  }
+}
+void SetEventGraphOriginalGraphId(CuptiTracerEvent &event,
+                                  CuptiEventCollectorDelegate &collector) {
+  auto it = collector.graph_id_to_orig_graph_id.find(event.graph_id);
+  if (it != collector.graph_id_to_orig_graph_id.end()) {
+    event.orig_graph_id = it->second;
+  }
+}
+void SetEventGraphOriginalGraphNodeId(CuptiTracerEvent &event,
+                                      CuptiEventCollectorDelegate &collector) {
+  auto it = collector.node_id_to_orig_node_id.find(event.graph_node_id);
+  if (it != collector.node_id_to_orig_node_id.end()) {
+    event.orig_graph_node_id = it->second;
+  }
+}
+
 template <bool cupti_has_channel_id, typename CuptiActivityKernel>
 void AddKernelActivityEvent(CuptiEventCollectorDelegate &collector,
                             const CuptiActivityKernel *kernel) {
@@ -178,6 +238,9 @@ void AddKernelActivityEvent(CuptiEventCollectorDelegate &collector,
   event.nvtx_range = info.nvtx_range;
   event.scope_range_id = info.scope_range_id;
   SetEventGraphId(event, kernel);
+  SetEventGraphNodeId(event, kernel);
+  SetEventGraphOriginalGraphId(event, collector);
+  SetEventGraphOriginalGraphNodeId(event, collector);
   event.kernel_info.registers_per_thread = kernel->registersPerThread;
   event.kernel_info.static_shared_memory_usage = kernel->staticSharedMemory;
   event.kernel_info.dynamic_shared_memory_usage = kernel->dynamicSharedMemory;
@@ -306,6 +369,9 @@ void AddMemcpyActivityEvent(CuptiEventCollectorDelegate &collector,
   event.nvtx_range = info.nvtx_range;
   event.scope_range_id = info.scope_range_id;
   SetEventGraphId(event, memcpy);
+  SetEventGraphNodeId(event, memcpy);
+  SetEventGraphOriginalGraphId(event, collector);
+  SetEventGraphOriginalGraphNodeId(event, collector);
   event.memcpy_info.copy_kind = memcpy->copyKind;
   event.memcpy_info.num_bytes = memcpy->bytes;
   event.memcpy_info.destination = memcpy->deviceId;
@@ -338,6 +404,9 @@ void AddMemcpyP2PActivityEvent(CuptiEventCollectorDelegate &collector,
   event.nvtx_range = info.nvtx_range;
   event.scope_range_id = info.scope_range_id;
   SetEventGraphId(event, memcpy);
+  SetEventGraphNodeId(event, memcpy);
+  SetEventGraphOriginalGraphId(event, collector);
+  SetEventGraphOriginalGraphNodeId(event, collector);
   event.memcpy_info.copy_kind = CUPTI_ACTIVITY_MEMCPY_KIND_PTOP;
   event.memcpy_info.num_bytes = memcpy->bytes;
   event.memcpy_info.destination = memcpy->dstDeviceId;
@@ -467,6 +536,9 @@ void AddMemsetActivityEvent(CuptiEventCollectorDelegate &collector,
   event.context_id = memset->contextId;
   event.stream_id = memset->streamId;
   SetEventGraphId(event, memset);
+  SetEventGraphNodeId(event, memset);
+  SetEventGraphOriginalGraphId(event, collector);
+  SetEventGraphOriginalGraphNodeId(event, collector);
   event.memset_info.num_bytes = memset->bytes;
   event.memset_info.mem_kind = mem_kind;
   event.memset_info.async = (memset->flags & CUPTI_ACTIVITY_FLAG_MEMSET_ASYNC);
