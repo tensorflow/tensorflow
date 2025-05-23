@@ -216,7 +216,6 @@ build:dbg -c dbg
 # Only include debug info for files under xla/, to reduce the size of the debug
 # info in the binary. This is because if the debug sections in the ELF binary
 # are too large, errors can occur. See https://github.com/tensorflow/tensorflow/issues/48919.
-# Users can still include debug info for a specific kernel, e.g. with:
 build:dbg --per_file_copt=+.*,-xla.*@-g0
 # AWS SDK must be compiled in release mode. see: https://github.com/tensorflow/tensorflow/issues/37498
 build:dbg --copt -DDEBUG_BUILD
