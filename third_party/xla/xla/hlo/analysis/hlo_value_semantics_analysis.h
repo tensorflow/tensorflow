@@ -99,6 +99,7 @@ class EinsumDepthAnalysis : public DfsHloVisitorWithDefault {
   absl::Status HandleGetTupleElement(
       HloInstruction* get_tuple_element) override;
   absl::Status HandleDot(HloInstruction* dot) override;
+  absl::Status HandleCustomCall(HloInstruction* custom_call) override;
   absl::Status HandleConvolution(HloInstruction* convolution) override {
     return HandleDot(convolution);
   }
@@ -160,6 +161,7 @@ class EinsumHeightAnalysis : public DfsHloVisitorWithDefault {
   absl::Status HandleGetTupleElement(
       HloInstruction* get_tuple_element) override;
   absl::Status HandleDot(HloInstruction* dot) override;
+  absl::Status HandleCustomCall(HloInstruction* custom_call) override;
   absl::Status HandleConvolution(HloInstruction* convolution) override {
     return HandleDot(convolution);
   }
