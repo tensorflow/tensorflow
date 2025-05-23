@@ -69,6 +69,8 @@ absl::StatusOr<std::unique_ptr<const HloGumgraphMappings>> FindMappings(
   matchers.push_back(
       std::make_unique<GreedyLimitedCandidatesBottomUpMatcher>(&left, &right));
   if (options.use_top_down_matcher) {
+    matchers.push_back(std::make_unique<GreedyTopDownMatcher>(
+        &left, &right, /*require_same_children=*/true));
     matchers.push_back(std::make_unique<GreedyTopDownMatcher>(&left, &right));
   }
 
