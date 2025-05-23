@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <new>
 #include <optional>
 #include <type_traits>
@@ -103,14 +104,6 @@ class Worker {
 
   std::optional<size_t> Pop();
 
-  // Schedule `count_down.count()` workers into the Eigen thread pool that
-  // process `num_tasks` parallel tasks and count down for each completed
-  // worker.
-  template <typename ParallelTask>
-  static void Parallelize(const Eigen::ThreadPoolDevice* device,
-                          tsl::CountDownAsyncValueRef<tsl::Chain> count_down,
-                          size_t num_tasks, ParallelTask&& parallel_task);
-
   // Schedule `num_workers` workers into the Eigen thread pool that process
   // `num_tasks` parallel tasks and return an async value that becomes
   // available when all workers are completed.
@@ -128,7 +121,7 @@ class Worker {
                                     ParallelTask&& parallel_task);
 
   template <typename ParallelTask>
-  static void Parallelize(ParallelizeContext<ParallelTask>* ctx,
+  static void Parallelize(std::shared_ptr<ParallelizeContext<ParallelTask>> ctx,
                           uint16_t start_index, uint16_t end_index);
 
   size_t worker_index_;
@@ -254,7 +247,7 @@ Worker::ParallelizeContext<ParallelTask>::ParallelizeContext(
 
 template <typename ParallelTask>
 // NOLINTNEXTLINE(readability-function-cognitive-complexity)
-void Worker::Parallelize(ParallelizeContext<ParallelTask>* ctx,
+void Worker::Parallelize(std::shared_ptr<ParallelizeContext<ParallelTask>> ctx,
                          uint16_t start_index, uint16_t end_index) {
   DCHECK_LT(start_index, end_index) << "Invalid worker index range";
 
@@ -262,20 +255,11 @@ void Worker::Parallelize(ParallelizeContext<ParallelTask>* ctx,
   static_assert(std::is_same_v<R, absl::Status> || std::is_void_v<R>,
                 "Unsupported parallel task return type");
 
-  auto count_down = [&](size_t count, absl::Status status) {
-    // If count down is completed, delete the context.
-    if (ctx->count_down.CountDown(count, std::move(status))) {
-      delete ctx;
-    }
-  };
-
   // Recursively split assigned workers into two halves and schedule the
   // right half into the thread pool.
   while (end_index - start_index > 1) {
-    // If work queue is empty, we don't need to keep enqueuing more workers and
-    // can simply count down for the remaining workers.
+    // If work queue is empty, we don't need to keep enqueuing more workers.
     if (ABSL_PREDICT_FALSE(ctx->work_queue.IsEmpty())) {
-      count_down(end_index - start_index, absl::OkStatus());
       return;
     }
 
@@ -286,8 +270,6 @@ void Worker::Parallelize(ParallelizeContext<ParallelTask>* ctx,
         ctx->work_queue.DecrementWorkStealingWorkers(end_index - start_index);
     if (ABSL_PREDICT_FALSE(skip_workers > 0)) {
       DCHECK_LE(skip_workers, end_index - start_index);
-      count_down(skip_workers, absl::OkStatus());
-
       end_index -= skip_workers;
 
       // Return if there is no more work to do.
@@ -311,20 +293,23 @@ void Worker::Parallelize(ParallelizeContext<ParallelTask>* ctx,
 
   // Execute the `start_index` worker in the caller thread.
   Worker worker(start_index, &ctx->work_queue);
+  size_t num_processed_tasks = 0;
+
+  // Keep track of the first error status encountered by any of the workers.
+  absl::Status status;
+
   while (std::optional<size_t> task = worker.Pop()) {
     if constexpr (std::is_same_v<R, absl::Status>) {
-      absl::Status status = ctx->parallel_task(*task);
-      if (ABSL_PREDICT_FALSE(!status.ok())) {
-        count_down(1, std::move(status));
-        return;
+      if (ABSL_PREDICT_TRUE(status.ok())) {
+        status.Update(ctx->parallel_task(*task));
       }
     } else {
       ctx->parallel_task(*task);
     }
+    ++num_processed_tasks;
   }
 
-  // Count down for the one executed worker.
-  count_down(1, absl::OkStatus());
+  ctx->count_down.CountDown(num_processed_tasks, std::move(status));
 }
 
 template <typename ParallelTask>
@@ -349,33 +334,6 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE absl::Status Worker::ExecuteInline(
 }
 
 template <typename ParallelTask>
-ABSL_ATTRIBUTE_ALWAYS_INLINE void Worker::Parallelize(
-    const Eigen::ThreadPoolDevice* device,
-    tsl::CountDownAsyncValueRef<tsl::Chain> count_down, size_t num_tasks,
-    ParallelTask&& parallel_task) {
-  size_t num_workers = count_down.count();
-  DCHECK_LE(num_workers, num_tasks);
-
-  // Short-circuit single-threaded execution.
-  if (ABSL_PREDICT_FALSE(num_workers == 1)) {
-    count_down.CountDown(
-        ExecuteInline(num_tasks, std::forward<ParallelTask>(parallel_task)));
-    return;
-  }
-
-  DCHECK_LE(num_workers, std::numeric_limits<uint16_t>::max());
-  if (ABSL_PREDICT_FALSE(num_workers > std::numeric_limits<uint16_t>::max())) {
-    count_down.CountDown(num_workers - std::numeric_limits<uint16_t>::max());
-  }
-
-  auto ctx = std::make_unique<ParallelizeContext<ParallelTask>>(
-      device, std::move(count_down), num_tasks,
-      std::forward<ParallelTask>(parallel_task));
-
-  Parallelize(ctx.release(), 0, num_workers);
-}
-
-template <typename ParallelTask>
 ABSL_ATTRIBUTE_ALWAYS_INLINE tsl::AsyncValueRef<tsl::Chain> Worker::Parallelize(
     const Eigen::ThreadPoolDevice* device, size_t num_workers, size_t num_tasks,
     ParallelTask&& parallel_task) {
@@ -394,11 +352,14 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE tsl::AsyncValueRef<tsl::Chain> Worker::Parallelize(
     num_workers = std::numeric_limits<uint16_t>::max();
   }
 
-  tsl::CountDownAsyncValueRef<tsl::Chain> count_down(num_workers);
+  tsl::CountDownAsyncValueRef<tsl::Chain> count_down(num_tasks);
   auto execute_event = count_down.AsRef();
 
-  Parallelize(device, std::move(count_down), num_tasks,
-              std::forward<ParallelTask>(parallel_task));
+  auto ctx = std::make_shared<ParallelizeContext<ParallelTask>>(
+      device, std::move(count_down), num_tasks,
+      std::forward<ParallelTask>(parallel_task));
+
+  Parallelize(std::move(ctx), 0, num_workers);
 
   return execute_event;
 }

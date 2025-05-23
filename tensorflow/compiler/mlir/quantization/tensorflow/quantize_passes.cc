@@ -20,7 +20,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
@@ -29,13 +29,11 @@ namespace tensorflow {
 namespace quantization {
 namespace {
 
-using ::tensorflow::quantization::QuantizationOptions;
-
 void AddConvertTpuToCpuModelPasses(mlir::OpPassManager &pm) {
-  pm.addPass(mlir::quant::CreateConvertTpuModelToCpuPass());
+  pm.addPass(mlir::tf_quant::CreateConvertTpuModelToCpuPass());
   pm.addPass(mlir::createInlinerPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::quant::CreateCastBf16OpsToF32Pass());
+  pm.addPass(mlir::tf_quant::CreateCastBf16OpsToF32Pass());
 }
 
 }  // namespace
@@ -44,7 +42,7 @@ void AddQuantizeQatPasses(
     mlir::OpPassManager &pm, const QuantizationOptions &quantization_options,
     std::optional<const absl::string_view> mlir_dump_file_prefix) {
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::quant::CreateConvertFakeQuantToQdqPass());
+      mlir::tf_quant::CreateConvertFakeQuantToQdqPass());
   if (quantization_options.op_set() == OpSet::UNIFORM_QUANTIZED) {
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::TF::CreateUnrollBatchMatMulPassPass());
@@ -54,18 +52,18 @@ void AddQuantizeQatPasses(
     AddConvertTpuToCpuModelPasses(pm);
   }
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::quant::CreateConvertTfXlaOpToTfOpPass());
+      mlir::tf_quant::CreateConvertTfXlaOpToTfOpPass());
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::quant::CreatePrepareLiftingPass(quantization_options.op_set()));
+      mlir::tf_quant::CreatePrepareLiftingPass(quantization_options.op_set()));
 
-  pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass(
+  pm.addPass(mlir::tf_quant::CreateLiftQuantizableSpotsAsFunctionsPass(
       quantization_options));
-  pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
+  pm.addPass(mlir::tf_quant::CreateInsertQuantizedFunctionsPass(
       quantization_options.quantization_method().preset_method(),
       quantization_options.op_set()));
   // TODO: b/260677670 - Pass quantization options as pass's inputs where
   // applicable
-  pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
+  pm.addPass(mlir::tf_quant::CreateQuantizeCompositeFunctionsPass(
       quantization_options.quantization_method().preset_method(),
       quantization_options.op_set(),
       quantization_options.enable_per_channel_quantization(),
@@ -81,11 +79,11 @@ void AddQuantizeQatPasses(
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
     if (quantization_options.op_set() == OpSet::XLA) {
       pm.addNestedPass<mlir::func::FuncOp>(
-          mlir::quant::CreateReplaceCastHacksWithTFXLAOpsPass());
+          mlir::tf_quant::CreateReplaceCastHacksWithTFXLAOpsPass());
     }
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
   }
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreateOptimizePass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::tf_quant::CreateOptimizePass());
 }
 
 void AddQuantizePtqDynamicRangePasses(
@@ -98,17 +96,17 @@ void AddQuantizePtqDynamicRangePasses(
     AddConvertTpuToCpuModelPasses(pm);
   }
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::quant::CreateConvertTfXlaOpToTfOpPass());
+      mlir::tf_quant::CreateConvertTfXlaOpToTfOpPass());
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::quant::CreatePrepareLiftingPass(quantization_options.op_set()));
-  pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsDRQPass(
+      mlir::tf_quant::CreatePrepareLiftingPass(quantization_options.op_set()));
+  pm.addPass(mlir::tf_quant::CreateLiftQuantizableSpotsAsFunctionsDRQPass(
       quantization_options.quantization_method().preset_method(),
       quantization_options.op_set(),
       quantization_options.min_num_elements_for_weights()));
-  pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
+  pm.addPass(mlir::tf_quant::CreateInsertQuantizedFunctionsPass(
       quantization_options.quantization_method().preset_method(),
       quantization_options.op_set()));
-  pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
+  pm.addPass(mlir::tf_quant::CreateQuantizeCompositeFunctionsPass(
       quantization_options.quantization_method().preset_method(),
       quantization_options.op_set(),
       quantization_options.enable_per_channel_quantization(),
@@ -124,12 +122,12 @@ void AddQuantizePtqDynamicRangePasses(
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
     if (quantization_options.op_set() == OpSet::XLA) {
       pm.addNestedPass<mlir::func::FuncOp>(
-          mlir::quant::CreateReplaceCastHacksWithTFXLAOpsPass());
+          mlir::tf_quant::CreateReplaceCastHacksWithTFXLAOpsPass());
     }
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
   }
 
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreateOptimizePass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::tf_quant::CreateOptimizePass());
 }
 
 void AddQuantizePtqPreCalibrationPasses(
@@ -143,19 +141,19 @@ void AddQuantizePtqPreCalibrationPasses(
     AddConvertTpuToCpuModelPasses(pm);
   }
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::quant::CreateConvertTfXlaOpToTfOpPass());
+      mlir::tf_quant::CreateConvertTfXlaOpToTfOpPass());
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::quant::CreatePrepareLiftingPass(quantization_options.op_set()));
-  pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass(
+      mlir::tf_quant::CreatePrepareLiftingPass(quantization_options.op_set()));
+  pm.addPass(mlir::tf_quant::CreateLiftQuantizableSpotsAsFunctionsPass(
       quantization_options));
   // TODO: b/295140328 - Add debugger support for weight only
   if (quantization_options.has_debugger_config()) {
-    pm.addPass(mlir::quant::CreateAddDumpTensorOpPass(
+    pm.addPass(mlir::tf_quant::CreateAddDumpTensorOpPass(
         quantization_options.debugger_config().debugger_type(),
         quantization_options.debugger_config().log_dir_path()));
   }
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::quant::CreateInsertCustomAggregationOpsPass(
+      mlir::tf_quant::CreateInsertCustomAggregationOpsPass(
           quantization_options.calibration_options()));
 }
 
@@ -165,11 +163,11 @@ void AddQuantizePtqPostCalibrationPasses(
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::quant::CreateConvertCustomAggregationOpToQuantStatsPass());
-  pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
+      mlir::tf_quant::CreateConvertCustomAggregationOpToQuantStatsPass());
+  pm.addPass(mlir::tf_quant::CreateInsertQuantizedFunctionsPass(
       quantization_options.quantization_method().preset_method(),
       quantization_options.op_set()));
-  pm.addPass(mlir::quant::CreateQuantizeCompositeFunctionsPass(
+  pm.addPass(mlir::tf_quant::CreateQuantizeCompositeFunctionsPass(
       quantization_options.quantization_method().preset_method(),
       quantization_options.op_set(),
       quantization_options.enable_per_channel_quantization(),
@@ -185,11 +183,11 @@ void AddQuantizePtqPostCalibrationPasses(
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
     if (quantization_options.op_set() == OpSet::XLA) {
       pm.addNestedPass<mlir::func::FuncOp>(
-          mlir::quant::CreateReplaceCastHacksWithTFXLAOpsPass());
+          mlir::tf_quant::CreateReplaceCastHacksWithTFXLAOpsPass());
     }
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
   }
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreateOptimizePass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::tf_quant::CreateOptimizePass());
 }
 
 void AddQuantizeWeightOnlyPasses(
@@ -199,19 +197,19 @@ void AddQuantizeWeightOnlyPasses(
   // Add PrepareLiftingPass to utilize its functionalities like folding batch
   // normalization ops and removing training related ops.
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::quant::CreatePrepareLiftingPass(quantization_options.op_set()));
-  pm.addPass(mlir::quant::CreateQuantizeWeightsPass(quantization_options));
-  pm.addPass(mlir::quant::CreatePropagateQuantizeTypePass());
+      mlir::tf_quant::CreatePrepareLiftingPass(quantization_options.op_set()));
+  pm.addPass(mlir::tf_quant::CreateQuantizeWeightsPass(quantization_options));
+  pm.addPass(mlir::tf_quant::CreatePropagateQuantizeTypePass());
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::quant::CreateReplaceCastHacksWithTFXLAOpsPass());
+      mlir::tf_quant::CreateReplaceCastHacksWithTFXLAOpsPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
   // Use optimize pass to remove double casts that are inserted when inlining
   // functions.
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreateOptimizePass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::tf_quant::CreateOptimizePass());
 }
 
 }  // namespace quantization

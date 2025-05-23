@@ -47,6 +47,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_memory.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
+#include "xla/hlo/experimental/auto_sharding/iopddl.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
 #include "tsl/platform/fingerprint.h"
@@ -1486,12 +1487,19 @@ bool CostComponents::operator==(const CostComponents& other) const {
          computation_cost == other.computation_cost &&
          resharding_cost == other.resharding_cost &&
          overbudget_cost == other.overbudget_cost &&
-         max_memory == other.max_memory;
+         max_memory == other.max_memory && node_cost == other.node_cost &&
+         edge_cost == other.edge_cost &&
+         overbudget_usage == other.overbudget_usage &&
+         max_usage == other.max_usage;
 }
 
 double CostComponents::cost() const {
   return communication_cost + computation_cost + resharding_cost +
          overbudget_cost;
+}
+
+iopddl::TotalCost CostComponents::total_cost() const {
+  return node_cost + edge_cost + overbudget_usage;
 }
 
 bool AutoShardingEvaluation::operator==(

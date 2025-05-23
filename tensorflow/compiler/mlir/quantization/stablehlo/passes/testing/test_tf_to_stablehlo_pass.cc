@@ -26,11 +26,11 @@ limitations under the License.
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo  // IWYU pragma: keep
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_preprocess.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/tf_quantize_preprocess.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"  // IWYU pragma: keep
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"  // IWYU pragma: keep
 
@@ -41,8 +41,8 @@ namespace mlir::quant::stablehlo::testing {
 
 namespace {
 
-using ::tensorflow::quantization::AddTFToStablehloPasses;
 using ::tensorflow::quantization::RunPassesOnModuleOp;
+using ::tensorflow::tf_quantization::AddTFToStablehloPasses;
 
 class TestTFToStablehloPass
     : public impl::TestTFToStablehloPassBase<TestTFToStablehloPass> {

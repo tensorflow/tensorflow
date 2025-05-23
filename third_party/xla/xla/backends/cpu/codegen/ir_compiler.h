@@ -34,10 +34,14 @@ limitations under the License.
 #include "llvm/Support/Error.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "tsl/platform/cpu_info.h"
 
 namespace xla::cpu {
+
+void SetXlaCpuBackendOptions(llvm::Module& llvm_module,
+                             const LlvmKernelOptions& options);
 
 // IrCompiler compiles LLVM modules to object files using LLVM compilation
 // pipeline customized for XLA:CPU. Default LLVM compilation pipeline is
