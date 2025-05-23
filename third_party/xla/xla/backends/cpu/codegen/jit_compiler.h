@@ -104,6 +104,10 @@ class JitCompiler {
 
   llvm::TargetMachine* target_machine() { return target_machine_.get(); }
 
+  llvm::orc::IRCompileLayer::IRCompiler& ir_compiler() {
+    return compile_layer_->getCompiler();
+  }
+
  private:
   // LLVM ORC task dispatcher that uses `TaskRunner` to run compilation tasks.
   class TaskDispatcher : public llvm::orc::TaskDispatcher {

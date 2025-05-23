@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "llvm/Support/Error.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "tsl/platform/cpu_info.h"
 
@@ -113,7 +115,8 @@ class IrCompiler : public llvm::orc::IRCompileLayer::IRCompiler {
 
   // Runs the IR passes on the given module.
   llvm::Error RunIrPasses(llvm::Module& module,
-                          llvm::TargetMachine* target_machine) const;
+                          llvm::TargetMachine* target_machine,
+                          const Options& options) const;
 
   // Emits machine code for the given module.
   std::unique_ptr<llvm::MemoryBuffer> EmitMachineCode(
@@ -127,9 +130,18 @@ class IrCompiler : public llvm::orc::IRCompileLayer::IRCompiler {
     return target_machine_builder_();
   }
 
+  void SetCompilationOptionsOverrides(
+      absl::flat_hash_map<const llvm::Module*, LLVMCompilationOptions>
+          llvm_module_compilation_options_overrides) {
+    llvm_module_compilation_options_overrides_ =
+        llvm_module_compilation_options_overrides;
+  }
+
  private:
   TargetMachineBuilder target_machine_builder_;
-  Options options_;
+  Options default_options_;
+  absl::flat_hash_map<const llvm::Module*, LLVMCompilationOptions>
+      llvm_module_compilation_options_overrides_;
 
   // IRCompiler can be called in concurrently when JitCompiler compiles multiple
   // modules concurrently, we need to make sure that we don't introduce data
