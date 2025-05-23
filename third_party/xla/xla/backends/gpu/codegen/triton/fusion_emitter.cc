@@ -492,10 +492,11 @@ absl::StatusOr<ScalarOrTensor> EmitTiledIota(
   TF_ASSIGN_OR_RETURN(IndexingMap tile_offsets_indexing,
                       tiled_iota.tile_offsets_indexing());
 
-  auto iota_dim_offset = b.create<arith::IndexCastUIOp>(
-      b.getI32Type(),
-      emitters::ApplyIndexing(tile_offsets_indexing, /*dims=*/pid,
-                              /*symbols=*/{}, b)[iota_dim]);
+  auto iota_dim_offset =
+      Cast(b,
+           emitters::ApplyIndexing(tile_offsets_indexing, /*dims=*/pid,
+                                   /*symbols=*/{}, b)[iota_dim],
+           b.getI32Type());
 
   // First, stride as needed between the iota components.
   Value range = b.create<arith::MulIOp>(
@@ -913,7 +914,7 @@ absl::StatusOr<ScalarOrTensor> EmitDot(EmitterLocOpBuilder& b,
     b.setInsertionPointToStart(for_op.getBody());
     SmallVector<TensorValue> dot_args;
     Value ki = for_op.getInductionVar();
-    const Value ki_index = b.create<arith::IndexCastUIOp>(b.getIndexType(), ki);
+    const Value ki_index = Cast(b, ki, b.getIndexType());
     Value loop_iteration_count_value =
         CreateConst(b, b.getIndexType(), loop_iteration_count, {})
             .UnwrapScalar();
@@ -950,7 +951,7 @@ absl::StatusOr<ScalarOrTensor> EmitDot(EmitterLocOpBuilder& b,
     // TODO(b/393299275): masking is only necessary during the last iteration of
     // the loop. We should evaluate whether adding a conditional mask helps or
     // hinders performance for Triton.
-    Value ki_i32 = b.create<arith::TruncIOp>(b.getI32Type(), ki);
+    Value ki_i32 = Cast(b, ki, b.getI32Type());
     TF_ASSIGN_OR_RETURN(
         Value lhs, MaskDotOperand(b, *tiled_hlo_dot.operand(0), dot_args[0],
                                   ki_i32, lhs_contracting_dim_idx));
@@ -1402,10 +1403,9 @@ absl::StatusOr<SmallVector<Value>> EmitGeneric(
   // TODO(b/389955087): we can decide whether to sign extend by understanding if
   // we need 64 bits to encode indices or if 32 bits are enough. For now, just
   // use 64 bits to avoid issues.
-  Value pid = b.create<arith::IndexCastUIOp>(
-      b.getIndexType(),
-      b.create<arith::ExtSIOp>(b.getI64Type(), b.create<ttir::GetProgramIdOp>(
-                                                   ttir::ProgramIDDim::X)));
+  Value pid_i64 = Cast(b, b.create<ttir::GetProgramIdOp>(ttir::ProgramIDDim::X),
+                       b.getI64Type());
+  Value pid = Cast(b, pid_i64, b.getIndexType());
   TF_ASSIGN_OR_RETURN(
       auto results, EmitTiledComputation(b, libdevice_path, device_info, fusion,
                                          tiled_hlo_computation, fn, pid));
