@@ -128,7 +128,6 @@ cc_library(
     deps = [
         ":kernel_source",
         "//xla:util",
-        "//xla/mlir/utils:error_util",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",

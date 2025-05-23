@@ -45,10 +45,10 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/layout_util.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/ir_array.h"
@@ -179,7 +179,7 @@ absl::StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>,
 BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
                      const std::string& impl_fn_name,
                      const std::string& suggested_name,
-                     absl::Span<const KernelArgument> arguments,
+                     absl::Span<const emitters::KernelArgument> arguments,
                      size_t num_inputs,
                      const LaunchDimensions& launch_dimensions,
                      llvm::IRBuilderBase* builder) {
@@ -191,13 +191,11 @@ BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
 
 absl::StatusOr<std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray>,
                           std::vector<llvm_ir::IrArray>>>
-BuildKernelPrototypeFromUniqueName(IrEmitterContext& ir_emitter_context,
-                                   const std::string& impl_fn_name,
-                                   const std::string& unique_kernel_name,
-                                   absl::Span<const KernelArgument> arguments,
-                                   size_t num_inputs,
-                                   const LaunchDimensions& launch_dimensions,
-                                   llvm::IRBuilderBase* builder) {
+BuildKernelPrototypeFromUniqueName(
+    IrEmitterContext& ir_emitter_context, const std::string& impl_fn_name,
+    const std::string& unique_kernel_name,
+    absl::Span<const emitters::KernelArgument> arguments, size_t num_inputs,
+    const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder) {
   // If some arguments have the same buffer, we will pass them only once.
   llvm::SmallVector<int> to_llvm_arg_no(arguments.size());
   llvm::SmallVector<int> to_arg_no;
@@ -244,7 +242,8 @@ BuildKernelPrototypeFromUniqueName(IrEmitterContext& ir_emitter_context,
 
   for (size_t llvm_arg_no = 0; llvm_arg_no < kernel->arg_size();
        ++llvm_arg_no) {
-    const KernelArgument& kernel_argument = arguments[to_arg_no[llvm_arg_no]];
+    const emitters::KernelArgument& kernel_argument =
+        arguments[to_arg_no[llvm_arg_no]];
     // Get the original argument to extract attributes from if they exist.
     llvm::Argument* impl_arg =
         impl_func ? impl_func->getArg(llvm_arg_no) : nullptr;
@@ -278,7 +277,7 @@ BuildKernelPrototypeFromUniqueName(IrEmitterContext& ir_emitter_context,
 
   std::vector<llvm_ir::IrArray> inputs, outputs;
   for (size_t arg_no = 0; arg_no < arguments.size(); ++arg_no) {
-    const KernelArgument& kernel_argument = arguments[arg_no];
+    const emitters::KernelArgument& kernel_argument = arguments[arg_no];
     llvm::Argument& llvm_arg = *kernel->getArg(to_llvm_arg_no[arg_no]);
 
     llvm::Type* ir_type =

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef XLA_SERVICE_GPU_KERNEL_ARGUMENTS_H_
-#define XLA_SERVICE_GPU_KERNEL_ARGUMENTS_H_
+#ifndef XLA_CODEGEN_EMITTERS_KERNEL_ARGUMENTS_H_
+#define XLA_CODEGEN_EMITTERS_KERNEL_ARGUMENTS_H_
 
 #include <cstdint>
 #include <optional>
@@ -23,12 +23,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::emitters {
 
 // An argument descriptor for kernels.
 // Thread-safe.
@@ -62,12 +60,26 @@ class KernelArgument {
 
 class KernelArguments {
  public:
-  static absl::StatusOr<KernelArguments> Create(
-      const BufferAssignment& buffer_assignment,
-      const HloFusionInstruction* fusion);
+  struct BufferAlignment {
+    // Minimum alignment for buffers passed as incoming arguments by users.
+    int64_t entry_parameter_align_bytes;
+
+    // Minimum alignment for buffers allocated by XLA: the temp buffers and the
+    // live out (result) buffers.
+    int64_t xla_allocated_buffer_align_bytes;
+
+    // Minimum alignment for constant buffers.
+    int64_t constant_buffer_align_bytes;
+  };
 
   static absl::StatusOr<KernelArguments> Create(
       const BufferAssignment& buffer_assignment,
+      const BufferAlignment& buffer_alignment,
+      const HloInstruction* hlo_instruction);
+
+  static absl::StatusOr<KernelArguments> Create(
+      const BufferAssignment& buffer_assignment,
+      const BufferAlignment& buffer_alignment,
       const HloInstruction* hlo_instruction,
       absl::Span<const HloInstruction* const> needed_operands,
       bool dedup = true);
@@ -75,16 +87,18 @@ class KernelArguments {
   const std::vector<KernelArgument>& args() const { return args_; }
 
  private:
-  explicit KernelArguments(std::vector<KernelArgument> args, bool dedup = true)
-      : args_(ProcessArguments(std::move(args), dedup)) {}
+  explicit KernelArguments(std::vector<KernelArgument> args,
+                           const BufferAlignment& buffer_alignment,
+                           bool dedup = true)
+      : args_(ProcessArguments(std::move(args), buffer_alignment, dedup)) {}
 
   static std::vector<KernelArgument> ProcessArguments(
-      std::vector<KernelArgument> kernel_arguments, bool dedup);
+      std::vector<KernelArgument> kernel_arguments,
+      const BufferAlignment& buffer_alignment, bool dedup);
 
   std::vector<KernelArgument> args_;
 };
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::emitters
 
-#endif  // XLA_SERVICE_GPU_KERNEL_ARGUMENTS_H_
+#endif  // XLA_CODEGEN_EMITTERS_KERNEL_ARGUMENTS_H_

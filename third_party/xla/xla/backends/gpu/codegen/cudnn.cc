@@ -19,9 +19,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "tsl/platform/statusor.h"
 #if GOOGLE_CUDA
@@ -39,7 +40,8 @@ absl::StatusOr<FusionEmissionResult> CuDnnFusion::Emit(
 
   TF_ASSIGN_OR_RETURN(
       auto kernel_arguments,
-      KernelArguments::Create(ir_emitter_context.buffer_assignment(), &fusion));
+      emitters::KernelArguments::Create(ir_emitter_context.buffer_assignment(),
+                                        GetDefaultBufferAlignment(), &fusion));
   FusionEmissionResult result;
   result.thunks.emplace_back(std::make_unique<CuDnnThunk>(
       GetComputationFingerprint(fusion.fused_instructions_computation(), {}),

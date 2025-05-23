@@ -43,14 +43,15 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/fusion_emitter_legacy_matmul.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -146,7 +147,8 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
   std::string suggested_kernel_name = std::string(fusion.name());
   TF_ASSIGN_OR_RETURN(
       auto kernel_arguments,
-      KernelArguments::Create(ir_emitter_context.buffer_assignment(), &fusion));
+      emitters::KernelArguments::Create(ir_emitter_context.buffer_assignment(),
+                                        GetDefaultBufferAlignment(), &fusion));
 
   const HloComputation* hlo_computation =
       fusion.fused_instructions_computation();

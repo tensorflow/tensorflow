@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/kernel_arguments.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "tsl/platform/errors.h"
@@ -33,15 +33,16 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-CuDnnThunk::CuDnnThunk(std::string fingerprint, ThunkInfo thunk_info,
-                       absl::Span<const KernelArgument> kernel_arguments,
-                       std::optional<int64_t> sdpa_dropout_seed)
+CuDnnThunk::CuDnnThunk(
+    std::string fingerprint, ThunkInfo thunk_info,
+    absl::Span<const emitters::KernelArgument> kernel_arguments,
+    std::optional<int64_t> sdpa_dropout_seed)
     : Thunk(Kind::kCuDnn, std::move(thunk_info)),
       fingerprint_(std::move(fingerprint)),
       graph_(std::make_shared<se::dnn::LazyDnnGraph>(nullptr)),
       sdpa_dropout_seed_(sdpa_dropout_seed) {
   args_.reserve(kernel_arguments.size());
-  for (const KernelArgument& kernel_argument : kernel_arguments) {
+  for (const emitters::KernelArgument& kernel_argument : kernel_arguments) {
     args_.push_back(kernel_argument.slice());
   };
 }

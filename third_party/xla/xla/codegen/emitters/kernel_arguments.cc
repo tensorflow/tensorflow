@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/service/gpu/kernel_arguments.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -23,21 +23,20 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/gpu_constants.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::emitters {
 
 absl::StatusOr<KernelArguments> KernelArguments::Create(
     const BufferAssignment& buffer_assignment,
+    const BufferAlignment& buffer_alignment,
     const HloInstruction* hlo_instruction,
     absl::Span<const HloInstruction* const> needed_operands, bool dedup) {
   std::vector<KernelArgument> kernel_arguments;
@@ -62,18 +61,21 @@ absl::StatusOr<KernelArguments> KernelArguments::Create(
         return absl::OkStatus();
       }));
 
-  return KernelArguments{std::move(kernel_arguments), dedup};
+  return KernelArguments{std::move(kernel_arguments), buffer_alignment, dedup};
 }
 
 absl::StatusOr<KernelArguments> KernelArguments::Create(
     const BufferAssignment& buffer_assignment,
-    const HloFusionInstruction* fusion) {
-  return KernelArguments::Create(buffer_assignment, fusion, fusion->operands(),
+    const BufferAlignment& buffer_alignment,
+    const HloInstruction* hlo_instruction) {
+  return KernelArguments::Create(buffer_assignment, buffer_alignment,
+                                 hlo_instruction, hlo_instruction->operands(),
                                  /*dedup=*/true);
 }
 
 std::vector<KernelArgument> KernelArguments::ProcessArguments(
-    std::vector<KernelArgument> kernel_arguments, bool dedup) {
+    std::vector<KernelArgument> kernel_arguments,
+    const BufferAlignment& buffer_alignment, bool dedup) {
   absl::flat_hash_set<BufferAllocation::Slice> buffers_written;
   for (const KernelArgument& kernel_argument : kernel_arguments) {
     if (kernel_argument.written()) {
@@ -103,11 +105,12 @@ std::vector<KernelArgument> KernelArguments::ProcessArguments(
 
     const BufferAllocation* alloc = kernel_argument.slice().allocation();
     if (alloc->is_entry_computation_parameter()) {
-      kernel_argument.alignment_ = kEntryParameterAlignBytes;
+      kernel_argument.alignment_ = buffer_alignment.entry_parameter_align_bytes;
     } else if (alloc->is_constant()) {
-      kernel_argument.alignment_ = kConstantBufferAlignBytes;
+      kernel_argument.alignment_ = buffer_alignment.constant_buffer_align_bytes;
     } else {
-      kernel_argument.alignment_ = kXlaAllocatedBufferAlignBytes;
+      kernel_argument.alignment_ =
+          buffer_alignment.xla_allocated_buffer_align_bytes;
     }
 
     // Note: This code here doesn't check if any partially overlapping buffers
@@ -134,5 +137,4 @@ std::vector<KernelArgument> KernelArguments::ProcessArguments(
   return kernel_arguments;
 }
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::emitters

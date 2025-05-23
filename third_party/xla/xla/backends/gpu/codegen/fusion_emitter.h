@@ -32,11 +32,11 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/shape.h"
@@ -106,20 +106,18 @@ absl::StatusOr<
 BuildKernelPrototype(IrEmitterContext& ir_emitter_context,
                      const std::string& impl_fn_name,
                      const std::string& suggested_name,
-                     absl::Span<const KernelArgument> arguments,
+                     absl::Span<const emitters::KernelArgument> arguments,
                      size_t num_inputs,
                      const LaunchDimensions& launch_dimensions,
                      llvm::IRBuilderBase* builder);
 absl::StatusOr<
     std::tuple<llvm::Function*, std::vector<llvm_ir::IrArray /*inputs*/>,
                std::vector<llvm_ir::IrArray> /*outputs*/>>
-BuildKernelPrototypeFromUniqueName(IrEmitterContext& ir_emitter_context,
-                                   const std::string& impl_fn_name,
-                                   const std::string& unique_name,
-                                   absl::Span<const KernelArgument> arguments,
-                                   size_t num_inputs,
-                                   const LaunchDimensions& launch_dimensions,
-                                   llvm::IRBuilderBase* builder);
+BuildKernelPrototypeFromUniqueName(
+    IrEmitterContext& ir_emitter_context, const std::string& impl_fn_name,
+    const std::string& unique_name,
+    absl::Span<const emitters::KernelArgument> arguments, size_t num_inputs,
+    const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder);
 
 // Compute the kernel name. The opcode string may contain "-" which cannot be
 // in a PTX function name, so sanitize the name before uniquifying it.

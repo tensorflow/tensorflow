@@ -32,9 +32,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/kernel_arguments.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/stream_executor_util.h"
@@ -65,7 +65,7 @@ Dim3DProto Dim3DToProto(const se::Dim3D& dim) {
 
 KernelThunk::KernelThunk(
     Thunk::ThunkInfo thunk_info, std::string kernel_name,
-    absl::Span<const KernelArgument> kernel_arguments,
+    absl::Span<const emitters::KernelArgument> kernel_arguments,
     LaunchDimensions launch_dimensions,
     std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes,
     std::optional<stream_executor::gpu::TmaMetadata> tma_metadata)
@@ -77,7 +77,7 @@ KernelThunk::KernelThunk(
       tma_metadata_(std::move(tma_metadata)) {
   args_.reserve(kernel_arguments.size());
   written_.reserve(kernel_arguments.size());
-  for (const KernelArgument& kernel_argument : kernel_arguments) {
+  for (const emitters::KernelArgument& kernel_argument : kernel_arguments) {
     if (!kernel_argument.first_with_same_slice().has_value()) {
       args_.push_back(kernel_argument.slice());
       written_.push_back(kernel_argument.written());
@@ -219,13 +219,13 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
 
 CustomKernelThunk::CustomKernelThunk(
     const HloInstruction* instr, CustomKernel custom_kernel,
-    absl::Span<const KernelArgument> kernel_arguments)
+    absl::Span<const emitters::KernelArgument> kernel_arguments)
     : Thunk(Kind::kCustomKernel,
             Thunk::ThunkInfo::WithProfileAnnotation(instr)),
       custom_kernel_(std::move(custom_kernel)) {
   args_.reserve(kernel_arguments.size());
   written_.reserve(kernel_arguments.size());
-  for (const KernelArgument& kernel_argument : kernel_arguments) {
+  for (const emitters::KernelArgument& kernel_argument : kernel_arguments) {
     if (!kernel_argument.first_with_same_slice().has_value()) {
       args_.push_back(kernel_argument.slice());
       written_.push_back(kernel_argument.written());
