@@ -14,6 +14,7 @@ package_group(
         "//tensorflow/compiler/mlir/tf2xla/transforms/...",
         "//tensorflow/lite/...",
         "//third_party/cloud_tpu/inference_converter/...",  # TPU Inference Converter V1
+        "//waymo/ml/compiler/mlir/...",
     ] + internal_visibility_allowlist(),
 )
 
