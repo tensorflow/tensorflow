@@ -28,6 +28,7 @@ limitations under the License.
 #include "third_party/cudnn_frontend/include/cudnn_frontend_utils.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_dnn.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
@@ -64,6 +65,11 @@ TEST(CudaCommandBufferTest, CuDnnExplicitConstructionAndUpdateWork) {
   if (dnn_support.GetVersion().value_or(dnn::VersionInfo{0, 0, 0}) <
       dnn::VersionInfo(9, 7, 0)) {
     GTEST_SKIP() << "Requires cuDNN 9.7.0 or later.";
+  }
+
+  if (executor->GetDeviceDescription().cuda_compute_capability() <
+      CudaComputeCapability::Ampere()) {
+    GTEST_SKIP() << "Requires at least an Ampere GPU.";
   }
 
   constexpr int kDimSize = 32;

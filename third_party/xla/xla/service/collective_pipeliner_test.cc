@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <queue>
 #include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -2401,11 +2402,13 @@ while_body {
   select.1348 = s32[] select(compare.747, add.232, add.231)
   dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.35, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
   mul = bf16[1,8,128] multiply(dynamic-slice.99, dynamic-slice.99)
-  ar.1 = bf16[1,8,128] all-reduce(mul), replica_groups={}, to_apply=add, channel_id=1
+  t2 = bf16[1,128,8] transpose(mul), dimensions={0,2,1}
+  ar.1 = bf16[1,128,8] all-reduce(t2), replica_groups={}, to_apply=add, channel_id=1
   %c = bf16[] custom-call(), custom_call_target="Boh"
-  %b = bf16[1,8,128] broadcast(c), dimensions={}
-  %a = bf16[1,8,128] add(ar.1, b)
-  dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, a, select.1348, constant.2561, constant.2561)
+  %b = bf16[1,128,8] broadcast(c), dimensions={}
+  %a = bf16[1,128,8] add(ar.1, b)
+  %t = bf16[1,8,128] transpose(a), dimensions={0,2,1}
+  dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, t, select.1348, constant.2561, constant.2561)
   ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.35), control-predecessors={select.1348}
 }
 
@@ -2434,6 +2437,10 @@ ENTRY entry {
   EXPECT_EQ(root_loop->control_predecessors().size(), 1);
   const HloInstruction* select_instr_loop =
       root_loop->control_predecessors()[0];
+  const HloInstruction* transpose_instr_loop =
+      FindInstruction(module.get(), HloOpcode::kTranspose);
+  EXPECT_EQ(transpose_instr_loop->dimensions(),
+            std::vector<int64_t>({0, 1, 3, 2}));
   EXPECT_EQ(select_instr_loop->opcode(), HloOpcode::kSelect);
 }
 

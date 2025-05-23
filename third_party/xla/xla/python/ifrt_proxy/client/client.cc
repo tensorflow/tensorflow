@@ -20,6 +20,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -30,6 +31,7 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/pjrt/pjrt_device_description.h"
@@ -66,6 +68,20 @@
 namespace xla {
 namespace ifrt {
 namespace proxy {
+
+namespace {
+
+std::string device_summary(Device* device) {
+  auto it = device->Attributes().map().find("slice_index");
+  int slice_index =
+      (it != device->Attributes().map().end() &&
+       std::holds_alternative<AttributeMap::Int64Value>(it->second))
+          ? std::get<AttributeMap::Int64Value>(it->second).value
+          : 0;
+  return absl::StrCat(device->Kind(), "s", slice_index);
+}
+
+}  // namespace
 
 char Client::ID = 0;
 
@@ -335,9 +351,12 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
     TF_ASSIGN_OR_RETURN(
         auto new_sharding,
         arrays[i]->sharding().WithDeviceAssignment(devices, memory_kind));
+    auto* proxy_array = llvm::cast<xla::ifrt::proxy::Array>(arrays[i].get());
+    CHECK(proxy_array != nullptr);
     new_arrays.push_back(tsl::MakeRef<Array>(
         this, rpc_helper_, arrays[i]->dtype(), arrays[i]->shape(),
-        std::move(new_sharding), ArrayHandle{result_handles[i]}));
+        std::move(new_sharding), ArrayHandle{result_handles[i]},
+        /*layout=*/proxy_array->custom_layout()));
   }
   return new_arrays;
 }
@@ -417,6 +436,20 @@ absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> Client::GetDefaultLayout(
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       "IfrtProxyEntrypointGetDefaultLayout");
   auto req = std::make_unique<GetDefaultLayoutRequest>();
+
+  LayoutKey key{
+      /*dtype=*/dtype,
+      /*dims=*/std::vector<int64_t>(dims.begin(), dims.end()),
+      /*memory_kind=*/memory_kind,
+      /*device_summary=*/device_summary(llvm::dyn_cast<Device>(device))};
+
+  {
+    absl::MutexLock l(&mu_);
+    if (auto it = layout_cache_.find(key); it != layout_cache_.end()) {
+      return it->second;
+    }
+  }
+
   *req->mutable_dtype() = dtype.ToProto();
   req->mutable_dims()->Reserve(dims.size());
   for (int64_t dim : dims) {
@@ -430,9 +463,12 @@ absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> Client::GetDefaultLayout(
 
   TF_ASSIGN_OR_RETURN(auto layout, xla::PjRtLayout::Deserialize(
                                        response->serialized_pjrt_layout()));
+  {
+    absl::MutexLock l(&mu_);
+    layout_cache_.insert({key, layout});
+  }
   return layout;
 }
-
 }  // namespace proxy
 }  // namespace ifrt
 }  // namespace xla

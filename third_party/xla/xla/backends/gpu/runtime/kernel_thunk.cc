@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -44,8 +45,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -54,13 +53,23 @@ namespace gpu {
 // KernelThunk
 //===----------------------------------------------------------------------===//
 
+namespace {
+Dim3DProto Dim3DToProto(const se::Dim3D& dim) {
+  Dim3DProto proto;
+  proto.set_x(dim.x);
+  proto.set_y(dim.y);
+  proto.set_z(dim.z);
+  return proto;
+}
+}  // namespace
+
 KernelThunk::KernelThunk(
-    const HloInstruction* instr, std::string kernel_name,
+    Thunk::ThunkInfo thunk_info, std::string kernel_name,
     absl::Span<const KernelArgument> kernel_arguments,
     LaunchDimensions launch_dimensions,
     std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes,
     std::optional<stream_executor::gpu::TmaMetadata> tma_metadata)
-    : Thunk(Kind::kKernel, Thunk::ThunkInfo::WithProfileAnnotation(instr)),
+    : Thunk(Kind::kKernel, std::move(thunk_info)),
       kernel_name_(std::move(kernel_name)),
       launch_dimensions_(std::move(launch_dimensions)),
       cluster_dim_(std::move(cluster_dim)),
@@ -81,6 +90,27 @@ std::string KernelThunk::ToString(int indent) const {
       ", kernel = %s, launch dimensions = %s, cluster_dim = %s", kernel_name_,
       launch_dimensions_.ToString(),
       cluster_dim_.has_value() ? cluster_dim_->ToString() : "nullopt");
+}
+
+absl::StatusOr<ThunkProto> KernelThunk::ToProto() const {
+  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
+  auto* kernel_proto = proto.mutable_kernel_thunk();
+  for (const auto& arg : args_) {
+    TF_ASSIGN_OR_RETURN(*kernel_proto->add_args(), arg.ToProto());
+  }
+  for (bool written : written_) {
+    kernel_proto->add_written(written);
+  }
+  kernel_proto->set_kernel_name(kernel_name_);
+  *kernel_proto->mutable_launch_block_counts() =
+      Dim3DToProto(launch_dimensions_.block_counts());
+  *kernel_proto->mutable_launch_thread_counts_per_block() =
+      Dim3DToProto(launch_dimensions_.thread_counts_per_block());
+  if (cluster_dim_) {
+    *kernel_proto->mutable_cluster_dim() = Dim3DToProto(*cluster_dim_);
+  }
+  kernel_proto->set_shmem_bytes(shmem_bytes_);
+  return proto;
 }
 
 absl::Status KernelThunk::Initialize(const InitializeParams& params) {
@@ -254,10 +284,9 @@ absl::Status CustomKernelThunk::ExecuteOnStream(const ExecuteParams& params) {
     return kernel->Launch(custom_kernel_.thread_dims(),
                           custom_kernel_.block_dims(), *cluster, params.stream,
                           args);
-  } else {
-    return kernel->Launch(custom_kernel_.thread_dims(),
-                          custom_kernel_.block_dims(), params.stream, args);
   }
+  return kernel->Launch(custom_kernel_.thread_dims(),
+                        custom_kernel_.block_dims(), params.stream, args);
 }
 
 }  // namespace gpu

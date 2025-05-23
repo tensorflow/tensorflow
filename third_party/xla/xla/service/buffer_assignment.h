@@ -221,7 +221,7 @@ class BufferAllocation {
 
     static absl::StatusOr<BufferAllocation::Slice> FromProto(
         const xla::buffer_assignment::BufferAllocationSliceProto& proto,
-        const std::vector<BufferAllocation>& buffer_allocations);
+        absl::Span<const BufferAllocation> buffer_allocations);
 
    private:
     const BufferAllocation* allocation_ = nullptr;
@@ -248,6 +248,7 @@ class BufferAllocation {
                                 int64_t more_than_k = 50) const;
 
   BufferAllocationProto ToProto() const;
+  static BufferAllocation FromProto(const BufferAllocationProto&);
 
   // Whether the buffer is a parameter to or live out of the entry computation.
   bool IsInputOrOutput() const {

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/mlir/stablehlo/transforms/mhlo_passes/tf_fuse_convolution_pass.h"
+
 #include <iterator>
 #include <memory>
 #include <utility>
@@ -176,7 +178,9 @@ class FuseMhloMulAndConvolutionPattern : public OpRewritePattern<mhlo::MulOp> {
 class FuseMhloConvolutionPass
     : public PassWrapper<FuseMhloConvolutionPass, OperationPass<func::FuncOp>> {
  public:
-  StringRef getArgument() const final { return "fuse-mhlo-convolution-pass"; }
+  StringRef getArgument() const final {
+    return "tf-fuse-mhlo-convolution-pass";
+  }
   StringRef getDescription() const final {
     return "Fuses MHLO binary element-wise ops and convolution op";
   }
@@ -190,7 +194,7 @@ class FuseMhloConvolutionPass
   }
 };
 
-std::unique_ptr<Pass> CreateFuseConvolutionPass() {
+std::unique_ptr<Pass> createFuseConvolutionPass() {
   return std::make_unique<FuseMhloConvolutionPass>();
 }
 

@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -canonicalize | FILECHECK_OPTS="" FileCheck %s
+// RUN: litert-opt %s -canonicalize | FILECHECK_OPTS="" FileCheck %s
 
 // CHECK-LABEL: @add_float
 func.func @add_float() -> (tensor<f32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) {

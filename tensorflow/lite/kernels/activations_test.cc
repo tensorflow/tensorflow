@@ -2979,6 +2979,46 @@ TEST(QuantizedGeluOpTest, GeluUInt8Approximate) {
               })));
 }
 
+void GeluInt16Test(bool approximate) {
+  // Define an input for GELU op.
+  const auto gelu_input = {
+      -6.0f, -5.5f, -5.0f, -4.5f, -4.0f, -3.5f, -3.0f, -2.5f, -2.0f,
+      -1.5f, -1.0f, -0.5f, 0.0f,  0.5f,  1.0f,  1.5f,  2.0f,  2.5f,
+      3.0f,  3.5f,  4.0f,  4.5f,  5.0f,  5.5f,  6.0f,
+  };
+
+  // Initialize the float GELU op model and run it. An output will be generated
+  // and compared with the quantized GELU op model output.
+  FloatGeluOpModel model(
+      {TensorType_FLOAT32, {1, static_cast<int>(gelu_input.size())}},
+      approximate);
+  model.SetInput(gelu_input);
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  const auto float_gelu_output = model.GetOutput();
+
+  // Initialize the quantized GELU op model and run it.
+  const float kMin = -1;
+  const float kMax = 32767.f / 32768.f;
+  QuantizedGeluOpModel quant_model({TensorType_INT16,
+                                    {1, static_cast<int>(gelu_input.size())},
+                                    6 * kMin,
+                                    6 * kMax},
+                                   approximate);
+  quant_model.SetInput<int16_t>(gelu_input);
+  ASSERT_EQ(quant_model.Invoke(), kTfLiteOk);
+
+  // Compare the float and quantized GELU op model outputs.
+  EXPECT_THAT(quant_model.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(
+                  ArrayFloatNear(float_gelu_output, kQuantizedToleranceInt16)));
+}
+
+TEST(QuantizedGeluOpTest, GeluInt16) { GeluInt16Test(/*approximate=*/false); }
+
+TEST(QuantizedGeluOpTest, GeluInt16Approximate) {
+  GeluInt16Test(/*approximate=*/true);
+}
+
 INSTANTIATE_TEST_SUITE_P(
     TanhOpTest, TanhOpTest,
     ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kTanhKernelMap)));

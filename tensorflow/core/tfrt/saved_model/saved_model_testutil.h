@@ -45,6 +45,7 @@ struct UserSavedModelOptions {
   bool enable_optimizer = false;
   bool enable_grappler = false;
   std::string force_data_format = "";
+  tensorflow::SessionMetadata session_metadata;
 };
 
 SavedModel::Options DefaultSavedModelOptions(

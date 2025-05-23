@@ -75,9 +75,6 @@ def xla_cc_test(
         **kwargs):
     """A wrapper around strict_cc_test that adds XLA-specific dependencies.
 
-    Also, it sets linkstatic to True by default, which is a good practice for catching duplicate
-    symbols at link time (e.g. linking in two main() functions).
-
     Use xla_cc_test or xla_test instead of cc_test in all .../xla/... directories except .../tsl/...,
     where tsl_cc_test should be used.
 

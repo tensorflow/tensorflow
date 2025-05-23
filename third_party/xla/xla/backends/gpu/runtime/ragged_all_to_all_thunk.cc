@@ -536,7 +536,7 @@ bool RaggedAllToAllStartThunk::is_local() const {
   return true;
 }
 
-absl::Status RaggedAllToAllStartThunk::RunCollective(
+absl::StatusOr<bool> RaggedAllToAllStartThunk::RunCollective(
     const ExecuteParams& params, se::Stream& stream,
     CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(
@@ -587,23 +587,26 @@ absl::Status RaggedAllToAllStartThunk::RunCollective(
                                       device_buffers[0].element_type);
 
   if (should_use_one_shot_kernel) {
-    return RunOneShotRaggedAllToAll(
+    TF_RETURN_IF_ERROR(RunOneShotRaggedAllToAll(
         collectives, comm_handle.clique_key, config_.num_input_rows,
         config_.num_row_elements, config_.num_total_updates, device_buffers,
-        stream, *rank, comm_handle.comm, start_event, end_event);
+        stream, *rank, comm_handle.comm, start_event, end_event));
+    return false;
   }
 
   if (should_use_memcpy()) {
-    return RunMemCpyRaggedAllToAll(
+    TF_RETURN_IF_ERROR(RunMemCpyRaggedAllToAll(
         collectives, comm_handle.clique_key, *rank, config_.num_row_elements,
         config_.num_total_updates, device_buffers, stream, comm_handle.comm,
-        ragged_metadata_allocs, start_event, end_event);
+        ragged_metadata_allocs, start_event, end_event));
+    return false;
   }
 
-  return RunRaggedAllToAll(collectives, config_.num_row_elements,
-                           config_.num_total_updates, device_buffers, stream,
-                           comm_handle.comm, ragged_metadata_allocs,
-                           output_offsets_device_buffer);
+  TF_RETURN_IF_ERROR(RunRaggedAllToAll(
+      collectives, config_.num_row_elements, config_.num_total_updates,
+      device_buffers, stream, comm_handle.comm, ragged_metadata_allocs,
+      output_offsets_device_buffer));
+  return true;
 }
 
 }  // namespace gpu

@@ -43,6 +43,7 @@ static GpuCliqueKey GetBaseCliqueKey() {
                           {GlobalDeviceId(2), GlobalDeviceId(3)}},
                       /*root_device=*/GlobalDeviceId(0));
 }
+
 TEST(GpuCliqueKeyTest, IsSubsetOf) {
   GlobalDeviceId id0 = GlobalDeviceId(0);
   GlobalDeviceId id1 = GlobalDeviceId(1);

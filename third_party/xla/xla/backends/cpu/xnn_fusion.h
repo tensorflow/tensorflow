@@ -39,7 +39,7 @@ bool XnnShouldUseThreadPool(const HloComputation* computation);
 absl::StatusOr<bool> IsXnnDotSupported(
     const DotDimensionNumbers& dot_dimensions, const Shape& lhs_shape,
     const Shape& rhs_shape, const Shape& out_shape,
-    TargetMachineFeatures* cpu_features = nullptr);
+    const TargetMachineFeatures* cpu_features = nullptr);
 
 }  // namespace xla::cpu
 

@@ -43,6 +43,10 @@ mlir::sdy::TensorShardingAttr convertToSdySharding(
         deviceIdToMaximalMeshName,
     int64_t rank, bool openDims = false);
 
+// Returns the axis sizes from the tile assignment. For example, given the input
+// {devices=[6,35]<=[7,10,3]T(2,1,0)}, the function returns [7, 2, 5, 3].
+mlir::SmallVector<int64_t> getAxisSizes(const TileAssignment& tileAssignment);
+
 // Register the xla-sdy-import-shardings pass.
 void registerStablehloImportShardingsPass();
 

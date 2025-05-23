@@ -47,6 +47,11 @@ class Splitter {
 
   // Version info about the Splitter and required Merger versions.
   virtual VersionDef Version() = 0;
+
+ protected:
+  Splitter() = default;
+  Splitter(const Splitter&) = default;
+  Splitter(Splitter&&) = default;
 };
 
 }  // namespace tools::proto_splitter

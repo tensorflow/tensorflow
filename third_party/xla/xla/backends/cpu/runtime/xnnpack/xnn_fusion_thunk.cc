@@ -90,8 +90,7 @@ struct XnnFusionThunk::XnnRuntime {
       const Eigen::ThreadPoolDevice* device,
       absl::Span<se::DeviceMemoryBase> arguments,
       absl::Span<se::DeviceMemoryBase> results,
-      absl::FunctionRef<bool(size_t)> is_by_value_argument,
-      absl::FunctionRef<bool(size_t)> is_by_value_result);
+      absl::FunctionRef<bool(size_t)> is_captured_argument);
 
   void Destroy();
 
@@ -129,8 +128,7 @@ XnnFusionThunk::XnnRuntime::Invoke(
     const Eigen::ThreadPoolDevice* device,
     absl::Span<se::DeviceMemoryBase> arguments,
     absl::Span<se::DeviceMemoryBase> results,
-    absl::FunctionRef<bool(size_t)> is_by_value_argument,
-    absl::FunctionRef<bool(size_t)> is_by_value_result) {
+    absl::FunctionRef<bool(size_t)> is_captured_argument) {
   // Create external values for all arguments and results.
   absl::InlinedVector<xnn_external_value, 8> external_values;
   external_values.reserve(arguments.size() + results.size());
@@ -140,12 +138,14 @@ XnnFusionThunk::XnnRuntime::Invoke(
 
   for (const se::DeviceMemoryBase& argument : arguments) {
     xnn_external_value value{id++, argument.opaque()};
-    if (!is_by_value_argument(value.id)) external_values.push_back(value);
+    if (!is_captured_argument(value.id)) {
+      external_values.push_back(value);
+    }
   }
 
   for (const se::DeviceMemoryBase& result : results) {
     xnn_external_value value{id++, result.opaque()};
-    if (!is_by_value_result(value.id)) external_values.push_back(value);
+    external_values.push_back(value);
   }
 
   DCHECK_NE(runtime, nullptr) << "XNNPACK runtime is not initialized";
@@ -165,14 +165,22 @@ XnnFusionThunk::XnnRuntime::Invoke(
 }
 
 void XnnFusionThunk::XnnRuntime::Destroy() {
-  if (runtime != nullptr) XNN_LOG_IF_ERROR(xnn_delete_runtime(runtime));
-  if (subgraph != nullptr) XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));
-  if (workspace != nullptr) XNN_LOG_IF_ERROR(xnn_release_workspace(workspace));
-  if (threadpool) DestroyCustomPthreadpool(threadpool);
+  if (runtime != nullptr) {
+    XNN_LOG_IF_ERROR(xnn_delete_runtime(runtime));
+  }
+  if (subgraph != nullptr) {
+    XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));
+  }
+  if (workspace != nullptr) {
+    XNN_LOG_IF_ERROR(xnn_release_workspace(workspace));
+  }
+  if (threadpool) {
+    DestroyCustomPthreadpool(threadpool);
+  }
 }
 
 absl::StatusOr<XnnFusionThunk::XnnRuntime> XnnFusionThunk::CreateXnnRuntime(
-    const Eigen::ThreadPoolDevice* device, bool one_use,
+    const Eigen::ThreadPoolDevice* device, bool capturing,
     absl::FunctionRef<absl::StatusOr<xnn_subgraph_t>()> builder) {
   ParallelizationMode parallelization_mode =
       options_.use_threadpool && device
@@ -182,9 +190,9 @@ absl::StatusOr<XnnFusionThunk::XnnRuntime> XnnFusionThunk::CreateXnnRuntime(
   VLOG(3) << absl::StreamFormat(
       "Create %s XNN runtime for `%s` operation: num_created=%d, "
       "parallelization_mode=%v",
-      one_use ? "one-use" : "pooled", info().op_name,
-      one_use ? num_one_use_created_.fetch_add(1)
-              : xnn_runtime_pool_.num_created(),
+      capturing ? "capturing" : "pooled", info().op_name,
+      capturing ? num_capturing_created_.fetch_add(1)
+                : xnn_runtime_pool_.num_created(),
       parallelization_mode);
 
   XnnRuntime runtime;
@@ -221,15 +229,14 @@ absl::StatusOr<std::unique_ptr<XnnFusionThunk>> XnnFusionThunk::Create(
 
 absl::StatusOr<std::unique_ptr<XnnFusionThunk>> XnnFusionThunk::Create(
     Options options, Info info, std::vector<Argument> arguments,
-    std::vector<Result> results, OneUseBuilder one_use_builder,
-    absl::Span<const int64_t> value_arguments,
-    absl::Span<const int64_t> value_results) {
+    std::vector<Result> results, CapturingBuilder capturing_builder,
+    absl::Span<const int64_t> captured_arguments) {
   TF_RETURN_IF_ERROR(InitializeXnnPack());
 
   return absl::WrapUnique(new XnnFusionThunk(
       XnnFusionKind::kFusion, std::move(options), std::move(info),
-      std::move(arguments), std::move(results), std::move(one_use_builder),
-      value_arguments, value_results));
+      std::move(arguments), std::move(results), std::move(capturing_builder),
+      captured_arguments));
 }
 
 XnnFusionThunk::XnnFusionThunk(XnnFusionKind kind, Options options, Info info,
@@ -242,7 +249,7 @@ XnnFusionThunk::XnnFusionThunk(XnnFusionKind kind, Options options, Info info,
       builder_(std::move(builder)),
       xnn_fusion_kind_(kind),
       xnn_runtime_pool_([this](const Eigen::ThreadPoolDevice* device) {
-        return CreateXnnRuntime(device, /*one_use=*/false, [this] {
+        return CreateXnnRuntime(device, /*capturing=*/false, [this] {
           return builder_(arguments_, results_);
         });
       }) {}
@@ -250,17 +257,15 @@ XnnFusionThunk::XnnFusionThunk(XnnFusionKind kind, Options options, Info info,
 XnnFusionThunk::XnnFusionThunk(XnnFusionKind kind, Options options, Info info,
                                std::vector<Argument> arguments,
                                std::vector<Result> results,
-                               OneUseBuilder one_use_builder,
-                               absl::Span<const int64_t> by_value_arguments,
-                               absl::Span<const int64_t> by_value_results)
+                               CapturingBuilder capturing_builder,
+                               absl::Span<const int64_t> captured_arguments)
     : Thunk(Kind::kXnnFusion, std::move(info)),
       options_(std::move(options)),
       arguments_(std::move(arguments)),
       results_(std::move(results)),
-      one_use_builder_(std::move(one_use_builder)),
+      capturing_builder_(std::move(capturing_builder)),
       xnn_fusion_kind_(kind),
-      by_value_arguments_(by_value_arguments.begin(), by_value_arguments.end()),
-      by_value_results_(by_value_results.begin(), by_value_results.end()),
+      captured_arguments_(captured_arguments.begin(), captured_arguments.end()),
       xnn_runtime_pool_(nullptr) {}
 
 XnnFusionThunk::~XnnFusionThunk() = default;
@@ -282,7 +287,9 @@ tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent> XnnFusionThunk::Execute(
                                 info().op_name, fusion_description());
 
   if (VLOG_IS_ON(3) && has_fusion_details()) {
-    for (auto& detail : fusion_details()) VLOG(3) << detail;
+    for (auto& detail : fusion_details()) {
+      VLOG(3) << detail;
+    }
   }
 
   // Resolve device memory for arguments.
@@ -317,14 +324,13 @@ tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent> XnnFusionThunk::Execute(
                                   results_buffers[i].opaque());
   }
 
-  DCHECK(builder_ || one_use_builder_) << "One of the builders must be set.";
+  DCHECK(builder_ || capturing_builder_) << "One of the builders must be set.";
 
   auto invoke = [&](XnnRuntime& runtime) {
     return runtime.Invoke(
         params.intra_op_threadpool, absl::MakeSpan(arguments_buffers),
         absl::MakeSpan(results_buffers),
-        [&](size_t id) { return by_value_arguments_.contains(id); },
-        [&](size_t id) { return by_value_results_.contains(id); });
+        [&](size_t id) { return captured_arguments_.contains(id); });
   };
 
   const Eigen::ThreadPoolDevice* device = params.intra_op_threadpool;
@@ -337,16 +343,14 @@ tsl::AsyncValueRef<XnnFusionThunk::ExecuteEvent> XnnFusionThunk::Execute(
     // Do not return runtime to the pool until the execution is done.
     executed.AndThen([runtime = std::move(runtime)] {});
     return executed;
-
-  } else {
-    // Create XNNPACK runtime for one-use only.
-    TF_ASSIGN_OR_RETURN(
-        auto runtime, CreateXnnRuntime(device, /*one_use=*/true, [&, this] {
-          return one_use_builder_(arguments_, results_, arguments_buffers,
-                                  results_buffers);
-        }));
-    return invoke(runtime);
   }
+
+  // Create XNNPACK runtime for capturing graphs.
+  TF_ASSIGN_OR_RETURN(
+      auto runtime, CreateXnnRuntime(device, /*capturing=*/true, [&, this] {
+        return capturing_builder_(arguments_, results_, arguments_buffers);
+      }));
+  return invoke(runtime);
 }
 
 }  // namespace xla::cpu

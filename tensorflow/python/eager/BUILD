@@ -74,6 +74,7 @@ cc_library(
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
@@ -321,6 +322,7 @@ cuda_py_strict_test(
     srcs = ["context_cross_platform_gpu_test.py"],
     tags = [
         "no_oss",
+        "noasan",  # TODO(b/417285186): Re-enable once the test is fixed.
     ],
     tpu_ops_enabled = True,
     xla_enabled = True,

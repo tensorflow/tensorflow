@@ -34,11 +34,11 @@ limitations under the License.
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
-#include "xla/pjrt/compile_options.pb.h"
-#include "xla/pjrt/executable_metadata.pb.h"
-#include "xla/pjrt/execute_options.pb.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/pjrt/proto/compile_options.pb.h"
+#include "xla/pjrt/proto/executable_metadata.pb.h"
+#include "xla/pjrt/proto/execute_options.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/hlo.pb.h"
@@ -296,7 +296,7 @@ struct CompiledMemoryStats {
   int64_t host_alias_size_in_bytes = 0;
   int64_t host_temp_size_in_bytes = 0;
 
-  std::optional<xla::BufferAssignmentProto> buffer_assignment;
+  std::string serialized_buffer_assignment;
 
   std::string DebugString() const;
 

@@ -611,6 +611,23 @@ int64_t StepNumberForModule(const HloModule& module) {
   return module_id_to_step_number[module.unique_id()]++;
 }
 
+std::vector<std::string> DumpHloModuleIfEnabledImpl(
+    const HloModule& module, const BufferAssignment* buffer_assn,
+    string_view name) {
+  CanonicalDebugOptions opts(module.config().debug_options());
+  if (opts.should_dump_module(module.name())) {
+    std::vector<std::string> filepaths = DumpHloModuleImpl(
+        module, /*buffer_assn=*/buffer_assn, TimestampFor(module), name, opts);
+    std::optional<std::string> maybe_debug_options_filepath =
+        DumpNonDefaultDebugOptions(module, kNonDefaultDebugOptionsDumpSuffix);
+    if (maybe_debug_options_filepath.has_value()) {
+      filepaths.push_back(*maybe_debug_options_filepath);
+    }
+    return filepaths;
+  }
+  return {};
+}
+
 }  // namespace
 
 // Get a timestamp which we can use as a filename prefix specific to this
@@ -751,16 +768,6 @@ void DumpPerModuleProtobufToFile(const HloModule& module,
                                      text_formatter) {
   const std::string filename = FilenameFor(module, TimestampFor(module), name);
   DumpProtobufToFile(proto, debug_options, filename, std::move(text_formatter));
-}
-
-std::vector<std::string> DumpHloModuleIfEnabled(const HloModule& module,
-                                                string_view name) {
-  CanonicalDebugOptions opts(module.config().debug_options());
-  if (opts.should_dump_module(module.name())) {
-    return DumpHloModuleImpl(module, /*buffer_assn=*/nullptr,
-                             TimestampFor(module), name, opts);
-  }
-  return {};
 }
 
 std::string GetRepeatedValueAsString(
@@ -904,23 +911,24 @@ std::string GetNonDefaultDebugOptions(const DebugOptions& debug_options) {
   return non_default_options;
 }
 
-void DumpNonDefaultDebugOptions(const HloModule& module,
-                                absl::string_view suffix) {
+std::optional<std::string> DumpNonDefaultDebugOptions(
+    const HloModule& module, absl::string_view suffix) {
   const DebugOptions& debug_options = module.config().debug_options();
-  auto filename = FilenameFor(module, "", suffix);
-  auto nonDefaultDebugOptions = GetNonDefaultDebugOptions(debug_options);
-  DumpToFileInDir(debug_options, filename, nonDefaultDebugOptions);
+  std::string filename = FilenameFor(module, "", suffix);
+  std::string nonDefaultDebugOptions = GetNonDefaultDebugOptions(debug_options);
+  return DumpToFileInDirImpl(filename, nonDefaultDebugOptions,
+                             CanonicalDebugOptions(debug_options));
+}
+
+std::vector<std::string> DumpHloModuleIfEnabled(const HloModule& module,
+                                                string_view name) {
+  return DumpHloModuleIfEnabledImpl(module, /*buffer_assn=*/nullptr, name);
 }
 
 std::vector<std::string> DumpHloModuleIfEnabled(
     const HloModule& module, const BufferAssignment& buffer_assn,
     string_view name) {
-  CanonicalDebugOptions opts(module.config().debug_options());
-  if (opts.should_dump_module(module.name())) {
-    DumpHloModuleImpl(module, &buffer_assn, TimestampFor(module), name, opts);
-    DumpNonDefaultDebugOptions(module, kNonDefaultDebugOptionsDumpSuffix);
-  }
-  return {};
+  return DumpHloModuleIfEnabledImpl(module, &buffer_assn, name);
 }
 
 std::vector<std::string> DumpHloModuleProtoIfEnabled(

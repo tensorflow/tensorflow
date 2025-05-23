@@ -3,7 +3,7 @@ load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
-load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
@@ -239,6 +239,7 @@ cc_library(
         "//xla:util",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
     ] + if_cuda_is_configured([
@@ -283,7 +284,7 @@ cc_library(
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:gpu_stream",
-        "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
@@ -316,18 +317,16 @@ cc_library(
     name = "nccl_communicator",
     srcs = ["nccl_communicator.cc"],
     hdrs = ["nccl_communicator.h"],
-    local_defines =
-        if_rocm_is_configured([
-            "TENSORFLOW_USE_ROCM=1",
-        ]),
+    local_defines = if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     tags = ["gpu"],
     visibility = ["//visibility:private"],
     deps = [
-        ":gpu_clique_key",
         ":gpu_collectives",
         ":gpu_communicator",
         ":nccl_errors",
-        "//xla:debug_options_flags",
+        ":single_threaded_executor",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
@@ -346,16 +345,17 @@ cc_library(
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:gpu_stream",
         "//xla/tsl/concurrency:async_value",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/cleanup",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/debugging:leak_check",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -375,8 +375,14 @@ cc_library(
 
 cc_library(
     name = "nvshmem_collectives",
-    srcs = ["nvshmem_collectives.cc"],
-    hdrs = ["nvshmem_collectives.h"],
+    srcs = [
+        "nvshmem_collectives.cc",
+        "nvshmem_communicator.cc",
+    ],
+    hdrs = [
+        "nvshmem_collectives.h",
+        "nvshmem_communicator.h",
+    ],
     tags = [
         "cuda-only",
         "gpu",
@@ -384,6 +390,9 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":gpu_collectives",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/core/collectives",
         "//xla/core/collectives:clique_id",
         "//xla/core/collectives:clique_key",
@@ -391,9 +400,16 @@ cc_library(
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/pjrt/distributed:key_value_store_interface",
+        "//xla/service:collective_ops_utils",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor/gpu:gpu_stream",
+        "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -402,6 +418,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
+        "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:numbers",
         "@nvshmem//:nvshmem_lib",
@@ -453,18 +470,20 @@ xla_test(
     ]),
 )
 
-xla_cc_test(
+xla_test(
     name = "nvshmem_collectives_test",
     srcs = ["nvshmem_collectives_test.cc"],
-    tags = [
-        "cuda-only",
-        "gpu",
+    backend_tags = {"gpu": [
+        "multi_gpu_h100",
         "no_oss",
+        "noasan",
         "nomsan",
-        "notap",  # TODO(b/399931591): Re-enable once flakiness is resolved.
-    ] + if_google(google_value = ["requires-gpu-nvidia:2"]),  # This tag is not documented in OSS yet.
+    ]},
+    backends = ["gpu"],
+    env = {
+        "XLA_FLAGS": "--xla_gpu_experimental_enable_nvshmem=true",
+    },
     deps = [
-        ":nvshmem_collectives",
         "//xla:debug_options_flags",
         "//xla:status_macros",
         "//xla/pjrt/distributed",
@@ -481,7 +500,7 @@ xla_cc_test(
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
         "@local_config_cuda//cuda:cuda_headers",
-    ],
+    ] + if_cuda_is_configured([":nvshmem_collectives"]),
 )
 
 cc_library(

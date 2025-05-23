@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/compiler.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
@@ -46,6 +48,8 @@ namespace se = ::stream_executor;
 using se::gpu::BlasLt;
 
 using CublasLtBackendConfig = AutotuneResult::GemmKey;
+
+namespace {
 
 absl::StatusOr<BlasLt::Epilogue> AsBlasLtEpilogue(
     GemmBackendConfig_Epilogue epilogue) {
@@ -74,6 +78,8 @@ absl::StatusOr<BlasLt::Epilogue> AsBlasLtEpilogue(
 bool IsSupported(const HloInstruction& instr) {
   return IsCublasLtMatmul(instr) || IsCublasLtMatmulF8(instr);
 }
+
+}  // namespace
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
 CublasLtBackend::GetSupportedConfigs(
@@ -143,15 +149,16 @@ CublasLtBackend::GetDefaultConfig(const HloInstruction& instr) {
   return std::make_unique<CublasLtBackendConfig>(gemm_key);
 }
 
-absl::StatusOr<std::unique_ptr<HloModule>> CublasLtBackend::WrapInModule(
-    const HloInstruction& hlo_instruction, const BackendConfig& config) {
-  return absl::UnimplementedError("Not implemented.");
-}
-
-absl::StatusOr<std::unique_ptr<HloModule>> CublasLtBackend::RunHloPasses(
-    std::unique_ptr<HloModule> hlo_module,
-    const Compiler::CompileOptions& options) {
-  return absl::UnimplementedError("Not implemented.");
+absl::Status CublasLtBackend::ApplyConfig(HloInstruction& instr,
+                                          const BackendConfig& config) {
+  const CublasLtBackendConfig& gemm_key =
+      static_cast<const CublasLtBackendConfig&>(config);
+  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                      instr.backend_config<GpuBackendConfig>());
+  GemmBackendConfig& backend_config = *gpu_config.mutable_gemm_backend_config();
+  backend_config.set_selected_algorithm(gemm_key.algorithm());
+  TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

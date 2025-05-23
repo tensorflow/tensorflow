@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_SPMD_SHARDY_UTILS_H_
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 
@@ -32,10 +33,13 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeRange.h"
 #include "mlir/Support/LLVM.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/StablehloOps.h"
 
 namespace xla {
 namespace sdy {
+
+absl::string_view toStringView(mlir::StringRef sr);
 
 // Gets the "frontend_attributes" `DictionaryAttr` from `op`. If it doesn't
 // exist, return nullptr.
@@ -75,21 +79,27 @@ bool hasKey(mlir::DictionaryAttr dictAttr, mlir::StringRef key);
 
 void loadAllRequiredDialects(mlir::MLIRContext* context);
 
+// Parses `escapedValue` to an attribute of type `AttrTy`.
+template <typename AttrTy>
+AttrTy parseStringAttr(llvm::StringRef escapedValue,
+                       mlir::MLIRContext* context) {
+  std::string unescapedValue;
+  std::string error;
+  CHECK(absl::CUnescape(
+      absl::string_view(escapedValue.data(), escapedValue.size()),
+      &unescapedValue, &error))
+      << error;
+  return mlir::cast<AttrTy>(mlir::parseAttribute(unescapedValue, context));
+}
+
 // Parses `attrName` from `dictAttr` to an attribute of type `AttrTy`.
 template <typename AttrTy>
 AttrTy parseStringAttr(mlir::DictionaryAttr dictAttr,
                        llvm::StringRef attrName) {
   if (mlir::Attribute stringAttr = dictAttr.get(attrName)) {
-    std::string unescapedValue;
-    std::string error;
-    llvm::StringRef escapedValue =
-        mlir::cast<mlir::StringAttr>(stringAttr).getValue();
-    CHECK(absl::CUnescape(
-        absl::string_view(escapedValue.data(), escapedValue.size()),
-        &unescapedValue, &error))
-        << error;
-    return mlir::cast<AttrTy>(
-        mlir::parseAttribute(unescapedValue, stringAttr.getContext()));
+    return parseStringAttr<AttrTy>(
+        mlir::cast<mlir::StringAttr>(stringAttr).getValue(),
+        stringAttr.getContext());
   }
   return nullptr;
 }
@@ -115,6 +125,19 @@ mlir::stablehlo::CustomCallOp cloneCustomCallWithNewResultTypes(
 
 // Whether `op` is a Python callback custom call.
 bool isPythonCallbackCustomCall(mlir::stablehlo::CustomCallOp op);
+
+// Parses `shardingsFrontendAttr` as a `TensorShardingPerValueAttr`, duplicates
+// the shardings at the specified indices, and returns the result as a string.
+std::string duplicateShardingsAtIndices(
+    mlir::StringRef shardingsFrontendAttr,
+    const llvm::BitVector& indicesToDuplicate);
+
+// Return all axes or sub-axes in the `mesh`, such that sub-axes are derived
+// from `shardingOrAxisList` and sorted by their order in the mesh. For example,
+// given mesh <"x"=2, "y"=16, "z"=4> and axis refs [{"x"}, {"y":2(2)}], we
+// would return ["x", "y":1(2), "y":2(2), "y":4(4), "z"].
+mlir::SmallVector<mlir::sdy::AxisRefAttr> getOrderedAxisRefs(
+    mlir::Attribute shardingOrAxisList, mlir::sdy::MeshAttr mesh);
 
 }  // namespace sdy
 }  // namespace xla

@@ -69,18 +69,26 @@ TEST(PjRtLayoutTest, ByteSize) {
                                      xla::LayoutUtil::MakeDescendingLayout(2)))
                   ->ByteSize(DType(DType::kS32), Shape({3, 2})),
               IsOkAndHolds(Optional(24)));
-  EXPECT_THAT(PjRtLayout::Create(std::make_unique<xla::PjRtLayout>(xla::Layout(
-                                     /*minor_to_major=*/{1, 0},
-                                     /*tiles=*/{xla::Tile({2, 128})},
-                                     /*element_size_in_bits=*/32)))
-                  ->ByteSize(DType(DType::kS32), Shape({1, 127})),
-              IsOkAndHolds(Optional(4 * (2 * 128))));
-  EXPECT_THAT(PjRtLayout::Create(std::make_unique<xla::PjRtLayout>(xla::Layout(
-                                     /*minor_to_major=*/{1, 0},
-                                     /*tiles=*/{xla::Tile({2, 1024})},
-                                     /*element_size_in_bits=*/4)))
-                  ->ByteSize(DType(DType::kS4), Shape({1, 1023})),
-              IsOkAndHolds(Optional((2 * 1024) / 2)));
+  EXPECT_THAT(
+      PjRtLayout::Create(std::make_unique<xla::PjRtLayout>(xla::Layout(
+                             /*minor_to_major=*/{1, 0},
+                             /*tiles=*/{xla::Tile({2, 128})},
+                             /*index_primitive_type=*/PRIMITIVE_TYPE_INVALID,
+                             /*element_primitive_type=*/PRIMITIVE_TYPE_INVALID,
+                             /*tail_padding_alignment_in_elements=*/1,
+                             /*element_size_in_bits=*/32)))
+          ->ByteSize(DType(DType::kS32), Shape({1, 127})),
+      IsOkAndHolds(Optional(4 * (2 * 128))));
+  EXPECT_THAT(
+      PjRtLayout::Create(std::make_unique<xla::PjRtLayout>(xla::Layout(
+                             /*minor_to_major=*/{1, 0},
+                             /*tiles=*/{xla::Tile({2, 1024})},
+                             /*index_primitive_type=*/PRIMITIVE_TYPE_INVALID,
+                             /*element_primitive_type=*/PRIMITIVE_TYPE_INVALID,
+                             /*tail_padding_alignment_in_elements=*/1,
+                             /*element_size_in_bits=*/4)))
+          ->ByteSize(DType(DType::kS4), Shape({1, 1023})),
+      IsOkAndHolds(Optional((2 * 1024) / 2)));
 }
 
 TEST(PjRtLayoutTest, ToPjRtLayout) {

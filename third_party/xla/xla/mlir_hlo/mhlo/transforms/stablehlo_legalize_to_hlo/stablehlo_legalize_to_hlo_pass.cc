@@ -39,7 +39,10 @@ namespace mhlo {
 
 namespace {
 
-void legalDirectStablehloToHloConversionOps(ConversionTarget& target) {
+// Keep this list until Direct StableHLO to HLO Path is well tested in prod.
+/*
+void legalDirectStablehloToHloConversionOps(
+    ConversionTarget& target) {
   target.addLegalOp<
       stablehlo::AbsOp, stablehlo::CbrtOp, stablehlo::SqrtOp, stablehlo::TanOp,
       stablehlo::AddOp, stablehlo::AddOp, stablehlo::AllGatherOp,
@@ -72,21 +75,32 @@ void legalDirectStablehloToHloConversionOps(ConversionTarget& target) {
       stablehlo::MapOp, stablehlo::ReturnOp, stablehlo::AllToAllOp,
       stablehlo::BatchNormGradOp, stablehlo::BatchNormTrainingOp,
       stablehlo::BitcastConvertOp, stablehlo::ClampOp,
-      stablehlo::CollectiveBroadcastOp, stablehlo::CompareOp,
-      stablehlo::SortOp>();
+      stablehlo::CollectiveBroadcastOp, stablehlo::CompareOp, stablehlo::SortOp,
+      stablehlo::CompositeOp, stablehlo::CustomCallOp, stablehlo::DotGeneralOp,
+      stablehlo::DotOp, stablehlo::DynamicConvOp, stablehlo::DynamicGatherOp,
+      stablehlo::DynamicPadOp, stablehlo::DynamicReshapeOp,
+      stablehlo::DynamicIotaOp, stablehlo::ReshapeOp, stablehlo::GatherOp,
+      stablehlo::IotaOp, stablehlo::PadOp, stablehlo::PartitionIdOp,
+      stablehlo::RealDynamicSliceOp, stablehlo::ReduceWindowOp,
+      stablehlo::ReducePrecisionOp, stablehlo::ReduceScatterOp,
+      stablehlo::RngBitGeneratorOp, stablehlo::RngOp, stablehlo::ScatterOp,
+      stablehlo::SelectAndScatterOp, stablehlo::SetDimensionSizeOp,
+      stablehlo::UniformDequantizeOp, stablehlo::UniformQuantizeOp>();
 }
+*/
 
 struct StablehloLegalizeToHloPass
     : public impl::StablehloLegalizeToHloPassBase<StablehloLegalizeToHloPass> {
   using StablehloLegalizeToHloPassBase::StablehloLegalizeToHloPassBase;
   void runOnOperation() override {
     ConversionTarget target(getContext());
-    stablehlo::setupStablehloToHloConversionTarget(target);
-
-    // Allow injecting legal ops to permit gradual migration.
+    // All StableHLO ops can go on Direct StableHLO to HLO path. This pass is
+    // is NO-OP for Direct StableHLO to HLO path.
     if (!convert_xla_supported_stablehlo_) {
-      legalDirectStablehloToHloConversionOps(target);
+      target.addLegalDialect<stablehlo::StablehloDialect>();
+      return;
     }
+    stablehlo::setupStablehloToHloConversionTarget(target);
 
     stablehlo::StablehloToHloTypeConverter converter(
         convert_xla_supported_stablehlo_);

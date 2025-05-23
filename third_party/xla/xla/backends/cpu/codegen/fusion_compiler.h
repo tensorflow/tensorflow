@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_CODEGEN_FUSION_COMPILER_H_
 #define XLA_BACKENDS_CPU_CODEGEN_FUSION_COMPILER_H_
 
+#include <cstdint>
 #include <memory>
+#include <utility>
 
 #include "absl/status/statusor.h"
 #include "llvm/IR/LLVMContext.h"
@@ -33,10 +35,10 @@ namespace xla::cpu {
 class FusionCompiler {
  public:
   struct Options {
-    // Placeholder for now, but will be used in the future.
+    int32_t vector_width;
   };
 
-  explicit FusionCompiler(Options options) {}
+  explicit FusionCompiler(Options options) : options_(std::move(options)) {}
 
   // Compile a given MLIR module to LLVM, using the provided LLVM context.
   absl::StatusOr<std::unique_ptr<llvm::Module>> Compile(
@@ -50,6 +52,7 @@ class FusionCompiler {
   static std::unique_ptr<mlir::MLIRContext> CreateContext();
 
  private:
+  Options options_;
 };
 
 }  // namespace xla::cpu

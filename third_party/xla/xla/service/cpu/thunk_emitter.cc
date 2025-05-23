@@ -79,6 +79,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/layout_util.h"
 #include "xla/runtime/resource_use.h"
+#include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/cpu/backend_config.pb.h"
@@ -110,11 +111,13 @@ namespace xla::cpu {
 ThunkEmitter::ThunkEmitter(IrEmitter2& ir_emitter,
                            const BufferAssignment& buffer_assignment,
                            const TargetMachineFeatures& target_machine_features,
-                           const HloModuleConfig& hlo_module_config)
+                           const HloModuleConfig& hlo_module_config,
+                           const Options& options)
     : ir_emitter_(ir_emitter),
       buffer_assignment_(buffer_assignment),
       target_machine_features_(target_machine_features),
       hlo_module_config_(hlo_module_config),
+      options_(options),
       communicator_resource_(
           Resource::Create(Resource::kCollectiveCommunicator)) {}
 
@@ -356,8 +359,12 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
     case HloOpcode::kConvolution:
       return EmitConvolutionThunk(instruction);
 
-    case HloOpcode::kCopy:
+    case HloOpcode::kCopy: {
+      if (options_.compile_copy_as_llvm_kernel) {
+        return EmitElementalKernelThunk(instruction);
+      }
       return EmitCopyThunk(instruction);
+    }
 
     case HloOpcode::kDot:
       return EmitDotThunk(instruction);
@@ -726,7 +733,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
     auto* mlir_kernel_source =
         tsl::down_cast<MlirKernelSource*>(kernel_source.get());
 
-    FusionCompiler compiler(FusionCompiler::Options{});
+    FusionCompiler compiler(FusionCompiler::Options{
+        hlo_module_config_.debug_options().xla_cpu_prefer_vector_width()});
     TF_ASSIGN_OR_RETURN(LlvmIrKernelSource llvm_ir_kernel_source,
                         compiler.Compile(std::move(*mlir_kernel_source)));
 
@@ -1361,9 +1369,12 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::MakeKernelThunkSequence(
     const ThunkEmitter::HostKernelAllocationSlices& buffers,
     const IrEmitter2::KernelInfo& kernel,
     std::optional<uint64_t> min_alignment) {
+  // TODO(ezhulenev): Migrate KernelSpec to use NumWorkGroups.
+  NumWorkGroups num_workgroups{kernel.thread_dims.x, kernel.thread_dims.y,
+                               kernel.thread_dims.z};
   return ThunkSequence::Of<KernelThunk>(
       ThunkInfo(instruction), buffers.arguments, buffers.results, kernel.name,
-      kernel.thread_dims, kernel.invariant_arguments, min_alignment);
+      num_workgroups, kernel.invariant_arguments, min_alignment);
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::MakeKernelThunkSequence(

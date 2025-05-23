@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
@@ -901,7 +902,10 @@ ENTRY main {
 }
 
 // TODO(b/230137437): Enable this on GPU once mhlo allows variadic scatter.
-XLA_TEST_F(ScatterTest, DISABLED_ON_GPU(Multioutput)) {
+XLA_TEST_F(ScatterTest, Multioutput) {
+  if (test::DeviceIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   constexpr char hlo_text[] = R"(
 HloModule MultioutputScatter
 

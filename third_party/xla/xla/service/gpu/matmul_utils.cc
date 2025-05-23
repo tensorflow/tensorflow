@@ -386,17 +386,17 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                           output_shape.element_type()));
   }
 
-  return GemmConfig{lhs_layout,
-                    rhs_layout,
-                    c_layout,
-                    output_layout,
-                    {alpha_real, alpha_imag},
-                    beta,
-                    compute_precision,
-                    precision_algorithm,
-                    algorithm,
-                    grad_x,
-                    grad_y};
+  return GemmConfig(se::gpu::GemmConfig{lhs_layout,
+                                        rhs_layout,
+                                        c_layout,
+                                        output_layout,
+                                        {alpha_real, alpha_imag},
+                                        beta,
+                                        compute_precision,
+                                        precision_algorithm,
+                                        algorithm,
+                                        grad_x,
+                                        grad_y});
 }
 
 namespace {

@@ -25,6 +25,8 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -69,7 +71,7 @@ class KernelThunk : public Thunk {
   // output of the computation. Also, the values must correspond to each arg
   // directly, not to their base allocation (e.g. they can be the result of an
   // `mlir::memref::ViewOp`).
-  KernelThunk(const HloInstruction* instr, std::string kernel_name,
+  KernelThunk(Thunk::ThunkInfo thunk_info, std::string kernel_name,
               absl::Span<const KernelArgument> kernel_arguments,
               LaunchDimensions launch_dimensions,
               std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes,
@@ -80,6 +82,8 @@ class KernelThunk : public Thunk {
   ~KernelThunk() override = default;
 
   std::string ToString(int indent) const override;
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
 
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
@@ -92,6 +96,9 @@ class KernelThunk : public Thunk {
   const std::string& kernel_name() const { return kernel_name_; }
   const LaunchDimensions& launch_dimensions() const {
     return launch_dimensions_;
+  }
+  const std::optional<se::ClusterDim>& cluster_dim() const {
+    return cluster_dim_;
   }
   // The shared memory required by the kernel.
   int64_t shmem_bytes() const { return shmem_bytes_; }

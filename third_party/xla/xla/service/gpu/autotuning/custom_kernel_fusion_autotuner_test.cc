@@ -66,10 +66,10 @@ TEST_F(CustomKernelFusionAutotunerTest, DontRunOnNonCustomFusions) {
 
   HloPassPipeline pipeline("custom_kernel_fusion_autotuner");
   DebugOptions debug_options;
-  AutotuneConfig autotune_config =
-      AutotuneConfig{DeviceConfig{backend().default_stream_executor(),
-                                  backend().memory_allocator()},
-                     debug_options};
+  AutotuneConfig autotune_config = AutotuneConfig::FromDebugOptions(
+      DeviceOrDevicelessConfig{DeviceConfig{backend().default_stream_executor(),
+                                            backend().memory_allocator()}},
+      debug_options);
   pipeline.AddPass<CustomKernelFusionAutotuner>(autotune_config);
 
   // Check that that an HLO computation, which is a non custom fusion gets
@@ -100,10 +100,10 @@ TEST_F(CustomKernelFusionAutotunerTest,
 
   HloPassPipeline pipeline("custom_kernel_fusion_autotuner");
   DebugOptions debug_options;
-  AutotuneConfig autotune_config =
-      AutotuneConfig{DeviceConfig{backend().default_stream_executor(),
-                                  backend().memory_allocator()},
-                     debug_options};
+  AutotuneConfig autotune_config = AutotuneConfig::FromDebugOptions(
+      DeviceOrDevicelessConfig{DeviceConfig{backend().default_stream_executor(),
+                                            backend().memory_allocator()}},
+      debug_options);
   pipeline.AddPass<CustomKernelFusionAutotuner>(autotune_config);
   ASSERT_TRUE(pipeline.Run(hlo_module.get()).ok());
 }
@@ -131,10 +131,10 @@ TEST_F(CustomKernelFusionAutotunerTest,
 
   HloPassPipeline pipeline("custom_kernel_fusion_autotuner");
   DebugOptions debug_options;
-  AutotuneConfig autotune_config =
-      AutotuneConfig{DeviceConfig{backend().default_stream_executor(),
-                                  backend().memory_allocator()},
-                     debug_options};
+  AutotuneConfig autotune_config = AutotuneConfig::FromDebugOptions(
+      DeviceOrDevicelessConfig{DeviceConfig{backend().default_stream_executor(),
+                                            backend().memory_allocator()}},
+      debug_options);
   pipeline.AddPass<CustomKernelFusionAutotuner>(autotune_config);
 
   std::string expected = R"(

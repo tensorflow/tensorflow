@@ -27,8 +27,8 @@ func.func @lower_extract_insert(%arg0: tensor<512x128xbf16>,
 // CHECK:       tt.return
 
 // CHECK-TMA-LABEL: tt.func @lower_extract_insert
-// CHECK-TMA-SAME:  %[[ARG_0:.*]]: !tt.tensordesc<tensor<16x64xbf16>> {tt.nv_tma_desc = 1 : i32, tt.tma_descriptor = #triton_xla.tma_descriptor<global_shape = [512, 128], block_shape = [16, 64], element_byte_size = 2, swizzle_mode = 0>},
-// CHECK-TMA-SAME:  %[[ARG_1:.*]]: !tt.tensordesc<tensor<16x64xbf16>> {tt.nv_tma_desc = 1 : i32, tt.tma_descriptor = #triton_xla.tma_descriptor<global_shape = [256, 256], block_shape = [16, 64], element_byte_size = 2, swizzle_mode = 0>}
+// CHECK-TMA-SAME:  %[[ARG_0:.*]]: !tt.tensordesc<tensor<16x64xbf16>> {tt.nv_tma_desc = 1 : i32, tt.tma_descriptor = #triton_xla.tma_descriptor<global_shape = [512, 128], tile_shape = [16, 64], tile_strides = [128, 1], layout = [1, 0], element_byte_size = 2>},
+// CHECK-TMA-SAME:  %[[ARG_1:.*]]: !tt.tensordesc<tensor<16x64xbf16>> {tt.nv_tma_desc = 1 : i32, tt.tma_descriptor = #triton_xla.tma_descriptor<global_shape = [256, 256], tile_shape = [16, 64], tile_strides = [128, 1], layout = [1, 0], element_byte_size = 2>}
 // CHECK-TMA:    %[[LOAD:.*]] = tt.descriptor_load %[[ARG_0]]
 // CHECK-TMA:    tt.descriptor_store %[[ARG_1]][{{.*}}], %[[LOAD]]
 // CHECK-TMA:    tt.return
@@ -130,3 +130,38 @@ module {
 // CHECK-SAME:    boundaryCheck = array<i32: 0>
 // CHECK:         tt.store
 // CHECK-NOT:     boundaryCheck = array<i32: 0>
+
+// -----
+
+func.func @extract_with_non_unit_minor_dim_stride(%arg0: tensor<1024x1024xbf16>,
+                          %arg1: tensor<256x256xbf16>) -> tensor<256x256xbf16> {
+  %extracted_tensor = triton_xla.extract %arg0 [0, 0] [16, 64] [2, 2]
+    {layout = array<i64:1, 0>} : tensor<1024x1024xbf16> to tensor<16x64xbf16>
+  %updated_tensor = triton_xla.insert %extracted_tensor into
+    %arg1 [0, 0] [16, 64] [1, 1] {layout = array<i64:1, 0>}
+    : tensor<16x64xbf16> into tensor<256x256xbf16>
+  func.return %updated_tensor : tensor<256x256xbf16>
+}
+
+// CHECK-TMA:   tt.make_tensor_ptr
+// CHECK-TMA:   tt.load
+// CHECK-TMA:   tt.descriptor_store
+
+// -----
+
+func.func @extract_with_non_static_strides(%arg0: tensor<1024x1024xbf16>,
+                          %arg1: tensor<256x256xbf16>) -> tensor<256x256xbf16> {
+  %0 = tt.get_program_id x : i32
+  %1 = arith.extsi %0 : i32 to i64
+  %2 = arith.index_castui %1 : i64 to index
+  %extracted_tensor = triton_xla.extract %arg0 [0, 0] [16, 64] [%2, 1]
+    {layout = array<i64:1, 0>} : tensor<1024x1024xbf16> to tensor<16x64xbf16>
+  %updated_tensor = triton_xla.insert %extracted_tensor into
+    %arg1 [0, 0] [16, 64] [1, 1] {layout = array<i64:1, 0>}
+    : tensor<16x64xbf16> into tensor<256x256xbf16>
+  func.return %updated_tensor : tensor<256x256xbf16>
+}
+
+// CHECK-TMA:   tt.make_tensor_ptr
+// CHECK-TMA:   tt.load
+// CHECK-TMA:   tt.descriptor_store

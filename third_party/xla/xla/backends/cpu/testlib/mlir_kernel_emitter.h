@@ -26,8 +26,8 @@ limitations under the License.
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_emitter.h"
 #include "xla/runtime/buffer_use.h"
+#include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/launch_dim.h"
 
 namespace xla::cpu {
 
@@ -46,14 +46,15 @@ class MlirKernelEmitter : public KernelEmitter {
   };
 
   MlirKernelEmitter(absl::string_view mlir, absl::string_view kernel_name,
-                    se::ThreadDim thread_dim, absl::Span<const KernelArg> args);
+                    NumWorkGroups num_workgroups,
+                    absl::Span<const KernelArg> args);
 
   absl::StatusOr<KernelDefinition> EmitKernelDefinition() final;
 
  private:
   std::string mlir_;
   std::string kernel_name_;
-  se::ThreadDim thread_dim_;
+  NumWorkGroups num_workgroups_;
   std::vector<KernelArg> args_;
   // Normally this would be populated by the buffer assignment pass, but for
   // testing purposes we hold it in the emitter.

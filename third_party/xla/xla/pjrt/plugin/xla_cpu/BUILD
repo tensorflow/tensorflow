@@ -115,3 +115,15 @@ xla_cc_test(
         "@local_tsl//tsl/platform:protobuf",
     ],
 )
+
+cc_library(
+    name = "cpu_static_registration",
+    srcs = ["cpu_static_registration.cc"],
+    deps = [
+        "//xla/pjrt:pjrt_api",
+        "//xla/pjrt/c:pjrt_c_api_cpu",
+        "//xla/pjrt/plugin:plugin_names",
+        "//xla/pjrt/plugin:static_registration",
+    ],
+    alwayslink = True,
+)

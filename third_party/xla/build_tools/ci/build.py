@@ -101,6 +101,7 @@ class BuildType(enum.Enum):
 
   Should be named as `REPO,OS,HOST_TYPE,BACKEND,GPU_TYPE,CI_TYPE`.
   """
+
   XLA_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_ARM64_CPU_GITHUB_ACTIONS = enum.auto()
   XLA_LINUX_X86_GPU_T4_GITHUB_ACTIONS = enum.auto()
@@ -134,12 +135,13 @@ class BuildType(enum.Enum):
 @dataclasses.dataclass(frozen=True, **_KW_ONLY_IF_PYTHON310)
 class Build:
   """Class representing a build of XLA."""
+
   _builds: ClassVar[Dict[BuildType, "Build"]] = {}
 
   type_: BuildType
   repo: str
-  subcommand: str = "test"
   target_patterns: Tuple[str, ...]
+  subcommand: str = "test"
   configs: Tuple[str, ...] = ()
   build_tag_filters: Tuple[str, ...] = ()
   test_tag_filters: Tuple[str, ...] = ()
@@ -667,6 +669,7 @@ def main():
   else:
     for cmd in Build.all_builds()[args.build].commands():
       sh(cmd)
+
 
 if __name__ == "__main__":
   main()

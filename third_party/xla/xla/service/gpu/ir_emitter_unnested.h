@@ -303,7 +303,7 @@ class IrEmitterUnnested : public IrEmitter {
   absl::StatusOr<std::pair<std::vector<llvm_ir::IrArray> /*inputs*/,
                            std::vector<llvm_ir::IrArray> /*outputs*/>>
   BuildKernelThunkForNonFusionOp(
-      const HloInstruction* hlo,
+      const HloInstruction* instr,
       absl::Span<const HloInstruction* const> needed_operands,
       const LaunchDimensions& launch_dimensions);
 

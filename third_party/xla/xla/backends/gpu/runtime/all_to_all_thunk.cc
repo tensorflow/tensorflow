@@ -142,9 +142,9 @@ absl::Status AllToAllStartThunk::Initialize(const InitializeParams& params) {
   return absl::OkStatus();
 }
 
-absl::Status AllToAllStartThunk::RunCollective(const ExecuteParams& params,
-                                               se::Stream& stream,
-                                               CommunicatorHandle comm_handle) {
+absl::StatusOr<bool> AllToAllStartThunk::RunCollective(
+    const ExecuteParams& params, se::Stream& stream,
+    CommunicatorHandle comm_handle) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
@@ -162,12 +162,15 @@ absl::Status AllToAllStartThunk::RunCollective(const ExecuteParams& params,
       receive_pointer_map = reinterpret_cast<uint64_t*>(
           receive_pointer_maps_[stream.parent()]->opaque());
     }
-    return xla::gpu::RunMemCpyAllToAll(collectives, config_.has_split_dimension,
-                                       device_buffers, stream, comm_handle.comm,
-                                       send_pointer_map, receive_pointer_map);
+    TF_RETURN_IF_ERROR(xla::gpu::RunMemCpyAllToAll(
+        collectives, config_.has_split_dimension, device_buffers, stream,
+        comm_handle.comm, send_pointer_map, receive_pointer_map));
+    return false;
   }
-  return xla::gpu::RunAllToAll(collectives, config_.has_split_dimension,
-                               device_buffers, stream, comm_handle.comm);
+  TF_RETURN_IF_ERROR(
+      xla::gpu::RunAllToAll(collectives, config_.has_split_dimension,
+                            device_buffers, stream, comm_handle.comm));
+  return true;
 }
 
 AsyncStreamKind AllToAllStartThunk::GetAsyncStreamKind() const {

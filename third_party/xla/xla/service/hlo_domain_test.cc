@@ -17,8 +17,12 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/log/log.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -29,6 +33,7 @@ limitations under the License.
 #include "xla/service/hlo_domain_verifier.h"
 #include "xla/service/sharding_propagation.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -246,6 +251,68 @@ TEST_F(HloDomainTest, CheckDomainWithCallInliningDomainWithDomainsInFunc) {
   // Verify that inlining produces valid domains.
   HloDomainVerifier verifier({"sharding"});
   TF_EXPECT_OK(verifier.Run(module.get()).status());
+}
+
+TEST_F(HloDomainTest, CheckDomainAroundCallsNoInlining) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+%callee {
+  l = f32[4] parameter(0)
+  r = f32[4] parameter(1)
+  ROOT m = f32[4] add(l, r)
+}
+
+ENTRY entry {
+  p0 = f32[4] parameter(0)
+  p1 = f32[4] parameter(1)
+  call0 = f32[4] call(f32[4] p0, f32[4] p1), to_apply=%callee, sharding={maximal device=1}
+  sub = f32[4] subtract(call0, p1), sharding={maximal device=1}
+  call1 = f32[4] call(f32[4] p1, f32[4] p0), to_apply=%callee, sharding={replicated}
+  ROOT mul = f32[4] multiply(sub, call1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloDomainIsolator isolator([]() { return ShardingDomainCreator{}; });
+  TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
+  EXPECT_TRUE(isolator_changed);
+
+  HloDomainVerifier verifier({"sharding"});
+  TF_EXPECT_OK(verifier.Run(module.get()).status());
+
+  EXPECT_TRUE(HasDomainEdge(module.get(), "call0", "p0"));
+  EXPECT_TRUE(HasDomainEdge(module.get(), "call0", "p1"));
+  EXPECT_TRUE(HasDomainEdge(module.get(), "call1", "p0"));
+  EXPECT_TRUE(HasDomainEdge(module.get(), "call1", "p1"));
+  EXPECT_FALSE(HasDomainEdge(module.get(), "sub", "call0"));
+  EXPECT_TRUE(HasDomainEdge(module.get(), "mul", "sub"));
+  EXPECT_TRUE(HasDomainEdge(module.get(), "mul", "call1"));
+
+  HloComputation* callee = module->GetComputationWithName("callee");
+  for (HloInstruction* instruction : callee->instructions()) {
+    EXPECT_NE(instruction->opcode(), HloOpcode::kDomain);
+  }
+
+  HloDomainRemover remover(ShardingMetadata::KindName(),
+                           ShardingMetadata::NormalizeShardingDomain);
+  TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
+  EXPECT_TRUE(remover_changed);
+
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      EXPECT_NE(instruction->opcode(), HloOpcode::kDomain);
+    }
+  }
+
+  HloInstruction* call0 =
+      module->entry_computation()->GetInstructionWithName("call0");
+  EXPECT_EQ(call0->sharding(), HloSharding::AssignDevice(1));
+  HloInstruction* call1 =
+      module->entry_computation()->GetInstructionWithName("call1");
+  EXPECT_EQ(call1->sharding(), HloSharding::Replicate());
 }
 
 TEST_F(HloDomainTest, CheckDomainLinks) {

@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 #include <utility>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/test.h"
@@ -63,8 +64,10 @@ TEST_F(SetDimensionSizeTest, CorrectComputation) {
 }
 
 TEST_F(SetDimensionSizeTest,
-       DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(
-           DISABLED_ON_TPU(ReturnsErrorWhenHloPassesDisabled)))) {
+       DISABLED_ON_TPU(ReturnsErrorWhenHloPassesDisabled)) {
+  if (test::DeviceIsOneOf({test::kGpu, test::kInterpreter})) {
+    GTEST_SKIP();
+  }
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
 

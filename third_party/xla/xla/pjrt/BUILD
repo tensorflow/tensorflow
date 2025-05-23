@@ -1,4 +1,3 @@
-# copybara:uncomment load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load(
@@ -65,8 +64,11 @@ cc_library(
     name = "semaphore",
     srcs = ["semaphore.cc"],
     hdrs = ["semaphore.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "//xla:types",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:logging",
     ],
@@ -118,6 +120,7 @@ cc_library(
         "//xla:literal",
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:statusor",
@@ -187,6 +190,7 @@ xla_cc_test(
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/client:client_library",
         "//xla/client:local_client",
         "//xla/hlo/testlib:test",
@@ -242,13 +246,13 @@ cc_library(
     deps = [
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c:pjrt_c_api_helpers",
+        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -351,9 +355,6 @@ cc_library(
     hdrs = ["pjrt_executable.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
-        ":compile_options_proto_cc",
-        ":executable_metadata_proto_cc",
-        ":execute_options_proto_cc",
         ":pjrt_common",
         ":pjrt_layout",
         "//xla:shape_util",
@@ -363,6 +364,9 @@ cc_library(
         "//xla/client:executable_build_options",
         "//xla/ffi:execution_context",
         "//xla/hlo/ir:hlo",
+        "//xla/pjrt/proto:compile_options_proto_cc",
+        "//xla/pjrt/proto:executable_metadata_proto_cc",
+        "//xla/pjrt/proto:execute_options_proto_cc",
         "//xla/service:buffer_assignment",
         "//xla/service:compiler",
         "//xla/service:computation_layout",
@@ -382,11 +386,11 @@ xla_cc_test(
     name = "pjrt_executable_test",
     srcs = ["pjrt_executable_test.cc"],
     deps = [
-        ":compile_options_proto_cc",
         ":pjrt_executable",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/client:executable_build_options",
+        "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:status_matchers",
@@ -474,6 +478,8 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -533,7 +539,7 @@ tf_proto_library(
     name = "stream_executor_executable_proto",
     srcs = ["stream_executor_executable.proto"],
     protodeps = [
-        ":compile_options_proto",
+        "//xla/pjrt/proto:compile_options_proto",
         "//xla:xla_proto",
     ],
     visibility = ["//visibility:public"],
@@ -552,8 +558,10 @@ cc_library(
         "//xla:util",
         "//xla/client:local_client",
         "//xla/hlo/ir:hlo",
+        "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/service:compiler",
         "//xla/service:executable",
+        "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_proto_util",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -629,6 +637,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
@@ -864,8 +873,14 @@ xla_cc_test(
         "//xla/hlo/testlib:test",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/numeric:int128",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:env",
@@ -880,7 +895,6 @@ cc_library(
     hdrs = ["pjrt_c_api_client.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
-        ":compile_options_proto_cc",
         ":mlir_to_hlo",
         ":pjrt_api",
         ":pjrt_client",
@@ -908,6 +922,7 @@ cc_library(
         "//xla/pjrt/c:pjrt_c_api_profiler_extension_hdrs",
         "//xla/pjrt/c:pjrt_c_api_stream_extension_hdrs",
         "//xla/pjrt/distributed:key_value_store_interface",
+        "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_proto_cc",
@@ -988,6 +1003,7 @@ cc_library(
         "//xla:literal",
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/service:computation_placer_hdr",
@@ -996,6 +1012,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -1013,9 +1030,11 @@ xla_cc_test(
     deps = [
         ":tf_pjrt_client",
         "//xla:literal_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/parser:hlo_parser",
         "//xla/pjrt/plugin/xla_cpu:cpu_client_options",
         "//xla/pjrt/plugin/xla_cpu:xla_cpu_pjrt_client",
+        "//xla/service:hlo_proto_cc",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:test",
@@ -1061,38 +1080,17 @@ xla_cc_test(
     ],
 )
 
-tf_proto_library(
-    name = "compile_options_proto",
-    srcs = ["compile_options.proto"],
-    protodeps = [
-        "//xla:xla_data_proto",
-        "//xla:xla_proto",
-        "//xla/stream_executor:device_description_proto",
+# TODO(b/401293975): Remove this target and migrate Jax to use the proto target directly.
+cc_library(
+    name = "compile_options_proto_cc",
+    hdrs = [
+        "compile_options.pb.h",
+        "compile_options.proto.h",
     ],
     visibility = ["//visibility:public"],
-)
-
-# copybara:uncomment_begin(google-only)
-# py_proto_library(
-#     name = "compile_options_py_pb2",
-#     visibility = ["//visibility:public"],
-#     deps = [":compile_options_proto"],
-# )
-# copybara:uncomment_end
-
-tf_proto_library(
-    name = "execute_options_proto",
-    srcs = ["execute_options.proto"],
-    visibility = ["//visibility:public"],
-)
-
-tf_proto_library(
-    name = "executable_metadata_proto",
-    srcs = ["executable_metadata.proto"],
-    protodeps = [
-        "//xla/service:hlo_proto",
+    deps = [
+        "//xla/pjrt/proto:compile_options_proto_cc",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(

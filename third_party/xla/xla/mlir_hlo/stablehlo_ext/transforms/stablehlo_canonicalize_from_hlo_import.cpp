@@ -143,30 +143,39 @@ LogicalResult expandTupledTensorInReturnOp(func::FuncOp func) {
 // Flatten Tuples in Custom Calls
 
 // Calculates the flatten types of a value.
-void flattenTupleType(Value value, llvm::SmallVectorImpl<Type> &types) {
-  if (!mlir::isa<TupleType>(value.getType())) {
-    types.push_back(value.getType());
+void flattenTupleType(Type type, llvm::SmallVectorImpl<Type> &flattenedTypes) {
+  auto tupleType = mlir::dyn_cast<mlir::TupleType>(type);
+  if (!tupleType) {
+    flattenedTypes.push_back(type);
     return;
   }
 
-  // This function doesn't handle nested tuple.
-  auto tupleType = mlir::cast<TupleType>(value.getType());
-  types.append(tupleType.begin(), tupleType.end());
+  for (auto childType : tupleType.getTypes()) {
+    flattenTupleType(childType, flattenedTypes);
+  }
 }
 
 // FlattenTupleValue and CreateTupleValue is a pair of functions to create and
 // flatten tuples in the exact same order. CreateTupleValue returns the result
 // of the root TupleOp or given value if the type is not TupleType.
 Value createTupleValue(OpBuilder &builder, Location loc,
-                       ValueRange flattenValues, Type tupleType) {
-  if (!mlir::isa<TupleType>(tupleType)) {
-    assert(flattenValues.size() == 1);
-    return flattenValues[0];
+                       ValueRange &flattenValues, Type type) {
+  auto tupleType = mlir::dyn_cast<mlir::TupleType>(type);
+  if (!tupleType) {
+    assert(!flattenValues.empty());
+    auto retval = flattenValues.front();
+    flattenValues = flattenValues.drop_front();
+    return retval;
   }
 
-  assert(mlir::cast<TupleType>(tupleType).getTypes().size() ==
-         flattenValues.size());
-  return builder.create<stablehlo::TupleOp>(loc, flattenValues);
+  SmallVector<Value> flattenedSubValues;
+  for (auto childType : tupleType.getTypes()) {
+    flattenedSubValues.push_back(
+        createTupleValue(builder, loc, flattenValues, childType));
+  }
+
+  return builder.create<mlir::stablehlo::TupleOp>(loc, flattenedSubValues)
+      .getResult();
 }
 
 void flattenTupleValue(OpBuilder &builder, Location loc, Value value,
@@ -189,6 +198,8 @@ struct FlattenCustomCallOp : public OpRewritePattern<stablehlo::CustomCallOp> {
 
   LogicalResult matchAndRewrite(stablehlo::CustomCallOp op,
                                 PatternRewriter &rewriter) const override {
+    // We only flatten a single result tuple, as this is what we expect from
+    // HLO, where an instruction can only have a single result.
     bool flattenResult = op->getNumResults() == 1 &&
                          mlir::isa<TupleType>(op->getResult(0).getType());
     bool flattenOperands = llvm::any_of(op.getInputs(), [](Value operand) {
@@ -202,26 +213,27 @@ struct FlattenCustomCallOp : public OpRewritePattern<stablehlo::CustomCallOp> {
       flattenTupleValue(rewriter, op->getLoc(), operand, flattenedOperands);
 
     llvm::SmallVector<Type, 4> flattenedResultTypes;
-    if (!flattenResult) {
-      flattenedResultTypes.push_back(op->getResult(0).getType());
+    if (flattenResult) {
+      flattenTupleType(op->getResult(0).getType(), flattenedResultTypes);
     } else {
-      // Check for nested tuples.
-      for (Type innerType :
-           mlir::cast<TupleType>(op->getResult(0).getType()).getTypes())
-        if (mlir::isa<TupleType>(innerType)) return failure();
-
-      for (auto result : op->getResults())
-        flattenTupleType(result, flattenedResultTypes);
+      flattenedResultTypes.append(op->result_type_begin(),
+                                  op->result_type_end());
     }
 
     auto flattenedCall = rewriter.create<stablehlo::CustomCallOp>(
         op->getLoc(), flattenedResultTypes, flattenedOperands, op->getAttrs());
 
-    rewriter.replaceOp(op, flattenResult
-                               ? createTupleValue(rewriter, op->getLoc(),
-                                                  flattenedCall.getResults(),
-                                                  op->getResult(0).getType())
-                               : flattenedCall.getResult(0));
+    if (flattenResult) {
+      ValueRange flattenedResultsRef(flattenedCall.getResults());
+      Value newResult =
+          createTupleValue(rewriter, op->getLoc(), flattenedResultsRef,
+                           op->getResult(0).getType());
+      // Verify all flattened results have been consumed.
+      assert(flattenedResultsRef.empty());
+      rewriter.replaceOp(op, newResult);
+    } else {
+      rewriter.replaceOp(op, flattenedCall.getResults());
+    }
     return success();
   }
 };

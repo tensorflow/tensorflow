@@ -135,7 +135,9 @@ ENTRY main {
                 /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0}),
             module.get()));
 
-    AutotuneConfig cfg{DeviceConfig{stream_exec(), nullptr}, debug_opts};
+    AutotuneConfig cfg = AutotuneConfig::FromDebugOptions(
+        DeviceOrDevicelessConfig{DeviceConfig{stream_exec(), nullptr}},
+        debug_opts);
     GemmAlgorithmPicker gpicker(cfg);
     // Note that, we do not care if the algorithm index has been changed:
     // the thing matters is the # of algorithms left after sorting out.
@@ -175,7 +177,9 @@ ENTRY main {
                 /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0}),
             module.get()));
 
-    AutotuneConfig cfg{DeviceConfig{stream_exec(), nullptr}, debug_opts};
+    AutotuneConfig cfg = AutotuneConfig::FromDebugOptions(
+        DeviceOrDevicelessConfig{DeviceConfig{stream_exec(), nullptr}},
+        debug_opts);
     GemmAlgorithmPicker gpicker(cfg);
     TF_ASSERT_OK_AND_ASSIGN(changed, RunHloPass(gpicker, module.get()));
     num_left2 = gpicker.num_algorithms_left();
@@ -208,7 +212,8 @@ ENTRY main {
           m.get()));
   changed = false;
   DebugOptions opts;
-  AutotuneConfig cfg{DeviceConfig{stream_exec(), nullptr}, opts};
+  AutotuneConfig cfg = AutotuneConfig::FromDebugOptions(
+      DeviceOrDevicelessConfig{DeviceConfig{stream_exec(), nullptr}}, opts);
   TF_ASSERT_OK_AND_ASSIGN(changed,
                           RunHloPass(GemmAlgorithmPicker(cfg), m.get()));
   ASSERT_TRUE(changed);
@@ -273,7 +278,8 @@ ENTRY main {
   changed = false;
 
   DebugOptions opts;
-  AutotuneConfig cfg{DeviceConfig{stream_exec(), nullptr}, opts};
+  AutotuneConfig cfg = AutotuneConfig::FromDebugOptions(
+      DeviceOrDevicelessConfig{DeviceConfig{stream_exec(), nullptr}}, opts);
 
   TF_ASSERT_OK_AND_ASSIGN(changed,
                           RunHloPass(GemmAlgorithmPicker(cfg), m.get()));
@@ -297,7 +303,8 @@ ENTRY main {
   changed = false;
 
   DevicelessConfig deviceless_config{device_desc()};
-  AutotuneConfig deviceless_cfg{deviceless_config, opts};
+  AutotuneConfig deviceless_cfg = AutotuneConfig::FromDebugOptions(
+      DeviceOrDevicelessConfig{deviceless_config}, opts);
   TF_ASSERT_OK_AND_ASSIGN(
       changed,
       RunHloPass(

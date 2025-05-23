@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
@@ -148,11 +149,10 @@ HloReplicationAnalysis::DetermineHloInstructionIsReplicated(
         global_id = Cast<HloAllGatherInstruction>(hlo)->use_global_device_ids();
       }
       if (global_id) {
-        // Wrap the replica_groups() in a ReplicaGroupSpan to enabling hashing
-        // then cache the result of GroupsForReplicas().
-        HashableReplicaGroupSpan hashable_replica_groups(hlo->replica_groups());
-        size_t key = absl::HashOf(hashable_replica_groups);
-        auto [it, inserted] = device_sets_per_replica_map_.try_emplace(key);
+        // Wrap the replica_groups() in a HashableReplicaGroupSpan to enabling
+        // hashing then cache the result of GroupsForReplicas().
+        auto [it, inserted] = device_sets_per_replica_map_.try_emplace(
+            HashableReplicaGroupSpan(hlo->replica_groups()));
         const std::vector<std::vector<std::vector<int64_t>>>*
             device_sets_per_replica;
         if (inserted) {

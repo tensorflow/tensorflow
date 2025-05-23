@@ -1447,9 +1447,8 @@ bool IsTrivialInstruction(const HloInstruction* instruction) {
 }
 
 bool IsSliceLikeInstruction(const HloInstruction* instruction) {
-  return instruction->opcode() == HloOpcode::kSlice;
-  // TODO(b/415757985): Re-enable kDynamicSlice once we take account the other
-  // operands.
+  return instruction->opcode() == HloOpcode::kSlice ||
+         instruction->opcode() == HloOpcode::kDynamicSlice;
 }
 
 }  // namespace
@@ -2640,7 +2639,7 @@ void MsaAlgorithm::MaybeSplitAllocationValues(
     *mutable_element = result->dimension();
     Shape new_shape = allocation_value.value()->shape();
     if (new_shape.has_layout() &&
-        new_shape.layout().split_configs_size() == 0) {
+        new_shape.layout().split_configs().size() == 0) {
       new_shape.mutable_layout()->add_split_configs(result.value());
     }
     allocation_value.set_split_shape(new_shape);
@@ -3041,6 +3040,7 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
   int64_t required_copy_allocation_latest_time = 0;
   HloInstruction* required_copy_allocation_for = nullptr;
   bool required_copy_for_slice = false;
+  std::optional<int64_t> earliest_prefetch_time = std::nullopt;
   if (use.sync_mem_op_operand &&
       IsInstructionPendingReplacements(use.sync_mem_op_operand)) {
     required_copy_allocation_for = use.sync_mem_op_operand;
@@ -3086,7 +3086,17 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
         required_copy_allocation_latest_time = successor_time;
       }
     }
+
+    // Make sure that the earliest prefetch time is after the schedule time of
+    // the latest operand of the sync mem op.
+    for (const HloInstruction* operand :
+         required_copy_allocation_for->operands()) {
+      int64_t operand_time = instruction_schedule.at(operand);
+      earliest_prefetch_time =
+          std::max(earliest_prefetch_time.value_or(-1), operand_time);
+    }
   }
+
   int64_t use_time = instruction_schedule.at(hlo_use.instruction);
   bool allow_no_copy_alternate_mem_allocation = true;
   bool allow_prefetch = true;
@@ -3095,7 +3105,6 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
   // like `latest_prefetch_time` and `earliest_prefetch_time` indicate
   // whether they are exclusive or inclusive boundaries.
   int64_t latest_prefetch_time = use_time;
-  std::optional<int64_t> earliest_prefetch_time = std::nullopt;
 
   // Control flow  calls include kWhile, kCall, and kConditional opcodes.
   bool is_sequential_call =
@@ -3961,8 +3970,9 @@ void MsaAlgorithm::AllocateCrossProgramPrefetchBuffer(
 void MsaAlgorithm::AllocateReservedScopedAllocations() {
   const std::vector<HloInstruction*>& instruction_sequence =
       hlo_live_range_.flattened_instruction_sequence().instructions();
-  for (int i = 0; i < instruction_sequence.size(); ++i) {
-    HloInstruction* instruction = instruction_sequence[i];
+  for (BreadthFirstMidpointIterator it(0, instruction_sequence.size() - 1);
+       !it.End(); it.Next()) {
+    HloInstruction* instruction = instruction_sequence[it.value()];
     int64_t reserved_scoped_memory =
         std::min(options_.reserved_scoped_memory_fn(
                      instruction, /*operands_in_alternate_memory=*/{},
@@ -3972,7 +3982,7 @@ void MsaAlgorithm::AllocateReservedScopedAllocations() {
       continue;
     }
     AllocateScopedAllocation(instruction, /*is_post_module=*/false,
-                             reserved_scoped_memory, i);
+                             reserved_scoped_memory, it.value());
   }
   // If requested, make all scoped allocations to colocate with each other so
   // that when we repack, all scoped allocations get the same offsets. Since

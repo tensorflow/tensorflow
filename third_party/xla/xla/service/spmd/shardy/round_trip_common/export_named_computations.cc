@@ -90,7 +90,7 @@ class ExportNamedComputationsPass
           namedComputationOp.getOutShardings();
 
       if (manualAxesAttr) {
-        CHECK(!manualAxesAttr.getValue().empty());
+        CHECK(!manualAxesAttr.empty());
         CHECK(inShardings.has_value());
         CHECK(outShardings.has_value());
       }

@@ -35,8 +35,8 @@ __global__ void MakeBatchPointers(char* base, size_t stride, size_t n,
 
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
     MakeBatchPointersKernelCuda, stream_executor::gpu::MakeBatchPointersKernel,
-    stream_executor::cuda::kCudaPlatformId, ([] {
-      stream_executor::MultiKernelLoaderSpec spec(4);
+    stream_executor::cuda::kCudaPlatformId, ([](size_t arity) {
+      stream_executor::MultiKernelLoaderSpec spec(arity);
       spec.AddInProcessSymbol(
           absl::bit_cast<void*>(&stream_executor::cuda::MakeBatchPointers),
 

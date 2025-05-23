@@ -68,7 +68,7 @@ tf_proto_library(
 tf_proto_library(
     name = "xla_compiler_proto",
     srcs = ["xla_compiler.proto"],
-    protodeps = ["//xla/pjrt:compile_options_proto"],
+    protodeps = ["//xla/pjrt/proto:compile_options_proto"],
 )
 
 tf_proto_library(
@@ -398,6 +398,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt:serdes",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",

@@ -19,18 +19,15 @@ limitations under the License.
 #include <string>
 
 #include "absl/log/check.h"
-#include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
-#include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
+#include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function_thunks.h"
 #include "xla/client/executable_build_options.h"
-#include "xla/client/local_client.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -39,11 +36,8 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
-#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -175,21 +169,6 @@ tf2xla::Config SumConfigVariable() {
   return config;
 }
 
-TEST(XlaJitCompiledCpuFunction, CheckThunkDisabled) {
-  GraphDef graph_def = SumGraph();
-  tf2xla::Config config = SumConfig();
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<XlaJitCompiledCpuFunction> jit,
-      XlaJitCompiledCpuFunction::Compile(graph_def, config,
-                                         xla::ExecutableBuildOptions()));
-  ASSERT_TRUE(jit->LocalExecutable().build_options().has_debug_options());
-  ASSERT_FALSE(jit->LocalExecutable()
-                   .build_options()
-                   .debug_options()
-                   .xla_cpu_use_thunk_runtime());
-}
-
 TEST(XlaJitCompiledCpuFunction, Sum) {
   GraphDef graph_def = SumGraph();
   tf2xla::Config config = SumConfig();
@@ -198,7 +177,7 @@ TEST(XlaJitCompiledCpuFunction, Sum) {
       std::unique_ptr<XlaJitCompiledCpuFunction> jit,
       XlaJitCompiledCpuFunction::Compile(graph_def, config,
                                          xla::ExecutableBuildOptions()));
-  XlaCompiledCpuFunction function(jit->StaticData());
+  XlaCompiledCpuFunctionThunks function(jit->StaticData());
   ASSERT_EQ(function.num_args(), 2);
   ASSERT_EQ(function.num_results(), 1);
 
@@ -262,7 +241,9 @@ TEST(XlaJitCompiledCpuFunction, Sum) {
   using xla::ShapeUtil;
   const xla::Shape s32 = ShapeUtil::MakeShape(xla::S32, {});
   ASSERT_TRUE(function.ProgramShape() != nullptr);
-  const xla::ProgramShape program_shape(*function.ProgramShape());
+  TF_ASSERT_OK_AND_ASSIGN(
+      xla::ProgramShape program_shape,
+      xla::ProgramShape::FromProto(*function.ProgramShape()));
   ASSERT_EQ(program_shape.parameters_size(), 2);
   EXPECT_TRUE(ShapeUtil::Compatible(program_shape.parameters(0), s32));
   EXPECT_TRUE(ShapeUtil::Compatible(program_shape.parameters(1), s32));
@@ -282,7 +263,7 @@ TEST(XlaJitCompiledCpuFunction, SumVariable) {
       std::unique_ptr<XlaJitCompiledCpuFunction> jit,
       XlaJitCompiledCpuFunction::Compile(graph_def, config,
                                          xla::ExecutableBuildOptions()));
-  XlaCompiledCpuFunction function(jit->StaticData());
+  XlaCompiledCpuFunctionThunks function(jit->StaticData());
   ASSERT_EQ(function.num_args(), 2);
   ASSERT_EQ(function.num_results(), 2);
 
@@ -320,7 +301,9 @@ TEST(XlaJitCompiledCpuFunction, SumVariable) {
   const xla::Shape s32 = ShapeUtil::MakeShape(xla::S32, {});
   const xla::Shape s32_1 = ShapeUtil::MakeShape(xla::S32, {1});
   ASSERT_TRUE(function.ProgramShape() != nullptr);
-  const xla::ProgramShape program_shape(*function.ProgramShape());
+  TF_ASSERT_OK_AND_ASSIGN(
+      xla::ProgramShape program_shape,
+      xla::ProgramShape::FromProto(*function.ProgramShape()));
   ASSERT_EQ(program_shape.parameters_size(), 2);
   EXPECT_TRUE(ShapeUtil::Compatible(program_shape.parameters(0), s32));
   EXPECT_TRUE(ShapeUtil::Compatible(program_shape.parameters(1), s32_1));

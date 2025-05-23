@@ -55,7 +55,12 @@ def _python_wheel_version_suffix_repository_impl(repository_ctx):
             wheel_version_suffix += ".dev{}".format(formatted_date)
             semantic_wheel_version_suffix = "-dev{}".format(formatted_date)
         if git_hash:
-            formatted_hash = git_hash[:9]
+            # This processing is necessary to align with Python packaging standards
+            # (PEP 440), particularly how setuptools normalizes version strings.
+            # See PEP 440 for local version identifiers:
+            # https://peps.python.org/pep-0440/#local-version-identifiers
+            formatted_hash = git_hash.lstrip("0")[:9]
+
             wheel_version_suffix += "+{}".format(formatted_hash)
             semantic_wheel_version_suffix += "+{}".format(formatted_hash)
         if custom_version_suffix:

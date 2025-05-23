@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "xla/client/client_library.h"
@@ -670,8 +671,10 @@ XLA_TEST_F(LocalClientExecuteTest, RunOnStream) {
 
 // Disable this test on CPU because we're using the CPU as the platform
 // which does not match the service platform.
-XLA_TEST_F(LocalClientExecuteTest,
-           DISABLED_ON_CPU(RunOnStreamForWrongPlatform)) {
+XLA_TEST_F(LocalClientExecuteTest, RunOnStreamForWrongPlatform) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   // Try to run a computation on a stream for a platform (CPU) which does not
   // match the platform of the service (!= CPU).
   se::Platform* wrong_platform =
@@ -690,8 +693,10 @@ XLA_TEST_F(LocalClientExecuteTest,
               ContainsRegex("stream is for platform .*, but service targets"));
 }
 
-XLA_TEST_F(LocalClientExecuteTest,
-           DISABLED_ON_CPU(AllocatorDoesNotMatchPlatform)) {
+XLA_TEST_F(LocalClientExecuteTest, AllocatorDoesNotMatchPlatform) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   se::Platform* wrong_platform =
       se::PlatformManager::PlatformWithId(se::host::kHostPlatformId).value();
   TestAllocator allocator(wrong_platform);
@@ -761,8 +766,10 @@ XLA_TEST_F(LocalClientExecuteTest,
   EXPECT_EQ(2, executables.size());
 }
 
-XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_CPU(DISABLED_ON_INTERPRETER(
-                                       SizeOfGeneratedCodeInBytes))) {
+XLA_TEST_F(LocalClientExecuteTest, SizeOfGeneratedCodeInBytes) {
+  if (test::DeviceIsOneOf({test::kCpu, test::kInterpreter})) {
+    GTEST_SKIP();
+  }
   XlaBuilder builder(TestName());
   auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
   constexpr int size = 100000;
@@ -849,7 +856,10 @@ XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion64bit) {
 }
 
 // Disabled on interpreter backend since infeed HLO is unsupported.
-XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_INTERPRETER(InfeedTest)) {
+XLA_TEST_F(LocalClientExecuteTest, InfeedTest) {
+  if (test::DeviceIs(test::kInterpreter)) {
+    GTEST_SKIP();
+  }
   XlaBuilder builder(TestName());
   const Shape shape = ShapeUtil::MakeShape(F32, {3});
   auto in = Infeed(&builder, shape);
@@ -874,7 +884,10 @@ XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_INTERPRETER(InfeedTest)) {
 }
 
 // Disabled on interpreter backend since infeed/outfeed HLOs are unsupported.
-XLA_TEST_F(LocalClientExecuteTest, DISABLED_ON_INTERPRETER(InfeedOutfeedTest)) {
+XLA_TEST_F(LocalClientExecuteTest, InfeedOutfeedTest) {
+  if (test::DeviceIs(test::kInterpreter)) {
+    GTEST_SKIP();
+  }
   XlaBuilder builder(TestName());
   const Shape shape = ShapeUtil::MakeShape(F32, {3});
   auto in = Infeed(&builder, shape);

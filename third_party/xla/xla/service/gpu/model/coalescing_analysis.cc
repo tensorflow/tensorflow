@@ -221,12 +221,11 @@ bool EstimateCoalescingViaMemoryTransactionsCount(
 
 // Returns a linearized shape, i.e. tensor<num_elements(input) x element_type>.
 Shape GetLinearizedShape(const Shape& shape) {
-  if (shape.dimensions().size() == 0) {
+  if (shape.dimensions().empty()) {
     return shape;
   }
   std::vector<int64_t> dims{ShapeUtil::ElementsIn(shape)};
-  auto result = Shape(shape.element_type(), dims,
-                      absl::InlinedVector<bool, 4>(dims.size(), false));
+  auto result = Shape(shape.element_type(), dims);
   *result.mutable_layout() = xla::Layout({0});
   return result;
 }
@@ -243,7 +242,7 @@ std::optional<GroupedByOpIndexingMap> GetThreadIdToInputMemoryLayoutsMaps(
        llvm::enumerate(fusion_analysis.fusion_heroes())) {
     for (const auto& [hero_operand_index, hero_operand] :
          llvm::enumerate(hero.GetOperands())) {
-      if (hero_operand.shape().dimensions().size() == 0) {
+      if (hero_operand.shape().dimensions().empty()) {
         continue;
       }
       // Compute thread ID -> hero operand indexing map.
@@ -666,7 +665,7 @@ bool CoalescingAnalysis::ComputeCoalescingForAllOperands(
     return false;
   }
   for (const HloInstruction* operand : operands) {
-    if (operand->shape().dimensions().size() == 0) {
+    if (operand->shape().dimensions().empty()) {
       coalescing_per_operand_.insert({operand, true});
       continue;
     }

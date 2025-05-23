@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout_serdes.pb.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -61,7 +62,8 @@ class PjRtLayoutSerDes : public llvm::RTTIExtends<PjRtLayoutSerDes, SerDes> {
       return absl::InvalidArgumentError(
           "Failed to parse serialized PjRtLayout");
     }
-    auto xla_layout = xla::Layout::CreateFromProto(proto.xla_layout());
+    TF_ASSIGN_OR_RETURN(auto xla_layout,
+                        xla::Layout::FromProto(proto.xla_layout()));
     return PjRtLayout::Create(
         std::make_unique<xla::PjRtLayout>(std::move(xla_layout)));
   }

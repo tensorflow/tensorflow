@@ -87,6 +87,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -1482,40 +1483,43 @@ PjRtFuture<> PjRtStreamExecutorBuffer::ToLiteral(MutableLiteralBase* literal) {
   // to ToLiteral.
   device_buffer.ConvertUsageHold(stream, usage_event, /*reference_held=*/true);
 
-  xla::Layout literal_layout;
-  if (literal->shape().has_layout()) {
-    literal_layout = literal->shape().layout();
-  } else {
-    literal_layout =
-        LayoutUtil::MakeDescendingLayout(on_device_shape().dimensions().size());
-  }
-
   std::shared_ptr<TransposePlan> transpose;
-  if (on_device_shape().layout() != literal_layout) {
-    absl::InlinedVector<int64_t, 4> byte_strides(
-        on_device_shape().dimensions().size());
-    absl::Status s =
-        ShapeUtil::ByteStrides(on_device_shape(), absl::MakeSpan(byte_strides));
-    if (!s.ok()) {
-      return PjRtFuture<>(s);
+  if (on_device_shape().IsArray()) {
+    xla::Layout literal_layout;
+    if (literal->shape().has_layout()) {
+      literal_layout = literal->shape().layout();
+    } else {
+      literal_layout = LayoutUtil::MakeDescendingLayout(
+          on_device_shape().dimensions().size());
     }
-    absl::Span<const int64_t> dims = on_device_shape().dimensions();
-    absl::InlinedVector<int64_t, 4> permutation(dims.size());
-    absl::c_reverse_copy(literal_layout.minor_to_major(), permutation.begin());
-    TransposePlan::Options options;
-    options.elem_size_in_bytes =
-        primitive_util::ByteWidth(on_device_shape().element_type());
-    options.dims = on_device_shape().dimensions();
-    options.permutation = permutation;
-    options.input_layout = TransposePlan::Striding{byte_strides};
-    {
-      absl::MutexLock lock(&client_->transpose_mu_);
-      absl::StatusOr<std::shared_ptr<TransposePlan>> t =
-          client_->transpose_cache_.GetOrCreate(options);
-      if (!t.ok()) {
-        return PjRtFuture<>(t.status());
+
+    if (on_device_shape().layout() != literal_layout) {
+      absl::InlinedVector<int64_t, 4> byte_strides(
+          on_device_shape().dimensions().size());
+      absl::Status s = ShapeUtil::ByteStrides(on_device_shape(),
+                                              absl::MakeSpan(byte_strides));
+      if (!s.ok()) {
+        return PjRtFuture<>(s);
       }
-      transpose = *std::move(t);
+      absl::Span<const int64_t> dims = on_device_shape().dimensions();
+      absl::InlinedVector<int64_t, 4> permutation(dims.size());
+      absl::c_reverse_copy(literal_layout.minor_to_major(),
+                           permutation.begin());
+      TransposePlan::Options options;
+      options.elem_size_in_bytes =
+          primitive_util::ByteWidth(on_device_shape().element_type());
+      options.dims = on_device_shape().dimensions();
+      options.permutation = permutation;
+      options.input_layout = TransposePlan::Striding{byte_strides};
+      {
+        absl::MutexLock lock(&client_->transpose_mu_);
+        absl::StatusOr<std::shared_ptr<TransposePlan>> t =
+            client_->transpose_cache_.GetOrCreate(options);
+        if (!t.ok()) {
+          return PjRtFuture<>(t.status());
+        }
+        transpose = *std::move(t);
+      }
     }
   }
 
@@ -2724,12 +2728,53 @@ PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
         }));
   }
 
+  VLOG(1) << "Start calling RunAsync for "
+          << executables_[executable_idx]->executable()->module().name()
+          << ", device=" << device->DebugString()
+          << ", run_id=" << run_options.run_id().ToInt();
+
+  if (VLOG_IS_ON(3)) {
+    auto executable_name =
+        executables_[executable_idx]->executable()->module().name();
+    absl::Status host_callback_status = run_options.stream()->DoHostCallback(
+        [executable_name, launch_id(run_options.run_id().ToInt()), device]() {
+          VLOG(3) << "Start device execution for " << executable_name
+                  << ", launch_id: " << launch_id
+                  << ", device: " << device->DebugString();
+        });
+    if (!host_callback_status.ok()) {
+      LOG(WARNING)
+          << "Failed to do host callback for start device execution for "
+          << executable_name << ", status = " << host_callback_status;
+    }
+  }
+
   absl::StatusOr<PjRtStreamExecutorExecutionOutput> result_buffer_or_status =
       client_->RunAsync(*executables_[executable_idx], device,
                         std::move(execution_inputs), run_options);
 
-  VLOG(1) << "Replica " << replica << " partition " << partition
-          << " completed; ok=" << result_buffer_or_status.ok();
+  if (VLOG_IS_ON(3)) {
+    auto executable_name =
+        executables_[executable_idx]->executable()->module().name();
+    absl::Status host_callback_status = run_options.stream()->DoHostCallback(
+        [executable_name, launch_id(run_options.run_id().ToInt()), device]() {
+          VLOG(3) << "Finish device execution for " << executable_name
+                  << ", launch_id: " << launch_id
+                  << ", device: " << device->DebugString();
+        });
+    if (!host_callback_status.ok()) {
+      LOG(WARNING)
+          << "Failed to do host callback for start device execution for "
+          << executable_name << ", status = " << host_callback_status;
+    }
+  }
+
+  VLOG(1) << "Finish calling RunAsync for "
+          << executables_[executable_idx]->executable()->module().name()
+          << ", device=" << device->DebugString()
+          << ", run_id=" << run_options.run_id().ToInt()
+          << ", replica=" << replica << ", partition=" << partition
+          << ", completed, ok=" << result_buffer_or_status.ok();
 
   if (!result_buffer_or_status.ok()) {
     return result_buffer_or_status.status();

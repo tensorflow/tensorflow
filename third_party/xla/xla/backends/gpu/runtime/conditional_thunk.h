@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_CONDITIONAL_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_CONDITIONAL_THUNK_H_
 
-#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -24,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/host_memory_pool.h"
@@ -71,6 +71,8 @@ class ConditionalThunk : public Thunk {
 
   void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
   bool branch_index_is_bool() const { return branch_index_is_bool_; }
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
 
  private:
   const BufferAllocation::Slice branch_index_buffer_index_;

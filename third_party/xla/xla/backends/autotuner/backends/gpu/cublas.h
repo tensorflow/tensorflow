@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/autotuner/backends/gpu/gpu_codegen_backend.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/compiler.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -33,13 +35,8 @@ namespace gpu {
 // A codegen backend for cuBLAS.
 // This backend is used to autotune cuBLAS algorithms.
 //
-// The Cublas backend can handle
-//   - a Cublas custom call instruction
-//   - a dot instruction
-//   - a fusion instruction with a GEMM instruction inside
-//
 // Cublas calls are represented as custom-call instructions, with and
-// configurable algorithm (see ):
+// configurable algorithm:
 // ```
 //   %custom-call.1 = .. custom-call(...), custom_call_target="__cublas$gemm",
 //   backend_config={"
@@ -61,14 +58,15 @@ class CublasBackend : public GpuCodegenBackend {
   absl::StatusOr<std::unique_ptr<BackendConfig>> GetDefaultConfig(
       const HloInstruction& instr) override;
 
- private:
-  absl::StatusOr<std::unique_ptr<HloModule>> WrapInModule(
-      const HloInstruction& hlo_instruction,
-      const BackendConfig& config) override;
+  absl::Status ApplyConfig(HloInstruction& instr,
+                           const BackendConfig& config) override;
 
+ private:
   absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> hlo_module,
-      const Compiler::CompileOptions& options) override;
+      const Compiler::CompileOptions& options) override {
+    return absl::UnimplementedError("Not implemented.");
+  }
 };
 
 }  // namespace gpu

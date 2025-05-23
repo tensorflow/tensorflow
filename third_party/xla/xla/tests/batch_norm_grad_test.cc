@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/status/status.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal_util.h"
@@ -65,9 +66,10 @@ TEST_F(BatchNormGradTest, CorrectComputation) {
                                     &expected_mean_grad}));
 }
 
-TEST_F(BatchNormGradTest,
-       DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(
-           DISABLED_ON_TPU(ReturnsErrorWhenHloPassesDisabled)))) {
+TEST_F(BatchNormGradTest, DISABLED_ON_TPU(ReturnsErrorWhenHloPassesDisabled)) {
+  if (test::DeviceIsOneOf({test::kGpu, test::kInterpreter})) {
+    GTEST_SKIP();
+  }
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
 

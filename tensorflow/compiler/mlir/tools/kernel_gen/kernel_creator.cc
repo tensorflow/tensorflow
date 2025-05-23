@@ -342,7 +342,7 @@ absl::Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
   kernelPm.addPass(mlir::createGpuKernelToRocdlPass(architecture));
 #elif GOOGLE_CUDA
   kernelPm.addPass(mlir::createGpuKernelToNvvmPass());
-  kernelPm.addPass(mlir::NVVM::createOptimizeForTargetPass());
+  kernelPm.addPass(mlir::LLVM::createNVVMOptimizeForTargetPass());
 #endif
   // Remove all location information to prevent a debug build.
   pm.addPass(::mlir::createStripDebugInfoPass());
@@ -468,7 +468,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GenerateKernelForHloCode(
     // restructure this code to generate separate MLIR modules for each
     // architecture.
     const std::string& first_architecture =
-        architectures.size() > 0 ? architectures[0] : "";
+        !architectures.empty() ? architectures[0] : "";
     TF_RETURN_IF_ERROR(LowerKernelBodiesToLowLevelIr(
         module.get(), apply_cl_options, first_architecture));
     TF_RETURN_IF_ERROR(

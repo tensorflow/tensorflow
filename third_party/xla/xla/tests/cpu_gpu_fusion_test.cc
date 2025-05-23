@@ -26,6 +26,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "benchmark/benchmark.h"
@@ -614,7 +615,10 @@ std::unique_ptr<HloComputation> MakeReduceTestComputation() {
   return builder.Build();
 }
 
-TEST_F(CpuGpuFusionTest, DISABLED_ON_CPU(Reduce)) {
+TEST_F(CpuGpuFusionTest, Reduce) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   auto hlo_module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   auto const0 = builder.AddInstruction(
@@ -655,7 +659,10 @@ TEST_F(CpuGpuFusionTest, ReduceImplicitBroadcast) {
                              ExecuteAndTransfer(std::move(hlo_module), {})));
 }
 
-TEST_F(CpuGpuFusionTest, DISABLED_ON_CPU(ReduceWindow)) {
+TEST_F(CpuGpuFusionTest, ReduceWindow) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   auto builder = HloComputation::Builder(TestName());
   auto hlo_module = CreateNewVerifiedModule();
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(

@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_SERVICE_GPU_LAUNCH_DIMENSIONS_H_
 
 #include <cstdint>
-#include <ostream>
 #include <string>
 
 #include "absl/strings/str_cat.h"
@@ -34,16 +33,17 @@ class LaunchDimensions {
  public:
   // The default constructor creates a launch dimension that indicate
   // single-threaded execution.
-  LaunchDimensions()
+  constexpr LaunchDimensions()
       : block_counts_(se::BlockDim()),
         thread_counts_per_block_(se::ThreadDim()) {}
 
-  LaunchDimensions(uint64_t block_x_count, uint64_t thread_x_count_per_block)
+  constexpr LaunchDimensions(uint64_t block_x_count,
+                             uint64_t thread_x_count_per_block)
       : block_counts_(block_x_count, 1, 1),
         thread_counts_per_block_(thread_x_count_per_block, 1, 1) {}
 
-  LaunchDimensions(const se::BlockDim& block_counts,
-                   const se::ThreadDim& thread_counts_per_block)
+  constexpr LaunchDimensions(const se::BlockDim& block_counts,
+                             const se::ThreadDim& thread_counts_per_block)
       : block_counts_(block_counts),
         thread_counts_per_block_(thread_counts_per_block) {}
 

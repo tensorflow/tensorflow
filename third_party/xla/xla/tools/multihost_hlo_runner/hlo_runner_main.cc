@@ -99,6 +99,7 @@ struct HloRunnerConfig {
   bool remove_infeed_outfeed = true;
   bool compile_as_stablehlo = false;
   bool use_layouts_from_hlo_module = false;
+  bool force_auto_layout = false;
   int32_t num_repeats = 1;
   std::string execution_options_path = "";
   int64_t gpu_client_initialization_timeout_sec = 300;
@@ -391,6 +392,8 @@ int main(int argc, char** argv) {
                 &opts.use_layouts_from_hlo_module,
                 "If set, use layouts from the HLO module's "
                 "entry_computation_layout."),
+      tsl::Flag("force_auto_layout", &opts.force_auto_layout,
+                "If set, force auto layout."),
       tsl::Flag("num_repeats", &opts.num_repeats,
                 "Repeatedly execute the HLO for this many times."),
       tsl::Flag("execution_options_path", &opts.execution_options_path,

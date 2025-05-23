@@ -58,6 +58,7 @@ xla_cc_binary(
     srcs = ["generate_benchmark_matrices_main.cc"],
     deps = [
         ":generate_benchmark_matrices_cc",
+        "//xla/tools/benchmarks/proto:benchmark_config_proto_cc",
         "//xla/tsl/platform:status",
         "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/container:flat_hash_map",

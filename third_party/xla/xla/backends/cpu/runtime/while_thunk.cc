@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/optimization.h"
 #include "absl/log/check.h"
@@ -285,6 +286,16 @@ WhileThunk::ResourceUses WhileThunk::resource_uses() const {
   resource_uses.insert(resource_uses.end(), body_uses.begin(), body_uses.end());
 
   return resource_uses;
+}
+
+std::vector<std::pair<std::string, const ThunkSequence*>>
+WhileThunk::nested_thunks() const {
+  std::string maybe_trip_count_info =
+      trip_count_.has_value() ? absl::StrCat(" trip_count=", *trip_count_) : "";
+  return {{absl::StrCat(info().op_name, "-while-condition"),
+           &cond_executor_.thunk_sequence()},
+          {absl::StrCat(info().op_name, "-while-body", maybe_trip_count_info),
+           &body_executor_.thunk_sequence()}};
 }
 
 }  // namespace xla::cpu

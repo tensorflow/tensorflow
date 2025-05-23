@@ -293,6 +293,48 @@ gentbl_cc_library(
     deps = [":tensorflow_lite_patterns_td_files"],
 )
 
+# Don't add dependencies to this binary. It's only a wrapper around litert_mlir_opt_main.
+tf_cc_binary(
+    name = "litert-opt",
+    testonly = True,
+    deps = [
+        ":litert_mlir_opt_main",
+    ],
+)
+
+cc_library(
+    name = "litert_mlir_opt_main",
+    testonly = True,
+    srcs = ["litert_mlir_opt_main.cc"],
+    deps = [
+        ":tensorflow_lite",
+        ":tf_tfl_passes",  # buildcleaner:keep
+        "//tensorflow/compiler/mlir:init_mlir",
+        "//tensorflow/compiler/mlir:passes",
+        "//tensorflow/compiler/mlir:register_common_dialects",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
+        "//tensorflow/compiler/mlir/tensorflow:mlprogram_util",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_test_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_graph_optimization_pass",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_passes",  # buildcleaner:keep
+        "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:lower_cluster_to_runtime_ops",
+        "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:runtime_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms/sparsecore:sparsecore_passes",
+        "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
+        "//tensorflow/compiler/mlir/tf2xla/internal/passes:clustering_passes",
+        "//tensorflow/compiler/mlir/tf2xla/internal/passes:mlir_to_graph_passes",
+        "//tensorflow/compiler/mlir/tf2xla/transforms:tf_xla_passes",
+        "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+        "@local_xla//xla/mlir/framework/transforms:passes",
+        "@local_xla//xla/mlir_hlo:all_passes",
+    ],
+)
+
 cc_library(
     name = "utils",
     hdrs = ["utils/utils.h"],

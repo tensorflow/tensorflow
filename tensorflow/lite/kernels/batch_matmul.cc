@@ -86,9 +86,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   op_data->rhs_transposed = false;
   // Creates the temp tensors to store the transposed LHS and/or RHS, and
   // extra buffers for the quantized case.
-  context->AddTensors(context,
-                      kNumTempTensorsForAdjoints + kNumTempTensorsForHybrid,
-                      &op_data->scratch_tensor_index);
+  op_data->scratch_tensor_index = -1;
   return op_data;
 }
 
@@ -292,12 +290,17 @@ TfLiteStatus InitializeTemporaries(TfLiteContext* context, TfLiteNode* node,
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
+  if (op_data->scratch_tensor_index == -1) {
+    context->AddTensors(context,
+                        kNumTempTensorsForAdjoints + kNumTempTensorsForHybrid,
+                        &op_data->scratch_tensor_index);
+  }
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   OpContext op_context(context, node);
   TF_LITE_ENSURE_OK(context, InitializeTemporaries(context, node, &op_context));
-  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
 
   bool adj_x = op_context.params->adj_x;
   bool adj_y = op_context.params->adj_y;

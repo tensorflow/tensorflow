@@ -58,14 +58,11 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
   }
 }
 
-absl::string_view BoolToString(bool b) { return b ? "true" : "false"; }
-
 }  // namespace
 
 /* static */ Layout LayoutUtil::MakeLayout(
-    absl::Span<const int64_t> minor_to_major,
-    absl::Span<const DimLevelType> dim_level_types,
-    absl::Span<const Tile> tiles, int64_t tail_padding_alignment_in_elements,
+    absl::Span<const int64_t> minor_to_major, absl::Span<const Tile> tiles,
+    int64_t tail_padding_alignment_in_elements,
     PrimitiveType index_primitive_type, PrimitiveType pointer_primitive_type,
     int64_t element_size_in_bits, int64_t memory_space,
     absl::Span<const SplitConfig> split_configs,
@@ -74,9 +71,6 @@ absl::string_view BoolToString(bool b) { return b ? "true" : "false"; }
   Layout layout;
   for (int64_t dimension_number : minor_to_major) {
     layout.add_minor_to_major(dimension_number);
-  }
-  for (DimLevelType dim_level_type : dim_level_types) {
-    layout.add_dim_level_type(dim_level_type);
   }
   for (const Tile& tile : tiles) {
     for (int64_t dim : tile.dimensions()) {
@@ -263,90 +257,32 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
     dimensions_in_layout[dim] = true;
   }
 
-  if (layout.dim_level_types_size() > 0) {
-    if (layout.dim_level_types_size() != shape.dimensions().size()) {
-      std::vector<DimLevelType> dim_level_types(layout.dim_level_types_size());
-      for (int i = 0; i < dim_level_types.size(); i++) {
-        dim_level_types[i] = layout.dim_level_type(i);
-      }
-      return InvalidArgument(
-          "layout dim_level_types field contains %d elements, but shape has "
-          "%d dimensions: {%s}; shape: %s",
-          layout.dim_level_types_size(), shape.dimensions().size(),
-          absl::StrJoin(dim_level_types, ", ",
-                        [](std::string* out, DimLevelType dim_level_type) {
-                          absl::StrAppend(out,
-                                          DimLevelType_Name(dim_level_type));
-                        }),
-          shape.ToString());
-    }
-  }
-
   if (layout.tail_padding_alignment_in_elements() <= 0) {
     return InvalidArgument(
         "layout tail_padding_alignment_in_elements field is <= 0: {%d}",
         layout.tail_padding_alignment_in_elements());
   }
 
-  if (LayoutUtil::IsSparse(layout)) {
-    if (layout.tiles_size() > 0) {
-      return InvalidArgument(
-          "layout has tiles, but the shape is a sparse array: %s",
-          shape.ToString());
-    }
-    if (layout.has_physical_shape()) {
-      TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(layout.physical_shape()));
-      TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-          layout.physical_shape(),
-          [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
-            if (subshape.has_layout() &&
-                subshape.layout().has_physical_shape()) {
-              return InvalidArgument(
-                  "layout has a physical_shape, whose layout also has a "
-                  "physical shape: %s",
-                  shape.ToString());
-            }
-            return absl::OkStatus();
-          }));
-      if (layout.index_primitive_type() != PRIMITIVE_TYPE_INVALID &&
-          !primitive_util::IsUnsignedIntegralType(
-              layout.index_primitive_type())) {
-        return InvalidArgument(
-            "index_primitive_type is not an unsigned integer type: %s",
-            shape.ToString());
-      }
-      if (layout.pointer_primitive_type() != PRIMITIVE_TYPE_INVALID &&
-          !primitive_util::IsUnsignedIntegralType(
-              layout.pointer_primitive_type())) {
-        return InvalidArgument(
-            "pointer_primitive_type is not an unsigned integer type: "
-            "%s",
-            shape.ToString());
-      }
-    }
-  } else {
-    if (layout.index_primitive_type() != PRIMITIVE_TYPE_INVALID) {
-      return InvalidArgument(
-          "layout has a index_primitive_type, but is not a sparse array: %s",
-          shape.ToString());
-    }
-    if (layout.pointer_primitive_type() != PRIMITIVE_TYPE_INVALID) {
-      return InvalidArgument(
-          "layout has a pointer_primitive_type, but is not a sparse array: %s",
-          shape.ToString());
-    }
-    if (layout.has_physical_shape()) {
-      return InvalidArgument(
-          "layout has a physical_shape, but is not a sparse array: %s",
-          shape.ToString());
-    }
-    for (const auto& tile : layout.tiles()) {
-      if (tile.dimensions().empty() ||
-          absl::c_any_of(tile.dimensions(),
-                         [](int64_t dim) { return dim == 0; })) {
-        return InvalidArgument("layout has invalid tiles: %s",
-                               shape.ToString());
-      }
+  if (layout.index_primitive_type() != PRIMITIVE_TYPE_INVALID) {
+    return InvalidArgument(
+        "layout has a index_primitive_type, but is not a sparse array: %s",
+        shape.ToString());
+  }
+  if (layout.pointer_primitive_type() != PRIMITIVE_TYPE_INVALID) {
+    return InvalidArgument(
+        "layout has a pointer_primitive_type, but is not a sparse array: %s",
+        shape.ToString());
+  }
+  if (layout.has_physical_shape()) {
+    return InvalidArgument(
+        "layout has a physical_shape, but is not a sparse array: %s",
+        shape.ToString());
+  }
+  for (const auto& tile : layout.tiles()) {
+    if (tile.dimensions().empty() ||
+        absl::c_any_of(tile.dimensions(),
+                       [](int64_t dim) { return dim == 0; })) {
+      return InvalidArgument("layout has invalid tiles: %s", shape.ToString());
     }
   }
 
@@ -384,64 +320,6 @@ Layout CreateDefaultLayoutForRank(int64_t num_dims) {
           }
         }
       });
-}
-
-/* static */ bool LayoutUtil::IsDenseArray(const Shape& shape) {
-  return shape.IsArray() && (!shape.has_layout() || IsDense(shape.layout()));
-}
-
-/* static */ bool LayoutUtil::IsSparseArray(const Shape& shape) {
-  return shape.IsArray() && shape.has_layout() && IsSparse(shape.layout());
-}
-
-/* static */ bool LayoutUtil::IsCOOArray(const Shape& shape) {
-  return shape.IsArray() && shape.has_layout() && IsCOO(shape.layout());
-}
-
-/* static */ bool LayoutUtil::IsCSRArray(const Shape& shape) {
-  return shape.IsArray() && shape.dimensions().size() == 2 &&
-         shape.has_layout() && IsCSR(shape.layout());
-}
-
-/* static */ bool LayoutUtil::IsCSCArray(const Shape& shape) {
-  return shape.IsArray() && shape.dimensions().size() == 2 &&
-         shape.has_layout() && IsCSC(shape.layout());
-}
-
-/* static */ bool LayoutUtil::IsDense(const Layout& layout) {
-  for (int i = 0; i < layout.dim_level_types_size(); i++) {
-    if (layout.dim_level_type(i) != DIM_DENSE) return false;
-  }
-  return true;
-}
-
-/* static */ bool LayoutUtil::IsSparse(const Layout& layout) {
-  return !IsDense(layout);
-}
-
-/* static */ bool LayoutUtil::IsCOO(const Layout& layout) {
-  if ((layout.dim_level_types_size() == 0) ||
-      (layout.dim_level_type(0) != DIM_COMPRESSED)) {
-    return false;
-  }
-  for (int i = 1; i < layout.dim_level_types_size(); i++) {
-    if (layout.dim_level_type(i) != DIM_SINGLETON) return false;
-  }
-  return true;
-}
-
-/* static */ bool LayoutUtil::IsCSR(const Layout& layout) {
-  return IsMonotonicWithDim0Major(layout) &&
-         (layout.dim_level_types_size() == 2) &&
-         (layout.dim_level_type(0) == DIM_DENSE) &&
-         (layout.dim_level_type(1) == DIM_COMPRESSED);
-}
-
-/* static */ bool LayoutUtil::IsCSC(const Layout& layout) {
-  return IsMonotonicWithDim0Minor(layout) &&
-         (layout.dim_level_types_size() == 2) &&
-         (layout.dim_level_type(0) == DIM_DENSE) &&
-         (layout.dim_level_type(1) == DIM_COMPRESSED);
 }
 
 /* static */ bool LayoutUtil::IsMonotonicWithDim0Minor(const Layout& layout) {
@@ -678,15 +556,6 @@ absl::Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
 /*static*/ int64_t LayoutUtil::MemorySpace(const Shape& shape) {
   return shape.has_layout() ? shape.layout().memory_space()
                             : Layout::kDefaultMemorySpace;
-}
-
-/*static*/ DimLevelType LayoutUtil::GetDimLevelType(const Layout& layout,
-                                                    int64_t dim) {
-  if (layout.dim_level_types_size() == 0) {
-    return DIM_DENSE;
-  }
-  CHECK_LT(dim, layout.dim_level_types_size());
-  return layout.dim_level_type(dim);
 }
 
 /*static*/ bool LayoutUtil::ByteStridesIsMajorToMinor(

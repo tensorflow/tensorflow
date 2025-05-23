@@ -150,15 +150,6 @@ class AbstractCpuBuffer : public CommonPjRtBuffer {
   // already donated or there is outstanding external references.
   ScopedHold AcquireDonation();
 
-  // A helper function for PjRtClient::BufferFromHostLiteral. Copy the literal
-  // to the current buffer asynchronously. `avs` is used to signal when the copy
-  // is complete and `async_work_runner` is used to schedule the async work into
-  // the underlying thread pool or work queue (usually owned by the client).
-  void CopyFromLiteral(
-      const LiteralSlice& literal, const Shape& shape,
-      absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4>* avs,
-      AsyncWorkRunner* async_work_runner);
-
   // Allocates a new `TrackedCpuDeviceBuffer` with the given shape and
   // definition events.
   static absl::StatusOr<std::unique_ptr<TrackedCpuDeviceBuffer>>
@@ -174,18 +165,12 @@ class AbstractCpuBuffer : public CommonPjRtBuffer {
       absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 4>* avs,
       absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4>* definition_events);
 
-  // A helper function for PjRtClient::BufferFromHostBuffer. Creates a new cpu
-  // device buffer from the host buffer (maybe zero-copy or async).
-  // `transpose_mu` and `transpose_cache` are used to transpose the input
-  // layout.
-  static absl::StatusOr<std::unique_ptr<TrackedCpuDeviceBuffer>>
-  BufferFromHostBufferHelper(
+  // A helper function to determine if a BufferFromHostBuffer call is elligable
+  // for zero copy construction.
+  static bool BufferFromHostBufferSupportsZeroCopy(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
-      PjRtClient::HostBufferSemantics host_buffer_semantics,
-      absl::AnyInvocable<void() &&> on_done_with_host_buffer,
-      const Shape& shape, AsyncWorkRunner* async_work_runner,
-      absl::Mutex* transpose_mu, TransposePlanCache* transpose_cache);
+      const Shape& shape);
 
   // Returns a hold on the TrackedCpuDeviceBuffer holding the device
   // buffers. See comment on ScopedHold.

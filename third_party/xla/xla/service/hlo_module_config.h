@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/schedule_config.h"
 #include "xla/service/sharding_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -386,6 +387,9 @@ class HloModuleConfig {
   const ShardingConfig& sharding_config() const { return sharding_config_; }
   ShardingConfig* mutable_sharding_config() { return &sharding_config_; }
 
+  const ScheduleConfig& schedule_config() const { return schedule_config_; }
+  ScheduleConfig* mutable_schedule_config() { return &schedule_config_; }
+
   int phase_index() const { return phase_index_; }
   void set_phase_index(const int phase_index) { phase_index_ = phase_index; }
 
@@ -617,6 +621,10 @@ class HloModuleConfig {
   // Sharding configuration, where sharding_config_.nodes[v] controls the
   // sharding of operation v.
   ShardingConfig sharding_config_;
+
+  // Schedule configuration, where schedule_config_.sequence is the sequence of
+  // instructions to be scheduled.
+  ScheduleConfig schedule_config_;
 
   // LINT.ThenChange(//tensorflow/compiler/xla/xla.proto)
 };

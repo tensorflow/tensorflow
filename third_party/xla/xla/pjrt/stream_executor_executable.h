@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/compiler.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_proto_util.h"
 
 namespace xla {
@@ -103,7 +104,8 @@ class StreamExecutorExecutable : public PjRtExecutable {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> buffers,
                           aot_executable->buffer_assignment());
 
-      memory_stats.buffer_assignment = buffers->ToProto();
+      memory_stats.serialized_buffer_assignment =
+          buffers->ToProto().SerializeAsString();
       memory_stats.PopulateBufferStatsFromAllocations(buffers->Allocations());
       return memory_stats;
     } else {
@@ -117,7 +119,7 @@ class StreamExecutorExecutable : public PjRtExecutable {
       const BufferAssignmentProto* proto =
           local_executables[0]->executable()->buffer_assignment_proto();
       if (proto != nullptr) {
-        memory_stats.buffer_assignment = *proto;
+        memory_stats.serialized_buffer_assignment = proto->SerializeAsString();
       }
       memory_stats.PopulateBufferStatsFromAllocations(
           local_executables[0]->executable()->GetAllocations());

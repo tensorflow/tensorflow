@@ -39,10 +39,17 @@ namespace xla {
 // compiler.
 class MlirKernelSource final : public KernelSource {
  public:
+  // Construct a MLIR kernel source from a module and take ownership of its MLIR
+  // context.
   MlirKernelSource(std::unique_ptr<mlir::MLIRContext> mlir_context,
                    mlir::OwningOpRef<mlir::ModuleOp> mlir_module)
       : mlir_context_(std::move(mlir_context)),
         module_(std::move(mlir_module)) {}
+
+  // Construct a MLIR kernel source from a module but don't take any ownership
+  // of the MLIR context.
+  explicit MlirKernelSource(mlir::OwningOpRef<mlir::ModuleOp> mlir_module)
+      : module_(std::move(mlir_module)) {}
 
   MlirKernelSource(MlirKernelSource&& other) noexcept = default;
   MlirKernelSource& operator=(MlirKernelSource&& other) noexcept = default;

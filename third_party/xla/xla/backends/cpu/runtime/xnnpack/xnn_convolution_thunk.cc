@@ -47,8 +47,7 @@ namespace xla::cpu {
 
 absl::StatusOr<xnn_subgraph_t> XnnConvolutionThunk::BuildConvolutionSubgraph(
     absl::Span<const Argument> arguments, absl::Span<const Result> results,
-    absl::Span<const se::DeviceMemoryBase> arguments_buffers,
-    absl::Span<const se::DeviceMemoryBase> results_buffers) {
+    absl::Span<const se::DeviceMemoryBase> arguments_buffers) {
   xnn_subgraph_t subgraph = nullptr;
   XNN_RETURN_IF_ERROR(xnn_create_subgraph(/*external_value_ids=*/3,
                                           /*flags=*/0, &subgraph));
@@ -157,11 +156,11 @@ XnnConvolutionThunk::XnnConvolutionThunk(
     : XnnFusionThunk(XnnFusionKind::kConvolution, std::move(options),
                      std::move(info), ConvolutionArguments(convolution_slices),
                      ConvolutionResults(convolution_slices),
-                     OneUseBuilder(std::bind(
+                     CapturingBuilder(std::bind(
                          &XnnConvolutionThunk::BuildConvolutionSubgraph, this,
                          std::placeholders::_1, std::placeholders::_2,
-                         std::placeholders::_3, std::placeholders::_4)),
-                     /*by_value_arguments=*/{1}, /*by_value_results=*/{}),
+                         std::placeholders::_3)),
+                     /*captured_arguments=*/{1}),
       convolution_slices_(std::move(convolution_slices)),
       convolution_canonical_dims_(std::move(convolution_canonical_dims)),
       dnums_(std::move(dnums)),

@@ -323,6 +323,7 @@ cc_library(
         "optimize_global_tensors.cc",
         "remove_vars_in_session_initializer.cc",
         "strip_saved_module_metadata.cc",
+        "unfreeze_mutable_global_tensors.cc",
     ],
     hdrs = [
         "tf_saved_model_passes.h",

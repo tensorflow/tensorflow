@@ -67,7 +67,8 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
 
   CpuAotCompilationOptions(std::string triple, std::string cpu_name,
                            std::string features, std::string entry_point_name,
-                           RelocationModel relocation_model);
+                           RelocationModel relocation_model,
+                           bool compile_copy_as_llvm_kernel = false);
 
   ~CpuAotCompilationOptions() override;
 
@@ -83,6 +84,11 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
   const std::string& entry_point_name() const { return entry_point_name_; }
   // The relocation model used for compilation.
   RelocationModel relocation_model() const { return relocation_model_; }
+  // Whether to compile copy as LLVM kernel. This is used to avoid dependencies
+  // on pjrt/transpose for tfcompiled models.
+  bool compile_copy_as_llvm_kernel() const {
+    return compile_copy_as_llvm_kernel_;
+  }
 
  private:
   const std::string triple_;
@@ -90,6 +96,7 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
   const std::string features_;
   const std::string entry_point_name_;
   const RelocationModel relocation_model_;
+  const bool compile_copy_as_llvm_kernel_;
 };
 
 // Temporary base class for CpuAotCompilationResultLegacy and

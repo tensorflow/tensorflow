@@ -112,6 +112,7 @@ template <typename HloT>
 absl::Status HloPassPipeline::RunInvariantCheckers(
     HloT* hlo, absl::string_view after_pass_name,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  tsl::profiler::TraceMe traceme("RunInvariantCheckers");
   for (auto& invariant_checker : invariant_checkers_) {
     VLOG(1) << "    Invariant checker " << invariant_checker->name();
     absl::StatusOr<bool> changed_status =

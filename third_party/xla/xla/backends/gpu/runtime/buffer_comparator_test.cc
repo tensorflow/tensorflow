@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/ascii.h"
+#include "absl/types/span.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/platform_util.h"
@@ -52,8 +53,8 @@ class BufferComparatorTest : public testing::Test {
 
   // Take floats only for convenience. Still uses ElementType internally.
   template <typename ElementType>
-  bool CompareEqualBuffers(const std::vector<ElementType>& current,
-                           const std::vector<ElementType>& expected,
+  bool CompareEqualBuffers(absl::Span<const ElementType> current,
+                           absl::Span<const ElementType> expected,
                            double tolerance) {
     auto stream = stream_exec_->CreateStream().value();
 
@@ -87,7 +88,7 @@ class BufferComparatorTest : public testing::Test {
                                 double tolerance = kDefaultTolerance) {
     std::vector<ElementType> lhs(lhs_float.begin(), lhs_float.end());
     std::vector<ElementType> rhs(rhs_float.begin(), rhs_float.end());
-    return CompareEqualBuffers(lhs, rhs, tolerance);
+    return CompareEqualBuffers<ElementType>(lhs, rhs, tolerance);
   }
 
   template <typename ElementType>
@@ -121,6 +122,13 @@ TEST_F(BufferComparatorTest, TestComplex) {
                                           {{0.1, 0.2}, {2.2, 3.3}}));
   EXPECT_FALSE(
       CompareEqualComplex<double>({{0.1, 0.2}, {2, 3}}, {{0.1, 0.2}, {2, 7}}));
+}
+
+TEST_F(BufferComparatorTest, TestPred) {
+  EXPECT_TRUE(CompareEqualBuffers<bool>({false, true}, {false, true}, 0.0));
+  EXPECT_FALSE(CompareEqualBuffers<bool>({false, true}, {false, false}, 0.0));
+  EXPECT_FALSE(CompareEqualBuffers<bool>({false, true}, {true, true}, 0.0));
+  EXPECT_FALSE(CompareEqualBuffers<bool>({false, true}, {true, false}, 0.0));
 }
 
 TEST_F(BufferComparatorTest, TestNaNs) {

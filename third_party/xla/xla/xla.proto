@@ -902,8 +902,8 @@ message DebugOptions {
   reserved 93;  // Was xla_hlo_tfgraph_device_scopes
   reserved 94;  // Was xla_gpu_use_cudnn_batchnorm
 
-  // Generate calls to MKL-DNN in the CPU backend.
-  bool xla_cpu_use_mkl_dnn = 97;
+  // Call oneDNN thunks for matmul and convolution fusions in the CPU backend.
+  bool xla_cpu_use_onednn = 97;
 
   reserved 177;  // Was xla_cpu_use_xla_runtime
   reserved 98;   // Was xla_gpu_max_kernel_unroll_factor
@@ -1426,7 +1426,7 @@ message ExecutionOptions {
 // Serialization of HloModuleConfig. See the C++ class definition for
 // descriptions of each field.
 // There are no guarantees of backwards or forwards compatibility.
-// Next id: 41.
+// Next id: 42.
 message HloModuleConfigProto {
   enum FusionConfigCollection {
     OFF = 0;       // Do not collect configuration.
@@ -1490,6 +1490,7 @@ message HloModuleConfigProto {
   int64 device_memory_size = 32;
   bool use_shardy_partitioner = 34;
   ShardingConfigProto sharding_config = 38;
+  ScheduleConfigProto schedule_config = 41;
 }
 
 message HloModuleProtoWithConfig {
@@ -1548,4 +1549,15 @@ message NodeShardingConfigProto {
 message ShardingConfigProto {
   // Configuration for each HLO instruction.
   repeated NodeShardingConfigProto nodes = 1;
+}
+
+// Message that captures schedule configuration of an HLO module.
+message ScheduleConfigProto {
+  message Instruction {
+    // Instruction name.
+    string name = 1;
+  }
+
+  // The schedule of the HLO module.
+  repeated Instruction sequence = 1;
 }

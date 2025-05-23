@@ -26,9 +26,11 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/runtime/large_hlo_snapshot_serialization/serialization.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
@@ -66,10 +68,12 @@ TEST(DumpHloIfEnabled, LargeConstantElided) {
                           ParseAndReturnUnverifiedModule(kModuleStr, config));
   std::string dump_name = "dump";
   auto paths = DumpHloModuleIfEnabled(*m, dump_name);
-  EXPECT_EQ(paths.size(), 1);
+  EXPECT_EQ(paths.size(), 2);  // debug options dump + HLO dump.
   std::string data;
   EXPECT_TRUE(ReadFileToString(env, paths[0], &data).ok());
   EXPECT_TRUE(absl::StrContains(data, "{...}"));
+  EXPECT_TRUE(ReadFileToString(env, paths[1], &data).ok());
+  EXPECT_TRUE(absl::StrContains(data, "xla_dump_to:"));
 }
 
 TEST(DumpHloIfEnabled, LargeConstantPrinted) {
@@ -94,10 +98,61 @@ TEST(DumpHloIfEnabled, LargeConstantPrinted) {
                           ParseAndReturnUnverifiedModule(kModuleStr, config));
   std::string dump_name = "dump";
   auto paths = DumpHloModuleIfEnabled(*m, dump_name);
-  EXPECT_EQ(paths.size(), 1);
+  EXPECT_EQ(paths.size(), 2);
   std::string data;
   EXPECT_TRUE(ReadFileToString(env, paths[0], &data).ok());
   EXPECT_TRUE(!absl::StrContains(data, "{...}"));
+  EXPECT_TRUE(ReadFileToString(env, paths[1], &data).ok());
+  EXPECT_TRUE(absl::StrContains(data, "xla_dump_to:"));
+  EXPECT_TRUE(absl::StrContains(data, "xla_dump_hlo_as_text: true"));
+  EXPECT_TRUE(absl::StrContains(data, "xla_dump_large_constants: true"));
+}
+
+TEST(DumpHloModule, WithBufferAssignment) {
+  HloModuleConfig config;
+  DebugOptions options = config.debug_options();
+  tsl::Env* env = tsl::Env::Default();
+  std::string dump_dir;
+  EXPECT_TRUE(env->LocalTempFilename(&dump_dir));
+  options.set_xla_dump_to(dump_dir);
+  config.set_debug_options(options);
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = s32[11] parameter(0)
+      c = s32[11] constant({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10})
+      ROOT x = s32[11] multiply(p0, c)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnUnverifiedModule(kModuleStr, config));
+  std::unique_ptr<BufferAssignment> buffer_assignment =
+      BufferAssigner::Run(
+          /*module=*/&*m,
+          /*hlo_ordering=*/std::make_unique<DependencyHloOrdering>(&*m),
+          /*buffer_size=*/
+          [](const BufferValue& buffer) -> int64_t {
+            return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
+          },
+          /*color_alignment=*/[](LogicalBuffer::Color) -> int64_t { return 1; },
+          /*allocate_buffers_for_constants=*/true)
+          .value();
+  std::string dump_name = "dump";
+  std::vector<std::string> paths =
+      DumpHloModuleIfEnabled(*m, *buffer_assignment, dump_name);
+  EXPECT_EQ(paths.size(), 4);
+  std::string data;
+  // First file is the HLO.
+  EXPECT_TRUE(ReadFileToString(env, paths[0], &data).ok());
+  EXPECT_TRUE(absl::StrContains(data, "HloModule m"));
+  // Second file is the buffer assignment.
+  EXPECT_TRUE(ReadFileToString(env, paths[1], &data).ok());
+  EXPECT_TRUE(absl::StrContains(data, "BufferAssignment:"));
+  // Third file is the memory usage report.
+  EXPECT_TRUE(ReadFileToString(env, paths[2], &data).ok());
+  EXPECT_TRUE(absl::StrContains(data, "Total bytes used:"));
+  // Fourth file is the debug options.
+  EXPECT_TRUE(ReadFileToString(env, paths[3], &data).ok());
 }
 
 TEST(DumpTest, NoDumpingToFileWhenNotEnabled) {
@@ -184,11 +239,15 @@ TEST(DumpTest, DumpFdoProfileToFileWhenEnabled) {
                           ParseAndReturnUnverifiedModule(kModuleStr, config));
   std::string dump_name = "dump";
   auto paths = DumpHloModuleIfEnabled(*m, dump_name);
-  EXPECT_EQ(paths.size(), 2);
+  EXPECT_EQ(paths.size(), 3);
 
   std::string data;
   EXPECT_TRUE(ReadFileToString(env, paths[1], &data).ok());
   EXPECT_TRUE(absl::StrContains(data, fdo_profile));
+  EXPECT_TRUE(ReadFileToString(env, paths[2], &data).ok());
+  EXPECT_TRUE(
+      absl::StrContains(data, "xla_gpu_experimental_dump_fdo_profiles: true"));
+  EXPECT_TRUE(absl::StrContains(data, "xla_dump_to:"));
 }
 
 TEST(DumpTest, DumpHloUnoptimizedSnapshot) {
@@ -251,7 +310,7 @@ TEST(DumpHloIfEnabled, DumpsBuildClNumber) {
 
   std::string dump_name = "dump";
   auto paths = DumpHloModuleIfEnabled(*m, dump_name);
-  EXPECT_EQ(paths.size(), 1);
+  EXPECT_EQ(paths.size(), 2);
 
   EXPECT_TRUE(absl::StrContains(paths[0], ".cl_"));
 }

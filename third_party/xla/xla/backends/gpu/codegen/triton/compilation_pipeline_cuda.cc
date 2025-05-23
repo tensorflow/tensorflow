@@ -93,12 +93,13 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
     pm->addPass(mlir::createCanonicalizerPass());
     pm->addPass(mlir::createLoopInvariantCodeMotionPass());
     pm->addPass(mt::gpu::createTritonGPUOptimizeAccumulatorInit());
+    pm->addPass(mlir::createTritonNvidiaGPUPromoteLHSToTMemPass());
     pm->addPass(
         mt::gpu::createTritonGPUAutomaticWarpSpecialization({num_stages}));
     pm->addPass(mt::gpu::createTritonGPUHoistTMEMAlloc());
     pm->addPass(mt::gpu::createTritonGPUPipeline({num_stages}));
     pm->addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
-    pm->addPass(mlir::createTritonNvidiaGPUPromoteLHSToTMemPass());
+    pm->addPass(mlir::createTritonNvidiaGPURemoveTMEMTokensPass());
     pm->addPass(mlir::createCanonicalizerPass());
   } else if (cc.IsAtLeastAmpere()) {
     // Even though we don't run on pre-Ampere architectures anymore, we keep
@@ -122,10 +123,14 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
   pm->addPass(mlir::createCSEPass());
   pm->addPass(mlir::createSymbolDCEPass());
   if (cc.IsAtLeastHopper()) {
-    pm->addPass(mlir::createTritonNvidiaGPUFenceInsertionPass(ccAsInt));
     pm->addPass(mlir::createTritonNvidiaGPUTMALoweringPass());
+    pm->addPass(mlir::createTritonNvidiaGPUFenceInsertionPass(ccAsInt));
   }
   pm->addPass(mlir::createCanonicalizerPass());
+
+  // Corresponds to "mod.get_tensordesc_metadata()"
+  // in @triton//:third_party/nvidia/backend/compiler.py
+  pm->addPass(mt_xla::CreateExtractTmaInfoPass());
 
   // Based on make_llir() in
   // @triton//:third_party/nvidia/backend/compiler.py

@@ -81,12 +81,19 @@ struct MatrixLayout : public se::gpu::MatrixLayout {
 };
 
 struct GemmConfig : public se::gpu::GemmConfig {
+  GemmConfig() = default;
+  explicit GemmConfig(const se::gpu::GemmConfig& base)
+      : se::gpu::GemmConfig(base) {}
+  explicit GemmConfig(se::gpu::GemmConfig&& base)
+      : se::gpu::GemmConfig(std::move(base)) {}
+
   // For legacy Gemm operations XLA:GPU allocates its own workspace and passes
   // it to all BLAS API calls.
   //
   // Size of the workspace based on NVIDIA recommendation:
   // https://docs.nvidia.com/cuda/cublas/#cublassetworkspace
   static constexpr int64_t kHopperWorkspace = 32 * 1024 * 1024;  // 32 MiB
+  static constexpr int64_t kGFX942Workspace = 76 * 1024 * 1024;  // 76 MiB
   static constexpr int64_t kGFX950Workspace = 64 * 1024 * 1024;  // 64 MiB
   static constexpr int64_t kDefaultWorkspace = 4 * 1024 * 1024;  // 4 MiB
   // the number of algorithms to consider for autotuning by default

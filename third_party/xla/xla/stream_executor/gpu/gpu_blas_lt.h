@@ -30,8 +30,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/protobuf_util.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu/gpu_blas_lt.pb.h"
 #include "xla/stream_executor/host_or_device_scalar.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -78,6 +80,10 @@ struct MatrixLayout {  // plain MatrixLayout which is extended with create
   // `batch_stride` is set to `0` when `batch_size == 1`.
   int64_t batch_stride;
   blas::Transpose transpose;
+
+  static absl::StatusOr<MatrixLayout> FromProto(
+      const xla::GemmConfigProto::MatrixLayout& proto);
+  xla::GemmConfigProto::MatrixLayout ToProto() const;
 };
 
 // compact version of the matrix layout to be used to pass matrices
@@ -124,6 +130,10 @@ struct GemmConfig {  // plain GemmConfig which is extended with create functions
   bool grad_x;
   bool grad_y;
   std::optional<blas::ComputationType> compute_type;
+
+  static absl::StatusOr<GemmConfig> FromProto(
+      const xla::GemmConfigProto& proto);
+  xla::GemmConfigProto ToProto() const;
 };
 
 struct BlasLt {

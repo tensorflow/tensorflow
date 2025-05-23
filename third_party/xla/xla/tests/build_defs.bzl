@@ -199,10 +199,11 @@ def xla_test(
         tags = [],
         copts = [],
         data = [],
+        env = {},
         backend_tags = {},
         backend_args = {},
         backend_kwargs = {},
-        linkstatic = False,
+        linkstatic = None,
         fail_if_no_test_linked = True,
         **kwargs):
     """Generates strict_cc_test targets for the given XLA backends.
@@ -269,6 +270,7 @@ def xla_test(
       tags: Tags for the target.
       copts: Additional copts to pass to the build.
       data: Additional data to pass to the build.
+      env: Env vars to set for the test.
       backend_tags: A dict mapping backend name to list of additional tags to
         use for that target.
       backend_args: A dict mapping backend name to list of additional args to
@@ -276,7 +278,8 @@ def xla_test(
       backend_kwargs: A dict mapping backend name to list of additional keyword
         arguments to pass to strict_cc_test. Only use for kwargs that don't have a
         dedicated argument, like setting per-backend flaky or timeout attributes.
-      linkstatic: Whether to link the test statically.
+      linkstatic: Whether to link the test statically. Can be set to None to use
+        the default value decided by strict_cc_test.
       fail_if_no_test_linked: Whether to fail if no test case is linked into the test.
       **kwargs: Additional keyword arguments to pass to strict_cc_test.
     """
@@ -356,6 +359,10 @@ def xla_test(
             for lib_dep in xla_test_library_deps:
                 backend_deps += ["%s_%s" % (lib_dep, backend)]  # buildifier: disable=list-append
 
+        device_and_modifiers = backend.split("_")
+        device = device_and_modifiers[0]
+        modifiers = device_and_modifiers[1:]
+
         xla_cc_test(
             name = test_name,
             srcs = srcs,
@@ -365,6 +372,10 @@ def xla_test(
             args = args + this_backend_args,
             deps = deps + backend_deps,
             data = data + this_backend_data,
+            env = env | {
+                "XLA_TEST_DEVICE": device,
+                "XLA_TEST_MODIFIERS": ",".join(modifiers),
+            },
             linkstatic = linkstatic,
             fail_if_no_test_linked = fail_if_no_test_linked,
             **this_backend_kwargs

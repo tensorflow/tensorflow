@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // This module exports ParseFlagsFromEnvAndDieIfUnknown(), which allows other
-// modules to parse flags from an environtment variable, or a file named by the
+// modules to parse flags from an environment variable, or a file named by the
 // environment variable.
 
 #include "xla/parse_flags_from_env.h"
@@ -107,7 +107,7 @@ static void ParseArgvFromString(const std::string& flag_str, EnvArgv* a) {
     // b is the index of the start of a flag.
     // Set e to the index just past the end of the flag.
     size_t e = b;
-    while (e != flag_str.size() && isascii(flag_str[e]) &&
+    while (e != flag_str.size() && absl::ascii_isascii(flag_str[e]) &&
            (strchr("-_", flag_str[e]) != nullptr ||
             absl::ascii_isalnum(flag_str[e]))) {
       e++;

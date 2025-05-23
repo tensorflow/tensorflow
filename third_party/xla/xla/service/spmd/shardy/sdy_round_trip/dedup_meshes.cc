@@ -183,12 +183,21 @@ void dedupMeshes(ModuleOp moduleOp,
               context, newAxisRefs, oldDimSharding.getIsClosed(),
               oldDimSharding.getPriority()));
         }
-        SmallVector<sdy::AxisRefAttr> newReplicatedAxes;
-        newReplicatedAxes.reserve(oldSharding.getReplicatedAxes().size());
-        llvm::transform(oldSharding.getReplicatedAxes(),
-                        std::back_inserter(newReplicatedAxes), buildNewAxisRef);
+        auto buildNewAxisRefList =
+            [buildNewAxisRef](ArrayRef<sdy::AxisRefAttr> oldAxisRefs) {
+              SmallVector<sdy::AxisRefAttr> newAxisRefs;
+              newAxisRefs.reserve(oldAxisRefs.size());
+              llvm::transform(oldAxisRefs, std::back_inserter(newAxisRefs),
+                              buildNewAxisRef);
+              return newAxisRefs;
+            };
+        SmallVector<sdy::AxisRefAttr> newReplicatedAxes =
+            buildNewAxisRefList(oldSharding.getReplicatedAxes());
+        SmallVector<sdy::AxisRefAttr> newUnreducedAxes =
+            buildNewAxisRefList(oldSharding.getUnreducedAxes());
         return sdy::TensorShardingAttr::get(context, mainMeshName,
-                                            newDimShardings, newReplicatedAxes);
+                                            newDimShardings, newReplicatedAxes,
+                                            newUnreducedAxes);
       });
 }
 

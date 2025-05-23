@@ -14,10 +14,34 @@
 # ============================================================================
 
 # Baseline for XLA benchmarks.
-gemma3_1b_flax_call_gpu_b200_1_host_1_device: # config_id
-  GPU_DEVICE_TIME:
-    baseline_ms: 140.5
-    threshold: 0.30 # Allow 30% regression max
-  GPU_DEVICE_MEMCPY_TIME:
-    baseline_ms: 1.0
-    threshold: 0.30 # Allow 30% regression max
+{
+  "gemma3_1b_flax_call_gpu_l4_1_host_1_device": {  # config_id
+    "GPU_DEVICE_TIME": {
+      "baseline_ms": 15,
+      "threshold": 0.30 # Allow 30% regression max
+    },
+    "GPU_DEVICE_MEMCPY_TIME": {
+      "baseline_ms": 0.3,
+      "threshold": 0.30 # Allow 30% regression max
+    }
+  },
+  "gemma3_1b_flax_call_cpu_x86_1_host_1_device": { # config_id
+    "CPU_TIME": {
+      "baseline_ms": 2500,
+      "threshold": 0.30 # Allow 30% regression max
+    },
+    "WALL_TIME": {
+      "baseline_ms": 800,
+      "threshold": 0.30 # Allow 30% regression max
+    }
+  },
+  "gemma3_1b_flax_call_gpu_b200_1_host_1_device": {  # config_id
+    "GPU_DEVICE_TIME": {
+      "baseline_ms": 140.5,
+      "threshold": 0.30 # Allow 30% regression max
+    },
+  }
+}
+
+
+

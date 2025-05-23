@@ -1822,7 +1822,11 @@ class HloInstruction {
   void ClearUniqueIdInternal() { unique_id_ = -1; }
 
   // Set the unique id for this instruction to "id"
-  void SetUniqueId(int id) {
+  // TODO(b/399394039): Remove this function once the bug is fixed.
+  void SetUniqueId(int id) { SetUniqueId(static_cast<int64_t>(id)); }
+
+  // Set the unique id for this instruction to "id"
+  void SetUniqueId(int64_t id) {
     CHECK_EQ(unique_id_, -1);  // Should not be assigned already
     CHECK_GE(id, 0);
     unique_id_ = id;
@@ -1830,7 +1834,19 @@ class HloInstruction {
 
   // Return the unique ID assigned to this node via SetUniqueId (or -1
   // if no id has been assigned yet).
-  int unique_id() const { return unique_id_; }
+  int unique_id() const {
+    CHECK_LT(unique_id_, INT32_MAX)
+        << "int32_t unique_id was requested but unique_id was written as a "
+           "64-bit integer: "
+        << unique_id_;
+    return static_cast<int>(unique_id_);
+  }
+
+  // Return the unique ID assigned to this node via SetUniqueId (or -1
+  // if no id has been assigned yet).Returns the entire unique ID as a 64-bit
+  // integer.
+  // TODO(b/399394039): Remove this function once the bug is fixed.
+  int64_t unique_id_64_bits() const { return unique_id_; }
 
   bool has_backend_config() const { return !backend_config_.empty(); }
 
@@ -1871,8 +1887,7 @@ class HloInstruction {
   }
 
   // Adds or overrides a single attribute in the HloInstruction.
-  void set_frontend_attribute(const std::string& key,
-                              const std::string& value) {
+  void set_frontend_attribute(absl::string_view key, absl::string_view value) {
     (*mutable_rare()->frontend_attributes.mutable_map())[key] = value;
   }
 
@@ -1885,7 +1900,7 @@ class HloInstruction {
   }
 
   std::optional<std::string> get_frontend_attribute(
-      const std::string& key) const {
+      absl::string_view key) const {
     auto it = rare()->frontend_attributes.map().find(key);
     if (it == rare()->frontend_attributes.map().end()) {
       return std::nullopt;
@@ -2577,7 +2592,7 @@ class HloInstruction {
         user_map_;
   };
 
-  int unique_id_;  // Unique to this HloInstruction within a HloModule
+  int64_t unique_id_;  // Unique to this HloInstruction within a HloModule
   uint32_t index_in_parent_;  // Index that identifies inst in HloComputation
 
   // Opcode for this instruction.
@@ -2752,7 +2767,6 @@ bool HloPredicateIsNotOp(const HloInstruction* instruction) {
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSort:
-    case HloOpcode::kTopK:
     case HloOpcode::kCustomCall:
       return true;
     default:

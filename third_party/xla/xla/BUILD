@@ -476,6 +476,7 @@ cc_library(
     deps = [
         ":permutation_util",
         ":printer",
+        ":shape_util_proto_cc",
         ":status_macros",
         ":types",
         ":util",
@@ -503,6 +504,11 @@ cc_library(
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:platform_port",
     ],
+)
+
+tf_proto_library(
+    name = "shape_util_proto",
+    srcs = ["shape_util.proto"],
 )
 
 cc_library(
@@ -1443,10 +1449,11 @@ bzl_library(
     name = "lit_bzl",
     srcs = ["lit.bzl"],
     deps = [
+        # copybara:uncomment "@rules_python//python:defs_bzl",
+        "@bazel_skylib//lib:paths",
         "//xla/tsl:package_groups_bzl",
         "//xla/tsl:tsl_bzl",
         "//xla/tsl/platform/default:cuda_build_defs_bzl",
-        "@bazel_skylib//lib:paths",
     ],
 )
 

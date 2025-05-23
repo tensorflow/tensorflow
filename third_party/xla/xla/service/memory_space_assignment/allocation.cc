@@ -198,7 +198,7 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
       replacement_instruction = computation->AddInstruction(
           HloInstruction::CreateBitcast(operand_shape, producing_instruction));
       if (mutable_split_shape().has_value() &&
-          producing_instruction->shape().layout().split_configs_size() != 0) {
+          producing_instruction->shape().layout().split_configs().size() != 0) {
         TF_ASSIGN_OR_RETURN(
             int64_t split_dim,
             bitcast_split_fn(

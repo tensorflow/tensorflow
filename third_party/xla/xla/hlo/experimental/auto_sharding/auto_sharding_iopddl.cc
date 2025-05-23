@@ -39,12 +39,12 @@ iopddl::Cost ConvertCost(const double cost) {
 }
 
 iopddl::Problem ConvertToProblem(const AutoShardingSolverRequest& request) {
-  CHECK(request.node_groups().empty());  // Contest files don't support groups.
   iopddl::Problem problem = {.name = request.request_name()};
   std::vector<iopddl::Interval> node_intervals;
+  // Process all nodes, taking intervals if provided.
   for (int64_t node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
     iopddl::Interval node_interval = {kInfinityInt, -1};
-    if (request.live().empty()) {
+    if (request.live().empty()) {  // No live matrices, so use intervals.
       CHECK_LT(node_idx, request.node_intervals_size());
       const auto& interval = request.node_intervals(node_idx);
       if (interval.first() <= interval.second()) {
@@ -53,11 +53,54 @@ iopddl::Problem ConvertToProblem(const AutoShardingSolverRequest& request) {
     }
     node_intervals.push_back(node_interval);
   }
+  // Process live matrices for nodes, if provided.
   for (LivenessIdx t = 0; t < request.live_size(); ++t) {
     for (int64_t node_idx : request.live(t).nodes()) {
+      if (node_idx >= request.num_nodes()) {
+        continue;  // This is a group.
+      }
       node_intervals[node_idx] = {
           std::min(node_intervals[node_idx].first, t),
           std::max(node_intervals[node_idx].second, t + 1)};
+    }
+  }
+  // Process all groups (if present), taking intervals if provided.
+  std::vector<iopddl::Interval> group_intervals;
+  for (int64_t group_idx = 0; group_idx < request.node_groups_size();
+       ++group_idx) {
+    iopddl::Interval group_interval = {kInfinityInt, -1};
+    if (request.live().empty()) {  // No live matrices, so use intervals.
+      int64_t interval_idx = request.num_nodes() + group_idx;
+      CHECK_LT(interval_idx, request.node_intervals_size());
+      const auto& interval = request.node_intervals(interval_idx);
+      if (interval.first() <= interval.second()) {
+        group_interval = {interval.first(), interval.second() + 1};
+      }
+    }
+    group_intervals.push_back(group_interval);
+  }
+  // Process live matrices for groups, if provided.
+  for (LivenessIdx t = 0; t < request.live_size(); ++t) {
+    for (int64_t node_idx : request.live(t).nodes()) {
+      if (node_idx < request.num_nodes()) {
+        continue;  // This is not a group.
+      }
+      int64_t group_idx = node_idx - request.num_nodes();
+      group_intervals[group_idx] = {
+          std::min(node_intervals[group_idx].first, t),
+          std::max(node_intervals[group_idx].second, t + 1)};
+    }
+  }
+  // Propagate any group intervals to the nodes in that group.
+  for (int64_t group_idx = 0; group_idx < request.node_groups_size();
+       ++group_idx) {
+    const auto& group = request.node_groups(group_idx);
+    const auto& group_interval = group_intervals[group_idx];
+    for (const auto& node_idx : group.prims()) {
+      node_intervals[node_idx].first =
+          std::min(node_intervals[node_idx].first, group_interval.first);
+      node_intervals[node_idx].second =
+          std::max(node_intervals[node_idx].second, group_interval.second);
     }
   }
   for (int64_t node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
@@ -184,11 +227,12 @@ AutoShardingSolverRequest ConvertToSolverRequest(
   request.set_request_name(problem.name);
   request.set_num_nodes(problem.nodes.size());
   request.set_memory_budget(problem.usage_limit.value_or(-1));
+  const std::vector<int64_t> followers = GetFollowers(problem);
   for (iopddl::NodeIdx node_idx = 0; node_idx < problem.nodes.size();
        ++node_idx) {
     const iopddl::Node& node = problem.nodes[node_idx];
     request.add_s_len(node.strategies.size());
-    request.add_s_follow(-1);
+    request.add_s_follow(followers[node_idx]);
     request.add_communication_costs();
     request.add_computation_costs();
     request.add_memory_costs();
@@ -209,24 +253,55 @@ AutoShardingSolverRequest ConvertToSolverRequest(
     request.mutable_node_intervals()->rbegin()->set_second(
         empty_interval ? -1 : node.interval.second - 1);
   }
-  // Aggregate edge costs for all unique node pairs.
-  std::map<std::pair<int64_t, int64_t>, std::vector<iopddl::Cost>> edge_costs;
+  for (const auto& alias : GetAliases(problem)) {
+    auto* alias_proto = request.add_aliases();
+    alias_proto->set_first(alias.nodes[0]);
+    alias_proto->set_second(alias.nodes[1]);
+    request.add_value_costs();
+    for (const iopddl::Strategy& strategy : alias.strategies) {
+      request.mutable_value_costs()->rbegin()->add_costs(
+          strategy.cost == kInfinityInt ? 1.0 : 0.0);
+    }
+  }
+  for (const auto& deduplicated_edge : GetDeduplicatedEdges(problem)) {
+    auto* edge_proto = request.add_edges();
+    edge_proto->set_first(deduplicated_edge.nodes[0]);
+    edge_proto->set_second(deduplicated_edge.nodes[1]);
+    request.add_resharding_costs();
+    for (const auto& strategy : deduplicated_edge.strategies) {
+      request.mutable_resharding_costs()->rbegin()->add_costs(
+          static_cast<double>(strategy.cost));
+    }
+  }
+  return request;
+}
+
+std::vector<int64_t> GetFollowers(const iopddl::Problem& problem) {
+  std::vector<int64_t> followers(problem.nodes.size(), -1);
   for (iopddl::EdgeIdx edge_idx = 0; edge_idx < problem.edges.size();
        ++edge_idx) {
     const iopddl::Edge& edge = problem.edges[edge_idx];
     if (IsEdgeFollower(problem, edge)) {
-      request.mutable_s_follow()->Set(edge.nodes[1], edge.nodes[0]);
-      continue;
+      followers[edge.nodes[1]] = edge.nodes[0];
     }
-    if (IsEdgeAlias(edge)) {
-      auto* alias = request.add_aliases();
-      alias->set_first(edge.nodes[0]);
-      alias->set_second(edge.nodes[1]);
-      request.add_value_costs();
-      for (const iopddl::Strategy& strategy : edge.strategies) {
-        request.mutable_value_costs()->rbegin()->add_costs(
-            strategy.cost == kInfinityInt ? 1.0 : 0.0);
-      }
+  }
+  return followers;
+}
+
+std::vector<iopddl::Edge> GetAliases(const iopddl::Problem& problem) {
+  std::vector<iopddl::Edge> aliases;
+  for (const iopddl::Edge& edge : problem.edges) {
+    if (!IsEdgeFollower(problem, edge) && IsEdgeAlias(edge)) {
+      aliases.push_back(edge);
+    }
+  }
+  return aliases;
+}
+
+std::vector<iopddl::Edge> GetDeduplicatedEdges(const iopddl::Problem& problem) {
+  std::map<std::pair<int64_t, int64_t>, std::vector<iopddl::Cost>> edge_costs;
+  for (const iopddl::Edge& edge : problem.edges) {
+    if (IsEdgeFollower(problem, edge) || IsEdgeAlias(edge)) {
       continue;
     }
     std::pair<int64_t, int64_t> node_pair = {edge.nodes[0], edge.nodes[1]};
@@ -238,18 +313,14 @@ AutoShardingSolverRequest ConvertToSolverRequest(
       costs[idx] += edge.strategies[idx].cost;
     }
   }
-  // Create one edge in the solver request for each node pair that appears.
+  std::vector<iopddl::Edge> deduplicated_edges;
   for (const auto& [edge, costs] : edge_costs) {
-    auto* edge_proto = request.add_edges();
-    edge_proto->set_first(edge.first);
-    edge_proto->set_second(edge.second);
-    request.add_resharding_costs();
+    deduplicated_edges.push_back({{edge.first, edge.second}});
     for (iopddl::Cost strategy_cost : costs) {
-      request.mutable_resharding_costs()->rbegin()->add_costs(
-          static_cast<double>(strategy_cost));
+      deduplicated_edges.back().strategies.push_back({strategy_cost});
     }
   }
-  return request;
+  return deduplicated_edges;
 }
 
 void RandomizeCosts(iopddl::Problem& problem) {

@@ -72,8 +72,8 @@ TEST_F(TiledHloInstructionTest,
       ShapeUtil::MakeShape(PrimitiveType::F32, {32, 64}), "p0");
 
   IndexingMap tile_offsets_indexing = IndexingMap::FromTensorSizes(
-      ParseAffineMap("(d0, d1) -> (2 * d0)", &mlir_context_),
-      /*dim_upper_bounds=*/{2, 4},
+      ParseAffineMap("(d0) -> (2 * d0)", &mlir_context_),
+      /*dim_upper_bounds=*/{2},
       /*symbol_upper_bounds=*/{});
 
   EXPECT_THAT(
@@ -84,6 +84,18 @@ TEST_F(TiledHloInstructionTest,
           .message(),
       HasSubstr(
           "must have the same number of results as the rank of the hlo shape"));
+
+  IndexingMap tile_offsets_indexing2 = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0, d1) -> (d0, d1)", &mlir_context_),
+      /*dim_upper_bounds=*/{8, 4},
+      /*symbol_upper_bounds=*/{});
+
+  EXPECT_THAT(TiledHloInstruction::Create(
+                  hlo.get(), /*operands=*/{}, /*tile_sizes=*/{16, 16},
+                  /*tile_strides=*/{1, 1}, tile_offsets_indexing2)
+                  .status()
+                  .message(),
+              ::testing::HasSubstr("must have 1 dim"));
 }
 
 using TiledHloFusionInstructionTest = TiledHloInstructionTest;

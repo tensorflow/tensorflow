@@ -1039,10 +1039,9 @@ HloSharding HloSharding::GetSubSharding(const Shape& shape,
   const Shape* sub_shape = &shape;
   for (int64_t idx : index) {
     for (int64_t i = 0; i < idx; ++i) {
-      sharding_index += ShapeUtil::GetLeafCount(
-          ShapeUtil::GetSubshapeOneIndex(*sub_shape, i));
+      sharding_index += ShapeUtil::GetLeafCount(sub_shape->tuple_shapes(i));
     }
-    sub_shape = &ShapeUtil::GetSubshapeOneIndex(*sub_shape, idx);
+    sub_shape = &sub_shape->tuple_shapes(idx);
   }
   if (sub_shape->IsTuple()) {
     auto begin_it = tuple_elements_.begin() + sharding_index;

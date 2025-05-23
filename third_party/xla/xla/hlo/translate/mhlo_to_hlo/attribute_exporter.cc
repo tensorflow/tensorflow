@@ -136,6 +136,46 @@ absl::StatusOr<xla::PrecisionConfig::Algorithm> ConvertDotAlgorithm(
   return Internal("Unknown dot algorithm");
 }
 
+absl::StatusOr<xla::PrecisionConfig::Algorithm> ConvertDotAlgorithm(
+    mlir::stablehlo::DotAlgorithmAttr attr) {
+  auto algorithm = mlir::hlo::detail::getKnownDotAlgorithm(
+      attr.getLhsPrecisionType(), attr.getRhsPrecisionType(),
+      attr.getAccumulationType(), attr.getLhsComponentCount(),
+      attr.getRhsComponentCount(), attr.getNumPrimitiveOperations(),
+      attr.getAllowImpreciseAccumulation());
+  if (failed(algorithm)) return Internal("Unknown dot algorithm");
+
+  switch (algorithm.value()) {
+    case mlir::hlo::detail::KnownDotAlgorithm::ANY_F8_ANY_F8_F32:
+      return xla::PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32;
+    case mlir::hlo::detail::KnownDotAlgorithm::ANY_F8_ANY_F8_F32_FAST_ACCUM:
+      return xla::PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM;
+    case mlir::hlo::detail::KnownDotAlgorithm::F16_F16_F16:
+      return xla::PrecisionConfig::ALG_DOT_F16_F16_F16;
+    case mlir::hlo::detail::KnownDotAlgorithm::F16_F16_F32:
+      return xla::PrecisionConfig::ALG_DOT_F16_F16_F32;
+    case mlir::hlo::detail::KnownDotAlgorithm::BF16_BF16_BF16:
+      return xla::PrecisionConfig::ALG_DOT_BF16_BF16_BF16;
+    case mlir::hlo::detail::KnownDotAlgorithm::BF16_BF16_F32:
+      return xla::PrecisionConfig::ALG_DOT_BF16_BF16_F32;
+    case mlir::hlo::detail::KnownDotAlgorithm::BF16_BF16_F32_X3:
+      return xla::PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3;
+    case mlir::hlo::detail::KnownDotAlgorithm::BF16_BF16_F32_X6:
+      return xla::PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6;
+    case mlir::hlo::detail::KnownDotAlgorithm::BF16_BF16_F32_X9:
+      return xla::PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9;
+    case mlir::hlo::detail::KnownDotAlgorithm::TF32_TF32_F32:
+      return xla::PrecisionConfig::ALG_DOT_TF32_TF32_F32;
+    case mlir::hlo::detail::KnownDotAlgorithm::TF32_TF32_F32_X3:
+      return xla::PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3;
+    case mlir::hlo::detail::KnownDotAlgorithm::F32_F32_F32:
+      return xla::PrecisionConfig::ALG_DOT_F32_F32_F32;
+    case mlir::hlo::detail::KnownDotAlgorithm::F64_F64_F64:
+      return xla::PrecisionConfig::ALG_DOT_F64_F64_F64;
+  }
+  return Internal("Unknown dot algorithm");
+}
+
 // Convert replica group from MLIR encoding to HLO.
 // See HloFunctionImporter::ConvertReplicaGroups for the MLIR encoding.
 absl::StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
@@ -218,6 +258,26 @@ absl::StatusOr<xla::CustomCallSchedule> ConvertCustomCallSchedule(
     default:
       return InvalidArgument("Unknown CustomCallSchedule enum value #%d",
                              schedule);
+  }
+}
+
+absl::StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
+    mlir::stablehlo::CustomCallApiVersion api_version) {
+  switch (api_version) {
+    case mlir::stablehlo::CustomCallApiVersion::API_VERSION_UNSPECIFIED:
+      return xla::CustomCallApiVersion::API_VERSION_UNSPECIFIED;
+    case mlir::stablehlo::CustomCallApiVersion::API_VERSION_ORIGINAL:
+      return xla::CustomCallApiVersion::API_VERSION_ORIGINAL;
+    case mlir::stablehlo::CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
+      return xla::CustomCallApiVersion::API_VERSION_STATUS_RETURNING;
+    case mlir::stablehlo::CustomCallApiVersion::
+        API_VERSION_STATUS_RETURNING_UNIFIED:
+      return xla::CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED;
+    case mlir::stablehlo::CustomCallApiVersion::API_VERSION_TYPED_FFI:
+      return xla::CustomCallApiVersion::API_VERSION_TYPED_FFI;
+    default:
+      return InvalidArgument("Unknown CustomCallApiVersion enum value #%d",
+                             api_version);
   }
 }
 

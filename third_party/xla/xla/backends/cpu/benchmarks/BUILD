@@ -538,6 +538,7 @@ xla_cc_test(
     name = "xnn_fusion_benchmark_test",
     srcs = ["xnn_fusion_benchmark_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
+    linkstatic = 1,  # required to override pthreadpool symbols
     deps = [
         ":hlo_benchmark_runner",
         ":multi_benchmark_config",

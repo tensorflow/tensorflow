@@ -21,6 +21,7 @@ cc_library(
     hdrs = ["xnn_graph_fusion.h"],
     deps = [
         "//xla/backends/cpu:xnn_fusion",
+        "//xla/backends/cpu:xnnpack_config_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:instruction_fusion",
         "//xla/service/cpu:backend_config_proto_cc",

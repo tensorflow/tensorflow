@@ -1,4 +1,4 @@
-// RUN: tf-opt -split-input-file -tfl-insert-call-once-op %s | FileCheck %s
+// RUN: litert-opt -split-input-file -tfl-insert-call-once-op %s | FileCheck %s
 
 // Tests that new call_once op is added when there is a session initializer.
 

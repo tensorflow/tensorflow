@@ -24,7 +24,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 
-namespace mlir::quant::stablehlo {
+namespace mlir::tf_quant::stablehlo {
+
+using ::mlir::quant::stablehlo::Component;
 
 // Performs pre-calibration graph transformation as part of post-training
 // static-range quantization.
@@ -48,6 +50,6 @@ class PreCalibrationComponent : public Component {
   MLIRContext* absl_nonnull ctx_;
 };
 
-}  // namespace mlir::quant::stablehlo
+}  // namespace mlir::tf_quant::stablehlo
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_CC_TF_PRE_CALIBRATION_H_

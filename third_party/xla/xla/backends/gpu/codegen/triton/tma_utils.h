@@ -20,14 +20,16 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 
 namespace xla::gpu {
 
 // Returns a TmaDescriptor for a 2D tensor to be emitted in Triton.
 absl::StatusOr<stream_executor::gpu::TmaDescriptor> Create2DTmaDescriptor(
-    llvm::ArrayRef<int64_t> global_shape, llvm::ArrayRef<int64_t> block_shape,
-    int element_byte_size);
+    llvm::ArrayRef<int64_t> global_shape, llvm::ArrayRef<int64_t> tile_shape,
+    llvm::ArrayRef<int64_t> tile_strides, llvm::ArrayRef<int64_t> layout,
+    int element_byte_size, mlir::triton::xla::SwizzleMode swizzle_mode);
 
 }  // namespace xla::gpu
 

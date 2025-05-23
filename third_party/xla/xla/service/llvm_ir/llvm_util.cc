@@ -137,7 +137,7 @@ llvm::CallInst* EmitCallToIntrinsic(
   llvm::Module* module = ModuleFromIRBuilder(b);
   llvm::Function* intrinsic = llvm::Intrinsic::getOrInsertDeclaration(
       module, intrinsic_id, AsArrayRef(overloaded_types));
-  return b->CreateCall(intrinsic, AsArrayRef(operands), name.data());
+  return b->CreateCall(intrinsic, AsArrayRef(operands), AsStringRef(name));
 }
 
 llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
@@ -145,7 +145,7 @@ llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
                           absl::string_view name) {
   if (b->getFastMathFlags().noNaNs() || enable_fast_min_max) {
     auto cmp = b->CreateFCmpUGE(lhs_value, rhs_value);
-    return b->CreateSelect(cmp, lhs_value, rhs_value, name.data());
+    return b->CreateSelect(cmp, lhs_value, rhs_value, AsStringRef(name));
   }
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::maximum,
                                       {lhs_value, rhs_value},
@@ -157,7 +157,7 @@ llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
                           absl::string_view name) {
   if (b->getFastMathFlags().noNaNs() || enable_fast_min_max) {
     auto cmp = b->CreateFCmpULE(lhs_value, rhs_value);
-    return b->CreateSelect(cmp, lhs_value, rhs_value, name.data());
+    return b->CreateSelect(cmp, lhs_value, rhs_value, AsStringRef(name));
   }
   return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::minimum,
                                       {lhs_value, rhs_value},
@@ -468,10 +468,10 @@ llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
   llvm::Value* comparison_result;
   if (lhs_value->getType()->isIntegerTy()) {
     comparison_result =
-        b->CreateICmp(predicate, lhs_value, rhs_value, name.data());
+        b->CreateICmp(predicate, lhs_value, rhs_value, AsStringRef(name));
   } else {
     comparison_result =
-        b->CreateFCmp(predicate, lhs_value, rhs_value, name.data());
+        b->CreateFCmp(predicate, lhs_value, rhs_value, AsStringRef(name));
   }
   // comparison_result is i1, but the NVPTX codegen incorrectly lowers i1
   // arrays. So we extend it to i8 so that it's addressable.

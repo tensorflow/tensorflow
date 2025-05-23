@@ -19,6 +19,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/status/statusor.h"
 #include "xla/array2d.h"
 #include "xla/array3d.h"
@@ -189,7 +190,10 @@ TEST_F(SVDTest, TestSingleValuesMatchNumpy) {
 }
 
 // Too slow on the interpreter backend.
-TEST_F(SVDTest, DISABLED_ON_INTERPRETER(Various_Size_Random_Matrix_512x128)) {
+TEST_F(SVDTest, Various_Size_Random_Matrix_512x128) {
+  if (test::DeviceIs(test::kInterpreter)) {
+    GTEST_SKIP();
+  }
   XlaBuilder builder(TestName());
   Array2D<float> a_val = GenerateRandomMatrix(512, 128);
   XlaOp a;
@@ -223,7 +227,10 @@ TEST_F(SVDTest, Various_Size_Random_Matrix_256x128) {
 }
 
 // Too slow on the interpreter backend.
-TEST_F(SVDTest, DISABLED_ON_INTERPRETER(Various_Size_Random_Matrix_128x512)) {
+TEST_F(SVDTest, Various_Size_Random_Matrix_128x512) {
+  if (test::DeviceIs(test::kInterpreter)) {
+    GTEST_SKIP();
+  }
   XlaBuilder builder(TestName());
   Array2D<float> a_val = GenerateRandomMatrix(128, 512);
   XlaOp a;
@@ -235,8 +242,10 @@ TEST_F(SVDTest, DISABLED_ON_INTERPRETER(Various_Size_Random_Matrix_128x512)) {
 }
 
 // Too slow on the interpreter and CPU backends.
-TEST_F(SVDTest, DISABLED_ON_CPU(DISABLED_ON_INTERPRETER(
-                    Various_Size_Random_Matrix_512x256))) {
+TEST_F(SVDTest, Various_Size_Random_Matrix_512x256) {
+  if (test::DeviceIsOneOf({test::kCpu, test::kInterpreter})) {
+    GTEST_SKIP();
+  }
   XlaBuilder builder(TestName());
   Array2D<float> a_val = GenerateRandomMatrix(512, 256);
   XlaOp a;
@@ -248,8 +257,10 @@ TEST_F(SVDTest, DISABLED_ON_CPU(DISABLED_ON_INTERPRETER(
 }
 
 // Too slow on the CPU, GPU and interpreter backends.
-TEST_F(SVDTest, DISABLED_ON_GPU(DISABLED_ON_CPU(DISABLED_ON_INTERPRETER(
-                    Various_Size_Random_Matrix_512x512)))) {
+TEST_F(SVDTest, Various_Size_Random_Matrix_512x512) {
+  if (test::DeviceIsOneOf({test::kCpu, test::kGpu, test::kInterpreter})) {
+    GTEST_SKIP();
+  }
   XlaBuilder builder(TestName());
   Array2D<float> a_val = GenerateRandomMatrix(512, 512);
   XlaOp a;

@@ -46,7 +46,7 @@ TEST(LlvmIrKernelEmitterTest, ParseLlvmIr) {
   )";
 
   LlvmIrKernelEmitter::KernelArg arg{1024, BufferUse::kWrite};
-  LlvmIrKernelEmitter emitter(kLlvmIr, "noop", se::ThreadDim(), {arg});
+  LlvmIrKernelEmitter emitter(kLlvmIr, "noop", {}, {arg});
 
   TF_ASSERT_OK_AND_ASSIGN(KernelDefinition kernel_definition,
                           emitter.EmitKernelDefinition());

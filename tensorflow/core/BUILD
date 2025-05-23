@@ -417,6 +417,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:tensor_slice.h",
         "//tensorflow/core/framework:tensor_types.h",
         "//tensorflow/core/framework:tensor_util.h",
+        "//tensorflow/core/framework:tf_data_file_logger_options.h",
         "//tensorflow/core/framework:thread_factory.h",
         "//tensorflow/core/framework:tracking_allocator.h",
         "//tensorflow/core/framework:type_index.h",

@@ -23,6 +23,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
@@ -1681,7 +1682,10 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
 }
 
-XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_GPU(ConvolveC64Forward)) {
+XLA_TEST_F(ConvolutionHloTest, ConvolveC64Forward) {
+  if (test::DeviceIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   constexpr char kHlo[] = R"(
 HloModule TestModule
 

@@ -1,5 +1,6 @@
 load("//xla:py_strict.bzl", "py_strict_test")
 load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
     "if_llvm_aarch64_available",
@@ -11,7 +12,7 @@ load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//xla/backends/cpu:xla_backend_cpu_internal_access"],
+    default_visibility = internal_visibility(["//xla/backends/cpu:xla_backend_cpu_internal_access"]),
     licenses = ["notice"],
 )
 
@@ -263,10 +264,10 @@ cc_library(
     hdrs = ["target_machine_test_base.h"],
     deps = [
         ":target_machine_features",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_for_library",
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:MC",
@@ -470,12 +471,12 @@ cc_library(
         "//xla/codegen:kernel_spec",
         "//xla/codegen:llvm_ir_kernel_source",
         "//xla/hlo/ir:hlo",
+        "//xla/runtime:work_group",
         "//xla/service:buffer_assignment",
         "//xla/service/cpu:backend_config_proto_cc",
         "//xla/service/cpu:ir_emitter",
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:llvm_util",
-        "//xla/stream_executor:launch_dim",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",

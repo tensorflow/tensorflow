@@ -95,7 +95,7 @@ cc_library(
         "transforms/fold_broadcast_pass.cc",
     ],
     hdrs = [
-        "transforms/stablehlo_passes.h",
+        "transforms/fold_broadcast_pass.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = [
@@ -261,7 +261,7 @@ cc_library(
         "transforms/mhlo_passes/fuse_convolution_pass.cc",
     ],
     hdrs = [
-        "transforms/stablehlo_passes.h",
+        "transforms/mhlo_passes/fuse_convolution_pass.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = [
@@ -290,7 +290,7 @@ cc_library(
         "transforms/mhlo_passes/tf_fuse_convolution_pass.cc",
     ],
     hdrs = [
-        "transforms/tf_stablehlo_passes.h",
+        "transforms/mhlo_passes/tf_fuse_convolution_pass.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = [
@@ -319,7 +319,7 @@ cc_library(
         "transforms/mhlo_passes/unfuse_batch_norm_pass.cc",
     ],
     hdrs = [
-        "transforms/stablehlo_passes.h",
+        "transforms/mhlo_passes/unfuse_batch_norm_pass.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = [

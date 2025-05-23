@@ -534,7 +534,7 @@ void VersionTest(const VersionDef& version, absl::string_view expected_error) {
   }
   // Read it back in and verify that we get the expected error.
   BundleReader reader(Env::Default(), path);
-  EXPECT_TRUE(errors::IsInvalidArgument(reader.status()));
+  EXPECT_TRUE(absl::IsInvalidArgument(reader.status()));
   EXPECT_TRUE(absl::StartsWith(reader.status().message(), expected_error));
 }
 
@@ -999,7 +999,7 @@ TEST(TensorBundleTest, Checksum) {
                               const string& expected_msg, Tensor& val) {
     BundleReader reader(Env::Default(), Prefix(prefix));
     absl::Status status = reader.Lookup(key, &val);
-    EXPECT_TRUE(errors::IsDataLoss(status));
+    EXPECT_TRUE(absl::IsDataLoss(status));
     EXPECT_TRUE(absl::StrContains(status.ToString(), expected_msg));
   };
 
@@ -1058,7 +1058,7 @@ TEST(TensorBundleTest, TruncatedTensorContents) {
   BundleReader reader(env, Prefix("end"));
   TF_ASSERT_OK(reader.status());
   Tensor val(DT_FLOAT, TensorShape({2, 3}));
-  EXPECT_TRUE(errors::IsOutOfRange(reader.Lookup("key", &val)));
+  EXPECT_TRUE(absl::IsOutOfRange(reader.Lookup("key", &val)));
 }
 
 TEST(TensorBundleTest, HeaderEntry) {

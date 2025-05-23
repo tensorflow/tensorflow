@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/coreml/builders/activation_layer_builder.h"
 
+#include <cstdio>
 #include <string>
 
 #include "mlmodel/format/NeuralNetwork.pb.h"

@@ -35,89 +35,46 @@ limitations under the License.
 namespace xla {
 namespace {
 
-// Helper to replace the called computation at a while, call, conditional or
-// async instruction. This function replaces exactly one instance of
-// 'computation' with 'new_computation' even if 'instruction' calls
-// 'computation' more than once.
-void ReplaceCalledComputation(HloInstruction* instruction,
-                              HloComputation* computation,
-                              HloComputation* new_computation) {
-  switch (instruction->opcode()) {
-    case HloOpcode::kWhile: {
-      if (computation == instruction->while_condition()) {
-        instruction->set_while_condition(new_computation);
-      } else {
-        CHECK_EQ(computation, instruction->while_body());
-        instruction->set_while_body(new_computation);
-      }
-      break;
-    }
-    case HloOpcode::kCall: {
-      CHECK_EQ(instruction->to_apply(), computation);
-      instruction->set_to_apply(new_computation);
-      break;
-    }
-    case HloOpcode::kConditional: {
-      for (int b = 0; b < instruction->branch_count(); ++b) {
-        if (b == instruction->branch_count() - 1) {
-          CHECK_EQ(computation, instruction->branch_computation(b));
-        }
-        if (computation == instruction->branch_computation(b)) {
-          instruction->set_branch_computation(b, new_computation);
-          break;
-        }
-      }
-      break;
-    }
-    case HloOpcode::kAsyncStart: {
-      CHECK(computation->IsAsyncComputation());
-      instruction->ReplaceCalledComputations(
-          [&](HloComputation*) { return new_computation; });
-      break;
-    }
-    default:
-      LOG(FATAL) << "unexpected opcode: " << instruction->opcode();
-  }
-}
-
 // Flatten a single call graph node. Expects to visit nodes in postorder.
 absl::Status FlattenNode(const CallGraphNode& node) {
   HloComputation* computation = node.computation();
   HloModule* module = computation->parent();
-  // Clone callee for all call-sites except the first one.
   for (int i = 0; i < node.caller_callsites().size(); ++i) {
     CallSite call_site = node.caller_callsites()[i];
-    // Only consider sequential call contexts.
-    if (call_site.context() == CallContext::kEmbedded) {
-      continue;
-    }
-    CHECK_EQ(call_site.context(), CallContext::kControlFlow);
-
-    // Skip first element if this computation is only called from a sequential
-    // context.
-    if (node.context() != CallContext::kBoth && i == 0) {
-      continue;
-    }
-
-    // Clone computation for the remaining sequential context call sites.
-    HloComputation* clone =
-        module->AddEmbeddedComputation(computation->Clone());
-    ReplaceCalledComputation(call_site.instruction(), computation, clone);
-    // Clone the sub-tree of all computations called from this node.
     std::vector<HloComputation*> worklist;
-    worklist.push_back(clone);
+    // If this is the first (or only) callsite, and it only refers to the
+    // computation once, no need to clone.
+    if (i == 0) {
+      int computation_count = 0;
+      for (auto* callee : call_site.instruction()->called_computations()) {
+        if (callee == computation) {
+          ++computation_count;
+        }
+      }
+      if (computation_count <= 1) {
+        continue;
+      }
+    }
+    call_site.instruction()->ReplaceCalledComputations(
+        [&](HloComputation* callee) {
+          if (callee == computation) {
+            HloComputation* clone =
+                module->AddEmbeddedComputation(callee->Clone());
+            worklist.push_back(clone);
+            return clone;
+          }
+          return callee;
+        });
+
+    // Clone the sub-tree of all computations called from this node.
     while (!worklist.empty()) {
       auto current = worklist.back();
       worklist.pop_back();
       for (auto* instruction : current->instructions()) {
-        if (GetInstructionCallContext(instruction->opcode()) !=
-            CallContext::kControlFlow) {
-          continue;
-        }
-        for (auto callee : instruction->called_computations()) {
-          HloComputation* callee_clone =
-              module->AddEmbeddedComputation(callee->Clone());
-          ReplaceCalledComputation(instruction, callee, callee_clone);
+        instruction->ReplaceCalledComputations([&](HloComputation* callee) {
+          return module->AddEmbeddedComputation(callee->Clone());
+        });
+        for (auto* callee_clone : instruction->called_computations()) {
           worklist.push_back(callee_clone);
         }
       }
@@ -137,6 +94,14 @@ absl::Status AnnotateNode(const CallGraphNode& node) {
       }
     }
   }
+
+  // Correctly handle dead code: if a fusion computation is no longer used, it
+  // should not have a fusion instruction set.
+  if (node.callers().empty() &&
+      node.computation()->FusionInstruction() != nullptr) {
+    node.computation()->SetFusionInstruction(nullptr);
+  }
+
   return absl::OkStatus();
 }
 
@@ -153,6 +118,8 @@ absl::StatusOr<bool> FlattenCallGraph::Run(
     TF_RETURN_IF_ERROR(call_graph->VisitNodes(FlattenNode));
   }
 
+  // TODO(b/418034360): Remove this step once the fusion instruction is
+  // automatically maintained.
   {  // Annotate flattened computations with callee types.
     std::unique_ptr<CallGraph> call_graph =
         CallGraph::Build(module, execution_threads);

@@ -112,6 +112,7 @@ cc_library(
         "//xla/hlo/analysis:hlo_ordering",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
+        "//xla/service:buffer_value",
         "//xla/service:hlo_value",
         "//xla/service/gpu:backend_configs_cc",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -557,6 +558,7 @@ cc_library(
         ":backend_configs_cc",
         ":buffer_allocations",
         ":gpu_constants",
+        ":gpu_executable_proto_cc",
         ":gpu_executable_run_options",
         ":ir_emission_utils",
         ":resource_requests",
@@ -566,13 +568,10 @@ cc_library(
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
-        "//xla/backends/gpu/collectives:gpu_clique",
         "//xla/backends/gpu/collectives:gpu_clique_key",
-        "//xla/backends/gpu/collectives:gpu_cliques",
         "//xla/backends/gpu/runtime:annotation",
         "//xla/backends/gpu/runtime:sequential_thunk",
         "//xla/backends/gpu/runtime:thunk",
-        "//xla/core/collectives:rank_id",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service:executable",
@@ -591,10 +590,10 @@ cc_library(
         "//xla/stream_executor:scoped_module_handle",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/rocm:rocm_platform_id",
         "//xla/stream_executor/sycl:sycl_platform_id",
-        "//xla/tsl/platform:env",
         "//xla/tsl/platform:env_time",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
@@ -614,10 +613,39 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
-        "@com_google_absl//absl/types:variant",
         "@local_tsl//tsl/platform:random",
         "@local_tsl//tsl/profiler/lib:scoped_annotation",
         "@local_tsl//tsl/profiler/lib:traceme",
+    ],
+)
+
+tf_proto_library(
+    name = "gpu_executable_proto",
+    srcs = ["gpu_executable.proto"],
+    protodeps = [
+        ":ir_emission_utils_proto",
+        "//xla:xla_data_proto",
+        "//xla:xla_proto",
+        "//xla:shape_util_proto",
+        "//xla/service:hlo_proto",
+        "//xla/backends/gpu/runtime:thunk_proto",
+        "//xla/stream_executor/cuda:cuda_compute_capability_proto",
+        "//xla/stream_executor:device_description_proto",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_executable_test",
+    srcs = ["gpu_executable_test.cc"],
+    deps = [
+        ":gpu_executable",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -628,6 +656,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":backend_configs_cc",
+        ":ir_emission_utils_proto_cc",
         ":target_util",
         "//xla:literal",
         "//xla:permutation_util",
@@ -635,7 +664,6 @@ cc_library(
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/hlo/ir:backend_config",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:buffer_assignment",
@@ -661,17 +689,22 @@ cc_library(
     ],
 )
 
+tf_proto_library(
+    name = "ir_emission_utils_proto",
+    srcs = ["ir_emission_utils.proto"],
+)
+
 xla_cc_test(
     name = "ir_emission_utils_test",
     srcs = ["ir_emission_utils_test.cc"],
     deps = [
         ":backend_configs_cc",
         ":ir_emission_utils",
+        ":ir_emission_utils_proto_cc",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:types",
-        "//xla/hlo/ir:backend_config",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service:buffer_assignment",
@@ -679,13 +712,11 @@ xla_cc_test(
         "//xla/service:platform_util",
         "//xla/tests:hlo_runner_agnostic_test_base",
         "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -1255,6 +1286,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/profiler/lib:scoped_annotation",
+        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
@@ -1267,9 +1299,11 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass_pipeline",
+        "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:pattern_matcher",
         "//xla/service/gpu/transforms:fusion_block_level_rewriter",
+        "//xla/service/gpu/transforms:fusion_dynamic_memcpy_rewriter",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
@@ -1349,7 +1383,6 @@ cc_library(
         ":gpu_float_support",
         ":gpu_hlo_schedule",
         ":gpu_latency_hiding_scheduler",
-        ":gpu_p2p_pipeliner",
         ":gpu_spmd_pipeline",
         ":hlo_fusion_stats",
         ":ir_emission_utils",
@@ -1497,8 +1530,6 @@ cc_library(
         "//xla/service/gpu/transforms:algorithm_checker",
         "//xla/service/gpu/transforms:async_collective_annotator",
         "//xla/service/gpu/transforms:async_wrapper",
-        "//xla/service/gpu/transforms:collective_permute_cycle_decomposer",
-        "//xla/service/gpu/transforms:collective_select_folder",
         "//xla/service/gpu/transforms:command_buffer_scheduling",
         "//xla/service/gpu/transforms:conv_rewriter",
         "//xla/service/gpu/transforms:cudnn_custom_call_converter",
@@ -1521,7 +1552,6 @@ cc_library(
         "//xla/service/gpu/transforms:layout_assignment",
         "//xla/service/gpu/transforms:move_copy_to_users",
         "//xla/service/gpu/transforms:nest_gemm_fusion",
-        "//xla/service/gpu/transforms:pipelined_p2p_rewriter",
         "//xla/service/gpu/transforms:ragged_all_to_all_canonicalizer",
         "//xla/service/gpu/transforms:ragged_all_to_all_decomposer",
         "//xla/service/gpu/transforms:reduce_scatter_creator",
@@ -1531,6 +1561,7 @@ cc_library(
         "//xla/service/gpu/transforms:reduction_splitter",
         "//xla/service/gpu/transforms:rename_fusions",
         "//xla/service/gpu/transforms:sanitize_constant_names",
+        "//xla/service/gpu/transforms:scalar_constant_sinker",
         "//xla/service/gpu/transforms:scatter_expander",
         "//xla/service/gpu/transforms:scatter_slice_simplifier",
         "//xla/service/gpu/transforms:softmax_rewriter_triton",
@@ -1550,6 +1581,8 @@ cc_library(
         "//xla/service/gpu/transforms/collectives:all_reduce_decomposer",
         "//xla/service/gpu/transforms/collectives:all_reduce_splitter",
         "//xla/service/gpu/transforms/collectives:collective_combiner_annotator",
+        "//xla/service/gpu/transforms/collectives:collective_permute_cycle_decomposer",
+        "//xla/service/gpu/transforms/collectives:collective_select_folder",
         "//xla/service/gpu/transforms/collectives:convert_async_collectives_to_sync",
         "//xla/service/gpu/transforms/collectives:gpu_all_gather_combiner",
         "//xla/service/gpu/transforms/collectives:gpu_all_reduce_combiner",
@@ -2184,58 +2217,6 @@ xla_test(
 )
 
 cc_library(
-    name = "gpu_p2p_pipeliner",
-    srcs = ["gpu_p2p_pipeliner.cc"],
-    hdrs = ["gpu_p2p_pipeliner.h"],
-    deps = [
-        "//xla:util",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/parser:hlo_parser",
-        "//xla/hlo/pass:hlo_pass_pipeline",
-        "//xla/service:collective_conflict_analysis",
-        "//xla/service:collective_ops_utils",
-        "//xla/service:collective_pipeliner",
-        "//xla/service:collective_pipeliner_utils",
-        "//xla/service:pattern_matcher",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:nullability",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-xla_cc_test(
-    name = "gpu_p2p_pipeliner_test",
-    srcs = [
-        "gpu_p2p_pipeliner_test.cc",
-    ],
-    deps = [
-        ":gpu_p2p_pipeliner",
-        "//xla:util",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/parser:hlo_parser",
-        "//xla/hlo/pass:hlo_pass_pipeline",
-        "//xla/hlo/testlib:filecheck",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:pattern_matcher_gmock",
-        "//xla/service:hlo_module_config",
-        "//xla/service:hlo_verifier",
-        "//xla/service:pattern_matcher",
-        "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_library(
     name = "gpu_spmd_pipeline",
     srcs = ["gpu_spmd_pipeline.cc"],
     hdrs = ["gpu_spmd_pipeline.h"],
@@ -2834,11 +2815,7 @@ cc_library(
 xla_test(
     name = "determinism_test",
     srcs = ["determinism_test.cc"],
-    backends = [
-        "gpu_a100",
-        "gpu_b200",
-        "gpu_amd_any",
-    ],
+    backends = ["gpu"],
     deps = [
         "//xla:literal",
         "//xla:xla_proto_cc",
@@ -2856,11 +2833,11 @@ xla_test(
         "//xla/tests:literal_test_util",
         "//xla/tests:test_utils",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

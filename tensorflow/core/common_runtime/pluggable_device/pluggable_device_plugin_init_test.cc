@@ -56,7 +56,7 @@ TEST(PluggableDevicePluginInitTest, StaticInitTest) {
   TF_ASSERT_OK(RegisterPluggableDevicePlugin(&api));
 
   init_plugin_fn_called = false;
-  api.init_plugin_fn = reinterpret_cast<void*>(init_plugin_fn);
+  api.init_plugin_fn = init_plugin_fn;
   TF_ASSERT_OK(RegisterPluggableDevicePlugin(&api));
   ASSERT_TRUE(init_plugin_fn_called);
 }
@@ -79,8 +79,8 @@ TEST(PluggableDevicePluginInitTest, StaticNPInitTest) {
   PluggableDeviceInit_Api api;
   init_np_plugin_fn_called = false;
   init_pjrt_fn_called = false;
-  api.init_np_plugin_fn = reinterpret_cast<void*>(init_np_plugin_fn);
-  api.get_pjrt_api_fn = reinterpret_cast<void*>(init_pjrt_fn);
+  api.init_np_plugin_fn = init_np_plugin_fn;
+  api.get_pjrt_api_fn = init_pjrt_fn;
   TF_ASSERT_OK(RegisterPluggableDevicePlugin(&api));
   ASSERT_TRUE(init_np_plugin_fn_called);
   ASSERT_TRUE(init_pjrt_fn_called);
@@ -96,7 +96,7 @@ TEST(PluggableDevicePluginInitTest, StaticKernelInitTest) {
 
   PluggableDeviceInit_Api api;
   init_kernel_fn_called = false;
-  api.init_kernel_fn = reinterpret_cast<void*>(init_kernel_fn);
+  api.init_kernel_fn = init_kernel_fn;
   TF_ASSERT_OK(RegisterPluggableDevicePlugin(&api));
   ASSERT_TRUE(init_kernel_fn_called);
 }
@@ -115,7 +115,7 @@ TEST(PluggableDevicePluginInitTest, StaticGraphInitTest) {
 
   PluggableDeviceInit_Api api;
   init_graph_fn_called = false;
-  api.init_graph_fn = reinterpret_cast<void*>(init_graph_fn);
+  api.init_graph_fn = init_graph_fn;
   TF_ASSERT_OK(RegisterPluggableDevicePlugin(&api));
   ASSERT_TRUE(init_graph_fn_called);
 }
@@ -140,7 +140,7 @@ TEST(PluggableDevicePluginInitTest, StaticProfilerInitTest) {
 
   PluggableDeviceInit_Api api;
   init_profiler_fn_called = false;
-  api.init_profiler_fn = reinterpret_cast<void*>(init_profiler_fn);
+  api.init_profiler_fn = init_profiler_fn;
   TF_ASSERT_OK(RegisterPluggableDevicePlugin(&api));
   ASSERT_TRUE(init_profiler_fn_called);
 }

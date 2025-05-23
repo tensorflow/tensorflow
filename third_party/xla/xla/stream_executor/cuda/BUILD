@@ -1301,6 +1301,7 @@ xla_test(
     backends = ["gpu"],
     tags = ["cuda-only"],
     deps = [
+        ":cuda_compute_capability",
         ":cudnn_plugin",
         "//xla/service:platform_util",
         "//xla/stream_executor:command_buffer",
@@ -1982,6 +1983,7 @@ cuda_library(
     ],
     deps = [
         ":cuda_platform_id",
+        "//xla:types",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:all_reduce_kernel",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
@@ -2010,9 +2012,6 @@ cuda_library(
         "gpu",
     ],
     deps = [
-        "//xla/stream_executor/cuda:cuda_status",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/status",
         "@local_config_cuda//cuda:cub_headers",
         "@local_config_cuda//cuda:cuda_headers",
     ],
@@ -2034,6 +2033,7 @@ cuda_library(
         ":cub_sort_kernel_cuda_impl_{}".format(typename),
         "//xla/ffi",
         "//xla/ffi:ffi_api",
+        "//xla/stream_executor/cuda:cuda_status",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
         "@local_config_cuda//cuda:cuda_headers",

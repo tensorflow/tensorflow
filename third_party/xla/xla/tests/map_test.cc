@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/array2d.h"
@@ -457,7 +458,10 @@ TEST_F(MapTest, MapOperationWithBuildError) {
 class MapHloTest : public HloTestBase {};
 
 // TODO(b/230123847): Enable this on GPU once mhlo allows mixed-type map.
-TEST_F(MapHloTest, DISABLED_ON_GPU(MapWithMixedInputTypes)) {
+TEST_F(MapHloTest, MapWithMixedInputTypes) {
+  if (test::DeviceIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   absl::string_view hlo_string = R"(
   HloModule MapMixedInputTypes
 

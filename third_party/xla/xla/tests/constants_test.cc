@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include <gtest/gtest.h>
 #include "xla/array2d.h"
 #include "xla/array3d.h"
@@ -100,7 +101,10 @@ TEST_F(ConstantsTest, OneCellU32) {
   ComputeAndCompareR1<uint32_t>(&builder, constant, {});
 }
 
-TEST_F(ConstantsTest, DISABLED_ON_CPU(DISABLED_ON_GPU(OneCellU4))) {
+TEST_F(ConstantsTest, OneCellU4) {
+  if (test::DeviceIsOneOf({test::kCpu, test::kGpu})) {
+    GTEST_SKIP();
+  }
   std::vector<u4> constant = {u4(2)};
 
   XlaBuilder builder(TestName());
@@ -111,7 +115,10 @@ TEST_F(ConstantsTest, DISABLED_ON_CPU(DISABLED_ON_GPU(OneCellU4))) {
   ComputeAndCompareR1<uint8_t>(&builder, {2}, {});
 }
 
-TEST_F(ConstantsTest, DISABLED_ON_CPU(DISABLED_ON_GPU(OneCellS4))) {
+TEST_F(ConstantsTest, OneCellS4) {
+  if (test::DeviceIsOneOf({test::kCpu, test::kGpu})) {
+    GTEST_SKIP();
+  }
   std::vector<s4> constant = {s4(-2)};
 
   XlaBuilder builder(TestName());
@@ -254,7 +261,10 @@ TEST_F(ConstantsTest, FullLikeScalar) {
 using ConstantsHloTest = HloPjRtTestBase;
 
 // TODO(b/121147351): Fails on GPU. Not clear if this is expected behavior.
-TEST_F(ConstantsHloTest, DISABLED_ON_TPU(DISABLED_ON_GPU(BitcastOfConstant))) {
+TEST_F(ConstantsHloTest, DISABLED_ON_TPU(BitcastOfConstant)) {
+  if (test::DeviceIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   const char* testcase = R"(
     HloModule module, is_scheduled=true
 

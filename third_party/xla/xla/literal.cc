@@ -113,7 +113,7 @@ const Shape& ScalarShapeImpl() {
   static_assert(primitive_util::IsArrayType(kType),
                 "Not a valid type for a scalar.");
   static const Shape* const shape = [] {
-    auto* const shape = new Shape(kType, {}, {});
+    auto* const shape = new Shape(kType, /*dimensions=*/{});
     shape->mutable_layout();
     return shape;
   }();
@@ -141,7 +141,7 @@ const Shape* TryInternShape(const Shape& shape) {
     return &NilShape();
   }
   if (shape.IsArray() && shape.dimensions().size() == 0 && shape.is_static() &&
-      shape.has_layout() && shape.layout().tiles_size() == 0 &&
+      shape.has_layout() && shape.layout().tiles().size() == 0 &&
       shape.layout().memory_space() == 0 &&
       shape.layout().element_size_in_bits() == 0) {
     return &ScalarShape(shape.element_type());
@@ -503,9 +503,6 @@ void MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
   if (!LayoutUtil::HasLayout(shape)) {
     return InvalidArgument("LiteralProto has no layout");
   }
-  if (LayoutUtil::IsSparseArray(shape)) {
-    return Unimplemented("Sparse literals are not supported");
-  }
 
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
 
@@ -682,8 +679,8 @@ void LiteralBase::Piece::CopyElementsWithDynamicBound(
 
 absl::Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
                                           bool only_dynamic_bound) {
-  CHECK(subshape_ != nullptr);
-  CHECK(src.subshape_ != nullptr);
+  CHECK_NOTNULL(subshape_);
+  CHECK_NOTNULL(src.subshape_);
   CHECK(LayoutUtil::IsDenseArray(subshape()))
       << __func__ << " is only supported for dense arrays: " << subshape();
   CHECK(LayoutUtil::IsDenseArray(src.subshape()))

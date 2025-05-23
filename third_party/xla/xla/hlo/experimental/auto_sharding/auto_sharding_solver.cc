@@ -122,12 +122,18 @@ double MinimumMemoryBudgetRequired(const AutoShardingSolverRequest& request) {
 
 AutoShardingSolverParams GetParams(const AutoShardingSolverRequest& request) {
   AutoShardingSolverParams params;
+  params.compute_iis = request.compute_iis();
+  params.crash_at_infinity_costs_check =
+      request.crash_at_infinity_costs_check();
   for (const auto& departure_cost : request.departure_costs()) {
-    std::vector<double> departure_cost_vector(departure_cost.costs().begin(),
-                                              departure_cost.costs().end());
-    params.departure_costs.push_back(departure_cost_vector);
+    params.departure_costs.push_back(
+        {departure_cost.costs().begin(), departure_cost.costs().end()});
   }
   params.deterministic_mode = request.deterministic_mode();
+  params.enable_output = request.enable_output();
+  params.max_cost = request.has_max_cost()
+                        ? std::make_optional(request.max_cost().coeff())
+                        : std::nullopt;
   params.max_departures =
       request.has_max_departures()
           ? std::make_optional(request.max_departures().coeff())
@@ -137,6 +143,7 @@ AutoShardingSolverParams GetParams(const AutoShardingSolverRequest& request) {
       request.has_overbudget_coeff()
           ? std::make_optional(request.overbudget_coeff().coeff())
           : std::nullopt;
+  params.s_hint = {request.s_hint().begin(), request.s_hint().end()};
   params.solver_timeout =
       request.has_solver_timeout()
           ? absl::Seconds(request.solver_timeout().solver_timeout_in_seconds())
@@ -236,7 +243,7 @@ absl::StatusOr<AutoShardingSolverOutput> SolveAndExtractSolution(
   if (status == operations_research::MPSolver::INFEASIBLE) {
     LOG(ERROR) << "MPSolver could not find any feasible solution.";
 #ifdef PLATFORM_GOOGLE
-    if (request.compute_iis()) {
+    if (params.compute_iis) {
       operations_research::MPModelRequest model_request;
       solver.ExportModelToProto(model_request.mutable_model());
       if (solver.ProblemType() ==
@@ -652,7 +659,9 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
   // objective value so large that other solution choices do not matter anymore.
   // Also eliminate strategies that are known to be dominated by others.
   const NodeStrategies shaved_strategies =
-      StrategyShaver(request).FindShavedStrategies();
+      params.shave_strategies
+          ? StrategyShaverForRequest(params, request).FindShavedStrategies()
+          : NodeStrategies();
   for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
     if (s[node_idx].empty() || request.s_follow(node_idx) >= 0) continue;
     bool all_infinity = true;
@@ -688,7 +697,7 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
       auto err_msg = absl::StrCat("All of e[", request.edges(edge_idx).first(),
                                   "][", request.edges(edge_idx).second(),
                                   "][*] have infinity costs");
-      if (request.crash_at_infinity_costs_check()) {
+      if (params.crash_at_infinity_costs_check) {
         LOG(FATAL) << err_msg;
       } else {
         LOG(WARNING) << err_msg;
@@ -807,8 +816,8 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
       }
     }
   }
-  if (request.has_max_cost() && request.max_cost().coeff() < kMaxCostValue) {
-    double max_cost = kMaxCostEpsilon * request.max_cost().coeff();
+  if (params.max_cost.has_value() && *params.max_cost < kMaxCostValue) {
+    double max_cost = kMaxCostEpsilon * (*params.max_cost);
     max_cost -= solver->Objective().offset();
     MPConstraint* cost_constraint = solver->MakeRowConstraint(
         -MPSolver::infinity(), max_cost, "cost_constraint");
@@ -817,15 +826,15 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
     }
   }
 
-  if (!request.s_hint().empty() && !request.deterministic_mode() &&
-      (!request.has_max_cost() || request.max_cost().coeff() < kMaxCostValue)) {
+  if (!params.s_hint.empty() && !params.deterministic_mode &&
+      (!params.max_cost.has_value() || *params.max_cost < kMaxCostValue)) {
     std::vector<std::pair<const MPVariable*, double>> hint;
     for (NodeIdx node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
       if (request.s_follow(node_idx) >= 0) {
         continue;
       }
       for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
-        double hint_val = (request.s_hint(node_idx) == j) ? 1.0 : 0.0;
+        double hint_val = (params.s_hint[node_idx] == j) ? 1.0 : 0.0;
         hint.push_back({s[node_idx][j], hint_val});
       }
     }
@@ -868,7 +877,7 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
     SolverRequestCallback(request);
   }
 #endif
-  if (request.enable_output()) {
+  if (params.enable_output) {
     solver->EnableOutput();
   }
   VLOG(0) << "Starting solver " << solver->ProblemType() << "\n"
@@ -888,11 +897,11 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
           << request.memory_budget() / (1024 * 1024 * 1024) << "GB)\n"
           << "Number variables for ILP: " << solver->NumVariables() << "\n"
           << "Number of ILP constraints: " << solver->NumConstraints() << "\n"
-          << "Deterministic mode: " << request.deterministic_mode() << "\n"
+          << "Deterministic mode: " << params.deterministic_mode << "\n"
           << "Minimize departures: " << params.minimize_departures << "\n"
           << "Module name: " << request.module_name();
-  if (request.has_max_cost()) {
-    VLOG(0) << "Max cost: " << request.max_cost().coeff();
+  if (params.max_cost.has_value()) {
+    VLOG(0) << "Max cost: " << *params.max_cost;
   }
   if (params.max_departures.has_value()) {
     VLOG(0) << "Max departures: " << *params.max_departures;
@@ -1176,8 +1185,8 @@ absl::flat_hash_map<LivenessIdx, double> GetNewMemorySlack(
 }
 
 // Update `node_strategies` for the nodes in `path` if `new_path_strategies` is
-// a feasible set of improving changes.
-void UpdateNodeStrategies(
+// a feasible set of improving changes. Returns true iff the update is accepted.
+bool UpdateNodeStrategies(
     const AutoShardingSolverRequest& request, const std::vector<NodeIdx>& path,
     const std::vector<NodeStrategyIdx>& new_path_strategies,
     std::vector<NodeStrategyIdx>& node_strategies,
@@ -1192,23 +1201,20 @@ void UpdateNodeStrategies(
     const auto new_memory_slack_at_times =
         GetNewMemorySlack(request, path, new_path_strategies, node_strategies,
                           node_to_active_times, memory_slack);
-    bool memory_usage_is_feasible = true;
     for (const auto& [time_step, new_slack] : new_memory_slack_at_times) {
       if (new_slack < 0.0) {
-        memory_usage_is_feasible = false;
-        break;
+        return false;
       }
     }
     // If feasible, update the sharding strategies and memory slack.
-    if (memory_usage_is_feasible) {
-      for (const auto& [time_step, new_slack] : new_memory_slack_at_times) {
-        memory_slack[time_step] = new_slack;
-      }
-      for (int i = 0; i < path.size(); ++i) {
-        node_strategies[path[i]] = new_path_strategies[i];
-      }
+    for (const auto& [time_step, new_slack] : new_memory_slack_at_times) {
+      memory_slack[time_step] = new_slack;
+    }
+    for (int i = 0; i < path.size(); ++i) {
+      node_strategies[path[i]] = new_path_strategies[i];
     }
   }
+  return true;
 }
 
 std::tuple<double, std::vector<NodeIdx>, std::vector<NodeStrategyIdx>>
@@ -1277,7 +1283,7 @@ AutoShardingSolverOutput SolveTrivial(
 
   AutoShardingSolverOutput output;
   output.s_val = node_strategies;
-  output.cost = ComputeShardingStrategyCost(request, node_strategies);
+  output.cost = ComputeShardingCost(request, node_strategies);
   return output;
 }
 
@@ -1296,7 +1302,7 @@ AutoShardingSolverOutput SolveRandom(const AutoShardingSolverRequest& request,
       NodeStrategyIdx strategy = dist(rng);
       node_strategies[v] = strategy;
     }
-    double cost = ComputeShardingStrategyCost(request, node_strategies);
+    double cost = ComputeShardingCost(request, node_strategies);
 
     bool have_feasible_solution = (best_cost >= 0.0);
     bool candidate_is_feasible = (cost >= 0.0);
@@ -1359,7 +1365,7 @@ AutoShardingSolverOutput SolveGreedy(const AutoShardingSolverRequest& request,
 
   AutoShardingSolverOutput output;
   output.s_val = node_strategies;
-  output.cost = ComputeShardingStrategyCost(request, node_strategies);
+  output.cost = ComputeShardingCost(request, node_strategies);
   return output;
 }
 
@@ -1383,66 +1389,64 @@ AutoShardingSolverOutput SolveRandomPathGreedy(
   }
 
   // Initialize each node's sharding strategy with the least-memory usage.
+  AutoShardingSolverOutput output;
   std::vector<NodeStrategyIdx> node_strategies =
       SolveGreedy(request, "node-memory").s_val;
   const std::pair<EdgeAdjacency, EdgeAdjacency> adjacency =
       GetAdjacencyMatrix(request);
   std::vector<std::vector<LivenessIdx>> node_to_active_times;
   std::vector<double> memory_slack;
-  double current_cost = kInfinityCost;
+  double current_cost = ComputeShardingCost(
+      request, node_strategies, /*use_negative_violation_codes=*/false);
   if (memory_mode == "active") {
     node_to_active_times = GetNodeToActiveTimes(request);
     memory_slack = TrackMemorySlack(request, node_strategies);
   }
-
-  // Phase 1: Find a feasible solution (i.e., finite cost).
-  int trial = 0;
-  for (; trial < num_trials; ++trial) {
-    current_cost = ComputeShardingStrategyCost(request, node_strategies);
-    if (current_cost >= 0.0 && current_cost < kInfinityCost) {
-      break;
-    }
-    auto [cost_delta, path, new_path_strategies] = SampleAndOptimizePath(
-        request, node_strategies, adjacency, path_length, rng);
-    if (cost_delta < 0.0) {
-      UpdateNodeStrategies(request, path, new_path_strategies, node_strategies,
-                           memory_mode, memory_slack, node_to_active_times);
-    }
+  // Phase 0: Return if minimum possible memory usage already exceeds budget.
+  // This makes sense because we're initializing the solution w/
+  // greedy-node-memory (which has minimum possible peak memory).
+  std::optional<AutoShardingViolationCode> violation_code =
+      ShardingStrategyHasViolation(request, node_strategies);
+  if (violation_code.has_value() && *violation_code == kMemoryViolationCode) {
+    output.s_val = node_strategies;
+    output.cost = current_cost;
+    return output;
   }
-  // Phase 2: Store the sharding costs of the last `window_size` trials.
+
+  // Phase 1: Store the sharding costs of the last `window_size` trials.
   CHECK_GE(num_trials, 20);
   int window_size = std::min(static_cast<int>(0.05 * num_trials), 100000);
   std::vector<double> cost_window(window_size, -1.0);
   cost_window[0] = current_cost;
-  trial += window_size;
   for (int window_idx = 1; window_idx < window_size; ++window_idx) {
     auto [cost_delta, path, new_path_strategies] = SampleAndOptimizePath(
         request, node_strategies, adjacency, path_length, rng);
-    if (cost_delta < 0.0) {
-      UpdateNodeStrategies(request, path, new_path_strategies, node_strategies,
-                           memory_mode, memory_slack, node_to_active_times);
+    if (cost_delta < 0.0 &&
+        UpdateNodeStrategies(request, path, new_path_strategies,
+                             node_strategies, memory_mode, memory_slack,
+                             node_to_active_times)) {
+      current_cost += cost_delta;
     }
-    current_cost += cost_delta;
     cost_window[window_idx] = current_cost;
   }
-  // Phase 3: Optimize the sharding cost with an early-stopping feature.
-  for (; trial < num_trials; ++trial) {
+  // Phase 2: Optimize the sharding cost with an early-stopping feature.
+  for (int trial = window_size; trial < num_trials; ++trial) {
     auto [cost_delta, path, new_path_strategies] = SampleAndOptimizePath(
         request, node_strategies, adjacency, path_length, rng);
-    if (cost_delta < 0.0) {
-      UpdateNodeStrategies(request, path, new_path_strategies, node_strategies,
-                           memory_mode, memory_slack, node_to_active_times);
+    if (cost_delta < 0.0 &&
+        UpdateNodeStrategies(request, path, new_path_strategies,
+                             node_strategies, memory_mode, memory_slack,
+                             node_to_active_times)) {
+      current_cost += cost_delta;
     }
-    current_cost += cost_delta;
     if (1.0 - current_cost / cost_window[trial % window_size] < tolerance) {
       break;
     }
     cost_window[trial % window_size] = current_cost;
   }
 
-  AutoShardingSolverOutput output;
   output.s_val = node_strategies;
-  output.cost = ComputeShardingStrategyCost(request, node_strategies);
+  output.cost = ComputeShardingCost(request, node_strategies);
   return output;
 }
 
@@ -1463,8 +1467,8 @@ absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
   } else if (algorithm == "random-path-greedy") {
     const int num_trials =
         2 * request.edges_size() * std::log(request.edges_size());
-    output = SolveRandomPathGreedy(request, /*path_length=*/1, num_trials,
-                                   /*tolerance=*/0.01,
+    output = SolveRandomPathGreedy(request, /*path_length=*/2, num_trials,
+                                   /*tolerance=*/0.001,
                                    /*memory_mode=*/"active");
   } else if (algorithm == "brkga") {
     output = SolveBrkga(request);
@@ -1475,8 +1479,7 @@ absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
   auto duration = absl::Now() - start_time;
   LOG(INFO) << "Solver took " << absl::ToInt64Milliseconds(duration) << " ms";
   LOG(INFO) << "Objective value: " << output.cost;
-  LOG(INFO) << "Total Cost: "
-            << ComputeShardingStrategyCost(request, output.s_val);
+  LOG(INFO) << "Total Cost: " << ComputeShardingCost(request, output.s_val);
   return output;
 }
 
@@ -1621,9 +1624,9 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
   return evaluation;
 }
 
-double ComputeShardingStrategyCost(
-    const AutoShardingSolverRequest& request,
-    const std::vector<NodeStrategyIdx>& node_strategies) {
+double ComputeShardingCost(const AutoShardingSolverRequest& request,
+                           const std::vector<NodeStrategyIdx>& node_strategies,
+                           const bool use_negative_violation_codes) {
   double cost = 0.0;
   for (NodeIdx v = 0; v < request.num_nodes(); ++v) {
     NodeStrategyIdx strategy = node_strategies[v];
@@ -1634,10 +1637,12 @@ double ComputeShardingStrategyCost(
     EdgeStrategyIdx strategy = GetEdgeStrategy(request, node_strategies, e);
     cost += request.resharding_costs(e).costs(strategy);
   }
-  std::optional<AutoShardingViolationCode> violation_code =
-      ShardingStrategyHasViolation(request, node_strategies);
-  if (violation_code.has_value()) {
-    cost = -1 * (*violation_code);
+  if (use_negative_violation_codes) {
+    std::optional<AutoShardingViolationCode> violation_code =
+        ShardingStrategyHasViolation(request, node_strategies);
+    if (violation_code.has_value()) {
+      cost = -1 * (*violation_code);
+    }
   }
   return cost;
 }

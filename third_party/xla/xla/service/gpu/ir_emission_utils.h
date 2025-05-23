@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_IR_EMISSION_UTILS_H_
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
@@ -32,15 +33,19 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
-#include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/literal.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/gpu/ir_emission_utils.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace gpu {
@@ -50,13 +55,11 @@ using BinaryMap = absl::flat_hash_map<std::string, std::string>;
 
 // If a dimensions is smaller than this, untiled transposition may be more
 // efficient.
-inline constexpr int64_t kMinDimensionToTransposeTiled = 16;
-// But if both swap dimensions are larger than 'kMinDimensionToTransposeTiled2',
-// and the product of the dimensions to be swapped is larger than
+inline constexpr int64_t kMinDimensionToTransposeTiled = 4;
+// If the product of the dimensions to be swapped is larger than
 // 'kMinTotalDimensionsToTransposeTiled', tiled transposition may be more
-// efficient.
-inline constexpr int64_t kMinDimensionToTransposeTiled2 = 8;
-inline constexpr int64_t kMinTotalDimensionsToTransposeTiled = 64 * 128;
+// efficient. See go/xla-transpose-emitter-performance-analysis.
+inline constexpr int64_t kMinTotalDimensionsToTransposeTiled = 16 * 16;
 // As the amount of shared memory is limited, we need to make sure that we don't
 // detect 102 transposes that would require too much bytes for the most minor
 // dimension.
@@ -338,6 +341,16 @@ class DenseDataIntermediate {
     return data_.index() == 0 ? absl::Span<const uint8_t>(std::get<0>(data_))
                               : std::get<1>(data_);
   }
+
+  // Converts `this` into its protobuf representation.
+  // Note that the protobuf message will always contain a copy of the data -
+  // also for non-owning instances of DenseDataIntermediate.
+  DenseDataIntermediateProto ToProto() const;
+
+  // Constructs a data-owning instance of DenseDataIntermediate from its
+  // protobuf representation.
+  static DenseDataIntermediate FromProto(
+      const DenseDataIntermediateProto& proto);
 
  private:
   std::variant<std::vector<uint8_t>, absl::Span<const uint8_t>> data_;

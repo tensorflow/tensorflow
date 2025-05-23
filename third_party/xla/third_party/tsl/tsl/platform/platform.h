@@ -76,7 +76,7 @@ limitations under the License.
 #define PLATFORM_IS_X86
 #endif
 
-// Check if we are compmiling for an arm device.
+// Check if we are compiling for an arm device.
 #if defined(__arm__) || defined(__aarch64__)
 #define PLATFORM_IS_ARM
 #if defined(__aarch64__)

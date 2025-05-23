@@ -81,6 +81,8 @@ const char kXlaNoOpSchedulingGroup[] = "noop";
 
 const char kMustFuseAttr[] = "MUST_FUSE";
 
+const char kFuseLimitAttr[] = "FUSE_LIMIT";
+
 const char kMaximalFuseAttr[] = "MAXIMAL_FUSE";
 
 const char kCollectivesGroupAttr[] = "_collectives_group";

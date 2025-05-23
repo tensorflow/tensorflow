@@ -505,12 +505,11 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
 absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     HloModule* module, bool is_aot_compile,
     TargetMachineFeatures* target_machine_features) {
+  const auto& debug_options = module->config().debug_options();
   const int64_t num_partitions = module->config().num_partitions();
-  const bool is_thunk_runtime =
-      module->config().debug_options().xla_cpu_use_thunk_runtime();
+  const bool is_thunk_runtime = debug_options.xla_cpu_use_thunk_runtime();
   const bool is_fusion_emitters =
-      is_thunk_runtime &&
-      module->config().debug_options().xla_cpu_use_fusion_emitters();
+      is_thunk_runtime && debug_options.xla_cpu_use_fusion_emitters();
   bool use_shardy_partitioner = module->config().use_shardy_partitioner();
   if (num_partitions > 1) {
     if (!module->config().use_spmd_partitioning()) {
@@ -522,6 +521,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     // Run some IR cleanup passes before running the SPMD partitioning
     // passes.
     AddHloVerifier(&spmd_pipeline);
+    spmd_pipeline.AddPass<FlattenCallGraph>();
     spmd_pipeline.AddPass<CallInliner>();
     spmd_pipeline.AddPass<ZeroSizedHloElimination>();
     spmd_pipeline.AddPass<ConditionalCanonicalizer>();
@@ -539,6 +539,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   } else {
     HloPassPipeline sharding_removal_pipeline("sharding-removal");
     AddHloVerifier(&sharding_removal_pipeline);
+    sharding_removal_pipeline.AddPass<FlattenCallGraph>();
     // Remove redundant sharding ops when partition_count == 1.
     sharding_removal_pipeline.AddPass<ShardingRemover>();
     // Run ShardyXLA without propagation, which enforces use-tuple-args.
@@ -559,6 +560,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
         SubByteNormalization::SET_ELEMENT_SIZE);
     TF_RETURN_IF_ERROR(subbyte_packer_pipeline.Run(module).status());
   }
+
   HloPassPipeline pipeline("HLO passes through layout assignment");
   AddHloVerifier(&pipeline);
   pipeline.AddPass<BatchedGatherScatterNormalizer>();
@@ -570,7 +572,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // TODO(b/406806134): Stop calling XNNPACK from regular Dot thunks. All XNN
   // Dots should be wrapped in an `__xnn_fusion` fusion region and processed in
   // `XnnFusionThunk`.
-  bool xnnpack_enabled = module->config().debug_options().xla_cpu_use_xnnpack();
+  bool xnnpack_enabled = debug_options.xla_cpu_use_xnnpack();
   auto call_library_for_dot = [&](const HloInstruction& instr) {
     if (!xnnpack_enabled) return false;
     DotImplementationStrategy strategy = GetDotImplementationStrategy(
@@ -704,13 +706,9 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<ConditionalCanonicalizer>();
   pipeline.AddPass<DynamicDimensionSimplifier>();
 
-  if (module->config()
-          .debug_options()
-          .xla_reduce_window_rewrite_base_length() != 0) {
+  if (debug_options.xla_reduce_window_rewrite_base_length() != 0) {
     pipeline.AddPass<HloPassFix<ReduceWindowRewriter>>(
-        module->config()
-            .debug_options()
-            .xla_reduce_window_rewrite_base_length());
+        debug_options.xla_reduce_window_rewrite_base_length());
   }
   auto dynamic_padder_options = DynamicPadderOptions();
   // TODO(pgavin): ShapeChecks were never implemented correctly by the dynamic
@@ -734,7 +732,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   //     desirable, thus the ability to disable this functionality.)
   //   - It matches more closely the GPU's behavior on fp16 dot/conv, where
   //     accumulation happens in f32.
-  if (!module->config().debug_options().xla_cpu_strict_dot_conv_math()) {
+  if (!debug_options.xla_cpu_strict_dot_conv_math()) {
     pipeline.AddPass<ChangeOpDataType>(
         F16, F32, HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kConvolution>);
   }
@@ -2188,11 +2186,14 @@ CpuCompiler::CompileAheadOfTimeThunks(
   // corresponding HLO instructions (fusions, elemental instructions, etc.).
   IrEmitter2 ir_emitter2(*module, llvm_module.get(), &nested_ir_emitter);
 
+  ThunkEmitter::Options thunk_emitter_options = {
+      /*compile_copy_as_llvm_kernel=*/aot_options
+          .compile_copy_as_llvm_kernel()};
   // Thunk emitter is responsible for building a Thunk sequence that will
   // resolved kernels in the compiled LLVM module and execute them together
   // with Thunks implemented as library calls (e.g. oneDNN or Eigen).
   ThunkEmitter thunk_emitter(ir_emitter2, *assignment, target_machine_features,
-                             module->config());
+                             module->config(), thunk_emitter_options);
   TF_ASSIGN_OR_RETURN(ThunkSequence thunks,
                       thunk_emitter.EmitEntryComputation(*module));
 

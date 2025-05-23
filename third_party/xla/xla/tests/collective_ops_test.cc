@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/strings/str_replace.h"
 #include "absl/types/span.h"
 #include "ml_dtypes/include/float8.h"
@@ -277,14 +278,20 @@ XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_bfloat16) {
   TestAllOpsForReduce<bfloat16>();
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduce_sum_complex64)) {
+XLA_TEST_F(CollectiveOpsTest, AllReduce_sum_complex64) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   TestTwoReplicasOneOperand<complex64>(
       "add",
       /*input_value=*/LiteralUtil::CreateR1<complex64>({{1, 2}, {3, 4}}),
       /*expected_value=*/LiteralUtil::CreateR1<complex64>({{2, 4}, {6, 8}}));
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduce_sum_complex128)) {
+XLA_TEST_F(CollectiveOpsTest, AllReduce_sum_complex128) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   TestTwoReplicasOneOperand<complex128>(
       "add",
       /*input_value=*/LiteralUtil::CreateR1<complex128>({{1, 2}, {3, 4}}),
@@ -408,8 +415,10 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_AllCombinations) {
 // conflict with one another.
 // http://b/259130904 [XLA:GPU] AllReduce_ManyConcurrentAllReduces subtest fails
 //                     with async all-reduce enables
-XLA_TEST_F(CollectiveOpsTest,
-           DISABLED_ON_GPU(AllReduce_ManyConcurrentAllReduces)) {
+XLA_TEST_F(CollectiveOpsTest, AllReduce_ManyConcurrentAllReduces) {
+  if (test::DeviceIs(test::kGpu)) {
+    GTEST_SKIP();
+  }
   const int64_t kNumElems = 1024;
   const int64_t kNumThreads = 200;
   const int64_t kRunsPerThread = 10;
@@ -573,7 +582,10 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_Degenerate) {
   }
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncAllReduce)) {
+XLA_TEST_F(CollectiveOpsTest, AsyncAllReduce) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   const absl::string_view kModuleStr = R"(
       HloModule test
 
@@ -608,7 +620,10 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncAllReduce)) {
   }
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncAllReduceTwoOperands)) {
+XLA_TEST_F(CollectiveOpsTest, AsyncAllReduceTwoOperands) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   const absl::string_view kModuleStr = R"(
       HloModule test
 
@@ -675,7 +690,10 @@ XLA_TEST_F(CollectiveOpsTest, ReplicaId) {
   }
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(CollectiveBroadcast_TwoGPUs)) {
+XLA_TEST_F(CollectiveOpsTest, CollectiveBroadcast_TwoGPUs) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   const char* const kModuleStr = R"(
   HloModule test
 
@@ -716,7 +734,10 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(CollectiveBroadcast_TwoGPUs)) {
                                      results[1]));
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(CollectiveBroadcast_Simple)) {
+XLA_TEST_F(CollectiveOpsTest, CollectiveBroadcast_Simple) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   const char* const kModuleStr = R"(
   HloModule test
 
@@ -954,7 +975,10 @@ XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Rotate) {
                                      results[3]));
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncCollectivePermute)) {
+XLA_TEST_F(CollectiveOpsTest, AsyncCollectivePermute) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   const absl::string_view kModuleStr = R"(
       HloModule test
 
@@ -1128,7 +1152,10 @@ XLA_TEST_F(CollectiveOpsTest, AllToAll_TwoReplicaGroups) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({13, 18, 10, 15}, results[3]);
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllToAll_SplitDimension)) {
+XLA_TEST_F(CollectiveOpsTest, AllToAll_SplitDimension) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   const char* const kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -1301,7 +1328,10 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_TupleAllReduce) {
   }
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllGatherMixedTypes)) {
+XLA_TEST_F(CollectiveOpsTest, AllGatherMixedTypes) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   const char* const kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -1447,7 +1477,10 @@ XLA_TEST_F(CollectiveOpsTest, ReduceScatter_Dim1) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({15, 17, 23, 25}, results[1]);
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(ReduceScatterReassociate)) {
+XLA_TEST_F(CollectiveOpsTest, ReduceScatterReassociate) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   const char* const kModuleStr = R"(
   HloModule m
   sum {
@@ -1491,8 +1524,10 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(ReduceScatterReassociate)) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({42, 46, 50, 54}, results[1]);
 }
 
-XLA_TEST_F(CollectiveOpsTest,
-           DISABLED_ON_CPU(ReduceScatterReassociate_ReduceScatterCreator)) {
+XLA_TEST_F(CollectiveOpsTest, ReduceScatterReassociate_ReduceScatterCreator) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   const char* const kModuleStr = R"(
   HloModule m
   sum {
@@ -1541,7 +1576,10 @@ XLA_TEST_F(CollectiveOpsTest,
   LiteralTestUtil::ExpectR1Equal<uint32_t>({42, 46, 50, 54}, results[1]);
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduceReassociate)) {
+XLA_TEST_F(CollectiveOpsTest, AllReduceReassociate) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   const char* const kModuleStr = R"(
   HloModule m
   sum {
@@ -1587,8 +1625,10 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduceReassociate)) {
       {26.0, 30.0, 34.0, 38.0, 42.0, 46.0, 50.0, 54.0}, results[0], es);
 }
 
-XLA_TEST_F(CollectiveOpsTest,
-           DISABLED_ON_CPU(AllGatherBroadcastReorder_NonUniform)) {
+XLA_TEST_F(CollectiveOpsTest, AllGatherBroadcastReorder_NonUniform) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   const char* const kModuleStr = R"(
   HloModule m
 
@@ -1630,8 +1670,10 @@ XLA_TEST_F(CollectiveOpsTest,
                                            results[0]);
 }
 
-XLA_TEST_F(CollectiveOpsTest,
-           DISABLED_ON_CPU(AllGatherBroadcastReorder_Uniform)) {
+XLA_TEST_F(CollectiveOpsTest, AllGatherBroadcastReorder_Uniform) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   const char* const kModuleStr = R"(
   HloModule m
 
@@ -2038,7 +2080,10 @@ XLA_TEST_F(CollectiveOpsTest, AllReduceBFloat16Min) {
   }
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncAllGather)) {
+XLA_TEST_F(CollectiveOpsTest, AsyncAllGather) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   const char* const kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -2068,7 +2113,10 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncAllGather)) {
   }
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncReduceScatter)) {
+XLA_TEST_F(CollectiveOpsTest, AsyncReduceScatter) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   const char* const kModuleStr = R"(
   HloModule test
   add {
@@ -2114,7 +2162,10 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncReduceScatter)) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({19, 21, 23, 25}, results[1]);
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncAllToAll)) {
+XLA_TEST_F(CollectiveOpsTest, AsyncAllToAll) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   const char* const kModuleStr = R"(
   HloModule test
 
@@ -2180,7 +2231,10 @@ XLA_TEST_F(CollectiveOpsTest, AllGather_Dim1UnitDimensions) {
   }
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecv_Simple)) {
+XLA_TEST_F(CollectiveOpsTest, SendRecv_Simple) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   const char* const kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -2227,7 +2281,10 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecv_Simple)) {
                                      results[1]));
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecv_TwoConcurrentChains)) {
+XLA_TEST_F(CollectiveOpsTest, SendRecv_TwoConcurrentChains) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   const char* const kModuleStr = R"(
   HloModule test, is_scheduled=true
 
@@ -2310,7 +2367,10 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecv_TwoConcurrentChains)) {
                                      results[1]));
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecv_ValidationAttr1)) {
+XLA_TEST_F(CollectiveOpsTest, SendRecv_ValidationAttr1) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   const char* const kModuleStr = R"(
   HloModule test, is_scheduled=true
 
@@ -2392,7 +2452,10 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecv_ValidationAttr1)) {
                                      results[1]));
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecv_ValidationAttr2)) {
+XLA_TEST_F(CollectiveOpsTest, SendRecv_ValidationAttr2) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   const char* const kModuleStr = R"(
   HloModule test, is_scheduled=true
 cond {
@@ -2498,7 +2561,10 @@ body {
 
 // Test send/recv across partitions. In the IR, this is indicated by the absence
 // of the channel ID and the use of replica-id().
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecvCrossReplica)) {
+XLA_TEST_F(CollectiveOpsTest, SendRecvCrossReplica) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   const char* const kModuleStr = R"(
     HloModule test
 
@@ -2542,7 +2608,10 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecvCrossReplica)) {
 
 // Test send/recv across partitions. In the IR, this is indicated by the
 // presence of the channel ID and the use of partition-id().
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(SendRecvCrossPartition)) {
+XLA_TEST_F(CollectiveOpsTest, SendRecvCrossPartition) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   const char* const kModuleStr = R"(
     HloModule test
 
@@ -2624,7 +2693,10 @@ class Fp8CollectiveOpsTest : public CollectiveOpsTest {
   static constexpr const char* kF8E8M0DatatypePlaceholder{"<<F8E8M0>>"};
 };
 
-XLA_TEST_F(Fp8CollectiveOpsTest, DISABLED_ON_CPU(AllGather_8BitFloat)) {
+XLA_TEST_F(Fp8CollectiveOpsTest, AllGather_8BitFloat) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   const char* const kModuleTemplate = R"(
   HloModule test
   ENTRY test_computation {
@@ -2662,7 +2734,10 @@ XLA_TEST_F(Fp8CollectiveOpsTest, DISABLED_ON_CPU(AllGather_8BitFloat)) {
   runTestForType("F8E5M2");
 }
 
-XLA_TEST_F(Fp8CollectiveOpsTest, DISABLED_ON_CPU(AllToAll_8BitFloat)) {
+XLA_TEST_F(Fp8CollectiveOpsTest, AllToAll_8BitFloat) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   const char* const kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -2687,7 +2762,10 @@ XLA_TEST_F(Fp8CollectiveOpsTest, DISABLED_ON_CPU(AllToAll_8BitFloat)) {
   LiteralTestUtil::ExpectR1Equal<float>({2, 2}, results[1]);
 }
 
-XLA_TEST_F(Fp8CollectiveOpsTest, DISABLED_ON_CPU(CollectivePermute_8BitFloat)) {
+XLA_TEST_F(Fp8CollectiveOpsTest, CollectivePermute_8BitFloat) {
+  if (test::DeviceIs(test::kCpu)) {
+    GTEST_SKIP();
+  }
   const char* const kModuleStr = R"(
   HloModule test
   ENTRY test_computation {

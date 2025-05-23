@@ -20,6 +20,8 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -53,6 +55,9 @@ class WhileThunk final : public Thunk {
   const BufferAllocation::Slice& cond_buffer() const { return cond_buffer_; }
 
   std::optional<int64_t> trip_count() const { return trip_count_; }
+
+  std::vector<std::pair<std::string, const ThunkSequence*>> nested_thunks()
+      const final;
 
  private:
   WhileThunk(Info info, BufferAllocation::Slice cond_buffer,

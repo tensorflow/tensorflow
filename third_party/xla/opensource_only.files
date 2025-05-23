@@ -5,6 +5,7 @@ tensorflow/compiler/xla/mlir_hlo/WORKSPACE:
 tensorflow/compiler/xla/package_groups.bzl:
 tensorflow/compiler/xla/pjrt/cpu/package_groups.bzl:
 tensorflow/compiler/xla/pjrt/gpu/package_groups.bzl:
+tensorflow/compiler/xla/python/package_groups.bzl:
 tensorflow/compiler/xla/stream_executor/build_defs.bzl:
 tensorflow/compiler/xla/tsl/cuda/stub.bzl:
 tensorflow/compiler/xla/tsl/mkl/LICENSE:

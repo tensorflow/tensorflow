@@ -51,7 +51,7 @@ PropagatorState::~PropagatorState() {
   }
 }
 
-void PropagatorState::ActivateRoots(gtl::ArraySlice<const NodeItem*> roots,
+void PropagatorState::ActivateRoots(absl::Span<const NodeItem* const> roots,
                                     TaggedNodeSeq* ready) {
   mutex_lock l(root_frame_->mu);
   IterationState* root_iter = root_frame_->GetIteration(0);

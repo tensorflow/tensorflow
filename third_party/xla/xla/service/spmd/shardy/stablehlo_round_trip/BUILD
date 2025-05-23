@@ -1,6 +1,7 @@
 # Import/Export passes for going from `sdy.sharding`s to `mhlo.sharding`s and vice versa.
 
 load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -15,6 +16,7 @@ package_group(
         "//learning/deepmind/partir/...",
         "//learning/deepmind/partir/compiler/mpmd/export/...",
         "//third_party/openxla/shardy/tools/...",
+        "//third_party/py/jax/...",
         "//xla/service/spmd/shardy/...",
     ],
 )
@@ -30,6 +32,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
         "//xla/service/spmd/shardy:constants",
+        "//xla/service/spmd/shardy:utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
@@ -114,6 +117,7 @@ cc_library(
     name = "stablehlo_import",
     srcs = ["stablehlo_import.cc"],
     hdrs = ["stablehlo_import.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":shard_map_import",
         "//xla:util",
@@ -148,7 +152,6 @@ xla_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:test",
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@shardy//shardy/dialect/sdy/ir:register",
     ],
@@ -172,6 +175,22 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
+    name = "export_manual_reduction_collectives_cc",
+    srcs = ["export_manual_reduction_collectives.cc"],
+    hdrs = ["export_manual_reduction_collectives.h"],
+    deps = [
+        "//xla:array",
+        "//xla/service/spmd/shardy:utils",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:stablehlo_ops",
     ],

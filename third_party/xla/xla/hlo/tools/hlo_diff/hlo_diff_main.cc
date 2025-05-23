@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <iostream>
 #include <memory>
-#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -34,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/tools/hlo_diff/hlo_gumgraph_diff.h"
 #include "xla/hlo/tools/hlo_diff/render/hlo_gumgraph_html_renderer.h"
 #include "xla/hlo/tools/hlo_diff/render/hlo_gumgraph_text_renderer.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_module_util.h"
 #include "xla/tsl/platform/env.h"

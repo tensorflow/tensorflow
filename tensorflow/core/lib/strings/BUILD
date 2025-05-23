@@ -62,9 +62,8 @@ cc_library(
     srcs = ["proto_text_util.cc"],
     hdrs = ["proto_text_util.h"],
     deps = [
-        ":scanner",
-        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/platform:numbers",
+        "//tensorflow/core/platform:scanner",
         "@com_google_absl//absl/strings",
     ],
 )

@@ -18,6 +18,7 @@ syntax = "proto3";
 package xla.gpu;
 
 import "xla/service/buffer_assignment.proto";
+import "xla/stream_executor/gpu/gpu_blas_lt.proto";
 
 // Contains basic pieces of information that every thunk type has.
 message ThunkInfoProto {
@@ -39,6 +40,45 @@ message HostToDeviceCopyThunkProto {
   CopyThunkProto copy_thunk = 1;
 }
 
+message ConditionalThunkProto {
+  xla.buffer_assignment.BufferAllocationSliceProto branch_index_buffer = 1;
+  repeated SequentialThunkProto branch_thunks = 2;
+  bool branch_index_is_bool = 3;
+}
+
+message WhileThunkProto {
+  xla.buffer_assignment.BufferAllocationSliceProto
+      condition_result_buffer_index = 1;
+  SequentialThunkProto condition_thunk_sequence = 2;
+  SequentialThunkProto body_thunk_sequence = 3;
+  optional int64 trip_count = 4;
+}
+
+message Dim3DProto {
+  int64 x = 1;
+  int64 y = 2;
+  int64 z = 3;
+}
+
+message KernelThunkProto {
+  repeated xla.buffer_assignment.BufferAllocationSliceProto args = 1;
+  repeated bool written = 2;
+  string kernel_name = 3;
+  Dim3DProto launch_block_counts = 4;
+  Dim3DProto launch_thread_counts_per_block = 5;
+  optional Dim3DProto cluster_dim = 6;
+  int64 shmem_bytes = 7;
+}
+
+message GemmThunkProto {
+  xla.GemmConfigProto gemm_config = 1;
+  xla.buffer_assignment.BufferAllocationSliceProto lhs_buffer = 2;
+  xla.buffer_assignment.BufferAllocationSliceProto rhs_buffer = 3;
+  xla.buffer_assignment.BufferAllocationSliceProto output_buffer = 4;
+  optional xla.buffer_assignment.BufferAllocationSliceProto workspace = 5;
+  bool deterministic = 6;
+}
+
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
 
@@ -47,6 +87,10 @@ message ThunkProto {
     CopyThunkProto copy_thunk = 3;
     DeviceToHostCopyThunkProto device_to_host_copy_thunk = 4;
     HostToDeviceCopyThunkProto host_to_device_copy_thunk = 5;
+    ConditionalThunkProto conditional_thunk = 6;
+    WhileThunkProto while_thunk = 7;
+    KernelThunkProto kernel_thunk = 8;
+    GemmThunkProto gemm_thunk = 9;
   }
 }
 

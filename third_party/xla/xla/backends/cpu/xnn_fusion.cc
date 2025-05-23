@@ -80,7 +80,7 @@ bool XnnShouldUseThreadPool(const HloComputation* computation) {
 absl::StatusOr<bool> IsXnnDotSupported(
     const DotDimensionNumbers& dot_dimensions, const Shape& lhs_shape,
     const Shape& rhs_shape, const Shape& out_shape,
-    TargetMachineFeatures* cpu_features) {
+    const TargetMachineFeatures* cpu_features) {
   // TODO(ezhulenev): Support other element types.
   auto check_dtype = [&](PrimitiveType in_dtype, PrimitiveType out_dtype) {
     return lhs_shape.element_type() == in_dtype &&

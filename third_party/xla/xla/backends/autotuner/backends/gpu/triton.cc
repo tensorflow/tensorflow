@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/simplifiers/float_normalization.h"
 #include "xla/service/compiler.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -131,8 +133,8 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> TritonBackend::GetDefaultConfig(
       TritonGemmConfig(64, 64, 64, 1, 1, 2, 1).ToProto());
 }
 
-absl::StatusOr<std::unique_ptr<HloModule>> TritonBackend::WrapInModule(
-    const HloInstruction& instr, const BackendConfig& config) {
+absl::Status TritonBackend::ApplyConfig(HloInstruction& instr,
+                                        const BackendConfig& config) {
   if (!IsSupported(instr)) {
     return absl::InvalidArgumentError(
         "TritonBackend does not support this instruction.");
@@ -144,26 +146,20 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonBackend::WrapInModule(
   const TritonBackendConfig& triton_config_proto =
       static_cast<const TritonBackendConfig&>(config);
 
-  std::unique_ptr<HloModule> new_module =
-      ExtractInstructionIntoNewModule(instr);
-
-  HloComputation* entry_computation = new_module->entry_computation();
-  HloInstruction* dot_fusion = entry_computation->root_instruction();
-
   TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                      dot_fusion->backend_config<GpuBackendConfig>());
+                      instr.backend_config<GpuBackendConfig>());
   FusionBackendConfig& backend_config =
       *gpu_config.mutable_fusion_backend_config();
 
   *backend_config.mutable_triton_gemm_config() = triton_config_proto;
-  TF_RETURN_IF_ERROR(dot_fusion->set_backend_config(gpu_config));
+  TF_RETURN_IF_ERROR(instr.set_backend_config(gpu_config));
 
   TF_ASSIGN_OR_RETURN(TritonGemmConfig triton_config,
                       TritonGemmConfig::FromProto(triton_config_proto));
   if (triton_config.split_k > 1) {
-    TF_RETURN_IF_ERROR(MakeDotSplitKBatch(dot_fusion, triton_config));
+    TF_RETURN_IF_ERROR(MakeDotSplitKBatch(&instr, triton_config));
   }
-  return new_module;
+  return absl::OkStatus();
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>> TritonBackend::RunHloPasses(

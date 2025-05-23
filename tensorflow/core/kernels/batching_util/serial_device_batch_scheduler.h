@@ -312,8 +312,8 @@ SerialDeviceBatchScheduler<TaskType>::SerialDeviceBatchScheduler(
     : options_(options),
       in_flight_batches_limit_(options.initial_in_flight_batches_limit),
       processing_threads_(options.initial_in_flight_batches_limit) {
-  batch_thread_pool_.reset(new thread::ThreadPool(
-      env(), options.thread_pool_name, options.num_batch_threads));
+  batch_thread_pool_ = std::make_unique<thread::ThreadPool>(
+      env(), options.thread_pool_name, options.num_batch_threads);
   for (int i = 0; i < processing_threads_; i++) {
     batch_thread_pool_->Schedule(
         std::bind(&SerialDeviceBatchScheduler<TaskType>::ProcessBatches, this));

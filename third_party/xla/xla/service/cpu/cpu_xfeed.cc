@@ -80,7 +80,7 @@ class CpuOutfeedBuffer : public cpu::runtime::XfeedBuffer {
   void* destination_;
   int32_t length_;
   absl::StatusOr<Shape> status_;
-  tsl::Notification done_;
+  absl::Notification done_;
 };
 
 // Transfers infeed data to device. InfeedBuffer->Done() must be called to

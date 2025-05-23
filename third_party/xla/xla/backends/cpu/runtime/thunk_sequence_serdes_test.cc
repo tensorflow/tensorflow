@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/serdes_base.h"
 #include "xla/backends/cpu/runtime/sort_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
 #include "xla/backends/cpu/runtime/thunk_proto_serdes.h"
 #include "xla/backends/cpu/runtime/thunk_testlib.h"
@@ -66,6 +67,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/runtime/resource_use.h"
+#include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/hlo.pb.h"
@@ -677,7 +679,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
         {CreateBufferAllocationSlice(
             buffer_allocations_[buffer_allocations_.size() - 1])},
         /*kernel_name=*/"test",
-        /*thread_dim=*/se::ThreadDim(1),
+        /*num_workgroups=*/NumWorkGroups{1},
         /*invariant_arguments=*/{0},
         /*min_alignment=*/8);
   }
@@ -1192,7 +1194,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
   bool VerifyKernelThunkEquality(const KernelThunkBase& thunk_1,
                                  const KernelThunkBase& thunk_2) {
     return thunk_1.kernel_name() == thunk_2.kernel_name() &&
-           thunk_1.thread_dim() == thunk_2.thread_dim() &&
+           thunk_1.num_workgroups() == thunk_2.num_workgroups() &&
            thunk_1.min_alignment() == thunk_2.min_alignment() &&
            absl::c_equal(thunk_1.arguments_buffers(),
                          thunk_2.arguments_buffers(),
