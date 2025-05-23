@@ -120,6 +120,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, params->dilation_height_factor > 0);
   TF_LITE_ENSURE(context, params->dilation_width_factor > 0);
 
+  // Validate the stride values
+  TF_LITE_ENSURE(context, params->stride_width <= 0xFFFF);
+  TF_LITE_ENSURE(context, params->stride_width > 0);
+  TF_LITE_ENSURE(context, params->stride_height <= 0xFFFF);
+  TF_LITE_ENSURE(context, params->stride_height > 0);
+
   const TfLiteType data_type = input->type;
 
   const TfLiteType filter_type = filter->type;
