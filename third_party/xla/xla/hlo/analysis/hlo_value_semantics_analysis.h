@@ -353,6 +353,7 @@ class HloValueSemanticsPropagation : public DfsHloVisitorWithDefault {
   absl::Status HandleCall(HloInstruction* call) override;
   absl::Status HandleFusion(HloInstruction* fusion) override;
   absl::Status HandleCustomCall(HloInstruction* custom_call) override;
+  absl::Status HandleSparseDenseMatmul(HloInstruction* instruction);
   absl::Status HandleWhile(HloInstruction* xla_while) override;
   absl::Status HandleConditional(HloInstruction* conditional) override;
   absl::Status HandleSelect(HloInstruction* select) override;
