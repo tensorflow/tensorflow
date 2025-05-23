@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/prefetch_autotuner.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "tensorflow/core/framework/model.h"

@@ -15,6 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/reduce_dataset_op.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <iterator>
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/data/root_dataset.h"
 #include "tensorflow/core/platform/resource.h"
