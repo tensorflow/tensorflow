@@ -39,7 +39,7 @@
 #include "grpcpp/support/channel_arguments.h"
 #include "xla/pjrt/distributed/util.h"
 #include "xla/python/ifrt/future.h"
-#include "xla/python/ifrt_proxy/common/grpc_credentials.h"
+#include "xla/python/ifrt_proxy/common/grpc_credentials_possibly_insecure_wrapper.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
@@ -252,8 +252,9 @@ std::shared_ptr<grpc::GrpcIfrtService::StubInterface> CreateGrpcStub(
   args.SetInt(GRPC_ARG_MAX_SEND_MESSAGE_LENGTH, -1);
   args.SetInt(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH, -1);
   args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, true);
-  std::shared_ptr<::grpc::Channel> channel = ::grpc::CreateCustomChannel(
-      std::string(server_address), GetClientCredentials(), args);
+  std::shared_ptr<::grpc::Channel> channel =
+      ::grpc::CreateCustomChannel(std::string(server_address),
+                                  GetClientCredentialsPossiblyInsecure(), args);
   VLOG(0) << "  Established channel.";
   CHECK(channel != nullptr);
 

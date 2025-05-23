@@ -30,7 +30,7 @@ cc_library(
         ":client_session",
         "//xla/pjrt/distributed:util",
         "//xla/python/ifrt",
-        "//xla/python/ifrt_proxy/common:grpc_credentials",
+        "//xla/python/ifrt_proxy/common:grpc_credentials_possibly_insecure_wrapper",
         "//xla/python/ifrt_proxy/common:grpc_ifrt_service_cc_grpc_proto",
         "//xla/python/ifrt_proxy/common:grpc_ifrt_service_proto_cc",
         "//xla/python/ifrt_proxy/common:ifrt_service_proto_cc",
