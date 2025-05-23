@@ -1215,7 +1215,8 @@ class MoveOperandIntoBranch {
                 HloOpcode::kGetTupleElement &&
             !branch_comp->root_instruction()->operand(0)->shape().IsTuple()) {
           branch_comp->set_root_instruction(
-              branch_comp->root_instruction()->mutable_operands()[0]);
+              branch_comp->root_instruction()->mutable_operands()[0],
+              /* accept_different_shape =*/true);
         }
         UpdateTupleUsers(inserted);
       }
@@ -1242,7 +1243,7 @@ class MoveOperandIntoBranch {
   absl::flat_hash_map<const HloInstruction*, int64_t> op_map_;
 };
 
-// Hoist operands of a conditional from outside to inside the branches.
+// Move operands of a conditional from outside to inside the branches.
 absl::StatusOr<bool> ConditionalCodeMotion::MoveOperandInstructionsIn(
     HloInstruction* conditional, std::vector<Boundary>& to_move_in) {
   // Mapping boundaries to be moved to their new representations.
