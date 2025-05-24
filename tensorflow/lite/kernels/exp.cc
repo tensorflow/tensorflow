@@ -63,6 +63,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   ExpContext op_context(context, node);
   const TfLiteTensor* input = op_context.input;
+  TF_LITE_ENSURE(context, input != nullptr);
   TfLiteTensor* output = op_context.output;
 
   TfLiteIntArray* output_dims = TfLiteIntArrayCopy(input->dims);
