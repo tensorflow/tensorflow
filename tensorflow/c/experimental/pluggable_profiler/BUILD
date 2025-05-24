@@ -14,7 +14,7 @@ filegroup(
     srcs = [
         "pluggable_profiler.h",
     ],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:private"],
 )
 
 cc_library(
@@ -55,10 +55,7 @@ cc_library(
         "pluggable_profiler.h",
         "pluggable_profiler_internal.h",
     ],
-    visibility = [
-        "//tensorflow/c:__subpackages__",
-        "//tensorflow/core/common_runtime/pluggable_device:__subpackages__",
-    ],
+    visibility = ["//tensorflow/core/common_runtime/pluggable_device:__subpackages__"],
     deps = [
         "//tensorflow/c:c_api_macros",
         "//tensorflow/c:tf_status",
