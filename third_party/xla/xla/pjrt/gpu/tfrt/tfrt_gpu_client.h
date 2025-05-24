@@ -589,7 +589,7 @@ class TfrtGpuBuffer final : public PjRtBuffer {
     DonationTransaction(const DonationTransaction&) = delete;
     DonationTransaction& operator=(const DonationTransaction&) = delete;
     DonationTransaction(DonationTransaction&&) = default;
-    DonationTransaction& operator=(DonationTransaction&& other) {
+    DonationTransaction& operator=(DonationTransaction&& other) noexcept {
       Abort();
 
       donation_event_ = other.donation_event_;
