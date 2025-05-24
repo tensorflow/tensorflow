@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <string>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "xla/pjrt/pjrt_common.h"
