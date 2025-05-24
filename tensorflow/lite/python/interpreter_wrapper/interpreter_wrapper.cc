@@ -34,6 +34,8 @@ limitations under the License.
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/core/model.h"
+#include "tensorflow/lite/delegates/utils/experimental/stable_delegate/delegate_loader.h"
+#include "tensorflow/lite/delegates/utils/experimental/stable_delegate/tflite_settings_json_parser.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/register_ref.h"
@@ -953,6 +955,42 @@ PyObject* InterpreterWrapper::ModifyGraphWithDelegate(
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   TFLITE_PY_CHECK(interpreter_->ModifyGraphWithDelegate(delegate));
   Py_RETURN_NONE;
+}
+
+PyObject* InterpreterWrapper::LoadStableDelegateCPP(
+    const std::string& config_path) {
+  TFLITE_PY_ENSURE_VALID_INTERPRETER();
+  // Load delegate settings from .json
+  tflite::delegates::utils::TfLiteSettingsJsonParser parser;
+  const tflite::TFLiteSettings* settings = parser.Parse(config_path);
+  if (!settings) {
+    PyErr_SetString(PyExc_ValueError,
+                    "Failed to load or parse the delegate settings file.");
+    return nullptr;
+  }
+
+  // Load stable delegate from .so file
+  const flatbuffers::String* delegate_path =
+      settings->stable_delegate_loader_settings()->delegate_path();
+  const TfLiteStableDelegate* stable_delegate_handle =
+      tflite::delegates::utils::LoadDelegateFromSharedLibrary(
+          delegate_path->str());
+  if (!stable_delegate_handle) {
+    PyErr_SetString(PyExc_ValueError,
+                    "Failed to load stable delegate from shared library.");
+    return nullptr;
+  }
+
+  // Construct the delegate instance using the settings
+  TfLiteOpaqueDelegate* opaque_delegate =
+      stable_delegate_handle->delegate_plugin->create(settings);
+  if (!opaque_delegate) {
+    PyErr_SetString(PyExc_ValueError,
+                    "Failed to create delegate with specified settings.");
+    return nullptr;
+  }
+
+  return PyLong_FromUnsignedLong(reinterpret_cast<uintptr_t>(opaque_delegate));
 }
 
 }  // namespace interpreter_wrapper
