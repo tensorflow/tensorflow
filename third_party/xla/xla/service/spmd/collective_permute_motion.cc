@@ -123,6 +123,14 @@ std::optional<MovableCluster> FindMovableClusterAtBodyRoot(
                 << " multiple collective permutes";
         return std::nullopt;
       }
+      // do not rearrange if the collective-permute operand comes from an
+      // optimization barrier
+      if (visiting->operands()[0]->operands()[0]->opcode() ==
+          HloOpcode::kOptimizationBarrier) {
+        VLOG(2) << "Cannot move: " << visiting->name()
+                << " operand comes from an optimization barrier";
+        return std::nullopt;
+      }
       cluster.collective_permute = visiting;
       continue;
     }
