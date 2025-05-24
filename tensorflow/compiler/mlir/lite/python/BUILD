@@ -176,6 +176,7 @@ filegroup(
     name = "converter_python_api_hdrs",
     srcs = [
         "converter_python_api.h",
+        "model_utils_core_api.h",
     ],
     visibility = ["//visibility:private"],
 )
@@ -192,6 +193,7 @@ cc_library(
         ":flatbuffer_to_mlir",
         ":graphdef_to_tfl_flatbuffer",
         ":jax_to_tfl_flatbuffer",
+        ":model_utils_core_api",
         ":saved_model_to_tfl_flatbuffer",
         "//tensorflow/c:kernels",
         "//tensorflow/c:tf_status_headers",
@@ -230,6 +232,43 @@ cc_library(
     alwayslink = True,
 )
 
+cc_library(
+    name = "model_utils_core_api",
+    srcs = ["model_utils_core_api.cc"],
+    hdrs = ["model_utils_core_api.h"],
+    copts = ["-fexceptions"],  # Required for pybind11.
+    features = [
+        "-use_header_modules",
+        "-parse_headers",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir:init_mlir",
+        "//tensorflow/compiler/mlir/lite:flatbuffer_export",
+        "//tensorflow/compiler/mlir/lite:flatbuffer_import",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/lite/stablehlo:prepare_hlo",
+        "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
+        "@com_google_absl//absl/log",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:CAPIIRHeaders",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
+        "@llvm-project//mlir:FuncTransforms",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MLIRBindingsPythonNanobindHeaders",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Transforms",
+        "@pybind11",
+        "@stablehlo//:register",
+        "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:vhlo_ops",
+    ],
+)
+
 tf_python_pybind_extension(
     name = "_pywrap_converter_api",
     srcs = [
@@ -248,5 +287,8 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_lib",
         "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
-    ] + if_pywrap([":converter_python_api"]),
+    ] + if_pywrap([
+        ":converter_python_api",
+        ":model_utils_core_api",
+    ]),
 )
