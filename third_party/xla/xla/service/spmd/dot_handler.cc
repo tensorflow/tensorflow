@@ -606,7 +606,7 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
           collective->opcode() == HloOpcode::kAllReduce) {
         communication_time_in_ms = visitor->GetCommunicationTimeInMilliSec(
             ShapeUtil::ByteSizeOf(collective->shape()),
-            collective->device_list());
+            collective->replica_groups());
       }
     } else {
       auto new_lhs =
@@ -647,17 +647,18 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
         collective = collective->mutable_operand(0);
       }
       communication_time_in_ms = visitor->GetCommunicationTimeInMilliSec(
-          ShapeUtil::ByteSizeOf(dot->shape()), collective->device_list());
+          ShapeUtil::ByteSizeOf(dot->shape()), collective->replica_groups());
     }
 
     double extra_collective_permute_time = 0.0;
     if (communication_time_in_ms != 0.0) {
       extra_collective_permute_time =
           communication_time_in_ms *
-          visitor->GetCommunicationMultiplier(collective->device_list()) * 2 /
-          num_partitions;
+          visitor->GetCommunicationMultiplier(collective->replica_groups()) *
+          2 / num_partitions;
       VLOG(2) << "GetCommunicationMultiplier: "
-              << visitor->GetCommunicationMultiplier(collective->device_list());
+              << visitor->GetCommunicationMultiplier(
+                     collective->replica_groups());
     }
     VLOG(2) << "collective: " << collective->ToString() << "\n"
             << "dot: " << dot->ToString() << "\n"
@@ -672,7 +673,7 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
         (std::max(
              computation_time_in_ms,
              communication_time_in_ms * visitor->GetCommunicationMultiplier(
-                                            collective->device_list())) +
+                                            collective->replica_groups())) +
          extra_collective_permute_time) >=
             (computation_time_in_ms + communication_time_in_ms)) {
       VLOG(2) << "Overhead outweighs benefit. Skipping windowed einsum";
@@ -3406,13 +3407,11 @@ bool PrioritizeContractingDimensionsPartitioning(
   auto reduce_scatter_subgroups = GetPartitionGroupsForReplication(
       outer_output_tmp_sharding, output_slice_dims);
   const double all_gather_time_in_ms = visitor->GetCommunicationTimeInMilliSec(
-      all_gather_bytes,
-      CollectiveDeviceList(visitor->CreateReplicaGroups(all_gather_subgroups)));
+      all_gather_bytes, visitor->CreateReplicaGroups(all_gather_subgroups));
   const double reduce_scatter_time_in_ms =
       visitor->GetCommunicationTimeInMilliSec(
           reduce_scatter_bytes,
-          CollectiveDeviceList(
-              visitor->CreateReplicaGroups(reduce_scatter_subgroups)));
+          visitor->CreateReplicaGroups(reduce_scatter_subgroups));
 
   Shape other_original_shape = other_hlo->shape();
   *other_hlo->mutable_shape() =
@@ -3528,13 +3527,11 @@ bool LhsIsBestMatchForNonContractingPartitioning(
       const double lhs_all_gather_time_in_ms =
           visitor->GetCommunicationTimeInMilliSec(
               lhs_all_gather_bytes,
-              CollectiveDeviceList(
-                  visitor->CreateReplicaGroups(lhs_all_gather_subgroups)));
+              visitor->CreateReplicaGroups(lhs_all_gather_subgroups));
       const double rhs_all_gather_time_in_ms =
           visitor->GetCommunicationTimeInMilliSec(
               rhs_all_gather_bytes,
-              CollectiveDeviceList(
-                  visitor->CreateReplicaGroups(rhs_all_gather_subgroups)));
+              visitor->CreateReplicaGroups(rhs_all_gather_subgroups));
 
       HloInstruction* compute_lhs = lhs.hlo();
       Shape lhs_original_shape = compute_lhs->shape();
