@@ -15,8 +15,7 @@
 """Unit tests for profile_data.py."""
 
 from absl.testing import absltest
-
-from xla.python.profiler import profile_data
+from jax import profiler as profile_data
 
 
 class ProfileDataTest(absltest.TestCase):
