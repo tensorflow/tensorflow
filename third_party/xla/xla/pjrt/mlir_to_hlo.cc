@@ -115,6 +115,14 @@ absl::Status MlirToXlaComputation(mlir::ModuleOp module,
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::stablehlo_ext::createSinkConstantsToControlFlowPass());
 
+    // Export an StableHLO + Shardy module into a pure StableHLO module, to
+    // prepare for a round trip to HLO, such that the Shardy ops and attributes
+    // are preserved when going back to MLIR for Shardy propagation. This is a
+    // no-op if the module is already pure StableHLO.
+    // NOTE: we don't use `use_shardy` because it isn't guaranteed to be true if
+    // the module has Shardy artifacts.
+    xla::sdy::addSdyRoundTripExportPipeline(pm);
+
     if (failed(pm.run(module))) {
       VLOG(1) << "MHLO->HLO lowering passes failed.";
       module->dump();
