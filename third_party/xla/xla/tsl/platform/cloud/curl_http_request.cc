@@ -267,7 +267,6 @@ void CurlHttpRequest::SetPutEmptyBody() {
   method_ = RequestMethod::kPut;
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_PUT, 1));
   AddHeader("Content-Length", "0");
-  AddHeader("Transfer-Encoding", "identity");
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
                                            reinterpret_cast<void*>(this)));
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
@@ -296,7 +295,6 @@ void CurlHttpRequest::SetPostEmptyBody() {
   method_ = RequestMethod::kPost;
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_POST, 1));
   AddHeader("Content-Length", "0");
-  AddHeader("Transfer-Encoding", "identity");
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_READDATA,
                                            reinterpret_cast<void*>(this)));
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_READFUNCTION,
