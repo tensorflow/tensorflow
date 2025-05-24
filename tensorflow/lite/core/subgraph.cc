@@ -65,6 +65,9 @@ namespace tflite {
 
 namespace {
 
+constexpr size_t kExtraNodeCapacity = 10;
+constexpr float kTensorCapacityInc = 1.1f;
+
 struct TfLiteQuantizationDeleter {
   void operator()(TfLiteQuantization* q) {
     if (q) TfLiteQuantizationFree(q);
@@ -1118,6 +1121,11 @@ TfLiteStatus Subgraph::AddNodeWithParameters(
 
   int new_node_index = nodes_and_registration_.size();
   if (node_index) *node_index = new_node_index;
+  // Avoid large over allocations by resizing every kExtraNodeCapacity nodes.
+  if (nodes_and_registration_.size() == nodes_and_registration_.capacity()) {
+    nodes_and_registration_.reserve(nodes_and_registration_.size() +
+                                    kExtraNodeCapacity);
+  }
   nodes_and_registration_.emplace_back();
   auto& node_and_reg = nodes_and_registration_.back();
   TfLiteNode& node = node_and_reg.first;
@@ -2413,12 +2421,8 @@ bool Subgraph::IsFullyDelegated() const {
 void Subgraph::EnsureTensorsVectorCapacity() {
   const size_t required_capacity = tensors_.size() + kTensorsCapacityHeadroom;
   if (required_capacity > tensors_.capacity()) {
-    // Whenever it's required to increase the vector capacity, make it at
-    // least twice bigger. The behavior is consistent with the default
-    // behavior of GCC STL's `std::vector::resize()`. This avoids frequently
-    // allocating and copying the underlying buffer.
-    size_t reserved_capacity =
-        std::max(required_capacity, tensors_.capacity() * 2);
+    size_t reserved_capacity = std::max(
+        required_capacity, (size_t)(tensors_.capacity() * kTensorCapacityInc));
     tensors_.reserve(reserved_capacity);
     context_.tensors = tensors_.data();
   }

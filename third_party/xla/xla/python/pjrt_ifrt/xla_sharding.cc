@@ -75,8 +75,9 @@ std::vector<IndexDomain> IndexDomainsSlowPath(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) {
   // Only shape dimensions are used.
-  auto xla_shape = xla::ShapeUtil::MakeShapeWithDescendingLayout(
-      xla::PrimitiveType::S32, shape.dims());
+  auto xla_shape = ShapeUtil::MakeValidatedShapeWithDescendingLayout(
+                       xla::PrimitiveType::S32, shape.dims())
+                       .value();
   if (devices->size() > 8) {
     LOG_FIRST_N(WARNING, 1)
         << "Taking a slow path for HloSharding::IndexDomains(). This will not "

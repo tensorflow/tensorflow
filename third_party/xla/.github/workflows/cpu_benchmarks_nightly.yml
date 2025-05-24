@@ -37,7 +37,7 @@ jobs:
           },
           {
             pool: "linux-x86-n2-128",
-            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build:latest",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
             pretty_name: "XLA Linux x86 CPU 128 vcpu Presubmit",
             bazel_arch_dir: "k8-opt",
             platform: "CPU",
