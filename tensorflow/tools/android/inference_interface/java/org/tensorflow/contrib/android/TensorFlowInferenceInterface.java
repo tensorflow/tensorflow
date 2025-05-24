@@ -50,7 +50,7 @@ public class TensorFlowInferenceInterface {
   private static final String TAG = "TensorFlowInferenceInterface";
   private static final String ASSET_FILE_PREFIX = "file:///android_asset/";
 
-  /*
+  /**
    * Load a TensorFlow model from the AssetManager or from disk if it is not an asset file.
    *
    * @param assetManager The AssetManager to use to load the model file.
@@ -114,10 +114,9 @@ public class TensorFlowInferenceInterface {
     }
   }
 
-  /*
-   * Load a TensorFlow model from provided InputStream.
-   * Note: The InputStream will not be closed after loading model, users need to
-   * close it themselves.
+  /**
+   * Load a TensorFlow model from provided InputStream. Note: The InputStream will not be closed
+   * after loading model, users need to close it themselves.
    *
    * @param is The InputStream to use to load the model.
    */
@@ -161,7 +160,7 @@ public class TensorFlowInferenceInterface {
     }
   }
 
-  /*
+  /**
    * Construct a TensorFlowInferenceInterface with provided Graph
    *
    * @param g The Graph to use to construct this interface.
