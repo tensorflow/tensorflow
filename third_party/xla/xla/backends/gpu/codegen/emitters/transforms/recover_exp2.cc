@@ -16,8 +16,7 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cassert>
-#include <cmath>
-#include <cstdint>
+#include <cstddef>
 #include <memory>
 #include <tuple>
 #include <type_traits>
