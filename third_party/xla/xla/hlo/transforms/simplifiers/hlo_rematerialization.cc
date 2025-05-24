@@ -1364,11 +1364,12 @@ absl::Status MemoryUsageTracker::AddHostOffloadCopyInstructions(
   original_buffer.unfinished_user_count = 1;
 
   // Create new buffers for all of the newly created instructions.
-  CHECK_EQ(copy_start_to_host_item->instruction->shape().tuple_shapes_size(), 3)
+  CHECK_EQ(copy_start_to_host_item->instruction->shape().tuple_shapes().size(),
+           3)
       << "copy_start_to_host_item's shape is "
       << copy_start_to_host_item->instruction->shape().ToString();
-  CHECK_EQ(copy_start_to_device_item->instruction->shape().tuple_shapes_size(),
-           3)
+  CHECK_EQ(
+      copy_start_to_device_item->instruction->shape().tuple_shapes().size(), 3)
       << "copy_start_to_device_item's shape is "
       << copy_start_to_device_item->instruction->shape().ToString();
 
