@@ -180,7 +180,7 @@ absl::Status NvshmemCollectiveDoneThunk::ExecuteOnStream(
 }
 
 absl::Status IsValidNvshmemOperand(Shape shape, Thunk::Kind reduction_op) {
-  if (!LayoutUtil::IsDenseArray(shape)) {
+  if (!shape.IsArray()) {
     return absl::AbortedError(
         absl::StrFormat("input is not a dense array: %s",
                         shape.ToString(/*print_layout=*/true)));
