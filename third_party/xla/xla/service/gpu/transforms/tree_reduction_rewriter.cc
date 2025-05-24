@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
@@ -318,11 +319,13 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     }
 
     // Inner reduce that reduces [k1, k2] to [k1].
+    TF_ASSIGN_OR_RETURN(
+        auto tuple_shape,
+        ShapeUtil::MakeValidatedMaybeTupleShape(inner_reduce_shapes));
     HloInstruction *inner_reduce = reduce->parent()->AddInstruction(
-        HloInstruction::CreateReduce(
-            ShapeUtil::MakeMaybeTupleShape(inner_reduce_shapes),
-            reshaped_padded_inputs, reduce->init_values(), inner_reduce_dims,
-            reduce->to_apply()),
+        HloInstruction::CreateReduce(tuple_shape, reshaped_padded_inputs,
+                                     reduce->init_values(), inner_reduce_dims,
+                                     reduce->to_apply()),
         &reduce->metadata());
     VLOG(1) << "Generated inner reduction: " << inner_reduce->ToString();
 
@@ -352,10 +355,12 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
           ShapeUtil::DeleteDimension(minor_reduction_dim, input->shape()));
     }
 
+    TF_ASSIGN_OR_RETURN(auto tuple_shape,
+                        ShapeUtil::MakeValidatedMaybeTupleShape(tuple_shapes));
     HloInstruction *inner_reduce =
         hlo->parent()->AddInstruction(HloInstruction::CreateReduce(
-            ShapeUtil::MakeMaybeTupleShape(tuple_shapes), hlo->inputs(),
-            hlo->init_values(), {minor_reduction_dim}, hlo->to_apply()));
+            tuple_shape, hlo->inputs(), hlo->init_values(),
+            {minor_reduction_dim}, hlo->to_apply()));
 
     VLOG(1) << "Inner reduction: " << inner_reduce->ToString();
     std::unique_ptr<HloInstruction> out = HloInstruction::CreateReduce(

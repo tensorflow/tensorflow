@@ -171,7 +171,7 @@ Shape getFlattenedShape(const Shape& shape) {
       shape, [&](const Shape& subShape, const ShapeIndex& index) {
         flattenedShapes.push_back(subShape);
       });
-  return ShapeUtil::MakeMaybeTupleShape(flattenedShapes);
+  return ShapeUtil::MakeValidatedMaybeTupleShape(flattenedShapes).value();
 }
 
 // Get the flattened version of a computation layout.
