@@ -195,9 +195,15 @@ absl::StatusOr<std::string> ThunkProtoExecutionDeserializer::GetDotThunkRunImpl(
       "reinterpret_cast<", data_type, "*>(",
       GetBufferAllocationString(dot_thunk.rhs_buffer_shape().slice()), ")");
 
-  auto lhs_shape = xla::Shape(dot_thunk.lhs_buffer_shape().shape());
-  auto rhs_shape = xla::Shape(dot_thunk.rhs_buffer_shape().shape());
-  auto out_shape = xla::Shape(dot_thunk.out_buffer_shape().shape());
+  TF_ASSIGN_OR_RETURN(
+      auto lhs_shape,
+      xla::Shape::FromProto(dot_thunk.lhs_buffer_shape().shape()));
+  TF_ASSIGN_OR_RETURN(
+      auto rhs_shape,
+      xla::Shape::FromProto(dot_thunk.rhs_buffer_shape().shape()));
+  TF_ASSIGN_OR_RETURN(
+      auto out_shape,
+      xla::Shape::FromProto(dot_thunk.out_buffer_shape().shape()));
 
   TF_ASSIGN_OR_RETURN(xla::cpu::DotShape dot_shape,
                       xla::cpu::GetDotShape(dot_thunk.dot_dimensions(),
@@ -364,18 +370,25 @@ ThunkProtoExecutionDeserializer::GetConvolutionFusionThunkRunImpl(
   const xla::cpu::ConvolutionThunkProto& convolution_thunk =
       thunk.convolution_thunk();
 
+  TF_ASSIGN_OR_RETURN(
+      xla::Shape input_buffer_shape,
+      xla::Shape::FromProto(convolution_thunk.input_buffer_shape().shape()));
+  TF_ASSIGN_OR_RETURN(
+      xla::Shape kernel_buffer_shape,
+      xla::Shape::FromProto(convolution_thunk.kernel_buffer_shape().shape()));
+  TF_ASSIGN_OR_RETURN(
+      xla::Shape output_buffer_shape,
+      xla::Shape::FromProto(convolution_thunk.output_buffer_shape().shape()));
+
   // NOTE(basioli): Slices are not needed here, we only use this class to
   // invoke GetConvolutionCanonicalDims.
   xla::cpu::ConvolutionSlices slices{
-      /*input_buffer =*/{},
-      /*input_shape =*/
-      xla::Shape(convolution_thunk.input_buffer_shape().shape()),
-      /*kernel_buffer =*/{},
-      /*kernel_shape =*/
-      xla::Shape(convolution_thunk.kernel_buffer_shape().shape()),
-      /*output_buffer =*/{},
-      /*output_shape =*/
-      xla::Shape(convolution_thunk.output_buffer_shape().shape()),
+      /*input_buffer=*/{},
+      /*input_shape=*/input_buffer_shape,
+      /*kernel_buffer=*/{},
+      /*kernel_shape=*/kernel_buffer_shape,
+      /*output_buffer=*/{},
+      /*output_shape=*/output_buffer_shape,
   };
 
   TF_ASSIGN_OR_RETURN(
@@ -508,9 +521,9 @@ ThunkProtoExecutionDeserializer::GetKernelThunkRunImpl(
                         kernel_thunk.results_buffers().size())},
           {"{{ARGS_INITIALIZER}}",
            get_args_initializer_as_string(kernel_thunk)},
-          {"{{THREAD_DIM_X}}", absl::StrCat(kernel_thunk.thread_dim().x())},
-          {"{{THREAD_DIM_Y}}", absl::StrCat(kernel_thunk.thread_dim().y())},
-          {"{{THREAD_DIM_Z}}", absl::StrCat(kernel_thunk.thread_dim().z())},
+          {"{{THREAD_DIM_X}}", absl::StrCat(kernel_thunk.num_workgroups().x())},
+          {"{{THREAD_DIM_Y}}", absl::StrCat(kernel_thunk.num_workgroups().y())},
+          {"{{THREAD_DIM_Z}}", absl::StrCat(kernel_thunk.num_workgroups().z())},
           {"{{KERNEL_NAME}}", kernel_thunk.kernel_name()},
       });
 }
@@ -524,9 +537,13 @@ ThunkProtoExecutionDeserializer::GetCopyThunkRunImpl(
   }
   const xla::cpu::CopyThunkProto& copy_thunk = thunk.copy_thunk();
 
-  if (!xla::ShapeUtil::Equal(
-          xla::Shape(copy_thunk.src_buffer_shape().shape()),
-          xla::Shape(copy_thunk.dst_buffer_shape().shape()))) {
+  TF_ASSIGN_OR_RETURN(
+      xla::Shape src_buffer_shape,
+      xla::Shape::FromProto(copy_thunk.src_buffer_shape().shape()));
+  TF_ASSIGN_OR_RETURN(
+      xla::Shape dst_buffer_shape,
+      xla::Shape::FromProto(copy_thunk.dst_buffer_shape().shape()));
+  if (!xla::ShapeUtil::Equal(src_buffer_shape, dst_buffer_shape)) {
     return xla::Internal("Source and destination shapes must be equal.");
   }
 
