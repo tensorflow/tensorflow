@@ -186,6 +186,7 @@ xla_cc_test(
         "//xla/pjrt/gpu:gpu_topology",
         "//xla/pjrt/gpu:gpu_topology_proto_cc",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+        "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/service:gpu_plugin",
         "//xla/service:platform_util",
         "//xla/stream_executor:device_description",
