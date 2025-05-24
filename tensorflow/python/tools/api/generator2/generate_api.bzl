@@ -1,10 +1,33 @@
 """Rules to generate the TensorFlow public API from annotated files."""
 
-# Placeholder: load PyInfo
 load("@bazel_skylib//lib:paths.bzl", "paths")
+load("@rules_python//python:py_info.bzl", RulesPythonPyInfo = "PyInfo")
+load("@rules_python//python/api:api.bzl", "py_common")
 load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "TENSORFLOW_API_INIT_FILES")
 load(":apis.bzl", _APIS = "APIS")
 load(":patterns.bzl", "any_match")
+
+def _get_builtin_py_info():
+    # May be None in Bazel 8+
+    if PyInfo == None:
+        return None
+
+    # Bazel 8's autoloading may make them the same
+    if PyInfo == RulesPythonPyInfo:
+        return None
+
+    # Within Google, it is aliased to a stub provider
+    if "unimplemented" in str(PyInfo):
+        return None
+    return PyInfo
+
+_BuiltinPyInfo = _get_builtin_py_info()
+_py_info_providers = [[RulesPythonPyInfo]] + (
+    [[_BuiltinPyInfo]] if _BuiltinPyInfo else []
+)
+_py_info_provides = [RulesPythonPyInfo] + (
+    [_BuiltinPyInfo] if _BuiltinPyInfo else []
+)
 
 APIS = _APIS.keys()
 
@@ -28,30 +51,15 @@ def _py_files(f):
         return f.path
     return None
 
-def _merge_py_info(
-        deps,
-        direct_sources = None,
-        direct_imports = None,
-        has_py2_only_sources = False,
-        has_py3_only_sources = False,
-        uses_shared_libraries = False):
-    transitive_sources = []
-    transitive_imports = []
-    for dep in deps:
-        if PyInfo in dep:
-            transitive_sources.append(dep[PyInfo].transitive_sources)
-            transitive_imports.append(dep[PyInfo].imports)
-            has_py2_only_sources = has_py2_only_sources or dep[PyInfo].has_py2_only_sources
-            has_py3_only_sources = has_py3_only_sources or dep[PyInfo].has_py3_only_sources
-            uses_shared_libraries = uses_shared_libraries or dep[PyInfo].uses_shared_libraries
-
-    return PyInfo(
-        transitive_sources = depset(direct = direct_sources, transitive = transitive_sources),
-        imports = depset(direct = direct_imports, transitive = transitive_imports),
-        has_py2_only_sources = has_py2_only_sources,
-        has_py3_only_sources = has_py3_only_sources,
-        uses_shared_libraries = uses_shared_libraries,
-    )
+def _merge_py_info(ctx, deps):
+    py_api = py_common.get(ctx)
+    builder = py_api.PyInfoBuilder()
+    builder.merge_targets(deps)
+    infos = [builder.build()]
+    builtin_info = builder.build_builtin_py_info()
+    if builtin_info:
+        infos.append(builtin_info)
+    return infos
 
 def _merge_api_info(
         deps,
@@ -129,8 +137,7 @@ api_extractor = aspect(
 def _extract_api_impl(ctx):
     return [
         _merge_api_info(ctx.attr.deps),
-        _merge_py_info(ctx.attr.deps),
-    ]
+    ] + _merge_py_info(ctx, ctx.attr.deps)
 
 extract_api = rule(
     doc = "Extract Python API for all targets in transitive dependencies.",
@@ -140,7 +147,7 @@ extract_api = rule(
             doc = "Targets to extract API from.",
             allow_empty = False,
             aspects = [api_extractor],
-            providers = [PyInfo],
+            providers = _py_info_providers,
             mandatory = True,
         ),
         "api": attr.string(
@@ -148,8 +155,8 @@ extract_api = rule(
             mandatory = True,
             values = APIS,
         ),
-    },
-    provides = [ApiInfo, PyInfo],
+    } | py_common.API_ATTRS,
+    provides = [ApiInfo] + _py_info_provides,
 )
 
 def _get_module_by_path(dir_path, output_dir):
@@ -239,7 +246,11 @@ generate_api = rule(
         "deps": attr.label_list(
             doc = "extract_api targets to generate API from.",
             allow_empty = True,
-            providers = [ApiInfo, PyInfo],
+            providers = [
+                [ApiInfo, RulesPythonPyInfo],
+            ] + (
+                [[ApiInfo, _BuiltinPyInfo]] if _BuiltinPyInfo else []
+            ),
             mandatory = True,
         ),
         "root_init_template": attr.label(
