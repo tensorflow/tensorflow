@@ -328,9 +328,66 @@ bool LegalizeSchedulingAnnotations::KeepSchedulingAnnotation(
   return IsSupportedAsyncOp(instr) || config_.keep_sync_annotation(instr);
 }
 
+absl::Status LegalizeSchedulingAnnotations::Verify(HloModule* module) {
+  VLOG(1) << "Verifying scheduling annotations for module: " << module->name();
+  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+    auto reachability_map = HloReachabilityMap::Build(computation);
+    absl::flat_hash_map<Annotation, std::vector<HloInstruction*>> grp_map;
+    for (HloInstruction* instr : computation->instructions()) {
+      if (HasSchedulingAnnotation(instr)) {
+        auto scheduling_annotation_or = GetSchedulingAnnotation(instr);
+        if (!scheduling_annotation_or.ok()) {
+          continue;
+        }
+        std::optional<Annotation> scheduling_annotation =
+            scheduling_annotation_or.value();
+        if (scheduling_annotation.has_value()) {
+          grp_map[scheduling_annotation.value()].push_back(instr);
+        }
+      }
+    }
+    // Check reachability for each group.
+    for (auto& [id_a, instrs_a] : grp_map) {
+      for (auto& [id_b, instrs_b] : grp_map) {
+        if (id_a == id_b) {
+          continue;
+        }
+        bool b_is_reachable_from_a = false;
+        bool a_is_reachable_from_b = false;
+        for (int64_t i = 0; i < instrs_a.size(); ++i) {
+          for (int64_t j = 0; j < instrs_b.size(); ++j) {
+            auto* a = instrs_a[i];
+            auto* b = instrs_b[j];
+            if (reachability_map->IsReachable(a, b)) {
+              b_is_reachable_from_a = true;
+            }
+            if (reachability_map->IsReachable(b, a)) {
+              a_is_reachable_from_b = true;
+            }
+          }
+          if (a_is_reachable_from_b && b_is_reachable_from_a) {
+            return absl::InternalError(
+                absl::StrCat("ERROR: Detected scheduling group annotation "
+                             "cycle between scheduling_group_id: ",
+                             id_a.ToString(),
+                             " and scheduling_group_id: ", id_b.ToString()));
+          }
+        }
+      }
+    }
+  }
+
+  return absl::OkStatus();
+}
+
 absl::StatusOr<bool> LegalizeSchedulingAnnotations::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  // Run verification if requested.
+  if (config_.run_verification) {
+    TF_RETURN_IF_ERROR(Verify(module));
+  }
+
   bool changed = false;
   // Remove loop iteration annotation if requested.
   if (config_.remove_loop_iteration_annotation_only) {

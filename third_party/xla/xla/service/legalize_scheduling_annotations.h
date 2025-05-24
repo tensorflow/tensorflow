@@ -42,6 +42,7 @@ class LegalizeSchedulingAnnotations : public HloModulePass {
     bool propagate_annotation = false;
     bool check_start_done_annotation_consistency = true;
     bool remove_loop_iteration_annotation_only = false;
+    bool run_verification = false;
   };
 
   explicit LegalizeSchedulingAnnotations(Config config)
@@ -54,6 +55,8 @@ class LegalizeSchedulingAnnotations : public HloModulePass {
       const HloComputation* computation,
       const absl::btree_map<Annotation, std::vector<HloInstruction*>>&
           annotation_to_instruction);
+
+  static absl::Status Verify(HloModule* module);
 
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(

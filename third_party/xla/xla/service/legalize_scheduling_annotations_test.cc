@@ -746,5 +746,35 @@ ENTRY %entry (p0: bf16[5,8,128], p1: bf16[5,1,2,128]) -> bf16[5,8,128] {
   EXPECT_FALSE(annotation->iteration_id);
 }
 
+TEST_F(SchedulingAnnotationPropagationTest, VerifyCycle) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[16]{0} parameter(0)
+  p1 = f32[16]{0} parameter(1)
+  a0 = f32[16]{0} add(p0, p1), frontend_attributes={_scheduling_group_id="1"}
+  a1 = f32[16]{0} add(a0, p1), frontend_attributes={_scheduling_group_id="2"}
+  a2 = f32[16]{0} add(a1, p1), frontend_attributes={_scheduling_group_id="3"}
+  a3 = f32[16]{0} add(a2, p1), frontend_attributes={_scheduling_group_id="2"}
+  a4 = f32[16]{0} add(p1, a3), frontend_attributes={_scheduling_group_id="1"}
+  ROOT tuple = (f32[16]{0}, f32[16]{0}) tuple(a3, a4)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  LegalizeSchedulingAnnotations::Config config;
+  config.run_verification = true;
+
+  auto result = LegalizeSchedulingAnnotations(config).Run(hlo_module.get());
+  EXPECT_IS_NOT_OK(result);
+  VLOG(1) << "module after: " << hlo_module->ToString();
+  std::string error_message = std::string(result.status().message());
+  VLOG(1) << "error message: " << error_message;
+  EXPECT_TRUE(absl::StrContains(error_message,
+                                "Detected scheduling group annotation "
+                                "cycle"));
+}
+
 }  // namespace
 }  // namespace xla
