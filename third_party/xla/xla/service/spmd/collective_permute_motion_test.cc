@@ -286,5 +286,25 @@ TEST_F(CollectivePermuteMotionTest, DoNotMoveIfMultiOutput) {
   ASSERT_FALSE(pass.Run(&*module).value());
 }
 
+TEST_F(CollectivePermuteMotionTest, DoNotMoveIfOptimizationBarrier) {
+  const char* const hlo_string = R"(
+  HloModule test
+  body {
+    after-all = token[] after-all()
+    c1 = u32[] constant(1)
+    send_result = (u32[], u32[], token[]) send(c1, after-all), channel_id=0, frontend_attributes={
+      _xla_send_recv_source_target_pairs="{{1,0}}"
+    }
+    send_token = token[] send-done(send_result), channel_id=0
+    tuple = (u32[], token[]) tuple(c1, send_token)
+    opt_barrier = (u32[], token[]) opt-barrier(tuple)
+    cp_arg = u32[] get-tuple-element(opt_barrier), index=0
+    cp_result = u32[] collective-permute(cp_arg), source_target_pairs={{1,0}}
+  }
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  CollectivePermuteMotion pass;
+  ASSERT_FALSE(pass.Run(&*module).value());
+}
 }  // namespace
 }  // namespace xla
