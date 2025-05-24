@@ -48,6 +48,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
@@ -461,9 +462,9 @@ absl::Status XlaCallModuleLoader::LoadModule(
   return absl::OkStatus();
 }
 
-absl::Status XlaCallModuleLoader::ValidateDialect() {
+absl::Status XlaCallModuleLoader::ValidateXlaCallModuleInvariants() {
   mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
-  bool moduleHasUnsupportedDialects = false;
+  bool moduleValidationFailed = false;
 
   module_->walk([&](mlir::Operation *op) {
     // StableHLO programs created by jax2tf only contain operations
@@ -471,14 +472,25 @@ absl::Status XlaCallModuleLoader::ValidateDialect() {
     if (!llvm::isa<mlir::BuiltinDialect, mlir::chlo::ChloDialect,
                    mlir::func::FuncDialect, mlir::stablehlo::StablehloDialect>(
             op->getDialect())) {
-      moduleHasUnsupportedDialects = true;
       op->emitOpError() << "is an op from an unsupported dialect";
+      moduleValidationFailed = true;
+    }
+    // `shape_assertion` custom calls must have side effects. We check this here
+    // because a pure `shape_assertion` is likely to be removed by MLIR's
+    // dead-code elimination, preventing us from detecting the issue later.
+    if (auto customCallOp = llvm::dyn_cast<mlir::stablehlo::CustomCallOp>(op)) {
+      if (!customCallOp.getHasSideEffect() &&
+          customCallOp.getCallTargetName() == "shape_assertion") {
+        op->emitOpError() << "`shape_assertion` custom calls must set "
+                             "`has_side_effect = true`.";
+        moduleValidationFailed = true;
+      }
     }
   });
 
-  if (moduleHasUnsupportedDialects) {
+  if (moduleValidationFailed) {
     return absl::InvalidArgumentError(
-        absl::StrCat("Module has unsupported dialects: ",
+        absl::StrCat("XlaCallModule failed validation: ",
                      diag_handler.ConsumeStatus().ToString()));
   }
   return absl::OkStatus();

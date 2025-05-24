@@ -220,7 +220,7 @@ class XlaCallModuleOp : public XlaOpKernel {
       OP_REQUIRES_OK(ctx, loader.status());
       loader_ = *std::move(loader);
     }
-    OP_REQUIRES_OK(ctx, loader_->ValidateDialect());
+    OP_REQUIRES_OK(ctx, loader_->ValidateXlaCallModuleInvariants());
 
     if (!ctx->GetAttr(kXlaTokenInputNodesAttrName, &op_token_input_nodes_)
              .ok()) {

@@ -155,8 +155,6 @@ struct CheckShapeAssertionsPass
       return op.emitError() << "expects an empty backend_config";
     if (op.getCallTargetName() != shapeAssertionName)
       return op.emitError() << "expects @shape_assertion";
-    if (!op.getHasSideEffect())
-      return op.emitError() << "expects has_side_effect=true";
 
     // input[0] (assert_what) : tensor<i1>
     auto assertWhatType =

@@ -82,8 +82,9 @@ class XlaCallModuleLoader {
   // Returns true iff the output types are refined by RefineDynamicShapes.
   bool IsOutputTypeRefined() { return output_types_refined_; };
 
-  // Validates that the module only contains ops from valid dialects.
-  absl::Status ValidateDialect();
+  // Validates that the module only contains ops from valid dialects and that
+  // any `shape_assertion` custom calls have side effects as expected.
+  absl::Status ValidateXlaCallModuleInvariants();
 
   // Validates that the module represents a statically-shaped StableHLO program,
   // otherwise all sorts of weirdness might happen in the HLO exporter which is
