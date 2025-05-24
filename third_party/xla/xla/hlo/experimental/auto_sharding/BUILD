@@ -108,6 +108,7 @@ cc_library(
 cc_library(
     name = "auto_sharding_solver",
     srcs = [
+        "auto_sharding_evaluator_for_request.cc",
         "auto_sharding_memory.cc",
         "auto_sharding_solver.cc",
     ],
