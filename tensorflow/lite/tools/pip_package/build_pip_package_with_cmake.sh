@@ -85,6 +85,20 @@ cd "${BUILD_DIR}/cmake_build"
 
 echo "Building for ${TENSORFLOW_TARGET}"
 case "${TENSORFLOW_TARGET}" in
+  armhf_vfpv3)
+    eval $(${TENSORFLOW_LITE_DIR}/tools/cmake/download_toolchains.sh "${TENSORFLOW_TARGET}")
+    ARMCC_FLAGS="${ARMCC_FLAGS} ${TF_CXX_FLAGS} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"
+    cmake \
+      -DCMAKE_C_COMPILER=${ARMCC_PREFIX}gcc \
+      -DCMAKE_CXX_COMPILER=${ARMCC_PREFIX}g++ \
+      -DCMAKE_C_FLAGS="${ARMCC_FLAGS}" \
+      -DCMAKE_CXX_FLAGS="${ARMCC_FLAGS}" \
+      -DCMAKE_SYSTEM_NAME=Linux \
+      -DCMAKE_SYSTEM_PROCESSOR=armv7 \
+      -DTFLITE_ENABLE_XNNPACK=OFF \
+      -DTFLITE_HOST_TOOLS_DIR="${HOST_BUILD_DIR}" \
+      "${TENSORFLOW_LITE_DIR}"
+    ;;
   armhf)
     eval $(${TENSORFLOW_LITE_DIR}/tools/cmake/download_toolchains.sh "${TENSORFLOW_TARGET}")
     ARMCC_FLAGS="${ARMCC_FLAGS} ${TF_CXX_FLAGS} -I${PYBIND11_INCLUDE} -I${NUMPY_INCLUDE}"
@@ -165,6 +179,11 @@ chmod u+w "${BUILD_DIR}/tflite_runtime/_pywrap_tensorflow_interpreter_wrapper${L
 # Build python wheel.
 cd "${BUILD_DIR}"
 case "${TENSORFLOW_TARGET}" in
+  armhf_vfpv3)
+    WHEEL_PLATFORM_NAME="${WHEEL_PLATFORM_NAME:-linux-armv7l}"
+    ${PYTHON} setup.py bdist --plat-name=${WHEEL_PLATFORM_NAME} \
+                       bdist_wheel --plat-name=${WHEEL_PLATFORM_NAME}
+    ;;
   armhf)
     WHEEL_PLATFORM_NAME="${WHEEL_PLATFORM_NAME:-linux-armv7l}"
     ${PYTHON} setup.py bdist --plat-name=${WHEEL_PLATFORM_NAME} \
@@ -218,6 +237,9 @@ EOF
 fi
 
 case "${TENSORFLOW_TARGET}" in
+  armhf_vfpv3)
+    dpkg-buildpackage -b -rfakeroot -us -uc -tc -d -a armhf
+    ;;
   armhf)
     dpkg-buildpackage -b -rfakeroot -us -uc -tc -d -a armhf
     ;;
