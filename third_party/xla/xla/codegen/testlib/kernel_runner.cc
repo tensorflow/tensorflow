@@ -49,7 +49,7 @@ KernelRunner::Argument KernelRunnerUtil::CreateArgument(
   const Shape& shape = ShapeUtil::GetSubshape(literal.shape(), index);
   PrimitiveType element_type = shape.element_type();
 
-  return primitive_util::PrimitiveTypeSwitch<KernelRunner::Argument>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto type) {
         if constexpr (primitive_util::IsArrayType(type)) {
           using T = typename primitive_util::PrimitiveTypeToNative<type>::type;

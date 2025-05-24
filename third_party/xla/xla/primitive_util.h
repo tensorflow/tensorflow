@@ -486,7 +486,7 @@ constexpr bool IsArrayType(PrimitiveType primitive_type) {
 // We can use PrimitiveTypeSwitch to implement it as follows:
 //
 //   int GetNativeSizeOf(PrimitiveType type) {
-//     return PrimitiveTypeSwitch<int>(
+//     return PrimitiveTypeSwitch(
 //         // The functor is polymorphic and can accept any
 //         // PrimitiveTypeConstant<type> value.
 //         [&](auto primitive_type) -> int {
@@ -626,8 +626,8 @@ constexpr decltype(auto) ArrayTypeSwitch(F&& f, PrimitiveType type) {
 // If `type` is not PRIMITIVE_TYPE_INVALID, returns the result of applying
 // polymorphic functor f on a PrimitiveTypeConstant<type> value; otherwise
 // crashes.
-template <typename R, typename F>
-constexpr R PrimitiveTypeSwitch(F&& f, PrimitiveType type) {
+template <typename F>
+constexpr decltype(auto) PrimitiveTypeSwitch(F&& f, PrimitiveType type) {
   if (ABSL_PREDICT_TRUE(IsArrayType(type))) {
     return ArrayTypeSwitch(std::forward<F>(f), type);
   }
@@ -883,7 +883,7 @@ bool IsPrimitiveTypeName(absl::string_view name);
 //  CanRepresent<uint16_t>(S16)       // false, unsigned.
 template <typename T>
 constexpr bool CanRepresent(PrimitiveType type) {
-  return PrimitiveTypeSwitch<bool>(
+  return PrimitiveTypeSwitch(
       [](auto primitive_type) -> bool {
         if constexpr (primitive_util::IsFloatingPointType(primitive_type) ||
                       primitive_util::IsComplexType(primitive_type)) {

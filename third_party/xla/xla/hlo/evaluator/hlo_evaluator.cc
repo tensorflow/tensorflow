@@ -215,7 +215,7 @@ struct PopulateImpl {
 // native types to avoid templating the whole implementations.
 template <template <PrimitiveType> typename Trait, typename F>
 absl::Status Apply(Literal& literal, F&& literal_generator) {
-  return primitive_util::PrimitiveTypeSwitch<absl::Status>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&, literal_generator = std::forward<F>(literal_generator)](
           auto primitive_type_constant) -> absl::Status {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
@@ -851,7 +851,7 @@ HloEvaluator::HloEvaluator(int64_t max_loop_iterations)
     if (!primitive_util::IsArrayType(PrimitiveType{i})) {
       continue;
     }
-    primitive_util::PrimitiveTypeSwitch<void>(
+    primitive_util::PrimitiveTypeSwitch(
         [&](auto primitive_type) {
           if constexpr (primitive_util::IsArrayType(primitive_type)) {
             using NativeT = primitive_util::NativeTypeOf<primitive_type>;
@@ -1160,7 +1160,7 @@ absl::Status HloEvaluator::EvaluateParameterFromCallerArgument(
 std::vector<int64_t> HloEvaluator::GetS64Indices(
     absl::Span<HloInstruction* const> start_indices) {
   auto get_first_s64 = [&](const Literal& index) -> int64_t {
-    return primitive_util::PrimitiveTypeSwitch<int64_t>(
+    return primitive_util::PrimitiveTypeSwitch(
         [&](auto primitive_type_constant) -> int64_t {
           if constexpr (primitive_util::IsIntegralType(
                             primitive_type_constant)) {
@@ -1456,7 +1456,7 @@ absl::Status HloEvaluator::HandleConcatenate(
 absl::Status HloEvaluator::HandleIsFinite(const HloInstruction* is_finite) {
   auto operand = is_finite->operand(0);
   auto elem_ty = operand->shape().element_type();
-  return primitive_util::PrimitiveTypeSwitch<absl::Status>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> absl::Status {
         if constexpr (primitive_util::IsFloatingPointType(
                           primitive_type_constant)) {
@@ -1481,7 +1481,7 @@ absl::Status HloEvaluator::HandleIsFinite(const HloInstruction* is_finite) {
 
 absl::Status HloEvaluator::HandleReal(const HloInstruction* real) {
   auto operand = real->operand(0);
-  return primitive_util::PrimitiveTypeSwitch<absl::Status>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> absl::Status {
         if constexpr (primitive_util::IsFloatingPointType(
                           primitive_type_constant)) {
@@ -1513,7 +1513,7 @@ absl::Status HloEvaluator::HandleReal(const HloInstruction* real) {
 
 absl::Status HloEvaluator::HandleImag(const HloInstruction* imag) {
   auto operand = imag->operand(0);
-  return primitive_util::PrimitiveTypeSwitch<absl::Status>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> absl::Status {
         if constexpr (primitive_util::IsFloatingPointType(
                           primitive_type_constant)) {
@@ -1549,7 +1549,7 @@ absl::Status HloEvaluator::HandleComplex(const HloInstruction* complex) {
   TF_RET_CHECK(ShapeUtil::Compatible(real.shape(), imag.shape()));
 
   Literal result(complex->shape());
-  return primitive_util::PrimitiveTypeSwitch<absl::Status>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> absl::Status {
         if constexpr (primitive_util::IsComplexType(primitive_type_constant)) {
           using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
@@ -1583,7 +1583,7 @@ absl::Status HloEvaluator::HandleCompare(const HloInstruction* compare) {
   const Literal& lhs_literal = GetEvaluatedLiteralFor(lhs);
   const Literal& rhs_literal = GetEvaluatedLiteralFor(rhs);
   // Note here we switch on the operand's type.
-  return primitive_util::PrimitiveTypeSwitch<absl::Status>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> absl::Status {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
           using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
@@ -3564,7 +3564,7 @@ namespace {
 
 absl::StatusOr<Literal> CreateScalarLiteral(int64_t value,
                                             PrimitiveType element_type) {
-  return primitive_util::PrimitiveTypeSwitch<absl::StatusOr<Literal>>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> absl::StatusOr<Literal> {
         if constexpr (primitive_util::IsIntegralType(primitive_type_constant)) {
           return LiteralUtil::CreateR0(
@@ -3697,7 +3697,7 @@ Literal ExtractLiteralFromIndexPositions(const Literal& from,
 absl::StatusOr<Literal> ExtractFromIndexPositions(
     const Literal& from, absl::Span<int64_t const> indices) {
   PrimitiveType type = from.shape().element_type();
-  return primitive_util::PrimitiveTypeSwitch<absl::StatusOr<Literal>>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> absl::StatusOr<Literal> {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
           return ExtractLiteralFromIndexPositions<
@@ -3836,7 +3836,7 @@ template <PrimitiveType operand_type, PrimitiveType random_type>
 absl::StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
                                             const Literal& random_literal,
                                             const Shape& result_shape) {
-  return primitive_util::PrimitiveTypeSwitch<absl::StatusOr<Literal>>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> absl::StatusOr<Literal> {
         if constexpr (primitive_util::IsSignedIntegralType(
                           primitive_type_constant)) {
@@ -3857,7 +3857,7 @@ absl::StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
 absl::StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
                                             const Literal& random_literal,
                                             const Shape& result_shape) {
-  return primitive_util::PrimitiveTypeSwitch<absl::StatusOr<Literal>>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> absl::StatusOr<Literal> {
         if constexpr (primitive_util::IsFloatingPointType(
                           primitive_type_constant)) {

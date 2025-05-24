@@ -509,7 +509,7 @@ static void InitializeTypedBuffer(se::Stream* stream,
 
 void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
                       int64_t* rng_state, se::DeviceMemoryBase buffer) {
-  return primitive_util::PrimitiveTypeSwitch<void>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> void {
         if constexpr (primitive_util::IsFloatingPointType(
                           primitive_type_constant) ||

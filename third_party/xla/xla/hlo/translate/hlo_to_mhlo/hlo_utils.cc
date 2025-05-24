@@ -151,8 +151,7 @@ absl::StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
 
   // TODO(hinsu): Support remaining XLA primitive types.
   auto element_type = literal.shape().element_type();
-  return primitive_util::PrimitiveTypeSwitch<
-      absl::StatusOr<mlir::DenseElementsAttr>>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant)
           -> absl::StatusOr<mlir::DenseElementsAttr> {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {

@@ -613,7 +613,7 @@ XlaOp PhiloxIncreaseCounter(XlaOp counter, XlaOp delta) {
 RngOutput ThreeFryBitGenerator(XlaOp key, XlaOp initial_state,
                                const Shape& shape) {
   PrimitiveType type = shape.element_type();
-  return primitive_util::PrimitiveTypeSwitch<RngOutput>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> RngOutput {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant) &&
                       !primitive_util::IsComplexType(primitive_type_constant) &&
@@ -642,7 +642,7 @@ RngOutput ThreeFryBitGenerator(XlaOp key, XlaOp initial_state,
 RngOutput PhiloxBitGenerator(XlaOp key, XlaOp initial_state,
                              const Shape& shape) {
   PrimitiveType type = shape.element_type();
-  return primitive_util::PrimitiveTypeSwitch<RngOutput>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> RngOutput {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant) &&
                       !primitive_util::IsComplexType(primitive_type_constant) &&

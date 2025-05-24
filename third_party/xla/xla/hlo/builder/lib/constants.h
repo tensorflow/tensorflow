@@ -51,7 +51,7 @@ XlaOp ConstantR0WithType(XlaBuilder* builder, PrimitiveType type, T value) {
         "Invalid cast from complex type to %s in ConstantR0WithType.",
         PrimitiveType_Name(type)));
   }
-  return primitive_util::PrimitiveTypeSwitch<XlaOp>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> XlaOp {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
           using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
