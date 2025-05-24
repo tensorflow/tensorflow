@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -97,7 +98,9 @@ class CuptiTraceCollector {
   // add it into this class by calling AddEvent().
   virtual void OnTracerCachedActivityBuffers(
       std::list<CuptiActivityBufferManager::ActivityBufferAndSize>
-          activity_buffers);
+          activity_buffers,
+      absl::flat_hash_map<uint32_t, uint32_t> graph_id_to_orig_graph_id,
+      absl::flat_hash_map<uint64_t, uint64_t> node_id_to_orig_node_id);
 
   // Consumer side functions (i.e. called by GPU tracer);
   virtual bool Export(tensorflow::profiler::XSpace* space,

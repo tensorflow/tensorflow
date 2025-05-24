@@ -217,6 +217,9 @@ struct CuptiTracerEvent {
   int64_t stream_id = kInvalidStreamId;
   uint32_t graph_id = 0;
   int64_t scope_range_id = 0;
+  uint64_t graph_node_id = 0;
+  uint32_t orig_graph_id = 0;
+  uint64_t orig_graph_node_id = 0;
   union {
     // For Memcpy API and activities. `type` must be Memcpy*.
     MemcpyDetails memcpy_info;
@@ -299,11 +302,18 @@ class AnnotationMap {
 struct CuptiEventCollectorDelegate {
   AnnotationMap& annotation_map;
   std::function<void(CuptiTracerEvent&&)> receive;
+  absl::flat_hash_map<uint32_t, uint32_t> graph_id_to_orig_graph_id;
+  absl::flat_hash_map<uint64_t, uint64_t> node_id_to_orig_node_id;
 
   explicit CuptiEventCollectorDelegate(
       AnnotationMap& p_annotation_map,
-      std::function<void(CuptiTracerEvent&&)> p_receive)
-      : annotation_map(p_annotation_map), receive(std::move(p_receive)) {}
+      std::function<void(CuptiTracerEvent&&)> p_receive,
+      absl::flat_hash_map<uint32_t, uint32_t> p_graph_id_to_orig_graph_id,
+      absl::flat_hash_map<uint64_t, uint64_t> p_node_id_to_orig_node_id)
+      : annotation_map(p_annotation_map),
+        receive(std::move(p_receive)),
+        graph_id_to_orig_graph_id(p_graph_id_to_orig_graph_id),
+        node_id_to_orig_node_id(p_node_id_to_orig_node_id) {}
 };
 
 // A tree of scope range ids which map child_id ==> parent_id

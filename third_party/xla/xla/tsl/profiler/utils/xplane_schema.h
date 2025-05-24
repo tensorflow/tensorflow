@@ -354,7 +354,10 @@ enum StatType {
   kCoreDetails,
   kAllReduceId,
   kAllReduceUniqueId,
-  kLastStatType = kAllReduceUniqueId,
+  kCudaGraphNodeId,
+  kCudaOrigGraphId,
+  kCudaGraphOrigNodeId,
+  kLastStatType = kCudaGraphOrigNodeId,
 };
 
 enum MegaScaleStatType : uint8_t {

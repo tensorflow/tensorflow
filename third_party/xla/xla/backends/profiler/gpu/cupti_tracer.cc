@@ -22,11 +22,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_callbacks.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_result.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
@@ -622,9 +624,19 @@ struct GraphResourceCreationInfo {
   uint32_t orig_graph_id = 0;
 };
 
+struct GraphNodeResourceCreationInfo {
+  uint64_t orig_graph_node_id = 0;
+  uint64_t graph_node_id = 0;
+};
+
 static GraphResourceCreationInfo &GetGraphResourceCreationInfo() {
   static thread_local GraphResourceCreationInfo per_thread_graph_info;
   return per_thread_graph_info;
+}
+
+static GraphNodeResourceCreationInfo &GetGraphNodeResourceCreationInfo() {
+  static thread_local GraphNodeResourceCreationInfo per_thread_graph_node_info;
+  return per_thread_graph_node_info;
 }
 
 // Currently used for cuGraphInstantiate*, cuGraphLaunch*, cuGraphCreate,
@@ -953,7 +965,9 @@ absl::Span<const uint32_t> GetCudaGraphTracingResourceCbids() {
 #if CUDA_VERSION >= 11070
   static constexpr uint32_t res_cbids[] = {
       CUPTI_CBID_RESOURCE_GRAPH_CREATED, CUPTI_CBID_RESOURCE_GRAPH_CLONED,
-      CUPTI_CBID_RESOURCE_GRAPHEXEC_CREATED};
+      CUPTI_CBID_RESOURCE_GRAPHEXEC_CREATED,
+      CUPTI_CBID_RESOURCE_GRAPHNODE_CREATED,
+      CUPTI_CBID_RESOURCE_GRAPHNODE_CLONED};
   return absl::MakeSpan(res_cbids);
 #else
   return absl::Span<const uint32_t>();
@@ -1040,7 +1054,8 @@ void CuptiTracer::Disable() {
   if (activity_buffers_) {
     auto cached_buffers = activity_buffers_->PopCachedBuffers();
     activity_buffers_.reset();
-    collector_->OnTracerCachedActivityBuffers(std::move(cached_buffers));
+    collector_->OnTracerCachedActivityBuffers(std::move(cached_buffers),
+                                              GetGraphIdMap(), GetNodeIdMap());
   }
 
   if (cupti_dropped_activity_event_count_ > 0) {
@@ -1076,7 +1091,8 @@ absl::Status CuptiTracer::FlushEventsToCollector() {
         IsCallbackApiEventsRequired());
   }
 
-  collector_->OnTracerCachedActivityBuffers(std::move(cached_buffers));
+  collector_->OnTracerCachedActivityBuffers(std::move(cached_buffers),
+                                            GetGraphIdMap(), GetNodeIdMap());
   return absl::OkStatus();
 }
 
@@ -1242,21 +1258,48 @@ absl::Status CuptiTracer::HandleResourceCallback(
   auto *graph_data =
       reinterpret_cast<const CUpti_GraphData *>(resource->resourceDescriptor);
   GraphResourceCreationInfo &graph_id_info = GetGraphResourceCreationInfo();
+  GraphNodeResourceCreationInfo &graph_node_id_info =
+      GetGraphNodeResourceCreationInfo();
+  auto orig_graph_node = static_cast<CUgraphNode>(graph_data->originalNode);
+  auto created_graph_node = static_cast<CUgraphNode>(graph_data->node);
+  absl::MutexLock lock(&graph_id_mutex_);
+  absl::MutexLock node_id_lock(&node_id_mutex_);
   switch (cbid) {
     case CUPTI_CBID_RESOURCE_GRAPH_CREATED:
       cupti_interface_->GetGraphId(graph_data->graph, &graph_id_info.graph_id);
       graph_id_info.orig_graph_id = 0;
+      graph_id_to_orig_graph_id_[graph_id_info.graph_id] =
+          graph_id_info.orig_graph_id;
       break;
     case CUPTI_CBID_RESOURCE_GRAPH_CLONED:
       cupti_interface_->GetGraphId(graph_data->graph, &graph_id_info.graph_id);
       cupti_interface_->GetGraphId(graph_data->originalGraph,
                                    &graph_id_info.orig_graph_id);
+      graph_id_to_orig_graph_id_[graph_id_info.graph_id] =
+          graph_id_info.orig_graph_id;
       break;
     case CUPTI_CBID_RESOURCE_GRAPHEXEC_CREATED:
       cupti_interface_->GetGraphExecId(graph_data->graphExec,
                                        &graph_id_info.graph_id);
       cupti_interface_->GetGraphId(graph_data->graph,
                                    &graph_id_info.orig_graph_id);
+      graph_id_to_orig_graph_id_[graph_id_info.graph_id] =
+          graph_id_info.orig_graph_id;
+      break;
+    case CUPTI_CBID_RESOURCE_GRAPHNODE_CREATED:
+      cupti_interface_->GetGraphNodeId(created_graph_node,
+                                       &graph_node_id_info.graph_node_id);
+      graph_node_id_info.orig_graph_node_id = 0;
+      node_id_to_orig_node_id_[graph_node_id_info.graph_node_id] =
+          graph_node_id_info.orig_graph_node_id;
+      break;
+    case CUPTI_CBID_RESOURCE_GRAPHNODE_CLONED:
+      cupti_interface_->GetGraphNodeId(created_graph_node,
+                                       &graph_node_id_info.graph_node_id);
+      cupti_interface_->GetGraphNodeId(orig_graph_node,
+                                       &graph_node_id_info.orig_graph_node_id);
+      node_id_to_orig_node_id_[graph_node_id_info.graph_node_id] =
+          graph_node_id_info.orig_graph_node_id;
       break;
   }
   return absl::OkStatus();
@@ -1459,6 +1502,11 @@ void CuptiTracer::PrepareActivityStart() {
   cupti_dropped_activity_event_count_ = 0;
   num_activity_events_in_cached_buffer_ = 0;
   num_activity_events_in_dropped_buffer_ = 0;
+  // clear the graph id  and node id map
+  absl::MutexLock lock(&graph_id_mutex_);
+  graph_id_to_orig_graph_id_.clear();
+  absl::MutexLock node_id_lock(&node_id_mutex_);
+  node_id_to_orig_node_id_.clear();
 }
 
 bool CuptiTracer::TooManyCallbackEvents() const {
@@ -1476,6 +1524,15 @@ bool CuptiTracer::TooManyAnnotationStrings(size_t count) const {
     return max_strings > 0 && count >= max_strings;
   }
   return true;
+}
+
+absl::flat_hash_map<uint32_t, uint32_t> CuptiTracer::GetGraphIdMap() const {
+  absl::MutexLock lock(&graph_id_mutex_);
+  return graph_id_to_orig_graph_id_;
+}
+absl::flat_hash_map<uint64_t, uint64_t> CuptiTracer::GetNodeIdMap() const {
+  absl::MutexLock lock(&node_id_mutex_);
+  return node_id_to_orig_node_id_;
 }
 
 }  // namespace profiler
