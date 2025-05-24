@@ -234,7 +234,7 @@ lit_test_suite(
     cfg = "//xla:lit.cfg.py",
     data = [":test_utilities"],
     default_tags = tf_cuda_tests_tags(),
-    hermetic_cuda_data_dir = "%S/../../../../cuda_nvcc",
+    hermetic_cuda_data_dir = "%S/../../../../../cuda_nvcc",
     tags_override = {
         "gpu_hlo_ptx.hlo": ["cuda-only"],
     },
