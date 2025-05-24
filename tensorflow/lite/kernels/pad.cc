@@ -243,6 +243,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   PadContext op_context(context, node);
+  TF_LITE_ENSURE(context, op_context.output != nullptr);
   if (IsConstantTensor(op_context.paddings)) {
     TF_LITE_ENSURE_MSG(context, !CheckPaddingOverflow(&op_context),
                        "INT64 padding overflow. Only support value between "
