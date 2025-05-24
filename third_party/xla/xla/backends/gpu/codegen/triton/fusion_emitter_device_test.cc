@@ -1289,6 +1289,88 @@ CHECK: tt.reshape
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
+TEST_F(TritonEmitterTest, HighPad1DIsLoweredCorrectly) {
+  constexpr absl::string_view kHloText = R"(
+    triton_computation {
+      param_0 = f32[17]{0} parameter(0)
+      c1 = f32[] constant(1)
+      ROOT pad = f32[49]{0} pad(param_0, c1), padding=0_32
+    }
+
+    ENTRY main {
+      param_0 = f32[17]{0} parameter(0)
+      ROOT triton_fusion = f32[49]{0} fusion(param_0), kind=kCustom,
+        calls=triton_computation, backend_config={
+          "fusion_backend_config":{
+            "kind":"__triton",
+            "block_level_fusion_config":{
+              "output_tiles":[{"sizes":["32"]}],
+              "num_warps":"1",
+              "num_ctas":"1",
+              "num_stages":"1"}}}
+    })";
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText, "triton_computation",
+                                          R"(
+// #xla.indexing_map<"(pid_0) -> (pid_0 * 32), domain: pid_0 in [0, 1]
+
+// CHECK: func @{{.*}}(%[[IN:.*]]: tensor<17xf32>, %[[OUT:.*]]: tensor<49xf32>)
+
+// CHECK: %[[PAD_VALUE:.*]] = arith.constant dense<1.000000e+00> : tensor<32xf32>
+// CHECK: %[[C17:.*]] = arith.constant 17 : i32
+// CHECK: %[[EXTRACT:.*]] = triton_xla.extract %[[IN]][0] [32] [1]
+// CHECK-SAME:  {layout = array<i64: 0>} : tensor<17xf32> to tensor<32xf32>
+
+// CHECK: %[[TILE_OFFSET:.*]] = xla.apply_indexing
+// CHECK: %[[IOTA:.*]] = tt.make_range {end = 32 : i32, start = 0 : i32}
+// CHECK: %[[TILE_OFFSET_I32:.*]] = arith.index_castui %[[TILE_OFFSET]] 
+// CHECK: %[[THRESHOLD:.*]] = arith.subi %[[C17]], %[[TILE_OFFSET_I32]]
+// CHECK: %[[THRESHOLD_SPLAT:.*]] = tt.splat %[[THRESHOLD]]
+// CHECK: %[[MASK:.*]] = arith.cmpi slt, %[[IOTA]], %[[THRESHOLD_SPLAT]]
+// CHECK: %[[SELECT:.*]] = arith.select %[[MASK]], %[[EXTRACT]], %[[PAD_VALUE]]
+
+// CHECK:   triton_xla.insert %[[SELECT]] into %[[OUT]][%[[TILE_OFFSET]]] [32] 
+// CHECK-SAME:  {layout = array<i64: 0>} : tensor<32xf32> into tensor<49xf32>
+  )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
+TEST_F(TritonEmitterTest, HighPad2DIsLoweredCorrectly) {
+  constexpr absl::string_view kHloText = R"(
+    triton_computation {
+      param_0 = f32[17,137]{1,0} parameter(0)
+      c1 = f32[] constant(1)
+      ROOT pad = f32[32,138]{1,0} pad(param_0, c1), padding=0_15x0_1
+    }
+
+    ENTRY main {
+      param_0 = f32[17,137]{1,0} parameter(0)
+      ROOT triton_fusion = f32[32,138]{1,0} fusion(param_0), kind=kCustom,
+        calls=triton_computation, backend_config={
+          "fusion_backend_config":{
+            "kind":"__triton",
+            "block_level_fusion_config":{
+              "output_tiles":[{"sizes":["32","16"]}],
+              "num_warps":"1",
+              "num_ctas":"1",
+              "num_stages":"1"}}}
+    })";
+  TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText, "triton_computation",
+                                          R"(
+// CHECK: triton_xla.extract {{.*}} : tensor<17x137xf32> to tensor<32x16xf32>
+// CHECK: tt.make_range {end = 32 : i32, start = 0 : i32} : tensor<32xi32>
+// CHECK: tt.expand_dims
+// CHECK: tt.broadcast
+// CHECK: arith.cmpi
+// CHECK: tt.make_range {end = 16 : i32, start = 0 : i32} : tensor<16xi32>
+// CHECK: tt.expand_dims
+// CHECK: tt.broadcast
+// CHECK: arith.cmpi slt
+// CHECK: arith.andi
+// CHECK: arith.select
+  )"));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
 TEST_F(TritonEmitterTest, BitcastIntoBroadcastIsLoweredCorrectly) {
   constexpr absl::string_view kHloText = R"(
 triton_computation {
