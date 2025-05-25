@@ -153,10 +153,11 @@ public class OvicDetector implements AutoCloseable {
     return true;  // Marks that the result is available.
   }
 
-  /*
+  /**
    * Get native inference latency of last image detection run.
-   *  @throws RuntimeException if model is uninitialized.
-   *  @return The inference latency in milliseconds.
+   *
+   * @throws RuntimeException if model is uninitialized.
+   * @return The inference latency in milliseconds.
    */
   public Long getLastNativeInferenceLatencyMilliseconds() {
     if (tflite == null) {
@@ -166,10 +167,11 @@ public class OvicDetector implements AutoCloseable {
     return (latency == null) ? null : (Long) (latency / 1000000);
   }
 
-  /*
+  /**
    * Get native inference latency of last image detection run.
-   *  @throws RuntimeException if model is uninitialized.
-   *  @return The inference latency in nanoseconds.
+   *
+   * @throws RuntimeException if model is uninitialized.
+   * @return The inference latency in nanoseconds.
    */
   public Long getLastNativeInferenceLatencyNanoseconds() {
     if (tflite == null) {
