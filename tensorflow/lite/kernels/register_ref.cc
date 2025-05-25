@@ -58,6 +58,7 @@ TfLiteRegistration* Register_FULLY_CONNECTED_REF();
 TfLiteRegistration* Register_LSH_PROJECTION();
 TfLiteRegistration* Register_HASHTABLE_LOOKUP();
 TfLiteRegistration* Register_SOFTMAX_REF();
+TfLiteRegistration* Register_SOFTSIGN();
 TfLiteRegistration* Register_CONCATENATION_REF();
 TfLiteRegistration* Register_ADD_REF();
 TfLiteRegistration* Register_SPACE_TO_BATCH_ND_REF();
@@ -284,6 +285,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_SOFTMAX, Register_SOFTMAX_REF(),
              /* min_version = */ 1,
              /* max_version = */ 3);
+  AddBuiltin(BuiltinOperator_SOFTSIGN, Register_SOFTSIGN());
   AddBuiltin(BuiltinOperator_CONCATENATION, Register_CONCATENATION_REF(),
              /* min_version = */ 1,
              /* max_version = */ 3);

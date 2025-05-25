@@ -488,6 +488,7 @@ enum BuiltinOperator : int32 {
   STABLEHLO_SHIFT_LEFT = 207,
   STABLEHLO_CBRT = 208, // WARNING: No runtime support
   STABLEHLO_CASE = 209,
+  SOFTSIGN = 210,
 }
 // LINT.ThenChange(nnapi_linter/linter.proto)
 
@@ -648,6 +649,7 @@ union BuiltinOptions2{
   StableHLOCompositeOptions,
   StablehloShiftLeftOptions,
   StablehloCaseOptions,
+  SoftsignOptions,
 }
 
 table StablehloGatherOptions{
@@ -1471,6 +1473,9 @@ table RightShiftOptions {
 }
 
 table DilateOptions {
+}
+
+table SoftsignOptions {
 }
 
 enum ReduceWindowFunction : int {

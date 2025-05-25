@@ -325,6 +325,10 @@ struct LogSoftmaxOptions;
 struct LogSoftmaxOptionsBuilder;
 struct LogSoftmaxOptionsT;
 
+struct SoftsignOptions;
+struct SoftsignOptionsBuilder;
+struct SoftsignOptionsT;
+
 struct CastOptions;
 struct CastOptionsBuilder;
 struct CastOptionsT;
@@ -1254,11 +1258,12 @@ enum BuiltinOperator : int32_t {
   BuiltinOperator_STABLEHLO_SHIFT_LEFT = 207,
   BuiltinOperator_STABLEHLO_CBRT = 208,
   BuiltinOperator_STABLEHLO_CASE = 209,
+  BuiltinOperator_SOFTSIGN = 210,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_STABLEHLO_CASE
+  BuiltinOperator_MAX = BuiltinOperator_SOFTSIGN
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[210] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[211] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -1469,13 +1474,14 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[210] {
     BuiltinOperator_STABLEHLO_COMPOSITE,
     BuiltinOperator_STABLEHLO_SHIFT_LEFT,
     BuiltinOperator_STABLEHLO_CBRT,
-    BuiltinOperator_STABLEHLO_CASE
+    BuiltinOperator_STABLEHLO_CASE,
+    BuiltinOperator_SOFTSIGN
   };
   return values;
 }
 
 inline const char * const *EnumNamesBuiltinOperator() {
-  static const char * const names[211] = {
+  static const char * const names[212] = {
     "ADD",
     "AVERAGE_POOL_2D",
     "CONCATENATION",
@@ -1686,13 +1692,14 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "STABLEHLO_SHIFT_LEFT",
     "STABLEHLO_CBRT",
     "STABLEHLO_CASE",
+    "SOFTSIGN",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (::flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_STABLEHLO_CASE)) return "";
+  if (::flatbuffers::IsOutRange(e, BuiltinOperator_ADD, BuiltinOperator_SOFTSIGN)) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -1735,101 +1742,102 @@ enum BuiltinOptions : uint8_t {
   BuiltinOptions_TopKV2Options = 34,
   BuiltinOptions_SplitOptions = 35,
   BuiltinOptions_LogSoftmaxOptions = 36,
-  BuiltinOptions_CastOptions = 37,
-  BuiltinOptions_DequantizeOptions = 38,
-  BuiltinOptions_MaximumMinimumOptions = 39,
-  BuiltinOptions_ArgMaxOptions = 40,
-  BuiltinOptions_LessOptions = 41,
-  BuiltinOptions_NegOptions = 42,
-  BuiltinOptions_PadV2Options = 43,
-  BuiltinOptions_GreaterOptions = 44,
-  BuiltinOptions_GreaterEqualOptions = 45,
-  BuiltinOptions_LessEqualOptions = 46,
-  BuiltinOptions_SelectOptions = 47,
-  BuiltinOptions_SliceOptions = 48,
-  BuiltinOptions_TransposeConvOptions = 49,
-  BuiltinOptions_SparseToDenseOptions = 50,
-  BuiltinOptions_TileOptions = 51,
-  BuiltinOptions_ExpandDimsOptions = 52,
-  BuiltinOptions_EqualOptions = 53,
-  BuiltinOptions_NotEqualOptions = 54,
-  BuiltinOptions_ShapeOptions = 55,
-  BuiltinOptions_PowOptions = 56,
-  BuiltinOptions_ArgMinOptions = 57,
-  BuiltinOptions_FakeQuantOptions = 58,
-  BuiltinOptions_PackOptions = 59,
-  BuiltinOptions_LogicalOrOptions = 60,
-  BuiltinOptions_OneHotOptions = 61,
-  BuiltinOptions_LogicalAndOptions = 62,
-  BuiltinOptions_LogicalNotOptions = 63,
-  BuiltinOptions_UnpackOptions = 64,
-  BuiltinOptions_FloorDivOptions = 65,
-  BuiltinOptions_SquareOptions = 66,
-  BuiltinOptions_ZerosLikeOptions = 67,
-  BuiltinOptions_FillOptions = 68,
-  BuiltinOptions_BidirectionalSequenceLSTMOptions = 69,
-  BuiltinOptions_BidirectionalSequenceRNNOptions = 70,
-  BuiltinOptions_UnidirectionalSequenceLSTMOptions = 71,
-  BuiltinOptions_FloorModOptions = 72,
-  BuiltinOptions_RangeOptions = 73,
-  BuiltinOptions_ResizeNearestNeighborOptions = 74,
-  BuiltinOptions_LeakyReluOptions = 75,
-  BuiltinOptions_SquaredDifferenceOptions = 76,
-  BuiltinOptions_MirrorPadOptions = 77,
-  BuiltinOptions_AbsOptions = 78,
-  BuiltinOptions_SplitVOptions = 79,
-  BuiltinOptions_UniqueOptions = 80,
-  BuiltinOptions_ReverseV2Options = 81,
-  BuiltinOptions_AddNOptions = 82,
-  BuiltinOptions_GatherNdOptions = 83,
-  BuiltinOptions_CosOptions = 84,
-  BuiltinOptions_WhereOptions = 85,
-  BuiltinOptions_RankOptions = 86,
-  BuiltinOptions_ReverseSequenceOptions = 87,
-  BuiltinOptions_MatrixDiagOptions = 88,
-  BuiltinOptions_QuantizeOptions = 89,
-  BuiltinOptions_MatrixSetDiagOptions = 90,
-  BuiltinOptions_HardSwishOptions = 91,
-  BuiltinOptions_IfOptions = 92,
-  BuiltinOptions_WhileOptions = 93,
-  BuiltinOptions_DepthToSpaceOptions = 94,
-  BuiltinOptions_NonMaxSuppressionV4Options = 95,
-  BuiltinOptions_NonMaxSuppressionV5Options = 96,
-  BuiltinOptions_ScatterNdOptions = 97,
-  BuiltinOptions_SelectV2Options = 98,
-  BuiltinOptions_DensifyOptions = 99,
-  BuiltinOptions_SegmentSumOptions = 100,
-  BuiltinOptions_BatchMatMulOptions = 101,
-  BuiltinOptions_CumsumOptions = 102,
-  BuiltinOptions_CallOnceOptions = 103,
-  BuiltinOptions_BroadcastToOptions = 104,
-  BuiltinOptions_Rfft2dOptions = 105,
-  BuiltinOptions_Conv3DOptions = 106,
-  BuiltinOptions_HashtableOptions = 107,
-  BuiltinOptions_HashtableFindOptions = 108,
-  BuiltinOptions_HashtableImportOptions = 109,
-  BuiltinOptions_HashtableSizeOptions = 110,
-  BuiltinOptions_VarHandleOptions = 111,
-  BuiltinOptions_ReadVariableOptions = 112,
-  BuiltinOptions_AssignVariableOptions = 113,
-  BuiltinOptions_RandomOptions = 114,
-  BuiltinOptions_BucketizeOptions = 115,
-  BuiltinOptions_GeluOptions = 116,
-  BuiltinOptions_DynamicUpdateSliceOptions = 117,
-  BuiltinOptions_UnsortedSegmentProdOptions = 118,
-  BuiltinOptions_UnsortedSegmentMaxOptions = 119,
-  BuiltinOptions_UnsortedSegmentMinOptions = 120,
-  BuiltinOptions_UnsortedSegmentSumOptions = 121,
-  BuiltinOptions_ATan2Options = 122,
-  BuiltinOptions_SignOptions = 123,
-  BuiltinOptions_BitcastOptions = 124,
-  BuiltinOptions_BitwiseXorOptions = 125,
-  BuiltinOptions_RightShiftOptions = 126,
+  BuiltinOptions_SoftsignOptions = 37,
+  BuiltinOptions_CastOptions = 38,
+  BuiltinOptions_DequantizeOptions = 39,
+  BuiltinOptions_MaximumMinimumOptions = 40,
+  BuiltinOptions_ArgMaxOptions = 41,
+  BuiltinOptions_LessOptions = 42,
+  BuiltinOptions_NegOptions = 43,
+  BuiltinOptions_PadV2Options = 44,
+  BuiltinOptions_GreaterOptions = 45,
+  BuiltinOptions_GreaterEqualOptions = 46,
+  BuiltinOptions_LessEqualOptions = 47,
+  BuiltinOptions_SelectOptions = 48,
+  BuiltinOptions_SliceOptions = 49,
+  BuiltinOptions_TransposeConvOptions = 50,
+  BuiltinOptions_SparseToDenseOptions = 51,
+  BuiltinOptions_TileOptions = 52,
+  BuiltinOptions_ExpandDimsOptions = 53,
+  BuiltinOptions_EqualOptions = 54,
+  BuiltinOptions_NotEqualOptions = 55,
+  BuiltinOptions_ShapeOptions = 56,
+  BuiltinOptions_PowOptions = 57,
+  BuiltinOptions_ArgMinOptions = 58,
+  BuiltinOptions_FakeQuantOptions = 59,
+  BuiltinOptions_PackOptions = 60,
+  BuiltinOptions_LogicalOrOptions = 61,
+  BuiltinOptions_OneHotOptions = 62,
+  BuiltinOptions_LogicalAndOptions = 63,
+  BuiltinOptions_LogicalNotOptions = 64,
+  BuiltinOptions_UnpackOptions = 65,
+  BuiltinOptions_FloorDivOptions = 66,
+  BuiltinOptions_SquareOptions = 67,
+  BuiltinOptions_ZerosLikeOptions = 68,
+  BuiltinOptions_FillOptions = 69,
+  BuiltinOptions_BidirectionalSequenceLSTMOptions = 70,
+  BuiltinOptions_BidirectionalSequenceRNNOptions = 71,
+  BuiltinOptions_UnidirectionalSequenceLSTMOptions = 72,
+  BuiltinOptions_FloorModOptions = 73,
+  BuiltinOptions_RangeOptions = 74,
+  BuiltinOptions_ResizeNearestNeighborOptions = 75,
+  BuiltinOptions_LeakyReluOptions = 76,
+  BuiltinOptions_SquaredDifferenceOptions = 77,
+  BuiltinOptions_MirrorPadOptions = 78,
+  BuiltinOptions_AbsOptions = 79,
+  BuiltinOptions_SplitVOptions = 80,
+  BuiltinOptions_UniqueOptions = 81,
+  BuiltinOptions_ReverseV2Options = 82,
+  BuiltinOptions_AddNOptions = 83,
+  BuiltinOptions_GatherNdOptions = 84,
+  BuiltinOptions_CosOptions = 85,
+  BuiltinOptions_WhereOptions = 86,
+  BuiltinOptions_RankOptions = 87,
+  BuiltinOptions_ReverseSequenceOptions = 88,
+  BuiltinOptions_MatrixDiagOptions = 89,
+  BuiltinOptions_QuantizeOptions = 90,
+  BuiltinOptions_MatrixSetDiagOptions = 91,
+  BuiltinOptions_HardSwishOptions = 92,
+  BuiltinOptions_IfOptions = 93,
+  BuiltinOptions_WhileOptions = 94,
+  BuiltinOptions_DepthToSpaceOptions = 95,
+  BuiltinOptions_NonMaxSuppressionV4Options = 96,
+  BuiltinOptions_NonMaxSuppressionV5Options = 97,
+  BuiltinOptions_ScatterNdOptions = 98,
+  BuiltinOptions_SelectV2Options = 99,
+  BuiltinOptions_DensifyOptions = 100,
+  BuiltinOptions_SegmentSumOptions = 101,
+  BuiltinOptions_BatchMatMulOptions = 102,
+  BuiltinOptions_CumsumOptions = 103,
+  BuiltinOptions_CallOnceOptions = 104,
+  BuiltinOptions_BroadcastToOptions = 105,
+  BuiltinOptions_Rfft2dOptions = 106,
+  BuiltinOptions_Conv3DOptions = 107,
+  BuiltinOptions_HashtableOptions = 108,
+  BuiltinOptions_HashtableFindOptions = 109,
+  BuiltinOptions_HashtableImportOptions = 110,
+  BuiltinOptions_HashtableSizeOptions = 111,
+  BuiltinOptions_VarHandleOptions = 112,
+  BuiltinOptions_ReadVariableOptions = 113,
+  BuiltinOptions_AssignVariableOptions = 114,
+  BuiltinOptions_RandomOptions = 115,
+  BuiltinOptions_BucketizeOptions = 116,
+  BuiltinOptions_GeluOptions = 117,
+  BuiltinOptions_DynamicUpdateSliceOptions = 118,
+  BuiltinOptions_UnsortedSegmentProdOptions = 119,
+  BuiltinOptions_UnsortedSegmentMaxOptions = 120,
+  BuiltinOptions_UnsortedSegmentMinOptions = 121,
+  BuiltinOptions_UnsortedSegmentSumOptions = 122,
+  BuiltinOptions_ATan2Options = 123,
+  BuiltinOptions_SignOptions = 124,
+  BuiltinOptions_BitcastOptions = 125,
+  BuiltinOptions_BitwiseXorOptions = 126,
+  BuiltinOptions_RightShiftOptions = 127,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
   BuiltinOptions_MAX = BuiltinOptions_RightShiftOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[127] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[128] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -1868,6 +1876,7 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[127] {
     BuiltinOptions_TopKV2Options,
     BuiltinOptions_SplitOptions,
     BuiltinOptions_LogSoftmaxOptions,
+    BuiltinOptions_SoftsignOptions,
     BuiltinOptions_CastOptions,
     BuiltinOptions_DequantizeOptions,
     BuiltinOptions_MaximumMinimumOptions,
@@ -1963,7 +1972,7 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[127] {
 }
 
 inline const char * const *EnumNamesBuiltinOptions() {
-  static const char * const names[128] = {
+  static const char * const names[129] = {
     "NONE",
     "Conv2DOptions",
     "DepthwiseConv2DOptions",
@@ -2001,6 +2010,7 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "TopKV2Options",
     "SplitOptions",
     "LogSoftmaxOptions",
+    "SoftsignOptions",
     "CastOptions",
     "DequantizeOptions",
     "MaximumMinimumOptions",
@@ -2248,6 +2258,10 @@ template<> struct BuiltinOptionsTraits<tflite::SplitOptions> {
 
 template<> struct BuiltinOptionsTraits<tflite::LogSoftmaxOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_LogSoftmaxOptions;
+};
+
+template<> struct BuiltinOptionsTraits<tflite::SoftsignOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_SoftsignOptions;
 };
 
 template<> struct BuiltinOptionsTraits<tflite::CastOptions> {
@@ -2756,6 +2770,10 @@ template<> struct BuiltinOptionsUnionTraits<tflite::SplitOptionsT> {
 
 template<> struct BuiltinOptionsUnionTraits<tflite::LogSoftmaxOptionsT> {
   static const BuiltinOptions enum_value = BuiltinOptions_LogSoftmaxOptions;
+};
+
+template<> struct BuiltinOptionsUnionTraits<tflite::SoftsignOptionsT> {
+  static const BuiltinOptions enum_value = BuiltinOptions_SoftsignOptions;
 };
 
 template<> struct BuiltinOptionsUnionTraits<tflite::CastOptionsT> {
@@ -3435,6 +3453,14 @@ struct BuiltinOptionsUnion {
   const tflite::LogSoftmaxOptionsT *AsLogSoftmaxOptions() const {
     return type == BuiltinOptions_LogSoftmaxOptions ?
       reinterpret_cast<const tflite::LogSoftmaxOptionsT *>(value) : nullptr;
+  }
+  tflite::SoftsignOptionsT *AsSoftsignOptions() {
+    return type == BuiltinOptions_SoftsignOptions ?
+      reinterpret_cast<tflite::SoftsignOptionsT *>(value) : nullptr;
+  }
+  const tflite::SoftsignOptionsT *AsSoftsignOptions() const {
+    return type == BuiltinOptions_SoftsignOptions ?
+      reinterpret_cast<const tflite::SoftsignOptionsT *>(value) : nullptr;
   }
   tflite::CastOptionsT *AsCastOptions() {
     return type == BuiltinOptions_CastOptions ?
@@ -10952,6 +10978,45 @@ inline ::flatbuffers::Offset<LogSoftmaxOptions> CreateLogSoftmaxOptions(
 
 ::flatbuffers::Offset<LogSoftmaxOptions> CreateLogSoftmaxOptions(::flatbuffers::FlatBufferBuilder &_fbb, const LogSoftmaxOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct SoftsignOptionsT : public ::flatbuffers::NativeTable {
+  typedef SoftsignOptions TableType;
+};
+
+struct SoftsignOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef SoftsignOptionsT NativeTableType;
+  typedef SoftsignOptionsBuilder Builder;
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  SoftsignOptionsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(SoftsignOptionsT *_o, const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static ::flatbuffers::Offset<SoftsignOptions> Pack(::flatbuffers::FlatBufferBuilder &_fbb, const SoftsignOptionsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct SoftsignOptionsBuilder {
+  typedef SoftsignOptions Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  explicit SoftsignOptionsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<SoftsignOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<SoftsignOptions>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<SoftsignOptions> CreateSoftsignOptions(
+    ::flatbuffers::FlatBufferBuilder &_fbb) {
+  SoftsignOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+::flatbuffers::Offset<SoftsignOptions> CreateSoftsignOptions(::flatbuffers::FlatBufferBuilder &_fbb, const SoftsignOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct CastOptionsT : public ::flatbuffers::NativeTable {
   typedef CastOptions TableType;
   tflite::TensorType in_data_type = tflite::TensorType_FLOAT32;
@@ -15173,6 +15238,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const tflite::LogSoftmaxOptions *builtin_options_as_LogSoftmaxOptions() const {
     return builtin_options_type() == tflite::BuiltinOptions_LogSoftmaxOptions ? static_cast<const tflite::LogSoftmaxOptions *>(builtin_options()) : nullptr;
   }
+  const tflite::SoftsignOptions *builtin_options_as_SoftsignOptions() const {
+    return builtin_options_type() == tflite::BuiltinOptions_SoftsignOptions ? static_cast<const tflite::SoftsignOptions *>(builtin_options()) : nullptr;
+  }
   const tflite::CastOptions *builtin_options_as_CastOptions() const {
     return builtin_options_type() == tflite::BuiltinOptions_CastOptions ? static_cast<const tflite::CastOptions *>(builtin_options()) : nullptr;
   }
@@ -15712,6 +15780,10 @@ template<> inline const tflite::SplitOptions *Operator::builtin_options_as<tflit
 
 template<> inline const tflite::LogSoftmaxOptions *Operator::builtin_options_as<tflite::LogSoftmaxOptions>() const {
   return builtin_options_as_LogSoftmaxOptions();
+}
+
+template<> inline const tflite::SoftsignOptions *Operator::builtin_options_as<tflite::SoftsignOptions>() const {
+  return builtin_options_as_SoftsignOptions();
 }
 
 template<> inline const tflite::CastOptions *Operator::builtin_options_as<tflite::CastOptions>() const {
@@ -19337,6 +19409,29 @@ inline ::flatbuffers::Offset<LogSoftmaxOptions> CreateLogSoftmaxOptions(::flatbu
       _fbb);
 }
 
+inline SoftsignOptionsT *SoftsignOptions::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<SoftsignOptionsT>(new SoftsignOptionsT());
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void SoftsignOptions::UnPackTo(SoftsignOptionsT *_o, const ::flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline ::flatbuffers::Offset<SoftsignOptions> SoftsignOptions::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const SoftsignOptionsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateSoftsignOptions(_fbb, _o, _rehasher);
+}
+
+inline ::flatbuffers::Offset<SoftsignOptions> CreateSoftsignOptions(::flatbuffers::FlatBufferBuilder &_fbb, const SoftsignOptionsT *_o, const ::flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { ::flatbuffers::FlatBufferBuilder *__fbb; const SoftsignOptionsT* __o; const ::flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateSoftsignOptions(
+      _fbb);
+}
+
 inline CastOptionsT *CastOptions::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {
   auto _o = std::unique_ptr<CastOptionsT>(new CastOptionsT());
   UnPackTo(_o.get(), _resolver);
@@ -22176,6 +22271,10 @@ inline bool VerifyBuiltinOptions(::flatbuffers::Verifier &verifier, const void *
       auto ptr = reinterpret_cast<const tflite::LogSoftmaxOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_SoftsignOptions: {
+      auto ptr = reinterpret_cast<const tflite::SoftsignOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     case BuiltinOptions_CastOptions: {
       auto ptr = reinterpret_cast<const tflite::CastOptions *>(obj);
       return verifier.VerifyTable(ptr);
@@ -22699,6 +22798,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const tflite::LogSoftmaxOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_SoftsignOptions: {
+      auto ptr = reinterpret_cast<const tflite::SoftsignOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     case BuiltinOptions_CastOptions: {
       auto ptr = reinterpret_cast<const tflite::CastOptions *>(obj);
       return ptr->UnPack(resolver);
@@ -23210,6 +23313,10 @@ inline ::flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(::flatbuffers::Flat
       auto ptr = reinterpret_cast<const tflite::LogSoftmaxOptionsT *>(value);
       return CreateLogSoftmaxOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_SoftsignOptions: {
+      auto ptr = reinterpret_cast<const tflite::SoftsignOptionsT *>(value);
+      return CreateSoftsignOptions(_fbb, ptr, _rehasher).Union();
+    }
     case BuiltinOptions_CastOptions: {
       auto ptr = reinterpret_cast<const tflite::CastOptionsT *>(value);
       return CreateCastOptions(_fbb, ptr, _rehasher).Union();
@@ -23718,6 +23825,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) : 
     }
     case BuiltinOptions_LogSoftmaxOptions: {
       value = new tflite::LogSoftmaxOptionsT(*reinterpret_cast<tflite::LogSoftmaxOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_SoftsignOptions: {
+      value = new tflite::SoftsignOptionsT(*reinterpret_cast<tflite::SoftsignOptionsT *>(u.value));
       break;
     }
     case BuiltinOptions_CastOptions: {
@@ -24264,6 +24375,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_LogSoftmaxOptions: {
       auto ptr = reinterpret_cast<tflite::LogSoftmaxOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_SoftsignOptions: {
+      auto ptr = reinterpret_cast<tflite::SoftsignOptionsT *>(value);
       delete ptr;
       break;
     }

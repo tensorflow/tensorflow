@@ -2281,6 +2281,32 @@ def TFL_LogSoftmaxOp : TFL_Op<"log_softmax", [
   }];
 }
 
+def TFL_SoftsignOp: TFL_Op<"softsign", [
+    Pure,
+    SameOperandsAndResultShape,
+    TFL_SameFirstOperandAndFirstResultElementType]> {
+  let summary = "Softsign operator";
+  let description = [{
+    Computes element-wise softsign activations with the following formula
+      input / (abs(input) + 1)
+    element-wise.
+  }];
+
+  let arguments = (ins TFL_TensorOf<[F32]>:$x);
+
+  let results = (outs TFL_TensorOf<[F32]>:$y);
+
+  let hasOptions = 0;
+
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(input.getType());
+    }]>
+  ];
+}
+
 def TFL_MaxPool2DOp : TFL_Op<"max_pool_2d", [
     TFL_OperandHasRank<0, 4>,
     PredOpTrait<"input and output must have same element type",

@@ -626,6 +626,13 @@ struct ReluParams : public ActivationParams {
   int output_shift;
 };
 
+struct SoftsignParams : public ActivationParams {
+  int32_t input_offset;
+  int32_t output_offset;
+  int32_t output_multiplier;
+  int output_shift;
+};
+
 // Styles of resizing op usages. For example, kImageStyle can be used with a Pad
 // op for pattern-specific optimization.
 enum class ResizingCategory : uint8_t {
