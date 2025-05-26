@@ -35,11 +35,12 @@ namespace xla::gpu {
 absl::StatusOr<bool> SolGpuCostModelStatsCollection::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  SolGPUCostModel::Config config = SolGPUCostModel::GetConfig(module);
+  SolGPUCostModel::Config config =
+      SolGPUCostModel::GetConfig(module, device_info_);
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<CollectiveInterpolator> collective_interpolator,
-      CollectiveInterpolator::Create(device_info_));
+      CollectiveInterpolator::Create(config.gpus_per_node, device_info_));
 
   hlo_query::ForEachInstructionWithPred(
       *module,
