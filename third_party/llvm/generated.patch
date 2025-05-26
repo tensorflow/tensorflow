@@ -1,41 +1,114 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/libcxx/include/__tree b/libcxx/include/__tree
---- a/libcxx/include/__tree
-+++ b/libcxx/include/__tree
-@@ -1281,7 +1281,7 @@
-   }
-   _LIBCPP_HIDE_FROM_ABI void __move_assign_alloc(__tree&, false_type) _NOEXCEPT {}
- 
--  template <class _From, __enable_if_t<__is_pair_v<__remove_cvref_t<_From> >, int> = 0>
-+  template <class _From, class _ValueT = _Tp, __enable_if_t<__is_tree_value_type<_ValueT>::value, int> = 0>
-   _LIBCPP_HIDE_FROM_ABI static void __assign_value(__get_node_value_type_t<value_type>& __lhs, _From&& __rhs) {
-     using __key_type = typename _NodeTypes::key_type;
- 
-@@ -1291,7 +1291,7 @@
-     __lhs.second                         = std::forward<_From>(__rhs).second;
-   }
- 
--  template <class _To, class _From, class _ValueT = _Tp, __enable_if_t<!__is_pair_v<__remove_cvref_t<_From> >, int> = 0>
-+  template <class _To, class _From, class _ValueT = _Tp, __enable_if_t<!__is_tree_value_type<_ValueT>::value, int> = 0>
-   _LIBCPP_HIDE_FROM_ABI static void __assign_value(_To& __lhs, _From&& __rhs) {
-     __lhs = std::forward<_From>(__rhs);
-   }
-diff -ruN --strip-trailing-cr a/libcxx/test/std/containers/associative/set/set.cons/copy_assign.pass.cpp b/libcxx/test/std/containers/associative/set/set.cons/copy_assign.pass.cpp
---- a/libcxx/test/std/containers/associative/set/set.cons/copy_assign.pass.cpp
-+++ b/libcxx/test/std/containers/associative/set/set.cons/copy_assign.pass.cpp
-@@ -80,5 +80,15 @@
-     assert(*std::next(mo.begin(), 2) == 3);
-   }
- 
-+  { // Test with std::pair, since we have some special handling for pairs inside __tree
-+    std::pair<int, int> arr[] = {
-+        std::make_pair(1, 2), std::make_pair(2, 3), std::make_pair(3, 4), std::make_pair(4, 5)};
-+    std::set<std::pair<int, int> > a(arr, arr + 4);
-+    std::set<std::pair<int, int> > b;
-+
-+    b = a;
-+    assert(a == b);
-+  }
-+
-   return 0;
+diff -ruN --strip-trailing-cr a/clang/lib/Lex/ModuleMap.cpp b/clang/lib/Lex/ModuleMap.cpp
+--- a/clang/lib/Lex/ModuleMap.cpp
++++ b/clang/lib/Lex/ModuleMap.cpp
+@@ -310,10 +310,8 @@
+   } else if (Header.HasBuiltinHeader && !Header.Size && !Header.ModTime) {
+     // There's a builtin header but no corresponding on-disk header. Assume
+     // this was supposed to modularize the builtin header alone.
+-  } else if ((Header.Kind == Module::HK_Excluded) ||
+-             (Header.Kind == Module::HK_Textual)) {
+-    // Ignore excluded and textual header files as a module can be built with
+-    // such headers missing.
++  } else if (Header.Kind == Module::HK_Excluded) {
++    // Ignore missing excluded header files. They're optional anyway.
+   } else {
+     // If we find a module that has a missing header, we mark this module as
+     // unavailable and store the header directive for displaying diagnostics.
+diff -ruN --strip-trailing-cr a/clang/test/Modules/Inputs/submodules/module.modulemap b/clang/test/Modules/Inputs/submodules/module.modulemap
+--- a/clang/test/Modules/Inputs/submodules/module.modulemap
++++ b/clang/test/Modules/Inputs/submodules/module.modulemap
+@@ -30,7 +30,3 @@
+   module * { export * }
+   export *
  }
+-
+-module missing_textual_header {
+-  textual header "missing_textual.h"
+-}
+diff -ruN --strip-trailing-cr a/clang/test/Modules/missing-header.m b/clang/test/Modules/missing-header.m
+--- a/clang/test/Modules/missing-header.m
++++ b/clang/test/Modules/missing-header.m
+@@ -8,9 +8,6 @@
+ @import missing_unavailable_headers.not_missing; // OK
+ // CHECK-NOT: missing_unavailable_headers
+ 
+-@import missing_textual_header; // OK
+-// CHECK-NOT: missing_textual_header
+-
+ @import missing_headers;
+ // CHECK: module.modulemap:15:27: error: header 'missing.h' not found
+ // CHECK: could not build module 'missing_headers'
+diff -ruN --strip-trailing-cr a/mlir/lib/Conversion/MemRefToLLVM/MemRefToLLVM.cpp b/mlir/lib/Conversion/MemRefToLLVM/MemRefToLLVM.cpp
+--- a/mlir/lib/Conversion/MemRefToLLVM/MemRefToLLVM.cpp
++++ b/mlir/lib/Conversion/MemRefToLLVM/MemRefToLLVM.cpp
+@@ -1721,10 +1721,6 @@
+     MemRefDescriptor sourceMemRef(adaptor.getSource());
+     auto targetMemRef = MemRefDescriptor::poison(rewriter, loc, targetDescTy);
+ 
+-    // Early exit for 0-D corner case.
+-    if (viewMemRefType.getRank() == 0)
+-      return rewriter.replaceOp(viewOp, {targetMemRef}), success();
+-
+     // Field 1: Copy the allocated pointer, used for malloc/free.
+     Value allocatedPtr = sourceMemRef.allocatedPtr(rewriter, loc);
+     auto srcMemRefType = cast<MemRefType>(viewOp.getSource().getType());
+@@ -1747,6 +1743,10 @@
+         rewriter, loc,
+         createIndexAttrConstant(rewriter, loc, indexType, offset));
+ 
++    // Early exit for 0-D corner case.
++    if (viewMemRefType.getRank() == 0)
++      return rewriter.replaceOp(viewOp, {targetMemRef}), success();
++
+     // Fields 4 and 5: Update sizes and strides.
+     Value stride = nullptr, nextSize = nullptr;
+     for (int i = viewMemRefType.getRank() - 1; i >= 0; --i) {
+diff -ruN --strip-trailing-cr a/mlir/test/Conversion/MemRefToLLVM/memref-to-llvm.mlir b/mlir/test/Conversion/MemRefToLLVM/memref-to-llvm.mlir
+--- a/mlir/test/Conversion/MemRefToLLVM/memref-to-llvm.mlir
++++ b/mlir/test/Conversion/MemRefToLLVM/memref-to-llvm.mlir
+@@ -1,10 +1,13 @@
+-// RUN: mlir-opt -finalize-memref-to-llvm %s -split-input-file | FileCheck %s
++// RUN: mlir-opt -finalize-memref-to-llvm %s -split-input-file | FileCheck --check-prefixes=ALL,CHECK %s
+ // RUN: mlir-opt -finalize-memref-to-llvm='index-bitwidth=32' %s -split-input-file | FileCheck --check-prefix=CHECK32 %s
+ 
+ // Same below, but using the `ConvertToLLVMPatternInterface` entry point
+ // and the generic `convert-to-llvm` pass. This produces slightly different IR
+ // because the conversion target is set up differently.
+-// RUN: mlir-opt --convert-to-llvm="filter-dialects=memref" --split-input-file %s | FileCheck --check-prefix=CHECK-INTERFACE %s
++// RUN: mlir-opt --convert-to-llvm="filter-dialects=memref" --split-input-file %s | FileCheck --check-prefixes=ALL,CHECK-INTERFACE %s
++
++// TODO: In some (all?) cases, CHECK and CHECK-INTERFACE outputs are identical.
++// Use a common prefix instead (e.g. ALL).
+ 
+ // CHECK-LABEL: func @view(
+ // CHECK: %[[ARG0F:.*]]: index, %[[ARG1F:.*]]: index, %[[ARG2F:.*]]: index
+@@ -129,6 +132,28 @@
+ 
+   return
+ }
++
++// -----
++
++// ALL-LABEL:   func.func @view_memref_as_rank0(
++// ALL-SAME:      %[[OFFSET:.*]]: index,
++// ALL-SAME:      %[[MEM:.*]]: memref<2xi8>) {
++func.func @view_memref_as_rank0(%offset: index, %mem: memref<2xi8>) {
++
++  // ALL:  builtin.unrealized_conversion_cast %[[OFFSET]] : index to i64
++  // ALL:  builtin.unrealized_conversion_cast %[[MEM]] : memref<2xi8> to !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
++  // ALL:  llvm.mlir.poison : !llvm.struct<(ptr, ptr, i64)>
++  // ALL:  llvm.extractvalue %{{.*}}[0] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
++  // ALL:  llvm.insertvalue %{{.*}}, %{{.*}}[0] : !llvm.struct<(ptr, ptr, i64)>
++  // ALL:  llvm.extractvalue %{{.*}}[1] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
++  // ALL:  llvm.getelementptr %{{.*}}[%{{.*}}] : (!llvm.ptr, i64) -> !llvm.ptr, i8
++  // ALL:  llvm.insertvalue %{{.*}}, %{{.*}}[1] : !llvm.struct<(ptr, ptr, i64)>
++  // ALL:  llvm.mlir.constant(0 : index) : i64
++  // ALL:  llvm.insertvalue %{{.*}}, %{{.*}}[2] : !llvm.struct<(ptr, ptr, i64)>
++  %memref_view_bf16 = memref.view %mem[%offset][] : memref<2xi8> to memref<bf16>
++
++  return
++}
+ 
+ // -----
+ 
