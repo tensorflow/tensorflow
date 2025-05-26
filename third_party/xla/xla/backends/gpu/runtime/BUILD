@@ -1423,6 +1423,7 @@ cc_library(
     deps = [
         ":thunk_proto_cc",
         "//xla:executable_run_options",
+        "//xla:status_macros",
         "//xla:util",
         "//xla/backends/gpu/collectives:gpu_clique_key",
         "//xla/backends/gpu/collectives:gpu_cliques",
@@ -1524,6 +1525,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
@@ -1536,6 +1538,7 @@ xla_test(
     deps = [
         ":sequential_thunk",
         ":thunk",
+        ":thunk_proto_cc",
         ":while_thunk",
         "//xla:executable_run_options",
         "//xla/hlo/ir:hlo",
@@ -1553,10 +1556,12 @@ xla_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -1888,7 +1893,9 @@ cc_library(
         ":sequential_thunk",
         ":thunk",
         ":thunk_proto_cc",
+        ":while_thunk",
         "//xla/service:buffer_assignment",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
@@ -1904,8 +1911,10 @@ xla_cc_test(
         ":thunk",
         ":thunk_proto_cc",
         ":thunk_proto_deserialization",
+        ":while_thunk",
         "//xla/service:buffer_assignment",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",

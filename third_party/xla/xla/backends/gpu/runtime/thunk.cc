@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -315,6 +316,17 @@ std::ostream& operator<<(std::ostream& os, Thunk::Kind kind) {
 bool IsReductionCollective(Thunk::Kind kind) {
   return kind == Thunk::kAllReduce || kind == Thunk::kAllReduceStart ||
          kind == Thunk::kReduceScatter || kind == Thunk::kReduceScatterStart;
+}
+
+absl::StatusOr<Thunk::ThunkInfo> Thunk::ThunkInfo::FromProto(
+    const ThunkInfoProto& proto) {
+  TF_RET_CHECK(proto.execution_stream_id() >= 0)
+      << "The thunk execution stream ID must be non-negative, but got "
+      << proto.execution_stream_id() << ".";
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.profile_annotation = proto.profile_annotation();
+  thunk_info.execution_stream_id = proto.execution_stream_id();
+  return thunk_info;
 }
 
 Thunk::ThunkInfo Thunk::ThunkInfo::WithProfileAnnotation(

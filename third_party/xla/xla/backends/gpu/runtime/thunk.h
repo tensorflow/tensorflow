@@ -191,8 +191,16 @@ class Thunk {
     BinaryMap dnn_compiled_graphs;
   };
 
+  // Metadata associated with a Thunk,
+  // including profiling and stream execution info.
   struct ThunkInfo {
     ThunkInfo() = default;  // Disable implicit constructors.
+
+    // Deserializes a ThunkInfo from a ThunkInfoProto.
+    // Returns an error if the proto is invalid.
+    static absl::StatusOr<Thunk::ThunkInfo> FromProto(
+        const ThunkInfoProto& proto);
+
     static ThunkInfo WithProfileAnnotation(const HloInstruction* instr);
 
     std::string profile_annotation;
