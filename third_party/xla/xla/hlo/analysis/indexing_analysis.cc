@@ -29,7 +29,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -105,137 +104,31 @@ inline bool operator!=(const HLORTVar& lhs, const HLORTVar& rhs) {
   return !(lhs == rhs);
 }
 
-// The return type of `OptimizeRTVar` below
-struct RTVarOptimizationResult {
-  // An affine expr which maps the old RTVar to the new, optimized RTVar:
-  // `()[sk] -> s'k` (with k being `symbol_index` in the `OptimizeRTVar` call).
-  // If `expr` doesn't depend on `sk` it means the RTVar could be optimized
-  // away completely and the value of `rt_var` can be ignored.
-  AffineExpr remapped_symbol;
-
-  // The new, optimized RTVar
-  HLORTVar rt_var;
-};
-
-// Tries to optimize the given RTVar by removing some parts (or entirety) of
-// the dependent HLO graph:
+// Optimizes runtime variable if it's possible to replace it with a constant.
 //
-// 1. If no optimization is possible it returns `{sk, rt_var}` - the
-// identity expr and the unchanged rt_var.
-//
-// 2. If full optimization is possible, it returns
-// `{const, rt_var}` - an affine expr that does not anymore depend
-// on `sk` and an arbitrary rt_var.
-//
-// 3. if partial optimization is possible, it returns
-// `{()[sk] -> f(sk), rt_var_new }` - an affine expression that maps from the
-// old RTVar to the new RTVar, and the new RTVar itself. The new RTVar now
-// references some HLO subgraph of the old RTVar's HLO.
-RTVarOptimizationResult OptimizeRTVar(HLORTVar rt_var, int64_t symbol_index,
-                                      MLIRContext* mlir_context) {
-  const auto symbol = getAffineSymbolExpr(symbol_index, mlir_context);
-  auto result_expr = symbol;
-
-  while (true) {
-    if (auto constant_expr = DynCast<HloConstantInstruction>(rt_var.hlo)) {
-      if (rt_var.map.isConstant()) {
-        const auto idx = rt_var.map.getConstantResults();
-        result_expr = result_expr.replace(
-            symbol, getAffineConstantExpr(
-                        constant_expr->literal().GetIntegralAsS64(idx).value(),
-                        mlir_context));
+// Note: we had a more complex logic here that handled more instruction types
+// but was removed due to previous version not updating value ranges
+// (b/419279949).
+std::optional<AffineExpr> OptimizeRTVar(HLORTVar rt_var,
+                                        MLIRContext* mlir_context) {
+  if (auto constant_expr = DynCast<HloConstantInstruction>(rt_var.hlo)) {
+    if (rt_var.map.isConstant()) {
+      const auto idx = rt_var.map.getConstantResults();
+      auto const_value = constant_expr->literal().GetIntegralAsS64(idx).value();
+      if (!rt_var.feasible_values.Contains(const_value)) {
+        // Constant is outside of the feasible values, keep the symbol to let
+        // the runtime to handle that.
+        return std::nullopt;
       }
-      return {result_expr, rt_var};
+      return getAffineConstantExpr(const_value, mlir_context);
     }
-
-    if (auto iota_expr = DynCast<HloIotaInstruction>(rt_var.hlo)) {
-      auto iota_dimension = iota_expr->iota_dimension();
-      CHECK(iota_dimension < rt_var.map.getNumResults());
-      return {
-          result_expr.replace(symbol, rt_var.map.getResults()[iota_dimension]),
-          rt_var};
-    }
-
-    auto is_indexing_transformation = [](const HloInstruction* instr) {
-      return instr->opcode() == HloOpcode::kBitcast ||
-             instr->opcode() == HloOpcode::kBroadcast ||
-             instr->opcode() == HloOpcode::kReshape ||
-             instr->opcode() == HloOpcode::kReverse ||
-             instr->opcode() == HloOpcode::kSlice ||
-             instr->opcode() == HloOpcode::kTranspose;
-    };
-
-    if (is_indexing_transformation(rt_var.hlo)) {
-      auto instr_indexing_map =
-          *ComputeOutputToInputIndexing(rt_var.hlo, 0, mlir_context)
-               .indexing_maps[0]
-               .begin();
-
-      rt_var.hlo = rt_var.hlo->operand(0);
-      rt_var.map = instr_indexing_map.GetAffineMap().compose(rt_var.map);
-      continue;
-    }
-
-    if (rt_var.hlo->opcode() == HloOpcode::kNegate) {
-      rt_var.hlo = rt_var.hlo->operand(0);
-      result_expr = result_expr.replace(symbol, -symbol);
-      continue;
-    }
-
-    if (rt_var.hlo->opcode() == HloOpcode::kAdd ||
-        rt_var.hlo->opcode() == HloOpcode::kSubtract ||
-        rt_var.hlo->opcode() == HloOpcode::kMultiply ||
-        rt_var.hlo->opcode() == HloOpcode::kDivide) {
-      const auto apply_op = [&](const AffineExpr& lhs,
-                                const AffineExpr& rhs) -> AffineExpr {
-        switch (rt_var.hlo->opcode()) {
-          case HloOpcode::kAdd:
-            return lhs + rhs;
-          case HloOpcode::kSubtract:
-            return lhs - rhs;
-          case HloOpcode::kMultiply:
-            return lhs * rhs;
-          case HloOpcode::kDivide:
-            return lhs.floorDiv(rhs);
-          default:
-            ABSL_UNREACHABLE();
-        }
-      };
-
-      auto lhs = OptimizeRTVar(
-          HLORTVar{rt_var.feasible_values, rt_var.hlo->operand(0), rt_var.map},
-          symbol_index, mlir_context);
-
-      if (!lhs.remapped_symbol.isFunctionOfSymbol(symbol_index)) {
-        // This means that lhs is constant-like and we can eliminate the
-        // operand.
-        result_expr =
-            result_expr.replace(symbol, apply_op(lhs.remapped_symbol, symbol));
-
-        // We continue optimizing the `rhs` operand
-        rt_var.hlo = rt_var.hlo->operand(1);
-        continue;
-      }
-
-      auto rhs = OptimizeRTVar(
-          HLORTVar{rt_var.feasible_values, rt_var.hlo->operand(1), rt_var.map},
-          symbol_index, mlir_context);
-
-      if (!rhs.remapped_symbol.isFunctionOfSymbol(symbol_index)) {
-        // This means that rhs is constant-like and we can eliminate the
-        // operand.
-        result_expr =
-            result_expr.replace(symbol, apply_op(symbol, rhs.remapped_symbol));
-
-        // We can also take advantage of the optimization already done for lhs:
-        result_expr = result_expr.replace(symbol, lhs.remapped_symbol);
-        rt_var = lhs.rt_var;
-        continue;
-      }
-    }
-
-    return {result_expr, rt_var};
   }
+  if (auto iota_expr = DynCast<HloIotaInstruction>(rt_var.hlo)) {
+    auto iota_dimension = iota_expr->iota_dimension();
+    CHECK(iota_dimension < rt_var.map.getNumResults());
+    return rt_var.map.getResults()[iota_dimension];
+  }
+  return std::nullopt;
 }
 
 std::vector<IndexingMap::Variable> ConvertHLORTVarsToRTVars(
@@ -257,18 +150,13 @@ IndexingMap FoldRTVarsAndConstructIndexingMap(
   CHECK_EQ(affine_map.getNumSymbols(), hlo_rt_vars.size());
   for (auto idx = 0; idx < affine_map.getNumSymbols(); ++idx) {
     auto& rt_var = hlo_rt_vars[idx];
-    auto rt_var_symbol = getAffineSymbolExpr(idx, ctx);
-    RTVarOptimizationResult result = OptimizeRTVar(rt_var, idx, ctx);
-    if (result.remapped_symbol != rt_var_symbol) {
-      affine_map = affine_map.replace({{rt_var_symbol, result.remapped_symbol}},
-                                      affine_map.getNumDims(),
-                                      affine_map.getNumSymbols());
+    std::optional<AffineExpr> result = OptimizeRTVar(rt_var, ctx);
+    if (!result) {
+      continue;
     }
-    // If we still depend on the rt_var, then update it.
-    if (result.remapped_symbol.isFunctionOfSymbol(idx) &&
-        rt_var != result.rt_var) {
-      rt_var = std::move(result.rt_var);
-    }
+    affine_map =
+        affine_map.replace({{getAffineSymbolExpr(idx, ctx), *result}},
+                           affine_map.getNumDims(), affine_map.getNumSymbols());
   }
   return IndexingMap(affine_map, std::move(dim_vars), /*range_vars=*/{},
                      ConvertHLORTVarsToRTVars(hlo_rt_vars));
