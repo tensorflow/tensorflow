@@ -111,18 +111,17 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloString, config));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
+  EXPECT_THAT(
       GpuAllGatherCombiner(device_info, /*default_combine_threshold_in_bytes=*/
                            threshold_bytes,
                            /*combine_threshold_in_bytes=*/threshold_bytes,
                            /*combine_threshold_count=*/256,
                            /*combine_by_dim=*/false,
                            /*combine_different_dtypes=*/true, pointer_size)
-          .Run(module.get()));
+          .Run(module.get()),
+      IsOkAndHolds(true));
 
   VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
   // Pipelined all gathers were combined up to the predefined max available
   // device mem limit.
   const absl::string_view kExpected = R"(
@@ -212,8 +211,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloString, config));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
+  EXPECT_THAT(
       GpuAllGatherCombiner(
           device_info, /*default_combine_threshold_in_bytes=*/
           kDefaultAllGatherCombineThreshold,
@@ -221,10 +219,10 @@ ENTRY entry {
           /*combine_threshold_count=*/256,
           /*combine_by_dim=*/false,
           /*combine_different_dtypes=*/true, pointer_size)
-          .Run(module.get()));
+          .Run(module.get()),
+      IsOkAndHolds(true));
 
   VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
   const absl::string_view kExpected = R"(
     // CHECK-DAG: %[[NONPIPELINED_PARAM_0:.*]] = {{.*}} index=1
     // CHECK-DAG: %[[NONPIPELINED_PARAM_1:.*]] = {{.*}} index=2
@@ -314,18 +312,17 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloString, config));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
+  EXPECT_THAT(
       GpuAllGatherCombiner(device_info, /*default_combine_threshold_in_bytes=*/
                            kDefaultAllGatherCombineThreshold,
                            /*combine_threshold_in_bytes=*/threshold_bytes,
                            /*combine_threshold_count=*/256,
                            /*combine_by_dim=*/false,
                            /*combine_different_dtypes=*/true, pointer_size)
-          .Run(module.get()));
+          .Run(module.get()),
+      IsOkAndHolds(true));
 
   VLOG(1) << module->ToString();
-  EXPECT_TRUE(changed);
   // Pipelined all gathers were combined up to the predefined max available
   // device mem limit.
   const absl::string_view kExpected = R"(
@@ -336,8 +333,9 @@ ENTRY entry {
     // CHECK-DAG: %[[NONPIPELINED_PARAM_1:.*]] = {{.*}} index=5
     // CHECK-DAG: %[[NONPIPELINED_PARAM_2:.*]] = {{.*}} index=6
     // CHECK-DAG: all-gather(%[[PIPELINED_PARAM_0]], %[[PIPELINED_PARAM_1]])
-    // CHECK-DAG: all-gather(%[[PIPELINED_PARAM_2]], %[[NONPIPELINED_PARAM_0]])
-    // CHECK-DAG: all-gather(%[[NONPIPELINED_PARAM_1]], %[[NONPIPELINED_PARAM_2]])
+    // CHECK-DAG: all-gather(%[[PIPELINED_PARAM_2]])
+    // CHECK-DAG: all-gather(%[[NONPIPELINED_PARAM_0]], %[[NONPIPELINED_PARAM_1]])
+    // CHECK-DAG: all-gather(%[[NONPIPELINED_PARAM_2]])
   )";
 
   EXPECT_TRUE(
@@ -383,25 +381,22 @@ TEST_F(GpuAllGatherCombinerTest, CombinesSynchronousCollectivesMaximally) {
                         op::GetTupleElement(combined_all_gather, 1)));
 }
 
-TEST_F(GpuAllGatherCombinerTest, FavorsPipelinedCollectivesOverSynchronous) {
+TEST_F(GpuAllGatherCombinerTest,
+       DontCombinePipelinedAndSynchronousCollectives) {
   absl::string_view kHloText = R"(
     HloModule m
 
     ENTRY main {
       p0 = f16[1000000]{0} parameter(0)
       p1 = f16[1000000]{0} parameter(1)
-      p2 = f16[1000000]{0} parameter(2)
 
       ag0 = f16[10000000]{0} all-gather(p0), replica_groups={}, dimensions={0},
         frontend_attributes={sync_collective="true"},
         backend_config={"collective_backend_config": {"is_pipelined": true}}
       ag1 = f16[10000000]{0} all-gather(p1), replica_groups={}, dimensions={0},
-        frontend_attributes={sync_collective="true"},
-        backend_config={"collective_backend_config": {"is_pipelined": true}}
-      ag2 = f16[10000000]{0} all-gather(p2), replica_groups={}, dimensions={0},
-        backend_config={"collective_backend_config": {"is_pipelined": true}}
+        frontend_attributes={sync_collective="true"}
 
-      ROOT result = tuple(ag0, ag1, ag2)
+      ROOT result = tuple(ag0, ag1)
     }
   )";
   DeviceDescription device_info;
@@ -416,13 +411,7 @@ TEST_F(GpuAllGatherCombinerTest, FavorsPipelinedCollectivesOverSynchronous) {
       /*combine_by_dim=*/false,
       /*combine_different_dtypes=*/true, /*pointer_size=*/4);
 
-  EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(true));
-  Matcher<const HloInstruction*> combined_all_gather =
-      op::AllGather(op::Parameter(0), op::Parameter(1), op::Parameter(2));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Tuple(op::GetTupleElement(combined_all_gather, 0),
-                        op::GetTupleElement(combined_all_gather, 1),
-                        op::GetTupleElement(combined_all_gather, 2)));
+  EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(false));
 }
 
 }  // namespace
