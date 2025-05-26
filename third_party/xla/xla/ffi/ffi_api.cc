@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <map>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -45,6 +46,7 @@ limitations under the License.
 #include "xla/ffi/execution_state.h"
 #include "xla/ffi/type_id_registry.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -80,6 +82,8 @@ struct XLA_FFI_ExecutionContext {
   struct GpuContext {
     stream_executor::Stream* stream = nullptr;
     stream_executor::DeviceMemoryAllocator* allocator = nullptr;
+    const std::map<int32_t, xla::GlobalDeviceId>* global_device_id_map =
+        nullptr;
   };
 
   using BackendContext = std::variant<std::monostate, CpuContext, GpuContext>;
@@ -116,8 +120,8 @@ static XLA_FFI_ExecutionContext CreateExecutionContext(
     }
 
     BackendContext operator()(const CallOptions::GpuOptions& options) const {
-      return XLA_FFI_ExecutionContext::GpuContext{options.stream,
-                                                  options.allocator};
+      return XLA_FFI_ExecutionContext::GpuContext{
+          options.stream, options.allocator, options.global_device_id_map};
     }
   };
 
@@ -877,6 +881,18 @@ static int32_t XLA_FFI_INTERNAL_DeviceOrdinal_Get(
   return ctx->device_ordinal;
 }
 
+static void* XLA_FFI_INTERNAL_GlobalDeviceIdMap_Get(
+    XLA_FFI_ExecutionContext* ctx) {
+  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+          &ctx->backend_context)) {
+    return const_cast<std::map<int32_t, GlobalDeviceId>*>(
+        gpu->global_device_id_map);
+  }
+
+  return new XLA_FFI_Error{
+      InvalidArgument("XLA FFI GPU context is not available")};
+}
+
 static int64_t XLA_FFI_INTERNAL_RunId_Get(XLA_FFI_ExecutionContext* ctx) {
   return ctx->run_id.ToInt();
 }
@@ -928,6 +944,7 @@ static XLA_FFI_InternalApi internal_api = {
     XLA_FFI_INTERNAL_Future_Forward,
     XLA_FFI_INTERNAL_Stream_Get,
     XLA_FFI_INTERNAL_DeviceOrdinal_Get,
+    XLA_FFI_INTERNAL_GlobalDeviceIdMap_Get,
     XLA_FFI_INTERNAL_RunId_Get,
     XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get,
     XLA_FFI_INTERNAL_CalledComputation_Get,

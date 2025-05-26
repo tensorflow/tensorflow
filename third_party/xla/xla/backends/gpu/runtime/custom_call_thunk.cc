@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -210,18 +211,17 @@ absl::Status CustomCallThunk::ExecuteCustomCall(const ExecuteParams& params) {
   XlaCustomCallStatus custom_call_status;
   call_target_(stream, buffers.data(), opaque_.data(), opaque_.size(),
                &custom_call_status);
-  auto message = CustomCallStatusGetMessage(&custom_call_status);
-  if (message) {
+  if (auto message = CustomCallStatusGetMessage(&custom_call_status); message) {
     return Internal("CustomCall failed: %s", *message);
-  } else {
-    return absl::OkStatus();
   }
+  return absl::OkStatus();
 }
 
 absl::Status CustomCallThunk::ExecuteFfiHandler(
     RunId run_id, XLA_FFI_Handler* handler, XLA_FFI_ExecutionStage stage,
     se::Stream* stream, const ffi::ExecutionContext* execution_context,
-    const BufferAllocations* buffer_allocations) {
+    const BufferAllocations* buffer_allocations,
+    const CollectiveExecuteParams* collective_params) {
   if (handler == nullptr) {
     return absl::InternalError("FFI execute handler is not set");
   }
@@ -269,12 +269,17 @@ absl::Status CustomCallThunk::ExecuteFfiHandler(
     allocator = buffer_allocations->memory_allocator();
   }
 
-  CallOptions options = {run_id,
-                         device_ordinal,
-                         CallOptions::GpuOptions{stream, allocator},
-                         called_computation_,
-                         execution_context,
-                         execution_state_.get()};
+  CallOptions options = {
+      run_id,
+      device_ordinal,
+      CallOptions::GpuOptions{stream, allocator,
+                              collective_params
+                                  ? collective_params->global_device_id_map
+                                  : nullptr},
+      called_computation_,
+      execution_context,
+      execution_state_.get()};
+
   return Call(handler, *call_frame, options, stage);
 }
 
@@ -289,7 +294,7 @@ absl::Status CustomCallThunk::Prepare(
       bundle_->prepare, XLA_FFI_ExecutionStage_PREPARE,
       /*stream=*/nullptr,
       /*execution_context=*/nullptr,
-      /*buffer_allocations=*/nullptr);
+      /*buffer_allocations=*/nullptr, /*collective_params=*/nullptr);
 }
 
 absl::Status CustomCallThunk::Initialize(const InitializeParams& params) {
@@ -300,7 +305,8 @@ absl::Status CustomCallThunk::Initialize(const InitializeParams& params) {
   return ExecuteFfiHandler(
       params.collective_params ? params.collective_params->run_id : RunId{-1},
       bundle_->initialize, XLA_FFI_ExecutionStage_INITIALIZE, params.stream,
-      params.ffi_execution_context, params.buffer_allocations);
+      params.ffi_execution_context, params.buffer_allocations,
+      params.collective_params);
 }
 
 absl::Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
@@ -311,7 +317,8 @@ absl::Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
     return ExecuteFfiHandler(
         params.collective_params ? params.collective_params->run_id : RunId{-1},
         bundle_->execute, XLA_FFI_ExecutionStage_EXECUTE, stream,
-        params.ffi_execution_context, params.buffer_allocations);
+        params.ffi_execution_context, params.buffer_allocations,
+        params.collective_params);
   }
   return ExecuteCustomCall(params);
 }
