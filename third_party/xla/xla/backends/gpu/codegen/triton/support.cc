@@ -656,13 +656,9 @@ bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
     case HloOpcode::kGather:
     case HloOpcode::kPad:
     case HloOpcode::kRaggedDot:
-    case HloOpcode::kRecv:
-    case HloOpcode::kRecvDone:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
-    case HloOpcode::kSend:
-    case HloOpcode::kSendDone:
     case HloOpcode::kSetDimensionSize:
     case HloOpcode::kSort:
       return true;
