@@ -115,25 +115,11 @@ bool IsGPUSyncCollective(const HloInstruction& instr) {
 }
 
 absl::StatusOr<GPUCommunicationType> CommunicationType(
-    const HloCollectiveInstruction& instr,
+    int num_devices_per_host, const HloCollectiveInstruction& instr,
     const se::GpuComputeCapability& gpu_version) {
-  auto iota = instr.device_list().iota_replica_group_list();
-
   if (!std::holds_alternative<se::CudaComputeCapability>(gpu_version)) {
     return absl::FailedPreconditionError("Only CUDA is supported.");
   }
-
-  auto cuda_compute_capability =
-      std::get<se::CudaComputeCapability>(gpu_version);
-  if (!cuda_compute_capability.IsHopper()) {
-    return absl::FailedPreconditionError(
-        "Only Hopper is supported to get communication type");
-  }
-
-  // We assume no topology was provided to the compiler and no
-  // `CUDA_VISIBLE_DEVICES` env var has been set.
-  // For now we only support H100 and assume 8GPUs per host.
-  int num_devices_per_host = 8;
 
   TF_ASSIGN_OR_RETURN(
       CommunicationMetadata comm,
