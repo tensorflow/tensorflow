@@ -101,8 +101,8 @@ DotOperandDims::DotOperandDims(Shape shape,
                                     contracting_dims.end());
 }
 
-absl::StatusOr<DotOperandDims> DotOperandDims::FromDot(HloInstruction* dot,
-                                                       int operand_idx) {
+absl::StatusOr<DotOperandDims> DotOperandDims::FromDot(
+    const HloInstruction* dot, int operand_idx) {
   TF_RET_CHECK(operand_idx == 0 || operand_idx == 1);
   const Shape& shape = dot->operand(operand_idx)->shape();
   const auto& batch_dims = BatchDimensionsForOperand(*dot, operand_idx);

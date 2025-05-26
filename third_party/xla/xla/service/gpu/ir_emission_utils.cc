@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
@@ -69,80 +70,66 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-namespace {
-
-// Return whether the given shape is rank 2 excluding the batch dimensions.
-bool IsRank2(const Shape& shape, int64_t batch_dimensions_size) {
-  return shape.dimensions().size() == batch_dimensions_size + 2;
-}
-
-// Return whether the given shape is rank 1 excluding the batch dimensions.
-bool IsRank1(const Shape& shape, int64_t batch_dimensions_size) {
-  return shape.dimensions().size() == batch_dimensions_size + 1;
-}
-
-}  // namespace
-
-bool IsMatrixMultiplication(const HloInstruction& dot) {
+absl::StatusOr<bool> IsCublasSupportedMatMul(
+    const HloInstruction& dot, bool allow_matrix_vector_multiplication) {
   if (dot.opcode() != HloOpcode::kDot) {
     return false;
   }
-  const Shape& lhs_shape = dot.operand(0)->shape();
-  const Shape& rhs_shape = dot.operand(1)->shape();
-  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
 
-  PrimitiveType output_primitive_type = dot.shape().element_type();
-  bool type_is_allowed =
-      (output_primitive_type == F8E3M4 || output_primitive_type == F8E4M3 ||
-       output_primitive_type == F8E4M3FN || output_primitive_type == F8E5M2 ||
-       output_primitive_type == F8E4M3FNUZ ||
-       output_primitive_type == F8E5M2FNUZ || output_primitive_type == F16 ||
-       output_primitive_type == BF16 || output_primitive_type == F32 ||
-       output_primitive_type == F64 || output_primitive_type == C64 ||
-       output_primitive_type == C128) ||
-      (output_primitive_type == S32 && lhs_shape.element_type() == S8 &&
-       rhs_shape.element_type() == S8);
-  bool shapes_are_valid =
-      type_is_allowed &&
-      IsRank2(lhs_shape, dim_numbers.lhs_batch_dimensions_size()) &&
-      IsRank2(rhs_shape, dim_numbers.lhs_batch_dimensions_size()) &&
-      IsRank2(dot.shape(), dim_numbers.lhs_batch_dimensions_size()) &&
-      !ShapeUtil::IsZeroElementArray(lhs_shape) &&
-      !ShapeUtil::IsZeroElementArray(rhs_shape);
+  // Number of operands that have non-trivial non-contracting dimension.
+  int num_matrix_operands = 0;
+  for (int operand : {0, 1}) {
+    TF_ASSIGN_OR_RETURN(DotOperandDims dims,
+                        DotOperandDims::FromDot(&dot, operand));
+    // cuBLAS only supports single contracting dimension.
+    if (dims.DimensionCount(DotOperandDims::kContracting) != 1) {
+      return false;
+    }
+    // cuBLAS doesn't support minor batch dimension.
+    if (absl::c_any_of(dims.Indices(DotOperandDims::kBatch), [&](int64_t dim) {
+          return dim == dims.shape().dimensions().size() - 1;
+        })) {
+      return false;
+    }
+    // cuBLAS supports up to one non-contracting dimension.
+    const auto& nc_dims = dims.DimensionSizes(DotOperandDims::kNonContracting);
+    if (nc_dims.size() > 1) {
+      return false;
+    }
+    if (nc_dims.size() == 1) {
+      num_matrix_operands += (nc_dims[0] != 1);
+    }
+  }
 
-  return shapes_are_valid;
-}
-
-bool IsMatrixVectorMultiplication(const HloInstruction& dot) {
-  if (dot.opcode() != HloOpcode::kDot) {
+  if (num_matrix_operands == 0 ||
+      (num_matrix_operands == 1 && !allow_matrix_vector_multiplication)) {
     return false;
   }
-  const Shape& lhs_shape = dot.operand(0)->shape();
-  const Shape& rhs_shape = dot.operand(1)->shape();
-  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
 
-  PrimitiveType output_primitive_type = dot.shape().element_type();
-  bool type_is_allowed =
-      (output_primitive_type == F8E4M3FN || output_primitive_type == F8E5M2 ||
-       output_primitive_type == F16 || output_primitive_type == BF16 ||
-       output_primitive_type == F32 || output_primitive_type == F64 ||
-       output_primitive_type == C64 || output_primitive_type == C128) ||
-      (output_primitive_type == S32 && lhs_shape.element_type() == S8 &&
-       rhs_shape.element_type() == S8);
-
-  bool shapes_are_valid =
-      type_is_allowed &&
-      ((IsRank2(lhs_shape, dim_numbers.lhs_batch_dimensions_size()) &&
-        IsRank1(rhs_shape, dim_numbers.lhs_batch_dimensions_size())) ||
-       (IsRank1(lhs_shape, dim_numbers.lhs_batch_dimensions_size()) &&
-        IsRank2(rhs_shape, dim_numbers.lhs_batch_dimensions_size()))) &&
-      IsRank1(dot.shape(), dim_numbers.lhs_batch_dimensions_size()) &&
-      !ShapeUtil::IsZeroElementArray(lhs_shape) &&
-      !ShapeUtil::IsZeroElementArray(rhs_shape);
-
-  return shapes_are_valid;
+  switch (dot.shape().element_type()) {
+    // Types allowed for both matmul and matmul-vector.
+    case F8E4M3FN:
+    case F8E5M2:
+    case F16:
+    case BF16:
+    case F32:
+    case F64:
+    case C64:
+      return true;
+    case S32:
+      return (dot.operand(0)->shape().element_type() == S8 &&
+              dot.operand(1)->shape().element_type() == S8);
+    // Only allowed for matmul.
+    case F8E3M4:
+    case F8E4M3:
+    case F8E4M3FNUZ:
+    case F8E5M2FNUZ:
+    case C128:
+      return num_matrix_operands == 2;
+    default:
+      return false;
+  }
 }
-
 const char* const kCusolverCholeskyCallTarget = "__cusolver$cholesky";
 
 bool IsCustomCallToCusolver(const HloInstruction& hlo) {

@@ -64,7 +64,7 @@ class DotOperandDims {
 
   enum Category { kBatch, kNonContracting, kContracting };
   // Creates a DotOperandDims from a dot instruction and operand index (0 or 1).
-  static absl::StatusOr<DotOperandDims> FromDot(HloInstruction* dot,
+  static absl::StatusOr<DotOperandDims> FromDot(const HloInstruction* dot,
                                                 int operand_idx);
   // Converts two DotOperandDims to a DotDimensionNumbers.
   static absl::StatusOr<DotDimensionNumbers> IntoDotDimensionNumbers(

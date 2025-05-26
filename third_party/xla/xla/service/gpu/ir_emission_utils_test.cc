@@ -1509,5 +1509,113 @@ TEST(DenseDataIntermediateTest, FromProto) {
   EXPECT_THAT(constant.span(), ElementsAreArray(kData));
 }
 
+TEST_F(IrEmissionUtilsTest, OrdinaryMatmul) {
+  const char* hlo_string = R"(
+  HloModule t
+
+  ENTRY entry {
+    p0 = f32[10,20,30,40] parameter(0)
+    p1 = f32[10,20,50,40] parameter(1)
+    ROOT t = f32[10,20,30,50] dot(p0, p1),
+        lhs_batch_dims={0,1}, lhs_contracting_dims={3},
+        rhs_batch_dims={0,1}, rhs_contracting_dims={3}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, true), IsOkAndHolds(true));
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, false), IsOkAndHolds(true));
+}
+
+TEST_F(IrEmissionUtilsTest, SingletonNoncontractingDim) {
+  const char* hlo_string = R"(
+  HloModule t
+
+  ENTRY entry {
+    p0 = f32[10,20,1,40] parameter(0)
+    p1 = f32[10,20,50,40] parameter(1)
+    ROOT t = f32[10,20,1,50] dot(p0, p1),
+        lhs_batch_dims={0,1}, lhs_contracting_dims={3},
+        rhs_batch_dims={0,1}, rhs_contracting_dims={3}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, true), IsOkAndHolds(true));
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, false), IsOkAndHolds(false));
+}
+
+TEST_F(IrEmissionUtilsTest, BothOperandsHaveSingletonNoncontractingDims) {
+  const char* hlo_string = R"(
+  HloModule t
+
+  ENTRY entry {
+    p0 = f32[10,20,1,40] parameter(0)
+    p1 = f32[10,20,1,40] parameter(1)
+    ROOT t = f32[10,20,1,1] dot(p0, p1),
+        lhs_batch_dims={0,1}, lhs_contracting_dims={3},
+        rhs_batch_dims={0,1}, rhs_contracting_dims={3}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, true), IsOkAndHolds(false));
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, false), IsOkAndHolds(false));
+}
+
+TEST_F(IrEmissionUtilsTest, OneSideDoesntHaveNoncontractingDims) {
+  const char* hlo_string = R"(
+  HloModule t
+
+  ENTRY entry {
+    p0 = f32[10,20,40] parameter(0)
+    p1 = f32[10,20,2,40] parameter(1)
+    ROOT t = f32[10,20,2] dot(p0, p1),
+        lhs_batch_dims={0,1}, lhs_contracting_dims={2},
+        rhs_batch_dims={0,1}, rhs_contracting_dims={3}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, true), IsOkAndHolds(true));
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, false), IsOkAndHolds(false));
+}
+
+TEST_F(IrEmissionUtilsTest, OneSideMissesNoncontractingDimsOtherIsSingleton) {
+  const char* hlo_string = R"(
+  HloModule t
+
+  ENTRY entry {
+    p0 = f32[10,20,40] parameter(0)
+    p1 = f32[10,20,1,40] parameter(1)
+    ROOT t = f32[10,20,1] dot(p0, p1),
+        lhs_batch_dims={0,1}, lhs_contracting_dims={2},
+        rhs_batch_dims={0,1}, rhs_contracting_dims={3}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, true), IsOkAndHolds(false));
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, false), IsOkAndHolds(false));
+}
+
+TEST_F(IrEmissionUtilsTest, NoNonContractingDims) {
+  const char* hlo_string = R"(
+  HloModule t
+
+  ENTRY entry {
+    p0 = f32[10,20,40] parameter(0)
+    p1 = f32[10,20,40] parameter(1)
+    ROOT t = f32[10,20] dot(p0, p1),
+        lhs_batch_dims={0,1}, lhs_contracting_dims={2},
+        rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, true), IsOkAndHolds(false));
+  EXPECT_THAT(IsCublasSupportedMatMul(*root, false), IsOkAndHolds(false));
+}
+
 }  // namespace gpu
 }  // namespace xla

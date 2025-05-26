@@ -659,6 +659,7 @@ cc_library(
     deps = [
         ":backend_configs_cc",
         ":ir_emission_utils_proto_cc",
+        ":matmul_indexing_utils",
         ":target_util",
         "//xla:literal",
         "//xla:permutation_util",
@@ -685,9 +686,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:TargetParser",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
