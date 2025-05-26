@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/op_macros.h"
 
 #ifdef __ARM_NEON
-  #include <arm_neon.h>
+#include <arm_neon.h>
 #endif
 
 namespace tflite {
