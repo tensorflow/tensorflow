@@ -1,41 +1,41 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/libcxx/include/__tree b/libcxx/include/__tree
---- a/libcxx/include/__tree
-+++ b/libcxx/include/__tree
-@@ -1281,7 +1281,7 @@
-   }
-   _LIBCPP_HIDE_FROM_ABI void __move_assign_alloc(__tree&, false_type) _NOEXCEPT {}
- 
--  template <class _From, __enable_if_t<__is_pair_v<__remove_cvref_t<_From> >, int> = 0>
-+  template <class _From, class _ValueT = _Tp, __enable_if_t<__is_tree_value_type<_ValueT>::value, int> = 0>
-   _LIBCPP_HIDE_FROM_ABI static void __assign_value(__get_node_value_type_t<value_type>& __lhs, _From&& __rhs) {
-     using __key_type = typename _NodeTypes::key_type;
- 
-@@ -1291,7 +1291,7 @@
-     __lhs.second                         = std::forward<_From>(__rhs).second;
-   }
- 
--  template <class _To, class _From, class _ValueT = _Tp, __enable_if_t<!__is_pair_v<__remove_cvref_t<_From> >, int> = 0>
-+  template <class _To, class _From, class _ValueT = _Tp, __enable_if_t<!__is_tree_value_type<_ValueT>::value, int> = 0>
-   _LIBCPP_HIDE_FROM_ABI static void __assign_value(_To& __lhs, _From&& __rhs) {
-     __lhs = std::forward<_From>(__rhs);
-   }
-diff -ruN --strip-trailing-cr a/libcxx/test/std/containers/associative/set/set.cons/copy_assign.pass.cpp b/libcxx/test/std/containers/associative/set/set.cons/copy_assign.pass.cpp
---- a/libcxx/test/std/containers/associative/set/set.cons/copy_assign.pass.cpp
-+++ b/libcxx/test/std/containers/associative/set/set.cons/copy_assign.pass.cpp
-@@ -80,5 +80,15 @@
-     assert(*std::next(mo.begin(), 2) == 3);
-   }
- 
-+  { // Test with std::pair, since we have some special handling for pairs inside __tree
-+    std::pair<int, int> arr[] = {
-+        std::make_pair(1, 2), std::make_pair(2, 3), std::make_pair(3, 4), std::make_pair(4, 5)};
-+    std::set<std::pair<int, int> > a(arr, arr + 4);
-+    std::set<std::pair<int, int> > b;
-+
-+    b = a;
-+    assert(a == b);
-+  }
-+
-   return 0;
+diff -ruN --strip-trailing-cr a/clang/lib/Lex/ModuleMap.cpp b/clang/lib/Lex/ModuleMap.cpp
+--- a/clang/lib/Lex/ModuleMap.cpp
++++ b/clang/lib/Lex/ModuleMap.cpp
+@@ -310,10 +310,8 @@
+   } else if (Header.HasBuiltinHeader && !Header.Size && !Header.ModTime) {
+     // There's a builtin header but no corresponding on-disk header. Assume
+     // this was supposed to modularize the builtin header alone.
+-  } else if ((Header.Kind == Module::HK_Excluded) ||
+-             (Header.Kind == Module::HK_Textual)) {
+-    // Ignore excluded and textual header files as a module can be built with
+-    // such headers missing.
++  } else if (Header.Kind == Module::HK_Excluded) {
++    // Ignore missing excluded header files. They're optional anyway.
+   } else {
+     // If we find a module that has a missing header, we mark this module as
+     // unavailable and store the header directive for displaying diagnostics.
+diff -ruN --strip-trailing-cr a/clang/test/Modules/Inputs/submodules/module.modulemap b/clang/test/Modules/Inputs/submodules/module.modulemap
+--- a/clang/test/Modules/Inputs/submodules/module.modulemap
++++ b/clang/test/Modules/Inputs/submodules/module.modulemap
+@@ -30,7 +30,3 @@
+   module * { export * }
+   export *
  }
+-
+-module missing_textual_header {
+-  textual header "missing_textual.h"
+-}
+diff -ruN --strip-trailing-cr a/clang/test/Modules/missing-header.m b/clang/test/Modules/missing-header.m
+--- a/clang/test/Modules/missing-header.m
++++ b/clang/test/Modules/missing-header.m
+@@ -8,9 +8,6 @@
+ @import missing_unavailable_headers.not_missing; // OK
+ // CHECK-NOT: missing_unavailable_headers
+ 
+-@import missing_textual_header; // OK
+-// CHECK-NOT: missing_textual_header
+-
+ @import missing_headers;
+ // CHECK: module.modulemap:15:27: error: header 'missing.h' not found
+ // CHECK: could not build module 'missing_headers'
