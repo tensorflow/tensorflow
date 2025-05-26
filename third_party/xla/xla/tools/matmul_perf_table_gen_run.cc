@@ -45,15 +45,20 @@ int RunPerfTableCollection(int argc, char** argv) {
   tsl::port::InitMain(kUsage, &argc, &argv);
 
   MatmulPerfTableGen::Config cfg;
-  cfg.b_spec = {/*start=*/1, /*stop=*/8, /*step=*/0, /*factor=*/2};
-  cfg.m_spec = {/*start=*/16, /*stop=*/4096, /*step=*/0, /*factor=*/2};
-  cfg.n_spec = {/*start=*/16, /*stop=*/4096, /*step=*/0, /*factor=*/2};
-  cfg.k_spec = {/*start=*/16, /*stop=*/4096, /*step=*/0, /*factor=*/2};
+  cfg.b_spec = {/*start=*/1, /*stop=*/4, /*step=*/0, /*factor=*/2};
+  cfg.m_spec = {/*start=*/256, /*stop=*/4096, /*step=*/0, /*factor=*/2};
+  cfg.n_spec = {/*start=*/256, /*stop=*/4096, /*step=*/0, /*factor=*/2};
+  cfg.k_spec = {/*start=*/256, /*stop=*/4096, /*step=*/0, /*factor=*/2};
   cfg.dtypes = {
       {
           /*lhs_dtype=*/"bf16",
           /*rhs_dtype=*/"bf16",
           /*out_dtype=*/"bf16",
+      },
+      {
+          /*lhs_dtype=*/"f32",
+          /*rhs_dtype=*/"f32",
+          /*out_dtype=*/"f32",
       },
   };
 
@@ -66,7 +71,9 @@ int RunPerfTableCollection(int argc, char** argv) {
   MatmulPerfTableGen table_gen(std::move(cfg));
 
   xla::gpu::DeviceHloInstructionProfiles result = table_gen.ComputeTable();
-  CHECK_OK(table_gen.Dump(result));
+  auto compact_result = MatmulPerfTableGen::Compact(result);
+  CHECK_OK(compact_result.status());
+  CHECK_OK(table_gen.Dump(*compact_result));
 
   return 0;
 }

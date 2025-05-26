@@ -1205,3 +1205,22 @@ message OriginalValueProto {
   ShapeProto shape = 1;
   repeated OriginalTensorProto leaves = 2;
 }
+
+message GemmPerfTableEntry {
+  int64 b = 1;
+  int64 m = 2;
+  int64 n = 3;
+  int64 k = 4;
+  // We chose compact string representation to save on textproto size.
+  // {lhs}x{rhs}x{acc}=>{peak_flops} (eg: key='bf16xbf16->bf16', val='12345')
+  map<string, int64> flops = 5;
+}
+
+message GemmPerfTableEntryValues {
+  repeated GemmPerfTableEntry entries = 1;
+}
+
+message GemmPerfTable {
+  // sm86 -> entry content.
+  map<string, GemmPerfTableEntryValues> entries = 1;
+}

@@ -1308,6 +1308,18 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "matmul_interpolator_utils",
+    srcs = ["matmul_interpolator_utils.cc"],
+    hdrs = ["matmul_interpolator_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 xla_cc_test(
     name = "matmul_ptable_stats_collection_test",
     srcs = ["matmul_ptable_stats_collection_test.cc"],
