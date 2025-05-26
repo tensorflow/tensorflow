@@ -1102,6 +1102,70 @@ absl::StatusOr<ScalarOrTensor> EmitConcatenate(
   return ScalarOrTensor(if_ops.front().getResult(0));
 }
 
+absl::StatusOr<ScalarOrTensor> EmitPad(
+    EmitterLocOpBuilder& b, const se::DeviceDescription& device_info,
+    const TiledHloInstruction& tiled_pad,
+    absl::flat_hash_map<const TiledHloInstruction*, ScalarOrTensor>& values,
+    Value pid) {
+  if (!IsTritonSupportedInstruction(*tiled_pad.hlo(),
+                                    device_info.gpu_compute_capability())) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Pad is not supported: ", tiled_pad.hlo()->ToString()));
+  }
+  // TODO(b/393299275): get rid of calls to `GetPaddedTileSizes` once tiling
+  // is using power of twos everywhere, including when propagating into the
+  // prologue of reductions.
+  SmallVector<int64_t> padded_tile_sizes =
+      GetPaddedTileSizes(tiled_pad.tile_sizes());
+
+  const TiledHloInstruction* tiled_operand = tiled_pad.operand(0);
+  const auto& pad_input_shape = tiled_operand->hlo()->shape().dimensions();
+
+  // Compute tile offsets.
+  TF_ASSIGN_OR_RETURN(IndexingMap tile_offsets_indexing,
+                      tiled_pad.tile_offsets_indexing());
+  SmallVector<Value, 3> tile_offsets =
+      emitters::ApplyIndexing(tile_offsets_indexing, /*dims=*/pid,
+                              /*symbols=*/{}, b);
+
+  // Compute mask.
+  Type i32_type = b.getI32Type();
+  Value mask;
+  for (auto [dim_index, sizes] : llvm::enumerate(
+           llvm::zip(pad_input_shape, padded_tile_sizes, tile_offsets))) {
+    auto [pad_input_dim_size, pad_output_dim_size, tile_offset] = sizes;
+    if (pad_input_dim_size == pad_output_dim_size) {
+      continue;
+    }
+
+    // LHS for the compare is an iota broadcasted to the output shape.
+    ScalarOrTensor range = Range(b, pad_output_dim_size);
+    ScalarOrTensor bcast = BroadcastInDims(b, range, padded_tile_sizes,
+                                           {static_cast<int64_t>(dim_index)});
+
+    // RHS for the compare is splat(pad_input_dim_size - tile_offset).
+    Value tile_offset_i32 = Cast(b, tile_offset, i32_type);
+    Value threshold = b.create<arith::SubIOp>(
+        CreateConst(b, i32_type, pad_input_dim_size).UnwrapScalar(),
+        tile_offset_i32);
+    ScalarOrTensor threshold_splat =
+        Splat(b, ScalarOrTensor(threshold), padded_tile_sizes);
+    Value cmp =
+        b.create<arith::CmpIOp>(arith::CmpIPredicate::slt, bcast.UnwrapUnsafe(),
+                                threshold_splat.UnwrapUnsafe());
+    mask = mask ? b.create<arith::AndIOp>(mask, cmp) : cmp;
+  }
+  if (!mask) {
+    return values[tiled_operand];
+  }
+  const TiledHloInstruction* padding_value = tiled_pad.operand(1);
+  ScalarOrTensor pad_value_splat =
+      Splat(b, values[padding_value], padded_tile_sizes);
+  return ScalarOrTensor(
+      b.create<arith::SelectOp>(mask, values[tiled_operand].UnwrapUnsafe(),
+                                pad_value_splat.UnwrapUnsafe()));
+}
+
 // Given an operand to a (potentially nested) fusion instruction, finds the
 // index of the operand to the outermost fusion it corresponds to.
 //
@@ -1177,6 +1241,10 @@ absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
   if (hlo->opcode() == HloOpcode::kConcatenate) {
     return EmitConcatenate(b, libdevice_path, device_info, fusion, tiled_hlo,
                            fn, pid);
+  }
+
+  if (hlo->opcode() == HloOpcode::kPad) {
+    return EmitPad(b, device_info, tiled_hlo, values, pid);
   }
 
   if (hlo->opcode() == HloOpcode::kDot) {
