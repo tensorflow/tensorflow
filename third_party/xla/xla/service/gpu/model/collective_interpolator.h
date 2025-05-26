@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/interpolator.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
@@ -55,11 +56,13 @@ class CollectiveInterpolator {
       InterpolatorKey, std::unique_ptr<InterpolatorBase<int64_t, 2>>>>;
 
   static absl::StatusOr<std::unique_ptr<CollectiveInterpolator>> Create(
-      const HloInstructionProfileList& profiles,
-      const se::DeviceDescription& device_info);
+      int num_devices_per_host, const HloInstructionProfileList& profiles,
+      const se::DeviceDescription& device_info,
+      const GpuHloCostAnalysis* analysis = nullptr);
 
   static absl::StatusOr<std::unique_ptr<CollectiveInterpolator>> Create(
-      const se::DeviceDescription& device_info);
+      int num_devices_per_host, const se::DeviceDescription& device_info,
+      const GpuHloCostAnalysis* analysis = nullptr);
 
   // Constructs the semantically correct module from the profile.
   // Usually the root instruction of the entry computation is of interest and is
@@ -75,12 +78,18 @@ class CollectiveInterpolator {
   // Uses `EuclideanNNInterpolator` to figure get the closest neighbour from
   // profiles.
   explicit CollectiveInterpolator(InterpolatorMap interpolators,
-                                  const se::DeviceDescription& device_info)
-      : interpolators_(std::move(interpolators)), device_info_(device_info) {}
+                                  const se::DeviceDescription& device_info,
+                                  int num_devices_per_host,
+                                  const GpuHloCostAnalysis* analysis)
+      : interpolators_(std::move(interpolators)),
+        device_info_(device_info),
+        num_devices_per_host_(num_devices_per_host),
+        analysis_(analysis) {}
 
   InterpolatorMap interpolators_;
-
   const se::DeviceDescription& device_info_;
+  int num_devices_per_host_;
+  const GpuHloCostAnalysis* analysis_;
 };
 
 }  // namespace xla::gpu

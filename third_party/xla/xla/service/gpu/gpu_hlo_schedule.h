@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/service/latency_hiding_scheduler.h"
 #include "xla/stream_executor/device_description.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 
@@ -36,6 +37,16 @@ absl::Status RunAsyncCollectivesConversionPasses(HloModule* module);
 struct ScheduleMetadata {
   uint64_t scheduler_mem_limit;
 };
+
+// Defines the scheduler config to be used by LHS.
+SchedulerConfig MakeGPUSchedulerConfig(uint64_t memory_limit,
+                                       int64_t overlap_limit);
+
+// Compute the device memory limit to be used by passes like scheduler and
+// HLO rematerialization.
+uint64_t GetSchedulerMemoryLimit(const HloModule& module,
+                                 const se::DeviceDescription& gpu_device_info,
+                                 int pointer_size);
 
 // Determines the schedule of HLO instructions for a module run on the GPU.
 absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(

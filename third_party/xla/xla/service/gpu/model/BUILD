@@ -1,5 +1,6 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("//third_party/bazel_rules/rules_cc/cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 
 # Libraries for performance modeling of HLO.
@@ -54,6 +55,7 @@ cc_library(
         ":gpu_performance_model_base",
         ":hlo_op_profile_proto_cc",
         ":hlo_op_profiles",
+        ":matmul_interpolator",
         ":sol_gpu_cost_model",
         "//xla:util",
         "//xla/hlo/analysis:hlo_dataflow_analysis",
@@ -67,9 +69,11 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
@@ -87,11 +91,14 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_query",
         "//xla/service:hlo_cost_analysis",
+        "//xla/service:latency_hiding_scheduler",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
     ],
@@ -102,7 +109,12 @@ cc_library(
     srcs = ["sol_gpu_cost_model.cc"],
     hdrs = ["sol_gpu_cost_model.h"],
     deps = [
+        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/service:collective_utils",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/numeric:bits",
@@ -238,6 +250,7 @@ cc_library(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:cublas_cudnn",
         "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -1059,21 +1072,22 @@ cc_library(
     srcs = ["sol_gpu_cost_model_stats_collection.cc"],
     hdrs = ["sol_gpu_cost_model_stats_collection.h"],
     deps = [
-        ":collective_interpolator",
-        ":sol_gpu_cost_model",
+        ":gpu_hlo_cost_analysis",
         ":sol_latency_estimator",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
-        "//xla/hlo/utils:hlo_query",
         "//xla/service:hlo_verifier",
+        "//xla/service:latency_hiding_scheduler",
         "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:gpu_hlo_schedule",
+        "//xla/service/gpu:gpu_latency_hiding_scheduler",
         "//xla/stream_executor:device_description",
-        "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/time",
     ],
 )
 
@@ -1099,6 +1113,7 @@ cc_library(
     name = "interpolator",
     hdrs = ["interpolator.h"],
     deps = [
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
@@ -1179,6 +1194,7 @@ cc_library(
         ":collective_interpolator",
         ":hlo_op_profile_proto_cc",
         ":hlo_op_profiles",
+        ":sol_gpu_cost_model",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/utils:hlo_query",
@@ -1229,12 +1245,18 @@ xla_cc_test(
 cc_library(
     name = "matmul_interpolator",
     srcs = ["matmul_interpolator.cc"],
-    hdrs = ["matmul_interpolator.h"],
+    hdrs = [
+        "matmul_interpolator.h",
+        "matmul_interpolator_data.h",
+    ],
     deps = [
         ":hlo_op_profile_proto_cc",
+        ":hlo_op_profiles",
         ":interpolator",
+        ":matmul_interpolator_utils",
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/codegen/triton:support",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:backend_configs_cc",
@@ -1242,6 +1264,7 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -1262,6 +1285,7 @@ xla_cc_test(
         "//xla/hlo/parser:hlo_parser",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
@@ -1305,6 +1329,19 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "matmul_interpolator_utils",
+    srcs = ["matmul_interpolator_utils.cc"],
+    hdrs = ["matmul_interpolator_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
     ],
 )
 
