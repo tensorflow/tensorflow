@@ -22,7 +22,6 @@ limitations under the License.
 namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)
 using tsl::Notification;
-using tsl::WaitForNotificationWithTimeout;
 // NOLINTEND(misc-unused-using-decls)
 }  // namespace tensorflow
 
