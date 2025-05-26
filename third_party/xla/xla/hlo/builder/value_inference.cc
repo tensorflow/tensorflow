@@ -1342,7 +1342,8 @@ absl::StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
            this](absl::Span<Literal> operands) -> absl::StatusOr<Literal> {
             TF_ASSIGN_OR_RETURN(Shape root_shape,
                                 Shape::FromProto(root->shape()));
-            Shape scalar_shape = ShapeUtil::MakeScalarShape(xla::PRED);
+            Shape scalar_shape =
+                ShapeUtil::MakeValidatedScalarShape(xla::PRED).value();
             std::unique_ptr<HloComputation> reduce_or;
             if (root_shape.IsTuple()) {
               // Variadic reduce.

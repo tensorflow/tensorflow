@@ -85,8 +85,8 @@ absl::Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
   TF_RET_CHECK(operands.size() >= 2);
   HloInstruction* combined =
       computation.AddInstruction(HloInstruction::CreateAllReduce(
-          ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes), operands,
-          reduction, to_combine.front()->device_list(),
+          ShapeUtil::MakeValidatedTupleShapeWithPtrs(operand_shapes).value(),
+          operands, reduction, to_combine.front()->device_list(),
           /*constrain_layout=*/false, to_combine.front()->channel_id(),
           Cast<HloAllReduceInstruction>(to_combine.front())
               ->use_global_device_ids()));

@@ -173,8 +173,10 @@ absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> CpuRawBuffer::CopyFromLiteral(
     if ((!shape.has_layout() &&
          !xla::LayoutUtil::IsMonotonicWithDim0Major(layout)) ||
         (shape.layout() != layout)) {
-      auto shape_copy = xla::ShapeUtil::MakeShape(
-          literal.shape().element_type(), literal.shape().dimensions());
+      auto shape_copy =
+          ShapeUtil::MakeValidatedShape(literal.shape().element_type(),
+                                        literal.shape().dimensions())
+              .value();
       shape_copy.mutable_layout()->mutable_minor_to_major()->assign(
           layout.minor_to_major().begin(), layout.minor_to_major().end());
 

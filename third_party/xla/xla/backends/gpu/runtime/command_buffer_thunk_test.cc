@@ -58,7 +58,6 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels_fatbin.h"
-#include "xla/stream_executor/gpu/gpu_types.h"  // IWYU pragma: keep
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -71,13 +70,8 @@ limitations under the License.
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/profiler_lock.h"
-
-#ifdef GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#endif
 
 namespace xla::gpu {
 
