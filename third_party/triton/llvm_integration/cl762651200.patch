@@ -1,0 +1,166 @@
+
+--- a/lib/Analysis/Utility.cpp	2025-04-03 06:25:36.000000000 -0700
++++ b/lib/Analysis/Utility.cpp	2025-05-23 19:14:16.000000000 -0700
+@@ -950,7 +950,8 @@
+     BackwardSliceOptions opt;
+     opt.omitBlockArguments = true;
+     opt.filter = backwardFilter;
+-    getBackwardSlice(currentOp, &backwardSlice, opt);
++    auto result = getBackwardSlice(currentOp, &backwardSlice, opt);
++    assert(result.succeeded() && "expected a backward slice");
+     slice.insert(backwardSlice.begin(), backwardSlice.end());
+ 
+     // Compute and insert the forwardSlice starting from currentOp.
+
+--- a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp	2025-05-20 08:08:14.000000000 -0700
++++ b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp	2025-05-23 19:14:16.000000000 -0700
+@@ -265,7 +265,8 @@
+   mlir::BackwardSliceOptions opt;
+   opt.omitBlockArguments = true;
+   opt.filter = bwdFilter;
+-  getBackwardSlice(x, &slice, opt);
++  auto result = getBackwardSlice(x, &slice, opt);
++  assert(result.succeeded() && "expected a backward slice");
+ 
+   // TODO: This heuristic may be a bit too coarse and may need improving
+   // If the chain contains a fp4 to fp16/bf16 conversion, then the original
+
+--- a/lib/Dialect/TritonGPU/Transforms/Pipeliner/ScheduleLoops.cpp	2025-05-20 08:08:14.000000000 -0700
++++ b/lib/Dialect/TritonGPU/Transforms/Pipeliner/ScheduleLoops.cpp	2025-05-23 19:14:16.000000000 -0700
+@@ -219,7 +219,8 @@
+       BackwardSliceOptions opt;
+       opt.omitBlockArguments = true;
+       opt.omitUsesFromAbove = false;
+-      getBackwardSlice((Operation *)op, &backwardSlice, opt);
++      auto result = getBackwardSlice((Operation *)op, &backwardSlice, opt);
++      assert(result.succeeded() && "expected a backward slice");
+ 
+       for (auto op : backwardSlice) {
+         if (auto ifOp = dyn_cast<scf::IfOp>(op)) {
+
+--- a/lib/Dialect/TritonGPU/Transforms/Pipeliner/WGMMAPipeline.cpp	2025-04-25 05:19:43.000000000 -0700
++++ b/lib/Dialect/TritonGPU/Transforms/Pipeliner/WGMMAPipeline.cpp	2025-05-23 19:14:17.000000000 -0700
+@@ -172,7 +172,8 @@
+       return op->getBlock() == wait->getBlock();
+     };
+     SetVector<Operation *> slice;
+-    getBackwardSlice(v, &slice, options);
++    auto result = getBackwardSlice(v, &slice, options);
++    assert(result.succeeded() && "expected a backward slice");
+   }
+ 
+   for (ttng::WarpGroupDotOp dot : asyncDots) {
+
+--- a/test/Conversion/amd/async_ops_to_llvm.mlir	2025-04-30 09:57:08.000000000 -0700
++++ b/test/Conversion/amd/async_ops_to_llvm.mlir	2025-05-23 19:14:17.000000000 -0700
+@@ -259,16 +259,13 @@
+     // Each thread needs to load 1 element and we load 1 (sizePerThread) per global.load.lds
+ 
+     // CHECK: llvm.getelementptr
+-    // CHECK: %[[aux_ca:.*]] = llvm.mlir.constant(0 : i32) : i32
+-    // CHECK: rocdl.global.load.lds {{.*}}, {{.*}}, {{.*}}, {{.*}}, %[[aux_ca]]
++    // CHECK: rocdl.global.load.lds {{.*}}, {{.*}}, {{.*}}, {{.*}}, 0
+     %2 = ttg.async_copy_global_to_local %1, %arg2 cacheModifier = ca: tensor<32x32x!tt.ptr<f16>, #blocked> -> <32x32xf16, #shared, #smem, mutable>
+     // CHECK: llvm.getelementptr
+-    // CHECK: %[[aux_cg:.*]] = llvm.mlir.constant(3 : i32) : i32
+-    // CHECK: rocdl.global.load.lds {{.*}}, {{.*}}, {{.*}}, {{.*}}, %[[aux_cg]]
++    // CHECK: rocdl.global.load.lds {{.*}}, {{.*}}, {{.*}}, {{.*}}, 3
+     %3 = ttg.async_copy_global_to_local %1, %arg2 cacheModifier = cg: tensor<32x32x!tt.ptr<f16>, #blocked> -> <32x32xf16, #shared, #smem, mutable>
+     // CHECK: llvm.getelementptr
+-    // CHECK: %[[aux_cv:.*]] = llvm.mlir.constant(17 : i32) : i32
+-    // CHECK: rocdl.global.load.lds {{.*}}, {{.*}}, {{.*}}, {{.*}}, %[[aux_cv]]
++    // CHECK: rocdl.global.load.lds {{.*}}, {{.*}}, {{.*}}, {{.*}}, 17
+     %4 = ttg.async_copy_global_to_local %1, %arg2 cacheModifier = cv: tensor<32x32x!tt.ptr<f16>, #blocked> -> <32x32xf16, #shared, #smem, mutable>
+     tt.return
+   }
+
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/LoadStoreOpToLLVM.cpp	2025-05-20 08:08:14.000000000 -0700
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/LoadStoreOpToLLVM.cpp	2025-05-23 19:14:17.000000000 -0700
+@@ -682,9 +682,9 @@
+     assert(llvm::isPowerOf2_32(vecBytes));
+     Value vecBytesVal = b.i32_val(vecBytes);
+ 
+-    Value cacheModifiers =
+-        b.i32_val(mlir::LLVM::AMD::getCtrlBitsForCacheModifierOnTarget(
+-            op.getCache(), /*isLoad=*/true, targetInfo));
++    uint32_t cacheModifiers =
++        mlir::LLVM::AMD::getCtrlBitsForCacheModifierOnTarget(
++            op.getCache(), /*isLoad=*/true, targetInfo);
+ 
+     Value llMask = adaptor.getMask();
+     SmallVector<Value> maskElems;
+@@ -722,7 +722,7 @@
+         auto globalLoadLdsOp = rewriter.create<ROCDL::GlobalLoadLDSOp>(
+             loc,
+             /*globalPtr=*/srcPtr, /*ldsPtr=*/coalescedShmemAddr[i],
+-            /*size=*/vecBytesVal, /*offset=*/b.i32_val(0),
++            /*size=*/vecBytes, /*offset=*/0,
+             /*aux=*/cacheModifiers, /*alias_scopes=*/nullptr,
+             /*noalias_scopes=*/nullptr, /*tbaa=*/nullptr);
+         LLVM::AMD::addAsyncCopyAliasScope(globalLoadLdsOp);
+@@ -737,8 +737,8 @@
+       rewriter.create<LLVM::CondBrOp>(loc, pred, loadBlock, afterLoad);
+       rewriter.setInsertionPointToStart(loadBlock);
+       auto globalLoadLdsOp = rewriter.create<ROCDL::GlobalLoadLDSOp>(
+-          loc, srcPtr, coalescedShmemAddr[i], vecBytesVal,
+-          /*offset=*/b.i32_val(0), cacheModifiers, nullptr, nullptr, nullptr);
++          loc, srcPtr, coalescedShmemAddr[i], vecBytes,
++          /*offset=*/0, cacheModifiers, nullptr, nullptr, nullptr);
+       LLVM::AMD::addAsyncCopyAliasScope(globalLoadLdsOp);
+ 
+       rewriter.create<LLVM::BrOp>(loc, afterLoad);
+
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/Utility.cpp	2025-05-20 08:08:14.000000000 -0700
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/Utility.cpp	2025-05-23 20:15:10.000000000 -0700
+@@ -691,7 +691,8 @@
+   Operation *opA = dotOp.getA().getDefiningOp();
+   if (!opA)
+     return false;
+-  getBackwardSlice(opA, &bwdSlices, bwdOpt);
++  auto result = getBackwardSlice(opA, &bwdSlices, bwdOpt);
++  assert(succeeded(result) && "Failed to get backward slice!");
+   if (llvm::find_if(bwdSlices, [](Operation *op) {
+         return isa<tt::DotOpInterface>(op);
+       }) != bwdSlices.end())
+
+--- a/third_party/amd/lib/TritonAMDGPUTransforms/BlockPingpong.cpp	2025-04-30 09:57:08.000000000 -0700
++++ b/third_party/amd/lib/TritonAMDGPUTransforms/BlockPingpong.cpp	2025-05-23 20:15:10.000000000 -0700
+@@ -129,7 +129,8 @@
+       return op->getBlock() == checkedOp->getBlock() &&
+              checkedOp->isBeforeInBlock(op);
+     };
+-    getBackwardSlice(op, &backwardSlice, opt);
++    auto result = getBackwardSlice(op, &backwardSlice, opt);
++    assert(succeeded(result) && "Failed to get backward slice!");
+     for (auto predOp : backwardSlice)
+       appendOp(predOp);
+     appendOp(op);
+
+--- a/third_party/amd/lib/TritonAMDGPUTransforms/ReorderInstructions.cpp	2025-04-25 05:19:43.000000000 -0700
++++ b/third_party/amd/lib/TritonAMDGPUTransforms/ReorderInstructions.cpp	2025-05-23 20:15:10.000000000 -0700
+@@ -214,7 +214,8 @@
+       // Only move ops residing in the same block.
+       return defBlock == block;
+     };
+-    mlir::getBackwardSlice(op, &backwardSet, options);
++    auto result = mlir::getBackwardSlice(op, &backwardSet, options);
++    assert(succeeded(result) && "Failed to get backward slice!");
+     backwardSet.insert(op);
+ 
+     // Don't move a local_store if its source is a load from
+
+--- a/third_party/nvidia/hopper/lib/Transforms/WarpSpecialization/WSTaskPartition.cpp	2025-05-20 08:08:14.000000000 -0700
++++ b/third_party/nvidia/hopper/lib/Transforms/WarpSpecialization/WSTaskPartition.cpp	2025-05-23 19:14:17.000000000 -0700
+@@ -80,8 +80,10 @@
+     if (!dotOp)
+       continue;
+     SetVector<Operation *> backwardSlice;
+-    getBackwardSlice(dotOp.getA(), &backwardSlice, opt);
+-    getBackwardSlice(dotOp.getB(), &backwardSlice, opt);
++    auto resultA = getBackwardSlice(dotOp.getA(), &backwardSlice, opt);
++    assert(resultA.succeeded() && "expected a backward slice");
++    auto resultB = getBackwardSlice(dotOp.getB(), &backwardSlice, opt);
++    assert(resultB.succeeded() && "expected a backward slice");
+     for (auto depOp : backwardSlice) {
+       if (isa<tt::DescriptorLoadOp>(depOp)) {
+         producerOps.insert(depOp);
