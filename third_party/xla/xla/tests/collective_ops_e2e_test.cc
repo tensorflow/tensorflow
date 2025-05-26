@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_module_config.h"
@@ -58,6 +57,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
@@ -3209,6 +3209,19 @@ class AllReduceTest
     : public CollectiveOpsWithFlagsBase,
       public ::testing::WithParamInterface<std::tuple<bool, bool>> {
  public:
+  struct InputsOutputs {
+    std::vector<Literal> inputs;
+    std::vector<Literal> expected_outputs;
+
+    [[nodiscard]] std::vector<std::vector<Literal*>> InputLiteralPtrs() {
+      std::vector<std::vector<Literal*>> result;
+      for (auto& input : inputs) {
+        result.push_back(std::vector<Literal*>{&input});
+      }
+      return result;
+    }
+  };
+
   AllReduceTest()
       : CollectiveOpsWithFlagsBase(std::get<0>(GetParam()),
                                    /*enable_p2p_memcpy=*/false) {}
@@ -3221,6 +3234,53 @@ class AllReduceTest
         std::get<1>(GetParam()));
 
     return opts;
+  }
+
+  static absl::StatusOr<InputsOutputs> BuildTestInputsOutputs(
+      const HloModule& module, int64_t num_replicas) {
+    std::vector<Array<float>> inputs;
+    std::vector<Literal> input_literals;
+    const int64_t num_elements =
+        module.entry_computation()->root_instruction()->shape().dimensions()[0];
+    for (int i = 0; i < num_replicas; ++i) {
+      auto& input = inputs.emplace_back(Array<float>({num_elements}));
+      input.FillRandom(1.0f, 10.0f, /*seed=*/i);
+      input_literals.push_back(LiteralUtil::CreateFromArray(input));
+    }
+    std::vector<Array<float>> expected_outputs;
+    std::vector<Literal> expected_output_literals;
+    const HloInstruction* const instr =
+        FindInstruction(&module, HloOpcode::kAllReduce);
+    if (instr == nullptr) {
+      return absl::InvalidArgumentError(
+          "Instruction 'all-reduce' not found in module.");
+    }
+    const std::vector<ReplicaGroup>& replica_groups =
+        instr->device_list().replica_groups();
+    // Map each device to set of replica groups it belongs to.
+    std::vector<std::vector<int64_t>> device_to_groups(num_replicas);
+    for (const auto& replica_group : replica_groups) {
+      const auto& replica_ids = replica_group.replica_ids();
+      for (int64_t replica : replica_group.replica_ids()) {
+        CHECK_EQ(device_to_groups[replica].size(), 0);
+        device_to_groups[replica].assign(replica_ids.begin(),
+                                         replica_ids.end());
+      }
+    }
+    for (int i = 0; i < num_replicas; ++i) {
+      auto& expected_output =
+          expected_outputs.emplace_back(Array<float>({num_elements}));
+      // Sum inputs from each replica group.
+      expected_output.Each([&](absl::Span<const int64_t> indices, float* val) {
+        for (const int64_t replica : device_to_groups[i]) {
+          *val += inputs[replica](indices);
+        }
+      });
+      expected_output_literals.push_back(
+          LiteralUtil::CreateFromArray(expected_output));
+    }
+    return InputsOutputs{std::move(input_literals),
+                         std::move(expected_output_literals)};
   }
 };
 
@@ -3334,6 +3394,100 @@ TEST_P(AllReduceTest, AsyncAllReduce_BF16_2GPUs) {
   ASSERT_EQ(results.size(), kNumReplicas);
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_output_literal, results[0]));
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_output_literal, results[1]));
+}
+
+TEST_P(AllReduceTest, AsyncAllReduce_8GPUs_AllReplicasOneGroup) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+
+  ENTRY test_computation {
+    param_0 = f32[65536] parameter(0)
+    ROOT all-reduce = f32[65536] all-reduce(param_0), to_apply=apply_op,
+      replica_groups={{0,1,2,3,4,5,6,7}}
+  }
+  )";
+
+  const int64_t kNumReplicas = 8;
+  if (test_runner().device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << test_runner().device_count() << " available)";
+  }
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(InputsOutputs test_io,
+                          BuildTestInputsOutputs(*module, kNumReplicas));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      HloTestBase::ExecuteReplicated(std::move(module),
+                                     /*arguments=*/test_io.InputLiteralPtrs(),
+                                     /*num_replicas=*/kNumReplicas,
+                                     /*run_hlo_passes=*/true,
+                                     /*device_assignment=*/nullptr));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  for (int i = 0; i < kNumReplicas; ++i) {
+    // NB: nccl accumulation order can be different from expected calculations
+    // leading to differences in the results (floating point imprecision).
+    ASSERT_TRUE(LiteralTestUtil::Near(test_io.expected_outputs[i], results[i],
+                                      ErrorSpec{1e-4}))
+        << "ExpectedOutput != Result at index " << i;
+  }
+}
+
+TEST_P(AllReduceTest, AsyncAllReduce_8GPUs_2ReplicasPerGroup) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+
+  ENTRY test_computation {
+    param_0 = f32[65536] parameter(0)
+    ROOT all-reduce = f32[65536] all-reduce(param_0), to_apply=apply_op,
+      replica_groups={{0,4},{1,5},{2,6},{3,7}}
+  }
+  )";
+
+  const int64_t kNumReplicas = 8;
+  if (test_runner().device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << test_runner().device_count() << " available)";
+  }
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(InputsOutputs test_io,
+                          BuildTestInputsOutputs(*module, kNumReplicas));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      HloTestBase::ExecuteReplicated(std::move(module),
+                                     /*arguments=*/test_io.InputLiteralPtrs(),
+                                     /*num_replicas=*/kNumReplicas,
+                                     /*run_hlo_passes=*/true,
+                                     /*device_assignment=*/nullptr));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  for (int i = 0; i < kNumReplicas; ++i) {
+    ASSERT_TRUE(LiteralTestUtil::Equal(test_io.expected_outputs[i], results[i]))
+        << "ExpectedOutput != Result at index " << i;
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(
