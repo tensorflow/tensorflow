@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
@@ -30,9 +31,10 @@ limitations under the License.
 namespace xla::gpu {
 
 // Returns true if the all-reduce kernel is supported for the given number of
-// inputs, elements and element type.
+// inputs, elements, element type and reduction kind.
 bool IsAllReduceKernelSupported(int64_t num_inputs, int64_t num_elements,
-                                PrimitiveType element_type);
+                                PrimitiveType element_type,
+                                ReductionKind reduction_kind);
 
 // Performs element-wise addition of all input buffers and stores the result in
 // the output buffer.
@@ -61,11 +63,16 @@ bool IsAllReduceKernelSupported(int64_t num_inputs, int64_t num_elements,
 //    synchronize blocks on different devices. The size of each signal buffer
 //    should be equal to the `num_ranks * num_blocks`.
 absl::Status RunAllReduceKernel(
-    se::Stream* stream, const LaunchDimensions& launch_dimensions,
-    PrimitiveType element_type,
-    absl::Span<const se::DeviceMemoryBase> remote_input_buffers,
-    se::DeviceMemoryBase local_input_buffer, se::DeviceMemoryBase output_buffer,
-    RankId rank, int64_t num_ranks, int64_t num_elements,
+    se::Stream* stream,                                           //
+    const LaunchDimensions& launch_dimensions,                    //
+    PrimitiveType element_type,                                   //
+    ReductionKind reduction_kind,                                 //
+    absl::Span<const se::DeviceMemoryBase> remote_input_buffers,  //
+    se::DeviceMemoryBase local_input_buffer,                      //
+    se::DeviceMemoryBase output_buffer,                           //
+    RankId rank,                                                  //
+    int64_t num_ranks,                                            //
+    int64_t num_elements,                                         //
     absl::Span<const se::DeviceMemoryBase> signal_flags_buffers);
 
 }  // namespace xla::gpu

@@ -149,7 +149,7 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
   return absl::OkStatus();
 }
 
-absl::Status xla::gpu::CollectiveKernelThunk::ExecuteOnStream(
+absl::Status CollectiveKernelThunk::ExecuteOnStream(
     const ExecuteParams& params) {
   se::Stream* stream = params.stream;
   if (is_async_) {
@@ -204,6 +204,7 @@ absl::Status xla::gpu::CollectiveKernelThunk::ExecuteOnStream(
   return RunAllReduceKernel(/*stream=*/stream,
                             /*launch_dimensions=*/kLaunchDimensions,
                             /*element_type=*/element_type,
+                            /*reduction_kind=*/reduction_kind_,
                             /*remote_input_buffers=*/input_ptrs,
                             /*local_input_buffer=*/source_buffer,
                             /*output_buffer=*/destination_buffer,

@@ -24,6 +24,7 @@ limitations under the License.*/
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory_handle.h"
 #include "xla/stream_executor/stream.h"
 
@@ -42,10 +43,12 @@ namespace xla::gpu {
 class CollectiveKernelThunk : public Thunk {
  public:
   CollectiveKernelThunk(ThunkInfo info, CollectiveConfig collective_config,
-                        bool is_async, CollectiveThunk::Buffer buffer)
+                        ReductionKind reduction_kind, bool is_async,
+                        CollectiveThunk::Buffer buffer)
       : Thunk{Thunk::kCollectiveKernel, info},
         is_async_(is_async),
         collective_config_(std::move(collective_config)),
+        reduction_kind_(reduction_kind),
         buffer_(buffer) {}
 
   // The single host collective thunk actually requires a clique key.
@@ -63,6 +66,8 @@ class CollectiveKernelThunk : public Thunk {
   const bool is_async_;
   // Collective config being used. Copied over to avoid lifetime issues.
   const CollectiveConfig collective_config_;
+  // Reduction kind being to use for AllReduce collective.
+  ReductionKind reduction_kind_;
   // Reference to the buffer related information required for the collective.
   CollectiveThunk::Buffer buffer_;
 

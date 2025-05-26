@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/primitive_util.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
@@ -63,7 +64,8 @@ absl::Status LaunchTypedKernel(
 }  // namespace
 
 bool IsAllReduceKernelSupported(int64_t num_inputs, int64_t num_elements,
-                                PrimitiveType element_type) {
+                                PrimitiveType element_type,
+                                ReductionKind reduction_kind) {
   // The kernel always vectorizes to 4 elements per thread.
   if (num_elements % 4 != 0) {
     return false;
@@ -74,16 +76,30 @@ bool IsAllReduceKernelSupported(int64_t num_inputs, int64_t num_elements,
     return false;
   }
 
+  if (reduction_kind != ReductionKind::SUM) {
+    return false;
+  }
+
   return element_type == BF16 || element_type == F32;
 }
 
 absl::Status RunAllReduceKernel(
     se::Stream* stream, const LaunchDimensions& launch_dimensions,
-    PrimitiveType element_type,
+    PrimitiveType element_type, ReductionKind reduction_kind,
     absl::Span<const se::DeviceMemoryBase> remote_input_buffers,
     se::DeviceMemoryBase local_input_buffer, se::DeviceMemoryBase output_buffer,
     RankId rank, int64_t num_ranks, int64_t num_elements,
     absl::Span<const se::DeviceMemoryBase> signal_flags_buffers) {
+  if (!IsAllReduceKernelSupported(num_ranks, num_elements, element_type,
+                                  reduction_kind)) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("AllReduce kernel is not supported for the given number "
+                     "of ranks, elements, element type and reduction kind: ",
+                     num_ranks, ", ", num_elements, ", ",
+                     primitive_util::LowercasePrimitiveTypeName(element_type),
+                     ", ", ReductionKindToString(reduction_kind)));
+  }
+
   if (remote_input_buffers.size() >
       stream_executor::gpu::kMaxNumAllReduceInputPtrs) {
     return absl::InvalidArgumentError(
@@ -125,9 +141,8 @@ absl::Status RunAllReduceKernel(
       return launch_kernel(float{});
     default:
       return absl::InvalidArgumentError(
-          absl::StrCat("Unsupported element type: ",
-                       primitive_util::LowercasePrimitiveTypeName(element_type),
-                       " for AllReduce kernel."));
+          "Unsupported AllReduce kernel. This line should never be reached if "
+          "the result of `IsAllReduceKernelSupported` is correct.");
   }
 }
 

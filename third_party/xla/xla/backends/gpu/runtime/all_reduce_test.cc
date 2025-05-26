@@ -24,10 +24,12 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/primitive_util.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
@@ -56,7 +58,7 @@ class AllReduceKernelTest : public ::testing::Test {
   template <typename T>
   static absl::StatusOr<std::vector<Array<T>>> RunKernel(
       const std::vector<se::StreamExecutor*>& executors,
-      const std::vector<Array<T>>& input_data) {
+      const std::vector<Array<T>>& input_data, ReductionKind reduction_kind) {
     constexpr LaunchDimensions kLaunchDimensions{
         /*block_x_count=*/8,
         /*thread_x_count_per_block=*/512};
@@ -111,7 +113,8 @@ class AllReduceKernelTest : public ::testing::Test {
       auto active_context = executors[i]->Activate();
       TF_RETURN_IF_ERROR(RunAllReduceKernel(
           streams[i].get(), kLaunchDimensions,
-          primitive_util::NativeToPrimitiveType<T>(), remote_input_buffers_span,
+          primitive_util::NativeToPrimitiveType<T>(),
+          /*reduction_kind=*/reduction_kind, remote_input_buffers_span,
           // Memory is aliased for both input and output (similar to what nccl
           // would do).
           /*local_input_buffer=*/local_input_buffers[i].memory(),
@@ -165,7 +168,8 @@ TEST_F(AllReduceKernelTest, KernelTestAddF32) {
     inputs.push_back(std::move(input_data));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(auto results, RunKernel<float>(executors, inputs));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto results, RunKernel<float>(executors, inputs, ReductionKind::SUM));
 
   for (int i = 0; i < kNumRanks; ++i) {
     EXPECT_EQ(results[i], expected_output);
@@ -198,11 +202,46 @@ TEST_F(AllReduceKernelTest, KernelTestAddBF16) {
     inputs.push_back(std::move(input_data));
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(auto results, RunKernel<bfloat16>(executors, inputs));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto results, RunKernel<bfloat16>(executors, inputs, ReductionKind::SUM));
 
   for (int i = 0; i < kNumRanks; ++i) {
     EXPECT_EQ(results[i], expected_output);
   }
+}
+
+TEST_F(AllReduceKernelTest, KernelTestOrPred_Unsupported) {
+  constexpr int64_t kNumRanks = 2;
+  constexpr int64_t kNumElements = 128000;
+
+  std::vector<se::StreamExecutor*> executors = {GetGpuExecutor(0),
+                                                GetGpuExecutor(1)};
+
+  if (!executors[0]->CanEnablePeerAccessTo(executors[1])) {
+    GTEST_SKIP() << "Test requires direct peer memory access between devices.";
+  }
+
+  Array<bool> expected_output({kNumElements});
+  std::vector<Array<bool>> inputs;
+
+  for (int i = 0; i < kNumRanks; ++i) {
+    Array<bool> input_data({kNumElements});
+    input_data.FillRandomBool(/*seed=*/i);
+
+    expected_output.Each([&](absl::Span<const int64_t> indices, bool* val) {
+      *val |= input_data(indices);
+    });
+
+    inputs.push_back(std::move(input_data));
+  }
+
+  // There are no logical operations in all-reduce reduction kind, so OR is
+  // simulated with MAX on uint8.
+  auto results = RunKernel<bool>(executors, inputs, ReductionKind::MAX);
+  EXPECT_THAT(results.status(),
+              ::testing::status::StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(results.status().message(),
+              ::testing::HasSubstr("AllReduce kernel is not supported"));
 }
 
 }  // namespace
