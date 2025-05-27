@@ -184,7 +184,7 @@ class HloEvaluatorTest : public HloHardwareIndependentTestBase {
 
   std::unique_ptr<HloComputation> MaxComputationScalarF32() {
     HloComputation::Builder max_computation("max");
-    Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+    Shape scalar_shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
     auto param_lhs = max_computation.AddInstruction(
         HloInstruction::CreateParameter(0, scalar_shape, "lhs"));
     auto param_rhs = max_computation.AddInstruction(
@@ -229,7 +229,7 @@ class HloEvaluatorTest : public HloHardwareIndependentTestBase {
 
     int dim0 = expected.shape().dimensions(0);
     int dim1 = expected.shape().dimensions(1);
-    Shape shape = ShapeUtil::MakeShape(F32, {dim0, dim1});
+    Shape shape = ShapeUtil::MakeValidatedShape(F32, {dim0, dim1}).value();
     b.AddInstruction(HloInstruction::CreateReduceWindow(
         shape, arg_instruction, init_value, window, max_func));
 
@@ -535,7 +535,7 @@ TEST_F(HloEvaluatorTest, DoesTraverseInstructions) {
   auto rhs2 = LiteralUtil::CreateR2<int64_t>({{1, -20}, {-100, 4}});
   std::vector<const Literal*> args = {&lhs, &rhs, &rhs2};
 
-  Shape shape = ShapeUtil::MakeShape(S64, {2, 2});
+  Shape shape = ShapeUtil::MakeValidatedShape(S64, {2, 2}).value();
 
   HloComputation::Builder b(TestName());
   auto param_lhs =
@@ -562,14 +562,15 @@ TEST_F(HloEvaluatorTest, DoesTraverseInstructions) {
 TEST_F(HloEvaluatorTest, DoesReshape) {
   HloComputation::Builder b(TestName());
   const int64_t dimensions[] = {11, 8, 7, 5, 9};
-  TF_ASSERT_OK_AND_ASSIGN(auto literal,
-                          LiteralUtil::CreateRandomLiteral<F32>(
-                              ShapeUtil::MakeShape(F32, dimensions), 0.0, 1.0));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto literal,
+      LiteralUtil::CreateRandomLiteral<F32>(
+          ShapeUtil::MakeValidatedShape(F32, dimensions).value(), 0.0, 1.0));
   auto literal_clone = literal.Clone();
   HloInstruction* literal_instruction =
       b.AddInstruction(HloInstruction::CreateConstant(std::move(literal)));
 
-  Shape shape = ShapeUtil::MakeShape(F32, {8, 7, 11, 9, 5});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {8, 7, 11, 9, 5}).value();
   const int64_t permutation[] = {1, 2, 0, 4, 3};
   b.AddInstruction(
       HloInstruction::CreateTranspose(shape, literal_instruction, permutation));
@@ -631,7 +632,7 @@ TEST_F(HloEvaluatorTest, DoesConcatenateSimple) {
 
   std::vector<HloInstruction*> operands = {operand1, operand2};
 
-  Shape shape = ShapeUtil::MakeShape(S64, {4, 2});
+  Shape shape = ShapeUtil::MakeValidatedShape(S64, {4, 2}).value();
   b.AddInstruction(HloInstruction::CreateConcatenate(shape, operands, 0));
 
   m_->AddEntryComputation(b.Build());
@@ -653,7 +654,7 @@ TEST_F(HloEvaluatorTest, ConcatenateHandlesShapeWithZeroElement) {
 
   std::vector<HloInstruction*> operands = {operand1, operand2};
 
-  Shape shape = ShapeUtil::MakeShape(S64, {2});
+  Shape shape = ShapeUtil::MakeValidatedShape(S64, {2}).value();
   b.AddInstruction(HloInstruction::CreateConcatenate(shape, operands, 0));
 
   m_->AddEntryComputation(b.Build());
@@ -728,7 +729,7 @@ TEST_F(HloEvaluatorTest, Pad2DIntegerArrayWithZeroDimension) {
       b.AddInstruction(HloInstruction::CreateConstant(std::move(pad_value)));
 
   auto padding_config = CreatePaddingConfig({{{1, 0, 2}}, {{0, 2, 1}}});
-  Shape shape = ShapeUtil::MakeShape(S32, {5, 2});
+  Shape shape = ShapeUtil::MakeValidatedShape(S32, {5, 2}).value();
   b.AddInstruction(HloInstruction::CreatePad(
       shape, operand_instruction, padding_value_instruction, padding_config));
   m_->AddEntryComputation(b.Build());
@@ -753,7 +754,7 @@ TEST_P(HloEvaluatorBf16Test, Pad4DFloatArrayWithInteriorPadding) {
   HloInstruction* pad_instruction =
       b.AddInstruction(HloInstruction::CreateConstant(std::move(pad_value)));
 
-  Shape shape = ShapeUtil::MakeShape(F32, {8, 5, 1, 1});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {8, 5, 1, 1}).value();
   auto r4_padding_on_dim0_dim1 =
       CreatePaddingConfig({{{1, 0, 2}}, {{0, 2, 1}}, {{0, 0, 0}}, {{0, 0, 0}}});
   b.AddInstruction(HloInstruction::CreatePad(
@@ -797,7 +798,7 @@ TEST_P(HloEvaluatorBf16Test, NegativePadding2D) {
 
   auto r2_padding_on_dim0_dim1 =
       CreatePaddingConfig({{{-1, -2, 0}}, {{-2, 4, 0}}});
-  Shape shape = ShapeUtil::MakeShape(F32, {1, 5});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {1, 5}).value();
   b.AddInstruction(HloInstruction::CreatePad(shape, input_instruction,
                                              pad_value_instruction,
                                              r2_padding_on_dim0_dim1));
@@ -842,7 +843,7 @@ TEST_P(HloEvaluatorBf16Test, NegativeAndInteriorPadding2D) {
   auto r2_padding_on_dim0_dim1 =
       CreatePaddingConfig({{{-2, -5, 1}}, {{-2, 4, 2}}});
 
-  Shape shape = ShapeUtil::MakeShape(F32, {0, 9});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {0, 9}).value();
   b.AddInstruction(HloInstruction::CreatePad(shape, input_instruction,
                                              pad_value_instruction,
                                              r2_padding_on_dim0_dim1));
@@ -860,7 +861,7 @@ TEST_P(HloEvaluatorBf16Test, NegativeAndInteriorPadding2D) {
 TEST_F(HloEvaluatorTest, Pad2DFloatArrayDifferentTypes) {
   HloComputation::Builder b(TestName());
   b.AddInstruction(HloInstruction::CreatePad(
-      ShapeUtil::MakeShape(BF16, {5, 2}),
+      ShapeUtil::MakeValidatedShape(BF16, {5, 2}).value(),
       /*operand=*/
       b.AddInstruction(HloInstruction::CreateConstant(
           LiteralUtil::CreateR2<bfloat16>({{}, {}}))),
@@ -903,7 +904,7 @@ TEST_P(HloEvaluatorBf16Test, DotRank2AndRank1) {
   HloInstruction* rhs_instruction =
       b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_literal)));
 
-  Shape shape = ShapeUtil::MakeShape(F32, {4, 2});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {4, 2}).value();
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
@@ -949,7 +950,7 @@ TEST_P(HloEvaluatorBf16Test, DotRank1AndRank2) {
   HloInstruction* rhs_instruction =
       b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_literal)));
 
-  Shape shape = ShapeUtil::MakeShape(F32, {2});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2}).value();
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(0);
   dot_dnums.add_rhs_contracting_dimensions(0);
@@ -993,7 +994,7 @@ TEST_P(HloEvaluatorBf16Test, DotRank2AndRank2) {
   HloInstruction* rhs_instruction =
       b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_literal)));
 
-  Shape shape = ShapeUtil::MakeShape(F32, {4, 2});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {4, 2}).value();
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
@@ -1030,7 +1031,7 @@ TEST_P(HloEvaluatorBf16Test, DotRank4AndRank4) {
   HloInstruction* rhs_instruction =
       b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs_literal)));
 
-  Shape shape = ShapeUtil::MakeShape(F32, {2, 1, 1});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 1, 1}).value();
   DotDimensionNumbers dot_dnums;
 
   dot_dnums.add_lhs_batch_dimensions(0);
@@ -1095,7 +1096,7 @@ TEST_P(HloEvaluatorBf16Test, SimpleConv1D) {
   dnums.set_kernel_input_feature_dimension(1);
   dnums.add_kernel_spatial_dimensions(2);
 
-  Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 3});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {1, 1, 3}).value();
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
@@ -1150,7 +1151,7 @@ TEST_P(HloEvaluatorBf16Test, Simple4x4Conv2DWith2x2Kernel) {
   ConvolutionDimensionNumbers dnums =
       XlaBuilder::CreateDefaultConvDimensionNumbers(2);
 
-  Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 4, 4});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {1, 1, 4, 4}).value();
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
@@ -1234,7 +1235,7 @@ TEST_P(HloEvaluatorBf16Test, Conv2DGeneralDimensionsReversed) {
   dnums.add_kernel_spatial_dimensions(3);
   dnums.add_kernel_spatial_dimensions(1);
 
-  Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {1, 1, 1, 2}).value();
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
@@ -1312,7 +1313,7 @@ TEST_P(HloEvaluatorBf16Test, Conv2DGeneralDimensions) {
   dnums.add_kernel_spatial_dimensions(3);
   dnums.add_kernel_spatial_dimensions(1);
 
-  Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {1, 1, 1, 2}).value();
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
@@ -1372,7 +1373,7 @@ TEST_P(HloEvaluatorBf16Test, DilatedBaseConv2DWithHighPadding) {
   ConvolutionDimensionNumbers dnums =
       XlaBuilder::CreateDefaultConvDimensionNumbers(2);
 
-  Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 7, 7});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {1, 1, 7, 7}).value();
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
@@ -1436,7 +1437,7 @@ TEST_P(HloEvaluatorBf16Test, DilatedBaseConv2DWithLowAndHighPadding) {
   ConvolutionDimensionNumbers dnums =
       XlaBuilder::CreateDefaultConvDimensionNumbers(2);
 
-  Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 8, 8});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {1, 1, 8, 8}).value();
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
@@ -1508,7 +1509,7 @@ TEST_P(HloEvaluatorBf16Test,
   ConvolutionDimensionNumbers dnums =
       XlaBuilder::CreateDefaultConvDimensionNumbers(2);
 
-  Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 9, 3});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {1, 1, 9, 3}).value();
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
@@ -1537,8 +1538,10 @@ TEST_P(HloEvaluatorBf16Test, Conv2DGroupedConvolution) {
   HloComputation::Builder b(TestName());
   std::vector<int64_t> input_dims = {1, 2, 2, 4};
   std::vector<int64_t> filter_dims = {2, 2, 2, 8};
-  Shape input_shape = ShapeUtil::MakeShapeWithType<float>(input_dims);
-  Shape filter_shape = ShapeUtil::MakeShapeWithType<float>(filter_dims);
+  Shape input_shape =
+      ShapeUtil::MakeValidatedShapeWithType<float>(input_dims).value();
+  Shape filter_shape =
+      ShapeUtil::MakeValidatedShapeWithType<float>(filter_dims).value();
   // Tensorflow dimension numbers for 2D convolution.
   ConvolutionDimensionNumbers dnums;
   dnums.set_input_batch_dimension(0);
@@ -1579,7 +1582,7 @@ TEST_P(HloEvaluatorBf16Test, Conv2DGroupedConvolution) {
   HloInstruction* rhs_instruction =
       b.AddInstruction(HloInstruction::CreateConstant(std::move(filter_r4)));
 
-  Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 8});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {1, 1, 1, 8}).value();
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction,
       /*feature_group_count=*/2, /*batch_group_count=*/1, window, dnums,
@@ -2620,7 +2623,7 @@ TEST_F(HloEvaluatorPreciseReduceTest, AddReductionPrecisionTest) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.f)));
 
   HloComputation::Builder add_computation("add");
-  Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+  Shape scalar_shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
   auto param_lhs = add_computation.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape, "lhs"));
   auto param_rhs = add_computation.AddInstruction(
@@ -2658,7 +2661,7 @@ TEST_P(HloEvaluatorBf16Test, ReduceAdd) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.f)));
 
   HloComputation::Builder add_computation("add");
-  Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+  Shape scalar_shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
   auto param_lhs = add_computation.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape, "lhs"));
   auto param_rhs = add_computation.AddInstruction(
@@ -2667,7 +2670,7 @@ TEST_P(HloEvaluatorBf16Test, ReduceAdd) {
       scalar_shape, HloOpcode::kAdd, param_lhs, param_rhs));
   auto add_func = m_->AddEmbeddedComputation(add_computation.Build());
 
-  Shape shape = ShapeUtil::MakeShape(F32, {2});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2}).value();
   b.AddInstruction(
       HloInstruction::CreateReduce(shape, arg_instruction, init_value,
                                    /*dimensions_to_reduce=*/{1}, add_func));
@@ -2711,7 +2714,7 @@ TEST_P(HloEvaluatorBf16Test, ReduceWindowMax) {
   *window.add_dimensions() = dim;
   *window.add_dimensions() = dim;
 
-  Shape shape = ShapeUtil::MakeShape(F32, {1, 2});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {1, 2}).value();
   b.AddInstruction(HloInstruction::CreateReduceWindow(
       shape, arg_instruction, init_value, window, max_func));
 
@@ -2817,7 +2820,7 @@ TEST_P(HloEvaluatorBf16Test, ReduceWindowAdd) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.f)));
 
   HloComputation::Builder add_computation("add");
-  Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+  Shape scalar_shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
   auto param_lhs = add_computation.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape, "lhs"));
   auto param_rhs = add_computation.AddInstruction(
@@ -2843,7 +2846,7 @@ TEST_P(HloEvaluatorBf16Test, ReduceWindowAdd) {
   dim.set_base_dilation(1);
   *window.add_dimensions() = dim;
 
-  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
   b.AddInstruction(HloInstruction::CreateReduceWindow(
       shape, arg_instruction, init_value, window, add_func));
 
@@ -2870,7 +2873,7 @@ TEST_P(HloEvaluatorBf16Test, ReduceWindowAdd6D) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.f)));
 
   HloComputation::Builder add_computation("add");
-  Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+  Shape scalar_shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
   auto param_lhs = add_computation.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape, "lhs"));
   auto param_rhs = add_computation.AddInstruction(
@@ -2904,7 +2907,7 @@ TEST_P(HloEvaluatorBf16Test, ReduceWindowAdd6D) {
   *window.add_dimensions() = trivial_dim;
   *window.add_dimensions() = trivial_dim;
 
-  Shape shape = ShapeUtil::MakeShape(F32, {4, 3, 3, 3, 4, 4});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {4, 3, 3, 3, 4, 4}).value();
   b.AddInstruction(HloInstruction::CreateReduceWindow(
       shape, arg_instruction, init_value, window, add_func));
 
@@ -2925,8 +2928,8 @@ TEST_P(HloEvaluatorBf16Test, Min3In5Stride2Tuple) {
   auto input2 = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR1<float>({10000, 1000, 100, 10, 1})));
   HloComputation::Builder bcompute("ComputeFunction");
-  auto shape1 = ShapeUtil::MakeShape(F32, {});
-  auto shape2 = ShapeUtil::MakeShape(F32, {});
+  auto shape1 = ShapeUtil::MakeValidatedShape(F32, {}).value();
+  auto shape2 = ShapeUtil::MakeValidatedShape(F32, {}).value();
   auto p2 =
       bcompute.AddInstruction(HloInstruction::CreateParameter(0, shape1, "x0"));
   auto p3 =
@@ -2976,8 +2979,8 @@ TEST_P(HloEvaluatorBf16Test, Min3In5Stride2TupleDiffInput) {
   auto input2 = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR1<int>({15, 28, 300, 107, 12})));
   HloComputation::Builder bcompute("ComputeFunction");
-  auto shape1 = ShapeUtil::MakeShape(F32, {});
-  auto shape2 = ShapeUtil::MakeShape(S32, {});
+  auto shape1 = ShapeUtil::MakeValidatedShape(F32, {}).value();
+  auto shape2 = ShapeUtil::MakeValidatedShape(S32, {}).value();
   auto p2 =
       bcompute.AddInstruction(HloInstruction::CreateParameter(0, shape1, "x0"));
   auto p3 =
@@ -3038,7 +3041,7 @@ TEST_P(HloEvaluatorBf16Test, StridedSlice) {
   HloInstruction* operand = b.AddInstruction(
       HloInstruction::CreateConstant(std::move(operand_literal)));
 
-  Shape shape = ShapeUtil::MakeShape(F32, {2, 1});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 1}).value();
   b.AddInstruction(HloInstruction::CreateSlice(shape, operand,
                                                /*start_indices=*/{0, 2},
                                                /*limit_indices=*/{3, 5},
@@ -3076,7 +3079,7 @@ TEST_P(HloEvaluatorBf16Test, DynamicSlice) {
   auto one = b.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
 
-  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
   b.AddInstruction(
       HloInstruction::CreateDynamicSlice(shape, operand, {zero, one}, {2, 3}));
   m_->AddEntryComputation(b.Build());
@@ -3114,7 +3117,7 @@ TEST_P(HloEvaluatorBf16Test, DynamicSliceModSlice) {
   auto one = b.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
 
-  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
   b.AddInstruction(
       HloInstruction::CreateDynamicSlice(shape, operand, {two, one}, {2, 3}));
   m_->AddEntryComputation(b.Build());
@@ -3153,7 +3156,7 @@ TEST_P(HloEvaluatorBf16Test, DynamicSliceUpdate) {
   auto update = b.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR2<double>({{-2.0, -3.0}, {-6.0, -7.0}})));
 
-  Shape shape = ShapeUtil::MakeShape(F64, {2, 3});
+  Shape shape = ShapeUtil::MakeValidatedShape(F64, {2, 3}).value();
   b.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
       shape, operand, update, {zero, one}));
   m_->AddEntryComputation(b.Build());
@@ -3189,7 +3192,7 @@ TEST_P(HloEvaluatorBf16Test, SetAndGetTuples) {
   auto tuple =
       b.AddInstruction(HloInstruction::CreateTuple({operand1, operand2}));
 
-  Shape shape = ShapeUtil::MakeShape(F64, {2, 3});
+  Shape shape = ShapeUtil::MakeValidatedShape(F64, {2, 3}).value();
   b.AddInstruction(HloInstruction::CreateGetTupleElement(shape, tuple, 1));
 
   m_->AddEntryComputation(b.Build());
@@ -3267,7 +3270,7 @@ TEST_P(HloEvaluatorBf16Test, Reverse) {
   HloInstruction* operand = b.AddInstruction(
       HloInstruction::CreateConstant(std::move(operand_literal)));
 
-  const Shape shape = ShapeUtil::MakeShape(F32, {4, 3, 2, 1});
+  const Shape shape = ShapeUtil::MakeValidatedShape(F32, {4, 3, 2, 1}).value();
   b.AddInstruction(HloInstruction::CreateReverse(shape, operand, {0, 1}));
   m_->AddEntryComputation(b.Build());
 
@@ -3298,7 +3301,7 @@ TEST_P(HloEvaluatorBf16Test, Reverse) {
 
 TEST_P(HloEvaluatorBf16Test, EvaluateWithSubstitutions) {
   HloComputation::Builder b(TestName());
-  Shape shape = ShapeUtil::MakeShape(F32, {4});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {4}).value();
 
   HloInstruction* param0 =
       b.AddInstruction(HloInstruction::CreateParameter(0, shape, "param0"));
@@ -3383,7 +3386,7 @@ TEST_F(HloEvaluatorTest,
 // we're evaluating is a constant.
 TEST_P(HloEvaluatorBf16Test, EvaluateWithSubstitutionsWithConstantOperand) {
   HloComputation::Builder b(TestName());
-  Shape shape = ShapeUtil::MakeShape(F32, {4});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {4}).value();
 
   HloInstruction* param0 =
       b.AddInstruction(HloInstruction::CreateParameter(0, shape, "param0"));
@@ -3408,7 +3411,7 @@ TEST_P(HloEvaluatorBf16Test, EvaluateWithSubstitutionsWithConstantOperand) {
 // being substituted.
 TEST_P(HloEvaluatorBf16Test, EvaluateSubstitutedInstruction) {
   HloComputation::Builder b(TestName());
-  Shape shape = ShapeUtil::MakeShape(F32, {4});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {4}).value();
 
   HloInstruction* param =
       b.AddInstruction(HloInstruction::CreateParameter(0, shape, "param0"));
@@ -3424,7 +3427,7 @@ TEST_P(HloEvaluatorBf16Test, EvaluateSubstitutedInstruction) {
 
 TEST_F(HloEvaluatorTest, EvaluateWithSubstitutionsLiteralBase) {
   HloComputation::Builder b(TestName());
-  Shape shape = ShapeUtil::MakeShape(S64, {3});
+  Shape shape = ShapeUtil::MakeValidatedShape(S64, {3}).value();
 
   HloInstruction* param0 =
       b.AddInstruction(HloInstruction::CreateParameter(0, shape, "param0"));
@@ -3432,7 +3435,7 @@ TEST_F(HloEvaluatorTest, EvaluateWithSubstitutionsLiteralBase) {
       shape, HloOpcode::kMultiply, param0, param0));
 
   int64_t int64_values[] = {1, 2, 3};
-  const Shape literal_shape = ShapeUtil::MakeShape(S64, {3});
+  const Shape literal_shape = ShapeUtil::MakeValidatedShape(S64, {3}).value();
 
   BorrowingLiteral literal(reinterpret_cast<const char*>(int64_values),
                            literal_shape);
@@ -4360,15 +4363,15 @@ TEST_F(HloEvaluatorTest, EvaluateScatter_ExplicitBatchDims) {
   }
 )";
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
-  auto indices =
-      std::make_unique<Literal>(ShapeUtil::MakeShape(S32, {2, 3, 5}));
+  auto indices = std::make_unique<Literal>(
+      ShapeUtil::MakeValidatedShape(S32, {2, 3, 5}).value());
   indices
       ->Populate<int>([](absl::Span<const int64_t> indices) {
         return static_cast<int>((indices[1] + 1) % 3);
       })
       .IgnoreError();
-  auto updates =
-      std::make_unique<Literal>(ShapeUtil::MakeShape(S32, {2, 3, 2, 5}));
+  auto updates = std::make_unique<Literal>(
+      ShapeUtil::MakeValidatedShape(S32, {2, 3, 2, 5}).value());
   updates
       ->Populate<int>([](absl::Span<const int64_t> indices) {
         return static_cast<int>(indices[0] * 1000 + indices[1] * 100 +
@@ -5312,7 +5315,7 @@ TEST_F(HloEvaluatorTest, InfeedFailure) {
   HloComputation::Builder b(TestName());
   HloInstruction* token = b.AddInstruction(HloInstruction::CreateToken());
   HloInstruction* infeed = b.AddInstruction(HloInstruction::CreateInfeed(
-      ShapeUtil::MakeShape(F32, {4, 4}), token, ""));
+      ShapeUtil::MakeValidatedShape(F32, {4, 4}).value(), token, ""));
 
   m_->AddEntryComputation(b.Build());
   TestRecursiveEvaluationFailure(infeed);
@@ -6249,7 +6252,7 @@ TEST_F(HloEvaluatorTest, SimpleConvTraced) {
   ConvolutionDimensionNumbers dnums =
       XlaBuilder::CreateDefaultConvDimensionNumbers(2);
 
-  Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 4, 4});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {1, 1, 4, 4}).value();
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
@@ -6372,7 +6375,7 @@ void BM_ReducePrecisely(::testing::benchmark::State& state) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.f)));
 
   HloComputation::Builder add_computation("add");
-  Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+  Shape scalar_shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
   auto param_lhs = add_computation.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape, "lhs"));
   auto param_rhs = add_computation.AddInstruction(
@@ -6402,7 +6405,8 @@ static void BM_UnaryOp(benchmark::State& state) {
       HloInstruction::CreateConstant(LiteralUtil::CreateFull({d, d}, 1.0f));
 
   std::unique_ptr<HloInstruction> unary = HloInstruction::CreateUnary(
-      ShapeUtil::MakeShape(F32, {d, d}), HloOpcode::kExp, input.get());
+      ShapeUtil::MakeValidatedShape(F32, {d, d}).value(), HloOpcode::kExp,
+      input.get());
 
   HloEvaluator evaluator;
   for (auto s : state) {
@@ -6426,7 +6430,8 @@ static void BM_BinaryOp(benchmark::State& state) {
       HloInstruction::CreateConstant(LiteralUtil::CreateFull({d, d}, 2.0f));
 
   std::unique_ptr<HloInstruction> binary = HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(F32, {d, d}), HloOpcode::kAdd, lhs.get(), rhs.get());
+      ShapeUtil::MakeValidatedShape(F32, {d, d}).value(), HloOpcode::kAdd,
+      lhs.get(), rhs.get());
 
   HloEvaluator evaluator;
   for (auto s : state) {

@@ -1324,7 +1324,7 @@ absl::Status HloEvaluator::HandleGetDimensionSize(
   }
 
   const Shape& shape = get_dimension_size->operand(0)->shape();
-  Literal output(ShapeUtil::MakeShape(S32, {}));
+  Literal output(ShapeUtil::MakeValidatedShape(S32, {}).value());
   output.PopulateWithValue(
       static_cast<int32_t>(shape.dimensions(get_dimension_size->dimension())));
   SetEvaluatedLiteralFor(get_dimension_size, std::move(output));
@@ -1634,7 +1634,7 @@ absl::Status HloEvaluator::HandleTuple(const HloInstruction* tuple) {
     element_shapes.push_back(&element->shape());
   }
   Literal new_result = Literal::CreateFromShapeWithUndeterminedLeafArrays(
-      ShapeUtil::MakeTupleShapeWithPtrs(element_shapes));
+      ShapeUtil::MakeValidatedTupleShapeWithPtrs(element_shapes).value());
   for (int i = 0, end = operand_literals.size(); i < end; ++i) {
     TF_RETURN_IF_ERROR(
         new_result.CopyFrom(*operand_literals[i], /*dest_shape_index=*/{i}));
@@ -3931,8 +3931,10 @@ absl::Status HloEvaluator::HandleSelectAndScatter(
   for (const auto& window_dimension : window.dimensions()) {
     window_dimension_sizes.push_back(window_dimension.size());
   }
-  const Shape window_shape = ShapeUtil::MakeShape(
-      operand->shape().element_type(), window_dimension_sizes);
+  const Shape window_shape =
+      ShapeUtil::MakeValidatedShape(operand->shape().element_type(),
+                                    window_dimension_sizes)
+          .value();
 
   const HloComputation* select = select_and_scatter->select();
   const HloComputation* scatter = select_and_scatter->scatter();
@@ -4349,9 +4351,11 @@ static absl::StatusOr<bool> PerformReductionStep(
   accumulators.reserve(num_args);
   for (int64_t i = 0; i < num_args; ++i) {
     arg_values.emplace_back(
-        ShapeUtil::MakeShape(input_args[i]->shape().element_type(), {}));
+        ShapeUtil::MakeValidatedShape(input_args[i]->shape().element_type(), {})
+            .value());
     accumulators.emplace_back(
-        ShapeUtil::MakeShape(input_args[i]->shape().element_type(), {}));
+        ShapeUtil::MakeValidatedShape(input_args[i]->shape().element_type(), {})
+            .value());
 
     arg_values[i].CopyElementFrom(*input_args[i], input_index, {});
     accumulators[i].CopyElementFrom(results[i], output_index, {});
@@ -4595,8 +4599,10 @@ absl::Status HloEvaluator::HandleReduceWindow(const HloInstruction* hlo) {
   for (const auto& window_dimension : window.dimensions()) {
     window_dimension_sizes.push_back(window_dimension.size());
   }
-  const Shape window_shape = ShapeUtil::MakeShape(
-      input_arrays[0]->shape().element_type(), window_dimension_sizes);
+  const Shape window_shape =
+      ShapeUtil::MakeValidatedShape(input_arrays[0]->shape().element_type(),
+                                    window_dimension_sizes)
+          .value();
 
   const int num_threads = ShapeUtil::GetForEachIndexParallelThreadCount() + 1;
   std::vector<std::unique_ptr<HloEvaluator>> embedded_evaluators;
@@ -4633,8 +4639,10 @@ absl::Status HloEvaluator::HandleReduceWindow(const HloInstruction* hlo) {
           curr_val_literal_vec.reserve(input_literal_vec.size());
           for (const auto* input_literal : input_literal_vec) {
             // Evaluate computation with specified literal operands.
-            curr_val_literal_vec.push_back(Literal(ShapeUtil::MakeShape(
-                input_literal->shape().element_type(), {})));
+            curr_val_literal_vec.push_back(
+                Literal(ShapeUtil::MakeValidatedShape(
+                            input_literal->shape().element_type(), {})
+                            .value()));
             curr_val_literal_vec.back().CopyElementFrom(*input_literal,
                                                         operand_index, {});
             VLOG(2) << "Pushing:" << curr_val_literal_vec.back().ToString()

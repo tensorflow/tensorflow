@@ -1146,7 +1146,9 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
     rhs_array.SetValues(rhs_literal.data<NativeT>());
     std::unique_ptr<Array2D<NativeT>> result_array =
         HloEvaluator::MatmulArray2D(lhs_array, rhs_array);
-    Literal result(ShapeUtil::MakeShape(native_ty, dot->shape().dimensions()));
+    Literal result(
+        ShapeUtil::MakeValidatedShape(native_ty, dot->shape().dimensions())
+            .value());
     result.PopulateR2FromArray2D(*result_array);
     parent_->SetEvaluatedLiteralFor(
         dot, std::move(result).Convert(dot->shape().element_type()).value());
