@@ -280,8 +280,8 @@ XLA_TEST_F(ConvolutionTest, Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid) {
   XlaBuilder builder(TestName());
   std::vector<int64_t> input_dims = {1, 4, 2, 3, 3};
   std::vector<int64_t> filter_dims = {2, 2, 2, 3, 3};
-  Shape input_shape = ShapeUtil::MakeShape(F32, input_dims);
-  Shape filter_shape = ShapeUtil::MakeShape(F32, filter_dims);
+  Shape input_shape = ShapeUtil::MakeValidatedShape(F32, input_dims).value();
+  Shape filter_shape = ShapeUtil::MakeValidatedShape(F32, filter_dims).value();
   {
     auto input = Parameter(&builder, 0, input_shape, "input");
     auto filter = Parameter(&builder, 1, filter_shape, "filter");
@@ -1541,8 +1541,8 @@ XLA_TEST_P(ConvolveWithAndWithoutCanonicalization, Convolve2D_NoSpatialDims) {
         "convolution-canonicalization");
   }
   XlaBuilder builder(TestName());
-  Shape input_shape = ShapeUtil::MakeShape(F32, {4, 29});
-  Shape filter_shape = ShapeUtil::MakeShape(F32, {4, 10});
+  Shape input_shape = ShapeUtil::MakeValidatedShape(F32, {4, 29}).value();
+  Shape filter_shape = ShapeUtil::MakeValidatedShape(F32, {4, 10}).value();
 
   auto input = Parameter(&builder, 0, input_shape, "input");
   auto filter = Parameter(&builder, 1, filter_shape, "filter");
@@ -1576,8 +1576,9 @@ INSTANTIATE_TEST_CASE_P(ConvolveWithAndWithoutCanonicalization_Instantiation,
 
 XLA_TEST_F(ConvolutionTest, Convolve_bf16_1x1x1x2_1x1x1x2_Valid) {
   XlaBuilder builder(TestName());
-  Shape input_shape = ShapeUtil::MakeShape(BF16, {1, 1, 1, 2});
-  Shape filter_shape = ShapeUtil::MakeShape(BF16, {1, 1, 1, 2});
+  Shape input_shape = ShapeUtil::MakeValidatedShape(BF16, {1, 1, 1, 2}).value();
+  Shape filter_shape =
+      ShapeUtil::MakeValidatedShape(BF16, {1, 1, 1, 2}).value();
   auto input = Parameter(&builder, 0, input_shape, "input");
   auto filter = Parameter(&builder, 1, filter_shape, "filter");
   Conv(input, filter, {1, 1}, Padding::kValid);
@@ -1606,8 +1607,8 @@ XLA_TEST_F(ConvolutionTest, NoCudnnAlgorithmPicker) {
       "gpu-conv-algorithm-picker");
 
   XlaBuilder builder(TestName());
-  Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
-  Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
+  Shape input_shape = ShapeUtil::MakeValidatedShape(F32, {1, 1, 1, 2}).value();
+  Shape filter_shape = ShapeUtil::MakeValidatedShape(F32, {1, 1, 1, 2}).value();
   auto input = Parameter(&builder, 0, input_shape, "input");
   auto filter = Parameter(&builder, 1, filter_shape, "filter");
   Conv(input, filter, {1, 1}, Padding::kValid);
@@ -1624,11 +1625,13 @@ XLA_TEST_F(ConvolutionTest, NoCudnnAlgorithmPicker) {
 
 XLA_TEST_F(ConvolutionTest, ConvolveF32BackwardInputGroupedConvolution) {
   XlaBuilder builder(TestName());
-  Shape input_shape = ShapeUtil::MakeShape(F32, {1, 64, 100, 100});
+  Shape input_shape =
+      ShapeUtil::MakeValidatedShape(F32, {1, 64, 100, 100}).value();
   Array4D<float> input_data(1, 64, 100, 100);
   input_data.FillRandom(/*stddev=*/0.023, 0.001, /*seed=*/45321);
   Literal input_data_literal = LiteralUtil::CreateFromArray(input_data);
-  Shape filter_shape = ShapeUtil::MakeShape(F32, {7, 7, 1, 64});
+  Shape filter_shape =
+      ShapeUtil::MakeValidatedShape(F32, {7, 7, 1, 64}).value();
   Array4D<float> filter_data(7, 7, 1, 64);
   filter_data.FillRandom(/*stddev=*/0.023, 0.001, /*seed=*/45320);
   auto input = Parameter(&builder, 0, input_shape, "input");
@@ -1997,9 +2000,13 @@ class Transposed2DConvHloTest
 
 XLA_TEST_P(Transposed2DConvHloTest, Simple) {
   const auto input_shape =
-      ShapeUtil::MakeShape(F32, {batch_, input_channels_, input_x_, input_y_});
-  const auto kernel_shape = ShapeUtil::MakeShape(
-      F32, {output_channels_, input_channels_, kernel_x_, kernel_y_});
+      ShapeUtil::MakeValidatedShape(
+          F32, {batch_, input_channels_, input_x_, input_y_})
+          .value();
+  const auto kernel_shape =
+      ShapeUtil::MakeValidatedShape(
+          F32, {output_channels_, input_channels_, kernel_x_, kernel_y_})
+          .value();
 
   const auto window = GetWindow();
 

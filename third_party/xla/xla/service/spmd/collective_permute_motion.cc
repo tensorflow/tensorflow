@@ -286,8 +286,8 @@ absl::StatusOr<bool> MoveCollectivePermutes(HloComputation* computation,
         body->AddInstruction(HloInstruction::CreateBroadcast(
             ShapeUtil::ChangeElementType(new_input->shape(), PRED),
             body->AddInstruction(HloInstruction::CreateCompare(
-                ShapeUtil::MakeScalarShape(PRED), ind_var, ind_var_orig,
-                Comparison::Direction::kEq)),
+                ShapeUtil::MakeValidatedScalarShape(PRED).value(), ind_var,
+                ind_var_orig, Comparison::Direction::kEq)),
             {}));
     new_input = body->AddInstruction(
         HloInstruction::CreateTernary(new_input->shape(), HloOpcode::kSelect,
