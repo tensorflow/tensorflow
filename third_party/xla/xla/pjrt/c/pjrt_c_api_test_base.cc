@@ -182,7 +182,8 @@ PjrtCApiTestBase::CreateBufferFromHostBufferArgs(
 std::pair<std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>,
           xla::PjRtFuture<>>
 PjrtCApiTestBase::create_buffer(PJRT_Device* device) {
-  xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<float>({4});
+  xla::Shape shape =
+      xla::ShapeUtil::MakeValidatedShapeWithType<float>({4}).value();
   std::vector<float> float_data(4);
   std::iota(float_data.begin(), float_data.end(), 41.0f);
   return create_buffer_from_data(float_data, shape, device);
@@ -278,7 +279,7 @@ PjrtCApiTestBase::create_transfer_manager(const xla::Shape& host_shape) {
 
 xla::XlaComputation PjrtCApiTestBase::CreateAddOneComputation() {
   xla::XlaBuilder builder(std::string{kExecutableName});
-  xla::Shape s = xla::ShapeUtil::MakeShape(xla::F32, {});
+  xla::Shape s = xla::ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
   auto inp = Parameter(&builder, 0, s, "input");
   auto one = xla::ConstantR0<float>(&builder, 1.0f);
   auto incremented = Add(inp, one);

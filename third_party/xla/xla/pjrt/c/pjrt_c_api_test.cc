@@ -329,7 +329,8 @@ void destroy_executable(PJRT_LoadedExecutable* executable,
 }
 
 TEST_F(PjrtCApiTest, BufferTransferImmutableUntilTransferCompletes) {
-  xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<float>({4});
+  xla::Shape shape =
+      xla::ShapeUtil::MakeValidatedShapeWithType<float>({4}).value();
   std::vector<float> float_data(4);
   std::iota(float_data.begin(), float_data.end(), 41.0f);
 
@@ -678,7 +679,8 @@ TEST_F(PjrtCApiBufferTest, ToHostBufferNoHostLayout) {
   args.struct_size = PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
   args.src = buffer_.get();
-  xla::Shape host_shape = xla::ShapeUtil::MakeShape(xla::F32, {4});
+  xla::Shape host_shape =
+      xla::ShapeUtil::MakeValidatedShape(xla::F32, {4}).value();
   auto literal = std::make_shared<xla::Literal>(host_shape);
   args.host_layout = nullptr;
   args.dst = literal->untyped_data();

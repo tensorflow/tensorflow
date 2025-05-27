@@ -121,7 +121,7 @@ TEST_F(PjrtCApiGpuTest, CreateViewOfDeviceBuffer) {
   create_view_args.extension_start = nullptr;
   create_view_args.client = client_;
   create_view_args.device_buffer_ptr = device_buffer_ptr_args.device_memory_ptr;
-  xla::Shape shape = xla::ShapeUtil::MakeShape(xla::S32, {4});
+  xla::Shape shape = xla::ShapeUtil::MakeValidatedShape(xla::S32, {4}).value();
   create_view_args.dims = shape.dimensions().data();
   create_view_args.num_dims = shape.dimensions().size();
   create_view_args.element_type =
@@ -155,7 +155,8 @@ TEST_F(PjrtCApiGpuTest, CreateViewOfDeviceBuffer) {
   to_host_args.struct_size = PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE;
   to_host_args.extension_start = nullptr;
   to_host_args.src = view_buffer.get();
-  xla::Shape host_shape = xla::ShapeUtil::MakeShape(xla::F32, {4});
+  xla::Shape host_shape =
+      xla::ShapeUtil::MakeValidatedShape(xla::F32, {4}).value();
   auto literal = std::make_shared<xla::Literal>(host_shape);
   to_host_args.host_layout = nullptr;
   to_host_args.dst = literal->untyped_data();
@@ -357,7 +358,7 @@ TEST_F(PjrtCApiGpuTest, DmaMapAndUnmap) {
 
 TEST_F(PjrtCApiGpuTransferManagerTest, SetBufferError) {
   xla::Shape host_shape =
-      xla::ShapeUtil::MakeShape(xla::F32, /*dimensions=*/{8});
+      xla::ShapeUtil::MakeValidatedShape(xla::F32, /*dimensions=*/{8}).value();
   std::vector<float> float_data = {1, 2, 3, 4, 5, 6, 7, 8};
 
   CreateTransferManager(host_shape);
@@ -430,7 +431,7 @@ TEST_F(PjrtCApiGpuTransferManagerTest, SetBufferError) {
 
 TEST_F(PjrtCApiGpuTransferManagerTest, TransferRawDataToBufferIsSuccessful) {
   xla::Shape host_shape =
-      xla::ShapeUtil::MakeShape(xla::U32, /*dimensions=*/{8});
+      xla::ShapeUtil::MakeValidatedShape(xla::U32, /*dimensions=*/{8}).value();
   std::vector<uint32_t> data = {1, 2, 3, 4, 5, 6, 7, 8};
   absl::Span<const char> raw_data_view = GetRawView(data);
   CreateTransferManager(host_shape);

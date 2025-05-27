@@ -481,7 +481,8 @@ ENTRY e {
       const auto analysis,
       TritonFusionAnalysis::Execute(*dot_computation, config.split_k));
   EXPECT_EQ(dot_computation->root_instruction()->shape(),
-            ShapeUtil::MakeShapeWithDescendingLayout(F32, {8, 7, 5}));
+            ShapeUtil::MakeValidatedShapeWithDescendingLayout(F32, {8, 7, 5})
+                .value());
   EXPECT_THAT(
       *analysis.IterSpec(TritonFusionAnalysis::Scope::LHS, p0, 1),
       ElementsAre(FieldsAre(/*stride=*/1, /*count=*/2560, /*slice_start=*/0,
@@ -583,12 +584,18 @@ ENTRY e {
 
   HloInstruction* dot =
       module->GetComputationWithName("triton_gemm")->root_instruction();
-  EXPECT_EQ(dot->operand(0)->shape(),
-            ShapeUtil::MakeShapeWithDescendingLayout(F16, {2, 5, 4, 400}));
-  EXPECT_EQ(dot->operand(1)->shape(),
-            ShapeUtil::MakeShapeWithDescendingLayout(F16, {2, 4, 800, 10}));
-  EXPECT_EQ(dot->operand(2)->shape(),
-            ShapeUtil::MakeShapeWithDescendingLayout(U16, {2, 5, 4, 50}));
+  EXPECT_EQ(
+      dot->operand(0)->shape(),
+      ShapeUtil::MakeValidatedShapeWithDescendingLayout(F16, {2, 5, 4, 400})
+          .value());
+  EXPECT_EQ(
+      dot->operand(1)->shape(),
+      ShapeUtil::MakeValidatedShapeWithDescendingLayout(F16, {2, 4, 800, 10})
+          .value());
+  EXPECT_EQ(
+      dot->operand(2)->shape(),
+      ShapeUtil::MakeValidatedShapeWithDescendingLayout(U16, {2, 5, 4, 50})
+          .value());
 }
 
 TEST_F(SplitKTest, SparseDotWithRhsSparseOperandTriggersError) {

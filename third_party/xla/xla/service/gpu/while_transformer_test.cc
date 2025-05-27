@@ -36,9 +36,11 @@ class WhileTransformerTest : public HloHardwareIndependentTestBase {
  protected:
   WhileTransformerTest()
       : module_(CreateNewVerifiedModule()),
-        induction_variable_shape_(ShapeUtil::MakeShape(S32, {})),
-        data_shape_(ShapeUtil::MakeShape(F32, {8})),
-        condition_result_shape_(ShapeUtil::MakeShape(PRED, {})) {}
+        induction_variable_shape_(
+            ShapeUtil::MakeValidatedShape(S32, {}).value()),
+        data_shape_(ShapeUtil::MakeValidatedShape(F32, {8}).value()),
+        condition_result_shape_(
+            ShapeUtil::MakeValidatedShape(PRED, {}).value()) {}
 
   std::unique_ptr<HloComputation> BuildConditionComputation(
       const int64_t tuple_index, const int64_t limit) {
@@ -76,7 +78,7 @@ class WhileTransformerTest : public HloHardwareIndependentTestBase {
         data_shape_, loop_state, data_tuple_index));
     // Use 'induction_variable' in computation with no path to output tuple.
     auto cast = builder.AddInstruction(HloInstruction::CreateBitcastConvert(
-        ShapeUtil::MakeShape(F32, {}), induction_variable));
+        ShapeUtil::MakeValidatedShape(F32, {}).value(), induction_variable));
     auto update = builder.AddInstruction(
         HloInstruction::CreateBroadcast(data_shape_, cast, {}));
     auto add1 = builder.AddInstruction(HloInstruction::CreateBinary(
@@ -114,11 +116,13 @@ class WhileTransformerTest : public HloHardwareIndependentTestBase {
 
   Shape GetLoopStateShape(const int64_t ind_var_tuple_index) {
     if (ind_var_tuple_index == 0) {
-      return ShapeUtil::MakeTupleShape(
-          {induction_variable_shape_, data_shape_});
+      return ShapeUtil::MakeValidatedTupleShape(
+                 {induction_variable_shape_, data_shape_})
+          .value();
     } else {
-      return ShapeUtil::MakeTupleShape(
-          {data_shape_, induction_variable_shape_});
+      return ShapeUtil::MakeValidatedTupleShape(
+                 {data_shape_, induction_variable_shape_})
+          .value();
     }
   }
 

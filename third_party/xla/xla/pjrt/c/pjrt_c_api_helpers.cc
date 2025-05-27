@@ -1041,9 +1041,10 @@ GetMemoryLayout(const PJRT_Api* api, PJRT_Buffer* buffer) {
 absl::StatusOr<xla::Shape> BuildXlaShapeFromC(
     PJRT_Buffer_Type element_type, const int64_t* dims, size_t num_dims,
     PJRT_Buffer_MemoryLayout* layout) {
-  xla::Shape shape =
-      xla::ShapeUtil::MakeShape(ConvertFromPjRtBufferType(element_type),
-                                absl::Span<const int64_t>(dims, num_dims));
+  xla::Shape shape = xla::ShapeUtil::MakeValidatedShape(
+                         ConvertFromPjRtBufferType(element_type),
+                         absl::Span<const int64_t>(dims, num_dims))
+                         .value();
   xla::Layout cpp_layout;
   if (layout != nullptr) {
     switch (layout->type) {
