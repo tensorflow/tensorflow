@@ -177,7 +177,8 @@ std::pair<Shape, HloSharding> ComputeResultShapeAndSharding(
     result_shapes.push_back(sub_shape);
     result_shardings.push_back(sub_sharding);
   }
-  Shape result_shape = ShapeUtil::MakeTupleShape(result_shapes);
+  Shape result_shape =
+      ShapeUtil::MakeValidatedTupleShape(result_shapes).value();
   return std::make_pair(result_shape,
                         HloSharding::Tuple(result_shape, result_shardings));
 }
