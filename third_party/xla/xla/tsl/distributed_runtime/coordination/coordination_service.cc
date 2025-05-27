@@ -42,6 +42,7 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
@@ -255,17 +256,22 @@ void CoordinationService::CheckHeartbeatTimeout() {
                        "crashed unexpectedly. Check the task logs "
                        "for an earlier error or scheduler events (e.g. "
                        "preemption, eviction) to debug further.")));
-
       SetTaskError(task_name, status);
     }
   }
   // Propagate heartbeat timeout errors to other connected tasks.
   if (!stale_task_names.empty()) {
+    // Show at most n task names in the returned error.
+    const int n = stale_task_names.size() < kPendingStragglerLogLimit
+                      ? stale_task_names.size()
+                      : kPendingStragglerLogLimit;
+    std::string stale_tasks =
+        absl::StrJoin(absl::MakeSpan(stale_task_names).first(n), "\n");
     absl::Status heartbeat_timeout_error =
         MakeCoordinationError(absl::UnavailableError(
             absl::StrCat("The following tasks are unhealthy (stopped sending "
                          "heartbeats):\n",
-                         absl::StrJoin(stale_task_names, "\n"),
+                         stale_tasks,
                          "\nThe tasks have crashed. Check the task logs for an "
                          "earlier error, or scheduler events (e.g. preemption, "
                          "eviction) to debug further.")));
