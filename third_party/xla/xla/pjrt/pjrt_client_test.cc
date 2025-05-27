@@ -82,10 +82,10 @@ namespace {
 
 std::unique_ptr<PjRtLoadedExecutable> MakeIncrementProgram(
     PjRtClient* client, bool alias, int device, bool tuplize_arg = false) {
-  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  Shape shape = ShapeUtil::MakeValidatedShape(S32, {4}).value();
   XlaBuilder builder("inc");
   if (tuplize_arg) {
-    shape = ShapeUtil::MakeTupleShape({shape});
+    shape = ShapeUtil::MakeValidatedTupleShape({shape}).value();
   }
   auto inp = Parameter(&builder, 0, shape, "inp");
   if (tuplize_arg) {
@@ -114,7 +114,7 @@ TEST_P(PjRtClientTest, Execute) {
       MakeIncrementProgram(client.get(), /*alias=*/false, /*device=*/0);
 
   std::vector<int32_t> data(4, 0);
-  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  Shape shape = ShapeUtil::MakeValidatedShape(S32, {4}).value();
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,
       client->BufferFromHostBuffer(
@@ -143,7 +143,7 @@ TEST_P(PjRtClientTest, ExecuteWithImmutableUntilTransferCompletes) {
       MakeIncrementProgram(client.get(), /*alias=*/false, /*device=*/0);
 
   std::vector<int32_t> data(4, 0);
-  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  Shape shape = ShapeUtil::MakeValidatedShape(S32, {4}).value();
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,
       client->BufferFromHostBuffer(
@@ -172,7 +172,7 @@ TEST_P(PjRtClientTest, ExecuteWithTupleZeroCopy) {
                                          /*device=*/0, /*tuplize_arg=*/true);
 
   std::vector<int32_t> data(4, 0);
-  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  Shape shape = ShapeUtil::MakeValidatedShape(S32, {4}).value();
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer, client->BufferFromHostBuffer(
                        data.data(), shape.element_type(), shape.dimensions(),
@@ -214,7 +214,7 @@ TEST_P(PjRtClientTest, ExecuteWithDonation) {
       MakeIncrementProgram(client.get(), /*alias=*/true, /*device=*/0);
 
   std::vector<int32_t> data(4, 0);
-  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  Shape shape = ShapeUtil::MakeValidatedShape(S32, {4}).value();
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,
       client->BufferFromHostBuffer(
@@ -249,7 +249,7 @@ TEST_P(PjRtClientTest, ExecuteWithDonationAbort) {
 
   std::vector<int32_t> data(4, 0);
   auto shared_data = std::make_shared<std::vector<int32_t>>(data);
-  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  Shape shape = ShapeUtil::MakeValidatedShape(S32, {4}).value();
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,
       client->BufferFromHostBuffer(
@@ -277,7 +277,7 @@ TEST_P(PjRtClientTest, ExecuteWithConcurrentUsage) {
       MakeIncrementProgram(client.get(), /*alias=*/false, /*device=*/0);
 
   std::vector<int32_t> data(4, 0);
-  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  Shape shape = ShapeUtil::MakeValidatedShape(S32, {4}).value();
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,
       client->BufferFromHostBuffer(
@@ -325,7 +325,7 @@ TEST_P(PjRtClientTest, ExecuteWithConcurrentUsageAndDonation) {
 
   std::vector<int32_t> data(4, 0);
   std::vector<int32_t> expected(4, 1);
-  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  Shape shape = ShapeUtil::MakeValidatedShape(S32, {4}).value();
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,
       client->BufferFromHostBuffer(
@@ -393,7 +393,7 @@ TEST(PjRtClientTest, CopyToDevice) {
   ASSERT_GT(client->addressable_devices().size(), 1);
 
   std::vector<int32_t> data(4, 0);
-  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  Shape shape = ShapeUtil::MakeValidatedShape(S32, {4}).value();
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,
       client->BufferFromHostBuffer(
@@ -419,7 +419,7 @@ TEST(PjRtClientTest, CopyToDeviceAsync) {
   ASSERT_GT(client->addressable_devices().size(), 1);
 
   std::vector<int32_t> data(4, 0);
-  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  Shape shape = ShapeUtil::MakeValidatedShape(S32, {4}).value();
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,
       client->BufferFromHostBuffer(
@@ -466,7 +466,7 @@ TEST(PjRtClientTest, CopyToDeviceAsyncExternalCpuOnly) {
   alignas(cpu_function_runtime::MinAlign()) std::array<int32_t, 4> data;
   data.fill(0);
   auto* data_ptr = data.data();
-  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  Shape shape = ShapeUtil::MakeValidatedShape(S32, {4}).value();
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,
       client->CreateViewOfDeviceBuffer(
@@ -519,7 +519,7 @@ TEST(PjRtClientTest, CreateViewOfUnalignedBufferReturnsErrorCpuOnly) {
 
   // Shape with a size smaller than the original data vector, because the
   // 'unaligned_ptr' points to the second element.
-  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  Shape shape = ShapeUtil::MakeValidatedShape(S32, {4}).value();
 
   // Attempt to create a view of the unaligned buffer. Expect an error.
   auto result = client->CreateViewOfDeviceBuffer(
@@ -534,7 +534,7 @@ TEST(PjRtClientTest, CreateViewOfUnalignedBufferReturnsErrorCpuOnly) {
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> MakeFloatBuffer(
     PjRtClient* client, const std::vector<float>& data,
     absl::Span<const int64_t> dimensions) {
-  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 2}).value();
   return client->BufferFromHostBuffer(
       data.data(), shape.element_type(), shape.dimensions(),
       /*byte_strides=*/std::nullopt,

@@ -73,7 +73,7 @@ TEST(PjRtCApiClientTest, IsDynamicDimension) {
                           GetCApiClient("cpu"));
   // Prepare input buffer and executable.
   std::vector<int32_t> data0{1, 2, 3, 4, 5, 6};
-  Shape shape0 = ShapeUtil::MakeShape(S32, {2, 3});
+  Shape shape0 = ShapeUtil::MakeValidatedShape(S32, {2, 3}).value();
   TF_ASSERT_OK_AND_ASSIGN(
       auto param0,
       client->BufferFromHostBuffer(
@@ -82,7 +82,7 @@ TEST(PjRtCApiClientTest, IsDynamicDimension) {
           PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
           client->memory_spaces()[0], /*device_layout=*/nullptr));
   std::vector<int32_t> data1{2};
-  Shape shape1 = ShapeUtil::MakeShape(S32, {});
+  Shape shape1 = ShapeUtil::MakeValidatedShape(S32, {}).value();
   TF_ASSERT_OK_AND_ASSIGN(
       auto param1,
       client->BufferFromHostBuffer(
@@ -112,9 +112,9 @@ TEST(PjRtCApiClientTest, IsDynamicDimension) {
   EXPECT_THAT(is_dynamic_dimension,
               ::testing::ElementsAreArray(dims_are_dynamic));
   EXPECT_EQ(result_buffer->on_device_shape(),
-            ShapeUtil::MakeShape(S32, {2, 3}, {false, true}));
+            ShapeUtil::MakeValidatedShape(S32, {2, 3}, {false, true}).value());
   EXPECT_EQ(*result_buffer->logical_on_device_shape(),
-            ShapeUtil::MakeShape(S32, {2, 2}, {false, true}));
+            ShapeUtil::MakeValidatedShape(S32, {2, 2}, {false, true}).value());
 }
 
 TEST(PjRtCApiClientTest, OnDeviceShape) {
@@ -123,7 +123,7 @@ TEST(PjRtCApiClientTest, OnDeviceShape) {
                           GetCApiClient("cpu"));
   std::vector<int32_t> data{1, 2, 3, 4, 5, 6};
   for (PrimitiveType t : {F32, F16, S8, BF16}) {
-    Shape shape = ShapeUtil::MakeShape(t, {3, 2});
+    Shape shape = ShapeUtil::MakeValidatedShape(t, {3, 2}).value();
     TF_ASSERT_OK_AND_ASSIGN(
         auto buffer,
         client->BufferFromHostBuffer(
@@ -149,7 +149,7 @@ TEST(PjRtCApiClientTest, NonEmptyExecutableFingerprint) {
   SetUpCpuPjRtApi();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetCApiClient("cpu"));
-  Shape shape = ShapeUtil::MakeShapeWithType<float>({4});
+  Shape shape = ShapeUtil::MakeValidatedShapeWithType<float>({4}).value();
   XlaBuilder builder("sum");
   auto inp_0 = Parameter(&builder, 0, shape, "input0");
   auto inp_1 = Parameter(&builder, 1, shape, "input1");
@@ -194,7 +194,7 @@ TEST(PjRtClientTest, CreateViewAndCopyToDeviceAsyncExternalCpuOnly) {
   alignas(cpu_function_runtime::MinAlign()) std::array<int32_t, 4> data;
   data.fill(0);
   auto* data_ptr = data.data();
-  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  Shape shape = ShapeUtil::MakeValidatedShape(S32, {4}).value();
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,

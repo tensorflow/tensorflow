@@ -1099,7 +1099,8 @@ class PjRtBuffer {
       if (element_type() == TOKEN) {
         device_shape = ShapeUtil::MakeTokenShape();
       } else {
-        device_shape = ShapeUtil::MakeShape(element_type(), literal_dims);
+        device_shape =
+            ShapeUtil::MakeValidatedShape(element_type(), literal_dims).value();
         // TODO(b/327524065): use PjRtLayout directly instead of xla::Layout
         *device_shape.mutable_layout() = layout()->xla_layout();
       }

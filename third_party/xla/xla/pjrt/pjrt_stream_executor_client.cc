@@ -302,7 +302,7 @@ PjRtStreamExecutorClient::GetDefaultDeviceAssignment(int num_replicas,
 
 absl::StatusOr<Layout> PjRtStreamExecutorClient::GetDefaultLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims) {
-  Shape shape = ShapeUtil::MakeShape(element_type, dims);
+  Shape shape = ShapeUtil::MakeValidatedShape(element_type, dims).value();
   TF_ASSIGN_OR_RETURN(
       shape,
       client()->backend().transfer_manager()->ChooseCompactLayoutForShape(
@@ -722,7 +722,7 @@ PjRtStreamExecutorClient::BufferFromHostBufferInternal(
     const Layout* device_layout, PjRtMemorySpace* memory_space) {
   tsl::profiler::TraceMe traceme(
       "PjRtStreamExecutorClient::BufferFromHostBuffer");
-  Shape device_shape = ShapeUtil::MakeShape(type, dims);
+  Shape device_shape = ShapeUtil::MakeValidatedShape(type, dims).value();
   VLOG(1) << "PjRtStreamExecutorClient::BufferFromHostBuffer: shape: "
           << device_shape.ToString() << " device: " << device->DebugString();
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,

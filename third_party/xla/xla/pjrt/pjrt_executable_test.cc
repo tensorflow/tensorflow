@@ -38,7 +38,7 @@ TEST(CompileOptionsTest, Serialization) {
   src.compile_portable_executable = true;
   src.parameter_is_tupled_arguments = true;
   src.profile_version = 1;
-  src.argument_layouts = {ShapeUtil::MakeShape(S32, {1})};
+  src.argument_layouts = {ShapeUtil::MakeValidatedShape(S32, {1}).value()};
   ExecutableBuildOptions build_option;
   build_option.set_device_assignment(DeviceAssignment(1, 1));
   src.executable_build_options = build_option;

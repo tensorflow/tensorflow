@@ -42,7 +42,8 @@ absl::StatusOr<std::vector<Shape>> ConvertShapeSpecsToShapes(
   for (size_t i = 0; i < shape_specs.size(); ++i) {
     auto& shape_spec = shape_specs[i];
     Shape& device_shape = device_shapes.emplace_back(
-        ShapeUtil::MakeShape(shape_spec.element_type, shape_spec.dims));
+        ShapeUtil::MakeValidatedShape(shape_spec.element_type, shape_spec.dims)
+            .value());
     if (device_layouts.has_value() && (*device_layouts)[i].has_value()) {
       *device_shape.mutable_layout() = *(*device_layouts)[i];
     }

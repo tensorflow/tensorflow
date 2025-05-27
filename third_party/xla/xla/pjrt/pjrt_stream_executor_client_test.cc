@@ -96,7 +96,7 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> ToyExecutable(
 
 absl::Status ExecuteWithSameInputBuffer(
     absl::AnyInvocable<void(XlaBuilder&)> set_up_aliases) {
-  auto shape = xla::ShapeUtil::MakeScalarShape(xla::F32);
+  auto shape = ShapeUtil::MakeValidatedScalarShape(xla::F32).value();
   TF_ASSIGN_OR_RETURN(auto client, GetClient());
   TF_RET_CHECK(!client->addressable_devices().empty());
   auto* device0 = client->addressable_devices().front();
