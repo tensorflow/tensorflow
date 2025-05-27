@@ -232,12 +232,14 @@ void CompileSendTPUEmbeddingGradients(
                     builder->GetShape(deduplication_data));
   XLA_Shape gradient_tuple_c_shape;
   params.gradient_tuple_shape = &gradient_tuple_c_shape;
-  ApiConverter::ToC(xla::ShapeUtil::MakeTupleShape(gradient_shapes),
-                    &gradient_tuple_c_shape);
+  ApiConverter::ToC(
+      xla::ShapeUtil::MakeValidatedTupleShape(gradient_shapes).value(),
+      &gradient_tuple_c_shape);
   XLA_Shape learning_rate_tuple_c_shape;
   params.learning_rate_tuple_shape = &learning_rate_tuple_c_shape;
-  ApiConverter::ToC(xla::ShapeUtil::MakeTupleShape(learning_rate_shapes),
-                    &learning_rate_tuple_c_shape);
+  ApiConverter::ToC(
+      xla::ShapeUtil::MakeValidatedTupleShape(learning_rate_shapes).value(),
+      &learning_rate_tuple_c_shape);
   XLA_Shape deduplication_c_shape;
   params.deduplication_data_shape = &deduplication_c_shape;
   ApiConverter::ToC(deduplication_shape, &deduplication_c_shape);
@@ -558,7 +560,8 @@ class SplitDedupDataOp : public XlaOpKernel {
       int_elements_type = builder->GetShape(integers_vec[0])->element_type();
     }
     xla::Shape integer_tensor_full_shape =
-        xla::ShapeUtil::MakeShape(int_elements_type, {integer_offset});
+        xla::ShapeUtil::MakeValidatedShape(int_elements_type, {integer_offset})
+            .value();
 
     // Compute SPMD sharding if TPUEmbeddingConfig SPMD is enabled.
     // When using TPUEmbedding SPMD, we need manually convert integer tensor
@@ -583,7 +586,8 @@ class SplitDedupDataOp : public XlaOpKernel {
       float_elements_type = builder->GetShape(floats_vec[0])->element_type();
     }
     xla::Shape float_tensor_full_shape =
-        xla::ShapeUtil::MakeShape(float_elements_type, {float_offset});
+        xla::ShapeUtil::MakeValidatedShape(float_elements_type, {float_offset})
+            .value();
     OP_REQUIRES_VALUE(
         const xla::OpSharding float_tensor_spmd, ctx,
         tensorflow::tpu::SpmdShardingAnnotationOnFirstDim(

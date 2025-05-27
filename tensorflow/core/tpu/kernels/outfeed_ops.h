@@ -104,7 +104,7 @@ class TpuOutfeedDequeueTupleOp : public T {
                      TensorShapeToXLAShape(dtypes_[i], shapes_[i], &xla_shape));
       xla_shapes_.push_back(xla_shape);
     }
-    tuple_shape_ = xla::ShapeUtil::MakeTupleShape(xla_shapes_);
+    tuple_shape_ = xla::ShapeUtil::MakeValidatedTupleShape(xla_shapes_).value();
   }
 
   absl::Status DoWork(OpKernelContext* ctx, int device_ordinal) override {

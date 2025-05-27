@@ -163,7 +163,9 @@ class XlaSparseDenseMatmulOp : public XlaOpKernel {
                       ctx->InputXlaShape("embedding_table"));
     activation_shape.set_dimensions(0, input_size_);
     xla::Shape row_pointers_shape =
-        xla::ShapeUtil::MakeShapeWithType<int32_t>({num_physical_replica});
+        xla::ShapeUtil::MakeValidatedShapeWithType<int32_t>(
+            {num_physical_replica})
+            .value();
 
     // Get the number of ids from row_ids.
     OP_REQUIRES_VALUE(xla::Shape row_ids_shape, ctx,
@@ -172,9 +174,11 @@ class XlaSparseDenseMatmulOp : public XlaOpKernel {
 
     // TODO(pineapplejuice233): Change this to include padding once minibatching is done.
     xla::Shape sorted_ids_shape =
-        xla::ShapeUtil::MakeShapeWithType<int32_t>({token_count});
+        xla::ShapeUtil::MakeValidatedShapeWithType<int32_t>({token_count})
+            .value();
     xla::Shape sorted_gains_shape =
-        xla::ShapeUtil::MakeShapeWithType<float>({token_count});
+        xla::ShapeUtil::MakeValidatedShapeWithType<float>({token_count})
+            .value();
 
     xla::XlaOp activation_init =
         xla::Broadcast(zero, activation_shape.dimensions());
@@ -207,9 +211,10 @@ class XlaSparseDenseMatmulOp : public XlaOpKernel {
     xla::XlaOp result = xla::CustomCall(
         builder, "SparseDenseMatmulOp",
         {row_ids, col_ids, values, embedding_table, offsets, activation_init},
-        xla::ShapeUtil::MakeTupleShape({activation_shape, row_pointers_shape,
-                                        sorted_ids_shape, sorted_ids_shape,
-                                        sorted_gains_shape}));
+        xla::ShapeUtil::MakeValidatedTupleShape(
+            {activation_shape, row_pointers_shape, sorted_ids_shape,
+             sorted_ids_shape, sorted_gains_shape})
+            .value());
 
     builder->SetFrontendAttributes(original_frontend_attributes);
 
@@ -435,12 +440,15 @@ class XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp
 
     valencies_arg.kind = XlaCompiler::Argument::kParameter;
     valencies_arg.type = DT_INT32;
-    valencies_arg.shape = xla::ShapeUtil::MakeShape(xla::S32, {input_size_});
+    valencies_arg.shape =
+        xla::ShapeUtil::MakeValidatedShape(xla::S32, {input_size_}).value();
     valencies_arg.name = "valencies";
     vectors_arg.kind = XlaCompiler::Argument::kParameter;
     vectors_arg.type = DT_FLOAT;
-    vectors_arg.shape = xla::ShapeUtil::MakeShape(
-        xla::F32, {input_size_, max_valency_, feature_width});
+    vectors_arg.shape =
+        xla::ShapeUtil::MakeValidatedShape(
+            xla::F32, {input_size_, max_valency_, feature_width})
+            .value();
     vectors_arg.name = "vectors";
 
     std::vector<XlaCompiler::Argument> arguments = {valencies_arg, vectors_arg};
@@ -451,8 +459,9 @@ class XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp
       XlaCompiler::Argument weights_arg;
       weights_arg.kind = XlaCompiler::Argument::kParameter;
       weights_arg.type = DT_FLOAT;
-      weights_arg.shape =
-          xla::ShapeUtil::MakeShape(xla::F32, {input_size_, num_weights_});
+      weights_arg.shape = xla::ShapeUtil::MakeValidatedShape(
+                              xla::F32, {input_size_, num_weights_})
+                              .value();
       weights_arg.name = "weights";
       arguments.push_back(weights_arg);
     }
@@ -537,17 +546,21 @@ class XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp
 
     // Emit the custom call that performs the SC embedding lookup.
     xla::Shape valencies_shape =
-        xla::ShapeUtil::MakeShape(xla::S32, {input_size_});
-    xla::Shape vectors_shape = xla::ShapeUtil::MakeShape(
-        xla::F32, {input_size_, max_valency_, feature_width});
-    xla::Shape gains_shape =
-        xla::ShapeUtil::MakeShape(xla::F32, {input_size_, max_valency_});
+        xla::ShapeUtil::MakeValidatedShape(xla::S32, {input_size_}).value();
+    xla::Shape vectors_shape =
+        xla::ShapeUtil::MakeValidatedShape(
+            xla::F32, {input_size_, max_valency_, feature_width})
+            .value();
+    xla::Shape gains_shape = xla::ShapeUtil::MakeValidatedShape(
+                                 xla::F32, {input_size_, max_valency_})
+                                 .value();
     xla::XlaOp sc_lookup_result_tuple = xla::CustomCall(
         builder, "SparseDenseMatmulCustomCombinerTcCombinerMegachipOp",
         {row_pointers, sorted_token_ids, sorted_sample_ids, sorted_pos_ids,
          sorted_gains, embedding_table},
-        xla::ShapeUtil::MakeTupleShape(
-            {valencies_shape, vectors_shape, gains_shape}));
+        xla::ShapeUtil::MakeValidatedTupleShape(
+            {valencies_shape, vectors_shape, gains_shape})
+            .value());
 
     // Emit the custom combiner computation into an HLO computation.
     OP_REQUIRES_VALUE(xla::XlaComputation custom_combiner_tc_computation, ctx,
@@ -837,12 +850,14 @@ class XlaSparseDenseMatmulGradWithCsrInputOp : public XlaOpKernel {
       arguments[i].kind = XlaCompiler::Argument::kParameter;
       if (i > 0 && i < tables_inputs.size() + 1) {
         arguments[i].type = table_dtype_;
-        arguments[i].shape =
-            xla::ShapeUtil::MakeShape(table_primitive_type, {1, feature_width});
+        arguments[i].shape = xla::ShapeUtil::MakeValidatedShape(
+                                 table_primitive_type, {1, feature_width})
+                                 .value();
       } else {
         arguments[i].type = DT_FLOAT;
         arguments[i].shape =
-            xla::ShapeUtil::MakeShape(xla::F32, {1, feature_width});
+            xla::ShapeUtil::MakeValidatedShape(xla::F32, {1, feature_width})
+                .value();
       }
     }
 
@@ -871,12 +886,15 @@ class XlaSparseDenseMatmulGradWithCsrInputOp : public XlaOpKernel {
 
     xla_tables_shapes.reserve(tables_shapes.size());
     for (const auto& table_shape : tables_shapes) {
-      xla_tables_shapes.push_back(xla::ShapeUtil::MakeShape(
-          table_primitive_type,
-          {table_shape.dim_size(0), table_shape.dim_size(1)}));
+      xla_tables_shapes.push_back(
+          xla::ShapeUtil::MakeValidatedShape(
+              table_primitive_type,
+              {table_shape.dim_size(0), table_shape.dim_size(1)})
+              .value());
     }
 
-    xla::Shape tables_shape = xla::ShapeUtil::MakeTupleShape(xla_tables_shapes);
+    xla::Shape tables_shape =
+        xla::ShapeUtil::MakeValidatedTupleShape(xla_tables_shapes).value();
 
     xla::FrontendAttributes custom_call_frontend_attributes;
 
@@ -1009,26 +1027,30 @@ class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase
 
     valencies_arg.kind = XlaCompiler::Argument::kParameter;
     valencies_arg.type = DT_INT32;
-    valencies_arg.shape = xla::ShapeUtil::MakeShape(xla::S32, {input_size});
+    valencies_arg.shape =
+        xla::ShapeUtil::MakeValidatedShape(xla::S32, {input_size}).value();
     valencies_arg.name = "valencies";
 
     vectors_arg.kind = XlaCompiler::Argument::kParameter;
     vectors_arg.type = DT_FLOAT;
-    vectors_arg.shape = xla::ShapeUtil::MakeShape(
-        xla::F32, {input_size, max_valency_, feature_width});
+    vectors_arg.shape = xla::ShapeUtil::MakeValidatedShape(
+                            xla::F32, {input_size, max_valency_, feature_width})
+                            .value();
     vectors_arg.name = "vectors";
 
     weights_arg.kind = XlaCompiler::Argument::kParameter;
     weights_arg.type = DT_FLOAT;
     weights_arg.shape =
-        xla::ShapeUtil::MakeShape(xla::F32, {input_size, num_weights_});
+        xla::ShapeUtil::MakeValidatedShape(xla::F32, {input_size, num_weights_})
+            .value();
     weights_arg.name = "weights";
     arguments.push_back(weights_arg);
 
     activation_gradients_arg.kind = XlaCompiler::Argument::kParameter;
     activation_gradients_arg.type = DT_FLOAT;
-    activation_gradients_arg.shape =
-        xla::ShapeUtil::MakeShape(xla::F32, {input_size, feature_width});
+    activation_gradients_arg.shape = xla::ShapeUtil::MakeValidatedShape(
+                                         xla::F32, {input_size, feature_width})
+                                         .value();
     activation_gradients_arg.name = "activation_gradients";
     arguments.push_back(activation_gradients_arg);
 
@@ -1351,7 +1373,8 @@ class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputOp
       arguments[i].kind = XlaCompiler::Argument::kParameter;
       arguments[i].type = DT_FLOAT;
       arguments[i].shape =
-          xla::ShapeUtil::MakeShape(xla::F32, {1, feature_width});
+          xla::ShapeUtil::MakeValidatedShape(xla::F32, {1, feature_width})
+              .value();
     }
 
     TF_RETURN_IF_ERROR(
@@ -1654,7 +1677,8 @@ class XlaSparseDenseMatmulGradWithSgdAndCsrInputOp
   }
 
   xla::Shape get_tables_shape(xla::Shape embedding_table_shape) override {
-    return xla::ShapeUtil::MakeTupleShape({embedding_table_shape});
+    return xla::ShapeUtil::MakeValidatedTupleShape({embedding_table_shape})
+        .value();
   }
 
  private:
@@ -1696,8 +1720,9 @@ class XlaSparseDenseMatmulGradWithAdagradAndCsrInputOp
   }
 
   xla::Shape get_tables_shape(xla::Shape embedding_table_shape) override {
-    return xla::ShapeUtil::MakeTupleShape(
-        {embedding_table_shape, embedding_table_shape});
+    return xla::ShapeUtil::MakeValidatedTupleShape(
+               {embedding_table_shape, embedding_table_shape})
+        .value();
   }
 
  private:
@@ -1749,8 +1774,10 @@ class XlaSparseDenseMatmulGradWithAdagradMomentumAndCsrInputOp
   }
 
   xla::Shape get_tables_shape(xla::Shape embedding_table_shape) override {
-    return xla::ShapeUtil::MakeTupleShape(
-        {embedding_table_shape, embedding_table_shape, embedding_table_shape});
+    return xla::ShapeUtil::MakeValidatedTupleShape({embedding_table_shape,
+                                                    embedding_table_shape,
+                                                    embedding_table_shape})
+        .value();
   }
 
  private:
@@ -1805,8 +1832,10 @@ class XlaSparseDenseMatmulGradWithAdamAndCsrInputOp
   }
 
   xla::Shape get_tables_shape(xla::Shape embedding_table_shape) override {
-    return xla::ShapeUtil::MakeTupleShape(
-        {embedding_table_shape, embedding_table_shape, embedding_table_shape});
+    return xla::ShapeUtil::MakeValidatedTupleShape({embedding_table_shape,
+                                                    embedding_table_shape,
+                                                    embedding_table_shape})
+        .value();
   }
 
  private:
@@ -1866,8 +1895,10 @@ class XlaSparseDenseMatmulGradWithFtrlAndCsrInputOp
   }
 
   xla::Shape get_tables_shape(xla::Shape embedding_table_shape) override {
-    return xla::ShapeUtil::MakeTupleShape(
-        {embedding_table_shape, embedding_table_shape, embedding_table_shape});
+    return xla::ShapeUtil::MakeValidatedTupleShape({embedding_table_shape,
+                                                    embedding_table_shape,
+                                                    embedding_table_shape})
+        .value();
   }
 
  private:
@@ -1919,7 +1950,8 @@ class XlaSparseCoreOptimizerOpBase : public XlaOpKernel {
     // Determines how updates are applied to the destination data.
     xla::XlaComputation scatter_update_fcn = [&] {
       auto sb = std::make_unique<xla::XlaBuilder>("scatter_builder");
-      auto scalar_shape = xla::ShapeUtil::MakeShape(xla::F32, {});
+      auto scalar_shape =
+          xla::ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
       // Param 0 ("orig") is unused but still needs to be defined so we can
       // access Param 1 ("update").
       xla::Parameter(sb.get(), 0, scalar_shape, "orig");

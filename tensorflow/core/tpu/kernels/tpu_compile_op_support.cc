@@ -200,7 +200,7 @@ Shape GetPerDeviceShape(const Shape& shape, const HloSharding& sharding,
             GetPerDeviceShape(element_shape, element_sharding, device));
       }
     }
-    return xla::ShapeUtil::MakeTupleShape(arg_shapes);
+    return ShapeUtil::MakeValidatedTupleShape(arg_shapes).value();
   }
 
   if (sharding.IsTileMaximal()) {
@@ -218,7 +218,8 @@ Shape GetPerDeviceShape(const Shape& shape, const HloSharding& sharding,
     return xla::ShapeUtil::MakeShapeWithDenseLayout(
         shape.element_type(), dimensions, shape.layout().minor_to_major());
   }
-  return xla::ShapeUtil::MakeShape(shape.element_type(), dimensions);
+  return ShapeUtil::MakeValidatedShape(shape.element_type(), dimensions)
+      .value();
 }
 
 absl::Status AddVariableUpdatesToCores(

@@ -246,7 +246,8 @@ xla::XlaComputation BuildSgdOptimizerComputation(const int32_t feature_width,
       std::make_unique<xla::XlaBuilder>("sgd_optimizer_builder");
 
   xla::Shape per_row_shape =
-      xla::ShapeUtil::MakeShapeWithType<float>({1, feature_width});
+      xla::ShapeUtil::MakeValidatedShapeWithType<float>({1, feature_width})
+          .value();
 
   xla::XlaOp gradient =
       xla::Parameter(sgd_optimizer_builder.get(), 0, per_row_shape, "gradient");
@@ -278,7 +279,8 @@ xla::XlaComputation BuildAdagradOptimizerComputation(
       std::make_unique<xla::XlaBuilder>("adagrad_optimizer_builder");
 
   xla::Shape per_row_shape =
-      xla::ShapeUtil::MakeShapeWithType<float>({1, feature_width});
+      xla::ShapeUtil::MakeValidatedShapeWithType<float>({1, feature_width})
+          .value();
 
   xla::XlaOp gradient = xla::Parameter(adagrad_optimizer_builder.get(), 0,
                                        per_row_shape, "gradient");
@@ -316,7 +318,8 @@ xla::XlaComputation BuildAdagradMomentumOptimizerComputation(
       std::make_unique<xla::XlaBuilder>("adagrad_momentum_optimizer_builder");
 
   xla::Shape per_row_shape =
-      xla::ShapeUtil::MakeShapeWithType<float>({1, feature_width});
+      xla::ShapeUtil::MakeValidatedShapeWithType<float>({1, feature_width})
+          .value();
 
   xla::XlaOp gradient = xla::Parameter(adagrad_momentum_optimizer_builder.get(),
                                        0, per_row_shape, "gradient");
@@ -392,7 +395,8 @@ xla::XlaComputation BuildAdamOptimizerComputation(
       std::make_unique<xla::XlaBuilder>("adam_optimizer_builder");
 
   xla::Shape per_row_shape =
-      xla::ShapeUtil::MakeShapeWithType<float>({1, feature_width});
+      xla::ShapeUtil::MakeValidatedShapeWithType<float>({1, feature_width})
+          .value();
 
   xla::XlaOp gradient = xla::Parameter(adam_optimizer_builder.get(), 0,
                                        per_row_shape, "gradient");
@@ -454,7 +458,8 @@ xla::XlaComputation BuildFtrlOptimizerComputation(
       std::make_unique<xla::XlaBuilder>("ftrl_optimizer_builder");
 
   xla::Shape per_row_shape =
-      xla::ShapeUtil::MakeShapeWithType<float>({1, feature_width});
+      xla::ShapeUtil::MakeValidatedShapeWithType<float>({1, feature_width})
+          .value();
 
   xla::XlaOp gradient = xla::Parameter(ftrl_optimizer_builder.get(), 0,
                                        per_row_shape, "gradient");

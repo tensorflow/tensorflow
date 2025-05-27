@@ -359,9 +359,10 @@ TpuInfeedEnqueueTupleOp::TpuInfeedEnqueueTupleOp(
     xla_shapes.push_back(xla_shape);
   }
   OP_REQUIRES_OK(
-      ctx, GetInfeedShapeWithLayout(ctx, "layouts",
-                                    xla::ShapeUtil::MakeTupleShape(xla_shapes),
-                                    &tuple_shape_));
+      ctx, GetInfeedShapeWithLayout(
+               ctx, "layouts",
+               xla::ShapeUtil::MakeValidatedTupleShape(xla_shapes).value(),
+               &tuple_shape_));
 }
 
 absl::Status TpuInfeedEnqueueTupleOp::DoWork(OpKernelContext* ctx,
