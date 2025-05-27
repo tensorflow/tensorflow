@@ -15,16 +15,25 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/cluster_function_library_runtime.h"
 
+#include <cstddef>
 #include <map>
 #include <memory>
+#include <utility>
+#include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/common_runtime/function_testlib.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_testlib.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/equal_graph_def.h"
