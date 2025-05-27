@@ -215,8 +215,8 @@ absl::Status HloControlFlowFlattening::FlattenWhileLoop(
             shape, condition->parameter_instruction(0), new_tuple_size - 1));
     HloInstruction* compare =
         condition->AddInstruction(HloInstruction::CreateCompare(
-            ShapeUtil::MakeShape(PRED, {}), induction_variable, limit,
-            ComparisonDirection::kLt));
+            ShapeUtil::MakeValidatedShape(PRED, {}).value(), induction_variable,
+            limit, ComparisonDirection::kLt));
     TF_RETURN_IF_ERROR(
         condition->ReplaceInstruction(condition->root_instruction(), compare));
   }

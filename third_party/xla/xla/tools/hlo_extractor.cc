@@ -241,7 +241,8 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
 
       // Create a constant of `shape.element_type()`. The constant could be
       // either a zero or a random number, depending on `replace_type`.
-      Shape constant_shape = ShapeUtil::MakeShape(shape.element_type(), {});
+      Shape constant_shape =
+          ShapeUtil::MakeValidatedShape(shape.element_type(), {}).value();
       HloInstruction* constant_instruction;
       CHECK(replace_type == ReplaceType::kReplaceZeroBroadcast ||
             replace_type == ReplaceType::kReplaceRandomBroadcast);

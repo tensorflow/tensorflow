@@ -498,14 +498,14 @@ ENTRY main {
   HloInstruction* arg0 =
       FindComputation(module.get(), "computation")->root_instruction();
   // Create invalid operand shape.
-  *arg0->mutable_shape() = ShapeUtil::MakeShape(S32, {4});
+  *arg0->mutable_shape() = ShapeUtil::MakeValidatedShape(S32, {4}).value();
 
   auto extracted =
       ExtractModule(module->entry_computation()->root_instruction(), -1,
                     nullptr, nullptr, false, false, false);
 
   // Restore the operand shape to be valid.
-  *arg0->mutable_shape() = ShapeUtil::MakeShape(S32, {16});
+  *arg0->mutable_shape() = ShapeUtil::MakeValidatedShape(S32, {16}).value();
 }
 
 }  // namespace

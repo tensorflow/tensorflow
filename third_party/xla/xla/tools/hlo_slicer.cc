@@ -67,7 +67,7 @@ void ReduceTupleParameterHelper(HloModule* hlo_module,
   // Change the shape of `tuple_parameter` to only include the shape of elements
   // that have users.
   Shape new_tuple_shape =
-      ShapeUtil::MakeTupleShape(absl::MakeSpan(used_shapes));
+      ShapeUtil::MakeValidatedTupleShape(absl::MakeSpan(used_shapes)).value();
   tuple_parameter->mutable_shape()->mutable_tuple_shapes()->clear();
   for (const auto& shape : used_shapes) {
     tuple_parameter->mutable_shape()->mutable_tuple_shapes()->push_back(shape);
