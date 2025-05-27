@@ -17,9 +17,13 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_TRIANGULAR_SOLVE_THUNK_H_
 
 #include <cstdint>
+#include <memory>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
@@ -48,6 +52,12 @@ class TriangularSolveThunk : public Thunk {
   TriangularSolveThunk& operator=(const TriangularSolveThunk&) = delete;
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  static absl::StatusOr<std::unique_ptr<TriangularSolveThunk>> FromProto(
+      ThunkInfo thunk_info, const TriangularSolveThunkProto& proto,
+      absl::Span<const BufferAllocation> allocations);
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
 
  private:
   const se::blas::UpperLower uplo_;
