@@ -1984,6 +1984,7 @@ cuda_library(
     deps = [
         ":cuda_platform_id",
         "//xla:types",
+        "//xla/service:collective_ops_utils",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:all_reduce_kernel",
         "//xla/stream_executor/gpu:gpu_kernel_registry",

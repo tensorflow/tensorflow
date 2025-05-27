@@ -39,6 +39,22 @@ limitations under the License.
 namespace xla::gpu {
 
 namespace {
+
+struct AddF32Tag {
+  using ElementType = float;
+  static constexpr ReductionKind kReductionKind = ReductionKind::SUM;
+};
+
+struct AddBF16Tag {
+  using ElementType = bfloat16;
+  static constexpr ReductionKind kReductionKind = ReductionKind::SUM;
+};
+
+struct OrPredTag {
+  using ElementType = bool;
+  static constexpr ReductionKind kReductionKind = ReductionKind::MAX;
+};
+
 template <typename T>
 absl::Status LaunchTypedKernel(
     se::Stream* stream, const LaunchDimensions& launch_dimensions,
@@ -46,17 +62,22 @@ absl::Status LaunchTypedKernel(
     se::DeviceMemoryBase local_input_buffer, se::DeviceMemoryBase output_buffer,
     int64_t rank, int64_t num_ranks, int64_t num_elements,
     absl::Span<const se::DeviceMemoryBase> signal_flags_buffers) {
+  using ElementType = typename T::ElementType;
+
   TF_ASSIGN_OR_RETURN(
       auto kernel,
-      se::gpu::GpuKernelRegistry::GetGlobalRegistry()
-          .LoadKernel<se::gpu::AllReduceKernel<T>>(stream->parent()));
+      (se::gpu::GpuKernelRegistry::GetGlobalRegistry()
+           .LoadKernel<
+               se::gpu::AllReduceKernel<ElementType, T::kReductionKind>>(
+               stream->parent())));
 
-  std::array<T*, stream_executor::gpu::kMaxNumAllReduceInputPtrs>
+  std::array<ElementType*, stream_executor::gpu::kMaxNumAllReduceInputPtrs>
       remote_input_ptrs;
-  absl::c_transform(remote_input_buffers, remote_input_ptrs.begin(),
-                    [](se::DeviceMemoryBase buffer) {
-                      return tsl::safe_reinterpret_cast<T*>(buffer.opaque());
-                    });
+  absl::c_transform(
+      remote_input_buffers, remote_input_ptrs.begin(),
+      [](se::DeviceMemoryBase buffer) {
+        return tsl::safe_reinterpret_cast<ElementType*>(buffer.opaque());
+      });
 
   std::array<uint32_t*, stream_executor::gpu::kMaxNumAllReduceInputPtrs>
       signal_flags_ptrs;
@@ -86,11 +107,18 @@ bool IsAllReduceKernelSupported(int64_t num_inputs, int64_t num_elements,
     return false;
   }
 
-  if (reduction_kind != ReductionKind::SUM) {
-    return false;
+  // More types of one-shot all-reduce kernel can be supported. Each element
+  // type + reduction kind combination need a new template instantiation.
+  // Register more kernel in xla/stream_executor/cuda/all_reduce_kernel_cuda.cc
+  switch (reduction_kind) {
+    case ReductionKind::SUM:
+      return element_type == PrimitiveType::F32 ||
+             element_type == PrimitiveType::BF16;
+    case ReductionKind::MAX:
+      return element_type == PrimitiveType::PRED;
+    default:
+      return false;
   }
-
-  return element_type == BF16 || element_type == F32;
 }
 
 absl::Status RunAllReduceKernel(
@@ -125,16 +153,21 @@ absl::Status RunAllReduceKernel(
                                 num_ranks, num_elements, signal_flags_buffers);
   };
 
-  switch (element_type) {
-    case BF16:
-      return launch_kernel(xla::bfloat16{});
-    case F32:
-      return launch_kernel(float{});
-    default:
-      return absl::InvalidArgumentError(
-          "Unsupported AllReduce kernel. This line should never be reached if "
-          "the result of `IsAllReduceKernelSupported` is correct.");
+  if (element_type == F32 && reduction_kind == ReductionKind::SUM) {
+    return launch_kernel(AddF32Tag{});
   }
+
+  if (element_type == BF16 && reduction_kind == ReductionKind::SUM) {
+    return launch_kernel(AddBF16Tag{});
+  }
+
+  if (element_type == PRED && reduction_kind == ReductionKind::MAX) {
+    return launch_kernel(OrPredTag{});
+  }
+
+  return absl::InvalidArgumentError(
+      "Unsupported AllReduce kernel. This line should never be reached if the "
+      "result of `IsAllReduceKernelSupported` is correct.");
 }
 
 }  // namespace xla::gpu

@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 
+#include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel.h"
 
@@ -30,7 +31,7 @@ inline constexpr int64_t kMaxNumAllReduceInputPtrs = 8;
 
 // Defines a trait for the AllReduce kernel that can be used to register
 // and look up the kernel in the GPU kernel registry.
-template <typename ElementT>
+template <typename ElementT, xla::ReductionKind ReductionKindT>
 struct AllReduceKernel {
   using KernelType = stream_executor::TypedKernel<
       /*remove_input_ptrs=*/std::array<ElementT*, kMaxNumAllReduceInputPtrs>,

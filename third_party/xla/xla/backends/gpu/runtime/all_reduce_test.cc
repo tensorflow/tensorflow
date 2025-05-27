@@ -211,7 +211,7 @@ TEST_F(AllReduceKernelTest, KernelTestAddBF16) {
   }
 }
 
-TEST_F(AllReduceKernelTest, KernelTestOrPred_Unsupported) {
+TEST_F(AllReduceKernelTest, KernelTestOrPred) {
   constexpr int64_t kNumRanks = 2;
   constexpr int64_t kNumElements = 128000;
 
@@ -238,7 +238,29 @@ TEST_F(AllReduceKernelTest, KernelTestOrPred_Unsupported) {
 
   // There are no logical operations in all-reduce reduction kind, so OR is
   // simulated with MAX on uint8.
-  auto results = RunKernel<bool>(executors, inputs, ReductionKind::MAX);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto results, RunKernel<bool>(executors, inputs, ReductionKind::MAX));
+
+  for (int i = 0; i < kNumRanks; ++i) {
+    EXPECT_EQ(results[i], expected_output);
+  }
+}
+
+TEST_F(AllReduceKernelTest, KernelTestAddPred_Unsupported) {
+  constexpr int64_t kNumRanks = 2;
+  constexpr int64_t kNumElements = 128000;
+
+  std::vector<se::StreamExecutor*> executors = {GetGpuExecutor(0),
+                                                GetGpuExecutor(1)};
+
+  if (!executors[0]->CanEnablePeerAccessTo(executors[1])) {
+    GTEST_SKIP() << "Test requires direct peer memory access between devices.";
+  }
+
+  Array<bool> expected_output({kNumElements});
+  std::vector<Array<bool>> inputs(kNumRanks, Array<bool>({kNumElements}));
+
+  auto results = RunKernel<bool>(executors, inputs, ReductionKind::SUM);
   EXPECT_THAT(results.status(),
               ::tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument));
   EXPECT_THAT(results.status().message(),

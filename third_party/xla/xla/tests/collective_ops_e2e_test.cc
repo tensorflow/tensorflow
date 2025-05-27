@@ -3396,6 +3396,62 @@ TEST_P(AllReduceTest, AsyncAllReduce_BF16_2GPUs) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_output_literal, results[1]));
 }
 
+TEST_P(AllReduceTest, AsyncAllReduce_PRED_2GPUs) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+
+  apply_op {
+    x = pred[] parameter(0)
+    y = pred[] parameter(1)
+    ROOT apply_op = pred[] or(x, y)
+  }
+
+  ENTRY test_computation {
+    param_0 = pred[65536] parameter(0)
+    ROOT all-reduce = pred[65536] all-reduce(param_0), to_apply=apply_op, replica_groups={{0,1}}
+  }
+  )";
+
+  const int64_t kNumReplicas = 2;
+  if (test_runner().device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << test_runner().device_count() << " available)";
+  }
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  int64_t num_elements =
+      module->entry_computation()->root_instruction()->shape().dimensions()[0];
+
+  Array<bool> input1({num_elements}), input2({num_elements});
+  input1.FillRandomBool(/*seed=*/0);
+  input2.FillRandomBool(/*seed=*/1);
+  Array<bool> expected_output({num_elements});
+  expected_output.Each([&](absl::Span<const int64_t> indices, bool* val) {
+    *val = input1(indices) | input2(indices);
+  });
+
+  Literal input_literal1 = LiteralUtil::CreateFromArray(input1);
+  Literal input_literal2 = LiteralUtil::CreateFromArray(input2);
+  Literal expected_output_literal =
+      LiteralUtil::CreateFromArray(expected_output);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      HloTestBase::ExecuteReplicated(std::move(module),
+                                     {{&input_literal1}, {&input_literal2}},
+                                     /*num_replicas=*/kNumReplicas,
+                                     /*run_hlo_passes=*/true,
+                                     /*device_assignment=*/nullptr));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_output_literal, results[0]));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_output_literal, results[1]));
+}
+
 TEST_P(AllReduceTest, AsyncAllReduce_8GPUs_AllReplicasOneGroup) {
   const absl::string_view kModuleStr = R"(
   HloModule test
