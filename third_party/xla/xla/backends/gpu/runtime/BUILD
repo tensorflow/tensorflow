@@ -1761,6 +1761,7 @@ xla_test(
         "//xla/stream_executor/gpu:gpu_init",
         "//xla/stream_executor/host:host_platform",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",

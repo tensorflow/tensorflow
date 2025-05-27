@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
@@ -239,7 +240,7 @@ TEST_F(AllReduceKernelTest, KernelTestOrPred_Unsupported) {
   // simulated with MAX on uint8.
   auto results = RunKernel<bool>(executors, inputs, ReductionKind::MAX);
   EXPECT_THAT(results.status(),
-              ::testing::status::StatusIs(absl::StatusCode::kInvalidArgument));
+              ::tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument));
   EXPECT_THAT(results.status().message(),
               ::testing::HasSubstr("AllReduce kernel is not supported"));
 }
