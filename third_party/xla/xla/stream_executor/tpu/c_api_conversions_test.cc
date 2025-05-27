@@ -151,19 +151,22 @@ void XlaLayout_ToC(const xla::Layout& cpp_layout) {
 }  // namespace TestImpl
 
 TEST(XlaLayout, ToCScalar) {
-  xla::Shape cpp_shape = xla::ShapeUtil::MakeShapeWithType<float>({4});
+  xla::Shape cpp_shape =
+      xla::ShapeUtil::MakeValidatedShapeWithType<float>({4}).value();
   xla::Layout cpp_layout = cpp_shape.layout();
   TestImpl::XlaLayout_ToC(cpp_layout);
 }
 
 TEST(XlaLayout, ToCNested) {
-  xla::Shape cpp_shape = xla::ShapeUtil::MakeShapeWithType<float>({4, 3, 2});
+  xla::Shape cpp_shape =
+      xla::ShapeUtil::MakeValidatedShapeWithType<float>({4, 3, 2}).value();
   xla::Layout cpp_layout = cpp_shape.layout();
   TestImpl::XlaLayout_ToC(cpp_layout);
 }
 
 TEST(XlaLayout, FromCScalar) {
-  xla::Shape cpp_shape = xla::ShapeUtil::MakeShapeWithType<float>({4});
+  xla::Shape cpp_shape =
+      xla::ShapeUtil::MakeValidatedShapeWithType<float>({4}).value();
   xla::Layout in_layout = cpp_shape.layout();
   XLA_Layout c_layout;
   ToC(in_layout, &c_layout);
@@ -173,7 +176,8 @@ TEST(XlaLayout, FromCScalar) {
 }
 
 TEST(XlaLayout, FromCNested) {
-  xla::Shape cpp_shape = xla::ShapeUtil::MakeShapeWithType<float>({4, 3, 2});
+  xla::Shape cpp_shape =
+      xla::ShapeUtil::MakeValidatedShapeWithType<float>({4, 3, 2}).value();
   xla::Layout in_layout = cpp_shape.layout();
   XLA_Layout c_layout;
   ToC(in_layout, &c_layout);
@@ -183,7 +187,8 @@ TEST(XlaLayout, FromCNested) {
 }
 
 TEST(XlaShape, ToCScalar) {
-  xla::Shape cpp_shape = xla::ShapeUtil::MakeShapeWithType<float>({4});
+  xla::Shape cpp_shape =
+      xla::ShapeUtil::MakeValidatedShapeWithType<float>({4}).value();
   XLA_Shape c_shape;
   ToC(cpp_shape, &c_shape);
 
@@ -211,7 +216,7 @@ TEST(XlaShape, ToCScalar) {
 
 TEST(XlaShape, ToCNested) {
   const xla::Shape cpp_shape =
-      xla::ShapeUtil::MakeShapeWithType<float>({4, 3, 2});
+      xla::ShapeUtil::MakeValidatedShapeWithType<float>({4, 3, 2}).value();
   XLA_Shape c_shape;
   ToC(cpp_shape, &c_shape);
 
@@ -240,7 +245,8 @@ TEST(XlaShape, ToCNested) {
 }
 
 TEST(XlaShape, FromCScalar) {
-  xla::Shape in_shape = xla::ShapeUtil::MakeShapeWithType<float>({4});
+  xla::Shape in_shape =
+      xla::ShapeUtil::MakeValidatedShapeWithType<float>({4}).value();
   XLA_Shape c_shape;
   ToC(in_shape, &c_shape);
   xla::Shape out_shape = FromC(&c_shape);
@@ -249,7 +255,8 @@ TEST(XlaShape, FromCScalar) {
 }
 
 TEST(XlaShape, FromCNested) {
-  xla::Shape in_shape = xla::ShapeUtil::MakeShapeWithType<float>({4, 3, 2});
+  xla::Shape in_shape =
+      xla::ShapeUtil::MakeValidatedShapeWithType<float>({4, 3, 2}).value();
   XLA_Shape c_shape;
   ToC(in_shape, &c_shape);
   xla::Shape out_shape = FromC(&c_shape);
