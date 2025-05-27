@@ -121,10 +121,10 @@ void PrintBufferShape(Printer* printer, const Shape& shape) {
 
 // Constructs and returns the new shape with the given minor_to_major order in
 // its Layout.
-absl::StatusOr<Shape> MakeValidatedShapeWithLayoutInternal(
+absl::StatusOr<Shape> MakeShapeWithLayoutInternal(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
-    absl::Span<const int64_t> minor_to_major, absl::Span<const Tile> tiles,
-    int64_t tail_padding_alignment_in_elements,
+    absl::Span<const int64_t> minor_to_major,
+    absl::Span<const Tile> tiles, int64_t tail_padding_alignment_in_elements,
     PrimitiveType index_primitive_type, PrimitiveType pointer_primitive_type,
     int64_t element_size_in_bits, int64_t memory_space,
     absl::Span<const SplitConfig> split_configs,
@@ -165,14 +165,13 @@ const T& Deref(const T& ref) {
 }
 
 template <typename ShapePtrOrRef>
-absl::StatusOr<Shape> MakeValidatedTupleShapeImpl(
-    absl::Span<ShapePtrOrRef> shapes) {
+Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
   Shape result(std::vector<Shape>{});
   result.mutable_tuple_shapes()->reserve(shapes.size());
   for (const auto& shape : shapes) {
     ShapeUtil::AppendShapeToTuple(Deref(shape), &result);
   }
-  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(result));
+  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(result));
   return result;
 }
 
@@ -268,20 +267,25 @@ static std::vector<bool> MakeDynamicDimensions(
   return dynamic_dimensions;
 }
 
-/* static */ absl::StatusOr<Shape> ShapeUtil::MakeValidatedBufferShape(
-    Shape element_shape) {
-  TF_RET_CHECK(element_shape.IsArray())
-      << "element_shape must be an array shape to create a buffer shape.";
-  Shape shape(BUFFER);
-  *shape.buffer_state().buffer_shape = std::move(element_shape);
-  return shape;
+/* static */ Shape ShapeUtil::MakeShape(PrimitiveType element_type,
+                                        absl::Span<const int64_t> dimensions) {
+  return MakeValidatedShape(element_type, dimensions).value();
 }
 
-/* static */ absl::StatusOr<Shape> ShapeUtil::MakeValidatedBufferShape(
+/* static */ Shape ShapeUtil::MakeScalarShape(PrimitiveType element_type) {
+  return MakeShape(element_type, {});
+}
+
+/* static */ Shape ShapeUtil::MakeShape(
+    PrimitiveType element_type, absl::Span<const int64_t> dimensions,
+    const std::vector<bool>& dynamic_dimensions) {
+  return MakeValidatedShape(element_type, dimensions, dynamic_dimensions)
+      .value();
+}
+
+/* static */ Shape ShapeUtil::MakeBufferShape(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions) {
-  TF_ASSIGN_OR_RETURN(Shape shape,
-                      ShapeUtil::MakeValidatedShape(element_type, dimensions));
-  return ShapeUtil::MakeValidatedBufferShape(shape);
+  return Shape::MakeBufferShape(MakeShape(element_type, dimensions));
 }
 
 /* static */ Shape ShapeUtil::MakeShapeWithStaticDimensions(
@@ -346,31 +350,35 @@ static std::vector<bool> MakeDynamicDimensions(
   return shape;
 }
 
-/* static */ absl::StatusOr<Shape> ShapeUtil::MakeValidatedShapeWithDenseLayout(
+/* static */ Shape ShapeUtil::MakeShapeWithDenseLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
     absl::Span<const int64_t> minor_to_major, absl::Span<const Tile> tiles,
     int64_t tail_padding_alignment_in_elements, int64_t element_size_in_bits,
     int64_t memory_space, absl::Span<const SplitConfig> split_configs) {
-  return MakeValidatedShapeWithLayoutInternal(
+  auto ret = MakeShapeWithLayoutInternal(
       element_type, dimensions, minor_to_major, tiles,
       tail_padding_alignment_in_elements,
       /*index_primitive_type=*/PRIMITIVE_TYPE_INVALID,
       /*pointer_primitive_type=*/PRIMITIVE_TYPE_INVALID, element_size_in_bits,
       memory_space, split_configs,
       /*physical_shape=*/std::nullopt);
+  TF_CHECK_OK(ret.status());
+  return *ret;
 }
 
-/* static */ absl::StatusOr<Shape>
-ShapeUtil::MakeValidatedShapeWithSparseLayout(
+/* static */ Shape ShapeUtil::MakeShapeWithSparseLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
-    absl::Span<const int64_t> minor_to_major) {
-  return MakeValidatedShapeWithLayoutInternal(
+    absl::Span<const int64_t> minor_to_major,
+    PrimitiveType index_primitive_type, PrimitiveType pointer_primitive_type,
+    int64_t tail_padding_alignment_in_elements, int64_t element_size_in_bits,
+    int64_t memory_space, std::optional<Shape> physical_shape) {
+  auto ret = MakeShapeWithLayoutInternal(
       element_type, dimensions, minor_to_major,
-      /*tiles=*/{}, /*tail_padding_alignment_in_elements=*/1,
-      /*index_primitive_type=*/PRIMITIVE_TYPE_INVALID,
-      /*pointer_primitive_type=*/PRIMITIVE_TYPE_INVALID,
-      /*element_size_in_bits=*/0, /*memory_space=*/0,
-      /*split_configs=*/{}, /*physical_shape=*/std::nullopt);
+      /*tiles=*/{}, tail_padding_alignment_in_elements, index_primitive_type,
+      pointer_primitive_type, element_size_in_bits, memory_space,
+      /*split_configs=*/{}, std::move(physical_shape));
+  TF_CHECK_OK(ret.status());
+  return *ret;
 }
 
 /* static */ Shape ShapeUtil::MoveDimToMajor(const Shape& shape, int64_t dim) {
@@ -399,16 +407,15 @@ ShapeUtil::MakeValidatedShapeWithSparseLayout(
   return ret;
 }
 
-/* static */ absl::StatusOr<Shape>
-ShapeUtil::MakeValidatedShapeWithDescendingLayout(
+/* static */ Shape ShapeUtil::MakeShapeWithDescendingLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions) {
   std::vector<int64_t> layout(dimensions.size());
   std::iota(layout.rbegin(), layout.rend(), static_cast<int64_t>(0));
-  return MakeValidatedShapeWithDenseLayout(element_type, dimensions, layout);
+  return MakeShapeWithDenseLayout(element_type, dimensions, layout);
 }
 
-/* static */ absl::StatusOr<Shape>
-ShapeUtil::MakeValidatedShapeWithDescendingLayoutAndSamePhysicalLayout(
+/* static */ Shape
+ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     const Shape& shape) {
   std::vector<int64_t> dims(shape.dimensions().size());
   for (int i = 0; i < shape.dimensions().size(); ++i) {
@@ -418,8 +425,7 @@ ShapeUtil::MakeValidatedShapeWithDescendingLayoutAndSamePhysicalLayout(
     }
     dims[i] = shape.dimensions(dim);
   }
-  TF_ASSIGN_OR_RETURN(Shape new_shape, MakeValidatedShapeWithDescendingLayout(
-                                           shape.element_type(), dims));
+  Shape new_shape = MakeShapeWithDescendingLayout(shape.element_type(), dims);
   // Since the physical layout is kept the same, the tiles and element size are
   // the same also.
   if (shape.has_layout()) {
@@ -467,22 +473,21 @@ ShapeUtil::MakeValidatedShapeWithDescendingLayoutAndSamePhysicalLayout(
   return result;
 }
 
-/* static */ absl::StatusOr<Shape> ShapeUtil::MakeValidatedTupleShape(
-    absl::Span<const Shape> shapes) {
-  return MakeValidatedTupleShapeImpl(shapes);
+/* static */ Shape ShapeUtil::MakeTupleShape(absl::Span<const Shape> shapes) {
+  return MakeTupleShapeImpl(shapes);
 }
 
-/* static */ absl::StatusOr<Shape> ShapeUtil::MakeValidatedTupleShapeWithPtrs(
+/* static */ Shape ShapeUtil::MakeTupleShapeWithPtrs(
     absl::Span<const Shape* const> shapes) {
-  return MakeValidatedTupleShapeImpl(shapes);
+  return MakeTupleShapeImpl(shapes);
 }
 
-/* static */ absl::StatusOr<Shape> ShapeUtil::MakeValidatedMaybeTupleShape(
+/* static */ Shape ShapeUtil::MakeMaybeTupleShape(
     absl::Span<const Shape> shapes) {
   if (shapes.size() == 1) {
     return shapes[0];
   }
-  return MakeValidatedTupleShape(shapes);
+  return MakeTupleShape(shapes);
 }
 
 /* static */ Shape ShapeUtil::MakeOpaqueShape() { return Shape(OPAQUE_TYPE); }
@@ -1088,13 +1093,14 @@ absl::Status ValidateNonLayoutProperties(const Shape& shape) {
       new_operands.push_back(ChangeElementType(operand, type));
     }
     return MakeTupleShape(new_operands);
+  } else {
+    Shape new_shape = original;
+    new_shape.set_element_type(type);
+    if (new_shape.has_layout() && !primitive_util::IsSubByteNonPredType(type)) {
+      new_shape.mutable_layout()->set_element_size_in_bits(0);
+    }
+    return new_shape;
   }
-  Shape new_shape = original;
-  new_shape.set_element_type(type);
-  if (new_shape.has_layout() && !primitive_util::IsSubByteNonPredType(type)) {
-    new_shape.mutable_layout()->set_element_size_in_bits(0);
-  }
-  return new_shape;
 }
 
 /* static */ bool ShapeUtil::IndexIsValid(const Shape& shape,

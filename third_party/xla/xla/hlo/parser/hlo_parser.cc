@@ -6277,11 +6277,7 @@ bool HloParserImpl::ParseShape(Shape* result,
     if (!ParseShape(&shape, allow_fallback_to_default_layout)) {
       return false;
     }
-    auto buffer_shape = ShapeUtil::MakeValidatedBufferShape(shape);
-    if (!buffer_shape.ok()) {
-      return false;
-    }
-    *result = *std::move(buffer_shape);
+    *result = Shape::MakeBufferShape(shape);
     return ParseToken(TokKind::kRparen,
                       "expects ')' at the end of buffer shape.");
   }
