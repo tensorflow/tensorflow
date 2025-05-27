@@ -76,8 +76,9 @@ absl::Status RewriteLayoutWithShardedShape(
     for (int64_t i = 0; i < xla_shape->dimensions().size(); ++i) {
       dimensions[i] = limit[i] - offset[i];
     }
-    xla::Shape per_device_xla_shape =
-        xla::ShapeUtil::MakeShape(xla_shape->element_type(), dimensions);
+    xla::Shape per_device_xla_shape = xla::ShapeUtil::MakeValidatedShape(
+                                          xla_shape->element_type(), dimensions)
+                                          .value();
     TensorShape per_device_tensor_shape;
     TF_RETURN_IF_ERROR(
         XLAShapeToTensorShape(per_device_xla_shape, &per_device_tensor_shape));
