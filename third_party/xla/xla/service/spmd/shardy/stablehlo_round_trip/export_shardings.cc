@@ -268,7 +268,7 @@ HloSharding getHloShardingForOp(
   llvm::transform(op->getResultTypes(), std::back_inserter(shapes),
                   [&](mlir::Type type) { return xla::TypeToShape(type); });
 
-  return HloSharding::Tuple(xla::ShapeUtil::MakeTupleShape(shapes),
+  return HloSharding::Tuple(ShapeUtil::MakeValidatedTupleShape(shapes).value(),
                             newShardings);
 }
 
