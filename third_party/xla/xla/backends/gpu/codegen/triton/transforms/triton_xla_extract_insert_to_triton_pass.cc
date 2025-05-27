@@ -225,8 +225,10 @@ Value ComputeLinearOffset(::xla::EmitterLocOpBuilder& builder,
       xgt::GetPrimitiveType(tensor_type.getElementType()).value(),
       tensor_type.getShape(), layout);
 
-  ::xla::Shape linear_shape = ::xla::ShapeUtil::MakeShape(
-      shape.element_type(), {::xla::ShapeUtil::ElementsIn(shape)});
+  ::xla::Shape linear_shape =
+      ::xla::ShapeUtil::MakeValidatedShape(
+          shape.element_type(), {::xla::ShapeUtil::ElementsIn(shape)})
+          .value();
   auto bitcast_map =
       ::xla::GetBitcastMap(shape, linear_shape, builder.getContext());
 
