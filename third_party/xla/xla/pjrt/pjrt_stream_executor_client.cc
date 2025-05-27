@@ -2733,12 +2733,12 @@ PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
           << ", device=" << device->DebugString()
           << ", run_id=" << run_options.run_id().ToInt();
 
-  if (VLOG_IS_ON(3)) {
+  if (VLOG_IS_ON(2)) {
     auto executable_name =
         executables_[executable_idx]->executable()->module().name();
     absl::Status host_callback_status = run_options.stream()->DoHostCallback(
         [executable_name, launch_id(run_options.run_id().ToInt()), device]() {
-          VLOG(3) << "Start device execution for " << executable_name
+          VLOG(2) << "Start device execution for " << executable_name
                   << ", launch_id: " << launch_id
                   << ", device: " << device->DebugString();
         });
@@ -2753,12 +2753,12 @@ PjRtStreamExecutorLoadedExecutable::EnqueueExecution(
       client_->RunAsync(*executables_[executable_idx], device,
                         std::move(execution_inputs), run_options);
 
-  if (VLOG_IS_ON(3)) {
+  if (VLOG_IS_ON(2)) {
     auto executable_name =
         executables_[executable_idx]->executable()->module().name();
     absl::Status host_callback_status = run_options.stream()->DoHostCallback(
         [executable_name, launch_id(run_options.run_id().ToInt()), device]() {
-          VLOG(3) << "Finish device execution for " << executable_name
+          VLOG(2) << "Finish device execution for " << executable_name
                   << ", launch_id: " << launch_id
                   << ", device: " << device->DebugString();
         });
