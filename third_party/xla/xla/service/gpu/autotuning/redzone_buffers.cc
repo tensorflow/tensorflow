@@ -106,8 +106,9 @@ absl::Status RedzoneBuffers::CreateOutputs(const HloInstruction& instruction,
 
   output_shape_ = std::distance(current_shape_it, end) == 1
                       ? output_shape_ = *current_shape_it
-                      : ShapeUtil::MakeTupleShape(
-                            std::vector<Shape>{current_shape_it, end});
+                      : ShapeUtil::MakeValidatedTupleShape(
+                            std::vector<Shape>{current_shape_it, end})
+                            .value();
 
   for (; current_shape_it < end; current_shape_it++) {
     if (current_shape_it->IsTuple()) {

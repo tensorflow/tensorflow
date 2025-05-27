@@ -1097,8 +1097,9 @@ absl::StatusOr<bool> GpuConvAlgorithmPicker::RunOnInstruction(
   }
   // The final element is the size of the workspace.
   new_call_element_shapes.emplace_back(
-      ShapeUtil::MakeShape(U8, {best_algo.scratch_bytes()}));
-  Shape new_call_shape = ShapeUtil::MakeTupleShape(new_call_element_shapes);
+      ShapeUtil::MakeValidatedShape(U8, {best_algo.scratch_bytes()}).value());
+  Shape new_call_shape =
+      ShapeUtil::MakeValidatedTupleShape(new_call_element_shapes).value();
 
   TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
                       instr->backend_config<GpuBackendConfig>());
