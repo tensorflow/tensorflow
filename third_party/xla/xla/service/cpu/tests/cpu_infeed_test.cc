@@ -125,8 +125,8 @@ TEST_F(InfeedTest, SingleInfeedEmptyTuple) {
 // implemented for CPU.
 TEST_F(InfeedTest, DISABLED_SingleInfeedInWhile) {
   XlaBuilder builder(TestName());
-  const auto infeed_shape = ShapeUtil::MakeShape(F32, {3});
-  const auto result_shape = ShapeUtil::MakeShape(F32, {});
+  const auto infeed_shape = ShapeUtil::MakeValidatedShape(F32, {3}).value();
+  const auto result_shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
 
   // Create a computation for the condition: repeat until (prev < 40.0f) holds.
   XlaComputation condition;
@@ -202,12 +202,18 @@ TEST_F(InfeedTest, DISABLED_SingleInfeedInWhile) {
 // implemented for CPU.
 TEST_F(InfeedTest, DISABLED_TwoInfeedsInTotalOrder) {
   XlaBuilder builder(TestName());
-  const auto infeed1_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {2}), ShapeUtil::MakeShape(PRED, {})});
-  const auto infeed2_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {3}), ShapeUtil::MakeShape(PRED, {})});
-  const auto result_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {}), ShapeUtil::MakeShape(PRED, {})});
+  const auto infeed1_shape =
+      ShapeUtil::MakeValidatedTupleShape(
+          {ShapeUtil::MakeShape(F32, {2}), ShapeUtil::MakeShape(PRED, {})})
+          .value();
+  const auto infeed2_shape =
+      ShapeUtil::MakeValidatedTupleShape(
+          {ShapeUtil::MakeShape(F32, {3}), ShapeUtil::MakeShape(PRED, {})})
+          .value();
+  const auto result_shape =
+      ShapeUtil::MakeValidatedTupleShape(
+          {ShapeUtil::MakeShape(F32, {}), ShapeUtil::MakeShape(PRED, {})})
+          .value();
 
   // Create a computation for the condition: repeat until the second tuple
   // element is false.

@@ -708,7 +708,8 @@ absl::Status ChangeAccumulatorShapesInLoopBodies(
 
       std::vector<Shape> element_shapes = param_body->shape().tuple_shapes();
       element_shapes[tuple_index] = accumulation_shape;
-      *param_body->mutable_shape() = ShapeUtil::MakeTupleShape(element_shapes);
+      *param_body->mutable_shape() =
+          ShapeUtil::MakeValidatedTupleShape(element_shapes).value();
 
       // Find the GTE for this index and change its type and its users.
       // For reduce-scatter, we do not allow any forwarding instructions, so
@@ -811,9 +812,10 @@ absl::flat_hash_map<int, HloInstruction*> CreateSinkedAllReduces(
       HloInstruction* all_reduce_operand = accumulation_buffer;
       if (!ShapeUtil::SameElementType(loop_all_reduce->shape(),
                                       accumulation_buffer_shape)) {
-        Shape all_reduce_shape =
-            ShapeUtil::MakeShape(loop_all_reduce->shape().element_type(),
-                                 accumulation_buffer_shape.dimensions());
+        Shape all_reduce_shape = ShapeUtil::MakeValidatedShape(
+                                     loop_all_reduce->shape().element_type(),
+                                     accumulation_buffer_shape.dimensions())
+                                     .value();
         all_reduce_operand =
             while_parent->AddInstruction(HloInstruction::CreateConvert(
                 all_reduce_shape, accumulation_buffer));
