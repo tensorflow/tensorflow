@@ -179,7 +179,8 @@ absl::StatusOr<xla::XlaOp> XlaScatter(
   {
     xla::XlaBuilder cb("scatter-combiner");
     auto xla_scalar_shape =
-        xla::ShapeUtil::MakeShape(buffer_shape.element_type(), {});
+        xla::ShapeUtil::MakeValidatedShape(buffer_shape.element_type(), {})
+            .value();
     auto p0 = xla::Parameter(&cb, 0, xla_scalar_shape, "p0");
     auto p1 = xla::Parameter(&cb, 1, xla_scalar_shape, "p1");
     if (combiner) {
