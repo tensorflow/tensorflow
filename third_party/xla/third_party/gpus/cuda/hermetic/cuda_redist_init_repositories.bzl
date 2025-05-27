@@ -285,20 +285,16 @@ def _download_redistribution(
         path_prefix,
         mirrored_tar_path_prefix):
     (url, sha256) = repository_ctx.attr.url_dict[arch_key]
-    use_cuda_tars = get_env_var(
-        repository_ctx,
-        "USE_CUDA_TAR_ARCHIVE_FILES",
-    )
 
     # If url is not relative, then appending prefix is not needed.
     if not (url.startswith("http") or url.startswith("file:///")):
-        if use_cuda_tars:
+        if url.endswith(".tar"):
             url = mirrored_tar_path_prefix + url
         else:
             url = path_prefix + url
     archive_name = get_archive_name(url)
     file_name = _get_file_name(url)
-    urls = [url] if use_cuda_tars else tf_mirror_urls(url)
+    urls = [url] if url.endswith(".tar") else tf_mirror_urls(url)
 
     print("Downloading and extracting {}".format(url))  # buildifier: disable=print
     repository_ctx.download(
