@@ -51,8 +51,8 @@ TEST_F(HloConstantFoldingTest, ConvertF32ToS64) {
   HloComputation::Builder builder(TestName());
   HloInstruction* input = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
-  builder.AddInstruction(
-      HloInstruction::CreateConvert(ShapeUtil::MakeShape(S64, {}), input));
+  builder.AddInstruction(HloInstruction::CreateConvert(
+      ShapeUtil::MakeValidatedShape(S64, {}).value(), input));
 
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
@@ -74,8 +74,8 @@ TEST_F(HloConstantFoldingTest, ConvertS64ToF32) {
   HloComputation::Builder builder(TestName());
   HloInstruction* input = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int64_t>(42)));
-  builder.AddInstruction(
-      HloInstruction::CreateConvert(ShapeUtil::MakeShape(F32, {}), input));
+  builder.AddInstruction(HloInstruction::CreateConvert(
+      ShapeUtil::MakeValidatedShape(F32, {}).value(), input));
 
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
@@ -96,8 +96,8 @@ TEST_F(HloConstantFoldingTest, ConvertF32ArrayToS64Array) {
   HloComputation::Builder builder(TestName());
   HloInstruction* input = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR1<float>({42.0f, 19.0f})));
-  builder.AddInstruction(
-      HloInstruction::CreateConvert(ShapeUtil::MakeShape(S64, {2}), input));
+  builder.AddInstruction(HloInstruction::CreateConvert(
+      ShapeUtil::MakeValidatedShape(S64, {2}).value(), input));
 
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
@@ -139,7 +139,7 @@ TEST_F(HloConstantFoldingTest, Concatenate) {
       operands.push_back(insn);
     }
     dimensions[test_config.concat_dimension] = concat_size;
-    Shape shape = ShapeUtil::MakeShape(F32, dimensions);
+    Shape shape = ShapeUtil::MakeValidatedShape(F32, dimensions).value();
     builder.AddInstruction(HloInstruction::CreateConcatenate(
         shape, operands, test_config.concat_dimension));
     auto module = CreateNewVerifiedModule();
@@ -161,12 +161,13 @@ TEST_F(HloConstantFoldingTest, Slice) {
   const int64_t slice_start[] = {4, 2, 3, 1, 5};
   const int64_t slice_limits[] = {10, 8, 6, 5, 9};
   const int64_t slice_strides[] = {1, 1, 1, 1, 1};
-  TF_ASSERT_OK_AND_ASSIGN(auto literal,
-                          LiteralUtil::CreateRandomLiteral<F32>(
-                              ShapeUtil::MakeShape(F32, dimensions), 0.0, 1.0));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto literal,
+      LiteralUtil::CreateRandomLiteral<F32>(
+          ShapeUtil::MakeValidatedShape(F32, dimensions).value(), 0.0, 1.0));
   HloInstruction* literal_instruction = builder.AddInstruction(
       HloInstruction::CreateConstant(std::move(literal)));
-  Shape shape = ShapeUtil::MakeShape(F32, {6, 6, 3, 4, 4});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {6, 6, 3, 4, 4}).value();
   builder.AddInstruction(HloInstruction::CreateSlice(
       shape, literal_instruction, slice_start, slice_limits, slice_strides));
   auto module = CreateNewVerifiedModule();
@@ -184,13 +185,14 @@ TEST_F(HloConstantFoldingTest, Slice) {
 TEST_F(HloConstantFoldingTest, TransposeConstantFold) {
   HloComputation::Builder builder(TestName());
   const int64_t dimensions[] = {11, 8, 7, 5, 9};
-  TF_ASSERT_OK_AND_ASSIGN(auto literal,
-                          LiteralUtil::CreateRandomLiteral<F32>(
-                              ShapeUtil::MakeShape(F32, dimensions), 0.0, 1.0));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto literal,
+      LiteralUtil::CreateRandomLiteral<F32>(
+          ShapeUtil::MakeValidatedShape(F32, dimensions).value(), 0.0, 1.0));
   auto literal_clone = literal.Clone();
   HloInstruction* literal_instruction = builder.AddInstruction(
       HloInstruction::CreateConstant(std::move(literal)));
-  Shape shape = ShapeUtil::MakeShape(F32, {8, 7, 11, 9, 5});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {8, 7, 11, 9, 5}).value();
   const int64_t permutation[] = {1, 2, 0, 4, 3};
   builder.AddInstruction(
       HloInstruction::CreateTranspose(shape, literal_instruction, permutation));

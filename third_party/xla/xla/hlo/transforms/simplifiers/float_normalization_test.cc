@@ -157,8 +157,8 @@ INSTANTIATE_TEST_SUITE_P(FloatNormalizationF8Suite, FloatNormalizationF8Test,
 
 TEST_F(FloatNormalizationTest, NoopIfSupported) {
   auto builder = HloComputation::Builder(TestName());
-  Shape f32_shape = ShapeUtil::MakeShape(F32, {2, 4});
-  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {2, 4});
+  Shape f32_shape = ShapeUtil::MakeValidatedShape(F32, {2, 4}).value();
+  Shape bf16_shape = ShapeUtil::MakeValidatedShape(BF16, {2, 4}).value();
 
   HloInstruction* a = builder.AddInstruction(
       HloInstruction::CreateParameter(0, f32_shape, "a"));
@@ -185,8 +185,8 @@ TEST_F(FloatNormalizationTest, NoopIfSupported) {
 
 TEST_F(FloatNormalizationTest, ResolveIfUnsupportedBF16) {
   auto builder = HloComputation::Builder(TestName());
-  Shape f32_shape = ShapeUtil::MakeShape(F32, {2, 4});
-  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {2, 4});
+  Shape f32_shape = ShapeUtil::MakeValidatedShape(F32, {2, 4}).value();
+  Shape bf16_shape = ShapeUtil::MakeValidatedShape(BF16, {2, 4}).value();
 
   HloInstruction* a = builder.AddInstruction(
       HloInstruction::CreateParameter(0, f32_shape, "a"));
@@ -282,8 +282,8 @@ ENTRY main {
 
 TEST_F(FloatNormalizationTest, ResolveUnsupportedMixedPrecisionSubtraction) {
   auto builder = HloComputation::Builder(TestName());
-  Shape f32_shape = ShapeUtil::MakeShape(F32, {2, 4});
-  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {2, 4});
+  Shape f32_shape = ShapeUtil::MakeValidatedShape(F32, {2, 4}).value();
+  Shape bf16_shape = ShapeUtil::MakeValidatedShape(BF16, {2, 4}).value();
 
   HloInstruction* a = builder.AddInstruction(
       HloInstruction::CreateParameter(0, f32_shape, "a"));
@@ -311,10 +311,10 @@ TEST_F(FloatNormalizationTest, ResolveUnsupportedMixedPrecisionSubtraction) {
 }
 
 TEST_F(FloatNormalizationTest, ResolveUnsupportedMixedPrecisionReduce) {
-  Shape f32_input_shape = ShapeUtil::MakeShape(F32, {2, 4});
-  Shape f32_output_shape = ShapeUtil::MakeShape(F32, {4});
+  Shape f32_input_shape = ShapeUtil::MakeValidatedShape(F32, {2, 4}).value();
+  Shape f32_output_shape = ShapeUtil::MakeValidatedShape(F32, {4}).value();
 
-  Shape bf16_scalar_shape = ShapeUtil::MakeShape(BF16, {});
+  Shape bf16_scalar_shape = ShapeUtil::MakeValidatedShape(BF16, {}).value();
 
   auto reduce_comp_builder = HloComputation::Builder("reduce_comp");
   auto reduce_comp_param0 = reduce_comp_builder.AddInstruction(
@@ -370,17 +370,19 @@ TEST_F(FloatNormalizationTest, ResolveMixedPrecisionTupleAllReduce) {
   auto module = CreateNewVerifiedModule();
   HloComputation::Builder sum_builder("sum");
   auto x = sum_builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {}), "x"));
+      /*parameter_number=*/0, ShapeUtil::MakeValidatedShape(F32, {}).value(),
+      "x"));
   auto y = sum_builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/1, ShapeUtil::MakeShape(F32, {}), "y"));
+      /*parameter_number=*/1, ShapeUtil::MakeValidatedShape(F32, {}).value(),
+      "y"));
   sum_builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd, x, y));
+      ShapeUtil::MakeValidatedShape(F32, {}).value(), HloOpcode::kAdd, x, y));
   HloComputation* reduction =
       module->AddEmbeddedComputation(sum_builder.Build());
 
   auto builder = HloComputation::Builder(TestName());
-  Shape f32_shape = ShapeUtil::MakeShape(F32, {2, 4});
-  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {2, 4});
+  Shape f32_shape = ShapeUtil::MakeValidatedShape(F32, {2, 4}).value();
+  Shape bf16_shape = ShapeUtil::MakeValidatedShape(BF16, {2, 4}).value();
 
   HloInstruction* a = builder.AddInstruction(
       HloInstruction::CreateParameter(0, f32_shape, "a"));
@@ -388,7 +390,8 @@ TEST_F(FloatNormalizationTest, ResolveMixedPrecisionTupleAllReduce) {
       HloInstruction::CreateParameter(1, bf16_shape, "b"));
 
   HloInstruction* crs = builder.AddInstruction(HloInstruction::CreateAllReduce(
-      ShapeUtil::MakeTupleShape({f32_shape, bf16_shape}), {a, b}, reduction,
+      ShapeUtil::MakeValidatedTupleShape({f32_shape, bf16_shape}).value(),
+      {a, b}, reduction,
       /*device_list=*/CollectiveDeviceList(),
       /*constrain_layout=*/false,
       /*channel_id=*/std::nullopt,
@@ -409,8 +412,8 @@ TEST_F(FloatNormalizationTest, ResolveMixedPrecisionTupleAllToAllToBF16) {
   auto module = CreateNewVerifiedModule(TestName(), /*replica_count=*/2);
 
   auto builder = HloComputation::Builder(TestName());
-  Shape f32_shape = ShapeUtil::MakeShape(F32, {2, 4});
-  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {2, 4});
+  Shape f32_shape = ShapeUtil::MakeValidatedShape(F32, {2, 4}).value();
+  Shape bf16_shape = ShapeUtil::MakeValidatedShape(BF16, {2, 4}).value();
 
   HloInstruction* a = builder.AddInstruction(
       HloInstruction::CreateParameter(0, f32_shape, "a"));
@@ -419,8 +422,8 @@ TEST_F(FloatNormalizationTest, ResolveMixedPrecisionTupleAllToAllToBF16) {
   replica_groups[0].add_replica_ids(0);
   replica_groups[0].add_replica_ids(1);
   HloInstruction* a2a = builder.AddInstruction(HloInstruction::CreateAllToAll(
-      ShapeUtil::MakeTupleShape({bf16_shape, bf16_shape}), {a, a},
-      CollectiveDeviceList(replica_groups), /*constrain_layout=*/false,
+      ShapeUtil::MakeValidatedTupleShape({bf16_shape, bf16_shape}).value(),
+      {a, a}, CollectiveDeviceList(replica_groups), /*constrain_layout=*/false,
       std::nullopt));
   auto computation = module->AddEntryComputation(builder.Build());
 
@@ -439,8 +442,8 @@ TEST_F(FloatNormalizationTest, ResolveMixedPrecisionTupleAllToAllToF32) {
   auto module = CreateNewVerifiedModule(TestName(), /*replica_count=*/2);
 
   auto builder = HloComputation::Builder(TestName());
-  Shape f32_shape = ShapeUtil::MakeShape(F32, {2, 4});
-  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {2, 4});
+  Shape f32_shape = ShapeUtil::MakeValidatedShape(F32, {2, 4}).value();
+  Shape bf16_shape = ShapeUtil::MakeValidatedShape(BF16, {2, 4}).value();
 
   HloInstruction* a = builder.AddInstruction(
       HloInstruction::CreateParameter(0, f32_shape, "a"));
@@ -449,8 +452,8 @@ TEST_F(FloatNormalizationTest, ResolveMixedPrecisionTupleAllToAllToF32) {
   replica_groups[0].add_replica_ids(0);
   replica_groups[0].add_replica_ids(1);
   HloInstruction* a2a = builder.AddInstruction(HloInstruction::CreateAllToAll(
-      ShapeUtil::MakeTupleShape({bf16_shape, f32_shape}), {a, a},
-      CollectiveDeviceList(replica_groups), /*constrain_layout=*/false,
+      ShapeUtil::MakeValidatedTupleShape({bf16_shape, f32_shape}).value(),
+      {a, a}, CollectiveDeviceList(replica_groups), /*constrain_layout=*/false,
       std::nullopt));
   auto computation = module->AddEntryComputation(builder.Build());
 
@@ -468,9 +471,9 @@ TEST_F(FloatNormalizationTest, ResolveMixedPrecisionTupleAllToAllToF32) {
 TEST_F(FloatNormalizationTest, ResolveMixedPrecisionTupleSort) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
-  Shape f32_shape = ShapeUtil::MakeShape(F32, {1024});
-  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {1024});
-  Shape s32_shape = ShapeUtil::MakeShape(BF16, {1024});
+  Shape f32_shape = ShapeUtil::MakeValidatedShape(F32, {1024}).value();
+  Shape bf16_shape = ShapeUtil::MakeValidatedShape(BF16, {1024}).value();
+  Shape s32_shape = ShapeUtil::MakeValidatedShape(BF16, {1024}).value();
 
   HloInstruction* key = builder.AddInstruction(
       HloInstruction::CreateParameter(0, f32_shape, "key"));
@@ -479,9 +482,9 @@ TEST_F(FloatNormalizationTest, ResolveMixedPrecisionTupleSort) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto* sort,
-      MakeSortHlo(ShapeUtil::MakeTupleShape({bf16_shape, s32_shape}),
-                  {key, value}, 0, /*is_stable=*/false, &builder,
-                  module.get()));
+      MakeSortHlo(
+          ShapeUtil::MakeValidatedTupleShape({bf16_shape, s32_shape}).value(),
+          {key, value}, 0, /*is_stable=*/false, &builder, module.get()));
   builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(bf16_shape, sort, 0));
 
@@ -497,8 +500,8 @@ TEST_F(FloatNormalizationTest, ResolveMixedPrecisionTupleSort) {
 TEST_F(FloatNormalizationTest, ResolveMixedPrecisionTupleSortRoot) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
-  Shape f32_shape = ShapeUtil::MakeShape(F32, {1024});
-  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {1024});
+  Shape f32_shape = ShapeUtil::MakeValidatedShape(F32, {1024}).value();
+  Shape bf16_shape = ShapeUtil::MakeValidatedShape(BF16, {1024}).value();
 
   HloInstruction* key = builder.AddInstruction(
       HloInstruction::CreateParameter(0, f32_shape, "key"));
@@ -507,9 +510,9 @@ TEST_F(FloatNormalizationTest, ResolveMixedPrecisionTupleSortRoot) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto* sort,
-      MakeSortHlo(ShapeUtil::MakeTupleShape({bf16_shape, f32_shape}),
-                  {key, value}, 0, /*is_stable=*/false, &builder,
-                  module.get()));
+      MakeSortHlo(
+          ShapeUtil::MakeValidatedTupleShape({bf16_shape, f32_shape}).value(),
+          {key, value}, 0, /*is_stable=*/false, &builder, module.get()));
 
   auto computation = module->AddEntryComputation(builder.Build());
 
@@ -533,7 +536,7 @@ TEST_F(FloatNormalizationTest, ResolveMixedPrecisionTupleSortRoot) {
 // to resolving unsupported BF16 operand.
 TEST_F(FloatNormalizationTest, DoNotAddUnsupportedMixedPrecision) {
   auto builder = HloComputation::Builder(TestName());
-  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {4, 4});
+  Shape bf16_shape = ShapeUtil::MakeValidatedShape(BF16, {4, 4}).value();
 
   HloInstruction* a = builder.AddInstruction(
       HloInstruction::CreateParameter(0, bf16_shape, "a"));
@@ -564,8 +567,8 @@ TEST_F(FloatNormalizationTest, DoNotAddUnsupportedMixedPrecision) {
 
 TEST_F(FloatNormalizationTest, DoNotChangeBitcastConvert) {
   auto builder = HloComputation::Builder(TestName());
-  Shape u16_shape = ShapeUtil::MakeShape(U16, {4, 4});
-  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {4, 4});
+  Shape u16_shape = ShapeUtil::MakeValidatedShape(U16, {4, 4}).value();
+  Shape bf16_shape = ShapeUtil::MakeValidatedShape(BF16, {4, 4}).value();
 
   HloInstruction* a = builder.AddInstruction(
       HloInstruction::CreateParameter(0, u16_shape, "a"));
@@ -586,8 +589,8 @@ TEST_F(FloatNormalizationTest, DoNotChangeBitcastConvert) {
 TEST_P(FloatNormalizationF8Test, ResolveIfUnsupportedF8) {
   PrimitiveType f8_type = GetParam();
   auto builder = HloComputation::Builder(TestName());
-  Shape f16_shape = ShapeUtil::MakeShape(F16, {2, 4});
-  Shape f8_shape = ShapeUtil::MakeShape(f8_type, {2, 4});
+  Shape f16_shape = ShapeUtil::MakeValidatedShape(F16, {2, 4}).value();
+  Shape f8_shape = ShapeUtil::MakeValidatedShape(f8_type, {2, 4}).value();
 
   HloInstruction* a = builder.AddInstruction(
       HloInstruction::CreateParameter(0, f16_shape, "a"));
@@ -638,17 +641,19 @@ TEST_F(FloatNormalizationNoComputeSupportTest,
   auto module = CreateNewVerifiedModule();
   HloComputation::Builder sum_builder("sum");
   auto x = sum_builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/0, ShapeUtil::MakeShape(BF16, {}), "x"));
+      /*parameter_number=*/0, ShapeUtil::MakeValidatedShape(BF16, {}).value(),
+      "x"));
   auto y = sum_builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/1, ShapeUtil::MakeShape(BF16, {}), "y"));
+      /*parameter_number=*/1, ShapeUtil::MakeValidatedShape(BF16, {}).value(),
+      "y"));
   sum_builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(BF16, {}), HloOpcode::kAdd, x, y));
+      ShapeUtil::MakeValidatedShape(BF16, {}).value(), HloOpcode::kAdd, x, y));
   HloComputation* reduction =
       module->AddEmbeddedComputation(sum_builder.Build());
 
   auto builder = HloComputation::Builder(TestName());
-  Shape bf16_shape_a = ShapeUtil::MakeShape(BF16, {2, 4});
-  Shape bf16_shape_b = ShapeUtil::MakeShape(BF16, {16, 16});
+  Shape bf16_shape_a = ShapeUtil::MakeValidatedShape(BF16, {2, 4}).value();
+  Shape bf16_shape_b = ShapeUtil::MakeValidatedShape(BF16, {16, 16}).value();
 
   HloInstruction* a = builder.AddInstruction(
       HloInstruction::CreateParameter(0, bf16_shape_a, "a"));
@@ -656,8 +661,8 @@ TEST_F(FloatNormalizationNoComputeSupportTest,
       HloInstruction::CreateParameter(1, bf16_shape_b, "b"));
 
   HloInstruction* crs = builder.AddInstruction(HloInstruction::CreateAllReduce(
-      ShapeUtil::MakeTupleShape({bf16_shape_a, bf16_shape_b}), {a, b},
-      reduction,
+      ShapeUtil::MakeValidatedTupleShape({bf16_shape_a, bf16_shape_b}).value(),
+      {a, b}, reduction,
       /*device_list=*/CollectiveDeviceList(),
       /*constrain_layout=*/false,
       /*channel_id=*/std::nullopt,
@@ -680,25 +685,27 @@ TEST_F(FloatNormalizationNoComputeSupportTest,
   auto module = CreateNewVerifiedModule();
   HloComputation::Builder sum_builder("sum");
   auto x = sum_builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/0, ShapeUtil::MakeShape(BF16, {}), "x"));
+      /*parameter_number=*/0, ShapeUtil::MakeValidatedShape(BF16, {}).value(),
+      "x"));
   auto y = sum_builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/1, ShapeUtil::MakeShape(BF16, {}), "y"));
+      /*parameter_number=*/1, ShapeUtil::MakeValidatedShape(BF16, {}).value(),
+      "y"));
   sum_builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(BF16, {}), HloOpcode::kAdd, x, y));
+      ShapeUtil::MakeValidatedShape(BF16, {}).value(), HloOpcode::kAdd, x, y));
   HloComputation* reduction =
       module->AddEmbeddedComputation(sum_builder.Build());
 
   auto builder = HloComputation::Builder(TestName());
 
-  Shape bf16_shape_a = ShapeUtil::MakeShape(BF16, {2, 4});
+  Shape bf16_shape_a = ShapeUtil::MakeValidatedShape(BF16, {2, 4}).value();
   HloInstruction* a = builder.AddInstruction(
       HloInstruction::CreateParameter(0, bf16_shape_a, "a"));
 
-  Shape bf16_shape_b = ShapeUtil::MakeShape(BF16, {2, 4, 2});
+  Shape bf16_shape_b = ShapeUtil::MakeValidatedShape(BF16, {2, 4, 2}).value();
   HloInstruction* b = builder.AddInstruction(
       HloInstruction::CreateParameter(1, bf16_shape_b, "b"));
 
-  Shape bf16_scalar_shape = ShapeUtil::MakeShape(BF16, {});
+  Shape bf16_scalar_shape = ShapeUtil::MakeValidatedShape(BF16, {}).value();
   HloInstruction* init = builder.AddInstruction(
       HloInstruction::CreateParameter(2, bf16_scalar_shape, "init"));
 
@@ -741,16 +748,18 @@ TEST_F(FloatNormalizationNoComputeSupportTest,
   auto module = CreateNewVerifiedModule();
   HloComputation::Builder sum_builder("sum");
   auto x = sum_builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/0, ShapeUtil::MakeShape(BF16, {}), "x"));
+      /*parameter_number=*/0, ShapeUtil::MakeValidatedShape(BF16, {}).value(),
+      "x"));
   auto y = sum_builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/1, ShapeUtil::MakeShape(BF16, {}), "y"));
+      /*parameter_number=*/1, ShapeUtil::MakeValidatedShape(BF16, {}).value(),
+      "y"));
   sum_builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(BF16, {}), HloOpcode::kAdd, x, y));
+      ShapeUtil::MakeValidatedShape(BF16, {}).value(), HloOpcode::kAdd, x, y));
   HloComputation* reduction =
       module->AddEmbeddedComputation(sum_builder.Build());
 
   auto builder = HloComputation::Builder(TestName());
-  Shape bf16_shape_a = ShapeUtil::MakeShape(BF16, {2, 4});
+  Shape bf16_shape_a = ShapeUtil::MakeValidatedShape(BF16, {2, 4}).value();
 
   HloInstruction* a = builder.AddInstruction(
       HloInstruction::CreateParameter(0, bf16_shape_a, "a"));
@@ -776,17 +785,20 @@ TEST_F(FloatNormalizationNoComputeSupportTest,
   auto module = CreateNewVerifiedModule();
   HloComputation::Builder sum_builder("sum");
   auto x = sum_builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/0, ShapeUtil::MakeShape(BF16, {}), "x"));
+      /*parameter_number=*/0, ShapeUtil::MakeValidatedShape(BF16, {}).value(),
+      "x"));
   auto y = sum_builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/1, ShapeUtil::MakeShape(BF16, {}), "y"));
+      /*parameter_number=*/1, ShapeUtil::MakeValidatedShape(BF16, {}).value(),
+      "y"));
   sum_builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(BF16, {}), HloOpcode::kAdd, x, y));
+      ShapeUtil::MakeValidatedShape(BF16, {}).value(), HloOpcode::kAdd, x, y));
   HloComputation* reduction =
       module->AddEmbeddedComputation(sum_builder.Build());
 
   auto builder = HloComputation::Builder(TestName());
-  Shape bf16_shape_a = ShapeUtil::MakeShape(BF16, {2, 4});
-  Shape bf16_shape_scattered = ShapeUtil::MakeShape(BF16, {1, 4});
+  Shape bf16_shape_a = ShapeUtil::MakeValidatedShape(BF16, {2, 4}).value();
+  Shape bf16_shape_scattered =
+      ShapeUtil::MakeValidatedShape(BF16, {1, 4}).value();
 
   HloInstruction* a = builder.AddInstruction(
       HloInstruction::CreateParameter(0, bf16_shape_a, "a"));
@@ -810,8 +822,8 @@ TEST_F(FloatNormalizationNoComputeSupportTest,
 
 TEST_F(FloatNormalizationTest, ConvertBeforeTuple) {
   auto builder = HloComputation::Builder(TestName());
-  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {2, 4});
-  Shape f32_shape = ShapeUtil::MakeShape(F32, {2, 4});
+  Shape bf16_shape = ShapeUtil::MakeValidatedShape(BF16, {2, 4}).value();
+  Shape f32_shape = ShapeUtil::MakeValidatedShape(F32, {2, 4}).value();
 
   HloInstruction* a = builder.AddInstruction(
       HloInstruction::CreateParameter(0, bf16_shape, "a"));
@@ -825,8 +837,8 @@ TEST_F(FloatNormalizationTest, ConvertBeforeTuple) {
       builder.AddInstruction(HloInstruction::CreateConvert(f32_shape, add));
 
   builder.AddInstruction(HloInstruction::CreateVariadic(
-      ShapeUtil::MakeTupleShape({f32_shape, bf16_shape}), HloOpcode::kTuple,
-      {convert, add}));
+      ShapeUtil::MakeValidatedTupleShape({f32_shape, bf16_shape}).value(),
+      HloOpcode::kTuple, {convert, add}));
 
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());

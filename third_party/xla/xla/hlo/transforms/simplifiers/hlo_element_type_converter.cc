@@ -79,7 +79,7 @@ Shape GetConvertedTupleShape(const Shape& shape, PrimitiveType from_type,
     }
     new_tuple_subshapes.push_back(subshape);
   }
-  return ShapeUtil::MakeTupleShape(new_tuple_subshapes);
+  return ShapeUtil::MakeValidatedTupleShape(new_tuple_subshapes).value();
 }
 
 // Converts the elements of the result of `hlo` to produce a new tuple with

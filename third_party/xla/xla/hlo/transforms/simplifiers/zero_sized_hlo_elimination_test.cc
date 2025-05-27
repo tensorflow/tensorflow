@@ -44,7 +44,8 @@ class ZeroSizedHloEliminationTest : public HloHardwareIndependentTestBase {
         builder_("zero_sized_computation"),
         zero_sized_param_(
             builder_.AddInstruction(HloInstruction::CreateParameter(
-                0, ShapeUtil::MakeShape(F32, {3, 0}), "zero sized param"))) {}
+                0, ShapeUtil::MakeValidatedShape(F32, {3, 0}).value(),
+                "zero sized param"))) {}
 
   absl::StatusOr<bool> RunZeroSizedElimination() {
     module_ = CreateNewVerifiedModule("zero_sized_elimination_test_module");
@@ -97,7 +98,7 @@ TEST_F(ZeroSizedHloEliminationTest, DoesNotEliminateConstant) {
 }
 
 TEST_F(ZeroSizedHloEliminationTest, ZeroSizedInstructionWithoutLayoutFolded) {
-  Shape op_shape = ShapeUtil::MakeShape(F32, {4, 0});
+  Shape op_shape = ShapeUtil::MakeValidatedShape(F32, {4, 0}).value();
   op_shape.clear_layout();
   HloInstruction* param1 = builder_.AddInstruction(
       HloInstruction::CreateParameter(1, op_shape, "zero sized param 1"));

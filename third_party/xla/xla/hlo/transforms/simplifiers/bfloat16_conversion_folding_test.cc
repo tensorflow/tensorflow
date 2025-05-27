@@ -89,8 +89,8 @@ class BFloat16ConversionFoldingTest : public HloHardwareIndependentTestBase {
 
 TEST_F(BFloat16ConversionFoldingTest, FoldIfSupported) {
   auto builder = HloComputation::Builder(TestName());
-  Shape f32_shape = ShapeUtil::MakeShape(F32, {2, 4});
-  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {2, 4});
+  Shape f32_shape = ShapeUtil::MakeValidatedShape(F32, {2, 4}).value();
+  Shape bf16_shape = ShapeUtil::MakeValidatedShape(BF16, {2, 4}).value();
 
   HloInstruction* a = builder.AddInstruction(
       HloInstruction::CreateParameter(0, f32_shape, "a"));
@@ -123,8 +123,8 @@ TEST_F(BFloat16ConversionFoldingTest, FoldIfSupported) {
 
 TEST_F(BFloat16ConversionFoldingTest, DoNotFoldIfUnsupported) {
   auto builder = HloComputation::Builder(TestName());
-  Shape f32_shape = ShapeUtil::MakeShape(F32, {2, 4});
-  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {2, 4});
+  Shape f32_shape = ShapeUtil::MakeValidatedShape(F32, {2, 4}).value();
+  Shape bf16_shape = ShapeUtil::MakeValidatedShape(BF16, {2, 4}).value();
 
   HloInstruction* a = builder.AddInstruction(
       HloInstruction::CreateParameter(0, f32_shape, "a"));
@@ -158,8 +158,8 @@ TEST_F(BFloat16ConversionFoldingTest, DoNotFoldIfUnsupported) {
 
 TEST_F(BFloat16ConversionFoldingTest, DoNotFoldUnsupportedMixedPrecision) {
   auto builder = HloComputation::Builder(TestName());
-  Shape f32_shape = ShapeUtil::MakeShape(F32, {2, 4});
-  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {2, 4});
+  Shape f32_shape = ShapeUtil::MakeValidatedShape(F32, {2, 4}).value();
+  Shape bf16_shape = ShapeUtil::MakeValidatedShape(BF16, {2, 4}).value();
 
   HloInstruction* a = builder.AddInstruction(
       HloInstruction::CreateParameter(0, f32_shape, "a"));
@@ -193,8 +193,8 @@ TEST_F(BFloat16ConversionFoldingTest, DoNotFoldUnsupportedMixedPrecision) {
 
 TEST_F(BFloat16ConversionFoldingTest, DoNotFoldTuple) {
   auto builder = HloComputation::Builder(TestName());
-  Shape f32_shape = ShapeUtil::MakeShape(F32, {2, 4});
-  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {2, 4});
+  Shape f32_shape = ShapeUtil::MakeValidatedShape(F32, {2, 4}).value();
+  Shape bf16_shape = ShapeUtil::MakeValidatedShape(BF16, {2, 4}).value();
 
   HloInstruction* a = builder.AddInstruction(
       HloInstruction::CreateParameter(0, f32_shape, "a"));
@@ -221,8 +221,8 @@ TEST_F(BFloat16ConversionFoldingTest, DoNotFoldTuple) {
 }
 
 TEST_F(BFloat16ConversionFoldingTest, DoNotFoldAsyncOp) {
-  Shape f32_shape = ShapeUtil::MakeShape(F32, {2, 4});
-  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {2, 4});
+  Shape f32_shape = ShapeUtil::MakeValidatedShape(F32, {2, 4}).value();
+  Shape bf16_shape = ShapeUtil::MakeValidatedShape(BF16, {2, 4}).value();
 
   auto module = CreateNewVerifiedModule();
 
@@ -246,9 +246,10 @@ TEST_F(BFloat16ConversionFoldingTest, DoNotFoldAsyncOp) {
       builder.AddInstruction(HloInstruction::CreateConvert(f32_shape, b));
   HloInstruction* async_start =
       builder.AddInstruction(HloInstruction::CreateAsyncStart(
-          ShapeUtil::MakeTupleShape(
+          ShapeUtil::MakeValidatedTupleShape(
               {ShapeUtil::MakeTupleShape({f32_shape, f32_shape}), f32_shape,
-               ShapeUtil::MakeScalarShape(U32)}),
+               ShapeUtil::MakeScalarShape(U32)})
+              .value(),
           {a, convert0}, async_computation));
   HloInstruction* async_done = builder.AddInstruction(
       HloInstruction::CreateAsyncDone(f32_shape, async_start));
@@ -270,15 +271,17 @@ TEST_F(BFloat16ConversionFoldingTest, FoldAllReduceTupleOutput) {
   auto module = CreateNewVerifiedModule();
   HloComputation::Builder sum_builder("add");
   auto x = sum_builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {}), "x"));
+      /*parameter_number=*/0, ShapeUtil::MakeValidatedShape(F32, {}).value(),
+      "x"));
   auto y = sum_builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/1, ShapeUtil::MakeShape(F32, {}), "y"));
+      /*parameter_number=*/1, ShapeUtil::MakeValidatedShape(F32, {}).value(),
+      "y"));
   sum_builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd, x, y));
+      ShapeUtil::MakeValidatedShape(F32, {}).value(), HloOpcode::kAdd, x, y));
   HloComputation* sum = module->AddEmbeddedComputation(sum_builder.Build());
 
-  Shape f32_shape = ShapeUtil::MakeShape(F32, {2, 4});
-  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {2, 4});
+  Shape f32_shape = ShapeUtil::MakeValidatedShape(F32, {2, 4}).value();
+  Shape bf16_shape = ShapeUtil::MakeValidatedShape(BF16, {2, 4}).value();
 
   HloInstruction* a = builder.AddInstruction(
       HloInstruction::CreateParameter(0, bf16_shape, "a"));
@@ -288,7 +291,8 @@ TEST_F(BFloat16ConversionFoldingTest, FoldAllReduceTupleOutput) {
       HloInstruction::CreateParameter(1, f32_shape, "b"));
 
   HloInstruction* crs = builder.AddInstruction(HloInstruction::CreateAllReduce(
-      ShapeUtil::MakeTupleShape({f32_shape, f32_shape}), {convert_a, b}, sum,
+      ShapeUtil::MakeValidatedTupleShape({f32_shape, f32_shape}).value(),
+      {convert_a, b}, sum,
       /*device_list=*/CollectiveDeviceList(),
       /*constrain_layout=*/false,
       /*channel_id=*/std::nullopt, /*use_global_device_ids=*/false));

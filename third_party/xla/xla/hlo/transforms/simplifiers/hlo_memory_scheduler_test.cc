@@ -78,7 +78,7 @@ TEST_F(HloSchedulingTest, LastUseScheduledFirst) {
   //
   // %add should be scheduled before %negate because %add is the last (and only)
   // use of %ab. Scheduling %add first then frees up %ab's buffer.
-  const Shape vec = ShapeUtil::MakeShape(xla::F32, {42});
+  const Shape vec = ShapeUtil::MakeValidatedShape(xla::F32, {42}).value();
   auto builder = HloComputation::Builder(TestName());
   auto param =
       builder.AddInstruction(HloInstruction::CreateParameter(0, vec, "param"));
@@ -223,7 +223,7 @@ ENTRY entry {
 
 TEST_F(HloSchedulingTest, TuplesAreAccountedCorrectly) {
   auto builder = HloComputation::Builder(TestName());
-  const Shape r1f32 = ShapeUtil::MakeShape(xla::F32, {6});
+  const Shape r1f32 = ShapeUtil::MakeValidatedShape(xla::F32, {6}).value();
 
   // Wrap lit in abs because constants are considered free by
   // IgnoreInstruction, and it skews the accounting.
@@ -265,7 +265,7 @@ TEST_F(HloSchedulingTest, TuplesAreAccountedCorrectly) {
 }
 
 TEST_F(HloSchedulingTest, MultiOutputFusionAccountedCorrectly) {
-  const Shape r1f32 = ShapeUtil::MakeShape(xla::F32, {5});
+  const Shape r1f32 = ShapeUtil::MakeValidatedShape(xla::F32, {5}).value();
   HloComputation::Builder builder(TestName());
 
   auto c1 = builder.AddInstruction(HloInstruction::CreateConstant(

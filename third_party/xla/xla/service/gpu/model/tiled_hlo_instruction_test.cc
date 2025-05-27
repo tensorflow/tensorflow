@@ -42,7 +42,8 @@ class TiledHloInstructionTest : public HloHardwareIndependentTestBase {
 TEST_F(TiledHloInstructionTest, TileSizesAndStridesShouldMatchHloShapeRank) {
   std::unique_ptr<HloInstruction> hlo = HloInstruction::CreateParameter(
       /*parameter_number=*/0,
-      ShapeUtil::MakeShape(PrimitiveType::F32, {32, 64}), "p0");
+      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {32, 64}).value(),
+      "p0");
 
   IndexingMap tile_offsets_indexing = IndexingMap::FromTensorSizes(
       ParseAffineMap("(d0) -> (d0 floordiv 16, (d0 mod 16) * 16)",
@@ -69,7 +70,8 @@ TEST_F(TiledHloInstructionTest,
        ShouldReturnErrorIfBlockIdToTileOffsetsIndexingIsInvalid) {
   std::unique_ptr<HloInstruction> hlo = HloInstruction::CreateParameter(
       /*parameter_number=*/0,
-      ShapeUtil::MakeShape(PrimitiveType::F32, {32, 64}), "p0");
+      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {32, 64}).value(),
+      "p0");
 
   IndexingMap tile_offsets_indexing = IndexingMap::FromTensorSizes(
       ParseAffineMap("(d0) -> (2 * d0)", &mlir_context_),
@@ -104,7 +106,8 @@ TEST_F(TiledHloFusionInstructionTest,
        TileSizesAndStridesShouldMatchHloShapeRank) {
   std::unique_ptr<HloInstruction> hlo = HloInstruction::CreateParameter(
       /*parameter_number=*/0,
-      ShapeUtil::MakeShape(PrimitiveType::F32, {32, 64}), "p0");
+      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {32, 64}).value(),
+      "p0");
 
   IndexingMap tile_offsets_indexing = IndexingMap::FromTensorSizes(
       ParseAffineMap("(d0) -> (d0 floordiv 16, (d0 mod 16) * 16)",

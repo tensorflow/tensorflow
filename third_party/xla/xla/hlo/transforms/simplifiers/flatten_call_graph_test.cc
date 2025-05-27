@@ -87,9 +87,9 @@ class FlattenCallGraphTest : public HloHardwareIndependentTestBase {
         HloInstruction::CreateParameter(0, kScalarShape, "param0"));
     HloInstruction* zero = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
-    builder.AddInstruction(
-        HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), param0,
-                                      zero, ComparisonDirection::kGt));
+    builder.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeValidatedShape(PRED, {}).value(), param0, zero,
+        ComparisonDirection::kGt));
     return builder.Build();
   }
 
@@ -99,7 +99,7 @@ class FlattenCallGraphTest : public HloHardwareIndependentTestBase {
     return result;
   }
 
-  const Shape kScalarShape = ShapeUtil::MakeShape(F32, {});
+  const Shape kScalarShape = ShapeUtil::MakeValidatedShape(F32, {}).value();
 };
 
 TEST_F(FlattenCallGraphTest, ComplexGraph) {
@@ -162,11 +162,11 @@ TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
     HloComputation::Builder builder(TestName() + ".cond");
     HloInstruction* param0 =
         builder.AddInstruction(HloInstruction::CreateParameter(
-            0, ShapeUtil::MakeShape(PRED, {}), "param0"));
+            0, ShapeUtil::MakeValidatedShape(PRED, {}).value(), "param0"));
     HloInstruction* false_constant = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
     builder.AddInstruction(HloInstruction::CreateCompare(
-        ShapeUtil::MakeShape(PRED, {}), param0, false_constant,
+        ShapeUtil::MakeValidatedShape(PRED, {}).value(), param0, false_constant,
         ComparisonDirection::kEq));
     cond_computation = module->AddEmbeddedComputation(builder.Build());
   }
@@ -178,8 +178,8 @@ TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
     HloInstruction* false_constant = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
     while_op = builder.AddInstruction(HloInstruction::CreateWhile(
-        ShapeUtil::MakeShape(PRED, {}), cond_computation, cond_computation,
-        false_constant));
+        ShapeUtil::MakeValidatedShape(PRED, {}).value(), cond_computation,
+        cond_computation, false_constant));
     entry_computation = module->AddEntryComputation(builder.Build());
   }
 

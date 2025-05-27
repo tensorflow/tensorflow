@@ -82,7 +82,8 @@ class HostMemoryTransferAsyncifierVisitor : public DfsHloVisitorWithDefault {
 
     // Everything is as expected. Replace this dynamic-slice with the async
     // equivalent.
-    const Shape context_shape = ShapeUtil::MakeScalarShape(U32);
+    const Shape context_shape =
+        ShapeUtil::MakeValidatedScalarShape(U32).value();
     TF_ASSIGN_OR_RETURN(HloInstruction * async_done,
                         dynamic_slice->parent()->CreateAsyncInstructions(
                             dynamic_slice, {context_shape}));
@@ -139,7 +140,8 @@ class HostMemoryTransferAsyncifierVisitor : public DfsHloVisitorWithDefault {
 
     // Everything is as expected. Replace this dynamic-update-slice with the
     // async equivalent.
-    const Shape context_shape = ShapeUtil::MakeScalarShape(U32);
+    const Shape context_shape =
+        ShapeUtil::MakeValidatedScalarShape(U32).value();
     TF_ASSIGN_OR_RETURN(HloInstruction * async_done,
                         dynamic_update_slice->parent()->CreateAsyncInstructions(
                             dynamic_update_slice, {context_shape}));
@@ -176,7 +178,8 @@ class HostMemoryTransferAsyncifierVisitor : public DfsHloVisitorWithDefault {
     }
 
     // Everything is as expected. Replace this copy with the async equivalent.
-    const Shape context_shape = ShapeUtil::MakeScalarShape(U32);
+    const Shape context_shape =
+        ShapeUtil::MakeValidatedScalarShape(U32).value();
     TF_ASSIGN_OR_RETURN(
         HloInstruction * async_done,
         copy->parent()->CreateAsyncInstructions(copy, {context_shape}));

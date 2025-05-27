@@ -69,7 +69,8 @@ absl::StatusOr<bool> CanonicalizeNonTupleConditional(
     HloInstruction* const param = branch->parameter_instruction(0);
     // Canonicalize branch inputs to tuples.
     if (!param->shape().IsTuple()) {
-      Shape shape = ShapeUtil::MakeTupleShape({param->shape()});
+      Shape shape =
+          ShapeUtil::MakeValidatedTupleShape({param->shape()}).value();
       HloInstruction* const new_param = branch->ReplaceParameter(
           0, HloInstruction::CreateParameter(0, shape, param->name()));
       HloInstruction* const gte = branch->AddInstruction(
@@ -105,7 +106,9 @@ absl::StatusOr<bool> CanonicalizeNonTupleConditional(
   // Canonicalize conditional outputs to tuples.
   const Shape& root_shape = conditional->shape();
   if (!root_shape.IsTuple()) {
-    auto new_shape = ShapeUtil::MakeTupleShape(absl::MakeSpan(&root_shape, 1));
+    auto new_shape =
+        ShapeUtil::MakeValidatedTupleShape(absl::MakeSpan(&root_shape, 1))
+            .value();
     auto new_conditional =
         parent->AddInstruction(conditional->CloneWithNewShape(new_shape));
     auto gte = parent->AddInstruction(

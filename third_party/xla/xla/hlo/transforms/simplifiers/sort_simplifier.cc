@@ -88,9 +88,10 @@ absl::StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
     }
   }
 
-  Shape new_sort_shape = new_shapes.size() == 1
-                             ? *new_shapes[0]
-                             : ShapeUtil::MakeTupleShapeWithPtrs(new_shapes);
+  Shape new_sort_shape =
+      new_shapes.size() == 1
+          ? *new_shapes[0]
+          : ShapeUtil::MakeValidatedTupleShapeWithPtrs(new_shapes).value();
   HloInstruction* new_sort = computation->AddInstruction(
       sort->CloneWithNewOperands(new_sort_shape, operands));
   absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
@@ -100,8 +101,9 @@ absl::StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
     auto* old_lhs_parameter = comparator->parameter_instruction(i * 2);
     auto* old_rhs_parameter = comparator->parameter_instruction(i * 2 + 1);
     if (used_indices.contains(i)) {
-      Shape scalar_shape =
-          ShapeUtil::MakeShape(sort->operand(i)->shape().element_type(), {});
+      Shape scalar_shape = ShapeUtil::MakeValidatedShape(
+                               sort->operand(i)->shape().element_type(), {})
+                               .value();
       replacements[old_lhs_parameter] = HloInstruction::CreateParameter(
           parameter_number, scalar_shape,
           absl::StrCat("p.", parameter_number / 2, ".lhs"));

@@ -115,9 +115,10 @@ absl::StatusOr<bool> RemoveMultiOutputFusionsUnusedOutputs(
     tuple_shapes.push_back(
         fusion_instruction->shape().tuple_shapes(tuple_index));
   }
-  Shape new_shape = tuple_shapes.size() == 1
-                        ? tuple_shapes[0]
-                        : ShapeUtil::MakeTupleShape(tuple_shapes);
+  Shape new_shape =
+      tuple_shapes.size() == 1
+          ? tuple_shapes[0]
+          : ShapeUtil::MakeValidatedTupleShape(tuple_shapes).value();
   *fusion_instruction->mutable_shape() = std::move(new_shape);
 
   // Update the users of the old fusion instruction.

@@ -748,7 +748,7 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
     }
 
     HloComputation::Builder b("scalar_add_computation");
-    Shape shape = ShapeUtil::MakeShape(type, {});
+    Shape shape = ShapeUtil::MakeValidatedShape(type, {}).value();
     simplifier_->UpdateLayout(&shape);
     auto scalar_lhs = b.AddInstruction(
         HloInstruction::CreateParameter(0, shape, "scalar_lhs"));

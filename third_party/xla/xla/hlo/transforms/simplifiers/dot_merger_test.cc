@@ -753,7 +753,8 @@ TEST_F(DotMergerTest, MergeSparseDotsSameMetadata) {
                                .WithShape(F32, {5, 20, 10})),
                   m::Slice(m::Op(&d1)))));
   EXPECT_EQ(d0, d1);
-  EXPECT_EQ(d0->operand(2)->shape(), ShapeUtil::MakeShape(U16, {5, 10, 2}));
+  EXPECT_EQ(d0->operand(2)->shape(),
+            ShapeUtil::MakeValidatedShape(U16, {5, 10, 2}).value());
 }
 
 TEST_F(DotMergerTest, MergeSparseDotsConcatMetadata) {
@@ -791,7 +792,8 @@ TEST_F(DotMergerTest, MergeSparseDotsConcatMetadata) {
                                .WithShape(F32, {5, 20, 10})),
                   m::Slice(m::Op(&d1)))));
   EXPECT_EQ(d0, d1);
-  EXPECT_EQ(d0->operand(2)->shape(), ShapeUtil::MakeShape(U16, {5, 20, 2}));
+  EXPECT_EQ(d0->operand(2)->shape(),
+            ShapeUtil::MakeValidatedShape(U16, {5, 20, 2}).value());
 }
 
 TEST_F(DotMergerTest, MergeSparseDotsDifferentMetadata) {

@@ -263,7 +263,7 @@ ENTRY main.5 {
 TEST(StreamExecutorGpuClientTest, PropagateError) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(DefaultOptions()));
-  auto shape = xla::ShapeUtil::MakeScalarShape(xla::F32);
+  auto shape = ShapeUtil::MakeValidatedScalarShape(xla::F32).value();
   absl::Status input_error = absl::InvalidArgumentError("input error");
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,
@@ -299,7 +299,7 @@ ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
 TEST(StreamExecutorGpuClientTest, DISABLED_DonateWithControlDependency) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(DefaultOptions()));
-  auto shape = xla::ShapeUtil::MakeScalarShape(xla::F32);
+  auto shape = ShapeUtil::MakeValidatedScalarShape(xla::F32).value();
   absl::Status input_error = absl::InvalidArgumentError("input error");
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,
@@ -903,7 +903,9 @@ TEST(StreamExecutorGpuClientTest, FromHostAsyncPinnedHostChunked) {
       client->addressable_devices()[0]->memory_space_by_kind(
           PinnedHostMemorySpace::kKind));
   std::vector<float> data{1, 3, 5, 7, 11, 13, 17, 19};
-  Shape shape = ShapeUtil::MakeShape(F32, {static_cast<int64_t>(data.size())});
+  Shape shape =
+      ShapeUtil::MakeValidatedShape(F32, {static_cast<int64_t>(data.size())})
+          .value();
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager> txm,
       client->CreateBuffersForAsyncHostToDevice({shape}, memspace));
@@ -941,7 +943,9 @@ TEST(StreamExecutorGpuClientTest, DeleteBufferThenFulfillBufferNoDeadLock) {
       client->addressable_devices()[0]->memory_space_by_kind(
           PinnedHostMemorySpace::kKind));
   std::vector<float> data{1, 3, 5, 7, 11, 13, 17, 19};
-  Shape shape = ShapeUtil::MakeShape(F32, {static_cast<int64_t>(data.size())});
+  Shape shape =
+      ShapeUtil::MakeValidatedShape(F32, {static_cast<int64_t>(data.size())})
+          .value();
   std::vector<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
       txms;
   for (int i = 0; i < 10000; ++i) {
@@ -1300,7 +1304,7 @@ TEST(TfrtCpuClientTest, CopyToMemorySpace) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(DefaultOptions()));
   for (auto* memory_space : client->memory_spaces()) {
-    xla::Shape shape = xla::ShapeUtil::MakeShape(S32, {128, 256});
+    xla::Shape shape = ShapeUtil::MakeValidatedShape(S32, {128, 256}).value();
     TF_ASSERT_OK_AND_ASSIGN(auto literal, xla::MakeFakeLiteral(shape));
     TF_ASSERT_OK_AND_ASSIGN(
         auto buffer, client->BufferFromHostLiteral(literal, memory_space));
@@ -1338,7 +1342,7 @@ TEST(StreamExecutorGpuClientTest, ShouldStageHostToDeviceTransfersSetToTrue) {
                           GetStreamExecutorGpuClient(options_staging));
 
   std::vector<float> data(1024, 1.0f);
-  Shape shape = ShapeUtil::MakeShape(F32, {1024});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {1024}).value();
 
   auto* staging_client =
       tensorflow::down_cast<StreamExecutorGpuClient*>(client_staging.get());
@@ -1367,7 +1371,7 @@ TEST(StreamExecutorGpuClientTest, ShouldStageHostToDeviceTransfersSetToFalse) {
                           GetStreamExecutorGpuClient(options_no_staging));
 
   std::vector<float> data(1024, 1.0f);
-  Shape shape = ShapeUtil::MakeShape(F32, {1024});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {1024}).value();
 
   auto* no_staging_client =
       tensorflow::down_cast<StreamExecutorGpuClient*>(client_no_staging.get());
@@ -1483,7 +1487,7 @@ TEST(StreamExecutorGpuClientTest, BufferFromHostBufferPinnedMemory) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(DefaultOptions()));
   std::vector<int32_t> data{1, 2, 3, 4};
-  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  Shape shape = ShapeUtil::MakeValidatedShape(S32, {4}).value();
   TF_ASSERT_OK_AND_ASSIGN(
       auto* pinned_memory_space,
       client->addressable_devices()[0]->memory_space_by_kind(
@@ -1509,7 +1513,7 @@ TEST(StreamExecutorGpuClientTest, CopyToPinnedHostMemorySpace) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(DefaultOptions()));
   std::vector<int32_t> data{1, 2, 3, 4};
-  Shape shape = ShapeUtil::MakeShape(S32, {4});
+  Shape shape = ShapeUtil::MakeValidatedShape(S32, {4}).value();
   auto device = client->addressable_devices()[0];
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,
@@ -1539,7 +1543,7 @@ TEST(StreamExecutorGpuClientTest, CopyToPinnedHostMemorySpaceInt4) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(DefaultOptions()));
   std::vector<int8_t> data{1, 2, 3, 4};
-  Shape shape = ShapeUtil::MakeShape(S4, {4});
+  Shape shape = ShapeUtil::MakeValidatedShape(S4, {4}).value();
   auto device = client->addressable_devices()[0];
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,
@@ -1576,7 +1580,7 @@ TEST(StreamExecutorGpuClientTest, OpaqueDeviceMemoryDataPointer) {
 
   // Create a pinned_host buffer
   std::vector<float> float_data{12.0, 34.0, 56.0, 78.0};
-  Shape shape = ShapeUtil::MakeShapeWithType<float>({4});
+  Shape shape = ShapeUtil::MakeValidatedShapeWithType<float>({4}).value();
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> buf,
       client->BufferFromHostBuffer(
@@ -1713,7 +1717,8 @@ TEST(StreamExecutorGpuClientTest, ExecutePinnedHostOutputTupleTest) {
   Shape host_shape = input->on_device_shape();
   host_shape.mutable_layout()->set_memory_space(Layout::kHostMemorySpace);
   Shape out_shape =
-      ShapeUtil::MakeTupleShape({input->on_device_shape(), host_shape});
+      ShapeUtil::MakeValidatedTupleShape({input->on_device_shape(), host_shape})
+          .value();
 
   // Set the result layout so that the compiler assertions on memory
   // spaces pass.
@@ -1839,7 +1844,8 @@ TEST(StreamExecutorGpuClientTest,
   Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, {4}, {0});
   Shape host_shape = shape;
   host_shape.mutable_layout()->set_memory_space(Layout::kHostMemorySpace);
-  Shape out_shape = ShapeUtil::MakeTupleShape({shape, host_shape});
+  Shape out_shape =
+      ShapeUtil::MakeValidatedTupleShape({shape, host_shape}).value();
 
   // Set the result layout so that the compiler assertions on memory
   // spaces pass.
@@ -2183,7 +2189,7 @@ TEST(StreamExecutorGpuClientTest,
 TEST(StreamExecutorGpuClientTest, GetDefaultLayout) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(DefaultOptions()));
-  auto shape = ShapeUtil::MakeShape(S4, {2, 2});
+  auto shape = ShapeUtil::MakeValidatedShape(S4, {2, 2}).value();
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto layout,
@@ -2380,7 +2386,9 @@ TEST(StreamExecutorGpuClientTest, MultipleDeviceShareDmaMapping) {
   for (int32_t i = 0; i < test_length; ++i) {
     data[i] = i;
   }
-  Shape shape = ShapeUtil::MakeShape(S32, {static_cast<int64_t>(data.size())});
+  Shape shape =
+      ShapeUtil::MakeValidatedShape(S32, {static_cast<int64_t>(data.size())})
+          .value();
   PjRtDevice* const first_device = client->addressable_devices()[0];
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -2424,7 +2432,7 @@ TEST(TpuLocalClientTest, RawBuffer) {
   std::vector<int32_t> data(256);
   std::iota(data.begin(), data.end(), 10);
 
-  Shape shape = ShapeUtil::MakeShape(S32, {256});
+  Shape shape = ShapeUtil::MakeValidatedShape(S32, {256}).value();
   auto buffer =
       client
           ->BufferFromHostBuffer(

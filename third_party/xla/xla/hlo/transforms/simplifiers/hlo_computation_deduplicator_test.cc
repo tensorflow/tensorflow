@@ -592,7 +592,7 @@ TEST_F(HloComputationDeduplicatorTest, DontRemoveRegionBEntryComp) {
 TEST_F(HloComputationDeduplicatorTest, LargeSubComputationTest) {
   // We are creating two identical computation, but it should not dedup them
   // since the number of instructions in each region is > 128.
-  const Shape shape = ShapeUtil::MakeScalarShape(S32);
+  const Shape shape = ShapeUtil::MakeValidatedScalarShape(S32).value();
   const int total_regions = 2;
   const int max_insns = 128;
   std::vector<HloComputation> comps;
@@ -613,9 +613,9 @@ TEST_F(HloComputationDeduplicatorTest, LargeSubComputationTest) {
   std::vector<HloInstruction *> insns;
   std::vector<HloInstruction *> consts;
   for (int region = 0; region < total_regions; region++) {
-    insns.push_back(main.AddInstruction(
-        HloInstruction::CreateParameter(region, ShapeUtil::MakeShape(S32, {10}),
-                                        "a" + std::to_string(region))));
+    insns.push_back(main.AddInstruction(HloInstruction::CreateParameter(
+        region, ShapeUtil::MakeValidatedShape(S32, {10}).value(),
+        "a" + std::to_string(region))));
     consts.push_back(main.AddInstruction(HloInstruction::CreateConstant(
         LiteralUtil::CreateR0<int32_t>(5 + region))));
   }
@@ -623,7 +623,8 @@ TEST_F(HloComputationDeduplicatorTest, LargeSubComputationTest) {
   for (auto comp : module->computations()) {
     ASSERT_LT(region, total_regions);
     main.AddInstruction(HloInstruction::CreateReduce(
-        ShapeUtil::MakeScalarShape(S32), insns[region], consts[region],
+        ShapeUtil::MakeValidatedScalarShape(S32).value(), insns[region],
+        consts[region],
         /*dimensions_to_reduce=*/{0}, comp));
   }
   module->AddEntryComputation(main.Build());

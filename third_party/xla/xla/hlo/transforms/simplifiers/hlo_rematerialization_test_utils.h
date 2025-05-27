@@ -64,14 +64,16 @@ class RematerializationTestBase : public HloHardwareIndependentTestBase {
     auto negate = builder.AddInstruction(
         HloInstruction::CreateUnary(vec1024_shape_, HloOpcode::kNegate, bcast));
     auto concat_1 = builder.AddInstruction(HloInstruction::CreateConcatenate(
-        ShapeUtil::MakeShape(xla::F32, {2048}), {negate, negate},
+        ShapeUtil::MakeValidatedShape(xla::F32, {2048}).value(),
+        {negate, negate},
         /*dimension=*/0));
     auto slice_1 = builder.AddInstruction(HloInstruction::CreateSlice(
         vec1_shape_, concat_1, /*start_indices=*/{0},
         /*limit_indices=*/{1},
         /*strides=*/{1}));
     auto concat_2 = builder.AddInstruction(HloInstruction::CreateConcatenate(
-        ShapeUtil::MakeShape(xla::F32, {1025}), {bcast, slice_1},
+        ShapeUtil::MakeValidatedShape(xla::F32, {1025}).value(),
+        {bcast, slice_1},
         /*dimension=*/0));
     // Add a final slice to make the parameter shape match the output shape
     // which is necessary to use this computation in a while.
@@ -113,7 +115,8 @@ class RematerializationTestBase : public HloHardwareIndependentTestBase {
     auto while_inst = builder.AddInstruction(HloInstruction::CreateWhile(
         vec1_shape_, while_cond, while_body, slice_1));
     auto concat = builder.AddInstruction(HloInstruction::CreateConcatenate(
-        ShapeUtil::MakeShape(xla::F32, {1025}), {bcast, while_inst},
+        ShapeUtil::MakeValidatedShape(xla::F32, {1025}).value(),
+        {bcast, while_inst},
         /*dimension=*/0));
     builder.AddInstruction(HloInstruction::CreateSlice(vec1_shape_, concat,
                                                        /*start_indices=*/{0},
@@ -140,9 +143,12 @@ class RematerializationTestBase : public HloHardwareIndependentTestBase {
 
  protected:
   // Various shapes used in the canned computations.
-  const Shape scalar_shape_ = ShapeUtil::MakeShape(xla::F32, {});
-  const Shape vec1_shape_ = ShapeUtil::MakeShape(xla::F32, {1});
-  const Shape vec1024_shape_ = ShapeUtil::MakeShape(xla::F32, {1024});
+  const Shape scalar_shape_ =
+      ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
+  const Shape vec1_shape_ =
+      ShapeUtil::MakeValidatedShape(xla::F32, {1}).value();
+  const Shape vec1024_shape_ =
+      ShapeUtil::MakeValidatedShape(xla::F32, {1024}).value();
 };
 
 }  // namespace xla

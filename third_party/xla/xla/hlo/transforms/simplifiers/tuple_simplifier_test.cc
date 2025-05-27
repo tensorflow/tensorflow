@@ -47,10 +47,12 @@ class TupleSimplifierTest : public HloHardwareIndependentTestBase {
     EXPECT_EQ(change_expected, changed_status.value());
   }
 
-  const Shape scalar_shape_ = ShapeUtil::MakeShape(F32, {});
-  const Shape tuple_shape_ = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {}), ShapeUtil::MakeShape(F32, {}),
-       ShapeUtil::MakeShape(F32, {})});
+  const Shape scalar_shape_ = ShapeUtil::MakeValidatedShape(F32, {}).value();
+  const Shape tuple_shape_ =
+      ShapeUtil::MakeValidatedTupleShape({ShapeUtil::MakeShape(F32, {}),
+                                          ShapeUtil::MakeShape(F32, {}),
+                                          ShapeUtil::MakeShape(F32, {})})
+          .value();
 };
 
 TEST_F(TupleSimplifierTest, TupleOfParameters) {

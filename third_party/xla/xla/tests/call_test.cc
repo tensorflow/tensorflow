@@ -72,9 +72,9 @@ class CallOpTest : public ClientLibraryTestRunnerMixin<
     return std::move(build_status).value();
   }
 
-  Shape r0f32_ = ShapeUtil::MakeShape(F32, {});
-  Shape r1s0f32_ = ShapeUtil::MakeShape(F32, {0});
-  Shape r1s2f32_ = ShapeUtil::MakeShape(F32, {2});
+  Shape r0f32_ = ShapeUtil::MakeValidatedShape(F32, {}).value();
+  Shape r1s0f32_ = ShapeUtil::MakeValidatedShape(F32, {0}).value();
+  Shape r1s2f32_ = ShapeUtil::MakeValidatedShape(F32, {2}).value();
 };
 
 TEST_F(CallOpTest, CallR0F32IdentityScalar) {
