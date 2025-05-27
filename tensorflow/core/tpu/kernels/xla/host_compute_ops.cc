@@ -80,8 +80,9 @@ absl::Status MakeXlaShapes(absl::Span<const TensorShape> shapes,
   }
   // Temporarily add a dummy output to the shape array before making the tuple:
   // this output is used for control dependencies between host compute ops.
-  xla_shapes->push_back(xla::ShapeUtil::MakeShape(xla::PRED, {}));
-  *xla_shape = xla::ShapeUtil::MakeTupleShape(*xla_shapes);
+  xla_shapes->push_back(
+      xla::ShapeUtil::MakeValidatedShape(xla::PRED, {}).value());
+  *xla_shape = xla::ShapeUtil::MakeValidatedTupleShape(*xla_shapes).value();
   // Remove the dummy output from the vector that will be used to copy real
   // outputs from host to device.
   xla_shapes->pop_back();

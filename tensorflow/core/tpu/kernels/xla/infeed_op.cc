@@ -149,7 +149,7 @@ class InfeedDequeueTupleOp : public XlaOpKernel {
       }
       OP_REQUIRES_OK(ctx, UpdateInfeedLayout(&xla_shapes_[i], sharding));
     }
-    tuple_shape_ = xla::ShapeUtil::MakeTupleShape(xla_shapes_);
+    tuple_shape_ = xla::ShapeUtil::MakeValidatedTupleShape(xla_shapes_).value();
     auto tuple = xla::Infeed(b, tuple_shape_);
 
     // Don't apply the infeed tuple sharding to the get-tuple-elements. They

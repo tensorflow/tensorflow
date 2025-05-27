@@ -77,7 +77,8 @@ class OutfeedEnqueueTupleOp : public XlaOpKernel {
                      TensorShapeToXLAShape(dtypes_[i], shapes[i], &xla_shape));
       xla_shapes.push_back(xla_shape);
     }
-    xla::Shape tuple_shape = xla::ShapeUtil::MakeTupleShape(xla_shapes);
+    xla::Shape tuple_shape =
+        xla::ShapeUtil::MakeValidatedTupleShape(xla_shapes).value();
     VLOG(1) << "OutfeedEnqueueTuple: "
             << xla::ShapeUtil::HumanStringWithLayout(tuple_shape);
     auto b = ctx->builder();
