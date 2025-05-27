@@ -315,30 +315,24 @@ absl::StatusOr<bool> CallInliner::Run(
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   // Because call graph nodes are visited in post-order (callees before callers)
   // we'll always inline kCalls into their callers in the appropriate order.
-  bool did_mutate = false;
-  TF_RETURN_IF_ERROR(
-      call_graph->VisitNodes([&](const CallGraphNode& node) -> absl::Status {
+  TF_ASSIGN_OR_RETURN(
+      bool did_mutate,
+      call_graph->VisitNodesWithReturn([&](const CallGraphNode& node)
+                                           -> absl::StatusOr<bool> {
         if (!HloInstruction::IsThreadIncluded(
                 node.computation()->execution_thread(), execution_threads)) {
-          return absl::OkStatus();
+          return false;
         };
-        bool did_node_mutate = false;
         if (module->has_schedule()) {
           HloInstructionSequence& sequence =
               module->schedule().GetOrCreateSequence(node.computation());
-          TF_ASSIGN_OR_RETURN(did_node_mutate,
-                              InlineAndLegalize(*call_graph, node.computation(),
-                                                sequence.instructions()));
-        } else {
-          TF_ASSIGN_OR_RETURN(
-              did_node_mutate,
-              InlineAndLegalize(
-                  *call_graph, node.computation(),
-                  node.computation()->MakeInstructionPostOrder()));
+          return InlineAndLegalize(*call_graph, node.computation(),
+                                   sequence.instructions());
         }
-        did_mutate |= did_node_mutate;
 
-        return absl::OkStatus();
+        return InlineAndLegalize(
+            *call_graph, node.computation(),
+            node.computation()->MakeInstructionPostOrder());
       }));
   if (did_mutate) {
     // Run DCE to remove called computations which are now becoming unused.
