@@ -108,7 +108,8 @@ absl::StatusOr<HloInstruction*> RngBitGeneratorExpander::ExpandInstruction(
       HloComputation * generator_computation,
       GetGeneratorComputation(data_shape, state_shape, algorithm, module));
   return hlo->parent()->AddInstruction(HloInstruction::CreateCall(
-      ShapeUtil::MakeTupleShapeWithPtrs({&state_shape, &data_shape}),
+      ShapeUtil::MakeValidatedTupleShapeWithPtrs({&state_shape, &data_shape})
+          .value(),
       {hlo->mutable_operand(0)}, generator_computation));
 }
 

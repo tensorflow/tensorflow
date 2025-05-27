@@ -244,7 +244,9 @@ absl::StatusOr<QrDecomposition> QrExpander::QrBlock(
 
     const int64_t minor_dim = batch_dims.size();
     auto iota_mn = Iota(
-        builder, ShapeUtil::MakeShape(S32, ConcatVectors(batch_dims, {m, n})),
+        builder,
+        ShapeUtil::MakeValidatedShape(S32, ConcatVectors(batch_dims, {m, n}))
+            .value(),
         minor_dim + 1);
 
     std::vector<int64_t> shape = batch_dims;
@@ -287,7 +289,9 @@ absl::StatusOr<QrDecomposition> QrExpander::QrBlock(
     std::iota(tau_broadcast_dims.begin(), tau_broadcast_dims.end(), 0);
 
     auto iota_n =
-        Iota(builder, ShapeUtil::MakeShape(S32, ConcatVectors(batch_dims, {n})),
+        Iota(builder,
+             ShapeUtil::MakeValidatedShape(S32, ConcatVectors(batch_dims, {n}))
+                 .value(),
              minor_dim);
     auto taus_zeros = ZerosLike(taus);
     auto taus_update = Select(
@@ -298,9 +302,10 @@ absl::StatusOr<QrDecomposition> QrExpander::QrBlock(
     return std::vector<XlaOp>{a, taus};
   };
 
-  auto taus = Zeros(
-      builder,
-      ShapeUtil::MakeShape(type, ConcatVectors(batch_dims, {std::min(m, n)})));
+  auto taus =
+      Zeros(builder, ShapeUtil::MakeValidatedShape(
+                         type, ConcatVectors(batch_dims, {std::min(m, n)}))
+                         .value());
 
   TF_ASSIGN_OR_RETURN(auto values, ForEachIndex(std::min(m, n), S32, qr_body_fn,
                                                 {a, taus}, "qr", builder));
@@ -411,7 +416,8 @@ absl::StatusOr<XlaOp> QrExpander::BuildQrDecomposition(
 
   std::vector<int64_t> taus_dims = batch_dims;
   taus_dims.push_back(p);
-  auto taus = Zeros(builder, ShapeUtil::MakeShape(type, taus_dims));
+  auto taus =
+      Zeros(builder, ShapeUtil::MakeValidatedShape(type, taus_dims).value());
   for (int64_t i = 0; i < p; i += block_size) {
     int64_t k = std::min(block_size, p - i);
 

@@ -84,7 +84,7 @@ absl::StatusOr<HloInstruction*> StableSortExpander::ExpandInstruction(
         replacements;
     std::vector<std::unique_ptr<HloInstruction>> extra_parameters;
     std::vector<HloInstruction*> extra_parameter_ptrs;
-    Shape scalar_shape = ShapeUtil::MakeShape(S32, {});
+    Shape scalar_shape = ShapeUtil::MakeValidatedShape(S32, {}).value();
     extra_parameters.push_back(HloInstruction::CreateParameter(
         sort->operand_count() * 2, scalar_shape,
         absl::StrCat("p.", sort->operand_count(), ".lhs")));
@@ -105,7 +105,8 @@ absl::StatusOr<HloInstruction*> StableSortExpander::ExpandInstruction(
                                         ? std::vector<Shape>{sort->shape()}
                                         : sort->shape().tuple_shapes();
     new_shapes.push_back(iota_shape);
-    Shape new_sort_shape = ShapeUtil::MakeTupleShape(new_shapes);
+    Shape new_sort_shape =
+        ShapeUtil::MakeValidatedTupleShape(new_shapes).value();
     HloInstruction* new_sort = computation->AddInstruction(
         sort->CloneWithNewOperands(new_sort_shape, new_operands));
 
@@ -186,7 +187,7 @@ absl::StatusOr<HloInstruction*> StableSortExpander::ExpandInstruction(
     comparator->AddInstruction(std::move(new_instruction));
   }
   CHECK_NE(cloned_root, nullptr);
-  Shape scalar_pred = ShapeUtil::MakeShape(PRED, {});
+  Shape scalar_pred = ShapeUtil::MakeValidatedShape(PRED, {}).value();
   HloInstruction* same =
       comparator->AddInstruction(HloInstruction::CreateCompare(
           scalar_pred, old_root, cloned_root, ComparisonDirection::kEq));
@@ -197,8 +198,8 @@ absl::StatusOr<HloInstruction*> StableSortExpander::ExpandInstruction(
           ComparisonDirection::kLt));
   HloInstruction* new_root =
       comparator->AddInstruction(HloInstruction::CreateTernary(
-          ShapeUtil::MakeShape(PRED, {}), HloOpcode::kSelect, same, tie_breaker,
-          old_root));
+          ShapeUtil::MakeValidatedShape(PRED, {}).value(), HloOpcode::kSelect,
+          same, tie_breaker, old_root));
   comparator->set_root_instruction(new_root);
 
   return expanded_sort;

@@ -88,6 +88,7 @@ limitations under the License.
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
+#include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/emitters/type_util.h"
@@ -412,63 +413,10 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitterBase::CreateMLIRModule(
   auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion.name()));
   mlir::OwningOpRef<mlir::ModuleOp> module = llvm_ir::CreateMlirModuleOp(loc);
 
-  // Create the entry function.
-  SmallVector<mlir::Type> param_types;
-  std::optional<emitters::KernelArguments> args;
-  if (buffer_assignment != nullptr) {
-    TF_ASSIGN_OR_RETURN(
-        args, emitters::KernelArguments::Create(
-                  *buffer_assignment, GetDefaultBufferAlignment(), &fusion));
-  }
-  // Annotate tensors with the buffer indices. This way, the buffer propagation
-  // pass can clean them up later.
-  auto get_arg_attrs = [&](int index) -> mlir::Attribute {
-    if (!args) {
-      return builder.getDictionaryAttr({builder.getNamedAttr(
-          "xla.slice_index", builder.getIndexAttr(index))});
-    }
-
-    const auto& arg = args->args()[index];
-    SmallVector<mlir::NamedAttribute> attrs;
-    attrs.push_back(builder.getNamedAttr(
-        "xla.slice_index", builder.getIndexAttr(arg.llvm_arg_index())));
-    attrs.push_back(
-        builder.getNamedAttr(mlir::LLVM::LLVMDialect::getAlignAttrName(),
-                             builder.getIndexAttr(arg.alignment())));
-    attrs.push_back(builder.getNamedAttr(
-        mlir::LLVM::LLVMDialect::getDereferenceableAttrName(),
-        builder.getIndexAttr(arg.slice().size())));
-    if (!arg.written()) {
-      attrs.push_back(
-          builder.getNamedAttr("xla.invariant", builder.getUnitAttr()));
-    }
-    return builder.getDictionaryAttr(attrs);
-  };
-
-  auto result_types = emitters::ShapeToMlirTypes(fusion.shape(), builder);
-
-  SmallVector<mlir::Attribute> arg_attrs;
-  arg_attrs.reserve(fusion.operands().size() + result_types.size());
-
-  for (auto [arg_index, param] : llvm::enumerate(fusion.operands())) {
-    param_types.push_back(
-        emitters::TensorShapeToMlirType(param->shape(), builder));
-    arg_attrs.push_back(get_arg_attrs(arg_index));
-  }
-
-  for (auto [result_index, type] : llvm::enumerate(result_types)) {
-    param_types.push_back(type);
-    arg_attrs.push_back(get_arg_attrs(fusion.operands().size() + result_index));
-  }
-
-  builder.setInsertionPointToStart(module->getBody());
-  auto entry_func = builder.create<FuncOp>(
-      loc, entry_function_name,
-      mlir::FunctionType::get(&context, param_types, result_types),
-      /*sym_visibility=*/mlir::StringAttr{},
-      mlir::ArrayAttr::get(&context, arg_attrs),
-      /*res_attrs=*/mlir::ArrayAttr{});
-  entry_func->setAttr("xla.entry", mlir::UnitAttr::get(&context));
+  TF_ASSIGN_OR_RETURN(mlir::func::FuncOp entry_func,
+                      emitters::EmitKernelApi(
+                          *module, fusion, buffer_assignment,
+                          GetDefaultBufferAlignment(), entry_function_name));
   SetBackendKind(&context, entry_func, BackendKind::kGpu);
 
   TF_RETURN_IF_ERROR(EmitMlir(module.get(), entry_func, fusion));

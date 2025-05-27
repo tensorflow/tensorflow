@@ -91,16 +91,19 @@ absl::StatusOr<std::pair<XlaOp, XlaOp>> CholeskyExpander::CholeskyUnblocked(
     auto body_a = loop_vars[0];
     auto body_l = loop_vars[1];
     auto seen_error = loop_vars[2];
-    auto iota_row =
-        Iota(body_builder, ShapeUtil::MakeShape(S32, matrix_dims), ndims - 1);
-    auto iota_col =
-        Iota(body_builder, ShapeUtil::MakeShape(S32, matrix_dims), ndims - 2);
+    auto iota_row = Iota(
+        body_builder, ShapeUtil::MakeValidatedShape(S32, matrix_dims).value(),
+        ndims - 1);
+    auto iota_col = Iota(
+        body_builder, ShapeUtil::MakeValidatedShape(S32, matrix_dims).value(),
+        ndims - 2);
 
     auto mask_pred = Ge(iota_col, iota_row);
     mask_pred = And(mask_pred, Eq(iota_row, i));
     auto mask_zeros =
         Zeros(body_builder,
-              ShapeUtil::MakeShape(a_shape.element_type(), matrix_dims));
+              ShapeUtil::MakeValidatedShape(a_shape.element_type(), matrix_dims)
+                  .value());
     // L * L.T, This matrix has of a lot of multiplying with zero
     // (namely, L[:, j:] = 0) and redundant computation, but it is faster
     // than slice.
@@ -128,7 +131,9 @@ absl::StatusOr<std::pair<XlaOp, XlaOp>> CholeskyExpander::CholeskyUnblocked(
       auto cholesky_while,
       ForEachIndex(
           n, S32, body_fn,
-          {a, l, Zeros(builder, ShapeUtil::MakeShape(PRED, error_dims))},
+          {a, l,
+           Zeros(builder,
+                 ShapeUtil::MakeValidatedShape(PRED, error_dims).value())},
           "unblocked", builder));
 
   return std::make_pair(cholesky_while[1], cholesky_while[2]);
@@ -169,7 +174,8 @@ XlaOp CholeskyExpander::BuildCholesky(XlaOp a, int64_t block_size,
     // Haidar, Azzam, et al. "High-performance Cholesky factorization for
     // GPU-only execution." Proceedings of General Purpose GPUs. ACM, 2017.
     XlaOp l = ZerosLike(a);
-    XlaOp seen_error = Zeros(builder, ShapeUtil::MakeShape(PRED, error_dims));
+    XlaOp seen_error =
+        Zeros(builder, ShapeUtil::MakeValidatedShape(PRED, error_dims).value());
     for (int64_t i = 0; i < n; i += block_size) {
       int64_t k = std::min(block_size, n - i);
       auto panel = SliceInMinorDims(a, {i, i}, {n, i + k});

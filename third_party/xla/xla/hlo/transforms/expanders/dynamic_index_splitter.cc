@@ -80,10 +80,11 @@ absl::StatusOr<bool> DynamicIndexSplitter::Run(
       index_array.reserve(num_indices);
       for (int64_t dim = 0; dim < num_indices; ++dim) {
         auto slice = parent->AddInstruction(HloInstruction::CreateSlice(
-            ShapeUtil::MakeShape(index_element_type, {1}), index_operand, {dim},
-            {dim + 1}, {1}));
+            ShapeUtil::MakeValidatedShape(index_element_type, {1}).value(),
+            index_operand, {dim}, {dim + 1}, {1}));
         auto bitcast = parent->AddInstruction(HloInstruction::CreateReshape(
-            ShapeUtil::MakeShape(index_element_type, {}), slice));
+            ShapeUtil::MakeValidatedShape(index_element_type, {}).value(),
+            slice));
         index_array.push_back(bitcast);
       }
       auto new_dynamic_op =

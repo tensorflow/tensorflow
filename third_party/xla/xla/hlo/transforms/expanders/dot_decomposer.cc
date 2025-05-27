@@ -132,8 +132,10 @@ absl::Status CanonicalizeDot(HloDotInstruction* original_dot) {
   // Reshape the contracting and non-contracting dimensions together.
   HloInstruction* reshaped_lhs = computation->AddInstruction(
       HloInstruction::CreateReshape(
-          ShapeUtil::MakeShape(lhs_shape.element_type(), lhs_reshape_dims,
-                               lhs_reshape_dynamic_dims),
+          ShapeUtil::MakeValidatedShape(lhs_shape.element_type(),
+                                        lhs_reshape_dims,
+                                        lhs_reshape_dynamic_dims)
+              .value(),
           transposed_lhs),
       &transposed_lhs->metadata());
 
@@ -191,8 +193,10 @@ absl::Status CanonicalizeDot(HloDotInstruction* original_dot) {
   // Reshape the contracting and non-contracting dimensions together.
   HloInstruction* reshaped_rhs = computation->AddInstruction(
       HloInstruction::CreateReshape(
-          ShapeUtil::MakeShape(rhs_shape.element_type(), rhs_reshape_dims,
-                               rhs_reshape_dynamic_dims),
+          ShapeUtil::MakeValidatedShape(rhs_shape.element_type(),
+                                        rhs_reshape_dims,
+                                        rhs_reshape_dynamic_dims)
+              .value(),
           transposed_rhs),
       &transposed_rhs->metadata());
 
@@ -253,8 +257,9 @@ absl::Status CanonicalizeDot(HloDotInstruction* original_dot) {
   }
 
   HloInstruction* dot = computation->AddInstruction(HloInstruction::CreateDot(
-      ShapeUtil::MakeShape(original_dot->shape().element_type(), dot_dims,
-                           dot_dynamic_dims),
+      ShapeUtil::MakeValidatedShape(original_dot->shape().element_type(),
+                                    dot_dims, dot_dynamic_dims)
+          .value(),
       reshaped_lhs, reshaped_rhs, dot_dnums, original_dot->precision_config(),
       sparsity, sparse_meta));
   original_dot->SetupDerivedInstruction(dot);

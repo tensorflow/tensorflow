@@ -61,11 +61,13 @@ class ReshapeDecomposerVisitor : public DfsHloRewriteVisitor {
     } else {
       VLOG(3) << "Both input and output of reshape are not alignable, create "
                  "two physical transposes";
-      auto s0_normalized = ShapeUtil::MakeShapeWithDescendingLayout(
-          s0.element_type(), s0.dimensions());
+      auto s0_normalized = ShapeUtil::MakeValidatedShapeWithDescendingLayout(
+                               s0.element_type(), s0.dimensions())
+                               .value();
       auto c1 = MakeCopyHlo(reshape->mutable_operand(0), s0_normalized);
-      auto s_normalized = ShapeUtil::MakeShapeWithDescendingLayout(
-          s.element_type(), s.dimensions());
+      auto s_normalized = ShapeUtil::MakeValidatedShapeWithDescendingLayout(
+                              s.element_type(), s.dimensions())
+                              .value();
       auto b = MakeBitcastHlo(c1, s_normalized, &c1->metadata());
       DCHECK(ShapeUtil::ReshapeIsBitcast(b->shape(), b->operand(0)->shape()));
       auto c2 = MakeCopyHlo(b, s);

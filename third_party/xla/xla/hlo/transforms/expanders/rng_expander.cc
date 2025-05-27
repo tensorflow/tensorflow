@@ -83,8 +83,8 @@ absl::StatusOr<HloInstruction*> ConvertSmallFpRngToF32Rng(HloInstruction* rng) {
 
 absl::StatusOr<HloComputation*> GetComputationForRng(HloInstruction* rng) {
   XlaBuilder builder("rng");
-  const Shape u64_shape = ShapeUtil::MakeShape(xla::U64, {});
-  const Shape u128_shape = ShapeUtil::MakeShape(xla::U64, {2});
+  const Shape u64_shape = ShapeUtil::MakeValidatedShape(xla::U64, {}).value();
+  const Shape u128_shape = ShapeUtil::MakeValidatedShape(xla::U64, {2}).value();
   const Shape& result_shape = rng->shape();
 
   XlaOp key = Parameter(&builder, 0, u64_shape, "key");
@@ -158,7 +158,7 @@ absl::StatusOr<HloInstruction*> RngExpander::ExpandInstruction(
   HloInstruction* key = MakeR0ConstantHlo<uint64_t>(
       computation, module_random_value ^ global_random_value);
 
-  const Shape u128_shape = ShapeUtil::MakeShape(xla::U64, {2});
+  const Shape u128_shape = ShapeUtil::MakeValidatedShape(xla::U64, {2}).value();
   HloInstruction* state =
       computation->AddInstruction(HloInstruction::CreateRngGetAndUpdateState(
           u128_shape, GetNumberOf32bitUnits(rng->shape())));
