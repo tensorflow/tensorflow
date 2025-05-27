@@ -53,9 +53,9 @@ class BatchNormExpanderTest
 
 // Test that we expand BatchNormTraining.
 TEST_F(BatchNormExpanderTest, BatchNormTraining) {
-  Shape input_shape = ShapeUtil::MakeShape(F32, {2, 2, 2, 2});
-  Shape scale_shape = ShapeUtil::MakeShape(F32, {2});
-  Shape offset_shape = ShapeUtil::MakeShape(F32, {2});
+  Shape input_shape = ShapeUtil::MakeValidatedShape(F32, {2, 2, 2, 2}).value();
+  Shape scale_shape = ShapeUtil::MakeValidatedShape(F32, {2}).value();
+  Shape offset_shape = ShapeUtil::MakeValidatedShape(F32, {2}).value();
 
   HloComputation::Builder builder(TestName());
   HloInstruction* param0 = builder.AddInstruction(
@@ -68,7 +68,9 @@ TEST_F(BatchNormExpanderTest, BatchNormTraining) {
       HloInstruction::CreateParameter(2, offset_shape, "offset"));
 
   builder.AddInstruction(HloInstruction::CreateBatchNormTraining(
-      ShapeUtil::MakeTupleShape({input_shape, scale_shape, offset_shape}),
+      ShapeUtil::MakeValidatedTupleShape(
+          {input_shape, scale_shape, offset_shape})
+          .value(),
       param0, param1, param2,
       /*epsilon=*/0.001, /*feature_index=*/3));
 
@@ -88,11 +90,12 @@ TEST_F(BatchNormExpanderTest, BatchNormTraining) {
 
 // Test that we expand BatchNormGrad.
 TEST_F(BatchNormExpanderTest, BatchNormGrad) {
-  Shape input_shape = ShapeUtil::MakeShape(F32, {2, 2, 2, 2});
-  Shape scale_shape = ShapeUtil::MakeShape(F32, {2});
-  Shape mean_shape = ShapeUtil::MakeShape(F32, {2});
-  Shape var_shape = ShapeUtil::MakeShape(F32, {2});
-  Shape grad_output_shape = ShapeUtil::MakeShape(F32, {2, 2, 2, 2});
+  Shape input_shape = ShapeUtil::MakeValidatedShape(F32, {2, 2, 2, 2}).value();
+  Shape scale_shape = ShapeUtil::MakeValidatedShape(F32, {2}).value();
+  Shape mean_shape = ShapeUtil::MakeValidatedShape(F32, {2}).value();
+  Shape var_shape = ShapeUtil::MakeValidatedShape(F32, {2}).value();
+  Shape grad_output_shape =
+      ShapeUtil::MakeValidatedShape(F32, {2, 2, 2, 2}).value();
 
   HloComputation::Builder builder(TestName());
   HloInstruction* param0 = builder.AddInstruction(
@@ -111,8 +114,9 @@ TEST_F(BatchNormExpanderTest, BatchNormGrad) {
       HloInstruction::CreateParameter(4, grad_output_shape, "grad_output"));
 
   builder.AddInstruction(HloInstruction::CreateBatchNormGrad(
-      ShapeUtil::MakeTupleShape({input_shape, scale_shape, mean_shape}), param0,
-      param1, param2, param3, param4,
+      ShapeUtil::MakeValidatedTupleShape({input_shape, scale_shape, mean_shape})
+          .value(),
+      param0, param1, param2, param3, param4,
       /*epsilon=*/0.001, /*feature_index=*/3));
 
   auto module = CreateNewVerifiedModule();

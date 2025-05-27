@@ -53,12 +53,14 @@ std::unique_ptr<HloInstruction> CloneAllReduce(
     std::string name = absl::StrCat(to_apply->name(), "_promoted");
     HloComputation::Builder promoted(name);
     auto x = promoted.AddInstruction(HloInstruction::CreateParameter(
-        /*parameter_number=*/0, ShapeUtil::MakeShape(type, {}), "x"));
+        /*parameter_number=*/0, ShapeUtil::MakeValidatedShape(type, {}).value(),
+        "x"));
     auto y = promoted.AddInstruction(HloInstruction::CreateParameter(
-        /*parameter_number=*/1, ShapeUtil::MakeShape(type, {}), "y"));
+        /*parameter_number=*/1, ShapeUtil::MakeValidatedShape(type, {}).value(),
+        "y"));
     promoted.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(type, {}), to_apply->root_instruction()->opcode(),
-        x, y));
+        ShapeUtil::MakeValidatedShape(type, {}).value(),
+        to_apply->root_instruction()->opcode(), x, y));
     return inst->GetModule()->AddEmbeddedComputation(promoted.Build());
   }();
   new_inst->set_to_apply(to_apply_promoted);

@@ -64,7 +64,7 @@ TEST_F(CallInlinerTest, ControlDependenciesAreCarriedToCaller) {
 
   // "outer" computation just calls the "inner" computation.
   HloComputation::Builder outer(TestName() + ".outer");
-  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  Shape r0f32 = ShapeUtil::MakeValidatedShape(F32, {}).value();
   outer.AddInstruction(
       HloInstruction::CreateCall(r0f32, {}, inner_computation));
 
@@ -85,7 +85,7 @@ TEST_F(CallInlinerTest, ControlDependenciesAreCarriedToCaller) {
 // Tests for referential transparency (a function that calls a function that
 // returns false should be identical to just returning false).
 TEST_F(CallInlinerTest, CallsWithinWhileBodiesAreInlined) {
-  const Shape pred = ShapeUtil::MakeShape(PRED, {});
+  const Shape pred = ShapeUtil::MakeValidatedShape(PRED, {}).value();
   auto module = CreateNewVerifiedModule();
 
   // Create a lambda that calls a function that returns the false predicate.
@@ -126,7 +126,7 @@ TEST_F(CallInlinerTest, CallsWithinWhileBodiesAreInlined) {
 // Check CallInliner::Inline, which inlines a specific call without running the
 // whole pass.
 TEST_F(CallInlinerTest, InlineWithoutRunningPass) {
-  const Shape pred = ShapeUtil::MakeShape(PRED, {});
+  const Shape pred = ShapeUtil::MakeValidatedShape(PRED, {}).value();
   auto module = CreateNewVerifiedModule();
 
   HloComputation::Builder just_false(TestName() + ".false");
@@ -151,9 +151,9 @@ TEST_F(CallInlinerTest, InlineWithoutRunningPass) {
 
 // Test that inlining can work with computations with dead parameter.
 TEST_F(CallInlinerTest, InlineWithEmptyComputation) {
-  const Shape pred = ShapeUtil::MakeShape(PRED, {});
+  const Shape pred = ShapeUtil::MakeValidatedShape(PRED, {}).value();
   auto module = CreateNewVerifiedModule();
-  Shape r0s32 = ShapeUtil::MakeShape(S32, {});
+  Shape r0s32 = ShapeUtil::MakeValidatedShape(S32, {}).value();
   HloComputation::Builder empty(TestName() + ".empty");
   empty.AddInstruction(HloInstruction::CreateParameter(0, r0s32, "A"));
   empty.AddInstruction(
@@ -190,7 +190,7 @@ TEST_F(CallInlinerTest, InlineWithEmptyComputation) {
 }
 
 TEST_F(CallInlinerTest, CallToOutfeedComputationIsInlined) {
-  const Shape f32 = ShapeUtil::MakeShape(F32, {});
+  const Shape f32 = ShapeUtil::MakeValidatedShape(F32, {}).value();
   auto module = CreateNewVerifiedModule();
 
   HloComputation::Builder outfeeder(TestName() + ".outfeeder");

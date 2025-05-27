@@ -156,35 +156,38 @@ TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId2) {
   TF_ASSERT_OK_AND_ASSIGN(
       HloInstruction * param_0,
       builder.AddParameter(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(BF16, {1, 512, 4096}), "p0")));
+          0, ShapeUtil::MakeValidatedShape(BF16, {1, 512, 4096}).value(),
+          "p0")));
   HloInstruction *instr =
       builder.AddInstruction(HloInstruction::CreateAllGather(
-          ShapeUtil::MakeShape(BF16, {1, 4096, 4096}), {param_0}, 1,
+          ShapeUtil::MakeValidatedShape(BF16, {1, 4096, 4096}).value(),
+          {param_0}, 1,
           CollectiveDeviceList(std::vector<ReplicaGroup>({group})), true, 231,
           true));
   auto computation = builder.Build(
       builder.AddInstruction(HloInstruction::CreateTuple({instr})));
-  auto fusion =
-      HloInstruction::CreateFusion(ShapeUtil::MakeShape(BF16, {1, 4096, 4096}),
-                                   HloInstruction::FusionKind::kOutput,
-                                   {param_0}, computation.get(), "fusion");
+  auto fusion = HloInstruction::CreateFusion(
+      ShapeUtil::MakeValidatedShape(BF16, {1, 4096, 4096}).value(),
+      HloInstruction::FusionKind::kOutput, {param_0}, computation.get(),
+      "fusion");
   EXPECT_EQ(IsOrHasCollectiveWithChannelId(fusion.get()), instr);
 
   auto builder2 = HloComputation::Builder("CollectiveWithChannelId2");
   TF_ASSERT_OK_AND_ASSIGN(
       HloInstruction * param_1,
       builder2.AddParameter(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(BF16, {1, 512, 4096}), "p1")));
+          0, ShapeUtil::MakeValidatedShape(BF16, {1, 512, 4096}).value(),
+          "p1")));
   HloInstruction *instr_without_channel_id =
       builder2.AddInstruction(HloInstruction::CreateAllGather(
-          ShapeUtil::MakeShape(BF16, {1, 4096, 4096}), {param_1}, 1, {group},
-          true, std::nullopt, true));
+          ShapeUtil::MakeValidatedShape(BF16, {1, 4096, 4096}).value(),
+          {param_1}, 1, {group}, true, std::nullopt, true));
   auto computation2 = builder2.Build(builder2.AddInstruction(
       HloInstruction::CreateTuple({instr_without_channel_id})));
-  auto fusion2 =
-      HloInstruction::CreateFusion(ShapeUtil::MakeShape(BF16, {1, 4096, 4096}),
-                                   HloInstruction::FusionKind::kOutput,
-                                   {param_1}, computation2.get(), "fusion2");
+  auto fusion2 = HloInstruction::CreateFusion(
+      ShapeUtil::MakeValidatedShape(BF16, {1, 4096, 4096}).value(),
+      HloInstruction::FusionKind::kOutput, {param_1}, computation2.get(),
+      "fusion2");
   EXPECT_EQ(IsOrHasCollectiveWithChannelId(fusion2.get()), nullptr);
 }
 
@@ -297,7 +300,7 @@ TEST(CollectiveOpsUtilsTest, GetReplicaGroups) {
 
   // Set up a collective permute start instruction
   auto builder = HloComputation::Builder("GetReplicaGroupsTest");
-  auto param_shape = ShapeUtil::MakeShape(F32, {4, 4});
+  auto param_shape = ShapeUtil::MakeValidatedShape(F32, {4, 4}).value();
   HloInstruction *param_0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "p0"));
 
@@ -323,7 +326,9 @@ TEST(CollectiveOpsUtilsTest, GetReplicaGroups) {
       CreateReplicaGroups({{0, 1}, {2, 3}});
   HloInstruction *all_gather_start =
       builder.AddInstruction(HloInstruction::CreateAllGatherStart(
-          ShapeUtil::MakeTupleShape({param_shape, param_shape}), {param_0},
+          ShapeUtil::MakeValidatedTupleShape({param_shape, param_shape})
+              .value(),
+          {param_0},
           /*all_gather_dimension=*/0, replica_groups,
           /*constrain_layout=*/false,
           /*channel_id=*/1, /*use_global_device_ids=*/false));
@@ -337,20 +342,25 @@ TEST(CollectiveOpsUtilsTest, GetReplicaGroups) {
   // Test for AllReduceStart
   // Create a reduction computation
   HloComputation::Builder reducer_builder("add");
-  auto reducer_x = reducer_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, ShapeUtil::MakeScalarShape(F32), "x"));
-  auto reducer_y = reducer_builder.AddInstruction(
-      HloInstruction::CreateParameter(1, ShapeUtil::MakeScalarShape(F32), "y"));
+  auto reducer_x =
+      reducer_builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeValidatedScalarShape(F32).value(), "x"));
+  auto reducer_y =
+      reducer_builder.AddInstruction(HloInstruction::CreateParameter(
+          1, ShapeUtil::MakeValidatedScalarShape(F32).value(), "y"));
   reducer_builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeScalarShape(F32), HloOpcode::kAdd, reducer_x, reducer_y));
+      ShapeUtil::MakeValidatedScalarShape(F32).value(), HloOpcode::kAdd,
+      reducer_x, reducer_y));
 
   HloComputation *add_computation =
       module.AddEmbeddedComputation(reducer_builder.Build());
 
   HloInstruction *all_reduce_start =
       builder.AddInstruction(HloInstruction::CreateAllReduceStart(
-          ShapeUtil::MakeTupleShape({param_shape, param_shape}), {param_0},
-          add_computation, replica_groups, /*constrain_layout=*/false,
+          ShapeUtil::MakeValidatedTupleShape({param_shape, param_shape})
+              .value(),
+          {param_0}, add_computation, replica_groups,
+          /*constrain_layout=*/false,
           /*channel_id=*/2, /*use_global_device_ids=*/false));
 
   TF_ASSERT_OK_AND_ASSIGN(std::vector<std::vector<int64_t>> all_reduce_groups,
@@ -364,7 +374,7 @@ TEST(CollectiveOpsUtilsTest, IsAsyncCollective) {
   // Create module and computation
   HloModule module("test_module", HloModuleConfig());
   auto builder = HloComputation::Builder("IsAsyncCollectiveTest");
-  auto param_shape = ShapeUtil::MakeShape(F32, {4, 4});
+  auto param_shape = ShapeUtil::MakeValidatedShape(F32, {4, 4}).value();
   HloInstruction *param_0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "p0"));
 
@@ -394,8 +404,9 @@ TEST(CollectiveOpsUtilsTest, IsAsyncCollective) {
 
   HloInstruction *all_gather_start =
       builder.AddInstruction(HloInstruction::CreateAllGatherStart(
-          ShapeUtil::MakeTupleShape(
-              {ShapeUtil::MakeShape(F32, {8, 4}), param_shape}),
+          ShapeUtil::MakeValidatedTupleShape(
+              {ShapeUtil::MakeShape(F32, {8, 4}), param_shape})
+              .value(),
           {param_0}, /*all_gather_dimension=*/0, replica_groups,
           /*constrain_layout=*/false,
           /*channel_id=*/2, /*use_global_device_ids=*/false));
@@ -404,9 +415,10 @@ TEST(CollectiveOpsUtilsTest, IsAsyncCollective) {
   EXPECT_TRUE(is_async_status.ok());
   EXPECT_TRUE(is_async_status.value());
 
-  HloInstruction *all_gather_done = builder.AddInstruction(
-      HloInstruction::CreateUnary(ShapeUtil::MakeShape(F32, {8, 4}),
-                                  HloOpcode::kAllGatherDone, all_gather_start));
+  HloInstruction *all_gather_done =
+      builder.AddInstruction(HloInstruction::CreateUnary(
+          ShapeUtil::MakeValidatedShape(F32, {8, 4}).value(),
+          HloOpcode::kAllGatherDone, all_gather_start));
 
   is_async_status = IsAsyncCollective(all_gather_done);
   EXPECT_TRUE(is_async_status.ok());
@@ -415,20 +427,25 @@ TEST(CollectiveOpsUtilsTest, IsAsyncCollective) {
   // Test for AllReduceStart and AllReduceDone
   // First create a reduction computation
   HloComputation::Builder reducer_builder("add");
-  HloInstruction *reducer_x = reducer_builder.AddInstruction(
-      HloInstruction::CreateParameter(0, ShapeUtil::MakeScalarShape(F32), "x"));
-  HloInstruction *reducer_y = reducer_builder.AddInstruction(
-      HloInstruction::CreateParameter(1, ShapeUtil::MakeScalarShape(F32), "y"));
+  HloInstruction *reducer_x =
+      reducer_builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeValidatedScalarShape(F32).value(), "x"));
+  HloInstruction *reducer_y =
+      reducer_builder.AddInstruction(HloInstruction::CreateParameter(
+          1, ShapeUtil::MakeValidatedScalarShape(F32).value(), "y"));
   reducer_builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeScalarShape(F32), HloOpcode::kAdd, reducer_x, reducer_y));
+      ShapeUtil::MakeValidatedScalarShape(F32).value(), HloOpcode::kAdd,
+      reducer_x, reducer_y));
 
   HloComputation *add_computation =
       module.AddEmbeddedComputation(reducer_builder.Build());
 
   HloInstruction *all_reduce_start =
       builder.AddInstruction(HloInstruction::CreateAllReduceStart(
-          ShapeUtil::MakeTupleShape({param_shape, param_shape}), {param_0},
-          add_computation, replica_groups, /*constrain_layout=*/false,
+          ShapeUtil::MakeValidatedTupleShape({param_shape, param_shape})
+              .value(),
+          {param_0}, add_computation, replica_groups,
+          /*constrain_layout=*/false,
           /*channel_id=*/3, /*use_global_device_ids=*/false));
 
   is_async_status = IsAsyncCollective(all_reduce_start);
@@ -627,7 +644,7 @@ class GetCollectOpGroupModeTestForInstruction
     : public testing::TestWithParam<TestCaseForInstruction> {};
 
 absl::StatusOr<std::unique_ptr<HloComputation>> CreateMaxComputation() {
-  Shape scalar = ShapeUtil::MakeScalarShape(F32);
+  Shape scalar = ShapeUtil::MakeValidatedScalarShape(F32).value();
   auto builder_max = HloComputation::Builder("max");
   TF_ASSIGN_OR_RETURN(HloInstruction * a,
                       builder_max.AddParameter(
@@ -648,8 +665,8 @@ TEST_P(GetCollectOpGroupModeTestForInstruction, Test) {
   }
   std::vector<std::pair<int64_t, int64_t>> source_target_pairs{{0, 1}, {2, 3}};
 
-  Shape two_elements = ShapeUtil::MakeShape(F32, {2});
-  Shape eight_elements = ShapeUtil::MakeShape(F32, {8});
+  Shape two_elements = ShapeUtil::MakeValidatedShape(F32, {2}).value();
+  Shape eight_elements = ShapeUtil::MakeValidatedShape(F32, {8}).value();
 
   auto channel_id = [&test_case]() -> std::optional<int64_t> {
     return test_case.has_channel_id ? std::make_optional<int64_t>(1)
@@ -704,7 +721,8 @@ TEST_P(GetCollectOpGroupModeTestForInstruction, Test) {
       TF_ASSERT_OK_AND_ASSIGN(
           HloInstruction * offset_size_parameter,
           builder.AddParameter(HloInstruction::CreateParameter(
-              1, ShapeUtil::MakeShape(S64, {4}), "offset_size_parameter")));
+              1, ShapeUtil::MakeValidatedShape(S64, {4}).value(),
+              "offset_size_parameter")));
 
       collective = builder.AddInstruction(HloInstruction::CreateRaggedAllToAll(
           eight_elements,
@@ -1141,11 +1159,13 @@ TEST_P(GetParticipatingTest, Test) {
   HloModule hlo_module("AllReduce", config);
   HloComputation::Builder sum_builder("test_reduction");
   auto x = sum_builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {}), "x"));
+      /*parameter_number=*/0, ShapeUtil::MakeValidatedShape(F32, {}).value(),
+      "x"));
   auto y = sum_builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/1, ShapeUtil::MakeShape(F32, {}), "y"));
+      /*parameter_number=*/1, ShapeUtil::MakeValidatedShape(F32, {}).value(),
+      "y"));
   sum_builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd, x, y));
+      ShapeUtil::MakeValidatedShape(F32, {}).value(), HloOpcode::kAdd, x, y));
   HloComputation *reduction =
       hlo_module.AddEmbeddedComputation(sum_builder.Build());
   HloComputation::Builder entry_builder("test_entry");

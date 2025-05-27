@@ -100,15 +100,15 @@ class CopyInsertionTest : public HloHardwareIndependentTestBase {
     VLOG(2) << "After copy inser: " << module->ToString();
   }
 
-  const Shape scalar_shape_ = ShapeUtil::MakeShape(F32, {});
+  const Shape scalar_shape_ = ShapeUtil::MakeValidatedShape(F32, {}).value();
 };
 
 TEST_F(CopyInsertionTest, SingleParameter) {
   // Computation is a single parameter passed into a tuple. The parameter should
   // be copied before entering the tuple.
   auto builder = HloComputation::Builder(TestName());
-  HloInstruction* x = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "x"));
+  HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "x"));
   HloInstruction* tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({x}));
 
@@ -191,13 +191,14 @@ TEST_F(CopyInsertionTest, MultipleConstantsAndParameters) {
   HloInstruction* constant2 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
 
-  HloInstruction* x = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "x"));
-  HloInstruction* y = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, ShapeUtil::MakeShape(F32, {}), "y"));
+  HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "x"));
+  HloInstruction* y = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeValidatedShape(F32, {}).value(), "y"));
 
   HloInstruction* add = builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd, constant1, y));
+      ShapeUtil::MakeValidatedShape(F32, {}).value(), HloOpcode::kAdd,
+      constant1, y));
 
   builder.AddInstruction(HloInstruction::CreateTuple({constant2, x, add}));
 
@@ -216,10 +217,11 @@ TEST_F(CopyInsertionTest, BitcastParameter) {
   // The output of a bitcast is its operand (same buffer), so a bitcast
   // parameter feeding the result must have a copy added.
   auto builder = HloComputation::Builder(TestName());
-  HloInstruction* x = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {4}), "x"));
-  HloInstruction* bitcast = builder.AddInstruction(
-      HloInstruction::CreateBitcast(ShapeUtil::MakeShape(F32, {2, 2}), x));
+  HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeValidatedShape(F32, {4}).value(), "x"));
+  HloInstruction* bitcast =
+      builder.AddInstruction(HloInstruction::CreateBitcast(
+          ShapeUtil::MakeValidatedShape(F32, {2, 2}).value(), x));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
@@ -241,8 +243,9 @@ TEST_F(CopyInsertionTest, BitcastConstant) {
   HloInstruction* constant =
       builder.AddInstruction(HloInstruction::CreateConstant(
           LiteralUtil::CreateR1<float>({1.0, 42.0})));
-  HloInstruction* bitcast = builder.AddInstruction(
-      HloInstruction::CreateBitcast(ShapeUtil::MakeShape(F32, {2}), constant));
+  HloInstruction* bitcast =
+      builder.AddInstruction(HloInstruction::CreateBitcast(
+          ShapeUtil::MakeValidatedShape(F32, {2}).value(), constant));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
@@ -260,10 +263,11 @@ TEST_F(CopyInsertionTest, BitcastConstant) {
 TEST_F(CopyInsertionTest, BitcastTupleElementParameter) {
   // Same as BitcastParameter, but the bitcast is wrapped in a tuple.
   auto builder = HloComputation::Builder(TestName());
-  HloInstruction* x = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {4}), "x"));
-  HloInstruction* bitcast = builder.AddInstruction(
-      HloInstruction::CreateBitcast(ShapeUtil::MakeShape(F32, {2, 2}), x));
+  HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeValidatedShape(F32, {4}).value(), "x"));
+  HloInstruction* bitcast =
+      builder.AddInstruction(HloInstruction::CreateBitcast(
+          ShapeUtil::MakeValidatedShape(F32, {2, 2}).value(), x));
   builder.AddInstruction(HloInstruction::CreateTuple({bitcast}));
 
   auto module = CreateNewVerifiedModule();
@@ -287,10 +291,11 @@ TEST_F(CopyInsertionTest, NestedTupleParameter) {
   // Param shape is: ((F32[], S32[1,2,3]), F32[42])
   builder.AddInstruction(HloInstruction::CreateParameter(
       0,
-      ShapeUtil::MakeTupleShape(
+      ShapeUtil::MakeValidatedTupleShape(
           {ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {}),
                                       ShapeUtil::MakeShape(S32, {1, 2, 3})}),
-           ShapeUtil::MakeShape(F32, {42})}),
+           ShapeUtil::MakeShape(F32, {42})})
+          .value(),
       "param0"));
 
   auto module = CreateNewVerifiedModule();
@@ -323,10 +328,11 @@ TEST_F(CopyInsertionTest, ElementOfNestedTupleParameter) {
   // Param shape is: ((F32[], S32[1,2,3]), F32[42])
   auto param = builder.AddInstruction(HloInstruction::CreateParameter(
       0,
-      ShapeUtil::MakeTupleShape(
+      ShapeUtil::MakeValidatedTupleShape(
           {ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {}),
                                       ShapeUtil::MakeShape(S32, {1, 2, 3})}),
-           ShapeUtil::MakeShape(F32, {42})}),
+           ShapeUtil::MakeShape(F32, {42})})
+          .value(),
       "param0"));
 
   // The return value of the computation is the zero-th element of the nested
@@ -397,7 +403,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
     auto data = builder.AddInstruction(
         HloInstruction::CreateGetTupleElement(data_shape_, loop_state, 1));
     // Use 'induction_variable' in computation with no path to output tuple.
-    Shape f32_scalar_shape = ShapeUtil::MakeShape(F32, {});
+    Shape f32_scalar_shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
     auto convert = builder.AddInstruction(
         HloInstruction::CreateConvert(f32_scalar_shape, induction_variable));
     auto update = builder.AddInstruction(
@@ -470,7 +476,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
         HloInstruction::CreateGetTupleElement(data_shape_, loop_state, 1));
 
     // Use 'induction_variable' in computation with no path to output tuple.
-    Shape f32_scalar_shape = ShapeUtil::MakeShape(F32, {});
+    Shape f32_scalar_shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
     auto convert = builder.AddInstruction(
         HloInstruction::CreateConvert(f32_scalar_shape, induction_variable));
     auto update = builder.AddInstruction(
@@ -699,15 +705,20 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
   }
 
   std::unique_ptr<HloModule> module_;
-  Shape induction_variable_shape_ = ShapeUtil::MakeShape(S32, {});
-  Shape data_shape_ = ShapeUtil::MakeShape(F32, {8});
-  Shape loop_state_shape_ =
-      ShapeUtil::MakeTupleShape({induction_variable_shape_, data_shape_});
+  Shape induction_variable_shape_ =
+      ShapeUtil::MakeValidatedShape(S32, {}).value();
+  Shape data_shape_ = ShapeUtil::MakeValidatedShape(F32, {8}).value();
+  Shape loop_state_shape_ = ShapeUtil::MakeValidatedTupleShape(
+                                {induction_variable_shape_, data_shape_})
+                                .value();
   Shape nested_tuple_shape_ =
-      ShapeUtil::MakeTupleShape({data_shape_, data_shape_});
-  Shape nested_loop_state_shape_ = ShapeUtil::MakeTupleShape(
-      {induction_variable_shape_, nested_tuple_shape_});
-  Shape condition_result_shape_ = ShapeUtil::MakeShape(PRED, {});
+      ShapeUtil::MakeValidatedTupleShape({data_shape_, data_shape_}).value();
+  Shape nested_loop_state_shape_ =
+      ShapeUtil::MakeValidatedTupleShape(
+          {induction_variable_shape_, nested_tuple_shape_})
+          .value();
+  Shape condition_result_shape_ =
+      ShapeUtil::MakeValidatedShape(PRED, {}).value();
 };
 
 // Tests while body computation with independent tuple elements:
@@ -1077,7 +1088,7 @@ TEST_F(WhileCopyInsertionTest,
   auto data_param = builder.AddInstruction(
       HloInstruction::CreateParameter(1, data_shape_, "data"));
   // Add dummy ops to ensure loop_init elements aren't entry parameters.
-  Shape f32_scalar_shape = ShapeUtil::MakeShape(F32, {});
+  Shape f32_scalar_shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
   auto convert = builder.AddInstruction(
       HloInstruction::CreateConvert(f32_scalar_shape, iter_param));
   auto iter_value = builder.AddInstruction(
@@ -1371,7 +1382,8 @@ TEST_F(CopyInsertionTest, SwizzlingWhile) {
   // elements.
   auto module = CreateNewVerifiedModule();
   const Shape loop_state_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+      ShapeUtil::MakeValidatedTupleShape({scalar_shape_, scalar_shape_})
+          .value();
 
   // Body simply interchanges the two tuple elements in the loop state.
   auto body_builder = HloComputation::Builder("body");
@@ -1438,7 +1450,8 @@ TEST_F(CopyInsertionTest, CrossingParameters) {
   //  (p1  ,  p0)
   auto module = CreateNewVerifiedModule();
   const Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+      ShapeUtil::MakeValidatedTupleShape({scalar_shape_, scalar_shape_})
+          .value();
 
   auto builder = HloComputation::Builder(TestName());
   auto param = builder.AddInstruction(
@@ -1471,7 +1484,8 @@ TEST_F(CopyInsertionTest, ParametersAliasing) {
   //  (p0 ,  p1)
   auto module = CreateNewVerifiedModule();
   const Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+      ShapeUtil::MakeValidatedTupleShape({scalar_shape_, scalar_shape_})
+          .value();
 
   auto builder = HloComputation::Builder(TestName());
   auto param = builder.AddInstruction(
@@ -1504,7 +1518,8 @@ TEST_F(CopyInsertionTest, ParameterWithNoAliasing) {
   //  (p0 ,  p1)
   auto module = CreateNewVerifiedModule();
   const Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+      ShapeUtil::MakeValidatedTupleShape({scalar_shape_, scalar_shape_})
+          .value();
 
   auto builder = HloComputation::Builder(TestName());
   auto param = builder.AddInstruction(
@@ -1537,7 +1552,8 @@ TEST_F(CopyInsertionTest, ParameterWithPartialAliasing) {
   //  (p0 ,  p1)
   auto module = CreateNewVerifiedModule();
   const Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+      ShapeUtil::MakeValidatedTupleShape({scalar_shape_, scalar_shape_})
+          .value();
 
   auto builder = HloComputation::Builder(TestName());
   auto param = builder.AddInstruction(
@@ -1572,7 +1588,8 @@ TEST_F(CopyInsertionTest, ParameterAndParallelOpsWithPartialAliasing) {
   //   +-- (p0 ,  p1)
   auto module = CreateNewVerifiedModule();
   const Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+      ShapeUtil::MakeValidatedTupleShape({scalar_shape_, scalar_shape_})
+          .value();
 
   auto builder = HloComputation::Builder(TestName());
   auto param = builder.AddInstruction(
@@ -1610,7 +1627,8 @@ TEST_F(CopyInsertionTest, ParameterAndOpsWithPartialAliasing) {
   //   +-- (p0 ,  p1)
   auto module = CreateNewVerifiedModule();
   const Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+      ShapeUtil::MakeValidatedTupleShape({scalar_shape_, scalar_shape_})
+          .value();
 
   auto builder = HloComputation::Builder(TestName());
   auto param = builder.AddInstruction(
@@ -1645,7 +1663,8 @@ TEST_F(CopyInsertionTest, SwizzlingWhileWithOneOp) {
   // not there (as in the SwizzlingWhile test above).
   auto module = CreateNewVerifiedModule();
   const Shape loop_state_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+      ShapeUtil::MakeValidatedTupleShape({scalar_shape_, scalar_shape_})
+          .value();
 
   // Body interchanges the two tuple elements in the loop state and negates one
   // of them.
@@ -1708,7 +1727,8 @@ TEST_F(CopyInsertionTest, SwizzlingWhileSharedInput) {
   // elements are the same so interchanging them is a no-op.
   auto module = CreateNewVerifiedModule();
   const Shape loop_state_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+      ShapeUtil::MakeValidatedTupleShape({scalar_shape_, scalar_shape_})
+          .value();
 
   // Body simply interchanges the two tuple elements in the loop state.
   auto body_builder = HloComputation::Builder("body");
@@ -1763,9 +1783,11 @@ TEST_F(CopyInsertionTest, SequentialWhiles) {
   //
   //   element 3 is reversed in each while body. (in-place not possible)
   //
-  const Shape element_shape = ShapeUtil::MakeShape(F32, {42});
-  const Shape loop_state_shape = ShapeUtil::MakeTupleShape(
-      {element_shape, element_shape, element_shape, element_shape});
+  const Shape element_shape = ShapeUtil::MakeValidatedShape(F32, {42}).value();
+  const Shape loop_state_shape =
+      ShapeUtil::MakeValidatedTupleShape(
+          {element_shape, element_shape, element_shape, element_shape})
+          .value();
 
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
@@ -1942,9 +1964,11 @@ std::unique_ptr<HloComputation> MakeTrivialCondition(const Shape& shape) {
 
 std::unique_ptr<HloComputation> MakeBenchmarkWhileBody() {
   auto builder = HloComputation::Builder("benchmark_loop_body");
-  const Shape element_shape = ShapeUtil::MakeShape(F32, {42});
+  const Shape element_shape = ShapeUtil::MakeValidatedShape(F32, {42}).value();
   const Shape loop_state_shape =
-      ShapeUtil::MakeTupleShape({element_shape, element_shape, element_shape});
+      ShapeUtil::MakeValidatedTupleShape(
+          {element_shape, element_shape, element_shape})
+          .value();
   HloInstruction* param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, loop_state_shape, "loop_state"));
   HloInstruction* element_0 = builder.AddInstruction(
@@ -1978,11 +2002,11 @@ void BM_SequentialWhiles(::testing::benchmark::State& state) {
 
     auto builder = HloComputation::Builder("BM_SequentialWhiles");
     HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
-        0, ShapeUtil::MakeShape(F32, {42}), "x"));
+        0, ShapeUtil::MakeValidatedShape(F32, {42}).value(), "x"));
     HloInstruction* y = builder.AddInstruction(HloInstruction::CreateParameter(
-        1, ShapeUtil::MakeShape(F32, {42}), "y"));
+        1, ShapeUtil::MakeValidatedShape(F32, {42}).value(), "y"));
     HloInstruction* z = builder.AddInstruction(HloInstruction::CreateParameter(
-        2, ShapeUtil::MakeShape(F32, {42}), "z"));
+        2, ShapeUtil::MakeValidatedShape(F32, {42}).value(), "z"));
     HloInstruction* init =
         builder.AddInstruction(HloInstruction::CreateTuple({x, y, z}));
 
@@ -2021,11 +2045,11 @@ void BM_ParallelWhiles(::testing::benchmark::State& state) {
 
     auto builder = HloComputation::Builder("BM_ParallelWhiles");
     HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
-        0, ShapeUtil::MakeShape(F32, {42}), "x"));
+        0, ShapeUtil::MakeValidatedShape(F32, {42}).value(), "x"));
     HloInstruction* y = builder.AddInstruction(HloInstruction::CreateParameter(
-        1, ShapeUtil::MakeShape(F32, {42}), "y"));
+        1, ShapeUtil::MakeValidatedShape(F32, {42}).value(), "y"));
     HloInstruction* z = builder.AddInstruction(HloInstruction::CreateParameter(
-        2, ShapeUtil::MakeShape(F32, {42}), "z"));
+        2, ShapeUtil::MakeValidatedShape(F32, {42}).value(), "z"));
     HloInstruction* init =
         builder.AddInstruction(HloInstruction::CreateTuple({x, y, z}));
 
@@ -2066,9 +2090,10 @@ void BM_ParallelWhiles(::testing::benchmark::State& state) {
 std::unique_ptr<HloComputation> MakeBenchmarkWhileBody(
     const int num_tuple_inputs) {
   auto builder = HloComputation::Builder("benchmark_loop_body");
-  const Shape element_shape = ShapeUtil::MakeShape(F32, {});
+  const Shape element_shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
   std::vector<Shape> input_shape(num_tuple_inputs, element_shape);
-  const Shape loop_state_shape = ShapeUtil::MakeTupleShape(input_shape);
+  const Shape loop_state_shape =
+      ShapeUtil::MakeValidatedTupleShape(input_shape).value();
   HloInstruction* param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, loop_state_shape, "loop_state"));
   std::vector<HloInstruction*> gte_nodes(num_tuple_inputs);
@@ -2085,7 +2110,7 @@ void BM_ManyElementTuple(::testing::benchmark::State& state) {
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsFromFlags());
   CopyInsertion copy_insertion;
-  const Shape element_shape = ShapeUtil::MakeShape(F32, {});
+  const Shape element_shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
   std::vector<HloInstruction*> tuple_params(num_tuple_inputs);
   for (auto s : state) {
     state.PauseTiming();
@@ -2104,7 +2129,7 @@ void BM_ManyElementTuple(::testing::benchmark::State& state) {
     HloInstruction* xla_while = builder.AddInstruction(
         HloInstruction::CreateWhile(init->shape(), condition, body, init));
     builder.AddInstruction(HloInstruction::CreateGetTupleElement(
-        ShapeUtil::MakeShape(F32, {}), xla_while, 0));
+        ShapeUtil::MakeValidatedShape(F32, {}).value(), xla_while, 0));
     module.AddEntryComputation(builder.Build());
     state.ResumeTiming();
     ASSERT_IS_OK(copy_insertion.Run(&module).status());

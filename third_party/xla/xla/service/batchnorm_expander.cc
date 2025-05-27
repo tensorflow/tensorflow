@@ -77,7 +77,7 @@ class BatchNormExpanderVisitor : public DfsHloRewriteVisitor {
   HloComputation* GetOrCreateScalarAddComputation(
       PrimitiveType primitive_type) {
     HloComputation::Builder b("scalar_add_computation");
-    Shape shape = ShapeUtil::MakeShape(primitive_type, {});
+    Shape shape = ShapeUtil::MakeValidatedShape(primitive_type, {}).value();
     auto scalar_lhs = b.AddInstruction(
         HloInstruction::CreateParameter(0, shape, "scalar_lhs"));
     auto scalar_rhs = b.AddInstruction(
@@ -115,14 +115,15 @@ class BatchNormExpanderVisitor : public DfsHloRewriteVisitor {
       }
       auto dynamic_dimension_size =
           add_instruction(HloInstruction::CreateGetDimensionSize(
-              ShapeUtil::MakeShape(S32, {}), operand, i));
+              ShapeUtil::MakeValidatedShape(S32, {}).value(), operand, i));
       elements_per_feature_s32 = add_instruction(HloInstruction::CreateBinary(
-          ShapeUtil::MakeShape(S32, {}), HloOpcode::kMultiply,
+          ShapeUtil::MakeValidatedShape(S32, {}).value(), HloOpcode::kMultiply,
           dynamic_dimension_size, elements_per_feature_s32));
     }
 
     return HloInstruction::CreateConvert(
-        ShapeUtil::MakeShape(operand->shape().element_type(), {}),
+        ShapeUtil::MakeValidatedShape(operand->shape().element_type(), {})
+            .value(),
         elements_per_feature_s32);
   }
 

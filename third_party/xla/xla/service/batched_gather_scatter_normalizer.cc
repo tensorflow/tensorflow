@@ -102,7 +102,8 @@ HloInstruction* CreateConcatIndices(
     std::vector<int64_t> dimensions(iota_shape.dimensions().begin(),
                                     iota_shape.dimensions().end());
     dimensions.push_back(1);
-    iota_shape = ShapeUtil::MakeShape(element_type, dimensions);
+    iota_shape =
+        ShapeUtil::MakeValidatedShape(element_type, dimensions).value();
     indices = inst->AddInstruction(
         HloInstruction::CreateReshape(iota_shape, indices));
   }

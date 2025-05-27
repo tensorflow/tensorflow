@@ -99,7 +99,8 @@ absl::StatusOr<bool> TryRemoveUnusedConditionalOperands(
     map[i] = new_tuple_shapes.size();
     new_tuple_shapes.push_back(&param->shape().tuple_shapes(i));
   }
-  Shape tuple_shape = ShapeUtil::MakeTupleShapeWithPtrs(new_tuple_shapes);
+  Shape tuple_shape =
+      ShapeUtil::MakeValidatedTupleShapeWithPtrs(new_tuple_shapes).value();
   // Clone the computation in case it is called by another non-conditional
   // instruction.
   HloComputation* new_computation =
@@ -156,7 +157,7 @@ absl::StatusOr<bool> TryRemoveUnusedConditionalOperands(
 // Replaces the roots of all branches with an empty tuple if the conditional op
 // has no users. Returns true if anything is changed.
 bool ReplaceRootWithEmptyTupleIfNoUsers(HloInstruction* conditional_op) {
-  const Shape empty_tuple = ShapeUtil::MakeTupleShape({});
+  const Shape empty_tuple = ShapeUtil::MakeValidatedTupleShape({}).value();
   if (conditional_op->user_count() == 0 &&
       conditional_op != conditional_op->parent()->root_instruction() &&
       !ShapeUtil::Compatible(empty_tuple, conditional_op->shape())) {
@@ -250,7 +251,8 @@ bool RemoveUnusedTupleElements(HloInstruction* conditional_op) {
     new_tuple_shapes.push_back(
         &old_shape.tuple_shapes(new_to_old_mapping[new_index]));
   }
-  const Shape new_shape = ShapeUtil::MakeTupleShapeWithPtrs(new_tuple_shapes);
+  const Shape new_shape =
+      ShapeUtil::MakeValidatedTupleShapeWithPtrs(new_tuple_shapes).value();
 
   // Double-check the old branch root shape is compatible (tuple-like).
   for (HloComputation* branch : conditional_op->branch_computations()) {

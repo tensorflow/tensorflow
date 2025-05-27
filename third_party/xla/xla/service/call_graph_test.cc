@@ -100,13 +100,13 @@ class CallGraphTest : public HloHardwareIndependentTestBase,
         HloInstruction::CreateParameter(0, kScalarShape, "param0"));
     HloInstruction* zero = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
-    builder.AddInstruction(
-        HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), param0,
-                                      zero, ComparisonDirection::kGt));
+    builder.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeValidatedShape(PRED, {}).value(), param0, zero,
+        ComparisonDirection::kGt));
     return builder.Build();
   }
 
-  const Shape kScalarShape = ShapeUtil::MakeShape(F32, {});
+  const Shape kScalarShape = ShapeUtil::MakeValidatedShape(F32, {}).value();
 };
 
 TEST_F(CallGraphTest, SingletonComputation) {
@@ -806,7 +806,8 @@ TEST_F(CallGraphTest, ExecutionThread) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto* async_done,
       main_thread_computation->CreateAsyncInstructions(
-          add, {ShapeUtil::MakeScalarShape(U32)}, kParallelThreadName));
+          add, {ShapeUtil::MakeValidatedScalarShape(U32).value()},
+          kParallelThreadName));
   auto* parallel_thread_computation = async_done->async_wrapped_computation();
 
   {

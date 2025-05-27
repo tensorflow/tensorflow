@@ -1864,16 +1864,18 @@ absl::Status TransformLoopForward(
   }
   // Clone new loop computations (cond and body) and create the new loop
   // instruction and connect it to the users/operands of the old loop.
-  Shape loop_state_shape = ShapeUtil::MakeTupleShape(new_parameter_shapes);
+  Shape loop_state_shape =
+      ShapeUtil::MakeValidatedTupleShape(new_parameter_shapes).value();
   absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
       replacements;
   InstructionMap pipelined_values_map_inloop;
   InstructionMap pipelined_values_map_outloop;
   replacements[loop_parameter] = HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeTupleShape(new_parameter_shapes), "loop_peel_param");
+      0, ShapeUtil::MakeValidatedTupleShape(new_parameter_shapes).value(),
+      "loop_peel_param");
   replacements[while_loop->while_condition()->parameter_instructions()[0]] =
       HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeTupleShape(new_parameter_shapes),
+          0, ShapeUtil::MakeValidatedTupleShape(new_parameter_shapes).value(),
           "loop_peel_cond_param");
   replacements[while_body->root_instruction()] =
       HloInstruction::CreateTuple(new_root_operands);
@@ -2300,7 +2302,7 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
           << " after adding dependencies: " << new_root_operands.size();
   std::unique_ptr<HloInstruction> new_parameter =
       HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeTupleShape(new_parameter_shapes),
+          0, ShapeUtil::MakeValidatedTupleShape(new_parameter_shapes).value(),
           absl::StrCat("sink_", loop_parameter->name()));
   // Insert inputs to the collective we are sinking in slices for the loop.
   for (auto& to_move : loop_analysis.GetMoveInfos()) {
@@ -2368,7 +2370,7 @@ absl::Status TransformLoopForwardSink(const WhileLoopAnalysis& loop_analysis,
       std::move(new_root_instr);
   replacements[while_loop->while_condition()->parameter_instruction(0)] =
       HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeTupleShape(new_parameter_shapes),
+          0, ShapeUtil::MakeValidatedTupleShape(new_parameter_shapes).value(),
           absl::StrCat(
               "sink_",
               while_loop->while_condition()->parameter_instruction(0)->name()));
@@ -2840,7 +2842,8 @@ static absl::Status TransformLoopBackward(
   auto body_builder = HloComputation::Builder(while_body->name());
   HloInstruction* new_loop_param =
       body_builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeTupleShape(new_parameter_shapes), "param"));
+          0, ShapeUtil::MakeValidatedTupleShape(new_parameter_shapes).value(),
+          "param"));
   HloInstruction* loop_iterator_for_pipelined_instrs =
       body_builder.AddInstruction(HloInstruction::CreateGetTupleElement(
           new_loop_param, new_init_operands.size() - 1));
@@ -2951,7 +2954,8 @@ static absl::Status TransformLoopBackward(
       HloComputation::Builder(while_loop->while_condition()->name());
   HloInstruction* new_cond_param =
       cond_builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeTupleShape(new_parameter_shapes), "cond_param"));
+          0, ShapeUtil::MakeValidatedTupleShape(new_parameter_shapes).value(),
+          "cond_param"));
 
   // Update the loop bound of the loop to iterate one iteration less.
   // The updated bound is loop_start + (num_iterations-1) * loop_increment.

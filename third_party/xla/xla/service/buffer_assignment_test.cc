@@ -274,9 +274,9 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
         HloInstruction::CreateParameter(0, t_s32_f32v4_, "x"));
     auto index = builder.AddInstruction(
         HloInstruction::CreateGetTupleElement(const4->shape(), param, 0));
-    builder.AddInstruction(
-        HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), index,
-                                      const4, ComparisonDirection::kLt));
+    builder.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeValidatedShape(PRED, {}).value(), index, const4,
+        ComparisonDirection::kLt));
     return builder.Build();
   }
 
@@ -379,14 +379,16 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
   }
 
   // Shapes for use in the examples.
-  Shape s32_ = ShapeUtil::MakeShape(xla::S32, {});
-  Shape r0f32_ = ShapeUtil::MakeShape(xla::F32, {});
-  Shape f32vec4_ = ShapeUtil::MakeShape(F32, {4});
-  Shape f32vec10_ = ShapeUtil::MakeShape(F32, {10});
-  Shape f32vec100_ = ShapeUtil::MakeShape(F32, {100});
-  Shape f32a100x10_ = ShapeUtil::MakeShape(F32, {100, 10});
-  Shape t_s32_f32v4_ = ShapeUtil::MakeTupleShape({s32_, f32vec4_});
-  Shape t_s32_f32v10_ = ShapeUtil::MakeTupleShape({s32_, f32vec10_});
+  Shape s32_ = ShapeUtil::MakeValidatedShape(xla::S32, {}).value();
+  Shape r0f32_ = ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
+  Shape f32vec4_ = ShapeUtil::MakeValidatedShape(F32, {4}).value();
+  Shape f32vec10_ = ShapeUtil::MakeValidatedShape(F32, {10}).value();
+  Shape f32vec100_ = ShapeUtil::MakeValidatedShape(F32, {100}).value();
+  Shape f32a100x10_ = ShapeUtil::MakeValidatedShape(F32, {100, 10}).value();
+  Shape t_s32_f32v4_ =
+      ShapeUtil::MakeValidatedTupleShape({s32_, f32vec4_}).value();
+  Shape t_s32_f32v10_ =
+      ShapeUtil::MakeValidatedTupleShape({s32_, f32vec10_}).value();
 };
 
 // Returns true if the buffers assigned to instructions in "a" are distinct
@@ -929,7 +931,7 @@ TEST_F(BufferAssignmentTest, PresetAssignmentsWhile) {
       /*element_size_in_bits=*/0,
       /*memory_space=*/1);
   Shape t_s32_f32v10_color1 =
-      ShapeUtil::MakeTupleShape({s32_, f32vec10_color1});
+      ShapeUtil::MakeValidatedTupleShape({s32_, f32vec10_color1}).value();
 
   auto cond_builder = HloComputation::Builder("WhileCond");
   HloInstruction* cond_param = cond_builder.AddInstruction(
@@ -938,9 +940,9 @@ TEST_F(BufferAssignmentTest, PresetAssignmentsWhile) {
       HloInstruction::CreateGetTupleElement(s32_, cond_param, 0));
   HloInstruction* cond_limit = cond_builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(50)));
-  cond_builder.AddInstruction(
-      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), cond_iter,
-                                    cond_limit, ComparisonDirection::kLt));
+  cond_builder.AddInstruction(HloInstruction::CreateCompare(
+      ShapeUtil::MakeValidatedShape(PRED, {}).value(), cond_iter, cond_limit,
+      ComparisonDirection::kLt));
   HloComputation* cond_computation =
       module->AddEmbeddedComputation(cond_builder.Build());
 
@@ -1449,7 +1451,7 @@ TEST_F(BufferAssignmentTest, DoNotReuseOversizedOutputBuffer) {
       HloInstruction::CreateSlice(f32vec10_, negate, {0}, {10}, {1}));
   // Broadcast output is 40 elements.
   auto broadcast = builder.AddInstruction(HloInstruction::CreateBroadcast(
-      ShapeUtil::MakeShape(F32, {10, 4}), slice, {0}));
+      ShapeUtil::MakeValidatedShape(F32, {10, 4}).value(), slice, {0}));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
@@ -1481,7 +1483,7 @@ TEST_F(BufferAssignmentTest, ReuseOutputBufferIfExactlySized) {
       HloInstruction::CreateSlice(f32vec10_, negate, {0}, {10}, {1}));
   // Broadcast output is 40 elements.
   auto broadcast = builder.AddInstruction(HloInstruction::CreateBroadcast(
-      ShapeUtil::MakeShape(F32, {10, 10}), slice, {0}));
+      ShapeUtil::MakeValidatedShape(F32, {10, 10}).value(), slice, {0}));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
@@ -1518,7 +1520,7 @@ TEST_F(BufferAssignmentTest, DoNotReuseOversizedOutputBufferInTuple) {
       HloInstruction::CreateSlice(f32vec10_, negate, {0}, {10}, {1}));
   // Broadcast output is 40 elements.
   auto broadcast = builder.AddInstruction(HloInstruction::CreateBroadcast(
-      ShapeUtil::MakeShape(F32, {10, 4}), slice, {0}));
+      ShapeUtil::MakeValidatedShape(F32, {10, 4}).value(), slice, {0}));
   builder.AddInstruction(HloInstruction::CreateTuple({broadcast}));
 
   auto module = CreateNewVerifiedModule();
@@ -1537,8 +1539,8 @@ TEST_F(BufferAssignmentTest, EmbeddedComputationBuffers) {
   // thread-local and that embedded parameters are not marked as
   // is_entry_computation_parameter.
   auto module = CreateNewVerifiedModule();
-  auto vec_shape = ShapeUtil::MakeShape(F32, {42});
-  auto scalar_shape = ShapeUtil::MakeShape(F32, {});
+  auto vec_shape = ShapeUtil::MakeValidatedShape(F32, {42}).value();
+  auto scalar_shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
 
   // Create a scalar computation to use in a map.
   auto map_builder = HloComputation::Builder(TestName() + "_map");
@@ -1608,7 +1610,7 @@ TEST_F(BufferAssignmentTest, CustomCallEmbeddedComputationBuffers) {
   // Verify that buffers for embedded computations in a custom call are properly
   // marked as thread-local.
   auto module = CreateNewVerifiedModule();
-  auto scalar_shape = ShapeUtil::MakeShape(F32, {});
+  auto scalar_shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
 
   // Create a scalar computation to use in a map.
   auto map_builder = HloComputation::Builder(TestName() + "_map");
@@ -1645,7 +1647,7 @@ TEST_F(BufferAssignmentTest, CustomCallSubcomputationBuffers) {
   // Verify that buffers for subcomputations in a custom call are properly
   // marked as thread-local.
   auto module = CreateNewVerifiedModule();
-  auto scalar_shape = ShapeUtil::MakeShape(F32, {});
+  auto scalar_shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
 
   auto subcomputation_builder =
       HloComputation::Builder(TestName() + "_subcomputation");
@@ -1707,9 +1709,10 @@ TEST_F(BufferAssignmentTest, TupleParameterAsOutput) {
   auto builder = HloComputation::Builder(TestName());
   auto tuple_param = builder.AddInstruction(HloInstruction::CreateParameter(
       0,
-      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(PRED, {1, 2, 3, 4}),
-                                 ShapeUtil::MakeShape(F32, {}),
-                                 ShapeUtil::MakeShape(S32, {42})}),
+      ShapeUtil::MakeValidatedTupleShape(
+          {ShapeUtil::MakeShape(PRED, {1, 2, 3, 4}),
+           ShapeUtil::MakeShape(F32, {}), ShapeUtil::MakeShape(S32, {42})})
+          .value(),
       "param0"));
 
   auto module = CreateNewVerifiedModule();
@@ -1739,10 +1742,11 @@ TEST_F(BufferAssignmentTest, ElementOfNestedTupleParameterAsOutput) {
   auto builder = HloComputation::Builder(TestName());
   auto tuple_param = builder.AddInstruction(HloInstruction::CreateParameter(
       0,
-      ShapeUtil::MakeTupleShape(
+      ShapeUtil::MakeValidatedTupleShape(
           {ShapeUtil::MakeShape(PRED, {1, 2, 3, 4}),
            ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(S32, {42}),
-                                      ShapeUtil::MakeShape(S32, {101})})}),
+                                      ShapeUtil::MakeShape(S32, {101})})})
+          .value(),
       "param0"));
   auto tuple_element =
       builder.AddInstruction(HloInstruction::CreateGetTupleElement(
@@ -1801,8 +1805,10 @@ TEST_F(BufferAssignmentTest, TupleCustomCallAsOutput) {
   // Test a computation which returns a tuple custom call value.
   auto builder = HloComputation::Builder(TestName());
   auto custom_call = builder.AddInstruction(HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(PRED, {1, 2, 3, 4}),
-                                 ShapeUtil::MakeShape(S32, {101})}),
+      ShapeUtil::MakeValidatedTupleShape(
+          {ShapeUtil::MakeShape(PRED, {1, 2, 3, 4}),
+           ShapeUtil::MakeShape(S32, {101})})
+          .value(),
       /*operands=*/{}, /*custom_call_target=*/"foo_function"));
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
@@ -1842,7 +1848,7 @@ TEST_F(BufferAssignmentTest, TupleCallAsOutput) {
   // Test a computation which returns a tuple call value.
   auto module = CreateNewVerifiedModule();
   auto elem_shape = f32vec4_;
-  auto tuple_shape = ShapeUtil::MakeTupleShape({elem_shape});
+  auto tuple_shape = ShapeUtil::MakeValidatedTupleShape({elem_shape}).value();
 
   auto sub_builder = HloComputation::Builder(TestName() + "_sub");
   auto sub_param = sub_builder.AddInstruction(
@@ -1883,7 +1889,7 @@ TEST_F(BufferAssignmentTest, TupleChainedCallAsOutput) {
   // D: param
   auto module = CreateNewVerifiedModule();
   auto elem_shape = f32vec4_;
-  auto tuple_shape = ShapeUtil::MakeTupleShape({elem_shape});
+  auto tuple_shape = ShapeUtil::MakeValidatedTupleShape({elem_shape}).value();
 
   auto d_builder = HloComputation::Builder(TestName() + "_d");
   auto d_param = d_builder.AddInstruction(
@@ -1950,7 +1956,7 @@ TEST_F(BufferAssignmentTest, BitcastAsOutput) {
   // Test a computation which returns a bitcast value.
   auto builder = HloComputation::Builder(TestName());
   auto param = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeShape(F32, {42}), "param"));
+      0, ShapeUtil::MakeValidatedShape(F32, {42}).value(), "param"));
   auto bitcast = builder.AddInstruction(
       HloInstruction::CreateBitcast(param->shape(), param));
 
@@ -1967,7 +1973,7 @@ TEST_F(BufferAssignmentTest, BitcastAsOutput) {
 TEST_F(BufferAssignmentTest, TupleBufferNotReused) {
   // Test a computation that returns a tuple parameter.
   auto builder = HloComputation::Builder(TestName());
-  auto scalar_shape = ShapeUtil::MakeShape(F32, {});
+  auto scalar_shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
   auto param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape, "param0"));
   auto tuple = builder.AddInstruction(HloInstruction::CreateTuple({param}));
@@ -1995,11 +2001,11 @@ TEST_F(BufferAssignmentTest, OneTempAllocation) {
   // Test a computation that requires multiple temp buffers, and ensure they
   // are combined into a single allocation.
   auto builder = HloComputation::Builder(TestName());
-  Shape shape_2x3 = ShapeUtil::MakeShape(F32, {2, 3});
-  Shape shape_2x4 = ShapeUtil::MakeShape(F32, {2, 4});
-  Shape shape_3x4 = ShapeUtil::MakeShape(F32, {3, 4});
-  Shape shape_4x4 = ShapeUtil::MakeShape(F32, {4, 4});
-  Shape shape_5x4 = ShapeUtil::MakeShape(F32, {5, 4});
+  Shape shape_2x3 = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
+  Shape shape_2x4 = ShapeUtil::MakeValidatedShape(F32, {2, 4}).value();
+  Shape shape_3x4 = ShapeUtil::MakeValidatedShape(F32, {3, 4}).value();
+  Shape shape_4x4 = ShapeUtil::MakeValidatedShape(F32, {4, 4}).value();
+  Shape shape_5x4 = ShapeUtil::MakeValidatedShape(F32, {5, 4}).value();
 
   // There should be separate temp buffers for dot_ab and dot_bc.
   auto param_a = builder.AddInstruction(
@@ -2119,13 +2125,13 @@ TEST_F(BufferAssignmentTest, PeakBuffers) {
       HloInstruction::CreateReverse(f32vec100_, log, {0}));
   auto neg = builder.AddInstruction(
       HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, param));
-  const Shape concat_shape = ShapeUtil::MakeShape(F32, {200});
+  const Shape concat_shape = ShapeUtil::MakeValidatedShape(F32, {200}).value();
   auto concat = builder.AddInstruction(
       HloInstruction::CreateConcatenate(concat_shape, {rev, neg}, 0));
   // Make the root tiny so no interior nodes can share its buffer.
   auto root = builder.AddInstruction(HloInstruction::CreateSlice(
 
-      ShapeUtil::MakeShape(F32, {1}), concat, {0}, {1}, {1}));
+      ShapeUtil::MakeValidatedShape(F32, {1}).value(), concat, {0}, {1}, {1}));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
@@ -2304,7 +2310,8 @@ class WhileBufferAssignmentTest : public HloHardwareIndependentTestBase {
     auto ten = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(10)));
     builder.AddInstruction(HloInstruction::CreateCompare(
-        ShapeUtil::MakeShape(PRED, {}), zero, ten, ComparisonDirection::kLt));
+        ShapeUtil::MakeValidatedShape(PRED, {}).value(), zero, ten,
+        ComparisonDirection::kLt));
     return builder.Build();
   }
 
@@ -2339,9 +2346,10 @@ class WhileBufferAssignmentTest : public HloHardwareIndependentTestBase {
     return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
   }
 
-  Shape data_shape_ = ShapeUtil::MakeShape(F32, {4});
-  Shape loop_state_shape_ =
-      ShapeUtil::MakeTupleShape({data_shape_, data_shape_, data_shape_});
+  Shape data_shape_ = ShapeUtil::MakeValidatedShape(F32, {4}).value();
+  Shape loop_state_shape_ = ShapeUtil::MakeValidatedTupleShape(
+                                {data_shape_, data_shape_, data_shape_})
+                                .value();
 };
 
 static void RunCopyInsertion(HloModule* module) {
@@ -2414,7 +2422,7 @@ TEST_F(WhileBufferAssignmentTest, TwoForwardWhileLoops) {
 // %while.0 body just forwards the init value, so the loop carried variable
 // remains the constant, whereas %while.1 changes the loop carried variable.
 TEST_F(WhileBufferAssignmentTest, ColocatedBufferWithEntryParameter) {
-  const Shape r0s32 = ShapeUtil::MakeShape(S32, {});
+  const Shape r0s32 = ShapeUtil::MakeValidatedShape(S32, {}).value();
 
   const char* module_str = R"(
 HloModule test_module
@@ -2481,7 +2489,7 @@ ENTRY %test_module {
 }
 
 TEST_F(WhileBufferAssignmentTest, ColocatedBufferWithConstant) {
-  const Shape r0s32 = ShapeUtil::MakeShape(S32, {});
+  const Shape r0s32 = ShapeUtil::MakeValidatedShape(S32, {}).value();
 
   const char* module_str = R"(
 HloModule test_module
@@ -2564,7 +2572,7 @@ ENTRY %test_module {
 // assignment was coalescing the colocated buffers for all 3 while instructions,
 // therefore assigning the same buffer to the two result tuple elements.
 TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
-  const Shape r0s32 = ShapeUtil::MakeShape(S32, {});
+  const Shape r0s32 = ShapeUtil::MakeValidatedShape(S32, {}).value();
 
   // Builds a condition computation: x -> x < 4
   auto build_cond = [&]() {
@@ -2573,9 +2581,9 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(4)));
     auto param =
         builder.AddInstruction(HloInstruction::CreateParameter(0, r0s32, "x"));
-    builder.AddInstruction(
-        HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), param,
-                                      const4, ComparisonDirection::kLt));
+    builder.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeValidatedShape(PRED, {}).value(), param, const4,
+        ComparisonDirection::kLt));
     return builder.Build();
   };
 
@@ -2717,7 +2725,7 @@ TEST_F(WhileBufferAssignmentTest, OneForwardBackwardWhileLoopSet) {
 
 TEST_F(BufferAssignmentTest, TwoCalls) {
   auto module = CreateNewVerifiedModule();
-  Shape r0f32 = ShapeUtil::MakeShape(xla::F32, {});
+  Shape r0f32 = ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
   HloComputation* sub_computation;
   {
     auto builder = HloComputation::Builder(TestName() + "_sub_comp");

@@ -106,8 +106,10 @@ absl::StatusOr<HloInstruction*> AllToAllDecomposer::ExpandInstruction(
     slice_starts[split_dim] = slice_limits[split_dim];
     slice_limits[split_dim] += split_size;
   }
-  Shape all_to_all_shape = ShapeUtil::MakeTupleShapeWithPtrs(
-      std::vector<const Shape*>(all_to_all_group_size, &slice_shape));
+  Shape all_to_all_shape =
+      ShapeUtil::MakeValidatedTupleShapeWithPtrs(
+          std::vector<const Shape*>(all_to_all_group_size, &slice_shape))
+          .value();
   HloInstruction* new_all_to_all =
       all_to_all->parent()->AddInstruction(HloInstruction::CreateAllToAll(
           all_to_all_shape, slices, all_to_all->device_list(), false,

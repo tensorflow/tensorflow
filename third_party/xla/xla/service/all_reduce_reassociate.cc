@@ -341,11 +341,13 @@ absl::StatusOr<bool> AllReduceReassociate::Run(
         std::string name = absl::StrCat(to_apply->name(), "_reassoc_promoted");
         HloComputation::Builder promoted(name);
         auto x = promoted.AddInstruction(HloInstruction::CreateParameter(
-            /*parameter_number=*/0, ShapeUtil::MakeShape(type, {}), "x"));
+            /*parameter_number=*/0,
+            ShapeUtil::MakeValidatedShape(type, {}).value(), "x"));
         auto y = promoted.AddInstruction(HloInstruction::CreateParameter(
-            /*parameter_number=*/1, ShapeUtil::MakeShape(type, {}), "y"));
+            /*parameter_number=*/1,
+            ShapeUtil::MakeValidatedShape(type, {}).value(), "y"));
         promoted.AddInstruction(HloInstruction::CreateBinary(
-            ShapeUtil::MakeShape(type, {}),
+            ShapeUtil::MakeValidatedShape(type, {}).value(),
             to_apply->root_instruction()->opcode(), x, y));
 
         HloComputation* to_apply_promoted =

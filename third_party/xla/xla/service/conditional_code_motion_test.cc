@@ -718,8 +718,9 @@ ENTRY main {
 
   // Checks if conditional shape has changed.
   ASSERT_TRUE(ShapeUtil::Compatible(
-      conditional->shape(), ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(
-                                BF16, {3, 3, 128, 128})})));
+      conditional->shape(), ShapeUtil::MakeValidatedTupleShape(
+                                {ShapeUtil::MakeShape(BF16, {3, 3, 128, 128})})
+                                .value()));
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root,
@@ -805,8 +806,9 @@ ENTRY main {
 
   // Checks if conditional shape has changed.
   ASSERT_TRUE(ShapeUtil::Compatible(
-      conditional->shape(), ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(
-                                BF16, {3, 3, 128, 128})})));
+      conditional->shape(), ShapeUtil::MakeValidatedTupleShape(
+                                {ShapeUtil::MakeShape(BF16, {3, 3, 128, 128})})
+                                .value()));
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::Tuple(op::Convert(op::AllReduce(
                         op::GetTupleElement(op::Conditional()))))));
@@ -1269,8 +1271,9 @@ ENTRY main {
 
   // Checks if conditional shape has changed.
   ASSERT_TRUE(ShapeUtil::Compatible(
-      conditional->shape(), ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(
-                                BF16, {3, 3, 128, 128})})));
+      conditional->shape(), ShapeUtil::MakeValidatedTupleShape(
+                                {ShapeUtil::MakeShape(BF16, {3, 3, 128, 128})})
+                                .value()));
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root,

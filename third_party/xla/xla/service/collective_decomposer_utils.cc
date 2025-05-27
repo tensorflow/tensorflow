@@ -142,7 +142,8 @@ CreateStartIndicesForCollectiveDecomposition(
     }
     HloInstruction *ds =
         computation->AddInstruction(HloInstruction::CreateDynamicSlice(
-            ShapeUtil::MakeShape(U32, {1}), table, {participant_id}, {1}));
+            ShapeUtil::MakeValidatedShape(U32, {1}).value(), table,
+            {participant_id}, {1}));
     if (update_layout) {
       update_layout(*ds->mutable_shape());
     }
