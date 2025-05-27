@@ -55,6 +55,7 @@ cc_library(
         "//xla/backends/gpu/runtime:thunk",
         "//xla/codegen/emitters:computation_partitioner",
         "//xla/codegen/emitters:elemental_hlo_to_mlir",
+        "//xla/codegen/emitters:kernel_api_builder",
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/codegen/emitters:type_util",
         "//xla/codegen/emitters/ir:xla",
