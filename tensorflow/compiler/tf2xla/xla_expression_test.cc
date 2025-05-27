@@ -41,7 +41,8 @@ class XlaExpressionTest : public ::testing::Test {
     constant_ = test::AsScalar<int32>(42);
     op_ = xla::ConstantR0<int32>(builder_.get(), 7);
     non_constant_op_ = xla::Parameter(
-        builder_.get(), 0, xla::ShapeUtil::MakeShape(xla::F32, {}), "x");
+        builder_.get(), 0,
+        xla::ShapeUtil::MakeValidatedShape(xla::F32, {}).value(), "x");
     resource_ = std::make_unique<XlaResource>(
         XlaResource::kVariable, /*arg_num=*/0, /*name=*/string("avariable"),
         DT_INT32, TensorShape({17, 3}), op_, /*tensor_array_size=*/-1,

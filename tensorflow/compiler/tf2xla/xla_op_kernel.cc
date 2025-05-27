@@ -331,7 +331,9 @@ absl::Status XlaOpKernelContext::ResolveInputDynamismReshaped(
     // custom-call that is not supported generally for dynamism computation.
     *dynamism_literal =
         true_literal
-            .Broadcast(xla::ShapeUtil::MakeShape(xla::PRED, new_dims), {})
+            .Broadcast(
+                xla::ShapeUtil::MakeValidatedShape(xla::PRED, new_dims).value(),
+                {})
             .value();
 
     return absl::OkStatus();

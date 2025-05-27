@@ -257,7 +257,7 @@ absl::Status GetShapeWithLayout(
           "Too many elements passed in the layout attribute: position=",
           position, " size=", minor_to_major.size());
     }
-    *output_shape = xla::ShapeUtil::MakeTupleShape(shapes);
+    *output_shape = xla::ShapeUtil::MakeValidatedTupleShape(shapes).value();
   } else {
     int64_t rank = input_shape.dimensions().size();
     const int64_t minor_to_major_size = minor_to_major.size();

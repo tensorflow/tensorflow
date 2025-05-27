@@ -404,7 +404,8 @@ absl::Status BuildComputation(
                           elem.builder()->GetShape(elem));
       elem_shapes.push_back(elem_shape);
     }
-    xla::Shape shape = xla::ShapeUtil::MakeTupleShape(elem_shapes);
+    xla::Shape shape =
+        xla::ShapeUtil::MakeValidatedTupleShape(elem_shapes).value();
     // Copy specified sharding from retval_index_and_sharding.
     std::vector<xla::HloSharding> sharding_elems;
     for (int i = 0, end = elems.size(); i < end; i++) {
@@ -989,7 +990,8 @@ absl::Status XlaCompiler::XLAShapeForArgument(
           if (!arg.tensor_array_gradients.empty()) {
             std::vector<xla::Shape> tuple_shape(
                 arg.tensor_array_gradients.size() + 1, *xla_shape);
-            *xla_shape = xla::ShapeUtil::MakeTupleShape(tuple_shape);
+            *xla_shape =
+                xla::ShapeUtil::MakeValidatedTupleShape(tuple_shape).value();
           }
           return absl::OkStatus();
         }
@@ -1005,8 +1007,10 @@ absl::Status XlaCompiler::XLAShapeForArgument(
           xla::Shape buffer_shape;
           TF_RETURN_IF_ERROR(
               TensorShapeToXLAShape(arg.type, shape, &buffer_shape));
-          *xla_shape = xla::ShapeUtil::MakeTupleShape(
-              {buffer_shape, xla::ShapeUtil::MakeShape(xla::S32, {})});
+          *xla_shape =
+              xla::ShapeUtil::MakeValidatedTupleShape(
+                  {buffer_shape, xla::ShapeUtil::MakeShape(xla::S32, {})})
+                  .value();
           return absl::OkStatus();
         }
 
@@ -1143,7 +1147,8 @@ absl::Status XlaCompiler::BuildArguments(
   }
 
   if (use_tuple_arg) {
-    input_shapes->push_back(xla::ShapeUtil::MakeTupleShape(arg_shapes));
+    input_shapes->push_back(
+        xla::ShapeUtil::MakeValidatedTupleShape(arg_shapes).value());
   } else {
     *input_shapes = arg_shapes;
   }

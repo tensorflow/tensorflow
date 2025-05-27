@@ -95,7 +95,7 @@ absl::Status HostTensorsToBorrowingLiteralTuple(
   }
 
   *literal = xla::BorrowingLiteral(
-      buf_ptrs, xla::ShapeUtil::MakeTupleShape(tensor_shapes));
+      buf_ptrs, xla::ShapeUtil::MakeValidatedTupleShape(tensor_shapes).value());
 
   return absl::OkStatus();
 }

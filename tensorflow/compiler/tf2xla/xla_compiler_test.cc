@@ -272,9 +272,10 @@ TEST_F(XlaCompilerTest, SimpleDynamicShapeParameter) {
   std::vector<XlaCompiler::Argument> args(2);
   args[0].kind = XlaCompiler::Argument::kParameter;
   args[0].type = DT_INT32;
-  args[0].shape =
-      xla::ShapeUtil::MakeShape(/*element_type=*/xla::S32, /*dimensions=*/{2},
-                                /*dynamic_dimensions=*/{true});
+  args[0].shape = xla::ShapeUtil::MakeValidatedShape(
+                      /*element_type=*/xla::S32, /*dimensions=*/{2},
+                      /*dynamic_dimensions=*/{true})
+                      .value();
   args[1].kind = XlaCompiler::Argument::kParameter;
   args[1].type = DT_INT32;
   args[1].shape = TensorShape(/*dimensions=*/{2});
@@ -384,7 +385,7 @@ TEST_F(XlaCompilerTest, HonorShapeRepresentationFnForUnwrittenResource) {
       xla::ShapeUtil::MakeShapeWithDenseLayout(xla::S32, {2, 3}, {0, 1});
   // Check that the return shapes are correctly tranposed.
   EXPECT_EQ(result.xla_output_shape,
-            xla::ShapeUtil::MakeTupleShape({transposed}));
+            xla::ShapeUtil::MakeValidatedTupleShape({transposed}).value());
 }
 
 // Tests that the compiler can correctly propagate fast mem attribute for input
@@ -483,9 +484,11 @@ TEST_F(XlaCompilerTest, HonorShapeRepresentationFnForRetVal) {
       xla::ShapeUtil::MakeShapeWithDenseLayout(xla::S32, {2, 3}, {0, 1});
   // Check that the return shapes are correctly tranposed.
   EXPECT_EQ(result.xla_output_shape,
-            xla::ShapeUtil::MakeTupleShape({transposed, transposed}));
+            xla::ShapeUtil::MakeValidatedTupleShape({transposed, transposed})
+                .value());
   EXPECT_EQ(result.computation->GetProgramShape().value().result(),
-            xla::ShapeUtil::MakeTupleShape({transposed, transposed}));
+            xla::ShapeUtil::MakeValidatedTupleShape({transposed, transposed})
+                .value());
 }
 
 // The layout of resource variable shouldn't change after transpose
@@ -526,7 +529,8 @@ TEST_F(XlaCompilerTest, TransposeVariables) {
       xla::ShapeUtil::MakeShapeWithDenseLayout(xla::S32, {2, 3}, {1, 0});
   // Check that the return shapes are correctly tranposed.
   EXPECT_EQ(result.xla_output_shape,
-            xla::ShapeUtil::MakeTupleShape({transposed, transposed}));
+            xla::ShapeUtil::MakeValidatedTupleShape({transposed, transposed})
+                .value());
 }
 
 // Unranked fake param returns a 0 shaped tensor.
@@ -546,8 +550,9 @@ TEST_F(XlaCompilerTest, UnrankedFakeParam) {
                                      std::move(graph), {}, &result));
   // Check that the return shapes are correctly tranposed.
   EXPECT_EQ(result.xla_output_shape,
-            xla::ShapeUtil::MakeTupleShape(
-                {xla::ShapeUtil::MakeShape(xla::S32, {0})}));
+            xla::ShapeUtil::MakeValidatedTupleShape(
+                {xla::ShapeUtil::MakeShape(xla::S32, {0})})
+                .value());
 }
 
 // Tests that the compiler doesn't reorder the parameters.
@@ -1289,7 +1294,8 @@ TEST_F(XlaCompilerTest, ResultLayoutMultiple) {
 
   EXPECT_TRUE(xla::ShapeUtil::Equal(
       result.xla_output_shape,
-      xla::ShapeUtil::MakeTupleShape({result_shape, result_shape})));
+      xla::ShapeUtil::MakeValidatedTupleShape({result_shape, result_shape})
+          .value()));
   EXPECT_EQ(result.computation->GetProgramShape().value().result(),
             result.xla_output_shape);
 }
@@ -1408,7 +1414,8 @@ TEST_F(XlaCompilerTest, VariableRepresentationShapeFunction) {
          XlaLayoutPreference layout_preference) -> absl::StatusOr<xla::Shape> {
     xla::PrimitiveType ptype;
     TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(type, &ptype));
-    return xla::ShapeUtil::MakeShape(ptype, {shape.num_elements()});
+    return xla::ShapeUtil::MakeValidatedShape(ptype, {shape.num_elements()})
+        .value();
   };
   options.shape_determination_fns = shape_determination_fns;
   XlaCompiler compiler(options);
@@ -1424,16 +1431,17 @@ TEST_F(XlaCompilerTest, VariableRepresentationShapeFunction) {
                           client_->GetComputationShape(*result.computation));
 
   ASSERT_EQ(program_shape->parameters_size(), 2);
-  EXPECT_TRUE(
-      xla::ShapeUtil::Compatible(program_shape->parameters(0),
-                                 xla::ShapeUtil::MakeShape(xla::S32, {2, 2})));
   EXPECT_TRUE(xla::ShapeUtil::Compatible(
-      program_shape->parameters(1), xla::ShapeUtil::MakeShape(xla::S32, {4})));
+      program_shape->parameters(0),
+      xla::ShapeUtil::MakeValidatedShape(xla::S32, {2, 2}).value()));
   EXPECT_TRUE(xla::ShapeUtil::Compatible(
-      program_shape->result(),
-      xla::ShapeUtil::MakeTupleShape(
-          {xla::ShapeUtil::MakeShape(xla::S32, {2, 2}),
-           xla::ShapeUtil::MakeShape(xla::S32, {4})})));
+      program_shape->parameters(1),
+      xla::ShapeUtil::MakeValidatedShape(xla::S32, {4}).value()));
+  EXPECT_TRUE(xla::ShapeUtil::Compatible(
+      program_shape->result(), xla::ShapeUtil::MakeValidatedTupleShape(
+                                   {xla::ShapeUtil::MakeShape(xla::S32, {2, 2}),
+                                    xla::ShapeUtil::MakeShape(xla::S32, {4})})
+                                   .value()));
 
   // Tests that the generated computation works.
   xla::Literal param0_literal =
@@ -1481,7 +1489,8 @@ TEST_F(XlaCompilerTest, ArgRetvalShapeRepresentationFunction) {
          XlaLayoutPreference layout_preference) -> absl::StatusOr<xla::Shape> {
     xla::PrimitiveType ptype;
     TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(type, &ptype));
-    return xla::ShapeUtil::MakeShape(ptype, {shape.num_elements()});
+    return xla::ShapeUtil::MakeValidatedShape(ptype, {shape.num_elements()})
+        .value();
   };
   options.shape_determination_fns = shape_determination_fns;
   XlaCompiler compiler(options);
@@ -1498,14 +1507,16 @@ TEST_F(XlaCompilerTest, ArgRetvalShapeRepresentationFunction) {
 
   ASSERT_EQ(program_shape->parameters_size(), 2);
   EXPECT_TRUE(xla::ShapeUtil::Compatible(
-      program_shape->parameters(0), xla::ShapeUtil::MakeShape(xla::S32, {4})));
+      program_shape->parameters(0),
+      xla::ShapeUtil::MakeValidatedShape(xla::S32, {4}).value()));
   EXPECT_TRUE(xla::ShapeUtil::Compatible(
-      program_shape->parameters(1), xla::ShapeUtil::MakeShape(xla::S32, {4})));
+      program_shape->parameters(1),
+      xla::ShapeUtil::MakeValidatedShape(xla::S32, {4}).value()));
   EXPECT_TRUE(xla::ShapeUtil::Compatible(
-      program_shape->result(),
-      xla::ShapeUtil::MakeTupleShape(
-          {xla::ShapeUtil::MakeShape(xla::S32, {4}),
-           xla::ShapeUtil::MakeShape(xla::S32, {4})})));
+      program_shape->result(), xla::ShapeUtil::MakeValidatedTupleShape(
+                                   {xla::ShapeUtil::MakeShape(xla::S32, {4}),
+                                    xla::ShapeUtil::MakeShape(xla::S32, {4})})
+                                   .value()));
 
   // Tests that the generated computation works.
   xla::Literal param0_literal =
@@ -1754,7 +1765,8 @@ TEST_F(XlaCompilerTest, OpsWithTensorListInput) {
   xla::Shape index_shape;
   TF_ASSERT_OK(TensorShapeToXLAShape(DT_INT32, TensorShape{}, &index_shape));
   std::vector<xla::Shape> shapes{tensor_list_element_shape, index_shape};
-  xla::Shape arg_shape = xla::ShapeUtil::MakeTupleShape(shapes);
+  xla::Shape arg_shape =
+      xla::ShapeUtil::MakeValidatedTupleShape(shapes).value();
   args[0].shape = arg_shape;
 
   // Compiles the graph.
@@ -1928,8 +1940,9 @@ TEST_F(XlaCompilerTest, SetShardingForReturnedTuple) {
     }
   }
   ASSERT_TRUE(root_instruction_proto);
-  xla::Shape tuple_shape = xla::ShapeUtil::MakeTupleShape(
-      {xla::ShapeUtil::MakeShape(xla::S32, {2})});
+  xla::Shape tuple_shape = xla::ShapeUtil::MakeValidatedTupleShape(
+                               {xla::ShapeUtil::MakeShape(xla::S32, {2})})
+                               .value();
   xla::HloSharding tuple_sharding = xla::HloSharding::Tuple(
       tuple_shape, std::vector<xla::HloSharding>{sharding});
   EXPECT_EQ(root_instruction_proto->sharding().SerializeAsString(),

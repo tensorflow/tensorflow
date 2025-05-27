@@ -78,8 +78,9 @@ xla::XlaOp XlaHelpers::FloatLiteral(xla::XlaBuilder* b, DataType data_type,
   if (input.shape().IsTuple()) {
     return errors::InvalidArgument("ReshapeLiteral does not support tuples.");
   }
-  xla::Shape shape =
-      xla::ShapeUtil::MakeShape(input.shape().element_type(), dimensions);
+  xla::Shape shape = xla::ShapeUtil::MakeValidatedShape(
+                         input.shape().element_type(), dimensions)
+                         .value();
   int64_t elements_before = xla::ShapeUtil::ElementsIn(input.shape());
   int64_t elements_after = xla::ShapeUtil::ElementsIn(shape);
   if (elements_before != elements_after) {

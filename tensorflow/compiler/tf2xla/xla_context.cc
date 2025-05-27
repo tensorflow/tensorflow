@@ -89,10 +89,10 @@ const xla::XlaComputation* XlaContext::GetOrCreateMax(const DataType type) {
     xla::XlaBuilder b("max<" + type_string + ">");
     xla::PrimitiveType xla_type;
     TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
-    auto x =
-        xla::Parameter(&b, 0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
-    auto y =
-        xla::Parameter(&b, 1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
+    auto x = xla::Parameter(
+        &b, 0, xla::ShapeUtil::MakeValidatedShape(xla_type, {}).value(), "x");
+    auto y = xla::Parameter(
+        &b, 1, xla::ShapeUtil::MakeValidatedShape(xla_type, {}).value(), "y");
     xla::Max(x, y);
     return b.Build().value();
   });
@@ -105,10 +105,10 @@ const xla::XlaComputation* XlaContext::GetOrCreateMin(const DataType type) {
     xla::XlaBuilder b("min<" + type_string + ">");
     xla::PrimitiveType xla_type;
     TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
-    auto x =
-        xla::Parameter(&b, 0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
-    auto y =
-        xla::Parameter(&b, 1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
+    auto x = xla::Parameter(
+        &b, 0, xla::ShapeUtil::MakeValidatedShape(xla_type, {}).value(), "x");
+    auto y = xla::Parameter(
+        &b, 1, xla::ShapeUtil::MakeValidatedShape(xla_type, {}).value(), "y");
     xla::Min(x, y);
     return b.Build().value();
   });
@@ -121,10 +121,10 @@ const xla::XlaComputation* XlaContext::GetOrCreateAdd(const DataType type) {
     xla::XlaBuilder b("add<" + type_string + ">");
     xla::PrimitiveType xla_type;
     TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
-    auto x =
-        xla::Parameter(&b, 0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
-    auto y =
-        xla::Parameter(&b, 1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
+    auto x = xla::Parameter(
+        &b, 0, xla::ShapeUtil::MakeValidatedShape(xla_type, {}).value(), "x");
+    auto y = xla::Parameter(
+        &b, 1, xla::ShapeUtil::MakeValidatedShape(xla_type, {}).value(), "y");
     xla::Add(x, y);
     return b.Build().value();
   });
@@ -138,10 +138,10 @@ const xla::XlaComputation* XlaContext::GetOrCreateLogAddExp(
     xla::XlaBuilder b("log_add_exp<" + type_string + ">");
     xla::PrimitiveType xla_type;
     TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
-    auto x =
-        xla::Parameter(&b, 0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
-    auto y =
-        xla::Parameter(&b, 1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
+    auto x = xla::Parameter(
+        &b, 0, xla::ShapeUtil::MakeValidatedShape(xla_type, {}).value(), "x");
+    auto y = xla::Parameter(
+        &b, 1, xla::ShapeUtil::MakeValidatedShape(xla_type, {}).value(), "y");
     auto max = xla::Max(x, y);
     auto min = xla::Min(x, y);
     auto inner = xla::Select(xla::Not(xla::IsFinite(max)),
@@ -159,10 +159,10 @@ const xla::XlaComputation* XlaContext::GetOrCreateMul(const DataType type) {
     xla::XlaBuilder b("mul<" + type_string + ">");
     xla::PrimitiveType xla_type;
     TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
-    auto x =
-        xla::Parameter(&b, 0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
-    auto y =
-        xla::Parameter(&b, 1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
+    auto x = xla::Parameter(
+        &b, 0, xla::ShapeUtil::MakeValidatedShape(xla_type, {}).value(), "x");
+    auto y = xla::Parameter(
+        &b, 1, xla::ShapeUtil::MakeValidatedShape(xla_type, {}).value(), "y");
     xla::Mul(x, y);
     return b.Build().value();
   });

@@ -239,7 +239,7 @@ TEST(XlaJitCompiledCpuFunction, Sum) {
 
   // Check program shape.
   using xla::ShapeUtil;
-  const xla::Shape s32 = ShapeUtil::MakeShape(xla::S32, {});
+  const xla::Shape s32 = ShapeUtil::MakeValidatedShape(xla::S32, {}).value();
   ASSERT_TRUE(function.ProgramShape() != nullptr);
   TF_ASSERT_OK_AND_ASSIGN(
       xla::ProgramShape program_shape,
@@ -298,8 +298,8 @@ TEST(XlaJitCompiledCpuFunction, SumVariable) {
 
   // Check program shape.
   using xla::ShapeUtil;
-  const xla::Shape s32 = ShapeUtil::MakeShape(xla::S32, {});
-  const xla::Shape s32_1 = ShapeUtil::MakeShape(xla::S32, {1});
+  const xla::Shape s32 = ShapeUtil::MakeValidatedShape(xla::S32, {}).value();
+  const xla::Shape s32_1 = ShapeUtil::MakeValidatedShape(xla::S32, {1}).value();
   ASSERT_TRUE(function.ProgramShape() != nullptr);
   TF_ASSERT_OK_AND_ASSIGN(
       xla::ProgramShape program_shape,
