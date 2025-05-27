@@ -615,11 +615,13 @@ absl::StatusOr<std::pair<std::vector<Shape>, Shape>> LayoutModesToXlaShapes(
 
   // Tuple final shapes if necessary.
   std::vector<Shape> arg_layouts =
-      args_tupled
-          ? std::vector<Shape>{ShapeUtil::MakeTupleShape(flat_arg_layouts)}
-          : std::move(flat_arg_layouts);
-  Shape out_layout = out_tupled ? ShapeUtil::MakeTupleShape(flat_out_layouts)
-                                : flat_out_layouts[0];
+      args_tupled ? std::vector<Shape>{ShapeUtil::MakeValidatedTupleShape(
+                                           flat_arg_layouts)
+                                           .value()}
+                  : std::move(flat_arg_layouts);
+  Shape out_layout =
+      out_tupled ? ShapeUtil::MakeValidatedTupleShape(flat_out_layouts).value()
+                 : flat_out_layouts[0];
 
   return std::pair<std::vector<Shape>, Shape>{std::move(arg_layouts),
                                               std::move(out_layout)};

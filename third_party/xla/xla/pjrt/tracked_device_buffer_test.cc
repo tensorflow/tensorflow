@@ -107,9 +107,9 @@ TEST(TrackedDeviceBufferTest, AsShapedBuffer) {
   LocalClient* client = ClientLibrary::LocalClientOrDie();
   TestDevice device;
 
-  Shape a_shape = ShapeUtil::MakeShape(F32, {3, 101, 4});
-  Shape b_shape = ShapeUtil::MakeShape(S8, {77});
-  Shape c_shape = ShapeUtil::MakeShape(S64, {});
+  Shape a_shape = ShapeUtil::MakeValidatedShape(F32, {3, 101, 4}).value();
+  Shape b_shape = ShapeUtil::MakeValidatedShape(S8, {77}).value();
+  Shape c_shape = ShapeUtil::MakeValidatedShape(S64, {}).value();
   TF_ASSERT_OK_AND_ASSIGN(auto a_buffer, MakeArray(a_shape, client, &device));
   TF_ASSERT_OK_AND_ASSIGN(auto b_buffer, MakeArray(b_shape, client, &device));
   TF_ASSERT_OK_AND_ASSIGN(auto c_buffer, MakeArray(c_shape, client, &device));
