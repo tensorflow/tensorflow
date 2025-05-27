@@ -165,3 +165,14 @@ cc_library(
         "//xla/tsl/lib/gtl:int_type",
     ],
 )
+
+cc_library(
+    name = "work_dimensions",
+    hdrs = ["work_dimensions.h"],
+    deps = [
+        ":work_cluster",
+        ":work_group",
+        ":work_item",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
