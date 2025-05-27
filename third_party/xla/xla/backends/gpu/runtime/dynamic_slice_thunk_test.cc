@@ -17,13 +17,13 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/gpu/gpu_types.h"  // IWYU pragma: keep
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
@@ -52,15 +52,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/types.h"  // IWYU pragma: keep
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
-
-#if GOOGLE_CUDA
-#define PLATFORM "CUDA"
-#elif TENSORFLOW_USE_ROCM
-#define PLATFORM "ROCM"
-#endif
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
@@ -73,10 +65,14 @@ class DynamicSliceThunkTest : public HloRunnerAgnosticTestBase {
             PlatformUtil::GetDefaultPlatform().value())) {}
 };
 
-static se::StreamExecutor* GpuExecutor() {
-  auto name =
-      absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
-  auto* platform = se::PlatformManager::PlatformWithName(name).value();
+std::string GetPlatformName() {
+  return absl::AsciiStrToUpper(
+      PlatformUtil::CanonicalPlatformName("gpu").value());
+}
+
+se::StreamExecutor* GpuExecutor() {
+  stream_executor::Platform* platform =
+      se::PlatformManager::PlatformWithName(GetPlatformName()).value();
   return platform->ExecutorForDevice(0).value();
 }
 
@@ -133,10 +129,11 @@ TEST_F(DynamicSliceThunkTest, SlicedGemm) {
 
   // Preparing config for GEMM thunk.
   auto config = GemmConfig::For(
-      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
-      ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1}), {}, {0},
-      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1}), 1.0, 0.0, 0.0,
-      PrecisionConfig::ALG_UNSET, std::nullopt,
+      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {1, 3}).value(), {},
+      {1}, ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {3, 1}).value(),
+      {}, {0},
+      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {1, 1}).value(), 1.0,
+      0.0, 0.0, PrecisionConfig::ALG_UNSET, std::nullopt,
       se::blas::kDefaultComputePrecision, false, false,
       executor->GetDeviceDescription().gpu_compute_capability());
   ASSERT_TRUE(config.ok());
@@ -155,10 +152,10 @@ TEST_F(DynamicSliceThunkTest, SlicedGemm) {
       {slice_lhs, slice_rhs, slice_out, slice_workspace},
       std::move(fake_allocations),
       {lhs_offsets, std::nullopt, std::nullopt, std::nullopt},
-      {ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), std::nullopt,
-       std::nullopt, std::nullopt},
-      {ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), std::nullopt,
-       std::nullopt, std::nullopt},
+      {ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {2, 4}).value(),
+       std::nullopt, std::nullopt, std::nullopt},
+      {ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {1, 3}).value(),
+       std::nullopt, std::nullopt, std::nullopt},
       {sizeof(int64_t), std::nullopt, std::nullopt, std::nullopt});
 
   // Step 2:
@@ -286,10 +283,11 @@ TEST_F(DynamicSliceThunkTest, MulipleSlicedOperandsGemm) {
 
   // Preparing config for GEMM thunk.
   auto config = GemmConfig::For(
-      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
-      ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1}), {}, {0},
-      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1}), 1.0, 0.0, 0.0,
-      PrecisionConfig::ALG_UNSET, std::nullopt,
+      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {1, 3}).value(), {},
+      {1}, ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {3, 1}).value(),
+      {}, {0},
+      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {1, 1}).value(), 1.0,
+      0.0, 0.0, PrecisionConfig::ALG_UNSET, std::nullopt,
       se::blas::kDefaultComputePrecision, false, false,
       executor->GetDeviceDescription().gpu_compute_capability());
   ASSERT_TRUE(config.ok());
@@ -310,12 +308,12 @@ TEST_F(DynamicSliceThunkTest, MulipleSlicedOperandsGemm) {
       {slice_lhs, slice_rhs, slice_out, slice_workspace},
       std::move(fake_allocations),
       {lhs_offsets, rhs_offsets, std::nullopt, std::nullopt},
-      {ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}),
-       ShapeUtil::MakeShape(PrimitiveType::F32, {8, 1}), std::nullopt,
-       std::nullopt},
-      {ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}),
-       ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1}), std::nullopt,
-       std::nullopt},
+      {ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {2, 4}).value(),
+       ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {8, 1}).value(),
+       std::nullopt, std::nullopt},
+      {ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {1, 3}).value(),
+       ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {3, 1}).value(),
+       std::nullopt, std::nullopt},
       {sizeof(int64_t), sizeof(int64_t), std::nullopt, std::nullopt});
 
   // Step 2:
@@ -411,7 +409,9 @@ XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
                            .Arg<ffi::AnyBuffer>()  // src
                            .Ret<ffi::AnyBuffer>()  // dst
 );
-XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", PLATFORM,
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", "CUDA",
+                         kMemcpy);
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", "ROCM",
                          kMemcpy);
 
 TEST_F(DynamicSliceThunkTest, SlicedMemcpy) {
@@ -460,15 +460,18 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpy) {
 
   // Preparing custom call thunk: setting up call target and operands + results
   // buffers.
-  auto registration = xla::ffi::FindHandler("__xla_test$$memcpy", PLATFORM);
+  auto registration =
+      xla::ffi::FindHandler("__xla_test$$memcpy", GetPlatformName());
   ASSERT_TRUE(registration.ok());
 
   std::vector<std::optional<CustomCallThunk::Slice>> operands{
-      CustomCallThunk::Slice{slice_src_fake,
-                             ShapeUtil::MakeShape(PrimitiveType::S32, {8, 8})}};
+      CustomCallThunk::Slice{
+          slice_src_fake,
+          ShapeUtil::MakeValidatedShape(PrimitiveType::S32, {8, 8}).value()}};
   std::vector<std::optional<CustomCallThunk::Slice>> results{
-      CustomCallThunk::Slice{slice_dst,
-                             ShapeUtil::MakeShape(PrimitiveType::S32, {8, 8})}};
+      CustomCallThunk::Slice{
+          slice_dst,
+          ShapeUtil::MakeValidatedShape(PrimitiveType::S32, {8, 8}).value()}};
 
   // Creating embedded custom call thunk.
   ThunkSequence seq;
@@ -486,10 +489,12 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpy) {
       Thunk::ThunkInfo(), std::make_unique<ThunkSequence>(std::move(seq)),
       {slice_src, slice_dst}, std::move(fake_allocations),
       {slice_offsets, std::nullopt},
-      {ShapeUtil::MakeShape(PrimitiveType::S32, {8, 8, 10, 8}), std::nullopt},
+      {ShapeUtil::MakeValidatedShape(PrimitiveType::S32, {8, 8, 10, 8}).value(),
+       std::nullopt},
       // Make sure to pass a dst shape with the same rank as src shape (i.e.
       // original slice result and not bitcasted one)
-      {ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 8, 8}), std::nullopt},
+      {ShapeUtil::MakeValidatedShape(PrimitiveType::S32, {1, 1, 8, 8}).value(),
+       std::nullopt},
       {sizeof(int64_t), std::nullopt});
 
   // Step 2:
@@ -503,7 +508,9 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpy) {
   // Preparing memory for thunk arguments.
   se::DeviceMemory<int32_t> src = executor->AllocateArray<int32_t>(src_count);
   std::vector<int32_t> src_arr(src_count, 0);
-  for (unsigned i = 0; i < src_count; ++i) src_arr[i] = i;
+  for (unsigned i = 0; i < src_count; ++i) {
+    src_arr[i] = i;
+  }
   TF_ASSERT_OK(stream->Memcpy(&src, src_arr.data(), src_length));
 
   se::DeviceMemory<int32_t> dst = executor->AllocateArray<int32_t>(dst_count);
@@ -620,15 +627,18 @@ TEST_F(DynamicSliceThunkTest, SlicedOutputMemcpy) {
 
   // Preparing custom call thunk: setting up call target and operands + results
   // buffers.
-  auto registration = xla::ffi::FindHandler("__xla_test$$memcpy", PLATFORM);
+  auto registration =
+      xla::ffi::FindHandler("__xla_test$$memcpy", GetPlatformName());
   ASSERT_TRUE(registration.ok());
 
   std::vector<std::optional<CustomCallThunk::Slice>> operands{
-      CustomCallThunk::Slice{slice_src_fake,
-                             ShapeUtil::MakeShape(PrimitiveType::S32, {2, 2})}};
+      CustomCallThunk::Slice{
+          slice_src_fake,
+          ShapeUtil::MakeValidatedShape(PrimitiveType::S32, {2, 2}).value()}};
   std::vector<std::optional<CustomCallThunk::Slice>> results{
-      CustomCallThunk::Slice{slice_dst_fake,
-                             ShapeUtil::MakeShape(PrimitiveType::S32, {2, 2})}};
+      CustomCallThunk::Slice{
+          slice_dst_fake,
+          ShapeUtil::MakeValidatedShape(PrimitiveType::S32, {2, 2}).value()}};
 
   // Creating embedded custom call thunk.
   ThunkSequence seq;
@@ -650,12 +660,12 @@ TEST_F(DynamicSliceThunkTest, SlicedOutputMemcpy) {
       Thunk::ThunkInfo(), std::make_unique<ThunkSequence>(std::move(seq)),
       {slice_src, slice_dst}, std::move(fake_allocations),
       {slice_src_offsets, slice_dst_offsets},
-      {ShapeUtil::MakeShape(PrimitiveType::S32, {8, 8, 10, 2}),
-       ShapeUtil::MakeShape(PrimitiveType::S32, {2, 2, 2, 2})},
+      {ShapeUtil::MakeValidatedShape(PrimitiveType::S32, {8, 8, 10, 2}).value(),
+       ShapeUtil::MakeValidatedShape(PrimitiveType::S32, {2, 2, 2, 2}).value()},
       // Make sure to pass a dst shape with the same rank as src shape (i.e.
       // original slice result and not bitcasted one)
-      {ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 2, 2}),
-       ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 2, 2})},
+      {ShapeUtil::MakeValidatedShape(PrimitiveType::S32, {1, 1, 2, 2}).value(),
+       ShapeUtil::MakeValidatedShape(PrimitiveType::S32, {1, 1, 2, 2}).value()},
       {sizeof(int64_t), sizeof(int64_t)});
 
   // Step 2:
@@ -674,7 +684,9 @@ TEST_F(DynamicSliceThunkTest, SlicedOutputMemcpy) {
   // Preparing memory for thunk arguments.
   se::DeviceMemory<int32_t> src = executor->AllocateArray<int32_t>(src_count);
   std::vector<int32_t> src_arr(src_count, 0);
-  for (unsigned i = 0; i < src_count; ++i) src_arr[i] = i;
+  for (unsigned i = 0; i < src_count; ++i) {
+    src_arr[i] = i;
+  }
   TF_ASSERT_OK(stream->Memcpy(&src, src_arr.data(), src_length));
 
   se::DeviceMemory<int32_t> dst = executor->AllocateArray<int32_t>(dst_count);
@@ -806,10 +818,11 @@ TEST_F(DynamicSliceThunkTest, SlicedGemmArbitraryArgumentOrder) {
 
   // Preparing config for GEMM thunk.
   auto config = GemmConfig::For(
-      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
-      ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1}), {}, {0},
-      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1}), 1.0, 0.0, 0.0,
-      PrecisionConfig::ALG_UNSET, std::nullopt,
+      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {1, 3}).value(), {},
+      {1}, ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {3, 1}).value(),
+      {}, {0},
+      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {1, 1}).value(), 1.0,
+      0.0, 0.0, PrecisionConfig::ALG_UNSET, std::nullopt,
       se::blas::kDefaultComputePrecision, false, false,
       executor->GetDeviceDescription().gpu_compute_capability());
   ASSERT_TRUE(config.ok());
@@ -828,10 +841,10 @@ TEST_F(DynamicSliceThunkTest, SlicedGemmArbitraryArgumentOrder) {
       {slice_lhs, slice_rhs, slice_out, slice_workspace},
       std::move(fake_allocations),
       {lhs_offsets, std::nullopt, std::nullopt, std::nullopt},
-      {ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), std::nullopt,
-       std::nullopt, std::nullopt},
-      {ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), std::nullopt,
-       std::nullopt, std::nullopt},
+      {ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {2, 4}).value(),
+       std::nullopt, std::nullopt, std::nullopt},
+      {ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {1, 3}).value(),
+       std::nullopt, std::nullopt, std::nullopt},
       {sizeof(int64_t), std::nullopt, std::nullopt, std::nullopt});
 
   // Step 2:
@@ -955,10 +968,11 @@ TEST_F(DynamicSliceThunkTest, SlicedGemmArbitraryNumberOfArguments) {
 
   // Preparing config for GEMM thunk.
   auto config = GemmConfig::For(
-      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
-      ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1}), {}, {0},
-      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1}), 1.0, 0.0, 0.0,
-      PrecisionConfig::ALG_UNSET, std::nullopt,
+      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {1, 3}).value(), {},
+      {1}, ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {3, 1}).value(),
+      {}, {0},
+      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {1, 1}).value(), 1.0,
+      0.0, 0.0, PrecisionConfig::ALG_UNSET, std::nullopt,
       se::blas::kDefaultComputePrecision, false, false,
       executor->GetDeviceDescription().gpu_compute_capability());
   ASSERT_TRUE(config.ok());
@@ -977,10 +991,10 @@ TEST_F(DynamicSliceThunkTest, SlicedGemmArbitraryNumberOfArguments) {
       {slice_lhs, slice_rhs, slice_out, slice_workspace},
       std::move(fake_allocations),
       {lhs_offsets, std::nullopt, std::nullopt, std::nullopt},
-      {ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), std::nullopt,
-       std::nullopt, std::nullopt},
-      {ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), std::nullopt,
-       std::nullopt, std::nullopt},
+      {ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {2, 4}).value(),
+       std::nullopt, std::nullopt, std::nullopt},
+      {ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {1, 3}).value(),
+       std::nullopt, std::nullopt, std::nullopt},
       {sizeof(int64_t), std::nullopt, std::nullopt, std::nullopt});
 
   // Step 2:
@@ -1097,10 +1111,11 @@ TEST_F(DynamicSliceThunkTest, SlicedTupledOperandGemm) {
 
   // Preparing config for GEMM thunk.
   auto config = GemmConfig::For(
-      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
-      ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1}), {}, {0},
-      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1}), 1.0, 0.0, 0.0,
-      PrecisionConfig::ALG_UNSET, std::nullopt,
+      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {1, 3}).value(), {},
+      {1}, ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {3, 1}).value(),
+      {}, {0},
+      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {1, 1}).value(), 1.0,
+      0.0, 0.0, PrecisionConfig::ALG_UNSET, std::nullopt,
       se::blas::kDefaultComputePrecision, false, false,
       executor->GetDeviceDescription().gpu_compute_capability());
   ASSERT_TRUE(config.ok());
@@ -1119,10 +1134,10 @@ TEST_F(DynamicSliceThunkTest, SlicedTupledOperandGemm) {
       {slice_lhs, slice_rhs, slice_out, slice_workspace},
       std::move(fake_allocations),
       {lhs_offsets, std::nullopt, std::nullopt, std::nullopt},
-      {ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), std::nullopt,
-       std::nullopt, std::nullopt},
-      {ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), std::nullopt,
-       std::nullopt, std::nullopt},
+      {ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {2, 4}).value(),
+       std::nullopt, std::nullopt, std::nullopt},
+      {ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {1, 3}).value(),
+       std::nullopt, std::nullopt, std::nullopt},
       {sizeof(int64_t), std::nullopt, std::nullopt, std::nullopt});
 
   // Step 2:
@@ -1264,15 +1279,18 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpyOOB) {
 
   // Preparing custom call thunk: setting up call target and operands + results
   // buffers.
-  auto registration = xla::ffi::FindHandler("__xla_test$$memcpy", PLATFORM);
+  auto registration =
+      xla::ffi::FindHandler("__xla_test$$memcpy", GetPlatformName());
   ASSERT_TRUE(registration.ok());
 
   std::vector<std::optional<CustomCallThunk::Slice>> operands{
-      CustomCallThunk::Slice{slice_src_fake,
-                             ShapeUtil::MakeShape(PrimitiveType::S32, {2, 2})}};
+      CustomCallThunk::Slice{
+          slice_src_fake,
+          ShapeUtil::MakeValidatedShape(PrimitiveType::S32, {2, 2}).value()}};
   std::vector<std::optional<CustomCallThunk::Slice>> results{
-      CustomCallThunk::Slice{slice_dst_fake,
-                             ShapeUtil::MakeShape(PrimitiveType::S32, {2, 2})}};
+      CustomCallThunk::Slice{
+          slice_dst_fake,
+          ShapeUtil::MakeValidatedShape(PrimitiveType::S32, {2, 2}).value()}};
 
   // Creating embedded custom call thunk.
   ThunkSequence seq;
@@ -1294,12 +1312,12 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpyOOB) {
       Thunk::ThunkInfo(), std::make_unique<ThunkSequence>(std::move(seq)),
       {slice_src, slice_dst}, std::move(fake_allocations),
       {slice_src_offsets, slice_dst_offsets},
-      {ShapeUtil::MakeShape(PrimitiveType::S32, {8, 8, 10, 2}),
-       ShapeUtil::MakeShape(PrimitiveType::S32, {2, 2, 2, 2})},
+      {ShapeUtil::MakeValidatedShape(PrimitiveType::S32, {8, 8, 10, 2}).value(),
+       ShapeUtil::MakeValidatedShape(PrimitiveType::S32, {2, 2, 2, 2}).value()},
       // Make sure to pass a dst shape with the same rank as src shape (i.e.
       // original slice result and not bitcasted one)
-      {ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 2, 2}),
-       ShapeUtil::MakeShape(PrimitiveType::S32, {1, 1, 2, 2})},
+      {ShapeUtil::MakeValidatedShape(PrimitiveType::S32, {1, 1, 2, 2}).value(),
+       ShapeUtil::MakeValidatedShape(PrimitiveType::S32, {1, 1, 2, 2}).value()},
       {sizeof(int64_t), sizeof(int64_t)});
 
   // Step 2:
@@ -1318,7 +1336,9 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpyOOB) {
   // Preparing memory for thunk arguments.
   se::DeviceMemory<int32_t> src = executor->AllocateArray<int32_t>(src_count);
   std::vector<int32_t> src_arr(src_count, 0);
-  for (unsigned i = 0; i < src_count; ++i) src_arr[i] = i;
+  for (unsigned i = 0; i < src_count; ++i) {
+    src_arr[i] = i;
+  }
   TF_ASSERT_OK(stream->Memcpy(&src, src_arr.data(), src_length));
 
   se::DeviceMemory<int32_t> dst = executor->AllocateArray<int32_t>(dst_count);
@@ -1451,10 +1471,11 @@ TEST_F(DynamicSliceThunkTest, SlicedOperandsSameBufferGemm) {
 
   // Preparing config for GEMM thunk.
   auto config = GemmConfig::For(
-      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), {}, {1},
-      ShapeUtil::MakeShape(PrimitiveType::F32, {3, 1}), {}, {0},
-      ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1}), 1.0, 0.0, 0.0,
-      PrecisionConfig::ALG_UNSET, std::nullopt,
+      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {1, 3}).value(), {},
+      {1}, ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {3, 1}).value(),
+      {}, {0},
+      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {1, 1}).value(), 1.0,
+      0.0, 0.0, PrecisionConfig::ALG_UNSET, std::nullopt,
       se::blas::kDefaultComputePrecision, false, false,
       executor->GetDeviceDescription().gpu_compute_capability());
   ASSERT_TRUE(config.ok());
@@ -1473,10 +1494,10 @@ TEST_F(DynamicSliceThunkTest, SlicedOperandsSameBufferGemm) {
       {slice_lhs, slice_rhs, slice_out, slice_workspace},
       std::move(fake_allocations),
       {lhs_offsets, std::nullopt, std::nullopt, std::nullopt},
-      {ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), std::nullopt,
-       std::nullopt, std::nullopt},
-      {ShapeUtil::MakeShape(PrimitiveType::F32, {1, 3}), std::nullopt,
-       std::nullopt, std::nullopt},
+      {ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {2, 4}).value(),
+       std::nullopt, std::nullopt, std::nullopt},
+      {ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {1, 3}).value(),
+       std::nullopt, std::nullopt, std::nullopt},
       {sizeof(int64_t), std::nullopt, std::nullopt, std::nullopt});
 
   // Step 2:
@@ -1628,16 +1649,19 @@ TEST_F(DynamicSliceThunkTest,
 
   // Preparing config for GEMM thunk.
   absl::StatusOr<GemmConfig> config = GemmConfig::For(
-      /*lhs_shape=*/ShapeUtil::MakeShape(/*element_type=*/PrimitiveType::F32,
-                                         /*dimensions=*/{1, 4}),
+      /*lhs_shape=*/ShapeUtil::MakeValidatedShape(
+          /*element_type=*/PrimitiveType::F32, /*dimensions=*/{1, 4})
+          .value(),
       /*lhs_batch_dims=*/{}, /*lhs_contracting_dims=*/{1},
       /*rhs_shape=*/
-      ShapeUtil::MakeShape(/*element_type=*/PrimitiveType::F32,
-                           /*dimensions=*/{4, 1}),
+      ShapeUtil::MakeValidatedShape(/*element_type=*/PrimitiveType::F32,
+                                    /*dimensions=*/{4, 1})
+          .value(),
       /*rhs_batch_dims=*/{}, /*rhs_contracting_dims=*/{0},
       /*output_shape=*/
-      ShapeUtil::MakeShape(/*element_type=*/PrimitiveType::F32,
-                           /*dimensions=*/{1, 1}),
+      ShapeUtil::MakeValidatedShape(/*element_type=*/PrimitiveType::F32,
+                                    /*dimensions=*/{1, 1})
+          .value(),
       /*alpha_real=*/1.0, /*alpha_imag=*/0.0, /*beta=*/0.0,
       /*precision_algorithm=*/PrecisionConfig::ALG_UNSET,
       /*algorithm=*/std::nullopt,
@@ -1668,11 +1692,11 @@ TEST_F(DynamicSliceThunkTest,
       /*fake_allocations=*/std::move(fake_allocations),
       /*offsets=*/{lhs_offsets, std::nullopt, std::nullopt, std::nullopt},
       /*orig_shapes=*/
-      {ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), std::nullopt,
-       std::nullopt, std::nullopt},
+      {ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {2, 4}).value(),
+       std::nullopt, std::nullopt, std::nullopt},
       /*sliced_shapes=*/
-      {ShapeUtil::MakeShape(PrimitiveType::F32, {1, 4}), std::nullopt,
-       std::nullopt, std::nullopt},
+      {ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {1, 4}).value(),
+       std::nullopt, std::nullopt, std::nullopt},
       /*offset_byte_sizes=*/
       {sizeof(int64_t), std::nullopt, std::nullopt, std::nullopt},
       /*offset_as_function_of_indvar_metadata=*/

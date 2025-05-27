@@ -49,8 +49,8 @@ static void BM_DynamicUpdateSliceF32(benchmark::State& state,
 
   std::minstd_rand0 engine;
 
-  auto shape = ShapeUtil::MakeShape(F32, {d0, 256});
-  auto slice = ShapeUtil::MakeShape(F32, {32, 32});
+  auto shape = ShapeUtil::MakeValidatedShape(F32, {d0, 256}).value();
+  auto slice = ShapeUtil::MakeValidatedShape(F32, {32, 32}).value();
   auto p0 = *LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
   auto p1 = *LiteralUtil::CreateRandomLiteral<F32>(slice, &engine, 1.0f, 0.1f);
   auto p2 = LiteralUtil::CreateR0<int32_t>(0);

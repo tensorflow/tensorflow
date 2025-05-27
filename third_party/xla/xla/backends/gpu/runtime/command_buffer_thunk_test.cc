@@ -58,7 +58,6 @@ limitations under the License.
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels_fatbin.h"
-#include "xla/stream_executor/gpu/gpu_types.h"  // IWYU pragma: keep
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -71,13 +70,8 @@ limitations under the License.
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/profiler_lock.h"
-
-#ifdef GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#endif
 
 namespace xla::gpu {
 
@@ -701,10 +695,11 @@ TEST(CommandBufferThunkTest, GemmCmd) {
   BufferAllocation::Slice slice_workspace(&alloc_workspace, 0, 1024 * 1024);
 
   auto config = GemmConfig::For(
-      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), {}, {1},
-      ShapeUtil::MakeShape(PrimitiveType::F32, {4, 3}), {}, {0},
-      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 3}), 1.0, 0.0, 0.0,
-      PrecisionConfig::ALG_UNSET, std::nullopt,
+      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {2, 4}).value(), {},
+      {1}, ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {4, 3}).value(),
+      {}, {0},
+      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {2, 3}).value(), 1.0,
+      0.0, 0.0, PrecisionConfig::ALG_UNSET, std::nullopt,
       se::blas::kDefaultComputePrecision, false, false,
       stream_executor->GetDeviceDescription().gpu_compute_capability());
   ASSERT_TRUE(config.ok());
@@ -831,10 +826,11 @@ TEST(CommandBufferThunkTest, DISABLED_DynamicSliceFusionCmd) {
   BufferAllocation::Slice slice_workspace(fake_allocations[3].get(), 0,
                                           1024 * 1024);
   auto config = GemmConfig::For(
-      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), {}, {1},
-      ShapeUtil::MakeShape(PrimitiveType::F32, {4, 3}), {}, {0},
-      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 3}), 1.0, 0.0, 0.0,
-      PrecisionConfig::ALG_UNSET, std::nullopt,
+      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {2, 4}).value(), {},
+      {1}, ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {4, 3}).value(),
+      {}, {0},
+      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {2, 3}).value(), 1.0,
+      0.0, 0.0, PrecisionConfig::ALG_UNSET, std::nullopt,
       se::blas::kDefaultComputePrecision, false, false,
       stream_executor->GetDeviceDescription().gpu_compute_capability());
   ASSERT_TRUE(config.ok());
@@ -864,11 +860,11 @@ TEST(CommandBufferThunkTest, DISABLED_DynamicSliceFusionCmd) {
       lhs_offsets, std::nullopt, std::nullopt, std::nullopt};
 
   std::vector<std::optional<Shape>> orig_shapes = {
-      ShapeUtil::MakeShape(PrimitiveType::F32, {4, 4}), std::nullopt,
-      std::nullopt, std::nullopt};
+      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {4, 4}).value(),
+      std::nullopt, std::nullopt, std::nullopt};
   std::vector<std::optional<Shape>> sliced_shapes = {
-      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), std::nullopt,
-      std::nullopt, std::nullopt};
+      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {2, 4}).value(),
+      std::nullopt, std::nullopt, std::nullopt};
   std::vector<std::optional<uint64_t>> offset_byte_sizes = {
       sizeof(int64_t), std::nullopt, std::nullopt, std::nullopt};
 
@@ -968,13 +964,17 @@ TEST(CommandBufferThunkTest, CublasLtCmd) {
   BufferAllocation::Slice slice_workspace(&alloc_workspace, 0, 1024 * 1024);
 
   auto config = GemmConfig::For(
-      /*lhs_shape*/ ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}),
+      /*lhs_shape*/ ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {2, 4})
+          .value(),
       /*lhs_batch_dims*/ {}, /*lhs_contracting_dims*/ {1},
-      /*rhs_shape*/ ShapeUtil::MakeShape(PrimitiveType::F32, {4, 3}),
+      /*rhs_shape*/
+      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {4, 3}).value(),
       /*rhs_batch_dims*/ {}, /*rhs_contracting_dims*/ {0},
-      /*c_shape*/ ShapeUtil::MakeShape(PrimitiveType::F32, {2, 3}),
+      /*c_shape*/
+      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {2, 3}).value(),
       /*bias_shape_ptr*/ nullptr,
-      /*output_shape*/ ShapeUtil::MakeShape(PrimitiveType::F32, {2, 3}),
+      /*output_shape*/
+      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {2, 3}).value(),
       /*alpha_real*/ 1.0, /*alpha_imag*/ 0,
       /*beta*/ 1.0,
       /*precision_algorithm*/ PrecisionConfig::ALG_UNSET,
