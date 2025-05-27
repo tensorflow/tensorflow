@@ -279,5 +279,60 @@ TEST(ThunkProtoDeserializationTest, WhileThunk) {
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
+TEST(ThunkProtoDeserializationTest, WaitForStreamsThunk) {
+  ThunkProto proto;
+  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        thunk_info { execution_stream_id: 7 }
+        wait_for_streams_thunk { stream_id: 1 wait_for_stream_id: 2 }
+      )pb",
+      &proto));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Thunk> thunk,
+      DeserializeThunkProto(proto, /*buffer_allocations=*/{}));
+
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  EXPECT_THAT(round_trip_proto, EqualsProto(proto));
+}
+
+TEST(ThunkProtoDeserializationTest, TriangularSolveThunk) {
+  ThunkProto proto;
+  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        thunk_info {
+          profile_annotation: "profile_annotation"
+          execution_stream_id: 8
+        }
+        triangular_solve_thunk {
+          options {
+            lower: true
+            left_side: true
+            unit_diagonal: false
+            transpose_a: TRANSPOSE
+          }
+          a_buffer { offset: 0 size: 256 buffer_allocation_index: 0 }
+          b_buffer { offset: 0 size: 256 buffer_allocation_index: 1 }
+          temp_buffer { offset: 0 size: 128 buffer_allocation_index: 2 }
+          type: F32
+          batch_size: 1
+          m: 32
+          n: 32
+          a_batch_stride: 0
+          b_batch_stride: 1
+        }
+      )pb",
+      &proto));
+  std::vector<BufferAllocation> buffer_allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
+      BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/1),
+      BufferAllocation(/*index=*/2, /*size=*/1024, /*color=*/2)};
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Thunk> thunk,
+                          DeserializeThunkProto(proto, buffer_allocations));
+
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  EXPECT_THAT(round_trip_proto, EqualsProto(proto));
+}
 }  // namespace
 }  // namespace xla::gpu

@@ -17,9 +17,12 @@ limitations under the License.
 
 #include <complex>
 #include <cstdint>
+#include <memory>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/make_batch_pointers.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
@@ -27,6 +30,7 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -81,6 +85,66 @@ absl::Status TriangularSolveThunk::ExecuteOnStream(
                             uplo_, side_, unit_diagonal_, transpose_a_, type_,
                             batch_size_, m_, n_, a_batch_stride_,
                             b_batch_stride_, params.stream);
+}
+
+absl::StatusOr<std::unique_ptr<TriangularSolveThunk>>
+TriangularSolveThunk::FromProto(
+    ThunkInfo thunk_info, const TriangularSolveThunkProto& proto,
+    absl::Span<const BufferAllocation> allocations) {
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice a_buffer,
+      BufferAllocation::Slice::FromProto(proto.a_buffer(), allocations));
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice b_buffer,
+      BufferAllocation::Slice::FromProto(proto.b_buffer(), allocations));
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice temp_buffer,
+      BufferAllocation::Slice::FromProto(proto.temp_buffer(), allocations));
+  return std::make_unique<TriangularSolveThunk>(
+      thunk_info, proto.options(), a_buffer, b_buffer, temp_buffer,
+      proto.type(), proto.batch_size(), proto.m(), proto.n(),
+      proto.a_batch_stride(), proto.b_batch_stride());
+}
+
+absl::StatusOr<ThunkProto> TriangularSolveThunk::ToProto() const {
+  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
+  TriangularSolveThunkProto* triangular_solve_thunk_proto =
+      proto.mutable_triangular_solve_thunk();
+
+  auto options = triangular_solve_thunk_proto->mutable_options();
+  options->set_lower(uplo_ == se::blas::UpperLower::kLower);
+  options->set_left_side(side_ == se::blas::Side::kLeft);
+  options->set_unit_diagonal(unit_diagonal_ == se::blas::Diagonal::kUnit);
+  switch (transpose_a_) {
+    case se::blas::Transpose::kNoTranspose:
+      options->set_transpose_a(TriangularSolveOptions::NO_TRANSPOSE);
+      break;
+    case se::blas::Transpose::kTranspose:
+      options->set_transpose_a(TriangularSolveOptions::TRANSPOSE);
+      break;
+    case se::blas::Transpose::kConjugateTranspose:
+      options->set_transpose_a(TriangularSolveOptions::ADJOINT);
+      break;
+    default:
+      return InvalidArgument(
+          "Failed to parse TriangularSolveThunk: Invalid transpose option "
+          "value: %d",
+          transpose_a_);
+  }
+
+  TF_ASSIGN_OR_RETURN(*triangular_solve_thunk_proto->mutable_a_buffer(),
+                      a_buffer_.ToProto());
+  TF_ASSIGN_OR_RETURN(*triangular_solve_thunk_proto->mutable_b_buffer(),
+                      b_buffer_.ToProto());
+  TF_ASSIGN_OR_RETURN(*triangular_solve_thunk_proto->mutable_temp_buffer(),
+                      temp_buffer_.ToProto());
+  triangular_solve_thunk_proto->set_type(type_);
+  triangular_solve_thunk_proto->set_batch_size(batch_size_);
+  triangular_solve_thunk_proto->set_m(m_);
+  triangular_solve_thunk_proto->set_n(n_);
+  triangular_solve_thunk_proto->set_a_batch_stride(a_batch_stride_);
+  triangular_solve_thunk_proto->set_b_batch_stride(b_batch_stride_);
+  return proto;
 }
 
 absl::Status RunTriangularSolve(se::DeviceMemoryBase a_data,

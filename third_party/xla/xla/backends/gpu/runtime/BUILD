@@ -1480,6 +1480,7 @@ cc_library(
     deps = if_gpu_is_configured([
         # keep sorted
         ":make_batch_pointers",
+        ":thunk_proto_cc",
         "//xla:status_macros",
         "//xla:types",
         "//xla:util",
@@ -1492,8 +1493,11 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:status",
@@ -1573,7 +1577,19 @@ cc_library(
         "//xla/stream_executor:stream",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "wait_for_streams_thunk_test",
+    srcs = ["wait_for_streams_thunk_test.cc"],
+    deps = [
+        ":thunk",
+        ":wait_for_streams_thunk",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1883,6 +1899,7 @@ tf_proto_library(
     protodeps = [
         "//xla/service:buffer_assignment_proto",
         "//xla/stream_executor/gpu:gpu_blas_lt_proto",
+        "//xla:xla_data_proto",
     ],
 )
 
@@ -1896,6 +1913,8 @@ cc_library(
         ":sequential_thunk",
         ":thunk",
         ":thunk_proto_cc",
+        ":triangular_solve_thunk",
+        ":wait_for_streams_thunk",
         ":while_thunk",
         "//xla/service:buffer_assignment",
         "//xla/tsl/platform:statusor",
@@ -1914,6 +1933,7 @@ xla_cc_test(
         ":thunk",
         ":thunk_proto_cc",
         ":thunk_proto_deserialization",
+        ":wait_for_streams_thunk",
         ":while_thunk",
         "//xla/service:buffer_assignment",
         "//xla/tsl/platform:statusor",
