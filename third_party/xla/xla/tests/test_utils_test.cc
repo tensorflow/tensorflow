@@ -35,14 +35,14 @@ class TestUtilsTest : public LocalClientTestBase {};
 XLA_TEST_F(TestUtilsTest, UnusedParam) {
   XlaBuilder builder(TestName());
   // Make the reduction lambda.
-  Shape single_float = ShapeUtil::MakeShape(F32, {});
+  Shape single_float = ShapeUtil::MakeValidatedShape(F32, {}).value();
   Parameter(&builder, 0, single_float, "unused");
   Parameter(&builder, 1, single_float, "used");
   auto computation_status = builder.Build();
   TF_ASSERT_OK(computation_status.status());
 
   // Make the reduction.
-  Shape pair_float = ShapeUtil::MakeShape(F32, {2});
+  Shape pair_float = ShapeUtil::MakeValidatedShape(F32, {2}).value();
   Reduce(Parameter(&builder, 0, pair_float, "operand"),
          Parameter(&builder, 1, single_float, "init"),
          computation_status.value(), {0});
@@ -231,10 +231,11 @@ ENTRY %module (parameter.0: s32[], parameter.1: f32[20,20]) -> f32[] {
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 2);
-  EXPECT_TRUE(ShapeUtil::Equal(args[0].shape(), ShapeUtil::MakeShape(S32, {})))
+  EXPECT_TRUE(ShapeUtil::Equal(args[0].shape(),
+                               ShapeUtil::MakeValidatedShape(S32, {}).value()))
       << ShapeUtil::HumanString(args[0].shape());
-  EXPECT_TRUE(
-      ShapeUtil::Equal(args[1].shape(), ShapeUtil::MakeShape(F32, {20, 20})))
+  EXPECT_TRUE(ShapeUtil::Equal(
+      args[1].shape(), ShapeUtil::MakeValidatedShape(F32, {20, 20}).value()))
       << ShapeUtil::HumanString(args[1].shape());
 }
 
@@ -262,8 +263,8 @@ ENTRY %module(parameter.0: f32[200,100,300], parameter.1: s32[10,2]) ->
   ASSERT_EQ(args.size(), 2);
 
   const Shape& indices_shape = args[1].shape();
-  EXPECT_TRUE(
-      ShapeUtil::Equal(indices_shape, ShapeUtil::MakeShape(S32, {10, 2})))
+  EXPECT_TRUE(ShapeUtil::Equal(
+      indices_shape, ShapeUtil::MakeValidatedShape(S32, {10, 2}).value()))
       << ShapeUtil::HumanString(indices_shape);
   auto indices = args[1].data<int32_t>();
   for (const auto index : indices) {
@@ -299,7 +300,8 @@ ENTRY cluster_13361217111314620287__.11 {
   ASSERT_EQ(args.size(), 1);
 
   const Shape& indices_shape = args[0].shape().tuple_shapes()[0];
-  EXPECT_TRUE(ShapeUtil::Equal(indices_shape, ShapeUtil::MakeShape(S32, {10})))
+  EXPECT_TRUE(ShapeUtil::Equal(
+      indices_shape, ShapeUtil::MakeValidatedShape(S32, {10}).value()))
       << ShapeUtil::HumanString(indices_shape);
   const std::vector<Literal> results = args[0].DecomposeTuple();
   auto indices = results[0].data<int32_t>();
@@ -337,8 +339,8 @@ ENTRY main {
   ASSERT_EQ(args.size(), 3);
 
   const Shape& indices_shape = args[1].shape();
-  EXPECT_TRUE(
-      ShapeUtil::Equal(indices_shape, ShapeUtil::MakeShape(S32, {10, 2})))
+  EXPECT_TRUE(ShapeUtil::Equal(
+      indices_shape, ShapeUtil::MakeValidatedShape(S32, {10, 2}).value()))
       << ShapeUtil::HumanString(indices_shape);
   auto indices = args[1].data<int32_t>();
   for (const auto index : indices) {

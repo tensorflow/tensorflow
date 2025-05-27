@@ -59,7 +59,8 @@ TEST_F(TwoPlusTwoSimpleTest, TwoPlusTwoScalarWithOneTransfer) {
       client_->TransferToServer(x_literal).value();
 
   XlaBuilder builder("one_transfer");
-  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x_value");
+  auto x = Parameter(&builder, 0,
+                     ShapeUtil::MakeValidatedShape(F32, {}).value(), "x_value");
   auto y = ConstantR0<float>(&builder, 2.0);
   Add(x, y);
 
@@ -77,8 +78,10 @@ TEST_F(TwoPlusTwoSimpleTest, TwoPlusTwoScalarWithTwoTransfer) {
       client_->TransferToServer(y_literal).value();
 
   XlaBuilder builder("two_transfers");
-  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x_value");
-  auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {}), "y_value");
+  auto x = Parameter(&builder, 0,
+                     ShapeUtil::MakeValidatedShape(F32, {}).value(), "x_value");
+  auto y = Parameter(&builder, 1,
+                     ShapeUtil::MakeValidatedShape(F32, {}).value(), "y_value");
   Add(x, y);
 
   float expected = 3.0f;

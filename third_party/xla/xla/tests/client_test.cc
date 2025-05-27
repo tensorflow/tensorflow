@@ -87,11 +87,12 @@ XLA_TEST_F(ClientTest, ExecuteWithTupleLayout) {
   // Create a result shape with one element column major and the other row
   // major.
   *execution_options.mutable_shape_with_output_layout() =
-      ShapeUtil::MakeTupleShape(
+      ShapeUtil::MakeValidatedTupleShape(
           {ShapeUtil::MakeShapeWithDenseLayout(S32, /*dimensions=*/{2, 2},
                                                /*minor_to_major=*/{0, 1}),
            ShapeUtil::MakeShapeWithDenseLayout(S32, /*dimensions=*/{2, 2},
                                                /*minor_to_major=*/{1, 0})})
+          .value()
           .ToProto();
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -122,7 +123,7 @@ XLA_TEST_F(ClientTest, ExecuteParallel) {
     GTEST_SKIP();
   }
   XlaComputation add_with_one_arg, mul_with_two_args, dot_with_one_arg;
-  Shape shape = ShapeUtil::MakeShape(S32, {2, 2});
+  Shape shape = ShapeUtil::MakeValidatedShape(S32, {2, 2}).value();
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GlobalData> const_arg,
