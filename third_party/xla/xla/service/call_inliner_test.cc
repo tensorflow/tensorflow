@@ -747,5 +747,49 @@ ENTRY main {
             expected_module->ToFingerprint(options));
 }
 
+TEST_F(CallInlinerTest, InlineNonFlatScheduledModule) {
+  constexpr absl::string_view kHlo = R"(
+HloModule main, is_scheduled=true
+
+comp {
+  arg.0 = s32[] parameter(0)
+  ROOT abs.0 = abs(arg.0)
+}
+
+ENTRY main {
+  arg.0 = s32[] parameter(0)
+  call.0 = call(arg.0), to_apply=comp
+  ROOT call.1 = call(call.0), to_apply=comp
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_TRUE(module->has_schedule());
+  TF_ASSERT_OK(module->schedule().Verify());
+
+  TF_ASSERT_OK_AND_ASSIGN(bool modified, CallInliner().Run(module.get()));
+  EXPECT_TRUE(modified);
+
+  // Module should still be sequenced and valid after inlining.
+  ASSERT_TRUE(module->has_schedule());
+  const HloSchedule& schedule = module->schedule();
+  TF_ASSERT_OK(schedule.Verify());
+
+  // The post-inline instruction sequence should mimic that of the pre-inline
+  // computations.
+  constexpr absl::string_view kExpectedHlo = R"(
+HloModule main, is_scheduled=true
+
+ENTRY main {
+  arg.0 = s32[] parameter(0)
+  abs.0 = abs(arg.0)
+  ROOT abs.1 = abs(abs.0)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> expected_module,
+                          ParseAndReturnVerifiedModule(kExpectedHlo));
+  const HloPrintOptions options = HloPrintOptions().set_print_ids(false);
+  EXPECT_EQ(module->ToFingerprint(options),
+            expected_module->ToFingerprint(options));
+}
+
 }  // namespace
 }  // namespace xla

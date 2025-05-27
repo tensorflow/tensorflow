@@ -281,7 +281,6 @@ absl::StatusOr<bool> CallInliner::InlineAndLegalize(
             inlined_instructions.push_back(inline_map[inlined_instruction]);
           }
         }
-        module->schedule().remove_computation(callee);
       }
       if (update_domain_) {
         HloDomainIsolator isolator([]() { return ShardingDomainCreator{}; });
