@@ -79,7 +79,7 @@ class TestStream : public CopyToDeviceStream {
 TEST(HostCallbackTest, Basic) {
   HostCallback host_callback;
 
-  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 2}).value();
   size_t byte_size = ShapeUtil::ByteSizeOf(shape);
 
   host_callback.operands = {HostCallbackArgInfo{/*channel_id=*/1, shape}};
@@ -127,7 +127,7 @@ TEST(HostCallbackTest, Basic) {
 TEST(HostCallbackTest, NonBlockingRecv) {
   HostCallback host_callback;
 
-  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 2}).value();
   size_t byte_size = ShapeUtil::ByteSizeOf(shape);
 
   host_callback.operands = {HostCallbackArgInfo{/*channel_id=*/1, shape}};
