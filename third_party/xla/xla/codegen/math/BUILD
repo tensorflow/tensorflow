@@ -48,6 +48,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/util:safe_reinterpret_cast",
+        "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:JITLink",

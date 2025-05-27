@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/dynamic_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
@@ -117,6 +118,9 @@ class JitRunner {
     }
 
     alignas(32) std::array<Arg1Type, VectorSize> result_array;
+    // Required to satisfy MSAN, which doesn't instrument the JITed code.
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(result_array.data(),
+                                        result_array.size() * sizeof(Arg1Type));
     // Copy the arguments to make sure they are aligned. We could require
     // callers to pass aligned arrays, but the errors if they don't are hard to
     // debug, and most input arrays are likely to be small enough that a copy
