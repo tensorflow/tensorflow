@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/primitive_util.h"
+#include "xla/service/computation_layout.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -357,6 +358,43 @@ bool IsCustomCallToMemoryPlacement(const HloInstruction* hlo) {
          target == memory_annotations::kMoveToHostCustomCallTarget;
 }
 
+// Go up the chain of elementwise instructions or transposes or reshapes or
+// concats to check whether hit any parameter with AUTO layout.
+bool ChainEndsWithAutoLayout(const HloInstruction* instruction,
+                             ComputationLayout& computation_layout) {
+  if (!instruction->parent()->IsEntryComputation()) {
+    return false;
+  }
+  // In general, the desired logic is to:
+  // - Traverse ops where passing layout through is cheapest/optimal.
+  // - Return true for ops with flexible layout (e.g., AUTO params, some dots).
+  // - Return false for ops with rigid layouts (e.g., custom_call, non-AUTO).
+  // However, fully following this logic led to model regressions.
+  // So, traversal is currently restricted to elementwise unary, concats,
+  // transposes, and reshapes for now.
+  while ((instruction->IsElementwise() && instruction->operand_count() == 1) ||
+         instruction->opcode() == HloOpcode::kTranspose ||
+         instruction->opcode() == HloOpcode::kReshape) {
+    instruction = instruction->operand(0);
+  }
+  switch (instruction->opcode()) {
+    case HloOpcode::kParameter: {
+      ShapeLayout parameter_layout =
+          computation_layout.parameter_layout(instruction->parameter_number());
+      return !parameter_layout.AnyLayoutIsSet();
+    }
+    case HloOpcode::kConcatenate:
+      for (const HloInstruction* operand : instruction->operands()) {
+        if (ChainEndsWithAutoLayout(operand, computation_layout)) {
+          return true;
+        }
+      }
+      return false;
+    default:
+      return false;
+  }
+}
+
 }  // namespace
 
 absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
@@ -426,6 +464,11 @@ absl::Status GpuLayoutAssignment::AddDotBackendConstraints(
       TF_RETURN_IF_ERROR(SetDotOperandLayout(
           instruction, side.operand_no, side.batch_dims, side.contracting_dims,
           side.non_contracting_dims));
+    } else if (ChainEndsWithAutoLayout(side.operand,
+                                       saved_entry_computation_layout())) {
+      TF_RETURN_IF_ERROR(SetDotOperandLayout(
+          instruction, side.operand_no, side.batch_dims, side.contracting_dims,
+          side.non_contracting_dims, /*mandatory=*/false));
     }
   }
 
@@ -594,24 +637,26 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
 absl::Status GpuLayoutAssignment::SetDotOperandLayout(
     const HloInstruction* instruction, int64_t operand,
     absl::Span<const int64_t> batch_dims, absl::Span<const int64_t> row_dims,
-    absl::Span<const int64_t> col_dims) {
+    absl::Span<const int64_t> col_dims, bool mandatory) {
   Shape shape = instruction->operand(operand)->shape();
 
   // First, try to use the existing layout, if present.
   if (shape.has_layout() &&
-      MatrixLayout::For(shape, batch_dims, row_dims, col_dims).ok())
+      MatrixLayout::For(shape, batch_dims, row_dims, col_dims).ok()) {
     // Re-set the operand layout, so it becomes mandatory.
-    return SetOperandLayout(shape, instruction, operand);
+    return SetOperandLayout(shape, instruction, operand, mandatory);
+  }
 
   // Next, try the default layout (for the sake of everybody's sanity).
   LayoutUtil::SetToDefaultLayout(&shape);
-  if (MatrixLayout::For(shape, batch_dims, row_dims, col_dims).ok())
-    return SetOperandLayout(shape, instruction, operand);
+  if (MatrixLayout::For(shape, batch_dims, row_dims, col_dims).ok()) {
+    return SetOperandLayout(shape, instruction, operand, mandatory);
+  }
 
   // Otherwise, fallback to forcing (batch, rows, cols) layout.
   return SetOperandMajorToMinorLayout(
       instruction, operand,
-      /*dim_groups=*/{batch_dims, row_dims, col_dims});
+      /*dim_groups=*/{batch_dims, row_dims, col_dims}, mandatory);
 }
 
 absl::Status GpuLayoutAssignment::SetDotOperandLayoutToMinorContracting(
@@ -652,7 +697,8 @@ absl::Status GpuLayoutAssignment::SetDotOperandLayoutToMinorContracting(
 
 absl::Status GpuLayoutAssignment::SetOperandMajorToMinorLayout(
     const HloInstruction* instruction, int64_t operand,
-    std::initializer_list<absl::Span<const int64_t>> dim_groups) {
+    std::initializer_list<absl::Span<const int64_t>> dim_groups,
+    bool mandatory) {
   size_t size = 0;
   for (auto group : dim_groups) size += group.size();
   std::vector<int64_t> major_to_minor;
@@ -664,7 +710,8 @@ absl::Status GpuLayoutAssignment::SetOperandMajorToMinorLayout(
   Shape shape = instruction->operand(operand)->shape();
   *shape.mutable_layout() =
       LayoutUtil::MakeLayoutFromMajorToMinor(major_to_minor);
-  return SetOperandLayout(shape, instruction, operand);
+  return SetOperandLayout(shape, instruction, operand, mandatory,
+                          /*dfs=*/mandatory);
 }
 
 absl::Status GpuLayoutAssignment::SetDotLayout(

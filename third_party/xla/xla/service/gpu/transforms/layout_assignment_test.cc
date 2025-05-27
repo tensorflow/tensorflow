@@ -912,6 +912,38 @@ TEST_F(LayoutAssignmentTest, AutoLayoutS4DotFollowingTheChain) {
               GmockMatch(m::Dot().WithShape(BF16, {128, 9216}, {1, 0})));
 }
 
+TEST_F(LayoutAssignmentTest, DotSetsNonMandatoryConstraintIfAutoLayout) {
+  const char* hlo = R"(
+  HloModule t,
+     entry_computation_layout={(f16[300,20]{1,0}, f16[40,20,50])
+                               ->f16[300,2000]{1,0}}
+  ENTRY main {
+    p0 = f16[300,20] parameter(0)
+
+    p1 = f16[40,20,50] parameter(1)
+    t1 = f16[40,50,20] transpose(p1), dimensions={0,2,1}
+    r1 = f16[2000,20] reshape(t1)
+
+    ROOT dot = f16[300,2000] dot(p0,r1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> m,
+      ParseAndReturnUnverifiedModule(
+          hlo, {}, HloParserOptions().set_fill_missing_layouts(false)));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
+      GetDeviceDescription());
+  EXPECT_THAT(layout_assignment.Run(m.get()), IsOkAndHolds(true));
+  EXPECT_THAT(RunFileCheck(m->ToString(), R"(
+// CHECK: p1 = f16[40,20,50]{1,2,0} parameter(1)
+)"),
+              IsOkAndHolds(true));
+};
+
 TEST_F(LayoutAssignmentTest, VariadicReduceSameOperandLayout) {
   const char* module_str = R"(
 HloModule variadic_reduce
