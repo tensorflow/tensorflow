@@ -346,7 +346,8 @@ absl::Status IrEmitterUnnested::EmitPadToStatic(
     // Dynamic size of each dimension is attached at the end of the source
     // array(operand(0)). We need to extract these value.
     const Shape& dim_shape = output_shapes[i].shape;
-    TF_RET_CHECK(Shape::Equal()(dim_shape, ShapeUtil::MakeScalarShape(S32)));
+    TF_RET_CHECK(Shape::Equal()(
+        dim_shape, ShapeUtil::MakeValidatedScalarShape(S32).value()));
 
     const int64_t dim_index = i - 1;
     llvm::Value* metadata = b_.CreateConstInBoundsGEP1_32(

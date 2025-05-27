@@ -117,14 +117,18 @@ absl::StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
     std::vector<Shape> new_tuple_shape;
     for (const Shape& tuple_shape : hlo->shape().tuple_shapes()) {
       new_tuple_shape.emplace_back(
-          ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
-              tuple_shape));
+          ShapeUtil::
+              MakeValidatedShapeWithDescendingLayoutAndSamePhysicalLayout(
+                  tuple_shape)
+                  .value());
     }
-    normalized_shape = ShapeUtil::MakeTupleShape(new_tuple_shape);
+    normalized_shape =
+        ShapeUtil::MakeValidatedTupleShape(new_tuple_shape).value();
   } else {
     normalized_shape =
-        ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
-            hlo->shape());
+        ShapeUtil::MakeValidatedShapeWithDescendingLayoutAndSamePhysicalLayout(
+            hlo->shape())
+            .value();
   }
 
   // We need to restore degenerate dimensions, since those might be used in
@@ -135,7 +139,9 @@ absl::StatusOr<std::optional<HloInstruction*>> UpdateLayoutForCudnnConvolution(
     HloInstruction* op = hlo->mutable_operand(idx);
     const Shape& s = op->shape();
     Shape s_reordered =
-        ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(s);
+        ShapeUtil::MakeValidatedShapeWithDescendingLayoutAndSamePhysicalLayout(
+            s)
+            .value();
     normalized_operands.emplace_back(MakeBitcastHlo(op, s_reordered));
   }
 

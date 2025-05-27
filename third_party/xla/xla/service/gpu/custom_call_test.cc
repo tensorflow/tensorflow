@@ -164,13 +164,14 @@ class CustomCallTokensTest
     while (!str.eof()) {
       int ch = str.get();
       if (ch == 'A') {
-        shapes.push_back(ShapeUtil::MakeShape(F32, {8}));
+        shapes.push_back(ShapeUtil::MakeValidatedShape(F32, {8}).value());
       } else if (ch == 'T') {
         shapes.push_back(ShapeUtil::MakeTokenShape());
       } else if (ch == '{') {
         // build a tuple shape. This will eat the } as well.
         std::vector<Shape> tuple_elements = BuildOutputType(str);
-        shapes.push_back(ShapeUtil::MakeTupleShape(tuple_elements));
+        shapes.push_back(
+            ShapeUtil::MakeValidatedTupleShape(tuple_elements).value());
       } else if (ch == '}') {
         break;
       }
@@ -191,7 +192,7 @@ TEST_F(CustomCallTest, WithStatusSucceeded) {
   XlaBuilder b(TestName());
   CustomCall(
       &b, "Callback_WithStatusSucceeded", /*operands=*/{},
-      ShapeUtil::MakeShape(F32, {}), /*opaque=*/"",
+      ShapeUtil::MakeValidatedShape(F32, {}).value(), /*opaque=*/"",
       /*has_side_effect=*/false,
       /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
       /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
@@ -211,7 +212,7 @@ TEST_F(CustomCallTest, WithStatusFailed) {
   XlaBuilder b(TestName());
   CustomCall(
       &b, "Callback_WithStatusFailed", /*operands=*/{},
-      ShapeUtil::MakeShape(F32, {}), /*opaque=*/"",
+      ShapeUtil::MakeValidatedShape(F32, {}).value(), /*opaque=*/"",
       /*has_side_effect=*/false,
       /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
       /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
@@ -240,7 +241,8 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$always_fail",
 TEST_F(CustomCallTest, RuntimeCustomCallAlwaysFail) {
   XlaBuilder b(TestName());
   CustomCall(&b, "__xla_test$$always_fail", /*operands=*/{},
-             ShapeUtil::MakeShape(F32, {}), /*opaque=*/"{value = 42 : i32}",
+             ShapeUtil::MakeValidatedShape(F32, {}).value(),
+             /*opaque=*/"{value = 42 : i32}",
              /*has_side_effect=*/false,
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
@@ -256,7 +258,7 @@ TEST_F(CustomCallTest, PassAttributesByBackendConfig) {
   XlaBuilder b(TestName());
   CustomCall(
       &b, "__xla_test$$always_fail", /*operands=*/{},
-      ShapeUtil::MakeShape(F32, {}), /*opaque=*/
+      ShapeUtil::MakeValidatedShape(F32, {}).value(), /*opaque=*/
       R"({"custom_call_backend_config": {"attributes": "{value = 42 : i32}"}})",
       /*has_side_effect=*/false,
       /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
@@ -288,7 +290,7 @@ TEST_F(CustomCallTest, ExportedFfiMemcpy) {
   XlaBuilder b(TestName());
   CustomCall(&b, "__xla_test$$memcpy",
              /*operands=*/{Broadcast(ConstantR0WithType(&b, F32, 42.0), {128})},
-             ShapeUtil::MakeShape(F32, {128}), /*opaque=*/"",
+             ShapeUtil::MakeValidatedShape(F32, {128}).value(), /*opaque=*/"",
              /*has_side_effect=*/false,
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
@@ -316,7 +318,7 @@ TEST_F(CustomCallTest, PassUserPointerWithAttrs) {
 
   XlaBuilder b(TestName());
   CustomCall(&b, "__xla_test$$user_data", /*operands=*/{},
-             ShapeUtil::MakeShape(F32, {}),
+             ShapeUtil::MakeValidatedShape(F32, {}).value(),
              /*opaque=*/absl::StrFormat("{message = %d : i64}", ptr),
              /*has_side_effect=*/false,
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
@@ -343,7 +345,7 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$isinvoked", PLATFORM,
 TEST_F(CustomCallTest, ExportedFfiIsInvoked) {
   XlaBuilder b(TestName());
   CustomCall(&b, "__xla_test$$isinvoked", /*operands=*/{},
-             ShapeUtil::MakeShape(F32, {}), /*opaque=*/"",
+             ShapeUtil::MakeValidatedShape(F32, {}).value(), /*opaque=*/"",
              /*has_side_effect=*/false,
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
@@ -355,7 +357,7 @@ TEST_F(CustomCallTest, ExportedFfiIsInvoked) {
 TEST_F(CustomCallTest, ExportedFfiUnknownTarget) {
   XlaBuilder b(TestName());
   CustomCall(&b, "__xla_test$$unknown_target", /*operands=*/{},
-             ShapeUtil::MakeShape(F32, {}), /*opaque=*/"",
+             ShapeUtil::MakeValidatedShape(F32, {}).value(), /*opaque=*/"",
              /*has_side_effect=*/false,
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
@@ -395,7 +397,7 @@ TEST_F(CustomCallTest, ExportedFfiOpaque) {
   const std::string opaque = absl::StrFormat(
       "{opaque = %d : i64}", reinterpret_cast<uintptr_t>(&kExpectedOpaque));
   CustomCall(&b, "__xla_test$$opaque", /*operands=*/{},
-             ShapeUtil::MakeShape(F32, {}),
+             ShapeUtil::MakeValidatedShape(F32, {}).value(),
              /*opaque=*/opaque,
              /*has_side_effect=*/false,
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
@@ -491,7 +493,7 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$always_succeed",
 TEST_F(CustomCallTest, ExportedFfiWithStatusSucceeded) {
   XlaBuilder b(TestName());
   CustomCall(&b, "__xla_test$$always_succeed", /*operands=*/{},
-             ShapeUtil::MakeShape(F32, {}), /*opaque=*/"",
+             ShapeUtil::MakeValidatedShape(F32, {}).value(), /*opaque=*/"",
              /*has_side_effect=*/false,
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
@@ -534,7 +536,7 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.gpu.ffi_attributes",
 TEST_F(CustomCallTest, FfiAttributes) {
   XlaBuilder b(TestName());
   CustomCall(&b, "xla.gpu.ffi_attributes", /*operands=*/{},
-             ShapeUtil::MakeShape(F32, {}),
+             ShapeUtil::MakeValidatedShape(F32, {}).value(),
              /*opaque=*/
              "{ i32_arr = array<i32: 1, 2, 3, 4>,"
              "  range = { lo = 0 : i64, hi = 42 : i64 } }",
@@ -590,7 +592,7 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(),
                          kMemcpyWithCalledComputation);
 
 TEST_F(CustomCallTest, WithCalledComputation) {
-  auto shape = ShapeUtil::MakeShape(F32, {128});
+  auto shape = ShapeUtil::MakeValidatedShape(F32, {128}).value();
 
   // Build a called computation which is just a copy instruction.
   XlaBuilder copy("copy");
@@ -674,7 +676,7 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.gpu.ffi_execution_context",
 TEST_F(CustomCallTest, FfiExecutionContext) {
   XlaBuilder b(TestName());
   CustomCall(&b, "xla.gpu.ffi_execution_context", /*operands=*/{},
-             ShapeUtil::MakeShape(F32, {}),
+             ShapeUtil::MakeValidatedShape(F32, {}).value(),
              /*opaque=*/"",
              /*has_side_effect=*/false,
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
@@ -740,7 +742,7 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "xla.gpu.ffi_execution_state",
 TEST_F(CustomCallTest, FfiExecutionState) {
   XlaBuilder b(TestName());
   CustomCall(&b, "xla.gpu.ffi_execution_state", /*operands=*/{},
-             ShapeUtil::MakeShape(F32, {}),
+             ShapeUtil::MakeValidatedShape(F32, {}).value(),
              /*opaque=*/"",
              /*has_side_effect=*/false,
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,

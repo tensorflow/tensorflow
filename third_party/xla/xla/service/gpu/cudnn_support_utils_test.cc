@@ -361,7 +361,8 @@ TEST_P(ReorderFilterRank4Test, InferTransposeRank4) {
   shape_dims[dH] = 5;
   shape_dims[dW] = 3;
 
-  Shape shape = ShapeUtil::MakeShape(U8, absl::MakeSpan(shape_dims));
+  Shape shape =
+      ShapeUtil::MakeValidatedShape(U8, absl::MakeSpan(shape_dims)).value();
   auto input = HloInstruction::CreateParameter(0, shape, "input");
   auto filter = HloInstruction::CreateParameter(1, shape, "filter");
 
@@ -423,7 +424,8 @@ TEST_P(ReorderFilterRank5Test, InferTransposeRank5) {
   shape_dims[dH] = 5;
   shape_dims[dW] = 3;
 
-  Shape shape = ShapeUtil::MakeShape(U8, absl::MakeSpan(shape_dims));
+  Shape shape =
+      ShapeUtil::MakeValidatedShape(U8, absl::MakeSpan(shape_dims)).value();
   auto input = HloInstruction::CreateParameter(0, shape, "input");
   auto filter = HloInstruction::CreateParameter(1, shape, "filter");
 
@@ -455,7 +457,7 @@ INSTANTIATE_TEST_SUITE_P(
 class ReorderBiasTest : public ::testing::Test {};
 
 TEST_F(ReorderBiasTest, InferTranspose) {
-  Shape shape = ShapeUtil::MakeShape(U8, {96});
+  Shape shape = ShapeUtil::MakeValidatedShape(U8, {96}).value();
   auto bias = HloInstruction::CreateParameter(2, shape, "bias");
 
   Shape unused = ShapeUtil::MakeNil();

@@ -72,7 +72,7 @@ class GpuHloScheduleTest : public HloTestBase {
   using HloVec = std::vector<HloInstruction*>;
 
   // Pre-canned shapes.
-  Shape f32_2x2_ = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape f32_2x2_ = ShapeUtil::MakeValidatedShape(F32, {2, 2}).value();
 
   SequentialHloOrdering BuildHloOrdering(HloModule* module) {
     Backend& test_backend = backend();
@@ -253,10 +253,10 @@ TEST_F(GpuHloScheduleTest, AsyncCollectivePermute) {
   HloInstruction* add2 = builder.AddInstruction(
       HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, add1, z));
 
-  Shape u32_scalar = ShapeUtil::MakeShape(U32, {});
+  Shape u32_scalar = ShapeUtil::MakeValidatedShape(U32, {}).value();
 
   Shape collective_permute_start_shape =
-      ShapeUtil::MakeTupleShape({f32_2x2_, f32_2x2_});
+      ShapeUtil::MakeValidatedTupleShape({f32_2x2_, f32_2x2_}).value();
   HloInstruction* collective_permute_start =
       builder.AddInstruction(HloInstruction::CreateCollectivePermuteStart(
           collective_permute_start_shape, add0,
@@ -1447,15 +1447,18 @@ TEST_P(GpuHloScheduleParameterizedTest, AsyncAllReduce) {
   HloComputation::Builder reduction_builder("add");
   HloInstruction* x0 =
       reduction_builder.AddInstruction(HloInstruction::CreateParameter(
-          /*parameter_number=*/0, ShapeUtil::MakeScalarShape(F32),
+          /*parameter_number=*/0,
+          ShapeUtil::MakeValidatedScalarShape(F32).value(),
           /*name=*/"x"));
   HloInstruction* y0 =
       reduction_builder.AddInstruction(HloInstruction::CreateParameter(
-          /*parameter_number=*/1, ShapeUtil::MakeScalarShape(F32),
+          /*parameter_number=*/1,
+          ShapeUtil::MakeValidatedScalarShape(F32).value(),
           /*name=*/"y"));
   HloInstruction* add =
       reduction_builder.AddInstruction(HloInstruction::CreateBinary(
-          ShapeUtil::MakeScalarShape(F32), HloOpcode::kAdd, x0, y0));
+          ShapeUtil::MakeValidatedScalarShape(F32).value(), HloOpcode::kAdd, x0,
+          y0));
 
   const bool use_latency_hiding_scheduler = GetParam();
   std::unique_ptr<HloModule> module =
@@ -1478,7 +1481,7 @@ TEST_P(GpuHloScheduleParameterizedTest, AsyncAllReduce) {
       HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, add1, z));
 
   Shape all_reduce_start_shape =
-      ShapeUtil::MakeTupleShape({f32_2x2_, f32_2x2_});
+      ShapeUtil::MakeValidatedTupleShape({f32_2x2_, f32_2x2_}).value();
   HloInstruction* all_reduce_start =
       builder.AddInstruction(HloInstruction::CreateAllReduceStart(
           all_reduce_start_shape, {add0}, reduction_computation,

@@ -155,7 +155,8 @@ CudnnInferTransposeForFilterReordering(
   std::vector<int64_t> output = {
       shape.dimensions(dO), shape.dimensions(dI) / (32 / vsize),
       shape.dimensions(dH), shape.dimensions(dW), 32};
-  Shape output_shape = ShapeUtil::MakeShape(shape.element_type(), output);
+  Shape output_shape =
+      ShapeUtil::MakeValidatedShape(shape.element_type(), output).value();
 
   // Compute the positions of filter components in the transposable shape.
   // Every dimension preceding the given one moves it to the right, and
@@ -185,7 +186,8 @@ CudnnInferTransposeForFilterReordering(
   dims[idx_Z] = 4;
   dims[idx_H] = shape.dimensions(dH);
   dims[idx_W] = shape.dimensions(dW);
-  Shape split_shape = ShapeUtil::MakeShape(shape.element_type(), dims);
+  Shape split_shape =
+      ShapeUtil::MakeValidatedShape(shape.element_type(), dims).value();
 
   // Build the transposition permutation: [I/32, H, W, O/8, 2, 8, 4, 4]
   std::vector<int64_t> permutation = {idx_I,     idx_H, idx_W,     idx_O,
@@ -205,7 +207,8 @@ CudnnInferTransposeForBiasReordering(const Shape& shape) {
 
   // Build the transposable shape: [O/32, 4, 2, 4]
   std::vector<int64_t> dims = {shape.dimensions(0) / 32, 4, 2, 4};
-  Shape split_shape = ShapeUtil::MakeShape(shape.element_type(), dims);
+  Shape split_shape =
+      ShapeUtil::MakeValidatedShape(shape.element_type(), dims).value();
 
   // Build the transposition permutation: [O/32, 2, 4, 4]
   std::vector<int64_t> permutation = {0, 2, 1, 3};

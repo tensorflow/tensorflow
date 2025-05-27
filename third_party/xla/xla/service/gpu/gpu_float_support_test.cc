@@ -68,9 +68,10 @@ class FloatSupportTest : public HloHardwareIndependentTestBase {
                                                     PrimitiveType rhs_type,
                                                     PrimitiveType result_type) {
     auto builder = HloComputation::Builder(TestName());
-    Shape lhs_shape = ShapeUtil::MakeShape(lhs_type, {3, 3});
-    Shape rhs_shape = ShapeUtil::MakeShape(rhs_type, {3, 3});
-    Shape result_shape = ShapeUtil::MakeShape(result_type, {3, 3});
+    Shape lhs_shape = ShapeUtil::MakeValidatedShape(lhs_type, {3, 3}).value();
+    Shape rhs_shape = ShapeUtil::MakeValidatedShape(rhs_type, {3, 3}).value();
+    Shape result_shape =
+        ShapeUtil::MakeValidatedShape(result_type, {3, 3}).value();
 
     HloInstruction* a = builder.AddInstruction(
         HloInstruction::CreateParameter(0, lhs_shape, "a"));
@@ -120,9 +121,10 @@ class FloatSupportTest : public HloHardwareIndependentTestBase {
     auto computation = module->AddComputationAndUnifyNamesAndIds(
         CreateComputation(lhs_type, rhs_type, result_type), /*is_entry=*/false);
 
-    Shape lhs_shape = ShapeUtil::MakeShape(lhs_type, {3, 3});
-    Shape rhs_shape = ShapeUtil::MakeShape(rhs_type, {3, 3});
-    Shape result_shape = ShapeUtil::MakeShape(result_type, {3, 3});
+    Shape lhs_shape = ShapeUtil::MakeValidatedShape(lhs_type, {3, 3}).value();
+    Shape rhs_shape = ShapeUtil::MakeValidatedShape(rhs_type, {3, 3}).value();
+    Shape result_shape =
+        ShapeUtil::MakeValidatedShape(result_type, {3, 3}).value();
 
     auto builder = HloComputation::Builder("main");
     HloInstruction* a = builder.AddInstruction(
