@@ -221,6 +221,7 @@ class DmaDestination : public ChunkDestination {
   }
 
   void Poison(absl::Status s) override {
+    semaphore_.Poison();
     atm_->SetBufferError(buffer_index_, std::move(s));
   }
 
