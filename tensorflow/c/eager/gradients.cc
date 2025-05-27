@@ -454,7 +454,7 @@ absl::Status SetAttrShapeList(AbstractOperation* op_, const char* attr_name,
     }
   }
   forward_op_->attrs.Set(
-      attr_name, gtl::ArraySlice<TensorShapeProto>(proto.get(), num_values));
+      attr_name, absl::Span<const TensorShapeProto>(proto.get(), num_values));
   return op_->SetAttrShapeList(attr_name, dims, num_dims, num_values);
 }
 absl::Status SetAttrFunctionList(AbstractOperation* op_, const char* attr_name,
