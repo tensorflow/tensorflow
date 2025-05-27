@@ -34,16 +34,17 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/device_memory_handle.h"
-#include "xla/stream_executor/gpu/gpu_asm_opts.h"
-#include "xla/stream_executor/gpu/redzone_allocator_kernel.h"
+#include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/typed_kernel_factory.h"  // IWYU pragma: keep
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/lib/math/math_util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
 
@@ -59,6 +60,12 @@ static T RoundUpToNearest(T value, T divisor) {
 constexpr int64_t kRhsRedzoneAlign = 4;
 
 using RedzoneCheckStatus = RedzoneAllocator::RedzoneCheckStatus;
+
+using ComparisonKernel = TypedKernel<DeviceMemory<uint8_t>, uint8_t, uint64_t,
+                                     DeviceMemory<uint64_t>>;
+namespace redzone_checker_kernel {
+void* kernel();
+}
 
 RedzoneAllocator::RedzoneAllocator(Stream* stream,
                                    DeviceMemoryAllocator* memory_allocator,
@@ -269,11 +276,11 @@ absl::StatusOr<DeviceMemoryBase> RedzoneAllocator::CreateBuffer(
 absl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
   StreamExecutor* executor = stream_->parent();
 
-  TF_ASSIGN_OR_RETURN(ComparisonKernel * kernel,
-                      GetComparisonKernel(stream_->parent(), GpuAsmOpts()));
+  TF_ASSIGN_OR_RETURN(auto kernel, ComparisonKernel::FactoryType::Create(
+                                       executor, "RedzoneCheckerKernel",
+                                       redzone_checker_kernel::kernel()));
 
-  stream_executor::DeviceMemoryHandle out_param(
-      executor, executor->AllocateScalar<uint64_t>());
+  DeviceMemoryHandle out_param(executor, executor->AllocateScalar<uint64_t>());
   TF_RETURN_IF_ERROR(
       stream_->MemZero(out_param.memory_ptr(), sizeof(uint64_t)));
 
@@ -282,7 +289,7 @@ absl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
         RedzoneCheckStatus redzone_status,
         CheckRedzonesForBuffer(stream_, *buf_and_size.first,
                                DeviceMemory<uint64_t>(out_param.memory()),
-                               *kernel, buf_and_size.second, redzone_size_,
+                               kernel, buf_and_size.second, redzone_size_,
                                redzone_pattern_));
     if (!redzone_status.ok()) {
       return redzone_status;

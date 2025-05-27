@@ -9,7 +9,6 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
     "if_rocm_is_configured",
-    "rocm_library",
 )
 load(
     "@local_config_sycl//sycl:build_defs.bzl",
@@ -22,6 +21,7 @@ load(
 )
 load(
     "//xla/stream_executor:build_defs.bzl",
+    "if_gpu_is_configured",
     "stream_executor_gpu_friends",
 )
 load(
@@ -337,66 +337,24 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "redzone_allocator_kernel_cuda",
+gpu_kernel_library(
+    name = "redzone_allocator_kernel",
     srcs = [
-        "redzone_allocator_kernel.h",
-        "redzone_allocator_kernel_cuda.cc",
+        "redzone_allocator_kernel.cu.cc",
     ],
-    tags = [
-        "cuda-only",
-        "gpu",
-        "manual",
-    ],
-    deps = [
-        ":gpu_asm_opts",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:kernel",
-        "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor:typed_kernel_factory",
-        "//xla/stream_executor/cuda:cuda_asm_compiler",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-rocm_library(
-    name = "redzone_allocator_kernel_rocm",
-    srcs = [
-        "redzone_allocator_kernel.h",
-        "redzone_allocator_kernel_rocm.cu.cc",
-    ],
-    tags = [
-        "gpu",
-        "manual",
-        "rocm-only",
-    ],
-    deps = [
-        ":gpu_asm_opts",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor:kernel",
-        "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor:typed_kernel_factory",
-        "@com_google_absl//absl/container:node_hash_map",
-        "@com_google_absl//absl/status:statusor",
+    tags = ["gpu"],
+    deps = if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
-        "@local_tsl//tsl/platform:statusor",
-    ],
+        "@local_config_rocm//rocm:rocm_config",
+    ]),
 )
 
 cc_library(
     name = "redzone_allocator",
     srcs = [
         "redzone_allocator.cc",
-        "redzone_allocator_kernel.h",
     ],
     hdrs = ["redzone_allocator.h"],
     visibility = internal_visibility([":friends"]),
@@ -412,8 +370,11 @@ cc_library(
         "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor:typed_kernel_factory",
         "//xla/tsl/framework:allocator",
         "//xla/tsl/lib/math:math_util",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -423,10 +384,8 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
-    ] + if_rocm_is_configured([
-        ":redzone_allocator_kernel_rocm",
-    ]) + if_cuda_is_configured([
-        ":redzone_allocator_kernel_cuda",
+    ] + if_gpu_is_configured([
+        ":redzone_allocator_kernel",
     ]),
 )
 
