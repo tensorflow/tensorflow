@@ -44,6 +44,7 @@ namespace {
 
 using ::llvm::DenseMapInfo;
 using ::llvm::SmallDenseMap;
+using ::llvm::StringMap;
 using ::mlir::ArrayRef;
 using ::mlir::DenseMap;
 using ::mlir::DenseSet;
@@ -51,6 +52,11 @@ using ::mlir::ModuleOp;
 using ::mlir::SmallVector;
 using ::mlir::StringRef;
 using ::mlir::SymbolTable;
+using ::mlir::sdy::AxisRefAttr;
+using ::mlir::sdy::DimensionShardingAttr;
+using ::mlir::sdy::MeshAttr;
+using ::mlir::sdy::MeshOp;
+using ::mlir::sdy::TensorShardingAttr;
 
 namespace sdy = ::mlir::sdy;
 
@@ -92,12 +98,12 @@ struct MeshWithUnamedAxesInfo : public DenseMapInfo<MeshWithUnamedAxes> {
 // Maps a set vector of axis sizes to the main mesh with those matching axis
 // sizes.
 using MeshWithUnamedAxesToFirstMeshMap =
-    SmallDenseMap<MeshWithUnamedAxes, sdy::MeshOp, 4, MeshWithUnamedAxesInfo>;
+    SmallDenseMap<MeshWithUnamedAxes, MeshOp, 4, MeshWithUnamedAxesInfo>;
 // Maps a mesh to the main mesh name that will be used (which has the same axis
 // sizes that were in `AxisSizesToFirstMeshMap`) and a map of old axis name to
 // the axis names in the main mesh.
 using MeshToAxisMap =
-    SmallDenseMap<StringRef, std::pair<StringRef, llvm::StringMap<StringRef>>>;
+    SmallDenseMap<StringRef, std::pair<StringRef, StringMap<StringRef>>>;
 
 // Builds a map of meshes to the main mesh name that will be used (which has the
 // same axis sizes that were in `AxisSizesToFirstMeshMap`) and a map of old axis
@@ -108,9 +114,9 @@ using MeshToAxisMap =
 MeshToAxisMap buildDuplicateMeshesToAxisMap(ModuleOp moduleOp) {
   MeshToAxisMap duplicateMeshesToAxisMap;
   MeshWithUnamedAxesToFirstMeshMap meshWithUnamedAxesToFirstMeshMap;
-  for (sdy::MeshOp meshOp : moduleOp.getOps<sdy::MeshOp>()) {
+  for (MeshOp meshOp : moduleOp.getOps<MeshOp>()) {
     SmallVector<int64_t> meshSizes;
-    sdy::MeshAttr meshAttr = meshOp.getMeshAttr();
+    MeshAttr meshAttr = meshOp.getMeshAttr();
     meshSizes.reserve(meshAttr.getAxes().size());
     for (sdy::MeshAxisAttr axis : meshAttr.getAxes()) {
       meshSizes.push_back(axis.getSize());
@@ -129,8 +135,8 @@ MeshToAxisMap buildDuplicateMeshesToAxisMap(ModuleOp moduleOp) {
     if (inserted) {
       continue;
     }
-    llvm::StringMap<StringRef> oldToNewAxis;
-    sdy::MeshOp mainMesh = entries->getSecond();
+    StringMap<StringRef> oldToNewAxis;
+    MeshOp mainMesh = entries->getSecond();
     for (auto [oldAxis, newAxisName] :
          llvm::zip_equal(meshOp.getMeshAttr().getAxes(),
                          mainMesh.getMeshAttr().getAxes())) {
@@ -151,9 +157,8 @@ void dedupMeshes(ModuleOp moduleOp,
                  const MeshToAxisMap& duplicateMeshesToAxisMap) {
   mlir::MLIRContext* context = moduleOp.getContext();
   sdy::transformShardings(
-      moduleOp,
-      [&](sdy::TensorShardingAttr oldSharding) -> sdy::TensorShardingAttr {
-        if (mlir::isa<sdy::MeshAttr>(oldSharding.getMeshOrRef())) {
+      moduleOp, [&](TensorShardingAttr oldSharding) -> TensorShardingAttr {
+        if (mlir::isa<MeshAttr>(oldSharding.getMeshOrRef())) {
           // Skip shardings with inlined meshes.
           return oldSharding;
         }
@@ -165,39 +170,36 @@ void dedupMeshes(ModuleOp moduleOp,
           return oldSharding;
         }
         auto [mainMeshName, axisMap] = meshNameAndAxisMap->getSecond();
-        auto buildNewAxisRef = [&, &axisMap =
-                                       axisMap](sdy::AxisRefAttr oldAxisRef) {
-          return sdy::AxisRefAttr::get(context,
-                                       axisMap.at(oldAxisRef.getName()),
-                                       oldAxisRef.getSubAxisInfo());
+        auto buildNewAxisRef = [&, &axisMap = axisMap](AxisRefAttr oldAxisRef) {
+          return AxisRefAttr::get(context, axisMap.at(oldAxisRef.getName()),
+                                  oldAxisRef.getSubAxisInfo());
         };
-        SmallVector<sdy::DimensionShardingAttr> newDimShardings;
+        SmallVector<DimensionShardingAttr> newDimShardings;
         newDimShardings.reserve(oldSharding.getDimShardings().size());
-        for (sdy::DimensionShardingAttr oldDimSharding :
+        for (DimensionShardingAttr oldDimSharding :
              oldSharding.getDimShardings()) {
-          SmallVector<sdy::AxisRefAttr> newAxisRefs;
+          SmallVector<AxisRefAttr> newAxisRefs;
           newAxisRefs.reserve(oldDimSharding.getAxes().size());
           llvm::transform(oldDimSharding.getAxes(),
                           std::back_inserter(newAxisRefs), buildNewAxisRef);
-          newDimShardings.push_back(sdy::DimensionShardingAttr::get(
+          newDimShardings.push_back(DimensionShardingAttr::get(
               context, newAxisRefs, oldDimSharding.getIsClosed(),
               oldDimSharding.getPriority()));
         }
         auto buildNewAxisRefList =
-            [buildNewAxisRef](ArrayRef<sdy::AxisRefAttr> oldAxisRefs) {
-              SmallVector<sdy::AxisRefAttr> newAxisRefs;
+            [buildNewAxisRef](ArrayRef<AxisRefAttr> oldAxisRefs) {
+              SmallVector<AxisRefAttr> newAxisRefs;
               newAxisRefs.reserve(oldAxisRefs.size());
               llvm::transform(oldAxisRefs, std::back_inserter(newAxisRefs),
                               buildNewAxisRef);
               return newAxisRefs;
             };
-        SmallVector<sdy::AxisRefAttr> newReplicatedAxes =
+        SmallVector<AxisRefAttr> newReplicatedAxes =
             buildNewAxisRefList(oldSharding.getReplicatedAxes());
-        SmallVector<sdy::AxisRefAttr> newUnreducedAxes =
+        SmallVector<AxisRefAttr> newUnreducedAxes =
             buildNewAxisRefList(oldSharding.getUnreducedAxes());
-        return sdy::TensorShardingAttr::get(context, mainMeshName,
-                                            newDimShardings, newReplicatedAxes,
-                                            newUnreducedAxes);
+        return TensorShardingAttr::get(context, mainMeshName, newDimShardings,
+                                       newReplicatedAxes, newUnreducedAxes);
       });
 }
 
@@ -219,7 +221,7 @@ class SdyRoundTripDedupMeshesPass
     ModuleOp moduleOp = getOperation();
 
     // Exit early if there are no meshes or just one mesh.
-    auto meshIter = moduleOp.getOps<sdy::MeshOp>();
+    auto meshIter = moduleOp.getOps<MeshOp>();
     if (meshIter.empty()) {
       return;
     }
@@ -245,7 +247,7 @@ class SdyRoundTripDedupMeshesPass
   }
 
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
-    registry.insert<mlir::sdy::SdyDialect>();
+    registry.insert<sdy::SdyDialect>();
   }
 };
 
