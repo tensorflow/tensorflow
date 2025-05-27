@@ -1385,6 +1385,10 @@ absl::Status ShapeVerifier::HandleCustomCall(HloInstruction* instruction) {
         << "Invalid aliasing operand shape index.";
     TF_RET_CHECK(ShapeUtil::IndexIsValid(custom_call->shape(), pair.first))
         << "Invalid aliasing output shape index.";
+    if (custom_call->frontend_attributes().map().contains(
+            "xla_skip_custom_call_alias_shape_check")) {
+      return absl::OkStatus();
+    }
     const Shape& output_subshape =
         ShapeUtil::GetSubshape(custom_call->shape(), pair.first);
     const Shape& operand_subshape = ShapeUtil::GetSubshape(
