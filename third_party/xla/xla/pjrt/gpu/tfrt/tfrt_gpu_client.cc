@@ -351,7 +351,9 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
       // for each buffer.
       definition_events.push_back(copy_event.CopyRef());
       Shape& device_shape = device_shapes.emplace_back(
-          ShapeUtil::MakeShape(shape_spec.element_type, shape_spec.dims));
+          ShapeUtil::MakeValidatedShape(shape_spec.element_type,
+                                        shape_spec.dims)
+              .value());
       if (device_layouts.has_value() && (*device_layouts)[i].has_value()) {
         *device_shape.mutable_layout() = *(*device_layouts)[i];
       } else {
@@ -1914,7 +1916,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
       tsl::down_cast<TfrtGpuDevice*>(memory_space->devices()[0]);
 
   tsl::profiler::TraceMe traceme("TfrtGpuClient::BufferFromHostBuffer");
-  Shape device_shape = ShapeUtil::MakeShape(type, dims);
+  Shape device_shape = ShapeUtil::MakeValidatedShape(type, dims).value();
   VLOG(4) << "TfrtGpuClient::BufferFromHostBuffer: shape: "
           << device_shape.ToString() << " device: " << device->DebugString();
   absl::InlinedVector<int64_t, 4> tmp_strides;

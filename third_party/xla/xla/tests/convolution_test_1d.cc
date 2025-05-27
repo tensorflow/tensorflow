@@ -198,8 +198,8 @@ INSTANTIATE_TEST_CASE_P(
 TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_Valid) {
   XlaBuilder builder(TestName());
   {
-    Shape input_shape = ShapeUtil::MakeShape(F32, {1, 2, 5});
-    Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 2, 2});
+    Shape input_shape = ShapeUtil::MakeValidatedShape(F32, {1, 2, 5}).value();
+    Shape filter_shape = ShapeUtil::MakeValidatedShape(F32, {1, 2, 2}).value();
     auto input = Parameter(&builder, 0, input_shape, "input");
     auto filter = Parameter(&builder, 1, filter_shape, "filter");
     Conv(input, filter, {1}, Padding::kValid);
@@ -255,8 +255,8 @@ TYPED_TEST(Convolve1D_1x2x5_1x2x2_WithRHSDilation, Types) { this->RunTest(); }
 TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilation_FullPadding) {
   XlaBuilder builder(TestName());
   {
-    Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 5});
-    Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 1, 3});
+    Shape input_shape = ShapeUtil::MakeValidatedShape(F32, {1, 1, 5}).value();
+    Shape filter_shape = ShapeUtil::MakeValidatedShape(F32, {1, 1, 3}).value();
     auto input = Parameter(&builder, 0, input_shape, "input");
     auto filter = Parameter(&builder, 1, filter_shape, "filter");
     // Convolution dimensions are bf0_oi0->bf0.
@@ -281,8 +281,8 @@ TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilation_FullPadding) {
 TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilation_NoPadding) {
   XlaBuilder builder(TestName());
   {
-    Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 5});
-    Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 1, 3});
+    Shape input_shape = ShapeUtil::MakeValidatedShape(F32, {1, 1, 5}).value();
+    Shape filter_shape = ShapeUtil::MakeValidatedShape(F32, {1, 1, 3}).value();
     auto input = Parameter(&builder, 0, input_shape, "input");
     auto filter = Parameter(&builder, 1, filter_shape, "filter");
     // Convolution dimensions are bf0_oi0->bf0.
@@ -306,8 +306,8 @@ TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilation_NoPadding) {
 TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilation_HalfPadding) {
   XlaBuilder builder(TestName());
   {
-    Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 5});
-    Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 1, 3});
+    Shape input_shape = ShapeUtil::MakeValidatedShape(F32, {1, 1, 5}).value();
+    Shape filter_shape = ShapeUtil::MakeValidatedShape(F32, {1, 1, 3}).value();
     auto input = Parameter(&builder, 0, input_shape, "input");
     auto filter = Parameter(&builder, 1, filter_shape, "filter");
     // Convolution dimensions are bf0_oi0->bf0.
@@ -332,8 +332,8 @@ TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilation_HalfPadding) {
 TEST_F(ConvolutionTest, Convolve1D_1x1x5_2x1x3_WithLHSDilation) {
   XlaBuilder builder(TestName());
   {
-    Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 5});
-    Shape filter_shape = ShapeUtil::MakeShape(F32, {2, 1, 3});
+    Shape input_shape = ShapeUtil::MakeValidatedShape(F32, {1, 1, 5}).value();
+    Shape filter_shape = ShapeUtil::MakeValidatedShape(F32, {2, 1, 3}).value();
     auto input = Parameter(&builder, 0, input_shape, "input");
     auto filter = Parameter(&builder, 1, filter_shape, "filter");
     // Convolution dimensions are bf0_oi0->bf0.
@@ -359,8 +359,8 @@ TEST_F(ConvolutionTest, Convolve1D_1x1x5_2x1x3_WithLHSDilation) {
 TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x3_WithLHSDilation) {
   XlaBuilder builder(TestName());
   {
-    Shape input_shape = ShapeUtil::MakeShape(F32, {1, 2, 5});
-    Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 2, 3});
+    Shape input_shape = ShapeUtil::MakeValidatedShape(F32, {1, 2, 5}).value();
+    Shape filter_shape = ShapeUtil::MakeValidatedShape(F32, {1, 2, 3}).value();
     auto input = Parameter(&builder, 0, input_shape, "input");
     auto filter = Parameter(&builder, 1, filter_shape, "filter");
     // Convolution dimensions are bf0_oi0->bf0.
@@ -386,8 +386,8 @@ TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x3_WithLHSDilation) {
 TEST_F(ConvolutionTest, Convolve1D_3x2x5_1x2x3_WithLHSDilation) {
   XlaBuilder builder(TestName());
   {
-    Shape input_shape = ShapeUtil::MakeShape(F32, {3, 2, 5});
-    Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 2, 3});
+    Shape input_shape = ShapeUtil::MakeValidatedShape(F32, {3, 2, 5}).value();
+    Shape filter_shape = ShapeUtil::MakeValidatedShape(F32, {1, 2, 3}).value();
     auto input = Parameter(&builder, 0, input_shape, "input");
     auto filter = Parameter(&builder, 1, filter_shape, "filter");
     // Convolution dimensions are bf0_oi0->bf0.
@@ -418,8 +418,8 @@ TEST_F(ConvolutionTest, Convolve1D_3x2x5_1x2x3_WithLHSDilation) {
 TEST_F(ConvolutionTest, Convolve1D_3x2x5_2x2x3_WithLHSDilation) {
   XlaBuilder builder(TestName());
   {
-    Shape input_shape = ShapeUtil::MakeShape(F32, {3, 2, 5});
-    Shape filter_shape = ShapeUtil::MakeShape(F32, {2, 2, 3});
+    Shape input_shape = ShapeUtil::MakeValidatedShape(F32, {3, 2, 5}).value();
+    Shape filter_shape = ShapeUtil::MakeValidatedShape(F32, {2, 2, 3}).value();
     auto input = Parameter(&builder, 0, input_shape, "input");
     auto filter = Parameter(&builder, 1, filter_shape, "filter");
     // Convolution dimensions are bf0_oi0->bf0.
@@ -456,8 +456,8 @@ TEST_F(ConvolutionTest, Convolve1D_3x2x5_2x2x3_WithLHSDilation) {
 TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilationAndStrides) {
   XlaBuilder builder(TestName());
   {
-    Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 5});
-    Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 1, 3});
+    Shape input_shape = ShapeUtil::MakeValidatedShape(F32, {1, 1, 5}).value();
+    Shape filter_shape = ShapeUtil::MakeValidatedShape(F32, {1, 1, 3}).value();
     auto input = Parameter(&builder, 0, input_shape, "input");
     auto filter = Parameter(&builder, 1, filter_shape, "filter");
     // Convolution dimensions are bf0_oi0->bf0.
@@ -482,8 +482,8 @@ TEST_F(ConvolutionTest, Convolve1D_1x1x5_1x1x3_WithLHSDilationAndStrides) {
 TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_WithLHSAndRHSDilation) {
   XlaBuilder builder(TestName());
   {
-    Shape input_shape = ShapeUtil::MakeShape(F32, {1, 2, 5});
-    Shape filter_shape = ShapeUtil::MakeShape(F32, {1, 2, 2});
+    Shape input_shape = ShapeUtil::MakeValidatedShape(F32, {1, 2, 5}).value();
+    Shape filter_shape = ShapeUtil::MakeValidatedShape(F32, {1, 2, 2}).value();
     auto input = Parameter(&builder, 0, input_shape, "input");
     auto filter = Parameter(&builder, 1, filter_shape, "filter");
     // Convolution dimensions are bf0_oi0->bf0.

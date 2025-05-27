@@ -70,8 +70,10 @@ TEST_F(ReplayTest, TwoPlusTwoReplay) {
 XLA_TEST_F(ReplayTest, XPlusYReplayWithParameters) {
   // Make computation.
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(S32, {}), "x");
-  auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(S32, {}), "y");
+  auto x = Parameter(&builder, 0,
+                     ShapeUtil::MakeValidatedShape(S32, {}).value(), "x");
+  auto y = Parameter(&builder, 1,
+                     ShapeUtil::MakeValidatedShape(S32, {}).value(), "y");
   Add(x, y);
   XlaComputation computation = builder.Build().value();
 
@@ -109,7 +111,8 @@ TEST_F(ReplayTest, MapPlusTwoOverR1) {
   // As above, but with map(+2) over some constant array.
   XlaBuilder plus_two_builder("plus two");
   auto input =
-      Parameter(&plus_two_builder, 0, ShapeUtil::MakeShape(S32, {}), "input");
+      Parameter(&plus_two_builder, 0,
+                ShapeUtil::MakeValidatedShape(S32, {}).value(), "input");
   Add(input, ConstantR0<int32_t>(&plus_two_builder, 2));
   XlaComputation plus_two = plus_two_builder.Build().value();
 

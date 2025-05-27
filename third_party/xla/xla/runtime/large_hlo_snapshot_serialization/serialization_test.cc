@@ -47,7 +47,9 @@ HloUnoptimizedSnapshot CreateSnapshot() {
   for (int i = 0; i < 3; ++i) {
     HloInputs* partition_metadata = snapshot.add_partitions();
     for (int j = 0; j < 3; ++j) {
-      Shape shape = ShapeUtil::MakeShape(xla::PrimitiveType::F32, {i, i, i});
+      Shape shape =
+          ShapeUtil::MakeValidatedShape(xla::PrimitiveType::F32, {i, i, i})
+              .value();
       Literal literal = LiteralUtil::CreateR1<float>(std::vector<float>(i, i));
       *partition_metadata->add_arguments() = literal.ToProto();
     }
