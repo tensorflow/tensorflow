@@ -273,7 +273,7 @@ static std::vector<bool> MakeDynamicDimensions(
   TF_RET_CHECK(element_shape.IsArray())
       << "element_shape must be an array shape to create a buffer shape.";
   Shape shape(BUFFER);
-  shape.buffer_state().buffer_shape = {std::move(element_shape)};
+  *shape.buffer_state().buffer_shape = std::move(element_shape);
   return shape;
 }
 

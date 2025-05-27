@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -115,7 +117,13 @@ absl::StatusOr<Shape> Shape::FromProto(const ShapeProto& shape_proto) {
       state->tuple_shapes.emplace_back(std::move(tuple_shape));
     }
   } else if (auto* const state = shape.if_buffer_state()) {
-    state->buffer_shape.emplace_back(shape_proto.tuple_shapes(0));
+    if (shape_proto.tuple_shapes_size() != 1) {
+      return absl::InvalidArgumentError(
+          "Buffer shape must have exactly one tuple shape.");
+    }
+    TF_ASSIGN_OR_RETURN(Shape buffer_shape,
+                        Shape::FromProto(shape_proto.tuple_shapes(0)));
+    *state->buffer_shape = std::move(buffer_shape);
   }
   if (shape_proto.has_layout()) {
     TF_RET_CHECK(shape.IsArray()) << "Malformed shape proto: element_type "
@@ -148,8 +156,7 @@ ShapeProto Shape::ToProto() const {
       *proto.add_tuple_shapes() = shape.ToProto();
     }
   } else if (const auto* const state = if_buffer_state()) {
-    proto.mutable_tuple_shapes()->Reserve(1);
-    *proto.add_tuple_shapes() = state->buffer_shape[0].ToProto();
+    *proto.add_tuple_shapes() = state->buffer_shape->ToProto();
   }
   return proto;
 }
@@ -190,11 +197,24 @@ Shape::TupleState& Shape::tuple_state() {
   return *state;
 }
 
+Shape::BufferState::BufferState() : buffer_shape(std::make_unique<Shape>()) {}
+
+Shape::BufferState::BufferState(const Shape::BufferState& state)
+    : buffer_shape(std::make_unique<Shape>(*state.buffer_shape)) {}
+
+Shape::BufferState& Shape::BufferState::operator=(
+    const Shape::BufferState& state) {
+  if (this != &state) {
+    buffer_shape = std::make_unique<Shape>(*state.buffer_shape);
+  }
+  return *this;
+}
+
 const Shape::BufferState& Shape::buffer_state() const {
   const auto* const state = if_buffer_state();
   CHECK(state) << "Expected a buffer shape. Got " << ToString()
                << "\nThis is a programmer error. Please read "
-                  "the Shape object's buffer properties (e.g. buffer_shapes) "
+                  "the Shape object's buffer properties (e.g. buffer_shape) "
                   "only when it's a buffer shape.";
   return *state;
 }
@@ -203,7 +223,7 @@ Shape::BufferState& Shape::buffer_state() {
   auto* const state = if_buffer_state();
   CHECK(state) << "Expected a buffer shape. Got " << ToString()
                << "\nThis is a programmer error. Please mutate "
-                  "the Shape object's buffer properties (e.g. buffer_shapes) "
+                  "the Shape object's buffer properties (e.g. buffer_shape) "
                   "only when it's a buffer shape.";
   return *state;
 }
@@ -369,7 +389,7 @@ const std::vector<Shape>& Shape::tuple_shapes() const {
 }
 
 const Shape& Shape::buffer_shape() const {
-  return buffer_state().buffer_shape[0];
+  return *buffer_state().buffer_shape;
 }
 
 void Shape::Clear() {
@@ -458,13 +478,10 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
       return lhs.IsBuffer() && rhs.IsBuffer() &&
              lhs.buffer_shape() == rhs.buffer_shape();
     }
-    auto underline_shape = [](const Shape& shape) {
-      if (shape.IsBuffer()) {
-        return shape.buffer_shape();
-      }
-      return shape;
+    const auto underlying_shape = [](const Shape& shape) -> const Shape& {
+      return shape.IsBuffer() ? shape.buffer_shape() : shape;
     };
-    return underline_shape(lhs) == underline_shape(rhs);
+    return underlying_shape(lhs) == underlying_shape(rhs);
   }
 
   if (!lhs.IsArray()) {

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -361,7 +362,6 @@ class Shape {
 
   // Returns the underlying shape of the buffer.
   const Shape& buffer_shape() const;
-  Shape* mutable_buffer_shape() { return &buffer_state().buffer_shape[0]; }
 
   // Returns true if the shape is an array and has a layout.
   bool has_layout() const {
@@ -567,10 +567,16 @@ class Shape {
     std::vector<Shape> tuple_shapes;
   };
   struct BufferState {
-    // The underlying array shape for the buffer type, represented as a
-    // vector with one element. Using Shape directly or
-    // absl::InlinedVector<Shape, 1> here causes recursive definition.
-    std::vector<Shape> buffer_shape;
+    // Creates a buffer state with an empty buffer shape.
+    BufferState();
+
+    // Supports copying.
+    BufferState(const BufferState& state);
+    BufferState& operator=(const BufferState& state);
+
+    // The underlying array shape for the buffer type. Not null.
+    // Using Shape directly results in a circular dependency.
+    std::unique_ptr<Shape> buffer_shape;
   };
   using State = std::variant<InvalidState, TokenState, OpaqueState, ArrayState,
                              TupleState, BufferState>;
