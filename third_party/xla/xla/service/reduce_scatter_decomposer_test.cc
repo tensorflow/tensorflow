@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/reduce_scatter_decomposer.h"
 
+#include <optional>
+#include <string>
 #include <utility>
 
 #include "xla/hlo/ir/hlo_module.h"
@@ -43,7 +45,9 @@ class ReduceScatterDecomposerTest : public HloHardwareIndependentTestBase {
       int64_t shard_size = 0, int64_t shard_dimension = 0,
       int64_t replica_count = 2,
       std::function<bool(const HloInstruction *)> should_decompose =
-          [](const HloInstruction *) { return true; }) {
+          [](const HloInstruction *) { return true; },
+      std::optional<std::pair<std::string, std::string>> attribute =
+          std::nullopt) {
     const int64_t partition_count = 2;
     TF_ASSERT_OK_AND_ASSIGN(
         auto module, ParseAndReturnVerifiedModule(hlo_module, replica_count,
@@ -95,7 +99,13 @@ class ReduceScatterDecomposerTest : public HloHardwareIndependentTestBase {
 
     std::vector<::testing::Matcher<const ::xla::HloInstruction *>> ds_operands(
         shape.dimensions().size() + 1, zero_matcher);
-    ds_operands[0] = op::AllReduce(op::Parameter(0));
+    if (attribute.has_value()) {
+      ds_operands[0] =
+          AllOf(op::AllReduce(op::Parameter(0)),
+                op::FrontendAttribute(attribute->first, attribute->second));
+    } else {
+      ds_operands[0] = op::AllReduce(op::Parameter(0));
+    }
     ds_operands[shard_dimension + 1] =
         op::Multiply(slice_index, op::Constant(std::move(multiplier)));
     EXPECT_THAT(root, op::DynamicSlice(ds_operands));
@@ -179,14 +189,17 @@ ENTRY main {
   p0 = f32[4, 8] parameter(0)
   // Tn this mode, the participants are the given replicas across all partitions.
   // Here, we have 1 replicas and 2 partitions, so 2 total shards.
-  ROOT rs = f32[4, 4] reduce-scatter(p0), replica_groups={{0}}, channel_id=1, dimensions={1}, to_apply=sum
+  ROOT rs = f32[4, 4] reduce-scatter(p0), frontend_attributes={_scheduling_group_id="1"}, replica_groups={{0}}, channel_id=1, dimensions={1}, to_apply=sum
 }
 )";
   // kCrossPartition here indicates that replica_index * num_partitions +
   // partition_id will be simplified by the pass to just partition_id
-  RunPass(hlo_string, PassAction::kTrivialGroups,
-          CollectiveOpGroupMode::kCrossPartition,
-          /*shard_size=*/4, /*shard_dimension=*/1, /*replica_count=*/1);
+  RunPass(
+      hlo_string, PassAction::kTrivialGroups,
+      CollectiveOpGroupMode::kCrossPartition,
+      /*shard_size=*/4, /*shard_dimension=*/1, /*replica_count=*/1,
+      /*should_decompose =*/[](const HloInstruction *) { return true; },
+      std::make_pair("_scheduling_group_id", "1"));
 }
 
 TEST_F(ReduceScatterDecomposerTest, TableLookupFlattenedId) {
