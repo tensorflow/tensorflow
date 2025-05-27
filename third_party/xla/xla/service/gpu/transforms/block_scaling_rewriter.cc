@@ -89,7 +89,8 @@ absl::StatusOr<XlaOp> BuildQuantize(XlaBuilder& builder,
 
   // Calculate AMAX (maximum absolute value per block).
   XlaBuilder amax_builder("amax");
-  Shape scalar = ShapeUtil::MakeShape(input_shape.element_type(), {});
+  Shape scalar =
+      ShapeUtil::MakeValidatedShape(input_shape.element_type(), {}).value();
   XlaOp out = Max(Abs(Parameter(&amax_builder, 0, scalar, "a")),
                   Abs(Parameter(&amax_builder, 1, scalar, "b")));
   TF_ASSIGN_OR_RETURN(XlaComputation amax_comp, amax_builder.Build(out));
@@ -340,11 +341,15 @@ absl::StatusOr<XlaOp> BuildCudnnScaledDot(XlaOp lhs_input, XlaOp rhs_input,
   XlaBuilder& builder = *lhs_input.builder();
   TF_ASSIGN_OR_RETURN(Shape lhs_shape, builder.GetShape(lhs_input_op));
   TF_ASSIGN_OR_RETURN(Shape rhs_shape, builder.GetShape(rhs_input_op));
-  Shape result_shape = ShapeUtil::MakeShape(
-      result_type, {lhs_shape.dimensions(0), lhs_shape.dimensions(1),
-                    rhs_shape.dimensions(1)});
-  Shape scratch_shape = ShapeUtil::MakeShape(PrimitiveType::U8, {0});
-  Shape output_shape = ShapeUtil::MakeTupleShape({result_shape, scratch_shape});
+  Shape result_shape =
+      ShapeUtil::MakeValidatedShape(
+          result_type, {lhs_shape.dimensions(0), lhs_shape.dimensions(1),
+                        rhs_shape.dimensions(1)})
+          .value();
+  Shape scratch_shape =
+      ShapeUtil::MakeValidatedShape(PrimitiveType::U8, {0}).value();
+  Shape output_shape =
+      ShapeUtil::MakeValidatedTupleShape({result_shape, scratch_shape}).value();
 
   // Build custom call to cuDNN.
   std::string custom_call_target{kCudnnBlockScaledDotCallTarget};
