@@ -192,9 +192,9 @@ absl::Status DecomposeCollectivePermuteCycle(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0(U32, bwd_recv_id)),
       absl::StrCat(cp_name, "-bwd-recv-id"));
   HloInstruction* compare = computation->AddInstruction(
-      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}),
-                                    partition_or_replica, constant,
-                                    Comparison::Direction::kEq),
+      HloInstruction::CreateCompare(
+          ShapeUtil::MakeValidatedShape(PRED, {}).value(), partition_or_replica,
+          constant, Comparison::Direction::kEq),
       absl::StrCat(cp_name, "-cmp"));
 
   // Later in the pipeline, CollectivePermuteDecomposer uses post order

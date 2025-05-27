@@ -263,15 +263,19 @@ absl::StatusOr<bool> TryDecomposeAllReduce(HloAllReduceInstruction* all_reduce,
   for (HloInstruction* operand : all_reduce->operands()) {
     TF_RET_CHECK(operand->shape().IsArray());
     int64_t num_elements = ShapeUtil::ElementsIn(operand->shape());
-    Shape flat_shape = ShapeUtil::MakeShape(element_type, {num_elements});
+    Shape flat_shape =
+        ShapeUtil::MakeValidatedShape(element_type, {num_elements}).value();
     flat_operands.push_back(computation.AddInstruction(
         HloInstruction::CreateBitcast(flat_shape, operand)));
     flat_shapes.push_back(std::move(flat_shape));
-    scattered_shapes.push_back(ShapeUtil::MakeShape(
-        element_type, {num_elements / scatter_group_size}));
+    scattered_shapes.push_back(
+        ShapeUtil::MakeValidatedShape(element_type,
+                                      {num_elements / scatter_group_size})
+            .value());
   }
 
-  Shape reduce_scatter_shape = ShapeUtil::MakeMaybeTupleShape(scattered_shapes);
+  Shape reduce_scatter_shape =
+      ShapeUtil::MakeValidatedMaybeTupleShape(scattered_shapes).value();
 
   int64_t next_channel_id = hlo_query::NextChannelId(*computation.parent());
   auto get_channel_id = [&]() -> std::optional<int64_t> {
@@ -299,7 +303,7 @@ absl::StatusOr<bool> TryDecomposeAllReduce(HloAllReduceInstruction* all_reduce,
 
   HloInstruction* all_gather =
       computation.AddInstruction(HloInstruction::CreateAllGather(
-          ShapeUtil::MakeMaybeTupleShape(flat_shapes),
+          ShapeUtil::MakeValidatedMaybeTupleShape(flat_shapes).value(),
           GetOutputs(*new_all_reduce),
           /*all_gather_dimension=*/0,
           CollectiveDeviceList(decomposed_groups->scatter_gather_groups),

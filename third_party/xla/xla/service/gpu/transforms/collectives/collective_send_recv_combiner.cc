@@ -87,10 +87,12 @@ absl::Status CreateAsyncStartAndAsyncDone(
   // func_output_shape, s32[]), where s32[] is the context state that is
   // used to keep track of the asynchronous operation. For more details,
   // see https://openxla.org/xla/async_ops.
-  Shape async_start_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeTupleShape(async_start_input_shapes),
-       async_computation->root_instruction()->shape(),
-       ShapeUtil::MakeScalarShape(S32)});
+  Shape async_start_shape =
+      ShapeUtil::MakeValidatedTupleShape(
+          {ShapeUtil::MakeTupleShape(async_start_input_shapes),
+           async_computation->root_instruction()->shape(),
+           ShapeUtil::MakeScalarShape(S32)})
+          .value();
   HloInstruction* async_start =
       computation->AddInstruction(HloInstruction::CreateAsyncStart(
           async_start_shape, async_start_inputs, async_computation));

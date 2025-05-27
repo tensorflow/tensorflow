@@ -76,8 +76,9 @@ HloInstruction* PrependSize1MajorDimension(HloInstruction* hlo,
   absl::c_copy(hlo->shape().dimensions(),
                std::back_inserter(reshape_dimensions));
 
-  Shape reshape_shape =
-      ShapeUtil::MakeShape(hlo->shape().element_type(), reshape_dimensions);
+  Shape reshape_shape = ShapeUtil::MakeValidatedShape(
+                            hlo->shape().element_type(), reshape_dimensions)
+                            .value();
   return computation->AddInstruction(
       HloInstruction::CreateReshape(reshape_shape, hlo));
 }

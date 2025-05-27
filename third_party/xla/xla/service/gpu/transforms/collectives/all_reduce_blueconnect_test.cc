@@ -195,10 +195,14 @@ ENTRY %comp {
   auto bitcast0 = m::Bitcast(m::Parameter(0)).WithShape(F32, {16});
   auto bitcast1 = m::Bitcast(m::Parameter(1)).WithShape(F32, {32});
 
-  Shape expected0 = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {4}), ShapeUtil::MakeShape(F32, {8})});
-  Shape expected1 = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {16}), ShapeUtil::MakeShape(F32, {32})});
+  Shape expected0 =
+      ShapeUtil::MakeValidatedTupleShape(
+          {ShapeUtil::MakeShape(F32, {4}), ShapeUtil::MakeShape(F32, {8})})
+          .value();
+  Shape expected1 =
+      ShapeUtil::MakeValidatedTupleShape(
+          {ShapeUtil::MakeShape(F32, {16}), ShapeUtil::MakeShape(F32, {32})})
+          .value();
   auto reduce_scatter = m::ReduceScatter(bitcast0, bitcast1)
                             .WithShapeEqualTo(&expected0)
                             .WithReplicaGroups(scatter_gather_groups);
