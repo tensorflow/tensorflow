@@ -48,7 +48,7 @@ absl::StatusOr<std::vector<XlaOp>> WhileLoopHelper(
     TF_ASSIGN_OR_RETURN(auto shape, builder->GetShape(input));
     var_shapes.push_back(std::move(shape));
   }
-  Shape tuple_shape = ShapeUtil::MakeValidatedTupleShape(var_shapes).value();
+  Shape tuple_shape = ShapeUtil::MakeTupleShape(var_shapes);
 
   // Unpacks a tuple into its component parts.
   auto unpack_tuple = [](XlaOp tuple, int arity, XlaBuilder* builder) {

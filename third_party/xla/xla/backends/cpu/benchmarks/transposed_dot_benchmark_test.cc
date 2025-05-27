@@ -49,8 +49,8 @@ static void BM_TransposeAndDot(benchmark::State& state,
 
   std::minstd_rand0 engine;
 
-  auto p0_shape = ShapeUtil::MakeValidatedShape(F32, {d0, 1000}).value();
-  auto p1_shape = ShapeUtil::MakeValidatedShape(F32, {1000}).value();
+  auto p0_shape = ShapeUtil::MakeShape(F32, {d0, 1000});
+  auto p1_shape = ShapeUtil::MakeShape(F32, {1000});
 
   auto p0 =
       *LiteralUtil::CreateRandomLiteral<F32>(p0_shape, &engine, 1.0f, 0.1f);
@@ -79,8 +79,8 @@ static void BM_TransposedDot(benchmark::State& state,
 
   std::minstd_rand0 engine;
 
-  auto p0_shape = ShapeUtil::MakeValidatedShape(F32, {d0, 1000}).value();
-  auto p1_shape = ShapeUtil::MakeValidatedShape(F32, {1000}).value();
+  auto p0_shape = ShapeUtil::MakeShape(F32, {d0, 1000});
+  auto p1_shape = ShapeUtil::MakeShape(F32, {1000});
 
   auto p0 =
       *LiteralUtil::CreateRandomLiteral<F32>(p0_shape, &engine, 1.0f, 0.1f);

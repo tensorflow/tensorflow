@@ -354,10 +354,8 @@ absl::Status EmitSortInPlace(
   dimensions_in_iteration_order[dim] = num_iterations_in_sort_dim;
   iteration_order_to_logical_order[dim] = dimension_to_sort;
 
-  Shape iteration_shape =
-      ShapeUtil::MakeValidatedShape(keys_shape.element_type(),
-                                    dimensions_in_iteration_order)
-          .value();
+  Shape iteration_shape = ShapeUtil::MakeShape(keys_shape.element_type(),
+                                               dimensions_in_iteration_order);
 
   // Allocate shared memory for the tiled compare loop.
   // We process 64 elements at a time, so the buffer cannot be less than that.

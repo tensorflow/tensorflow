@@ -64,13 +64,11 @@ cc_library(
         "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/service:hlo_module_config",
-        "//xla/service/cpu:backend_config_proto_cc",
         "//xla/service/cpu:cpu_options",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:nullability",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -92,37 +90,6 @@ cc_library(
         "@llvm-project//llvm:TargetParser",
         "@local_tsl//tsl/platform:platform_port",
     ],
-)
-
-xla_cc_test(
-    name = "ir_compiler_test",
-    srcs = ["ir_compiler_test.cc"],
-    deps = [
-        ":ir_compiler",
-        "//xla:util",
-        "//xla/service/cpu:backend_config_proto_cc",
-        "//xla/service/llvm_ir:llvm_util",
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//llvm:AsmParser",
-        "@llvm-project//llvm:Core",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:Target",
-    ] + if_llvm_aarch64_available([
-        "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
-    ]) + if_llvm_powerpc_available([
-        "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
-    ]) + if_llvm_system_z_available([
-        "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
-    ]) + if_llvm_x86_available([
-        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
-    ]),
 )
 
 cc_library(
@@ -503,8 +470,6 @@ cc_library(
         "//xla/codegen:kernel_emitter",
         "//xla/codegen:kernel_spec",
         "//xla/codegen:llvm_ir_kernel_source",
-        "//xla/codegen:llvm_kernel_definition",
-        "//xla/codegen:llvm_kernel_emitter",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:work_group",
         "//xla/service:buffer_assignment",

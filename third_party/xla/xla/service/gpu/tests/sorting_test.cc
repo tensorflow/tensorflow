@@ -243,7 +243,7 @@ ENTRY %main {
 // Literal creation helper.
 template <PrimitiveType P, typename T>
 std::shared_ptr<Literal> CreateRandomLiteral(T mean, T stddev) {
-  Shape shape = ShapeUtil::MakeValidatedShape(P, {kRadixSortTestSize}).value();
+  Shape shape = ShapeUtil::MakeShape(P, {kRadixSortTestSize});
   auto maybe_literal =
       LiteralUtil::CreateRandomLiteral<P, T>(shape, mean, stddev);
   CHECK_OK(maybe_literal);

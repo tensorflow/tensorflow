@@ -578,9 +578,10 @@ DeviceHloInstructionProfiles MatmulPerfTableGen::ComputeTable() {
         gemm_perf_table_entry[key] = std::move(entry);
       }
 
-      std::string dtype_key =
-          MatmulDTypeKey(spec.dtype_lhs, spec.dtype_rhs, spec.dtype_out)
-              .KeyString();
+      std::string dtype_key = MatmulTypeStringRep(
+          *primitive_util::StringToPrimitiveType(spec.dtype_lhs),
+          *primitive_util::StringToPrimitiveType(spec.dtype_rhs),
+          *primitive_util::StringToPrimitiveType(spec.dtype_out));
 
       GemmPerfTableEntry& entry = gemm_perf_table_entry[key];
       entry.mutable_flops()->insert({dtype_key, profile.flops()});

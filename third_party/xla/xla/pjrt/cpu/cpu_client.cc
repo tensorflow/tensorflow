@@ -391,7 +391,7 @@ absl::StatusOr<DeviceAssignment> TfrtCpuClient::GetDefaultDeviceAssignment(
 
 absl::StatusOr<Layout> TfrtCpuClient::GetDefaultLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims) {
-  Shape shape = ShapeUtil::MakeValidatedShape(element_type, dims).value();
+  Shape shape = ShapeUtil::MakeShape(element_type, dims);
   return LayoutUtil::GetWithDefaultLayout(shape).layout();
 }
 

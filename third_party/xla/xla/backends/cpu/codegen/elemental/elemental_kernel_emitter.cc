@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
-#include "xla/codegen/llvm_kernel_definition.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -169,7 +168,7 @@ ElementalKernelEmitter::ElementalKernelEmitter(
       buffer_assignment_(buffer_assignment),
       target_machine_(target_machine) {}
 
-absl::StatusOr<LlvmKernelDefinition>
+absl::StatusOr<KernelDefinition>
 ElementalKernelEmitter::EmitKernelDefinition() {
   VLOG(2) << "Emit elemental host kernel: " << instr_->name();
 
@@ -223,14 +222,15 @@ ElementalKernelEmitter::EmitKernelDefinition() {
                       EmitElementalLoops(ir_builder, instr_, kernel_prototype,
                                          element_generator));
 
-  LlvmIrKernelSource source(std::move(ctx), std::move(llvm_module));
+  auto source = std::make_unique<LlvmIrKernelSource>(std::move(ctx),
+                                                     std::move(llvm_module));
 
   KernelSpec spec(kernel_prototype.function->getName(), num_workgroups,
                   std::move(kernel_prototype.argument_buffers),
                   std::move(kernel_prototype.result_buffers),
                   std::move(kernel_prototype.invariant_arguments));
 
-  return LlvmKernelDefinition(std::move(spec), std::move(source));
+  return KernelDefinition(std::move(spec), std::move(source));
 }
 
 absl::StatusOr<NumWorkGroups> ElementalKernelEmitter::EmitElementalLoops(

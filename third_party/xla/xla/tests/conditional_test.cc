@@ -184,17 +184,13 @@ class ConditionalOpTest : public ClientLibraryTestRunnerMixin<HloTestBase> {
     return CreateTupleSubComputation("SubR1", tuple_2_r1s2f32_);
   }
 
-  Shape r0f32_ = ShapeUtil::MakeValidatedShape(F32, {}).value();
-  Shape r1s2f32_ = ShapeUtil::MakeValidatedShape(F32, {2}).value();
-  Shape tuple_2_r0f32_ =
-      ShapeUtil::MakeValidatedTupleShape(
-          {ShapeUtil::MakeShape(F32, {}), ShapeUtil::MakeShape(F32, {})})
-          .value();
-  Shape tuple_2_r1s2f32_ =
-      ShapeUtil::MakeValidatedTupleShape(
-          {ShapeUtil::MakeShape(F32, {2}), ShapeUtil::MakeShape(F32, {2})})
-          .value();
-  Shape empty_tuple_ = ShapeUtil::MakeValidatedTupleShape({}).value();
+  Shape r0f32_ = ShapeUtil::MakeShape(F32, {});
+  Shape r1s2f32_ = ShapeUtil::MakeShape(F32, {2});
+  Shape tuple_2_r0f32_ = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {}), ShapeUtil::MakeShape(F32, {})});
+  Shape tuple_2_r1s2f32_ = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {2}), ShapeUtil::MakeShape(F32, {2})});
+  Shape empty_tuple_ = ShapeUtil::MakeTupleShape({});
 };
 
 // Test fixture to run indexed conditional (switch/case) tests with varying
@@ -367,7 +363,7 @@ TEST_F(ConditionalOpTest, SameComputationDiffInstances) {
 
 // Test the case when a call invokes a computation that contains a conditional.
 TEST_F(ConditionalOpTest, ConditionalWithCall) {
-  Shape r0bool = ShapeUtil::MakeValidatedShape(PRED, {}).value();
+  Shape r0bool = ShapeUtil::MakeShape(PRED, {});
   XlaBuilder inner_builder(TestName() + ".inner_conditional");
   auto pred_cond = Parameter(&inner_builder, 0, r0bool, "param0");
   auto true_operand = Parameter(&inner_builder, 1, r0f32_, "param1");
@@ -613,7 +609,7 @@ TEST_F(ConditionalOpTest, ReturnNestedTuple) {
 // Test conditional that takes in scalar operands in the form of external
 // params.
 TEST_F(ConditionalOpTest, ScalarOperandsFromExternalParams) {
-  Shape r0bool = ShapeUtil::MakeValidatedShape(PRED, {}).value();
+  Shape r0bool = ShapeUtil::MakeShape(PRED, {});
   XlaBuilder builder(TestName());
 
   XlaOp pred, operand1, operand2;
@@ -632,7 +628,7 @@ TEST_F(ConditionalOpTest, ScalarOperandsFromExternalParams) {
 
 // Test conditional that takes in array operands in the form of external params.
 TEST_F(ConditionalOpTest, ArrayOperandsFromExternalParams) {
-  Shape r0bool = ShapeUtil::MakeValidatedShape(PRED, {}).value();
+  Shape r0bool = ShapeUtil::MakeShape(PRED, {});
   XlaBuilder builder(TestName());
 
   XlaOp pred, operand1, operand2;
@@ -653,9 +649,8 @@ TEST_F(ConditionalOpTest, ArrayOperandsFromExternalParams) {
 TEST_F(ConditionalOpTest, NestedConditionals) {
   XlaBuilder inner_builder(TestName() + ".inner_conditional");
   {
-    Shape r0bool = ShapeUtil::MakeValidatedShape(PRED, {}).value();
-    Shape tuple_shape =
-        ShapeUtil::MakeValidatedTupleShape({r0bool, r0f32_, r0f32_}).value();
+    Shape r0bool = ShapeUtil::MakeShape(PRED, {});
+    Shape tuple_shape = ShapeUtil::MakeTupleShape({r0bool, r0f32_, r0f32_});
     auto param0 = Parameter(&inner_builder, 0, tuple_shape, "param0");
     auto pred_cond = GetTupleElement(param0, 0);
     auto true_operand = GetTupleElement(param0, 1);
@@ -684,9 +679,8 @@ TEST_F(ConditionalOpTest, NestedConditionals) {
 TEST_F(ConditionalOpTest, ConditionalInNestedComputation) {
   XlaBuilder inner_builder(TestName() + ".inner_conditional");
   {
-    Shape r0bool = ShapeUtil::MakeValidatedShape(PRED, {}).value();
-    Shape tuple_shape =
-        ShapeUtil::MakeValidatedTupleShape({r0bool, r0f32_, r0f32_}).value();
+    Shape r0bool = ShapeUtil::MakeShape(PRED, {});
+    Shape tuple_shape = ShapeUtil::MakeTupleShape({r0bool, r0f32_, r0f32_});
     auto param0 = Parameter(&inner_builder, 0, tuple_shape, "param0");
     auto pred_cond = GetTupleElement(param0, 0);
     auto true_operand = GetTupleElement(param0, 1);
@@ -726,8 +720,7 @@ TEST_F(ConditionalOpTest, ShapeMismatch) {
 }
 
 TEST_F(ConditionalOpTest, SwappedInputsInSequentialConditionals) {
-  Shape tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({r0f32_, r0f32_}).value();
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({r0f32_, r0f32_});
   XlaComputation swapper;
   {
     XlaBuilder builder(TestName() + ".swapper");
@@ -779,9 +772,8 @@ TEST_F(ConditionalOpTest, SwappedInputsInSequentialConditionals) {
 // Test conditional that duplicates tuple elements in the then and else
 // computations. This is a regression test for b/112550242.
 TEST_F(ConditionalOpTest, DuplicateElementsConditional) {
-  const Shape scalar = ShapeUtil::MakeValidatedShape(S32, {}).value();
-  const Shape tuple2 =
-      ShapeUtil::MakeValidatedTupleShape({scalar, scalar}).value();
+  const Shape scalar = ShapeUtil::MakeShape(S32, {});
+  const Shape tuple2 = ShapeUtil::MakeTupleShape({scalar, scalar});
   XlaComputation then_comp;
   {
     XlaBuilder builder(TestName() + ".then");
@@ -810,8 +802,7 @@ TEST_F(ConditionalOpTest, DuplicateElementsConditional) {
     args.push_back(LiteralUtil::CreateR0<bool>(true));
     XlaBuilder builder(TestName() + ".main");
     auto p = Parameter(&builder, 0, tuple2, "p0");
-    auto p_pred = Parameter(
-        &builder, 1, ShapeUtil::MakeValidatedShape(PRED, {}).value(), "p1");
+    auto p_pred = Parameter(&builder, 1, ShapeUtil::MakeShape(PRED, {}), "p1");
     Conditional(p_pred, p, then_comp, p, else_comp);
     ComputeAndCompare(&builder, {&args[0], &args[1]});
   }
@@ -824,8 +815,7 @@ TEST_F(ConditionalOpTest, DuplicateElementsConditional) {
     args.push_back(LiteralUtil::CreateR0<bool>(false));
     XlaBuilder builder(TestName() + ".main");
     auto p = Parameter(&builder, 0, tuple2, "p0");
-    auto p_pred = Parameter(
-        &builder, 1, ShapeUtil::MakeValidatedShape(PRED, {}).value(), "p1");
+    auto p_pred = Parameter(&builder, 1, ShapeUtil::MakeShape(PRED, {}), "p1");
     Conditional(p_pred, p, then_comp, p, else_comp);
     ComputeAndCompare(&builder, {&args[0], &args[1]});
   }

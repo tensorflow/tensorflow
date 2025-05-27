@@ -1099,7 +1099,6 @@ cc_library(
     name = "interpolator",
     hdrs = ["interpolator.h"],
     deps = [
-        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
@@ -1230,18 +1229,12 @@ xla_cc_test(
 cc_library(
     name = "matmul_interpolator",
     srcs = ["matmul_interpolator.cc"],
-    hdrs = [
-        "matmul_interpolator.h",
-        "matmul_interpolator_data.h",
-    ],
+    hdrs = ["matmul_interpolator.h"],
     deps = [
         ":hlo_op_profile_proto_cc",
-        ":hlo_op_profiles",
         ":interpolator",
-        ":matmul_interpolator_utils",
         "//xla:shape_util",
         "//xla:util",
-        "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/codegen/triton:support",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:backend_configs_cc",
@@ -1249,7 +1242,6 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -1270,7 +1262,6 @@ xla_cc_test(
         "//xla/hlo/parser:hlo_parser",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/stream_executor:device_description",
-        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
@@ -1325,7 +1316,6 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
-        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
     ],
 )

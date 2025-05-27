@@ -45,7 +45,7 @@ def TestPostCalibrationComponentPass : Pass<"stablehlo-test-post-calibration-com
     "mlir::func::FuncDialect", "mlir::mhlo::MhloDialect",
     "mlir::quant::QuantDialect", "mlir::chlo::ChloDialect",
     "mlir::vhlo::VhloDialect", "mlir::shape::ShapeDialect",
-    "mlir::quant::ir::TFQuantDialect",
+    "mlir::quantfork::QuantizationForkDialect",
   ];
 }
 

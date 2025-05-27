@@ -37,8 +37,6 @@ limitations under the License.
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
-#include "xla/codegen/llvm_kernel_definition.h"
-#include "xla/codegen/mlir_kernel_definition.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/runtime/work_group.h"
 #include "xla/service/cpu/cpu_options.h"
@@ -52,13 +50,33 @@ limitations under the License.
 namespace xla::cpu {
 
 absl::StatusOr<KernelRunner> KernelRunner::Create(
-    LlvmKernelDefinition kernel_definition, JitCompiler compiler) {
-  auto [spec, source] = std::move(kernel_definition).ReleaseStorage();
+    KernelDefinition kernel_definition, JitCompiler compiler) {
+  const auto [kernel_spec, kernel_source] =
+      std::move(kernel_definition).release();
 
-  TF_RETURN_IF_ERROR(
-      compiler.AddModule(std::move(source).thread_safe_module()));
+  // Use dynamic_cast rather than tsl::down_cast to allow for future
+  // creation of KernelRunner from different kernel spec types.
+  if (auto* llvm_kernel_source =
+          dynamic_cast<LlvmIrKernelSource*>(kernel_source.get())) {
+    return Create(kernel_spec, std::move(*llvm_kernel_source),
+                  std::move(compiler));
+  }
+  if (auto* mlir_kernel_source =
+          dynamic_cast<MlirKernelSource*>(kernel_source.get())) {
+    return Create(kernel_spec, std::move(*mlir_kernel_source),
+                  std::move(compiler));
+  }
 
-  const std::string& kernel_name = spec.name();
+  return absl::InvalidArgumentError("Unrecognised kernel spec type");
+}
+
+absl::StatusOr<KernelRunner> KernelRunner::Create(
+    const KernelSpec& kernel_spec, LlvmIrKernelSource llvm_ir_kernel_source,
+    JitCompiler compiler) {
+  TF_RETURN_IF_ERROR(compiler.AddModule(
+      std::move(llvm_ir_kernel_source).thread_safe_module()));
+
+  const std::string& kernel_name = kernel_spec.name();
   TF_ASSIGN_OR_RETURN(std::unique_ptr<FunctionLibrary> library,
                       std::move(compiler).Compile(
                           {FunctionLibrary::Sym<XLA_CPU_Kernel>(kernel_name)}));
@@ -67,17 +85,16 @@ absl::StatusOr<KernelRunner> KernelRunner::Create(
                       library->ResolveFunction<XLA_CPU_Kernel>(kernel_name));
 
   return KernelRunner(std::move(library), Kernel(1, kernel_fn),
-                      spec.num_workgroups());
+                      kernel_spec.num_workgroups());
 }
 
 absl::StatusOr<KernelRunner> KernelRunner::Create(
-    MlirKernelDefinition kernel_definition, JitCompiler compiler) {
-  auto [spec, source] = std::move(kernel_definition).ReleaseStorage();
+    const KernelSpec& kernel_spec, MlirKernelSource mlir_kernel_source,
+    JitCompiler compiler) {
+  TF_ASSIGN_OR_RETURN(LlvmIrKernelSource llvm_ir_kernel_source,
+                      LowerToLlvm(mlir_kernel_source));
 
-  TF_ASSIGN_OR_RETURN(LlvmIrKernelSource llvm_kernel_source,
-                      LowerToLlvm(source));
-
-  return Create(LlvmKernelDefinition(spec, std::move(llvm_kernel_source)),
+  return Create(kernel_spec, std::move(llvm_ir_kernel_source),
                 std::move(compiler));
 }
 

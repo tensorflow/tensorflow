@@ -57,8 +57,7 @@ class MapTest : public ClientLibraryTestRunnerMixin<HloTestBase> {
   // 1.0f ---------/
   XlaComputation CreateAdderToOne() {
     XlaBuilder mapped_builder(TestName());
-    auto x = Parameter(&mapped_builder, 0,
-                       ShapeUtil::MakeValidatedShape(F32, {}).value(), "x");
+    auto x = Parameter(&mapped_builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
     auto one = ConstantR0<float>(&mapped_builder, 1.0);
     Add(x, one);
     auto computation_status = mapped_builder.Build();
@@ -68,10 +67,8 @@ class MapTest : public ClientLibraryTestRunnerMixin<HloTestBase> {
 
   XlaComputation CreateMax() {
     XlaBuilder b(TestName());
-    auto lhs =
-        Parameter(&b, 0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "x");
-    auto rhs =
-        Parameter(&b, 1, ShapeUtil::MakeValidatedShape(F32, {}).value(), "y");
+    auto lhs = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {}), "x");
+    auto rhs = Parameter(&b, 1, ShapeUtil::MakeShape(F32, {}), "y");
     Max(lhs, rhs);
     auto computation_status = b.Build();
     TF_CHECK_OK(computation_status.status());
@@ -83,8 +80,7 @@ class MapTest : public ClientLibraryTestRunnerMixin<HloTestBase> {
   template <class T>
   XlaComputation CreateScalarOne() {
     XlaBuilder mapped_builder("scalar_one");
-    (void)Parameter(&mapped_builder, 0,
-                    ShapeUtil::MakeValidatedShape(F32, {}).value(), "x");
+    (void)Parameter(&mapped_builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
     ConstantR0<T>(&mapped_builder, 1);
     auto computation_status = mapped_builder.Build();
     TF_CHECK_OK(computation_status.status());
@@ -98,8 +94,7 @@ class MapTest : public ClientLibraryTestRunnerMixin<HloTestBase> {
   // 2.0f ---------/
   XlaComputation CreateMulByTwo() {
     XlaBuilder mapped_builder(TestName());
-    auto x = Parameter(&mapped_builder, 0,
-                       ShapeUtil::MakeValidatedShape(F32, {}).value(), "x");
+    auto x = Parameter(&mapped_builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
     auto two = ConstantR0<float>(&mapped_builder, 2.0);
     Mul(x, two);
     auto computation_status = mapped_builder.Build();
@@ -117,8 +112,7 @@ class MapTest : public ClientLibraryTestRunnerMixin<HloTestBase> {
   // 1.0f ---------/
   XlaComputation CreateAdderToOneTimesItself() {
     XlaBuilder mapped_builder(TestName());
-    auto x = Parameter(&mapped_builder, 0,
-                       ShapeUtil::MakeValidatedShape(F32, {}).value(), "x");
+    auto x = Parameter(&mapped_builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
     auto one = ConstantR0<float>(&mapped_builder, 1.0);
     auto adder_to_one = Add(x, one);
     Mul(x, adder_to_one);
@@ -136,8 +130,7 @@ class MapTest : public ClientLibraryTestRunnerMixin<HloTestBase> {
   XlaComputation CreateMapPlusN(const XlaComputation& embedded_computation,
                                 float n) {
     XlaBuilder builder(TestName());
-    auto x = Parameter(&builder, 0,
-                       ShapeUtil::MakeValidatedShape(F32, {}).value(), "x");
+    auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
     auto map = Map(&builder, {x}, embedded_computation, {});
     auto constant_n = ConstantR0<float>(&builder, n);
     Add(map, constant_n);
@@ -150,10 +143,8 @@ class MapTest : public ClientLibraryTestRunnerMixin<HloTestBase> {
   // defined by (x, y) -> x > y.
   XlaComputation CreateGt() {
     XlaBuilder b("Gt");
-    auto x =
-        Parameter(&b, 0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "x");
-    auto y =
-        Parameter(&b, 1, ShapeUtil::MakeValidatedShape(F32, {}).value(), "y");
+    auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {}), "x");
+    auto y = Parameter(&b, 1, ShapeUtil::MakeShape(F32, {}), "y");
     Gt(x, y);
     auto computation_status = b.Build();
     TF_CHECK_OK(computation_status.status());
@@ -169,12 +160,9 @@ class MapTest : public ClientLibraryTestRunnerMixin<HloTestBase> {
   // z {R0F32} ---------------/
   XlaComputation CreateTernaryAdder() {
     XlaBuilder mapped_builder("TernaryAdder");
-    auto x = Parameter(&mapped_builder, 0,
-                       ShapeUtil::MakeValidatedShape(F32, {}).value(), "x");
-    auto y = Parameter(&mapped_builder, 1,
-                       ShapeUtil::MakeValidatedShape(F32, {}).value(), "y");
-    auto z = Parameter(&mapped_builder, 2,
-                       ShapeUtil::MakeValidatedShape(F32, {}).value(), "z");
+    auto x = Parameter(&mapped_builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
+    auto y = Parameter(&mapped_builder, 1, ShapeUtil::MakeShape(F32, {}), "y");
+    auto z = Parameter(&mapped_builder, 2, ShapeUtil::MakeShape(F32, {}), "z");
     auto xy = Add(x, y);
     Add(xy, z);
     auto computation_status = mapped_builder.Build();
@@ -309,7 +297,7 @@ TEST_F(MapTest, ComplexNestedMaps) {
   //   embed5 = lambda x: embed2(x) + 6          #  x + 9
   //   result = embed5(42) + embed4(7)           # (42 + 9) + (2 * 7 + 8) = 73
 
-  Shape scalar_shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
+  Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
 
   auto embed1 = CreateAdderToOne();
   auto embed2 = CreateMapPlusN(embed1, 2.0);
@@ -427,8 +415,7 @@ TEST_F(MapTest, NestedBinaryMap) {
   {
     // max_with_square(x) = do max(x, x^2) via a map.
     XlaBuilder b("max_with_square");
-    auto x =
-        Parameter(&b, 0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "x");
+    auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {}), "x");
     Map(&b, {x, Mul(x, x)}, CreateMax(), {});
     auto computation_status = b.Build();
     ASSERT_IS_OK(computation_status.status());
@@ -447,10 +434,8 @@ TEST_F(MapTest, MapOperationWithBuildError) {
   XlaBuilder builder(TestName());
 
   auto sub_builder = builder.CreateSubBuilder("ErrorAdd");
-  auto x = Parameter(sub_builder.get(), 0,
-                     ShapeUtil::MakeValidatedShape(F32, {}).value(), "x");
-  auto y = Parameter(sub_builder.get(), 1,
-                     ShapeUtil::MakeValidatedShape(U16, {}).value(), "y");
+  auto x = Parameter(sub_builder.get(), 0, ShapeUtil::MakeShape(F32, {}), "x");
+  auto y = Parameter(sub_builder.get(), 1, ShapeUtil::MakeShape(U16, {}), "y");
   Add(x, y);
   auto error_add = sub_builder->BuildAndNoteError();
 
@@ -511,10 +496,8 @@ TEST_F(MapTestWithFullOpt, MapScalarPower) {
   XlaBuilder builder(TestName());
 
   auto sub_builder = builder.CreateSubBuilder("power");
-  auto x = Parameter(sub_builder.get(), 0,
-                     ShapeUtil::MakeValidatedShape(F32, {}).value(), "x");
-  auto y = Parameter(sub_builder.get(), 1,
-                     ShapeUtil::MakeValidatedShape(F32, {}).value(), "y");
+  auto x = Parameter(sub_builder.get(), 0, ShapeUtil::MakeShape(F32, {}), "x");
+  auto y = Parameter(sub_builder.get(), 1, ShapeUtil::MakeShape(F32, {}), "y");
   Pow(x, y);
   auto power = sub_builder->BuildAndNoteError();
 
@@ -535,10 +518,8 @@ TEST_F(MapTestWithFullOpt, MapSubtractOppositeOrder) {
   XlaBuilder builder(TestName());
 
   auto sub_builder = builder.CreateSubBuilder("power");
-  auto x = Parameter(sub_builder.get(), 0,
-                     ShapeUtil::MakeValidatedShape(F32, {}).value(), "x");
-  auto y = Parameter(sub_builder.get(), 1,
-                     ShapeUtil::MakeValidatedShape(F32, {}).value(), "y");
+  auto x = Parameter(sub_builder.get(), 0, ShapeUtil::MakeShape(F32, {}), "x");
+  auto y = Parameter(sub_builder.get(), 1, ShapeUtil::MakeShape(F32, {}), "y");
   Sub(y, x);  // note that this is y - x, not x - y
   auto sub_opposite = sub_builder->BuildAndNoteError();
 
@@ -559,8 +540,7 @@ TEST_F(MapTestWithFullOpt, MapSquare) {
   XlaBuilder builder(TestName());
 
   auto sub_builder = builder.CreateSubBuilder("power");
-  auto x = Parameter(sub_builder.get(), 0,
-                     ShapeUtil::MakeValidatedShape(F32, {}).value(), "x");
+  auto x = Parameter(sub_builder.get(), 0, ShapeUtil::MakeShape(F32, {}), "x");
   Mul(x, x);
   auto square = sub_builder->BuildAndNoteError();
 

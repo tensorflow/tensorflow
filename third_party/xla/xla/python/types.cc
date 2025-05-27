@@ -75,9 +75,9 @@ struct CustomDtypes {
 };
 
 const CustomDtypes& GetCustomDtypes() {
-  const CustomDtypes& custom_dtypes = SafeStaticInit<CustomDtypes>([]() {
+  static const CustomDtypes& custom_dtypes = *[]() {
     nb::module_ ml_dtypes = nb::module_::import_("ml_dtypes");
-    auto dtypes = std::make_unique<CustomDtypes>();
+    auto* dtypes = new CustomDtypes;
     dtypes->bfloat16 = nb_dtype::from_args(ml_dtypes.attr("bfloat16"));
     if (nb::hasattr(ml_dtypes, "float4_e2m1fn")) {
       dtypes->float4_e2m1fn =
@@ -111,7 +111,7 @@ const CustomDtypes& GetCustomDtypes() {
       dtypes->uint2 = nb_dtype::from_args(ml_dtypes.attr("uint2"));
     }
     return dtypes;
-  });
+  }();
   return custom_dtypes;
 }
 
@@ -153,11 +153,10 @@ absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const nb_dtype& np_type) {
   struct DtypeHash {
     ssize_t operator()(const nb_dtype& key) const { return nb::hash(key); }
   };
-  const auto& custom_dtype_map = SafeStaticInit<
-      absl::flat_hash_map<nb_dtype, PrimitiveType, DtypeHash, DtypeEq>>([]() {
+  static auto* custom_dtype_map = []() {
     const CustomDtypes& custom_dtypes = GetCustomDtypes();
-    auto map = std::make_unique<
-        absl::flat_hash_map<nb_dtype, PrimitiveType, DtypeHash, DtypeEq>>();
+    auto* map =
+        new absl::flat_hash_map<nb_dtype, PrimitiveType, DtypeHash, DtypeEq>();
     map->emplace(custom_dtypes.bfloat16, BF16);
     if (custom_dtypes.float4_e2m1fn.has_value()) {
       map->emplace(*custom_dtypes.float4_e2m1fn, F4E2M1FN);
@@ -185,10 +184,10 @@ absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const nb_dtype& np_type) {
     }
     map->emplace(custom_dtypes.uint4, U4);
     return map;
-  });
+  }();
 
-  auto custom_it = custom_dtype_map.find(np_type);
-  if (custom_it != custom_dtype_map.end()) {
+  auto custom_it = custom_dtype_map->find(np_type);
+  if (custom_it != custom_dtype_map->end()) {
     return custom_it->second;
   }
   return InvalidArgument("Unknown NumPy dtype %s char %c kind %c itemsize %d",
@@ -637,7 +636,7 @@ std::optional<CastToArrayResult> CastToArray(nb::handle h) {
   for (int i = 0; i < array.ndim(); ++i) {
     dims[i] = array.shape(i);
   }
-  Shape shape = ShapeUtil::MakeValidatedShape(type, dims).value();
+  Shape shape = ShapeUtil::MakeShape(type, dims);
   if (array.size() * array.itemsize() != ShapeUtil::ByteSizeOf(shape)) {
     throw xla::XlaRuntimeError(absl::StrCat(
         "Size mismatch for buffer: ", array.size() * array.itemsize(), " vs. ",

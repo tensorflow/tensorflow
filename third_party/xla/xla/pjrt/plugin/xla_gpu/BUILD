@@ -29,7 +29,6 @@ cc_library(
     hdrs = ["xla_gpu_client_options.h"],
     deps = [
         ":xla_gpu_allocator_config",
-        "//xla/pjrt/distributed:client",
         "//xla/pjrt/distributed:key_value_store_interface",
     ],
 )

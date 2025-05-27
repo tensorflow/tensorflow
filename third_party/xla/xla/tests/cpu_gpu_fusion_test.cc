@@ -218,34 +218,29 @@ TEST_F(CpuGpuFusionTest, Test) {
   auto const1 = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR2<float>({{-1.0}, {-1.0}, {-1.0}})));
   auto add2 = builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeValidatedShape(F32, {3, 1}).value(), HloOpcode::kAdd,
-      const0, const1));
+      ShapeUtil::MakeShape(F32, {3, 1}), HloOpcode::kAdd, const0, const1));
   auto reshape3 = builder.AddInstruction(HloInstruction::CreateTranspose(
-      ShapeUtil::MakeValidatedShape(F32, {1, 3}).value(), add2, {1, 0}));
+      ShapeUtil::MakeShape(F32, {1, 3}), add2, {1, 0}));
   auto const4 = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR2<float>({{1.62, 2.72, 3.14}})));
   auto concat5 = builder.AddInstruction(HloInstruction::CreateConcatenate(
-      ShapeUtil::MakeValidatedShape(F32, {2, 3}).value(), {reshape3, const4},
-      0));
+      ShapeUtil::MakeShape(F32, {2, 3}), {reshape3, const4}, 0));
   auto const6 = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR2<float>({{1.0, 1.0, 1.0}, {0.0, 0.0, 0.0}})));
   auto negate7 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeValidatedShape(F32, {2, 3}).value(), HloOpcode::kNegate,
-      const6));
+      ShapeUtil::MakeShape(F32, {2, 3}), HloOpcode::kNegate, const6));
   auto add8 = builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeValidatedShape(F32, {2, 3}).value(), HloOpcode::kAdd,
-      concat5, negate7));
+      ShapeUtil::MakeShape(F32, {2, 3}), HloOpcode::kAdd, concat5, negate7));
   auto const9 = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR2<float>({{0.5, 0.5, 0.5}, {0.5, 0.5, 0.5}})));
   auto const10 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR2<bool>(
           {{true, false, true}, {false, true, false}})));
-  auto select11 = builder.AddInstruction(HloInstruction::CreateTernary(
-      ShapeUtil::MakeValidatedShape(F32, {2, 3}).value(), HloOpcode::kSelect,
-      const10, add8, const9));
+  auto select11 = builder.AddInstruction(
+      HloInstruction::CreateTernary(ShapeUtil::MakeShape(F32, {2, 3}),
+                                    HloOpcode::kSelect, const10, add8, const9));
   auto slice12 = builder.AddInstruction(HloInstruction::CreateSlice(
-      ShapeUtil::MakeValidatedShape(F32, {2, 1}).value(), select11, {0, 1},
-      {2, 2}, {1, 1}));
+      ShapeUtil::MakeShape(F32, {2, 1}), select11, {0, 1}, {2, 2}, {1, 1}));
   // CreateFusionInstruction needs the `instructions_to_fuse` argument in
   // reverse topological order, so the first element in `instructions_to_fuse`
   // must be the root.
@@ -269,14 +264,12 @@ TEST_F(CpuGpuFusionTest, Parameter) {
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR2<float>({{1.0, 2.0, 3.0}})));
   auto copy1 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeValidatedShape(F32, {1, 3}).value(), HloOpcode::kCopy,
-      const0));
+      ShapeUtil::MakeShape(F32, {1, 3}), HloOpcode::kCopy, const0));
   auto const2 = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR2<float>({{-2.0, -2.0, -2.0}})));
   // add3 = copy1 + const2 = const0 + const2 = {1,2,3} + {-2,-2,-2} = {-1,0,+1}
   auto add3 = builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeValidatedShape(F32, {1, 3}).value(), HloOpcode::kAdd,
-      copy1, const2));
+      ShapeUtil::MakeShape(F32, {1, 3}), HloOpcode::kAdd, copy1, const2));
   // CreateFusionInstruction needs `instructions_to_fuse` in reverse topological
   // order.
   hlo_module->AddEntryComputation(builder.Build())
@@ -336,9 +329,9 @@ TEST_F(CpuGpuFusionTest, BroadcastIntoBinaryOp) {
   // add2 = broadcast(const_vector) + const_array
   //      = broadcast({1,2,3}) + {{-1.0, -2.0, -4.0}, {10.0, 20.0, 30.0}}
   //      = {{1, 2, 3}, {1, 2, 3}} + {{-1.0, -2.0, -4.0}, {10.0, 20.0, 30.0}}
-  auto add2 = builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeValidatedShape(F32, {2, 3}).value(), HloOpcode::kAdd,
-      broadcast, const_array));
+  auto add2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(ShapeUtil::MakeShape(F32, {2, 3}),
+                                   HloOpcode::kAdd, broadcast, const_array));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{add2, broadcast},
                                 HloInstruction::FusionKind::kLoop);
@@ -354,7 +347,7 @@ TEST_F(CpuGpuFusionTest, ReshapeToScalar) {
   auto single_element_array = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR2<int32_t>({{5}})));
   auto reshape = builder.AddInstruction(HloInstruction::CreateReshape(
-      ShapeUtil::MakeValidatedShape(S32, {}).value(), single_element_array));
+      ShapeUtil::MakeShape(S32, {}), single_element_array));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{reshape},
                                 HloInstruction::FusionKind::kLoop);
@@ -369,7 +362,7 @@ TEST_F(CpuGpuFusionTest, Reshape_3by2_1by2by3) {
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR2<int32_t>({{1, 2}, {3, 4}, {5, 6}})));
   auto reshape1 = builder.AddInstruction(HloInstruction::CreateReshape(
-      ShapeUtil::MakeValidatedShape(S32, {1, 2, 3}).value(), const0));
+      ShapeUtil::MakeShape(S32, {1, 2, 3}), const0));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{reshape1},
                                 HloInstruction::FusionKind::kLoop);
@@ -383,8 +376,8 @@ TEST_F(CpuGpuFusionTest, Reshape_1by2by3_3by2) {
   auto hlo_module = CreateNewVerifiedModule();
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR3<int32_t>({{{1, 2, 3}, {4, 5, 6}}})));
-  auto reshape1 = builder.AddInstruction(HloInstruction::CreateReshape(
-      ShapeUtil::MakeValidatedShape(S32, {3, 2}).value(), const0));
+  auto reshape1 = builder.AddInstruction(
+      HloInstruction::CreateReshape(ShapeUtil::MakeShape(S32, {3, 2}), const0));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{reshape1},
                                 HloInstruction::FusionKind::kLoop);
@@ -398,8 +391,8 @@ TEST_F(CpuGpuFusionTest, Reshape_1by1by1_) {
   auto hlo_module = CreateNewVerifiedModule();
   auto const0 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR3<int32_t>({{{7}}})));
-  auto reshape1 = builder.AddInstruction(HloInstruction::CreateReshape(
-      ShapeUtil::MakeValidatedShape(S32, {}).value(), const0));
+  auto reshape1 = builder.AddInstruction(
+      HloInstruction::CreateReshape(ShapeUtil::MakeShape(S32, {}), const0));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{reshape1},
                                 HloInstruction::FusionKind::kLoop);
@@ -414,7 +407,7 @@ TEST_F(CpuGpuFusionTest, Reshape__1by1by1) {
   auto const0 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(7)));
   auto reshape1 = builder.AddInstruction(HloInstruction::CreateReshape(
-      ShapeUtil::MakeValidatedShape(S32, {1, 1, 1}).value(), const0));
+      ShapeUtil::MakeShape(S32, {1, 1, 1}), const0));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{reshape1},
                                 HloInstruction::FusionKind::kLoop);
@@ -428,8 +421,8 @@ TEST_F(CpuGpuFusionTest, Reshape__) {
   auto hlo_module = CreateNewVerifiedModule();
   auto const0 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(7)));
-  auto reshape1 = builder.AddInstruction(HloInstruction::CreateReshape(
-      ShapeUtil::MakeValidatedShape(S32, {}).value(), const0));
+  auto reshape1 = builder.AddInstruction(
+      HloInstruction::CreateReshape(ShapeUtil::MakeShape(S32, {}), const0));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{reshape1},
                                 HloInstruction::FusionKind::kLoop);
@@ -443,8 +436,8 @@ TEST_F(CpuGpuFusionTest, Reshape_3by3_3by3) {
   auto hlo_module = CreateNewVerifiedModule();
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}})));
-  auto reshape1 = builder.AddInstruction(HloInstruction::CreateReshape(
-      ShapeUtil::MakeValidatedShape(S32, {3, 3}).value(), const0));
+  auto reshape1 = builder.AddInstruction(
+      HloInstruction::CreateReshape(ShapeUtil::MakeShape(S32, {3, 3}), const0));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{reshape1},
                                 HloInstruction::FusionKind::kLoop);
@@ -459,7 +452,7 @@ TEST_F(CpuGpuFusionTest, Transpose_2by3) {
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, 6}})));
   auto reshape1 = builder.AddInstruction(HloInstruction::CreateTranspose(
-      ShapeUtil::MakeValidatedShape(S32, {3, 2}).value(), const0, {1, 0}));
+      ShapeUtil::MakeShape(S32, {3, 2}), const0, {1, 0}));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{reshape1},
                                 HloInstruction::FusionKind::kLoop);
@@ -474,7 +467,7 @@ TEST_F(CpuGpuFusionTest, Transpose_3by3) {
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR2<int32_t>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}})));
   auto reshape1 = builder.AddInstruction(HloInstruction::CreateTranspose(
-      ShapeUtil::MakeValidatedShape(S32, {3, 3}).value(), const0, {1, 0}));
+      ShapeUtil::MakeShape(S32, {3, 3}), const0, {1, 0}));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{reshape1},
                                 HloInstruction::FusionKind::kLoop);
@@ -489,7 +482,7 @@ TEST_F(CpuGpuFusionTest, Reverse) {
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR1<int32_t>({1, 2, 3})));
   auto reverse1 = builder.AddInstruction(HloInstruction::CreateReverse(
-      ShapeUtil::MakeValidatedShape(S32, {3}).value(), const0, {0}));
+      ShapeUtil::MakeShape(S32, {3}), const0, {0}));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{reverse1},
                                 HloInstruction::FusionKind::kLoop);
@@ -505,10 +498,9 @@ TEST_F(CpuGpuFusionTest, ReverseNegate) {
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR1<int32_t>({1, 2, 3})));
   auto reverse1 = builder.AddInstruction(HloInstruction::CreateReverse(
-      ShapeUtil::MakeValidatedShape(S32, {3}).value(), const0, {0}));
+      ShapeUtil::MakeShape(S32, {3}), const0, {0}));
   auto negate2 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeValidatedShape(S32, {3}).value(), HloOpcode::kNegate,
-      reverse1));
+      ShapeUtil::MakeShape(S32, {3}), HloOpcode::kNegate, reverse1));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{negate2, reverse1},
                                 HloInstruction::FusionKind::kLoop);
@@ -524,10 +516,9 @@ TEST_F(CpuGpuFusionTest, BroadcastNegate) {
   auto const0 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
   auto broadcast1 = builder.AddInstruction(HloInstruction::CreateBroadcast(
-      ShapeUtil::MakeValidatedShape(S32, {2}).value(), const0, {}));
+      ShapeUtil::MakeShape(S32, {2}), const0, {}));
   auto negate2 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeValidatedShape(S32, {2}).value(), HloOpcode::kNegate,
-      broadcast1));
+      ShapeUtil::MakeShape(S32, {2}), HloOpcode::kNegate, broadcast1));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{negate2, broadcast1},
                                 HloInstruction::FusionKind::kLoop);
@@ -543,10 +534,9 @@ TEST_F(CpuGpuFusionTest, SliceNegate) {
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4})));
   auto slice1 = builder.AddInstruction(HloInstruction::CreateSlice(
-      ShapeUtil::MakeValidatedShape(S32, {2}).value(), const0, {0}, {4}, {2}));
+      ShapeUtil::MakeShape(S32, {2}), const0, {0}, {4}, {2}));
   auto negate2 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeValidatedShape(S32, {2}).value(), HloOpcode::kNegate,
-      slice1));
+      ShapeUtil::MakeShape(S32, {2}), HloOpcode::kNegate, slice1));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{negate2, slice1},
                                 HloInstruction::FusionKind::kLoop);
@@ -565,11 +555,9 @@ TEST_F(CpuGpuFusionTest, DynamicSliceNegate) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
   auto dynamic_slice2 =
       builder.AddInstruction(HloInstruction::CreateDynamicSlice(
-          ShapeUtil::MakeValidatedShape(S32, {2}).value(), const0, {const1},
-          {2}));
+          ShapeUtil::MakeShape(S32, {2}), const0, {const1}, {2}));
   auto negate3 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeValidatedShape(S32, {2}).value(), HloOpcode::kNegate,
-      dynamic_slice2));
+      ShapeUtil::MakeShape(S32, {2}), HloOpcode::kNegate, dynamic_slice2));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(
           /*instructions_to_fuse=*/{negate3, dynamic_slice2},
@@ -585,11 +573,10 @@ TEST_F(CpuGpuFusionTest, ReshapeNegate) {
   auto hlo_module = CreateNewVerifiedModule();
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4})));
-  auto reshape1 = builder.AddInstruction(HloInstruction::CreateReshape(
-      ShapeUtil::MakeValidatedShape(S32, {2, 2}).value(), const0));
+  auto reshape1 = builder.AddInstruction(
+      HloInstruction::CreateReshape(ShapeUtil::MakeShape(S32, {2, 2}), const0));
   auto negate2 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeValidatedShape(S32, {2, 2}).value(), HloOpcode::kNegate,
-      reshape1));
+      ShapeUtil::MakeShape(S32, {2, 2}), HloOpcode::kNegate, reshape1));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{negate2, reshape1},
                                 HloInstruction::FusionKind::kLoop);
@@ -605,10 +592,9 @@ TEST_F(CpuGpuFusionTest, TransposeNegate) {
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR2<int32_t>({{1, 2}, {3, 4}})));
   auto transpose1 = builder.AddInstruction(HloInstruction::CreateTranspose(
-      ShapeUtil::MakeValidatedShape(S32, {2, 2}).value(), const0, {1, 0}));
+      ShapeUtil::MakeShape(S32, {2, 2}), const0, {1, 0}));
   auto negate2 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeValidatedShape(S32, {2, 2}).value(), HloOpcode::kNegate,
-      transpose1));
+      ShapeUtil::MakeShape(S32, {2, 2}), HloOpcode::kNegate, transpose1));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{negate2, transpose1},
                                 HloInstruction::FusionKind::kLoop);
@@ -621,14 +607,11 @@ TEST_F(CpuGpuFusionTest, TransposeNegate) {
 std::unique_ptr<HloComputation> MakeReduceTestComputation() {
   auto builder = HloComputation::Builder("add");
   auto lhs = builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/0, ShapeUtil::MakeValidatedShape(S32, {}).value(),
-      "lhs"));
+      /*parameter_number=*/0, ShapeUtil::MakeShape(S32, {}), "lhs"));
   auto rhs = builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/1, ShapeUtil::MakeValidatedShape(S32, {}).value(),
-      "rhs"));
+      /*parameter_number=*/1, ShapeUtil::MakeShape(S32, {}), "rhs"));
   builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeValidatedShape(S32, {}).value(), HloOpcode::kAdd, lhs,
-      rhs));
+      ShapeUtil::MakeShape(S32, {}), HloOpcode::kAdd, lhs, rhs));
   return builder.Build();
 }
 
@@ -638,12 +621,12 @@ TEST_F(CpuGpuFusionTest, Reduce) {
   }
   auto hlo_module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
-  auto const0 = builder.AddInstruction(HloInstruction::CreateIota(
-      ShapeUtil::MakeValidatedShape(S32, {32}).value(), 0));
+  auto const0 = builder.AddInstruction(
+      HloInstruction::CreateIota(ShapeUtil::MakeShape(S32, {32}), 0));
   auto const1 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0)));
   auto reduce2 = builder.AddInstruction(HloInstruction::CreateReduce(
-      ShapeUtil::MakeValidatedShape(S32, {}).value(), const0, const1, {0},
+      ShapeUtil::MakeShape(S32, {}), const0, const1, {0},
       hlo_module->AddEmbeddedComputation(MakeReduceTestComputation())));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{reduce2},
@@ -663,11 +646,10 @@ TEST_F(CpuGpuFusionTest, ReduceImplicitBroadcast) {
   auto const1 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0)));
   auto reduce2 = builder.AddInstruction(HloInstruction::CreateReduce(
-      ShapeUtil::MakeValidatedShape(S32, {}).value(), const0, const1, {0},
+      ShapeUtil::MakeShape(S32, {}), const0, const1, {0},
       hlo_module->AddEmbeddedComputation(MakeReduceTestComputation())));
   auto negate3 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeValidatedShape(S32, {}).value(), HloOpcode::kNegate,
-      reduce2));
+      ShapeUtil::MakeShape(S32, {}), HloOpcode::kNegate, reduce2));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{negate3, reduce2},
                                 HloInstruction::FusionKind::kLoop);
@@ -708,20 +690,19 @@ TEST_F(CpuGpuFusionTest, ReduceWindow) {
                                                  &window));
   auto nested_builder = HloComputation::Builder("mul");
   {
-    auto x = nested_builder.AddInstruction(HloInstruction::CreateParameter(
-        0, ShapeUtil::MakeValidatedShape(S32, {}).value(), "x"));
-    auto y = nested_builder.AddInstruction(HloInstruction::CreateParameter(
-        1, ShapeUtil::MakeValidatedShape(S32, {}).value(), "y"));
+    auto x = nested_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(S32, {}), "x"));
+    auto y = nested_builder.AddInstruction(
+        HloInstruction::CreateParameter(1, ShapeUtil::MakeShape(S32, {}), "y"));
     nested_builder.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeValidatedShape(S32, {}).value(), HloOpcode::kMultiply, x,
-        y));
+        ShapeUtil::MakeShape(S32, {}), HloOpcode::kMultiply, x, y));
   }
   auto nested_computation =
       hlo_module->AddEmbeddedComputation(nested_builder.Build());
   auto reduce_window2 =
       builder.AddInstruction(HloInstruction::CreateReduceWindow(
-          ShapeUtil::MakeValidatedShape(S32, {2, 2}).value(), const0, const1,
-          window, nested_computation));
+          ShapeUtil::MakeShape(S32, {2, 2}), const0, const1, window,
+          nested_computation));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction(/*instructions_to_fuse=*/{reduce_window2},
                                 HloInstruction::FusionKind::kLoop);
@@ -743,17 +724,13 @@ TEST_F(CpuGpuFusionTest, SharedConstant) {
   auto const1 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32_t>({2})));
   auto add1 = builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeValidatedShape(S32, {1}).value(), HloOpcode::kAdd, const1,
-      const0));
+      ShapeUtil::MakeShape(S32, {1}), HloOpcode::kAdd, const1, const0));
   auto add2 = builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeValidatedShape(S32, {1}).value(), HloOpcode::kAdd, const1,
-      add1));
+      ShapeUtil::MakeShape(S32, {1}), HloOpcode::kAdd, const1, add1));
   auto add3 = builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeValidatedShape(S32, {1}).value(), HloOpcode::kAdd, const1,
-      add2));
+      ShapeUtil::MakeShape(S32, {1}), HloOpcode::kAdd, const1, add2));
   auto add4 = builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeValidatedShape(S32, {1}).value(), HloOpcode::kAdd, const1,
-      add3));
+      ShapeUtil::MakeShape(S32, {1}), HloOpcode::kAdd, const1, add3));
   hlo_module->AddEntryComputation(builder.Build())
       ->CreateFusionInstruction({add4, add3, add2, add1, const1},
                                 HloInstruction::FusionKind::kLoop);
@@ -963,14 +940,11 @@ void BM_ParallelFusion(::testing::benchmark::State& state) {
 
   // Create computation.
   XlaBuilder builder("ParallelFusion");
-  Shape shape0 =
-      ShapeUtil::MakeValidatedShape(F32, {param0_dim0, param0_dim1}).value();
+  Shape shape0 = ShapeUtil::MakeShape(F32, {param0_dim0, param0_dim1});
   auto param0 = Parameter(&builder, 0, shape0, "param0");
-  Shape shape1 =
-      ShapeUtil::MakeValidatedShape(F32, {param1_dim0, param1_dim1}).value();
+  Shape shape1 = ShapeUtil::MakeShape(F32, {param1_dim0, param1_dim1});
   auto param1 = Parameter(&builder, 1, shape1, "param1");
-  Shape shape2 =
-      ShapeUtil::MakeValidatedShape(F32, {param2_dim0, param2_dim1}).value();
+  Shape shape2 = ShapeUtil::MakeShape(F32, {param2_dim0, param2_dim1});
   auto param2 = Parameter(&builder, 2, shape2, "param2");
 
   auto x = Mul(param0, param1);

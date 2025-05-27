@@ -114,8 +114,7 @@ TEST_F(BitcastConvertTest, ConvertS32Extremes) {
 TEST_F(BitcastConvertTest, ConvertMapToS32) {
   XlaBuilder builder(TestName());
   auto b = builder.CreateSubBuilder("convert");
-  auto param = Parameter(b.get(), 0,
-                         ShapeUtil::MakeValidatedShape(F32, {}).value(), "in");
+  auto param = Parameter(b.get(), 0, ShapeUtil::MakeShape(F32, {}), "in");
   BitcastConvertType(param, S32);
   auto a = ConstantR1<float>(&builder, {42.0f, 64.0f});
   Map(&builder, {a}, b->BuildAndNoteError(), {0});
@@ -127,8 +126,7 @@ TEST_F(BitcastConvertTest, ConvertMapToS32) {
 TEST_F(BitcastConvertTest, ConvertMapToF32) {
   XlaBuilder builder(TestName());
   auto b = builder.CreateSubBuilder("convert");
-  auto param = Parameter(b.get(), 0,
-                         ShapeUtil::MakeValidatedShape(S32, {}).value(), "in");
+  auto param = Parameter(b.get(), 0, ShapeUtil::MakeShape(S32, {}), "in");
   BitcastConvertType(param, F32);
   auto a = ConstantR1<int32_t>(&builder, {0x42280000, 0x42800000});
   Map(&builder, {a}, b->BuildAndNoteError(), {0});

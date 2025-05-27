@@ -39,7 +39,7 @@ namespace {
 
 TEST(InterpreterClientTest, EvaluateOnceShouldSucceed) {
   InterpreterClient client;
-  const Shape shape = ShapeUtil::MakeValidatedShape(S32, {4}).value();
+  const Shape shape = ShapeUtil::MakeShape(S32, {4});
   XlaBuilder builder("test");
   Add(Parameter(&builder, 0, shape, "parameter0"),
       ConstantR1(&builder, absl::Span<const int32_t>{1, 1, 1, 1}));
@@ -67,7 +67,7 @@ TEST(InterpreterClientTest, EvaluateOnceShouldSucceed) {
 
 TEST(InterpreterClientTest, EvaluateTwiceShouldSucceed) {
   InterpreterClient client;
-  const Shape shape = ShapeUtil::MakeValidatedShape(S32, {4}).value();
+  const Shape shape = ShapeUtil::MakeShape(S32, {4});
   XlaBuilder builder("test");
   Add(Parameter(&builder, 0, shape, "parameter0"),
       ConstantR1(&builder, absl::Span<const int32_t>{1, 1, 1, 1}));

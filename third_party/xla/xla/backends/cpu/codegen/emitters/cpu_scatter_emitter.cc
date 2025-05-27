@@ -58,7 +58,6 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
-#include "xla/codegen/mlir_kernel_definition.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -244,7 +243,7 @@ IndexingMap GetScatterIndexingMap(
       {}, constraints);
 }
 
-absl::StatusOr<MlirKernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
+absl::StatusOr<KernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
   std::unique_ptr<mlir::MLIRContext> context = FusionCompiler::CreateContext();
 
   mlir::OpBuilder builder(context.get());
@@ -316,9 +315,9 @@ absl::StatusOr<MlirKernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
                          NumWorkGroups{static_cast<uint64_t>(num_threads_)},
                          std::move(argument_buffers), std::move(result_buffers),
                          std::move(invariant_arguments));
-  return MlirKernelDefinition(
-      std::move(kernel_spec),
-      MlirKernelSource(std::move(context), std::move(mlir_module)));
+  return KernelDefinition(std::move(kernel_spec),
+                          std::make_unique<MlirKernelSource>(
+                              std::move(context), std::move(mlir_module)));
 }
 
 absl::Status CpuScatterFusion::EmitEntryFunction(

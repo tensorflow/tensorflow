@@ -80,8 +80,8 @@ TEST_P(XnnDotThunkTest, SimpleDot) {
   auto [lhs_slice, rhs_slice, out_slice] =
       CreateBufferAllocationSlice(lhs_alloc, rhs_alloc, out_alloc);
 
-  Shape input_shape = ShapeUtil::MakeValidatedShape(input_type, {2, 2}).value();
-  Shape output_shape = ShapeUtil::MakeValidatedShape(F32, {2, 2}).value();
+  Shape input_shape = ShapeUtil::MakeShape(input_type, {2, 2});
+  Shape output_shape = ShapeUtil::MakeShape(F32, {2, 2});
 
   DotDimensionNumbers dot_dimensions;
   dot_dimensions.add_lhs_contracting_dimensions(1);

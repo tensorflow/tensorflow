@@ -1034,8 +1034,7 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::MakeErrorArrays(
     TF_ASSIGN_OR_RETURN(Shape shard_shape,
                         array_spec.sharding->GetShardShape(array_spec.shape));
     xla::Shape xla_shape =
-        ShapeUtil::MakeValidatedShape(primitive_type, shard_shape.dims())
-            .value();
+        xla::ShapeUtil::MakeShape(primitive_type, shard_shape.dims());
 
     PjRtArray::PjRtBuffers buffers;
     buffers.reserve(ifrt_addressable_devices.size());

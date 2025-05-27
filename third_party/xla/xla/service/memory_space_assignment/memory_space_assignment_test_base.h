@@ -435,7 +435,7 @@ class MemorySpaceAssignmentTestBase : public HloTestBase {
 
   std::unique_ptr<HloModule> CreateEvictAndPrefetchModule() {
     HloComputation::Builder builder(TestName());
-    Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
+    Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
     HloInstruction* p0 =
         builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
     HloInstruction* p1 =

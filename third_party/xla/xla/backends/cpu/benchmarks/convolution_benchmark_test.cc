@@ -61,14 +61,11 @@ static void BM_Conv2D(benchmark::State& state, HloBenchmarkOptions options) {
   std::minstd_rand0 engine;
 
   // Input format is NHWC.
-  auto input_shape = ShapeUtil::MakeValidatedShape(
-                         ElementType, {batch, height, width, input_channels})
-                         .value();
+  auto input_shape =
+      ShapeUtil::MakeShape(ElementType, {batch, height, width, input_channels});
   // Filter format is HWIO.
-  auto kernel_shape =
-      ShapeUtil::MakeValidatedShape(
-          ElementType, {kernel_h, kernel_w, input_channels, output_channels})
-          .value();
+  auto kernel_shape = ShapeUtil::MakeShape(
+      ElementType, {kernel_h, kernel_w, input_channels, output_channels});
 
   auto input = *LiteralUtil::CreateRandomLiteral<ElementType>(
       input_shape, &engine, 1.0f, 0.1f);
@@ -120,13 +117,10 @@ static void BM_GroupedConv2D(benchmark::State& state,
 
   // Input format is NHWC.
   auto input_shape =
-      ShapeUtil::MakeValidatedShape(F32, {batch, height, width, input_channels})
-          .value();
+      ShapeUtil::MakeShape(F32, {batch, height, width, input_channels});
   // Filter format is HWIO.
-  auto kernel_shape =
-      ShapeUtil::MakeValidatedShape(
-          F32, {kernel_h, kernel_w, filter_channels, output_channels})
-          .value();
+  auto kernel_shape = ShapeUtil::MakeShape(
+      F32, {kernel_h, kernel_w, filter_channels, output_channels});
 
   auto input =
       *LiteralUtil::CreateRandomLiteral<F32>(input_shape, &engine, 1.0f, 0.1f);
@@ -166,14 +160,11 @@ static void BM_Conv1DStrided(benchmark::State& state,
   std::minstd_rand0 engine;
 
   // NCW layout
-  auto input_shape =
-      ShapeUtil::MakeValidatedShape(F32, {16, input_channels, 25600}).value();
-  auto output_shape =
-      ShapeUtil::MakeValidatedShape(F32, {16, output_channels, 400}).value();
+  auto input_shape = ShapeUtil::MakeShape(F32, {16, input_channels, 25600});
+  auto output_shape = ShapeUtil::MakeShape(F32, {16, output_channels, 400});
   // IOW layout
   auto kernel_shape =
-      ShapeUtil::MakeValidatedShape(F32, {input_channels, output_channels, 256})
-          .value();
+      ShapeUtil::MakeShape(F32, {input_channels, output_channels, 256});
 
   auto input =
       *LiteralUtil::CreateRandomLiteral<F32>(input_shape, &engine, 1.0f, 0.1f);
@@ -213,14 +204,11 @@ static void BM_Conv1DTransposedStrided(benchmark::State& state,
   std::minstd_rand0 engine;
 
   // NCW layout
-  auto input_shape =
-      ShapeUtil::MakeValidatedShape(F32, {16, input_channels, 400}).value();
-  auto output_shape =
-      ShapeUtil::MakeValidatedShape(F32, {16, output_channels, 25600}).value();
+  auto input_shape = ShapeUtil::MakeShape(F32, {16, input_channels, 400});
+  auto output_shape = ShapeUtil::MakeShape(F32, {16, output_channels, 25600});
   // IOW layout
   auto kernel_shape =
-      ShapeUtil::MakeValidatedShape(F32, {input_channels, output_channels, 256})
-          .value();
+      ShapeUtil::MakeShape(F32, {input_channels, output_channels, 256});
 
   auto input =
       *LiteralUtil::CreateRandomLiteral<F32>(input_shape, &engine, 1.0f, 0.1f);
@@ -254,14 +242,11 @@ static void BM_Conv1DTransposedStridedNonDefaultLayout(
   std::minstd_rand0 engine;
 
   // NWC layout
-  auto input_shape =
-      ShapeUtil::MakeValidatedShape(F32, {16, 400, input_channels}).value();
-  auto output_shape =
-      ShapeUtil::MakeValidatedShape(F32, {16, 25600, output_channels}).value();
+  auto input_shape = ShapeUtil::MakeShape(F32, {16, 400, input_channels});
+  auto output_shape = ShapeUtil::MakeShape(F32, {16, 25600, output_channels});
   // WOI layout
   auto kernel_shape =
-      ShapeUtil::MakeValidatedShape(F32, {256, output_channels, input_channels})
-          .value();
+      ShapeUtil::MakeShape(F32, {256, output_channels, input_channels});
 
   auto input =
       *LiteralUtil::CreateRandomLiteral<F32>(input_shape, &engine, 1.0f, 0.1f);
@@ -294,11 +279,9 @@ static void BM_Conv2DStrided(benchmark::State& state,
   std::minstd_rand0 engine;
 
   // NCHW layout
-  auto input_shape =
-      ShapeUtil::MakeValidatedShape(F32, {16, 1, 160, 160}).value();
+  auto input_shape = ShapeUtil::MakeShape(F32, {16, 1, 160, 160});
   // IOHW layout
-  auto kernel_shape =
-      ShapeUtil::MakeValidatedShape(F32, {1, 129, 16, 16}).value();
+  auto kernel_shape = ShapeUtil::MakeShape(F32, {1, 129, 16, 16});
 
   auto input =
       *LiteralUtil::CreateRandomLiteral<F32>(input_shape, &engine, 1.0f, 0.1f);
@@ -332,11 +315,9 @@ static void BM_Conv2DTransposedStrided(benchmark::State& state,
   std::minstd_rand0 engine;
 
   // NCHW layout
-  auto input_shape =
-      ShapeUtil::MakeValidatedShape(F32, {16, 129, 20, 20}).value();
+  auto input_shape = ShapeUtil::MakeShape(F32, {16, 129, 20, 20});
   // IOHW layout
-  auto kernel_shape =
-      ShapeUtil::MakeValidatedShape(F32, {129, 1, 16, 16}).value();
+  auto kernel_shape = ShapeUtil::MakeShape(F32, {129, 1, 16, 16});
 
   auto input =
       *LiteralUtil::CreateRandomLiteral<F32>(input_shape, &engine, 1.0f, 0.1f);
@@ -372,12 +353,10 @@ static void BM_GroupedConv2DStrided(benchmark::State& state,
   std::minstd_rand0 engine;
 
   // NCHW layout
-  auto input_shape =
-      ShapeUtil::MakeValidatedShape(F32, {2, input_channels, 80, 80}).value();
+  auto input_shape = ShapeUtil::MakeShape(F32, {2, input_channels, 80, 80});
   // IOHW layout
-  auto kernel_shape = ShapeUtil::MakeValidatedShape(
-                          F32, {filter_channels, output_channels, 16, 16})
-                          .value();
+  auto kernel_shape =
+      ShapeUtil::MakeShape(F32, {filter_channels, output_channels, 16, 16});
 
   auto input =
       *LiteralUtil::CreateRandomLiteral<F32>(input_shape, &engine, 1.0f, 0.1f);
@@ -421,12 +400,10 @@ static void BM_GroupedConv2DTransposedStrided(benchmark::State& state,
   std::minstd_rand0 engine;
 
   // NCHW layout
-  auto input_shape =
-      ShapeUtil::MakeValidatedShape(F32, {2, input_channels, 10, 10}).value();
+  auto input_shape = ShapeUtil::MakeShape(F32, {2, input_channels, 10, 10});
   // IOHW layout
-  auto kernel_shape = ShapeUtil::MakeValidatedShape(
-                          F32, {filter_channels, output_channels, 16, 16})
-                          .value();
+  auto kernel_shape =
+      ShapeUtil::MakeShape(F32, {filter_channels, output_channels, 16, 16});
 
   auto input =
       *LiteralUtil::CreateRandomLiteral<F32>(input_shape, &engine, 1.0f, 0.1f);

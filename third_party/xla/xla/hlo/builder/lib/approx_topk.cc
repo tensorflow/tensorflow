@@ -81,17 +81,15 @@ absl::StatusOr<XlaComputationId> BuildReductionComputation(
   rhs_params.reserve(num_operands);
   auto reduction_builder = builder->CreateSubBuilder("ReductionFn");
   for (const auto& op_type : op_types) {
-    lhs_params.push_back(
-        Parameter(reduction_builder.get(), param_number,
-                  ShapeUtil::MakeValidatedScalarShape(op_type).value(),
-                  absl::StrFormat("lhs.%d", param_number)));
+    lhs_params.push_back(Parameter(reduction_builder.get(), param_number,
+                                   ShapeUtil::MakeScalarShape(op_type),
+                                   absl::StrFormat("lhs.%d", param_number)));
     param_number++;
   }
   for (const auto& op_type : op_types) {
-    rhs_params.push_back(
-        Parameter(reduction_builder.get(), param_number,
-                  ShapeUtil::MakeValidatedScalarShape(op_type).value(),
-                  absl::StrFormat("rhs.%d", param_number)));
+    rhs_params.push_back(Parameter(reduction_builder.get(), param_number,
+                                   ShapeUtil::MakeScalarShape(op_type),
+                                   absl::StrFormat("rhs.%d", param_number)));
     param_number++;
   }
 
@@ -252,7 +250,7 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
     approx_output_shapes.push_back(&op_shape);
   }
   auto approx_output_shape =
-      ShapeUtil::MakeValidatedTupleShapeWithPtrs(approx_output_shapes).value();
+      ShapeUtil::MakeTupleShapeWithPtrs(approx_output_shapes);
   // PartialReduce options in the JSON form.
   auto partial_reduce_option = absl::StrFormat(
       "{\"log2_reduction\": %d, "

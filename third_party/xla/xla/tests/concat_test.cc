@@ -417,7 +417,7 @@ XLA_TEST_F(ConcatTest, Concat_64x64_With_64x2) {
 XLA_TEST_F(ConcatTest, CannotConcatOpaques) {
   XlaBuilder builder(TestName());
   auto opaque_shape = ShapeUtil::MakeOpaqueShape();
-  auto r1f32 = ShapeUtil::MakeValidatedShape(xla::F32, {1}).value();
+  auto r1f32 = xla::ShapeUtil::MakeShape(xla::F32, {1});
   auto x = Parameter(&builder, 0, r1f32, "x");
   auto y = Parameter(&builder, 1, opaque_shape, "y");
   ConcatInDim(&builder, {x, y}, 0);
@@ -432,7 +432,7 @@ XLA_TEST_F(ConcatTest, CannotConcatOpaques) {
 XLA_TEST_F(ConcatTest, CannotConcatTokens) {
   XlaBuilder builder(TestName());
   auto token_shape = ShapeUtil::MakeTokenShape();
-  auto r1f32 = ShapeUtil::MakeValidatedShape(xla::F32, {1}).value();
+  auto r1f32 = xla::ShapeUtil::MakeShape(xla::F32, {1});
   auto x = Parameter(&builder, 0, r1f32, "x");
   auto y = Parameter(&builder, 1, token_shape, "y");
   ConcatInDim(&builder, {x, y}, 0);
@@ -809,7 +809,7 @@ TEST_P(ConcatR2BinaryTest, DoIt) {
 //    \  |   /
 //     concat
 XLA_TEST_F(ConcatTest, ConcatOperandsOfSameOperand) {
-  auto f32_scalar = ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
+  auto f32_scalar = ShapeUtil::MakeShape(xla::F32, {});
   auto x_literal = LiteralUtil::CreateR0<float>(2.f);
   auto y_literal = LiteralUtil::CreateR0<float>(3.f);
 
@@ -829,7 +829,7 @@ XLA_TEST_F(ConcatTest, ConcatOperandsOfSameOperand) {
 // Test that the HLO optimization to replace a concat of a broadcasted scalar
 // produces the correct result in rank 1.
 XLA_TEST_F(ConcatTest, ConcatBroadcastArgument) {
-  auto f32_scalar = ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
+  auto f32_scalar = ShapeUtil::MakeShape(xla::F32, {});
   auto x_literal = LiteralUtil::CreateR1<float>({2.0f, 3.0f, 5.0f, 6.0f});
   auto y_literal = LiteralUtil::CreateR0<float>(1.5f);
   auto z_literal = LiteralUtil::CreateR0<float>(5.5f);
@@ -853,7 +853,7 @@ XLA_TEST_F(ConcatTest, ConcatBroadcastArgument) {
 // produces the correct result in rank 3 with both high and low padding in
 // different dimensions.
 XLA_TEST_F(ConcatTest, ConcatBroadcastArgumentR3) {
-  auto f32_scalar = ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
+  auto f32_scalar = ShapeUtil::MakeShape(xla::F32, {});
   Array3D<float> x3d(3, 5, 7, 3.14f);
   auto x_literal = LiteralUtil::CreateR3FromArray3D<float>(x3d);
   auto y_literal = LiteralUtil::CreateR0<float>(1.5f);

@@ -45,15 +45,14 @@ TEST(LlvmIrKernelEmitterTest, ParseLlvmIr) {
     }
   )";
 
-  LlvmTestKernelEmitter::KernelArg arg{1024, BufferUse::kWrite};
-  LlvmTestKernelEmitter emitter(kLlvmIr, "noop", {}, {arg});
+  LlvmIrKernelEmitter::KernelArg arg{1024, BufferUse::kWrite};
+  LlvmIrKernelEmitter emitter(kLlvmIr, "noop", {}, {arg});
 
   TF_ASSERT_OK_AND_ASSIGN(KernelDefinition kernel_definition,
                           emitter.EmitKernelDefinition());
 
   // Check that LLVM IR was parsed and loaded as a LLVM IR kernel source.
-  auto [kernel_spec, kernel_source] =
-      std::move(kernel_definition).ReleaseStorage();
+  auto [kernel_spec, kernel_source] = std::move(kernel_definition).release();
 
   EXPECT_EQ(kernel_spec.name(), "noop");
 
@@ -65,8 +64,9 @@ TEST(LlvmIrKernelEmitterTest, ParseLlvmIr) {
   EXPECT_EQ(result_slice.offset(), 0);
   EXPECT_EQ(result_slice.size(), 1024);
 
+  auto& src = tsl::down_cast<LlvmIrKernelSource&>(*kernel_source);
   llvm::orc::ThreadSafeModule thread_safe_module =
-      std::move(kernel_source).thread_safe_module();
+      std::move(src).thread_safe_module();
   const llvm::Module::FunctionListType& functions =
       thread_safe_module.getModuleUnlocked()->getFunctionList();
   EXPECT_THAT(functions,

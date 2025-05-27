@@ -220,14 +220,13 @@ struct RewritePureCall : OpRewritePattern<PureCallOp> {
 // Returns the linearized index.
 Value LinearizeIndex(Location loc, ShapedType type, ValueRange indices,
                      PatternRewriter& rewriter, Attribute encoding = nullptr) {
-  auto byte_shape = ShapeUtil::MakeValidatedShape(U8, type.getShape()).value();
+  auto byte_shape = ShapeUtil::MakeShape(U8, type.getShape());
   if (encoding) {
     *byte_shape.mutable_layout() = LayoutUtil::MakeLayout(llvm::to_vector(
         mlir::cast<mlir::DenseElementsAttr>(encoding).getValues<int64_t>()));
   }
   auto linear_shape =
-      ShapeUtil::MakeValidatedShape(U8, {ShapeUtil::ElementsIn(byte_shape)})
-          .value();
+      ShapeUtil::MakeShape(U8, {ShapeUtil::ElementsIn(byte_shape)});
   auto linearized_map =
       GetBitcastMap(byte_shape, linear_shape, rewriter.getContext());
   mlir::SmallVector<Value> result;

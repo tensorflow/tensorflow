@@ -5865,8 +5865,7 @@ AllocationResult MsaAlgorithm::WindowPrefetch(
 
     if (options_.window_prefetch_mode == WindowPrefetchMode::kWindowPrefetch) {
       // Window prefetch mode
-      const Shape shape =
-          ShapeUtil::MakeValidatedShape(U8, {window.size()}).value();
+      const Shape shape = ShapeUtil::MakeShape(U8, {window.size()});
       Prefetch(window_prefetch_request, prev_allocation_in_default_mem, &shape);
     } else {
       // Window exposure mode, we only need to find a chunk for the window

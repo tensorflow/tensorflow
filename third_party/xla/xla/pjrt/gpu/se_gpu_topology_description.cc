@@ -41,7 +41,7 @@ absl::StatusOr<std::string> StreamExecutorGpuTopologyDescription::Serialize()
 
 absl::StatusOr<Layout> StreamExecutorGpuTopologyDescription::GetDefaultLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims) const {
-  Shape shape = ShapeUtil::MakeValidatedShape(element_type, dims).value();
+  Shape shape = ShapeUtil::MakeShape(element_type, dims);
   Layout layout = LayoutUtil::GetWithDefaultLayout(shape).layout();
   // `GetWithDefaultLayout` returns a padded layout for sub-byte types since the
   // notion of "default" is context dependent and in this case means the default

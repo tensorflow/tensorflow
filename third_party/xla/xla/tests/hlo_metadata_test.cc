@@ -32,10 +32,8 @@ class HloMetadataTest : public LocalClientTestBase {
   }
 
   void BuildAddComputation(XlaBuilder* builder) {
-    auto x = Parameter(builder, 0,
-                       ShapeUtil::MakeValidatedShape(F32, {}).value(), "x");
-    auto y = Parameter(builder, 1,
-                       ShapeUtil::MakeValidatedShape(F32, {}).value(), "y");
+    auto x = Parameter(builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
+    auto y = Parameter(builder, 1, ShapeUtil::MakeShape(F32, {}), "y");
     Add(x, y);
   }
 
@@ -48,7 +46,7 @@ TEST_F(HloMetadataTest, MetadataPropagation) {
   BuildAddComputation(&builder);
   builder.ClearOpMetadata();
 
-  Shape argument_layout = ShapeUtil::MakeValidatedShape(F32, {}).value();
+  Shape argument_layout = ShapeUtil::MakeShape(F32, {});
   TF_ASSERT_OK_AND_ASSIGN(
       auto executables,
       local_client_->Compile(builder.Build().value(),
@@ -71,7 +69,7 @@ TEST_F(HloMetadataTest, MetadataClearing) {
   builder.ClearOpMetadata();
   BuildAddComputation(&builder);
 
-  Shape argument_layout = ShapeUtil::MakeValidatedShape(F32, {}).value();
+  Shape argument_layout = ShapeUtil::MakeShape(F32, {});
   TF_ASSERT_OK_AND_ASSIGN(
       auto executables,
       local_client_->Compile(builder.Build().value(),

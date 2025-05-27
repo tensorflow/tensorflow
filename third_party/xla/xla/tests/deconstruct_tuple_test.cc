@@ -172,8 +172,7 @@ XLA_TEST_F(DeconstructTupleTest, DeconstructTupleFromParam) {
   Literal param0_literal = LiteralUtil::CreateR1<float>({3.14f, -100.25f});
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(param0_literal).value();
-  auto p = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(F32, {2}).value(), "param0");
+  auto p = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2}), "param0");
   Tuple(&builder, {p});
   auto global_data = ExecuteAndCheckTransfer(&builder, {param0_data.get()});
 

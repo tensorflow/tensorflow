@@ -39,21 +39,17 @@ namespace xla {
 // compiler.
 class MlirKernelSource final : public KernelSource {
  public:
-  struct Storage {
-    std::unique_ptr<mlir::MLIRContext> context;
-    mlir::OwningOpRef<mlir::ModuleOp> module;
-  };
-
   // Construct a MLIR kernel source from a module and take ownership of its MLIR
   // context.
-  MlirKernelSource(std::unique_ptr<mlir::MLIRContext> context,
-                   mlir::OwningOpRef<mlir::ModuleOp> module)
-      : storage_{std::move(context), std::move(module)} {}
+  MlirKernelSource(std::unique_ptr<mlir::MLIRContext> mlir_context,
+                   mlir::OwningOpRef<mlir::ModuleOp> mlir_module)
+      : mlir_context_(std::move(mlir_context)),
+        module_(std::move(mlir_module)) {}
 
   // Construct a MLIR kernel source from a module but don't take any ownership
   // of the MLIR context.
-  explicit MlirKernelSource(mlir::OwningOpRef<mlir::ModuleOp> module)
-      : storage_{nullptr, std::move(module)} {}
+  explicit MlirKernelSource(mlir::OwningOpRef<mlir::ModuleOp> mlir_module)
+      : module_(std::move(mlir_module)) {}
 
   MlirKernelSource(MlirKernelSource&& other) noexcept = default;
   MlirKernelSource& operator=(MlirKernelSource&& other) noexcept = default;
@@ -61,16 +57,13 @@ class MlirKernelSource final : public KernelSource {
   static absl::StatusOr<MlirKernelSource> ParseFromString(
       absl::string_view ir, std::unique_ptr<mlir::MLIRContext> context);
 
-  mlir::ModuleOp module() { return *storage_.module; }
+  mlir::ModuleOp module() { return *module_; }
 
-  Storage ReleaseStorage() && { return std::move(storage_); }
-
-  std::string ToString() const final {
-    return mlir::debugString(*storage_.module);
-  }
+  std::string ToString() const final { return mlir::debugString(*module_); }
 
  private:
-  Storage storage_;
+  std::unique_ptr<mlir::MLIRContext> mlir_context_;
+  mlir::OwningOpRef<mlir::ModuleOp> module_;
 };
 
 }  // namespace xla

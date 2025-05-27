@@ -301,12 +301,15 @@ class GammaTest(test.TestCase):
     # Uses the Kolmogorov-Smirnov test for goodness of fit.
     if not stats:
       return True  # If we can't test, return that the test passes.
-    ks, _ = stats.kstest(samples, stats.gamma(alpha, scale=1 / beta).cdf)
+    ks, _ = stats.kstest(
+        np.array(samples, dtype=np.float64),
+        stats.gamma(alpha, scale=1 / beta).cdf,
+    )
     # Return True when the test passes.
     return ks < 0.02
 
   def testGammaPdfOfSampleMultiDims(self):
-    gamma = gamma_lib.Gamma(concentration=[7., 11.], rate=[[5.], [6.]])
+    gamma = gamma_lib.Gamma(concentration=[7.0, 11.0], rate=[[5.0], [6.0]])
     num = 50000
     samples = gamma.sample(num, seed=137)
     pdfs = gamma.prob(samples)

@@ -25,9 +25,9 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
+#include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
-#include "xla/codegen/llvm_kernel_definition.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
@@ -58,7 +58,7 @@ DotKernelEmitter::DotKernelEmitter(const HloInstruction* instr,
       buffer_assignment_(buffer_assignment),
       target_machine_(target_machine) {}
 
-absl::StatusOr<LlvmKernelDefinition> DotKernelEmitter::EmitKernelDefinition() {
+absl::StatusOr<KernelDefinition> DotKernelEmitter::EmitKernelDefinition() {
   const HloModuleConfig& config = instr_->GetModule()->config();
 
   DotImplementationStrategy strategy = GetDotImplementationStrategy(
@@ -100,14 +100,15 @@ absl::StatusOr<LlvmKernelDefinition> DotKernelEmitter::EmitKernelDefinition() {
       &builder, config, *target_machine_,
       /*allow_runtime_calls=*/false));
 
-  LlvmIrKernelSource source(std::move(ctx), std::move(llvm_module));
+  auto source = std::make_unique<LlvmIrKernelSource>(std::move(ctx),
+                                                     std::move(llvm_module));
 
   KernelSpec spec(kernel_prototype.function->getName(), NumWorkGroups(),
                   std::move(kernel_prototype.argument_buffers),
                   std::move(kernel_prototype.result_buffers),
                   std::move(kernel_prototype.invariant_arguments));
 
-  return LlvmKernelDefinition(std::move(spec), std::move(source));
+  return KernelDefinition(std::move(spec), std::move(source));
 }
 
 }  // namespace xla::cpu

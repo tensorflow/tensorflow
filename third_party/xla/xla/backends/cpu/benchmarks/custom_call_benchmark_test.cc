@@ -183,7 +183,7 @@ static void BM_CustomCall_16FloatBuffers(benchmark::State& state,
 
   std::minstd_rand0 engine;
 
-  auto shape = ShapeUtil::MakeValidatedShape(F32, {d, d}).value();
+  auto shape = ShapeUtil::MakeShape(F32, {d, d});
   auto p0 = *LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
   std::vector<const Literal*> args(10, &p0);
 

@@ -519,7 +519,7 @@ absl::StatusOr<mlir::ArrayAttr> ExtractLayoutsFromShapes(
     // currently. The layout has to be dense, and only specify the order of
     // dimensions. Sparse, tiled layout or non-default memory space fields
     // cannot be expressed in MHLO layout yet.
-    if (!shape_and_layout.IsArray()) {
+    if (!xla::LayoutUtil::IsDenseArray(shape_and_layout)) {
       return Unimplemented("Only dense arrays are supported.");
     }
 
