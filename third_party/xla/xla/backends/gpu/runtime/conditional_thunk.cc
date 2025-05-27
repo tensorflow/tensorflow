@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/host_memory_pool.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -166,6 +167,28 @@ absl::StatusOr<ThunkProto> ConditionalThunk::ToProto() const {
 
   conditional_thunk_proto->set_branch_index_is_bool(branch_index_is_bool_);
   return proto;
+}
+
+absl::StatusOr<std::unique_ptr<ConditionalThunk>> ConditionalThunk::FromProto(
+    ThunkInfo thunk_info, const ConditionalThunkProto& thunk_proto,
+    absl::Span<const BufferAllocation> buffer_allocations,
+    const Deserializer& deserializer) {
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice branch_index_buffer_index,
+      BufferAllocation::Slice::FromProto(thunk_proto.branch_index_buffer(),
+                                         buffer_allocations));
+
+  std::vector<std::unique_ptr<SequentialThunk>> branch_thunks;
+  branch_thunks.reserve(thunk_proto.branch_thunks_size());
+  for (const auto& seq_thunk_proto : thunk_proto.branch_thunks()) {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<SequentialThunk> seq_thunk,
+        SequentialThunk::FromProto(thunk_info, seq_thunk_proto, deserializer));
+    branch_thunks.push_back(std::move(seq_thunk));
+  }
+  return std::make_unique<ConditionalThunk>(
+      std::move(thunk_info), branch_index_buffer_index,
+      std::move(branch_thunks), thunk_proto.branch_index_is_bool());
 }
 
 }  // namespace gpu

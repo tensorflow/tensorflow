@@ -508,8 +508,11 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -1892,6 +1895,7 @@ cc_library(
     srcs = ["thunk_proto_deserialization.cc"],
     hdrs = ["thunk_proto_deserialization.h"],
     deps = [
+        ":conditional_thunk",
         ":copy_thunk",
         ":gemm_thunk",
         ":sequential_thunk",
@@ -1910,6 +1914,7 @@ xla_cc_test(
     name = "thunk_proto_deserialization_test",
     srcs = ["thunk_proto_deserialization_test.cc"],
     deps = [
+        ":conditional_thunk",
         ":copy_thunk",
         ":sequential_thunk",
         ":thunk",

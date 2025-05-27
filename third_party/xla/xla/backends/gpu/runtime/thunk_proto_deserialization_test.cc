@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -274,6 +275,97 @@ TEST(ThunkProtoDeserializationTest, WhileThunk) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Thunk> athunk,
                           DeserializeThunkProto(proto, buffer_allocations));
   auto* thunk = dynamic_cast<WhileThunk*>(athunk.get());
+  ASSERT_NE(thunk, nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  EXPECT_THAT(round_trip_proto, EqualsProto(proto));
+}
+
+TEST(ThunkProtoDeserializationTest, ConditionalThunk) {
+  ThunkProto proto;
+  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        thunk_info {
+          profile_annotation: "profile_annotation"
+          execution_stream_id: 123
+        }
+        conditional_thunk {
+          branch_index_buffer { offset: 8 size: 256 buffer_allocation_index: 5 }
+          branch_thunks {
+            thunks {
+              thunk_info {
+                profile_annotation: "profile_annotation"
+                execution_stream_id: 123
+              }
+              copy_thunk {
+                source_buffer { offset: 0 size: 256 buffer_allocation_index: 0 }
+                destination_buffer {
+                  offset: 1
+                  size: 257
+                  buffer_allocation_index: 1
+                }
+              }
+            }
+            thunks {
+              thunk_info {
+                profile_annotation: "profile_annotation"
+                execution_stream_id: 123
+              }
+              copy_thunk {
+                source_buffer { offset: 2 size: 258 buffer_allocation_index: 1 }
+                destination_buffer {
+                  offset: 3
+                  size: 259
+                  buffer_allocation_index: 2
+                }
+              }
+            }
+          }
+          branch_thunks {
+            thunks {
+              thunk_info {
+                profile_annotation: "profile_annotation"
+                execution_stream_id: 123
+              }
+              copy_thunk {
+                source_buffer { offset: 4 size: 260 buffer_allocation_index: 2 }
+                destination_buffer {
+                  offset: 5
+                  size: 261
+                  buffer_allocation_index: 3
+                }
+              }
+            }
+            thunks {
+              thunk_info {
+                profile_annotation: "profile_annotation"
+                execution_stream_id: 123
+              }
+              copy_thunk {
+                source_buffer { offset: 6 size: 262 buffer_allocation_index: 3 }
+                destination_buffer {
+                  offset: 7
+                  size: 263
+                  buffer_allocation_index: 4
+                }
+              }
+            }
+          }
+          branch_index_is_bool: true
+        }
+      )pb",
+      &proto));
+
+  std::vector<BufferAllocation> buffer_allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
+      BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0),
+      BufferAllocation(/*index=*/2, /*size=*/1024, /*color=*/0),
+      BufferAllocation(/*index=*/3, /*size=*/1024, /*color=*/0),
+      BufferAllocation(/*index=*/4, /*size=*/1024, /*color=*/0),
+      BufferAllocation(/*index=*/5, /*size=*/1024, /*color=*/0)};
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Thunk> athunk,
+                          DeserializeThunkProto(proto, buffer_allocations));
+  auto* thunk = dynamic_cast<ConditionalThunk*>(athunk.get());
   ASSERT_NE(thunk, nullptr);
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));

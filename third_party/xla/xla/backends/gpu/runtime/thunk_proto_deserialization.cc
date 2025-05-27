@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
@@ -62,6 +63,14 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
   if (thunk_proto.has_while_thunk()) {
     return WhileThunk::FromProto(
         std::move(thunk_info), thunk_proto.while_thunk(), buffer_allocations,
+        [&buffer_allocations](const ThunkProto& thunk_proto) {
+          return DeserializeThunkProto(thunk_proto, buffer_allocations);
+        });
+  }
+  if (thunk_proto.has_conditional_thunk()) {
+    return ConditionalThunk::FromProto(
+        std::move(thunk_info), thunk_proto.conditional_thunk(),
+        buffer_allocations,
         [&buffer_allocations](const ThunkProto& thunk_proto) {
           return DeserializeThunkProto(thunk_proto, buffer_allocations);
         });

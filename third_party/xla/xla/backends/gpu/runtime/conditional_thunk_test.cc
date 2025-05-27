@@ -22,7 +22,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -30,6 +32,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla::gpu {
 namespace {
@@ -45,6 +48,12 @@ struct DummyThunk : public Thunk {
       : Thunk(kind, std::move(thunk_info)) {}
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
     return absl::OkStatus();
+  }
+  static absl::StatusOr<std::unique_ptr<DummyThunk>> FromProto(
+      const ThunkProto& thunk_proto, Thunk::Kind kind) {
+    TF_ASSIGN_OR_RETURN(Thunk::ThunkInfo thunk_info,
+                        Thunk::ThunkInfo::FromProto(thunk_proto.thunk_info()));
+    return std::make_unique<DummyThunk>(kind, std::move(thunk_info));
   }
 };
 
@@ -161,6 +170,68 @@ TEST(ConditionalThunkTest, ToProto) {
     }
   )pb";
   EXPECT_THAT(proto, EqualsProto(expected));
+}
+
+TEST(ConditionalThunkTest, FromProto) {
+  ThunkProto proto;
+  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        thunk_info {
+          profile_annotation: "profile_annotation"
+          execution_stream_id: 123
+        }
+        conditional_thunk {
+          branch_index_buffer { offset: 8 size: 256 buffer_allocation_index: 0 }
+          branch_thunks {
+            thunks {
+              thunk_info {
+                profile_annotation: "profile_annotation"
+                execution_stream_id: 123
+              }
+            }
+            thunks {
+              thunk_info {
+                profile_annotation: "profile_annotation"
+                execution_stream_id: 123
+              }
+            }
+          }
+          branch_thunks {
+            thunks {
+              thunk_info {
+                profile_annotation: "profile_annotation"
+                execution_stream_id: 123
+              }
+            }
+            thunks {
+              thunk_info {
+                profile_annotation: "profile_annotation"
+                execution_stream_id: 123
+              }
+            }
+          }
+          branch_index_is_bool: true
+        }
+      )pb",
+      &proto));
+
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.profile_annotation = "profile_annotation";
+  thunk_info.execution_stream_id = 123;
+  std::vector<BufferAllocation> buffer_allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0)};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<ConditionalThunk> thunk,
+      ConditionalThunk::FromProto(
+          thunk_info, proto.conditional_thunk(), buffer_allocations,
+          [](const ThunkProto& proto)
+              -> absl::StatusOr<std::unique_ptr<DummyThunk>> {
+            return DummyThunk::FromProto(proto, Kind::kCustomCall);
+          }));
+  ASSERT_NE(thunk, nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
 }  // namespace
