@@ -209,9 +209,9 @@ TEST_F(WhileLoopSimplifierTest, LoopWithRecvNotSimplified) {
   ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
   auto* while_body = while_op->while_body();
   auto* token = while_body->AddInstruction(HloInstruction::CreateToken());
-  auto* recv = while_body->AddInstruction(
-      HloInstruction::CreateRecv(ShapeUtil::MakeShape(F32, {1}), token,
-                                 /*channel_id=*/0, /*is_host_transfer=*/false));
+  auto* recv = while_body->AddInstruction(HloInstruction::CreateRecv(
+      ShapeUtil::MakeValidatedShape(F32, {1}).value(), token,
+      /*channel_id=*/0, /*is_host_transfer=*/false));
   while_body->AddInstruction(HloInstruction::CreateRecvDone(
       recv, /*channel_id=*/0, /*is_host_transfer=*/false));
   EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).value());
@@ -227,7 +227,7 @@ TEST_F(WhileLoopSimplifierTest, LoopWithInfeedSimplified) {
   auto* while_body = while_op->while_body();
   auto token = while_body->AddInstruction(HloInstruction::CreateToken());
   while_body->AddInstruction(HloInstruction::CreateInfeed(
-      ShapeUtil::MakeShape(F32, {1}), token, "config"));
+      ShapeUtil::MakeValidatedShape(F32, {1}).value(), token, "config"));
   EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).value());
 }
 
@@ -242,7 +242,7 @@ TEST_F(WhileLoopSimplifierTest, LoopWithInfeedInCondNotSimplified) {
   auto* while_cond = while_op->while_condition();
   auto token = while_cond->AddInstruction(HloInstruction::CreateToken());
   while_cond->AddInstruction(HloInstruction::CreateInfeed(
-      ShapeUtil::MakeShape(F32, {1}), token, "config"));
+      ShapeUtil::MakeValidatedShape(F32, {1}).value(), token, "config"));
   EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).value());
 }
 
@@ -472,10 +472,10 @@ TEST_F(WhileLoopSimplifierTest, RemoveUnusedLoopOperands) {
                 instr->name() != "while");
       });
 
-  auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
-  EXPECT_TRUE(
-      ShapeUtil::Equal(new_while_op->shape(),
-                       ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32})))
+  auto scalar_s32 = ShapeUtil::MakeValidatedShape(S32, {}).value();
+  EXPECT_TRUE(ShapeUtil::Equal(
+      new_while_op->shape(),
+      ShapeUtil::MakeValidatedTupleShape({scalar_s32, scalar_s32}).value()))
       << ShapeUtil::HumanString(new_while_op->shape());
   EXPECT_THAT(
       new_while_op->while_body()->root_instruction(),

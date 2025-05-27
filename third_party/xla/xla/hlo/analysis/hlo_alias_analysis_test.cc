@@ -153,7 +153,7 @@ class HloAliasAnalysisTest : public HloHardwareIndependentTestBase {
   std::unique_ptr<HloModule> module_;
   std::unique_ptr<HloAliasAnalysis> analysis_;
 
-  const Shape scalar_shape_ = ShapeUtil::MakeShape(F32, {});
+  const Shape scalar_shape_ = ShapeUtil::MakeValidatedShape(F32, {}).value();
 };
 
 TEST_F(HloAliasAnalysisTest, BinaryOperation) {
@@ -262,7 +262,8 @@ TEST_F(HloAliasAnalysisTest, NondistinctTuple) {
 
 TEST_F(HloAliasAnalysisTest, ParametersWithAliasing) {
   const Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+      ShapeUtil::MakeValidatedTupleShape({scalar_shape_, scalar_shape_})
+          .value();
 
   auto builder = HloComputation::Builder(TestName());
   auto param = builder.AddInstruction(
@@ -311,7 +312,8 @@ TEST_F(HloAliasAnalysisTest, ParametersWithCrossAliasing) {
   //     /   \
   //  (p0  ,  p1)
   const Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+      ShapeUtil::MakeValidatedTupleShape({scalar_shape_, scalar_shape_})
+          .value();
 
   auto builder = HloComputation::Builder(TestName());
   auto param = builder.AddInstruction(
@@ -369,7 +371,8 @@ TEST_F(HloAliasAnalysisTest, InputOutputAliasingWithWhile) {
   //   return Tuple(negate_1, negate_2)
   //
   const Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+      ShapeUtil::MakeValidatedTupleShape({scalar_shape_, scalar_shape_})
+          .value();
 
   // Element 0 passes transparently through the body.
   auto body_builder = HloComputation::Builder("body");
@@ -554,7 +557,8 @@ TEST_F(HloAliasAnalysisTest, SingleWhile) {
   //   return While(%tuple, body, condition)
   //
   const Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+      ShapeUtil::MakeValidatedTupleShape({scalar_shape_, scalar_shape_})
+          .value();
 
   // Element 0 passes transparently through the body.
   auto body_builder = HloComputation::Builder("body");
@@ -647,7 +651,8 @@ TEST_F(HloAliasAnalysisTest, SequentialWhiles) {
   //   return While(%while1, body, condition)
   //
   const Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+      ShapeUtil::MakeValidatedTupleShape({scalar_shape_, scalar_shape_})
+          .value();
 
   // Element 0 passes transparently through the body.
   auto body_builder = HloComputation::Builder("body");
@@ -720,7 +725,8 @@ TEST_F(HloAliasAnalysisTest, NestedWhiles) {
   //   return While(%tuple, outer_body, condition)
   //
   const Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+      ShapeUtil::MakeValidatedTupleShape({scalar_shape_, scalar_shape_})
+          .value();
 
   auto build_cond_computation = [&tuple_shape]() {
     auto cond_builder = HloComputation::Builder("condition");
@@ -818,8 +824,9 @@ TEST_F(HloAliasAnalysisTest, SwizzlingWhile) {
   //   %tuple = Tuple(%constant1, %constant2, %constant3)
   //   return While(%tuple, body, condition)
   //
-  const Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_, scalar_shape_});
+  const Shape tuple_shape = ShapeUtil::MakeValidatedTupleShape(
+                                {scalar_shape_, scalar_shape_, scalar_shape_})
+                                .value();
 
   auto body_builder = HloComputation::Builder("body");
   auto body_param = body_builder.AddInstruction(
@@ -906,9 +913,9 @@ TEST_F(HloAliasAnalysisTest, Bitcast) {
 }
 
 TEST_F(HloAliasAnalysisTest, DynamicUpdateSlice) {
-  Shape shape = ShapeUtil::MakeShape(F32, {8});
-  Shape update_shape = ShapeUtil::MakeShape(F32, {4});
-  Shape index_shape = ShapeUtil::MakeShape(S32, {});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {8}).value();
+  Shape update_shape = ShapeUtil::MakeValidatedShape(F32, {4}).value();
+  Shape index_shape = ShapeUtil::MakeValidatedShape(S32, {}).value();
   auto builder = HloComputation::Builder(TestName());
   auto param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, shape, "param0"));

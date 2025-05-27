@@ -627,32 +627,31 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
 
     DnnScratchAllocator scratch_allocator(ConvolveScratchSize(), context);
     Status cudnn_launch_status;
-    if (!autotune_entry.is_algorithm_config()) {
-      auto& runners = autotune_entry.GetOpRunners();
-      se::dnn::FusedConvOp::Config config{se::dnn::ConvolutionKind::FORWARD,
-                                          element_type,
-                                          element_type,
-                                          element_type,
-                                          kConvScale,
-                                          kSideInputScale,
-                                          leakyrelu_alpha,
-                                          input_desc,
-                                          filter_desc,
-                                          bias_desc,
-                                          output_desc,
-                                          conv_desc,
-                                          dnn_activation_mode};
-      auto primary_or = runners.primary->GetOrCreateRunner(config, stream);
-      OP_REQUIRES_OK(context, primary_or.status());
-      auto* primary = primary_or.value();
+    auto& runners = autotune_entry.GetOpRunners();
+    se::dnn::FusedConvOp::Config config{se::dnn::ConvolutionKind::FORWARD,
+                                        element_type,
+                                        element_type,
+                                        element_type,
+                                        kConvScale,
+                                        kSideInputScale,
+                                        leakyrelu_alpha,
+                                        input_desc,
+                                        filter_desc,
+                                        bias_desc,
+                                        output_desc,
+                                        conv_desc,
+                                        dnn_activation_mode};
+    auto primary_or = runners.primary->GetOrCreateRunner(config, stream);
+    OP_REQUIRES_OK(context, primary_or.status());
+    auto* primary = primary_or.value();
 
-      const se::dnn::FusedConvRunner* no_scratch_fallback = nullptr;
-      if (runners.no_scratch_fallback) {
-        auto no_scratch_fallback_or =
-            runners.no_scratch_fallback->GetOrCreateRunner(config, stream);
-        OP_REQUIRES_OK(context, no_scratch_fallback_or.status());
-        no_scratch_fallback = no_scratch_fallback_or.value();
-      }
+    const se::dnn::FusedConvRunner* no_scratch_fallback = nullptr;
+    if (runners.no_scratch_fallback) {
+      auto no_scratch_fallback_or =
+          runners.no_scratch_fallback->GetOrCreateRunner(config, stream);
+      OP_REQUIRES_OK(context, no_scratch_fallback_or.status());
+      no_scratch_fallback = no_scratch_fallback_or.value();
+    }
 
       auto runner_and_scratch_or =
           AllocateScratchOrFallback<se::dnn::FusedConvOp::Signature>(
@@ -664,31 +663,16 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
       cudnn_launch_status = runner(
           stream, nullptr, std::get<se::DeviceMemoryBase>(runner_and_scratch),
           input_ptr, filter_ptr, side_input_ptr, bias_ptr, output_ptr);
-    } else {
-      auto dnn = stream->parent()->AsDnn();
-      OP_REQUIRES(context, dnn != nullptr,
-                  absl::InternalError("No DNN for stream."));
-      cudnn_launch_status = dnn->FusedConvolveWithAlgorithm(
-          stream, input_desc, input_ptr,    // input
-          kConvScale,                       // input_scale
-          filter_desc, filter_ptr,          // filter
-          conv_desc,                        // conv
-          side_input_ptr, kSideInputScale,  // side_input
-          bias_desc, bias_ptr,              // bias
-          dnn_activation_mode,              // activation
-          output_desc, &output_ptr,         // output
-          &scratch_allocator, autotune_entry.GetAlgorithmConfig(), nullptr);
-    }
 
-    OP_REQUIRES_OK(context, cudnn_launch_status);
+      OP_REQUIRES_OK(context, cudnn_launch_status);
 
-    // Convert the output tensor back from NCHW to NHWC.
-    if (!compute_in_nhwc && params.data_format == FORMAT_NHWC) {
-      functor::NCHWToNHWC<GPUDevice, T, 4>()(
-          context->eigen_device<GPUDevice>(),
-          const_cast<const Tensor&>(transformed_output).tensor<T, 4>(),
-          output->tensor<T, 4>());
-    }
+      // Convert the output tensor back from NCHW to NHWC.
+      if (!compute_in_nhwc && params.data_format == FORMAT_NHWC) {
+        functor::NCHWToNHWC<GPUDevice, T, 4>()(
+            context->eigen_device<GPUDevice>(),
+            const_cast<const Tensor&>(transformed_output).tensor<T, 4>(),
+            output->tensor<T, 4>());
+      }
   }
 };
 

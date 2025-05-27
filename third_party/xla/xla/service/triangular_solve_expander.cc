@@ -300,14 +300,17 @@ XlaOp TriangularSolveExpander::InvertDiagonalBlocks(
     // inverting the blocks one row at a time
     std::vector<Shape> tuple_shapes = {
         // The loop iteration counter is a scalar, incremented each iteration.
-        ShapeUtil::MakeShape(S32, {}),
+        ShapeUtil::MakeValidatedShape(S32, {}).value(),
         // The output has the shape of A, with one row updated each iteration.
-        ShapeUtil::MakeShape(shape.element_type(),
-                             {num_blocks, block_size, block_size}),
+        ShapeUtil::MakeValidatedShape(shape.element_type(),
+                                      {num_blocks, block_size, block_size})
+            .value(),
         // The input is a loop invariant.
-        ShapeUtil::MakeShape(shape.element_type(),
-                             {num_blocks, block_size, block_size})};
-    Shape tuple_shape = ShapeUtil::MakeTupleShape(tuple_shapes);
+        ShapeUtil::MakeValidatedShape(shape.element_type(),
+                                      {num_blocks, block_size, block_size})
+            .value()};
+    Shape tuple_shape =
+        ShapeUtil::MakeValidatedTupleShape(tuple_shapes).value();
 
     auto init_i = One(builder, S32);
     auto init = Tuple(builder, {init_i, output, scaled_diag_blocks});

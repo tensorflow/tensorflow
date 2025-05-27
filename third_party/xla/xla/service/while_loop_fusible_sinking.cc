@@ -237,7 +237,7 @@ absl::StatusOr<bool> TryRewritingBroadcastAsAllocateBuffer(
   }
   HloInstruction* is_first_iteration_pred =
       while_body->AddInstruction(HloInstruction::CreateCompare(
-          ShapeUtil::MakeShape(PRED, {}), iteration_var_gte,
+          ShapeUtil::MakeValidatedShape(PRED, {}).value(), iteration_var_gte,
           loop_iteration_variable_initial_value_gte,
           Comparison::Direction::kEq));
   for (int64_t loop_index : loop_indices) {
@@ -262,8 +262,9 @@ absl::StatusOr<bool> TryRewritingBroadcastAsAllocateBuffer(
     // Broadcast the predicate to the shape of the buffer.
     HloInstruction* is_first_iteration_pred_broadcast =
         while_body->AddInstruction(HloInstruction::CreateBroadcast(
-            ShapeUtil::MakeShapeWithDescendingLayout(
-                PRED, new_buffer->shape().dimensions()),
+            ShapeUtil::MakeValidatedShapeWithDescendingLayout(
+                PRED, new_buffer->shape().dimensions())
+                .value(),
             is_first_iteration_pred, {}));
     HloInstruction* sunk_constant_broadcast =
         while_body->AddInstruction(HloInstruction::CreateBroadcast(

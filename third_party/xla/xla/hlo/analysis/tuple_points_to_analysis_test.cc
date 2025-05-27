@@ -341,8 +341,9 @@ TEST_F(TuplePointsToAnalysisTest, CopyStartAndCopyDone) {
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto copy_start = builder.AddInstruction(HloInstruction::CreateCopyStart(
-      ShapeUtil::MakeTupleShape({constant->shape(), constant->shape(),
-                                 ShapeUtil::MakeShape(U32, {})}),
+      ShapeUtil::MakeValidatedTupleShape(
+          {constant->shape(), constant->shape(), ShapeUtil::MakeShape(U32, {})})
+          .value(),
       constant));
   auto copy_done = builder.AddInstruction(HloInstruction::CreateUnary(
       constant->shape(), HloOpcode::kCopyDone, copy_start));
@@ -433,9 +434,9 @@ TEST_F(TuplePointsToAnalysisTest, RecvAndRecvDone) {
   // RecvDone forwards its operand tuple element at {0} to the output.
   auto builder = HloComputation::Builder(TestName());
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
-  auto recv = builder.AddInstruction(
-      HloInstruction::CreateRecv(ShapeUtil::MakeShape(F32, {1, 2, 3}), token,
-                                 /*channel_id=*/0, /*is_host_transfer=*/false));
+  auto recv = builder.AddInstruction(HloInstruction::CreateRecv(
+      ShapeUtil::MakeValidatedShape(F32, {1, 2, 3}).value(), token,
+      /*channel_id=*/0, /*is_host_transfer=*/false));
   auto recv_done = builder.AddInstruction(HloInstruction::CreateRecvDone(
       recv, recv->channel_id(), /*is_host_transfer=*/false));
 
@@ -541,10 +542,10 @@ TEST_F(TuplePointsToAnalysisTest, DISABLED_CustomCall) {
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  Shape data_shape = ShapeUtil::MakeShape(F32, {});
+  Shape data_shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
   auto ccall = builder.AddInstruction(HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeTupleShape({data_shape, data_shape}), {constant},
-      "TestOp"));
+      ShapeUtil::MakeValidatedTupleShape({data_shape, data_shape}).value(),
+      {constant}, "TestOp"));
   Cast<HloCustomCallInstruction>(ccall)->set_output_to_operand_aliasing(
       {std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>{
           ShapeIndex{1}, std::pair<int64_t, ShapeIndex>(0, {})}});
@@ -801,9 +802,10 @@ class DoesNotUseOperandBufferTest : public PointsToAnalysisTestBase {};
 TEST_F(DoesNotUseOperandBufferTest, GetTupleElement) {
   auto builder = HloComputation::Builder(TestName());
 
-  Shape elem_shape = ShapeUtil::MakeShape(F32, {8});
+  Shape elem_shape = ShapeUtil::MakeValidatedShape(F32, {8}).value();
   auto tuple = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeTupleShape({elem_shape, elem_shape}), "tuple"));
+      0, ShapeUtil::MakeValidatedTupleShape({elem_shape, elem_shape}).value(),
+      "tuple"));
   auto gte0 = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(elem_shape, tuple, 0));
   auto gte1 = builder.AddInstruction(
@@ -824,9 +826,10 @@ TEST_F(DoesNotUseOperandBufferTest, GetTupleElement) {
 TEST_F(DoesNotUseOperandBufferTest, FusedDynamicUpdateSlice) {
   auto builder = HloComputation::Builder(TestName());
 
-  Shape data_shape = ShapeUtil::MakeShape(F32, {8});
+  Shape data_shape = ShapeUtil::MakeValidatedShape(F32, {8}).value();
   auto tuple = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeTupleShape({data_shape, data_shape}), "tuple"));
+      0, ShapeUtil::MakeValidatedTupleShape({data_shape, data_shape}).value(),
+      "tuple"));
   auto gte0 = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(data_shape, tuple, 0));
   auto gte1 = builder.AddInstruction(

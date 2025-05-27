@@ -117,25 +117,32 @@ HloInstruction* ShuffleWithinEachPartitionUsingOneHot(HloInstruction* hlo,
   int64_t size_per_partition = hlo->shape().dimensions().back();
   CHECK_EQ(size_per_partition % num_partitions, 0);
   auto indices_iota = b->AddInstruction(HloInstruction::CreateIota(
-      ShapeUtil::MakeShape(S32, {size_per_partition}), 0));
+      ShapeUtil::MakeValidatedShape(S32, {size_per_partition}).value(), 0));
   auto reshape_indices_iota = b->AddInstruction(HloInstruction::CreateReshape(
-      ShapeUtil::MakeShape(
-          S32, {size_per_partition / num_partitions, num_partitions}),
+      ShapeUtil::MakeValidatedShape(
+          S32, {size_per_partition / num_partitions, num_partitions})
+          .value(),
       indices_iota));
   auto transpoe_indices_iota =
       b->AddInstruction(HloInstruction::CreateTranspose(
-          ShapeUtil::MakeShape(
-              S32, {num_partitions, size_per_partition / num_partitions}),
+          ShapeUtil::MakeValidatedShape(
+              S32, {num_partitions, size_per_partition / num_partitions})
+              .value(),
           reshape_indices_iota, {1, 0}));
   auto one_hot_indices = b->AddInstruction(HloInstruction::CreateBroadcast(
-      ShapeUtil::MakeShape(S32, {size_per_partition, size_per_partition}),
+      ShapeUtil::MakeValidatedShape(S32,
+                                    {size_per_partition, size_per_partition})
+          .value(),
       b->AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeShape(S32, {size_per_partition}),
+          ShapeUtil::MakeValidatedShape(S32, {size_per_partition}).value(),
           transpoe_indices_iota)),
       /*broadcast_dimensions=*/{1}));
 
   auto partition_indices = b->AddInstruction(HloInstruction::CreateIota(
-      ShapeUtil::MakeShape(S32, {size_per_partition, size_per_partition}), 0));
+      ShapeUtil::MakeValidatedShape(S32,
+                                    {size_per_partition, size_per_partition})
+          .value(),
+      0));
 
   auto shuffle_one_hot = b->AddInstruction(HloInstruction::CreateConvert(
       ShapeUtil::ChangeElementType(partition_indices->shape(),
@@ -240,9 +247,10 @@ HloInstruction* GetFinalFftUsingCollectivePermute(
   SpmdBuilder body_b("fft_collective_permute_body", hlo);
   auto param = body_b.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0,
-      ShapeUtil::MakeTupleShape(
+      ShapeUtil::MakeValidatedTupleShape(
           {hlo->shape(), hlo->shape(), converted_partition_id->shape(),
-           converted_partition_id->shape(), iteration->shape()}),
+           converted_partition_id->shape(), iteration->shape()})
+          .value(),
       "param"));
   auto dest_transform = body_b.AddInstruction(
       HloInstruction::CreateGetTupleElement(hlo->shape(), param, 0));
@@ -313,14 +321,15 @@ HloInstruction* GetFinalFftUsingCollectivePermute(
   SpmdBuilder cond_b("fft_collective_permute_condition", hlo);
   auto cond_param = cond_b.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0,
-      ShapeUtil::MakeTupleShape(
+      ShapeUtil::MakeValidatedTupleShape(
           {hlo->shape(), hlo->shape(), converted_partition_id->shape(),
-           converted_partition_id->shape(), iteration->shape()}),
+           converted_partition_id->shape(), iteration->shape()})
+          .value(),
       "param"));
   auto cond_i = cond_b.AddInstruction(
       HloInstruction::CreateGetTupleElement(iteration->shape(), cond_param, 4));
   cond_b.AddInstruction(HloInstruction::CreateCompare(
-      ShapeUtil::MakeShape(PRED, {}), cond_i,
+      ShapeUtil::MakeValidatedShape(PRED, {}).value(), cond_i,
       cond_b.AddInstruction(HloInstruction::CreateConstant(
           LiteralUtil::CreateR0<uint32_t>(num_partitions))),
       ComparisonDirection::kLt));

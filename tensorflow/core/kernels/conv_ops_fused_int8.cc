@@ -661,34 +661,33 @@ void operator()(
 
   DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
   Status cudnn_launch_status;
-  if (!autotune_entry.is_algorithm_config()) {
-    auto& runners = autotune_entry.GetOpRunners();
-    typename se::dnn::FusedConvOp::Config config{
-        se::dnn::ConvolutionKind::FORWARD,
-        type,
-        bias_type,
-        type,
-        conv_scale,
-        side_input_scale,
-        leakyrelu_alpha,
-        conv_input_desc,
-        filter_desc,
-        bias_desc,
-        output_desc,
-        conv_desc,
-        dnn_activation_mode};
+  auto& runners = autotune_entry.GetOpRunners();
+  typename se::dnn::FusedConvOp::Config config{
+      se::dnn::ConvolutionKind::FORWARD,
+      type,
+      bias_type,
+      type,
+      conv_scale,
+      side_input_scale,
+      leakyrelu_alpha,
+      conv_input_desc,
+      filter_desc,
+      bias_desc,
+      output_desc,
+      conv_desc,
+      dnn_activation_mode};
 
-    auto primary_or = runners.primary->GetOrCreateRunner(config, stream);
-    OP_REQUIRES_OK(ctx, primary_or.status());
-    auto primary = primary_or.value();
+  auto primary_or = runners.primary->GetOrCreateRunner(config, stream);
+  OP_REQUIRES_OK(ctx, primary_or.status());
+  auto primary = primary_or.value();
 
-    const se::dnn::FusedConvRunner* no_scratch_fallback = nullptr;
-    if (runners.no_scratch_fallback) {
-      auto no_scratch_fallback_or =
-          runners.no_scratch_fallback->GetOrCreateRunner(config, stream);
-      OP_REQUIRES_OK(ctx, no_scratch_fallback_or.status());
-      no_scratch_fallback = no_scratch_fallback_or.value();
-    }
+  const se::dnn::FusedConvRunner* no_scratch_fallback = nullptr;
+  if (runners.no_scratch_fallback) {
+    auto no_scratch_fallback_or =
+        runners.no_scratch_fallback->GetOrCreateRunner(config, stream);
+    OP_REQUIRES_OK(ctx, no_scratch_fallback_or.status());
+    no_scratch_fallback = no_scratch_fallback_or.value();
+  }
 
     auto runner_and_scratch_or =
         AllocateScratchOrFallback<se::dnn::FusedConvOp::Signature>(
@@ -701,20 +700,10 @@ void operator()(
         stream, /*output_profile_result=*/nullptr,
         std::get<se::DeviceMemoryBase>(runner_and_scratch), conv_input_ptr,
         filter_ptr, side_input_ptr, bias_ptr, output_ptr);
-  } else {
-    auto dnn = stream->parent()->AsDnn();
-    OP_REQUIRES(ctx, dnn != nullptr, absl::InternalError("No DNN for stream."));
-    cudnn_launch_status = dnn->FusedConvolveWithAlgorithm(
-        stream, conv_input_desc, conv_input_ptr, conv_scale, filter_desc,
-        filter_ptr, conv_desc, side_input_ptr, side_input_scale, bias_desc,
-        bias_ptr, dnn_activation_mode, output_desc, &output_ptr,
-        &scratch_allocator, autotune_entry.GetAlgorithmConfig(),
-        /*output_profile_result=*/nullptr);
-  }
 
-  if (!cudnn_launch_status.ok()) {
-    ctx->SetStatus(cudnn_launch_status);
-  }
+    if (!cudnn_launch_status.ok()) {
+      ctx->SetStatus(cudnn_launch_status);
+    }
 }
 };
 

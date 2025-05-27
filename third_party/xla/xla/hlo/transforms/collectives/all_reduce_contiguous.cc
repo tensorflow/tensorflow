@@ -52,13 +52,15 @@ absl::Status ReplaceWithContiguousAllReduce(
   for (HloInstruction* operand : all_reduce->operands()) {
     TF_RET_CHECK(operand->shape().IsArray());
     int64_t num_elements = ShapeUtil::ElementsIn(operand->shape());
-    Shape flat_shape = ShapeUtil::MakeShape(element_type, {num_elements});
+    Shape flat_shape =
+        ShapeUtil::MakeValidatedShape(element_type, {num_elements}).value();
     flat_operands.push_back(computation.AddInstruction(
         HloInstruction::CreateBitcast(flat_shape, operand)));
     total_size += num_elements;
   }
 
-  Shape concat_shape = ShapeUtil::MakeShape(element_type, {total_size});
+  Shape concat_shape =
+      ShapeUtil::MakeValidatedShape(element_type, {total_size}).value();
   HloInstruction* concatenated =
       computation.AddInstruction(HloInstruction::CreateConcatenate(
           concat_shape, flat_operands, /*dimension=*/0));

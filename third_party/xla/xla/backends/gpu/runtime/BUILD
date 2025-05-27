@@ -1,8 +1,6 @@
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
-load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility", "nvtx_headers")
+load("//xla/tsl:tsl.bzl", "internal_visibility", "nvtx_headers")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
@@ -131,9 +129,8 @@ cc_library(
 
 xla_test(
     name = "command_buffer_cmd_test",
-    srcs = if_gpu_is_configured(["command_buffer_cmd_test.cc"]),
+    srcs = ["command_buffer_cmd_test.cc"],
     backends = ["gpu"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     deps = [
         ":command_buffer_cmd",
         ":thunk",
@@ -241,33 +238,24 @@ cc_library(
 
 xla_test(
     name = "dynamic_slice_thunk_test",
-    srcs = if_gpu_is_configured(["dynamic_slice_thunk_test.cc"]),
-    backend_tags = {
-        "gpu_a100": if_google(["config-cuda-only"]),
-        "gpu_v100": if_google(["config-cuda-only"]),
-    },
+    srcs = ["dynamic_slice_thunk_test.cc"],
     backends = [
-        "gpu_a100",
-        "gpu_v100",
-        "gpu_b200",
-        "gpu_amd_any",
+        "gpu",
     ],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     deps = [
         ":custom_call_thunk",
         ":dynamic_slice_thunk",
         ":gemm_thunk",
         ":thunk",
         "//xla:shape_util",
-        "//xla:types",
         "//xla/ffi",
         "//xla/ffi:ffi_api",
+        "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service:executable",
         "//xla/service:hlo_runner",
         "//xla/service:platform_util",
         "//xla/service/gpu:buffer_allocations",
-        "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu:resource_requests",
         "//xla/stream_executor:blas",
@@ -279,28 +267,21 @@ xla_test(
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:stream_executor_memory_allocator",
-        "//xla/stream_executor/gpu:gpu_test_kernels",
-        "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/tests:hlo_runner_agnostic_test_base",
         "//xla/tsl/lib/core:status_test_util",
-        "@com_google_absl//absl/algorithm:container",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
-    ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-    ]),
+    ],
 )
 
 cc_library(
     name = "cholesky_thunk",
-    srcs = if_gpu_is_configured(["cholesky_thunk.cc"]),
-    hdrs = if_gpu_is_configured(["cholesky_thunk.h"]),
-    deps = if_gpu_is_configured([
-        # keep sorted
+    srcs = ["cholesky_thunk.cc"],
+    hdrs = ["cholesky_thunk.h"],
+    deps = [
         ":make_batch_pointers",
         "//xla:types",
         "//xla:util",
@@ -313,16 +294,15 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:gpu_solver_context",
         "//xla/stream_executor:stream",
+        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:status",
-    ]) + [
-        "//xla/tsl/platform:errors",
-        "@com_google_absl//absl/log:check",
     ],
 )
 
@@ -360,16 +340,7 @@ cc_library(
 xla_test(
     name = "command_buffer_thunk_test",
     srcs = ["command_buffer_thunk_test.cc"],
-    backend_tags = {
-        "gpu_a100": if_google(["config-cuda-only"]),
-        "gpu_v100": if_google(["config-cuda-only"]),
-    },
-    backends = [
-        "gpu_a100",
-        "gpu_v100",
-        "gpu_b200",
-        "gpu_amd_any",
-    ],
+    backends = ["gpu"],
     tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":command_buffer_cmd",
@@ -409,7 +380,6 @@ xla_test(
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/gpu:gpu_test_kernels",
         "//xla/stream_executor/gpu:gpu_test_kernels_fatbin",
-        "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tsl/lib/core:status_test_util",
@@ -420,9 +390,7 @@ xla_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/profiler/lib:profiler_lock",
-    ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-    ]),
+    ],
 )
 
 xla_test(
@@ -1480,10 +1448,9 @@ xla_cc_test(
 
 cc_library(
     name = "triangular_solve_thunk",
-    srcs = if_gpu_is_configured(["triangular_solve_thunk.cc"]),
-    hdrs = if_gpu_is_configured(["triangular_solve_thunk.h"]),
-    deps = if_gpu_is_configured([
-        # keep sorted
+    srcs = ["triangular_solve_thunk.cc"],
+    hdrs = ["triangular_solve_thunk.h"],
+    deps = [
         ":make_batch_pointers",
         "//xla:status_macros",
         "//xla:types",
@@ -1502,7 +1469,7 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:status",
-    ]),
+    ],
 )
 
 cc_library(

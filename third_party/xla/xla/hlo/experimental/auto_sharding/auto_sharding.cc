@@ -663,7 +663,8 @@ void GenerateOutfeedStrategy(const HloInstruction* ins, const Shape& shape,
     for (int i = 0; i < ins->operand_count(); ++i) {
       operand_shapes[i] = ins->operand(i)->shape();
     }
-    auto all_operands_tuple_shape = ShapeUtil::MakeTupleShape(operand_shapes);
+    auto all_operands_tuple_shape =
+        ShapeUtil::MakeValidatedTupleShape(operand_shapes).value();
     auto get_input_sharding = [&](int index) {
       auto sharding = ins->sharding();
       if (sharding.IsTuple()) {
@@ -2403,7 +2404,7 @@ absl::Status SetHloShardingPostProcessing(
           inst->operand(0)->shape().tuple_shapes().end());
       tuple_elements_shape.push_back(inst->operand(1)->shape());
       Shape output_tuple_sharding_shape =
-          ShapeUtil::MakeTupleShape(tuple_elements_shape);
+          ShapeUtil::MakeValidatedTupleShape(tuple_elements_shape).value();
       ShapeTree<HloSharding> output_tuple_sharding(output_tuple_sharding_shape,
                                                    Undefined());
       size_t i = 0;
@@ -2802,7 +2803,7 @@ void RecoverShardingsFromPartialMesh(
               ins->operand(0)->shape().tuple_shapes().end());
           tuple_elements_shape.push_back(ins->operand(1)->shape());
           output_tuple_sharding_shape =
-              ShapeUtil::MakeTupleShape(tuple_elements_shape);
+              ShapeUtil::MakeValidatedTupleShape(tuple_elements_shape).value();
         }
         ShapeTree<HloSharding> output_tuple_sharding(
             output_tuple_sharding_shape, Undefined());

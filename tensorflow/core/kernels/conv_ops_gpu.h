@@ -171,39 +171,28 @@ Status LaunchAutotunedConv(const AutotuneEntry<se::dnn::ConvOp>& autotune_entry,
                            const se::dnn::ConvolutionDescriptor& conv_desc,
                            const se::dnn::BatchDescriptor& output_desc,
                            se::DeviceMemory<T> out_ptr) {
-  if (!autotune_entry.is_algorithm_config()) {
-    const auto& runners = autotune_entry.GetOpRunners();
-    se::dnn::DataType element_type = se::dnn::ToDataType<T>::value;
-    se::dnn::ConvOp::Config config{kind,       element_type, element_type,
-                                   input_desc, filter_desc,  output_desc,
-                                   conv_desc};
-    TF_ASSIGN_OR_RETURN(auto* primary,
-                        runners.primary->GetOrCreateRunner(config, stream));
+  const auto& runners = autotune_entry.GetOpRunners();
+  se::dnn::DataType element_type = se::dnn::ToDataType<T>::value;
+  se::dnn::ConvOp::Config config{kind,       element_type, element_type,
+                                 input_desc, filter_desc,  output_desc,
+                                 conv_desc};
+  TF_ASSIGN_OR_RETURN(auto* primary,
+                      runners.primary->GetOrCreateRunner(config, stream));
 
-    const se::dnn::ConvRunner* no_scratch_fallback = nullptr;
-    if (runners.no_scratch_fallback) {
-      TF_ASSIGN_OR_RETURN(
-          no_scratch_fallback,
-          runners.no_scratch_fallback->GetOrCreateRunner(config, stream));
-    }
-
-    TF_ASSIGN_OR_RETURN(auto runner_and_scratch,
-                        AllocateScratchOrFallback<se::dnn::ConvOp::Signature>(
-                            scratch_allocator, primary, no_scratch_fallback));
-    auto& runner = *std::get<const se::dnn::ConvRunner*>(runner_and_scratch);
-    return runner(stream, nullptr,
-                  std::get<se::DeviceMemoryBase>(runner_and_scratch), in_ptr,
-                  filter_ptr, out_ptr);
-  } else {
-    auto dnn = stream->parent()->AsDnn();
-    if (dnn == nullptr) {
-      return absl::InternalError("No DNN for stream.");
-    }
-    return dnn->ConvolveWithAlgorithm(
-        stream, kind, input_desc, in_ptr, filter_desc, filter_ptr, output_desc,
-        out_ptr, conv_desc, scratch_allocator,
-        autotune_entry.GetAlgorithmConfig(), nullptr);
+  const se::dnn::ConvRunner* no_scratch_fallback = nullptr;
+  if (runners.no_scratch_fallback) {
+    TF_ASSIGN_OR_RETURN(
+        no_scratch_fallback,
+        runners.no_scratch_fallback->GetOrCreateRunner(config, stream));
   }
+
+  TF_ASSIGN_OR_RETURN(auto runner_and_scratch,
+                      AllocateScratchOrFallback<se::dnn::ConvOp::Signature>(
+                          scratch_allocator, primary, no_scratch_fallback));
+  auto& runner = *std::get<const se::dnn::ConvRunner*>(runner_and_scratch);
+  return runner(stream, nullptr,
+                std::get<se::DeviceMemoryBase>(runner_and_scratch), in_ptr,
+                filter_ptr, out_ptr);
 }
 
 }  // namespace tensorflow

@@ -66,8 +66,11 @@ HloInstruction* MakeCollectivePermutes(
   for (int i = 0; i < sizes_in_kib.size(); i++) {
     auto constant = b->AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0(42.3)));
-    Shape shape = ShapeUtil::MakeShape(
-        F32, {static_cast<int32_t>(sizes_in_kib.at(i) * 1024 / sizeof(float))});
+    Shape shape =
+        ShapeUtil::MakeValidatedShape(
+            F32,
+            {static_cast<int32_t>(sizes_in_kib.at(i) * 1024 / sizeof(float))})
+            .value();
     auto input =
         b->AddInstruction(HloInstruction::CreateBroadcast(shape, constant, {}));
     inputs->push_back(input);
