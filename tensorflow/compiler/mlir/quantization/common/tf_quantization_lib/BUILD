@@ -15,6 +15,15 @@ package(
 )
 
 cc_library(
+    name = "portable_tensor_utils",
+    srcs = ["portable_tensor_utils.cc"],
+    hdrs = ["portable_tensor_utils.h"],
+    visibility = [
+        "//tensorflow/compiler/mlir/quantization/common/tf_quantization_lib:__pkg__",
+    ],
+)
+
+cc_library(
     name = "tf_quantization_lib",
     srcs = [
         "tf_quantization_driver.cc",
@@ -28,9 +37,9 @@ cc_library(
         "tf_quantization_utils.h",
     ],
     deps = [
+        ":portable_tensor_utils",
         ":tf_quantization_config",
         ":tf_quantization_interfaces_inc_gen",
-        "//tensorflow/compiler/mlir/lite/quantization/lite/toco_legacy:portable_tensor_utils",
         "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",
         "//tensorflow/compiler/mlir/tools/optimize:quantization_utils",
         "//tensorflow/core:lib_proto_parsing",
@@ -78,7 +87,6 @@ cc_library(
         "tf_quantization_config.h",
     ],
     deps = [
-        "//tensorflow/compiler/mlir/lite/tools/optimize:reduced_precision_metadata",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
