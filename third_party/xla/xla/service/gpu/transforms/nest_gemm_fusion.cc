@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -51,6 +52,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/layout_util.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/service/gpu/matmul_utils.h"

@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
