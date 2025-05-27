@@ -113,6 +113,10 @@ class CopyInsertion : public HloModulePass {
   // Adds copies for transitioning into and out of non-copyable values.
   absl::Status AddCopiesForNonCopyableTransitions(
       const HloAliasAnalysis& alias_analysis, HloInstruction* chain_start);
+  // Adds copies for transitioning into and out of non-copyable values for a
+  // explicit non-copyable chain.
+  absl::Status AddCopiesForExplicitNonCopyableTransitions(
+      const HloAliasAnalysis& alias_analysis, HloInstruction* chain_start);
 
   // Backend specific function that decides whether an instruction can share
   // buffer with its operand.

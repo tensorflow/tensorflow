@@ -187,32 +187,80 @@ DeepCopyAndAddControlEdges(HloInstruction* from, HloInstruction* to,
   return std::make_pair(from_deep_copy, to_deep_copy);
 }
 
-// Returns true if the instruction produces non-copyable results.
+// Returns whether the instruction is an asynchronous operation that produces
+// implicit non-copyable values. The whole result of the instruction is
+// considered as non-copyable for the purpose of copy insertion.
 //
-// Currently, only asynchronous start ops produce non-copyable results and the
-// the whole result is non-copyable.
-bool IsNonCopyable(const HloInstruction* instruction) {
+// TODO(bixia): May consider migrating these ops to use explicit buffer types.
+bool IsImplicitNonCopyable(const HloInstruction* instruction) {
   // Currently, the verifier only allows the pipelining of Send/Recv. As such,
-  // here we only handle to the ops allowed by
+  // here we only handle the ops allowed by
   // HloDataflowAnalysis::IsAsynchronousOperationStart that pass through its
   // operand for now. For the ops that don't pass through its operand, we need
   // to add a copy of its operand for the straight line case in order to allow
   // all ops in HloDataflowAnalysis::IsAsynchronousOperationStart.
+  //
+  // TODO(bixia): Handle ops that may modify its operand and add kCopyStart
+  // here.
   HloOpcode opcode = instruction->opcode();
   return opcode == HloOpcode::kSend || opcode == HloOpcode::kRecv ||
          opcode == HloOpcode::kCopyStart;
 }
 
-// Returns true if the value at the given index in the while init is
-// non-copyable.
+// Returns whether the instruction produces explicit buffer values or uses
+// explicit buffer values.
+bool IsExplicitNonCopyable(const HloInstruction* instruction) {
+  auto has_buffer = [](const Shape& shape) {
+    bool has_buffer = false;
+    ShapeUtil::ForEachSubshape(
+        shape, [&](const Shape& subshape, const ShapeIndex& index) {
+          if (subshape.IsBuffer()) {
+            has_buffer = true;
+          }
+        });
+    return has_buffer;
+  };
+  if (has_buffer(instruction->shape())) {
+    return true;
+  }
+  for (auto* operand : instruction->operands()) {
+    if (has_buffer(operand->shape())) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Returns true if the instruction produces non-copyable results.
+bool IsNonCopyable(const HloInstruction* instruction) {
+  return IsImplicitNonCopyable(instruction) ||
+         IsExplicitNonCopyable(instruction);
+}
+
+// Returns true if the value at the given index in the while init is a
+// non-copyable value produced by and implicit or explicit non-copyable
+// instruction.
 bool IsNonCopyableInWhileInit(const HloInstruction* while_init,
                               const ShapeIndex& index) {
+  // Handle explicit non-copyable values, that is, explicit buffers.
+  bool non_copyable = false;
+  ShapeUtil::ForEachSubshape(
+      ShapeUtil::GetSubshape(while_init->shape(), index),
+      [&](const Shape& subshape, const ShapeIndex& /*index*/) {
+        if (subshape.IsBuffer()) {
+          non_copyable = true;
+        }
+      });
+  if (non_copyable) {
+    return true;
+  }
+
   if (index.empty()) {
     return false;
   }
   int64_t i = index.front();
   return i < while_init->operand_count() &&
-         IsNonCopyable(while_init->operand(i));
+         IsImplicitNonCopyable(while_init->operand(i));
 }
 
 // Compute the indices of the loop state which need copies in order to avoid
@@ -550,6 +598,362 @@ absl::Status CopyInsertion::AddCopiesForConditional(
   return absl::OkStatus();
 }
 
+// Returns the output index corresponding to the non-copyable value for in the
+// given operand index through output_operand_aliasing or std::nullopt if there
+// isn't such an output index.
+std::optional<int64_t> FindAliasingOutputIndexForInput(const HloInstruction* op,
+                                                       int64_t operand_index) {
+  for (const auto& [output_index, input] : op->output_operand_aliasing()) {
+    if (input.first == operand_index) {
+      if (output_index.empty()) {
+        // Output is not a tuple.
+        return 0;
+      }
+      // The verifier guarantees no nested non-copyable values.
+      CHECK_EQ(output_index.size(), 1);
+      return output_index.front();
+    }
+  }
+
+  return std::nullopt;
+}
+
+// Returns the input index corresponding to the non-copyable value for in the
+// given output index through output_operand_aliasing or std::nullopt if there
+// isn't such an input index.
+std::optional<int64_t> FindAliasingInputIndexForOutput(const HloInstruction* op,
+                                                       int64_t output_index) {
+  for (const auto& [output, input] : op->output_operand_aliasing()) {
+    // The verifier guarantees no nested non-copyable values.
+    CHECK(input.second.empty());
+    if ((output.empty() && output_index == 0) ||
+        (output.size() == 1 && output.front() == output_index)) {
+      return input.first;
+    }
+  }
+
+  return std::nullopt;
+}
+
+// Given an `op` with _xla_non_copyable_attribute, returns true if it is the
+// start of the chain of explicit non-copyable values containing its operand
+// in `operand_index`.
+bool IsChainStart(const HloInstruction* op, int64_t operand_index) {
+  if (op->IsCustomCall(kPinCustomCallTarget) ||
+      op->IsCustomCall(kCreateBufferCustomCallTarget)) {
+    return true;
+  }
+
+  // The producer of the operand.
+  const HloInstruction* producer = op->operand(operand_index);
+  int64_t output_index = 0;
+  const HloInstruction* gte = nullptr;
+
+  // There can be at most one GetTupleElement in the chain as we assume no
+  // buffers nested in operands.
+  if (producer->opcode() == HloOpcode::kGetTupleElement) {
+    gte = producer;
+    output_index = producer->tuple_index();
+    producer = producer->operand(0);
+  }
+
+  // If the producer for the operand doesn't produces the non-copyable value in
+  // question, `op` is the start of the chain.
+  if (!IsExplicitNonCopyable(producer)) {
+    return true;
+  }
+
+  if (producer->opcode() != HloOpcode::kCustomCall) {
+    // This is an instruction, such as tuple or while-loop, that pass through
+    // the non-copyable values.
+    return false;
+  }
+
+  if (!FindAliasingInputIndexForOutput(producer, output_index).has_value()) {
+    // The operand in question doesn't connect to a non-copyable value in its
+    // producer, `op` is the start of the chain.
+    return true;
+  }
+
+  if ((!gte && producer->user_count() == 1) ||
+      (gte && gte->user_count() == 1)) {
+    // Producer is in the same chain of `op` and is before `op`.
+    return false;
+  }
+
+  return true;
+}
+
+// Finds the unique user for the non-copyable value in the given output index.
+// Returns the unique user and the operand index in the user or std::nullopt if
+// there isn't such a unique user.
+std::optional<std::pair<HloInstruction*, int64_t>> FindUniqueUser(
+    HloInstruction* op, int64_t output_index) {
+  if (!op->shape().IsTuple()) {
+    CHECK_EQ(output_index, 0) << " expect output_index to be 0 for non-tuple ";
+    if (op->user_count() != 1) {
+      return std::nullopt;
+    }
+    HloInstruction* unique_user = op->users().front();
+    std::vector<int64_t> operand_indices = unique_user->operand_indices(op);
+    if (operand_indices.size() != 1) {
+      // The user uses op multiple times. We don't consider this as a unique
+      // user for the purpose of finding non-copyable chain.
+      return std::nullopt;
+    }
+    return std::make_pair(unique_user, operand_indices.front());
+  }
+
+  // The non-copyable op produces a tuple result. Look for a unique
+  // GetTupleElement user for the output_index.
+  HloInstruction* unique_gte = nullptr;
+  for (HloInstruction* user : op->users()) {
+    CHECK_EQ(user->opcode(), HloOpcode::kGetTupleElement);
+    if (user->tuple_index() != output_index) {
+      continue;
+    }
+    if (unique_gte) {
+      // There are multiple GetTupleElement for the same output_index.
+      return std::nullopt;
+    }
+    unique_gte = user;
+  }
+
+  if (!unique_gte || unique_gte->user_count() != 1) {
+    return std::nullopt;
+  }
+
+  // Return the unique user of the GetTupleElement.
+  return FindUniqueUser(unique_gte, 0);
+}
+
+// Walks down a chain of explicit non-copyable ops inside a while-body until we
+// reach the end. Returns the last op in the chain and the corresponding output
+// index in the last op. This routine is used to help recognizing a rotated
+// non-copyable chain inside a while-body.
+std::pair<HloInstruction*, int64_t> WalkDownNonCopyableChain(
+    HloInstruction* op, int64_t output_index) {
+  HloComputation* parent = op->parent();
+  VLOG(2) << "WalkDownNonCopyableChain start: " << op->ToString()
+          << " output_index " << output_index;
+  std::optional<std::pair<HloInstruction*, int64_t>> unique_user_and_operand =
+      FindUniqueUser(op, output_index);
+
+  while (unique_user_and_operand.has_value()) {
+    HloInstruction* unique_user = unique_user_and_operand.value().first;
+    int64_t unique_user_operand_index = unique_user_and_operand.value().second;
+    if (!IsExplicitNonCopyable(unique_user)) {
+      break;
+    }
+    if (unique_user->opcode() == HloOpcode::kTuple &&
+        parent->root_instruction() == unique_user) {
+      // We reach the while-root, which is the end of the chain.
+      return std::make_pair(unique_user, unique_user_operand_index);
+    }
+    std::optional<int64_t> unique_user_output_index =
+        FindAliasingOutputIndexForInput(unique_user, unique_user_operand_index);
+    if (!unique_user_output_index.has_value()) {
+      // We reach the end of the chain, as unique_user is not in the same chain.
+      break;
+    }
+    output_index = *unique_user_output_index;
+    op = unique_user;
+    unique_user_and_operand = FindUniqueUser(op, output_index);
+  }
+
+  VLOG(2) << "WalkDownNonCopyableChain end: " << op->ToString()
+          << " output_index " << output_index;
+  return std::make_pair(op, output_index);
+}
+
+// Walks up a chain of explicit non-copyable ops inside a while-body until we
+// reach the start. Returns the first op in the chain and the corresponding
+// output index in the first op. This routine is used to help recognizing a
+// rotated non-copyable chain inside a while-body.
+std::pair<HloInstruction*, int64_t> WalkUpNonCopyableChain(
+    HloInstruction* op, int64_t operand_index) {
+  VLOG(2) << "WalkUpNonCopyableChain start: " << op->ToString()
+          << " operand_index " << operand_index;
+
+  while (HloInstruction* producer = op->mutable_operand(operand_index)) {
+    int64_t output_index = 0;
+    if (producer->opcode() == HloOpcode::kGetTupleElement) {
+      output_index = producer->tuple_index();
+      producer = producer->mutable_operand(0);
+    }
+    if (!IsExplicitNonCopyable(producer)) {
+      break;
+    }
+    std::optional<int64_t> producer_operand_index =
+        FindAliasingInputIndexForOutput(producer, output_index);
+    if (!producer_operand_index.has_value()) {
+      break;
+    }
+
+    std::optional<std::pair<HloInstruction*, int64_t>> unique_user_and_operand =
+        FindUniqueUser(producer, output_index);
+    if (!unique_user_and_operand.has_value()) {
+      break;
+    }
+    CHECK_EQ(unique_user_and_operand.value().first, op);
+    op = producer;
+    operand_index = *producer_operand_index;
+  }
+
+  VLOG(2) << "WalkUpNonCopyableChain end:" << op->ToString()
+          << " operand_index " << operand_index;
+  return std::make_pair(op, operand_index);
+}
+
+// The information of a rotated explicit non-copyable chain.
+//
+// Below is an example of a rotated chain, where the first part includes b1->b2
+// and the second part includes b3.
+//
+// while_body {
+//   param = (b(f32[16]), f32[16]) parameter(0)
+//   b0 = b(f32[16]) get-tuple-element(param), index=0
+//   v0 = f32[16] get-tuple-element(param), index=1
+//   b1 = b(f32[16]) custom-call(v0,  b0), custom_call_target="up0"
+//      output_to_operand_aliasing={{}:(1, {})}
+//   b2 = f32[16] custom-call(b1), custom_call_target="unpin"
+//   v1 = f32[16]add(v0, b2)
+//   b3 = b(f32[16]) custom-call(v1), custom_call_target="pin"
+//   ROOT tuple = (b(f32[16]), f32[16]) tuple(b3, v1)
+// }
+// We record the information for the end of the first part and the start of the
+// second part of the chain. In this example, the recorded information is:
+//     first_part_end = b2, output_index = 0
+//     second_part_start = b1, operand_index = 0
+struct RotatedChainInfo {
+  HloInstruction* first_part_end;
+  int64_t output_index;  // output index in the first part end op.
+  HloInstruction* second_part_start;
+};
+
+// Given the start of an explicit non-copyable chain, tries to find the rotated
+// chain, using the op as the first part start.
+std::optional<RotatedChainInfo> FindRotatedChainInfo(
+    const HloComputation* while_body, HloInstruction* second_part_start) {
+  VLOG(2) << "FindRotatedChainInfo start: " << second_part_start->ToString();
+
+  HloInstruction* second_part_end;
+  int64_t second_part_end_output_index;
+  std::tie(second_part_end, second_part_end_output_index) =
+      WalkDownNonCopyableChain(second_part_start, /*output_index=*/0);
+
+  if (second_part_end != while_body->root_instruction()) {
+    return std::nullopt;
+  }
+
+  HloInstruction* first_part_start =
+      while_body->parameter_instruction(second_part_end_output_index);
+  VLOG(2) << "FindRotatedChainInfo first_part_start: "
+          << first_part_start->ToString();
+
+  HloInstruction* first_part_end;
+  int64_t first_part_end_output_index;
+  std::tie(first_part_end, first_part_end_output_index) =
+      WalkDownNonCopyableChain(first_part_start, /*output_index=*/0);
+
+  VLOG(2) << "FindRotatedChainInfo: " << first_part_end->ToString()
+          << " output_index " << first_part_end_output_index
+          << second_part_start->ToString();
+  return RotatedChainInfo{first_part_end, first_part_end_output_index,
+                          second_part_start};
+}
+
+// Adds copies for a rotated explicit non-copyable chain to transition in and
+// out of non-copyable values.
+absl::Status AddCopiesForNonCopyableTransitionsRotatedCase(
+    const RotatedChainInfo& chain) {
+  HloInstruction* start_op = chain.second_part_start;
+  HloInstruction* end_op = chain.first_part_end;
+  HloComputation* while_body = start_op->parent();
+  // Handle aliasing input for the op, where we transition from copyable to
+  // non-copyable.
+  if (!chain.second_part_start->operands().empty()) {
+    HloInstruction* operand = start_op->mutable_operand(0);
+    HloInstruction* copied_operand =
+        while_body->AddInstruction(HloInstruction::CreateUnary(
+            operand->shape(), HloOpcode::kCopy, operand));
+    VLOG(2) << "Transition from copyable to non-copyable:  copy "
+            << operand->ToString() << " for " << start_op->ToString()
+            << " output_index ";
+    TF_RETURN_IF_ERROR(operand->ReplaceUseWith(start_op, copied_operand));
+    TF_RETURN_IF_ERROR(end_op->AddControlDependencyTo(copied_operand));
+  }
+
+  // Add a control dependency from the rotated end_op of the chain to the
+  // start_op of the chain guarantee disjoint live times of the buffer.
+  TF_RETURN_IF_ERROR(end_op->AddControlDependencyTo(start_op));
+
+  // Insert copies for the result produced by the end_op of the chain where we
+  // transition from non-copyable to copyable.
+
+  PtrVec<HloInstruction*> users = end_op->users();
+  if (users.empty()) {
+    return absl::OkStatus();
+  }
+
+  if (!end_op->shape().IsTuple()) {
+    HloInstruction* copy = while_body->AddInstruction(
+        HloInstruction::CreateUnary(end_op->shape(), HloOpcode::kCopy, end_op));
+    TF_RETURN_IF_ERROR(copy->AddControlDependencyTo(start_op));
+    return end_op->ReplaceAllUsesWith(copy);
+  }
+
+  for (auto user : users) {
+    if (user->opcode() != HloOpcode::kGetTupleElement) {
+      return FailedPrecondition("Expect user to be a GetTupleElement: %s",
+                                user->ToString());
+    }
+    if (user->tuple_index() == chain.output_index) {
+      VLOG(2) << "Transition from non-copyable to copyable: copy "
+              << user->ToString() << " for all users";
+      HloInstruction* copy = while_body->AddInstruction(
+          HloInstruction::CreateUnary(user->shape(), HloOpcode::kCopy, user));
+      TF_RETURN_IF_ERROR(copy->AddControlDependencyTo(start_op));
+      TF_RETURN_IF_ERROR(user->ReplaceAllUsesWith(copy));
+    }
+  }
+
+  return absl::OkStatus();
+}
+
+// The output with index `output_index` of `chain_start` and the input with
+// index `operand_index` of `start_op` are explicit non-copyable values. If
+// `chain_start` is the beginning of a non-copyable chain, we add copies to
+// transition in and out of the chain.
+absl::Status CopyInsertion::AddCopiesForExplicitNonCopyableTransitions(
+    const HloAliasAnalysis& alias_analysis, HloInstruction* chain_start) {
+  VLOG(2) << "AddCopiesForExplicitNonCopyableTransitions: "
+          << chain_start->ToString();
+  HloComputation* parent = chain_start->parent();
+  if (!parent->caller_instructions(HloOpcode::kWhile).empty()) {
+    std::optional<RotatedChainInfo> rotated_chain_info =
+        FindRotatedChainInfo(parent, chain_start);
+    if (rotated_chain_info.has_value()) {
+      return AddCopiesForNonCopyableTransitionsRotatedCase(
+          rotated_chain_info.value());
+    }
+  }
+
+  // For non-rotated cases, we only need to add a copy for the operand going
+  // into chain_start, to transition from copyable to non-copyable.
+  if (!chain_start->operands().empty()) {
+    HloInstruction* operand = chain_start->mutable_operand(0);
+    VLOG(2) << "Transition from copyable to non-copyable:  copy "
+            << operand->ToString() << " for " << chain_start->ToString();
+    HloInstruction* copied_operand =
+        parent->AddInstruction(HloInstruction::CreateUnary(
+            operand->shape(), HloOpcode::kCopy, operand));
+    TF_RETURN_IF_ERROR(operand->ReplaceUseWith(chain_start, copied_operand));
+  }
+
+  return absl::OkStatus();
+}
+
 // If `chain_start` is the head of a chain of non-copyable ops inside a while
 // loop, and part of the chain is rotated to the next iteration, returns the
 // chain end in the rotated part. Otherwise, returns nullptr.
@@ -576,7 +980,11 @@ HloInstruction* FindEndOpForRotatedNonCopyableChain(
               next_unique_user->opcode())) {
         return next_unique_user;
       }
-      break;
+      // Explicit non-copyable chain ends with a custom-call.
+      if (chain_start->opcode() == HloOpcode::kCustomCall &&
+          next_unique_user->opcode() == HloOpcode::kCustomCall) {
+        return next_unique_user;
+      }
     }
   }
   return nullptr;
@@ -675,6 +1083,16 @@ absl::Status AddCopiesForNonCopyableTransitionsRotatedCase(
 //
 absl::Status CopyInsertion::AddCopiesForNonCopyableTransitions(
     const HloAliasAnalysis& alias_analysis, HloInstruction* chain_start) {
+  if (!IsImplicitNonCopyable(chain_start)) {
+    if (chain_start->IsCustomCall(kPinCustomCallTarget) ||
+        chain_start->IsCustomCall(kCreateBufferCustomCallTarget)) {
+      TF_RETURN_IF_ERROR(AddCopiesForExplicitNonCopyableTransitions(
+          alias_analysis, chain_start));
+    }
+    return absl::OkStatus();
+  }
+
+  // Handle implicitly chained non-copyable ops, that is async op chains.
   if (chain_start->users().empty()) {
     return absl::OkStatus();
   }
@@ -744,6 +1162,8 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
         TF_RETURN_IF_ERROR(
             AddCopiesForConditional(*alias_analysis, instruction));
       } else if (IsNonCopyable(instruction)) {
+        // We currently assume that we don't have a custom-call with
+        // output-to-operand aliases for both buffers and non-buffers.
         TF_RETURN_IF_ERROR(
             AddCopiesForNonCopyableTransitions(*alias_analysis, instruction));
       } else {
@@ -822,6 +1242,13 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
   HloInstructionMap<ShapeTree<bool>> instructions_to_copy;
   auto add_index_to_copy = [&instructions_to_copy](HloInstruction* instruction,
                                                    const ShapeIndex& index) {
+    // Buffers are non-copyable and needed copies are added to transition
+    // in and out non-copyable values.
+    if (ShapeUtil::GetSubshape(instruction->shape(), index).IsBuffer()) {
+      return;
+    }
+    VLOG(2) << "Adding index to copy: " << instruction->ToString() << "@"
+            << index.ToString();
     auto it = instructions_to_copy.find(instruction);
     if (it == instructions_to_copy.end()) {
       auto it_added = instructions_to_copy.emplace(
@@ -857,7 +1284,11 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
       }
       HloPosition position = value2->defining_position();
       for (const HloUse& use : value->GetUses()) {
-        if (use.instruction == position.instruction) {
+        // We already handle the copy of pin custom-call operands and shouldn't
+        // add
+        // another copy here.
+        if (!use.instruction->IsCustomCall(kPinCustomCallTarget) &&
+            use.instruction == position.instruction) {
           VLOG(3) << "Same instruction: " << position.instruction->ToString();
           if (!alias_analysis->dataflow_analysis()
                    .CanShareOperandBufferWithUser(
@@ -895,7 +1326,7 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
     // Mark nondistinct/ambiguous indices.
     absl::flat_hash_map<const HloBuffer*, ShapeIndex> seen;
     ShapeUtil::ForEachSubshape(
-        root->shape(), [&](const Shape& /*subshape*/, const ShapeIndex& index) {
+        root->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
           std::vector<const HloBuffer*> buffers_at_index =
               alias_analysis->ComputeBuffersAt(root, index);
           bool buffer_seen_before = false;

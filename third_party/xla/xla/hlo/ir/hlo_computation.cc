@@ -1446,9 +1446,11 @@ absl::StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
     return instruction;
   }
 
-  // Array shape.
-  TF_RET_CHECK(instruction->shape().IsArray());
-  return copy_leaf(instruction, *index, this);
+  HloInstruction* copy = copy_leaf(instruction, *index, this);
+  // We shouldn't copy buffers.
+  TF_RET_CHECK(instruction->shape().IsArray() ||
+               (instruction->shape().IsBuffer() && copy == instruction));
+  return copy;
 }
 
 absl::StatusOr<HloInstruction*> HloComputation::DeepCopyInstruction(
