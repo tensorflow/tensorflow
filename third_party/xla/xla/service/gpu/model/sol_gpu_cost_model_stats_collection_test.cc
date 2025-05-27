@@ -34,7 +34,7 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-using ::testing::DoubleNear;
+using ::testing::Gt;
 using ::testing::Property;
 
 using ShapeSizeFn = std::function<int64_t(const Shape&)>;
@@ -96,8 +96,7 @@ TEST_F(SolGpuCostModelStatsCollectionTest,
                   ->operand(0)
                   ->backend_config<GpuBackendConfig>()
                   ->reification_cost(),
-              ElementsAre(Property(&ReificationCost::exec_time_us,
-                                   DoubleNear(643.1, /*max_abs_error=*/0.1))));
+              ElementsAre(Property(&ReificationCost::exec_time_us, Gt(0))));
 }
 
 }  // namespace

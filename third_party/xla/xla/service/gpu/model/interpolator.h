@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <optional>
 #include <string>
@@ -43,6 +44,17 @@ class InterpolatorBase {
 
   // Returns interpolated value.
   virtual R Eval(std::array<int64_t, N>& point) const = 0;
+
+  static int64_t Norm2(const std::array<int64_t, N>& lhs,
+                       const std::array<int64_t, N>& rhs) {
+    int64_t dist = 0;
+    for (int i = 0; i < lhs.size(); ++i) {
+      int coord = lhs[i];
+      int64_t abs_dist = coord - rhs[i];
+      dist += abs_dist * abs_dist;
+    }
+    return dist;
+  }
 };
 
 // `Interpolates` any point in euclidean space by just returning the nearest
@@ -65,7 +77,7 @@ class EuclideanNNInterpolator : public InterpolatorBase<R, N> {
     uint64_t min_dist = std::numeric_limits<uint64_t>::max();
 
     for (const auto& [plane_point, val] : plane_) {
-      int64_t dist = Norm2(plane_point, point);
+      int64_t dist = InterpolatorBase<R, N>::Norm2(plane_point, point);
       if (dist < min_dist) {
         result = val;
         min_dist = dist;
@@ -75,17 +87,6 @@ class EuclideanNNInterpolator : public InterpolatorBase<R, N> {
   }
 
  private:
-  int64_t Norm2(const std::array<int64_t, N>& lhs,
-                const std::array<int64_t, N>& rhs) const {
-    int64_t dist = 0;
-    for (int i = 0; i < lhs.size(); ++i) {
-      int coord = lhs[i];
-      int64_t abs_dist = coord - rhs[i];
-      dist += abs_dist * abs_dist;
-    }
-    return dist;
-  }
-
   std::vector<std::pair<std::array<int64_t, N>, R>> plane_;
 };
 
@@ -126,7 +127,7 @@ class EuclideanComplementInterpolator : public EuclideanNNInterpolator<R, N> {
     return retrieval_.at(interpolation_point);
   }
 
- private:
+ protected:
   int64_t Closest(int64_t n, int64_t prev, int64_t next) const {
     if (n - prev < next - n) {
       return prev;
@@ -149,7 +150,9 @@ class EuclideanComplementInterpolator : public EuclideanNNInterpolator<R, N> {
     return (n & (n - 1)) == 0;
   }
 
-  int64_t PrevPowerOfTwo(int64_t n) const { return NextPowerOfTwo(n << 1); }
+  int64_t PrevPowerOfTwo(int64_t n) const {
+    return NextPowerOfTwo((n >> 1) + 1);
+  }
 
   int64_t NextPowerOfTwo(int64_t n) const {
     if (n == 0) {
@@ -175,6 +178,103 @@ class EuclideanComplementInterpolator : public EuclideanNNInterpolator<R, N> {
   std::array<int64_t, N> min_ctx_;
 
   absl::flat_hash_map<std::array<int64_t, N>, R> retrieval_;
+};
+
+template <size_t N>
+struct Neighbour {
+  std::array<int64_t, N> point;
+  double weight;
+};
+
+template <size_t N>
+class EuclideanWeightedAverageInterpolator
+    : public EuclideanComplementInterpolator<double, N> {
+ public:
+  explicit EuclideanWeightedAverageInterpolator(
+      std::array<int64_t, N> next_context,
+      std::array<int64_t, N> next_power_context,
+      std::array<int64_t, N> max_context, std::array<int64_t, N> min_context)
+      : EuclideanComplementInterpolator<double, N>(
+            next_context, next_power_context, max_context, min_context) {}
+
+  double Eval(std::array<int64_t, N>& point) const override {
+    CHECK_GT(this->retrieval_.size(), 0) << "Retrieval map is empty.";
+    double result = 0;
+    double total_weight = 0.0f;
+
+    for (const Neighbour<N>& neighbour : GetNeighbours(point)) {
+      result += this->retrieval_.at(neighbour.point) * neighbour.weight;
+      total_weight += neighbour.weight;
+    }
+    return result / total_weight;
+  }
+
+ private:
+  int64_t ClampDim(int64_t val, int64_t dim) const {
+    return std::min(std::max(this->min_ctx_[dim], val), this->max_ctx_[dim]);
+  }
+
+  int64_t SmallerNeighbour(std::array<int64_t, N> point, int64_t dim) const {
+    int64_t neighbour_dim = -1;
+    if (this->retrieval_ctx_[dim] != -1) {
+      int64_t next = this->retrieval_ctx_[dim];
+      neighbour_dim = ClampDim(this->PrevComplement(point[dim], next), dim);
+    }
+    if (this->retrieval_pow_ctx_[dim] != -1) {
+      neighbour_dim = ClampDim(this->PrevPowerOfTwo(point[dim]), dim);
+    }
+    return neighbour_dim;
+  }
+
+  int64_t LargerNeighbour(std::array<int64_t, N> point, int64_t dim) const {
+    int64_t neighbour_dim = -1;
+    if (this->retrieval_ctx_[dim] != -1) {
+      int64_t next = this->retrieval_ctx_[dim];
+      neighbour_dim = ClampDim(this->NextComplement(point[dim], next), dim);
+    }
+    if (this->retrieval_pow_ctx_[dim] != -1) {
+      neighbour_dim = ClampDim(this->NextPowerOfTwo(point[dim]), dim);
+    }
+    return neighbour_dim;
+  }
+
+  std::vector<Neighbour<N>> GetNeighbours(std::array<int64_t, N>& point) const {
+    static constexpr float kEpsilon = 1.0;
+
+    std::function<std::vector<std::array<int64_t, N>>(int)> convex_hull =
+        [&](int dim) -> std::vector<std::array<int64_t, N>> {
+      std::vector<std::array<int64_t, N>> result;
+      if (dim == point.size() - 1) {
+        std::array<int64_t, N> min, max;
+        min[dim] = SmallerNeighbour(point, dim);
+        max[dim] = LargerNeighbour(point, dim);
+        return {min, max};
+      }
+
+      std::vector<std::array<int64_t, N>> intermediete_results =
+          convex_hull(dim + 1);
+
+      for (const std::array<int64_t, N>& pt : intermediete_results) {
+        std::array<int64_t, N> min_point = pt, max_point = pt;
+        min_point[dim] = SmallerNeighbour(point, dim);
+        max_point[dim] = LargerNeighbour(point, dim);
+        result.push_back(min_point);
+        result.push_back(max_point);
+      }
+      return result;
+    };
+    std::vector<Neighbour<N>> neighbours;
+    for (const std::array<int64_t, N> neighbour : convex_hull(/*dim=*/0)) {
+      float weight =
+          1.0f /
+          (InterpolatorBase<double, N>::Norm2(neighbour, point) + kEpsilon);
+      Neighbour<N> n;
+      n.point = neighbour;
+      n.weight = weight;
+      neighbours.push_back(n);
+    }
+    return neighbours;
+  }
 };
 
 }  // namespace xla::gpu
