@@ -62,9 +62,10 @@ HloInstruction* RunAllToAllOnOutputOffsets(HloComputation* computation,
   // run all-to-all with split dimension 0 and exchage offsets for each
   // participating device.
   output_offsets = computation->AddInstruction(HloInstruction::CreateReshape(
-      /*shape=*/ShapeUtil::MakeShape(
+      /*shape=*/ShapeUtil::MakeValidatedShape(
           output_offsets->shape().element_type(),
-          {num_participating_devices, num_updates_per_replica}),
+          {num_participating_devices, num_updates_per_replica})
+          .value(),
       output_offsets));
 
   // Run all-to-all.
@@ -76,8 +77,9 @@ HloInstruction* RunAllToAllOnOutputOffsets(HloComputation* computation,
 
   // Reshape it back to [num_total_updates].
   return computation->AddInstruction(HloInstruction::CreateReshape(
-      /*shape=*/ShapeUtil::MakeShape(output_offsets->shape().element_type(),
-                                     {num_total_updates}),
+      /*shape=*/ShapeUtil::MakeValidatedShape(
+          output_offsets->shape().element_type(), {num_total_updates})
+          .value(),
       output_offsets));
 }
 
@@ -86,13 +88,16 @@ HloInstruction* GetScalarValue(HloInstruction* hlo, int64_t index) {
   HloComputation* computation = hlo->parent();
   HloInstruction* index_value =
       computation->AddInstruction(HloInstruction::CreateSlice(
-          /*shape=*/ShapeUtil::MakeShape(hlo->shape().element_type(), {1}),
+          /*shape=*/ShapeUtil::MakeValidatedShape(hlo->shape().element_type(),
+                                                  {1})
+              .value(),
           /*operand=*/hlo,
           /*start_indices=*/{index},
           /*limit_indices=*/{index + 1},
           /*strides=*/{1}));
   return computation->AddInstruction(HloInstruction::CreateReshape(
-      /*shape=*/ShapeUtil::MakeScalarShape(hlo->shape().element_type()),
+      /*shape=*/ShapeUtil::MakeValidatedScalarShape(hlo->shape().element_type())
+          .value(),
       index_value));
 }
 
@@ -118,8 +123,9 @@ HloInstruction* AddSize1MajorDimension(HloInstruction* hlo,
   absl::c_copy(hlo->shape().dimensions(),
                std::back_inserter(reshape_dimensions));
 
-  Shape reshape_shape =
-      ShapeUtil::MakeShape(hlo->shape().element_type(), reshape_dimensions);
+  Shape reshape_shape = ShapeUtil::MakeValidatedShape(
+                            hlo->shape().element_type(), reshape_dimensions)
+                            .value();
   return computation->AddInstruction(
       HloInstruction::CreateReshape(reshape_shape, hlo));
 }
@@ -152,8 +158,10 @@ HloInstruction* GetRowSlice(HloInstruction* hlo, int64_t row_index) {
             row_slice->shape().dimensions().end(),
             std::back_inserter(reshape_dimensions));
 
-  Shape reshape_shape = ShapeUtil::MakeShape(row_slice->shape().element_type(),
-                                             reshape_dimensions);
+  Shape reshape_shape =
+      ShapeUtil::MakeValidatedShape(row_slice->shape().element_type(),
+                                    reshape_dimensions)
+          .value();
   return computation->AddInstruction(
       HloInstruction::CreateReshape(reshape_shape, row_slice));
 }
@@ -164,10 +172,12 @@ HloInstruction* CreateUpdateMask(HloInstruction* offset_value,
                                  HloInstruction* size_value, int64_t idx,
                                  const Shape& padded_ragged_output_shape) {
   HloComputation* computation = offset_value->parent();
-  Shape iota_shape =
-      ShapeUtil::MakeShape(S64, padded_ragged_output_shape.dimensions());
-  Shape compare_shape =
-      ShapeUtil::MakeShape(PRED, padded_ragged_output_shape.dimensions());
+  Shape iota_shape = ShapeUtil::MakeValidatedShape(
+                         S64, padded_ragged_output_shape.dimensions())
+                         .value();
+  Shape compare_shape = ShapeUtil::MakeValidatedShape(
+                            PRED, padded_ragged_output_shape.dimensions())
+                            .value();
 
   HloInstruction* iota =
       computation->AddInstruction(HloInstruction::CreateIota(iota_shape, 0));
@@ -384,8 +394,8 @@ absl::StatusOr<bool> DecomposeRaggedAllToAll(HloInstruction* hlo,
 
   auto dense_output =
       computation->AddInstruction(HloInstruction::CreateAllToAll(
-          ShapeUtil::MakeTupleShape(dense_input_shapes), dense_input,
-          all_to_all->device_list(),
+          ShapeUtil::MakeValidatedTupleShape(dense_input_shapes).value(),
+          dense_input, all_to_all->device_list(),
           /*constrain_layout=*/false,
           /*channel_id=*/all_to_all->channel_id()));
 

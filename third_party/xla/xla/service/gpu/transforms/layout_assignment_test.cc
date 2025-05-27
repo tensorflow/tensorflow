@@ -76,7 +76,7 @@ class LayoutAssignmentTest : public HloTestBase {
 };
 
 TEST_F(LayoutAssignmentTest, Elementwise) {
-  Shape ashape = ShapeUtil::MakeShape(F32, {42, 12});
+  Shape ashape = ShapeUtil::MakeValidatedShape(F32, {42, 12}).value();
   Shape ashape_in_row_major(ashape);
   Shape ashape_in_col_major(ashape);
   *ashape_in_row_major.mutable_layout() = LayoutUtil::MakeLayout({1, 0});

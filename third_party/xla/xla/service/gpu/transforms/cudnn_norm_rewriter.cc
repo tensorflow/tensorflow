@@ -1064,8 +1064,10 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
         reshaped_dims.push_back(1);
       }
 
-      Shape reshaped_shape = ShapeUtil::MakeShape(
-          x.Instr()->shape().element_type(), reshaped_dims);
+      Shape reshaped_shape =
+          ShapeUtil::MakeValidatedShape(x.Instr()->shape().element_type(),
+                                        reshaped_dims)
+              .value();
       TF_ASSIGN_OR_RETURN(
           HloInstruction * x_reshape,
           MakeReshapeHlo(reshaped_shape, x_transpose.value_or(x.Instr())));
@@ -1075,8 +1077,10 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       std::vector<int64_t> reshaped_scale_dims = reshaped_dims;
       reshaped_scale_dims[0] = 1;
 
-      Shape scale_bias_shape = ShapeUtil::MakeShape(
-          scale->shape().element_type(), reshaped_scale_dims);
+      Shape scale_bias_shape =
+          ShapeUtil::MakeValidatedShape(scale->shape().element_type(),
+                                        reshaped_scale_dims)
+              .value();
       TF_ASSIGN_OR_RETURN(HloInstruction * scale_reshape,
                           MakeReshapeHlo(scale_bias_shape, scale));
       TF_ASSIGN_OR_RETURN(HloInstruction * bias_reshape,
@@ -1101,8 +1105,10 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
 
       // The output of the Custom Call is a tuple, the second element of which
       // describes the scratch space.
-      Shape custom_call_shape = ShapeUtil::MakeTupleShape(
-          {x_reshape->shape(), ShapeUtil::MakeShape(U8, {workspace_size})});
+      Shape custom_call_shape =
+          ShapeUtil::MakeValidatedTupleShape(
+              {x_reshape->shape(), ShapeUtil::MakeShape(U8, {workspace_size})})
+              .value();
 
       HloInstruction* custom_call =
           instr->AddInstruction(HloInstruction::CreateCustomCall(
@@ -1191,8 +1197,10 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       // Custom Call is [nelems, 1, 1, 1], where nelems is the
       // number of elements in the expectation and norm factor shapes.
       auto make_compatible_shape = [](Shape shape) -> Shape {
-        return ShapeUtil::MakeShape(shape.element_type(),
-                                    {ShapeUtil::ElementsIn(shape), 1, 1, 1});
+        return ShapeUtil::MakeValidatedShape(
+                   shape.element_type(),
+                   {ShapeUtil::ElementsIn(shape), 1, 1, 1})
+            .value();
       };
 
       Shape expectation_shape =
@@ -1205,7 +1213,8 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       tuple_shapes.insert(tuple_shapes.begin() + 1,
                           {expectation_shape, norm_factor_shape});
 
-      Shape custom_call_shape = ShapeUtil::MakeTupleShape(tuple_shapes);
+      Shape custom_call_shape =
+          ShapeUtil::MakeValidatedTupleShape(tuple_shapes).value();
 
       HloInstruction* new_custom_call = instr->AddInstruction(
           custom_call->CloneWithNewShape(custom_call_shape));
@@ -1470,11 +1479,15 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
       TF_ASSIGN_OR_RETURN(HloInstruction * reshaped_dy,
                           MakeReshapeHlo(x.Instr()->shape(), transposed_dy));
 
-      Shape dx_shape = ShapeUtil::MakeShape(instr->shape().element_type(),
-                                            x.Instr()->shape().dimensions());
+      Shape dx_shape =
+          ShapeUtil::MakeValidatedShape(instr->shape().element_type(),
+                                        x.Instr()->shape().dimensions())
+              .value();
 
-      Shape dscale_dbias_shape = ShapeUtil::MakeShape(
-          dscale->shape().element_type(), scale.Instr()->shape().dimensions());
+      Shape dscale_dbias_shape =
+          ShapeUtil::MakeValidatedShape(dscale->shape().element_type(),
+                                        scale.Instr()->shape().dimensions())
+              .value();
 
       GpuBackendConfig gpu_backend_config;
       CudnnNormBackendConfig& backend_config =
@@ -1495,9 +1508,11 @@ class CudnnNormRewriterVisitor : public DfsHloRewriteVisitor {
 
       // The output of the Custom Call is a tuple. The output shape of Dscale
       // and Dbias is that of scale.
-      Shape custom_call_shape = ShapeUtil::MakeTupleShape(
-          {dx_shape, dscale_dbias_shape, dscale_dbias_shape,
-           ShapeUtil::MakeShape(U8, {workspace_size})});
+      Shape custom_call_shape =
+          ShapeUtil::MakeValidatedTupleShape(
+              {dx_shape, dscale_dbias_shape, dscale_dbias_shape,
+               ShapeUtil::MakeShape(U8, {workspace_size})})
+              .value();
 
       HloInstruction* custom_call =
           instr->AddInstruction(HloInstruction::CreateCustomCall(

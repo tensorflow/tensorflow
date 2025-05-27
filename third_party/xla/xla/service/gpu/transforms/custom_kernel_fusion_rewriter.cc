@@ -142,7 +142,9 @@ static absl::StatusOr<HloComputation*> CreateFusionBody(
   // allocates workspace and return a tuple of "real" result and a workspace.
   if (match.workspace_size_bytes() > 0) {
     auto workspace_shape =
-        ShapeUtil::MakeShape(PrimitiveType::U8, {match.workspace_size_bytes()});
+        ShapeUtil::MakeValidatedShape(PrimitiveType::U8,
+                                      {match.workspace_size_bytes()})
+            .value();
     HloInstruction* workspace =
         builder.AddInstruction(HloInstruction::CreateCustomCall(
             workspace_shape, {}, CustomKernelFusionPattern::kWorkspace, "",

@@ -460,8 +460,9 @@ absl::StatusOr<ReshapeOutputParams> CalculateBroadcastOutputReshape(
       new_operand_dims.push_back(target_dims[j]);
     }
   }
-  result.new_shape =
-      ShapeUtil::MakeShape(broadcast->shape().element_type(), new_operand_dims);
+  result.new_shape = ShapeUtil::MakeValidatedShape(
+                         broadcast->shape().element_type(), new_operand_dims)
+                         .value();
   return std::move(result);
 }
 
@@ -536,7 +537,9 @@ absl::StatusOr<ReshapeOutputParams> CalculateTransposeOutputReshape(
     reshape_dims.push_back(dim.target_dim);
   }
   return ReshapeOutputParams{
-      ShapeUtil::MakeShape(transpose->shape().element_type(), reshape_dims),
+      ShapeUtil::MakeValidatedShape(transpose->shape().element_type(),
+                                    reshape_dims)
+          .value(),
       std::move(permutation)};
 }
 

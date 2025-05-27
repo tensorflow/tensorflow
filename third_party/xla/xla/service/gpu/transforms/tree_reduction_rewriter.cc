@@ -262,8 +262,10 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
 
       for (int input_idx = 0; input_idx < padded_inputs.size(); ++input_idx) {
         auto &reduction_input = padded_inputs[input_idx];
-        Shape padded_shape = ShapeUtil::MakeShape(
-            reduction_input->shape().element_type(), padded_dimensions);
+        Shape padded_shape =
+            ShapeUtil::MakeValidatedShape(
+                reduction_input->shape().element_type(), padded_dimensions)
+                .value();
         VLOG(2) << "Generated padded shape: " << padded_shape.ToString();
         reduction_input = reduce->parent()->AddInstruction(
             HloInstruction::CreatePad(padded_shape, reduction_input,
@@ -306,21 +308,26 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     HloInstruction::InstructionVector reshaped_padded_inputs;
     absl::InlinedVector<Shape, 2> inner_reduce_shapes;
     for (HloInstruction *padded_input : padded_inputs) {
-      Shape reshaped_shape = ShapeUtil::MakeShape(
-          padded_input->shape().element_type(), reshaped_dimensions);
+      Shape reshaped_shape =
+          ShapeUtil::MakeValidatedShape(padded_input->shape().element_type(),
+                                        reshaped_dimensions)
+              .value();
       HloInstruction *reshaped_padded_input = reduce->parent()->AddInstruction(
           HloInstruction::CreateBitcast(reshaped_shape, padded_input),
           &padded_input->metadata());
       VLOG(2) << "Generated reshape: " << reshaped_padded_input->ToString();
       reshaped_padded_inputs.push_back(reshaped_padded_input);
-      inner_reduce_shapes.push_back(ShapeUtil::MakeShape(
-          padded_input->shape().element_type(), inner_reduce_shape));
+      inner_reduce_shapes.push_back(
+          ShapeUtil::MakeValidatedShape(padded_input->shape().element_type(),
+                                        inner_reduce_shape)
+              .value());
     }
 
     // Inner reduce that reduces [k1, k2] to [k1].
     HloInstruction *inner_reduce = reduce->parent()->AddInstruction(
         HloInstruction::CreateReduce(
-            ShapeUtil::MakeMaybeTupleShape(inner_reduce_shapes),
+            ShapeUtil::MakeValidatedMaybeTupleShape(inner_reduce_shapes)
+                .value(),
             reshaped_padded_inputs, reduce->init_values(), inner_reduce_dims,
             reduce->to_apply()),
         &reduce->metadata());
@@ -354,8 +361,9 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
 
     HloInstruction *inner_reduce =
         hlo->parent()->AddInstruction(HloInstruction::CreateReduce(
-            ShapeUtil::MakeMaybeTupleShape(tuple_shapes), hlo->inputs(),
-            hlo->init_values(), {minor_reduction_dim}, hlo->to_apply()));
+            ShapeUtil::MakeValidatedMaybeTupleShape(tuple_shapes).value(),
+            hlo->inputs(), hlo->init_values(), {minor_reduction_dim},
+            hlo->to_apply()));
 
     VLOG(1) << "Inner reduction: " << inner_reduce->ToString();
     std::unique_ptr<HloInstruction> out = HloInstruction::CreateReduce(

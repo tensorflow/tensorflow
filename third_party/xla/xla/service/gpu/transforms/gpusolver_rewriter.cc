@@ -95,11 +95,13 @@ absl::StatusOr<HloInstruction*> CreateCholesky(
   // * info contains the Potrf success/failure status.
   // Currently we have no meaningful way to report an error, so we simply
   // discard the success/failure information. Obviously this is suboptimal.
-  Shape info_shape = ShapeUtil::MakeShape(S32, batch_dims);
-  Shape call_shape = ShapeUtil::MakeTupleShape(
-      {a_shape,
-       ShapeUtil::MakeShape(operand->shape().element_type(), {workspace_size}),
-       info_shape});
+  Shape info_shape = ShapeUtil::MakeValidatedShape(S32, batch_dims).value();
+  Shape call_shape = ShapeUtil::MakeValidatedTupleShape(
+                         {a_shape,
+                          ShapeUtil::MakeShape(operand->shape().element_type(),
+                                               {workspace_size}),
+                          info_shape})
+                         .value();
 
   HloInstruction* custom_call =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
@@ -118,11 +120,12 @@ absl::StatusOr<HloInstruction*> CreateCholesky(
   HloInstruction* zeros =
       computation->AddInstruction(HloInstruction::CreateBroadcast(
           info_shape, zero, /*broadcast_dimensions=*/{}));
-  HloInstruction* ok = computation->AddInstruction(
-      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, batch_dims),
-                                    info, zeros, ComparisonDirection::kEq));
+  HloInstruction* ok =
+      computation->AddInstruction(HloInstruction::CreateCompare(
+          ShapeUtil::MakeValidatedShape(PRED, batch_dims).value(), info, zeros,
+          ComparisonDirection::kEq));
   ok = computation->AddInstruction(HloInstruction::CreateBroadcast(
-      ShapeUtil::MakeShape(PRED, a_shape.dimensions()), ok,
+      ShapeUtil::MakeValidatedShape(PRED, a_shape.dimensions()).value(), ok,
       /*broadcast_dimensions=*/batch_dim_ids));
 
   TF_ASSIGN_OR_RETURN(Literal nan_literal,

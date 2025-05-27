@@ -123,10 +123,12 @@ TEST_F(ConvRewriterTest, BackwardFilterConvolve) {
   HloComputation::Builder builder(TestName());
   HloInstruction* activations =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(F32, {1, 1, 3, 1}), "activations"));
+          0, ShapeUtil::MakeValidatedShape(F32, {1, 1, 3, 1}).value(),
+          "activations"));
   HloInstruction* gradients =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          1, ShapeUtil::MakeShape(F32, {1, 1, 2, 1}), "gradients"));
+          1, ShapeUtil::MakeValidatedShape(F32, {1, 1, 2, 1}).value(),
+          "gradients"));
   Window conv_window = default_conv_window_;
   conv_window.mutable_dimensions(1)->set_size(2);
   conv_window.mutable_dimensions(1)->set_window_dilation(2);
@@ -163,10 +165,12 @@ TEST_F(ConvRewriterTest, BackwardFilterConvolveEquivalentToForwardConvolution) {
   HloComputation::Builder builder(TestName());
   HloInstruction* activations =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(F32, {1, 1, 3, 1}), "activations"));
+          0, ShapeUtil::MakeValidatedShape(F32, {1, 1, 3, 1}).value(),
+          "activations"));
   HloInstruction* gradients =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          1, ShapeUtil::MakeShape(F32, {1, 1, 3, 1}), "gradients"));
+          1, ShapeUtil::MakeValidatedShape(F32, {1, 1, 3, 1}).value(),
+          "gradients"));
   Window conv_window = default_conv_window_;
   conv_window.mutable_dimensions(1)->set_size(3);
   builder.AddInstruction(HloInstruction::CreateConvolve(
@@ -194,10 +198,12 @@ TEST_F(ConvRewriterTest, BackwardFilterConvolveWithPaddedActivations) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* activations =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(F32, {20, 35, 35, 32}), "activations"));
+          0, ShapeUtil::MakeValidatedShape(F32, {20, 35, 35, 32}).value(),
+          "activations"));
   HloInstruction* gradients =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          1, ShapeUtil::MakeShape(F32, {20, 35, 35, 32}), "gradients"));
+          1, ShapeUtil::MakeValidatedShape(F32, {20, 35, 35, 32}).value(),
+          "gradients"));
 
   Window conv_window = default_conv_window_;
   for (int i = 0; i < 2; ++i) {
@@ -206,7 +212,8 @@ TEST_F(ConvRewriterTest, BackwardFilterConvolveWithPaddedActivations) {
     conv_window.mutable_dimensions(i)->set_padding_high(1);
   }
   builder.AddInstruction(HloInstruction::CreateConvolve(
-      ShapeUtil::MakeShape(F32, {32, 3, 3, 32}), activations, gradients,
+      ShapeUtil::MakeValidatedShape(F32, {32, 3, 3, 32}).value(), activations,
+      gradients,
       /*feature_group_count=*/1, /*batch_group_count=*/1, conv_window,
       tf_default_dnums_for_backward_filter_, DefaultPrecisionConfig(2)));
 
@@ -224,10 +231,12 @@ TEST_F(ConvRewriterTest, BackwardFilterConvolveWithPaddedGradients) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* activations =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(F32, {20, 10, 10, 192}), "activations"));
+          0, ShapeUtil::MakeValidatedShape(F32, {20, 10, 10, 192}).value(),
+          "activations"));
   HloInstruction* gradients =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          1, ShapeUtil::MakeShape(F32, {20, 4, 4, 320}), "gradients"));
+          1, ShapeUtil::MakeValidatedShape(F32, {20, 4, 4, 320}).value(),
+          "gradients"));
 
   Window conv_window = default_conv_window_;
   for (int i = 0; i < 2; ++i) {
@@ -236,7 +245,8 @@ TEST_F(ConvRewriterTest, BackwardFilterConvolveWithPaddedGradients) {
     conv_window.mutable_dimensions(i)->set_window_dilation(2);
   }
   builder.AddInstruction(HloInstruction::CreateConvolve(
-      ShapeUtil::MakeShape(F32, {320, 3, 3, 192}), activations, gradients,
+      ShapeUtil::MakeValidatedShape(F32, {320, 3, 3, 192}).value(), activations,
+      gradients,
       /*feature_group_count=*/1, /*batch_group_count=*/1, conv_window,
       tf_default_dnums_for_backward_filter_, DefaultPrecisionConfig(2)));
 
@@ -253,10 +263,12 @@ TEST_F(ConvRewriterTest, BackwardFilterConvolveWithUnevenPadding) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* activations =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(F32, {20, 35, 35, 32}), "activations"));
+          0, ShapeUtil::MakeValidatedShape(F32, {20, 35, 35, 32}).value(),
+          "activations"));
   HloInstruction* gradients =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          1, ShapeUtil::MakeShape(F32, {20, 35, 35, 32}), "gradients"));
+          1, ShapeUtil::MakeValidatedShape(F32, {20, 35, 35, 32}).value(),
+          "gradients"));
 
   Window conv_window = default_conv_window_;
   for (int i = 0; i < 2; ++i) {
@@ -265,7 +277,8 @@ TEST_F(ConvRewriterTest, BackwardFilterConvolveWithUnevenPadding) {
     conv_window.mutable_dimensions(i)->set_padding_high(1);
   }
   builder.AddInstruction(HloInstruction::CreateConvolve(
-      ShapeUtil::MakeShape(F32, {32, 2, 2, 32}), activations, gradients,
+      ShapeUtil::MakeValidatedShape(F32, {32, 2, 2, 32}).value(), activations,
+      gradients,
       /*feature_group_count=*/1, /*batch_group_count=*/1, conv_window,
       tf_default_dnums_for_backward_filter_, DefaultPrecisionConfig(2)));
 
@@ -282,10 +295,12 @@ TEST_F(ConvRewriterTest, BackwardInputConvolveEvenPadding) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* output =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(F32, {4, 5, 16, 16}), "output"));
+          0, ShapeUtil::MakeValidatedShape(F32, {4, 5, 16, 16}).value(),
+          "output"));
   HloInstruction* kernel =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          1, ShapeUtil::MakeShape(F32, {5, 3, 7, 7}), "kernel"));
+          1, ShapeUtil::MakeValidatedShape(F32, {5, 3, 7, 7}).value(),
+          "kernel"));
   HloInstruction* reverse_kernel = builder.AddInstruction(
       HloInstruction::CreateReverse(kernel->shape(), kernel, {2, 3}));
 
@@ -310,7 +325,8 @@ TEST_F(ConvRewriterTest, BackwardInputConvolveEvenPadding) {
   conv_dnums.add_kernel_spatial_dimensions(3);
 
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
-      ShapeUtil::MakeShape(F32, {4, 3, 16, 16}), /*lhs=*/output,
+      ShapeUtil::MakeValidatedShape(F32, {4, 3, 16, 16}).value(),
+      /*lhs=*/output,
       /*rhs=*/reverse_kernel, /*feature_group_count=*/1,
       /*batch_group_count=*/1, conv_window, conv_dnums,
       DefaultPrecisionConfig(2)));
@@ -352,11 +368,13 @@ TEST_F(ConvRewriterTest, BackwardInputConvolve1x1Filter) {
   // NHWC dimension order.
   HloInstruction* output =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(F32, {1, 1, 3, 1}), "output"));
+          0, ShapeUtil::MakeValidatedShape(F32, {1, 1, 3, 1}).value(),
+          "output"));
   // HWOI dimension order.
   HloInstruction* kernel =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          1, ShapeUtil::MakeShape(F32, {1, 1, 1, 1}), "kernel"));
+          1, ShapeUtil::MakeValidatedShape(F32, {1, 1, 1, 1}).value(),
+          "kernel"));
 
   Window conv_window = default_conv_window_;
   conv_window.mutable_dimensions(1)->set_base_dilation(2);
@@ -391,11 +409,13 @@ TEST_F(ConvRewriterTest,
   // NHWC dimension order.
   HloInstruction* output =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(F32, {1, 1, 3, 1}), "output"));
+          0, ShapeUtil::MakeValidatedShape(F32, {1, 1, 3, 1}).value(),
+          "output"));
   // HWOI dimension order.
   HloInstruction* kernel =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          1, ShapeUtil::MakeShape(F32, {1, 1, 1, 1}), "kernel"));
+          1, ShapeUtil::MakeValidatedShape(F32, {1, 1, 1, 1}).value(),
+          "kernel"));
 
   builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeInference::InferConvolveShape(
@@ -435,10 +455,12 @@ TEST_F(ConvRewriterTest, BackwardInputConvolveUnevenPaddingOnGradients) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* output =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(F32, {20, 4, 4, 320}), "output"));
+          0, ShapeUtil::MakeValidatedShape(F32, {20, 4, 4, 320}).value(),
+          "output"));
   HloInstruction* kernel =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          1, ShapeUtil::MakeShape(F32, {3, 3, 192, 320}), "kernel"));
+          1, ShapeUtil::MakeValidatedShape(F32, {3, 3, 192, 320}).value(),
+          "kernel"));
   HloInstruction* reverse_kernel = builder.AddInstruction(
       HloInstruction::CreateReverse(kernel->shape(), kernel, {0, 1}));
 
@@ -451,7 +473,8 @@ TEST_F(ConvRewriterTest, BackwardInputConvolveUnevenPaddingOnGradients) {
     conv_window.mutable_dimensions(i)->set_base_dilation(2);
   }
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
-      ShapeUtil::MakeShape(F32, {20, 10, 10, 192}), output, reverse_kernel,
+      ShapeUtil::MakeValidatedShape(F32, {20, 10, 10, 192}).value(), output,
+      reverse_kernel,
       /*feature_group_count=*/1, /*batch_group_count=*/1, conv_window,
       tf_default_dnums_for_backward_input_, DefaultPrecisionConfig(2)));
   // Verify the convolution's shape is consistent with ShapeInference.
@@ -487,10 +510,12 @@ TEST_F(ConvRewriterTest, BackwardInputConvolveLowPaddingTooLarge) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* output =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(F32, {20, 4, 4, 320}), "output"));
+          0, ShapeUtil::MakeValidatedShape(F32, {20, 4, 4, 320}).value(),
+          "output"));
   HloInstruction* kernel =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          1, ShapeUtil::MakeShape(F32, {3, 3, 192, 320}), "kernel"));
+          1, ShapeUtil::MakeValidatedShape(F32, {3, 3, 192, 320}).value(),
+          "kernel"));
   HloInstruction* reverse_kernel = builder.AddInstruction(
       HloInstruction::CreateReverse(kernel->shape(), kernel, {0, 1}));
 
@@ -502,7 +527,8 @@ TEST_F(ConvRewriterTest, BackwardInputConvolveLowPaddingTooLarge) {
     conv_window.mutable_dimensions(i)->set_base_dilation(2);
   }
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
-      ShapeUtil::MakeShape(F32, {20, 10, 10, 192}), output, reverse_kernel,
+      ShapeUtil::MakeValidatedShape(F32, {20, 10, 10, 192}).value(), output,
+      reverse_kernel,
       /*feature_group_count=*/1, /*batch_group_count=*/1, conv_window,
       tf_default_dnums_for_backward_input_, DefaultPrecisionConfig(2)));
   // Verify the convolution's shape is consistent with ShapeInference.
@@ -542,11 +568,13 @@ TEST_F(ConvRewriterTest, BackwardInputConvolveUnevenPaddingOnActivations) {
   // The gradients are in NCHW layout.
   HloInstruction* output =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(F32, {1, 1, 7, 1}), "output"));
+          0, ShapeUtil::MakeValidatedShape(F32, {1, 1, 7, 1}).value(),
+          "output"));
   // The kernel is in HWIO layout.
   HloInstruction* kernel =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          1, ShapeUtil::MakeShape(F32, {1, 3, 1, 1}), "kernel"));
+          1, ShapeUtil::MakeValidatedShape(F32, {1, 3, 1, 1}).value(),
+          "kernel"));
   HloInstruction* reverse_kernel = builder.AddInstruction(
       HloInstruction::CreateReverse(kernel->shape(), kernel, {0, 1}));
 
@@ -557,7 +585,8 @@ TEST_F(ConvRewriterTest, BackwardInputConvolveUnevenPaddingOnActivations) {
   forward_conv_col_dim->set_padding_high(1);
   forward_conv_col_dim->set_base_dilation(2);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
-      ShapeUtil::MakeShape(F32, {1, 1, 14, 1}), output, reverse_kernel,
+      ShapeUtil::MakeValidatedShape(F32, {1, 1, 14, 1}).value(), output,
+      reverse_kernel,
       /*feature_group_count=*/1, /*batch_group_count=*/1, conv_window,
       tf_default_dnums_for_backward_input_, DefaultPrecisionConfig(2)));
   // Verify the convolution's shape is consistent with ShapeInference.
@@ -600,11 +629,13 @@ TEST_F(ConvRewriterTest,
   // The gradients are in NCHW layout.
   HloInstruction* output =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(F32, {1, 1, 3, 1}), "output"));
+          0, ShapeUtil::MakeValidatedShape(F32, {1, 1, 3, 1}).value(),
+          "output"));
   // The kernel is in HWIO layout.
   HloInstruction* kernel =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          1, ShapeUtil::MakeShape(F32, {1, 2, 1, 1}), "kernel"));
+          1, ShapeUtil::MakeValidatedShape(F32, {1, 2, 1, 1}).value(),
+          "kernel"));
   HloInstruction* reverse_kernel = builder.AddInstruction(
       HloInstruction::CreateReverse(kernel->shape(), kernel, {0, 1}));
 
@@ -613,7 +644,8 @@ TEST_F(ConvRewriterTest,
   forward_conv_col_dim->set_size(2);
   forward_conv_col_dim->set_padding_high(2);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
-      ShapeUtil::MakeShape(F32, {1, 1, 4, 1}), output, reverse_kernel,
+      ShapeUtil::MakeValidatedShape(F32, {1, 1, 4, 1}).value(), output,
+      reverse_kernel,
       /*feature_group_count=*/1, /*batch_group_count=*/1, conv_window,
       tf_default_dnums_for_backward_input_, DefaultPrecisionConfig(2)));
   // Verify the convolution's shape is consistent with ShapeInference.

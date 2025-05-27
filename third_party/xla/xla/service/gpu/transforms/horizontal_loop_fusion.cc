@@ -561,8 +561,10 @@ absl::Status HorizontalLoopFusionImpl::CreateFusedComputation(
           if (!LayoutUtil::IsMonotonicWithDim0Major(
                   new_output->shape().layout())) {
             new_output = comp->AddInstruction(HloInstruction::CreateBitcast(
-                ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
-                    new_output->shape()),
+                ShapeUtil::
+                    MakeValidatedShapeWithDescendingLayoutAndSamePhysicalLayout(
+                        new_output->shape())
+                        .value(),
                 new_output));
           }
           Shape new_shape = ShapeUtil::MakeShapeWithDenseLayout(

@@ -639,7 +639,9 @@ ConvolutionMatch MatchBackwardInput(HloInstruction* conv) {
 
   HloComputation* c = conv->parent();
   rhs = c->AddInstruction(HloInstruction::CreateReshape(
-      ShapeUtil::MakeShape(rhs->shape().element_type(), reshape_dims), rhs));
+      ShapeUtil::MakeValidatedShape(rhs->shape().element_type(), reshape_dims)
+          .value(),
+      rhs));
 
   // Transpose [H, W, ..., G, in_depth/G, out_depth / G] -> [H, W, ...,
   // in_depth/G, G, out_depth / G]
@@ -655,7 +657,9 @@ ConvolutionMatch MatchBackwardInput(HloInstruction* conv) {
   transpose_reshape_dims.insert(
       transpose_reshape_dims.begin() + output_feature_dimension, num_groups);
   rhs = c->AddInstruction(HloInstruction::CreateTranspose(
-      ShapeUtil::MakeShape(rhs->shape().element_type(), transpose_reshape_dims),
+      ShapeUtil::MakeValidatedShape(rhs->shape().element_type(),
+                                    transpose_reshape_dims)
+          .value(),
       rhs, transpose_dims));
 
   // Reshape [H, W, ..., in_depth/G, G, out_depth / G] -> [H, W, ...,
@@ -686,7 +690,8 @@ HloInstruction* CreateGpuConv(absl::string_view call_target, const Shape& shape,
   // which conv algorithm to use, and at that point we'll modify the shape of
   // this second tuple element.
   Shape call_shape =
-      ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U8, {0})});
+      ShapeUtil::MakeValidatedTupleShape({shape, ShapeUtil::MakeShape(U8, {0})})
+          .value();
 
   HloInstruction* custom_call = computation->AddInstruction(
       HloInstruction::CreateCustomCall(call_shape, {lhs, rhs}, call_target));
@@ -738,7 +743,9 @@ HloInstruction* ConvertBatchGroupedToFeatureGroupedConvolution(
       reshape_dims[input_batch_dimension] / num_groups;
   reshape_dims.insert(reshape_dims.begin() + input_batch_dimension, num_groups);
   lhs = add(HloInstruction::CreateReshape(
-      ShapeUtil::MakeShape(lhs->shape().element_type(), reshape_dims), lhs));
+      ShapeUtil::MakeValidatedShape(lhs->shape().element_type(), reshape_dims)
+          .value(),
+      lhs));
 
   // Transpose G to the axis before C, For eg: [G, N/G, H, W, C ] -> [N/G, H,
   // W, G, C]
@@ -750,7 +757,9 @@ HloInstruction* ConvertBatchGroupedToFeatureGroupedConvolution(
   std::vector<int64_t> transpose_reshape_dims =
       ComposePermutations(lhs->shape().dimensions(), transpose_dims);
   lhs = add(HloInstruction::CreateTranspose(
-      ShapeUtil::MakeShape(lhs->shape().element_type(), transpose_reshape_dims),
+      ShapeUtil::MakeValidatedShape(lhs->shape().element_type(),
+                                    transpose_reshape_dims)
+          .value(),
       lhs, transpose_dims));
 
   // Merge [G,C] -> [C*G]

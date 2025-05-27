@@ -120,8 +120,10 @@ ENTRY main {
       m::Scatter(m::Slice(m::Constant()), m::Slice(m::Constant()),
                  m::Parameter(0), m::Parameter(1), m::Parameter(2));
 
-  Shape expected_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {8}), ShapeUtil::MakeShape(F16, {8})});
+  Shape expected_shape =
+      ShapeUtil::MakeValidatedTupleShape(
+          {ShapeUtil::MakeShape(F32, {8}), ShapeUtil::MakeShape(F16, {8})})
+          .value();
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Tuple(m::GetTupleElement(expected_scatter),
                                   m::GetTupleElement(expected_scatter))
@@ -222,8 +224,10 @@ ENTRY main {
   auto expected_scatter =
       m::Scatter(m::Slice(m::Constant()), m::Parameter(0), m::Parameter(1));
 
-  Shape expected_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {8}), ShapeUtil::MakeShape(F32, {8})});
+  Shape expected_shape =
+      ShapeUtil::MakeValidatedTupleShape(
+          {ShapeUtil::MakeShape(F32, {8}), ShapeUtil::MakeShape(F32, {8})})
+          .value();
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Tuple(m::Abs(expected_scatter),

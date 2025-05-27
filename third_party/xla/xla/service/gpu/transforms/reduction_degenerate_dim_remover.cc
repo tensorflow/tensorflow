@@ -88,7 +88,8 @@ class ReductionDegenerateDimRemoverVisitor : public DfsHloRewriteVisitor {
     }
 
     Shape canonical_reduce_shape =
-        ShapeUtil::MakeMaybeTupleShape(canonical_reduce_shapes);
+        ShapeUtil::MakeValidatedMaybeTupleShape(canonical_reduce_shapes)
+            .value();
     const Shape &orig_reduce_shape = instr->shape();
     std::unique_ptr<HloInstruction> new_reduce = HloInstruction::CreateReduce(
         canonical_reduce_shape, input_reshapes, instr->init_values(),

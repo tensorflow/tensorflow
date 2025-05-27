@@ -383,8 +383,9 @@ HloInstruction *TransposeMatrix(HloInstruction *instr, int64_t contracting_dim,
   }
 
   Shape normalized_input_shape =
-      ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
-          input_shape);
+      ShapeUtil::MakeValidatedShapeWithDescendingLayoutAndSamePhysicalLayout(
+          input_shape)
+          .value();
   auto a0 = MakeBitcastHlo(instr, normalized_input_shape);
 
   std::vector<int64_t> layout_permuation(
@@ -1196,7 +1197,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         scales_f32[i] = mult_scale[i] ? scales[i] : inv_scales[i];
         if (scales_f32[i]->shape().element_type() != F32) {
           scales_f32[i] = instr->AddInstruction(HloInstruction::CreateConvert(
-              ShapeUtil::MakeScalarShape(F32), scales_f32[i]));
+              ShapeUtil::MakeValidatedScalarShape(F32).value(), scales_f32[i]));
         }
       } else {
         scales_f32[i] = one();
@@ -1576,9 +1577,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   absl::Status F8AddDAmax(HloInstruction *instr, HloInstruction *existing_gemm,
                           HloInstruction *reduce_damax) {
     // Change the output shape of the Custom Call to tuple(D, DAmax).
-    Shape damax_shape = ShapeUtil::MakeScalarShape(F32);
+    Shape damax_shape = ShapeUtil::MakeValidatedScalarShape(F32).value();
     Shape tuple_shape =
-        ShapeUtil::MakeTupleShape({instr->shape(), damax_shape});
+        ShapeUtil::MakeValidatedTupleShape({instr->shape(), damax_shape})
+            .value();
     HloInstruction *gemm_and_damax =
         instr->AddInstruction(existing_gemm->CloneWithNewShape(tuple_shape));
 
@@ -1943,8 +1945,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     }
 
     std::unique_ptr<HloInstruction> output = gemm->CloneWithNewShape(
-        has_aux ? ShapeUtil::MakeTupleShape({gemm->shape(), gemm->shape()})
-                : gemm->shape());
+        has_aux
+            ? ShapeUtil::MakeValidatedTupleShape({gemm->shape(), gemm->shape()})
+                  .value()
+            : gemm->shape());
     TF_RETURN_IF_ERROR(output->set_backend_config(gpu_config));
     TF_RETURN_IF_ERROR(SetName(multiply->GetModule(), output.get()));
 
@@ -2480,8 +2484,10 @@ class GemmWorkspaceRewriteVisitor : public DfsHloRewriteVisitor {
     std::vector<Shape> output_shapes = instr->shape().IsArray()
                                            ? std::vector<Shape>{instr->shape()}
                                            : instr->shape().tuple_shapes();
-    output_shapes.emplace_back(ShapeUtil::MakeShape(S8, {workspace}));
-    Shape output_shape = ShapeUtil::MakeTupleShape(output_shapes);
+    output_shapes.emplace_back(
+        ShapeUtil::MakeValidatedShape(S8, {workspace}).value());
+    Shape output_shape =
+        ShapeUtil::MakeValidatedTupleShape(output_shapes).value();
 
     // Clone custom call with a new shape.
     HloInstruction *new_call = instr->AddInstruction(

@@ -542,11 +542,13 @@ bool ShouldAddToChain(const HloInstruction* inst) {
 HloComputation* MakeSumComputation(PrimitiveType type, HloModule* module) {
   HloComputation::Builder sum_b("add");
   auto x = sum_b.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/0, ShapeUtil::MakeShape(type, {}), "x"));
+      /*parameter_number=*/0, ShapeUtil::MakeValidatedShape(type, {}).value(),
+      "x"));
   auto y = sum_b.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/1, ShapeUtil::MakeShape(type, {}), "y"));
+      /*parameter_number=*/1, ShapeUtil::MakeValidatedShape(type, {}).value(),
+      "y"));
   sum_b.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(type, {}), HloOpcode::kAdd, x, y));
+      ShapeUtil::MakeValidatedShape(type, {}).value(), HloOpcode::kAdd, x, y));
   HloComputation* reduction = module->AddEmbeddedComputation(sum_b.Build());
   return reduction;
 }

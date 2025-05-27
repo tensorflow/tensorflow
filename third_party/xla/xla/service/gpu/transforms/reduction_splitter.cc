@@ -101,8 +101,10 @@ class ReductionSplitterVisitor : public DfsHloRewriteVisitor {
     std::vector<int64_t> pre_reduce_shape_dims(input_shape.dimensions().begin(),
                                                input_shape.dimensions().end());
     pre_reduce_shape_dims.erase(pre_reduce_shape_dims.begin() + max_reduce_dim);
-    Shape pre_reduce_shape = ShapeUtil::MakeShape(
-        reduce->shape().element_type(), pre_reduce_shape_dims);
+    Shape pre_reduce_shape =
+        ShapeUtil::MakeValidatedShape(reduce->shape().element_type(),
+                                      pre_reduce_shape_dims)
+            .value();
     std::unique_ptr<HloInstruction> pre_reduce = HloInstruction::CreateReduce(
         pre_reduce_shape, reduce->mutable_operand(0),
         reduce->mutable_operand(1), pre_reduce_dims, reduce->to_apply());

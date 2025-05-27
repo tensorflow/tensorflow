@@ -111,8 +111,9 @@ static absl::Status PadConv(HloCustomCallInstruction* conv,
     return conv->parent()->AddInstruction(std::move(new_instr));
   };
 
-  Shape new_conv_shape = ShapeUtil::MakeTupleShape(
-      {new_result_shape, ShapeUtil::MakeShape(U8, {0})});
+  Shape new_conv_shape = ShapeUtil::MakeValidatedTupleShape(
+                             {new_result_shape, ShapeUtil::MakeShape(U8, {0})})
+                             .value();
   auto* new_conv =
       add(conv->CloneWithNewOperands(new_conv_shape, new_operands));
 

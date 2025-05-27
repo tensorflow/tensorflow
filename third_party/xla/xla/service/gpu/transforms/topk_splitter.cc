@@ -80,14 +80,17 @@ class TopkSplitterVisitor : public DfsHloRewriteVisitor {
         std::min(absl::bit_floor(n / split_threshold_), kMaximumBatchSize);
     int new_n = n / new_batch;
     // Split the input into B batches and compute TopK over the batched arrays.
-    Shape split_input_shape =
-        ShapeUtil::MakeShape(data_shape.element_type(), {new_batch, new_n});
+    Shape split_input_shape = ShapeUtil::MakeValidatedShape(
+                                  data_shape.element_type(), {new_batch, new_n})
+                                  .value();
     TF_ASSIGN_OR_RETURN(
         HloInstruction * reshaped,
         MakeReshapeHlo(split_input_shape, topk->mutable_operand(0)));
-    Shape batch_topk_shape = ShapeUtil::MakeTupleShape(
-        {ShapeUtil::MakeShape(data_shape.element_type(), {new_batch, k}),
-         ShapeUtil::MakeShape(S32, {new_batch, k})});
+    Shape batch_topk_shape =
+        ShapeUtil::MakeValidatedTupleShape(
+            {ShapeUtil::MakeShape(data_shape.element_type(), {new_batch, k}),
+             ShapeUtil::MakeShape(S32, {new_batch, k})})
+            .value();
     HloInstruction* batch_topk =
         comp->AddInstruction(HloInstruction::CreateCustomCall(
             batch_topk_shape, {reshaped}, topk->to_apply(), "TopK",
@@ -97,7 +100,7 @@ class TopkSplitterVisitor : public DfsHloRewriteVisitor {
                         MakeGetTupleElementHlo(batch_topk, 1));
     TF_ASSIGN_OR_RETURN(HloInstruction * values,
                         MakeGetTupleElementHlo(batch_topk, 0));
-    Shape iota_shape = ShapeUtil::MakeShape(S32, {new_batch});
+    Shape iota_shape = ShapeUtil::MakeValidatedShape(S32, {new_batch}).value();
     TF_ASSIGN_OR_RETURN(
         HloInstruction * fix,
         MakeBinaryHlo(
@@ -109,11 +112,13 @@ class TopkSplitterVisitor : public DfsHloRewriteVisitor {
                                MakeBroadcastHlo(fix, {0}, indices->shape())));
     // With the indices restored, compute a final top-k. Since this topk uses
     // arbitrary indices, we need to use sort+slice.
-    Shape linear_index_shape = ShapeUtil::MakeShape(S32, {k * new_batch});
+    Shape linear_index_shape =
+        ShapeUtil::MakeValidatedShape(S32, {k * new_batch}).value();
     Shape linear_shape = ShapeUtil::ChangeElementType(
         linear_index_shape, data_shape.element_type());
     Shape linear_sort_shape =
-        ShapeUtil::MakeTupleShape({linear_shape, linear_index_shape});
+        ShapeUtil::MakeValidatedTupleShape({linear_shape, linear_index_shape})
+            .value();
     // Assuming the outputs of the TopK above are stably sorted, using a stable
     // sort here is enough to guarantee global stable sorting:
     //  - Within a blocks elements are stably sorted by TopK.

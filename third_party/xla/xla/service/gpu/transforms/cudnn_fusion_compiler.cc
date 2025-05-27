@@ -643,7 +643,7 @@ absl::StatusOr<HloInstruction*> AddWorkspace(HloInstruction& fusion,
   HloComputation* computation = fusion.fused_instructions_computation();
   HloInstruction* custom_call =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
-          ShapeUtil::MakeShape(S8, {workspace_size}), {},
+          ShapeUtil::MakeValidatedShape(S8, {workspace_size}).value(), {},
           kWorkspaceAllocationCustomCallTarget));
   HloInstruction* output_tuple =
       computation->AddInstruction(HloInstruction::CreateTuple(

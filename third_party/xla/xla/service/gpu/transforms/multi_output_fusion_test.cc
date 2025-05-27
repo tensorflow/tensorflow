@@ -1014,7 +1014,7 @@ TEST_F(MultiOutputFusionTest, AvoidsLargeFusion) {
   // multi-output fusion will pay attention to it.
   auto module = CreateNewVerifiedModule();
   HloComputation::Builder b(TestName());
-  Shape shape = ShapeUtil::MakeShape(F32, {10, 100});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {10, 100}).value();
 
   std::vector<HloInstruction*> params;
   for (int64_t i = 0; i < kNumParams; ++i) {

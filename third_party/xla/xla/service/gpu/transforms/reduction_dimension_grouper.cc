@@ -97,7 +97,8 @@ class ReduceDimensionGroupVisitor : public DfsHloRewriteVisitor {
       }
 
       Shape grouped_shape =
-          ShapeUtil::MakeShape(shape.element_type(), new_grouped_dims);
+          ShapeUtil::MakeValidatedShape(shape.element_type(), new_grouped_dims)
+              .value();
       reduce_inputs_grouped.push_back(reduce->parent()->AddInstruction(
           HloInstruction::CreateBitcast(grouped_shape, operand),
           &operand->metadata()));

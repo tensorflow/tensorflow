@@ -935,7 +935,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCall) {
              /*operands=*/
              {Slice(Broadcast(ConstantR0WithType(&b, F32, 42.0), {256}), {0},
                     {128}, {1})},
-             ShapeUtil::MakeShape(F32, {128}), /*opaque=*/"",
+             ShapeUtil::MakeValidatedShape(F32, {128}).value(), /*opaque=*/"",
              /*has_side_effect=*/false,
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
@@ -989,7 +989,7 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCallLegacy) {
              /*operands=*/
              {Slice(Broadcast(ConstantR0WithType(&b, F32, 42.0), {256}), {0},
                     {128}, {1})},
-             ShapeUtil::MakeShape(F32, {128}), /*opaque=*/"");
+             ShapeUtil::MakeValidatedShape(F32, {128}).value(), /*opaque=*/"");
   TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
   TF_ASSERT_OK_AND_ASSIGN(
       ProgramShape program_shape,
@@ -1051,7 +1051,7 @@ TEST_F(DynamicSliceFusionRewriterTest, TupleSliceCustomCallLegacy) {
                     Broadcast(ConstantR0WithType(&b, F32, 4), {8}),
                 }),
       },
-      ShapeUtil::MakeShape(F32, {128}), /*opaque=*/"");
+      ShapeUtil::MakeValidatedShape(F32, {128}).value(), /*opaque=*/"");
   TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
   TF_ASSERT_OK_AND_ASSIGN(
       ProgramShape program_shape,
@@ -1114,15 +1114,17 @@ TEST_F(DynamicSliceFusionRewriterTest, TupledOutputCustomCallLegacy) {
                     Broadcast(ConstantR0WithType(&b, F32, 4), {8}),
                 }),
       },
-      ShapeUtil::MakeTupleShape({
-          ShapeUtil::MakeShape(F32, {8}),
-          ShapeUtil::MakeTupleShape({
-              ShapeUtil::MakeShape(F32, {128}),
-              ShapeUtil::MakeShape(F32, {256}),
-          }),
-          ShapeUtil::MakeShape(F32, {1024}),
-          ShapeUtil::MakeShape(F32, {4, 8}),
-      }),
+      ShapeUtil::MakeValidatedTupleShape(
+          {
+              ShapeUtil::MakeShape(F32, {8}),
+              ShapeUtil::MakeTupleShape({
+                  ShapeUtil::MakeShape(F32, {128}),
+                  ShapeUtil::MakeShape(F32, {256}),
+              }),
+              ShapeUtil::MakeShape(F32, {1024}),
+              ShapeUtil::MakeShape(F32, {4, 8}),
+          })
+          .value(),
       /*opaque=*/"");
   Tuple(&b, {GetTupleElement(GetTupleElement(custom_call, 1), 0),
              GetTupleElement(custom_call, 2)});
@@ -1188,7 +1190,7 @@ TEST_F(DynamicSliceFusionRewriterTest, UnalignedSlice) {
       &b, "Callback_Void",
       /*operands=*/
       {Slice(Broadcast(ConstantR0WithType(&b, S32, 42), {17}), {1}, {17}, {1})},
-      ShapeUtil::MakeShape(S32, {16}), /*opaque=*/"");
+      ShapeUtil::MakeValidatedShape(S32, {16}).value(), /*opaque=*/"");
   TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
   TF_ASSERT_OK_AND_ASSIGN(
       ProgramShape program_shape,

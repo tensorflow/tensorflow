@@ -70,13 +70,14 @@ class ScatterSliceMatcher {
       return std::nullopt;
     }
     std::vector<Shape> result_shapes;
-    absl::c_transform(scatter_->scatter_operands(),
-                      std::back_inserter(result_shapes),
-                      [&](const HloInstruction* op) {
-                        return ShapeUtil::MakeShape(op->shape().element_type(),
-                                                    result_dimensions_);
-                      });
-    return ShapeUtil::MakeMaybeTupleShape(result_shapes);
+    absl::c_transform(
+        scatter_->scatter_operands(), std::back_inserter(result_shapes),
+        [&](const HloInstruction* op) {
+          return ShapeUtil::MakeValidatedShape(op->shape().element_type(),
+                                               result_dimensions_)
+              .value();
+        });
+    return ShapeUtil::MakeValidatedMaybeTupleShape(result_shapes).value();
   }
 
  private:
@@ -226,8 +227,9 @@ class ScatterSliceSimplifierVisitor : public DfsHloRewriteVisitor {
     HloInstruction* new_user = nullptr;
     if (user->IsElementwise()) {
       auto new_shape = [operand](HloInstruction* from) {
-        return ShapeUtil::MakeShape(from->shape().element_type(),
-                                    operand->shape().dimensions());
+        return ShapeUtil::MakeValidatedShape(from->shape().element_type(),
+                                             operand->shape().dimensions())
+            .value();
       };
       std::vector<HloInstruction*> new_operands;
       absl::c_transform(user->operands(), std::back_inserter(new_operands),

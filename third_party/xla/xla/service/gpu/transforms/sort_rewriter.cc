@@ -478,8 +478,9 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
     shapes.push_back(values->shape());
     operands.push_back(values);
   }
-  shapes.push_back(ShapeUtil::MakeShape(U8, {scratch_size}));
-  Shape call_shape = ShapeUtil::MakeTupleShape(absl::MakeSpan(shapes));
+  shapes.push_back(ShapeUtil::MakeValidatedShape(U8, {scratch_size}).value());
+  Shape call_shape =
+      ShapeUtil::MakeValidatedTupleShape(absl::MakeSpan(shapes)).value();
 
   // Build the custom call instruction.
   HloInstruction* custom_call =

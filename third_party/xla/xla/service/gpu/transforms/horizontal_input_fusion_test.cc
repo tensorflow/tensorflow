@@ -97,9 +97,9 @@ TEST_F(HorizontalInputFusionTest, ManyInputFusions) {
   {
     auto embedded_builder = HloComputation::Builder("add");
     auto lhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
-        0, ShapeUtil::MakeShape(F32, {}), "lhs"));
+        0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "lhs"));
     auto rhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
-        1, ShapeUtil::MakeShape(F32, {}), "rhs"));
+        1, ShapeUtil::MakeValidatedShape(F32, {}).value(), "rhs"));
     embedded_builder.AddInstruction(
         HloInstruction::CreateBinary(lhs->shape(), HloOpcode::kAdd, lhs, rhs));
     reduce_computation =
@@ -108,8 +108,8 @@ TEST_F(HorizontalInputFusionTest, ManyInputFusions) {
 
   HloComputation::Builder builder(TestName());
   std::vector<HloInstruction*> var_outs;
-  auto input_shape = ShapeUtil::MakeShape(F32, {1024, 1024});
-  auto output_shape = ShapeUtil::MakeShape(F32, {1024});
+  auto input_shape = ShapeUtil::MakeValidatedShape(F32, {1024, 1024}).value();
+  auto output_shape = ShapeUtil::MakeValidatedShape(F32, {1024}).value();
   for (int64_t i = 0; i < 130; ++i) {
     // %fused_computation.3 (param_0: f32[1024,1024], param_1: f32[]) ->
     // f32[1024] {
@@ -129,7 +129,8 @@ TEST_F(HorizontalInputFusionTest, ManyInputFusions) {
         HloInstruction::CreateParameter(i * 2 + 0, input_shape, "var.in"));
     HloInstruction* param_alpha =
         builder.AddInstruction(HloInstruction::CreateParameter(
-            i * 2 + 1, ShapeUtil::MakeShape(F32, {}), "alpha"));
+            i * 2 + 1, ShapeUtil::MakeValidatedShape(F32, {}).value(),
+            "alpha"));
     auto alpha_broadcasted = builder.AddInstruction(
         HloInstruction::CreateBroadcast(input_shape, param_alpha, {}));
     auto mul = builder.AddInstruction(HloInstruction::CreateBinary(

@@ -119,8 +119,10 @@ class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
         }
       }
 
-      Shape new_operand_shape = ShapeUtil::MakeShape(
-          operand_shape.element_type(), new_operand_shape_data);
+      Shape new_operand_shape =
+          ShapeUtil::MakeValidatedShape(operand_shape.element_type(),
+                                        new_operand_shape_data)
+              .value();
       Shape new_reduce_shape = ShapeUtil::MakeShapeWithDenseLayout(
           reduce_shape.element_type(), new_reduce_shape_data,
           new_reduce_shape_layout);
@@ -147,7 +149,8 @@ class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    Shape new_reduce_shape = ShapeUtil::MakeMaybeTupleShape(new_reduce_shapes);
+    Shape new_reduce_shape =
+        ShapeUtil::MakeValidatedMaybeTupleShape(new_reduce_shapes).value();
 
     std::unique_ptr<HloInstruction> new_reduce = HloInstruction::CreateReduce(
         new_reduce_shape, canonical_reduce_inputs, reduce->init_values(),

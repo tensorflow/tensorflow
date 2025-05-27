@@ -350,8 +350,9 @@ bool ConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
 
   HloInstruction* new_backward_conv_call =
       computation->AddInstruction(backward_conv->CloneWithNewOperands(
-          ShapeUtil::MakeTupleShape(
-              {new_backward_conv_shape, ShapeUtil::MakeShape(U8, {0})}),
+          ShapeUtil::MakeValidatedTupleShape(
+              {new_backward_conv_shape, ShapeUtil::MakeShape(U8, {0})})
+              .value(),
           {output, filter}));
   new_backward_conv_call->set_window(new_backward_conv_window);
 

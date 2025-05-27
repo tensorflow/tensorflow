@@ -69,8 +69,9 @@ Shape MergeDimensions(absl::Span<const size_t> segs, const Shape &shape) {
             (segs.size() == i ? shape.dimensions().size() : segs[i]),
         int64_t{1}, std::multiplies<int64_t>()));
   }
-  return ShapeUtil::MakeShapeWithDescendingLayout(shape.element_type(),
-                                                  dimensions);
+  return ShapeUtil::MakeValidatedShapeWithDescendingLayout(shape.element_type(),
+                                                           dimensions)
+      .value();
 }
 
 absl::InlinedVector<int64_t, 3> GetNormalizedTransposeShapeHelper(
@@ -182,12 +183,16 @@ class TransposeDimensionGroupVisitor : public DfsHloRewriteVisitor {
     }
     auto normalized_operand_dims =
         ComposePermutations(normalized_dims, InversePermutation(permutation));
-    Shape grouped_operand_shape = ShapeUtil::MakeShapeWithDescendingLayout(
-        transpose->shape().element_type(), normalized_operand_dims);
+    Shape grouped_operand_shape =
+        ShapeUtil::MakeValidatedShapeWithDescendingLayout(
+            transpose->shape().element_type(), normalized_operand_dims)
+            .value();
     auto new_operand = transpose->AddInstruction(HloInstruction::CreateBitcast(
         grouped_operand_shape, transpose->mutable_operand(0)));
-    Shape grouped_shape = ShapeUtil::MakeShapeWithDescendingLayout(
-        transpose->shape().element_type(), normalized_dims);
+    Shape grouped_shape =
+        ShapeUtil::MakeValidatedShapeWithDescendingLayout(
+            transpose->shape().element_type(), normalized_dims)
+            .value();
     auto new_transpose =
         transpose->AddInstruction(HloInstruction::CreateTranspose(
             grouped_shape, new_operand, permutation));

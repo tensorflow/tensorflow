@@ -54,11 +54,12 @@ absl::StatusOr<bool> CreateCollectivesGroupAsyncPair(HloInstruction* instr) {
     parameter_shapes[i] = &instr->operand(i)->shape();
   }
   std::vector<Shape> start_shapes = {
-      ShapeUtil::MakeTupleShapeWithPtrs(parameter_shapes), instr->shape()};
+      ShapeUtil::MakeValidatedTupleShapeWithPtrs(parameter_shapes).value(),
+      instr->shape()};
   HloInstruction* async_start =
       computation->AddInstruction(HloInstruction::CreateAsyncStart(
-          ShapeUtil::MakeTupleShape(start_shapes), instr->operands(),
-          new_computation, "explicit"));
+          ShapeUtil::MakeValidatedTupleShape(start_shapes).value(),
+          instr->operands(), new_computation, "explicit"));
   HloInstruction* async_done = computation->AddInstruction(
       HloInstruction::CreateAsyncDone(instr->shape(), async_start));
   // Forward frontend attributes to both async instructions.

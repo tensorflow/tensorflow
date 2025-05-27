@@ -782,7 +782,8 @@ absl::StatusOr<HloComputation*> CommandBufferScheduling::RewriteCommandBuffer(
     absl::InlinedVector<Shape, 4> shapes;
     shapes.reserve(command_buffer.results.size());
     for (auto* res : command_buffer.results) shapes.push_back(res->shape());
-    cmd_buffer_result_shape = ShapeUtil::MakeTupleShape(shapes);
+    cmd_buffer_result_shape =
+        ShapeUtil::MakeValidatedTupleShape(shapes).value();
   }
 
   HloComputation* computation =

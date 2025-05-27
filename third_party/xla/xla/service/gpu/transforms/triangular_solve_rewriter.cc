@@ -59,10 +59,12 @@ absl::StatusOr<bool> TriangularSolveRewriter::Run(
       // batch 1 triangular solves get 0 temp bytes, because unbatched trsm()
       // doesn't require temp memory.
       int64_t temp_bytes = batch_size == 1 ? 0 : 2 * sizeof(void*) * batch_size;
-      Shape new_shape = ShapeUtil::MakeTupleShape({
-          instr->shape(),
-          ShapeUtil::MakeShape(S8, {temp_bytes}),
-      });
+      Shape new_shape = ShapeUtil::MakeValidatedTupleShape(
+                            {
+                                instr->shape(),
+                                ShapeUtil::MakeShape(S8, {temp_bytes}),
+                            })
+                            .value();
 
       HloInstruction* custom_call =
           comp->AddInstruction(HloInstruction::CreateCustomCall(

@@ -84,10 +84,12 @@ ENTRY %convolution (operand f64[2,2,2,3]{3,2,1,0}) -> (f64[2,2,4,4]{3,2,1,0}, u8
                             0)),
                         m::GetTupleElement())));
   auto slice = root->operand(0);
-  Shape expected_slice_shape = ShapeUtil::MakeShape(F64, {2, 2, 4, 4});
+  Shape expected_slice_shape =
+      ShapeUtil::MakeValidatedShape(F64, {2, 2, 4, 4}).value();
   EXPECT_TRUE(ShapeUtil::Equal(slice->shape(), expected_slice_shape));
   auto conv = slice->operand(0);
-  Shape expected_conv_shape = ShapeUtil::MakeShape(F64, {2, 2, 4, 5});
+  Shape expected_conv_shape =
+      ShapeUtil::MakeValidatedShape(F64, {2, 2, 4, 5}).value();
   EXPECT_TRUE(ShapeUtil::Equal(conv->shape(), expected_conv_shape));
 }
 

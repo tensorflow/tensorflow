@@ -373,12 +373,13 @@ TEST_F(HorizontalLoopFusionTest, GradientDescentOptimizerLike) {
   std::vector<HloInstruction*> var_outs;
   for (int64_t i = 0; i < 128; ++i) {
     // For shapes {1, 1024}, {2, 1024}, ..., {128, 1024}
-    Shape shape = ShapeUtil::MakeShape(F32, {i + 1, 1024});
+    Shape shape = ShapeUtil::MakeValidatedShape(F32, {i + 1, 1024}).value();
     HloInstruction* param_var_in = builder.AddInstruction(
         HloInstruction::CreateParameter(i * 3 + 0, shape, "var.in"));
     HloInstruction* param_alpha =
         builder.AddInstruction(HloInstruction::CreateParameter(
-            i * 3 + 1, ShapeUtil::MakeShape(F32, {}), "alpha"));
+            i * 3 + 1, ShapeUtil::MakeValidatedShape(F32, {}).value(),
+            "alpha"));
     HloInstruction* param_delta = builder.AddInstruction(
         HloInstruction::CreateParameter(i * 3 + 2, shape, "delta"));
     HloInstruction* alpha_broadcasted = builder.AddInstruction(
@@ -467,7 +468,7 @@ TEST_F(HorizontalLoopFusionTest, RMSPropLike) {
 
   std::vector<HloInstruction*> all_outputs;
   for (int64_t i = 0; i < 48; ++i) {
-    Shape shape = ShapeUtil::MakeShape(F32, {2, 1024 + i});
+    Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 1024 + i}).value();
     // ms <- grad**2 (1 - rho) + ms * rho
     HloInstruction* grad = builder.AddInstruction(
         HloInstruction::CreateParameter(i * 9 + 0, shape, "grad"));
@@ -475,10 +476,11 @@ TEST_F(HorizontalLoopFusionTest, RMSPropLike) {
         HloInstruction::CreateParameter(i * 9 + 1, shape, "ms"));
     HloInstruction* rho =
         builder.AddInstruction(HloInstruction::CreateParameter(
-            i * 9 + 2, ShapeUtil::MakeShape(F32, {}), "rho"));
+            i * 9 + 2, ShapeUtil::MakeValidatedShape(F32, {}).value(), "rho"));
     HloInstruction* one_minus_rho =
         builder.AddInstruction(HloInstruction::CreateParameter(
-            i * 9 + 3, ShapeUtil::MakeShape(F32, {}), "one_minus_rho"));
+            i * 9 + 3, ShapeUtil::MakeValidatedShape(F32, {}).value(),
+            "one_minus_rho"));
     HloInstruction* rho_broadcasted =
         builder.AddInstruction(HloInstruction::CreateBroadcast(shape, rho, {}));
     HloInstruction* one_mins_rho_broadcasted = builder.AddInstruction(
@@ -501,10 +503,11 @@ TEST_F(HorizontalLoopFusionTest, RMSPropLike) {
     HloInstruction* mom = builder.AddInstruction(
         HloInstruction::CreateParameter(i * 9 + 5, shape, "mom"));
     HloInstruction* lr = builder.AddInstruction(HloInstruction::CreateParameter(
-        i * 9 + 6, ShapeUtil::MakeShape(F32, {}), "lr"));
+        i * 9 + 6, ShapeUtil::MakeValidatedShape(F32, {}).value(), "lr"));
     HloInstruction* epsilon =
         builder.AddInstruction(HloInstruction::CreateParameter(
-            i * 9 + 7, ShapeUtil::MakeShape(F32, {}), "epsilon"));
+            i * 9 + 7, ShapeUtil::MakeValidatedShape(F32, {}).value(),
+            "epsilon"));
     HloInstruction* lr_broadcasted =
         builder.AddInstruction(HloInstruction::CreateBroadcast(shape, lr, {}));
     HloInstruction* epsilon_broadcasted = builder.AddInstruction(

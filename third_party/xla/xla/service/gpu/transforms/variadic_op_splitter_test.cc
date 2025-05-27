@@ -55,7 +55,7 @@ TEST_F(VariadicOpSplitterTest, SplitInto2) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32_t>({42})));
   std::vector<HloInstruction*> concat_operands(255, operand);
   builder.AddInstruction(HloInstruction::CreateConcatenate(
-      ShapeUtil::MakeShape(S32, {255}), concat_operands, 0));
+      ShapeUtil::MakeValidatedShape(S32, {255}).value(), concat_operands, 0));
   auto module = CreateNewVerifiedModule();
   auto entry_computation = module->AddEntryComputation(builder.Build());
   EXPECT_TRUE(VariadicOpSplitter().Run(module.get()).value());
@@ -70,7 +70,7 @@ TEST_F(VariadicOpSplitterTest, SplitInto3) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32_t>({42})));
   std::vector<HloInstruction*> concat_operands(256, operand);
   builder.AddInstruction(HloInstruction::CreateConcatenate(
-      ShapeUtil::MakeShape(S32, {256}), concat_operands, 0));
+      ShapeUtil::MakeValidatedShape(S32, {256}).value(), concat_operands, 0));
   auto module = CreateNewVerifiedModule();
   auto entry_computation = module->AddEntryComputation(builder.Build());
   EXPECT_TRUE(VariadicOpSplitter().Run(module.get()).value());

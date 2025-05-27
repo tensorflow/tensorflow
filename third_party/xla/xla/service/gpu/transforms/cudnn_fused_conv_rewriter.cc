@@ -940,7 +940,8 @@ absl::StatusOr<bool> F8GraphConv(HloComputation* comp,
 
       HloInstruction* new_convolution =
           comp->AddInstruction(convolution->CloneWithNewOperands(
-              ShapeUtil::MakeTupleShape(output_shapes), operands));
+              ShapeUtil::MakeValidatedTupleShape(output_shapes).value(),
+              operands));
 
       new_convolution->set_custom_call_target(kCudnnConvForwardGraphCallTarget);
       TF_RETURN_IF_ERROR(new_convolution->set_backend_config(gpu_config));

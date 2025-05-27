@@ -83,9 +83,11 @@ TEST_F(ReductionSplitterTest, SplitReductionAtDimensionTwo) {
 
   auto* pre_reduction = root_reduction->operand(0);
   EXPECT_THAT(pre_reduction->dimensions(), std::vector<int64_t>({2}));
-  EXPECT_THAT(pre_reduction->shape(), ShapeUtil::MakeShape(F32, {6, 16, 64}));
+  EXPECT_THAT(pre_reduction->shape(),
+              ShapeUtil::MakeValidatedShape(F32, {6, 16, 64}).value());
   EXPECT_THAT(root_reduction->dimensions(), std::vector<int64_t>({0}));
-  EXPECT_THAT(root_reduction->shape(), ShapeUtil::MakeShape(F32, {16, 64}));
+  EXPECT_THAT(root_reduction->shape(),
+              ShapeUtil::MakeValidatedShape(F32, {16, 64}).value());
 }
 
 TEST_F(ReductionSplitterTest, SplitReductionAtDimensionZero) {
@@ -117,9 +119,10 @@ TEST_F(ReductionSplitterTest, SplitReductionAtDimensionZero) {
   auto* pre_reduction = root_reduction->operand(0);
   EXPECT_THAT(pre_reduction->dimensions(), std::vector<int64_t>({0}));
   EXPECT_THAT(pre_reduction->shape(),
-              ShapeUtil::MakeShape(F32, {16, 512, 64, 128}));
+              ShapeUtil::MakeValidatedShape(F32, {16, 512, 64, 128}).value());
   EXPECT_THAT(root_reduction->dimensions(), std::vector<int64_t>({1, 3}));
-  EXPECT_THAT(root_reduction->shape(), ShapeUtil::MakeShape(F32, {16, 64}));
+  EXPECT_THAT(root_reduction->shape(),
+              ShapeUtil::MakeValidatedShape(F32, {16, 64}).value());
 }
 
 TEST_F(ReductionSplitterTest, DontSplitReductionWithSmallDimensions) {

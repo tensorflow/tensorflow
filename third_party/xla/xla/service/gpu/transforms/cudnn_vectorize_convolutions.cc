@@ -125,7 +125,7 @@ static Shape SplitShapeAtDim(Shape shape, int64_t dim, int64_t vect_size) {
   CHECK_EQ(new_dims[dim] % vect_size, 0);
   new_dims[dim] /= vect_size;
   new_dims.insert(new_dims.begin() + dim + 1, vect_size);
-  return ShapeUtil::MakeShape(shape.element_type(), new_dims);
+  return ShapeUtil::MakeValidatedShape(shape.element_type(), new_dims).value();
 }
 
 // Transposes dimension `src` to right before `dst`.
@@ -430,9 +430,10 @@ static absl::StatusOr<bool> TryRevectorizeConv(
   new_output_dims[*output_vect_dim] = vect_size;
   XlaOp new_conv = CustomCallWithConvDnums(
       &b, conv->custom_call_target(), new_operands,
-      ShapeUtil::MakeTupleShape(
+      ShapeUtil::MakeValidatedTupleShape(
           {ShapeUtil::MakeShape(output_shape.element_type(), new_output_dims),
-           ShapeUtil::MakeShape(U8, {0})}),
+           ShapeUtil::MakeShape(U8, {0})})
+          .value(),
       /*operand_shapes_with_layout=*/{},
       /*opaque=*/conv->raw_backend_config_string(), /*has_side_effect=*/false,
       /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
@@ -566,8 +567,9 @@ static absl::StatusOr<bool> TryVectorizeConv(
       output_shape, dnums->output_feature_dimension(), vect_size);
   XlaOp new_conv = CustomCallWithConvDnums(
       &b, conv->custom_call_target(), new_operands,
-      ShapeUtil::MakeTupleShape(
-          {new_output_shape, ShapeUtil::MakeShape(U8, {0})}),
+      ShapeUtil::MakeValidatedTupleShape(
+          {new_output_shape, ShapeUtil::MakeShape(U8, {0})})
+          .value(),
       /*operand_shapes_with_layout=*/{},
       /*opaque=*/conv->raw_backend_config_string(), /*has_side_effect=*/false,
       /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
