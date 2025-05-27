@@ -152,7 +152,8 @@ XlaOp Uint32sToUint64(std::array<XlaOp, 2> u32s) {
 std::pair<ThreeFry2x32State, XlaOp> GetThreeFryInputsAndUpdatedState(
     XlaOp initial_state, const Shape& shape) {
   XlaBuilder* builder = initial_state.builder();
-  auto u64_shape = ShapeUtil::MakeShape(U64, shape.dimensions());
+  auto u64_shape =
+      ShapeUtil::MakeValidatedShape(U64, shape.dimensions()).value();
   // initial_state is an R1, so reshape it to a scalar.
   auto input_u64 = Broadcast(Reshape(initial_state, {}), shape.dimensions());
   int64_t trailing_dims_product = 1;
@@ -182,8 +183,10 @@ struct SplitShapePair {
 SplitShapePair SplitShapeIntoHalves(const Shape& shape) {
   SplitShapePair pair;
   if (shape.dimensions().size() == 0) {
-    pair.half_shape = ShapeUtil::MakeShape(shape.element_type(), {1});
-    pair.concat_shape = ShapeUtil::MakeShape(shape.element_type(), {2});
+    pair.half_shape =
+        ShapeUtil::MakeValidatedShape(shape.element_type(), {1}).value();
+    pair.concat_shape =
+        ShapeUtil::MakeValidatedShape(shape.element_type(), {2}).value();
     pair.split_dim = 0;
     pair.new_concat_dim = 0;
     return pair;
@@ -226,9 +229,12 @@ SplitShapePair SplitShapeIntoHalves(const Shape& shape) {
     }
   }
   pair.new_concat_dim = pair.split_dim + 1;
-  pair.half_shape = ShapeUtil::MakeShape(shape.element_type(), half_shape_dims);
+  pair.half_shape =
+      ShapeUtil::MakeValidatedShape(shape.element_type(), half_shape_dims)
+          .value();
   pair.concat_shape =
-      ShapeUtil::MakeShape(shape.element_type(), concat_shape_dims);
+      ShapeUtil::MakeValidatedShape(shape.element_type(), concat_shape_dims)
+          .value();
   return pair;
 }
 

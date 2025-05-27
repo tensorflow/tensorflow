@@ -61,7 +61,7 @@ Shape FindMaxShape(absl::Span<const Shape*> shapes) {
       }
       results.push_back(FindMaxShape(absl::MakeSpan(subshapes)));
     }
-    return ShapeUtil::MakeTupleShape(results);
+    return ShapeUtil::MakeValidatedTupleShape(results).value();
   }
   Shape result = *shapes[0];
 
