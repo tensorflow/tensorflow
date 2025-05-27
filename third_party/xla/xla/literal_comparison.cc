@@ -711,10 +711,12 @@ absl::Status EqualHelper(const LiteralSlice& expected,
         0);
     auto index = absl::MakeSpan(multi_index);
 
-    const Shape unequal_shape = ShapeUtil::MakeShape(
-        PrimitiveType::PRED, expected.shape().IsArray()
-                                 ? expected.shape().dimensions()
-                                 : absl::Span<const int64_t>());
+    const Shape unequal_shape =
+        ShapeUtil::MakeValidatedShape(PrimitiveType::PRED,
+                                      expected.shape().IsArray()
+                                          ? expected.shape().dimensions()
+                                          : absl::Span<const int64_t>())
+            .value();
     Literal miscompared(unequal_shape);
     Literal* const miscompared_ptr =
         (miscompare_callback == nullptr) ? nullptr : &miscompared;

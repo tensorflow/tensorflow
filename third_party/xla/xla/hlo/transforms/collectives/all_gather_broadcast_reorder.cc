@@ -148,7 +148,8 @@ absl::StatusOr<bool> AllGatherBroadcastReorder::Run(
         absl::Span<const int64_t> x_dims = x->shape().dimensions();
         shape_dims.insert(shape_dims.end(), x_dims.begin(), x_dims.end());
         Shape shape =
-            ShapeUtil::MakeShape(x->shape().element_type(), shape_dims);
+            ShapeUtil::MakeValidatedShape(x->shape().element_type(), shape_dims)
+                .value();
 
         HloInstruction *rs0 = computation->AddInstruction(
             HloInstruction::CreateReshape(shape, x));
@@ -175,8 +176,9 @@ absl::StatusOr<bool> AllGatherBroadcastReorder::Run(
         bcast_shape_dims[ag_dim] = ag_factor;
         bcast_shape_dims.insert(bcast_shape_dims.begin() + ag_dim + 1,
                                 ag->shape().dimensions(ag_dim) / ag_factor);
-        Shape bcast_shape =
-            ShapeUtil::MakeShape(x->shape().element_type(), bcast_shape_dims);
+        Shape bcast_shape = ShapeUtil::MakeValidatedShape(
+                                x->shape().element_type(), bcast_shape_dims)
+                                .value();
 
         // The broadcast dims have 1 extra dim as compared to the existing
         // broadcast (due to the ag_factor dimension). This corresponds to dim

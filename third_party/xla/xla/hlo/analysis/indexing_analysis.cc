@@ -1169,17 +1169,21 @@ HloInstructionIndexing ComputeInputToOutputTransposeOpIndexing(
 IndexingMap GetBitcastMap(absl::Span<const int64_t> input_shape,
                           const Shape& output_shape,
                           mlir::MLIRContext* mlir_context) {
-  return GetBitcastMap(ShapeUtil::MakeShapeWithDescendingLayout(
-                           output_shape.element_type(), input_shape),
+  return GetBitcastMap(ShapeUtil::MakeValidatedShapeWithDescendingLayout(
+                           output_shape.element_type(), input_shape)
+                           .value(),
                        output_shape, mlir_context);
 }
 IndexingMap GetBitcastMap(absl::Span<const int64_t> input_shape,
                           absl::Span<const int64_t> output_shape,
                           mlir::MLIRContext* mlir_context) {
-  return GetBitcastMap(
-      ShapeUtil::MakeShapeWithDescendingLayout(PrimitiveType::S8, input_shape),
-      ShapeUtil::MakeShapeWithDescendingLayout(PrimitiveType::S8, output_shape),
-      mlir_context);
+  return GetBitcastMap(ShapeUtil::MakeValidatedShapeWithDescendingLayout(
+                           PrimitiveType::S8, input_shape)
+                           .value(),
+                       ShapeUtil::MakeValidatedShapeWithDescendingLayout(
+                           PrimitiveType::S8, output_shape)
+                           .value(),
+                       mlir_context);
 }
 IndexingMap GetBitcastMap(const Shape& input_shape, const Shape& output_shape,
                           MLIRContext* mlir_context) {
@@ -1301,7 +1305,9 @@ IndexingMap GetIndexingMapFromPhysicalLayoutToLogical(
       ComputeTransposeIndexingMap(
           InversePermutation(ToTransposeDimensions(shape.layout())),
           mlir_context),
-      ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(shape)
+      ShapeUtil::MakeValidatedShapeWithDescendingLayoutAndSamePhysicalLayout(
+          shape)
+          .value()
           .dimensions(),
       {});
 }

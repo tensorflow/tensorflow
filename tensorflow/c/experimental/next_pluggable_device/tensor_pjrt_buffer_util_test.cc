@@ -60,7 +60,7 @@ PJRT_Buffer* CreateCBuffer() {
   CHECK_OK(pjrt_client.status());
   auto c_api_client = down_cast<xla::PjRtCApiClient*>(pjrt_client->get());
   std::vector<int32_t> data(1, 0);
-  xla::Shape shape = xla::ShapeUtil::MakeShape(xla::S32, {1});
+  xla::Shape shape = xla::ShapeUtil::MakeValidatedShape(xla::S32, {1}).value();
 
   auto buffer = c_api_client->pjrt_c_client()->client->BufferFromHostBuffer(
       data.data(), shape.element_type(), shape.dimensions(),
@@ -92,7 +92,7 @@ TEST(TensorPjRtBufferUtilTest, GetPjRtCBufferFromTensorIncoorectType) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, xla::GetXlaPjrtCpuClient(options));
   std::vector<int32_t> data(1, 0);
-  xla::Shape shape = xla::ShapeUtil::MakeShape(xla::S32, {1});
+  xla::Shape shape = xla::ShapeUtil::MakeValidatedShape(xla::S32, {1}).value();
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,
       pjrt_client->BufferFromHostBuffer(
@@ -121,7 +121,7 @@ TEST(TensorPjRtBufferUtilTest, GetPjRtCBufferFromTensorSuccess) {
   }
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, xla::GetCApiClient(DEVICE_CPU));
   std::vector<int32_t> data(1, 0);
-  xla::Shape shape = xla::ShapeUtil::MakeShape(xla::S32, {1});
+  xla::Shape shape = xla::ShapeUtil::MakeValidatedShape(xla::S32, {1}).value();
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer,
       pjrt_client->BufferFromHostBuffer(
