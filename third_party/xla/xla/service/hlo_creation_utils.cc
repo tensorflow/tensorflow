@@ -551,8 +551,8 @@ absl::StatusOr<HloInstruction*> MakeReduceHlo(
         operand->shape()));
   }
 
-  auto output_shape = ShapeUtil::MakeMaybeTupleShape(expected_shapes);
-
+  TF_ASSIGN_OR_RETURN(auto output_shape,
+                      ShapeUtil::MakeValidatedMaybeTupleShape(expected_shapes));
   return operands[0]->parent()->AddInstruction(
       HloInstruction::CreateReduce(output_shape, operands, init_values,
                                    dimensions, reduce_computation),
