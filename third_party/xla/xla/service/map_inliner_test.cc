@@ -41,7 +41,7 @@ using MapInlinerTest = HloTestBase;
 
 // Test that `map` with `max` is transformed to `max`
 TEST_F(MapInlinerTest, MapMax) {
-  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  Shape r0f32 = ShapeUtil::MakeValidatedShape(F32, {}).value();
 
   auto max_builder = HloComputation::Builder(TestName());
   auto param1 = max_builder.AddInstruction(
@@ -78,7 +78,7 @@ TEST_F(MapInlinerTest, MapMax) {
 
 // Test that `constant` function is changed to `broadcast`.
 TEST_F(MapInlinerTest, MapConstant) {
-  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  Shape r0f32 = ShapeUtil::MakeValidatedShape(F32, {}).value();
 
   auto const2_builder = HloComputation::Builder(TestName());
   auto param1 = const2_builder.AddInstruction(
@@ -111,7 +111,7 @@ TEST_F(MapInlinerTest, MapConstant) {
 }
 
 TEST_F(MapInlinerTest, MapSubtractOppositeOrder) {
-  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  Shape r0f32 = ShapeUtil::MakeValidatedShape(F32, {}).value();
 
   // Note that the parameter ordinals are in the opposite order to their
   // position as operands
@@ -149,7 +149,7 @@ TEST_F(MapInlinerTest, MapSubtractOppositeOrder) {
 }
 
 TEST_F(MapInlinerTest, MapParameter) {
-  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  Shape r0f32 = ShapeUtil::MakeValidatedShape(F32, {}).value();
 
   auto param_builder = HloComputation::Builder(TestName());
   param_builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32, "p0"));
