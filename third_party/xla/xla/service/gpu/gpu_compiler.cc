@@ -1388,6 +1388,11 @@ absl::Status GpuCompiler::OptimizeHloModule(
   TF_RETURN_IF_ERROR(RunPreSPMDPartitionerPasses(hlo_module));
   TF_RETURN_IF_ERROR(RunSPMDPasses(hlo_module, gpu_target_config,
                                    layout_insensitive_algsimp_opts));
+
+  // Dump the HLO module after SPMD partitioning. There should be no more Python
+  // callbacks at this point.
+  DumpHloModuleIfEnabled(*hlo_module, "after_spmd_partitioner");
+
   TF_ASSIGN_OR_RETURN(
       const stream_executor::Platform* platform,
       stream_executor::PlatformManager::PlatformWithId(PlatformId()));
