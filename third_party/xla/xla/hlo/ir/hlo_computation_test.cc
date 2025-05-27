@@ -22,7 +22,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/shape_util.h"
@@ -214,5 +216,101 @@ ENTRY entry {
   EXPECT_EQ(mul_int->caller_computations().size(), 1);
   EXPECT_TRUE(mul_int->caller_computations().contains(entry));
 }
+
+TEST_F(HLOComputationTest, CloneContract) {
+  absl::string_view hlo_string = R"(
+HloModule module
+diff {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT out = f32[] add(a, b)
+}
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT out = f32[] add(a, b)
+}
+
+ENTRY entry {
+  p0 = f32[100] parameter(0), parameter_replication={false}
+  p1 = f32[100] parameter(1), parameter_replication={false}
+  map0 = f32[100] map(p0, p1), to_apply=diff
+  ROOT map1 = f32[100] map(p0, map0), to_apply=sum
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> source_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation *entry = source_module->entry_computation();
+  HloComputation *sum = source_module->GetComputationWithName("sum");
+  HloComputation *diff = source_module->GetComputationWithName("diff");
+  ASSERT_NE(entry, nullptr);
+  ASSERT_NE(sum, nullptr);
+  ASSERT_NE(diff, nullptr);
+
+  // Clone() without context.
+  int64_t pre_clone_computation_count = source_module->computation_count();
+  auto cloned = entry->Clone();
+  EXPECT_EQ(cloned->parent(), nullptr);
+  EXPECT_EQ(source_module->computation_count(), pre_clone_computation_count);
+
+  std::unique_ptr<HloModule> target_module = std::make_unique<HloModule>(
+      "target_module", source_module->shared_config(),
+      std::make_unique<CompilationEnvironments>());
+  HloCloneContext clone_context{target_module.get()};
+
+  // Clone() with context.
+  auto cloned_with_context = entry->Clone("cloned", &clone_context);
+  EXPECT_EQ(cloned_with_context->parent(), nullptr);
+  EXPECT_EQ(target_module->computation_count(), 2);  // entry has two callees
+}
+
+TEST_F(HLOComputationTest, CloneInContextContract) {
+  absl::string_view hlo_string = R"(
+HloModule module
+diff {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT out = f32[] add(a, b)
+}
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT out = f32[] add(a, b)
+}
+
+ENTRY entry {
+  p0 = f32[100] parameter(0), parameter_replication={false}
+  p1 = f32[100] parameter(1), parameter_replication={false}
+  map0 = f32[100] map(p0, p1), to_apply=diff
+  ROOT map1 = f32[100] map(p0, map0), to_apply=sum
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> source_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloComputation *entry = source_module->entry_computation();
+  HloComputation *sum = source_module->GetComputationWithName("sum");
+  HloComputation *diff = source_module->GetComputationWithName("diff");
+  ASSERT_NE(entry, nullptr);
+  ASSERT_NE(sum, nullptr);
+  ASSERT_NE(diff, nullptr);
+
+  std::unique_ptr<HloModule> target_module = std::make_unique<HloModule>(
+      "target_module", source_module->shared_config(),
+      std::make_unique<CompilationEnvironments>());
+  HloCloneContext clone_context{target_module.get()};
+
+  // CloneInContext().
+  auto cloned_in_context = entry->CloneInContext(clone_context);
+  EXPECT_EQ(cloned_in_context->parent(), nullptr);
+  EXPECT_EQ(target_module->computation_count(), 2);
+  auto cloned_in_context_raw_ptr =
+      target_module->AddEntryComputationWithLayouts(
+          std::move(cloned_in_context));
+  EXPECT_EQ(cloned_in_context_raw_ptr->parent(), target_module.get());
+  EXPECT_EQ(target_module->computation_count(), 3);
+}
+
 }  // namespace
 }  // namespace xla

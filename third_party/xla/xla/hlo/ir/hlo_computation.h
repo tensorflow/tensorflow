@@ -697,8 +697,9 @@ class HloComputation {
 
   // Returns a deep copy of this computation including all instructions.
   // If the clone context is specified, it will be populated with the cloned
-  // object mappings, and its module() will be used to add new computations
-  // into.
+  // object mappings. The cloned computation (`this`) is not assigned to
+  // any module, and it's `.parent()` is not populated. All callees are
+  // cloned into the `context.module()` as a side-effect.
   std::unique_ptr<HloComputation> Clone(const std::string& suffix = "clone",
                                         HloCloneContext* context = nullptr);
 
