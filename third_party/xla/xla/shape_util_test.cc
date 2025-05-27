@@ -242,7 +242,7 @@ TEST(ShapeUtilTest, CompatibleTuples) {
   EXPECT_TRUE(ShapeUtil::Compatible(tuple1, tuple2));
 }
 
-TEST(ShapeUtilTest, MakeMaybeTupleShape) {
+TEST(ShapeUtilTest, MakeValidatedMaybeTupleShape) {
   Shape s1 = ShapeUtil::MakeValidatedMaybeTupleShape(
                  {ShapeUtil::MakeValidatedShape(F32, {3, 2}).value()})
                  .value();

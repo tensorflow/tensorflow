@@ -383,13 +383,6 @@ class ShapeUtil {
   static absl::StatusOr<Shape> MakeValidatedTupleShapeWithPtrs(
       absl::Span<const Shape* const> shapes);
 
-  // Creates a tuple shape from a slice of element shapes within the tuple. If
-  // only one shape is passed, returns that. Crashes if the result is invalid.
-  ABSL_DEPRECATE_AND_INLINE()
-  static Shape MakeMaybeTupleShape(absl::Span<const Shape> shapes) {
-    return MakeValidatedMaybeTupleShape(shapes).value();
-  }
-
   // Creates a tuple shape from a slice of element shapes within the tuple.
   static absl::StatusOr<Shape> MakeValidatedMaybeTupleShape(
       absl::Span<const Shape> shapes);
