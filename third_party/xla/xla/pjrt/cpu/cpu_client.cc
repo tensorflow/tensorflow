@@ -875,6 +875,12 @@ TfrtCpuClient::CompileInternal(
   auto cpu_executable_ptr =
       tensorflow::down_cast<cpu::CpuExecutable*>(cpu_executable.get());
 
+  if (cpu_executable_ptr->has_compute_function()) {
+    LOG(INFO) << "DEPRECATED: Non thunk XLA:CPU runtime will be removed soon. "
+                 "Please use the new thunk based runtime by setting the flag "
+                 "--xla_cpu_use_thunk_runtime to true.";
+  }
+
   // `buffer_table[result_slice.index()]` points to result buffer:
   // If output is a tuple, it points to the buffer index table.
   // If output is a non-tuple, it points to the buffer itself.
