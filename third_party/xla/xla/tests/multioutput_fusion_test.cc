@@ -107,10 +107,14 @@ class MultiOutputFusionTest : public HloTestBase {
           nullptr);
     }
 
-    Literal arg1(ShapeUtil::MakeShapeWithDescendingLayout(F32, {size, size}));
+    Literal arg1(
+        ShapeUtil::MakeValidatedShapeWithDescendingLayout(F32, {size, size})
+            .value());
     arg1.PopulateWithValue<float>(2.5f);
 
-    Literal expect(ShapeUtil::MakeShapeWithDescendingLayout(F32, {size, size}));
+    Literal expect(
+        ShapeUtil::MakeValidatedShapeWithDescendingLayout(F32, {size, size})
+            .value());
     expect.PopulateWithValue<float>(size * 1.5f * 3.5f);
     Literal literal_r0 = LiteralUtil::CreateR0<float>(-9.0f);
     auto actual =
@@ -123,9 +127,9 @@ class MultiOutputFusionTest : public HloTestBase {
     auto hlo_module = CreateNewVerifiedModule();
 
     const Shape elem_shape_F32 =
-        ShapeUtil::MakeShapeWithDescendingLayout(F32, {size});
+        ShapeUtil::MakeValidatedShapeWithDescendingLayout(F32, {size}).value();
     const Shape elem_shape_U8 =
-        ShapeUtil::MakeShapeWithDescendingLayout(F64, {size});
+        ShapeUtil::MakeValidatedShapeWithDescendingLayout(F64, {size}).value();
     auto param0 = builder.AddInstruction(
         HloInstruction::CreateParameter(0, elem_shape_F32, "0"));
     auto param1 = builder.AddInstruction(
@@ -145,13 +149,15 @@ class MultiOutputFusionTest : public HloTestBase {
 
     HloInstruction* reshape =
         builder.AddInstruction(HloInstruction::CreateReshape(
-            ShapeUtil::MakeShapeWithDescendingLayout(F32, {size, 1}), add));
+            ShapeUtil::MakeValidatedShapeWithDescendingLayout(F32, {size, 1})
+                .value(),
+            add));
     DotDimensionNumbers dot_dnums;
     dot_dnums.add_lhs_contracting_dimensions(0);
     dot_dnums.add_rhs_contracting_dimensions(0);
     HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateDot(
-        ShapeUtil::MakeShapeWithDescendingLayout(F32, {1}), sub, reshape,
-        dot_dnums, DefaultPrecisionConfig(2)));
+        ShapeUtil::MakeValidatedShapeWithDescendingLayout(F32, {1}).value(),
+        sub, reshape, dot_dnums, DefaultPrecisionConfig(2)));
     auto computation = hlo_module->AddEntryComputation(builder.Build(dot));
 
     if (manual_fusion) {
@@ -171,9 +177,11 @@ class MultiOutputFusionTest : public HloTestBase {
                nullptr);
     }
 
-    Literal input0(ShapeUtil::MakeShapeWithDescendingLayout(F32, {size}));
+    Literal input0(
+        ShapeUtil::MakeValidatedShapeWithDescendingLayout(F32, {size}).value());
     input0.PopulateWithValue(2.5f);
-    Literal input1(ShapeUtil::MakeShapeWithDescendingLayout(F64, {size}));
+    Literal input1(
+        ShapeUtil::MakeValidatedShapeWithDescendingLayout(F64, {size}).value());
     input1.PopulateWithValue(1.);
 
     Literal expect = LiteralUtil::CreateR1<float>({size * 1.5f * 3.5f});

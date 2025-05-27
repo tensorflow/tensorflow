@@ -136,7 +136,9 @@ XLA_TEST_P(IotaR2Test, DoIt) {
   XlaBuilder builder(TestName() + "_" + PrimitiveType_Name(element_type));
   std::vector<int64_t> dimensions = {42};
   dimensions.insert(dimensions.begin() + iota_dim, num_elements);
-  Iota(&builder, ShapeUtil::MakeShape(element_type, dimensions), iota_dim);
+  Iota(&builder,
+       ShapeUtil::MakeValidatedShape(element_type, dimensions).value(),
+       iota_dim);
   if (primitive_util::IsFloatingPointType(element_type)) {
     auto error_spec = ErrorSpec{0.0001};
     if (primitive_util::IsF8Type(element_type)) {
@@ -175,7 +177,9 @@ XLA_TEST_P(IotaR3Test, DoIt) {
   XlaBuilder builder(TestName() + "_" + PrimitiveType_Name(element_type));
   std::vector<int64_t> dimensions = {42, 19};
   dimensions.insert(dimensions.begin() + iota_dim, num_elements);
-  Iota(&builder, ShapeUtil::MakeShape(element_type, dimensions), iota_dim);
+  Iota(&builder,
+       ShapeUtil::MakeValidatedShape(element_type, dimensions).value(),
+       iota_dim);
   if (primitive_util::IsFloatingPointType(element_type)) {
     auto error_spec = ErrorSpec{0.0001};
     if (primitive_util::IsF8Type(element_type)) {
