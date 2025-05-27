@@ -156,9 +156,9 @@ ExtractInterpreterInputLiteralsFromBuffers(
   for (const Literal* literal : literals) {
     shapes.push_back(literal->shape());
   }
-  auto tupled_arg_literal =
-      std::make_unique<Literal>(ShapeUtil::MakeTupleShape(shapes),
-                                /*allocate_arrays=*/false);
+  auto tupled_arg_literal = std::make_unique<Literal>(
+      ShapeUtil::MakeValidatedTupleShape(shapes).value(),
+      /*allocate_arrays=*/false);
   for (int i = 0; i < literals.size(); ++i) {
     TF_RETURN_IF_ERROR(tupled_arg_literal->MoveFrom(std::move(*literals[i]),
                                                     /*dest_shape_index=*/{i}));
@@ -331,7 +331,7 @@ absl::StatusOr<DeviceAssignment> InterpreterClient::GetDefaultDeviceAssignment(
 absl::StatusOr<Layout> InterpreterClient::GetDefaultLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims) {
   // This is all the GenericTransferManager::ChooseCompactLayoutForShape does.
-  Shape shape = ShapeUtil::MakeShape(element_type, dims);
+  Shape shape = ShapeUtil::MakeValidatedShape(element_type, dims).value();
   LayoutUtil::SetToDefaultLayout(&shape);
   return shape.layout();
 }

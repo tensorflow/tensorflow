@@ -679,7 +679,7 @@ ENTRY entry {
 // specific case of null shardings.
 TEST_F(HloDomainTest, DumpParseNullSharding) {
   auto builder = HloComputation::Builder(TestName());
-  Shape shape = ShapeUtil::MakeShape(F32, {});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
   auto sharding_md_0 = std::make_unique<ShardingMetadata>(nullptr);
   auto sharding_md_1 = std::make_unique<ShardingMetadata>(nullptr);
   HloInstruction* param =
