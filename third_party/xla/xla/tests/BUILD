@@ -3870,7 +3870,7 @@ cc_library(
     srcs = ["xla_test_backend_predicates.cc"],
     hdrs = ["xla_test_backend_predicates.h"],
     visibility = if_google(
-        xla_internal(["tests:__pkg__"]),
+        xla_internal(["tests:__subpackages__"]),
         ["//visibility:public"],
     ),
     deps = [
