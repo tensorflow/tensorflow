@@ -57,7 +57,8 @@ absl::StatusOr<std::optional<int64_t>> PjRtLayout::ByteSize(
   }
   TF_ASSIGN_OR_RETURN(auto xla_primitive_type, ToPrimitiveType(dtype));
   auto xla_shape =
-      xla::ShapeUtil::MakeShape(xla_primitive_type, shard_shape.dims());
+      ShapeUtil::MakeValidatedShape(xla_primitive_type, shard_shape.dims())
+          .value();
   *xla_shape.mutable_layout() = pjrt_layout_->xla_layout();
   return xla::ShapeUtil::ArraySize(xla_shape);
 }

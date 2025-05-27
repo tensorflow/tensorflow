@@ -57,7 +57,7 @@ TEST_F(HloDfsReachabilityTest, NonTrivialReachability) {
   //       multiply   copy
   //
   // There is a control dependency from 'add' to 'exp'.
-  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  Shape r0f32 = ShapeUtil::MakeValidatedShape(F32, {}).value();
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
@@ -147,7 +147,7 @@ TEST_F(HloDfsReachabilityTest, ReplaceInstructionAfterFusion) {
 }
 
 TEST_F(HloDfsReachabilityTest, ChannelReachability) {
-  const Shape shape = ShapeUtil::MakeShape(F32, {5, 7});
+  const Shape shape = ShapeUtil::MakeValidatedShape(F32, {5, 7}).value();
   HloComputation::Builder builder("ChannelReachability");
   auto param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, shape, "param"));
@@ -175,7 +175,7 @@ TEST_F(HloDfsReachabilityTest, ChannelReachability) {
 class HloDfsReachabilityBenchmark {
  public:
   HloDfsReachabilityBenchmark(int size, absl::string_view name) : name_(name) {
-    Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+    Shape r0f32 = ShapeUtil::MakeValidatedShape(F32, {}).value();
     auto builder = HloComputation::Builder(name);
 
     // Build a graph of chained Exponentials, i.e. Exp(...(Exp(Input))...).

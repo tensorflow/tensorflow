@@ -302,15 +302,26 @@ class SplitkRewriterVisitor : public DfsHloRewriteVisitor {
  private:
   absl::Status HandleDot(HloInstruction* instr) override {
     HloDotInstruction* dot = DynCast<HloDotInstruction>(instr);
-    if (dot->sparse_operands()) return absl::OkStatus();
+    if (dot->sparse_operands()) {
+      return absl::OkStatus();
+    }
     if (dot->dot_dimension_numbers().lhs_contracting_dimensions_size() != 1 ||
         dot->dot_dimension_numbers().rhs_contracting_dimensions_size() != 1) {
       // In theory we could support it, but it's rare and adds complexity.
       return absl::OkStatus();
     }
+    if (absl::c_any_of(dot->operands(), [](const HloInstruction* operand) {
+          return operand->shape().element_type() == S32;
+        })) {
+      // Neither cuBLAS nor Triton support s32, so we don't benefit from
+      // splitting K.
+      return absl::OkStatus();
+    }
     const size_t split_k =
         ChooseSplitK(GetDotDimensions(dot), device_description_.core_count());
-    if (split_k == 1) return absl::OkStatus();
+    if (split_k == 1) {
+      return absl::OkStatus();
+    }
     TF_ASSIGN_OR_RETURN(HloInstruction * new_dot,
                         SplitKDimensionOfDot(dot, split_k));
     TF_RETURN_IF_ERROR(ReplaceInstruction(instr, new_dot));

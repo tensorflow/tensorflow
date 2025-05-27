@@ -1360,7 +1360,7 @@ absl::StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
                                 context_shapes.begin(), context_shapes.end());
 
     async_start = AddInstruction(HloInstruction::CreateCopyStart(
-        ShapeUtil::MakeTupleShape(context_shapes_tuple),
+        ShapeUtil::MakeValidatedTupleShape(context_shapes_tuple).value(),
         instruction->mutable_operand(0)));
     async_done = AddInstruction(HloInstruction::CreateUnary(
         instruction_shape_destination, HloOpcode::kCopyDone, async_start));
@@ -1383,13 +1383,14 @@ absl::StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
     HloComputation* async_computation =
         parent_->AddEmbeddedComputation(builder.Build(root));
     std::vector<Shape> start_shapes = {
-        ShapeUtil::MakeTupleShape(parameter_shapes), root->shape()};
+        ShapeUtil::MakeValidatedTupleShape(parameter_shapes).value(),
+        root->shape()};
     for (const Shape& context_shape : context_shapes) {
       start_shapes.push_back(context_shape);
     }
     async_start = AddInstruction(HloInstruction::CreateAsyncStart(
-        ShapeUtil::MakeTupleShape(start_shapes), instruction->operands(),
-        async_computation, async_execution_thread));
+        ShapeUtil::MakeValidatedTupleShape(start_shapes).value(),
+        instruction->operands(), async_computation, async_execution_thread));
     async_done = AddInstruction(
         HloInstruction::CreateAsyncDone(root->shape(), async_start));
     if (override_names) {

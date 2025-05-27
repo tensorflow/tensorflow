@@ -195,7 +195,7 @@ static bool IsEdgeFollower(const iopddl::Problem& problem,
                            const iopddl::Edge& edge) {
   int strategies0 = problem.nodes[edge.nodes[0]].strategies.size();
   int strategies1 = problem.nodes[edge.nodes[1]].strategies.size();
-  if (strategies0 != strategies1) {
+  if (edge.nodes[0] == edge.nodes[1] || strategies0 != strategies1) {
     return false;
   }
   for (iopddl::StrategyIdx idx0 = 0; idx0 < strategies0; ++idx0) {
@@ -285,7 +285,19 @@ std::vector<int64_t> GetFollowers(const iopddl::Problem& problem) {
        ++edge_idx) {
     const iopddl::Edge& edge = problem.edges[edge_idx];
     if (IsEdgeFollower(problem, edge)) {
-      followers[edge.nodes[1]] = edge.nodes[0];
+      if (edge.nodes[1] > edge.nodes[0]) {  // followers[large_idx] = small_idx
+        followers[edge.nodes[1]] = edge.nodes[0];
+      } else if (edge.nodes[0] > edge.nodes[1]) {
+        followers[edge.nodes[0]] = edge.nodes[1];
+      }
+    }
+  }
+  // Remove all transitive arcs (to ensure that each node follows a leaf).
+  for (NodeIdx node_idx = 0; node_idx < problem.nodes.size(); ++node_idx) {
+    if (followers[node_idx] != -1) {
+      while (followers[followers[node_idx]] != -1) {
+        followers[node_idx] = followers[followers[node_idx]];
+      }
     }
   }
   return followers;
