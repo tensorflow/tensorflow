@@ -34,22 +34,24 @@ class ShapeTest : public ::testing::Test {
  protected:
   const Shape opaque_ = ShapeUtil::MakeOpaqueShape();
   const Shape token_ = ShapeUtil::MakeTokenShape();
-  const Shape scalar_ = ShapeUtil::MakeShape(F32, {});
+  const Shape scalar_ = ShapeUtil::MakeValidatedShape(F32, {}).value();
   const Shape scalar_with_tile_ =
       ShapeUtil::MakeShapeWithDenseLayout(F32, {}, {}, {Tile({256})});
-  const Shape matrix_ = ShapeUtil::MakeShape(U32, {1, 2});
+  const Shape matrix_ = ShapeUtil::MakeValidatedShape(U32, {1, 2}).value();
   const Shape matrix2_ =
       ShapeUtil::MakeShapeWithDenseLayout(S32, {3, 4}, {0, 1});
   const Shape matrix_buffer_ =
       ShapeUtil::MakeValidatedBufferShape(S32, {3, 4}).value();
   const Shape tuple_ =
-      ShapeUtil::MakeTupleShape({opaque_, scalar_, matrix_, matrix2_});
+      ShapeUtil::MakeValidatedTupleShape({opaque_, scalar_, matrix_, matrix2_})
+          .value();
   const Shape nested_tuple_ =
-      ShapeUtil::MakeTupleShape({tuple_, matrix_, token_});
+      ShapeUtil::MakeValidatedTupleShape({tuple_, matrix_, token_}).value();
   const Shape dynamic_matrix_ =
-      ShapeUtil::MakeShape(S32, {5, 2}, {true, false});
-  const Shape unbounded_ =
-      ShapeUtil::MakeShape(F32, {Shape::kUnboundedSize, 784}, {true, false});
+      ShapeUtil::MakeValidatedShape(S32, {5, 2}, {true, false}).value();
+  const Shape unbounded_ = ShapeUtil::MakeValidatedShape(
+                               F32, {Shape::kUnboundedSize, 784}, {true, false})
+                               .value();
 };
 
 // Tests that if the dynamic_dimensions parameter is empty in the Shape
@@ -110,7 +112,8 @@ TEST_F(ShapeTest, ShapeToString) {
 
 TEST_F(ShapeTest, DynamicShapeToString) {
   Shape array_shape =
-      ShapeUtil::MakeShape(F32, {23, 44, 55}, {true, false, true});
+      ShapeUtil::MakeValidatedShape(F32, {23, 44, 55}, {true, false, true})
+          .value();
   EXPECT_EQ("f32[<=23,44,<=55]", array_shape.ToString());
 
   array_shape.set_dynamic_dimension(2, false);
@@ -153,10 +156,10 @@ TEST_F(ShapeTest, EqualityTest) {
   // Equal with Buffer shapes.
   EXPECT_TRUE(Shape::Equal().IgnoreBuffer()(
       ShapeUtil::MakeValidatedBufferShape(S32, {3, 4}).value(),
-      ShapeUtil::MakeShape(S32, {3, 4})));
+      ShapeUtil::MakeValidatedShape(S32, {3, 4}).value()));
   EXPECT_FALSE(
       Shape::Equal()(ShapeUtil::MakeValidatedBufferShape(S32, {3, 4}).value(),
-                     ShapeUtil::MakeShape(S32, {3, 4})));
+                     ShapeUtil::MakeValidatedShape(S32, {3, 4}).value()));
 }
 
 TEST_F(ShapeTest, AreAllLeavesIntegers) {
@@ -166,16 +169,18 @@ TEST_F(ShapeTest, AreAllLeavesIntegers) {
   EXPECT_FALSE(tuple_.AreAllLeavesIntegers());
   EXPECT_FALSE(nested_tuple_.AreAllLeavesIntegers());
 
-  Shape u32_shape = ShapeUtil::MakeShape(U32, {1});
+  Shape u32_shape = ShapeUtil::MakeValidatedShape(U32, {1}).value();
   EXPECT_TRUE(u32_shape.AreAllLeavesIntegers());
 
-  Shape f32_shape = ShapeUtil::MakeShape(F32, {1});
+  Shape f32_shape = ShapeUtil::MakeValidatedShape(F32, {1}).value();
   EXPECT_FALSE(f32_shape.AreAllLeavesIntegers());
 
-  Shape integer_tuple = ShapeUtil::MakeTupleShape({u32_shape, u32_shape});
+  Shape integer_tuple =
+      ShapeUtil::MakeValidatedTupleShape({u32_shape, u32_shape}).value();
   EXPECT_TRUE(integer_tuple.AreAllLeavesIntegers());
 
-  Shape mixed_type_tuple = ShapeUtil::MakeTupleShape({u32_shape, f32_shape});
+  Shape mixed_type_tuple =
+      ShapeUtil::MakeValidatedTupleShape({u32_shape, f32_shape}).value();
   EXPECT_FALSE(mixed_type_tuple.AreAllLeavesIntegers());
 }
 
@@ -247,17 +252,21 @@ TEST_F(ShapeTest, IsStaticDimension) {
 
 TEST_F(ShapeTest, ProgramShapeToFromProto) {
   ProgramShape program_shape;
-  program_shape.AddParameter(ShapeUtil::MakeShape(F32, {1, 2, 3}), "foo");
-  program_shape.AddParameter(ShapeUtil::MakeTokenShape(), "bar");
-  program_shape.AddParameter(ShapeUtil::MakeShape(S64, {}), "baz");
   program_shape.AddParameter(
-      ShapeUtil::MakeTupleShape(
+      ShapeUtil::MakeValidatedShape(F32, {1, 2, 3}).value(), "foo");
+  program_shape.AddParameter(ShapeUtil::MakeTokenShape(), "bar");
+  program_shape.AddParameter(ShapeUtil::MakeValidatedShape(S64, {}).value(),
+                             "baz");
+  program_shape.AddParameter(
+      ShapeUtil::MakeValidatedTupleShape(
           {ShapeUtil::MakeShape(S32, {}),
            ShapeUtil::MakeTupleShape({ShapeUtil::MakeTokenShape()}),
-           ShapeUtil::MakeShape(F32, {42, 42})}),
+           ShapeUtil::MakeShape(F32, {42, 42})})
+          .value(),
       "qux qux");
 
-  *program_shape.mutable_result() = ShapeUtil::MakeShape(F32, {7});
+  *program_shape.mutable_result() =
+      ShapeUtil::MakeValidatedShape(F32, {7}).value();
 
   // Create a copy of the program shape by round-tripping through a proto.
   TF_ASSERT_OK_AND_ASSIGN(auto program_shape_copy,

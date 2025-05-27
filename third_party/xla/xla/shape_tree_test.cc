@@ -33,14 +33,18 @@ namespace {
 class ShapeTreeTest : public ::testing::Test {
  protected:
   ShapeTreeTest() {
-    array_shape_ = ShapeUtil::MakeShape(F32, {42, 42, 123});
-    tuple_shape_ =
-        ShapeUtil::MakeTupleShape({array_shape_, array_shape_, array_shape_});
-    nested_tuple_shape_ = ShapeUtil::MakeTupleShape(
-        {array_shape_, ShapeUtil::MakeTupleShape({array_shape_, array_shape_}),
-         ShapeUtil::MakeTupleShape(
-             {ShapeUtil::MakeTupleShape({array_shape_, array_shape_}),
-              array_shape_})});
+    array_shape_ = ShapeUtil::MakeValidatedShape(F32, {42, 42, 123}).value();
+    tuple_shape_ = ShapeUtil::MakeValidatedTupleShape(
+                       {array_shape_, array_shape_, array_shape_})
+                       .value();
+    nested_tuple_shape_ =
+        ShapeUtil::MakeValidatedTupleShape(
+            {array_shape_,
+             ShapeUtil::MakeTupleShape({array_shape_, array_shape_}),
+             ShapeUtil::MakeTupleShape(
+                 {ShapeUtil::MakeTupleShape({array_shape_, array_shape_}),
+                  array_shape_})})
+            .value();
   }
 
   void TestShapeConstructor(const Shape& shape, int expected_num_nodes);
@@ -124,13 +128,14 @@ TEST_F(ShapeTreeTest, InitValueConstructor) {
 }
 
 TEST_F(ShapeTreeTest, EmptyTupleMustHaveNoLeaves) {
-  ShapeTree<int> shape_tree{ShapeUtil::MakeTupleShape({})};
+  ShapeTree<int> shape_tree{ShapeUtil::MakeValidatedTupleShape({}).value()};
   EXPECT_EQ(0, shape_tree.leaf_count());
 }
 
 TEST_F(ShapeTreeTest, NestedEmptyTuple) {
-  Shape shape(
-      ShapeUtil::MakeTupleShape({ShapeUtil::MakeTupleShape({}), array_shape_}));
+  Shape shape(ShapeUtil::MakeValidatedTupleShape(
+                  {ShapeUtil::MakeTupleShape({}), array_shape_})
+                  .value());
   ShapeTree<int> shape_tree{shape};
   EXPECT_EQ(ShapeUtil::GetLeafCount(shape), shape_tree.leaf_count());
 }
@@ -315,7 +320,7 @@ TEST_F(ShapeTreeTest, CopySubtreeIntoNestedShape) {
   // Test CopySubtreeFrom method for a copy of a tuple-shaped ShapeTree into a
   // nested-tuple-shaped ShapeTree.
   ShapeTree<int> source(
-      ShapeUtil::MakeTupleShape({array_shape_, array_shape_}));
+      ShapeUtil::MakeValidatedTupleShape({array_shape_, array_shape_}).value());
   *source.mutable_element(/*index=*/{}) = 10;
   *source.mutable_element(/*index=*/{0}) = 11;
   *source.mutable_element(/*index=*/{1}) = 12;
@@ -345,7 +350,8 @@ TEST_F(ShapeTreeTest, CopySubtreeFromNestedShape) {
   *source.mutable_element(/*index=*/{1, 1}) = 12;
 
   ShapeTree<int> destination(
-      ShapeUtil::MakeTupleShape({array_shape_, array_shape_}), 0);
+      ShapeUtil::MakeValidatedTupleShape({array_shape_, array_shape_}).value(),
+      0);
 
   destination.CopySubtreeFrom(source, /*source_base_index=*/{1},
                               /*target_base_index=*/{});
@@ -557,10 +563,10 @@ void BM_Construct(::testing::benchmark::State& state) {
   const int depth = state.range(0);
   const int fan_out = state.range(1);
 
-  Shape shape = ShapeUtil::MakeShape(F32, {32, 64, 128});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {32, 64, 128}).value();
   for (int i = 0; i < depth; ++i) {
     std::vector<xla::Shape> shapes(fan_out, shape);
-    shape = ShapeUtil::MakeTupleShape(shapes);
+    shape = ShapeUtil::MakeValidatedTupleShape(shapes).value();
   }
 
   for (auto s : state) {
@@ -572,10 +578,10 @@ void BM_ConstructUnowned(::testing::benchmark::State& state) {
   const int depth = state.range(0);
   const int fan_out = state.range(1);
 
-  Shape shape = ShapeUtil::MakeShape(F32, {32, 64, 128});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {32, 64, 128}).value();
   for (int i = 0; i < depth; ++i) {
     std::vector<xla::Shape> shapes(fan_out, shape);
-    shape = ShapeUtil::MakeTupleShape(shapes);
+    shape = ShapeUtil::MakeValidatedTupleShape(shapes).value();
   }
 
   for (auto s : state) {
@@ -587,10 +593,10 @@ void BM_Copy(::testing::benchmark::State& state) {
   const int depth = state.range(0);
   const int fan_out = state.range(1);
 
-  Shape shape = ShapeUtil::MakeShape(F32, {32, 64, 128});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {32, 64, 128}).value();
   for (int i = 0; i < depth; ++i) {
     std::vector<xla::Shape> shapes(fan_out, shape);
-    shape = ShapeUtil::MakeTupleShape(shapes);
+    shape = ShapeUtil::MakeValidatedTupleShape(shapes).value();
   }
 
   ShapeTree<int> shape_tree(shape);
@@ -604,10 +610,10 @@ void BM_Move(::testing::benchmark::State& state) {
   const int depth = state.range(0);
   const int fan_out = state.range(1);
 
-  Shape shape = ShapeUtil::MakeShape(F32, {32, 64, 128});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {32, 64, 128}).value();
   for (int i = 0; i < depth; ++i) {
     std::vector<xla::Shape> shapes(fan_out, shape);
-    shape = ShapeUtil::MakeTupleShape(shapes);
+    shape = ShapeUtil::MakeValidatedTupleShape(shapes).value();
   }
 
   ShapeTree<int> shape_tree(shape);
@@ -621,10 +627,10 @@ void BM_ForEach(::testing::benchmark::State& state) {
   const int depth = state.range(0);
   const int fan_out = state.range(1);
 
-  Shape shape = ShapeUtil::MakeShape(F32, {32, 64, 128});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {32, 64, 128}).value();
   for (int i = 0; i < depth; ++i) {
     std::vector<xla::Shape> shapes(fan_out, shape);
-    shape = ShapeUtil::MakeTupleShape(shapes);
+    shape = ShapeUtil::MakeValidatedTupleShape(shapes).value();
   }
 
   ShapeTree<int> shape_tree(shape);
@@ -639,10 +645,10 @@ void BM_Iterate(::testing::benchmark::State& state) {
   const int depth = state.range(0);
   const int fan_out = state.range(1);
 
-  Shape shape = ShapeUtil::MakeShape(F32, {32, 64, 128});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {32, 64, 128}).value();
   for (int i = 0; i < depth; ++i) {
     std::vector<xla::Shape> shapes(fan_out, shape);
-    shape = ShapeUtil::MakeTupleShape(shapes);
+    shape = ShapeUtil::MakeValidatedTupleShape(shapes).value();
   }
 
   ShapeTree<int> shape_tree(shape);
