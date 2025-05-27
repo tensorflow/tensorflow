@@ -15,15 +15,20 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_instruction.h"
 
+#include <cstdint>
 #include <memory>
+#include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -32,6 +37,8 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+using ::testing::ElementsAre;
 
 using HloInstructionTest = HloHardwareIndependentTestBase;
 
@@ -137,6 +144,26 @@ ENTRY main {
 
   // The schedule for the entire module should still be valid.
   TF_EXPECT_OK(module->schedule().Verify());
+}
+
+TEST_F(HloInstructionTest, ComparatorWorksWith64BitUniqueIds) {
+  std::unique_ptr<HloInstruction> param1 =
+      HloInstruction::CreateParameter(0, Shape(F32, {4}), "param1");
+  std::unique_ptr<HloInstruction> param2 =
+      HloInstruction::CreateParameter(0, Shape(F32, {4}), "param2");
+  std::unique_ptr<HloInstruction> param3 =
+      HloInstruction::CreateParameter(0, Shape(F32, {4}), "param3");
+
+  param1->SetUniqueId(1 + (static_cast<int64_t>(1) << 32));
+  param2->SetUniqueId(1 + (static_cast<int64_t>(2) << 32));
+  param3->SetUniqueId(1 + (static_cast<int64_t>(3) << 32));
+
+  std::vector<const HloInstruction*> instructions = {param3.get(), param1.get(),
+                                                     param2.get()};
+
+  absl::c_sort(instructions, HloPtrComparator());
+  EXPECT_THAT(instructions,
+              ElementsAre(param1.get(), param2.get(), param3.get()));
 }
 }  // namespace
 }  // namespace xla

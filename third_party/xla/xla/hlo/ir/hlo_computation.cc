@@ -1208,7 +1208,7 @@ HloComputationProto HloComputation::ToProto() const {
     HloInstructionProto instruction_proto = instruction->ToProto();
     proto.add_instructions()->Swap(&instruction_proto);
   }
-  proto.set_root_id(root_instruction()->unique_id());
+  proto.set_root_id(root_instruction()->unique_id_64_bits());
   *proto.mutable_program_shape() = ComputeProgramShape().ToProto();
   proto.set_is_fusion_computation(IsFusionComputation());
   proto.set_execution_thread(IsMainThread() ? ""
