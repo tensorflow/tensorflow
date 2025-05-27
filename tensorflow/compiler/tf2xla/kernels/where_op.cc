@@ -184,7 +184,7 @@ absl::StatusOr<XlaOp> CompileWhereWithSort(XlaOpKernelContext* ctx) {
       to_sort, xla::CreateScalarGtComputation(types_to_sort, ctx->builder()),
       /*dimension=*/0, /*is_stable=*/true);
   std::vector<XlaOp> to_concat;
-  for (int64_t i = 0; i < iota_shape.dimensions_size(); ++i) {
+  for (int64_t i = 0; i < iota_shape.dimensions().size(); ++i) {
     XlaOp index_single_dim = xla::GetTupleElement(sorted, i + 1);
     to_concat.push_back(xla::Reshape(index_single_dim, {flattened_size, 1}));
   }
