@@ -114,7 +114,7 @@ absl::StatusOr<Shape> Shape::FromProto(const ShapeProto& shape_proto) {
     state->tuple_shapes.reserve(shape_proto.tuple_shapes_size());
     for (const ShapeProto& element_shape : shape_proto.tuple_shapes()) {
       TF_ASSIGN_OR_RETURN(Shape tuple_shape, Shape::FromProto(element_shape));
-      state->tuple_shapes.emplace_back(std::move(tuple_shape));
+      state->tuple_shapes.push_back(std::move(tuple_shape));
     }
   } else if (auto* const state = shape.if_buffer_state()) {
     if (shape_proto.tuple_shapes_size() != 1) {
