@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_shardings.h"
 
-#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <functional>
@@ -24,11 +23,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -91,13 +88,11 @@ using ::mlir::SymbolTable;
 using ::mlir::func::FuncOp;
 
 using ::mlir::sdy::AxisRefAttr;
-using ::mlir::sdy::DimensionShardingAttr;
 using ::mlir::sdy::kShardingAttr;
 using ::mlir::sdy::ManualAxesAttr;
 using ::mlir::sdy::MeshAttr;
 using ::mlir::sdy::MeshOp;
 using ::mlir::sdy::SdyDialect;
-using ::mlir::sdy::SubAxisInfoAttr;
 using ::mlir::sdy::TensorShardingAttr;
 
 // Convert the shardings from kShardingAttr into kXlaShardingAttr.
