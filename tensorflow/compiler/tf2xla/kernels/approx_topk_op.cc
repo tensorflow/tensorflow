@@ -38,12 +38,18 @@ namespace {
 xla::XlaComputation ComparatorBuilder(xla::XlaBuilder* builder,
                                       xla::PrimitiveType op_type,
                                       bool is_max_k) {
-  auto p0 = xla::Parameter(builder, 0, xla::ShapeUtil::MakeScalarShape(op_type),
-                           "v0");
-  auto p1 = xla::Parameter(builder, 1, xla::ShapeUtil::MakeScalarShape(op_type),
-                           "v1");
-  xla::Parameter(builder, 2, xla::ShapeUtil::MakeScalarShape(xla::S32), "a2");
-  xla::Parameter(builder, 3, xla::ShapeUtil::MakeScalarShape(xla::S32), "a3");
+  auto p0 = xla::Parameter(
+      builder, 0, xla::ShapeUtil::MakeValidatedScalarShape(op_type).value(),
+      "v0");
+  auto p1 = xla::Parameter(
+      builder, 1, xla::ShapeUtil::MakeValidatedScalarShape(op_type).value(),
+      "v1");
+  xla::Parameter(builder, 2,
+                 xla::ShapeUtil::MakeValidatedScalarShape(xla::S32).value(),
+                 "a2");
+  xla::Parameter(builder, 3,
+                 xla::ShapeUtil::MakeValidatedScalarShape(xla::S32).value(),
+                 "a3");
   if (is_max_k) {
     xla::Gt(p0, p1);
   } else {
@@ -84,10 +90,12 @@ class ApproxTopKOpBase : public XlaOpKernel {
         ctx->builder(), is_max_k_ ? xla::LiteralUtil::MinValue(op_type)
                                   : xla::LiteralUtil::MaxValue(op_type));
     xla::XlaOp init_arg = xla::ConstantR0(ctx->builder(), -1);
-    xla::XlaOp iota = xla::Iota(
-        ctx->builder(),
-        xla::ShapeUtil::MakeShapeWithType<int32_t>(op_shape.dimensions()),
-        reduction_dim);
+    xla::XlaOp iota =
+        xla::Iota(ctx->builder(),
+                  xla::ShapeUtil::MakeValidatedShapeWithType<int32_t>(
+                      op_shape.dimensions())
+                      .value(),
+                  reduction_dim);
     xla::XlaOp output_tuple = ApproxTopKFn(
         ctx->builder(), {ctx->Input(0), iota}, {init_val, init_arg}, k_,
         reduction_dim, comparator, recall_target_, aggregate_to_topk_,

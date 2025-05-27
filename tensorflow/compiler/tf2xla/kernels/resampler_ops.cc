@@ -125,9 +125,9 @@ XlaOp ConcatenateIota(xla::XlaBuilder* b, XlaOp indices,
   // Except the last dimension, which is of size 1.
   dimensions.back() = 1;
 
-  auto batch_indices =
-      xla::Iota(b, xla::ShapeUtil::MakeShape(xla::S32, dimensions),
-                /*iota_dimension=*/0);
+  auto batch_indices = xla::Iota(
+      b, xla::ShapeUtil::MakeValidatedShape(xla::S32, dimensions).value(),
+      /*iota_dimension=*/0);
 
   return xla::ConcatInDim(b, {batch_indices, indices}, dimensions.size() - 1);
 }
@@ -372,7 +372,8 @@ XlaOp CalculateGradWarp(XlaOpKernelContext* ctx, XlaOp grad_output, XlaOp ratio,
 
   // With dimension [batch, dim_0, ...dim_n, 4]
   auto neighbor_broadcast_shape =
-      xla::ShapeUtil::MakeShape(data_type, neighbor_broadcast_dims);
+      xla::ShapeUtil::MakeValidatedShape(data_type, neighbor_broadcast_dims)
+          .value();
 
   const int64_t last_warp_dim = warp_shape.dims() - 1;
 

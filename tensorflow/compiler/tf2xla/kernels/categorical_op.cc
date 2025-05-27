@@ -79,8 +79,9 @@ class CategoricalOp : public XlaOpKernel {
       xla::PrimitiveType uniform_xla_type;
       OP_REQUIRES_OK(ctx,
                      DataTypeToPrimitiveType(input_type(0), &uniform_xla_type));
-      uniform_shape =
-          xla::ShapeUtil::MakeShape(uniform_xla_type, uniform_shape_array);
+      uniform_shape = xla::ShapeUtil::MakeValidatedShape(uniform_xla_type,
+                                                         uniform_shape_array)
+                          .value();
       class_dimension = 2;
     } else {
       // Have a special case for when we only need one sample, because
@@ -91,8 +92,9 @@ class CategoricalOp : public XlaOpKernel {
       xla::PrimitiveType uniform_xla_type;
       OP_REQUIRES_OK(ctx,
                      DataTypeToPrimitiveType(input_type(0), &uniform_xla_type));
-      uniform_shape =
-          xla::ShapeUtil::MakeShape(uniform_xla_type, uniform_shape_array);
+      uniform_shape = xla::ShapeUtil::MakeValidatedShape(uniform_xla_type,
+                                                         uniform_shape_array)
+                          .value();
       class_dimension = 1;
     }
     xla::PrimitiveType type;

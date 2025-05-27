@@ -85,12 +85,15 @@ class UniqueOpBase : public XlaOpKernel {
   xla::XlaOp RollingSelectR1(XlaOpKernelContext* ctx, xla::XlaOp data,
                              xla::XlaOp mask, int64_t size) {
     xla::XlaComputation cond, body;
-    const xla::Shape r1_shape = xla::ShapeUtil::MakeShape(xla::S32, {size});
-    const xla::Shape counter_shape = xla::ShapeUtil::MakeScalarShape(xla::S32);
+    const xla::Shape r1_shape =
+        xla::ShapeUtil::MakeValidatedShape(xla::S32, {size}).value();
+    const xla::Shape counter_shape =
+        xla::ShapeUtil::MakeValidatedScalarShape(xla::S32).value();
     const xla::Shape& single_element_shape = counter_shape;
 
-    auto loop_shape = xla::ShapeUtil::MakeTupleShape(
-        {counter_shape, r1_shape, r1_shape, r1_shape});
+    auto loop_shape = xla::ShapeUtil::MakeValidatedTupleShape(
+                          {counter_shape, r1_shape, r1_shape, r1_shape})
+                          .value();
     {
       std::unique_ptr<xla::XlaBuilder> builder =
           ctx->builder()->CreateSubBuilder("loop_cond");

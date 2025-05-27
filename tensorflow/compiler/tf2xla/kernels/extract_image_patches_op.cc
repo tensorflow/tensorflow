@@ -120,7 +120,9 @@ class ExtractImagePatchesOp : public XlaOpKernel {
     kernel_shape[num_spatial_dims] = 1;
     kernel_shape[num_spatial_dims + 1] = kernel_size * depth;
     xla::Shape iota_kernel_shape =
-        xla::ShapeUtil::MakeShape(xla::S32, {kernel_size, depth, kernel_size});
+        xla::ShapeUtil::MakeValidatedShape(xla::S32,
+                                           {kernel_size, depth, kernel_size})
+            .value();
     xla::XlaOp pred_intermediate = xla::Eq(xla::Iota(builder, iota_kernel_shape,
                                                      /* iota_dimension= */ 0),
                                            xla::Iota(builder, iota_kernel_shape,

@@ -60,7 +60,8 @@ std::tuple<xla::XlaOp, xla::XlaOp> GetKeyCounter(
     return std::make_tuple(counter_key.second, counter_key.first);
   } else {
     auto counter_shape =
-        xla::ShapeUtil::MakeShape(xla::U64, {RNG_MAX_COUNTER_SIZE});
+        xla::ShapeUtil::MakeValidatedShape(xla::U64, {RNG_MAX_COUNTER_SIZE})
+            .value();
     auto counter = xla::Zeros(key.builder(), counter_shape);
     return std::make_tuple(key, counter);
   }

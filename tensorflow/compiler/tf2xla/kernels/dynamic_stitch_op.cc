@@ -138,7 +138,8 @@ class DynamicStitchOp : public XlaOpKernel {
       xla::PrimitiveType element_type =
           ctx->input_xla_type(ctx->num_inputs() - 1);
       xla::Literal empty_literal = xla::Literal::CreateFromShape(
-          xla::ShapeUtil::MakeShape(element_type, result_shape));
+          xla::ShapeUtil::MakeValidatedShape(element_type, result_shape)
+              .value());
       ctx->SetOutput(0, xla::ConstantLiteral(ctx->builder(), empty_literal));
       return;
     }

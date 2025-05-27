@@ -243,14 +243,16 @@ absl::Status GetTensorListShapeFromElementTensorListShape(
     std::vector<int64_t> dimensions = xla::SpanToVector(shape.dimensions());
     dimensions.insert(dimensions.begin(), leading_dim);
     shapes.push_back(
-        xla::ShapeUtil::MakeShape(shape.element_type(), dimensions));
+        xla::ShapeUtil::MakeValidatedShape(shape.element_type(), dimensions)
+            .value());
     if (leading_dim_is_dynamic) {
       shapes.back().set_dynamic_dimension(0, true);
     }
   }
-  shapes.push_back(xla::ShapeUtil::MakeShape(xla::PrimitiveType::S32,
-                                             std::vector<int64_t>{}));
-  *tensor_list_shape = xla::ShapeUtil::MakeTupleShape(shapes);
+  shapes.push_back(xla::ShapeUtil::MakeValidatedShape(xla::PrimitiveType::S32,
+                                                      std::vector<int64_t>{})
+                       .value());
+  *tensor_list_shape = xla::ShapeUtil::MakeValidatedTupleShape(shapes).value();
   return absl::OkStatus();
 }
 
@@ -268,12 +270,14 @@ absl::Status GetTensorListShapeFromElementShape(const xla::Shape& element_shape,
   std::vector<int64_t> dimensions =
       xla::SpanToVector(element_shape.dimensions());
   dimensions.insert(dimensions.begin(), leading_dim);
-  shapes.push_back(
-      xla::ShapeUtil::MakeShape(element_shape.element_type(), dimensions));
+  shapes.push_back(xla::ShapeUtil::MakeValidatedShape(
+                       element_shape.element_type(), dimensions)
+                       .value());
   shapes.back().set_dynamic_dimension(0, leading_dim_is_dynamic);
-  shapes.push_back(xla::ShapeUtil::MakeShape(xla::PrimitiveType::S32,
-                                             std::vector<int64_t>{}));
-  *tensor_list_shape = xla::ShapeUtil::MakeTupleShape(shapes);
+  shapes.push_back(xla::ShapeUtil::MakeValidatedShape(xla::PrimitiveType::S32,
+                                                      std::vector<int64_t>{})
+                       .value());
+  *tensor_list_shape = xla::ShapeUtil::MakeValidatedTupleShape(shapes).value();
   return absl::OkStatus();
 }
 

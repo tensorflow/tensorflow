@@ -131,8 +131,10 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
   // Call virtual method to get the initial value.
   auto initial = xla::ConvertElementType(InitialValue(b), type);
   // Make two scalar parameters of the desired type for the lambda.
-  auto rx = xla::Parameter(&r, 0, xla::ShapeUtil::MakeShape(type, {}), "x");
-  auto ry = xla::Parameter(&r, 1, xla::ShapeUtil::MakeShape(type, {}), "y");
+  auto rx = xla::Parameter(
+      &r, 0, xla::ShapeUtil::MakeValidatedShape(type, {}).value(), "x");
+  auto ry = xla::Parameter(
+      &r, 1, xla::ShapeUtil::MakeValidatedShape(type, {}).value(), "y");
   // Call virtual method to build the reduction lambda.
   BuildReducer(&r, rx, ry);
   xla::XlaComputation reduction_computation = r.Build().value();

@@ -131,7 +131,8 @@ absl::Status TryGetElementShapeFromInput(XlaOpKernelContext* ctx,
     return absl::OkStatus();
   }
 
-  *shape = xla::ShapeUtil::MakeShape(dtype, partial_shape.dim_sizes());
+  *shape = xla::ShapeUtil::MakeValidatedShape(dtype, partial_shape.dim_sizes())
+               .value();
   *got_shape = true;
   return absl::OkStatus();
 }

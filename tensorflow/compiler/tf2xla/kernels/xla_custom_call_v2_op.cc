@@ -73,18 +73,18 @@ class XlaCustomCallV2Op : public XlaOpKernel {
       TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dt, shape, &result_shapes[i]));
     }
 
-    xla::XlaOp results = xla::CustomCallWithLayout(                      //
-        ctx.builder(),                                                   //
-        call_target_name_,                                               //
-        operands,                                                        //
-        xla::ShapeUtil::MakeMaybeTupleShape(result_shapes),              //
-        operand_shapes,                                                  //
-        backend_config_,                                                 //
-        has_side_effect_,                                                //
-        /*output_operand_aliasing=*/{},                                  //
-        /*literal=*/nullptr,                                             //
-        /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,             //
-        xla::CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED  //
+    xla::XlaOp results = xla::CustomCallWithLayout(                           //
+        ctx.builder(),                                                        //
+        call_target_name_,                                                    //
+        operands,                                                             //
+        xla::ShapeUtil::MakeValidatedMaybeTupleShape(result_shapes).value(),  //
+        operand_shapes,                                                       //
+        backend_config_,                                                      //
+        has_side_effect_,                                                     //
+        /*output_operand_aliasing=*/{},                                       //
+        /*literal=*/nullptr,                                                  //
+        /*schedule=*/xla::CustomCallSchedule::SCHEDULE_NONE,                  //
+        xla::CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED       //
     );
 
     if (ctx.num_outputs() == 1) {

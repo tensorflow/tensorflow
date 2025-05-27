@@ -161,11 +161,14 @@ class DynamicPartitionOp : public XlaOpKernel {
     int64_t input_count = xla::ShapeUtil::ElementsIn(data_shape);
     auto data_1d = xla::Reshape(data, {input_count});
     auto partitions_1d = xla::Reshape(partitions, {input_count});
-    xla::Shape data_1d_shape =
-        xla::ShapeUtil::MakeShape(data_shape.element_type(), {input_count});
+    xla::Shape data_1d_shape = xla::ShapeUtil::MakeValidatedShape(
+                                   data_shape.element_type(), {input_count})
+                                   .value();
 
-    xla::Shape partitions_1d_shape = xla::ShapeUtil::MakeShape(
-        partition_shape.element_type(), {input_count});
+    xla::Shape partitions_1d_shape =
+        xla::ShapeUtil::MakeValidatedShape(partition_shape.element_type(),
+                                           {input_count})
+            .value();
 
     std::vector<xla::XlaOp> output, partition_length;
     std::tie(output, partition_length) = DynamicPartition1D(

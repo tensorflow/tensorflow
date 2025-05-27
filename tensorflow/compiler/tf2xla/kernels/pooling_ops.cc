@@ -699,7 +699,8 @@ class MaxPoolGradGradOp : public XlaOpKernel {
     auto rb = b->CreateSubBuilder("GreaterOrEqOf_ByFirst16Bits");
     {
       // F32 parameters to satisfy lowering type restriction for reduce opcode.
-      const xla::Shape scalar = xla::ShapeUtil::MakeShape(xla::F32, {});
+      const xla::Shape scalar =
+          xla::ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
       auto lhs = xla::Parameter(rb.get(), 0, scalar, "lhs");
       auto rhs = xla::Parameter(rb.get(), 1, scalar, "rhs");
       auto sixteen = xla::ConstantR0<int32>(rb.get(), 16);

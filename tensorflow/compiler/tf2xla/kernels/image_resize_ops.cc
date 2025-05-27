@@ -339,7 +339,7 @@ xla::XlaOp ResizeUsingDilationAndConvolutionGradOp(
 void MakeAddCombiner(xla::PrimitiveType type,
                      xla::XlaComputation& combiner_computation) {
   xla::XlaBuilder cb("image-resize-grad-combiner");
-  auto xla_scalar_shape = xla::ShapeUtil::MakeShape(type, {});
+  auto xla_scalar_shape = xla::ShapeUtil::MakeValidatedShape(type, {}).value();
   auto p0 = xla::Parameter(&cb, 0, xla_scalar_shape, "p0");
   auto p1 = xla::Parameter(&cb, 1, xla_scalar_shape, "p1");
   xla::Add(p0, p1);
@@ -372,8 +372,9 @@ void GeneralCompileWeights(XlaOpKernelContext* ctx, bool align_corners,
   } else {
     h_scale = in_size[0] / static_cast<float>(out_size[0]);
   }
-  xla::XlaOp h_span_start =
-      xla::Iota(b, xla::ShapeUtil::MakeShape(input_type, {out_size[0]}), 0);
+  xla::XlaOp h_span_start = xla::Iota(
+      b, xla::ShapeUtil::MakeValidatedShape(input_type, {out_size[0]}).value(),
+      0);
   if (half_pixel_centers) {
     h_span_start = xla::Add(h_span_start, scalar_half_op);
   }
@@ -409,8 +410,9 @@ void GeneralCompileWeights(XlaOpKernelContext* ctx, bool align_corners,
   } else {
     w_scale = in_size[1] / static_cast<float>(out_size[1]);
   }
-  xla::XlaOp w_span_start =
-      xla::Iota(b, xla::ShapeUtil::MakeShape(input_type, {out_size[1]}), 0);
+  xla::XlaOp w_span_start = xla::Iota(
+      b, xla::ShapeUtil::MakeValidatedShape(input_type, {out_size[1]}).value(),
+      0);
   if (half_pixel_centers) {
     w_span_start = xla::Add(w_span_start, scalar_half_op);
   }
@@ -448,8 +450,10 @@ void GeneralCompileWeights(XlaOpKernelContext* ctx, bool align_corners,
   if (is_kernel_bilinear) {
     xla::XlaOp w_sub = xla::Sub(w_span_start, w_sample_f);
     w_sub = xla::BroadcastInDim(w_sub, {out_size[1], w_span_size}, {0});
-    xla::XlaOp w_offset =
-        xla::Iota(b, xla::ShapeUtil::MakeShape(input_type, {w_span_size}), 0);
+    xla::XlaOp w_offset = xla::Iota(
+        b,
+        xla::ShapeUtil::MakeValidatedShape(input_type, {w_span_size}).value(),
+        0);
     xla::XlaOp w_kernel_pos = xla::Add(w_sub, w_offset, {1});
     if (half_pixel_centers) {
       w_kernel_pos = xla::Add(w_kernel_pos, scalar_half_op);
@@ -467,8 +471,10 @@ void GeneralCompileWeights(XlaOpKernelContext* ctx, bool align_corners,
   if (is_kernel_bilinear) {
     xla::XlaOp h_sub = xla::Sub(h_span_start, h_sample_f);
     h_sub = xla::BroadcastInDim(h_sub, {out_size[0], h_span_size}, {0});
-    xla::XlaOp h_offset =
-        xla::Iota(b, xla::ShapeUtil::MakeShape(input_type, {h_span_size}), 0);
+    xla::XlaOp h_offset = xla::Iota(
+        b,
+        xla::ShapeUtil::MakeValidatedShape(input_type, {h_span_size}).value(),
+        0);
     xla::XlaOp h_kernel_pos = xla::Add(h_sub, h_offset, {1});
     if (half_pixel_centers) {
       h_kernel_pos = xla::Add(h_kernel_pos, scalar_half_op);

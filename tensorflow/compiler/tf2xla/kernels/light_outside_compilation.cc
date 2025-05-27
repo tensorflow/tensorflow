@@ -356,7 +356,7 @@ absl::Status LightOutsideCompilationOp::CompileToCustomCallCallingTfKernel(
   }
 
   xla::Shape output_shape =
-      xla::ShapeUtil::MakeMaybeTupleShape(output_xla_shapes);
+      xla::ShapeUtil::MakeValidatedMaybeTupleShape(output_xla_shapes).value();
 
   VLOG(1) << "Created output shape: " << output_shape.ToString();
 

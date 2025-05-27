@@ -103,18 +103,22 @@ class DenseBincountOp : public XlaOpKernel {
       has_weights = true;
     }
 
-    xla::Shape output_shape = xla::ShapeUtil::MakeShape(dtype, {output_size});
+    xla::Shape output_shape =
+        xla::ShapeUtil::MakeValidatedShape(dtype, {output_size}).value();
     xla::ScatterDimensionNumbers scatter_dnums;
     scatter_dnums.set_index_vector_dim(1);
     scatter_dnums.add_inserted_window_dims(0);
     scatter_dnums.add_scatter_dims_to_operand_dims(0);
 
     if (rank == 2) {
-      output_shape = xla::ShapeUtil::MakeShape(dtype, {size, output_size});
+      output_shape =
+          xla::ShapeUtil::MakeValidatedShape(dtype, {size, output_size})
+              .value();
       scatter_dnums.add_inserted_window_dims(1);
       scatter_dnums.add_scatter_dims_to_operand_dims(1);
-      auto i_shape =
-          xla::ShapeUtil::MakeShape(input_xla_type, {input_shape.dimensions()});
+      auto i_shape = xla::ShapeUtil::MakeValidatedShape(
+                         input_xla_type, {input_shape.dimensions()})
+                         .value();
       auto i = xla::Iota(ctx->builder(), i_shape, 0);
       i = xla::Reshape(
           i, {input_shape.dimensions(0) * input_shape.dimensions(1), 1});
@@ -146,7 +150,8 @@ class DenseBincountOp : public XlaOpKernel {
     xla::XlaComputation assn_computation = [&] {
       std::unique_ptr<xla::XlaBuilder> subb =
           ctx->builder()->CreateSubBuilder("scatter_bincount");
-      xla::Shape param_shape = xla::ShapeUtil::MakeShape(dtype, {});
+      xla::Shape param_shape =
+          xla::ShapeUtil::MakeValidatedShape(dtype, {}).value();
       auto p0 = xla::Parameter(subb.get(), 0, param_shape, "p0");
       auto p1 = xla::Parameter(subb.get(), 1, param_shape, "p1");
       if (!binary_output_) {

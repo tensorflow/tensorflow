@@ -528,11 +528,14 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
                           has_token_input_output_));
 
   xla::Shape expected_cond_output_shape_without_side_effect =
-      xla::ShapeUtil::MakeTupleShape(
-          {xla::ShapeUtil::MakeShape(xla::PRED, {})});
+      xla::ShapeUtil::MakeValidatedTupleShape(
+          {xla::ShapeUtil::MakeShape(xla::PRED, {})})
+          .value();
   xla::Shape expected_cond_output_shape_with_side_effect =
-      xla::ShapeUtil::MakeTupleShape({xla::ShapeUtil::MakeShape(xla::PRED, {}),
-                                      xla::ShapeUtil::MakeTokenShape()});
+      xla::ShapeUtil::MakeValidatedTupleShape(
+          {xla::ShapeUtil::MakeShape(xla::PRED, {}),
+           xla::ShapeUtil::MakeTokenShape()})
+          .value();
   OP_REQUIRES(ctx,
               xla::ShapeUtil::Compatible(
                   cond.xla_output_shape,
