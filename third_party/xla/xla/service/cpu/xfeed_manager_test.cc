@@ -39,7 +39,7 @@ class InfeedManagerTest : public ::testing::Test {};
 class TestInfeedBuffer : public cpu::runtime::XfeedBuffer {
  public:
   explicit TestInfeedBuffer(int32_t length, bool expect_shape_match = true)
-      : shape_(ShapeUtil::MakeShape(U8, {length})),
+      : shape_(ShapeUtil::MakeValidatedShape(U8, {length}).value()),
         done_called_(false),
         length_(length),
         expect_shape_match_(expect_shape_match) {}
@@ -70,7 +70,7 @@ class TestInfeedBuffer : public cpu::runtime::XfeedBuffer {
 // Performs the acquire/release sequence on the infeed, as the generated CPU
 // code would in the process of executing the infeed operation.
 void ProcessNextBuffer(int32_t length) {
-  const auto shape = ShapeUtil::MakeShape(U8, {length});
+  const auto shape = ShapeUtil::MakeValidatedShape(U8, {length}).value();
   const std::string bytes = shape.ToProto().SerializeAsString();
   void* const buffer = __xla_cpu_runtime_AcquireInfeedBufferForDequeue(
       /*run_options=*/nullptr, length, bytes.data(), bytes.size());
@@ -140,7 +140,7 @@ TEST_F(InfeedManagerTest, OutfeedBasic) {
   cpu::runtime::XfeedManager* xfeed = cpu::runtime::GetXfeedManager(0);
   xfeed->outfeed()->EnqueueBuffersAtomically({b});
 
-  ProcessNextOutfeedBuffer(32, ShapeUtil::MakeShape(U8, {32}));
+  ProcessNextOutfeedBuffer(32, ShapeUtil::MakeValidatedShape(U8, {32}).value());
 }
 
 TEST_F(InfeedManagerTest, OutfeedEmpty) {
@@ -148,7 +148,7 @@ TEST_F(InfeedManagerTest, OutfeedEmpty) {
   cpu::runtime::XfeedManager* xfeed = cpu::runtime::GetXfeedManager(0);
   xfeed->outfeed()->EnqueueBuffersAtomically({b});
 
-  ProcessNextOutfeedBuffer(0, ShapeUtil::MakeShape(U8, {0}));
+  ProcessNextOutfeedBuffer(0, ShapeUtil::MakeValidatedShape(U8, {0}).value());
 }
 
 TEST_F(InfeedManagerTest, OutfeedWrongShape) {
@@ -156,7 +156,7 @@ TEST_F(InfeedManagerTest, OutfeedWrongShape) {
   cpu::runtime::XfeedManager* xfeed = cpu::runtime::GetXfeedManager(0);
   xfeed->outfeed()->EnqueueBuffersAtomically({b});
 
-  ProcessNextOutfeedBuffer(32, ShapeUtil::MakeShape(U8, {33}));
+  ProcessNextOutfeedBuffer(32, ShapeUtil::MakeValidatedShape(U8, {33}).value());
 }
 
 }  // namespace
