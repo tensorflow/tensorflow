@@ -156,7 +156,9 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
     // transferring the data to device.
     xla::BorrowingLiteral literal(
         static_cast<const char*>(DMAHelper::base(cpu_tensor)),
-        xla::ShapeUtil::MakeShape(shape.element_type(), shape.dimensions()));
+        xla::ShapeUtil::MakeValidatedShape(shape.element_type(),
+                                           shape.dimensions())
+            .value());
 
     VLOG(2) << "Transfer to device as literal: " << literal.ToString() << " "
             << xla_tensor->shaped_buffer().ToString();
