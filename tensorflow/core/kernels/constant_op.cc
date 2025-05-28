@@ -77,7 +77,7 @@ ConstantOp::ConstantOp(OpKernelConstruction* ctx)
     : OpKernel(ctx, StripTensorDataFromNodeDef(ctx), false),
       tensor_(ctx->output_type(0)) {
   const TensorProto* proto = nullptr;
-  tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(name_view().data());
+  tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(name_view());
   OP_REQUIRES_OK(ctx, ctx->GetAttr("value", &proto));
   OP_REQUIRES_OK(ctx, ctx->device()->MakeTensorFromProto(
                           *proto, AllocatorAttributes(), &tensor_));

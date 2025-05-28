@@ -73,7 +73,8 @@ class CommonAsyncHostToDeviceTransferManager
     std::optional<std::string> debug_info = std::nullopt;
     const auto& current_anno =
         tsl::profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation();
-    if (current_anno.pending_op_name && current_anno.pending_region_type) {
+    if (!current_anno.pending_op_name.empty() &&
+        !current_anno.pending_region_type.empty()) {
       debug_info = std::make_optional<std::string>(absl::StrCat(
           current_anno.pending_op_name, " ", current_anno.pending_region_type));
     }
@@ -339,8 +340,8 @@ class CommonAsyncHostToDeviceTransferManager
       op_name = debug_info.empty() ? "" : debug_info.front();
       region_type = debug_info.size() > 1 ? debug_info.back() : "";
     }
-    tsl::profiler::ScopedMemoryDebugAnnotation anno(
-        op_name.c_str(), region_type.c_str(), 0, []() { return ""; });
+    tsl::profiler::ScopedMemoryDebugAnnotation anno(op_name, region_type, 0,
+                                                    []() { return ""; });
     // Unblock allocating the underlying memory.
     allocation_events_[buffer_index].reset();
 
