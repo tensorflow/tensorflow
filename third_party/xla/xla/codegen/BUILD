@@ -175,3 +175,14 @@ cc_library(
         ":llvm_ir_kernel_source",
     ],
 )
+
+cc_library(
+    name = "ir_emission_utils",
+    srcs = ["ir_emission_utils.cc"],
+    hdrs = ["ir_emission_utils.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/container:inlined_vector",
+    ],
+)
