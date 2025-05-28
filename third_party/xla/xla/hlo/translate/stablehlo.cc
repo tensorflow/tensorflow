@@ -165,6 +165,20 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToStablehlo(
   return mlir_module;
 }
 
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
+ConvertHloToStablehloWithOptions(mlir::MLIRContext& ctx,
+                                 const xla::HloModuleProto* hlo_module_proto,
+                                 bool import_all_computations) {
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
+      llvm_ir::CreateMlirModuleOp(mlir::UnknownLoc::get(&ctx));
+  TF_RETURN_IF_ERROR(HloModuleImporter(mlir_module.get(),
+                                       import_all_computations,
+                                       /*flatten_computation_args_result=*/true,
+                                       /*emit_stablehlo=*/true)
+                         .Import(*hlo_module_proto));
+  return mlir_module;
+}
+
 absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertStablehloToHlo(
     mlir::ModuleOp module) {
   return ConvertStablehloToHloInternal(module,

@@ -156,7 +156,7 @@ cc_library(
         "@local_xla//xla:shape_util",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/hlo/ir:hlo",
-        "@local_xla//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
+        "@local_xla//xla/hlo/translate:stablehlo",
         "@local_xla//xla/pjrt:host_callback",
         "@local_xla//xla/pjrt:pjrt_compiler",
         "@local_xla//xla/pjrt:pjrt_executable",
