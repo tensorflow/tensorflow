@@ -171,7 +171,9 @@ class GpuAsyncHostToDeviceTransferManager
       definition_events.push_back(
           std::make_shared<BufferSequencingEvent>(client->thread_pool()));
       Shape& device_shape = device_shapes.emplace_back(
-          ShapeUtil::MakeShape(shape_spec.element_type, shape_spec.dims));
+          ShapeUtil::MakeValidatedShape(shape_spec.element_type,
+                                        shape_spec.dims)
+              .value());
       if (device_layouts.has_value() && (*device_layouts)[i].has_value()) {
         *device_shape.mutable_layout() = *(*device_layouts)[i];
       } else {

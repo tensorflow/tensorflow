@@ -231,7 +231,7 @@ ENTRY e {
 }
 
 TEST_F(GpuPerformanceModelTest, UnusedParameter) {
-  Shape shape = ShapeUtil::MakeShape(F32, {100000});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {100000}).value();
 
   auto module = std::make_unique<HloModule>("m", HloModuleConfig{});
   HloComputation::Builder b("b");

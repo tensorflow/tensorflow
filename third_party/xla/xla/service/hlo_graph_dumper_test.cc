@@ -44,7 +44,7 @@ TEST_F(HloGraphDumperTest, NestedFusion) {
   HloComputation::Builder b("b");
 
   // Build param0 + param1 + param2 + param3 + param4.
-  auto shape = ShapeUtil::MakeShape(F32, {10, 100});
+  auto shape = ShapeUtil::MakeValidatedShape(F32, {10, 100}).value();
   std::vector<HloInstruction*> params;
   for (int i = 0; i <= 4; ++i) {
     params.push_back(b.AddInstruction(
@@ -129,13 +129,15 @@ TEST_F(HloGraphDumperTest, Constant) {
 }
 
 TEST_F(HloGraphDumperTest, TupleConstant) {
-  Shape tuple_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {3, 2}), ShapeUtil::MakeShape(S32, {4, 5})});
+  Shape tuple_shape =
+      ShapeUtil::MakeValidatedTupleShape({ShapeUtil::MakeShape(F32, {3, 2}),
+                                          ShapeUtil::MakeShape(S32, {4, 5})})
+          .value();
   HloComputation::Builder b("b");
   auto constant = b.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateFromShape(tuple_shape)));
   auto gte = b.AddInstruction(HloInstruction::CreateGetTupleElement(
-      ShapeUtil::MakeShape(F32, {3, 2}), constant, 0));
+      ShapeUtil::MakeValidatedShape(F32, {3, 2}).value(), constant, 0));
 
   HloModuleConfig config;
   HloModule m(TestName(), config);
