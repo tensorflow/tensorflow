@@ -112,7 +112,7 @@ TEST_P(CpuUnaryIntrinsicTest, DoIt) {
   LLVMInitializeARMTargetInfo();
   LLVMInitializeARMTargetMC();
 
-  auto param_shape = ShapeUtil::MakeShape(spec.type, {1024});
+  auto param_shape = ShapeUtil::MakeValidatedShape(spec.type, {1024}).value();
   HloInstruction* param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "input"));
   builder.AddInstruction(

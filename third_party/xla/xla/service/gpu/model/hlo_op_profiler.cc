@@ -122,7 +122,8 @@ HloOpProfiler::GetKernelTracer() {
 /*static*/ std::unique_ptr<HloModule> HloOpProfiler::MakeModuleForMeasurements(
     HloOpcode op, PrimitiveType data_type, int chain_length) {
   constexpr int64_t kInputSize = 1;
-  const Shape shape = ShapeUtil::MakeShape(data_type, {kInputSize});
+  const Shape shape =
+      ShapeUtil::MakeValidatedShape(data_type, {kInputSize}).value();
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsFromFlags());
   auto module = std::make_unique<HloModule>("module", config);
