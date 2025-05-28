@@ -14,11 +14,19 @@ limitations under the License.
 ==============================================================================*/
 
 // For Google-internal use only.
+#include <string>
+
+#include <gmock/gmock.h>
+#include "absl/log/check.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/lazy_op_runner.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/status.h"
+#include "tensorflow/core/kernels/gpu_utils.h"
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "xla/stream_executor/gpu/gpu_init.h"
-#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/autotune_maps/autotune_serialize.h"
 #include "tensorflow/core/util/autotune_maps/conv_autotune_maps.h"
@@ -28,10 +36,9 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-using stream_executor::dnn::AlgorithmConfig;
 using stream_executor::dnn::AlgorithmDesc;
-using ::tensorflow::testing::StatusIs;
 using ::testing::HasSubstr;
+using ::testing::status::StatusIs;
 
 // Gets a GPU StreamExecutor instance.  Any one will do.
 se::StreamExecutor* GetStreamExec() {
@@ -159,12 +166,9 @@ TEST(AutotuneSerializeTest, VersionControl) {
 
   AlgorithmDesc algorithm(/*algo_id=*/1, /*use_tensor_ops=*/true);
   AlgorithmDesc algorithm_no_scratch(/*algo_id=*/1, /*use_tensor_ops=*/true);
-  AlgorithmConfig algorithm_config_example_a(algorithm, /*scratch_size=*/1,
-                                             algorithm_no_scratch);
 
-  ConvAutotuneMap::GetInstance()->Insert(
-      fused_params_example_a,
-      AutotuneEntry<se::dnn::ConvOp>(algorithm_config_example_a));
+  AutotuneEntry<se::dnn::ConvOp> example_a(algorithm, algorithm_no_scratch);
+  ConvAutotuneMap::GetInstance()->Insert(fused_params_example_a, example_a);
 
   std::string serialized_string;
   TF_CHECK_OK(SerializeAutotuneMaps(&serialized_string));

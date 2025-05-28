@@ -18,19 +18,34 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <memory>
+#include <string>
+#include <tuple>
 #include <unordered_map>
+#include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/lazy_op_runner.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/numbers.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/stringprintf.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace stream_executor {
 class RedzoneAllocator;
@@ -303,16 +318,11 @@ void LogFusedMatmulAutotuneResults(
 template <typename Op>
 class AutotuneEntry {
  public:
-  AutotuneEntry() : is_algorithm_config_(true) {}
-
-  // Initialize with legacy-API AlgorithmConfig; used for the ROCm backend only.
-  explicit AutotuneEntry(se::dnn::AlgorithmConfig config)
-      : is_algorithm_config_(true), algorithm_config_(std::move(config)) {}
+  AutotuneEntry() {}
 
   AutotuneEntry(std::shared_ptr<se::dnn::LazyOpRunner<Op>> primary,
                 std::shared_ptr<se::dnn::LazyOpRunner<Op>> no_scratch_fallback)
-      : is_algorithm_config_(false),
-        op_runners_{std::move(primary), std::move(no_scratch_fallback)} {}
+      : op_runners_{std::move(primary), std::move(no_scratch_fallback)} {}
 
   // Initialize from config data, without pre-cached runners, such as when
   // loading AoT autotuning maps.
@@ -366,28 +376,13 @@ class AutotuneEntry {
     }
   };
 
-  bool is_algorithm_config() const { return is_algorithm_config_; }
-
-  const se::dnn::AlgorithmConfig& GetAlgorithmConfig() const {
-    DCHECK(is_algorithm_config_);
-    return algorithm_config_;
-  }
-
-  const OpRunners& GetOpRunners() const {
-    DCHECK(!is_algorithm_config_);
-    return op_runners_;
-  }
+  const OpRunners& GetOpRunners() const { return op_runners_; }
 
   // AutotuneMap needs to test equality to keep track of the number of times an
   // algorithm has won autotuning; for this purpose, we can use ToString to
   // determine whether runners are equal.
   bool operator==(const AutotuneEntry<Op>& other) const {
-    if (is_algorithm_config_) {
-      return other.is_algorithm_config_ &&
-             algorithm_config_ == other.algorithm_config_;
-    }
-
-    return !other.is_algorithm_config_ && op_runners_ == other.op_runners_;
+    return op_runners_ == other.op_runners_;
   }
 
   bool operator!=(const AutotuneEntry<Op>& other) const {
@@ -395,9 +390,6 @@ class AutotuneEntry {
   }
 
   std::string ToString() const {
-    if (is_algorithm_config_) {
-      return algorithm_config_.ToString();
-    }
     return absl::StrCat("{", op_runners_.primary->ToString(), ", ",
                         (op_runners_.no_scratch_fallback
                              ? op_runners_.no_scratch_fallback->ToString()
@@ -406,10 +398,6 @@ class AutotuneEntry {
   }
 
  private:
-  // NVCC is broken, so we can't use absl::variant here.  Just fake it with a
-  // bool and both fields.
-  bool is_algorithm_config_;
-  se::dnn::AlgorithmConfig algorithm_config_;
   OpRunners op_runners_;
 };
 

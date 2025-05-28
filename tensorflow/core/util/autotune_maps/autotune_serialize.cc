@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
@@ -65,16 +66,12 @@ StatusOr<ConvMapProto> ConvMapToProto(
     ConvMapProto::Entry kv;
     *kv.mutable_key() = params_proto;
 
-    if (p.second.is_algorithm_config()) {
-      *kv.mutable_value() = p.second.GetAlgorithmConfig().ToProto();
-    } else {
-      const auto &runners = p.second.GetOpRunners();
-      *kv.mutable_value()->mutable_algorithm() =
-          runners.primary->ToAlgorithmDesc().ToProto();
-      if (runners.no_scratch_fallback) {
-        *kv.mutable_value()->mutable_algorithm_no_scratch() =
-            runners.no_scratch_fallback->ToAlgorithmDesc().ToProto();
-      }
+    const auto &runners = p.second.GetOpRunners();
+    *kv.mutable_value()->mutable_algorithm() =
+        runners.primary->ToAlgorithmDesc().ToProto();
+    if (runners.no_scratch_fallback) {
+      *kv.mutable_value()->mutable_algorithm_no_scratch() =
+          runners.no_scratch_fallback->ToAlgorithmDesc().ToProto();
     }
 
     std::string serialized_params;
@@ -118,12 +115,12 @@ Status PopulateConvMap(
     if (params_proto.version() != ConvParameters::kVersion) {
       VLOG(1) << "ConvParametersProto with the incompatible version:"
               << params_proto.DebugString();
-      return errors::Aborted(
+      return absl::AbortedError(absl::StrCat(
           "Aborted because the loaded autotune results for convolution "
           "operations have a version different "
           "from runtime's version. Expected version: ",
           ConvParameters::kVersion,
-          ". Actual version: ", params_proto.version());
+          ". Actual version: ", params_proto.version()));
     }
 
     const AlgorithmConfigProto &algorithm_config_proto = kv.value();
@@ -192,7 +189,7 @@ absl::Status LoadSerializedAutotuneMaps(absl::string_view s) {
   // resolving the issue that OSS proto library's ParseFromString only accepts
   // std::string.
   if (!proto.ParseFromString(string(s))) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Failed to parse the autotune maps from string.");
   }
   TF_RETURN_IF_ERROR(
