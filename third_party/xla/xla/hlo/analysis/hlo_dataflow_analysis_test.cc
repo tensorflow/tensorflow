@@ -111,10 +111,12 @@ class HloDataflowAnalysisTest : public HloHardwareIndependentTestBase,
   std::unique_ptr<HloModule> module_;
   std::unique_ptr<HloDataflowAnalysis> analysis_;
 
-  const Shape scalar_shape_ = ShapeUtil::MakeShape(F32, {});
-  const Shape vector_shape_ = ShapeUtil::MakeShape(F32, {42});
-  const Shape tuple_shape_ = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {}), ShapeUtil::MakeShape(F32, {})});
+  const Shape scalar_shape_ = ShapeUtil::MakeValidatedShape(F32, {}).value();
+  const Shape vector_shape_ = ShapeUtil::MakeValidatedShape(F32, {42}).value();
+  const Shape tuple_shape_ =
+      ShapeUtil::MakeValidatedTupleShape(
+          {ShapeUtil::MakeShape(F32, {}), ShapeUtil::MakeShape(F32, {})})
+          .value();
 };
 
 TEST_P(HloDataflowAnalysisTest, BinaryOperation) {
@@ -408,7 +410,8 @@ TEST_P(HloDataflowAnalysisTest, SingleWhile) {
   //   return While(%tuple, body, condition)
   //
   const Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+      ShapeUtil::MakeValidatedTupleShape({scalar_shape_, scalar_shape_})
+          .value();
 
   // Element 0 passes transparently through the body.
   auto body_builder = HloComputation::Builder("body");
@@ -511,7 +514,8 @@ TEST_P(HloDataflowAnalysisTest, SequentialWhiles) {
   //   return While(%while1, body, condition)
   //
   const Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+      ShapeUtil::MakeValidatedTupleShape({scalar_shape_, scalar_shape_})
+          .value();
 
   // Element 0 passes transparently through the body.
   auto body_builder = HloComputation::Builder("body");
@@ -585,7 +589,8 @@ TEST_P(HloDataflowAnalysisTest, MultiLevelNestedWhile) {
   //   %tuple = Tuple(%constant)
   //   return While(%tuple), body=level2
   //
-  const Shape tuple_shape = ShapeUtil::MakeTupleShape({scalar_shape_});
+  const Shape tuple_shape =
+      ShapeUtil::MakeValidatedTupleShape({scalar_shape_}).value();
   auto cond_builder = HloComputation::Builder("condition");
   cond_builder.AddInstruction(
       HloInstruction::CreateParameter(0, tuple_shape, "param"));
@@ -679,7 +684,8 @@ TEST_P(HloDataflowAnalysisTest, NestedWhiles) {
   //   return While(%tuple, outer_body, condition)
   //
   const Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+      ShapeUtil::MakeValidatedTupleShape({scalar_shape_, scalar_shape_})
+          .value();
 
   auto cond_builder = HloComputation::Builder("condition");
   cond_builder.AddInstruction(
@@ -795,7 +801,8 @@ TEST_P(HloDataflowAnalysisTest, SwizzlingWhileSharedInput) {
   //   return While(%tuple, body, condition)
   //
   const Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+      ShapeUtil::MakeValidatedTupleShape({scalar_shape_, scalar_shape_})
+          .value();
 
   auto body_builder = HloComputation::Builder("body");
   auto body_param = body_builder.AddInstruction(
@@ -848,7 +855,8 @@ TEST_P(HloDataflowAnalysisTest, SwizzlingWhile) {
   //   return While(%tuple, body, condition)
   //
   const Shape tuple_shape =
-      ShapeUtil::MakeTupleShape({scalar_shape_, scalar_shape_});
+      ShapeUtil::MakeValidatedTupleShape({scalar_shape_, scalar_shape_})
+          .value();
 
   auto body_builder = HloComputation::Builder("body");
   auto body_param = body_builder.AddInstruction(
@@ -1057,8 +1065,9 @@ TEST_P(HloDataflowAnalysisTest, CopyStartAndCopyDone) {
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   auto copy_start = builder.AddInstruction(HloInstruction::CreateCopyStart(
-      ShapeUtil::MakeTupleShape({constant->shape(), constant->shape(),
-                                 ShapeUtil::MakeShape(U32, {})}),
+      ShapeUtil::MakeValidatedTupleShape(
+          {constant->shape(), constant->shape(), ShapeUtil::MakeShape(U32, {})})
+          .value(),
       constant));
   auto copy_done = builder.AddInstruction(HloInstruction::CreateUnary(
       constant->shape(), HloOpcode::kCopyDone, copy_start));
@@ -1974,9 +1983,12 @@ TEST_P(HloDataflowAnalysisTest, NestedConditionals) {
       CreateR0F32UnaryOpComputation(HloOpcode::kNegate));
 
   // Build inner_conditional computation.
-  const Shape scalar_bool_shape = ShapeUtil::MakeShape(PRED, {});
-  const Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
-      {scalar_bool_shape, scalar_shape_, scalar_shape_});
+  const Shape scalar_bool_shape =
+      ShapeUtil::MakeValidatedShape(PRED, {}).value();
+  const Shape tuple_param_shape =
+      ShapeUtil::MakeValidatedTupleShape(
+          {scalar_bool_shape, scalar_shape_, scalar_shape_})
+          .value();
   auto inner_builder =
       HloComputation::Builder(TestName() + "_inner_conditional");
   auto param_cond = inner_builder.AddInstruction(
@@ -2284,9 +2296,10 @@ using DoesNotUseOperandBufferTest = HloHardwareIndependentTestBase;
 TEST_F(DoesNotUseOperandBufferTest, GetTupleElement) {
   auto builder = HloComputation::Builder(TestName());
 
-  Shape elem_shape = ShapeUtil::MakeShape(F32, {8});
+  Shape elem_shape = ShapeUtil::MakeValidatedShape(F32, {8}).value();
   auto tuple = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeTupleShape({elem_shape, elem_shape}), "tuple"));
+      0, ShapeUtil::MakeValidatedTupleShape({elem_shape, elem_shape}).value(),
+      "tuple"));
   auto gte0 = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(elem_shape, tuple, 0));
   auto gte1 = builder.AddInstruction(
@@ -2309,9 +2322,10 @@ TEST_F(DoesNotUseOperandBufferTest, GetTupleElement) {
 TEST_F(DoesNotUseOperandBufferTest, FusedDynamicUpdateSlice) {
   auto builder = HloComputation::Builder(TestName());
 
-  Shape data_shape = ShapeUtil::MakeShape(F32, {8});
+  Shape data_shape = ShapeUtil::MakeValidatedShape(F32, {8}).value();
   auto tuple = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeTupleShape({data_shape, data_shape}), "tuple"));
+      0, ShapeUtil::MakeValidatedTupleShape({data_shape, data_shape}).value(),
+      "tuple"));
   auto gte0 = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(data_shape, tuple, 0));
   auto gte1 = builder.AddInstruction(
@@ -2346,9 +2360,10 @@ TEST_F(DoesNotUseOperandBufferTest, FusedDynamicUpdateSlice) {
 TEST_F(DoesNotUseOperandBufferTest, IndirectUses) {
   auto builder = HloComputation::Builder(TestName());
 
-  Shape data_shape = ShapeUtil::MakeShape(F32, {8});
+  Shape data_shape = ShapeUtil::MakeValidatedShape(F32, {8}).value();
   auto tuple_param = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeTupleShape({data_shape, data_shape}), "tuple"));
+      0, ShapeUtil::MakeValidatedTupleShape({data_shape, data_shape}).value(),
+      "tuple"));
   auto t0 = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(data_shape, tuple_param, 0));
   auto t1 = builder.AddInstruction(
@@ -2396,7 +2411,7 @@ using CanShareOperandBufferWithUserTest = HloHardwareIndependentTestBase;
 TEST_F(CanShareOperandBufferWithUserTest, ElementWiseSameShape) {
   auto builder = HloComputation::Builder(TestName());
 
-  Shape shape = ShapeUtil::MakeShape(F32, {8});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {8}).value();
   auto param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, shape, "param"));
   auto exp = builder.AddInstruction(
@@ -2417,7 +2432,7 @@ TEST_F(CanShareOperandBufferWithUserTest, ElementWiseSameShape) {
 TEST_F(CanShareOperandBufferWithUserTest,
        NonElementwiseLoopFusionCantAliasOperandBuffer) {
   auto builder = HloComputation::Builder(TestName());
-  Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape data_shape = ShapeUtil::MakeValidatedShape(F32, {2, 2}).value();
 
   auto param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, data_shape, "param0"));
@@ -2441,10 +2456,10 @@ TEST_F(CanShareOperandBufferWithUserTest,
 TEST_F(CanShareOperandBufferWithUserTest,
        MultiOutputFusionCanAliasOperandBuffer) {
   auto builder = HloComputation::Builder(TestName());
-  Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape data_shape = ShapeUtil::MakeValidatedShape(F32, {2, 2}).value();
 
-  Shape in_shape = ShapeUtil::MakeShape(F32, {8});
-  Shape out_shape = ShapeUtil::MakeShape(PRED, {8});
+  Shape in_shape = ShapeUtil::MakeValidatedShape(F32, {8}).value();
+  Shape out_shape = ShapeUtil::MakeValidatedShape(PRED, {8}).value();
   auto param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, in_shape, "param0"));
   auto param1 = builder.AddInstruction(
@@ -2477,7 +2492,7 @@ TEST_F(CanShareOperandBufferWithUserTest,
 TEST_F(CanShareOperandBufferWithUserTest,
        ElementwiseLoopFusionCantAliasOperandBuffer) {
   auto builder = HloComputation::Builder(TestName());
-  Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape data_shape = ShapeUtil::MakeValidatedShape(F32, {2, 2}).value();
 
   auto one = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
@@ -2503,8 +2518,8 @@ TEST_F(CanShareOperandBufferWithUserTest,
 TEST_F(CanShareOperandBufferWithUserTest,
        CanShareOperandWhenDynamicUpdateSliceIsFedByDynamicSliceWithSameIndex) {
   auto builder = HloComputation::Builder(TestName());
-  Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
-  Shape slice_shape = ShapeUtil::MakeShape(F32, {1, 2});
+  Shape data_shape = ShapeUtil::MakeValidatedShape(F32, {2, 2}).value();
+  Shape slice_shape = ShapeUtil::MakeValidatedShape(F32, {1, 2}).value();
 
   auto param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, data_shape, "param0"));
@@ -2559,8 +2574,8 @@ TEST_F(CanShareOperandBufferWithUserTest, DUSWithSliceWithSameIndices) {
 TEST_F(CanShareOperandBufferWithUserTest, ElementWiseDifferentShape) {
   auto builder = HloComputation::Builder(TestName());
 
-  Shape in_shape = ShapeUtil::MakeShape(F32, {8});
-  Shape out_shape = ShapeUtil::MakeShape(PRED, {8});
+  Shape in_shape = ShapeUtil::MakeValidatedShape(F32, {8}).value();
+  Shape out_shape = ShapeUtil::MakeValidatedShape(PRED, {8}).value();
   auto param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, in_shape, "param0"));
   auto param1 = builder.AddInstruction(
@@ -2581,7 +2596,7 @@ TEST_F(CanShareOperandBufferWithUserTest, ElementWiseDifferentShape) {
 TEST_F(CanShareOperandBufferWithUserTest, CopyShares) {
   auto builder = HloComputation::Builder(TestName());
 
-  Shape shape = ShapeUtil::MakeShape(F32, {8});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {8}).value();
   auto param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, shape, "param"));
   auto exp = builder.AddInstruction(
@@ -2602,9 +2617,10 @@ TEST_F(CanShareOperandBufferWithUserTest, CopyShares) {
 TEST_F(CanShareOperandBufferWithUserTest, FusedDynamicUpdateSlice) {
   auto builder = HloComputation::Builder(TestName());
 
-  Shape data_shape = ShapeUtil::MakeShape(F32, {8});
+  Shape data_shape = ShapeUtil::MakeValidatedShape(F32, {8}).value();
   auto tuple = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeTupleShape({data_shape, data_shape}), "tuple"));
+      0, ShapeUtil::MakeValidatedTupleShape({data_shape, data_shape}).value(),
+      "tuple"));
   auto gte0 = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(data_shape, tuple, 0));
   auto gte1 = builder.AddInstruction(
@@ -2640,10 +2656,11 @@ TEST_F(CanShareOperandBufferWithUserTest,
        FusedDynamicUpdateSliceWithConvertCanShare) {
   auto builder = HloComputation::Builder(TestName());
 
-  Shape data_shape = ShapeUtil::MakeShape(F32, {8});
-  Shape data_shape_bf16 = ShapeUtil::MakeShape(BF16, {8});
+  Shape data_shape = ShapeUtil::MakeValidatedShape(F32, {8}).value();
+  Shape data_shape_bf16 = ShapeUtil::MakeValidatedShape(BF16, {8}).value();
   auto tuple = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeTupleShape({data_shape, data_shape}), "tuple"));
+      0, ShapeUtil::MakeValidatedTupleShape({data_shape, data_shape}).value(),
+      "tuple"));
   auto gte0 = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(data_shape, tuple, 0));
   auto gte1 = builder.AddInstruction(
@@ -2680,9 +2697,9 @@ TEST_F(CanShareOperandBufferWithUserTest,
 TEST_F(CanShareOperandBufferWithUserTest, DynamicUpdateSliceCanShare) {
   auto builder = HloComputation::Builder(TestName());
 
-  Shape data_shape = ShapeUtil::MakeShape(F32, {1, 8});
-  Shape update_shape = ShapeUtil::MakeShape(F32, {1, 4});
-  Shape starts_shape = ShapeUtil::MakeShape(S32, {2});
+  Shape data_shape = ShapeUtil::MakeValidatedShape(F32, {1, 8}).value();
+  Shape update_shape = ShapeUtil::MakeValidatedShape(F32, {1, 4}).value();
+  Shape starts_shape = ShapeUtil::MakeValidatedShape(S32, {2}).value();
   auto data = builder.AddInstruction(
       HloInstruction::CreateParameter(0, data_shape, "data"));
   auto update = builder.AddInstruction(
@@ -2834,7 +2851,7 @@ TEST_F(CanShareOperandBufferWithUserTest, SortCanShare) {
   auto builder = HloComputation::Builder(TestName());
   auto module = CreateNewVerifiedModule();
 
-  Shape keys_shape = ShapeUtil::MakeShape(F32, {8});
+  Shape keys_shape = ShapeUtil::MakeValidatedShape(F32, {8}).value();
   auto keys = builder.AddInstruction(
       HloInstruction::CreateParameter(0, keys_shape, "keys"));
   TF_ASSERT_OK_AND_ASSIGN(
@@ -2852,15 +2869,16 @@ TEST_F(CanShareOperandBufferWithUserTest, SortCanShareWithTupleUser) {
   auto builder = HloComputation::Builder(TestName());
   auto module = CreateNewVerifiedModule();
 
-  Shape keys_shape = ShapeUtil::MakeShape(F32, {8});
-  Shape values_shape = ShapeUtil::MakeShape(F32, {8});
+  Shape keys_shape = ShapeUtil::MakeValidatedShape(F32, {8}).value();
+  Shape values_shape = ShapeUtil::MakeValidatedShape(F32, {8}).value();
   auto keys = builder.AddInstruction(
       HloInstruction::CreateParameter(0, keys_shape, "keys"));
   auto values = builder.AddInstruction(
       HloInstruction::CreateParameter(1, values_shape, "values"));
   TF_ASSERT_OK_AND_ASSIGN(
       auto* sort,
-      MakeSortHlo(ShapeUtil::MakeTupleShape({keys_shape, values_shape}),
+      MakeSortHlo(ShapeUtil::MakeValidatedTupleShape({keys_shape, values_shape})
+                      .value(),
                   {keys, values}, 0, /*is_stable=*/false, &builder,
                   module.get()));
 
@@ -2882,7 +2900,7 @@ TEST_F(CanShareOperandBufferWithUserTest, SortCanShareWithTupleUser) {
 
 TEST_F(CanShareOperandBufferWithUserTest, FusedDotAdd) {
   auto builder = HloComputation::Builder(TestName());
-  Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape data_shape = ShapeUtil::MakeValidatedShape(F32, {2, 2}).value();
 
   auto a = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR2<float>({{1.0, 0.0}, {0.0, 1.0}})));
@@ -2919,7 +2937,7 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedDotAdd) {
 
 TEST_F(CanShareOperandBufferWithUserTest, OutputFusionCantAliasOperandBuffer) {
   auto builder = HloComputation::Builder(TestName());
-  Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape data_shape = ShapeUtil::MakeValidatedShape(F32, {2, 2}).value();
 
   auto one = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
@@ -2948,7 +2966,7 @@ TEST_F(CanShareOperandBufferWithUserTest, OutputFusionCantAliasOperandBuffer) {
 
 TEST_F(CanShareOperandBufferWithUserTest, FusionCanShareBufferCustomized) {
   auto builder = HloComputation::Builder(TestName());
-  Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape data_shape = ShapeUtil::MakeValidatedShape(F32, {2, 2}).value();
 
   auto one = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
@@ -2978,8 +2996,8 @@ TEST_F(CanShareOperandBufferWithUserTest, FusionCanShareBufferCustomized) {
 
 TEST_F(CanShareOperandBufferWithUserTest, WhileCanShare) {
   auto module = CreateNewVerifiedModule();
-  Shape data_shape = ShapeUtil::MakeShape(F32, {8});
-  Shape pred_scalar_shape = ShapeUtil::MakeShape(PRED, {});
+  Shape data_shape = ShapeUtil::MakeValidatedShape(F32, {8}).value();
+  Shape pred_scalar_shape = ShapeUtil::MakeValidatedShape(PRED, {}).value();
 
   auto b = HloComputation::Builder(TestName() + ".And");
   auto p0 = b.AddInstruction(
@@ -2995,12 +3013,13 @@ TEST_F(CanShareOperandBufferWithUserTest, WhileCanShare) {
     auto data = builder.AddInstruction(
         HloInstruction::CreateParameter(0, data_shape, "data"));
     auto compare = builder.AddInstruction(HloInstruction::CreateCompare(
-        ShapeUtil::MakeShape(PRED, {8}), data, data, ComparisonDirection::kEq));
+        ShapeUtil::MakeValidatedShape(PRED, {8}).value(), data, data,
+        ComparisonDirection::kEq));
     auto true_value = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
-    builder.AddInstruction(
-        HloInstruction::CreateReduce(ShapeUtil::MakeShape(PRED, {}), compare,
-                                     true_value, {0}, and_computation));
+    builder.AddInstruction(HloInstruction::CreateReduce(
+        ShapeUtil::MakeValidatedShape(PRED, {}).value(), compare, true_value,
+        {0}, and_computation));
     return builder.Build();
   };
 
@@ -3035,7 +3054,7 @@ TEST_F(CanShareOperandBufferWithUserTest, WhileCanShare) {
 // Tests that Call can alias operand buffer if the only use of the operand
 // in the called computation is an elementwise instruction.
 TEST_F(CanShareOperandBufferWithUserTest, CallToComputationWithFusionRoot) {
-  Shape shape = ShapeUtil::MakeShape(F32, {8});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {8}).value();
   // Build sub-computation with fusion root.
   auto sub_builder = HloComputation::Builder(TestName() + "_sub");
   auto sub_param = sub_builder.AddInstruction(
