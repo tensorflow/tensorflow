@@ -14,48 +14,15 @@
  * limitations under the License.
  */
 
-#ifndef XLA_HLO_TOOLS_HLO_DIFF_MATCHERS_HLO_GUMGRAPH_MATCHER_H_
-#define XLA_HLO_TOOLS_HLO_DIFF_MATCHERS_HLO_GUMGRAPH_MATCHER_H_
+#ifndef XLA_HLO_TOOLS_HLO_DIFF_MATCHERS_BOTTOM_UP_MATCHER_H_
+#define XLA_HLO_TOOLS_HLO_DIFF_MATCHERS_BOTTOM_UP_MATCHER_H_
 
 #include "absl/log/die_if_null.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph.h"
 #include "xla/hlo/tools/hlo_diff/hlo_gumgraph_mappings.h"
+#include "xla/hlo/tools/hlo_diff/matchers/gumgraph_matcher.h"
 
-namespace xla {
-namespace hlo_diff {
-
-// Options allowing configuration of the instruction matching algorithm.
-struct MatchOptions {
-  bool use_top_down_matcher = true;
-};
-
-// Base class for all node matchers. Each matcher implements a unique algorithm
-// to match nodes between two HLO graphs. The base class standardizes input and
-// output types, ensuring seamless integration and compatibility within any
-// matcher sequence.
-class HloGumgraphMatcher {
- public:
-  virtual ~HloGumgraphMatcher() = default;
-  virtual void Match(HloGumgraphMappings& mappings) const = 0;
-
- protected:
-  explicit HloGumgraphMatcher(MatcherType type) : type_(type) {}
-  const MatcherType type_;
-};
-
-// Matcher that matches identical subgraphs starting with the tallest.
-class GreedySubGraphExactMatcher : public HloGumgraphMatcher {
- public:
-  GreedySubGraphExactMatcher(const HloGumgraph* left, const HloGumgraph* right)
-      : HloGumgraphMatcher(MatcherType::kGreedySubGraphExactMatcher),
-        left_(*ABSL_DIE_IF_NULL(left)),
-        right_(*ABSL_DIE_IF_NULL(right)) {}
-  void Match(HloGumgraphMappings& mappings) const override;
-
- private:
-  const HloGumgraph& left_;
-  const HloGumgraph& right_;
-};
+namespace xla::hlo_diff {
 
 // Matcher that matches nodes bottom up by dice similarity. For each left node,
 // mappings of the already matched descendants are considered as seeds, from
@@ -113,24 +80,6 @@ class GreedyLimitedCandidatesBottomUpMatcher : public HloGumgraphMatcher {
   const int candidate_traversal_limit_;
 };
 
-// Matcher that matches nodes top down by same type sequence along the path.
-class GreedyTopDownMatcher : public HloGumgraphMatcher {
- public:
-  GreedyTopDownMatcher(const HloGumgraph* left, const HloGumgraph* right,
-                       bool require_same_children = false)
-      : HloGumgraphMatcher(MatcherType::kGreedyTopDownMatcher),
-        left_(*ABSL_DIE_IF_NULL(left)),
-        right_(*ABSL_DIE_IF_NULL(right)),
-        require_same_children_(require_same_children) {}
-  void Match(HloGumgraphMappings& mappings) const override;
+}  // namespace xla::hlo_diff
 
- private:
-  const HloGumgraph& left_;
-  const HloGumgraph& right_;
-  const bool require_same_children_;
-};
-
-}  // namespace hlo_diff
-}  // namespace xla
-
-#endif  // XLA_HLO_TOOLS_HLO_DIFF_MATCHERS_HLO_GUMGRAPH_MATCHER_H_
+#endif  // XLA_HLO_TOOLS_HLO_DIFF_MATCHERS_BOTTOM_UP_MATCHER_H_
