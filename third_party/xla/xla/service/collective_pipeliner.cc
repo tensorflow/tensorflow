@@ -254,7 +254,7 @@ bool IsSupportedLoopIndexType(PrimitiveType type) {
 }
 
 std::optional<Literal> CreateLiteralOfShape(const Shape& shape, int64_t value) {
-  return primitive_util::PrimitiveTypeSwitch<std::optional<Literal>>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto kType) -> std::optional<Literal> {
         if constexpr (primitive_util::IsIntegralType(kType)) {
           using NativeT = typename primitive_util::NativeTypeOf<kType>;

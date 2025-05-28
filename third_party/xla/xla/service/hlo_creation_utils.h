@@ -416,7 +416,7 @@ HloInstruction* ExpandDegenerateReshape(HloInstruction* inst);
 template <typename NativeT>
 std::unique_ptr<HloInstruction> MakeScalarConstantWithShape(const Shape& shape,
                                                             NativeT value) {
-  return primitive_util::PrimitiveTypeSwitch<std::unique_ptr<HloInstruction>>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto literal_constant) -> std::unique_ptr<HloInstruction> {
         if constexpr (primitive_util::IsIntegralType(literal_constant) ||
                       primitive_util::IsFloatingPointType(literal_constant)) {

@@ -719,7 +719,7 @@ absl::Status EqualHelper(const LiteralSlice& expected,
     Literal* const miscompared_ptr =
         (miscompare_callback == nullptr) ? nullptr : &miscompared;
 
-    primitive_util::PrimitiveTypeSwitch<void>(
+    primitive_util::PrimitiveTypeSwitch(
         [&](auto primitive_type_constant) -> void {
           if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
             using NativeT =
@@ -798,7 +798,7 @@ absl::Status NearHelper(const LiteralSlice& expected,
       ShapeUtil::ElementIsComplex(expected.shape())) {
     bool use_detailed_message = detailed_message.value_or(
         ShapeUtil::ElementsIn(expected.shape()) >= 64);
-    return primitive_util::PrimitiveTypeSwitch<absl::Status>(
+    return primitive_util::PrimitiveTypeSwitch(
         [&](auto primitive_type) -> absl::Status {
           if constexpr (primitive_util::IsFloatingPointType(primitive_type) ||
                         primitive_util::IsComplexType(primitive_type)) {

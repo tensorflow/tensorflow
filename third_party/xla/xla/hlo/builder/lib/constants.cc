@@ -49,7 +49,7 @@ XlaOp One(XlaBuilder* builder, PrimitiveType type) {
 }
 
 XlaOp Epsilon(XlaBuilder* builder, PrimitiveType type) {
-  return primitive_util::PrimitiveTypeSwitch<XlaOp>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> XlaOp {
         if constexpr (primitive_util::IsFloatingPointType(
                           primitive_type_constant)) {
@@ -69,7 +69,7 @@ XlaOp MinValue(XlaBuilder* builder, PrimitiveType type) {
 }
 
 XlaOp MinFiniteValue(XlaBuilder* builder, PrimitiveType type) {
-  return primitive_util::PrimitiveTypeSwitch<XlaOp>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> XlaOp {
         if constexpr (primitive_util::IsFloatingPointType(
                           primitive_type_constant)) {
@@ -84,7 +84,7 @@ XlaOp MinFiniteValue(XlaBuilder* builder, PrimitiveType type) {
 }
 
 XlaOp MinPositiveNormalValue(XlaBuilder* builder, PrimitiveType type) {
-  return primitive_util::PrimitiveTypeSwitch<XlaOp>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> XlaOp {
         if constexpr (primitive_util::IsFloatingPointType(
                           primitive_type_constant)) {
@@ -105,7 +105,7 @@ XlaOp MaxValue(XlaBuilder* builder, PrimitiveType type) {
 }
 
 XlaOp MaxFiniteValue(XlaBuilder* builder, PrimitiveType type) {
-  return primitive_util::PrimitiveTypeSwitch<XlaOp>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> XlaOp {
         if constexpr (primitive_util::IsFloatingPointType(
                           primitive_type_constant)) {
@@ -120,7 +120,7 @@ XlaOp MaxFiniteValue(XlaBuilder* builder, PrimitiveType type) {
 }
 
 XlaOp NanValue(XlaBuilder* builder, PrimitiveType type) {
-  return primitive_util::PrimitiveTypeSwitch<XlaOp>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> XlaOp {
         if constexpr (primitive_util::IsFloatingPointType(
                           primitive_type_constant)) {

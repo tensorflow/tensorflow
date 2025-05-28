@@ -1365,7 +1365,7 @@ std::string LiteralBase::GetAsString(absl::Span<const int64_t> multi_index,
 std::optional<int64_t> LiteralBase::GetIntegralAsS64(
     absl::Span<const int64_t> multi_index) const {
   CHECK(LayoutUtil::IsDenseArray(shape()));
-  return primitive_util::PrimitiveTypeSwitch<std::optional<int64_t>>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> std::optional<int64_t> {
         if constexpr (primitive_util::IsIntegralType(primitive_type_constant) ||
                       primitive_type_constant == PRED) {
@@ -1381,7 +1381,7 @@ std::optional<double> LiteralBase::GetAsDouble(
     absl::Span<const int64_t> multi_index) const {
   const Shape& s = shape();
   CHECK(LayoutUtil::IsDenseArray(s));
-  return primitive_util::PrimitiveTypeSwitch<std::optional<double>>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> std::optional<double> {
         if constexpr (primitive_util::IsFloatingPointType(
                           primitive_type_constant)) {
@@ -1417,7 +1417,7 @@ std::optional<double> LiteralBase::GetSumAsDouble(
 
 std::optional<complex128> LiteralBase::GetAsComplex128(
     absl::Span<const int64_t> multi_index) const {
-  return primitive_util::PrimitiveTypeSwitch<std::optional<complex128>>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> std::optional<complex128> {
         if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
           using NativeT = NativeTypeOf<primitive_type_constant>;
@@ -1444,7 +1444,7 @@ std::optional<complex128> LiteralBase::GetAsComplex128(
 absl::Status MutableLiteralBase::SetIntegralAsS64(
     absl::Span<const int64_t> multi_index, int64_t value) {
   CHECK(LayoutUtil::IsDenseArray(shape()));
-  return primitive_util::PrimitiveTypeSwitch<absl::Status>(
+  return primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> absl::Status {
         if constexpr (primitive_util::IsIntegralType(primitive_type_constant) ||
                       primitive_type_constant == PRED) {

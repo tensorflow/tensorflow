@@ -36,7 +36,7 @@ xla::XlaOp Zeros(xla::XlaBuilder* builder, const xla::Shape& shape) {
 
 xla::XlaOp FloatLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
                         double value) {
-  return xla::primitive_util::PrimitiveTypeSwitch<xla::XlaOp>(
+  return xla::primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> xla::XlaOp {
         if constexpr (xla::primitive_util::IsFloatingPointType(
                           primitive_type_constant) ||
@@ -53,7 +53,7 @@ xla::XlaOp FloatLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
 
 xla::XlaOp IntegerLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
                           int64_t value) {
-  xla::Literal literal = xla::primitive_util::PrimitiveTypeSwitch<xla::Literal>(
+  xla::Literal literal = xla::primitive_util::PrimitiveTypeSwitch(
       [&](auto primitive_type_constant) -> xla::Literal {
         if constexpr (xla::primitive_util::IsArrayType(
                           primitive_type_constant)) {
