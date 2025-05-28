@@ -652,11 +652,10 @@ class PriorityFusionQueue {
         [&]() -> TiledRunTimeDataOrError {
       if (result_or_status.ok()) {
         return *result_or_status;
-      } else {
-        return FusionDecision::Forbid(
-            absl::StrCat("TiledRunTimeDataOrError return status: ",
-                         result_or_status.status().message()));
       }
+      return FusionDecision::Forbid(
+          absl::StrCat("TiledRunTimeDataOrError return status: ",
+                       result_or_status.status().message()));
     }();
 
     if (const auto* fusion_decision =
@@ -718,7 +717,7 @@ class PriorityFusionQueue {
   }
 
   FusionDecision CanFuse(HloInstruction* producer, HloInstruction* consumer) {
-    // Don't fuse across a root instruction. There are situation when a root
+    // Don't fuse across a root instruction. There are situations when a root
     // instruction is not the last in the computation. Instructions after the
     // root are not necessary dead. They can be inputs to instructions with side
     // effects, like outfeed.
@@ -873,6 +872,13 @@ class PriorityFusionQueue {
             .debug_options()
             .xla_gpu_unsupported_enable_triton_multi_output_fusion();
     if (!triton_multi_output_fusion_enabled) {
+      return {};
+    }
+    // Don't fuse across a root instruction. There are situations when a root
+    // instruction is not the last in the computation. Instructions after the
+    // root are not necessary dead. They can be inputs to instructions with side
+    // effects, like outfeed.
+    if (producer == producer->parent()->root_instruction()) {
       return {};
     }
     std::vector<HloInstruction*> possible_consumers;
