@@ -1,4 +1,4 @@
-// RUN: stablehlo-quant-opt %s -stablehlo-remove-sharding-custom-call \
+// RUN: stablehlo-quant-opt %s -tf-stablehlo-remove-sharding-custom-call \
 // RUN:   -split-input-file | FileCheck %s
 
 // CHECK-LABEL: sharding_custom_call_removed

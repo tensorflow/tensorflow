@@ -29,7 +29,6 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
@@ -111,15 +110,7 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index);
 //
 //   - MakeValidatedShape*: returns a StatusOr<Shape>, and does
 //     invariant checks before / after the operation.
-//   - MakeShape*: returns a Shape; guarantees to never crash (see below).
-//
-// NOTE: Currently we have many MakeShape* functions that crash when the
-// result is invalid. These APIs are error-prone as it's easy to use them
-// without realizing that they can crash. We are deprecating them in favor of
-// the MakeValidatedShape* family of functions. With this, the caller will
-// be forced to get the value explicitly by MakeValidatedShape*().value(),
-// making the potential crash much easier to spot. In the end, all remaining
-// MakeShape* functions should guarantee to never crash.
+//   - MakeShape*: returns a Shape; may crash if an invariant is violated.
 class ShapeUtil {
  public:
   using DynamicSizeType = int32_t;
@@ -368,11 +359,9 @@ class ShapeUtil {
 
   // Creates a tuple shape from a slice of element shapes within the tuple.
   // Crashes if the result is invalid.
-  ABSL_DEPRECATE_AND_INLINE()
   static Shape MakeTupleShape(absl::Span<const Shape> shapes) {
     return MakeValidatedTupleShape(shapes).value();
   }
-  ABSL_DEPRECATE_AND_INLINE()
   static Shape MakeTupleShapeWithPtrs(absl::Span<const Shape* const> shapes) {
     return MakeValidatedTupleShapeWithPtrs(shapes).value();
   }
@@ -385,7 +374,6 @@ class ShapeUtil {
 
   // Creates a tuple shape from a slice of element shapes within the tuple. If
   // only one shape is passed, returns that. Crashes if the result is invalid.
-  ABSL_DEPRECATE_AND_INLINE()
   static Shape MakeMaybeTupleShape(absl::Span<const Shape> shapes) {
     return MakeValidatedMaybeTupleShape(shapes).value();
   }
@@ -441,7 +429,6 @@ class ShapeUtil {
 
   // Constructs a new shape with the given element type and sequence of
   // dimensions.
-  ABSL_DEPRECATE_AND_INLINE()
   static Shape MakeShape(PrimitiveType element_type,
                          absl::Span<const int64_t> dimensions) {
     return MakeValidatedShape(element_type, dimensions).value();
@@ -452,7 +439,6 @@ class ShapeUtil {
       PrimitiveType element_type) {
     return MakeValidatedShape(element_type, {});
   }
-  ABSL_DEPRECATE_AND_INLINE()
   static Shape MakeScalarShape(PrimitiveType element_type) {
     return MakeValidatedScalarShape(element_type).value();
   }
@@ -463,7 +449,6 @@ class ShapeUtil {
   // dimension is dynamic then the respective value in 'dimension' is an upper
   // bound on the dimension size. 'dimensions' and 'dynamic_dimensions' must be
   // the same size.
-  ABSL_DEPRECATE_AND_INLINE()
   static Shape MakeShape(PrimitiveType element_type,
                          absl::Span<const int64_t> dimensions,
                          const std::vector<bool>& dynamic_dimensions) {
@@ -498,7 +483,6 @@ class ShapeUtil {
                               dimensions);
   }
   template <typename T>
-  ABSL_DEPRECATE_AND_INLINE()
   static Shape MakeShapeWithType(absl::Span<const int64_t> dimensions) {
     return MakeValidatedShapeWithType<T>(dimensions).value();
   }
@@ -506,7 +490,6 @@ class ShapeUtil {
   // Constructs a new dense array shape with the given minor_to_major order in
   // its Layout. Returns a value shape such that shape.has_layout(). Crashes if
   // the result is invalid.
-  ABSL_DEPRECATE_AND_INLINE()
   static Shape MakeShapeWithDenseLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dimensions,
       absl::Span<const int64_t> minor_to_major,
@@ -548,7 +531,6 @@ class ShapeUtil {
 
   // Constructs a new shape with major-first layout (i.e. {n, n-1, ..., 0}).
   // Crashes if the result is invalid.
-  ABSL_DEPRECATE_AND_INLINE()
   static Shape MakeShapeWithDescendingLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dimensions) {
     return MakeValidatedShapeWithDescendingLayout(element_type, dimensions)
@@ -565,7 +547,6 @@ class ShapeUtil {
   // Crashes if the result is invalid.
   //
   // For example, transforms f32[B,H,W,C]{0,3,2,1} to f32[H,W,C,B]{3,2,1,0}.
-  ABSL_DEPRECATE_AND_INLINE()
   static Shape MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
       const Shape& shape) {
     return MakeValidatedShapeWithDescendingLayoutAndSamePhysicalLayout(shape)

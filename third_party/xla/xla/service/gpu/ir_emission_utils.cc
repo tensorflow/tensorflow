@@ -44,6 +44,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/raw_ostream.h"
+#include "xla/codegen/ir_emission_utils.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -376,13 +377,6 @@ absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
   }
 
   return true;
-}
-
-int GetBitwidth(PrimitiveType type) {
-  if (type == PRED) {
-    return 8;
-  }
-  return primitive_util::BitWidth(type);
 }
 
 bool IsNormalized(const HloTransposeInstruction& transpose) {

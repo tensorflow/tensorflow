@@ -36,16 +36,19 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/graphcycles/graphcycles.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
+
+namespace m = ::xla::match;
 
 // Tries to merge dot instructions a and b if they share an operand.  Example:
 //
@@ -70,12 +73,6 @@ namespace {
 //
 absl::StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
                                                     HloInstruction* b) {
-  if (a->shape().layout() != b->shape().layout()) {
-    VLOG(3) << "Can't merge dots because they have a different layout:\n"
-            << "\t" << a->ToString() << "\n"
-            << "\t" << b->ToString();
-    return nullptr;
-  }
   if (a->operand(0) != b->operand(0) && a->operand(1) != b->operand(1)) {
     VLOG(4) << "Can't merge dots because they don't share an operand.\n"
             << "\t" << a->ToString() << "\n"
@@ -122,25 +119,6 @@ absl::StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
     return nullptr;
   }
 
-  if (!absl::c_equal(a->precision_config().operand_precision(),
-                     b->precision_config().operand_precision())) {
-    VLOG(3) << "Can't merge dots because they have mismatching operand "
-               "precisions:\n"
-            << "\t" << a->ToString() << "\n"
-            << "\t" << b->ToString();
-    return nullptr;
-  }
-
-  HloDotInstruction* dot_a = Cast<HloDotInstruction>(a);
-  HloDotInstruction* dot_b = Cast<HloDotInstruction>(b);
-  if (!absl::c_equal(dot_a->sparsity(), dot_b->sparsity(),
-                     protobuf_util::HaveSameSerialization)) {
-    VLOG(3) << "Can't merge dots because they have mismatching sparsity "
-               "descriptors:\n"
-            << "\t" << a->ToString() << "\n"
-            << "\t" << b->ToString();
-    return nullptr;
-  }
 
   VLOG(2) << "Merging dots sharing an operand:\n"
           << "\t" << a->ToString() << "\n"
@@ -203,6 +181,7 @@ absl::StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
     ++outer_dim;
   }
 
+  HloDotInstruction* dot_a = Cast<HloDotInstruction>(a);
   std::vector<SparsityDescriptor> sparsity(dot_a->sparsity().begin(),
                                            dot_a->sparsity().end());
   std::vector<HloInstruction*> sparse_meta(sparsity.size());
@@ -281,6 +260,209 @@ absl::StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
   return new_dot;
 }
 
+bool EqualTransposed(HloInstruction* lhs, HloInstruction* rhs) {
+  HloInstruction* transpose;
+  return (Match(lhs,
+                m::Transpose(&transpose).WithOperand(0, m::Op().Is(rhs))) ||
+          Match(rhs,
+                m::Transpose(&transpose).WithOperand(0, m::Op().Is(lhs)))) &&
+         (transpose->dimensions().size() == 2 &&
+          transpose->dimensions().at(0) == 1 &&
+          transpose->dimensions().at(1) == 0);
+}
+
+// Try to merge dots that have a common operand on different sides (LHS vs RHS).
+// Example:
+//
+// a = [m, n_a] dot([m, k] common, [k, n_a] rhs_a),
+//     lhs_contracting_dims={1}, rhs_contracting_dims={0}
+// common_T = [k, m] transpose(common)
+// b = [n_b, m] dot([n_b, k] lhs_b, [k, m] common_T),
+//     lhs_contracting_dims={1}, rhs_contracting_dims={0}
+//
+// is merged to:
+//
+// lhs_b_T = [k, n_b] transpose([n_b, k] lhs_b), dimensions={1,0}
+// concat = [k, n_a+n_b] concat([k, n_a] rhs_a, [k, n_b] lhs_b_T))
+// merged_dot = [m, n_a+n_b] dot([m, k] common, [k, n_a+n_b] concat),
+//     lhs_contracting_dims={1}, rhs_contracting_dims={0}
+// slice_b = [m, n_b] slice(merged_dot), slice={[0:m], [n_a:n_a+n_b]}
+// new_a = [m, n_a] slice(merged_dot), slice={[0:m], [0:n_a]}
+// new_b = [n_b, m] transpose(slice_b), dimensions={1,0}
+//
+// Preconditions:
+//  - `a` and `b` are dots in the `DotDecomposer` normal form.
+//  - `a` and `b` do not have batch dimensions, thus all operands are of rank 2.
+//  - `a` does not transitively depend on the value of `b`, and `b` does not
+//    transitively depend on the value of `a`.
+
+absl::StatusOr<HloInstruction*> TryMergeLHSWithRHSOperand(HloInstruction* a,
+                                                          HloInstruction* b) {
+  if (!Cast<HloDotInstruction>(a)->sparsity().empty() ||
+      !Cast<HloDotInstruction>(b)->sparsity().empty()) {
+    VLOG(3) << "Merging sparse dots is not supported:\n"
+            << "\t" << a->ToString() << "\n"
+            << "\t" << b->ToString();
+    return nullptr;
+  }
+
+  const DotDimensionNumbers& dnums_a = a->dot_dimension_numbers();
+  const DotDimensionNumbers& dnums_b = b->dot_dimension_numbers();
+  // TODO(tjoerg): Add support for batch dimensions.
+  if (!dnums_a.lhs_batch_dimensions().empty() ||
+      !dnums_a.rhs_batch_dimensions().empty() ||
+      !dnums_b.lhs_batch_dimensions().empty() ||
+      !dnums_b.rhs_batch_dimensions().empty()) {
+    VLOG(3) << "Can't merge dots with batch dimensions.\n"
+            << "\t" << a->ToString() << "\n"
+            << "\t" << b->ToString()
+            << absl::c_equal(dnums_a.lhs_batch_dimensions(),
+                             dnums_b.lhs_batch_dimensions())
+            << ", "
+            << absl::c_equal(dnums_a.rhs_batch_dimensions(),
+                             dnums_b.rhs_batch_dimensions());
+    return nullptr;
+  }
+
+  HloInstruction* a_rhs;
+  HloInstruction* a_lhs;
+  if (!Match(a, m::Dot(m::Op(&a_lhs).WithShape(m::Shape().WithRank(2)),
+                       m::Op(&a_rhs).WithShape(m::Shape().WithRank(2)))
+                    .WithContractingDims({1}, {0}))) {
+    VLOG(3) << "Only dots in DotDecomposer normal can be merged."
+            << "\t" << a->ToString();
+    return nullptr;
+  }
+  HloInstruction* b_lhs;
+  HloInstruction* b_rhs;
+  if (!Match(b, m::Dot(m::Op(&b_lhs).WithShape(m::Shape().WithRank(2)),
+                       m::Op(&b_rhs).WithShape(m::Shape().WithRank(2)))
+                    .WithContractingDims({1}, {0}))) {
+    VLOG(3) << "Only dots in DotDecomposer normal can be merged."
+            << "\t" << b->ToString();
+    return nullptr;
+  }
+
+  if (a->shape().element_type() != b->shape().element_type() ||
+      a_rhs->shape().element_type() != b_lhs->shape().element_type()) {
+    VLOG(3) << "Can't merge dots because operand/return types are different:\n"
+            << "\t" << a->ToString() << "\n"
+            << "\t" << b->ToString();
+    return nullptr;
+  }
+
+  if (a->shape().dimensions(0) != b->shape().dimensions(1)) {
+    VLOG(3) << "Can't merge dots because their `m` dimension is different:\n"
+            << "\t" << a->ToString() << "\n"
+            << "\t" << b->ToString();
+    return nullptr;
+  }
+
+  // Check that the LHS of `a` is equivalent to the RHS of `b` just transposed.
+  // DotDecomposer insert transpose ops to establish a normal form and ensure
+  // contracting dims are most major on the LHS and non-contracting dimensions
+  // are most major on the RHS.
+  if (!EqualTransposed(a_lhs, b_rhs)) {
+    VLOG(4) << "LHS of first dot is different from RHS of second dot.\n"
+            << "\t" << a_lhs->ToString() << "\n"
+            << "\t" << b_rhs->ToString();
+    return nullptr;
+  }
+
+  VLOG(2) << "Merging dots sharing an operand:\n"
+          << "\t" << a->ToString() << "\n"
+          << "\t" << b->ToString() << "\t" << a->parent()->ToString();
+
+  // The new RHS is the concatenation of a's RHS and b's LHS transposed.
+  HloInstruction* b_lhs_transposed =
+      b_lhs->AddInstruction(HloInstruction::CreateTranspose(
+          ShapeUtil::PermuteDimensions({1, 0}, b_lhs->shape()), b_lhs, {1, 0}));
+  TF_ASSIGN_OR_RETURN(Shape concat_shape,
+                      ShapeInference::InferConcatOpShape(
+                          {&a_rhs->shape(), &b_lhs_transposed->shape()}, 1));
+  HloInstruction* new_rhs =
+      a_rhs->AddInstruction(HloInstruction::CreateConcatenate(
+          concat_shape, {a_rhs, b_lhs_transposed}, 1));
+  TF_ASSIGN_OR_RETURN(
+      Shape new_dot_shape,
+      ShapeInference::InferDotOpShape(
+          a_lhs->shape(),  // The new LHS is the LHS of a.
+          new_rhs->shape(), dnums_a,
+          /*preferred_element_type=*/a->shape().element_type()));
+  *new_dot_shape.mutable_layout() = a->shape().layout();
+  HloInstruction* new_dot = a->AddInstruction(HloInstruction::CreateDot(
+      new_dot_shape, a_lhs, new_rhs, dnums_a, a->precision_config()));
+
+  // We can't keep both. But one is better then none.
+  if (!a->metadata().op_name().empty()) {
+    new_dot->set_metadata(a->metadata());
+  } else if (!b->metadata().op_name().empty()) {
+    new_dot->set_metadata(b->metadata());
+  }
+
+  // Slice the outputs.
+  HloInstruction* new_a = a->AddInstruction(HloInstruction::CreateSlice(
+      a->shape(), new_dot, /*start_indices=*/{0, 0},
+      /*limit_indices=*/{a->shape().dimensions(0), a->shape().dimensions(1)},
+      /*strides=*/{1, 1}));
+  HloInstruction* new_b_slice = b->AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::PermuteDimensions({1, 0}, b->shape()), new_dot,
+      /*start_indices=*/{0, a->shape().dimensions(1)},
+      /*limit_indices=*/
+      {b->shape().dimensions(1),
+       a->shape().dimensions(1) + b->shape().dimensions(0)},
+      /*strides=*/{1, 1}));
+  HloInstruction* new_b = new_b_slice->AddInstruction(
+      HloInstruction::CreateTranspose(b->shape(), new_b_slice, {1, 0}));
+  // Important: We do RAUW, not ReplaceInstruction, because the old
+  // instruction must live until the end of the pass.
+  TF_RETURN_IF_ERROR(a->ReplaceAllUsesWith(new_a));
+  TF_RETURN_IF_ERROR(b->ReplaceAllUsesWith(new_b));
+
+  return new_dot;
+}
+
+absl::StatusOr<HloInstruction*> TryMergeOperand(HloInstruction* a,
+                                                HloInstruction* b) {
+  if (a->shape().layout() != b->shape().layout()) {
+    VLOG(3) << "Can't merge dots because they have a different layout:\n"
+            << "\t" << a->ToString() << "\n"
+            << "\t" << b->ToString();
+    return nullptr;
+  }
+
+  if (!absl::c_equal(a->precision_config().operand_precision(),
+                     b->precision_config().operand_precision())) {
+    VLOG(3) << "Can't merge dots because they have mismatching operand "
+               "precisions:\n"
+            << "\t" << a->ToString() << "\n"
+            << "\t" << b->ToString();
+    return nullptr;
+  }
+
+  HloDotInstruction* dot_a = Cast<HloDotInstruction>(a);
+  HloDotInstruction* dot_b = Cast<HloDotInstruction>(b);
+  if (!absl::c_equal(dot_a->sparsity(), dot_b->sparsity(),
+                     protobuf_util::HaveSameSerialization)) {
+    VLOG(3) << "Can't merge dots because they have mismatching sparsity "
+               "descriptors:\n"
+            << "\t" << a->ToString() << "\n"
+            << "\t" << b->ToString();
+    return nullptr;
+  }
+
+  auto merged = TryMergeSameOperand(a, b);
+  if (!merged.ok() || merged.value() != nullptr) {
+    return merged;
+  }
+  // Merging on different sides is symmetric, try `a` and `b` on both sides.
+  merged = TryMergeLHSWithRHSOperand(a, b);
+  if (!merged.ok() || merged.value() != nullptr) {
+    return merged;
+  }
+  return TryMergeLHSWithRHSOperand(b, a);
+}
+
 absl::StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge,
                                std::function<bool(const HloInstruction* dot_a,
                                                   const HloInstruction* dot_b)>
@@ -312,6 +494,11 @@ absl::StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge,
     }
     for (HloInstruction* operand : instr->operands()) {
       equivalence_classes[operand].insert(instr);
+      // DotDecomposer inserts transposes to establish a normal form. Transposed
+      // operands still count as equivalent.
+      if (operand->opcode() == HloOpcode::kTranspose) {
+        equivalence_classes[operand->mutable_operand(0)].insert(instr);
+      }
     }
   }
 
@@ -404,7 +591,7 @@ absl::StatusOr<bool> MergeDots(HloComputation* comp, int64_t max_size_to_merge,
           continue;
         }
 
-        TF_ASSIGN_OR_RETURN(HloInstruction * merged, TryMergeSameOperand(a, b));
+        TF_ASSIGN_OR_RETURN(HloInstruction * merged, TryMergeOperand(a, b));
         if (merged != nullptr) {
           int32_t merged_id = graph_id(merged);
           graph.InsertEdge(a_id, merged_id);

@@ -19,15 +19,13 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "xla/codegen/ir_emission_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {

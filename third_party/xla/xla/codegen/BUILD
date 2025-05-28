@@ -75,6 +75,7 @@ cc_library(
     hdrs = ["kernel_emitter.h"],
     deps = [
         ":kernel_definition",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
     ],
 )
@@ -134,5 +135,54 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "mlir_kernel_definition",
+    hdrs = ["mlir_kernel_definition.h"],
+    deps = [
+        ":kernel_definition",
+        ":kernel_source",
+        ":kernel_spec",
+        ":mlir_kernel_source",
+    ],
+)
+
+cc_library(
+    name = "mlir_kernel_emitter",
+    hdrs = ["mlir_kernel_emitter.h"],
+    deps = [
+        ":kernel_emitter",
+        ":mlir_kernel_definition",
+    ],
+)
+
+cc_library(
+    name = "llvm_kernel_emitter",
+    hdrs = ["llvm_kernel_emitter.h"],
+    deps = [
+        ":kernel_emitter",
+        ":llvm_kernel_definition",
+    ],
+)
+
+cc_library(
+    name = "llvm_kernel_definition",
+    hdrs = ["llvm_kernel_definition.h"],
+    deps = [
+        ":kernel_definition",
+        ":llvm_ir_kernel_source",
+    ],
+)
+
+cc_library(
+    name = "ir_emission_utils",
+    srcs = ["ir_emission_utils.cc"],
+    hdrs = ["ir_emission_utils.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )

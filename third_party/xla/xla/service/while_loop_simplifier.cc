@@ -708,7 +708,7 @@ static absl::StatusOr<bool> TryRemoveRepeatedWhileTupleIndices(
         }
         if (body_elem->operand(0)->tuple_index() != i) {
           VLOG(2) << "Mismatch between body_elem->operand(0)->tuple_index() "
-                  << body_elem->tuple_index() << " i " << i;
+                  << body_elem->operand(0)->tuple_index() << " i " << i;
           continue;
         }
         if (pivot_body_elem->operand(0) == body_elem->operand(0)) {
