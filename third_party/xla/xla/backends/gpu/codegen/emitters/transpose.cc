@@ -525,8 +525,11 @@ IndexingMap TransposeFusion::GetIndexing(bool input, const xla::Shape& shape,
       RangeVarsFromTensorSizes({block_size_ / kNumRows, vector_size_}),
       {}};
   auto normalized_shape =
-      input ? ShapeUtil::MakeShape(shape.element_type(), input_shape_)
-            : ShapeUtil::MakeShape(shape.element_type(), transpose_.dimensions);
+      input ? ShapeUtil::MakeValidatedShape(shape.element_type(), input_shape_)
+                  .value()
+            : ShapeUtil::MakeValidatedShape(shape.element_type(),
+                                            transpose_.dimensions)
+                  .value();
   for (auto [size, dim] : llvm::zip(normalized_shape.dimensions(),
                                     result.GetAffineMap().getResults())) {
     result.AddConstraint(dim, {0, size - 1});
