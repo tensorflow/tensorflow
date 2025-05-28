@@ -47,7 +47,7 @@ static void BM_TransposeAndCopy(benchmark::State& state,
 
   std::minstd_rand0 engine;
 
-  auto input_shape = ShapeUtil::MakeValidatedShape(F32, {d0, 1000}).value();
+  auto input_shape = ShapeUtil::MakeShape(F32, {d0, 1000});
   auto p0 =
       *LiteralUtil::CreateRandomLiteral<F32>(input_shape, &engine, 1.0f, 0.1f);
   std::vector<const Literal*> args = {&p0};

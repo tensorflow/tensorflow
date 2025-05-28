@@ -46,9 +46,8 @@ static void BM_PadF32(benchmark::State& state, HloBenchmarkOptions options) {
 
   std::minstd_rand0 engine;
 
-  auto input_shape =
-      ShapeUtil::MakeValidatedShape(F32, {1, 4, d0, d0, 4}).value();
-  auto value_shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
+  auto input_shape = ShapeUtil::MakeShape(F32, {1, 4, d0, d0, 4});
+  auto value_shape = ShapeUtil::MakeShape(F32, {});
   auto p0 =
       *LiteralUtil::CreateRandomLiteral<F32>(input_shape, &engine, 1.0f, 0.1f);
   auto p1 =

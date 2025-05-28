@@ -79,7 +79,7 @@ static void BM_BatchedDot(benchmark::State& state,
     }
   )";
 
-  auto shape = ShapeUtil::MakeValidatedShape(dtype, {d0, d1, d1}).value();
+  auto shape = ShapeUtil::MakeShape(dtype, {d0, d1, d1});
   Literal p0 = GetRandomLiteral(shape);
   Literal p1 = GetRandomLiteral(shape);
 
@@ -144,12 +144,9 @@ struct GenericDot {
 
 void BM_GenericDot(benchmark::State& state, GenericDot info) {
   HloComputation::Builder builder("BM_GenericDot");
-  auto lhs_shape =
-      ShapeUtil::MakeValidatedShape(info.lhs_type, info.lhs_shape).value();
-  auto rhs_shape =
-      ShapeUtil::MakeValidatedShape(info.rhs_type, info.rhs_shape).value();
-  auto out_shape =
-      ShapeUtil::MakeValidatedShape(info.out_type, info.out_shape).value();
+  auto lhs_shape = ShapeUtil::MakeShape(info.lhs_type, info.lhs_shape);
+  auto rhs_shape = ShapeUtil::MakeShape(info.rhs_type, info.rhs_shape);
+  auto out_shape = ShapeUtil::MakeShape(info.out_type, info.out_shape);
   HloInstruction* lhs = builder.AddInstruction(
       HloInstruction::CreateParameter(0, lhs_shape, "lhs"));
   HloInstruction* rhs = builder.AddInstruction(

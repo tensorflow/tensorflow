@@ -100,15 +100,14 @@ void BM_ScatterS32_R1(benchmark::State& state, HloBenchmarkOptions options) {
 
   std::minstd_rand0 engine;
 
-  const Shape operand_shape = ShapeUtil::MakeValidatedShape(S32, {d0}).value();
+  const Shape operand_shape = ShapeUtil::MakeShape(S32, {d0});
   const Literal operand = *LiteralUtil::CreateRandomLiteral<S32>(
       operand_shape, &engine, /*mean=*/50, /*stddev=*/10);
 
   const Literal scatter_indices =
       createR1ScatterIndices(d0, slice_size, engine);
 
-  const Shape update_shape =
-      ShapeUtil::MakeValidatedShape(S32, {slice_size}).value();
+  const Shape update_shape = ShapeUtil::MakeShape(S32, {slice_size});
   const Literal update = *LiteralUtil::CreateRandomLiteral<S32>(
       update_shape, &engine, /*mean=*/50, /*stddev=*/10);
 
@@ -149,15 +148,13 @@ void BM_ScatterS32_R2(benchmark::State& state, HloBenchmarkOptions options) {
 
   std::minstd_rand0 engine;
 
-  const Shape operand_shape =
-      ShapeUtil::MakeValidatedShape(S32, {d0, d1}).value();
+  const Shape operand_shape = ShapeUtil::MakeShape(S32, {d0, d1});
   const Literal operand = *LiteralUtil::CreateRandomLiteral<S32>(
       operand_shape, &engine, /*mean=*/50, /*stddev=*/10);
 
   const Literal scatter_indices =
       createR1ScatterIndices(d0, slice_size, engine);
-  const Shape update_shape =
-      ShapeUtil::MakeValidatedShape(S32, {slice_size, d1}).value();
+  const Shape update_shape = ShapeUtil::MakeShape(S32, {slice_size, d1});
   const Literal update = *LiteralUtil::CreateRandomLiteral<S32>(
       update_shape, &engine, /*mean=*/50, /*stddev=*/10);
 
@@ -198,16 +195,14 @@ void BM_ScatterS32_R3(benchmark::State& state, HloBenchmarkOptions options) {
 
   std::minstd_rand0 engine;
 
-  const Shape operand_shape =
-      ShapeUtil::MakeValidatedShape(S32, {d0, d1, d2}).value();
+  const Shape operand_shape = ShapeUtil::MakeShape(S32, {d0, d1, d2});
   const Literal operand = *LiteralUtil::CreateRandomLiteral<S32>(
       operand_shape, &engine, /*mean=*/50, /*stddev=*/10);
 
   const Literal scatter_indices =
       createR1ScatterIndices(d0, slice_size, engine);
 
-  const Shape update_shape =
-      ShapeUtil::MakeValidatedShape(S32, {slice_size, d1, d2}).value();
+  const Shape update_shape = ShapeUtil::MakeShape(S32, {slice_size, d1, d2});
   const Literal update = *LiteralUtil::CreateRandomLiteral<S32>(
       update_shape, &engine, /*mean=*/50, /*stddev=*/10);
 
@@ -262,15 +257,13 @@ void BM_SimpleScatterReduceF32_R3(benchmark::State& state,
 
   std::minstd_rand0 engine;
 
-  const Shape operand_shape =
-      ShapeUtil::MakeValidatedShape(F32, {d0, d1, d2}).value();
+  const Shape operand_shape = ShapeUtil::MakeShape(F32, {d0, d1, d2});
   const Literal operand = *LiteralUtil::CreateRandomLiteral<F32>(
       operand_shape, &engine, /*mean=*/50, /*stddev=*/10);
 
   const Literal indices = CreateReduceIndices(d0, num_reduce_elems);
 
-  const Shape update_shape =
-      ShapeUtil::MakeValidatedShape(F32, {num_slices, d1, d2}).value();
+  const Shape update_shape = ShapeUtil::MakeShape(F32, {num_slices, d1, d2});
   const Literal update = *LiteralUtil::CreateRandomLiteral<F32>(
       update_shape, &engine, /*mean=*/50, /*stddev=*/10);
 

@@ -56,8 +56,8 @@ static void BM_FusionF32(benchmark::State& state, HloBenchmarkOptions options) {
 
   std::minstd_rand0 engine;
 
-  auto shape = ShapeUtil::MakeValidatedShape(F32, {1, 2, 1, d0, 256}).value();
-  auto scalar = ShapeUtil::MakeValidatedShape(F32, {}).value();
+  auto shape = ShapeUtil::MakeShape(F32, {1, 2, 1, d0, 256});
+  auto scalar = ShapeUtil::MakeShape(F32, {});
   auto p0 = *LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
   auto p1 = *LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
   auto p2 = *LiteralUtil::CreateRandomLiteral<F32>(scalar, &engine, 1.0f, 0.1f);
@@ -127,10 +127,10 @@ static void BM_FusionF32_2(benchmark::State& state,
 
   std::minstd_rand0 engine;
 
-  auto shape0 = ShapeUtil::MakeValidatedShape(F32, {d0, 1}).value();
-  auto shape1 = ShapeUtil::MakeValidatedShape(S32, {d0, 1}).value();
-  auto shape2 = ShapeUtil::MakeValidatedShape(F32, {7, 6}).value();
-  auto shape3 = ShapeUtil::MakeValidatedShape(F32, {7, 3}).value();
+  auto shape0 = ShapeUtil::MakeShape(F32, {d0, 1});
+  auto shape1 = ShapeUtil::MakeShape(S32, {d0, 1});
+  auto shape2 = ShapeUtil::MakeShape(F32, {7, 6});
+  auto shape3 = ShapeUtil::MakeShape(F32, {7, 3});
 
   auto p0 = *LiteralUtil::CreateRandomLiteral<F32>(shape0, &engine, 1.0f, 0.1f);
   auto p1 = *LiteralUtil::CreateRandomLiteral<F32>(shape0, &engine, 1.0f, 0.1f);
@@ -162,8 +162,8 @@ static void BM_BcastFusionF32(benchmark::State& state,
 
   std::minstd_rand0 engine;
 
-  auto shape = ShapeUtil::MakeValidatedShape(F32, {1, 2, 1, d0, 256}).value();
-  auto scalar = ShapeUtil::MakeValidatedShape(F32, {}).value();
+  auto shape = ShapeUtil::MakeShape(F32, {1, 2, 1, d0, 256});
+  auto scalar = ShapeUtil::MakeShape(F32, {});
   auto p0 = *LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
   auto p1 = *LiteralUtil::CreateRandomLiteral<F32>(scalar, &engine, 1.0f, 0.1f);
 
@@ -191,7 +191,7 @@ static void BM_DynamicUpdateSliceFusionF32(benchmark::State& state,
 
   std::minstd_rand0 engine;
 
-  auto shape = ShapeUtil::MakeValidatedShape(F32, {d0, 256}).value();
+  auto shape = ShapeUtil::MakeShape(F32, {d0, 256});
   auto p0 = *LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
   auto p1 = LiteralUtil::CreateR0<int32_t>(0);
   auto p2 = LiteralUtil::CreateR0<int32_t>(0);
@@ -239,11 +239,11 @@ static void BM_ChainOfAddF32(benchmark::State& state,
   std::minstd_rand0 engine;
 
   auto p0 = *LiteralUtil::CreateRandomLiteral<F32>(
-      ShapeUtil::MakeValidatedShape(F32, {3844}).value(), &engine, 1.0f, 0.1f);
+      ShapeUtil::MakeShape(F32, {3844}), &engine, 1.0f, 0.1f);
   auto p1 = *LiteralUtil::CreateRandomLiteral<F32>(
-      ShapeUtil::MakeValidatedShape(F32, {3844}).value(), &engine, 1.0f, 0.1f);
+      ShapeUtil::MakeShape(F32, {3844}), &engine, 1.0f, 0.1f);
   auto pN = *LiteralUtil::CreateRandomLiteral<F32>(
-      ShapeUtil::MakeValidatedShape(F32, {12}).value(), &engine, 1.0f, 0.1f);
+      ShapeUtil::MakeShape(F32, {12}), &engine, 1.0f, 0.1f);
 
   std::vector<const Literal*> args = {&p0, &p1};
   for (int i = 2; i <= size; ++i) args.push_back(&pN);
