@@ -990,7 +990,7 @@ PyObject* InterpreterWrapper::LoadStableDelegateCPP(
     return nullptr;
   }
 
-  return PyLong_FromUnsignedLong(reinterpret_cast<uintptr_t>(opaque_delegate));
+  return PyLong_FromVoidPtr(static_cast<void*>(opaque_delegate));
 }
 
 }  // namespace interpreter_wrapper
