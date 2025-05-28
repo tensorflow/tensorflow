@@ -1088,8 +1088,19 @@ CoordinationServiceAgent::GetAliveTasks(
   if (!status.ok()) {
     return status;
   }
+  {
+    absl::MutexLock lock(&incarnations_mu_);
+    incarnations_ = std::vector<uint64_t>(response->incarnations().begin(),
+                                          response->incarnations().end());
+  }
   return std::vector<tensorflow::CoordinatedTask>(
       response->alive_tasks().begin(), response->alive_tasks().end());
+}
+
+std::vector<uint64_t> CoordinationServiceAgent::Incarnations() const {
+  absl::MutexLock lock(&incarnations_mu_);
+  // Return a copy of incarnations.
+  return incarnations_;
 }
 
 void CoordinationServiceAgent::AddJobStateCallback(JobStateCallback callback) {

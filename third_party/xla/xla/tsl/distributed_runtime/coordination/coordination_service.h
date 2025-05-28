@@ -67,7 +67,8 @@ class CoordinationService {
       std::function<void(const absl::StatusOr<absl::string_view>&)>;
   using BarrierCallback = std::function<void(const absl::Status&, int64_t)>;
   using GetAliveTasksCallback = std::function<void(
-      const absl::Status&, const std::vector<tensorflow::CoordinatedTask>&)>;
+      const absl::Status&, const std::vector<tensorflow::CoordinatedTask>&,
+      const std::vector<uint64_t> incarnations)>;
 
   // Convenience structs to allow using CoordinatedTask as container keys.
   struct CoordinatedTaskHash {
@@ -584,6 +585,10 @@ class CoordinationService {
 
   // Returns the set of alive tasks drawn from the provided set of tasks.
   CoordinatedTaskSet AliveTasks(const CoordinatedTaskSet& tasks) const
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+
+  // Returns the incarnation ids of the provided tasks in sorted order.
+  std::vector<uint64_t> CoordinationIds(const CoordinatedTaskSet& tasks) const
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
   // Refreshes the AlivenessStates of all pending GetAliveTasks call,

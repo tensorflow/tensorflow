@@ -198,7 +198,7 @@ class CoordinationBarrierTest : public ::testing::Test {
     // Register the tasks.
     for (int i = 0; i < num_tasks; ++i) {
       absl::Status s =
-          coord_service_->RegisterTask(tasks_[i], /*incarnation=*/0);
+          coord_service_->RegisterTask(tasks_[i], /*incarnation=*/i);
       if (!s.ok()) {
         LOG(FATAL) << "RegisterTask() failed in CoordinationBarrierTest(): "
                    << s;
@@ -2485,9 +2485,11 @@ TEST_F(GetAliveTasksTest, SuccessfulGetAliveTasks) {
   // This test has three tasks successfully call GetAliveTasks.
   absl::BlockingCounter finished(3);
   auto done = [&](const absl::Status& status,
-                  const std::vector<CoordinatedTask>& alive_tasks) {
+                  const std::vector<CoordinatedTask>& alive_tasks,
+                  const std::vector<uint64_t>& incarnations) {
     EXPECT_OK(status);
     EXPECT_THAT(alive_tasks, UnorderedElementsAreArray(GetTaskMatchers()));
+    EXPECT_EQ(incarnations, (std::vector<uint64_t>{0, 1, 2}));
     finished.DecrementCount();
   };
   GetCoordinationService()->GetAliveTasksAsync(GetTask(0), GetTasks(), done);
@@ -2501,10 +2503,12 @@ TEST_F(GetAliveTasksTest, FailedTaskBeforeCallingGetAliveTasks) {
   // 0 and 1 call GetAliveTasks on tasks [0, 1, 2], which should return [0, 1].
   absl::BlockingCounter finished(2);
   auto done = [&](const absl::Status& status,
-                  const std::vector<CoordinatedTask>& alive_tasks) {
+                  const std::vector<CoordinatedTask>& alive_tasks,
+                  const std::vector<uint64_t>& incarnations) {
     EXPECT_OK(status);
     EXPECT_THAT(alive_tasks, UnorderedElementsAre(EqualsProto(GetTask(0)),
                                                   EqualsProto(GetTask(1))));
+    EXPECT_EQ(incarnations, (std::vector<uint64_t>{0, 1}));
     finished.DecrementCount();
   };
   ASSERT_OK(GetCoordinationService()->ReportTaskError(
@@ -2520,10 +2524,12 @@ TEST_F(GetAliveTasksTest, FailedTaskAfterCallingGetAliveTasks) {
   // cause GetAliveTasks to return [0, 1].
   absl::BlockingCounter finished(2);
   auto done = [&](const absl::Status& status,
-                  const std::vector<CoordinatedTask>& alive_tasks) {
+                  const std::vector<CoordinatedTask>& alive_tasks,
+                  const std::vector<uint64_t>& incarnations) {
     EXPECT_OK(status);
     EXPECT_THAT(alive_tasks, UnorderedElementsAre(EqualsProto(GetTask(0)),
                                                   EqualsProto(GetTask(1))));
+    EXPECT_EQ(incarnations, (std::vector<uint64_t>{0, 1}));
     finished.DecrementCount();
   };
   GetCoordinationService()->GetAliveTasksAsync(GetTask(0), GetTasks(), done);
@@ -2542,10 +2548,12 @@ TEST_F(GetAliveTasksTest, ConcurrentGetAliveTasks) {
   std::vector tasks_01{GetTask(0), GetTask(1)};
   absl::BlockingCounter finished_01(2);
   auto done_01 = [&](const absl::Status& status,
-                     const std::vector<CoordinatedTask>& alive_tasks) {
+                     const std::vector<CoordinatedTask>& alive_tasks,
+                     const std::vector<uint64_t>& incarnations) {
     EXPECT_OK(status);
     EXPECT_THAT(alive_tasks, UnorderedElementsAre(EqualsProto(tasks_01[0]),
                                                   EqualsProto(tasks_01[1])));
+    EXPECT_EQ(incarnations, (std::vector<uint64_t>{0, 1}));
     finished_01.DecrementCount();
   };
 
@@ -2553,10 +2561,12 @@ TEST_F(GetAliveTasksTest, ConcurrentGetAliveTasks) {
   std::vector tasks_12{GetTask(1), GetTask(2)};
   absl::BlockingCounter finished_12(2);
   auto done_12 = [&](const absl::Status& status,
-                     const std::vector<CoordinatedTask>& alive_tasks) {
+                     const std::vector<CoordinatedTask>& alive_tasks,
+                     const std::vector<uint64_t>& incarnations) {
     EXPECT_OK(status);
     EXPECT_THAT(alive_tasks, UnorderedElementsAre(EqualsProto(tasks_12[0]),
                                                   EqualsProto(tasks_12[1])));
+    EXPECT_EQ(incarnations, (std::vector<uint64_t>{1, 2}));
     finished_12.DecrementCount();
   };
 
@@ -2574,7 +2584,8 @@ TEST_F(GetAliveTasksTest, CallingGetAliveTasksWithoutBeingAMember) {
   // included in the specified set of tasks. This should return an error.
   absl::BlockingCounter finished(3);
   auto done = [&](const absl::Status& status,
-                  const std::vector<CoordinatedTask>&) {
+                  const std::vector<CoordinatedTask>&,
+                  const std::vector<uint64_t>&) {
     EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument));
     finished.DecrementCount();
   };
@@ -2591,7 +2602,8 @@ TEST_F(GetAliveTasksTest, RedundantGetAliveTasks) {
   // tasks call GetAliveTasks multiple times.
   absl::BlockingCounter finished(6);
   auto done = [&](const absl::Status& status,
-                  const std::vector<CoordinatedTask>& alive_tasks) {
+                  const std::vector<CoordinatedTask>& alive_tasks,
+                  const std::vector<uint64_t>&) {
     EXPECT_OK(status);
     EXPECT_THAT(alive_tasks, UnorderedElementsAreArray(GetTaskMatchers()));
     finished.DecrementCount();
