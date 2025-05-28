@@ -87,7 +87,8 @@ TEST_F(DynamismInferenceTest, Iota) {
 TEST_F(DynamismInferenceTest, TupleSimple) {
   XlaBuilder b(TestName());
   auto c = ConstantR0<int32_t>(&b, 42);
-  auto p = Parameter(&b, 0, ShapeUtil::MakeScalarShape(S32), "p0");
+  auto p =
+      Parameter(&b, 0, ShapeUtil::MakeValidatedScalarShape(S32).value(), "p0");
 
   auto tuple = Tuple(&b, {c, p});
   EXPECT_EQ(ComputeDynamismScalar(tuple, &b, {0}).value(), false);
@@ -97,7 +98,8 @@ TEST_F(DynamismInferenceTest, TupleSimple) {
 TEST_F(DynamismInferenceTest, TupleGteKeepsDynamism) {
   XlaBuilder b(TestName());
   auto c = ConstantR0<int32_t>(&b, 42);
-  auto p = Parameter(&b, 0, ShapeUtil::MakeScalarShape(S32), "p0");
+  auto p =
+      Parameter(&b, 0, ShapeUtil::MakeValidatedScalarShape(S32).value(), "p0");
 
   auto tuple = Tuple(&b, {c, p});
   auto gte0 = GetTupleElement(tuple, 0);
@@ -110,7 +112,8 @@ TEST_F(DynamismInferenceTest, TupleGteKeepsDynamism) {
 TEST_F(DynamismInferenceTest, PredValueUsedTwice) {
   XlaBuilder b(TestName());
   auto c = ConstantR0<int32_t>(&b, 42);
-  auto p = Parameter(&b, 0, ShapeUtil::MakeScalarShape(S32), "p0");
+  auto p =
+      Parameter(&b, 0, ShapeUtil::MakeValidatedScalarShape(S32).value(), "p0");
   auto pred = Eq(c, p);
   auto result = Select(pred, p, c);
   EXPECT_EQ(ComputeDynamismScalar(result, &b, {}).value(), true);
@@ -119,7 +122,8 @@ TEST_F(DynamismInferenceTest, PredValueUsedTwice) {
 TEST_F(DynamismInferenceTest, ReduceUsedTwice) {
   XlaBuilder b(TestName());
   auto c = ConstantR0<int32_t>(&b, 42);
-  auto p = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2}), "p0");
+  auto p =
+      Parameter(&b, 0, ShapeUtil::MakeValidatedShape(S32, {2}).value(), "p0");
   auto zero = ConstantR0<int32_t>(&b, 0);
   XlaComputation add_s32 = CreateScalarAddComputation(S32, &b);
   auto reduce = Reduce(p, zero, add_s32, {0});
@@ -131,14 +135,19 @@ TEST_F(DynamismInferenceTest, ReduceUsedTwice) {
 TEST_F(DynamismInferenceTest, VariadicReduce) {
   XlaBuilder b(TestName());
   auto c = ConstantR2<int32_t>(&b, {{0, 0}});
-  auto p = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {1, 2}), "p0");
+  auto p = Parameter(&b, 0, ShapeUtil::MakeValidatedShape(S32, {1, 2}).value(),
+                     "p0");
   // half_dynamic[0] is static, half_dynamic[0] is dynamic.
   auto half_dynamic = ConcatInDim(&b, {c, p}, 0);
   XlaBuilder reduce_add("reduce_add");
-  auto p0 = Parameter(&reduce_add, 0, ShapeUtil::MakeScalarShape(S32), "p");
-  auto p1 = Parameter(&reduce_add, 1, ShapeUtil::MakeScalarShape(S32), "p");
-  auto p2 = Parameter(&reduce_add, 2, ShapeUtil::MakeScalarShape(S32), "p");
-  auto p3 = Parameter(&reduce_add, 3, ShapeUtil::MakeScalarShape(S32), "p");
+  auto p0 = Parameter(&reduce_add, 0,
+                      ShapeUtil::MakeValidatedScalarShape(S32).value(), "p");
+  auto p1 = Parameter(&reduce_add, 1,
+                      ShapeUtil::MakeValidatedScalarShape(S32).value(), "p");
+  auto p2 = Parameter(&reduce_add, 2,
+                      ShapeUtil::MakeValidatedScalarShape(S32).value(), "p");
+  auto p3 = Parameter(&reduce_add, 3,
+                      ShapeUtil::MakeValidatedScalarShape(S32).value(), "p");
   auto reduce_result = p0;
   reduce_result = Add(reduce_result, p1);
   reduce_result = Add(reduce_result, p2);
@@ -157,7 +166,8 @@ TEST_F(DynamismInferenceTest, VariadicReduce) {
 TEST_F(DynamismInferenceTest, DynamicSelectorWithMixedValues) {
   XlaBuilder b(TestName());
   auto constant_pred = ConstantR1<bool>(&b, {true});
-  auto dynamic_pred = Parameter(&b, 0, ShapeUtil::MakeShape(PRED, {1}), "p0");
+  auto dynamic_pred =
+      Parameter(&b, 0, ShapeUtil::MakeValidatedShape(PRED, {1}).value(), "p0");
   auto concat = ConcatInDim(&b, {constant_pred, dynamic_pred}, 0);
   auto constant_values = ConstantR1<bool>(&b, {true, true});
   auto result = Select(concat, constant_values, constant_values);
@@ -171,7 +181,8 @@ TEST_F(DynamismInferenceTest, DynamicSelectorWithMixedValues) {
 TEST_F(DynamismInferenceTest, ConcatSliceReshapeKeepsDynamism) {
   XlaBuilder b(TestName());
   auto c = ConstantR0<int32_t>(&b, 42);
-  auto p = Parameter(&b, 0, ShapeUtil::MakeScalarShape(S32), "p0");
+  auto p =
+      Parameter(&b, 0, ShapeUtil::MakeValidatedScalarShape(S32).value(), "p0");
 
   auto concat = ConcatScalars(&b, {c, p});
   auto slice0 = SliceInDim(concat, 0, 1, 1, 0);
@@ -185,7 +196,8 @@ TEST_F(DynamismInferenceTest, ConcatSliceReshapeKeepsDynamism) {
 
 TEST_F(DynamismInferenceTest, ParameterIsDynamic) {
   XlaBuilder b(TestName());
-  auto computation = Parameter(&b, 0, ShapeUtil::MakeScalarShape(S32), "p0");
+  auto computation =
+      Parameter(&b, 0, ShapeUtil::MakeValidatedScalarShape(S32).value(), "p0");
 
   auto value = ComputeDynamismScalar(computation, &b);
   ASSERT_TRUE(value.ok()) << value.status();
@@ -196,7 +208,8 @@ TEST_F(DynamismInferenceTest, ParameterIsDynamic) {
 TEST_F(DynamismInferenceTest, UnaryOpKeepsDynamism) {
   XlaBuilder b(TestName());
   auto c = ConstantR0<int32_t>(&b, 42);
-  auto p = Parameter(&b, 0, ShapeUtil::MakeScalarShape(S32), "p0");
+  auto p =
+      Parameter(&b, 0, ShapeUtil::MakeValidatedScalarShape(S32).value(), "p0");
 
   auto neg0 = Neg(c);
   auto neg1 = Neg(p);
@@ -208,11 +221,12 @@ TEST_F(DynamismInferenceTest, UnaryOpKeepsDynamism) {
 TEST_F(DynamismInferenceTest, ParameterWithToken) {
   // Test that token shape can be handled in a parameter.
   XlaBuilder b(TestName());
-  auto p =
-      Parameter(&b, 0,
-                ShapeUtil::MakeTupleShape({ShapeUtil::MakeTokenShape(),
-                                           ShapeUtil::MakeScalarShape(S32)}),
-                "p0");
+  auto p = Parameter(
+      &b, 0,
+      ShapeUtil::MakeValidatedTupleShape(
+          {ShapeUtil::MakeTokenShape(), ShapeUtil::MakeScalarShape(S32)})
+          .value(),
+      "p0");
   EXPECT_EQ(ComputeDynamismScalar(p, &b, {0}).value(), true);
   EXPECT_EQ(ComputeDynamismScalar(p, &b, {1}).value(), true);
 }
@@ -220,7 +234,8 @@ TEST_F(DynamismInferenceTest, ParameterWithToken) {
 TEST_F(DynamismInferenceTest, BinaryOpsOrsDynamism) {
   XlaBuilder b(TestName());
   auto c = ConstantR0<int32_t>(&b, 42);
-  auto p = Parameter(&b, 0, ShapeUtil::MakeScalarShape(S32), "p0");
+  auto p =
+      Parameter(&b, 0, ShapeUtil::MakeValidatedScalarShape(S32).value(), "p0");
 
   // Static value + static value = static
   auto add1 = Add(c, c);
@@ -236,8 +251,9 @@ TEST_F(DynamismInferenceTest, GetDimensionSize) {
   // param = Param([<=2, 3])
   // get_dimension_size(param, 0) is dynamic
   // get_dimension_size(param, 1) is static
-  auto p =
-      Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2, 3}, {true, false}), "p0");
+  auto p = Parameter(
+      &b, 0, ShapeUtil::MakeValidatedShape(S32, {2, 3}, {true, false}).value(),
+      "p0");
 
   auto gds0 = GetDimensionSize(p, 0);
   auto gds1 = GetDimensionSize(p, 1);
@@ -260,7 +276,7 @@ TEST_F(DynamismInferenceTest, GatherWithCommonParent) {
   XlaBuilder b(TestName());
   // Test the analysis on a gather where first operand and second operand have
   // common parents.
-  Shape indices_shape = ShapeUtil::MakeShape(S32, {2});
+  Shape indices_shape = ShapeUtil::MakeValidatedShape(S32, {2}).value();
 
   auto operand1 = Parameter(&b, 0, indices_shape, "p1");
   auto operand2 = Parameter(&b, 1, indices_shape, "p2");
@@ -277,7 +293,7 @@ TEST_F(DynamismInferenceTest, GatherWithCommonParent) {
 TEST_F(DynamismInferenceTest, GatherWithConstantParent) {
   XlaBuilder b(TestName());
   // Test the analysis on a gather.
-  Shape indices_shape = ShapeUtil::MakeShape(S32, {2});
+  Shape indices_shape = ShapeUtil::MakeValidatedShape(S32, {2}).value();
   auto data_operand = ConstantR1<int32_t>(&b, {1, 2});
   auto indices = ConstantR1<int32_t>(&b, {1, 2});
   GatherDimensionNumbers dim_numbers;
@@ -293,7 +309,7 @@ TEST_F(DynamismInferenceTest, GatherWithConstantParent) {
 TEST_F(DynamismInferenceTest, GatherWithSharedConstantParent) {
   XlaBuilder b(TestName());
   // Test the analysis on a gather.
-  Shape indices_shape = ShapeUtil::MakeShape(S32, {2});
+  Shape indices_shape = ShapeUtil::MakeValidatedShape(S32, {2}).value();
   auto operand1 = ConstantR1<int32_t>(&b, {1, 2});
   auto operand2 = ConstantR1<int32_t>(&b, {1, 2});
   auto indices = Sub(operand1, operand2);
@@ -311,7 +327,8 @@ TEST_F(DynamismInferenceTest, InferThroughPad) {
   XlaBuilder b(TestName());
   // Test the analysis on a gather.
   auto operand1 = ConstantR1<int32_t>(&b, {1, 2});
-  auto parameter = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {}), "p0");
+  auto parameter =
+      Parameter(&b, 0, ShapeUtil::MakeValidatedShape(S32, {}).value(), "p0");
   PaddingConfig padding_config;
   padding_config.add_dimensions()->set_edge_padding_high(1);
   // After pad the value is [constant, constant, parameter].
@@ -333,8 +350,8 @@ TEST_F(DynamismInferenceTest, InferThroughConditionalBranchesAreSame) {
   // }
   //
 
-  auto s32_shape = ShapeUtil::MakeShape(S32, {});
-  auto cond_shape = ShapeUtil::MakeTupleShape({s32_shape});
+  auto s32_shape = ShapeUtil::MakeValidatedShape(S32, {}).value();
+  auto cond_shape = ShapeUtil::MakeValidatedTupleShape({s32_shape}).value();
   XlaBuilder true_builder("true");
   Parameter(&true_builder, 0, s32_shape, "cond_param");
   Tuple(&true_builder, {ConstantR0<int32_t>(&true_builder, 1)});
@@ -346,7 +363,8 @@ TEST_F(DynamismInferenceTest, InferThroughConditionalBranchesAreSame) {
   auto false_computation = false_builder.Build().value();
 
   XlaBuilder b(TestName());
-  auto parameter = Parameter(&b, 0, ShapeUtil::MakeShape(PRED, {}), "p0");
+  auto parameter =
+      Parameter(&b, 0, ShapeUtil::MakeValidatedShape(PRED, {}).value(), "p0");
   auto constant = ConstantR0<int32_t>(&b, 0);
   auto cond = Conditional(parameter, constant, true_computation, constant,
                           false_computation);
@@ -369,7 +387,7 @@ TEST_F(DynamismInferenceTest, InferThroughCall) {
   //
   //
 
-  auto s32_shape = ShapeUtil::MakeShape(S32, {});
+  auto s32_shape = ShapeUtil::MakeValidatedShape(S32, {}).value();
   XlaBuilder call_builder("call");
   Parameter(&call_builder, 0, s32_shape, "call_param");
   auto call_computation = call_builder.Build().value();
@@ -392,8 +410,8 @@ TEST_F(DynamismInferenceTest, InferThroughConditionalBranchesAreNotSame) {
   // }
   //
 
-  auto s32_shape = ShapeUtil::MakeShape(S32, {});
-  auto cond_shape = ShapeUtil::MakeTupleShape({s32_shape});
+  auto s32_shape = ShapeUtil::MakeValidatedShape(S32, {}).value();
+  auto cond_shape = ShapeUtil::MakeValidatedTupleShape({s32_shape}).value();
   XlaBuilder true_builder("true");
   Parameter(&true_builder, 0, s32_shape, "cond_param");
   Tuple(&true_builder, {ConstantR0<int32_t>(&true_builder, 1)});
@@ -405,7 +423,8 @@ TEST_F(DynamismInferenceTest, InferThroughConditionalBranchesAreNotSame) {
   auto false_computation = false_builder.Build().value();
 
   XlaBuilder b(TestName());
-  auto parameter = Parameter(&b, 0, ShapeUtil::MakeShape(PRED, {}), "p0");
+  auto parameter =
+      Parameter(&b, 0, ShapeUtil::MakeValidatedShape(PRED, {}).value(), "p0");
   auto constant = ConstantR0<int32_t>(&b, 0);
   auto cond = Conditional(parameter, constant, true_computation, constant,
                           false_computation);
@@ -425,8 +444,8 @@ TEST_F(DynamismInferenceTest, InferThroughConditionalPredIsConstantTrueBranch) {
   // }
   //
 
-  auto s32_shape = ShapeUtil::MakeShape(S32, {});
-  auto cond_shape = ShapeUtil::MakeTupleShape({s32_shape});
+  auto s32_shape = ShapeUtil::MakeValidatedShape(S32, {}).value();
+  auto cond_shape = ShapeUtil::MakeValidatedTupleShape({s32_shape}).value();
   XlaBuilder true_builder("true");
   Parameter(&true_builder, 0, s32_shape, "cond_param");
   Tuple(&true_builder, {ConstantR0<int32_t>(&true_builder, 0)});
@@ -459,8 +478,8 @@ TEST_F(DynamismInferenceTest,
   // }
   //
 
-  auto s32_shape = ShapeUtil::MakeShape(S32, {});
-  auto cond_shape = ShapeUtil::MakeTupleShape({s32_shape});
+  auto s32_shape = ShapeUtil::MakeValidatedShape(S32, {}).value();
+  auto cond_shape = ShapeUtil::MakeValidatedTupleShape({s32_shape}).value();
   XlaBuilder true_builder("true");
   Parameter(&true_builder, 0, s32_shape, "cond_param");
   Tuple(&true_builder, {ConstantR0<int32_t>(&true_builder, 0)});
@@ -502,10 +521,11 @@ TEST_F(DynamismInferenceTest, ArgumentForwardingNestedTuple) {
   //   }
   // }
   //
-  auto pred_shape = ShapeUtil::MakeShape(PRED, {});
-  auto s32_shape = ShapeUtil::MakeShape(S32, {});
-  auto tuple_shape = ShapeUtil::MakeTupleShape({pred_shape, s32_shape});
-  auto cond_shape = ShapeUtil::MakeTupleShape({s32_shape});
+  auto pred_shape = ShapeUtil::MakeValidatedShape(PRED, {}).value();
+  auto s32_shape = ShapeUtil::MakeValidatedShape(S32, {}).value();
+  auto tuple_shape =
+      ShapeUtil::MakeValidatedTupleShape({pred_shape, s32_shape}).value();
+  auto cond_shape = ShapeUtil::MakeValidatedTupleShape({s32_shape}).value();
   XlaBuilder inner_true_builder("inner_true");
   Parameter(&inner_true_builder, 0, s32_shape, "cond_param");
   Tuple(&inner_true_builder, {ConstantR0<int32_t>(&inner_true_builder, 0)});
@@ -558,8 +578,9 @@ class UpperBoundInferenceTest : public ValueInferenceTest {
 
 TEST_F(UpperBoundInferenceTest, GetDimensionSize) {
   XlaBuilder b(TestName());
-  auto p =
-      Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2, 3}, {true, false}), "p0");
+  auto p = Parameter(
+      &b, 0, ShapeUtil::MakeValidatedShape(S32, {2, 3}, {true, false}).value(),
+      "p0");
 
   auto gds0 = GetDimensionSize(p, 0);
   auto gds1 = GetDimensionSize(p, 1);
@@ -572,8 +593,9 @@ TEST_F(UpperBoundInferenceTest, GetDimensionSize) {
 
 TEST_F(UpperBoundInferenceTest, GetDimensionSizeSub) {
   XlaBuilder b(TestName());
-  auto p =
-      Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2, 3}, {true, false}), "p0");
+  auto p = Parameter(
+      &b, 0, ShapeUtil::MakeValidatedShape(S32, {2, 3}, {true, false}).value(),
+      "p0");
 
   // The range of the first dimension is [0, 2]
   auto gds0 = GetDimensionSize(p, 0);
@@ -586,8 +608,9 @@ TEST_F(UpperBoundInferenceTest, GetDimensionSizeSub) {
 
 TEST_F(UpperBoundInferenceTest, GetDimensionSizeDiv) {
   XlaBuilder b(TestName());
-  auto p =
-      Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2, 3}, {true, false}), "p0");
+  auto p = Parameter(
+      &b, 0, ShapeUtil::MakeValidatedShape(S32, {2, 3}, {true, false}).value(),
+      "p0");
   // The range of the first dimension is [0, 2]
   auto gds0 = GetDimensionSize(p, 0);
   // The range of the second dimension is [3, 3]
@@ -602,8 +625,9 @@ TEST_F(UpperBoundInferenceTest, SumSubtract) {
   // If x = a, y = b - a
   // upperbound(x + y) should be upperbound(b)
   XlaBuilder b(TestName());
-  auto p =
-      Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2, 3}, {true, true}), "p0");
+  auto p = Parameter(
+      &b, 0, ShapeUtil::MakeValidatedShape(S32, {2, 3}, {true, true}).value(),
+      "p0");
   // The range of the first dimension is [0, 2]
   auto gds0 = GetDimensionSize(p, 0);
   // The range of the second dimension is [0, 3]
@@ -621,8 +645,9 @@ TEST_F(UpperBoundInferenceTest, SumSubtractWithDataShuffling) {
   // Similar to the test above, but with some data shuffling ops in it
   // (broadcast, slice, reshape, identity convert, etc).
   XlaBuilder b(TestName());
-  auto p =
-      Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2, 3}, {true, true}), "p0");
+  auto p = Parameter(
+      &b, 0, ShapeUtil::MakeValidatedShape(S32, {2, 3}, {true, true}).value(),
+      "p0");
   // The range of the first dimension is [0, 2]
   auto gds0 = GetDimensionSize(p, 0);
   // The range of the second dimension is [0, 3]
@@ -643,8 +668,9 @@ TEST_F(UpperBoundInferenceTest, SumSubtractWithDataShuffling) {
 
 TEST_F(UpperBoundInferenceTest, SumSubtractEquivalentGetDimensionSize) {
   XlaBuilder b(TestName());
-  auto p =
-      Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2, 3}, {true, true}), "p0");
+  auto p = Parameter(
+      &b, 0, ShapeUtil::MakeValidatedShape(S32, {2, 3}, {true, true}).value(),
+      "p0");
   // The range of the first dimension is [0, 2]
   auto gds0 = GetDimensionSize(p, 0);
   // The range of the second dimension is [0, 3]
@@ -662,8 +688,10 @@ TEST_F(UpperBoundInferenceTest, ParamCantInferBound) {
   // We can infer a parameter's dimension's bound, but not the parameter value's
   // bound.
   XlaBuilder b(TestName());
-  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2}, {true}), "p0");
-  auto p1 = Parameter(&b, 1, ShapeUtil::MakeShape(S32, {}, {}), "p1");
+  auto p0 = Parameter(
+      &b, 0, ShapeUtil::MakeValidatedShape(S32, {2}, {true}).value(), "p0");
+  auto p1 = Parameter(&b, 1, ShapeUtil::MakeValidatedShape(S32, {}, {}).value(),
+                      "p1");
   auto gds = GetDimensionSize(p0, 0);
   auto sub = Div(gds, p1);
   EXPECT_FALSE(
@@ -672,16 +700,21 @@ TEST_F(UpperBoundInferenceTest, ParamCantInferBound) {
 
 TEST_F(UpperBoundInferenceTest, KeyValueSort) {
   XlaBuilder comparator_b("comparator");
-  auto p0 = Parameter(&comparator_b, 0, ShapeUtil::MakeShape(S32, {}), "p0");
-  auto p1 = Parameter(&comparator_b, 1, ShapeUtil::MakeShape(S32, {}), "p1");
-  Parameter(&comparator_b, 2, ShapeUtil::MakeShape(S32, {}), "p2");
-  Parameter(&comparator_b, 3, ShapeUtil::MakeShape(S32, {}), "p3");
+  auto p0 = Parameter(&comparator_b, 0,
+                      ShapeUtil::MakeValidatedShape(S32, {}).value(), "p0");
+  auto p1 = Parameter(&comparator_b, 1,
+                      ShapeUtil::MakeValidatedShape(S32, {}).value(), "p1");
+  Parameter(&comparator_b, 2, ShapeUtil::MakeValidatedShape(S32, {}).value(),
+            "p2");
+  Parameter(&comparator_b, 3, ShapeUtil::MakeValidatedShape(S32, {}).value(),
+            "p3");
   Compare(p0, p1, ComparisonDirection::kGe);
   TF_ASSERT_OK_AND_ASSIGN(auto comparator, comparator_b.Build());
 
   int64_t elem_count = 17;
   XlaBuilder b(TestName());
-  auto param = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {elem_count}), "p0");
+  auto param = Parameter(
+      &b, 0, ShapeUtil::MakeValidatedShape(S32, {elem_count}).value(), "p0");
   auto iota = Iota(&b, S32, elem_count);
   auto sort = Sort({param, iota}, comparator);
   auto gte = GetTupleElement(sort, 1);
@@ -710,7 +743,7 @@ class ConstValueInferenceTest : public ValueInferenceTest {
 TEST_F(ConstValueInferenceTest, ConstValuePassThroughSetBound) {
   XlaBuilder b(TestName());
   auto p0 = ConstantR0<int32_t>(&b, 32);
-  Shape shape = ShapeUtil::MakeShape(S32, {});
+  Shape shape = ShapeUtil::MakeValidatedShape(S32, {}).value();
   xla::Literal dynamism = xla::LiteralUtil::CreateR0<bool>(false);
   xla::Literal bound = xla::LiteralUtil::CreateR0<int32_t>(32);
   xla::Literal tuple =
@@ -726,8 +759,9 @@ TEST_F(ConstValueInferenceTest, ConstValuePassThroughSetBound) {
 // Parameters are always dynamic unless there is a SetBound wrapping it.
 TEST_F(ConstValueInferenceTest, ParamaterValuePassThroughSetBound) {
   XlaBuilder b(TestName());
-  auto p0 = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {}), "p0");
-  Shape shape = ShapeUtil::MakeShape(S32, {});
+  auto p0 =
+      Parameter(&b, 0, ShapeUtil::MakeValidatedShape(S32, {}).value(), "p0");
+  Shape shape = ShapeUtil::MakeValidatedShape(S32, {}).value();
   xla::Literal dynamism = xla::LiteralUtil::CreateR0<bool>(false);
   xla::Literal bound = xla::LiteralUtil::CreateR0<int32_t>(32);
   xla::Literal tuple =

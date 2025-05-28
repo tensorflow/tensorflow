@@ -787,11 +787,11 @@ class HloInstruction {
 
   // Creates an instruction that returns a U32 replica ID.
   static std::unique_ptr<HloInstruction> CreateReplicaId(
-      const Shape& shape = ShapeUtil::MakeShape(U32, {}));
+      const Shape& shape = ShapeUtil::MakeValidatedShape(U32, {}).value());
 
   // Creates an instruction that returns a U32 partition ID.
   static std::unique_ptr<HloInstruction> CreatePartitionId(
-      const Shape& shape = ShapeUtil::MakeShape(U32, {}));
+      const Shape& shape = ShapeUtil::MakeValidatedShape(U32, {}).value());
 
   // Creates a conversion instruction, where operand is the data to convert and
   // shape is the target shape for the conversion.

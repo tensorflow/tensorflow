@@ -133,12 +133,36 @@ TEST_F(SplitkRewriterTest, NoSplitKIfEnoughWork) {
   // (hoping to make the test less fragile as heuristic changes).
   const char* hlo_string = R"(
     HloModule module
-  
+
     ENTRY test {
       lhs = f32[1024,10240]{1,0} parameter(0)
       rhs = f32[10240,2048]{1,0} parameter(1)
       ROOT dot = f32[1024,2048]{1,0} dot(lhs, rhs),
                                   lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_split_k_rewrite(true);
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          rewriter_.HloModulePass::Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(SplitkRewriterTest, DoNotSplitKS32) {
+  // We would split K otherwise, but for s32 operands we don't, because neither
+  // cuBLAS nor Triton support it.
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      lhs = s32[16,10240]{1,0} parameter(0)
+      rhs = s32[10240,128]{1,0} parameter(1)
+      ROOT dot = s32[16,128]{1,0} dot(lhs, rhs),
+                    lhs_contracting_dims={1}, rhs_contracting_dims={0}
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,

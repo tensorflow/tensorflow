@@ -78,9 +78,10 @@ WidenWhileCondition(HloComputation* narrow_condition, const Shape& wide_shape) {
       narrow_shape.tuple_shapes().size(),
       absl::StrCat("renarrowed.",
                    wide_while_cond->parameter_instruction(0)->name()));
-  HloInstruction* call_narrow_cond = wide_while_cond->AddInstruction(
-      HloInstruction::CreateCall(ShapeUtil::MakeShape(PRED, {}),
-                                 {truncated_parameter}, narrow_condition));
+  HloInstruction* call_narrow_cond =
+      wide_while_cond->AddInstruction(HloInstruction::CreateCall(
+          ShapeUtil::MakeValidatedShape(PRED, {}).value(),
+          {truncated_parameter}, narrow_condition));
 
   wide_while_cond->set_root_instruction(call_narrow_cond);
 
@@ -197,7 +198,7 @@ WhileUtil::MakeInstructionsLiveIn(
 static absl::StatusOr<std::unique_ptr<HloComputation>>
 MakeCountedLoopConditionComputation(const Shape& loop_state_shape,
                                     int32_t trip_count) {
-  Shape scalar_pred = ShapeUtil::MakeShape(PRED, {});
+  Shape scalar_pred = ShapeUtil::MakeValidatedShape(PRED, {}).value();
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloComputation> cond_computation,
                       CreateComputationWithSignature(
@@ -271,7 +272,8 @@ static Shape MakeLoopStateShapeWithLayout(
     const WhileUtil::LoopStateTy& init_values) {
   std::vector<Shape> loop_state_shape_components;
   loop_state_shape_components.reserve(init_values.size() + 1);
-  loop_state_shape_components.push_back(ShapeUtil::MakeShape(S32, {}));
+  loop_state_shape_components.push_back(
+      ShapeUtil::MakeValidatedShape(S32, {}).value());
   absl::c_transform(init_values,
                     std::back_inserter(loop_state_shape_components),
                     [](HloInstruction* instr) {
@@ -281,7 +283,8 @@ static Shape MakeLoopStateShapeWithLayout(
                       }
                       return shape;
                     });
-  return ShapeUtil::MakeTupleShape(loop_state_shape_components);
+  return ShapeUtil::MakeValidatedTupleShape(loop_state_shape_components)
+      .value();
 }
 
 /*static*/ absl::StatusOr<WhileUtil::OwningLoopStateTy>

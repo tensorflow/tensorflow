@@ -70,9 +70,10 @@ HloComputation* WhileLoopInvariantCodeMotionTest::MakeAlwaysTrueComputation(
 
 TEST_F(WhileLoopInvariantCodeMotionTest, HoistOneInvariantOperation) {
   auto m = CreateNewVerifiedModule();
-  auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
+  auto scalar_s32 = ShapeUtil::MakeValidatedShape(S32, {}).value();
   Shape while_shape =
-      ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32, scalar_s32});
+      ShapeUtil::MakeValidatedTupleShape({scalar_s32, scalar_s32, scalar_s32})
+          .value();
 
   HloComputation* while_body = [&]() {
     HloComputation::Builder builder(TestName() + ".while_body");
@@ -112,9 +113,10 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistOneInvariantOperation) {
 
 TEST_F(WhileLoopInvariantCodeMotionTest, HoistInvariantOperationTree) {
   auto m = CreateNewVerifiedModule();
-  auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
+  auto scalar_s32 = ShapeUtil::MakeValidatedShape(S32, {}).value();
   Shape while_shape =
-      ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32, scalar_s32});
+      ShapeUtil::MakeValidatedTupleShape({scalar_s32, scalar_s32, scalar_s32})
+          .value();
 
   HloComputation* while_body = [&]() {
     HloComputation::Builder builder(TestName() + ".while_body");
@@ -185,8 +187,9 @@ TEST_F(WhileLoopInvariantCodeMotionTest,
        DontHoistTriviallyLoopVaryingComputation) {
   // Basic negative test: the add expression is not loop invariant.
   auto m = CreateNewVerifiedModule();
-  auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
-  Shape while_shape = ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32});
+  auto scalar_s32 = ShapeUtil::MakeValidatedShape(S32, {}).value();
+  Shape while_shape =
+      ShapeUtil::MakeValidatedTupleShape({scalar_s32, scalar_s32}).value();
 
   HloComputation* while_body = [&]() {
     HloComputation::Builder builder(TestName() + ".while_body");
@@ -223,9 +226,10 @@ TEST_F(WhileLoopInvariantCodeMotionTest,
 TEST_F(WhileLoopInvariantCodeMotionTest,
        DontHoistLoopVaryingComputationWithAlternatingTuples) {
   auto m = CreateNewVerifiedModule();
-  auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
+  auto scalar_s32 = ShapeUtil::MakeValidatedShape(S32, {}).value();
   Shape while_shape =
-      ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32, scalar_s32});
+      ShapeUtil::MakeValidatedTupleShape({scalar_s32, scalar_s32, scalar_s32})
+          .value();
 
   HloComputation* while_body = [&]() {
     HloComputation::Builder builder(TestName() + ".while_body");
@@ -261,10 +265,11 @@ TEST_F(WhileLoopInvariantCodeMotionTest,
 
 TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistInstructionWithSideEffects) {
   auto m = CreateNewVerifiedModule();
-  auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
+  auto scalar_s32 = ShapeUtil::MakeValidatedShape(S32, {}).value();
   auto token_shape = ShapeUtil::MakeTokenShape();
   Shape while_shape =
-      ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32, token_shape});
+      ShapeUtil::MakeValidatedTupleShape({scalar_s32, scalar_s32, token_shape})
+          .value();
 
   HloComputation* while_body = [&]() {
     HloComputation::Builder builder(TestName() + ".while_body");
@@ -309,11 +314,12 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistBitcastAlone) {
   // The bitcast's user, an outfeed, can't be hoisted, so don't hoist the
   // bitcast either.
   auto m = CreateNewVerifiedModule();
-  auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
-  auto effective_scalar_s32 = ShapeUtil::MakeShape(S32, {1});
+  auto scalar_s32 = ShapeUtil::MakeValidatedShape(S32, {}).value();
+  auto effective_scalar_s32 = ShapeUtil::MakeValidatedShape(S32, {1}).value();
   auto token_shape = ShapeUtil::MakeTokenShape();
   Shape while_shape =
-      ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32, token_shape});
+      ShapeUtil::MakeValidatedTupleShape({scalar_s32, scalar_s32, token_shape})
+          .value();
 
   HloComputation* while_body = [&]() {
     HloComputation::Builder builder(TestName() + ".while_body");
@@ -364,10 +370,12 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistBitcastAlone) {
 TEST_F(WhileLoopInvariantCodeMotionTest, HoistBitcastIfNeeded) {
   // The bitcast's user can be hoisted, so hoist the bitcast too.
   auto m = CreateNewVerifiedModule();
-  auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
-  auto effective_scalar_s32 = ShapeUtil::MakeShape(S32, {1});
-  Shape while_shape = ShapeUtil::MakeTupleShape(
-      {scalar_s32, effective_scalar_s32, effective_scalar_s32});
+  auto scalar_s32 = ShapeUtil::MakeValidatedShape(S32, {}).value();
+  auto effective_scalar_s32 = ShapeUtil::MakeValidatedShape(S32, {1}).value();
+  Shape while_shape =
+      ShapeUtil::MakeValidatedTupleShape(
+          {scalar_s32, effective_scalar_s32, effective_scalar_s32})
+          .value();
 
   HloComputation* while_body = [&]() {
     HloComputation::Builder builder(TestName() + ".while_body");
@@ -415,9 +423,10 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistBitcastIfNeeded) {
 
 TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistControlDependencies) {
   auto m = CreateNewVerifiedModule();
-  auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
+  auto scalar_s32 = ShapeUtil::MakeValidatedShape(S32, {}).value();
   Shape while_shape =
-      ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32, scalar_s32});
+      ShapeUtil::MakeValidatedTupleShape({scalar_s32, scalar_s32, scalar_s32})
+          .value();
 
   HloComputation* while_body;
   {
@@ -452,8 +461,9 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DontHoistControlDependencies) {
 
 TEST_F(WhileLoopInvariantCodeMotionTest, BodyHasNonTupleRoot) {
   auto m = CreateNewVerifiedModule();
-  auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
-  Shape while_shape = ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32});
+  auto scalar_s32 = ShapeUtil::MakeValidatedShape(S32, {}).value();
+  Shape while_shape =
+      ShapeUtil::MakeValidatedTupleShape({scalar_s32, scalar_s32}).value();
 
   HloComputation* while_body = [&]() {
     HloComputation::Builder builder(TestName() + ".passthrough");
@@ -632,9 +642,10 @@ TEST_F(WhileLoopInvariantCodeMotionTest, NoHoistInflating) {
 
 TEST_F(WhileLoopInvariantCodeMotionTest, DoesNotHoistSPMDFullToShardShape) {
   auto m = CreateNewVerifiedModule();
-  auto array_s32 = ShapeUtil::MakeShape(S32, {4});
+  auto array_s32 = ShapeUtil::MakeValidatedShape(S32, {4}).value();
   Shape while_shape =
-      ShapeUtil::MakeTupleShape({array_s32, array_s32, array_s32});
+      ShapeUtil::MakeValidatedTupleShape({array_s32, array_s32, array_s32})
+          .value();
 
   HloComputation* while_body = [&]() {
     HloComputation::Builder builder(TestName() + ".while_body");

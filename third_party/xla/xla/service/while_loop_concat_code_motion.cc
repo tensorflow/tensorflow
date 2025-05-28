@@ -89,7 +89,8 @@ struct ConcatGroup {
       if (dims.size() == concat_dim) {
         dims.push_back(elements.size());
       }
-      return ShapeUtil::MakeShape(element_shape.element_type(), dims);
+      return ShapeUtil::MakeValidatedShape(element_shape.element_type(), dims)
+          .value();
     } else {
       int64_t dim_size = 0;
       for (int64_t size : element_sizes) {
@@ -124,7 +125,9 @@ struct ConcatGroup {
       }
     }
     return comp->AddInstruction(HloInstruction::CreateReshape(
-        ShapeUtil::MakeShape(shape.element_type(), element_shape), slice));
+        ShapeUtil::MakeValidatedShape(shape.element_type(), element_shape)
+            .value(),
+        slice));
   }
 
   HloInstruction* CreateConcat(std::vector<HloInstruction*> input_elements,
@@ -145,8 +148,9 @@ struct ConcatGroup {
           element_shape.push_back(1);
         }
         input_elements[i] = comp->AddInstruction(HloInstruction::CreateReshape(
-            ShapeUtil::MakeShape(input_elements[i]->shape().element_type(),
-                                 element_shape),
+            ShapeUtil::MakeValidatedShape(
+                input_elements[i]->shape().element_type(), element_shape)
+                .value(),
             input_elements[i]));
       }
     }
@@ -858,8 +862,9 @@ absl::Status RewriteLoopWithConcatGroups(
               new_dims.push_back(hlo->operand(i)->shape().dimensions(d));
             }
             auto reshape = body->AddInstruction(HloInstruction::CreateReshape(
-                ShapeUtil::MakeShape(hlo->operand(i)->shape().element_type(),
-                                     new_dims),
+                ShapeUtil::MakeValidatedShape(
+                    hlo->operand(i)->shape().element_type(), new_dims)
+                    .value(),
                 hlo->mutable_operand(i)));
             new_reshapes.insert(reshape);
             TF_RETURN_IF_ERROR(
@@ -896,7 +901,9 @@ absl::Status RewriteLoopWithConcatGroups(
           broadcast_shape.push_back(group.elements.size());
         }
         auto broadcast = body->AddInstruction(HloInstruction::CreateBroadcast(
-            ShapeUtil::MakeShape(data_shape.element_type(), broadcast_shape),
+            ShapeUtil::MakeValidatedShape(data_shape.element_type(),
+                                          broadcast_shape)
+                .value(),
             hlo->mutable_operand(i), broadcast_dims));
 
         if (!operand_inserted_concat_dim) {

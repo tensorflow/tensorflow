@@ -134,8 +134,8 @@ absl::Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine,
   // Create combined all-gather op with a tuple result.
   HloInstruction* combined =
       computation.AddInstruction(HloInstruction::CreateAllGather(
-          ShapeUtil::MakeTupleShape(output_shapes), operands, most_frequent_dim,
-          to_combine.front()->device_list(),
+          ShapeUtil::MakeValidatedTupleShape(output_shapes).value(), operands,
+          most_frequent_dim, to_combine.front()->device_list(),
           /*constrain_layout=*/false, to_combine.front()->channel_id(),
           Cast<HloAllGatherInstruction>(to_combine.front())
               ->use_global_device_ids()));

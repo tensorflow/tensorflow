@@ -77,15 +77,18 @@ bool HasReplicatedSharding(const HloSharding& sharding) {
 HloComputation* MakeBinaryAdd(PrimitiveType type, HloModule* module) {
   HloComputation::Builder sum_b("add");
   auto x = sum_b.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/0, ShapeUtil::MakeShape(type, {}), "x"));
+      /*parameter_number=*/0, ShapeUtil::MakeValidatedShape(type, {}).value(),
+      "x"));
   auto y = sum_b.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/1, ShapeUtil::MakeShape(type, {}), "y"));
+      /*parameter_number=*/1, ShapeUtil::MakeValidatedShape(type, {}).value(),
+      "y"));
   if (type == PRED) {
     sum_b.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(type, {}), HloOpcode::kOr, x, y));
+        ShapeUtil::MakeValidatedShape(type, {}).value(), HloOpcode::kOr, x, y));
   } else {
     sum_b.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(type, {}), HloOpcode::kAdd, x, y));
+        ShapeUtil::MakeValidatedShape(type, {}).value(), HloOpcode::kAdd, x,
+        y));
   }
   HloComputation* reduction = module->AddEmbeddedComputation(sum_b.Build());
   return reduction;
@@ -126,7 +129,7 @@ Shape MakePartitionedShape(const Shape& shape, const HloSharding& sharding) {
           MakePartitionedShape(ShapeUtil::GetTupleElementShape(shape, i),
                                sharding.GetSubSharding(shape, {i})));
     }
-    return ShapeUtil::MakeTupleShape(subshapes);
+    return ShapeUtil::MakeValidatedTupleShape(subshapes).value();
   }
   return sharding.TileShape(shape);
 }
@@ -155,7 +158,7 @@ Shape MakeNonPaddedShapeForGivenPartition(const Shape& shape,
           ShapeUtil::GetTupleElementShape(shape, i),
           sharding.GetSubSharding(shape, {i}), partition_id));
     }
-    return ShapeUtil::MakeTupleShape(subshapes);
+    return ShapeUtil::MakeValidatedTupleShape(subshapes).value();
   }
 
   if (sharding.IsReplicated()) {
@@ -165,7 +168,7 @@ Shape MakeNonPaddedShapeForGivenPartition(const Shape& shape,
     if (partition_id == *sharding.UniqueDevice()) {
       return shape;
     }
-    return ShapeUtil::MakeTupleShape({});
+    return ShapeUtil::MakeValidatedTupleShape({}).value();
   }
 
   auto partition_shape = shape;
@@ -219,7 +222,7 @@ std::vector<HloInstruction*> MakeTiledPartitionOrdinals(
   if (sharding.ReplicateOnLastTileDim()) {
     dimensions.remove_suffix(1);
   }
-  auto table_shape = ShapeUtil::MakeShape(S32, dimensions);
+  auto table_shape = ShapeUtil::MakeValidatedShape(S32, dimensions).value();
   return MakePartitionOffsets(table_shape, sharding, partition_id, b);
 }
 
@@ -399,8 +402,8 @@ std::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
       target_sharding.tile_assignment().dimensions().begin(),
       target_sharding.tile_assignment().dimensions().begin() + rank);
   if (hlo_sharding_util::IsSubTilingOrEqualSharding(
-          ShapeUtil::MakeShape(F32, shape_dims), target_sharding,
-          partial_sharding)) {
+          ShapeUtil::MakeValidatedShape(F32, shape_dims).value(),
+          target_sharding, partial_sharding)) {
     return target_sharding;
   }
 
@@ -663,7 +666,7 @@ int64_t MultiplyAddDivideOffsetCalculation::Calculate(
 
 HloInstruction* MultiplyAddDivideOffsetCalculation::Calculate(
     HloInstruction* shard_ordinal, SpmdBuilder* b) const {
-  auto scalar_shape = ShapeUtil::MakeShape(S32, {});
+  auto scalar_shape = ShapeUtil::MakeValidatedShape(S32, {}).value();
   if (multiplier_ == 0) {
     return b->AddInstruction(HloInstruction::CreateConstant(
         LiteralUtil::CreateR0<int32_t>(offset_ / divisor_)));
@@ -1247,11 +1250,12 @@ HloInstruction* ExchangeHaloCompact(
         continue;
       }
       HloInstruction* pred = b->AddInstruction(HloInstruction::CreateCompare(
-          ShapeUtil::MakeScalarShape(PRED), selector,
+          ShapeUtil::MakeValidatedScalarShape(PRED).value(), selector,
           CreateR0WithType(S32, i, b), ComparisonDirection::kEq));
       pred = b->AddInstruction(HloInstruction::CreateBroadcast(
-          ShapeUtil::MakeShape(PRED, selected->shape().dimensions()), pred,
-          {}));
+          ShapeUtil::MakeValidatedShape(PRED, selected->shape().dimensions())
+              .value(),
+          pred, {}));
       selected = b->AddInstruction(
           HloInstruction::CreateTernary(selected->shape(), HloOpcode::kSelect,
                                         pred, unique_pieces[i], selected));
@@ -1563,8 +1567,9 @@ std::optional<HloInstruction*> ExchangeHaloAndGetValidData(
     if (pad_value->shape().element_type() !=
         valid_slice->shape().element_type()) {
       pad_value = b->AddInstruction(HloInstruction::CreateConvert(
-          ShapeUtil::MakeShape(valid_slice->shape().element_type(),
-                               pad_value->shape().dimensions()),
+          ShapeUtil::MakeValidatedShape(valid_slice->shape().element_type(),
+                                        pad_value->shape().dimensions())
+              .value(),
           pad_value));
     }
     auto masking_value = b->AddInstruction(
@@ -1603,7 +1608,9 @@ HloInstruction* HaloExchangeToPadOnLeft(PartitionedHlo& original,
 
   auto reshard_window = original.ReshardAsWindowedInput(
       window, original.sharding(),
-      CreateZero(ShapeUtil::MakeShape(original.base_shape().element_type(), {}),
+      CreateZero(ShapeUtil::MakeValidatedShape(
+                     original.base_shape().element_type(), {})
+                     .value(),
                  original.state().b),
       /*mask_invalid_region=*/false);
   if (!reshard_window.has_value()) {
@@ -2400,9 +2407,10 @@ ReshardDataForSlicing(absl::Span<const int64_t> strides,
 
   return to_reshard.ReshardAsWindowedInput(
       window, target_sharding,
-      CreateZero(
-          ShapeUtil::MakeShape(to_reshard.hlo()->shape().element_type(), {}),
-          b),
+      CreateZero(ShapeUtil::MakeValidatedShape(
+                     to_reshard.hlo()->shape().element_type(), {})
+                     .value(),
+                 b),
       /*mask_invalid_region=*/false);
 }
 

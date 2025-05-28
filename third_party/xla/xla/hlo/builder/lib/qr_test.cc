@@ -66,11 +66,13 @@ XLA_TEST_F(QrTest, Simple) {
         TF_ASSERT_OK_AND_ASSIGN(xla::Shape q_shape, builder.GetShape(q));
         TF_ASSERT_OK_AND_ASSIGN(xla::Shape r_shape, builder.GetShape(r));
         EXPECT_EQ(q_shape,
-                  xla::ShapeUtil::MakeShape(
-                      xla::F32, {m, full_matrices ? m : std::min(m, n)}));
+                  xla::ShapeUtil::MakeValidatedShape(
+                      xla::F32, {m, full_matrices ? m : std::min(m, n)})
+                      .value());
         EXPECT_EQ(r_shape,
-                  xla::ShapeUtil::MakeShape(
-                      xla::F32, {full_matrices ? m : std::min(m, n), n}));
+                  xla::ShapeUtil::MakeValidatedShape(
+                      xla::F32, {full_matrices ? m : std::min(m, n), n})
+                      .value());
         ComputeAndCompare<float>(&builder, a_vals, {a_data.get()},
                                  xla::ErrorSpec(1e-4, 1e-4));
       }
