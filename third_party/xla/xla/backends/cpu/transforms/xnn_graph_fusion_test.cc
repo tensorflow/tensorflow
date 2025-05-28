@@ -46,8 +46,11 @@ ENTRY entry {
    %param.0 = f32[2,2] parameter(0)
    %constant.0 = f32[2,2] constant({ { 1, 2 }, { 3, 4 } })
    %add.0 = f32[2,2] add(f32[2,2] %param.0, f32[2,2]{1,0} %constant.0)
-   %sub.0 = f32[2,2] subtract(f32[2,2] %param.0, f32[2,2] %constant.0)
-   ROOT %result = f32[2,2] multiply(f32[2,2] %add.0, f32[2,2] %sub.0)
+   %exp.0 = f32[2,2] exp(f32[2,2] %add.0)
+   %sub.0 = f32[2,2] subtract(f32[2,2] %exp.0, f32[2,2] %param.0)
+   %abs.0 = f32[2,2] abs(f32[2,2] %sub.0)
+   %div.0 = f32[2,2] divide(f32[2,2] %abs.0, f32[2, 2] %exp.0)
+   ROOT %result = f32[2,2] multiply(f32[2,2] %div.0, f32[2,2] %abs.0)
 }
 )";
 

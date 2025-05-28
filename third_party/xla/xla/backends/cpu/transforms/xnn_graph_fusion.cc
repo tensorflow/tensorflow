@@ -70,9 +70,44 @@ bool XnnGraphFusion::IsOpSupported(HloInstruction* instr) const {
   }
 
   switch (instr->opcode()) {
+    case HloOpcode::kConstant:
+    case HloOpcode::kAbs:
+    case HloOpcode::kCeil:
+    case HloOpcode::kClz:
+    case HloOpcode::kConvert:
+    case HloOpcode::kCos:
+    case HloOpcode::kExp:
+    case HloOpcode::kCbrt:
+    // case HloOpcode::kErf:
+    // case HloOpcode::kExpm1:
+    case HloOpcode::kFloor:
+    case HloOpcode::kLog:
+    // case HloOpcode::kLog1p:
+    case HloOpcode::kLogistic:
+    case HloOpcode::kNegate:
+    // case HloOpcode::kNot:
+    // case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
+    case HloOpcode::kRsqrt:
+    case HloOpcode::kSign:
+    case HloOpcode::kSin:
+    case HloOpcode::kSqrt:
+    // case HloOpcode::kTan:
+    case HloOpcode::kTanh:
     case HloOpcode::kAdd:
-    case HloOpcode::kSubtract:
+    case HloOpcode::kAnd:
+    case HloOpcode::kDivide:
+    case HloOpcode::kMaximum:
+    case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
+    case HloOpcode::kOr:
+    case HloOpcode::kPower:
+    case HloOpcode::kRemainder:
+    case HloOpcode::kShiftLeft:
+    case HloOpcode::kShiftRightArithmetic:
+    case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kSubtract:
+    case HloOpcode::kXor:
       return true;
     default:
       return false;

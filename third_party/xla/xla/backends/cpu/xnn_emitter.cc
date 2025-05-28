@@ -51,8 +51,46 @@ using TensorIdMap = absl::flat_hash_map<const HloInstruction*, uint32_t>;
 static absl::StatusOr<xnn_unary_operator> XnnUnaryOperator(
     const HloOpcode& opcode) {
   switch (opcode) {
+    case HloOpcode::kAbs:
+      return xnn_unary_abs;
+    case HloOpcode::kCeil:
+      return xnn_unary_ceiling;
+    case HloOpcode::kClz:
+      return xnn_unary_count_leading_zeros;
     case HloOpcode::kConvert:
       return xnn_unary_convert;
+    case HloOpcode::kCos:
+      return xnn_unary_cosine;
+    case HloOpcode::kExp:
+      return xnn_unary_exp;
+    case HloOpcode::kCbrt:
+      return xnn_unary_cube_root;
+    // case HloOpcode::kErf:
+    // case HloOpcode::kExpm1:
+    case HloOpcode::kFloor:
+      return xnn_unary_floor;
+    case HloOpcode::kLog:
+      return xnn_unary_log;
+    // case HloOpcode::kLog1p:
+    case HloOpcode::kLogistic:
+      return xnn_unary_sigmoid;
+    case HloOpcode::kNegate:
+      return xnn_unary_negate;
+    // case HloOpcode::kNot:
+    // case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
+      return xnn_unary_bankers_rounding;
+    case HloOpcode::kRsqrt:
+      return xnn_unary_reciprocal_square_root;
+    case HloOpcode::kSign:
+      return xnn_unary_sign;
+    case HloOpcode::kSin:
+      return xnn_unary_sine;
+    case HloOpcode::kSqrt:
+      return xnn_unary_square_root;
+    // case HloOpcode::kTan:
+    case HloOpcode::kTanh:
+      return xnn_unary_tanh;
     default:
       return InvalidArgument("Unsupported XNNPACK unary operator: %s",
                              HloOpcodeString(opcode));
@@ -64,10 +102,32 @@ static absl::StatusOr<xnn_binary_operator> XnnBinaryOperator(
   switch (opcode) {
     case HloOpcode::kAdd:
       return xnn_binary_add;
+    case HloOpcode::kAnd:
+      return xnn_binary_bitwise_and;
+    case HloOpcode::kDivide:
+      return xnn_binary_divide;
+    case HloOpcode::kMaximum:
+      return xnn_binary_maximum;
+    case HloOpcode::kMinimum:
+      return xnn_binary_minimum;
     case HloOpcode::kMultiply:
       return xnn_binary_multiply;
+    case HloOpcode::kOr:
+      return xnn_binary_bitwise_or;
+    case HloOpcode::kPower:
+      return xnn_binary_pow;
+    case HloOpcode::kRemainder:
+      return xnn_binary_modulus;
+    case HloOpcode::kShiftLeft:
+      return xnn_binary_shift_left;
+    case HloOpcode::kShiftRightArithmetic:
+      return xnn_binary_shift_right_arithmetic;
+    case HloOpcode::kShiftRightLogical:
+      return xnn_binary_shift_right_logical;
     case HloOpcode::kSubtract:
       return xnn_binary_subtract;
+    case HloOpcode::kXor:
+      return xnn_binary_bitwise_xor;
     default:
       return InvalidArgument("Unsupported XNNPACK binary operator: %s",
                              HloOpcodeString(opcode));
@@ -286,14 +346,47 @@ static absl::StatusOr<xnn_subgraph_t> EmitXnnSubgraph(
                             DefineConstant(subgraph, literals, instr));
       } break;
 
-      case HloOpcode::kConvert: {
+      case HloOpcode::kAbs:
+      case HloOpcode::kCeil:
+      case HloOpcode::kClz:
+      case HloOpcode::kConvert:
+      case HloOpcode::kCos:
+      case HloOpcode::kExp:
+      case HloOpcode::kCbrt:
+      // case HloOpcode::kErf:
+      // case HloOpcode::kExpm1:
+      case HloOpcode::kFloor:
+      case HloOpcode::kLog:
+      // case HloOpcode::kLog1p:
+      case HloOpcode::kLogistic:
+      case HloOpcode::kNegate:
+      // case HloOpcode::kNot:
+      // case HloOpcode::kRoundNearestAfz:
+      case HloOpcode::kRoundNearestEven:
+      case HloOpcode::kRsqrt:
+      case HloOpcode::kSign:
+      case HloOpcode::kSin:
+      case HloOpcode::kSqrt:
+      // case HloOpcode::kTan:
+      case HloOpcode::kTanh: {
         TF_ASSIGN_OR_RETURN(tensor_ids[instr],
                             DefineUnaryOp(subgraph, tensor_ids, instr));
       } break;
 
       case HloOpcode::kAdd:
+      case HloOpcode::kAnd:
+      case HloOpcode::kDivide:
+      case HloOpcode::kMaximum:
+      case HloOpcode::kMinimum:
+      case HloOpcode::kMultiply:
+      case HloOpcode::kOr:
+      case HloOpcode::kPower:
+      case HloOpcode::kRemainder:
+      case HloOpcode::kShiftLeft:
+      case HloOpcode::kShiftRightArithmetic:
+      case HloOpcode::kShiftRightLogical:
       case HloOpcode::kSubtract:
-      case HloOpcode::kMultiply: {
+      case HloOpcode::kXor: {
         TF_ASSIGN_OR_RETURN(tensor_ids[instr],
                             DefineBinaryOp(subgraph, tensor_ids, instr));
       } break;
