@@ -97,7 +97,7 @@ class LightSpan {
 };
 
 // Wraps a call to `mkstemp` to create temporary files.
-class TempFileDesc {
+class TempFileDesc : public FileDescriptor {
  public:
   static constexpr struct AutoClose {
   } kAutoClose{};
@@ -118,8 +118,9 @@ class TempFileDesc {
     }
   }
 #else
-  TempFileDesc() : fd_(mkstemp(path_.data())) {
-    if (GetFd() < 0) {
+  TempFileDesc() {
+    Reset(mkstemp(path_.data()));
+    if (Value() < 0) {
       perror("Could not create temporary file");
     }
   }
@@ -131,8 +132,8 @@ class TempFileDesc {
   TempFileDesc& operator=(const TempFileDesc&) = delete;
 
   friend void swap(TempFileDesc& a, TempFileDesc& b) {
+    std::swap(static_cast<FileDescriptor&>(a), static_cast<FileDescriptor&>(b));
     std::swap(a.path_, b.path_);
-    std::swap(a.fd_, b.fd_);
   }
 
   TempFileDesc(TempFileDesc&& other) { swap(*this, other); }
@@ -141,26 +142,12 @@ class TempFileDesc {
     return *this;
   }
 
-  ~TempFileDesc() { Close(); }
-
-  void Close() {
-    if (GetFd() >= 0) {
-      close(fd_);
-      fd_ = -1;
-    }
-  }
-
   const std::string& GetPath() const { return path_; }
 
   const char* GetCPath() const { return path_.c_str(); }
 
-  int GetFd() const { return fd_; }
-
-  bool IsOpen() const { return fd_ >= 0; }
-
  private:
   std::string path_ = testing::TempDir() + "/weight_cache_test_file.XXXXXX";
-  int fd_ = -1;
 };
 
 TEST(MMapHandleTest, DefaultConstructs) {
@@ -183,9 +170,8 @@ TEST(MMapHandleTest, MapExistingFileWorks) {
   const std::string payload = "This is some data in the file.";
 
   TempFileDesc tmp_file;
-  ASSERT_TRUE(tmp_file.IsOpen());
-  ASSERT_EQ(write(tmp_file.GetFd(), payload.c_str(), size(payload)),
-            size(payload));
+  ASSERT_TRUE(tmp_file.IsValid());
+  ASSERT_TRUE(tmp_file.Write(payload.c_str(), size(payload)));
   tmp_file.Close();
 
   MMapHandle handle;
@@ -205,9 +191,8 @@ TEST(MMapHandleTest, MoveConstructs) {
   const std::string payload = "This is some data in the file.";
 
   TempFileDesc tmp_file;
-  ASSERT_TRUE(tmp_file.IsOpen());
-  ASSERT_EQ(write(tmp_file.GetFd(), payload.c_str(), size(payload)),
-            size(payload));
+  ASSERT_TRUE(tmp_file.IsValid());
+  ASSERT_TRUE(tmp_file.Write(payload.c_str(), size(payload)));
   tmp_file.Close();
 
   MMapHandle handle;
@@ -232,9 +217,8 @@ TEST(MMapHandleTest, Resize) {
   const std::string payload = "This is some data in the file.";
 
   TempFileDesc tmp_file;
-  ASSERT_TRUE(tmp_file.IsOpen());
-  ASSERT_EQ(write(tmp_file.GetFd(), payload.c_str(), size(payload)),
-            size(payload));
+  ASSERT_TRUE(tmp_file.IsValid());
+  ASSERT_TRUE(tmp_file.Write(payload.c_str(), size(payload)));
   tmp_file.Close();
 
   MMapHandle handle;
@@ -257,11 +241,9 @@ TEST(MMapHandleTest, MapWithOffset) {
   const std::string payload2 = "Some other data appended to the the offset.";
 
   TempFileDesc tmp_file;
-  ASSERT_TRUE(tmp_file.IsOpen());
-  ASSERT_EQ(write(tmp_file.GetFd(), payload.c_str(), size(payload)),
-            size(payload));
-  ASSERT_EQ(write(tmp_file.GetFd(), payload2.c_str(), size(payload2)),
-            size(payload2));
+  ASSERT_TRUE(tmp_file.IsValid());
+  ASSERT_TRUE(tmp_file.Write(payload.c_str(), size(payload)));
+  ASSERT_TRUE(tmp_file.Write(payload2.c_str(), size(payload2)));
   tmp_file.Close();
 
   MMapHandle handle;
@@ -278,17 +260,14 @@ TEST(MMapHandleTest, ResizeMapWithOffset) {
       "Yet some other data written after the initial mapping.";
 
   TempFileDesc tmp_file;
-  ASSERT_TRUE(tmp_file.IsOpen());
-  ASSERT_EQ(write(tmp_file.GetFd(), payload.c_str(), size(payload)),
-            size(payload));
-  ASSERT_EQ(write(tmp_file.GetFd(), payload2.c_str(), size(payload2)),
-            size(payload2));
+  ASSERT_TRUE(tmp_file.IsValid());
+  ASSERT_TRUE(tmp_file.Write(payload.c_str(), size(payload)));
+  ASSERT_TRUE(tmp_file.Write(payload2.c_str(), size(payload2)));
 
   MMapHandle handle;
   ASSERT_TRUE(handle.Map(tmp_file.GetCPath(), /*offset=*/size(payload)));
 
-  ASSERT_EQ(write(tmp_file.GetFd(), payload3.c_str(), size(payload3)),
-            size(payload3));
+  ASSERT_TRUE(tmp_file.Write(payload3.c_str(), size(payload3)));
   tmp_file.Close();
 #if defined(__linux__) || defined(__ANDROID__)
   bool was_resized = handle.Resize(payload2.size() + payload3.size());
@@ -714,8 +693,8 @@ struct BuildMMapWeightCacheProviderTest : testing::TestWithParam<TestVariant> {
     cache_provider.MapTensorIdentifiers(ctx.tensors.data(), ctx.tensors.size(),
                                         ctx.tensor_buffer_identifiers);
     if (use_explicit_fd) {
-      ASSERT_TRUE(cache_provider.StartBuild(
-          explicit_fd_path, FileDescriptor::Duplicate(tmp_file.GetFd())));
+      ASSERT_TRUE(
+          cache_provider.StartBuild(explicit_fd_path, tmp_file.Duplicate()));
     } else {
       tmp_file.Close();
       ASSERT_TRUE(cache_provider.StartBuild(tmp_file.GetCPath()));
@@ -912,7 +891,7 @@ TEST_P(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
   using std::size;
   TempFileDesc temp_fd;
   const char* temp_fd_cpath = explicit_fd_path;
-  FileDescriptor temp_fd_value = FileDescriptor::Duplicate(temp_fd.GetFd());
+  FileDescriptor temp_fd_value = temp_fd.Duplicate();
   if (!use_explicit_fd) {
     temp_fd.Close();
     temp_fd_cpath = temp_fd.GetCPath();

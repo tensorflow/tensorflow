@@ -75,9 +75,9 @@ struct CustomDtypes {
 };
 
 const CustomDtypes& GetCustomDtypes() {
-  static const CustomDtypes& custom_dtypes = *[]() {
+  const CustomDtypes& custom_dtypes = SafeStaticInit<CustomDtypes>([]() {
     nb::module_ ml_dtypes = nb::module_::import_("ml_dtypes");
-    auto* dtypes = new CustomDtypes;
+    auto dtypes = std::make_unique<CustomDtypes>();
     dtypes->bfloat16 = nb_dtype::from_args(ml_dtypes.attr("bfloat16"));
     if (nb::hasattr(ml_dtypes, "float4_e2m1fn")) {
       dtypes->float4_e2m1fn =
@@ -111,7 +111,7 @@ const CustomDtypes& GetCustomDtypes() {
       dtypes->uint2 = nb_dtype::from_args(ml_dtypes.attr("uint2"));
     }
     return dtypes;
-  }();
+  });
   return custom_dtypes;
 }
 
@@ -153,10 +153,11 @@ absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const nb_dtype& np_type) {
   struct DtypeHash {
     ssize_t operator()(const nb_dtype& key) const { return nb::hash(key); }
   };
-  static auto* custom_dtype_map = []() {
+  const auto& custom_dtype_map = SafeStaticInit<
+      absl::flat_hash_map<nb_dtype, PrimitiveType, DtypeHash, DtypeEq>>([]() {
     const CustomDtypes& custom_dtypes = GetCustomDtypes();
-    auto* map =
-        new absl::flat_hash_map<nb_dtype, PrimitiveType, DtypeHash, DtypeEq>();
+    auto map = std::make_unique<
+        absl::flat_hash_map<nb_dtype, PrimitiveType, DtypeHash, DtypeEq>>();
     map->emplace(custom_dtypes.bfloat16, BF16);
     if (custom_dtypes.float4_e2m1fn.has_value()) {
       map->emplace(*custom_dtypes.float4_e2m1fn, F4E2M1FN);
@@ -184,10 +185,10 @@ absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const nb_dtype& np_type) {
     }
     map->emplace(custom_dtypes.uint4, U4);
     return map;
-  }();
+  });
 
-  auto custom_it = custom_dtype_map->find(np_type);
-  if (custom_it != custom_dtype_map->end()) {
+  auto custom_it = custom_dtype_map.find(np_type);
+  if (custom_it != custom_dtype_map.end()) {
     return custom_it->second;
   }
   return InvalidArgument("Unknown NumPy dtype %s char %c kind %c itemsize %d",

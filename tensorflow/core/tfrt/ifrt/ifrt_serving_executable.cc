@@ -52,7 +52,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
+#include "xla/hlo/translate/stablehlo.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -445,10 +445,9 @@ IfrtServingExecutable::CreateExecutableSynchronously(
                                    "before_ifrt_serialization");
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> mlir_hlo_module,
-      xla::ConvertHloToMlirHlo(*module_copy->getContext(),
-                               &tf2hlo_result.hlo_module_proto,
-                               /*import_all_computations=*/false,
-                               /*flatten_computation_args_result=*/true));
+      ::xla::ConvertHloToStablehloWithOptions(
+          *module_copy->getContext(), &tf2hlo_result.hlo_module_proto,
+          /*import_all_computations=*/false));
 
   if (VLOG_IS_ON(1)) {
     tensorflow::DumpMlirOpToFile("ifrt_after_bridge_phase2",

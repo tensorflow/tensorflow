@@ -48,8 +48,7 @@ namespace xla {
 //     // for example we call some python code using nanobind
 //     nb::module_ numpy = nb::module_::import_("numpy");
 //     auto np_int8 = nb::object(numpy.attr("int8"));
-//     std::unique_ptr<SomeType> obj = std::make_unique<SomeType>(np_uint8);
-//     return obj;
+//     return std::make_unique<SomeType>(np_uint8);
 // }
 // SomeType& p = SafeStaticInit<SomeType>(func);
 template <typename T, typename F>

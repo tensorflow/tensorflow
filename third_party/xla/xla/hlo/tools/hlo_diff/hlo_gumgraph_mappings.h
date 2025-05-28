@@ -32,9 +32,8 @@ enum class MatcherType : std::uint8_t {
   kComputationGraphExactFingerprintMatcher,
   kComputationGraphExactSignatureMatcher,
   kGreedySubGraphExactMatcher,
-  kGreedyDoubleCountedBottomUpMatcher,
   kGreedyLimitedCandidatesBottomUpMatcher,
-  kGreedyLimitedCandidatesStaticSeedsBottomUpMatcher,
+  kStrictGreedyTopDownMatcher,
   kGreedyTopDownMatcher,
 };
 
