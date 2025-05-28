@@ -635,6 +635,8 @@ class Decision {
   // Returns true if it's profitable to fuse.
   bool WantToFuse() const { return fusing_decision_.CanFuse(); }
 
+  std::string Explain() const { return fusing_decision_.Explain(); }
+
   static Decision Allow() { return {FusionDecision::Allow(), true}; };
 
   static Decision Deny(absl::string_view value) {
@@ -792,6 +794,7 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
         CreateDotFusion(*Cast<HloDotInstruction>(dot), gpu_version_, builder,
                         fusion_inputs, &fusion_output));
     if (!decision.CanFuse()) {
+      VLOG(3) << "Not fusing: " << decision.Explain();
       return absl::OkStatus();
     }
     // If a GEMM requiring padding for cuBLAS is encountered here this

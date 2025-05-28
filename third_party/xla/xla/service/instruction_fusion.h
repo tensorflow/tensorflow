@@ -128,8 +128,10 @@ class FusionDecision {
     return Forbid(absl::StrCat(explanation_.value_or(""), explanation));
   }
 
-  // Explains why the fusion could not be performed.
-  std::string Explain() const { return *explanation_; }
+  // Explains why the fusion could not be performed, or that it can be.
+  std::string Explain() const {
+    return explanation_.value_or("Actually, we can fuse it.");
+  }
 
  private:
   // Empty IFF fusion is possible (explanation provided for negative cases).
