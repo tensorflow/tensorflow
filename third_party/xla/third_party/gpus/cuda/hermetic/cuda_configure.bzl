@@ -33,6 +33,7 @@ load("@cuda_curand//:version.bzl", _curand_version = "VERSION")
 load("@cuda_cusolver//:version.bzl", _cusolver_version = "VERSION")
 load("@cuda_cusparse//:version.bzl", _cusparse_version = "VERSION")
 load("@cuda_nvcc//:version.bzl", _nvcc_version = "VERSION")
+load("@cuda_nvdisasm//:version.bzl", _nvdisasm_version = "VERSION")
 load("@cuda_nvjitlink//:version.bzl", _nvjitlink_version = "VERSION")
 load("@cuda_nvml//:version.bzl", _nvml_version = "VERSION")
 load("@cuda_nvtx//:version.bzl", _nvtx_version = "VERSION")
@@ -335,6 +336,7 @@ def _get_cuda_config(repository_ctx):
         cudnn_version = _cudnn_version,
         cccl_version = _cccl_version,
         nvcc_version = _nvcc_version,
+        nvdisasm_version = _nvdisasm_version,
         nvjitlink_version = _nvjitlink_version,
         nvml_version = _nvml_version,
         nvtx_version = _nvtx_version,
@@ -427,7 +429,6 @@ def _create_local_toolchains_repository(repository_ctx):
     if not enable_cuda(repository_ctx):
         cuda_defines["%{cuda_toolkit_path}"] = ""
         cuda_defines["%{cuda_nvcc_files}"] = "[]"
-        nvcc_relative_path = ""
     else:
         if is_clang_compiler:
             cuda_defines["%{cuda_toolkit_path}"] = repository_ctx.attr.nvcc_binary.workspace_root
@@ -435,10 +436,6 @@ def _create_local_toolchains_repository(repository_ctx):
             cuda_defines["%{cuda_toolkit_path}"] = ""
         cuda_defines["%{cuda_nvcc_files}"] = "if_cuda([\"@{nvcc_archive}//:bin\", \"@{nvcc_archive}//:nvvm\"])".format(
             nvcc_archive = repository_ctx.attr.nvcc_binary.repo_name,
-        )
-        nvcc_relative_path = "%s/%s" % (
-            repository_ctx.attr.nvcc_binary.workspace_root,
-            repository_ctx.attr.nvcc_binary.name,
         )
     if is_clang_compiler:
         cuda_defines["%{compiler}"] = "clang"

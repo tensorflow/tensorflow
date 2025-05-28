@@ -434,6 +434,12 @@ REDIST_VERSIONS_TO_BUILD_TEMPLATES = {
             "11": "//third_party/gpus/cuda/hermetic:cuda_nvcc.BUILD.tpl",
         },
     },
+    "cuda_nvdisasm": {
+        "repo_name": "cuda_nvdisasm",
+        "version_to_template": {
+            "12": "//third_party/gpus/cuda/hermetic:cuda_nvdisasm.BUILD",
+        },
+    },
     "cuda_nvml_dev": {
         "repo_name": "cuda_nvml",
         "version_to_template": {
