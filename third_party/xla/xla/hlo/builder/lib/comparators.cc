@@ -69,7 +69,7 @@ XlaComputation CreateScalarComparisonComputation(
   // computation, however, we will not actually use any parameters except the
   // first two.
   for (auto operand_type : operand_types) {
-    auto scalar_shape = ShapeUtil::MakeShape(operand_type, {});
+    auto scalar_shape = ShapeUtil::MakeValidatedShape(operand_type, {}).value();
     auto lhs_param = Parameter(b.get(), parameter_count * 2, scalar_shape,
                                absl::StrCat("p.", parameter_count, ".lhs"));
     auto rhs_param = Parameter(b.get(), parameter_count * 2 + 1, scalar_shape,
