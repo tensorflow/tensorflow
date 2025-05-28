@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -68,6 +69,25 @@ limitations under the License.
 #include "tsl/platform/cpu_info.h"
 
 namespace xla::cpu {
+
+void SetXlaCpuBackendOptions(llvm::Module& llvm_module,
+                             const LlvmKernelOptions& options) {
+  std::vector<std::string> llvm_kernel_options;
+  if (options.optimize_for_size()) {
+    llvm_kernel_options.emplace_back(options::kXlaOptimizeForSizeCpuOption);
+  }
+  if (options.disable_loop_unrolling()) {
+    llvm_kernel_options.emplace_back(options::kDisableLoopUnrolling);
+  }
+  if (options.slp_vectorizer_disabled()) {
+    llvm_kernel_options.emplace_back(options::kDisableSlpVectorizer);
+  }
+
+  llvm::MDString* options_mdstring = llvm::MDString::get(
+      llvm_module.getContext(), absl::StrJoin(llvm_kernel_options, ","));
+  llvm_module.addModuleFlag(llvm::Module::Error, "xla_backend_extra_options",
+                            options_mdstring);
+}
 
 static llvm::OptimizationLevel GetOptimizationLevel(
     IrCompiler::Options options) {
@@ -117,8 +137,9 @@ static absl_nullable std::unique_ptr<HloModuleConfig> GetXlaBackendExtraOptions(
 }
 
 static llvm::PipelineTuningOptions GetPipelineTuningOptions(
-    const llvm::Module& module, IrCompiler::Options options) {
-  auto pto_from_options = [](const IrCompiler::Options opts) {
+    const llvm::Module& module, IrCompiler::Options options,
+    const llvm::TargetMachine* target_machine) {
+  auto pto_from_options = [&](const IrCompiler::Options opts) {
     llvm::PipelineTuningOptions pto;
     pto.LoopVectorization = !opts.optimize_for_size;
     pto.SLPVectorization =
@@ -127,6 +148,19 @@ static llvm::PipelineTuningOptions GetPipelineTuningOptions(
 
     // TODO(b/411125413): Re-enable SLPVectorization once the LLVM bug is fixed.
     pto.SLPVectorization = false;
+
+    // TODO(b/419635451): Without AVX512 loop unrolling leads to LLVM generating
+    // enormous IR that later times out during code generation (AVX2 doesn't
+    // have masked SIMD instructions, and control flow ends up vectorizing to a
+    // lot of scalar loads and stores, which takes forever to codegen in machine
+    // instruction selection). As a workaround, disable loop unrolling when
+    // AVX512 is not available. Revisit this decision once we migrate to new
+    // fusion emitters that do not rely on LLVM that much.
+    auto target_features = target_machine->getTargetFeatureString();
+    if (target_features.contains("+avx2") &&
+        !target_features.contains("+avx512")) {
+      pto.LoopUnrolling = false;
+    }
 
     return pto;
   };
@@ -281,7 +315,8 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
 
 llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
                                     llvm::TargetMachine* target_machine) const {
-  llvm::PipelineTuningOptions pto = GetPipelineTuningOptions(module, options_);
+  llvm::PipelineTuningOptions pto =
+      GetPipelineTuningOptions(module, options_, target_machine);
   llvm::LoopAnalysisManager lam;
   llvm::FunctionAnalysisManager fam;
   llvm::CGSCCAnalysisManager cgam;

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/profiling/profile_buffer.h"
 
+#include <cstdint>
 #include <utility>
 
 #include "tensorflow/lite/core/api/profiler.h"

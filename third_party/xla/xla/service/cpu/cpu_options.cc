@@ -30,17 +30,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/service/hlo_module_config.h"
 
-constexpr char kXlaOptimizeForSizeCpuOption[] = "xla_cpu_optimize_for_size";
-constexpr char kLlvmIrDotTilingFactor[] = "xla_llvm_dot_tiling_factor";
-constexpr char kXlaForceEnableExperimentalLlvmIrGemm[] =
-    "xla_force_enable_experimental_llvm_ir_gemm";
-constexpr char kLlvmIrGemmTileSize[] = "xla_llvm_ir_gemm_tile_size";
-constexpr char kDisableSlpVectorizer[] = "xla_cpu_disable_slp_vectorizer";
-constexpr char kDisableLoopUnrolling[] = "xla_cpu_disable_loop_unrolling";
-constexpr char kFoldAllConstants[] = "xla_cpu_fold_all_constants";
-constexpr char kSmallWhileLoopByteThreshold[] =
-    "xla_cpu_small_while_loop_byte_threshold";
-
 namespace xla::cpu::options {
 
 bool OptimizeForSizeRequested(const HloModuleConfig& config) {
