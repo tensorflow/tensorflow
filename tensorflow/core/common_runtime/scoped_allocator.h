@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_SCOPED_ALLOCATOR_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_SCOPED_ALLOCATOR_H_
 
+#include "absl/log/log.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/refcount.h"

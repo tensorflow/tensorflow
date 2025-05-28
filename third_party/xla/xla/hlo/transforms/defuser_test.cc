@@ -48,7 +48,7 @@ class DefuserTest : public HloHardwareIndependentTestBase {
   }
 
   Defuser defuser_;
-  const Shape shape_ = ShapeUtil::MakeShape(F32, {2, 2});
+  const Shape shape_ = ShapeUtil::MakeValidatedShape(F32, {2, 2}).value();
 };
 
 TEST_F(DefuserTest, NoFusionInstruction) {

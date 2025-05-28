@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
+#include "absl/log/check.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/common_runtime/renamed_device.h"

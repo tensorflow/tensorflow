@@ -340,8 +340,8 @@ TEST_F(VecOpsSimpleTest, MapTenValues) {
   {
     // add_half(x) = x + 0.5
     XlaBuilder builder("add_half");
-    auto x_value =
-        Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x_value");
+    auto x_value = Parameter(
+        &builder, 0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "x_value");
     auto half = ConstantR0<float>(&builder, 0.5);
     Add(x_value, half);
     auto computation_status = builder.Build();
@@ -353,8 +353,8 @@ TEST_F(VecOpsSimpleTest, MapTenValues) {
   {
     // clamp(y) = clamp<0,5>(y)
     XlaBuilder builder("clamp");
-    auto y_value =
-        Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "y_value");
+    auto y_value = Parameter(
+        &builder, 0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "y_value");
     auto zero = ConstantR0<float>(&builder, 0.0);
     Clamp(zero, y_value, ConstantR0<float>(&builder, 5));
     auto computation_status = builder.Build();
@@ -366,8 +366,8 @@ TEST_F(VecOpsSimpleTest, MapTenValues) {
   {
     // mult_relu_add(z) = clamp(add_half(2 * max(z, 0)))
     XlaBuilder builder("mult_relu_add");
-    auto z_value =
-        Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "z_value");
+    auto z_value = Parameter(
+        &builder, 0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "z_value");
     auto zero = ConstantR0<float>(&builder, 0.0);
     auto two = ConstantR0<float>(&builder, 2.0);
     auto max = Max(z_value, zero);
