@@ -23,6 +23,12 @@ message FusionBackendConfig {
   }
 }
 
+message LlvmKernelOptions {
+  bool slp_vectorizer_disabled = 1;
+  bool disable_loop_unrolling = 2;
+  bool optimize_for_size = 3;
+}
+
 // Backend config for XLA:CPU.
 message BackendConfig {
   // Number of partitions per outer dimension (in order, starting with
@@ -42,5 +48,7 @@ message BackendConfig {
     CustomCallBackendConfig custom_call_config = 6;
     // Configuration for custom fusions.
     FusionBackendConfig fusion_config = 7;
+    // LlvmKernelOptions config options.
+    LlvmKernelOptions llvm_kernel_options = 8;
   }
 }
