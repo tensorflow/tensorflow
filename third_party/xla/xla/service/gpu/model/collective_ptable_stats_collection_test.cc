@@ -55,7 +55,7 @@ DeviceHloInstructionProfiles TestProfiles(
   // single host (8 devices).
   HloInstructionProto instr;
   *instr.mutable_opcode() = HloOpcodeString(HloOpcode::kAllReduce);
-  Shape shape = ShapeUtil::MakeShape(F32, {1024});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {1024}).value();
   *instr.mutable_shape() = shape.ToProto();
   instr.set_constrain_layout(false);
   instr.set_use_global_device_ids(true);
