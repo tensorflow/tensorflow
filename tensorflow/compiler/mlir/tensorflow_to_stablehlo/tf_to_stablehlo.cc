@@ -37,7 +37,7 @@ limitations under the License.
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_import.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/tf_quantize_preprocess.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_preprocess.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/shape_inference.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -106,7 +106,7 @@ absl::StatusOr<OwningOpRef<ModuleOp>> ConvertTFToStablehlo(
                       TF::ParseArgumentShapes(input_arg_shapes_str));
   llvm::SmallVector<llvm::ArrayRef<int64_t>> input_arg_shapes(
       input_arg_shapes_vec.begin(), input_arg_shapes_vec.end());
-  TF_RETURN_IF_ERROR(tensorflow::tf_quantization::PreprocessAndFreezeGraph(
+  TF_RETURN_IF_ERROR(tensorflow::quantization::PreprocessAndFreezeGraph(
       /*mlir_dump_file_prefix=*/"", /*is_inliner_run=*/true,
       /*noinline_functions=*/aliased_function_names, *module_op, context,
       session,

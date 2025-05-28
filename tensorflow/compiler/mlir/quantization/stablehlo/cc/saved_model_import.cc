@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/cc/saved_model/reader.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/types.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/tf_quantize_preprocess.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_preprocess.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "xla/tsl/platform/errors.h"
@@ -51,7 +51,7 @@ using ::stablehlo::quantization::QuantizationConfig;
 using ::tensorflow::MLIRImportOptions;
 using ::tensorflow::SavedModelBundle;
 using ::tensorflow::SavedModelSignatureDefsToMlirImport;
-using ::tensorflow::tf_quantization::PreprocessAndFreezeGraph;
+using ::tensorflow::quantization::PreprocessAndFreezeGraph;
 
 absl::StatusOr<ImportedMlirModuleOp> SavedModelToMlirModuleOp(
     const absl::string_view saved_model_path,

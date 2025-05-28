@@ -54,7 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/py_function_lib.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_passes.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/tf_quantize_preprocess.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_preprocess.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "xla/tsl/platform/errors.h"
@@ -89,9 +89,11 @@ using ::stablehlo::quantization::PopulateDefaults;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::stablehlo::quantization::io::CreateTmpDir;
 using ::stablehlo::quantization::io::GetLocalTmpFileName;
+using ::tensorflow::quantization::AddQuantizePtqPostCalibrationPasses;
+using ::tensorflow::quantization::AddQuantizePtqPreCalibrationPasses;
+using ::tensorflow::quantization::kDefaultTfQuantMlirDumpFilePrefix;
+using ::tensorflow::quantization::PreprocessAndFreezeGraph;
 using ::tensorflow::quantization::PyFunctionLibrary;
-using ::tensorflow::tf_quantization::kDefaultTfQuantMlirDumpFilePrefix;
-using ::tensorflow::tf_quantization::PreprocessAndFreezeGraph;
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportAndPreprocessSavedModel(
     absl::string_view saved_model_path,

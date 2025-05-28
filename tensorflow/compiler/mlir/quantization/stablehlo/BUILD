@@ -631,7 +631,7 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:tf_post_calibration",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:tf_pre_calibration",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:tf_quantize_preprocess",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_preprocess",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
         "//tensorflow/compiler/mlir/tensorflow",
         "@com_google_absl//absl/status",
