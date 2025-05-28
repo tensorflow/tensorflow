@@ -56,7 +56,7 @@ std::string Explain(const T& t, const M& m) {
 }
 
 TEST_F(HloMatchersTest, Test) {
-  auto shape = ShapeUtil::MakeShape(F32, {1});
+  auto shape = ShapeUtil::MakeValidatedShape(F32, {1}).value();
   auto param = HloInstruction::CreateParameter(0, shape, "param");
   auto mul = HloInstruction::CreateBinary(shape, HloOpcode::kMultiply,
                                           param.get(), param.get());
@@ -101,7 +101,8 @@ TEST_F(HloMatchersTest, CustomCallMatcher) {
   auto c2 =
       HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32_t>({1, 2, 3}));
   auto call = HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeShape(F32, {1}), {c1.get(), c2.get()}, "foo_target");
+      ShapeUtil::MakeValidatedShape(F32, {1}).value(), {c1.get(), c2.get()},
+      "foo_target");
 
   EXPECT_THAT(call.get(), op::CustomCall());
   EXPECT_THAT(call.get(), op::CustomCall(c1.get(), c2.get()));
@@ -130,18 +131,20 @@ TEST_F(HloMatchersTest, ShapeMatcher) {
   auto p0 = HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 7}, {0, 1}), "param");
 
-  EXPECT_THAT(p0.get(), op::Shape(ShapeUtil::MakeShape(F32, {5, 7})));
+  EXPECT_THAT(p0.get(),
+              op::Shape(ShapeUtil::MakeValidatedShape(F32, {5, 7}).value()));
   EXPECT_THAT(p0.get(), op::Shape("f32[5,7]"));
-  EXPECT_THAT(
-      p0.get(),
-      ::testing::Not(op::ShapeWithLayout(ShapeUtil::MakeShape(F32, {5, 7}))));
+  EXPECT_THAT(p0.get(),
+              ::testing::Not(op::ShapeWithLayout(
+                  ShapeUtil::MakeValidatedShape(F32, {5, 7}).value())));
   EXPECT_THAT(p0.get(), ::testing::Not(op::ShapeWithLayout("f32[5,7]")));
   EXPECT_THAT(p0.get(),
-              ::testing::Not(op::Shape(ShapeUtil::MakeShape(F32, {7, 5}))));
+              ::testing::Not(op::Shape(
+                  ShapeUtil::MakeValidatedShape(F32, {7, 5}).value())));
   EXPECT_THAT(p0.get(), ::testing::Not(op::Shape("f32[7,5]")));
-  EXPECT_THAT(
-      p0.get(),
-      ::testing::Not(op::ShapeWithLayout(ShapeUtil::MakeShape(F32, {7, 5}))));
+  EXPECT_THAT(p0.get(),
+              ::testing::Not(op::ShapeWithLayout(
+                  ShapeUtil::MakeValidatedShape(F32, {7, 5}).value())));
   EXPECT_THAT(p0.get(), ::testing::Not(op::ShapeWithLayout("f32[7,5]")));
   EXPECT_THAT(p0.get(), op::Shape(ShapeUtil::MakeShapeWithDenseLayout(
                             F32, {5, 7}, {0, 1})));
@@ -154,9 +157,11 @@ TEST_F(HloMatchersTest, ShapeMatcher) {
                   ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 7}, {1, 0}))));
   EXPECT_THAT(p0.get(), ::testing::Not(op::ShapeWithLayout("f32[5,7]{1,0}")));
 
-  EXPECT_THAT(Explain(p0.get(), op::Shape(ShapeUtil::MakeShape(F32, {7, 5}))),
-              "%param = f32[5,7]{0,1} parameter(0) has incorrect shape "
-              "(expected: f32[7,5])");
+  EXPECT_THAT(
+      Explain(p0.get(),
+              op::Shape(ShapeUtil::MakeValidatedShape(F32, {7, 5}).value())),
+      "%param = f32[5,7]{0,1} parameter(0) has incorrect shape "
+      "(expected: f32[7,5])");
   EXPECT_THAT(
       Explain(p0.get(), op::ShapeWithLayout(ShapeUtil::MakeShapeWithDenseLayout(
                             F32, {7, 5}, {1, 0}))),
@@ -165,16 +170,18 @@ TEST_F(HloMatchersTest, ShapeMatcher) {
 }
 
 TEST_F(HloMatchersTest, ShardingMatcher) {
-  auto p0 = HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {5}),
-                                            "param.0");
+  auto p0 = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeValidatedShape(F32, {5}).value(), "param.0");
   p0->clear_sharding();
-  auto p1 = HloInstruction::CreateParameter(1, ShapeUtil::MakeShape(F32, {7}),
-                                            "param.1");
+  auto p1 = HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeValidatedShape(F32, {7}).value(), "param.1");
   p1->set_sharding(HloSharding::AssignDevice(1));
 
-  auto tuple_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {7}), ShapeUtil::MakeShape(S32, {9}),
-       ShapeUtil::MakeShape(F32, {11})});
+  auto tuple_shape =
+      ShapeUtil::MakeValidatedTupleShape({ShapeUtil::MakeShape(F32, {7}),
+                                          ShapeUtil::MakeShape(S32, {9}),
+                                          ShapeUtil::MakeShape(F32, {11})})
+          .value();
   auto p2 = HloInstruction::CreateParameter(1, tuple_shape, "param.2");
   Array<int64_t> assignment({2});
   assignment.SetValues({0, 1});
@@ -241,7 +248,7 @@ ENTRY DotOperationFusion_TransposeFusion {
 }
 
 TEST_F(HloMatchersTest, ComparisonMatcher) {
-  auto shape = ShapeUtil::MakeShape(F32, {1});
+  auto shape = ShapeUtil::MakeValidatedShape(F32, {1}).value();
   auto p0 = HloInstruction::CreateParameter(0, shape, "param.0");
   auto p1 = HloInstruction::CreateParameter(1, shape, "param.1");
   auto eq = HloInstruction::CreateCompare(shape, p0.get(), p1.get(),
@@ -286,8 +293,9 @@ TEST_F(HloMatchersTest, AsyncCopyMatcher) {
 
   auto p0 = HloInstruction::CreateParameter(0, shape_memspace1, "p0");
   auto copy_start = HloInstruction::CreateCopyStart(
-      ShapeUtil::MakeTupleShape(
-          {shape_memspace2, shape_memspace1, ShapeUtil::MakeShape(U32, {})}),
+      ShapeUtil::MakeValidatedTupleShape(
+          {shape_memspace2, shape_memspace1, ShapeUtil::MakeShape(U32, {})})
+          .value(),
       p0.get());
   auto copy_done = HloInstruction::CreateUnary(
       shape_memspace2, HloOpcode::kCopyDone, copy_start.get());
@@ -329,7 +337,7 @@ ENTRY main {
 }
 
 TEST_F(HloMatchersTest, ReplicaGroupsMatcher) {
-  Shape shape = ShapeUtil::MakeShape(F32, {5, 7});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {5, 7}).value();
   std::unique_ptr<HloInstruction> p0 =
       HloInstruction::CreateParameter(0, shape, "param");
 
@@ -353,7 +361,7 @@ TEST_F(HloMatchersTest, ReplicaGroupsMatcher) {
 }
 
 TEST_F(HloMatchersTest, SourceTargetPairsMatcher) {
-  Shape shape = ShapeUtil::MakeShape(F32, {5, 7});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {5, 7}).value();
   std::unique_ptr<HloInstruction> p0 =
       HloInstruction::CreateParameter(0, shape, "param");
   std::vector<std::pair<int64_t, int64_t>> source_target_pairs = {
@@ -368,7 +376,7 @@ TEST_F(HloMatchersTest, SourceTargetPairsMatcher) {
 }
 
 TEST_F(HloMatchersTest, MetadataMatcher) {
-  Shape shape = ShapeUtil::MakeShape(F32, {5, 7});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {5, 7}).value();
   std::unique_ptr<HloInstruction> p0 =
       HloInstruction::CreateParameter(0, shape, "param");
   OpMetadata metadata;
