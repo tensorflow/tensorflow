@@ -117,8 +117,9 @@ static absl_nullable std::unique_ptr<HloModuleConfig> GetXlaBackendExtraOptions(
 }
 
 static llvm::PipelineTuningOptions GetPipelineTuningOptions(
-    const llvm::Module& module, IrCompiler::Options options) {
-  auto pto_from_options = [](const IrCompiler::Options opts) {
+    const llvm::Module& module, IrCompiler::Options options,
+    const llvm::TargetMachine* target_machine) {
+  auto pto_from_options = [&](const IrCompiler::Options opts) {
     llvm::PipelineTuningOptions pto;
     pto.LoopVectorization = !opts.optimize_for_size;
     pto.SLPVectorization =
@@ -127,6 +128,19 @@ static llvm::PipelineTuningOptions GetPipelineTuningOptions(
 
     // TODO(b/411125413): Re-enable SLPVectorization once the LLVM bug is fixed.
     pto.SLPVectorization = false;
+
+    // TODO(b/419635451): Without AVX512 loop unrolling leads to LLVM generating
+    // enormous IR that later times out during code generation (AVX2 doesn't
+    // have masked SIMD instructions, and control flow ends up vectorizing to a
+    // lot of scalar loads and stores, which takes forever to codegen in machine
+    // instruction selection). As a workaround, disable loop unrolling when
+    // AVX512 is not available. Revisit this decision once we migrate to new
+    // fusion emitters that do not rely on LLVM that much.
+    auto target_features = target_machine->getTargetFeatureString();
+    if (target_features.contains("+avx2") &&
+        !target_features.contains("+avx512")) {
+      pto.LoopUnrolling = false;
+    }
 
     return pto;
   };
@@ -281,7 +295,8 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> IrCompiler::operator()(
 
 llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
                                     llvm::TargetMachine* target_machine) const {
-  llvm::PipelineTuningOptions pto = GetPipelineTuningOptions(module, options_);
+  llvm::PipelineTuningOptions pto =
+      GetPipelineTuningOptions(module, options_, target_machine);
   llvm::LoopAnalysisManager lam;
   llvm::FunctionAnalysisManager fam;
   llvm::CGSCCAnalysisManager cgam;
