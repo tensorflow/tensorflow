@@ -122,8 +122,9 @@ absl::StatusOr<HloInstruction*> MakeSparseMetaOperand(
                                   shape.dimensions().end() - 1);
   dimensions.push_back(config.split_k);
   dimensions.push_back(shape.dimensions().back() / config.split_k);
-  Shape new_shape = ShapeUtil::MakeShapeWithDescendingLayout(
-      shape.element_type(), dimensions);
+  Shape new_shape = ShapeUtil::MakeValidatedShapeWithDescendingLayout(
+                        shape.element_type(), dimensions)
+                        .value();
   return MakeBitcastHlo(meta, new_shape);
 }
 
