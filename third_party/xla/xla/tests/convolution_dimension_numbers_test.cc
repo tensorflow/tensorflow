@@ -99,8 +99,9 @@ TEST_F(ConvolutionDimensionNumbersTest, TwoConvsWithDifferentDimensionNumbers) {
 
   XlaBuilder builder(TestName());
   auto input = ConstantR4FromArray4D<float>(&builder, *input_array);
-  auto weight =
-      Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {4, 3, 1, 1}), "weight");
+  auto weight = Parameter(
+      &builder, 0, ShapeUtil::MakeValidatedShape(F32, {4, 3, 1, 1}).value(),
+      "weight");
   auto conv1 = Conv(input, weight, {1, 1}, Padding::kValid);
 
   ConvolutionDimensionNumbers dim_nums =

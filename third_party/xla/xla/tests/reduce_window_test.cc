@@ -342,7 +342,7 @@ XLA_TEST_P(ReduceWindowTest, NonstandardReduceFunction) {
   const auto input = CreateConstantFromArray(input_array, &builder_);
 
   Padding padding = Padding::kValid;
-  const Shape scalar = ShapeUtil::MakeShape(FloatType(), {});
+  const Shape scalar = ShapeUtil::MakeValidatedShape(FloatType(), {}).value();
   auto b = builder_.CreateSubBuilder("unusual");
   auto lhs = Parameter(b.get(), 0, scalar, "lhs");
   auto rhs = Parameter(b.get(), 1, scalar, "rhs");
@@ -392,7 +392,7 @@ XLA_TEST_P(ReduceWindowTest, R4UnitWindow) {
 
 XLA_TEST_P(ReduceWindowTest, R6AddMultipleStrides) {
   std::vector<int64_t> input_dims(6, 8);
-  auto shape = ShapeUtil::MakeShape(F32, input_dims);
+  auto shape = ShapeUtil::MakeValidatedShape(F32, input_dims).value();
 
   Literal arg_literal(shape);
   arg_literal.PopulateWithValue(1.0f);
@@ -412,7 +412,7 @@ XLA_TEST_P(ReduceWindowTest, R6AddMultipleStrides) {
 
 XLA_TEST_P(ReduceWindowTest, R6Add) {
   std::vector<int64_t> input_dims(6, 8);
-  auto shape = ShapeUtil::MakeShape(F32, input_dims);
+  auto shape = ShapeUtil::MakeValidatedShape(F32, input_dims).value();
 
   Literal arg_literal =
       LiteralUtil::CreateFullWithDescendingLayout<float>(input_dims, 1.0f);
