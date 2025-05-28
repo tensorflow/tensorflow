@@ -30,11 +30,11 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/context.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pass_pipeline.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_export.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_import.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_pass_pipeline.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/types.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/instrumentations/save_report.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/instrumentations/tf_save_report.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
@@ -46,6 +46,8 @@ limitations under the License.
 
 namespace mlir::quant::stablehlo {
 
+using ::mlir::tf_quant::stablehlo::AddWeightOnlyQuantizationPasses;
+using ::mlir::tf_quant::stablehlo::SaveQuantizationReportInstrumentation;
 using ::stablehlo::quantization::GetReportFilePath;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::tensorflow::SignatureDef;

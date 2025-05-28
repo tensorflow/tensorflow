@@ -46,8 +46,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_import.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_post_calibration.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_pre_calibration.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_weight_only_ptq.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/types.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/weight_only_ptq.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
@@ -77,9 +77,9 @@ using ::mlir::quant::stablehlo::GetFunctionAliases;
 using ::mlir::quant::stablehlo::kExportStepSuffix;
 using ::mlir::quant::stablehlo::RunCalibrationPasses;
 using ::mlir::quant::stablehlo::UpdateFunctionAliases;
+using ::mlir::quant::stablehlo::WeightOnlyPtqComponent;
 using ::mlir::tf_quant::stablehlo::PostCalibrationComponent;
 using ::mlir::tf_quant::stablehlo::PreCalibrationComponent;
-using ::mlir::tf_quant::stablehlo::WeightOnlyPtqComponent;
 using ::stablehlo::quantization::AddCalibrationStatistics;
 using ::stablehlo::quantization::ChangeToQuantizedFilename;
 using ::stablehlo::quantization::DebuggerConfig;

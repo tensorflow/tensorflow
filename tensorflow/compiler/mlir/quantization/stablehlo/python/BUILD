@@ -139,7 +139,7 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:config",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:static_range_ptq",
-        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:tf_weight_only_ptq",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:weight_only_ptq",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/container:flat_hash_map",
