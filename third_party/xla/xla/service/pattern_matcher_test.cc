@@ -80,7 +80,7 @@ TEST_F(PatternMatcherTest, AddOp) {
 }
 
 TEST_F(PatternMatcherTest, ScalarShape) {
-  auto scalar_shape = ShapeUtil::MakeShape(F32, {});
+  auto scalar_shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
   Shape* matched_shape;
   EXPECT_TRUE(Match(&scalar_shape, match::Shape(&matched_shape).IsScalar()));
   EXPECT_EQ(matched_shape, &scalar_shape);
@@ -95,7 +95,7 @@ TEST_F(PatternMatcherTest, ScalarShape) {
 }
 
 TEST_F(PatternMatcherTest, DenseArrayShape) {
-  auto array_shape = ShapeUtil::MakeShape(F32, {2, 3, 4});
+  auto array_shape = ShapeUtil::MakeValidatedShape(F32, {2, 3, 4}).value();
   Shape* matched_shape;
   EXPECT_TRUE(Match(&array_shape, match::Shape(&matched_shape).IsArray()));
   EXPECT_EQ(matched_shape, &array_shape);
@@ -132,10 +132,12 @@ TEST_F(PatternMatcherTest, DenseArrayShapeWithLayout) {
 }
 
 TEST_F(PatternMatcherTest, TupleShape) {
-  auto tuple_shape = ShapeUtil::MakeTupleShape({
-      ShapeUtil::MakeShape(F32, {1, 2, 3}),
-      ShapeUtil::MakeShape(S32, {4, 5}),
-  });
+  auto tuple_shape = ShapeUtil::MakeValidatedTupleShape(
+                         {
+                             ShapeUtil::MakeShape(F32, {1, 2, 3}),
+                             ShapeUtil::MakeShape(S32, {4, 5}),
+                         })
+                         .value();
   EXPECT_TRUE(Match(&tuple_shape, match::Shape().IsTuple()));
   EXPECT_FALSE(Match(&tuple_shape, match::Shape().IsArray()));
   EXPECT_FALSE(Match(&tuple_shape, match::Shape().IsScalar()));
@@ -407,7 +409,7 @@ TEST_F(PatternMatcherTest, AllOf) {
                           ParseAndReturnVerifiedModule(kModuleStr));
   auto* root = hlo_module->entry_computation()->root_instruction();
 
-  auto f16_scalar = ShapeUtil::MakeShape(F16, {});
+  auto f16_scalar = ShapeUtil::MakeValidatedShape(F16, {}).value();
   auto f16_pattern = Constant().WithShapeEqualTo(&f16_scalar);
   auto f16_compatible_pattern = Constant().WithShapeCompatibleTo(&f16_scalar);
   auto scalar_pattern = Constant().WithShape(match::Shape().IsScalar());
@@ -698,11 +700,11 @@ TEST_F(PatternMatcherTest, ShapeDescribeToAndExplain) {
       m::Shape().EqualTo(&shape), "a shape equal to f32[1,2]{0,1}",
       "Shape not equal to f32[1,2]{0,1}\n"
       "in f32[1,2]{1,0}");
-  EXPECT_DESC_AND_EXPLANATION(ShapeUtil::MakeShape(F32, {2, 2}),
-                              m::Shape().CompatibleTo(&shape),
-                              "a shape compatible with f32[1,2]",
-                              "Shape not compatible with f32[1,2]\n"
-                              "in f32[2,2]{1,0}");
+  EXPECT_DESC_AND_EXPLANATION(
+      ShapeUtil::MakeValidatedShape(F32, {2, 2}).value(),
+      m::Shape().CompatibleTo(&shape), "a shape compatible with f32[1,2]",
+      "Shape not compatible with f32[1,2]\n"
+      "in f32[2,2]{1,0}");
   EXPECT_DESC_AND_EXPLANATION(shape, m::Shape().WithElementType(F16),
                               "a shape with element type F16",
                               "Shape does not have element type F16\n"
@@ -757,7 +759,8 @@ TEST_F(PatternMatcherTest, ShapeDescribeToAndExplain) {
                               "No subshape at {10}\n"
                               "in f32[1,2]{0,1}");
   EXPECT_DESC_AND_EXPLANATION(
-      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {2, 2})}),
+      ShapeUtil::MakeValidatedTupleShape({ShapeUtil::MakeShape(F32, {2, 2})})
+          .value(),
       m::Shape().WithSubshapeEqualTo({0}, &shape),
       "a shape with subshape at index {0} which is\n"
       "  a shape equal to f32[1,2]{0,1}",
@@ -772,7 +775,8 @@ TEST_F(PatternMatcherTest, ShapeDescribeToAndExplain) {
                               "No subshape at {10}\n"
                               "in f32[1,2]{0,1}");
   EXPECT_DESC_AND_EXPLANATION(
-      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {2, 2})}),
+      ShapeUtil::MakeValidatedTupleShape({ShapeUtil::MakeShape(F32, {2, 2})})
+          .value(),
       m::Shape().WithSubshapeCompatibleTo({0}, &shape),
       "a shape with subshape at index {0} which is\n"
       "  a shape compatible with f32[1,2]",
@@ -781,7 +785,8 @@ TEST_F(PatternMatcherTest, ShapeDescribeToAndExplain) {
       "in subshape at {0}\n"
       "in (f32[2,2])");
   EXPECT_DESC_AND_EXPLANATION(
-      ShapeUtil::MakeTupleShape({ShapeUtil::MakeTupleShape({shape})}),
+      ShapeUtil::MakeValidatedTupleShape({ShapeUtil::MakeTupleShape({shape})})
+          .value(),
       m::Shape().WithSubshape({0, 0}, m::Shape().IsScalar()),
       "a shape with subshape at index {0,0} which is\n"
       "  a shape that represents a scalar",
@@ -799,8 +804,9 @@ std::unique_ptr<HloInstruction> SetName(absl::string_view name,
 
 TEST_F(PatternMatcherTest, HloInstructionDescribeToAndExplain) {
   std::unique_ptr<HloInstruction> iota =
-      SetName("i", HloInstruction::CreateIota(ShapeUtil::MakeShape(S32, {42}),
-                                              /*iota_dimension=*/0));
+      SetName("i", HloInstruction::CreateIota(
+                       ShapeUtil::MakeValidatedShape(S32, {42}).value(),
+                       /*iota_dimension=*/0));
   std::unique_ptr<HloInstruction> constant =
       SetName("c", HloInstruction::CreateConstant(LiteralUtil::CreateR0(0)));
 
@@ -857,9 +863,9 @@ TEST_F(PatternMatcherTest, HloInstructionDescribeToAndExplain) {
       "in i = s32[42]{0} iota(), iota_dimension=0");
 
   EXPECT_DESC_AND_EXPLANATION(
-      SetName("a", HloInstruction::CreateBinary(ShapeUtil::MakeShape(S32, {}),
-                                                HloOpcode::kAdd, constant.get(),
-                                                constant.get())),
+      SetName("a", HloInstruction::CreateBinary(
+                       ShapeUtil::MakeValidatedShape(S32, {}).value(),
+                       HloOpcode::kAdd, constant.get(), constant.get())),
       m::Op().WithOperand(1, m::Op().IsNonConstant()),
       "an HloInstruction with operand 1 which is:\n"
       "  an HloInstruction with any opcode other than constant",
@@ -930,7 +936,7 @@ TEST_F(PatternMatcherTest, HloInstructionDescribeToAndExplain) {
 }
 
 TEST_F(PatternMatcherTest, HloInstructionMatcherAnyOrderDescribeTo) {
-  auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
+  auto scalar_s32 = ShapeUtil::MakeValidatedShape(S32, {}).value();
   EXPECT_DESC_AND_EXPLANATION(
       SetName("a", HloInstruction::CreateBinary(
                        scalar_s32, HloOpcode::kAdd,
@@ -987,7 +993,7 @@ TEST_F(PatternMatcherTest, HloInstructionMatcherAnyOrderDescribeTo) {
 
 TEST_F(PatternMatcherTest, AnyOfMatcherDescribeToAndExplain) {
   EXPECT_DESC_AND_EXPLANATION(
-      ShapeUtil::MakeScalarShape(S32),
+      ShapeUtil::MakeValidatedScalarShape(S32).value(),
       m::AnyOf<Shape>(m::Shape().WithRank(1), m::Shape().WithElementType(F32)),
       "any of:\n"
       " - a shape that has 1 dimension OR\n"
@@ -1006,8 +1012,8 @@ TEST_F(PatternMatcherTest, AnyOfMatcherDescribeToAndExplain) {
 }
 
 TEST_F(PatternMatcherTest, Parameter) {
-  auto param =
-      HloInstruction::CreateParameter(1, ShapeUtil::MakeShape(F32, {}), "p1");
+  auto param = HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeValidatedShape(F32, {}).value(), "p1");
   auto non_param =
       SetName("c", HloInstruction::CreateConstant(LiteralUtil::CreateR0(0)));
   EXPECT_FALSE(Match(param.get(), m::Parameter(0)));
@@ -1022,16 +1028,17 @@ TEST_F(PatternMatcherTest, Parameter) {
                               " * which is parameter 1",
                               "HloInstruction doesn't have opcode parameter\n"
                               "in c = s32[] constant(0)");
-  EXPECT_EQ(Explanation(HloInstruction::CreateParameter(
-                            0, ShapeUtil::MakeShape(F32, {}), "p0"),
-                        m::Parameter(1)),
-            "HloInstruction is not parameter 1\n"
-            "in p0 = f32[] parameter(0)");
+  EXPECT_EQ(
+      Explanation(HloInstruction::CreateParameter(
+                      0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "p0"),
+                  m::Parameter(1)),
+      "HloInstruction is not parameter 1\n"
+      "in p0 = f32[] parameter(0)");
 }
 
 TEST_F(PatternMatcherTest, OneUseAndOneUser) {
-  auto param =
-      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0");
+  auto param = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "p0");
 
   EXPECT_FALSE(Match(param.get(), m::Op().WithOneUse()));
   EXPECT_DESC_AND_EXPLANATION(
@@ -1049,15 +1056,16 @@ TEST_F(PatternMatcherTest, OneUseAndOneUser) {
       "in p0 = f32[] parameter(0)");
 
   {
-    auto reshape =
-        SetName("r", HloInstruction::CreateReshape(
-                         ShapeUtil::MakeShape(F32, {1}), param.get()));
+    auto reshape = SetName(
+        "r", HloInstruction::CreateReshape(
+                 ShapeUtil::MakeValidatedShape(F32, {1}).value(), param.get()));
     EXPECT_TRUE(Match(param.get(), m::Op().WithOneUse()));
     EXPECT_TRUE(Match(param.get(), m::Op().WithOneUser()));
 
-    auto reshape1 =
-        SetName("r1", HloInstruction::CreateReshape(
-                          ShapeUtil::MakeShape(F32, {1}), param.get()));
+    auto reshape1 = SetName(
+        "r1",
+        HloInstruction::CreateReshape(
+            ShapeUtil::MakeValidatedShape(F32, {1}).value(), param.get()));
     EXPECT_FALSE(Match(param.get(), m::Op().WithOneUse()));
     EXPECT_FALSE(Match(param.get(), m::Op().WithOneUser()));
 
@@ -1074,8 +1082,8 @@ TEST_F(PatternMatcherTest, OneUseAndOneUser) {
   }
 
   auto add = SetName("add", HloInstruction::CreateBinary(
-                                ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd,
-                                param.get(), param.get()));
+                                ShapeUtil::MakeValidatedShape(F32, {}).value(),
+                                HloOpcode::kAdd, param.get(), param.get()));
   EXPECT_TRUE(Match(param.get(), m::Op().WithOneUser()));
   EXPECT_FALSE(Match(param.get(), m::Op().WithOneUse()));
   EXPECT_EQ(Explanation(param.get(), m::Op().WithOneUse()),
@@ -1085,25 +1093,28 @@ TEST_F(PatternMatcherTest, OneUseAndOneUser) {
 }
 
 TEST_F(PatternMatcherTest, MatchSingleUserOnlyUnaryOpOneUser) {
-  auto param =
-      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p");
-  auto reshape =
-      SetName("reshape", HloInstruction::CreateReshape(
-                             ShapeUtil::MakeShape(F32, {1}), param.get()));
+  auto param = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "p");
+  auto reshape = SetName(
+      "reshape",
+      HloInstruction::CreateReshape(
+          ShapeUtil::MakeValidatedShape(F32, {1}).value(), param.get()));
   EXPECT_TRUE(MatchSingleUserOnly(reshape.get(), m::Reshape(m::Op())));
   // Equivalent call of Match:
   EXPECT_TRUE(Match(reshape.get(), m::Reshape(m::Op().WithOneUser())));
 }
 
 TEST_F(PatternMatcherTest, MatchSingleUserOnlyUnaryOpTwoUsers) {
-  auto param =
-      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p");
-  auto reshape =
-      SetName("reshape", HloInstruction::CreateReshape(
-                             ShapeUtil::MakeShape(F32, {1}), param.get()));
-  auto bitcast =
-      SetName("bitcast", HloInstruction::CreateBitcast(
-                             ShapeUtil::MakeShape(F32, {1}), param.get()));
+  auto param = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "p");
+  auto reshape = SetName(
+      "reshape",
+      HloInstruction::CreateReshape(
+          ShapeUtil::MakeValidatedShape(F32, {1}).value(), param.get()));
+  auto bitcast = SetName(
+      "bitcast",
+      HloInstruction::CreateBitcast(
+          ShapeUtil::MakeValidatedShape(F32, {1}).value(), param.get()));
   EXPECT_TRUE(MatchSingleUserOnly(param.get(), m::Op()));
   // Equivalent call of Match:
   EXPECT_TRUE(Match(param.get(), m::Op()));
@@ -1120,11 +1131,11 @@ TEST_F(PatternMatcherTest, MatchSingleUserOnlyUnaryOpTwoUsers) {
 }
 
 TEST_F(PatternMatcherTest, MatchSingleUserOnlyBinaryOpOneUser) {
-  auto param0 =
-      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0");
+  auto param0 = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "p0");
   auto add = SetName("add", HloInstruction::CreateBinary(
-                                ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd,
-                                param0.get(), param0.get()));
+                                ShapeUtil::MakeValidatedShape(F32, {}).value(),
+                                HloOpcode::kAdd, param0.get(), param0.get()));
   EXPECT_TRUE(MatchSingleUserOnly(add.get(), m::Add(m::Op(), m::Op())));
   // Equivalent call of Match:
   EXPECT_TRUE(
@@ -1132,17 +1143,17 @@ TEST_F(PatternMatcherTest, MatchSingleUserOnlyBinaryOpOneUser) {
 }
 
 TEST_F(PatternMatcherTest, MatchSingleUserOnlyBinaryOpTwoUsers) {
-  auto param0 =
-      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0");
-  auto param1 =
-      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p1");
+  auto param0 = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "p0");
+  auto param1 = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "p1");
   auto add = SetName("add", HloInstruction::CreateBinary(
-                                ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd,
-                                param0.get(), param0.get()));
+                                ShapeUtil::MakeValidatedShape(F32, {}).value(),
+                                HloOpcode::kAdd, param0.get(), param0.get()));
   auto mul =
-      SetName("mul", HloInstruction::CreateBinary(ShapeUtil::MakeShape(F32, {}),
-                                                  HloOpcode::kMultiply,
-                                                  param1.get(), param0.get()));
+      SetName("mul", HloInstruction::CreateBinary(
+                         ShapeUtil::MakeValidatedShape(F32, {}).value(),
+                         HloOpcode::kMultiply, param1.get(), param0.get()));
   EXPECT_TRUE(MatchSingleUserOnly(mul.get(), m::Multiply()));
   // Equivalent call of Match:
   EXPECT_TRUE(Match(mul.get(), m::Multiply()));
@@ -1165,19 +1176,19 @@ TEST_F(PatternMatcherTest, MatchSingleUserOnlyBinaryOpTwoUsers) {
 }
 
 TEST_F(PatternMatcherTest, MatchSingleUserOnlyBinaryOpTwoUsersLowerLevel) {
-  auto param0 =
-      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0");
-  auto param1 =
-      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p1");
+  auto param0 = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "p0");
+  auto param1 = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "p1");
   auto add = SetName("add", HloInstruction::CreateBinary(
-                                ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd,
-                                param0.get(), param0.get()));
+                                ShapeUtil::MakeValidatedShape(F32, {}).value(),
+                                HloOpcode::kAdd, param0.get(), param0.get()));
   auto mul =
-      SetName("mul", HloInstruction::CreateBinary(ShapeUtil::MakeShape(F32, {}),
-                                                  HloOpcode::kMultiply,
-                                                  param1.get(), param0.get()));
+      SetName("mul", HloInstruction::CreateBinary(
+                         ShapeUtil::MakeValidatedShape(F32, {}).value(),
+                         HloOpcode::kMultiply, param1.get(), param0.get()));
   auto div = SetName("div", HloInstruction::CreateBinary(
-                                ShapeUtil::MakeShape(F32, {}),
+                                ShapeUtil::MakeValidatedShape(F32, {}).value(),
                                 HloOpcode::kDivide, add.get(), mul.get()));
   EXPECT_TRUE(
       MatchSingleUserOnly(div.get(), m::Divide(m::Add(), m::Multiply())));
@@ -1199,7 +1210,7 @@ TEST_F(PatternMatcherTest, MatchSingleUserOnlyBinaryOpTwoUsersLowerLevel) {
 }
 
 TEST_F(PatternMatcherTest, Comparison) {
-  auto shape = ShapeUtil::MakeShape(F32, {1});
+  auto shape = ShapeUtil::MakeValidatedShape(F32, {1}).value();
   auto p0 = HloInstruction::CreateParameter(0, shape, "param.0");
   auto p1 = HloInstruction::CreateParameter(1, shape, "param.1");
   auto eq = HloInstruction::CreateCompare(shape, p0.get(), p1.get(),
@@ -1243,11 +1254,12 @@ TEST_F(PatternMatcherTest, Comparison) {
 TEST_F(PatternMatcherTest, ConvDnums) {
   TF_ASSERT_OK_AND_ASSIGN(ConvolutionDimensionNumbers dnums,
                           ParseConvolutionDimensionNumbers("bf01_oi01->bf01"));
-  auto param =
-      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0");
-  auto op = HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
-                                             /*operands=*/{},
-                                             /*custom_call_target=*/"foo");
+  auto param = HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "p0");
+  auto op = HloInstruction::CreateCustomCall(
+      ShapeUtil::MakeValidatedShape(F32, {}).value(),
+      /*operands=*/{},
+      /*custom_call_target=*/"foo");
   op->set_convolution_dimension_numbers(dnums);
 
   EXPECT_TRUE(Match(op.get(), m::CustomCall().WithConvDnums(dnums)));

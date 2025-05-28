@@ -24,7 +24,7 @@ namespace xla {
 namespace {
 
 TEST(ShardingConfigTest, ConfigToProtoToConfigMatchesOriginal) {
-  const Shape shape = ShapeUtil::MakeShape(F32, {1024});
+  const Shape shape = ShapeUtil::MakeValidatedShape(F32, {1024}).value();
   const ShardingConfig config = {
       {{HloSharding::Manual()},
        {HloSharding::Replicate()},

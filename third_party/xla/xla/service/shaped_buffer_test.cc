@@ -43,7 +43,7 @@ TEST(ShapedBufferTest, ScopedShapeBufferAsShapedBufferB71629047) {
   TF_ASSERT_OK_AND_ASSIGN(auto executors,
                           xla::PlatformUtil::GetStreamExecutors(platform));
   xla::se::StreamExecutorMemoryAllocator allocator(platform, executors);
-  const xla::Shape shape = xla::ShapeUtil::MakeShape(xla::F32, {});
+  const xla::Shape shape = ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
   const int kDeviceOrdinal = 0;
   auto scoped_buffer = std::make_unique<xla::ScopedShapedBuffer>(
       shape, shape, &allocator, kDeviceOrdinal);
@@ -105,7 +105,7 @@ class TestAllocator : public se::DeviceMemoryAllocator {
 };
 
 TEST(ScopedShapedBufferTest, TestMoveAssignmentOperator) {
-  Shape s = ShapeUtil::MakeShape(F32, {1});
+  Shape s = ShapeUtil::MakeValidatedShape(F32, {1}).value();
   TestAllocator allocator;
   ScopedShapedBuffer sb1(s, &allocator, /*device_ordinal=*/0);
   sb1.set_buffer(allocator.Allocate(/*device_ordinal=*/0, /*size=*/42).value(),
@@ -123,9 +123,9 @@ TEST(ScopedShapedBufferTest, TestMoveAssignmentOperator) {
 TEST(ScopedShapedBufferTest, TestTakeSubTree) {
   TestAllocator allocator;
 
-  Shape s = ShapeUtil::MakeShape(F32, {1});
-  s = xla::ShapeUtil::MakeTupleShape(std::vector<xla::Shape>(2, s));
-  s = xla::ShapeUtil::MakeTupleShape(std::vector<xla::Shape>(3, s));
+  Shape s = ShapeUtil::MakeValidatedShape(F32, {1}).value();
+  s = ShapeUtil::MakeValidatedTupleShape(std::vector<xla::Shape>(2, s)).value();
+  s = ShapeUtil::MakeValidatedTupleShape(std::vector<xla::Shape>(3, s)).value();
 
   ScopedShapedBuffer sb(s, &allocator, /*device_ordinal=*/0);
   sb.buffers().ForEachMutableElement(
@@ -161,9 +161,9 @@ TEST(ScopedShapedBufferTest, TestTakeSubTree) {
 }
 
 TEST(ScopedShapedBufferTest, TestSubShapeTree) {
-  Shape array_shape = ShapeUtil::MakeShape(F32, {1});
+  Shape array_shape = ShapeUtil::MakeValidatedShape(F32, {1}).value();
   Shape tuple_shape =
-      xla::ShapeUtil::MakeTupleShape({array_shape, array_shape});
+      ShapeUtil::MakeValidatedTupleShape({array_shape, array_shape}).value();
   TestAllocator allocator;
   ScopedShapedBuffer sb(tuple_shape, &allocator, /*device_ordinal=*/0);
   sb.buffers().ForEachMutableElement(
@@ -187,10 +187,11 @@ void BM_TakeSubTree(::testing::benchmark::State& state) {
   const int fan_out = state.range(1);
 
   TestAllocator allocator;
-  xla::Shape shape = xla::ShapeUtil::MakeShape(xla::F32, {32, 64, 128});
+  xla::Shape shape =
+      ShapeUtil::MakeValidatedShape(xla::F32, {32, 64, 128}).value();
   for (int i = 0; i < depth; ++i) {
     std::vector<xla::Shape> shapes(fan_out, shape);
-    shape = xla::ShapeUtil::MakeTupleShape(shapes);
+    shape = ShapeUtil::MakeValidatedTupleShape(shapes).value();
   }
   xla::ScopedShapedBuffer shaped_buffer(shape, /*allocator=*/&allocator,
                                         /*device_ordinal=*/0);
