@@ -91,18 +91,14 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE void ParallelLoopRunner::ScheduleAll(
   size_t num_workers = std::min(std::min(num_tasks, num_threads()),
                                 size_t{std::numeric_limits<uint16_t>::max()});
 
-  tsl::CountDownAsyncValueRef<tsl::Chain> count_down(num_workers);
-  auto count_down_done = count_down.AsRef();
+  auto parallelize =
+      [this, num_workers, num_tasks,
+       parallel_task = std::forward<ParallelTask>(parallel_task)](tsl::Chain) {
+        return Worker::Parallelize(device_, num_workers, num_tasks,
+                                   std::move(parallel_task));
+      };
 
-  auto parallelize = [this, num_tasks, count_down = std::move(count_down),
-                      parallel_task =
-                          std::forward<ParallelTask>(parallel_task)] {
-    Worker::Parallelize(device_, std::move(count_down), num_tasks,
-                        std::move(parallel_task));
-  };
-
-  done_event_.AndThen(std::move(parallelize));
-  done_event_ = std::move(count_down_done);
+  done_event_ = done_event_.FlatMap(parallelize);
 }
 
 // A collection of helper macros to define parallel task structs for ND loops
