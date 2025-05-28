@@ -853,7 +853,27 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       return self._infer_output_signature(inputs, args, kwargs, input_masks)
 
   def _infer_output_signature(self, inputs, args, kwargs, input_masks):
-    """TODO(kaftan): Docstring."""
+    """Infers the output signature by calling the layer in a scratch graph.
+    
+    This method creates a temporary FuncGraph, converts the input KerasTensors
+    to placeholder tensors, calls the layer's call function within the scratch
+    graph to determine the output shapes and types, then converts the outputs
+    back to KerasTensors with proper signatures.
+    
+    This is used during symbolic construction mode when the layer is not dynamic
+    and we need to determine the output signature without actually executing
+    the computation.
+    
+    Args:
+      inputs: KerasTensors or nested structure of KerasTensors.
+      args: Additional positional arguments to pass to the layer's call method.
+      kwargs: Additional keyword arguments to pass to the layer's call method.
+      input_masks: Input mask tensors or nested structure of mask tensors.
+      
+    Returns:
+      KerasTensors or nested structure of KerasTensors representing the 
+      layer's output signature.
+    """
 
     call_fn = self.call
     # Wrapping `call` function in autograph to allow for dynamic control
