@@ -1642,7 +1642,7 @@ absl::Status HloEvaluator::HandleTuple(const HloInstruction* tuple) {
 
   if (state_.has_evaluated(tuple)) {
     CHECK(new_result.IsDetermined(visitor_shape_index_));
-    Literal literal;
+    Literal literal = Literal::CreateFromShape(new_result.shape());
     TF_RETURN_IF_ERROR(
         literal.CopyFrom(new_result,
                          /*dest_shape_index=*/visitor_shape_index_,
