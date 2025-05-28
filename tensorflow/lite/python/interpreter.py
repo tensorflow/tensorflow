@@ -955,7 +955,8 @@ class Interpreter:
     interpreter.allocate_tensors()  # This will throw RuntimeError
     for i in range(10):
       input.fill(3.)
-      interpreter.invoke()  # this will throw RuntimeError since input, output
+      interpreter.invoke()  # This will throw RuntimeError since input, output
+                            # numpy arrays are now invalid due to allocate_tensors()
     ```
 
     Args:
