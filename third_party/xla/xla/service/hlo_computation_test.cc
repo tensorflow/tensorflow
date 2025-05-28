@@ -81,7 +81,7 @@ class HloComputationTest : public HloHardwareIndependentTestBase {
     return builder.Build();
   }
 
-  Shape r0f32_ = ShapeUtil::MakeShape(F32, {});
+  Shape r0f32_ = ShapeUtil::MakeValidatedShape(F32, {}).value();
 };
 
 TEST_F(HloComputationTest, GetEmbeddedComputationsEmpty) {
@@ -562,8 +562,10 @@ TEST_F(HloComputationTest, ReplaceParameter) {
                           ParseAndReturnUnverifiedModule(kHloModule));
   HloComputation* body = module->GetComputationWithName("body");
 
-  Shape new_param_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(S32, {2}), ShapeUtil::MakeShape(S32, {})});
+  Shape new_param_shape =
+      ShapeUtil::MakeValidatedTupleShape(
+          {ShapeUtil::MakeShape(S32, {2}), ShapeUtil::MakeShape(S32, {})})
+          .value();
   body->ReplaceParameter(
       0, HloInstruction::CreateParameter(0, new_param_shape, "new_p_body"));
 
@@ -604,18 +606,18 @@ TEST_F(HloComputationTest, CloneWithControlDependency) {
 
 TEST_F(HloComputationTest, CloneWithReplacements) {
   auto builder = HloComputation::Builder(TestName());
-  Shape r0s64 = ShapeUtil::MakeShape(S64, {});
-  Shape r0s32 = ShapeUtil::MakeShape(S32, {});
-  Shape r0u32 = ShapeUtil::MakeShape(U32, {});
+  Shape r0s64 = ShapeUtil::MakeValidatedShape(S64, {}).value();
+  Shape r0s32 = ShapeUtil::MakeValidatedShape(S32, {}).value();
+  Shape r0u32 = ShapeUtil::MakeValidatedShape(U32, {}).value();
   auto param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r0f32_, "p.0.lhs"));
   auto param1 = builder.AddInstruction(
       HloInstruction::CreateParameter(1, r0f32_, "p.0.rhs"));
   auto param2 =
       builder.AddInstruction(HloInstruction::CreateParameter(2, r0s64, "p.1"));
-  auto lt = builder.AddInstruction(
-      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), param0,
-                                    param1, ComparisonDirection::kLt));
+  auto lt = builder.AddInstruction(HloInstruction::CreateCompare(
+      ShapeUtil::MakeValidatedShape(PRED, {}).value(), param0, param1,
+      ComparisonDirection::kLt));
   auto module = CreateNewVerifiedModule();
   auto computation =
       module->AddEntryComputation(builder.Build(/*root_instruction=*/lt));
@@ -640,18 +642,18 @@ TEST_F(HloComputationTest, CloneWithReplacements) {
 
 TEST_F(HloComputationTest, CloneInContext) {
   HloComputation::Builder builder(TestName());
-  Shape r0s64 = ShapeUtil::MakeShape(S64, {});
-  Shape r0s32 = ShapeUtil::MakeShape(S32, {});
-  Shape r0u32 = ShapeUtil::MakeShape(U32, {});
+  Shape r0s64 = ShapeUtil::MakeValidatedShape(S64, {}).value();
+  Shape r0s32 = ShapeUtil::MakeValidatedShape(S32, {}).value();
+  Shape r0u32 = ShapeUtil::MakeValidatedShape(U32, {}).value();
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r0f32_, "p.0.lhs"));
   HloInstruction* param1 = builder.AddInstruction(
       HloInstruction::CreateParameter(1, r0f32_, "p.0.rhs"));
   HloInstruction* param2 =
       builder.AddInstruction(HloInstruction::CreateParameter(2, r0s64, "p.1"));
-  HloInstruction* lt = builder.AddInstruction(
-      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), param0,
-                                    param1, ComparisonDirection::kLt));
+  HloInstruction* lt = builder.AddInstruction(HloInstruction::CreateCompare(
+      ShapeUtil::MakeValidatedShape(PRED, {}).value(), param0, param1,
+      ComparisonDirection::kLt));
   std::unique_ptr<VerifiedHloModule> module = CreateNewVerifiedModule();
   const HloComputation& computation =
       *module->AddEntryComputation(builder.Build(/*root_instruction=*/lt));
@@ -679,10 +681,10 @@ TEST_F(HloComputationTest, CloneInContext) {
 }
 
 TEST_F(HloComputationTest, Stringification) {
-  const Shape s1 = ShapeUtil::MakeShape(F32, {5, 10});
-  const Shape s2 = ShapeUtil::MakeShape(F32, {20, 10});
-  const Shape s2t = ShapeUtil::MakeShape(F32, {10, 20});
-  const Shape sout = ShapeUtil::MakeShape(F32, {5, 20});
+  const Shape s1 = ShapeUtil::MakeValidatedShape(F32, {5, 10}).value();
+  const Shape s2 = ShapeUtil::MakeValidatedShape(F32, {20, 10}).value();
+  const Shape s2t = ShapeUtil::MakeValidatedShape(F32, {10, 20}).value();
+  const Shape sout = ShapeUtil::MakeValidatedShape(F32, {5, 20}).value();
 
   HloComputation::Builder builder("TransposeDot");
   HloInstruction* x =
@@ -715,10 +717,10 @@ TEST_F(HloComputationTest, Stringification) {
 }
 
 TEST_F(HloComputationTest, StringificationIndent) {
-  const Shape s1 = ShapeUtil::MakeShape(F32, {5, 10});
-  const Shape s2 = ShapeUtil::MakeShape(F32, {20, 10});
-  const Shape s2t = ShapeUtil::MakeShape(F32, {10, 20});
-  const Shape sout = ShapeUtil::MakeShape(F32, {5, 20});
+  const Shape s1 = ShapeUtil::MakeValidatedShape(F32, {5, 10}).value();
+  const Shape s2 = ShapeUtil::MakeValidatedShape(F32, {20, 10}).value();
+  const Shape s2t = ShapeUtil::MakeValidatedShape(F32, {10, 20}).value();
+  const Shape sout = ShapeUtil::MakeValidatedShape(F32, {5, 20}).value();
 
   HloComputation::Builder builder("TransposeDot");
   HloInstruction* x =
@@ -752,10 +754,10 @@ TEST_F(HloComputationTest, StringificationIndent) {
 }
 
 TEST_F(HloComputationTest, StringificationCanonical) {
-  const Shape s1 = ShapeUtil::MakeShape(F32, {5, 10});
-  const Shape s2 = ShapeUtil::MakeShape(F32, {20, 10});
-  const Shape s2t = ShapeUtil::MakeShape(F32, {10, 20});
-  const Shape sout = ShapeUtil::MakeShape(F32, {5, 20});
+  const Shape s1 = ShapeUtil::MakeValidatedShape(F32, {5, 10}).value();
+  const Shape s2 = ShapeUtil::MakeValidatedShape(F32, {20, 10}).value();
+  const Shape s2t = ShapeUtil::MakeValidatedShape(F32, {10, 20}).value();
+  const Shape sout = ShapeUtil::MakeValidatedShape(F32, {5, 20}).value();
 
   HloComputation::Builder builder("TransposeDot");
   HloInstruction* x =
@@ -800,7 +802,7 @@ std::unique_ptr<HloComputation> MakeAddNComputation(
     int n, std::string name = "add_n") {
   auto builder = HloComputation::Builder(name);
   auto result = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeShape(F32, {}), "x_value"));
+      0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "x_value"));
   auto one = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   for (int i = 0; i < n; ++i) {
@@ -993,7 +995,8 @@ ENTRY main {
   HloComputation* comp0 = FindComputation(module.get(), "comp.0");
   HloInstruction* custom_call = FindInstruction(module.get(), "custom-call.0");
   TF_ASSERT_OK(comp0->CreateAsyncInstructions(
-      custom_call, /*context_shapes=*/{ShapeUtil::MakeScalarShape(U32)},
+      custom_call,
+      /*context_shapes=*/{ShapeUtil::MakeValidatedScalarShape(U32).value()},
       /*async_execution_thread=*/HloInstruction::kMainExecutionThread,
       /*replace=*/true,
       /*override_names=*/true));
@@ -1024,7 +1027,8 @@ TEST_F(HloComputationTest, ToStringWhileCreatingReplacements) {
 
   HloInstruction* add = FindInstruction(m.get(), HloOpcode::kAdd);
   HloInstruction* convert = entry->AddInstruction(HloInstruction::CreateConvert(
-      ShapeUtil::MakeShape(BF16, add->shape().dimensions()), add));
+      ShapeUtil::MakeValidatedShape(BF16, add->shape().dimensions()).value(),
+      add));
   EXPECT_EQ(entry->instruction_count(), 5);
 
   // This is only to simulate a user outside the computation, which is the case
