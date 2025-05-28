@@ -76,6 +76,9 @@ class ThunkProtoExecutionDeserializer {
   absl::StatusOr<std::string> GetWhileThunkRunImpl(
       const xla::cpu::ThunkProto& thunk);
 
+  absl::StatusOr<std::string> GetSortThunkRunImpl(
+      const xla::cpu::ThunkProto& thunk);
+
   absl::StatusOr<std::string> CppDataTypeFromXlaType(
       xla::PrimitiveType xla_type);
 

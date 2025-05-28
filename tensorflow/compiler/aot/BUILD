@@ -45,16 +45,15 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla:cpu_function_runtime",
         "@local_xla//xla:shape_util",
+        "@local_xla//xla:status_macros",
         "@local_xla//xla:util",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/backends/cpu/runtime:convolution_lib",
         "@local_xla//xla/backends/cpu/runtime:dot_lib",
         "@local_xla//xla/backends/cpu/runtime:thunk_proto_cc",
-        "@local_xla//xla/service/cpu:cpu_aot_compilation_result",
-        "@local_xla//xla/service/cpu:cpu_executable",
         "@local_xla//xla/service/cpu:executable_proto_cc",
+        "@local_xla//xla/tsl/platform:statusor",
     ],
 )
 
