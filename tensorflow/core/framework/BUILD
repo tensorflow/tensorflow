@@ -311,7 +311,6 @@ filegroup(
         "run_handler.cc",
         "run_handler_util.cc",
         "tensor_slice.cc",
-        "tensor_util.cc",
         "versions.cc",
     ],
 )
@@ -654,10 +653,7 @@ cc_library(
     name = "bfloat16",
     srcs = ["bfloat16.cc"],
     hdrs = ["bfloat16.h"],
-    visibility = [
-        "//tensorflow/core:__subpackages__",
-        "//tensorflow/security/fuzzing:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         ":numeric_types",
         "//tensorflow/core/platform:byte_order",
@@ -697,13 +693,7 @@ cc_library(
         "partial_tensor_shape.h",
         "tensor_shape.h",
     ],
-    visibility = [
-        "//learning/brain/research/ml_for_systems/cost_models/rankflags:__subpackages__",
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/core/runtime_fallback:__subpackages__",
-        "//tensorflow/core/tfrt/utils:__subpackages__",
-        "//waymo/ml/deploy/benchmark:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         ":bounds_check",
         ":tensor_shape_proto_cc",
@@ -811,7 +801,7 @@ cc_library(
 cc_library(
     name = "tensor_types",
     hdrs = ["tensor_types.h"],
-    visibility = ["//visibility:private"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core/platform:logging",
         "@eigen_archive//:eigen3",
@@ -834,6 +824,7 @@ tf_cuda_library(
     srcs = [
         "log_memory.cc",
         "tensor.cc",
+        "tensor_util.cc",
         "typed_allocator.cc",
         "types.cc",
         "variant.cc",
@@ -853,9 +844,7 @@ tf_cuda_library(
         "variant_tensor_data.h",
     ],
     visibility = [
-        "//learning/brain/research/ml_for_systems/cost_models/rankflags:__subpackages__",
         "//learning/gemini/gemax/core/models/gemini3/vision/vision_decoder:__pkg__",
-        "//learning/gemini/gemax/core/models/lsp_inference_staging/vision/vision_decoder:__pkg__",
         "//learning/infra/runtime/experimental/mixed_engine:__subpackages__",
         "//tensorflow:__pkg__",
         "//tensorflow/core:__pkg__",
