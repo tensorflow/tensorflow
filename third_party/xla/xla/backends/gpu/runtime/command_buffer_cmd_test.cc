@@ -47,7 +47,6 @@ limitations under the License.
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
-#include "xla/types.h"  // IWYU pragma: keep
 
 namespace xla::gpu {
 
