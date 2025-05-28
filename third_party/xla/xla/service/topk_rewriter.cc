@@ -301,14 +301,18 @@ TopKCustomCall CreateTopKCustomCall(HloSortInstruction* sort, const int64_t k) {
     batch_size =
         ShapeUtil::ElementsIn(data_shape) / data_shape.dimensions(sort_dim);
     topk_input_shape =
-        ShapeUtil::MakeShape(element_type, {batch_size, input_size});
+        ShapeUtil::MakeValidatedShape(element_type, {batch_size, input_size})
+            .value();
 
     if (data_shape.dimensions().size() > 2) {
       // Reshape to 2d.
       input = sort->AddInstruction(HloInstruction::CreateReshape(
-          sort_dim == 0
-              ? ShapeUtil::MakeShape(element_type, {input_size, batch_size})
-              : ShapeUtil::MakeShape(element_type, {batch_size, input_size}),
+          sort_dim == 0 ? ShapeUtil::MakeValidatedShape(
+                              element_type, {input_size, batch_size})
+                              .value()
+                        : ShapeUtil::MakeValidatedShape(
+                              element_type, {batch_size, input_size})
+                              .value(),
           input));
     }
 
@@ -322,12 +326,14 @@ TopKCustomCall CreateTopKCustomCall(HloSortInstruction* sort, const int64_t k) {
   }
 
   Shape topk_shape =
-      has_batch
-          ? ShapeUtil::MakeTupleShape(
-                {ShapeUtil::MakeShape(element_type, {batch_size, k}),
-                 ShapeUtil::MakeShape(S32, {batch_size, k})})
-          : ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(element_type, {k}),
-                                       ShapeUtil::MakeShape(S32, {k})});
+      has_batch ? ShapeUtil::MakeValidatedTupleShape(
+                      {ShapeUtil::MakeShape(element_type, {batch_size, k}),
+                       ShapeUtil::MakeShape(S32, {batch_size, k})})
+                      .value()
+                : ShapeUtil::MakeValidatedTupleShape(
+                      {ShapeUtil::MakeShape(element_type, {k}),
+                       ShapeUtil::MakeShape(S32, {k})})
+                      .value();
   HloInstruction* topk = sort->AddInstruction(HloInstruction::CreateCustomCall(
       topk_shape, {input}, sort->to_apply(), "TopK"));
   HloInstruction* value_gte =
@@ -341,10 +347,11 @@ TopKCustomCall CreateTopKCustomCall(HloSortInstruction* sort, const int64_t k) {
     if (sort_dim == 0) {
       // Transpose back.
       value_gte = sort->AddInstruction(HloInstruction::CreateTranspose(
-          ShapeUtil::MakeShape(element_type, {k, batch_size}), value_gte,
-          {1, 0}));
+          ShapeUtil::MakeValidatedShape(element_type, {k, batch_size}).value(),
+          value_gte, {1, 0}));
       index_gte = sort->AddInstruction(HloInstruction::CreateTranspose(
-          ShapeUtil::MakeShape(S32, {k, batch_size}), index_gte, {1, 0}));
+          ShapeUtil::MakeValidatedShape(S32, {k, batch_size}).value(),
+          index_gte, {1, 0}));
     }
     if (data_shape.dimensions().size() > 2) {
       // Reshape back.
@@ -352,9 +359,10 @@ TopKCustomCall CreateTopKCustomCall(HloSortInstruction* sort, const int64_t k) {
                                      data_shape.dimensions().end());
       shape_dim[sort_dim] = k;
       value_gte = sort->AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeShape(element_type, shape_dim), value_gte));
+          ShapeUtil::MakeValidatedShape(element_type, shape_dim).value(),
+          value_gte));
       index_gte = sort->AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeShape(S32, shape_dim), index_gte));
+          ShapeUtil::MakeValidatedShape(S32, shape_dim).value(), index_gte));
     }
   }
   return {topk, value_gte, index_gte};
@@ -515,7 +523,8 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
       HloInstruction* iota = call->AddInstruction(HloInstruction::CreateIota(
           iota_shape, iota_shape.dimensions().size() - 1));
       HloInstruction* sort = call->AddInstruction(HloInstruction::CreateSort(
-          ShapeUtil::MakeTupleShape({input->shape(), iota_shape}),
+          ShapeUtil::MakeValidatedTupleShape({input->shape(), iota_shape})
+              .value(),
           sort_dimension, {input, iota}, variadic_comparator,
           /*is_stable=*/true));
       // Apply a slice to a tuple.

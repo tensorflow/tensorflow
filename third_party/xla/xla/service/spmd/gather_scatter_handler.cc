@@ -281,7 +281,7 @@ IndexBoundsForGatherScatterOperandPartitionedOnTrivialSliceDims(
     auto offset = operand_offsets[dim];
     if (offset->shape().element_type() != indices_type) {
       offset = b->AddInstruction(HloInstruction::CreateConvert(
-          ShapeUtil::MakeShape(indices_type, {}), offset));
+          ShapeUtil::MakeValidatedShape(indices_type, {}).value(), offset));
     }
     min_indices.push_back(offset);
     auto partition_size_minus_1 = CreateR0WithType<int32_t>(
@@ -297,14 +297,17 @@ IndexBoundsForGatherScatterOperandPartitionedOnTrivialSliceDims(
     // [1], and concat them if there are more than one.
     for (int64_t i = 0; i < min_indices.size(); ++i) {
       min_indices[i] = b->AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeShape(indices_type, {1}), min_indices[i]));
+          ShapeUtil::MakeValidatedShape(indices_type, {1}).value(),
+          min_indices[i]));
       max_indices[i] = b->AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeShape(indices_type, {1}), max_indices[i]));
+          ShapeUtil::MakeValidatedShape(indices_type, {1}).value(),
+          max_indices[i]));
     }
     int64_t slice_dims = max_indices.size();
     if (slice_dims > 1) {
       min_indices[0] = b->AddInstruction(HloInstruction::CreateConcatenate(
-          ShapeUtil::MakeShape(indices_type, {slice_dims}), min_indices, 0));
+          ShapeUtil::MakeValidatedShape(indices_type, {slice_dims}).value(),
+          min_indices, 0));
       max_indices[0] = b->AddInstruction(HloInstruction::CreateConcatenate(
           min_indices[0]->shape(), max_indices, 0));
     }
@@ -634,8 +637,8 @@ absl::StatusOr<HloInstruction*> PartitionGatherTrivialSlicedOperandDimensions(
         }
       }
       filter = b->AddInstruction(HloInstruction::CreateReduce(
-          ShapeUtil::MakeShape(PRED, reduced_filter_dims), filter,
-          CreateR0WithType(PRED, false, b), {dnums.index_vector_dim()},
+          ShapeUtil::MakeValidatedShape(PRED, reduced_filter_dims).value(),
+          filter, CreateR0WithType(PRED, false, b), {dnums.index_vector_dim()},
           MakeBinaryAdd(PRED, indices.state().module)));
     }
     std::vector<int64_t> batch_dims;
@@ -733,7 +736,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherParallelDimensions(
       HloInstruction* index_offset =
           indices.num_dimensions() > index_dim
               ? b->AddInstruction(HloInstruction::CreateReshape(
-                    ShapeUtil::MakeShape(S32, {1}),
+                    ShapeUtil::MakeValidatedShape(S32, {1}).value(),
                     operand_offsets[dnums.start_index_map(start_idx)]))
               : operand_offsets[dnums.start_index_map(start_idx)];
       index_offsets.push_back(index_offset);
@@ -742,8 +745,9 @@ absl::StatusOr<HloInstruction*> PartitionGatherParallelDimensions(
     if (indices.num_dimensions() > index_dim) {
       // Concatenate the offsets for the parallel dimensions to subtract.
       adjusted_indices = b->AddInstruction(HloInstruction::CreateConcatenate(
-          ShapeUtil::MakeShape(S32,
-                               {indices.base_shape().dimensions(index_dim)}),
+          ShapeUtil::MakeValidatedShape(
+              S32, {indices.base_shape().dimensions(index_dim)})
+              .value(),
           index_offsets, 0));
     } else {
       CHECK_EQ(index_offsets.size(), 1);
@@ -1031,7 +1035,7 @@ Shape MaybeMakeTupleShape(absl::Span<const HloInstruction* const> hlos) {
   for (const HloInstruction* hlo : hlos) {
     element_shapes.push_back(&hlo->shape());
   }
-  return ShapeUtil::MakeTupleShapeWithPtrs(element_shapes);
+  return ShapeUtil::MakeValidatedTupleShapeWithPtrs(element_shapes).value();
 }
 
 Shape MaybeGetTuplePerGroupBaseShape(const GroupedSharding& grouped_sharding,
@@ -1044,7 +1048,7 @@ Shape MaybeGetTuplePerGroupBaseShape(const GroupedSharding& grouped_sharding,
   for (const Shape& shape : original_base_shape.tuple_shapes()) {
     element_shapes.push_back(GetPerGroupBaseShape(grouped_sharding, shape));
   }
-  return ShapeUtil::MakeTupleShape(element_shapes);
+  return ShapeUtil::MakeValidatedTupleShape(element_shapes).value();
 }
 
 // Returns the opcode if `reduction_comp` represents a simple binary elementwise
@@ -1219,7 +1223,7 @@ absl::StatusOr<HloInstruction*> PartitionScatterParallelDimensions(
       HloInstruction* index_offset =
           indices.base_shape().dimensions().size() > index_dim
               ? b->AddInstruction(HloInstruction::CreateReshape(
-                    ShapeUtil::MakeShape(S32, {1}),
+                    ShapeUtil::MakeValidatedShape(S32, {1}).value(),
                     operand_offsets[dnums.scatter_dims_to_operand_dims(
                         start_idx)]))
               : operand_offsets[dnums.scatter_dims_to_operand_dims(start_idx)];
@@ -1229,8 +1233,9 @@ absl::StatusOr<HloInstruction*> PartitionScatterParallelDimensions(
     if (indices.base_shape().dimensions().size() > index_dim) {
       // Concatenate the offsets for the parallel dimensions to subtract.
       adjusted_indices = b->AddInstruction(HloInstruction::CreateConcatenate(
-          ShapeUtil::MakeShape(S32,
-                               {indices.base_shape().dimensions(index_dim)}),
+          ShapeUtil::MakeValidatedShape(
+              S32, {indices.base_shape().dimensions(index_dim)})
+              .value(),
           index_offsets, 0));
     } else {
       CHECK_EQ(index_offsets.size(), 1);
@@ -1539,7 +1544,7 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
   // To avoid accumulating the initial operand multiple times during
   // all-reduce, we use identity operands for all non-zero partitions.
   auto not_partition_zero = b->AddInstruction(HloInstruction::CreateConvert(
-      ShapeUtil::MakeScalarShape(PRED), partition_id));
+      ShapeUtil::MakeValidatedScalarShape(PRED).value(), partition_id));
   not_partition_zero = b->AddInstruction(HloInstruction::CreateBroadcast(
       ShapeUtil::ChangeElementType(identity->shape(), PRED), not_partition_zero,
       {}));

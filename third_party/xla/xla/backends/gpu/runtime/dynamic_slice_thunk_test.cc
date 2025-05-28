@@ -17,13 +17,13 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -44,7 +45,6 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/gpu/gpu_types.h"  // IWYU pragma: keep
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
@@ -52,15 +52,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/types.h"  // IWYU pragma: keep
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
-
-#if GOOGLE_CUDA
-#define PLATFORM "CUDA"
-#elif TENSORFLOW_USE_ROCM
-#define PLATFORM "ROCM"
-#endif
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
@@ -73,10 +65,14 @@ class DynamicSliceThunkTest : public HloRunnerAgnosticTestBase {
             PlatformUtil::GetDefaultPlatform().value())) {}
 };
 
-static se::StreamExecutor* GpuExecutor() {
-  auto name =
-      absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
-  auto* platform = se::PlatformManager::PlatformWithName(name).value();
+std::string GetPlatformName() {
+  return absl::AsciiStrToUpper(
+      PlatformUtil::CanonicalPlatformName("gpu").value());
+}
+
+se::StreamExecutor* GpuExecutor() {
+  stream_executor::Platform* platform =
+      se::PlatformManager::PlatformWithName(GetPlatformName()).value();
   return platform->ExecutorForDevice(0).value();
 }
 
@@ -413,7 +409,9 @@ XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
                            .Arg<ffi::AnyBuffer>()  // src
                            .Ret<ffi::AnyBuffer>()  // dst
 );
-XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", PLATFORM,
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", "CUDA",
+                         kMemcpy);
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", "ROCM",
                          kMemcpy);
 
 TEST_F(DynamicSliceThunkTest, SlicedMemcpy) {
@@ -462,7 +460,8 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpy) {
 
   // Preparing custom call thunk: setting up call target and operands + results
   // buffers.
-  auto registration = xla::ffi::FindHandler("__xla_test$$memcpy", PLATFORM);
+  auto registration =
+      xla::ffi::FindHandler("__xla_test$$memcpy", GetPlatformName());
   ASSERT_TRUE(registration.ok());
 
   std::vector<std::optional<CustomCallThunk::Slice>> operands{
@@ -509,7 +508,9 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpy) {
   // Preparing memory for thunk arguments.
   se::DeviceMemory<int32_t> src = executor->AllocateArray<int32_t>(src_count);
   std::vector<int32_t> src_arr(src_count, 0);
-  for (unsigned i = 0; i < src_count; ++i) src_arr[i] = i;
+  for (unsigned i = 0; i < src_count; ++i) {
+    src_arr[i] = i;
+  }
   TF_ASSERT_OK(stream->Memcpy(&src, src_arr.data(), src_length));
 
   se::DeviceMemory<int32_t> dst = executor->AllocateArray<int32_t>(dst_count);
@@ -626,7 +627,8 @@ TEST_F(DynamicSliceThunkTest, SlicedOutputMemcpy) {
 
   // Preparing custom call thunk: setting up call target and operands + results
   // buffers.
-  auto registration = xla::ffi::FindHandler("__xla_test$$memcpy", PLATFORM);
+  auto registration =
+      xla::ffi::FindHandler("__xla_test$$memcpy", GetPlatformName());
   ASSERT_TRUE(registration.ok());
 
   std::vector<std::optional<CustomCallThunk::Slice>> operands{
@@ -682,7 +684,9 @@ TEST_F(DynamicSliceThunkTest, SlicedOutputMemcpy) {
   // Preparing memory for thunk arguments.
   se::DeviceMemory<int32_t> src = executor->AllocateArray<int32_t>(src_count);
   std::vector<int32_t> src_arr(src_count, 0);
-  for (unsigned i = 0; i < src_count; ++i) src_arr[i] = i;
+  for (unsigned i = 0; i < src_count; ++i) {
+    src_arr[i] = i;
+  }
   TF_ASSERT_OK(stream->Memcpy(&src, src_arr.data(), src_length));
 
   se::DeviceMemory<int32_t> dst = executor->AllocateArray<int32_t>(dst_count);
@@ -1275,7 +1279,8 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpyOOB) {
 
   // Preparing custom call thunk: setting up call target and operands + results
   // buffers.
-  auto registration = xla::ffi::FindHandler("__xla_test$$memcpy", PLATFORM);
+  auto registration =
+      xla::ffi::FindHandler("__xla_test$$memcpy", GetPlatformName());
   ASSERT_TRUE(registration.ok());
 
   std::vector<std::optional<CustomCallThunk::Slice>> operands{
@@ -1331,7 +1336,9 @@ TEST_F(DynamicSliceThunkTest, SlicedMemcpyOOB) {
   // Preparing memory for thunk arguments.
   se::DeviceMemory<int32_t> src = executor->AllocateArray<int32_t>(src_count);
   std::vector<int32_t> src_arr(src_count, 0);
-  for (unsigned i = 0; i < src_count; ++i) src_arr[i] = i;
+  for (unsigned i = 0; i < src_count; ++i) {
+    src_arr[i] = i;
+  }
   TF_ASSERT_OK(stream->Memcpy(&src, src_arr.data(), src_length));
 
   se::DeviceMemory<int32_t> dst = executor->AllocateArray<int32_t>(dst_count);

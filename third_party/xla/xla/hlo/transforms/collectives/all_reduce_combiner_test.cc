@@ -77,8 +77,10 @@ HloInstruction* MakeCrossReplicaReductions(
     HloComputation* reduction = reductions[i];
     auto constant = b->AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0(42.3)));
-    Shape shape = ShapeUtil::MakeShape(
-        F32, {static_cast<int32_t>(size_in_kib * 1024 / sizeof(float))});
+    Shape shape =
+        ShapeUtil::MakeValidatedShape(
+            F32, {static_cast<int32_t>(size_in_kib * 1024 / sizeof(float))})
+            .value();
     auto input =
         b->AddInstruction(HloInstruction::CreateBroadcast(shape, constant, {}));
     inputs->push_back(input);
@@ -94,11 +96,13 @@ HloInstruction* MakeCrossReplicaReductions(
 HloComputation* MakeReduction(const HloOpcode type, HloModule* module) {
   HloComputation::Builder sum_builder(HloOpcodeString(type));
   auto x = sum_builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {}), "x"));
+      /*parameter_number=*/0, ShapeUtil::MakeValidatedShape(F32, {}).value(),
+      "x"));
   auto y = sum_builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/1, ShapeUtil::MakeShape(F32, {}), "y"));
-  sum_builder.AddInstruction(
-      HloInstruction::CreateBinary(ShapeUtil::MakeShape(F32, {}), type, x, y));
+      /*parameter_number=*/1, ShapeUtil::MakeValidatedShape(F32, {}).value(),
+      "y"));
+  sum_builder.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeValidatedShape(F32, {}).value(), type, x, y));
   HloComputation* reduction =
       module->AddEmbeddedComputation(sum_builder.Build());
   return reduction;
