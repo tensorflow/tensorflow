@@ -969,9 +969,22 @@ PyObject* InterpreterWrapper::LoadStableDelegateCPP(
     return nullptr;
   }
 
-  // Load stable delegate from .so file
+  // Load stable delegate from shared library file
+  const tflite::StableDelegateLoaderSettings* delegate_loader_settings =
+      settings->stable_delegate_loader_settings();
+  if (!delegate_loader_settings) {
+    PyErr_SetString(PyExc_ValueError,
+                    "Stable delegate loader settings are not specified in the "
+                    "settings file.");
+    return nullptr;
+  }
   const flatbuffers::String* delegate_path =
-      settings->stable_delegate_loader_settings()->delegate_path();
+      delegate_loader_settings->delegate_path();
+  if (!delegate_path) {
+    PyErr_SetString(PyExc_ValueError,
+                    "Delegate path is not specified in the settings file.");
+    return nullptr;
+  }
   const TfLiteStableDelegate* stable_delegate_handle =
       tflite::delegates::utils::LoadDelegateFromSharedLibrary(
           delegate_path->str());
