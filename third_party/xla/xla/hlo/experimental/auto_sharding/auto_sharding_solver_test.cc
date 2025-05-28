@@ -23,7 +23,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_iopddl.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
+#include "xla/hlo/experimental/auto_sharding/iopddl.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "tsl/platform/platform.h"
 #include "tsl/platform/statusor.h"
@@ -239,6 +241,84 @@ AutoShardingSolverRequest AutoShardingSolverRequestWithEquivalences() {
   request.mutable_instruction_names()->Add(instruction_names.begin(),
                                            instruction_names.end());
   return request;
+}
+
+iopddl::Problem DefaultProblem() {
+  return {
+      "default",
+      {{{0, 5}, {{110, 100000}, {121, 110000}, {132, 990000}, {143, 130000}}},
+       {{0, 5}, {{220, 200000}, {231, 210000}, {242, 220000}}},
+       {{2, 4}, {{330, 300000}, {341, 310000}, {352, 320000}, {363, 330000}}},
+       {{3, 5}, {{440, 400000}, {451, 410000}, {462, 420000}, {473, 430000}}},
+       {{0, 0}, {{550, 500000}, {561, 510000}, {572, 520000}}}},
+      {{{0, 2},
+        {{1000},
+         {1100},
+         {1200},
+         {1300},
+         {2000},
+         {2100},
+         {2200},
+         {2300},
+         {3000},
+         {3100},
+         {3200},
+         {3300},
+         {4000},
+         {4100},
+         {4200},
+         {4300}}},
+       {{1, 2},
+        {{5000},
+         {5100},
+         {5200},
+         {5300},
+         {6000},
+         {6100},
+         {6200},
+         {6300},
+         {7000},
+         {7100},
+         {7200},
+         {7300}}},
+       {{1, 4},  // From the alias
+        {{kInfinityInt},
+         {kInfinityInt},
+         {0},
+         {kInfinityInt},
+         {0},
+         {kInfinityInt},
+         {0},
+         {kInfinityInt},
+         {kInfinityInt}}},
+       {{2, 3},  // From the follower
+        {{0},
+         {kInfinityInt},
+         {kInfinityInt},
+         {kInfinityInt},
+         {kInfinityInt},
+         {0},
+         {kInfinityInt},
+         {kInfinityInt},
+         {kInfinityInt},
+         {kInfinityInt},
+         {0},
+         {kInfinityInt},
+         {kInfinityInt},
+         {kInfinityInt},
+         {kInfinityInt},
+         {0}}}},
+      {1500000}};
+}
+
+AutoShardingSolverParams DefaultParams() {
+  AutoShardingSolverParams params;
+  params.departure_costs = {{1.0, 0.0, 1.0, 1.0},
+                            {1.0, 0.0, 1.0},
+                            {1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0},
+                            {1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0},
+                            {1.0, 0.0, 1.0}};
+  return params;
 }
 
 TEST(FormulateAndSolveMIPFromSolverRequestTest, SolvesOptimally) {
@@ -828,6 +908,181 @@ TEST(AutoShardingEvaluatorTest, ViolatesMaxDepartures) {
   expected_evaluation.lower_bound.communication_cost = 1500.0;
   expected_evaluation.lower_bound.resharding_cost = 6000.0;
   expected_evaluation.lower_bound.max_memory = 1000000.0;
+  expected_evaluation.total_departures = 3.0;
+  EXPECT_EQ(evaluation, expected_evaluation);
+}
+
+TEST(AutoShardingEvaluatorForProblemTest, NoViolations) {
+  const iopddl::Problem problem = DefaultProblem();
+  const AutoShardingSolverParams params = DefaultParams();
+  const std::vector<NodeStrategyIdx> s_val = {3, 1, 2, 2, 1};
+  const double objective_value = 12149.0;
+  const AutoShardingSolverOutput output = {s_val, objective_value};
+
+  const AutoShardingEvaluation evaluation = Evaluate(problem, output, params);
+
+  AutoShardingEvaluation expected_evaluation;
+  expected_evaluation.total.node_cost = 1749;   // 1590+159
+  expected_evaluation.total.edge_cost = 10400;  // 4200+6200
+  expected_evaluation.total.max_usage = 1080000;
+  expected_evaluation.lower_bound.node_cost = 1650;
+  expected_evaluation.lower_bound.edge_cost = 6000;
+  expected_evaluation.lower_bound.max_usage = 1000000;
+  expected_evaluation.total_departures = 3.0;
+  EXPECT_EQ(evaluation, expected_evaluation);
+}
+
+TEST(AutoShardingEvaluatorForProblemTest, EvaluatesOverbudget) {
+  iopddl::Problem problem = DefaultProblem();
+  AutoShardingSolverParams params = DefaultParams();
+  problem.usage_limit = 100000;
+  params.overbudget_coeff = 10.0;
+  const std::vector<NodeStrategyIdx> s_val = {2 /* violates */, 1, 2, 2, 1};
+  const double objective_value = 11138.0;
+  const AutoShardingSolverOutput output = {s_val, objective_value};
+
+  const AutoShardingEvaluation evaluation = Evaluate(problem, output, params);
+
+  AutoShardingEvaluation expected_evaluation;
+  expected_evaluation.total.node_cost = 1738;             // 1580+158
+  expected_evaluation.total.edge_cost = 9400;             // 3200+6200
+  expected_evaluation.total.overbudget_usage = 18400000;  // 10*1840000
+  expected_evaluation.total.max_usage = 1940000;
+  expected_evaluation.lower_bound.node_cost = 1650;
+  expected_evaluation.lower_bound.edge_cost = 6000;
+  expected_evaluation.lower_bound.overbudget_usage = 9000000;
+  expected_evaluation.lower_bound.max_usage = 1000000;
+  expected_evaluation.total_departures = 3.0;
+  EXPECT_EQ(evaluation, expected_evaluation);
+}
+
+TEST(AutoShardingEvaluatorForProblemTest, ViolatesFollower) {
+  const iopddl::Problem problem = DefaultProblem();
+  const AutoShardingSolverParams params = DefaultParams();
+  const std::vector<NodeStrategyIdx> s_val = {3, 1, 2, 1 /* violates */, 1};
+  const double objective_value = 12138.0;
+  const AutoShardingSolverOutput output = {s_val, objective_value};
+
+  const AutoShardingEvaluation evaluation = Evaluate(problem, output, params);
+
+  AutoShardingEvaluation expected_evaluation;
+  expected_evaluation.violation_codes = {kFollowerViolationCode};
+  expected_evaluation.total.node_cost = 1738;   // 1580+158
+  expected_evaluation.total.edge_cost = 10400;  // 4200+6200
+  expected_evaluation.total.max_usage = 1070000;
+  expected_evaluation.lower_bound.node_cost = 1650;
+  expected_evaluation.lower_bound.edge_cost = 6000;
+  expected_evaluation.lower_bound.max_usage = 1000000;
+  expected_evaluation.total_departures = 2.0;
+  EXPECT_EQ(evaluation, expected_evaluation);
+}
+
+TEST(AutoShardingEvaluatorForProblemTest, ViolatesAlias) {
+  const iopddl::Problem problem = DefaultProblem();
+  const AutoShardingSolverParams params = DefaultParams();
+  const std::vector<NodeStrategyIdx> s_val = {3, 1, 2, 2, 0 /* violates */};
+  const double objective_value = 12138.0;
+  const AutoShardingSolverOutput output = {s_val, objective_value};
+
+  const AutoShardingEvaluation evaluation = Evaluate(problem, output, params);
+
+  AutoShardingEvaluation expected_evaluation;
+  expected_evaluation.violation_codes = {kAliasViolationCode};
+  expected_evaluation.total.node_cost = 1738;   // 1580+158
+  expected_evaluation.total.edge_cost = 10400;  // 4200+6200
+  expected_evaluation.total.max_usage = 1080000;
+  expected_evaluation.lower_bound.node_cost = 1650;
+  expected_evaluation.lower_bound.edge_cost = 6000;
+  expected_evaluation.lower_bound.max_usage = 1000000;
+  expected_evaluation.total_departures = 4.0;
+  EXPECT_EQ(evaluation, expected_evaluation);
+}
+
+TEST(AutoShardingEvaluatorForProblemTest, ViolatesMemory) {
+  const iopddl::Problem problem = DefaultProblem();
+  const AutoShardingSolverParams params = DefaultParams();
+  const std::vector<NodeStrategyIdx> s_val = {2 /* violates */, 1, 2, 2, 1};
+  const double objective_value = 11138.0;
+  const AutoShardingSolverOutput output = {s_val, objective_value};
+
+  const AutoShardingEvaluation evaluation = Evaluate(problem, output, params);
+
+  AutoShardingEvaluation expected_evaluation;
+  expected_evaluation.violation_codes = {kMemoryViolationCode};
+  expected_evaluation.total.node_cost = 1738;  // 1580+158
+  expected_evaluation.total.edge_cost = 9400;  // 3200+6200
+  expected_evaluation.total.max_usage = 1940000;
+  expected_evaluation.lower_bound.node_cost = 1650;
+  expected_evaluation.lower_bound.edge_cost = 6000;
+  expected_evaluation.lower_bound.max_usage = 1000000;
+  expected_evaluation.total_departures = 3.0;
+  EXPECT_EQ(evaluation, expected_evaluation);
+}
+
+TEST(AutoShardingEvaluatorForProblemTest, ViolatesInfiniteCostForNode) {
+  iopddl::Problem problem = DefaultProblem();
+  const AutoShardingSolverParams params = DefaultParams();
+  problem.nodes[0].strategies[0].cost = kInfinityInt;
+  problem.nodes[0].strategies[1].cost = kInfinityInt;
+  problem.nodes[0].strategies[2].cost = kInfinityInt;
+  const std::vector<NodeStrategyIdx> s_val = {0 /* violates */, 1, 2, 2, 1};
+  const double objective_value = 1e+20;
+  const AutoShardingSolverOutput output = {s_val, objective_value};
+
+  const AutoShardingEvaluation evaluation = Evaluate(problem, output, params);
+
+  AutoShardingEvaluation expected_evaluation;
+  expected_evaluation.violation_codes = {kInfiniteCostViolationCode};
+  expected_evaluation.total.node_cost = 1000000000000001606;
+  expected_evaluation.total.edge_cost = 7400;  // 1200+6200
+  expected_evaluation.total.max_usage = 1050000;
+  expected_evaluation.lower_bound.node_cost = 1683;
+  expected_evaluation.lower_bound.edge_cost = 6000;
+  expected_evaluation.lower_bound.max_usage = 1000000;
+  expected_evaluation.total_departures = 3.0;
+  EXPECT_EQ(evaluation, expected_evaluation);
+}
+
+TEST(AutoShardingEvaluatorForProblemTest, ViolatesInfiniteCostForEdge) {
+  iopddl::Problem problem = DefaultProblem();
+  const AutoShardingSolverParams params = DefaultParams();
+  problem.edges[0].strategies[2].cost = kInfinityInt;
+  const std::vector<NodeStrategyIdx> s_val = {0, 1, 2, 2, 1};
+  const double objective_value = 1e+20;
+  const AutoShardingSolverOutput output = {s_val, objective_value};
+
+  const AutoShardingEvaluation evaluation = Evaluate(problem, output, params);
+
+  AutoShardingEvaluation expected_evaluation;
+  expected_evaluation.violation_codes = {kInfiniteCostViolationCode};
+  expected_evaluation.total.node_cost = 1716;  // 1560+156
+  expected_evaluation.total.edge_cost = 1000000000000006200;
+  expected_evaluation.total.max_usage = 1050000;
+  expected_evaluation.lower_bound.node_cost = 1650;
+  expected_evaluation.lower_bound.edge_cost = 6000;
+  expected_evaluation.lower_bound.max_usage = 1000000;
+  expected_evaluation.total_departures = 3.0;
+  EXPECT_EQ(evaluation, expected_evaluation);
+}
+
+TEST(AutoShardingEvaluatorForProblemTest, ViolatesMaxDepartures) {
+  const iopddl::Problem problem = DefaultProblem();
+  AutoShardingSolverParams params = DefaultParams();
+  params.max_departures = 2.0;
+  const std::vector<NodeStrategyIdx> s_val = {3, 1, 2, 2, 1};
+  const double objective_value = 12149.0;
+  const AutoShardingSolverOutput output = {s_val, objective_value};
+
+  const AutoShardingEvaluation evaluation = Evaluate(problem, output, params);
+
+  AutoShardingEvaluation expected_evaluation;
+  expected_evaluation.violation_codes = {kMaxDeparturesViolationCode};
+  expected_evaluation.total.node_cost = 1749;   // 1590+159
+  expected_evaluation.total.edge_cost = 10400;  // 4200+6200
+  expected_evaluation.total.max_usage = 1080000;
+  expected_evaluation.lower_bound.node_cost = 1650;
+  expected_evaluation.lower_bound.edge_cost = 6000;
+  expected_evaluation.lower_bound.max_usage = 1000000;
   expected_evaluation.total_departures = 3.0;
   EXPECT_EQ(evaluation, expected_evaluation);
 }
