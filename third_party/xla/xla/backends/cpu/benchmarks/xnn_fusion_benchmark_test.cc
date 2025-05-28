@@ -53,9 +53,11 @@ static absl::Status RunFusionBenchmark(benchmark::State& state,
   // Generate inputs.
   std::minstd_rand0 engine;
   auto p0 = *LiteralUtil::CreateRandomLiteral<F32>(
-      ShapeUtil::MakeShape(F32, {d0, d0}), &engine, 1.0f, 0.1f);
+      ShapeUtil::MakeValidatedShape(F32, {d0, d0}).value(), &engine, 1.0f,
+      0.1f);
   auto p1 = *LiteralUtil::CreateRandomLiteral<F32>(
-      ShapeUtil::MakeShape(F32, {d0, d0}), &engine, 1.0f, 0.1f);
+      ShapeUtil::MakeValidatedShape(F32, {d0, d0}).value(), &engine, 1.0f,
+      0.1f);
   std::vector<const Literal*> args = {&p0, &p1};
 
   if (is_xnn_fusion) {

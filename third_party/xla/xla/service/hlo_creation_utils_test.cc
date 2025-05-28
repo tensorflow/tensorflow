@@ -50,9 +50,11 @@ class HloCreationUtilsTest : public HloHardwareIndependentTestBase {
       PrimitiveType primitive_type, absl::Span<const int64_t> input_shape_dims,
       absl::Span<const int64_t> output_shape_dims, HloInstruction** param,
       HloComputation** entry_computation) {
-    Shape input_shape = ShapeUtil::MakeShape(primitive_type, input_shape_dims);
+    Shape input_shape =
+        ShapeUtil::MakeValidatedShape(primitive_type, input_shape_dims).value();
     Shape output_shape =
-        ShapeUtil::MakeShape(primitive_type, output_shape_dims);
+        ShapeUtil::MakeValidatedShape(primitive_type, output_shape_dims)
+            .value();
     auto module = CreateNewVerifiedModule("test");
     *entry_computation = module->AddEntryComputation(
         CreateComputationWithSignature({&input_shape}, output_shape, "entry")
@@ -65,9 +67,11 @@ class HloCreationUtilsTest : public HloHardwareIndependentTestBase {
       PrimitiveType primitive_type, absl::Span<const int64_t> input_shape_dims,
       absl::Span<const int64_t> output_shape_dims, HloInstruction** param,
       HloComputation** entry_computation, PrimitiveType primitive_type_output) {
-    Shape input_shape = ShapeUtil::MakeShape(primitive_type, input_shape_dims);
+    Shape input_shape =
+        ShapeUtil::MakeValidatedShape(primitive_type, input_shape_dims).value();
     Shape output_shape =
-        ShapeUtil::MakeShape(primitive_type_output, output_shape_dims);
+        ShapeUtil::MakeValidatedShape(primitive_type_output, output_shape_dims)
+            .value();
     auto module = CreateNewVerifiedModule("test");
     *entry_computation = module->AddEntryComputation(
         CreateComputationWithSignature({&input_shape}, output_shape, "entry")
@@ -286,8 +290,9 @@ TEST_F(HloCreationUtilsTest, MakeIotaHlo_I32) {
   auto module = CreateModuleWithProgramShape(S32, /*input_shape_dims=*/{},
                                              /*output_shape_dims=*/{2, 2},
                                              &param, &entry_computation, F32);
-  HloInstruction* output = MakeIotaHlo(module->entry_computation(),
-                                       ShapeUtil::MakeShape(F32, {2, 2}), 0);
+  HloInstruction* output =
+      MakeIotaHlo(module->entry_computation(),
+                  ShapeUtil::MakeValidatedShape(F32, {2, 2}).value(), 0);
   entry_computation->set_root_instruction(output);
 
   HloEvaluator evaluator;
@@ -325,8 +330,8 @@ TEST_F(HloCreationUtilsTest, MakeBroadcast_Shape_I32) {
                                              /*output_shape_dims=*/{2, 2},
                                              &param, &entry_computation);
   auto* input = MakeR0ConstantHlo<int32_t>(module->entry_computation(), 0);
-  HloInstruction* output =
-      MakeBroadcastHlo(input, {}, ShapeUtil::MakeShape(S32, {2, 2}));
+  HloInstruction* output = MakeBroadcastHlo(
+      input, {}, ShapeUtil::MakeValidatedShape(S32, {2, 2}).value());
   entry_computation->set_root_instruction(output);
 
   HloEvaluator evaluator;
@@ -359,10 +364,11 @@ TEST_F(HloCreationUtilsTest, MaybeMakeTupleForwardsSingleElement) {
 }
 
 TEST_F(HloCreationUtilsTest, MaybeMakeTupleTuplizesMultipleOperands) {
-  Shape input_shape0 = ShapeUtil::MakeShape(S32, {2});
-  Shape input_shape1 = ShapeUtil::MakeShape(F32, {3, 3});
+  Shape input_shape0 = ShapeUtil::MakeValidatedShape(S32, {2}).value();
+  Shape input_shape1 = ShapeUtil::MakeValidatedShape(F32, {3, 3}).value();
   Shape output_shape =
-      ShapeUtil::MakeTupleShapeWithPtrs({&input_shape1, &input_shape0});
+      ShapeUtil::MakeValidatedTupleShapeWithPtrs({&input_shape1, &input_shape0})
+          .value();
   auto module = CreateNewVerifiedModule("test");
   HloComputation* entry_computation = module->AddEntryComputation(
       CreateComputationWithSignature({&input_shape0, &input_shape1},
@@ -395,8 +401,8 @@ TEST_F(HloCreationUtilsTest, DynamicUpdateSliceVectorStartIndices) {
   operand_array->FillUnique(1.0);
   auto operand_literal =
       LiteralUtil::CreateR2FromArray2D<double>(*operand_array);
-  Shape input_shape = ShapeUtil::MakeShape(F64, {2, 3});
-  Shape update_shape = ShapeUtil::MakeShape(F64, {2, 2});
+  Shape input_shape = ShapeUtil::MakeValidatedShape(F64, {2, 3}).value();
+  Shape update_shape = ShapeUtil::MakeValidatedShape(F64, {2, 2}).value();
   HloComputation* entry_computation = module->AddEntryComputation(
       CreateComputationWithSignature({&input_shape, &update_shape}, input_shape,
                                      "entry")
@@ -440,23 +446,24 @@ TEST_F(HloCreationUtilsTest, ExpandDegenerateReshape) {
 }
 
 TEST_F(HloCreationUtilsTest, ReduceWindow) {
-  const Shape scalar_shape = ShapeUtil::MakeShape(S32, {});
+  const Shape scalar_shape = ShapeUtil::MakeValidatedShape(S32, {}).value();
   std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
 
   HloComputation* addition = [&] {
     auto embedded_builder = HloComputation::Builder("add");
     auto lhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
-        0, ShapeUtil::MakeShape(F32, {}), "lhs"));
+        0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "lhs"));
     auto rhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
-        1, ShapeUtil::MakeShape(F32, {}), "rhs"));
+        1, ShapeUtil::MakeValidatedShape(F32, {}).value(), "rhs"));
     embedded_builder.AddInstruction(
         HloInstruction::CreateBinary(lhs->shape(), HloOpcode::kAdd, lhs, rhs));
     return module->AddEmbeddedComputation(embedded_builder.Build());
   }();
 
   auto builder = HloComputation::Builder(TestName());
-  Shape input_shape = ShapeUtil::MakeShape(F32, {2, 4, 4});
-  Shape expected_output_shape = ShapeUtil::MakeShape(F32, {2, 2, 2});
+  Shape input_shape = ShapeUtil::MakeValidatedShape(F32, {2, 4, 4}).value();
+  Shape expected_output_shape =
+      ShapeUtil::MakeValidatedShape(F32, {2, 2, 2}).value();
 
   Window window;
   // First dimension is unchanged.
@@ -498,12 +505,13 @@ TEST_F(HloCreationUtilsTest, ReduceWindow) {
 }
 
 TEST_F(HloCreationUtilsTest, ReduceWindowBinaryOpcode) {
-  const Shape scalar_shape = ShapeUtil::MakeShape(S32, {});
+  const Shape scalar_shape = ShapeUtil::MakeValidatedShape(S32, {}).value();
   std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
 
   auto builder = HloComputation::Builder(TestName());
-  Shape input_shape = ShapeUtil::MakeShape(F32, {2, 4, 4});
-  Shape expected_output_shape = ShapeUtil::MakeShape(F32, {2, 2, 2});
+  Shape input_shape = ShapeUtil::MakeValidatedShape(F32, {2, 4, 4}).value();
+  Shape expected_output_shape =
+      ShapeUtil::MakeValidatedShape(F32, {2, 2, 2}).value();
 
   Window window;
   // First dimension is unchanged.
