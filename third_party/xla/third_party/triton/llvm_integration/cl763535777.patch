@@ -1,0 +1,249 @@
+
+--- a/lib/Analysis/Utility.cpp	2025-04-03 06:25:36.000000000 -0700
++++ b/lib/Analysis/Utility.cpp	2025-05-26 16:53:29.000000000 -0700
+@@ -950,7 +950,8 @@
+     BackwardSliceOptions opt;
+     opt.omitBlockArguments = true;
+     opt.filter = backwardFilter;
+-    getBackwardSlice(currentOp, &backwardSlice, opt);
++    auto result = getBackwardSlice(currentOp, &backwardSlice, opt);
++    assert(result.succeeded() && "expected a backward slice");
+     slice.insert(backwardSlice.begin(), backwardSlice.end());
+ 
+     // Compute and insert the forwardSlice starting from currentOp.
+
+--- a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp	2025-05-20 08:08:14.000000000 -0700
++++ b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp	2025-05-26 16:53:29.000000000 -0700
+@@ -265,7 +265,8 @@
+   mlir::BackwardSliceOptions opt;
+   opt.omitBlockArguments = true;
+   opt.filter = bwdFilter;
+-  getBackwardSlice(x, &slice, opt);
++  auto result = getBackwardSlice(x, &slice, opt);
++  assert(result.succeeded() && "expected a backward slice");
+ 
+   // TODO: This heuristic may be a bit too coarse and may need improving
+   // If the chain contains a fp4 to fp16/bf16 conversion, then the original
+
+--- a/lib/Dialect/TritonGPU/Transforms/Pipeliner/ScheduleLoops.cpp	2025-05-20 08:08:14.000000000 -0700
++++ b/lib/Dialect/TritonGPU/Transforms/Pipeliner/ScheduleLoops.cpp	2025-05-26 16:53:29.000000000 -0700
+@@ -219,7 +219,8 @@
+       BackwardSliceOptions opt;
+       opt.omitBlockArguments = true;
+       opt.omitUsesFromAbove = false;
+-      getBackwardSlice((Operation *)op, &backwardSlice, opt);
++      auto result = getBackwardSlice((Operation *)op, &backwardSlice, opt);
++      assert(result.succeeded() && "expected a backward slice");
+ 
+       for (auto op : backwardSlice) {
+         if (auto ifOp = dyn_cast<scf::IfOp>(op)) {
+
+--- a/lib/Dialect/TritonGPU/Transforms/Pipeliner/WGMMAPipeline.cpp	2025-04-25 05:19:43.000000000 -0700
++++ b/lib/Dialect/TritonGPU/Transforms/Pipeliner/WGMMAPipeline.cpp	2025-05-26 16:53:29.000000000 -0700
+@@ -172,7 +172,8 @@
+       return op->getBlock() == wait->getBlock();
+     };
+     SetVector<Operation *> slice;
+-    getBackwardSlice(v, &slice, options);
++    auto result = getBackwardSlice(v, &slice, options);
++    assert(result.succeeded() && "expected a backward slice");
+   }
+ 
+   for (ttng::WarpGroupDotOp dot : asyncDots) {
+
+
+--- a/test/Conversion/amd/async_ops_to_llvm.mlir	2025-04-30 09:57:08.000000000 -0700
++++ b/test/Conversion/amd/async_ops_to_llvm.mlir	2025-05-26 16:53:29.000000000 -0700
+@@ -259,16 +259,13 @@
+     // Each thread needs to load 1 element and we load 1 (sizePerThread) per global.load.lds
+ 
+     // CHECK: llvm.getelementptr
+-    // CHECK: %[[aux_ca:.*]] = llvm.mlir.constant(0 : i32) : i32
+-    // CHECK: rocdl.global.load.lds {{.*}}, {{.*}}, {{.*}}, {{.*}}, %[[aux_ca]]
++    // CHECK: rocdl.global.load.lds {{.*}}, {{.*}}, {{.*}}, {{.*}}, 0
+     %2 = ttg.async_copy_global_to_local %1, %arg2 cacheModifier = ca: tensor<32x32x!tt.ptr<f16>, #blocked> -> <32x32xf16, #shared, #smem, mutable>
+     // CHECK: llvm.getelementptr
+-    // CHECK: %[[aux_cg:.*]] = llvm.mlir.constant(3 : i32) : i32
+-    // CHECK: rocdl.global.load.lds {{.*}}, {{.*}}, {{.*}}, {{.*}}, %[[aux_cg]]
++    // CHECK: rocdl.global.load.lds {{.*}}, {{.*}}, {{.*}}, {{.*}}, 3
+     %3 = ttg.async_copy_global_to_local %1, %arg2 cacheModifier = cg: tensor<32x32x!tt.ptr<f16>, #blocked> -> <32x32xf16, #shared, #smem, mutable>
+     // CHECK: llvm.getelementptr
+-    // CHECK: %[[aux_cv:.*]] = llvm.mlir.constant(17 : i32) : i32
+-    // CHECK: rocdl.global.load.lds {{.*}}, {{.*}}, {{.*}}, {{.*}}, %[[aux_cv]]
++    // CHECK: rocdl.global.load.lds {{.*}}, {{.*}}, {{.*}}, {{.*}}, 17
+     %4 = ttg.async_copy_global_to_local %1, %arg2 cacheModifier = cv: tensor<32x32x!tt.ptr<f16>, #blocked> -> <32x32xf16, #shared, #smem, mutable>
+     tt.return
+   }
+
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/ElementwiseOpToLLVM.cpp	2025-04-30 09:57:08.000000000 -0700
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/ElementwiseOpToLLVM.cpp	2025-05-28 05:05:07.000000000 -0700
+@@ -37,30 +37,24 @@
+   fp8x4Vec = b.insert_element(fp8x4VecTy, fp8x4Vec, v1, idx1);
+   auto i32v = b.bitcast(fp8x4Vec, i32_ty);
+ 
+-  auto resType = i32_ty;
+   auto dstType = f32_ty;
+   if constexpr (std::is_same_v<ConvertOp, ROCDL::CvtScaleF32PkF32Fp8Op> ||
+                 std::is_same_v<ConvertOp, ROCDL::CvtScaleF32PkF32Bf8Op>) {
+-    resType = i64_ty;
+     dstType = f32_ty;
+   } else if constexpr (std::is_same_v<ConvertOp,
+                                       ROCDL::CvtScaleF32PkF16Fp8Op> ||
+                        std::is_same_v<ConvertOp,
+                                       ROCDL::CvtScaleF32PkF16Bf8Op>) {
+-    resType = i32_ty;
+     dstType = f16_ty;
+   } else {
+-    resType = i32_ty;
+     dstType = bf16_ty;
+   }
+   Value scale = b.f32_val(1);
+-  Value select = b.false_val();
+-  auto result = rewriter.create<ConvertOp>(loc, resType, i32v, scale, select);
+   auto retVecTy = vec_ty(dstType, 2);
+-  auto retVec = b.bitcast(result, retVecTy);
++  auto result = rewriter.create<ConvertOp>(loc, retVecTy, i32v, scale, false);
+   SmallVector<Value> ret(2);
+-  ret[0] = b.extract_element(dstType, retVec, idx0);
+-  ret[1] = b.extract_element(dstType, retVec, idx1);
++  ret[0] = b.extract_element(dstType, result, idx0);
++  ret[1] = b.extract_element(dstType, result, idx1);
+   return ret;
+ }
+ 
+@@ -73,13 +67,12 @@
+   Type v2I16Ty = vec_ty(i16_ty, 2);
+   Value v2I16Vec = b.undef(v2I16Ty);
+   Value scale = b.f32_val(1);
+-  Value select = b.false_val();
+ 
+   Value result;
+   if constexpr (std::is_same_v<ConvertOp, ROCDL::CvtScaleF32PkFp8F32Op> ||
+                 std::is_same_v<ConvertOp, ROCDL::CvtScaleF32PkBf8F32Op>) {
+     result = rewriter.create<ConvertOp>(loc, v2I16Ty, v2I16Vec, v0, v1, scale,
+-                                        select);
++                                        false);
+   } else {
+     Type v2F16Ty = vec_ty(v0.getType(), 2);
+     Value srcVec = b.undef(v2F16Ty);
+@@ -88,7 +81,7 @@
+     srcVec = b.insert_element(v2F16Ty, srcVec, v0, idx0);
+     srcVec = b.insert_element(v2F16Ty, srcVec, v1, idx1);
+     result = rewriter.create<ConvertOp>(loc, v2I16Ty, v2I16Vec, srcVec, scale,
+-                                        select);
++                                        false);
+   }
+   auto fp8x4VecTy = vec_ty(i8_ty, 4);
+   auto fp8x4Vec = b.bitcast(result, fp8x4VecTy);
+@@ -312,8 +305,7 @@
+   auto resType = i64_ty;
+   auto dstType = f32_ty;
+ 
+-  Value select = b.false_val();
+-  auto result = rewriter.create<ConvertOp>(loc, resType, i32v, select);
++  auto result = rewriter.create<ConvertOp>(loc, resType, i32v, false);
+   auto f32x2VecTy = vec_ty(dstType, 2);
+   auto retVec = b.bitcast(result, f32x2VecTy);
+   SmallVector<Value> ret(2);
+@@ -330,10 +322,9 @@
+   auto b = TritonLLVMOpBuilder(loc, rewriter);
+   Type v2I16Ty = vec_ty(i16_ty, 2);
+   Value old = b.undef(i32_ty);
+-  Value select = b.false_val();
+ 
+   Value result;
+-  result = rewriter.create<ConvertOp>(loc, v2I16Ty, v0, v1, old, select);
++  result = rewriter.create<ConvertOp>(loc, v2I16Ty, v0, v1, old, false);
+   auto fp8x4VecTy = vec_ty(i8_ty, 4);
+   auto fp8x4Vec = b.bitcast(result, fp8x4VecTy);
+   SmallVector<Value> ret(2);
+
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/LoadStoreOpToLLVM.cpp	2025-05-20 08:08:14.000000000 -0700
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/LoadStoreOpToLLVM.cpp	2025-05-26 16:53:29.000000000 -0700
+@@ -682,9 +682,9 @@
+     assert(llvm::isPowerOf2_32(vecBytes));
+     Value vecBytesVal = b.i32_val(vecBytes);
+ 
+-    Value cacheModifiers =
+-        b.i32_val(mlir::LLVM::AMD::getCtrlBitsForCacheModifierOnTarget(
+-            op.getCache(), /*isLoad=*/true, targetInfo));
++    uint32_t cacheModifiers =
++        mlir::LLVM::AMD::getCtrlBitsForCacheModifierOnTarget(
++            op.getCache(), /*isLoad=*/true, targetInfo);
+ 
+     Value llMask = adaptor.getMask();
+     SmallVector<Value> maskElems;
+@@ -722,7 +722,7 @@
+         auto globalLoadLdsOp = rewriter.create<ROCDL::GlobalLoadLDSOp>(
+             loc,
+             /*globalPtr=*/srcPtr, /*ldsPtr=*/coalescedShmemAddr[i],
+-            /*size=*/vecBytesVal, /*offset=*/b.i32_val(0),
++            /*size=*/vecBytes, /*offset=*/0,
+             /*aux=*/cacheModifiers, /*alias_scopes=*/nullptr,
+             /*noalias_scopes=*/nullptr, /*tbaa=*/nullptr);
+         LLVM::AMD::addAsyncCopyAliasScope(globalLoadLdsOp);
+@@ -737,8 +737,8 @@
+       rewriter.create<LLVM::CondBrOp>(loc, pred, loadBlock, afterLoad);
+       rewriter.setInsertionPointToStart(loadBlock);
+       auto globalLoadLdsOp = rewriter.create<ROCDL::GlobalLoadLDSOp>(
+-          loc, srcPtr, coalescedShmemAddr[i], vecBytesVal,
+-          /*offset=*/b.i32_val(0), cacheModifiers, nullptr, nullptr, nullptr);
++          loc, srcPtr, coalescedShmemAddr[i], vecBytes,
++          /*offset=*/0, cacheModifiers, nullptr, nullptr, nullptr);
+       LLVM::AMD::addAsyncCopyAliasScope(globalLoadLdsOp);
+ 
+       rewriter.create<LLVM::BrOp>(loc, afterLoad);
+
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/Utility.cpp	2025-05-20 08:08:14.000000000 -0700
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/Utility.cpp	2025-05-28 05:05:07.000000000 -0700
+@@ -691,7 +691,9 @@
+   Operation *opA = dotOp.getA().getDefiningOp();
+   if (!opA)
+     return false;
+-  getBackwardSlice(opA, &bwdSlices, bwdOpt);
++  if (failed(getBackwardSlice(opA, &bwdSlices, bwdOpt))) {
++    return false;
++  }
+   if (llvm::find_if(bwdSlices, [](Operation *op) {
+         return isa<tt::DotOpInterface>(op);
+       }) != bwdSlices.end())
+
+--- a/third_party/amd/lib/TritonAMDGPUTransforms/BlockPingpong.cpp	2025-04-30 09:57:08.000000000 -0700
++++ b/third_party/amd/lib/TritonAMDGPUTransforms/BlockPingpong.cpp	2025-05-28 05:05:07.000000000 -0700
+@@ -129,7 +129,7 @@
+       return op->getBlock() == checkedOp->getBlock() &&
+              checkedOp->isBeforeInBlock(op);
+     };
+-    getBackwardSlice(op, &backwardSlice, opt);
++    (void)getBackwardSlice(op, &backwardSlice, opt);
+     for (auto predOp : backwardSlice)
+       appendOp(predOp);
+     appendOp(op);
+
+--- a/third_party/amd/lib/TritonAMDGPUTransforms/ReorderInstructions.cpp	2025-04-25 05:19:43.000000000 -0700
++++ b/third_party/amd/lib/TritonAMDGPUTransforms/ReorderInstructions.cpp	2025-05-28 05:05:07.000000000 -0700
+@@ -214,7 +214,7 @@
+       // Only move ops residing in the same block.
+       return defBlock == block;
+     };
+-    mlir::getBackwardSlice(op, &backwardSet, options);
++    (void)mlir::getBackwardSlice(op, &backwardSet, options);
+     backwardSet.insert(op);
+ 
+     // Don't move a local_store if its source is a load from
+
+--- a/third_party/nvidia/hopper/lib/Transforms/WarpSpecialization/WSTaskPartition.cpp	2025-05-20 08:08:14.000000000 -0700
++++ b/third_party/nvidia/hopper/lib/Transforms/WarpSpecialization/WSTaskPartition.cpp	2025-05-26 16:53:30.000000000 -0700
+@@ -80,8 +80,10 @@
+     if (!dotOp)
+       continue;
+     SetVector<Operation *> backwardSlice;
+-    getBackwardSlice(dotOp.getA(), &backwardSlice, opt);
+-    getBackwardSlice(dotOp.getB(), &backwardSlice, opt);
++    auto resultA = getBackwardSlice(dotOp.getA(), &backwardSlice, opt);
++    assert(resultA.succeeded() && "expected a backward slice");
++    auto resultB = getBackwardSlice(dotOp.getB(), &backwardSlice, opt);
++    assert(resultB.succeeded() && "expected a backward slice");
+     for (auto depOp : backwardSlice) {
+       if (isa<tt::DescriptorLoadOp>(depOp)) {
+         producerOps.insert(depOp);

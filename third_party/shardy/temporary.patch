@@ -1,15 +1,2915 @@
+diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
+index a79a29a..286a9b1 100644
+--- a/third_party/llvm/generated.patch
++++ b/third_party/llvm/generated.patch
+@@ -1,41 +1,2867 @@
+ Auto generated patch. Do not edit or delete it, even if empty.
+-diff -ruN --strip-trailing-cr a/libcxx/include/__tree b/libcxx/include/__tree
+---- a/libcxx/include/__tree
+-+++ b/libcxx/include/__tree
+-@@ -1281,7 +1281,7 @@
++diff -ruN --strip-trailing-cr a/clang/lib/Lex/ModuleMap.cpp b/clang/lib/Lex/ModuleMap.cpp
++--- a/clang/lib/Lex/ModuleMap.cpp
+++++ b/clang/lib/Lex/ModuleMap.cpp
++@@ -310,10 +310,8 @@
++   } else if (Header.HasBuiltinHeader && !Header.Size && !Header.ModTime) {
++     // There's a builtin header but no corresponding on-disk header. Assume
++     // this was supposed to modularize the builtin header alone.
++-  } else if ((Header.Kind == Module::HK_Excluded) ||
++-             (Header.Kind == Module::HK_Textual)) {
++-    // Ignore excluded and textual header files as a module can be built with
++-    // such headers missing.
+++  } else if (Header.Kind == Module::HK_Excluded) {
+++    // Ignore missing excluded header files. They're optional anyway.
++   } else {
++     // If we find a module that has a missing header, we mark this module as
++     // unavailable and store the header directive for displaying diagnostics.
++diff -ruN --strip-trailing-cr a/clang/test/Modules/Inputs/submodules/module.modulemap b/clang/test/Modules/Inputs/submodules/module.modulemap
++--- a/clang/test/Modules/Inputs/submodules/module.modulemap
+++++ b/clang/test/Modules/Inputs/submodules/module.modulemap
++@@ -30,7 +30,3 @@
++   module * { export * }
++   export *
++ }
++-
++-module missing_textual_header {
++-  textual header "missing_textual.h"
++-}
++diff -ruN --strip-trailing-cr a/clang/test/Modules/missing-header.m b/clang/test/Modules/missing-header.m
++--- a/clang/test/Modules/missing-header.m
+++++ b/clang/test/Modules/missing-header.m
++@@ -8,9 +8,6 @@
++ @import missing_unavailable_headers.not_missing; // OK
++ // CHECK-NOT: missing_unavailable_headers
++ 
++-@import missing_textual_header; // OK
++-// CHECK-NOT: missing_textual_header
++-
++ @import missing_headers;
++ // CHECK: module.modulemap:15:27: error: header 'missing.h' not found
++ // CHECK: could not build module 'missing_headers'
++diff -ruN --strip-trailing-cr a/libcxx/include/__algorithm/shuffle.h b/libcxx/include/__algorithm/shuffle.h
++--- a/libcxx/include/__algorithm/shuffle.h
+++++ b/libcxx/include/__algorithm/shuffle.h
++@@ -65,7 +65,6 @@
++ #if _LIBCPP_STD_VER <= 14 || defined(_LIBCPP_ENABLE_CXX17_REMOVED_RANDOM_SHUFFLE) || defined(_LIBCPP_BUILDING_LIBRARY)
++ class _LIBCPP_EXPORTED_FROM_ABI __rs_default;
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_EXPORTED_FROM_ABI __rs_default __rs_get();
++ 
++ class _LIBCPP_EXPORTED_FROM_ABI __rs_default {
++@@ -91,7 +90,6 @@
++ };
++ 
++ _LIBCPP_EXPORTED_FROM_ABI __rs_default __rs_get();
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ template <class _RandomAccessIterator>
++ _LIBCPP_HIDE_FROM_ABI _LIBCPP_DEPRECATED_IN_CXX14 void
++diff -ruN --strip-trailing-cr a/libcxx/include/__algorithm/sort.h b/libcxx/include/__algorithm/sort.h
++--- a/libcxx/include/__algorithm/sort.h
+++++ b/libcxx/include/__algorithm/sort.h
++@@ -64,7 +64,7 @@
++ 
++ // Ensures that __c(*__x, *__y) is true by swapping *__x and *__y if necessary.
++ template <class _Compare, class _RandomAccessIterator>
++-inline _LIBCPP_CONSTEXPR_SINCE_CXX14 bool
+++inline _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX14 bool
++ __cond_swap(_RandomAccessIterator __x, _RandomAccessIterator __y, _Compare __c) {
++   // Note: this function behaves correctly even with proxy iterators (because it relies on `value_type`).
++   using value_type = typename iterator_traits<_RandomAccessIterator>::value_type;
++@@ -78,7 +78,7 @@
++ // Ensures that *__x, *__y and *__z are ordered according to the comparator __c,
++ // under the assumption that *__y and *__z are already ordered.
++ template <class _Compare, class _RandomAccessIterator>
++-inline _LIBCPP_CONSTEXPR_SINCE_CXX14 bool
+++inline _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX14 bool
++ __partially_sorted_swap(_RandomAccessIterator __x, _RandomAccessIterator __y, _RandomAccessIterator __z, _Compare __c) {
++   // Note: this function behaves correctly even with proxy iterators (because it relies on `value_type`).
++   using value_type = typename iterator_traits<_RandomAccessIterator>::value_type;
++@@ -97,7 +97,7 @@
++           class _Compare,
++           class _RandomAccessIterator,
++           __enable_if_t<__use_branchless_sort<_Compare, _RandomAccessIterator>, int> = 0>
++-inline _LIBCPP_CONSTEXPR_SINCE_CXX14 bool
+++inline _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX14 bool
++ __sort3(_RandomAccessIterator __x1, _RandomAccessIterator __x2, _RandomAccessIterator __x3, _Compare __c) {
++   bool __swapped1 = std::__cond_swap<_Compare>(__x2, __x3, __c);
++   bool __swapped2 = std::__partially_sorted_swap<_Compare>(__x1, __x2, __x3, __c);
++@@ -108,7 +108,7 @@
++           class _Compare,
++           class _RandomAccessIterator,
++           __enable_if_t<!__use_branchless_sort<_Compare, _RandomAccessIterator>, int> = 0>
++-inline _LIBCPP_CONSTEXPR_SINCE_CXX14 bool
+++inline _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX14 bool
++ __sort3(_RandomAccessIterator __x, _RandomAccessIterator __y, _RandomAccessIterator __z, _Compare __c) {
++   using _Ops = _IterOps<_AlgPolicy>;
++ 
++@@ -140,7 +140,7 @@
++           class _Compare,
++           class _RandomAccessIterator,
++           __enable_if_t<__use_branchless_sort<_Compare, _RandomAccessIterator>, int> = 0>
++-inline void
+++inline _LIBCPP_HIDE_FROM_ABI void
++ __sort4(_RandomAccessIterator __x1,
++         _RandomAccessIterator __x2,
++         _RandomAccessIterator __x3,
++@@ -157,7 +157,7 @@
++           class _Compare,
++           class _RandomAccessIterator,
++           __enable_if_t<!__use_branchless_sort<_Compare, _RandomAccessIterator>, int> = 0>
++-inline void
+++inline _LIBCPP_HIDE_FROM_ABI void
++ __sort4(_RandomAccessIterator __x1,
++         _RandomAccessIterator __x2,
++         _RandomAccessIterator __x3,
++@@ -182,7 +182,7 @@
++           class _Compare,
++           class _RandomAccessIterator,
++           __enable_if_t<__use_branchless_sort<_Compare, _RandomAccessIterator>, int> = 0>
++-inline void
+++inline _LIBCPP_HIDE_FROM_ABI void
++ __sort5(_RandomAccessIterator __x1,
++         _RandomAccessIterator __x2,
++         _RandomAccessIterator __x3,
++@@ -201,7 +201,7 @@
++           class _Compare,
++           class _RandomAccessIterator,
++           __enable_if_t<!__use_branchless_sort<_Compare, _RandomAccessIterator>, int> = 0>
++-inline void
+++inline _LIBCPP_HIDE_FROM_ABI void
++ __sort5(_RandomAccessIterator __x1,
++         _RandomAccessIterator __x2,
++         _RandomAccessIterator __x3,
++@@ -227,7 +227,7 @@
++ 
++ // Assumes size > 0
++ template <class _AlgPolicy, class _Compare, class _BidirectionalIterator>
++-_LIBCPP_CONSTEXPR_SINCE_CXX14 void
+++_LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX14 void
++ __selection_sort(_BidirectionalIterator __first, _BidirectionalIterator __last, _Compare __comp) {
++   _BidirectionalIterator __lm1 = __last;
++   for (--__lm1; __first != __lm1; ++__first) {
++@@ -240,7 +240,7 @@
++ // Sort the iterator range [__first, __last) using the comparator __comp using
++ // the insertion sort algorithm.
++ template <class _AlgPolicy, class _Compare, class _BidirectionalIterator>
++-_LIBCPP_CONSTEXPR_SINCE_CXX26 void
+++_LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX26 void
++ __insertion_sort(_BidirectionalIterator __first, _BidirectionalIterator __last, _Compare __comp) {
++   using _Ops = _IterOps<_AlgPolicy>;
++ 
++@@ -270,7 +270,8 @@
++ // Assumes that there is an element in the position (__first - 1) and that each
++ // element in the input range is greater or equal to the element at __first - 1.
++ template <class _AlgPolicy, class _Compare, class _RandomAccessIterator>
++-void __insertion_sort_unguarded(_RandomAccessIterator const __first, _RandomAccessIterator __last, _Compare __comp) {
+++_LIBCPP_HIDE_FROM_ABI void
+++__insertion_sort_unguarded(_RandomAccessIterator const __first, _RandomAccessIterator __last, _Compare __comp) {
++   using _Ops = _IterOps<_AlgPolicy>;
++   typedef typename iterator_traits<_RandomAccessIterator>::difference_type difference_type;
++   typedef typename iterator_traits<_RandomAccessIterator>::value_type value_type;
++@@ -297,7 +298,8 @@
++ }
++ 
++ template <class _AlgPolicy, class _Comp, class _RandomAccessIterator>
++-bool __insertion_sort_incomplete(_RandomAccessIterator __first, _RandomAccessIterator __last, _Comp __comp) {
+++_LIBCPP_HIDE_FROM_ABI bool
+++__insertion_sort_incomplete(_RandomAccessIterator __first, _RandomAccessIterator __last, _Comp __comp) {
++   using _Ops = _IterOps<_AlgPolicy>;
++ 
++   typedef typename iterator_traits<_RandomAccessIterator>::difference_type difference_type;
++@@ -350,7 +352,7 @@
++ }
++ 
++ template <class _AlgPolicy, class _RandomAccessIterator>
++-inline void __swap_bitmap_pos(
+++inline _LIBCPP_HIDE_FROM_ABI void __swap_bitmap_pos(
++     _RandomAccessIterator __first, _RandomAccessIterator __last, uint64_t& __left_bitset, uint64_t& __right_bitset) {
++   using _Ops = _IterOps<_AlgPolicy>;
++   typedef typename std::iterator_traits<_RandomAccessIterator>::difference_type difference_type;
++@@ -368,7 +370,7 @@
++ template <class _Compare,
++           class _RandomAccessIterator,
++           class _ValueType = typename iterator_traits<_RandomAccessIterator>::value_type>
++-inline void
+++inline _LIBCPP_HIDE_FROM_ABI void
++ __populate_left_bitset(_RandomAccessIterator __first, _Compare __comp, _ValueType& __pivot, uint64_t& __left_bitset) {
++   // Possible vectorization. With a proper "-march" flag, the following loop
++   // will be compiled into a set of SIMD instructions.
++@@ -384,7 +386,7 @@
++ template <class _Compare,
++           class _RandomAccessIterator,
++           class _ValueType = typename iterator_traits<_RandomAccessIterator>::value_type>
++-inline void
+++inline _LIBCPP_HIDE_FROM_ABI void
++ __populate_right_bitset(_RandomAccessIterator __lm1, _Compare __comp, _ValueType& __pivot, uint64_t& __right_bitset) {
++   // Possible vectorization. With a proper "-march" flag, the following loop
++   // will be compiled into a set of SIMD instructions.
++@@ -401,7 +403,7 @@
++           class _Compare,
++           class _RandomAccessIterator,
++           class _ValueType = typename iterator_traits<_RandomAccessIterator>::value_type>
++-inline void __bitset_partition_partial_blocks(
+++inline _LIBCPP_HIDE_FROM_ABI void __bitset_partition_partial_blocks(
++     _RandomAccessIterator& __first,
++     _RandomAccessIterator& __lm1,
++     _Compare __comp,
++@@ -448,7 +450,7 @@
++ }
++ 
++ template <class _AlgPolicy, class _RandomAccessIterator>
++-inline void __swap_bitmap_pos_within(
+++inline _LIBCPP_HIDE_FROM_ABI void __swap_bitmap_pos_within(
++     _RandomAccessIterator& __first, _RandomAccessIterator& __lm1, uint64_t& __left_bitset, uint64_t& __right_bitset) {
++   using _Ops = _IterOps<_AlgPolicy>;
++   typedef typename std::iterator_traits<_RandomAccessIterator>::difference_type difference_type;
++@@ -489,7 +491,7 @@
++ // __bitset_partition uses bitsets for storing outcomes of the comparisons
++ // between the pivot and other elements.
++ template <class _AlgPolicy, class _RandomAccessIterator, class _Compare>
++-std::pair<_RandomAccessIterator, bool>
+++_LIBCPP_HIDE_FROM_ABI std::pair<_RandomAccessIterator, bool>
++ __bitset_partition(_RandomAccessIterator __first, _RandomAccessIterator __last, _Compare __comp) {
++   using _Ops = _IterOps<_AlgPolicy>;
++   typedef typename std::iterator_traits<_RandomAccessIterator>::value_type value_type;
++@@ -581,7 +583,7 @@
++ // the provided range is already sorted, false otherwise.  We assume that the
++ // length of the range is at least three elements.
++ template <class _AlgPolicy, class _RandomAccessIterator, class _Compare>
++-std::pair<_RandomAccessIterator, bool>
+++_LIBCPP_HIDE_FROM_ABI std::pair<_RandomAccessIterator, bool>
++ __partition_with_equals_on_right(_RandomAccessIterator __first, _RandomAccessIterator __last, _Compare __comp) {
++   using _Ops = _IterOps<_AlgPolicy>;
++   typedef typename iterator_traits<_RandomAccessIterator>::difference_type difference_type;
++@@ -649,7 +651,7 @@
++ // Similar to the above function.  Elements equivalent to the pivot are put to
++ // the left of the pivot.  Returns the iterator to the pivot element.
++ template <class _AlgPolicy, class _RandomAccessIterator, class _Compare>
++-_RandomAccessIterator
+++_LIBCPP_HIDE_FROM_ABI _RandomAccessIterator
++ __partition_with_equals_on_left(_RandomAccessIterator __first, _RandomAccessIterator __last, _Compare __comp) {
++   using _Ops = _IterOps<_AlgPolicy>;
++   typedef typename iterator_traits<_RandomAccessIterator>::difference_type difference_type;
++@@ -826,7 +828,6 @@
++   }
++ }
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ template <class _Comp, class _RandomAccessIterator>
++ void __sort(_RandomAccessIterator, _RandomAccessIterator, _Comp);
++ 
++@@ -855,10 +856,9 @@
++ extern template _LIBCPP_EXPORTED_FROM_ABI void __sort<__less<double>&, double*>(double*, double*, __less<double>&);
++ extern template _LIBCPP_EXPORTED_FROM_ABI void
++ __sort<__less<long double>&, long double*>(long double*, long double*, __less<long double>&);
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ template <class _AlgPolicy, class _RandomAccessIterator, class _Comp>
++-_LIBCPP_CONSTEXPR_SINCE_CXX20 void
+++_LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 void
++ __sort_dispatch(_RandomAccessIterator __first, _RandomAccessIterator __last, _Comp& __comp) {
++   typedef typename iterator_traits<_RandomAccessIterator>::difference_type difference_type;
++   difference_type __depth_limit = 2 * std::__bit_log2(std::__to_unsigned_like(__last - __first));
++@@ -895,20 +895,20 @@
++     long double>;
++ 
++ template <class _AlgPolicy, class _Type, __enable_if_t<__sort_is_specialized_in_library<_Type>::value, int> = 0>
++-void __sort_dispatch(_Type* __first, _Type* __last, __less<>&) {
+++_LIBCPP_HIDE_FROM_ABI void __sort_dispatch(_Type* __first, _Type* __last, __less<>&) {
++   __less<_Type> __comp;
++   std::__sort<__less<_Type>&, _Type*>(__first, __last, __comp);
++ }
++ 
++ template <class _AlgPolicy, class _Type, __enable_if_t<__sort_is_specialized_in_library<_Type>::value, int> = 0>
++-void __sort_dispatch(_Type* __first, _Type* __last, less<_Type>&) {
+++_LIBCPP_HIDE_FROM_ABI void __sort_dispatch(_Type* __first, _Type* __last, less<_Type>&) {
++   __less<_Type> __comp;
++   std::__sort<__less<_Type>&, _Type*>(__first, __last, __comp);
++ }
++ 
++ #if _LIBCPP_STD_VER >= 14
++ template <class _AlgPolicy, class _Type, __enable_if_t<__sort_is_specialized_in_library<_Type>::value, int> = 0>
++-void __sort_dispatch(_Type* __first, _Type* __last, less<>&) {
+++_LIBCPP_HIDE_FROM_ABI void __sort_dispatch(_Type* __first, _Type* __last, less<>&) {
++   __less<_Type> __comp;
++   std::__sort<__less<_Type>&, _Type*>(__first, __last, __comp);
++ }
++@@ -916,14 +916,14 @@
++ 
++ #if _LIBCPP_STD_VER >= 20
++ template <class _AlgPolicy, class _Type, __enable_if_t<__sort_is_specialized_in_library<_Type>::value, int> = 0>
++-void __sort_dispatch(_Type* __first, _Type* __last, ranges::less&) {
+++_LIBCPP_HIDE_FROM_ABI void __sort_dispatch(_Type* __first, _Type* __last, ranges::less&) {
++   __less<_Type> __comp;
++   std::__sort<__less<_Type>&, _Type*>(__first, __last, __comp);
++ }
++ #endif
++ 
++ template <class _AlgPolicy, class _RandomAccessIterator, class _Comp>
++-inline _LIBCPP_CONSTEXPR_SINCE_CXX20 void
+++inline _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 void
++ __sort_impl(_RandomAccessIterator __first, _RandomAccessIterator __last, _Comp& __comp) {
++   std::__debug_randomize_range<_AlgPolicy>(__first, __last);
++ 
++@@ -937,13 +937,14 @@
++ }
++ 
++ template <class _RandomAccessIterator, class _Comp>
++-inline _LIBCPP_CONSTEXPR_SINCE_CXX20 void
+++inline _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 void
++ sort(_RandomAccessIterator __first, _RandomAccessIterator __last, _Comp __comp) {
++   std::__sort_impl<_ClassicAlgPolicy>(std::move(__first), std::move(__last), __comp);
++ }
++ 
++ template <class _RandomAccessIterator>
++-inline _LIBCPP_CONSTEXPR_SINCE_CXX20 void sort(_RandomAccessIterator __first, _RandomAccessIterator __last) {
+++inline _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 void
+++sort(_RandomAccessIterator __first, _RandomAccessIterator __last) {
++   std::sort(__first, __last, __less<>());
++ }
++ 
++diff -ruN --strip-trailing-cr a/libcxx/include/any b/libcxx/include/any
++--- a/libcxx/include/any
+++++ b/libcxx/include/any
++@@ -120,12 +120,10 @@
++ #  include <__undef_macros>
++ 
++ _LIBCPP_BEGIN_UNVERSIONED_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ class _LIBCPP_EXPORTED_FROM_ABI _LIBCPP_AVAILABILITY_BAD_ANY_CAST bad_any_cast : public bad_cast {
++ public:
++   const char* what() const _NOEXCEPT override;
++ };
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_UNVERSIONED_NAMESPACE_STD
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/include/__atomic/atomic_sync.h b/libcxx/include/__atomic/atomic_sync.h
++--- a/libcxx/include/__atomic/atomic_sync.h
+++++ b/libcxx/include/__atomic/atomic_sync.h
++@@ -58,7 +58,6 @@
++ #if _LIBCPP_STD_VER >= 20
++ #  if _LIBCPP_HAS_THREADS
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_AVAILABILITY_SYNC _LIBCPP_EXPORTED_FROM_ABI void __cxx_atomic_notify_one(void const volatile*) _NOEXCEPT;
++ _LIBCPP_AVAILABILITY_SYNC _LIBCPP_EXPORTED_FROM_ABI void __cxx_atomic_notify_all(void const volatile*) _NOEXCEPT;
++ _LIBCPP_AVAILABILITY_SYNC _LIBCPP_EXPORTED_FROM_ABI __cxx_contention_t
++@@ -74,7 +73,6 @@
++ __libcpp_atomic_monitor(__cxx_atomic_contention_t const volatile*) _NOEXCEPT;
++ _LIBCPP_AVAILABILITY_SYNC _LIBCPP_EXPORTED_FROM_ABI void
++ __libcpp_atomic_wait(__cxx_atomic_contention_t const volatile*, __cxx_contention_t) _NOEXCEPT;
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ template <class _AtomicWaitable, class _Poll>
++ struct __atomic_wait_backoff_impl {
++diff -ruN --strip-trailing-cr a/libcxx/include/barrier b/libcxx/include/barrier
++--- a/libcxx/include/barrier
+++++ b/libcxx/include/barrier
++@@ -97,7 +97,6 @@
++ 
++ class __barrier_algorithm_base;
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_AVAILABILITY_SYNC _LIBCPP_EXPORTED_FROM_ABI __barrier_algorithm_base*
++ __construct_barrier_algorithm_base(ptrdiff_t& __expected);
++ 
++@@ -106,7 +105,6 @@
++ 
++ _LIBCPP_AVAILABILITY_SYNC _LIBCPP_EXPORTED_FROM_ABI void
++ __destroy_barrier_algorithm_base(__barrier_algorithm_base* __barrier) noexcept;
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ template <class _CompletionF>
++ class __barrier_base {
++diff -ruN --strip-trailing-cr a/libcxx/include/__charconv/from_chars_floating_point.h b/libcxx/include/__charconv/from_chars_floating_point.h
++--- a/libcxx/include/__charconv/from_chars_floating_point.h
+++++ b/libcxx/include/__charconv/from_chars_floating_point.h
++@@ -35,7 +35,6 @@
++   errc __ec;
++ };
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ template <class _Fp>
++ _LIBCPP_EXPORTED_FROM_ABI __from_chars_result<_Fp> __from_chars_floating_point(
++     _LIBCPP_NOESCAPE const char* __first, _LIBCPP_NOESCAPE const char* __last, chars_format __fmt);
++@@ -45,7 +44,6 @@
++ 
++ extern template __from_chars_result<double> __from_chars_floating_point(
++     _LIBCPP_NOESCAPE const char* __first, _LIBCPP_NOESCAPE const char* __last, chars_format __fmt);
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ template <class _Fp>
++ _LIBCPP_HIDE_FROM_ABI from_chars_result
++diff -ruN --strip-trailing-cr a/libcxx/include/__charconv/to_chars_floating_point.h b/libcxx/include/__charconv/to_chars_floating_point.h
++--- a/libcxx/include/__charconv/to_chars_floating_point.h
+++++ b/libcxx/include/__charconv/to_chars_floating_point.h
++@@ -18,10 +18,9 @@
++ #  pragma GCC system_header
++ #endif
++ 
++-#if _LIBCPP_STD_VER >= 17
++-
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
+++
+++#if _LIBCPP_STD_VER >= 17
++ 
++ _LIBCPP_AVAILABILITY_TO_CHARS_FLOATING_POINT _LIBCPP_EXPORTED_FROM_ABI to_chars_result
++ to_chars(char* __first, char* __last, float __value);
++@@ -49,10 +48,8 @@
++ 
++ _LIBCPP_AVAILABILITY_TO_CHARS_FLOATING_POINT _LIBCPP_EXPORTED_FROM_ABI to_chars_result
++ to_chars(char* __first, char* __last, long double __value, chars_format __fmt, int __precision);
+++#endif // _LIBCPP_STD_VER >= 17
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++-#endif // _LIBCPP_STD_VER >= 17
++-
++ #endif // _LIBCPP___CHARCONV_TO_CHARS_FLOATING_POINT_H
++diff -ruN --strip-trailing-cr a/libcxx/include/__chrono/exception.h b/libcxx/include/__chrono/exception.h
++--- a/libcxx/include/__chrono/exception.h
+++++ b/libcxx/include/__chrono/exception.h
++@@ -31,7 +31,6 @@
++ #  endif
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ #  if _LIBCPP_STD_VER >= 20
++ 
++@@ -129,7 +128,6 @@
++ 
++ #  endif // _LIBCPP_STD_VER >= 20
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ #endif // _LIBCPP_HAS_EXPERIMENTAL_TZDB
++diff -ruN --strip-trailing-cr a/libcxx/include/__chrono/file_clock.h b/libcxx/include/__chrono/file_clock.h
++--- a/libcxx/include/__chrono/file_clock.h
+++++ b/libcxx/include/__chrono/file_clock.h
++@@ -46,7 +46,6 @@
++ 
++ #ifndef _LIBCPP_CXX03_LANG
++ _LIBCPP_BEGIN_NAMESPACE_FILESYSTEM
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ struct _FilesystemClock {
++ #  if _LIBCPP_HAS_INT128
++   typedef __int128_t rep;
++@@ -75,7 +74,6 @@
++   }
++ #  endif // _LIBCPP_STD_VER >= 20
++ };
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_FILESYSTEM
++ #endif // !_LIBCPP_CXX03_LANG
++ 
++diff -ruN --strip-trailing-cr a/libcxx/include/__chrono/steady_clock.h b/libcxx/include/__chrono/steady_clock.h
++--- a/libcxx/include/__chrono/steady_clock.h
+++++ b/libcxx/include/__chrono/steady_clock.h
++@@ -19,7 +19,6 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ namespace chrono {
++ 
++@@ -38,7 +37,6 @@
++ 
++ } // namespace chrono
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ #endif // _LIBCPP___CHRONO_STEADY_CLOCK_H
++diff -ruN --strip-trailing-cr a/libcxx/include/__chrono/system_clock.h b/libcxx/include/__chrono/system_clock.h
++--- a/libcxx/include/__chrono/system_clock.h
+++++ b/libcxx/include/__chrono/system_clock.h
++@@ -20,7 +20,6 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ namespace chrono {
++ 
++@@ -48,7 +47,6 @@
++ 
++ } // namespace chrono
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ #endif // _LIBCPP___CHRONO_SYSTEM_CLOCK_H
++diff -ruN --strip-trailing-cr a/libcxx/include/codecvt b/libcxx/include/codecvt
++--- a/libcxx/include/codecvt
+++++ b/libcxx/include/codecvt
++@@ -71,7 +71,6 @@
++ #    if _LIBCPP_STD_VER < 26 || defined(_LIBCPP_BUILDING_LIBRARY) || defined(_LIBCPP_ENABLE_CXX26_REMOVED_CODECVT)
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ enum _LIBCPP_DEPRECATED_IN_CXX17 codecvt_mode { consume_header = 4, generate_header = 2, little_endian = 1 };
++ 
++@@ -580,7 +579,6 @@
++ };
++ _LIBCPP_SUPPRESS_DEPRECATED_POP
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ #    endif // _LIBCPP_STD_VER < 26 || defined(_LIBCPP_BUILDING_LIBRARY) || defined(_LIBCPP_ENABLE_CXX26_REMOVED_CODECVT)
++diff -ruN --strip-trailing-cr a/libcxx/include/__condition_variable/condition_variable.h b/libcxx/include/__condition_variable/condition_variable.h
++--- a/libcxx/include/__condition_variable/condition_variable.h
+++++ b/libcxx/include/__condition_variable/condition_variable.h
++@@ -32,7 +32,6 @@
++ #include <__undef_macros>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ #if _LIBCPP_HAS_THREADS
++ 
++@@ -226,7 +225,6 @@
++ 
++ #endif // _LIBCPP_HAS_THREADS
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ _LIBCPP_POP_MACROS
++diff -ruN --strip-trailing-cr a/libcxx/include/condition_variable b/libcxx/include/condition_variable
++--- a/libcxx/include/condition_variable
+++++ b/libcxx/include/condition_variable
++@@ -340,9 +340,7 @@
++ 
++ #    endif // _LIBCPP_STD_VER >= 20
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_EXPORTED_FROM_ABI void notify_all_at_thread_exit(condition_variable&, unique_lock<mutex>);
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ _LIBCPP_END_NAMESPACE_STD
++ 
++diff -ruN --strip-trailing-cr a/libcxx/include/__config b/libcxx/include/__config
++--- a/libcxx/include/__config
+++++ b/libcxx/include/__config
++@@ -149,8 +149,8 @@
++ 
++ // } HARDENING
++ 
++-#  define _LIBCPP_TOSTRING2(...) #__VA_ARGS__
++-#  define _LIBCPP_TOSTRING(...) _LIBCPP_TOSTRING2(__VA_ARGS__)
+++#  define _LIBCPP_TOSTRING2(x) #x
+++#  define _LIBCPP_TOSTRING(x) _LIBCPP_TOSTRING2(x)
++ 
++ // NOLINTNEXTLINE(libcpp-cpp-version-check)
++ #  if __cplusplus < 201103L
++@@ -406,7 +406,7 @@
++ #    endif
++ 
++ #    if !defined(_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS) && __has_attribute(__type_visibility__)
++-#      define _LIBCPP_NAMESPACE_VISIBILITY __attribute__((__visibility__("hidden"), __type_visibility__("default")))
+++#      define _LIBCPP_NAMESPACE_VISIBILITY __attribute__((__type_visibility__("default")))
++ #    elif !defined(_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS)
++ #      define _LIBCPP_NAMESPACE_VISIBILITY __attribute__((__visibility__("default")))
++ #    else
++@@ -559,15 +559,6 @@
++ #  endif
++ 
++ // clang-format off
++-#  define _LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS                                                                         \
++-    _LIBCPP_DIAGNOSTIC_PUSH                                                                                            \
++-    _LIBCPP_CLANG_DIAGNOSTIC_IGNORED("-Wpragma-clang-attribute")                                                       \
++-    _LIBCPP_CLANG_DIAGNOSTIC_IGNORED("-Wignored-attributes")                                                           \
++-    _Pragma(_LIBCPP_TOSTRING(clang attribute _LibcxxExplicitABIAnnotations.push(__attribute__((                        \
++-                __exclude_from_explicit_instantiation__, __abi_tag__(_LIBCPP_TOSTRING(_LIBCPP_ODR_SIGNATURE)))),       \
++-            apply_to = function)))                                                                                     \
++-    _LIBCPP_DIAGNOSTIC_POP
++-#  define _LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS _Pragma("clang attribute _LibcxxExplicitABIAnnotations.pop")
++ 
++ // The unversioned namespace is used when we want to be ABI compatible with other standard libraries in some way. There
++ // are two main categories where that's the case:
++@@ -578,10 +569,9 @@
++ // If it's not clear whether using the unversioned namespace is the correct thing to do, it's not. The versioned
++ // namespace (_LIBCPP_BEGIN_NAMESPACE_STD) should almost always be used.
++ #  define _LIBCPP_BEGIN_UNVERSIONED_NAMESPACE_STD                                                                      \
++-    _LIBCPP_PUSH_EXTENSION_DIAGNOSTICS _LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS namespace _LIBCPP_NAMESPACE_VISIBILITY std {
+++    _LIBCPP_PUSH_EXTENSION_DIAGNOSTICS namespace _LIBCPP_NAMESPACE_VISIBILITY std {
++ 
++-#  define _LIBCPP_END_UNVERSIONED_NAMESPACE_STD } _LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS                               \
++-    _LIBCPP_POP_EXTENSION_DIAGNOSTICS
+++#  define _LIBCPP_END_UNVERSIONED_NAMESPACE_STD } _LIBCPP_POP_EXTENSION_DIAGNOSTICS
++ 
++ #  define _LIBCPP_BEGIN_NAMESPACE_STD _LIBCPP_BEGIN_UNVERSIONED_NAMESPACE_STD inline namespace _LIBCPP_ABI_NAMESPACE {
++ #  define _LIBCPP_END_NAMESPACE_STD } _LIBCPP_END_UNVERSIONED_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/include/__exception/exception.h b/libcxx/include/__exception/exception.h
++--- a/libcxx/include/__exception/exception.h
+++++ b/libcxx/include/__exception/exception.h
++@@ -22,7 +22,6 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_UNVERSIONED_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ #if defined(_LIBCPP_ABI_VCRUNTIME) && (!defined(_HAS_EXCEPTIONS) || _HAS_EXCEPTIONS != 0)
++ // The std::exception class was already included above, but we're explicit about this condition here for clarity.
++@@ -90,7 +89,6 @@
++ };
++ #endif // !_LIBCPP_ABI_VCRUNTIME
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_UNVERSIONED_NAMESPACE_STD
++ 
++ #endif // _LIBCPP___EXCEPTION_EXCEPTION_H
++diff -ruN --strip-trailing-cr a/libcxx/include/__exception/exception_ptr.h b/libcxx/include/__exception/exception_ptr.h
++--- a/libcxx/include/__exception/exception_ptr.h
+++++ b/libcxx/include/__exception/exception_ptr.h
++@@ -53,7 +53,6 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_UNVERSIONED_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ #ifndef _LIBCPP_ABI_MICROSOFT
++ 
++@@ -174,8 +173,6 @@
++ }
++ 
++ #endif // _LIBCPP_ABI_MICROSOFT
++-
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_UNVERSIONED_NAMESPACE_STD
++ 
++ #endif // _LIBCPP___EXCEPTION_EXCEPTION_PTR_H
++diff -ruN --strip-trailing-cr a/libcxx/include/__exception/nested_exception.h b/libcxx/include/__exception/nested_exception.h
++--- a/libcxx/include/__exception/nested_exception.h
+++++ b/libcxx/include/__exception/nested_exception.h
++@@ -29,7 +29,6 @@
++ 
++ _LIBCPP_BEGIN_UNVERSIONED_NAMESPACE_STD
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ class _LIBCPP_EXPORTED_FROM_ABI nested_exception {
++   exception_ptr __ptr_;
++ 
++@@ -43,7 +42,6 @@
++   [[__noreturn__]] void rethrow_nested() const;
++   _LIBCPP_HIDE_FROM_ABI exception_ptr nested_ptr() const _NOEXCEPT { return __ptr_; }
++ };
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ template <class _Tp>
++ struct __nested : public _Tp, public nested_exception {
++diff -ruN --strip-trailing-cr a/libcxx/include/__exception/operations.h b/libcxx/include/__exception/operations.h
++--- a/libcxx/include/__exception/operations.h
+++++ b/libcxx/include/__exception/operations.h
++@@ -16,7 +16,6 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_UNVERSIONED_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ #if _LIBCPP_STD_VER <= 14 || defined(_LIBCPP_ENABLE_CXX17_REMOVED_UNEXPECTED_FUNCTIONS) ||                             \
++     defined(_LIBCPP_BUILDING_LIBRARY)
++ using unexpected_handler = void (*)();
++@@ -38,7 +37,6 @@
++ 
++ _LIBCPP_EXPORTED_FROM_ABI exception_ptr current_exception() _NOEXCEPT;
++ [[__noreturn__]] _LIBCPP_EXPORTED_FROM_ABI void rethrow_exception(exception_ptr);
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_UNVERSIONED_NAMESPACE_STD
++ 
++ #endif // _LIBCPP___EXCEPTION_OPERATIONS_H
++diff -ruN --strip-trailing-cr a/libcxx/include/__exception/terminate.h b/libcxx/include/__exception/terminate.h
++--- a/libcxx/include/__exception/terminate.h
+++++ b/libcxx/include/__exception/terminate.h
++@@ -16,9 +16,7 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_UNVERSIONED_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ [[__noreturn__]] _LIBCPP_EXPORTED_FROM_ABI void terminate() _NOEXCEPT;
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_UNVERSIONED_NAMESPACE_STD
++ 
++ #endif // _LIBCPP___EXCEPTION_TERMINATE_H
++diff -ruN --strip-trailing-cr a/libcxx/include/__expected/bad_expected_access.h b/libcxx/include/__expected/bad_expected_access.h
++--- a/libcxx/include/__expected/bad_expected_access.h
+++++ b/libcxx/include/__expected/bad_expected_access.h
++@@ -31,7 +31,6 @@
++ #  if !_LIBCPP_AVAILABILITY_HAS_BAD_EXPECTED_ACCESS_KEY_FUNCTION
++ _LIBCPP_CLANG_DIAGNOSTIC_IGNORED("-Wweak-vtables")
++ #  endif
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ template <>
++ class _LIBCPP_EXPORTED_FROM_ABI bad_expected_access<void> : public exception {
++ protected:
++@@ -49,7 +48,6 @@
++   _LIBCPP_HIDE_FROM_ABI_VIRTUAL const char* what() const noexcept override { return "bad access to std::expected"; }
++ #  endif
++ };
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_DIAGNOSTIC_POP
++ 
++ template <class _Err>
++diff -ruN --strip-trailing-cr a/libcxx/include/__filesystem/directory_entry.h b/libcxx/include/__filesystem/directory_entry.h
++--- a/libcxx/include/__filesystem/directory_entry.h
+++++ b/libcxx/include/__filesystem/directory_entry.h
++@@ -39,7 +39,6 @@
++ #if _LIBCPP_STD_VER >= 17 && _LIBCPP_HAS_FILESYSTEM
++ 
++ _LIBCPP_BEGIN_NAMESPACE_FILESYSTEM
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ _LIBCPP_AVAILABILITY_FILESYSTEM_LIBRARY_PUSH
++ 
++@@ -462,7 +461,6 @@
++ 
++ _LIBCPP_AVAILABILITY_FILESYSTEM_LIBRARY_POP
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_FILESYSTEM
++ 
++ #endif // _LIBCPP_STD_VER >= 17 && _LIBCPP_HAS_FILESYSTEM
++diff -ruN --strip-trailing-cr a/libcxx/include/__filesystem/directory_iterator.h b/libcxx/include/__filesystem/directory_iterator.h
++--- a/libcxx/include/__filesystem/directory_iterator.h
+++++ b/libcxx/include/__filesystem/directory_iterator.h
++@@ -33,7 +33,6 @@
++ #if _LIBCPP_STD_VER >= 17 && _LIBCPP_HAS_FILESYSTEM
++ 
++ _LIBCPP_BEGIN_NAMESPACE_FILESYSTEM
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ _LIBCPP_AVAILABILITY_FILESYSTEM_LIBRARY_PUSH
++ 
++@@ -130,7 +129,6 @@
++ 
++ _LIBCPP_AVAILABILITY_FILESYSTEM_LIBRARY_POP
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_FILESYSTEM
++ 
++ #  if _LIBCPP_STD_VER >= 20
++diff -ruN --strip-trailing-cr a/libcxx/include/__filesystem/filesystem_error.h b/libcxx/include/__filesystem/filesystem_error.h
++--- a/libcxx/include/__filesystem/filesystem_error.h
+++++ b/libcxx/include/__filesystem/filesystem_error.h
++@@ -26,7 +26,6 @@
++ #if _LIBCPP_STD_VER >= 17
++ 
++ _LIBCPP_BEGIN_NAMESPACE_FILESYSTEM
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ class _LIBCPP_AVAILABILITY_FILESYSTEM_LIBRARY _LIBCPP_EXPORTED_FROM_ABI filesystem_error : public system_error {
++ public:
++@@ -82,7 +81,6 @@
++ }
++ #  endif
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_FILESYSTEM
++ 
++ #endif // _LIBCPP_STD_VER >= 17
++diff -ruN --strip-trailing-cr a/libcxx/include/__filesystem/operations.h b/libcxx/include/__filesystem/operations.h
++--- a/libcxx/include/__filesystem/operations.h
+++++ b/libcxx/include/__filesystem/operations.h
++@@ -33,7 +33,6 @@
++ 
++ _LIBCPP_AVAILABILITY_FILESYSTEM_LIBRARY_PUSH
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_EXPORTED_FROM_ABI path __absolute(const path&, error_code* __ec = nullptr);
++ _LIBCPP_EXPORTED_FROM_ABI path __canonical(const path&, error_code* __ec = nullptr);
++ _LIBCPP_EXPORTED_FROM_ABI bool
++@@ -70,7 +69,6 @@
++ _LIBCPP_EXPORTED_FROM_ABI bool __fs_is_empty(const path& __p, error_code* __ec = nullptr);
++ _LIBCPP_EXPORTED_FROM_ABI void __permissions(const path&, perms, perm_options, error_code* = nullptr);
++ _LIBCPP_EXPORTED_FROM_ABI space_info __space(const path&, error_code* __ec = nullptr);
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ inline _LIBCPP_HIDE_FROM_ABI path absolute(const path& __p) { return __absolute(__p); }
++ inline _LIBCPP_HIDE_FROM_ABI path absolute(const path& __p, error_code& __ec) { return __absolute(__p, &__ec); }
++diff -ruN --strip-trailing-cr a/libcxx/include/__filesystem/path.h b/libcxx/include/__filesystem/path.h
++--- a/libcxx/include/__filesystem/path.h
+++++ b/libcxx/include/__filesystem/path.h
++@@ -42,7 +42,6 @@
++ #if _LIBCPP_STD_VER >= 17
++ 
++ _LIBCPP_BEGIN_NAMESPACE_FILESYSTEM
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ _LIBCPP_AVAILABILITY_FILESYSTEM_LIBRARY_PUSH
++ 
++@@ -914,7 +913,6 @@
++ 
++ _LIBCPP_AVAILABILITY_FILESYSTEM_LIBRARY_POP
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_FILESYSTEM
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/include/__filesystem/path_iterator.h b/libcxx/include/__filesystem/path_iterator.h
++--- a/libcxx/include/__filesystem/path_iterator.h
+++++ b/libcxx/include/__filesystem/path_iterator.h
++@@ -22,7 +22,6 @@
++ #if _LIBCPP_STD_VER >= 17
++ 
++ _LIBCPP_BEGIN_NAMESPACE_FILESYSTEM
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ class _LIBCPP_EXPORTED_FROM_ABI path::iterator {
++ public:
++@@ -106,7 +105,6 @@
++   return !(__lhs == __rhs);
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_FILESYSTEM
++ 
++ #endif // _LIBCPP_STD_VER >= 17
++diff -ruN --strip-trailing-cr a/libcxx/include/__filesystem/recursive_directory_iterator.h b/libcxx/include/__filesystem/recursive_directory_iterator.h
++--- a/libcxx/include/__filesystem/recursive_directory_iterator.h
+++++ b/libcxx/include/__filesystem/recursive_directory_iterator.h
++@@ -32,7 +32,6 @@
++ #if _LIBCPP_STD_VER >= 17 && _LIBCPP_HAS_FILESYSTEM
++ 
++ _LIBCPP_BEGIN_NAMESPACE_FILESYSTEM
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ _LIBCPP_AVAILABILITY_FILESYSTEM_LIBRARY_PUSH
++ 
++@@ -143,7 +142,6 @@
++ 
++ _LIBCPP_AVAILABILITY_FILESYSTEM_LIBRARY_POP
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_FILESYSTEM
++ 
++ #  if _LIBCPP_STD_VER >= 20
++diff -ruN --strip-trailing-cr a/libcxx/include/__format/format_error.h b/libcxx/include/__format/format_error.h
++--- a/libcxx/include/__format/format_error.h
+++++ b/libcxx/include/__format/format_error.h
++@@ -22,7 +22,6 @@
++ 
++ #if _LIBCPP_STD_VER >= 20
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_DIAGNOSTIC_PUSH
++ _LIBCPP_CLANG_DIAGNOSTIC_IGNORED("-Wweak-vtables")
++ class _LIBCPP_EXPORTED_FROM_ABI format_error : public runtime_error {
++@@ -35,7 +34,6 @@
++   ~format_error() noexcept override = default;
++ };
++ _LIBCPP_DIAGNOSTIC_POP
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ [[noreturn]] inline _LIBCPP_HIDE_FROM_ABI void __throw_format_error(const char* __s) {
++ #  if _LIBCPP_HAS_EXCEPTIONS
++diff -ruN --strip-trailing-cr a/libcxx/include/fstream b/libcxx/include/fstream
++--- a/libcxx/include/fstream
+++++ b/libcxx/include/fstream
++@@ -220,7 +220,6 @@
++ #    include <__undef_macros>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ #    if _LIBCPP_STD_VER >= 26 && defined(_LIBCPP_WIN32API)
++ _LIBCPP_EXPORTED_FROM_ABI void* __filebuf_windows_native_handle(FILE* __file) noexcept;
++@@ -1570,7 +1569,6 @@
++ extern template class _LIBCPP_EXTERN_TEMPLATE_TYPE_VIS basic_filebuf<char>;
++ #    endif
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ _LIBCPP_POP_MACROS
++diff -ruN --strip-trailing-cr a/libcxx/include/__functional/function.h b/libcxx/include/__functional/function.h
++--- a/libcxx/include/__functional/function.h
+++++ b/libcxx/include/__functional/function.h
++@@ -57,7 +57,6 @@
++ #  if !_LIBCPP_AVAILABILITY_HAS_BAD_FUNCTION_CALL_KEY_FUNCTION
++ _LIBCPP_CLANG_DIAGNOSTIC_IGNORED("-Wweak-vtables")
++ #  endif
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ class _LIBCPP_EXPORTED_FROM_ABI bad_function_call : public exception {
++ public:
++   _LIBCPP_HIDE_FROM_ABI bad_function_call() _NOEXCEPT                                    = default;
++@@ -76,7 +75,6 @@
++   const char* what() const _NOEXCEPT override;
++ #  endif
++ };
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_DIAGNOSTIC_POP
++ 
++ [[__noreturn__]] inline _LIBCPP_HIDE_FROM_ABI void __throw_bad_function_call() {
++@@ -238,7 +236,6 @@
++ template <class _Fp>
++ class __base;
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ template <class _Rp, class... _ArgTypes>
++ class __base<_Rp(_ArgTypes...)> {
++ public:
++@@ -338,8 +335,6 @@
++ 
++ #  endif // _LIBCPP_HAS_RTTI
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++-
++ // __value_func creates a value-type from a __func.
++ 
++ template <class _Fp>
++@@ -752,9 +747,8 @@
++ 
++ #  if _LIBCPP_HAS_BLOCKS_RUNTIME
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++-_LIBCPP_EXPORTED_FROM_ABI extern "C" void* _Block_copy(const void*);
++-_LIBCPP_EXPORTED_FROM_ABI extern "C" void _Block_release(const void*);
+++extern "C" void* _Block_copy(const void*);
+++extern "C" void _Block_release(const void*);
++ 
++ template <class _Rp1, class... _ArgTypes1, class _Alloc, class _Rp, class... _ArgTypes>
++ class __func<_Rp1 (^)(_ArgTypes1...), _Alloc, _Rp(_ArgTypes...)> : public __base<_Rp(_ArgTypes...)> {
++@@ -827,7 +821,6 @@
++   }
++ #    endif // _LIBCPP_HAS_RTTI
++ };
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ #  endif // _LIBCPP_HAS_EXTENSION_BLOCKS
++ 
++diff -ruN --strip-trailing-cr a/libcxx/include/__functional/hash.h b/libcxx/include/__functional/hash.h
++--- a/libcxx/include/__functional/hash.h
+++++ b/libcxx/include/__functional/hash.h
++@@ -239,9 +239,7 @@
++ };
++ 
++ #if _LIBCPP_AVAILABILITY_HAS_HASH_MEMORY
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ [[__gnu__::__pure__]] _LIBCPP_EXPORTED_FROM_ABI size_t __hash_memory(_LIBCPP_NOESCAPE const void*, size_t) _NOEXCEPT;
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ #else
++ _LIBCPP_HIDE_FROM_ABI inline size_t __hash_memory(const void* __ptr, size_t __size) _NOEXCEPT {
++   return __murmur2_or_cityhash<size_t>()(__ptr, __size);
++diff -ruN --strip-trailing-cr a/libcxx/include/future b/libcxx/include/future
++--- a/libcxx/include/future
+++++ b/libcxx/include/future
++@@ -420,7 +420,6 @@
++ #    include <__undef_macros>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ // enum class future_errc
++ _LIBCPP_DECLARE_STRONG_ENUM(future_errc){
++@@ -2062,7 +2061,6 @@
++ 
++ inline shared_future<void> future<void>::share() _NOEXCEPT { return shared_future<void>(std::move(*this)); }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ _LIBCPP_POP_MACROS
++diff -ruN --strip-trailing-cr a/libcxx/include/__hash_table b/libcxx/include/__hash_table
++--- a/libcxx/include/__hash_table
+++++ b/libcxx/include/__hash_table
++@@ -70,9 +70,7 @@
++ template <class _One>
++ struct __is_hash_value_type<_One> : __is_hash_value_type_imp<__remove_cvref_t<_One> > {};
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_EXPORTED_FROM_ABI size_t __next_prime(size_t __n);
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ template <class _NodePtr>
++ struct __hash_node_base {
++diff -ruN --strip-trailing-cr a/libcxx/include/ios b/libcxx/include/ios
++--- a/libcxx/include/ios
+++++ b/libcxx/include/ios
++@@ -247,7 +247,6 @@
++ #    include <__undef_macros>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ typedef ptrdiff_t streamsize;
++ 
++@@ -872,7 +871,6 @@
++   return __str;
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ _LIBCPP_POP_MACROS
++diff -ruN --strip-trailing-cr a/libcxx/include/istream b/libcxx/include/istream
++--- a/libcxx/include/istream
+++++ b/libcxx/include/istream
++@@ -187,7 +187,6 @@
++ #    include <__undef_macros>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ template <class _CharT, class _Traits>
++ class basic_istream : virtual public basic_ios<_CharT, _Traits> {
++@@ -1399,7 +1398,6 @@
++ #    endif
++ extern template class _LIBCPP_EXTERN_TEMPLATE_TYPE_VIS basic_iostream<char>;
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ _LIBCPP_POP_MACROS
++diff -ruN --strip-trailing-cr a/libcxx/include/__locale b/libcxx/include/__locale
++--- a/libcxx/include/__locale
+++++ b/libcxx/include/__locale
++@@ -42,7 +42,6 @@
++ #  endif
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ class _LIBCPP_EXPORTED_FROM_ABI locale;
++ 
++@@ -1514,7 +1513,6 @@
++ };
++ #  endif // _LIBCPP_HAS_WIDE_CHARACTERS
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ #endif // _LIBCPP_HAS_LOCALIZATION
++diff -ruN --strip-trailing-cr a/libcxx/include/locale b/libcxx/include/locale
++--- a/libcxx/include/locale
+++++ b/libcxx/include/locale
++@@ -246,7 +246,6 @@
++ #    include <__undef_macros>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ #    if defined(__APPLE__) || defined(__FreeBSD__)
++ #      define _LIBCPP_GET_C_LOCALE 0
++@@ -3679,7 +3678,6 @@
++ 
++ #    endif // _LIBCPP_STD_VER < 26 || defined(_LIBCPP_ENABLE_CXX26_REMOVED_WSTRING_CONVERT)
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ _LIBCPP_POP_MACROS
++diff -ruN --strip-trailing-cr a/libcxx/include/__locale_dir/support/windows.h b/libcxx/include/__locale_dir/support/windows.h
++--- a/libcxx/include/__locale_dir/support/windows.h
+++++ b/libcxx/include/__locale_dir/support/windows.h
++@@ -154,7 +154,6 @@
++ };
++ 
++ #if defined(_LIBCPP_BUILDING_LIBRARY)
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_EXPORTED_FROM_ABI __locale_t __newlocale(int __mask, const char* __locale, __locale_t __base);
++ inline _LIBCPP_HIDE_FROM_ABI void __freelocale(__locale_t __loc) { ::_free_locale(__loc); }
++ inline _LIBCPP_HIDE_FROM_ABI char* __setlocale(int __category, const char* __locale) {
++@@ -164,7 +163,6 @@
++   return __new_locale;
++ }
++ _LIBCPP_EXPORTED_FROM_ABI __lconv_t* __localeconv(__locale_t& __loc);
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ #endif // _LIBCPP_BUILDING_LIBRARY
++ 
++ //
++@@ -180,10 +178,8 @@
++   return ::_strtold_l(__nptr, __endptr, __loc);
++ }
++ #else
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_EXPORTED_FROM_ABI float __strtof(const char*, char**, __locale_t);
++ _LIBCPP_EXPORTED_FROM_ABI long double __strtold(const char*, char**, __locale_t);
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ #endif
++ 
++ inline _LIBCPP_HIDE_FROM_ABI double __strtod(const char* __nptr, char** __endptr, __locale_t __loc) {
++@@ -284,13 +280,11 @@
++ __mbsrtowcs(wchar_t* __restrict, const char** __restrict, size_t, mbstate_t* __restrict, __locale_t);
++ #endif // _LIBCPP_BUILDING_LIBRARY
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_EXPORTED_FROM_ABI _LIBCPP_ATTRIBUTE_FORMAT(__printf__, 4, 5) int __snprintf(
++     char* __ret, size_t __n, __locale_t __loc, const char* __format, ...);
++ 
++ _LIBCPP_EXPORTED_FROM_ABI
++ _LIBCPP_ATTRIBUTE_FORMAT(__printf__, 3, 4) int __asprintf(char** __ret, __locale_t __loc, const char* __format, ...);
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ _LIBCPP_DIAGNOSTIC_PUSH
++ _LIBCPP_CLANG_DIAGNOSTIC_IGNORED("-Wgcc-compat")
++diff -ruN --strip-trailing-cr a/libcxx/include/__memory/align.h b/libcxx/include/__memory/align.h
++--- a/libcxx/include/__memory/align.h
+++++ b/libcxx/include/__memory/align.h
++@@ -17,11 +17,9 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ _LIBCPP_EXPORTED_FROM_ABI void* align(size_t __align, size_t __sz, void*& __ptr, size_t& __space);
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ #endif // _LIBCPP___MEMORY_ALIGN_H
++diff -ruN --strip-trailing-cr a/libcxx/include/__memory/shared_count.h b/libcxx/include/__memory/shared_count.h
++--- a/libcxx/include/__memory/shared_count.h
+++++ b/libcxx/include/__memory/shared_count.h
++@@ -68,7 +68,6 @@
++ #endif
++ }
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ class _LIBCPP_EXPORTED_FROM_ABI __shared_count {
++   __shared_count(const __shared_count&);
++   __shared_count& operator=(const __shared_count&);
++@@ -132,7 +131,6 @@
++ private:
++   virtual void __on_zero_shared_weak() _NOEXCEPT = 0;
++ };
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ _LIBCPP_END_NAMESPACE_STD
++ 
++diff -ruN --strip-trailing-cr a/libcxx/include/__memory/shared_ptr.h b/libcxx/include/__memory/shared_ptr.h
++--- a/libcxx/include/__memory/shared_ptr.h
+++++ b/libcxx/include/__memory/shared_ptr.h
++@@ -72,7 +72,6 @@
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ class _LIBCPP_EXPORTED_FROM_ABI bad_weak_ptr : public std::exception {
++ public:
++   _LIBCPP_HIDE_FROM_ABI bad_weak_ptr() _NOEXCEPT                               = default;
++@@ -81,7 +80,6 @@
++   ~bad_weak_ptr() _NOEXCEPT override;
++   const char* what() const _NOEXCEPT override;
++ };
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ [[__noreturn__]] inline _LIBCPP_HIDE_FROM_ABI void __throw_bad_weak_ptr() {
++ #if _LIBCPP_HAS_EXCEPTIONS
++@@ -94,7 +92,6 @@
++ template <class _Tp>
++ class weak_ptr;
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ template <class _Tp, class _Dp, class _Alloc>
++ class __shared_ptr_pointer : public __shared_weak_count {
++   _LIBCPP_COMPRESSED_TRIPLE(_Tp, __ptr_, _Dp, __deleter_, _Alloc, __alloc_);
++@@ -218,7 +215,6 @@
++ 
++   _Storage __storage_;
++ };
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ struct __shared_ptr_dummy_rebind_allocator_type;
++ template <>
++@@ -774,7 +770,6 @@
++ template <class _Tp, class _Alloc>
++ struct __unbounded_array_control_block;
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ template <class _Tp, class _Alloc>
++ struct __unbounded_array_control_block<_Tp[], _Alloc> : __shared_weak_count {
++   _LIBCPP_HIDE_FROM_ABI constexpr _Tp* __get_data() noexcept { return __data_; }
++@@ -853,7 +848,6 @@
++     _Tp __data_[1];
++   };
++ };
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ template <class _Array, class _Alloc, class... _Arg>
++ _LIBCPP_HIDE_FROM_ABI shared_ptr<_Array>
++@@ -876,7 +870,6 @@
++ template <class _Tp, class _Alloc>
++ struct __bounded_array_control_block;
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ template <class _Tp, size_t _Count, class _Alloc>
++ struct __bounded_array_control_block<_Tp[_Count], _Alloc> : __shared_weak_count {
++   _LIBCPP_HIDE_FROM_ABI constexpr _Tp* __get_data() noexcept { return __data_; }
++@@ -933,7 +926,6 @@
++     _Tp __data_[_Count];
++   };
++ };
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ template <class _Array, class _Alloc, class... _Arg>
++ _LIBCPP_HIDE_FROM_ABI shared_ptr<_Array> __allocate_shared_bounded_array(const _Alloc& __a, _Arg&&... __arg) {
++@@ -1487,7 +1479,6 @@
++ 
++ #if _LIBCPP_HAS_THREADS
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ class _LIBCPP_EXPORTED_FROM_ABI __sp_mut {
++   void* __lx_;
++ 
++@@ -1504,7 +1495,6 @@
++ };
++ 
++ _LIBCPP_EXPORTED_FROM_ABI __sp_mut& __get_sp_mut(const void*);
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ template <class _Tp>
++ inline _LIBCPP_HIDE_FROM_ABI bool atomic_is_lock_free(const shared_ptr<_Tp>*) {
++diff -ruN --strip-trailing-cr a/libcxx/include/__memory_resource/memory_resource.h b/libcxx/include/__memory_resource/memory_resource.h
++--- a/libcxx/include/__memory_resource/memory_resource.h
+++++ b/libcxx/include/__memory_resource/memory_resource.h
++@@ -21,7 +21,6 @@
++ #if _LIBCPP_STD_VER >= 17
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ namespace pmr {
++ 
++@@ -83,7 +82,6 @@
++ 
++ } // namespace pmr
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ #endif // _LIBCPP_STD_VER >= 17
++diff -ruN --strip-trailing-cr a/libcxx/include/__memory_resource/monotonic_buffer_resource.h b/libcxx/include/__memory_resource/monotonic_buffer_resource.h
++--- a/libcxx/include/__memory_resource/monotonic_buffer_resource.h
+++++ b/libcxx/include/__memory_resource/monotonic_buffer_resource.h
++@@ -21,7 +21,6 @@
++ #if _LIBCPP_STD_VER >= 17
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ namespace pmr {
++ 
++@@ -113,7 +112,6 @@
++ 
++ } // namespace pmr
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ #endif // _LIBCPP_STD_VER >= 17
++diff -ruN --strip-trailing-cr a/libcxx/include/__memory_resource/synchronized_pool_resource.h b/libcxx/include/__memory_resource/synchronized_pool_resource.h
++--- a/libcxx/include/__memory_resource/synchronized_pool_resource.h
+++++ b/libcxx/include/__memory_resource/synchronized_pool_resource.h
++@@ -24,7 +24,6 @@
++ #if _LIBCPP_STD_VER >= 17
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ namespace pmr {
++ 
++@@ -87,7 +86,6 @@
++ 
++ } // namespace pmr
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ #endif // _LIBCPP_STD_VER >= 17
++diff -ruN --strip-trailing-cr a/libcxx/include/__memory_resource/unsynchronized_pool_resource.h b/libcxx/include/__memory_resource/unsynchronized_pool_resource.h
++--- a/libcxx/include/__memory_resource/unsynchronized_pool_resource.h
+++++ b/libcxx/include/__memory_resource/unsynchronized_pool_resource.h
++@@ -22,7 +22,6 @@
++ #if _LIBCPP_STD_VER >= 17
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ namespace pmr {
++ 
++@@ -100,7 +99,6 @@
++ 
++ } // namespace pmr
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ #endif // _LIBCPP_STD_VER >= 17
++diff -ruN --strip-trailing-cr a/libcxx/include/__mutex/mutex.h b/libcxx/include/__mutex/mutex.h
++--- a/libcxx/include/__mutex/mutex.h
+++++ b/libcxx/include/__mutex/mutex.h
++@@ -20,7 +20,6 @@
++ #if _LIBCPP_HAS_THREADS
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ class _LIBCPP_EXPORTED_FROM_ABI _LIBCPP_THREAD_SAFETY_ANNOTATION(capability("mutex")) mutex {
++   __libcpp_mutex_t __m_ = _LIBCPP_MUTEX_INITIALIZER;
++@@ -47,7 +46,6 @@
++ 
++ static_assert(is_nothrow_default_constructible<mutex>::value, "the default constructor for std::mutex must be nothrow");
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ #endif // _LIBCPP_HAS_THREADS
++diff -ruN --strip-trailing-cr a/libcxx/include/__mutex/once_flag.h b/libcxx/include/__mutex/once_flag.h
++--- a/libcxx/include/__mutex/once_flag.h
+++++ b/libcxx/include/__mutex/once_flag.h
++@@ -119,9 +119,7 @@
++   (*__p)();
++ }
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_EXPORTED_FROM_ABI void __call_once(volatile once_flag::_State_type&, void*, void (*)(void*));
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ #ifndef _LIBCPP_CXX03_LANG
++ 
++diff -ruN --strip-trailing-cr a/libcxx/include/mutex b/libcxx/include/mutex
++--- a/libcxx/include/mutex
+++++ b/libcxx/include/mutex
++@@ -215,7 +215,6 @@
++ #  include <__undef_macros>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ #  if _LIBCPP_HAS_THREADS
++ 
++@@ -492,7 +491,6 @@
++ #    endif // _LIBCPP_STD_VER >= 17
++ #  endif   // _LIBCPP_HAS_THREADS
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ _LIBCPP_POP_MACROS
++diff -ruN --strip-trailing-cr a/libcxx/include/__new/exceptions.h b/libcxx/include/__new/exceptions.h
++--- a/libcxx/include/__new/exceptions.h
+++++ b/libcxx/include/__new/exceptions.h
++@@ -18,7 +18,6 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_UNVERSIONED_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ #if !defined(_LIBCPP_ABI_VCRUNTIME)
++ 
++ class _LIBCPP_EXPORTED_FROM_ABI bad_alloc : public exception {
++@@ -69,7 +68,6 @@
++   _LIBCPP_VERBOSE_ABORT("bad_array_new_length was thrown in -fno-exceptions mode");
++ #endif
++ }
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_UNVERSIONED_NAMESPACE_STD
++ 
++ #endif // _LIBCPP___NEW_EXCEPTIONS_H
++diff -ruN --strip-trailing-cr a/libcxx/include/__new/new_handler.h b/libcxx/include/__new/new_handler.h
++--- a/libcxx/include/__new/new_handler.h
+++++ b/libcxx/include/__new/new_handler.h
++@@ -19,11 +19,9 @@
++ #  include <new.h>
++ #else
++ _LIBCPP_BEGIN_UNVERSIONED_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ typedef void (*new_handler)();
++ _LIBCPP_EXPORTED_FROM_ABI new_handler set_new_handler(new_handler) _NOEXCEPT;
++ _LIBCPP_EXPORTED_FROM_ABI new_handler get_new_handler() _NOEXCEPT;
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_UNVERSIONED_NAMESPACE_STD
++ #endif // _LIBCPP_ABI_VCRUNTIME
++ 
++diff -ruN --strip-trailing-cr a/libcxx/include/__ostream/basic_ostream.h b/libcxx/include/__ostream/basic_ostream.h
++--- a/libcxx/include/__ostream/basic_ostream.h
+++++ b/libcxx/include/__ostream/basic_ostream.h
++@@ -39,7 +39,6 @@
++ #  include <__undef_macros>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ template <class _CharT, class _Traits>
++ class basic_ostream : virtual public basic_ios<_CharT, _Traits> {
++@@ -671,7 +670,6 @@
++ extern template class _LIBCPP_EXTERN_TEMPLATE_TYPE_VIS basic_ostream<wchar_t>;
++ #  endif
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ _LIBCPP_POP_MACROS
++diff -ruN --strip-trailing-cr a/libcxx/include/__ostream/print.h b/libcxx/include/__ostream/print.h
++--- a/libcxx/include/__ostream/print.h
+++++ b/libcxx/include/__ostream/print.h
++@@ -82,9 +82,7 @@
++ //   native Unicode API;
++ // Whether the returned FILE* is "a terminal capable of displaying Unicode"
++ // is determined in the same way as the print(FILE*, ...) overloads.
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_EXPORTED_FROM_ABI FILE* __get_ostream_file(ostream& __os);
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ #    if _LIBCPP_HAS_UNICODE
++ template <class = void> // TODO PRINT template or availability markup fires too eagerly (http://llvm.org/PR61563).
++diff -ruN --strip-trailing-cr a/libcxx/include/print b/libcxx/include/print
++--- a/libcxx/include/print
+++++ b/libcxx/include/print
++@@ -54,7 +54,6 @@
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ #  ifdef _LIBCPP_WIN32API
++ _LIBCPP_EXPORTED_FROM_ABI bool __is_windows_terminal(FILE* __stream);
++ 
++@@ -73,7 +72,6 @@
++ #  elif __has_include(<unistd.h>)
++ _LIBCPP_EXPORTED_FROM_ABI bool __is_posix_terminal(FILE* __stream);
++ #  endif // _LIBCPP_WIN32API
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ #  if _LIBCPP_STD_VER >= 23
++ 
++diff -ruN --strip-trailing-cr a/libcxx/include/__pstl/backends/libdispatch.h b/libcxx/include/__pstl/backends/libdispatch.h
++--- a/libcxx/include/__pstl/backends/libdispatch.h
+++++ b/libcxx/include/__pstl/backends/libdispatch.h
++@@ -51,13 +51,11 @@
++ namespace __pstl {
++ 
++ namespace __libdispatch {
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ // ::dispatch_apply is marked as __attribute__((nothrow)) because it doesn't let exceptions propagate, and neither do
++ // we.
++ // TODO: Do we want to add [[_Clang::__callback__(__func, __context, __)]]?
++ _LIBCPP_EXPORTED_FROM_ABI void
++ __dispatch_apply(size_t __chunk_count, void* __context, void (*__func)(void* __context, size_t __chunk)) noexcept;
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ template <class _Func>
++ _LIBCPP_HIDE_FROM_ABI void __dispatch_apply(size_t __chunk_count, _Func __func) noexcept {
++@@ -72,9 +70,7 @@
++   ptrdiff_t __first_chunk_size_;
++ };
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ [[__gnu__::__const__]] _LIBCPP_EXPORTED_FROM_ABI __chunk_partitions __partition_chunks(ptrdiff_t __size) noexcept;
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ template <class _RandomAccessIterator, class _Functor>
++ _LIBCPP_HIDE_FROM_ABI optional<__empty>
++diff -ruN --strip-trailing-cr a/libcxx/include/__random/binomial_distribution.h b/libcxx/include/__random/binomial_distribution.h
++--- a/libcxx/include/__random/binomial_distribution.h
+++++ b/libcxx/include/__random/binomial_distribution.h
++@@ -99,9 +99,7 @@
++ 
++ // The LLVM C library provides this with conflicting `noexcept` attributes.
++ #if !defined(_LIBCPP_MSVCRT_LIKE) && !defined(__LLVM_LIBC__)
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++-_LIBCPP_EXPORTED_FROM_ABI extern "C" double lgamma_r(double, int*);
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
+++extern "C" double lgamma_r(double, int*);
++ #endif
++ 
++ inline _LIBCPP_HIDE_FROM_ABI double __libcpp_lgamma(double __d) {
++diff -ruN --strip-trailing-cr a/libcxx/include/__random/random_device.h b/libcxx/include/__random/random_device.h
++--- a/libcxx/include/__random/random_device.h
+++++ b/libcxx/include/__random/random_device.h
++@@ -20,7 +20,6 @@
++ #include <__undef_macros>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ #if _LIBCPP_HAS_RANDOM_DEVICE
++ 
++@@ -75,7 +74,6 @@
++ 
++ #endif // _LIBCPP_HAS_RANDOM_DEVICE
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ _LIBCPP_POP_MACROS
++diff -ruN --strip-trailing-cr a/libcxx/include/regex b/libcxx/include/regex
++--- a/libcxx/include/regex
+++++ b/libcxx/include/regex
++@@ -840,7 +840,6 @@
++ #    define _LIBCPP_REGEX_COMPLEXITY_FACTOR 4096
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ namespace regex_constants {
++ 
++@@ -5806,7 +5805,6 @@
++   return __r;
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ #    if _LIBCPP_STD_VER >= 17
++diff -ruN --strip-trailing-cr a/libcxx/include/shared_mutex b/libcxx/include/shared_mutex
++--- a/libcxx/include/shared_mutex
+++++ b/libcxx/include/shared_mutex
++@@ -153,7 +153,6 @@
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ struct _LIBCPP_EXPORTED_FROM_ABI __shared_mutex_base {
++   mutex __mut_;
++   condition_variable __gate1_;
++@@ -182,7 +181,6 @@
++   //     typedef implementation-defined native_handle_type; // See 30.2.3
++   //     native_handle_type native_handle(); // See 30.2.3
++ };
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ #      if _LIBCPP_STD_VER >= 17
++ class _LIBCPP_EXPORTED_FROM_ABI _LIBCPP_THREAD_SAFETY_ANNOTATION(__capability__("shared_mutex")) shared_mutex {
++@@ -223,7 +221,6 @@
++ };
++ #      endif
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ class _LIBCPP_EXPORTED_FROM_ABI
++ _LIBCPP_THREAD_SAFETY_ANNOTATION(__capability__("shared_timed_mutex")) shared_timed_mutex {
++   __shared_mutex_base __base_;
++@@ -307,7 +304,6 @@
++ 
++   void unlock_shared() _LIBCPP_THREAD_SAFETY_ANNOTATION(__release_shared_capability__());
++ };
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ template <class _Mutex>
++ class shared_lock {
++diff -ruN --strip-trailing-cr a/libcxx/include/sstream b/libcxx/include/sstream
++--- a/libcxx/include/sstream
+++++ b/libcxx/include/sstream
++@@ -338,7 +338,6 @@
++ #    include <__undef_macros>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ // Class template basic_stringbuf [stringbuf]
++ 
++@@ -1283,7 +1282,6 @@
++ extern template class _LIBCPP_EXTERN_TEMPLATE_TYPE_VIS basic_istringstream<char>;
++ #    endif
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ _LIBCPP_POP_MACROS
++diff -ruN --strip-trailing-cr a/libcxx/include/stdexcept b/libcxx/include/stdexcept
++--- a/libcxx/include/stdexcept
+++++ b/libcxx/include/stdexcept
++@@ -212,9 +212,7 @@
++ _LIBCPP_BEGIN_NAMESPACE_STD
++ 
++ // in the dylib
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ [[__noreturn__]] _LIBCPP_EXPORTED_FROM_ABI void __throw_runtime_error(const char*);
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ [[__noreturn__]] inline _LIBCPP_HIDE_FROM_ABI void __throw_logic_error(const char* __msg) {
++ #  if _LIBCPP_HAS_EXCEPTIONS
++diff -ruN --strip-trailing-cr a/libcxx/include/streambuf b/libcxx/include/streambuf
++--- a/libcxx/include/streambuf
+++++ b/libcxx/include/streambuf
++@@ -132,7 +132,6 @@
++ #    include <__undef_macros>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ template <class _CharT, class _Traits>
++ class basic_streambuf {
++@@ -386,7 +385,6 @@
++ extern template class _LIBCPP_EXTERN_TEMPLATE_TYPE_VIS basic_streambuf<wchar_t>;
++ #    endif
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ _LIBCPP_POP_MACROS
++diff -ruN --strip-trailing-cr a/libcxx/include/string b/libcxx/include/string
++--- a/libcxx/include/string
+++++ b/libcxx/include/string
++@@ -690,7 +690,6 @@
++ #  endif
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ // basic_string
++ 
++@@ -4009,7 +4008,6 @@
++ 
++ #  endif
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ _LIBCPP_POP_MACROS
++diff -ruN --strip-trailing-cr a/libcxx/include/strstream b/libcxx/include/strstream
++--- a/libcxx/include/strstream
+++++ b/libcxx/include/strstream
++@@ -151,7 +151,6 @@
++ #      include <__undef_macros>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ class _LIBCPP_DEPRECATED _LIBCPP_EXPORTED_FROM_ABI strstreambuf : public streambuf {
++ public:
++@@ -349,7 +348,6 @@
++ private:
++   strstreambuf __sb_; // exposition only
++ };
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ _LIBCPP_END_NAMESPACE_STD
++ 
++diff -ruN --strip-trailing-cr a/libcxx/include/__system_error/error_category.h b/libcxx/include/__system_error/error_category.h
++--- a/libcxx/include/__system_error/error_category.h
+++++ b/libcxx/include/__system_error/error_category.h
++@@ -25,7 +25,6 @@
++ 
++ class _LIBCPP_HIDDEN __do_message;
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ class _LIBCPP_EXPORTED_FROM_ABI error_category {
++ public:
++   virtual ~error_category() _NOEXCEPT;
++@@ -70,7 +69,6 @@
++ 
++ [[__gnu__::__const__]] _LIBCPP_EXPORTED_FROM_ABI const error_category& generic_category() _NOEXCEPT;
++ [[__gnu__::__const__]] _LIBCPP_EXPORTED_FROM_ABI const error_category& system_category() _NOEXCEPT;
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ _LIBCPP_END_NAMESPACE_STD
++ 
++diff -ruN --strip-trailing-cr a/libcxx/include/__system_error/error_code.h b/libcxx/include/__system_error/error_code.h
++--- a/libcxx/include/__system_error/error_code.h
+++++ b/libcxx/include/__system_error/error_code.h
++@@ -39,7 +39,6 @@
++ void make_error_code() = delete;
++ } // namespace __adl_only
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ class _LIBCPP_EXPORTED_FROM_ABI error_code {
++   int __val_;
++   const error_category* __cat_;
++@@ -84,7 +83,6 @@
++ 
++   _LIBCPP_HIDE_FROM_ABI explicit operator bool() const _NOEXCEPT { return __val_ != 0; }
++ };
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ inline _LIBCPP_HIDE_FROM_ABI error_code make_error_code(errc __e) _NOEXCEPT {
++   return error_code(static_cast<int>(__e), generic_category());
++diff -ruN --strip-trailing-cr a/libcxx/include/__system_error/error_condition.h b/libcxx/include/__system_error/error_condition.h
++--- a/libcxx/include/__system_error/error_condition.h
+++++ b/libcxx/include/__system_error/error_condition.h
++@@ -46,7 +46,6 @@
++ void make_error_condition() = delete;
++ } // namespace __adl_only
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ class _LIBCPP_EXPORTED_FROM_ABI error_condition {
++   int __val_;
++   const error_category* __cat_;
++@@ -88,7 +87,6 @@
++ 
++   _LIBCPP_HIDE_FROM_ABI explicit operator bool() const _NOEXCEPT { return __val_ != 0; }
++ };
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ inline _LIBCPP_HIDE_FROM_ABI error_condition make_error_condition(errc __e) _NOEXCEPT {
++   return error_condition(static_cast<int>(__e), generic_category());
++diff -ruN --strip-trailing-cr a/libcxx/include/__system_error/system_error.h b/libcxx/include/__system_error/system_error.h
++--- a/libcxx/include/__system_error/system_error.h
+++++ b/libcxx/include/__system_error/system_error.h
++@@ -22,7 +22,6 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ class _LIBCPP_EXPORTED_FROM_ABI system_error : public runtime_error {
++   error_code __ec_;
++@@ -53,7 +52,6 @@
++ #endif
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ #endif // _LIBCPP___SYSTEM_ERROR_SYSTEM_ERROR_H
++diff -ruN --strip-trailing-cr a/libcxx/include/__system_error/throw_system_error.h b/libcxx/include/__system_error/throw_system_error.h
++--- a/libcxx/include/__system_error/throw_system_error.h
+++++ b/libcxx/include/__system_error/throw_system_error.h
++@@ -18,9 +18,7 @@
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ [[__noreturn__]] _LIBCPP_EXPORTED_FROM_ABI void __throw_system_error(int __ev, const char* __what_arg);
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ _LIBCPP_END_NAMESPACE_STD
++ 
++diff -ruN --strip-trailing-cr a/libcxx/include/__thread/support/windows.h b/libcxx/include/__thread/support/windows.h
++--- a/libcxx/include/__thread/support/windows.h
+++++ b/libcxx/include/__thread/support/windows.h
++@@ -19,7 +19,6 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ using __libcpp_timespec_t = ::timespec;
++ 
++@@ -129,7 +128,6 @@
++ 
++ _LIBCPP_EXPORTED_FROM_ABI int __libcpp_tls_set(__libcpp_tls_key __key, void* __p);
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ #endif // _LIBCPP___THREAD_SUPPORT_WINDOWS_H
++diff -ruN --strip-trailing-cr a/libcxx/include/__thread/this_thread.h b/libcxx/include/__thread/this_thread.h
++--- a/libcxx/include/__thread/this_thread.h
+++++ b/libcxx/include/__thread/this_thread.h
++@@ -32,9 +32,7 @@
++ 
++ #if _LIBCPP_HAS_THREADS
++ 
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_EXPORTED_FROM_ABI void sleep_for(const chrono::nanoseconds& __ns);
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ template <class _Rep, class _Period>
++ _LIBCPP_HIDE_FROM_ABI void sleep_for(const chrono::duration<_Rep, _Period>& __d) {
++diff -ruN --strip-trailing-cr a/libcxx/include/__thread/thread.h b/libcxx/include/__thread/thread.h
++--- a/libcxx/include/__thread/thread.h
+++++ b/libcxx/include/__thread/thread.h
++@@ -42,7 +42,6 @@
++ #include <__undef_macros>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ #if _LIBCPP_HAS_THREADS
++ 
++@@ -257,7 +256,6 @@
++ 
++ #endif // _LIBCPP_HAS_THREADS
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ _LIBCPP_POP_MACROS
++diff -ruN --strip-trailing-cr a/libcxx/include/valarray b/libcxx/include/valarray
++--- a/libcxx/include/valarray
+++++ b/libcxx/include/valarray
++@@ -380,7 +380,6 @@
++ #  include <__undef_macros>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ template <class _Tp>
++ class valarray;
++@@ -3356,7 +3355,6 @@
++   return __v.__end_;
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ _LIBCPP_POP_MACROS
++diff -ruN --strip-trailing-cr a/libcxx/include/variant b/libcxx/include/variant
++--- a/libcxx/include/variant
+++++ b/libcxx/include/variant
++@@ -285,12 +285,12 @@
++ #  include <__undef_macros>
++ 
++ _LIBCPP_BEGIN_UNVERSIONED_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
+++
++ class _LIBCPP_EXPORTED_FROM_ABI _LIBCPP_AVAILABILITY_BAD_VARIANT_ACCESS bad_variant_access : public exception {
++ public:
++   const char* what() const _NOEXCEPT override;
++ };
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
+++
++ _LIBCPP_END_UNVERSIONED_NAMESPACE_STD
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/include/__verbose_abort b/libcxx/include/__verbose_abort
++--- a/libcxx/include/__verbose_abort
+++++ b/libcxx/include/__verbose_abort
++@@ -20,10 +20,8 @@
++ 
++ // This function should never be called directly from the code -- it should only be called through
++ // the _LIBCPP_VERBOSE_ABORT macro.
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ [[__noreturn__]] _LIBCPP_AVAILABILITY_VERBOSE_ABORT _LIBCPP_OVERRIDABLE_FUNC_VIS _LIBCPP_ATTRIBUTE_FORMAT(
++     __printf__, 1, 2) void __libcpp_verbose_abort(const char* __format, ...) _NOEXCEPT;
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ 
++ // _LIBCPP_VERBOSE_ABORT(format, args...)
++ //
++diff -ruN --strip-trailing-cr a/libcxx/src/algorithm.cpp b/libcxx/src/algorithm.cpp
++--- a/libcxx/src/algorithm.cpp
+++++ b/libcxx/src/algorithm.cpp
++@@ -10,7 +10,6 @@
++ #include <bit>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ template <class Comp, class RandomAccessIterator>
++ void __sort(RandomAccessIterator first, RandomAccessIterator last, Comp comp) {
++@@ -45,5 +44,4 @@
++ template void __sort<__less<long double>&, long double*>(long double*, long double*, __less<long double>&);
++ // clang-format on
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/any.cpp b/libcxx/src/any.cpp
++--- a/libcxx/src/any.cpp
+++++ b/libcxx/src/any.cpp
++@@ -17,7 +17,6 @@
++ //  Preserve std::experimental::any_bad_cast for ABI compatibility
++ //  Even though it no longer exists in a header file
++ _LIBCPP_BEGIN_NAMESPACE_LFTS
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ class _LIBCPP_EXPORTED_FROM_ABI _LIBCPP_AVAILABILITY_BAD_ANY_CAST bad_any_cast : public bad_cast {
++ public:
++@@ -26,5 +25,4 @@
++ 
++ const char* bad_any_cast::what() const noexcept { return "bad any cast"; }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_LFTS
++diff -ruN --strip-trailing-cr a/libcxx/src/atomic.cpp b/libcxx/src/atomic.cpp
++--- a/libcxx/src/atomic.cpp
+++++ b/libcxx/src/atomic.cpp
++@@ -50,7 +50,6 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ #ifdef __linux__
++ 
++@@ -205,5 +204,4 @@
++   __libcpp_contention_wait(&__libcpp_contention_state(__location)->__contention_state, __location, __old_value);
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/barrier.cpp b/libcxx/src/barrier.cpp
++--- a/libcxx/src/barrier.cpp
+++++ b/libcxx/src/barrier.cpp
++@@ -10,7 +10,6 @@
++ #include <thread>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ class __barrier_algorithm_base {
++ public:
++@@ -69,5 +68,4 @@
++   delete __barrier;
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/call_once.cpp b/libcxx/src/call_once.cpp
++--- a/libcxx/src/call_once.cpp
+++++ b/libcxx/src/call_once.cpp
++@@ -17,7 +17,6 @@
++ #include "include/atomic_support.h"
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ // If dispatch_once_f ever handles C++ exceptions, and if one can get to it
++ // without illegal macros (unexpected macros not beginning with _UpperCase or
++@@ -69,5 +68,4 @@
++ #endif // !_LIBCPP_HAS_THREADS
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/charconv.cpp b/libcxx/src/charconv.cpp
++--- a/libcxx/src/charconv.cpp
+++++ b/libcxx/src/charconv.cpp
++@@ -13,7 +13,6 @@
++ #include "include/to_chars_floating_point.h"
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ #ifndef _LIBCPP_ABI_DO_NOT_EXPORT_TO_CHARS_BASE_10
++ 
++@@ -87,6 +86,4 @@
++ 
++ template __from_chars_result<double> __from_chars_floating_point(
++     _LIBCPP_NOESCAPE const char* __first, _LIBCPP_NOESCAPE const char* __last, chars_format __fmt);
++-
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/chrono.cpp b/libcxx/src/chrono.cpp
++--- a/libcxx/src/chrono.cpp
+++++ b/libcxx/src/chrono.cpp
++@@ -64,7 +64,6 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ namespace chrono {
++ 
++@@ -263,5 +262,4 @@
++ 
++ } // namespace chrono
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/condition_variable.cpp b/libcxx/src/condition_variable.cpp
++--- a/libcxx/src/condition_variable.cpp
+++++ b/libcxx/src/condition_variable.cpp
++@@ -23,7 +23,6 @@
++ #include <__undef_macros>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ // ~condition_variable is defined elsewhere.
++ 
++@@ -73,7 +72,6 @@
++   __thread_local_data()->notify_all_at_thread_exit(&cond, lk.release());
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ _LIBCPP_POP_MACROS
++diff -ruN --strip-trailing-cr a/libcxx/src/condition_variable_destructor.cpp b/libcxx/src/condition_variable_destructor.cpp
++--- a/libcxx/src/condition_variable_destructor.cpp
+++++ b/libcxx/src/condition_variable_destructor.cpp
++@@ -19,7 +19,6 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ #ifdef NEEDS_CONDVAR_DESTRUCTOR
++ 
++@@ -38,5 +37,4 @@
++ condition_variable::~condition_variable() { __libcpp_condvar_destroy(&__cv_); }
++ #endif
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/error_category.cpp b/libcxx/src/error_category.cpp
++--- a/libcxx/src/error_category.cpp
+++++ b/libcxx/src/error_category.cpp
++@@ -15,7 +15,6 @@
++ #include <system_error>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ // class error_category
++ 
++@@ -35,5 +34,4 @@
++   return *this == code.category() && code.value() == condition;
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/expected.cpp b/libcxx/src/expected.cpp
++--- a/libcxx/src/expected.cpp
+++++ b/libcxx/src/expected.cpp
++@@ -9,9 +9,5 @@
++ #include <expected>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++-
++ const char* bad_expected_access<void>::what() const noexcept { return "bad access to std::expected"; }
++-
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/experimental/chrono_exception.cpp b/libcxx/src/experimental/chrono_exception.cpp
++--- a/libcxx/src/experimental/chrono_exception.cpp
+++++ b/libcxx/src/experimental/chrono_exception.cpp
++@@ -9,7 +9,6 @@
++ #include <chrono>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ namespace chrono {
++ 
++@@ -20,5 +19,4 @@
++ 
++ } // namespace chrono
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/filesystem/directory_entry.cpp b/libcxx/src/filesystem/directory_entry.cpp
++--- a/libcxx/src/filesystem/directory_entry.cpp
+++++ b/libcxx/src/filesystem/directory_entry.cpp
++@@ -16,7 +16,6 @@
++ #include "time_utils.h"
++ 
++ _LIBCPP_BEGIN_NAMESPACE_FILESYSTEM
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ error_code directory_entry::__do_refresh() noexcept {
++   __data_.__reset();
++@@ -71,5 +70,4 @@
++   return failure_ec;
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_FILESYSTEM
++diff -ruN --strip-trailing-cr a/libcxx/src/filesystem/directory_iterator.cpp b/libcxx/src/filesystem/directory_iterator.cpp
++--- a/libcxx/src/filesystem/directory_iterator.cpp
+++++ b/libcxx/src/filesystem/directory_iterator.cpp
++@@ -26,7 +26,6 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_NAMESPACE_FILESYSTEM
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ using detail::ErrorHandler;
++ 
++@@ -321,5 +320,4 @@
++   return false;
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_FILESYSTEM
++diff -ruN --strip-trailing-cr a/libcxx/src/filesystem/filesystem_clock.cpp b/libcxx/src/filesystem/filesystem_clock.cpp
++--- a/libcxx/src/filesystem/filesystem_clock.cpp
+++++ b/libcxx/src/filesystem/filesystem_clock.cpp
++@@ -42,7 +42,6 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_NAMESPACE_FILESYSTEM
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ _LIBCPP_DIAGNOSTIC_PUSH
++ _LIBCPP_CLANG_DIAGNOSTIC_IGNORED("-Wdeprecated")
++@@ -77,5 +76,4 @@
++ #endif
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_FILESYSTEM
++diff -ruN --strip-trailing-cr a/libcxx/src/filesystem/filesystem_error.cpp b/libcxx/src/filesystem/filesystem_error.cpp
++--- a/libcxx/src/filesystem/filesystem_error.cpp
+++++ b/libcxx/src/filesystem/filesystem_error.cpp
++@@ -15,7 +15,6 @@
++ #include "format_string.h"
++ 
++ _LIBCPP_BEGIN_NAMESPACE_FILESYSTEM
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ filesystem_error::~filesystem_error() {}
++ 
++@@ -38,5 +37,4 @@
++   }();
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_FILESYSTEM
++diff -ruN --strip-trailing-cr a/libcxx/src/filesystem/operations.cpp b/libcxx/src/filesystem/operations.cpp
++--- a/libcxx/src/filesystem/operations.cpp
+++++ b/libcxx/src/filesystem/operations.cpp
++@@ -76,7 +76,6 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_NAMESPACE_FILESYSTEM
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ using detail::capture_errno;
++ using detail::ErrorHandler;
++@@ -1085,5 +1084,4 @@
++   return result.lexically_normal();
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_FILESYSTEM
++diff -ruN --strip-trailing-cr a/libcxx/src/filesystem/path.cpp b/libcxx/src/filesystem/path.cpp
++--- a/libcxx/src/filesystem/path.cpp
+++++ b/libcxx/src/filesystem/path.cpp
++@@ -14,7 +14,6 @@
++ #include "path_parser.h"
++ 
++ _LIBCPP_BEGIN_NAMESPACE_FILESYSTEM
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ using detail::ErrorHandler;
++ using parser::createView;
++@@ -443,5 +442,4 @@
++ }
++ #endif
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_FILESYSTEM
++diff -ruN --strip-trailing-cr a/libcxx/src/fstream.cpp b/libcxx/src/fstream.cpp
++--- a/libcxx/src/fstream.cpp
+++++ b/libcxx/src/fstream.cpp
++@@ -18,7 +18,6 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ #if defined(_LIBCPP_WIN32API)
++ 
++@@ -35,5 +34,4 @@
++ 
++ #endif
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/functional.cpp b/libcxx/src/functional.cpp
++--- a/libcxx/src/functional.cpp
+++++ b/libcxx/src/functional.cpp
++@@ -9,7 +9,6 @@
++ #include <functional>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ bad_function_call::~bad_function_call() noexcept {}
++ 
++@@ -19,5 +18,4 @@
++   return __murmur2_or_cityhash<size_t>()(ptr, size);
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/future.cpp b/libcxx/src/future.cpp
++--- a/libcxx/src/future.cpp
+++++ b/libcxx/src/future.cpp
++@@ -10,7 +10,6 @@
++ #include <string>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ class _LIBCPP_HIDDEN __future_error_category : public __do_message {
++ public:
++@@ -195,5 +194,4 @@
++   return *this;
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/hash.cpp b/libcxx/src/hash.cpp
++--- a/libcxx/src/hash.cpp
+++++ b/libcxx/src/hash.cpp
++@@ -14,7 +14,6 @@
++ _LIBCPP_CLANG_DIAGNOSTIC_IGNORED("-Wtautological-constant-out-of-range-compare")
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ namespace {
++ 
++@@ -450,5 +449,4 @@
+    }
+-   _LIBCPP_HIDE_FROM_ABI void __move_assign_alloc(__tree&, false_type) _NOEXCEPT {}
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/ios.cpp b/libcxx/src/ios.cpp
++--- a/libcxx/src/ios.cpp
+++++ b/libcxx/src/ios.cpp
++@@ -22,7 +22,6 @@
++ #include <__undef_macros>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ class _LIBCPP_HIDDEN __iostream_category : public __do_message {
++ public:
++@@ -383,7 +382,6 @@
++   return r;
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ _LIBCPP_POP_MACROS
++diff -ruN --strip-trailing-cr a/libcxx/src/iostream.cpp b/libcxx/src/iostream.cpp
++--- a/libcxx/src/iostream.cpp
+++++ b/libcxx/src/iostream.cpp
++@@ -15,7 +15,6 @@
++ #define ABI_NAMESPACE_STR _LIBCPP_TOSTRING(_LIBCPP_ABI_NAMESPACE)
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ template <class StreamT, class BufferT>
++ union stream_data {
++@@ -136,5 +135,4 @@
++ 
++ ios_base::Init::~Init() {}
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/locale.cpp b/libcxx/src/locale.cpp
++--- a/libcxx/src/locale.cpp
+++++ b/libcxx/src/locale.cpp
++@@ -49,7 +49,6 @@
++ #include <__undef_macros>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
+  
+--  template <class _From, __enable_if_t<__is_pair_v<__remove_cvref_t<_From> >, int> = 0>
+-+  template <class _From, class _ValueT = _Tp, __enable_if_t<__is_tree_value_type<_ValueT>::value, int> = 0>
+-   _LIBCPP_HIDE_FROM_ABI static void __assign_value(__get_node_value_type_t<value_type>& __lhs, _From&& __rhs) {
+-     using __key_type = typename _NodeTypes::key_type;
++ struct __libcpp_unique_locale {
++   __libcpp_unique_locale(const char* nm) : __loc_(__locale::__newlocale(_LIBCPP_ALL_MASK, nm, 0)) {}
++@@ -5728,7 +5727,6 @@
++ template class _LIBCPP_CLASS_TEMPLATE_INSTANTIATION_VIS codecvt_byname<char32_t, char8_t, mbstate_t>;
++ #endif
+  
+-@@ -1291,7 +1291,7 @@
+-     __lhs.second                         = std::forward<_From>(__rhs).second;
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ _LIBCPP_POP_MACROS
++diff -ruN --strip-trailing-cr a/libcxx/src/memory.cpp b/libcxx/src/memory.cpp
++--- a/libcxx/src/memory.cpp
+++++ b/libcxx/src/memory.cpp
++@@ -26,7 +26,6 @@
++ #include "include/atomic_support.h"
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ bad_weak_ptr::~bad_weak_ptr() noexcept {}
++ 
++@@ -148,5 +147,4 @@
++   return r;
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/memory_resource.cpp b/libcxx/src/memory_resource.cpp
++--- a/libcxx/src/memory_resource.cpp
+++++ b/libcxx/src/memory_resource.cpp
++@@ -20,7 +20,6 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ namespace pmr {
++ 
++@@ -498,5 +497,4 @@
++ 
++ } // namespace pmr
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/mutex.cpp b/libcxx/src/mutex.cpp
++--- a/libcxx/src/mutex.cpp
+++++ b/libcxx/src/mutex.cpp
++@@ -23,7 +23,6 @@
++ #include <__undef_macros>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ // ~mutex is defined elsewhere
++ 
++@@ -142,7 +141,6 @@
+    }
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ _LIBCPP_POP_MACROS
++diff -ruN --strip-trailing-cr a/libcxx/src/mutex_destructor.cpp b/libcxx/src/mutex_destructor.cpp
++--- a/libcxx/src/mutex_destructor.cpp
+++++ b/libcxx/src/mutex_destructor.cpp
++@@ -24,7 +24,6 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ #ifdef NEEDS_MUTEX_DESTRUCTOR
++ class _LIBCPP_EXPORTED_FROM_ABI mutex {
++@@ -40,5 +39,4 @@
++ mutex::~mutex() noexcept { __libcpp_mutex_destroy(&__m_); }
++ #endif // !NEEDS_MUTEX_DESTRUCTOR
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/optional.cpp b/libcxx/src/optional.cpp
++--- a/libcxx/src/optional.cpp
+++++ b/libcxx/src/optional.cpp
++@@ -22,7 +22,6 @@
++ //  Preserve std::experimental::bad_optional_access for ABI compatibility
++ //  Even though it no longer exists in a header file
++ _LIBCPP_BEGIN_NAMESPACE_EXPERIMENTAL
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ class _LIBCPP_EXPORTED_FROM_ABI _LIBCPP_AVAILABILITY_BAD_OPTIONAL_ACCESS bad_optional_access : public std::logic_error {
++ public:
++@@ -34,5 +33,4 @@
++ 
++ bad_optional_access::~bad_optional_access() noexcept = default;
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_EXPERIMENTAL
++diff -ruN --strip-trailing-cr a/libcxx/src/ostream.cpp b/libcxx/src/ostream.cpp
++--- a/libcxx/src/ostream.cpp
+++++ b/libcxx/src/ostream.cpp
++@@ -15,7 +15,6 @@
++ #include "std_stream.h"
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ _LIBCPP_EXPORTED_FROM_ABI FILE* __get_ostream_file(ostream& __os) {
++   // dynamic_cast requires RTTI, this only affects users whose vendor builds
++@@ -39,5 +38,4 @@
++   return nullptr;
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/print.cpp b/libcxx/src/print.cpp
++--- a/libcxx/src/print.cpp
+++++ b/libcxx/src/print.cpp
++@@ -25,7 +25,6 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ #if defined(_LIBCPP_WIN32API)
++ 
++@@ -62,5 +61,4 @@
++ _LIBCPP_EXPORTED_FROM_ABI bool __is_posix_terminal(FILE* __stream) { return isatty(fileno(__stream)); }
++ #endif
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/random.cpp b/libcxx/src/random.cpp
++--- a/libcxx/src/random.cpp
+++++ b/libcxx/src/random.cpp
++@@ -38,7 +38,6 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
+  
+--  template <class _To, class _From, class _ValueT = _Tp, __enable_if_t<!__is_pair_v<__remove_cvref_t<_From> >, int> = 0>
+-+  template <class _To, class _From, class _ValueT = _Tp, __enable_if_t<!__is_tree_value_type<_ValueT>::value, int> = 0>
+-   _LIBCPP_HIDE_FROM_ABI static void __assign_value(_To& __lhs, _From&& __rhs) {
+-     __lhs = std::forward<_From>(__rhs);
++ #if defined(_LIBCPP_USING_GETENTROPY)
++ 
++@@ -180,5 +179,4 @@
++ #endif
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/random_shuffle.cpp b/libcxx/src/random_shuffle.cpp
++--- a/libcxx/src/random_shuffle.cpp
+++++ b/libcxx/src/random_shuffle.cpp
++@@ -17,7 +17,6 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ #if _LIBCPP_HAS_THREADS
++ static constinit __libcpp_mutex_t __rs_mut = _LIBCPP_MUTEX_INITIALIZER;
++@@ -49,5 +48,4 @@
++ 
++ __rs_default __rs_get() { return __rs_default(); }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/regex.cpp b/libcxx/src/regex.cpp
++--- a/libcxx/src/regex.cpp
+++++ b/libcxx/src/regex.cpp
++@@ -11,7 +11,6 @@
++ #include <regex>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ static const char* make_error_type_string(regex_constants::error_type ecode) {
++   switch (ecode) {
++@@ -397,5 +396,4 @@
+    }
+-diff -ruN --strip-trailing-cr a/libcxx/test/std/containers/associative/set/set.cons/copy_assign.pass.cpp b/libcxx/test/std/containers/associative/set/set.cons/copy_assign.pass.cpp
+---- a/libcxx/test/std/containers/associative/set/set.cons/copy_assign.pass.cpp
+-+++ b/libcxx/test/std/containers/associative/set/set.cons/copy_assign.pass.cpp
+-@@ -80,5 +80,15 @@
+-     assert(*std::next(mo.begin(), 2) == 3);
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/shared_mutex.cpp b/libcxx/src/shared_mutex.cpp
++--- a/libcxx/src/shared_mutex.cpp
+++++ b/libcxx/src/shared_mutex.cpp
++@@ -13,7 +13,6 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ // Shared Mutex Base
++ __shared_mutex_base::__shared_mutex_base() : __state_(0) {}
++@@ -97,5 +96,4 @@
++ bool shared_timed_mutex::try_lock_shared() { return __base_.try_lock_shared(); }
++ void shared_timed_mutex::unlock_shared() { return __base_.unlock_shared(); }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/stdexcept.cpp b/libcxx/src/stdexcept.cpp
++--- a/libcxx/src/stdexcept.cpp
+++++ b/libcxx/src/stdexcept.cpp
++@@ -18,7 +18,6 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ void __throw_runtime_error(const char* msg) {
++ #if _LIBCPP_HAS_EXCEPTIONS
++@@ -28,5 +27,4 @@
++ #endif
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/std_stream.h b/libcxx/src/std_stream.h
++--- a/libcxx/src/std_stream.h
+++++ b/libcxx/src/std_stream.h
++@@ -24,7 +24,6 @@
++ #include <__undef_macros>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ static const int __limit = 8;
++ 
++@@ -381,7 +380,6 @@
++   __always_noconv_ = __cv_->always_noconv();
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ _LIBCPP_POP_MACROS
++diff -ruN --strip-trailing-cr a/libcxx/src/string.cpp b/libcxx/src/string.cpp
++--- a/libcxx/src/string.cpp
+++++ b/libcxx/src/string.cpp
++@@ -19,7 +19,6 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ #ifndef _LIBCPP_ABI_DO_NOT_EXPORT_BASIC_STRING_COMMON
++ 
++@@ -383,5 +382,4 @@
++ wstring to_wstring(long double val) { return as_string(get_swprintf(), initial_string<wstring>()(), L"%Lf", val); }
++ #endif
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/strstream.cpp b/libcxx/src/strstream.cpp
++--- a/libcxx/src/strstream.cpp
+++++ b/libcxx/src/strstream.cpp
++@@ -18,7 +18,6 @@
++ #include <__undef_macros>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ strstreambuf::strstreambuf(streamsize __alsize)
++     : __strmode_(__dynamic), __alsize_(__alsize), __palloc_(nullptr), __pfree_(nullptr) {}
++@@ -254,7 +253,6 @@
++ 
++ strstream::~strstream() {}
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++ 
++ _LIBCPP_POP_MACROS
++diff -ruN --strip-trailing-cr a/libcxx/src/support/win32/locale_win32.cpp b/libcxx/src/support/win32/locale_win32.cpp
++--- a/libcxx/src/support/win32/locale_win32.cpp
+++++ b/libcxx/src/support/win32/locale_win32.cpp
++@@ -16,7 +16,6 @@
++ #include <cwchar>  // wide char manipulation
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ namespace __locale {
++ 
++ //
++@@ -183,5 +182,4 @@
++ }
++ 
++ } // namespace __locale
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/support/win32/thread_win32.cpp b/libcxx/src/support/win32/thread_win32.cpp
++--- a/libcxx/src/support/win32/thread_win32.cpp
+++++ b/libcxx/src/support/win32/thread_win32.cpp
++@@ -16,7 +16,6 @@
++ #include <fibersapi.h>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ static_assert(sizeof(__libcpp_mutex_t) == sizeof(SRWLOCK), "");
++ static_assert(alignof(__libcpp_mutex_t) == alignof(SRWLOCK), "");
++@@ -212,5 +211,4 @@
++   return 0;
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/system_error.cpp b/libcxx/src/system_error.cpp
++--- a/libcxx/src/system_error.cpp
+++++ b/libcxx/src/system_error.cpp
++@@ -27,7 +27,6 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ #if defined(_LIBCPP_WIN32API)
++ 
++@@ -367,5 +366,4 @@
++ #endif
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/thread.cpp b/libcxx/src/thread.cpp
++--- a/libcxx/src/thread.cpp
+++++ b/libcxx/src/thread.cpp
++@@ -33,7 +33,6 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ thread::~thread() {
++   if (!__libcpp_thread_isnull(&__t_))
++@@ -173,5 +172,4 @@
++ 
++ void __thread_struct::__make_ready_at_thread_exit(__assoc_sub_state* __s) { __p_->__make_ready_at_thread_exit(__s); }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/valarray.cpp b/libcxx/src/valarray.cpp
++--- a/libcxx/src/valarray.cpp
+++++ b/libcxx/src/valarray.cpp
++@@ -9,7 +9,6 @@
++ #include <valarray>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ // These two symbols are part of the v1 ABI but not part of the >=v2 ABI.
++ #if _LIBCPP_ABI_VERSION == 1
++@@ -47,5 +46,4 @@
+    }
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/vector.cpp b/libcxx/src/vector.cpp
++--- a/libcxx/src/vector.cpp
+++++ b/libcxx/src/vector.cpp
++@@ -9,7 +9,6 @@
++ #include <vector>
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ #ifndef _LIBCPP_ABI_DO_NOT_EXPORT_VECTOR_BASE_COMMON
++ 
++@@ -28,5 +27,4 @@
++ 
++ #endif // _LIBCPP_ABI_DO_NOT_EXPORT_VECTOR_BASE_COMMON
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/src/verbose_abort.cpp b/libcxx/src/verbose_abort.cpp
++--- a/libcxx/src/verbose_abort.cpp
+++++ b/libcxx/src/verbose_abort.cpp
++@@ -22,7 +22,6 @@
++ #endif
++ 
++ _LIBCPP_BEGIN_NAMESPACE_STD
++-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
++ 
++ _LIBCPP_WEAK void __libcpp_verbose_abort(char const* format, ...) noexcept {
++   // Write message to stderr. We do this before formatting into a
++@@ -63,5 +62,4 @@
++   std::abort();
++ }
++ 
++-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
++ _LIBCPP_END_NAMESPACE_STD
++diff -ruN --strip-trailing-cr a/libcxx/test/tools/clang_tidy_checks/hide_from_abi.cpp b/libcxx/test/tools/clang_tidy_checks/hide_from_abi.cpp
++--- a/libcxx/test/tools/clang_tidy_checks/hide_from_abi.cpp
+++++ b/libcxx/test/tools/clang_tidy_checks/hide_from_abi.cpp
++@@ -78,6 +78,9 @@
++           isDefinition())
++           .bind("hide_from_abi_on_member_function"),
++       this);
+++
+++  finder->addMatcher(
+++      cxxMethodDecl(has_hide_from_abi_attr, on_trivial).bind("hide_from_abi_on_defaulted_smf_in_trivial_class"), this);
++ }
+  
+-+  { // Test with std::pair, since we have some special handling for pairs inside __tree
+-+    std::pair<int, int> arr[] = {
+-+        std::make_pair(1, 2), std::make_pair(2, 3), std::make_pair(3, 4), std::make_pair(4, 5)};
+-+    std::set<std::pair<int, int> > a(arr, arr + 4);
+-+    std::set<std::pair<int, int> > b;
++ void hide_from_abi::check(const clang::ast_matchers::MatchFinder::MatchResult& result) {
++@@ -96,5 +99,12 @@
++       call != nullptr) {
++     diag(call->getLocation(), "_LIBCPP_HIDE_FROM_ABI or _LIBCPP_HIDE_FROM_ABI_VIRTUAL is missing");
++   }
+ +
+-+    b = a;
+-+    assert(a == b);
+++  if (const auto* call =
+++          result.Nodes.getNodeAs<clang::CXXMethodDecl>("hide_from_abi_on_defaulted_smf_in_trivial_class");
+++      call != nullptr) {
+++    diag(call->getLocation(),
+++         "_LIBCPP_HIDE_FROM_ABI should not be used for special member functions in trivial classes");
+ +  }
++ }
++ } // namespace libcpp
++diff -ruN --strip-trailing-cr a/lldb/tools/lldb-dap/Protocol/ProtocolTypes.h b/lldb/tools/lldb-dap/Protocol/ProtocolTypes.h
++--- a/lldb/tools/lldb-dap/Protocol/ProtocolTypes.h
+++++ b/lldb/tools/lldb-dap/Protocol/ProtocolTypes.h
++@@ -677,6 +677,8 @@
++   /// addresses may be presented is 'invalid.'
++   /// Values: 'normal', 'invalid'
++   std::optional<PresentationHint> presentationHint;
+ +
+-   return 0;
+++  DisassembledInstruction() : address(0) {}
++ };
++ bool fromJSON(const llvm::json::Value &,
++               DisassembledInstruction::PresentationHint &, llvm::json::Path);
++diff -ruN --strip-trailing-cr a/mlir/include/mlir/Query/Matcher/SliceMatchers.h b/mlir/include/mlir/Query/Matcher/SliceMatchers.h
++--- a/mlir/include/mlir/Query/Matcher/SliceMatchers.h
+++++ b/mlir/include/mlir/Query/Matcher/SliceMatchers.h
++@@ -114,6 +114,7 @@
++   };
++   LogicalResult result = getBackwardSlice(rootOp, &backwardSlice, options);
++   assert(result.succeeded() && "expected backward slice to succeed");
+++  (void)result;
++   return options.inclusive ? backwardSlice.size() > 1
++                            : backwardSlice.size() >= 1;
++ }
++diff -ruN --strip-trailing-cr a/mlir/lib/Analysis/SliceAnalysis.cpp b/mlir/lib/Analysis/SliceAnalysis.cpp
++--- a/mlir/lib/Analysis/SliceAnalysis.cpp
+++++ b/mlir/lib/Analysis/SliceAnalysis.cpp
++@@ -180,6 +180,7 @@
++     LogicalResult result =
++         getBackwardSlice(currentOp, &backwardSlice, backwardSliceOptions);
++     assert(result.succeeded());
+++    (void)result;
++     slice.insert_range(backwardSlice);
++ 
++     // Compute and insert the forwardSlice starting from currentOp.
++@@ -204,6 +205,7 @@
++   };
++   LogicalResult result = getBackwardSlice(value, &slice, sliceOptions);
++   assert(result.succeeded());
+++  (void)result;
++ 
++   // Check that none of the operands of the operations in the backward slice are
++   // loop iteration arguments, and neither is the value itself.
++diff -ruN --strip-trailing-cr a/mlir/lib/Conversion/MemRefToLLVM/MemRefToLLVM.cpp b/mlir/lib/Conversion/MemRefToLLVM/MemRefToLLVM.cpp
++--- a/mlir/lib/Conversion/MemRefToLLVM/MemRefToLLVM.cpp
+++++ b/mlir/lib/Conversion/MemRefToLLVM/MemRefToLLVM.cpp
++@@ -1721,10 +1721,6 @@
++     MemRefDescriptor sourceMemRef(adaptor.getSource());
++     auto targetMemRef = MemRefDescriptor::poison(rewriter, loc, targetDescTy);
++ 
++-    // Early exit for 0-D corner case.
++-    if (viewMemRefType.getRank() == 0)
++-      return rewriter.replaceOp(viewOp, {targetMemRef}), success();
++-
++     // Field 1: Copy the allocated pointer, used for malloc/free.
++     Value allocatedPtr = sourceMemRef.allocatedPtr(rewriter, loc);
++     auto srcMemRefType = cast<MemRefType>(viewOp.getSource().getType());
++@@ -1747,6 +1743,10 @@
++         rewriter, loc,
++         createIndexAttrConstant(rewriter, loc, indexType, offset));
++ 
+++    // Early exit for 0-D corner case.
+++    if (viewMemRefType.getRank() == 0)
+++      return rewriter.replaceOp(viewOp, {targetMemRef}), success();
+++
++     // Fields 4 and 5: Update sizes and strides.
++     Value stride = nullptr, nextSize = nullptr;
++     for (int i = viewMemRefType.getRank() - 1; i >= 0; --i) {
++diff -ruN --strip-trailing-cr a/mlir/lib/Conversion/VectorToGPU/VectorToGPU.cpp b/mlir/lib/Conversion/VectorToGPU/VectorToGPU.cpp
++--- a/mlir/lib/Conversion/VectorToGPU/VectorToGPU.cpp
+++++ b/mlir/lib/Conversion/VectorToGPU/VectorToGPU.cpp
++@@ -320,6 +320,7 @@
++     LogicalResult result =
++         getBackwardSlice(currentOp, &backwardSlice, backwardSliceOptions);
++     assert(result.succeeded() && "expected a backward slice");
+++    (void)result;
++     slice.insert_range(backwardSlice);
++ 
++     // Compute and insert the forwardSlice starting from currentOp.
++diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/Linalg/Transforms/HoistPadding.cpp b/mlir/lib/Dialect/Linalg/Transforms/HoistPadding.cpp
++--- a/mlir/lib/Dialect/Linalg/Transforms/HoistPadding.cpp
+++++ b/mlir/lib/Dialect/Linalg/Transforms/HoistPadding.cpp
++@@ -126,11 +126,13 @@
++   for (Value v : valuesDefinedAbove) {
++     LogicalResult result = getBackwardSlice(v, &backwardSlice, sliceOptions);
++     assert(result.succeeded() && "expected a backward slice");
+++    (void)result;
++   }
++   // Then, add the backward slice from padOp itself.
++   LogicalResult result =
++       getBackwardSlice(padOp.getOperation(), &backwardSlice, sliceOptions);
++   assert(result.succeeded() && "expected a backward slice");
+++  (void)result;
++ }
++ 
++ //===----------------------------------------------------------------------===//
++diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/NVGPU/TransformOps/NVGPUTransformOps.cpp b/mlir/lib/Dialect/NVGPU/TransformOps/NVGPUTransformOps.cpp
++--- a/mlir/lib/Dialect/NVGPU/TransformOps/NVGPUTransformOps.cpp
+++++ b/mlir/lib/Dialect/NVGPU/TransformOps/NVGPUTransformOps.cpp
++@@ -293,6 +293,7 @@
++     if (stage0Ops.contains(&op)) {
++       LogicalResult result = getBackwardSlice(&op, &dependencies, options);
++       assert(result.succeeded() && "expected a backward slice");
+++      (void)result;
++     }
++   }
++ 
++diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/SCF/Transforms/TileUsingInterface.cpp b/mlir/lib/Dialect/SCF/Transforms/TileUsingInterface.cpp
++--- a/mlir/lib/Dialect/SCF/Transforms/TileUsingInterface.cpp
+++++ b/mlir/lib/Dialect/SCF/Transforms/TileUsingInterface.cpp
++@@ -1774,6 +1774,7 @@
++   for (auto operand : consumerOp->getOperands()) {
++     LogicalResult result = getBackwardSlice(operand, &slice, options);
++     assert(result.succeeded() && "expected a backward slice");
+++    (void)result;
++   }
++ 
++   if (!slice.empty()) {
++diff -ruN --strip-trailing-cr a/mlir/lib/Transforms/Utils/RegionUtils.cpp b/mlir/lib/Transforms/Utils/RegionUtils.cpp
++--- a/mlir/lib/Transforms/Utils/RegionUtils.cpp
+++++ b/mlir/lib/Transforms/Utils/RegionUtils.cpp
++@@ -1096,6 +1096,7 @@
++   llvm::SetVector<Operation *> slice;
++   LogicalResult result = getBackwardSlice(op, &slice, options);
++   assert(result.succeeded() && "expected a backward slice");
+++  (void)result;
++ 
++   // If the slice contains `insertionPoint` cannot move the dependencies.
++   if (slice.contains(insertionPoint)) {
++@@ -1162,6 +1163,7 @@
++   for (auto value : prunedValues) {
++     LogicalResult result = getBackwardSlice(value, &slice, options);
++     assert(result.succeeded() && "expected a backward slice");
+++    (void)result;
++   }
++ 
++   // If the slice contains `insertionPoint` cannot move the dependencies.
++diff -ruN --strip-trailing-cr a/mlir/test/Conversion/MemRefToLLVM/memref-to-llvm.mlir b/mlir/test/Conversion/MemRefToLLVM/memref-to-llvm.mlir
++--- a/mlir/test/Conversion/MemRefToLLVM/memref-to-llvm.mlir
+++++ b/mlir/test/Conversion/MemRefToLLVM/memref-to-llvm.mlir
++@@ -1,10 +1,13 @@
++-// RUN: mlir-opt -finalize-memref-to-llvm %s -split-input-file | FileCheck %s
+++// RUN: mlir-opt -finalize-memref-to-llvm %s -split-input-file | FileCheck --check-prefixes=ALL,CHECK %s
++ // RUN: mlir-opt -finalize-memref-to-llvm='index-bitwidth=32' %s -split-input-file | FileCheck --check-prefix=CHECK32 %s
++ 
++ // Same below, but using the `ConvertToLLVMPatternInterface` entry point
++ // and the generic `convert-to-llvm` pass. This produces slightly different IR
++ // because the conversion target is set up differently.
++-// RUN: mlir-opt --convert-to-llvm="filter-dialects=memref" --split-input-file %s | FileCheck --check-prefix=CHECK-INTERFACE %s
+++// RUN: mlir-opt --convert-to-llvm="filter-dialects=memref" --split-input-file %s | FileCheck --check-prefixes=ALL,CHECK-INTERFACE %s
+++
+++// TODO: In some (all?) cases, CHECK and CHECK-INTERFACE outputs are identical.
+++// Use a common prefix instead (e.g. ALL).
++ 
++ // CHECK-LABEL: func @view(
++ // CHECK: %[[ARG0F:.*]]: index, %[[ARG1F:.*]]: index, %[[ARG2F:.*]]: index
++@@ -129,6 +132,28 @@
++ 
++   return
+  }
+++
+++// -----
+++
+++// ALL-LABEL:   func.func @view_memref_as_rank0(
+++// ALL-SAME:      %[[OFFSET:.*]]: index,
+++// ALL-SAME:      %[[MEM:.*]]: memref<2xi8>) {
+++func.func @view_memref_as_rank0(%offset: index, %mem: memref<2xi8>) {
+++
+++  // ALL:  builtin.unrealized_conversion_cast %[[OFFSET]] : index to i64
+++  // ALL:  builtin.unrealized_conversion_cast %[[MEM]] : memref<2xi8> to !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
+++  // ALL:  llvm.mlir.poison : !llvm.struct<(ptr, ptr, i64)>
+++  // ALL:  llvm.extractvalue %{{.*}}[0] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
+++  // ALL:  llvm.insertvalue %{{.*}}, %{{.*}}[0] : !llvm.struct<(ptr, ptr, i64)>
+++  // ALL:  llvm.extractvalue %{{.*}}[1] : !llvm.struct<(ptr, ptr, i64, array<1 x i64>, array<1 x i64>)>
+++  // ALL:  llvm.getelementptr %{{.*}}[%{{.*}}] : (!llvm.ptr, i64) -> !llvm.ptr, i8
+++  // ALL:  llvm.insertvalue %{{.*}}, %{{.*}}[1] : !llvm.struct<(ptr, ptr, i64)>
+++  // ALL:  llvm.mlir.constant(0 : index) : i64
+++  // ALL:  llvm.insertvalue %{{.*}}, %{{.*}}[2] : !llvm.struct<(ptr, ptr, i64)>
+++  %memref_view_bf16 = memref.view %mem[%offset][] : memref<2xi8> to memref<bf16>
+++
+++  return
+++}
++ 
++ // -----
++ 
++diff -ruN --strip-trailing-cr a/mlir/test/lib/Dialect/Affine/TestVectorizationUtils.cpp b/mlir/test/lib/Dialect/Affine/TestVectorizationUtils.cpp
++--- a/mlir/test/lib/Dialect/Affine/TestVectorizationUtils.cpp
+++++ b/mlir/test/lib/Dialect/Affine/TestVectorizationUtils.cpp
++@@ -157,6 +157,7 @@
++     LogicalResult result =
++         getBackwardSlice(m.getMatchedOperation(), &backwardSlice);
++     assert(result.succeeded() && "expected a backward slice");
+++    (void)result;
++     outs << "\nmatched: " << *m.getMatchedOperation()
++          << " backward static slice: ";
++     for (auto *op : backwardSlice)
++diff -ruN --strip-trailing-cr a/mlir/test/lib/IR/TestSlicing.cpp b/mlir/test/lib/IR/TestSlicing.cpp
++--- a/mlir/test/lib/IR/TestSlicing.cpp
+++++ b/mlir/test/lib/IR/TestSlicing.cpp
++@@ -43,6 +43,7 @@
++   options.omitUsesFromAbove = false;
++   LogicalResult result = getBackwardSlice(op, &slice, options);
++   assert(result.succeeded() && "expected a backward slice");
+++  (void)result;
++   for (Operation *slicedOp : slice)
++     builder.clone(*slicedOp, mapper);
++   builder.create<func::ReturnOp>(loc);
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 2082c76..70e5132 100644
+index 70e5132..b4fdf13 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "fec9be9f73c3a777a7649ce35f3e523f303a8f20"
--    LLVM_SHA256 = "34e2f24cf17017bef891022c1567bde8e12a37317e0048a076513745197c8624"
-+    LLVM_COMMIT = "3fcfce4c5e5fd1c3072e8db1d692c93459e8cd74"
-+    LLVM_SHA256 = "9c4bde7ff2804eb03b23777c1d95abc1b33ca286cda6115f8d14e057585e3974"
+-    LLVM_COMMIT = "3fcfce4c5e5fd1c3072e8db1d692c93459e8cd74"
+-    LLVM_SHA256 = "9c4bde7ff2804eb03b23777c1d95abc1b33ca286cda6115f8d14e057585e3974"
++    LLVM_COMMIT = "2b8bff6f66fd90ac658d0ae0d7f9a83ffadfd77f"
++    LLVM_SHA256 = "bd3fb6d63b2952b036b2c9ad1ae7b5766e3a67955c7677ab4e8d8a3577700229"
  
      tf_http_archive(
          name = name,
