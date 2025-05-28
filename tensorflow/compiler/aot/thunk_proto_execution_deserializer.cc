@@ -30,9 +30,12 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/convolution_lib.h"
 #include "xla/backends/cpu/runtime/dot_lib.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
+#include "xla/layout_util.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -43,7 +46,7 @@ namespace {
 
 std::string GetBufferAllocationString(
     const xla::buffer_assignment::BufferAllocationSliceProto& slice) {
-  return absl::StrCat("reinterpret_cast<std::byte*>(buffer_table()[",
+  return absl::StrCat("reinterpret_cast<std::byte*>(buffer_table[",
                       slice.buffer_allocation_index(), "]) + ", slice.offset());
 }
 
@@ -73,11 +76,6 @@ ThunkProtoExecutionDeserializer::ThunkSpecificRunImplFromThunkSequence(
                             GetDotThunkRunImpl(thunk));
         break;
       }
-      case xla::cpu::ThunkProto::kCopyThunk: {
-        TF_ASSIGN_OR_RETURN(thunk_run_impls.emplace_back(),
-                            GetCopyThunkRunImpl(thunk));
-        break;
-      }
       case xla::cpu::ThunkProto::kConditionalThunk: {
         TF_ASSIGN_OR_RETURN(thunk_run_impls.emplace_back(),
                             GetConditionalThunkRunImpl(thunk));
@@ -101,6 +99,16 @@ ThunkProtoExecutionDeserializer::ThunkSpecificRunImplFromThunkSequence(
       case xla::cpu::ThunkProto::kCallThunk: {
         TF_ASSIGN_OR_RETURN(thunk_run_impls.emplace_back(),
                             GetCallThunkRunImpl(thunk));
+        break;
+      }
+      case xla::cpu::ThunkProto::kCopyThunk: {
+        TF_ASSIGN_OR_RETURN(thunk_run_impls.emplace_back(),
+                            GetCopyThunkRunImpl(thunk));
+        break;
+      }
+      case xla::cpu::ThunkProto::kSortThunk: {
+        TF_ASSIGN_OR_RETURN(thunk_run_impls.emplace_back(),
+                            GetSortThunkRunImpl(thunk));
         break;
       }
       default: {
@@ -151,9 +159,9 @@ absl::StatusOr<std::string> ThunkProtoExecutionDeserializer::GetDotThunkRunImpl(
   absl::string_view dot_thunk_invocation_format = R"(
      // Dot Thunk
      {
-         if (run_options()->intra_op_thread_pool() != nullptr) {
+         if (run_options->intra_op_thread_pool() != nullptr) {
            {{MATMUL_FUNCTION}}(
-            run_options(), {{OUTPUT_PTR}}, {{LHS_PTR}}, {{RHS_PTR}},
+            run_options, {{OUTPUT_PTR}}, {{LHS_PTR}}, {{RHS_PTR}},
             {{M}}, {{N}}, {{K}}, {{TRANSPOSE_LHS}}, {{TRANSPOSE_RHS}});
          } else {
            {{SINGLE_THREADED_MATMUL_FUNCTION}}(
@@ -302,9 +310,9 @@ ThunkProtoExecutionDeserializer::GetConvolution2DRunImpl(
   absl::string_view convolution_thunk_invocation_format = R"(
      // Convolution Thunk
      {
-         if (run_options()->intra_op_thread_pool() != nullptr) {
+         if (run_options->intra_op_thread_pool() != nullptr) {
            {{CONVOLUTION_FUNCTION}}(
-             run_options(),
+             run_options,
              {{OUTPUT_PTR}}, {{LHS_PTR}}, {{RHS_PTR}}, {{INPUT_BATCH}},
              {{INPUT_ROWS}}, {{INPUT_COLS}}, {{INPUT_CHANNELS}}, {{KERNEL_ROWS}},
              {{KERNEL_COLS}}, {{KERNEL_CHANNELS}}, {{KERNEL_FILTERS}},
@@ -417,7 +425,7 @@ ThunkProtoExecutionDeserializer::GetRngGetAndUpdateStateThunkRunImpl(
   absl::string_view rng_thunk_invocation_format = R"(
      // Rng Thunk
      {
-         rng_states_[{{RNG_STATE_INDEX}}].GetAndUpdateState({{RNG_STATE_PTR}});
+         rng_states[{{RNG_STATE_INDEX}}]->GetAndUpdateState({{RNG_STATE_PTR}});
      })";
 
   if (rng_thunk.state_buffer().size() != sizeof(absl::int128)) {
@@ -459,6 +467,137 @@ ThunkProtoExecutionDeserializer::GetCallThunkRunImpl(
 }
 
 absl::StatusOr<std::string>
+ThunkProtoExecutionDeserializer::GetCopyThunkRunImpl(
+    const xla::cpu::ThunkProto& thunk) {
+  // IMPORTANT(basioli): tfcompiled models should always emit llvm kernels for
+  // copy thunks. Here we emit just a memcpy. This is done exclusively for copy
+  // thunks that get created by the sort thunk.
+  if (!thunk.has_copy_thunk()) {
+    return xla::Internal(
+        "Copy thunk was expected when getting thunk run implementation.");
+  }
+
+  const xla::cpu::CopyThunkProto& copy_thunk = thunk.copy_thunk();
+  TF_ASSIGN_OR_RETURN(
+      auto input_shape,
+      xla::Shape::FromProto(copy_thunk.src_buffer_shape().shape()));
+  TF_ASSIGN_OR_RETURN(
+      auto output_shape,
+      xla::Shape::FromProto(copy_thunk.dst_buffer_shape().shape()));
+
+  if (input_shape != output_shape) {
+    return xla::Internal(
+        "Copy thunk has input shape %s and output shape %s that are not the "
+        "same.",
+        input_shape.ToString(true), output_shape.ToString(true));
+  }
+
+  absl::string_view copy_thunk_invocation_format = R"(
+     // Copy Thunk
+     {
+         std::memcpy({{OUTPUT_PTR}}, {{INPUT_PTR}}, {{SIZE}});
+     })";
+
+  return absl::StrReplaceAll(
+      copy_thunk_invocation_format,
+      {{"{{OUTPUT_PTR}}",
+        absl::StrCat(
+            "reinterpret_cast<char*>(",
+            GetBufferAllocationString(copy_thunk.dst_buffer_shape().slice()),
+            ")")},
+       {"{{INPUT_PTR}}",
+        absl::StrCat(
+            "reinterpret_cast<char*>(",
+            GetBufferAllocationString(copy_thunk.src_buffer_shape().slice()),
+            ")")},
+       {"{{SIZE}}",
+        absl::StrCat(copy_thunk.src_buffer_shape().slice().size())}});
+}
+
+absl::StatusOr<std::string>
+ThunkProtoExecutionDeserializer::GetSortThunkRunImpl(
+    const xla::cpu::ThunkProto& thunk) {
+  if (!thunk.has_sort_thunk()) {
+    return xla::Internal(
+        "Sort thunk was expected when getting thunk run implementation.");
+  }
+  const xla::cpu::SortThunkProto& sort_thunk = thunk.sort_thunk();
+
+  std::vector<std::string> buffers_to_sort;
+  buffers_to_sort.reserve(sort_thunk.inputs_shapes_size());
+
+  std::vector<int32_t> values_primitive_type_size_in_bytes;
+  values_primitive_type_size_in_bytes.reserve(sort_thunk.inputs_shapes_size());
+  for (const auto& buffer_proto : sort_thunk.inputs_shapes()) {
+    buffers_to_sort.push_back(
+        absl::StrCat("reinterpret_cast<char*>(",
+                     GetBufferAllocationString(buffer_proto.slice()), ")"));
+    values_primitive_type_size_in_bytes.push_back(
+        xla::ShapeUtil::ByteSizeOfPrimitiveType(
+            buffer_proto.shape().element_type()));
+  }
+  absl::string_view sort_thunk_invocation_format = R"(
+     // Sort Thunk
+     {
+       std::vector<char*> values = {
+         {{BUFFERS_TO_SORT}}
+       };
+       std::vector<int32_t> values_primitive_type_size_in_bytes = {
+         {{VALUES_PRIMITIVE_TYPE_SIZE_IN_BYTES}}
+       };
+
+       __xla_cpu_runtime_KeyValueSort(
+         {{HIGHER_DIMENSIONS}}, {{SORT_DIMENSION_ELEMENTS}}, {{LOWER_DIMENSIONS}},
+         values.data(),
+         int32_t(values.size()),
+         values_primitive_type_size_in_bytes.data(),
+         /*is_stable=*/{{IS_STABLE}},
+         reinterpret_cast<char*>(run_options),
+         /*prof_counters=*/nullptr,
+         reinterpret_cast<void(*)(char*, char*, char**, char**, int64_t*)>({{SORT_FUNCTION_NAME}}));
+     })";
+
+  TF_ASSIGN_OR_RETURN(
+      auto keys_shape,
+      xla::Shape::FromProto(sort_thunk.inputs_shapes(0).shape()));
+
+  // Normalize the shape and the dimension to sort.
+  xla::Shape normalized_keys_shape =
+      xla::ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+          keys_shape);
+  auto logical_to_physical =
+      xla::LayoutUtil::MakeLogicalToPhysical(keys_shape.layout());
+  TF_RET_CHECK(sort_thunk.dimension() < logical_to_physical.size());
+  int64_t physical_dimension_to_sort =
+      logical_to_physical[sort_thunk.dimension()];
+
+  int64_t sort_dimension_elements =
+      normalized_keys_shape.dimensions(physical_dimension_to_sort);
+  int64_t higher_dimensions = 1;
+  for (int64_t i = 0; i < physical_dimension_to_sort; ++i) {
+    higher_dimensions *= normalized_keys_shape.dimensions(i);
+  }
+  int64_t lower_dimensions = 1;
+  for (int64_t i = normalized_keys_shape.dimensions().size() - 1;
+       i > physical_dimension_to_sort; --i) {
+    lower_dimensions *= normalized_keys_shape.dimensions(i);
+  }
+  return absl::StrReplaceAll(
+      sort_thunk_invocation_format,
+      {
+          {"{{HIGHER_DIMENSIONS}}", absl::StrCat(higher_dimensions)},
+          {"{{SORT_DIMENSION_ELEMENTS}}",
+           absl::StrCat(sort_dimension_elements)},
+          {"{{LOWER_DIMENSIONS}}", absl::StrCat(lower_dimensions)},
+          {"{{SORT_FUNCTION_NAME}}", sort_thunk.comparator_name()},
+          {"{{BUFFERS_TO_SORT}}", absl::StrJoin(buffers_to_sort, ", ")},
+          {"{{VALUES_PRIMITIVE_TYPE_SIZE_IN_BYTES}}",
+           absl::StrJoin(values_primitive_type_size_in_bytes, ", ")},
+          {"{{IS_STABLE}}", sort_thunk.is_stable() ? "true" : "false"},
+      });
+}
+
+absl::StatusOr<std::string>
 ThunkProtoExecutionDeserializer::GetKernelThunkRunImpl(
     const xla::cpu::ThunkProto& thunk) {
   if (!thunk.has_kernel_thunk()) {
@@ -488,7 +627,7 @@ ThunkProtoExecutionDeserializer::GetKernelThunkRunImpl(
      // Kernel Thunk
      {
        std::array<XLA_CPU_KernelArg, {{NUM_ARGS}}> args = {{ARGS_INITIALIZER}};
-       XLA_CPU_KernelThreadDim kernel_thread_dims = {
+       XLA_CPU_NumWorkGroups kernel_thread_dims = {
            {{THREAD_DIM_X}},
            {{THREAD_DIM_Y}},
            {{THREAD_DIM_Z}},
@@ -497,7 +636,7 @@ ThunkProtoExecutionDeserializer::GetKernelThunkRunImpl(
        for (uint64_t z = 0; z < {{THREAD_DIM_Z}}; ++z) {
          for (uint64_t y = 0; y < {{THREAD_DIM_Y}}; ++y) {
            for (uint64_t x = 0; x < {{THREAD_DIM_X}}; ++x) {
-             XLA_CPU_KernelThread kernel_thread = {x, y, z};
+             XLA_CPU_WorkGroupId kernel_thread = {x, y, z};
 
              XLA_CPU_KernelCallFrame call_frame = {
                  &kernel_thread_dims, &kernel_thread, args.size(), args.data()};
@@ -525,46 +664,6 @@ ThunkProtoExecutionDeserializer::GetKernelThunkRunImpl(
           {"{{THREAD_DIM_Y}}", absl::StrCat(kernel_thunk.num_workgroups().y())},
           {"{{THREAD_DIM_Z}}", absl::StrCat(kernel_thunk.num_workgroups().z())},
           {"{{KERNEL_NAME}}", kernel_thunk.kernel_name()},
-      });
-}
-
-absl::StatusOr<std::string>
-ThunkProtoExecutionDeserializer::GetCopyThunkRunImpl(
-    const xla::cpu::ThunkProto& thunk) {
-  if (!thunk.has_copy_thunk()) {
-    return xla::Internal(
-        "Copy thunk was expected when getting thunk run implementation.");
-  }
-  const xla::cpu::CopyThunkProto& copy_thunk = thunk.copy_thunk();
-
-  TF_ASSIGN_OR_RETURN(
-      xla::Shape src_buffer_shape,
-      xla::Shape::FromProto(copy_thunk.src_buffer_shape().shape()));
-  TF_ASSIGN_OR_RETURN(
-      xla::Shape dst_buffer_shape,
-      xla::Shape::FromProto(copy_thunk.dst_buffer_shape().shape()));
-  if (!xla::ShapeUtil::Equal(src_buffer_shape, dst_buffer_shape)) {
-    return xla::Internal("Source and destination shapes must be equal.");
-  }
-
-  absl::string_view copy_invocation_format = R"(
-     // Copy Thunk
-     {
-       std::memcpy({{DST_BUFFER}},
-                   {{SRC_BUFFER}},
-                   {{SRC_BUFFER_SIZE}});
-     }
-     )";
-
-  return absl::StrReplaceAll(
-      copy_invocation_format,
-      {
-          {"{{DST_BUFFER}}",
-           GetBufferAllocationString(copy_thunk.dst_buffer_shape().slice())},
-          {"{{SRC_BUFFER}}",
-           GetBufferAllocationString(copy_thunk.src_buffer_shape().slice())},
-          {"{{SRC_BUFFER_SIZE}}",
-           absl::StrCat(copy_thunk.src_buffer_shape().slice().size())},
       });
 }
 

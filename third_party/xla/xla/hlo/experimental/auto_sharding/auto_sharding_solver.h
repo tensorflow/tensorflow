@@ -89,8 +89,13 @@ struct CostComponents {
   double resharding_cost = 0.0;
   double overbudget_cost = 0.0;
   double max_memory = 0.0;
+  iopddl::TotalCost node_cost = 0;
+  iopddl::TotalCost edge_cost = 0;
+  iopddl::TotalUsage overbudget_usage = 0;
+  iopddl::TotalUsage max_usage = 0;
 
   double cost() const;
+  iopddl::TotalCost total_cost() const;
 
   bool operator==(const CostComponents& other) const;
 };
@@ -114,6 +119,12 @@ struct AutoShardingEvaluation {
 // Evaluates the given solver result w.r.t. the input request, computing various
 // solution quality metrics and validating the consistency of hard constraints.
 AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
+                                const AutoShardingSolverOutput& result,
+                                const AutoShardingSolverParams& params);
+
+// Evaluates the given solver result w.r.t. the input problem, computing various
+// solution quality metrics and validating the consistency of hard constraints.
+AutoShardingEvaluation Evaluate(const iopddl::Problem& problem,
                                 const AutoShardingSolverOutput& result,
                                 const AutoShardingSolverParams& params);
 

@@ -416,21 +416,18 @@ struct PairHash {
 class ResourceInfo {
  public:
   // Associate a VarHandle node and global id to this local subgraph resource.
-  bool SetVarHandle(int node_index, const TfLiteNode* var_handle,
-                    int global_id) {
+  bool SetVarHandle(int node_index, int global_id) {
     if (global_id_ != -1 && global_id_ != global_id) {
       // This VarHandle op is changing the resource tensor to a different value.
       // We can't delegate this.
       return false;
     }
     global_id_ = global_id;
-    var_handle_ = var_handle;
     var_handle_node_index_ = node_index;
     return true;
   }
 
   // A representative VarHandle node that assigns this resource tensor.
-  const TfLiteNode* GetVarHandle() const { return var_handle_; }
   int GetVarHandleNodeIndex() const { return var_handle_node_index_; }
   // A unique ID indicating which handle this resource tensor comes from.
   int GetGlobalId() const { return global_id_; }
@@ -440,7 +437,7 @@ class ResourceInfo {
   // the flags to pass to `xnn_define_tensor` for this tensor.
   bool AddProxyValue(const TfLiteTensor* tensors, int id,
                      uint32_t value_flags = 0) {
-    if (!var_handle_) {
+    if (var_handle_node_index_ < 0) {
       // We don't have a var handle yet, can't be accessed.
       return false;
     }
@@ -465,7 +462,6 @@ class ResourceInfo {
 
  private:
   int global_id_ = -1;
-  const TfLiteNode* var_handle_ = nullptr;
   int var_handle_node_index_ = -1;
   int proxy_value_ = -1;
   uint32_t value_flags_ = 0;
@@ -809,37 +805,6 @@ class Delegate {
   std::unordered_map<std::pair<std::string, std::string>, int, PairHash>
       var_handles_;
 };
-
-// Prepare/invoke for VarHandle that also returns the resource_id. We can't use
-// the tensorflow/lite/kernels/var_handle.cc implementation because there's a
-// circular dependency if we try to depend on "builtin_op_kernels".
-TfLiteStatus PrepareVarHandle(TfLiteContext* context, const TfLiteNode* node) {
-  TfLiteTensor* output;
-  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
-
-  output->allocation_type = kTfLiteArenaRwPersistent;
-  const int kBytesRequired = sizeof(int32_t);
-  TfLiteTensorRealloc(kBytesRequired, output);
-  output->bytes = kBytesRequired;
-
-  return kTfLiteOk;
-}
-
-TfLiteStatus InvokeVarHandle(TfLiteContext* context,
-                             const TfLiteNode* var_handle, int& resource_id) {
-  // This is struct VarParams { int resource_id; };
-  const int32_t* op_data = static_cast<const int32_t*>(var_handle->user_data);
-  TF_LITE_ENSURE(context, op_data != nullptr);
-  resource_id = *op_data;
-
-  TfLiteTensor& output = context->tensors[var_handle->outputs->data[0]];
-  if (int32_t* output_data = GetTensorData<int32_t>(&output)) {
-    // If we delegate the VarHandle op, but the result is an output of
-    // the delegated subgraph, we need to implement the op.
-    *output_data = resource_id;
-  }
-  return kTfLiteOk;
-}
 
 class Subgraph {
  public:
@@ -1249,9 +1214,15 @@ class Subgraph {
     for (std::pair<const int, void*>& io_info : externals_) {
       const auto& resource_it = resources_.find(io_info.first);
       if (resource_it != resources_.end()) {
-        const TfLiteNode* var_handle = resource_it->second.GetVarHandle();
-        if (var_handle) {
-          TF_LITE_ENSURE_STATUS(PrepareVarHandle(context, var_handle));
+        const int node_index = resource_it->second.GetVarHandleNodeIndex();
+        TfLiteNode* var_handle;
+        TfLiteRegistration* var_handle_registration;
+        if (context->GetNodeAndRegistration(context, node_index, &var_handle,
+                                            &var_handle_registration) ==
+            kTfLiteOk) {
+          TF_LITE_ENSURE(context, var_handle != nullptr);
+          TF_LITE_ENSURE_STATUS(
+              var_handle_registration->prepare(context, var_handle));
         }
       }
     }
@@ -1287,22 +1258,26 @@ class Subgraph {
           io_info.second = data_pointer;
         }
       } else {
-        const TfLiteNode* var_handle = resource_it->second.GetVarHandle();
-        int resource_id;
-        if (var_handle) {
+        const int node_index = resource_it->second.GetVarHandleNodeIndex();
+        TfLiteNode* var_handle;
+        TfLiteRegistration* var_handle_registration;
+        if (context->GetNodeAndRegistration(context, node_index, &var_handle,
+                                            &var_handle_registration) ==
+            kTfLiteOk) {
+          TF_LITE_ENSURE(context, var_handle != nullptr);
           // By invoking VarHandle here, we're effectively reordering these ops
           // to be at the beginning of the subgraph. This is OK because
           // VarHandle has no input dependencies, and we already checked that
           // multiple different VarHandles are not written to the same variable.
           TF_LITE_ENSURE_STATUS(
-              InvokeVarHandle(context, var_handle, resource_id));
+              var_handle_registration->invoke(context, var_handle));
         } else {
           // There was no var handle. Maybe the resource is a static tensor?
-          const TfLiteTensor& resource_tensor =
-              context->tensors[resource_it->first];
-          TF_LITE_ENSURE(context, resource_tensor.data.raw != nullptr);
-          resource_id = *GetTensorData<int>(&resource_tensor);
         }
+        const TfLiteTensor& resource_tensor =
+            context->tensors[resource_it->first];
+        TF_LITE_ENSURE(context, resource_tensor.data.raw != nullptr);
+        int resource_id = *GetTensorData<int>(&resource_tensor);
 
         resource::CreateResourceVariableIfNotAvailable(
             &this_subgraph->resources(), resource_id);
@@ -6521,7 +6496,7 @@ class Subgraph {
     ResourceInfo& resource_info =
         delegate.GetResourceInfo(node->outputs->data[0]);
     const int global_id = delegate.GetGlobalId(params);
-    resource_info.SetVarHandle(node_index, node, global_id);
+    resource_info.SetVarHandle(node_index, global_id);
     if (subgraph == nullptr) {
       // Always return error here because we don't know the type of this
       // variable yet, so we pretend that we can't handle this. Later, after
