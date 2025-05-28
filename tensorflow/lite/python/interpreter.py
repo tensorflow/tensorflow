@@ -455,7 +455,21 @@ class Interpreter:
         delegate, including the shared library to load and its initialization
         parameters. The stable delegate should conform to the interface defined
         in tensorflow/lite/delegates/utils/experimental/stable_delegate/
-        stable_delegate_interface.h
+        stable_delegate_interface.h. Example delegate configuration JSON file:
+          {
+            "stable_delegate_loader_settings": {
+              "delegate_path": "path_to_stable_delegate.so"
+            },
+            "xnnpack_settings": {
+              "num_threads": 5
+            }
+          }
+        Note that the "stable_delegate_loader_settings.delegate_path" field is
+        required and must point to the shared library of the stable delegate.
+        Additional fields in the JSON (like "xnnpack_settings") are optional and
+        may be used to pass delegate-specific settings. For a list of supported
+        fields and their meanings, refer to:
+        tensorflow/lite/acceleration/configuration/configuration.proto
 
     Raises:
       ValueError: If the interpreter was unable to create.
