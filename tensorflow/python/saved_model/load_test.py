@@ -30,6 +30,7 @@ from absl.testing import parameterized
 import numpy as np
 
 # Import for py bindings to runtime
+from tensorflow.core.function.runtime_client import runtime_client
 from tensorflow.python.checkpoint import checkpoint
 from tensorflow.python.checkpoint import saveable_compat
 from tensorflow.python.client import session as session_lib
@@ -113,7 +114,7 @@ def _test_load_base(path, tags=None, options=None,
 
 def _test_load_internal(path, tags=None, options=None, use_cpp_bindings=False):
   if use_cpp_bindings:
-    runtime = runtime_pybind.Runtime()
+    runtime = runtime_client.Runtime()
     return runtime.Import(path)
   return _test_load_base(path, tags=tags, options=options,
                          use_cpp_bindings=use_cpp_bindings)
