@@ -211,6 +211,29 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloApi.cpp b/stablehl
  
    m.def(
        "deserialize_portable_artifact",
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
+@@ -294,6 +294,19 @@
+ 
+   // CHECK: return [[ARG0]]
+   return %r : tensor<2xf32>
++}
++
++// -----
++
++/////////
++// CustomCallOp
++
++// CHECK-LABEL: @custom_call_unregistered_backend_config_to_ffi
++func.func @custom_call_unregistered_backend_config_to_ffi(%arg0: tensor<1xf32>) -> (tensor<1xf32>) {
++  // CHECK-NEXT: %[[CC:.*]] = stablehlo.custom_call @foo(%arg0) {api_version = 4 : i32, backend_config = {bar = 1 : i32}} : (tensor<1xf32>) -> tensor<1xf32>
++  %0 = stablehlo.custom_call @foo(%arg0) {api_version = 1 : i32, mhlo.backend_config = {bar = 1: i32}} : (tensor<1xf32>) -> tensor<1xf32>
++  // CHECK-NEXT: return %[[CC]]
++  return %0 : tensor<1xf32>
+ }
+ 
+ // -----
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
@@ -223,4 +246,62 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.
    %7 = builtin.unrealized_conversion_cast %6 : memref<i16> to memref<ui16>
    func.return %7 : memref<ui16>
  }
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplification.cpp
+@@ -284,6 +284,44 @@
+   }
+ };
+ 
++/////////////////////////////////
++// CustomCallOp
++/////////////////////////////////
++
++struct CustomCallUnregisteredBackendConfigToFfi final
++    : SimplifyOpRewritePattern<CustomCallOp> {
++  using SimplifyOpRewritePattern::SimplifyOpRewritePattern;
++
++  LogicalResult matchAndRewrite(CustomCallOp op,
++                                PatternRewriter &rewriter) const override {
++    constexpr StringRef kMhloBackendConfigAttrName = "mhlo.backend_config";
++
++    if (op.getApiVersion() != CustomCallApiVersion::API_VERSION_ORIGINAL)
++      return rewriter.notifyMatchFailure(
++          op, "Only match `custom_call` ops with `API_VERSION_ORIGINAL`.");
++
++    auto mhloBackendConfigAttr = op->getAttr(kMhloBackendConfigAttrName);
++    if (!mhloBackendConfigAttr)
++      return rewriter.notifyMatchFailure(
++          op, "No `mhlo.backend_config` attribute to fix.");
++
++    auto oldBackendConfig =
++        dyn_cast<StringAttr>(op.getBackendConfigOrDefault());
++    if (!oldBackendConfig)
++      return rewriter.notifyMatchFailure(
++          op, "`op.getBackendConfigOrDefault()` didn't return a `StringAttr`.");
++    if (!oldBackendConfig.empty())
++      return rewriter.notifyMatchFailure(
++          op, "Non-empty `backend_config` attribute shouldn't be overwritten.");
++
++    op.setBackendConfigAttr(mhloBackendConfigAttr);
++    op.setApiVersion(CustomCallApiVersion::API_VERSION_TYPED_FFI);
++    op->removeAttr(kMhloBackendConfigAttrName);
++
++    return success();
++  }
++};
++
+ //////////////////////////////////
+ // BroadcastInDimOp
+ /////////////////////////////////
+@@ -1565,7 +1603,8 @@
+   populateWithGenerated(*patterns);
+   patterns->add<
+       CompareOpCanon, CompareSelectIntoMinMax, ConcatenateOpFlatten,
+-      ConcatenateOpNoop, ConcatenateOpRemoveEmpty, DynamicIotaOpToBroadcast,
++      ConcatenateOpNoop, ConcatenateOpRemoveEmpty,
++      CustomCallUnregisteredBackendConfigToFfi, DynamicIotaOpToBroadcast,
+       DynamicReshapeOpSameOperandAndResultShape, DynamicSliceOpToSlice,
+       GatherOpCanon, IotaOpBroadcast, PadOpBroadcastEmptyTensor,
+       RealDynamicSliceOpToDynamicSlice, ReduceOpEmptyCanon,
 

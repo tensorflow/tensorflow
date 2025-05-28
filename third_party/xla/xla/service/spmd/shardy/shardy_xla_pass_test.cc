@@ -130,7 +130,7 @@ TEST_F(ShardyXLATest, ElementWise) {
               op::Sharding("{devices=[2,1]<=[2]}"));
 }
 
-TEST_F(ShardyXLATest, CostantSplitter) {
+TEST_F(ShardyXLATest, ConstantSplitter) {
   const char* const hloString = R"(
     HloModule module
     ENTRY %constant_splitter {
