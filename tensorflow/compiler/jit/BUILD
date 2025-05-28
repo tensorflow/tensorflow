@@ -65,7 +65,15 @@ filegroup(
 # Please use the individual targets in the deps list as needed. See b/336889334.
 cc_library(
     name = "jit",
-    visibility = internal_visibility([":legacy_jit_users"]),
+    # visibility = internal_visibility([":legacy_jit_users"]),
+    visibility = [
+        # Add your target here
+        "//tensorflow/python/kernel_tests/distributions:__pkg__",
+        # ... existing visibility ...
+        "//tensorflow/compiler:__subpackages__",
+        "//tensorflow/core:__subpackages__",
+        # ... other existing visibility ...
+    ],
     deps = [
         ":xla_cpu_device",
         ":xla_cpu_jit",

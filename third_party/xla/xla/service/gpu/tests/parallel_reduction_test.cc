@@ -209,18 +209,18 @@ TEST_F(ParallelReductionTest, ManyParallelReductions) {
     auto embedded_builder = HloComputation::Builder("add");
     HloInstruction* lhs =
         embedded_builder.AddInstruction(HloInstruction::CreateParameter(
-            0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "lhs"));
+            0, ShapeUtil::MakeShape(F32, {}), "lhs"));
     HloInstruction* rhs =
         embedded_builder.AddInstruction(HloInstruction::CreateParameter(
-            1, ShapeUtil::MakeValidatedShape(F32, {}).value(), "rhs"));
+            1, ShapeUtil::MakeShape(F32, {}), "rhs"));
     embedded_builder.AddInstruction(
         HloInstruction::CreateBinary(lhs->shape(), HloOpcode::kAdd, lhs, rhs));
     reduce_computation =
         module->AddEmbeddedComputation(embedded_builder.Build());
   }
 
-  Shape input_shape = ShapeUtil::MakeValidatedShape(F32, {1024}).value();
-  Shape output_shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
+  Shape input_shape = ShapeUtil::MakeShape(F32, {1024});
+  Shape output_shape = ShapeUtil::MakeShape(F32, {});
   HloComputation* fusion_computation;
   {
     auto fusion_builder = HloComputation::Builder("fusion_computation");
@@ -251,7 +251,7 @@ TEST_F(ParallelReductionTest, ManyParallelReductions) {
     output_shapes.push_back(output_shape);
   }
   b.AddInstruction(HloInstruction::CreateFusion(
-      ShapeUtil::MakeValidatedTupleShape(output_shapes).value(),
+      ShapeUtil::MakeTupleShape(output_shapes),
       HloInstruction::FusionKind::kInput, entry_params, fusion_computation));
   module->AddEntryComputation(b.Build());
 

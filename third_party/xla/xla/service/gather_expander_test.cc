@@ -120,15 +120,15 @@ ENTRY main {
   ASSERT_EQ(ShapeUtil::TupleElementCount(while_shape), 4);
 
   EXPECT_TRUE(ShapeUtil::SameDimensions(
-      ShapeUtil::MakeValidatedShape(S32, {3, 3}).value(),
+      ShapeUtil::MakeShape(S32, {3, 3}),
       ShapeUtil::GetTupleElementShape(while_shape, 1)));
 
   EXPECT_TRUE(ShapeUtil::SameDimensions(
-      ShapeUtil::MakeValidatedShape(S32, {2}).value(),
+      ShapeUtil::MakeShape(S32, {2}),
       ShapeUtil::GetTupleElementShape(while_shape, 2)));
 
   EXPECT_TRUE(ShapeUtil::SameDimensions(
-      ShapeUtil::MakeValidatedShape(S32, {2, 3}).value(),
+      ShapeUtil::MakeShape(S32, {2, 3}),
       ShapeUtil::GetTupleElementShape(while_shape, 3)));
 }
 

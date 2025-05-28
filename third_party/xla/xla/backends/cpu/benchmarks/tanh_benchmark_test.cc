@@ -45,7 +45,7 @@ static void BM_TanhF32(benchmark::State& state, HloBenchmarkOptions options) {
 
   std::minstd_rand0 engine;
 
-  auto input_shape = ShapeUtil::MakeValidatedShape(F32, {d0}).value();
+  auto input_shape = ShapeUtil::MakeShape(F32, {d0});
   auto p0 =
       *LiteralUtil::CreateRandomLiteral<F32>(input_shape, &engine, 1.0f, 0.1f);
   std::vector<const Literal*> args = {&p0};
@@ -67,7 +67,7 @@ static void BM_TanhF16(benchmark::State& state) {
 
   std::minstd_rand0 engine;
 
-  auto input_shape = ShapeUtil::MakeValidatedShape(F16, {d0}).value();
+  auto input_shape = ShapeUtil::MakeShape(F16, {d0});
   auto p0 =
       *LiteralUtil::CreateRandomLiteral<F16>(input_shape, &engine, 1.0f, 0.1f);
   std::vector<const Literal*> args = {&p0};
@@ -88,7 +88,7 @@ static void BM_TanhF64(benchmark::State& state, HloBenchmarkOptions options) {
 
   std::minstd_rand0 engine;
 
-  auto input_shape = ShapeUtil::MakeValidatedShape(F64, {d0}).value();
+  auto input_shape = ShapeUtil::MakeShape(F64, {d0});
   auto p0 =
       *LiteralUtil::CreateRandomLiteral<F64>(input_shape, &engine, 1.0f, 0.1f);
   std::vector<const Literal*> args = {&p0};

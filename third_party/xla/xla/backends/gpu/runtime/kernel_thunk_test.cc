@@ -71,12 +71,10 @@ TEST(KernelThunkTest, CreateAndGettersAndToString) {
   BufferAllocation::Slice slice1(&alloc1, /*offset=*/0, /*size=*/256);
 
   std::vector<emitters::KernelArgument> kernel_arguments = {
-      emitters::KernelArgument(
-          ShapeUtil::MakeValidatedShape(F32, {1024}).value(), slice0,
-          /*written=*/false),
-      emitters::KernelArgument(
-          ShapeUtil::MakeValidatedShape(F32, {256}).value(), slice1,
-          /*written=*/true)};
+      emitters::KernelArgument(ShapeUtil::MakeShape(F32, {1024}), slice0,
+                               /*written=*/false),
+      emitters::KernelArgument(ShapeUtil::MakeShape(F32, {256}), slice1,
+                               /*written=*/true)};
 
   LaunchDimensions launch_dimensions(se::BlockDim(32, 31, 30),
                                      se::ThreadDim(256, 255, 254));
@@ -116,12 +114,10 @@ TEST(KernelThunkTest, ToProto) {
   BufferAllocation::Slice slice1(&alloc1, /*offset=*/0, /*size=*/256);
 
   std::vector<emitters::KernelArgument> kernel_arguments = {
-      emitters::KernelArgument(
-          ShapeUtil::MakeValidatedShape(F32, {1024}).value(), slice0,
-          /*written=*/false),
-      emitters::KernelArgument(
-          ShapeUtil::MakeValidatedShape(F32, {256}).value(), slice1,
-          /*written=*/true)};
+      emitters::KernelArgument(ShapeUtil::MakeShape(F32, {1024}), slice0,
+                               /*written=*/false),
+      emitters::KernelArgument(ShapeUtil::MakeShape(F32, {256}), slice1,
+                               /*written=*/true)};
 
   LaunchDimensions launch_dimensions(se::BlockDim(32, 31, 30),
                                      se::ThreadDim(256, 255, 254));

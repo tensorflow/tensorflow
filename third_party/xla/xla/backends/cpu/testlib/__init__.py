@@ -25,9 +25,9 @@ ElementalKernelEmitter = _extension.ElementalKernelEmitter
 HloCompiler = _extension.HloCompiler
 JitCompiler = _extension.JitCompiler
 KernelRunner = _extension.KernelRunner
-LlvmTestKernelEmitter = _extension.LlvmTestKernelEmitter
+LlvmIrKernelEmitter = _extension.LlvmIrKernelEmitter
 MLIRContext = _extension.MLIRContext
-MlirTestKernelEmitter = _extension.MlirTestKernelEmitter
+MlirKernelEmitter = _extension.MlirKernelEmitter
 ScatterKernelEmitter = _extension.ScatterKernelEmitter
 TargetMachineFeatures = _extension.TargetMachineFeatures
 # go/keep-sorted end

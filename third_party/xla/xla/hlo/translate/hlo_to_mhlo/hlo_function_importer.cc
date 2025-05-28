@@ -1743,10 +1743,8 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         flattened_ret_types.insert(flattened_ret_types.begin(), state_type);
 
         if (instruction->has_sharding()) {
-          Shape tuple_shape =
-              ShapeUtil::MakeValidatedTupleShape(
-                  {rng_op->operand(0)->shape(), instruction->shape()})
-                  .value();
+          Shape tuple_shape = ShapeUtil::MakeTupleShape(
+              {rng_op->operand(0)->shape(), instruction->shape()});
           HloSharding tuple_sharding = HloSharding::Tuple(
               tuple_shape, {HloSharding::Replicate(), instruction->sharding()});
           CHECK_EQ(attributes.front().getName().str(), kShardingAttr);

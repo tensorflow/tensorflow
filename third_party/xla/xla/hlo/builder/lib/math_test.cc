@@ -251,9 +251,9 @@ TEST_F(MathTest, RealFpOnlyOps) {
       continue;
     }
     if (primitive_util::IsArrayType(ty)) {
-      shape = ShapeUtil::MakeValidatedShape(ty, {42}).value();
+      shape = ShapeUtil::MakeShape(ty, {42});
     } else if (ty == PrimitiveType::TUPLE) {
-      shape = ShapeUtil::MakeValidatedTupleShape({}).value();
+      shape = ShapeUtil::MakeTupleShape({});
     } else if (ty == PrimitiveType::OPAQUE_TYPE) {
       shape = ShapeUtil::MakeOpaqueShape();
     } else if (ty == PrimitiveType::TOKEN) {

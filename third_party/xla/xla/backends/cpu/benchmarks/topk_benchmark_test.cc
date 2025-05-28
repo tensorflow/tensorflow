@@ -49,8 +49,7 @@ static void BM_TopKCustomCall_F32(benchmark::State& state,
   // Fixed seed to avoid too inconsistent runs
   std::minstd_rand0 engine(/*seed=*/0xCAFEFEED);
   auto x = LiteralUtil::CreateRandomLiteral<F32>(
-               ShapeUtil::MakeValidatedShape(F32, {batch, length}).value(),
-               &engine, 1.0f, 0.1f)
+               ShapeUtil::MakeShape(F32, {batch, length}), &engine, 1.0f, 0.1f)
                .value();
 
   CHECK_OK(RunHloBenchmark(state, hlo, {&x},
@@ -78,8 +77,7 @@ static void BM_TopK_BF16(benchmark::State& state, HloBenchmarkOptions options) {
   // Fixed seed to avoid too inconsistent runs
   std::minstd_rand0 engine(/*seed=*/0xCAFEFEED);
   auto x = LiteralUtil::CreateRandomLiteral<BF16>(
-               ShapeUtil::MakeValidatedShape(BF16, {batch, length}).value(),
-               &engine, 1.0f, 0.1f)
+               ShapeUtil::MakeShape(BF16, {batch, length}), &engine, 1.0f, 0.1f)
                .value();
 
   CHECK_OK(RunHloBenchmark(state, hlo, {&x},

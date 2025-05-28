@@ -44,14 +44,14 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:saved_model_import",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:tf_post_calibration",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:tf_pre_calibration",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:tf_weight_only_ptq",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:types",
-        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:weight_only_ptq",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:component",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:statistics",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:tf_passes",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:tf_quantize_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:tf_quantize_preprocess",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibration_statistics_saver_op",  # Required for CalibrationStatisticsSaver op registration.
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op",  # Required for CustomAggregator op registration.

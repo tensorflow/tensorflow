@@ -311,13 +311,13 @@ class PjRtChunk {
     }
   }
 
-  PjRtChunk(PjRtChunk&& other) noexcept
+  PjRtChunk(PjRtChunk&& other)
       : data_(other.data_),
         size_(other.size_),
         deleter_(std::move(other.deleter_)) {
     other.data_ = nullptr;
   }
-  PjRtChunk& operator=(PjRtChunk&& other) noexcept {
+  PjRtChunk& operator=(PjRtChunk&& other) {
     if (data_) {
       deleter_(data_);
     }

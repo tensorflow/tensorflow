@@ -226,7 +226,7 @@ XLA_TEST_P(RandomCholeskyTest, Real) {
                                      std::get<1>(test_params),
                                      std::get<1>(test_params)};
   bool lower = std::get<2>(test_params);
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, dimensions).value();
+  Shape shape = ShapeUtil::MakeShape(F32, dimensions);
   TF_ASSERT_OK_AND_ASSIGN(
       auto literal, LiteralUtil::CreateRandomLiteral<F32>(shape, 0.0, 1.0));
 
@@ -263,7 +263,7 @@ XLA_TEST_P(RandomCholeskyTest, Complex) {
                                      std::get<1>(test_params),
                                      std::get<1>(test_params)};
   bool lower = std::get<2>(test_params);
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, dimensions).value();
+  Shape shape = ShapeUtil::MakeShape(F32, dimensions);
   TF_ASSERT_OK_AND_ASSIGN(
       auto literal_real,
       LiteralUtil::CreateRandomLiteral<F32>(shape, 0.0, 1.0));

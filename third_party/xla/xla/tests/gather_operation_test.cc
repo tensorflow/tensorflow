@@ -378,10 +378,10 @@ ENTRY main {
   ROOT result = s32[7]{0} reshape(gather)
 }
 )";
-  Literal operand = LiteralUtil::CreateRandomLiteral<S32>(
-                        ShapeUtil::MakeValidatedShape(S32, {512, 512}).value(),
-                        /*mean=*/1000, /*stddev=*/500)
-                        .value();
+  Literal operand =
+      LiteralUtil::CreateRandomLiteral<S32>(
+          ShapeUtil::MakeShape(S32, {512, 512}), /*mean=*/1000, /*stddev=*/500)
+          .value();
   Literal start_indices = LiteralUtil::CreateR2<uint8_t>(
       {{2, 7}, {2, 1}, {1, 1}, {5, 1}, {7, 1}, {1, 2}, {0x80, 0x80}});
   RunTest(hlo_text, &operand, &start_indices);
@@ -769,8 +769,8 @@ XLA_TEST_F(GatherOperationWithoutReferenceTest, Basic) {
 
   XlaBuilder builder("gather_basic");
 
-  Shape operand_shape = ShapeUtil::MakeValidatedShape(S32, {3, 3}).value();
-  Shape indices_shape = ShapeUtil::MakeValidatedShape(S32, {2}).value();
+  Shape operand_shape = ShapeUtil::MakeShape(S32, {3, 3});
+  Shape indices_shape = ShapeUtil::MakeShape(S32, {2});
 
   auto operand = Parameter(&builder, 0, operand_shape, "operand");
   auto indices = Parameter(&builder, 1, indices_shape, "indices");

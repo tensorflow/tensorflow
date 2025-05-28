@@ -105,7 +105,7 @@ TEST_P(CpuVectorizationTest, DoIt) {
   LLVMInitializeARMTargetInfo();
   LLVMInitializeARMTargetMC();
 
-  auto param_shape = ShapeUtil::MakeValidatedShape(F32, {1024}).value();
+  auto param_shape = ShapeUtil::MakeShape(F32, {1024});
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "input0"));
   HloInstruction* param1 = builder.AddInstruction(
@@ -304,7 +304,7 @@ TEST_P(JitVectorizationTest, JitX86UpToIsa) {
       spec.check_template, {{"%d", absl::StrCat(spec.num_vector_elements)}});
 
   // Build HLO module.
-  auto shape = ShapeUtil::MakeValidatedShape(F32, {1024}).value();
+  auto shape = ShapeUtil::MakeShape(F32, {1024});
   HloInstruction* a =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "a"));
   HloInstruction* b =

@@ -995,7 +995,7 @@ TEST_F(DynamicSliceFusionTest, CustomCallSimple) {
              /*operands=*/
              {Slice(Broadcast(ConstantR0WithType(&b, F32, 42.0), {256}), {0},
                     {128}, {1})},
-             ShapeUtil::MakeValidatedShape(F32, {128}).value(), /*opaque=*/"",
+             ShapeUtil::MakeShape(F32, {128}), /*opaque=*/"",
              /*has_side_effect=*/false,
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
@@ -1124,26 +1124,22 @@ TEST_F(DynamicSliceFusionTest, CustomCallWithTuple) {
                               Broadcast(ConstantR0WithType(&b, F32, 6), {32}),
                               Broadcast(ConstantR0WithType(&b, F32, 7), {64}),
                           }),
-                    Slice(Parameter(&b, 0,
-                                    ShapeUtil::MakeValidatedShape(S32, {4, 128})
-                                        .value(),
+                    Slice(Parameter(&b, 0, ShapeUtil::MakeShape(S32, {4, 128}),
                                     "p0"),
                           {1, 0}, {4, 128}, {1, 1}),
                 }),
       },
-      ShapeUtil::MakeValidatedTupleShape(
-          {
-              ShapeUtil::MakeShape(F32, {8}),
-              ShapeUtil::MakeTupleShape({
-                  ShapeUtil::MakeShape(F32, {128}),
-                  ShapeUtil::MakeShape(F32, {256}),
-              }),
-              ShapeUtil::MakeShape(F32, {1024}),
-              ShapeUtil::MakeShape(F32, {4, 8}),
-              ShapeUtil::MakeShape(F32, {3, 128}),
-              ShapeUtil::MakeShape(F32, {32 + 64}),
-          })
-          .value(),
+      ShapeUtil::MakeTupleShape({
+          ShapeUtil::MakeShape(F32, {8}),
+          ShapeUtil::MakeTupleShape({
+              ShapeUtil::MakeShape(F32, {128}),
+              ShapeUtil::MakeShape(F32, {256}),
+          }),
+          ShapeUtil::MakeShape(F32, {1024}),
+          ShapeUtil::MakeShape(F32, {4, 8}),
+          ShapeUtil::MakeShape(F32, {3, 128}),
+          ShapeUtil::MakeShape(F32, {32 + 64}),
+      }),
       /*opaque=*/"",
       /*has_side_effect=*/false,
       /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
@@ -2514,11 +2510,9 @@ TEST_F(DynamicSliceFusionTest, DynamicCustomCallSimple) {
   CustomCall(
       &b, "__xla_test$$memcpy",
       /*operands=*/
-      {DynamicSlice(
-          Parameter(&b, 0, ShapeUtil::MakeValidatedShape(S32, {4, 128}).value(),
-                    "p0"),
-          {ConstantR0(&b, 2), ConstantR0(&b, 0)}, {2, 128})},
-      ShapeUtil::MakeValidatedShape(F32, {2, 128}).value(), /*opaque=*/"",
+      {DynamicSlice(Parameter(&b, 0, ShapeUtil::MakeShape(S32, {4, 128}), "p0"),
+                    {ConstantR0(&b, 2), ConstantR0(&b, 0)}, {2, 128})},
+      ShapeUtil::MakeShape(F32, {2, 128}), /*opaque=*/"",
       /*has_side_effect=*/false,
       /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
       /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
@@ -2563,35 +2557,30 @@ TEST_F(DynamicSliceFusionTest, DynamicCustomCallWithTuple) {
                 }),
           Slice(Broadcast(ConstantR0WithType(&b, F32, 5), {8, 8}), {0, 0},
                 {4, 8}, {1, 1}),
-          Tuple(
-              &b,
-              {
-                  Tuple(&b,
-                        {
-                            Broadcast(ConstantR0WithType(&b, F32, 6), {32}),
-                            Broadcast(ConstantR0WithType(&b, F32, 7), {64}),
-                        }),
-                  DynamicSlice(
-                      Parameter(
-                          &b, 0,
-                          ShapeUtil::MakeValidatedShape(S32, {4, 128}).value(),
-                          "p0"),
-                      {ConstantR0(&b, 20), ConstantR0(&b, 0)}, {3, 128}),
-              }),
+          Tuple(&b,
+                {
+                    Tuple(&b,
+                          {
+                              Broadcast(ConstantR0WithType(&b, F32, 6), {32}),
+                              Broadcast(ConstantR0WithType(&b, F32, 7), {64}),
+                          }),
+                    DynamicSlice(
+                        Parameter(&b, 0, ShapeUtil::MakeShape(S32, {4, 128}),
+                                  "p0"),
+                        {ConstantR0(&b, 20), ConstantR0(&b, 0)}, {3, 128}),
+                }),
       },
-      ShapeUtil::MakeValidatedTupleShape(
-          {
-              ShapeUtil::MakeShape(F32, {8}),
-              ShapeUtil::MakeTupleShape({
-                  ShapeUtil::MakeShape(F32, {128}),
-                  ShapeUtil::MakeShape(F32, {256}),
-              }),
-              ShapeUtil::MakeShape(F32, {1024}),
-              ShapeUtil::MakeShape(F32, {4, 8}),
-              ShapeUtil::MakeShape(F32, {3, 128}),
-              ShapeUtil::MakeShape(F32, {32 + 64}),
-          })
-          .value(),
+      ShapeUtil::MakeTupleShape({
+          ShapeUtil::MakeShape(F32, {8}),
+          ShapeUtil::MakeTupleShape({
+              ShapeUtil::MakeShape(F32, {128}),
+              ShapeUtil::MakeShape(F32, {256}),
+          }),
+          ShapeUtil::MakeShape(F32, {1024}),
+          ShapeUtil::MakeShape(F32, {4, 8}),
+          ShapeUtil::MakeShape(F32, {3, 128}),
+          ShapeUtil::MakeShape(F32, {32 + 64}),
+      }),
       /*opaque=*/"",
       /*has_side_effect=*/false,
       /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
@@ -2704,10 +2693,10 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$subbuffers2",
 
 TEST_F(DynamicSliceFusionTest, CustomCallDUSTuple) {
   XlaBuilder b(TestName());
-  auto big_buffer1 = Parameter(
-      &b, 0, ShapeUtil::MakeValidatedShape(F32, {10, 128}).value(), "p0");
-  auto big_buffer2 = Parameter(
-      &b, 1, ShapeUtil::MakeValidatedShape(F32, {10, 256}).value(), "p1");
+  auto big_buffer1 =
+      Parameter(&b, 0, ShapeUtil::MakeShape(F32, {10, 128}), "p0");
+  auto big_buffer2 =
+      Parameter(&b, 1, ShapeUtil::MakeShape(F32, {10, 256}), "p1");
   auto custom_call = CustomCall(
       &b, "__xla_test$$subbuffers2", /*operands=*/
       {
@@ -2738,21 +2727,19 @@ TEST_F(DynamicSliceFusionTest, CustomCallDUSTuple) {
                       }),
               }),
       },
-      ShapeUtil::MakeValidatedTupleShape(
-          {
-              ShapeUtil::MakeShape(F32, {8}),
-              ShapeUtil::MakeTupleShape({
-                  ShapeUtil::MakeShape(F32, {128}),
-                  ShapeUtil::MakeShape(F32, {256}),
-              }),
-              ShapeUtil::MakeShape(F32, {1024}),
-              ShapeUtil::MakeShape(F32, {4, 8}),
-              ShapeUtil::MakeTupleShape({
-                  ShapeUtil::MakeShape(F32, {5, 128}),
-                  ShapeUtil::MakeShape(F32, {3, 128}),
-              }),
-          })
-          .value(),
+      ShapeUtil::MakeTupleShape({
+          ShapeUtil::MakeShape(F32, {8}),
+          ShapeUtil::MakeTupleShape({
+              ShapeUtil::MakeShape(F32, {128}),
+              ShapeUtil::MakeShape(F32, {256}),
+          }),
+          ShapeUtil::MakeShape(F32, {1024}),
+          ShapeUtil::MakeShape(F32, {4, 8}),
+          ShapeUtil::MakeTupleShape({
+              ShapeUtil::MakeShape(F32, {5, 128}),
+              ShapeUtil::MakeShape(F32, {3, 128}),
+          }),
+      }),
       /*opaque=*/"",
       /*has_side_effect=*/false,
       /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
@@ -2769,11 +2756,9 @@ TEST_F(DynamicSliceFusionTest, CustomCallDUSTuple) {
       big_buffer2,
       xla::internal::XlaBuilderFriend::BuildBitcast(
           &b, GetTupleElement(custom_call, 2),
-          ShapeUtil::MakeValidatedShape(F32, {4, 256}).value()),
-      {Parameter(&b, 2, ShapeUtil::MakeValidatedShape(S32, {}).value(),
-                 "start0"),
-       Parameter(&b, 3, ShapeUtil::MakeValidatedShape(S32, {}).value(),
-                 "start1")});
+          ShapeUtil::MakeShape(F32, {4, 256})),
+      {Parameter(&b, 2, ShapeUtil::MakeShape(S32, {}), "start0"),
+       Parameter(&b, 3, ShapeUtil::MakeShape(S32, {}), "start1")});
   Tuple(&b, {dus1, dus2, dus3});
 
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};

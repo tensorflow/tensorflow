@@ -52,10 +52,10 @@ TEST_F(StochasticConvertTest, ReturnsErrorWhenHloPassesDisabled) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
 
-  auto arg0_shape = ShapeUtil::MakeValidatedShape(F32, {65536}).value();
+  auto arg0_shape = ShapeUtil::MakeShape(F32, {65536});
   auto arg0 = MakeFakeLiteral(arg0_shape).value();
 
-  auto arg1_shape = ShapeUtil::MakeValidatedShape(U32, {65536}).value();
+  auto arg1_shape = ShapeUtil::MakeShape(U32, {65536});
   auto arg1 = MakeFakeLiteral(arg1_shape).value();
 
   auto status_or_result =

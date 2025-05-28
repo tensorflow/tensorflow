@@ -78,9 +78,8 @@ absl::StatusOr<bool> ConvCanonicalization::Run(
       new_input_dims[num_dims - 1] =
           input->shape().dimensions(input_feature_dim);
 
-      Shape new_input_shape = ShapeUtil::MakeValidatedShape(
-                                  input->shape().element_type(), new_input_dims)
-                                  .value();
+      Shape new_input_shape =
+          ShapeUtil::MakeShape(input->shape().element_type(), new_input_dims);
       HloInstruction* new_input = module->entry_computation()->AddInstruction(
           HloInstruction::CreateTranspose(new_input_shape, input,
                                           new_input_dim_order));
@@ -102,9 +101,7 @@ absl::StatusOr<bool> ConvCanonicalization::Run(
           kernel->shape().dimensions(kernel_output_feature_dim);
 
       Shape new_kernel_shape =
-          ShapeUtil::MakeValidatedShape(kernel->shape().element_type(),
-                                        new_kernel_dims)
-              .value();
+          ShapeUtil::MakeShape(kernel->shape().element_type(), new_kernel_dims);
       HloInstruction* new_kernel = module->entry_computation()->AddInstruction(
           HloInstruction::CreateTranspose(new_kernel_shape, kernel,
                                           new_kernel_dim_order));
@@ -122,9 +119,8 @@ absl::StatusOr<bool> ConvCanonicalization::Run(
       }
       new_output_dim_order[num_dims - 1] = output_feature_dim;
       new_conv_dims[num_dims - 1] = hlo->shape().dimensions(output_feature_dim);
-      Shape new_conv_shape = ShapeUtil::MakeValidatedShape(
-                                 hlo->shape().element_type(), new_conv_dims)
-                                 .value();
+      Shape new_conv_shape =
+          ShapeUtil::MakeShape(hlo->shape().element_type(), new_conv_dims);
 
       ConvolutionDimensionNumbers new_dnums;
       new_dnums.set_input_batch_dimension(0);

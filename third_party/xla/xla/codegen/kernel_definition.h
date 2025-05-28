@@ -1,4 +1,3 @@
-#include "xla/codegen/kernel_source.h"
 /* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,49 +16,40 @@ limitations under the License.
 #ifndef XLA_CODEGEN_KERNEL_DEFINITION_H_
 #define XLA_CODEGEN_KERNEL_DEFINITION_H_
 
+#include <memory>
 #include <utility>
 
+#include "xla/codegen/kernel_source.h"
 #include "xla/codegen/kernel_spec.h"
+#include "xla/tsl/platform/logging.h"
 
 namespace xla {
 
-class KernelDefinitionBase {
+class KernelDefinition {
  public:
-  virtual ~KernelDefinitionBase() = default;
+  KernelDefinition(KernelSpec spec, std::unique_ptr<KernelSource> source)
+      : spec_(std::move(spec)), source_(std::move(source)) {}
 
-  virtual const KernelSpec& spec() const = 0;
-  virtual const KernelSource& source() const = 0;
-};
+  KernelDefinition(KernelDefinition&& other) = default;
+  KernelDefinition& operator=(KernelDefinition&& other) noexcept = default;
 
-template <typename KernelSourceType>
-class KernelDefinition final : public KernelDefinitionBase {
- public:
-  struct Storage {
-    KernelSpec spec;
-    KernelSourceType source;
-  };
+  const KernelSpec& spec() const { return spec_; }
+  const KernelSource& source() const {
+    CHECK_NOTNULL(source_);  // CRASH OK - use after move.
+    return *source_;
+  }
 
-  KernelDefinition(KernelSpec spec, KernelSourceType source)
-      : storage_{std::move(spec), std::move(source)} {}
-
-  KernelDefinition(KernelDefinition&&) = default;
-  KernelDefinition& operator=(KernelDefinition&&) = default;
-
-  const KernelSpec& spec() const override { return storage_.spec; }
-  const KernelSourceType& source() const override { return storage_.source; }
-
-  // Release the kernel definition implementation.
+  // Release the kernel definition.
   // This is useful for backends that need to store the kernel definition
   // separately from the kernel spec.
-  Storage ReleaseStorage() && { return std::move(storage_); }
+  std::pair<KernelSpec, std::unique_ptr<KernelSource>> release() && {
+    return std::make_pair(std::move(spec_), std::move(source_));
+  }
 
  private:
-  Storage storage_;
+  KernelSpec spec_;
+  std::unique_ptr<KernelSource> source_;
 };
-
-template <typename KernelSourceType>
-KernelDefinition(KernelSpec, KernelSourceType)
-    -> KernelDefinition<KernelSourceType>;
 
 }  // namespace xla
 

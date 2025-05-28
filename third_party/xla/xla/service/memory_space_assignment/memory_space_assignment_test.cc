@@ -171,7 +171,7 @@ TEST_F(MemorySpaceAssignmentTest, ParameterOnly) {
   // A module consisting of a single parameter. Inputs/outputs are currently
   // excluded from memory space assignment.
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   HloInstruction* p0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
 
@@ -192,7 +192,7 @@ TEST_F(MemorySpaceAssignmentTest, Simple) {
   // transformed with CopyStart and CopyDone instructions inserted after inputs
   // and before outputs.
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   HloInstruction* p0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
   HloInstruction* p1 =
@@ -249,7 +249,7 @@ TEST_F(MemorySpaceAssignmentTest, BasicSplit) {
   constexpr int64_t kSplitIndex = 256;
   SplitConfig split_config(/*dimension=*/kSplitDimension, {kSplitIndex});
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {256, 512}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {256, 512});
   HloInstruction* p0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
   HloInstruction* p1 =
@@ -325,7 +325,7 @@ TEST_F(MemorySpaceAssignmentTest, NegateChain) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add.
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   HloInstruction* p0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
   HloInstruction* p1 =
@@ -1836,7 +1836,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdatePreferredPrefetchTest) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add.
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   HloInstruction* p0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
   HloInstruction* p1 =
@@ -1912,7 +1912,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchBeforeTest) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add.
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   HloInstruction* p0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
   HloInstruction* p1 =
@@ -1990,7 +1990,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchAfterTest) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add.
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   HloInstruction* p0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
   HloInstruction* p1 =
@@ -2068,7 +2068,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchTooLateTest) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add.
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   HloInstruction* p0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
   HloInstruction* p1 =
@@ -2138,7 +2138,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigPrecedenceTest) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add.
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   HloInstruction* p0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
   HloInstruction* p1 =
@@ -2220,7 +2220,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdateConfigExactMatchPrecedenceTest) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add.
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   HloInstruction* p0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
   HloInstruction* p1 =
@@ -2303,7 +2303,7 @@ TEST_F(MemorySpaceAssignmentTest, FilterUpdatePreferredPrefetchNoMatchTest) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add.
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   HloInstruction* p0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
   HloInstruction* p1 =
@@ -2426,7 +2426,7 @@ TEST_F(MemorySpaceAssignmentTest,
   // that there is no eviction if not necessary (due to an existing allocation
   // in default memory).
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   HloInstruction* p0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
   HloInstruction* p1 =
@@ -2496,7 +2496,7 @@ TEST_F(MemorySpaceAssignmentTest, EvictAndPrefetchAndPrefetch) {
   // where the last prefetch copied from the original buffer in alternate buffer
   // instead of evicted buffer.
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   HloInstruction* p0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
   HloInstruction* p1 =
@@ -2590,10 +2590,9 @@ TEST_F(MemorySpaceAssignmentTest, EvictAndPrefetchAndPrefetch) {
 
 TEST_F(MemorySpaceAssignmentTest, While) {
   auto module = CreateNewVerifiedModule();
-  Shape shape = ShapeUtil::MakeValidatedShape(xla::F32, {2, 3}).value();
-  Shape scalar_shape = ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
-  Shape tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({shape, scalar_shape}).value();
+  Shape shape = ShapeUtil::MakeShape(xla::F32, {2, 3});
+  Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, scalar_shape});
 
   auto cond_builder = HloComputation::Builder("WhileCond");
   // Tuple param: 24 bytes (each elem has 8 byte pointer, 4 byte element)
@@ -2604,10 +2603,9 @@ TEST_F(MemorySpaceAssignmentTest, While) {
   HloInstruction* cond_limit = cond_builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(50.f)));
   // Free cond_param[] (16 bytes), Alloc PRED[] (1 byte)
-  HloInstruction* cond_lt =
-      cond_builder.AddInstruction(HloInstruction::CreateCompare(
-          ShapeUtil::MakeValidatedShape(PRED, {}).value(), cond_iter,
-          cond_limit, ComparisonDirection::kLt));
+  HloInstruction* cond_lt = cond_builder.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), cond_iter,
+                                    cond_limit, ComparisonDirection::kLt));
   HloComputation* cond_computation =
       module->AddEmbeddedComputation(cond_builder.Build());
 
@@ -2677,11 +2675,10 @@ TEST_F(MemorySpaceAssignmentTest, While) {
 
 TEST_F(MemorySpaceAssignmentTest, Tuple) {
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
-  Shape inner_tuple_shape = ShapeUtil::MakeValidatedTupleShape({shape}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape inner_tuple_shape = ShapeUtil::MakeTupleShape({shape});
   Shape tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({shape, shape, inner_tuple_shape})
-          .value();
+      ShapeUtil::MakeTupleShape({shape, shape, inner_tuple_shape});
   HloInstruction* p = builder.AddInstruction(
       HloInstruction::CreateParameter(0, tuple_shape, "p"));
   HloInstruction* p0 = builder.AddInstruction(
@@ -2736,8 +2733,8 @@ TEST_F(MemorySpaceAssignmentTest, Bitcast) {
   // times in the preset assignments. This test ensure the preset assignments
   // refer to unique positions.
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
-  Shape param_shape = ShapeUtil::MakeValidatedShape(F32, {6}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape param_shape = ShapeUtil::MakeShape(F32, {6});
   HloInstruction* p0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
   HloInstruction* p1 = builder.AddInstruction(
@@ -2765,8 +2762,8 @@ TEST_F(MemorySpaceAssignmentTest, Bitcast) {
 
 TEST_F(MemorySpaceAssignmentTest, Bitcast2) {
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
-  Shape param_shape = ShapeUtil::MakeValidatedShape(F32, {6}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape param_shape = ShapeUtil::MakeShape(F32, {6});
   HloInstruction* p0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
   HloInstruction* p1 = builder.AddInstruction(
@@ -2802,10 +2799,10 @@ TEST_F(MemorySpaceAssignmentTest, Bitcast2) {
 
 TEST_F(MemorySpaceAssignmentTest, Bitcast3) {
   HloComputation::Builder builder(TestName());
-  Shape shape1 = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
-  Shape shape2 = ShapeUtil::MakeValidatedShape(F32, {3, 2}).value();
-  Shape shape3 = ShapeUtil::MakeValidatedShape(F32, {1, 6}).value();
-  Shape param_shape = ShapeUtil::MakeValidatedShape(F32, {6}).value();
+  Shape shape1 = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape shape2 = ShapeUtil::MakeShape(F32, {3, 2});
+  Shape shape3 = ShapeUtil::MakeShape(F32, {1, 6});
+  Shape param_shape = ShapeUtil::MakeShape(F32, {6});
   HloInstruction* p0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape1, "p0"));
   HloInstruction* p1 = builder.AddInstruction(
@@ -2868,10 +2865,9 @@ TEST_F(MemorySpaceAssignmentTest, Bitcast3) {
 
 TEST_F(MemorySpaceAssignmentTest, BitcastTuple) {
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
-  Shape param_shape = ShapeUtil::MakeValidatedShape(F32, {6}).value();
-  Shape tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({shape, shape}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape param_shape = ShapeUtil::MakeShape(F32, {6});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
 
   auto module = CreateNewVerifiedModule();
   HloComputation::Builder fusion_builder("fusion");
@@ -2981,8 +2977,8 @@ TEST_F(MemorySpaceAssignmentTest, BitcastMultiUse) {
   // and one is in the default memory and the other is in alternate memory, they
   // both need their own bitcast.
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
-  Shape param_shape = ShapeUtil::MakeValidatedShape(F32, {6}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape param_shape = ShapeUtil::MakeShape(F32, {6});
   HloInstruction* p0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "p1"));
   HloInstruction* bitcast =
@@ -3021,10 +3017,9 @@ TEST_F(MemorySpaceAssignmentTest, BitcastMultiUse) {
 TEST_F(MemorySpaceAssignmentTest, BitcastMultiUseTuple) {
   // Same as BitcastMultUse but the second use is a tuple.
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
-  Shape param_shape = ShapeUtil::MakeValidatedShape(F32, {6}).value();
-  Shape tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({shape, shape}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape param_shape = ShapeUtil::MakeShape(F32, {6});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
 
   auto module = CreateNewVerifiedModule();
   HloComputation::Builder fusion_builder("fusion");
@@ -3089,8 +3084,8 @@ TEST_F(MemorySpaceAssignmentTest, BitcastScheduleBug) {
   //                                                             /
   //    p1--------------------->cs----------------->cd->bitcast-+
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
-  Shape param_shape = ShapeUtil::MakeValidatedShape(F32, {6}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape param_shape = ShapeUtil::MakeShape(F32, {6});
   HloInstruction* p0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
   HloInstruction* p1 = builder.AddInstruction(
@@ -4389,8 +4384,8 @@ TEST_F(MemorySpaceAssignmentTest, LastUseOpt) {
   // it will end up in unnecessary copies. With the last use optimization, these
   // copies can be optimized away.
   HloComputation::Builder builder(TestName());
-  Shape shape1 = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
-  Shape shape2 = ShapeUtil::MakeValidatedShape(F32, {2, 4}).value();
+  Shape shape1 = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape shape2 = ShapeUtil::MakeShape(F32, {2, 4});
   PaddingConfig padding_config = MakeEdgePaddingConfig({{0, 0}, {0, 1}});
   HloInstruction* p0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape1, "p0"));
@@ -4435,10 +4430,9 @@ TEST_F(MemorySpaceAssignmentTest, LastUseOpt) {
 TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule1) {
   // Test to ensure CopyStart/CopyDone is placed only in the entry computation.
   auto module = CreateNewVerifiedModule();
-  Shape shape = ShapeUtil::MakeValidatedShape(xla::F32, {2, 3}).value();
-  Shape scalar_shape = ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
-  Shape tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({shape, scalar_shape}).value();
+  Shape shape = ShapeUtil::MakeShape(xla::F32, {2, 3});
+  Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, scalar_shape});
 
   auto cond_builder = HloComputation::Builder("WhileCond");
   // Tuple param: 24 bytes (each elem has 8 byte pointer, 4 byte element)
@@ -4449,10 +4443,9 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule1) {
   HloInstruction* cond_limit = cond_builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(50.f)));
   // Free cond_param[] (16 bytes), Alloc PRED[] (1 byte)
-  HloInstruction* cond_lt =
-      cond_builder.AddInstruction(HloInstruction::CreateCompare(
-          ShapeUtil::MakeValidatedShape(PRED, {}).value(), cond_iter,
-          cond_limit, ComparisonDirection::kLt));
+  HloInstruction* cond_lt = cond_builder.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), cond_iter,
+                                    cond_limit, ComparisonDirection::kLt));
   HloComputation* cond_computation =
       module->AddEmbeddedComputation(cond_builder.Build());
 
@@ -4520,8 +4513,8 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule1) {
 
 TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule2) {
   auto module = CreateNewVerifiedModule();
-  Shape shape = ShapeUtil::MakeValidatedShape(xla::F32, {2, 3}).value();
-  Shape shape2 = ShapeUtil::MakeValidatedShape(xla::F32, {3, 3}).value();
+  Shape shape = ShapeUtil::MakeShape(xla::F32, {2, 3});
+  Shape shape2 = ShapeUtil::MakeShape(xla::F32, {3, 3});
 
   auto call_builder = HloComputation::Builder("Call");
   HloInstruction* call_param = call_builder.AddInstruction(
@@ -4591,8 +4584,8 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule2) {
 
 TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule3) {
   auto module = CreateNewVerifiedModule();
-  Shape shape = ShapeUtil::MakeValidatedShape(xla::F32, {2, 3}).value();
-  Shape shape2 = ShapeUtil::MakeValidatedShape(xla::F32, {3, 3}).value();
+  Shape shape = ShapeUtil::MakeShape(xla::F32, {2, 3});
+  Shape shape2 = ShapeUtil::MakeShape(xla::F32, {3, 3});
 
   auto call_builder = HloComputation::Builder("Call");
   HloInstruction* call_param = call_builder.AddInstruction(
@@ -4658,8 +4651,8 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule3) {
 // TODO(berkin): This might be an incorrect input graph, investigate.
 TEST_F(MemorySpaceAssignmentTest, DISABLED_NonEntryComputationSchedule4) {
   auto module = CreateNewVerifiedModule();
-  Shape shape = ShapeUtil::MakeValidatedShape(xla::F32, {2, 3}).value();
-  Shape shape2 = ShapeUtil::MakeValidatedShape(xla::F32, {3, 3}).value();
+  Shape shape = ShapeUtil::MakeShape(xla::F32, {2, 3});
+  Shape shape2 = ShapeUtil::MakeShape(xla::F32, {3, 3});
 
   auto true_builder = HloComputation::Builder("True");
   HloInstruction* true_param = true_builder.AddInstruction(
@@ -4760,11 +4753,10 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule5) {
   // }
   //
   auto module = CreateNewVerifiedModule();
-  Shape shape = ShapeUtil::MakeValidatedShape(xla::F32, {2, 3}).value();
-  Shape scalar_shape = ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
+  Shape shape = ShapeUtil::MakeShape(xla::F32, {2, 3});
+  Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
   Shape tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({shape, scalar_shape, scalar_shape})
-          .value();
+      ShapeUtil::MakeTupleShape({shape, scalar_shape, scalar_shape});
 
   auto cond_builder = HloComputation::Builder("WhileCond");
   HloInstruction* cond_param = cond_builder.AddInstruction(
@@ -4773,10 +4765,9 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule5) {
       HloInstruction::CreateGetTupleElement(scalar_shape, cond_param, 1));
   HloInstruction* cond_limit = cond_builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(50.f)));
-  HloInstruction* cond_lt =
-      cond_builder.AddInstruction(HloInstruction::CreateCompare(
-          ShapeUtil::MakeValidatedShape(PRED, {}).value(), cond_iter,
-          cond_limit, ComparisonDirection::kLt));
+  HloInstruction* cond_lt = cond_builder.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), cond_iter,
+                                    cond_limit, ComparisonDirection::kLt));
   HloComputation* cond_computation =
       module->AddEmbeddedComputation(cond_builder.Build());
 
@@ -4854,10 +4845,9 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule5) {
 
 TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule6) {
   auto module = CreateNewVerifiedModule();
-  Shape shape = ShapeUtil::MakeValidatedShape(xla::F32, {2, 3}).value();
-  Shape scalar_shape = ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
-  Shape tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({shape, scalar_shape, shape}).value();
+  Shape shape = ShapeUtil::MakeShape(xla::F32, {2, 3});
+  Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, scalar_shape, shape});
 
   auto cond_builder = HloComputation::Builder("WhileCond");
   HloInstruction* cond_param = cond_builder.AddInstruction(
@@ -4866,10 +4856,9 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule6) {
       HloInstruction::CreateGetTupleElement(scalar_shape, cond_param, 1));
   HloInstruction* cond_limit = cond_builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(50.f)));
-  HloInstruction* cond_lt =
-      cond_builder.AddInstruction(HloInstruction::CreateCompare(
-          ShapeUtil::MakeValidatedShape(PRED, {}).value(), cond_iter,
-          cond_limit, ComparisonDirection::kLt));
+  HloInstruction* cond_lt = cond_builder.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), cond_iter,
+                                    cond_limit, ComparisonDirection::kLt));
   HloComputation* cond_computation =
       module->AddEmbeddedComputation(cond_builder.Build());
 
@@ -5000,9 +4989,8 @@ TEST_F(MemorySpaceAssignmentTest, DanglingCopy) {
   // This situation was encountered in vss, where there is a mismatch in the
   // memory space in preset assignments and the output graph.
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
-  Shape tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({shape, shape}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
 
   HloInstruction* p = builder.AddInstruction(
       HloInstruction::CreateParameter(0, tuple_shape, "p"));
@@ -5045,9 +5033,8 @@ TEST_F(MemorySpaceAssignmentTest, DanglingCopy) {
 
 TEST_F(MemorySpaceAssignmentTest, MultiOutputFusion) {
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
-  Shape tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({shape, shape}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
   auto module = CreateNewVerifiedModule();
 
   HloComputation::Builder fusion_builder("fusion");
@@ -5083,9 +5070,8 @@ TEST_F(MemorySpaceAssignmentTest, MultiOutputFusion) {
 
 TEST_F(MemorySpaceAssignmentTest, TupleInput) {
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
-  Shape tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({shape, shape}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
   auto module = CreateNewVerifiedModule();
 
   HloComputation::Builder fusion_builder("fusion");
@@ -5124,9 +5110,8 @@ TEST_F(MemorySpaceAssignmentTest, TupleInput) {
 
 TEST_F(MemorySpaceAssignmentTest, TupleToTuple1) {
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
-  Shape tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({shape, shape}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
   auto module = CreateNewVerifiedModule();
 
   HloComputation::Builder fusion0_builder("fusion0");
@@ -5204,11 +5189,9 @@ TEST_F(MemorySpaceAssignmentTest, TupleToTuple1) {
 
 TEST_F(MemorySpaceAssignmentTest, TupleToTuple2) {
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
-  Shape tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({shape, shape}).value();
-  Shape nested_tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({shape, tuple_shape}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
+  Shape nested_tuple_shape = ShapeUtil::MakeTupleShape({shape, tuple_shape});
   auto module = CreateNewVerifiedModule();
 
   HloComputation::Builder fusion0_builder("fusion0");
@@ -5286,9 +5269,8 @@ TEST_F(MemorySpaceAssignmentTest, TupleToTuple2) {
 
 TEST_F(MemorySpaceAssignmentTest, TupleToTuple3) {
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
-  Shape tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({shape, shape}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
   auto module = CreateNewVerifiedModule();
 
   HloComputation::Builder fusion0_builder("fusion0");
@@ -5334,9 +5316,8 @@ TEST_F(MemorySpaceAssignmentTest, TupleToTuple3) {
 
 TEST_F(MemorySpaceAssignmentTest, InputOutputAlias) {
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
-  Shape tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({shape, shape}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
   HloInstruction* p = builder.AddInstruction(
       HloInstruction::CreateParameter(0, tuple_shape, "p"));
   HloInstruction* p0 = builder.AddInstruction(
@@ -5390,7 +5371,7 @@ TEST_F(MemorySpaceAssignmentTest, CostAnalysis) {
   // This is mostly a smoke test since it's difficult and brittle to work out
   // the cost of the HLO instructions.
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   HloInstruction* p0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
   HloInstruction* p1 =
@@ -5455,7 +5436,7 @@ TEST_F(MemorySpaceAssignmentTest, MemoryBoundednessBufferIntervalCompare) {
   // MemoryBoundednessBufferIntervalCompare should prioritize the negates, which
   // are more memory bound.
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {4, 3}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {4, 3});
   HloInstruction* p0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
   HloInstruction* p1 =
@@ -6360,9 +6341,9 @@ TEST_F(MemorySpaceAssignmentTest,
 }
 
 TEST_F(MemorySpaceAssignmentTest, SimpleWhileTupleTest) {
-  Shape s32 = ShapeUtil::MakeValidatedShape(xla::S32, {}).value();
-  Shape f32v1 = ShapeUtil::MakeValidatedShape(F32, {1}).value();
-  Shape t_s32_f32v1 = ShapeUtil::MakeValidatedTupleShape({s32, f32v1}).value();
+  Shape s32 = ShapeUtil::MakeShape(xla::S32, {});
+  Shape f32v1 = ShapeUtil::MakeShape(F32, {1});
+  Shape t_s32_f32v1 = ShapeUtil::MakeTupleShape({s32, f32v1});
   auto module = CreateNewVerifiedModule("SimpleWhile");
   HloSchedule schedule(module.get());
 
@@ -6382,9 +6363,9 @@ TEST_F(MemorySpaceAssignmentTest, SimpleWhileTupleTest) {
         HloInstruction::CreateParameter(0, t_s32_f32v1, "x"));
     auto index = builder.AddInstruction(
         HloInstruction::CreateGetTupleElement(const4->shape(), param, 0));
-    auto compare = builder.AddInstruction(HloInstruction::CreateCompare(
-        ShapeUtil::MakeValidatedShape(PRED, {}).value(), index, const4,
-        ComparisonDirection::kLt));
+    auto compare = builder.AddInstruction(
+        HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), index,
+                                      const4, ComparisonDirection::kLt));
     cond_computation = module->AddEmbeddedComputation(builder.Build());
     schedule.set_sequence(cond_computation, {const4, param, index, compare});
   }
@@ -6462,9 +6443,7 @@ TEST_F(MemorySpaceAssignmentTest, SimpleWhileTupleTest) {
       /*tail_padding_alignment_in_elements=*/1, /*element_size_in_bits=*/0,
       kDefaultMemorySpace);
   Shape t_s32_f32v1_in_default_mem =
-      ShapeUtil::MakeValidatedTupleShape(
-          {s32_in_default_mem, f32v1_in_default_mem})
-          .value();
+      ShapeUtil::MakeTupleShape({s32_in_default_mem, f32v1_in_default_mem});
   EXPECT_THAT(param, op::ShapeWithLayout(t_s32_f32v1_in_default_mem));
   EXPECT_THAT(while0, op::ShapeWithLayout(t_s32_f32v1_in_default_mem));
 }
@@ -6480,7 +6459,7 @@ TEST_F(MemorySpaceAssignmentTest, EvictionsShouldntBeDelayed) {
   // schedule. However, the CopyStart/CopyDone insertion relies on the schedule
   // indexes, so they could be inserted too late.
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {4, 3}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {4, 3});
   HloInstruction* p0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
   HloInstruction* tanh0 = builder.AddInstruction(
@@ -6569,7 +6548,7 @@ TEST_F(MemorySpaceAssignmentTest,
   // in the alternate memory for the entire computation. The BufferAssignment
   // pass, which is run after this, will allocate those buffers.
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {2, 3},
       /*minor_to_major=*/{1, 0}, /*tiles=*/{},
@@ -10729,12 +10708,9 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTest) {
   constexpr int kFeature = 8;
   constexpr int kOutput = 2;
 
-  auto lhs_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kBatch, kFeature}).value();
-  auto rhs_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kFeature, kOutput}).value();
-  auto result_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kBatch, kOutput}).value();
+  auto lhs_shape = ShapeUtil::MakeShape(F32, {kBatch, kFeature});
+  auto rhs_shape = ShapeUtil::MakeShape(F32, {kFeature, kOutput});
+  auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kOutput});
   HloInstruction* lhs = builder.AddInstruction(
       HloInstruction::CreateParameter(0, lhs_shape, "lhs"));
   HloInstruction* rhs = builder.AddInstruction(
@@ -10774,16 +10750,12 @@ TEST_F(MemorySpaceAssignmentTest, MultiCrossProgramPrefetchTest) {
   constexpr int kFirstOutput = 4;
   constexpr int kSecondOutput = 2;
 
-  auto lhs_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kBatch, kFeature}).value();
-  auto first_weight_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kFeature, kFirstOutput}).value();
+  auto lhs_shape = ShapeUtil::MakeShape(F32, {kBatch, kFeature});
+  auto first_weight_shape = ShapeUtil::MakeShape(F32, {kFeature, kFirstOutput});
   auto second_weight_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kFirstOutput, kSecondOutput}).value();
-  auto intermediate_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kBatch, kFirstOutput}).value();
-  auto result_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kBatch, kSecondOutput}).value();
+      ShapeUtil::MakeShape(F32, {kFirstOutput, kSecondOutput});
+  auto intermediate_shape = ShapeUtil::MakeShape(F32, {kBatch, kFirstOutput});
+  auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kSecondOutput});
   HloInstruction* lhs = builder.AddInstruction(
       HloInstruction::CreateParameter(0, lhs_shape, "lhs"));
   HloInstruction* first_weight = builder.AddInstruction(
@@ -10840,14 +10812,10 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleTest) {
   constexpr int kFeature = 8;
   constexpr int kOutput = 2;
 
-  auto lhs_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kBatch, kFeature}).value();
-  auto rhs_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kFeature, kOutput}).value();
-  auto result_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kBatch, kOutput}).value();
-  auto tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({lhs_shape, rhs_shape}).value();
+  auto lhs_shape = ShapeUtil::MakeShape(F32, {kBatch, kFeature});
+  auto rhs_shape = ShapeUtil::MakeShape(F32, {kFeature, kOutput});
+  auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kOutput});
+  auto tuple_shape = ShapeUtil::MakeTupleShape({lhs_shape, rhs_shape});
   HloInstruction* param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, tuple_shape, "p0"));
 
@@ -10884,14 +10852,10 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchBitcastTest) {
   constexpr int kFeature = 8;
   constexpr int kOutput = 2;
 
-  auto lhs_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kBatch, kFeature}).value();
-  auto rhs_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kOutput, kFeature}).value();
-  auto bitcast_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kFeature, kOutput}).value();
-  auto result_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kBatch, kOutput}).value();
+  auto lhs_shape = ShapeUtil::MakeShape(F32, {kBatch, kFeature});
+  auto rhs_shape = ShapeUtil::MakeShape(F32, {kOutput, kFeature});
+  auto bitcast_shape = ShapeUtil::MakeShape(F32, {kFeature, kOutput});
+  auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kOutput});
   HloInstruction* lhs = builder.AddInstruction(
       HloInstruction::CreateParameter(0, lhs_shape, "lhs"));
   HloInstruction* rhs = builder.AddInstruction(
@@ -10928,16 +10892,11 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchBitcastTupleTest) {
   constexpr int kFeature = 8;
   constexpr int kOutput = 2;
 
-  auto lhs_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kBatch, kFeature}).value();
-  auto rhs_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kOutput, kFeature}).value();
-  auto bitcast_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kFeature, kOutput}).value();
-  auto result_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kBatch, kOutput}).value();
-  auto tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({lhs_shape, rhs_shape}).value();
+  auto lhs_shape = ShapeUtil::MakeShape(F32, {kBatch, kFeature});
+  auto rhs_shape = ShapeUtil::MakeShape(F32, {kOutput, kFeature});
+  auto bitcast_shape = ShapeUtil::MakeShape(F32, {kFeature, kOutput});
+  auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kOutput});
+  auto tuple_shape = ShapeUtil::MakeTupleShape({lhs_shape, rhs_shape});
   HloInstruction* param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, tuple_shape, "p0"));
 
@@ -10977,16 +10936,11 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchNestedTupleTest) {
   constexpr int kFeature = 8;
   constexpr int kOutput = 2;
 
-  auto lhs_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kBatch, kFeature}).value();
-  auto rhs_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kFeature, kOutput}).value();
-  auto result_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kBatch, kOutput}).value();
-  auto tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({lhs_shape, rhs_shape}).value();
-  auto tuple_tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({tuple_shape}).value();
+  auto lhs_shape = ShapeUtil::MakeShape(F32, {kBatch, kFeature});
+  auto rhs_shape = ShapeUtil::MakeShape(F32, {kFeature, kOutput});
+  auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kOutput});
+  auto tuple_shape = ShapeUtil::MakeTupleShape({lhs_shape, rhs_shape});
+  auto tuple_tuple_shape = ShapeUtil::MakeTupleShape({tuple_shape});
   HloInstruction* param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, tuple_tuple_shape, "p0"));
 
@@ -11023,8 +10977,7 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchUnusedParamTest) {
   constexpr int kFeature = 8;
   constexpr int kOutput = 2;
 
-  auto rhs_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kFeature, kOutput}).value();
+  auto rhs_shape = ShapeUtil::MakeShape(F32, {kFeature, kOutput});
   HloInstruction* param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, rhs_shape, "p0"));
 
@@ -11048,12 +11001,9 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTooBigTest) {
   constexpr int kFeature = 8;
   constexpr int kOutput = 8;
 
-  auto lhs_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kBatch, kFeature}).value();
-  auto rhs_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kFeature, kOutput}).value();
-  auto result_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kBatch, kOutput}).value();
+  auto lhs_shape = ShapeUtil::MakeShape(F32, {kBatch, kFeature});
+  auto rhs_shape = ShapeUtil::MakeShape(F32, {kFeature, kOutput});
+  auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kOutput});
   HloInstruction* lhs = builder.AddInstruction(
       HloInstruction::CreateParameter(0, lhs_shape, "lhs"));
   HloInstruction* rhs = builder.AddInstruction(
@@ -11085,14 +11035,10 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchTooBigTupleTest) {
   constexpr int kFeature = 8;
   constexpr int kOutput = 8;
 
-  auto lhs_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kBatch, kFeature}).value();
-  auto rhs_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kFeature, kOutput}).value();
-  auto result_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kBatch, kOutput}).value();
-  auto tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({lhs_shape, rhs_shape}).value();
+  auto lhs_shape = ShapeUtil::MakeShape(F32, {kBatch, kFeature});
+  auto rhs_shape = ShapeUtil::MakeShape(F32, {kFeature, kOutput});
+  auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kOutput});
+  auto tuple_shape = ShapeUtil::MakeTupleShape({lhs_shape, rhs_shape});
   HloInstruction* param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, tuple_shape, "p0"));
 
@@ -11127,12 +11073,9 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchFusionTest) {
   constexpr int kFeature = 2;
   constexpr int kOutput = 2;
 
-  auto lhs_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kBatch, kFeature}).value();
-  auto rhs_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kFeature, kOutput}).value();
-  auto result_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kBatch, kOutput}).value();
+  auto lhs_shape = ShapeUtil::MakeShape(F32, {kBatch, kFeature});
+  auto rhs_shape = ShapeUtil::MakeShape(F32, {kFeature, kOutput});
+  auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kOutput});
 
   auto module = CreateNewVerifiedModule();
   HloComputation::Builder fusion_builder("fusion");
@@ -11178,14 +11121,10 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchFusionTupleTest) {
   constexpr int kFeature = 2;
   constexpr int kOutput = 2;
 
-  auto lhs_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kBatch, kFeature}).value();
-  auto rhs_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kFeature, kOutput}).value();
-  auto result_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kBatch, kOutput}).value();
-  auto tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({lhs_shape, rhs_shape}).value();
+  auto lhs_shape = ShapeUtil::MakeShape(F32, {kBatch, kFeature});
+  auto rhs_shape = ShapeUtil::MakeShape(F32, {kFeature, kOutput});
+  auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kOutput});
+  auto tuple_shape = ShapeUtil::MakeTupleShape({lhs_shape, rhs_shape});
 
   auto module = CreateNewVerifiedModule();
   HloComputation::Builder fusion_builder("fusion");
@@ -11235,15 +11174,13 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTest) {
   constexpr int kFeature = 8;
   constexpr int kOutput = 2;
 
-  auto lhs_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kBatch, kFeature}).value();
+  auto lhs_shape = ShapeUtil::MakeShape(F32, {kBatch, kFeature});
   auto rhs_shape = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {kFeature, kOutput},
       /*minor_to_major=*/{1, 0}, /*tiles=*/{},
       /*tail_padding_alignment_in_elements=*/1, /*element_size_in_bits=*/0,
       kAlternateMemorySpace);
-  auto result_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kBatch, kOutput}).value();
+  auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kOutput});
   HloInstruction* lhs = builder.AddInstruction(
       HloInstruction::CreateParameter(0, lhs_shape, "lhs"));
   HloInstruction* rhs = builder.AddInstruction(
@@ -11280,17 +11217,14 @@ TEST_F(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTupleTest) {
   constexpr int kFeature = 8;
   constexpr int kOutput = 2;
 
-  auto lhs_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kBatch, kFeature}).value();
+  auto lhs_shape = ShapeUtil::MakeShape(F32, {kBatch, kFeature});
   auto rhs_shape = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {kFeature, kOutput},
       /*minor_to_major=*/{1, 0}, /*tiles=*/{},
       /*tail_padding_alignment_in_elements=*/1, /*element_size_in_bits=*/0,
       kAlternateMemorySpace);
-  auto result_shape =
-      ShapeUtil::MakeValidatedShape(F32, {kBatch, kOutput}).value();
-  auto tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({lhs_shape, rhs_shape}).value();
+  auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kOutput});
+  auto tuple_shape = ShapeUtil::MakeTupleShape({lhs_shape, rhs_shape});
   HloInstruction* param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, tuple_shape, "p0"));
 
@@ -13382,8 +13316,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
       return slice_proposer_.ProposeSlices(shape, options);
     };
     options_.get_equivalent_s8_shape_fn = [](const Shape& original_shape) {
-      return ShapeUtil::MakeValidatedShape(S8, {ShapeSize(original_shape)})
-          .value();
+      return ShapeUtil::MakeShape(S8, {ShapeSize(original_shape)});
     };
   }
 
@@ -13401,8 +13334,8 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
         })));
   }
 
-  const Shape f32_8_8_ = ShapeUtil::MakeValidatedShape(F32, {8, 8}).value();
-  const Shape f32_4_8_ = ShapeUtil::MakeValidatedShape(F32, {4, 8}).value();
+  const Shape f32_8_8_ = ShapeUtil::MakeShape(F32, {8, 8});
+  const Shape f32_4_8_ = ShapeUtil::MakeShape(F32, {4, 8});
   MockSliceProposer slice_proposer_;
   Options options_ = DefaultMemorySpaceOptions();
 };
@@ -13504,8 +13437,8 @@ ENTRY main {
 
   ROOT r = f32[8,8] add(c, p1)
 })zz";
-  const Shape f32_3_8 = ShapeUtil::MakeValidatedShape(F32, {3, 8}).value();
-  const Shape f32_2_8 = ShapeUtil::MakeValidatedShape(F32, {2, 8}).value();
+  const Shape f32_3_8 = ShapeUtil::MakeShape(F32, {3, 8});
+  const Shape f32_2_8 = ShapeUtil::MakeShape(F32, {2, 8});
 
   options_.sliced_prefetch_options.set_max_slices(3);
 
@@ -13902,8 +13835,8 @@ ENTRY main {
 
   // Setup slicing expectations so that we slice f32[32, 16], but not
   // f32[16,16].
-  Shape f32_16_16 = ShapeUtil::MakeValidatedShape(F32, {16, 16}).value();
-  Shape f32_32_16 = ShapeUtil::MakeValidatedShape(F32, {32, 16}).value();
+  Shape f32_16_16 = ShapeUtil::MakeShape(F32, {16, 16});
+  Shape f32_32_16 = ShapeUtil::MakeShape(F32, {32, 16});
   EXPECT_CALL(slice_proposer_,
               ProposeSlices(f32_16_16, EqualsSlicedPrefetchOptions(
                                            options_.sliced_prefetch_options)))
@@ -14340,8 +14273,8 @@ ENTRY main {
   padded_x = f32[8,16] pad(x, constant1), padding=0_0x0_8
   ROOT r = f32[8,16] add(padded_x, p2)
 })zz";
-  const Shape f32_8_16 = ShapeUtil::MakeValidatedShape(F32, {8, 16}).value();
-  const Shape s8_128 = ShapeUtil::MakeValidatedShape(S8, {128}).value();
+  const Shape f32_8_16 = ShapeUtil::MakeShape(F32, {8, 16});
+  const Shape s8_128 = ShapeUtil::MakeShape(S8, {128});
 
   options_.sliced_prefetch_options.set_max_slices(100000);
   options_.sliced_prefetch_options.set_preferred_slice_size(4 * 8 * 4);

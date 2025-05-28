@@ -843,8 +843,7 @@ bool AlgebraicSimplifierVisitor::ReplaceInstructionIfCompatible(
   }
   CHECK(!new_instructions.empty());
   if (!old_instruction->shape().IsTuple() ||
-      old_instruction->shape().tuple_shapes().size() !=
-          new_instructions.size()) {
+      old_instruction->shape().tuple_shapes_size() != new_instructions.size()) {
     return false;
   }
   for (int i = 0, n = new_instructions.size(); i < n; ++i) {
@@ -5110,7 +5109,7 @@ absl::Status AlgebraicSimplifierVisitor::HandleOptimizationBarrier(
   // optimization barrier. Additionally if the operand is a tuple producing
   // instruction it should also be safe to create a sub tuple of only the used
   // components to enable module level dce.
-  std::vector<bool> used_elements(barrier->shape().tuple_shapes().size());
+  std::vector<bool> used_elements(barrier->shape().tuple_shapes_size());
   bool has_non_gte_use = false;
   for (auto use : barrier->users()) {
     if (use->opcode() != HloOpcode::kGetTupleElement) {

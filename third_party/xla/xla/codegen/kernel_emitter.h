@@ -20,34 +20,41 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/codegen/kernel_definition.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
-class KernelEmitterBase {
- public:
-  virtual ~KernelEmitterBase() = default;
-
-  virtual absl::StatusOr<std::unique_ptr<KernelDefinitionBase>>
-  EmitBaseKernelDefinition() = 0;
-};
+// TODO(ezhulenev): Do we need virtual KernelEmitterContext in API?
 
 // KernelEmitter is an API that emits kernel definition from a given input
 // (i.e. it emits kernels compiled from HLO fusions).
-template <typename KernelDefinitionType>
-class KernelEmitter : public KernelEmitterBase {
+class KernelEmitter {
  public:
   virtual ~KernelEmitter() = default;
 
-  virtual absl::StatusOr<KernelDefinitionType> EmitKernelDefinition() = 0;
+  virtual absl::StatusOr<KernelDefinition> EmitKernelDefinition() = 0;
+};
+
+// A base class for backend-specific kernel emitters.
+//
+// Example: XLA:GPU backend kernel emitter.
+//
+//   class xla::gpu::GpuPlatform;
+//
+//   class xla::gpu::HloFusionEmitter :
+//     public KernelEmitter<GpuPlatform, const HloFusionInstruction*>;
+//
+template <typename Platform, typename Operation>
+class KernelEmitterBase {
+ public:
+  KernelEmitterBase(std::shared_ptr<Platform> platform, Operation operation)
+      : platform_(std::move(platform)), operation_(std::move(operation)) {}
+
+  const Operation& operation() const { return operation_; }
+  const Platform& platform() const { return *platform_; }
 
  private:
-  absl::StatusOr<std::unique_ptr<KernelDefinitionBase>>
-  EmitBaseKernelDefinition() final {
-    TF_ASSIGN_OR_RETURN(KernelDefinitionType kernel_definition,
-                        EmitKernelDefinition());
-    return std::make_unique<KernelDefinitionType>(std::move(kernel_definition));
-  }
+  std::shared_ptr<Platform> platform_;
+  Operation operation_;
 };
 
 }  // namespace xla

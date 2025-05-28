@@ -459,8 +459,7 @@ TEST(XlaBuilderTest, BuildFromSubcomputation) {
 TEST(XlaBuilderTest, CompositeCall) {
   XlaBuilder b(TestName());
   const Shape shape = ShapeUtil::MakeShape(F32, {});
-  const Shape expected =
-      ShapeUtil::MakeValidatedTupleShape({shape, shape, shape}).value();
+  const Shape expected = ShapeUtil::MakeTupleShape({shape, shape, shape});
 
   XlaBuilder bsum(TestName());
   Add(Parameter(&bsum, 0, shape, "arg0"), Parameter(&bsum, 1, shape, "arg1"));
@@ -481,8 +480,7 @@ TEST(XlaBuilderTest, CompositeCall) {
 TEST(XlaBuilderTest, CompositeCallFrontendAttributesStayLocal) {
   XlaBuilder b(TestName());
   const Shape shape = ShapeUtil::MakeShape(F32, {});
-  const Shape expected =
-      ShapeUtil::MakeValidatedTupleShape({shape, shape, shape}).value();
+  const Shape expected = ShapeUtil::MakeTupleShape({shape, shape, shape});
 
   XlaBuilder bsum(TestName());
   Add(Parameter(&bsum, 0, shape, "arg0"), Parameter(&bsum, 1, shape, "arg1"));
@@ -503,8 +501,7 @@ TEST(XlaBuilderTest, CompositeCallFrontendAttributesStayLocal) {
 TEST(XlaBuilderTest, CompositeCallMissingName) {
   XlaBuilder b(TestName());
   const Shape shape = ShapeUtil::MakeShape(F32, {});
-  const Shape expected =
-      ShapeUtil::MakeValidatedTupleShape({shape, shape, shape}).value();
+  const Shape expected = ShapeUtil::MakeTupleShape({shape, shape, shape});
 
   XlaBuilder bsum(TestName());
   Add(Parameter(&bsum, 0, shape, "arg0"), Parameter(&bsum, 1, shape, "arg1"));
@@ -526,8 +523,7 @@ TEST(XlaBuilderTest, CompositeCallMissingName) {
 TEST(XlaBuilderTest, CompositeCallMissingAttribute) {
   XlaBuilder b(TestName());
   const Shape shape = ShapeUtil::MakeShape(F32, {});
-  const Shape expected =
-      ShapeUtil::MakeValidatedTupleShape({shape, shape, shape}).value();
+  const Shape expected = ShapeUtil::MakeTupleShape({shape, shape, shape});
 
   XlaBuilder bsum(TestName());
   Add(Parameter(&bsum, 0, shape, "arg0"), Parameter(&bsum, 1, shape, "arg1"));
@@ -555,8 +551,7 @@ TEST(XlaBuilderTest, CompositeCallNonNegativeVersion) {
   b.SetFrontendAttributes(frontend_attributes);
 
   const Shape shape = ShapeUtil::MakeShape(F32, {});
-  const Shape expected =
-      ShapeUtil::MakeValidatedTupleShape({shape, shape, shape}).value();
+  const Shape expected = ShapeUtil::MakeTupleShape({shape, shape, shape});
 
   XlaBuilder bsum(TestName());
   Add(Parameter(&bsum, 0, shape, "arg0"), Parameter(&bsum, 1, shape, "arg1"));
@@ -580,8 +575,7 @@ TEST(XlaBuilderTest, CompositeCallNonNegativeVersion) {
 TEST(XlaBuilderTest, CompositeCallOptionalVersionAndAttribute) {
   XlaBuilder b(TestName());
   const Shape shape = ShapeUtil::MakeShape(F32, {});
-  const Shape expected =
-      ShapeUtil::MakeValidatedTupleShape({shape, shape, shape}).value();
+  const Shape expected = ShapeUtil::MakeTupleShape({shape, shape, shape});
 
   XlaBuilder bsum(TestName());
   Add(Parameter(&bsum, 0, shape, "arg0"), Parameter(&bsum, 1, shape, "arg1"));
@@ -612,8 +606,7 @@ TEST(XlaBuilderTest, CompositeCallWithExtraFrontendAttributes) {
   b.SetFrontendAttributes(frontend_attributes);
 
   const Shape shape = ShapeUtil::MakeShape(F32, {});
-  const Shape expected =
-      ShapeUtil::MakeValidatedTupleShape({shape, shape, shape}).value();
+  const Shape expected = ShapeUtil::MakeTupleShape({shape, shape, shape});
 
   XlaBuilder bsum(TestName());
   Add(Parameter(&bsum, 0, shape, "arg0"), Parameter(&bsum, 1, shape, "arg1"));
@@ -783,9 +776,8 @@ TEST(XlaBuilderTest, AllGatherWithTuple) {
   EXPECT_EQ(root->opcode(), HloOpcode::kAllGather);
   EXPECT_TRUE(ShapeUtil::Equal(
       root->shape(),
-      ShapeUtil::MakeValidatedTupleShape(
-          {ShapeUtil::MakeShape(F32, {16}), ShapeUtil::MakeShape(F32, {64, 4})})
-          .value()));
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {16}),
+                                 ShapeUtil::MakeShape(F32, {64, 4})})));
 }
 
 TEST(XlaBuilderTest, AllGatherTuple) {
@@ -795,9 +787,8 @@ TEST(XlaBuilderTest, AllGatherTuple) {
   AllGatherTuple({p0, p1}, /*all_gather_dimension=*/1, /*shard_count=*/4);
   TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
   auto tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({ShapeUtil::MakeShape(F32, {128, 16}),
-                                          ShapeUtil::MakeShape(F32, {128, 32})})
-          .value();
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {128, 16}),
+                                 ShapeUtil::MakeShape(F32, {128, 32})});
   EXPECT_THAT(GetRoot(*module),
               GmockMatch(m::Op()
                              .WithOpcode(HloOpcode::kAllGather)
@@ -810,11 +801,9 @@ TEST(XlaBuilderTest, ReduceScatter) {
   {
     auto sub_builder = b.CreateSubBuilder("add");
     auto arg0 =
-        Parameter(sub_builder.get(), 0,
-                  ShapeUtil::MakeValidatedScalarShape(F32).value(), "x");
+        Parameter(sub_builder.get(), 0, ShapeUtil::MakeScalarShape(F32), "x");
     auto arg1 =
-        Parameter(sub_builder.get(), 1,
-                  ShapeUtil::MakeValidatedScalarShape(F32).value(), "y");
+        Parameter(sub_builder.get(), 1, ShapeUtil::MakeScalarShape(F32), "y");
     Add(arg0, arg1);
     TF_ASSERT_OK_AND_ASSIGN(to_apply, sub_builder->Build());
   }
@@ -838,11 +827,9 @@ TEST(XlaBuilderTest, ReduceScatterWithTuple) {
   {
     auto sub_builder = b.CreateSubBuilder("add");
     auto arg0 =
-        Parameter(sub_builder.get(), 0,
-                  ShapeUtil::MakeValidatedScalarShape(F32).value(), "x");
+        Parameter(sub_builder.get(), 0, ShapeUtil::MakeScalarShape(F32), "x");
     auto arg1 =
-        Parameter(sub_builder.get(), 1,
-                  ShapeUtil::MakeValidatedScalarShape(F32).value(), "y");
+        Parameter(sub_builder.get(), 1, ShapeUtil::MakeScalarShape(F32), "y");
     Add(arg0, arg1);
     TF_ASSERT_OK_AND_ASSIGN(to_apply, sub_builder->Build());
   }
@@ -860,9 +847,8 @@ TEST(XlaBuilderTest, ReduceScatterWithTuple) {
   EXPECT_EQ(root->opcode(), HloOpcode::kReduceScatter);
   EXPECT_TRUE(ShapeUtil::Equal(
       root->shape(),
-      ShapeUtil::MakeValidatedTupleShape({ShapeUtil::MakeShape(F32, {4, 8}),
-                                          ShapeUtil::MakeShape(F32, {16, 2})})
-          .value()));
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {4, 8}),
+                                 ShapeUtil::MakeShape(F32, {16, 2})})));
 }
 
 TEST(XlaBuilderTest, AllToAll) {
@@ -912,8 +898,7 @@ TEST(XlaBuilderTest, AllToAllTuple) {
       ShapeUtil::MakeShapeWithDenseLayout(F32, /* dimensions= */ {2, 4},
                                           /* minor_to_major= */ {0, 1});
   auto tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({expected_shape, expected_shape})
-          .value();
+      ShapeUtil::MakeTupleShape({expected_shape, expected_shape});
   auto is_replica_group_pred = [](const HloInstruction* instr) {
     return instr->replica_groups().size() == 1 &&
            absl::c_equal(instr->replica_groups()[0].replica_ids(),
@@ -959,8 +944,7 @@ TEST(XlaBuilderTest, AllReduceTuple) {
   TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
 
   // Check shape and replica groups.
-  auto tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({shape0, shape1}).value();
+  auto tuple_shape = ShapeUtil::MakeTupleShape({shape0, shape1});
 
   // AllToAll is converted into a single all-to-all HloInstruction.
   EXPECT_THAT(GetRoot(*module),
@@ -1124,10 +1108,8 @@ TEST(XlaBuilderTest, ProtoMatches) {
 
 TEST(XlaBuilderTest, DynamicParameter) {
   XlaBuilder b(TestName());
-  const Shape tuple_param_shape = ShapeUtil::MakeValidatedTupleShape(
-                                      {ShapeUtil::MakeShape(F32, {5}),
-                                       ShapeUtil::MakeShape(F32, {6}, {true})})
-                                      .value();
+  const Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {5}), ShapeUtil::MakeShape(F32, {6}, {true})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   Parameter(&b, 1, ShapeUtil::MakeShape(U32, {}), "p1");
   TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b, /*root=*/p0));
@@ -1195,10 +1177,8 @@ TEST(XlaBuilderTest, RemoveDynamicDimensionInBuild) {
 
 TEST(XlaBuilderTest, DynamicUnary) {
   XlaBuilder b(TestName());
-  const Shape tuple_param_shape = ShapeUtil::MakeValidatedTupleShape(
-                                      {ShapeUtil::MakeShape(F32, {5}, {true}),
-                                       ShapeUtil::MakeShape(U32, {})})
-                                      .value();
+  const Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {5}, {true}), ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   auto gte = GetTupleElement(p0, 0);
   Neg(gte);
@@ -1210,11 +1190,9 @@ TEST(XlaBuilderTest, DynamicUnary) {
 
 TEST(XlaBuilderTest, DynamicBinary) {
   XlaBuilder b(TestName());
-  const Shape tuple_param_shape = ShapeUtil::MakeValidatedTupleShape(
-                                      {ShapeUtil::MakeShape(F32, {5}, {true}),
-                                       ShapeUtil::MakeShape(F32, {5}, {true}),
-                                       ShapeUtil::MakeShape(U32, {})})
-                                      .value();
+  const Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {5}, {true}),
+       ShapeUtil::MakeShape(F32, {5}, {true}), ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   auto gte0 = GetTupleElement(p0, 0);
   auto gte1 = GetTupleElement(p0, 1);
@@ -1227,12 +1205,9 @@ TEST(XlaBuilderTest, DynamicBinary) {
 
 TEST(XlaBuilderTest, DynamicBinaryHasBroadcast) {
   XlaBuilder b(TestName());
-  const Shape tuple_param_shape =
-      ShapeUtil::MakeValidatedTupleShape(
-          {ShapeUtil::MakeShape(F32, {5, 4}, {true, false}),
-           ShapeUtil::MakeShape(F32, {5}, {true}),
-           ShapeUtil::MakeShape(U32, {})})
-          .value();
+  const Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {5, 4}, {true, false}),
+       ShapeUtil::MakeShape(F32, {5}, {true}), ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   auto gte0 = GetTupleElement(p0, 0);
   auto gte1 = GetTupleElement(p0, 1);
@@ -1246,11 +1221,9 @@ TEST(XlaBuilderTest, DynamicBinaryHasBroadcast) {
 
 TEST(XlaBuilderTest, DynamicBroadcast) {
   XlaBuilder b(TestName());
-  const Shape tuple_param_shape =
-      ShapeUtil::MakeValidatedTupleShape(
-          {ShapeUtil::MakeShape(F32, {5, 4}, {true, false}),
-           ShapeUtil::MakeShape(U32, {})})
-          .value();
+  const Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {5, 4}, {true, false}),
+       ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   auto gte = GetTupleElement(p0, 0);
   BroadcastInDim(gte, /*out_dim_size=*/{3, 5, 4},
@@ -1265,11 +1238,9 @@ TEST(XlaBuilderTest, DynamicBroadcast) {
 
 TEST(XlaBuilderTest, DynamicBinaryHasDegenerateBroadcast) {
   XlaBuilder b(TestName());
-  const Shape tuple_param_shape =
-      ShapeUtil::MakeValidatedTupleShape(
-          {ShapeUtil::MakeShape(F32, {10}, {true}),
-           ShapeUtil::MakeShape(F32, {1, 15}), ShapeUtil::MakeShape(U32, {})})
-          .value();
+  const Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {10}, {true}),
+       ShapeUtil::MakeShape(F32, {1, 15}), ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   auto gte0 = GetTupleElement(p0, 0);
   auto gte1 = GetTupleElement(p0, 1);
@@ -1283,11 +1254,9 @@ TEST(XlaBuilderTest, DynamicBinaryHasDegenerateBroadcast) {
 
 TEST(XlaBuilderTest, DynamicSelectOnlyPredDynamic) {
   XlaBuilder b(TestName());
-  const Shape tuple_param_shape =
-      ShapeUtil::MakeValidatedTupleShape(
-          {ShapeUtil::MakeShape(PRED, {10}, {true}),
-           ShapeUtil::MakeShape(F32, {10}), ShapeUtil::MakeShape(U32, {})})
-          .value();
+  const Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(PRED, {10}, {true}),
+       ShapeUtil::MakeShape(F32, {10}), ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   auto gte0 = GetTupleElement(p0, 0);
   auto gte1 = GetTupleElement(p0, 1);
@@ -1304,10 +1273,8 @@ TEST(XlaBuilderTest, DynamicSelectOnlyPredDynamic) {
 TEST(XlaBuilderTest, SelectIntoConditional) {
   XlaBuilder b(TestName());
   const Shape selector_shape = ShapeUtil::MakeShape(PRED, {});
-  const Shape tuple_param_shape =
-      ShapeUtil::MakeValidatedTupleShape(
-          {ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(F32, {})})
-          .value();
+  const Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(F32, {})});
   const XlaOp p0 = Parameter(&b, 0, selector_shape, "p0");
   const XlaOp p1 = Parameter(&b, 1, tuple_param_shape, "p1");
   const XlaOp p2 = Parameter(&b, 2, tuple_param_shape, "p2");
@@ -1333,11 +1300,9 @@ TEST(XlaBuilderTest, SelectIntoConditional) {
 
 TEST(XlaBuilderTest, DynamicPad) {
   XlaBuilder b(TestName());
-  const Shape tuple_param_shape =
-      ShapeUtil::MakeValidatedTupleShape(
-          {ShapeUtil::MakeShape(F32, {5, 4}, {true, false}),
-           ShapeUtil::MakeShape(U32, {})})
-          .value();
+  const Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {5, 4}, {true, false}),
+       ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   auto pad_val = ConstantR0<float>(&b, -1);
   auto gte = GetTupleElement(p0, 0);
@@ -1358,14 +1323,10 @@ TEST(XlaBuilderTest, DynamicPad) {
 
 TEST(XlaBuilderTest, DynamicConvolution) {
   XlaBuilder b(TestName());
-  const Shape tuple_param_shape =
-      ShapeUtil::MakeValidatedTupleShape(
-          {ShapeUtil::MakeShape(F32, {1, 2, 2, 128},
-                                {true, false, false, false}),
-           ShapeUtil::MakeShape(F32, {2, 2, 128, 8},
-                                {false, false, true, false}),
-           ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})})
-          .value();
+  const Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {1, 2, 2, 128}, {true, false, false, false}),
+       ShapeUtil::MakeShape(F32, {2, 2, 128, 8}, {false, false, true, false}),
+       ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   auto input = GetTupleElement(p0, 0);
   auto filter = GetTupleElement(p0, 1);
@@ -1393,14 +1354,10 @@ TEST(XlaBuilderTest, DynamicConvolution) {
 }
 
 TEST(XlaBuilderTest, DynamicConvolutions) {
-  const Shape tuple_param_shape =
-      ShapeUtil::MakeValidatedTupleShape(
-          {ShapeUtil::MakeShape(F32, {1, 2, 2, 128},
-                                {true, false, false, false}),
-           ShapeUtil::MakeShape(F32, {2, 2, 128, 8},
-                                {false, false, true, false}),
-           ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})})
-          .value();
+  const Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {1, 2, 2, 128}, {true, false, false, false}),
+       ShapeUtil::MakeShape(F32, {2, 2, 128, 8}, {false, false, true, false}),
+       ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})});
   ConvolutionDimensionNumbers dnums;
   dnums.set_input_batch_dimension(0);
   dnums.set_output_batch_dimension(0);
@@ -1472,12 +1429,10 @@ TEST(XlaBuilderTest, DynamicConvolutions) {
 
 TEST(XlaBuilderTest, DynamicDot) {
   XlaBuilder b(TestName());
-  const Shape tuple_param_shape =
-      ShapeUtil::MakeValidatedTupleShape(
-          {ShapeUtil::MakeShape(F32, {2, 3, 4}, {true, true, false}),
-           ShapeUtil::MakeShape(F32, {2, 4, 5}, {true, false, false}),
-           ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})})
-          .value();
+  const Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {2, 3, 4}, {true, true, false}),
+       ShapeUtil::MakeShape(F32, {2, 4, 5}, {true, false, false}),
+       ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
 
   auto lhs = GetTupleElement(p0, 0);
@@ -1498,11 +1453,9 @@ TEST(XlaBuilderTest, DynamicDot) {
 
 TEST(XlaBuilderTest, DynamicReduce) {
   XlaBuilder b(TestName());
-  const Shape tuple_param_shape =
-      ShapeUtil::MakeValidatedTupleShape(
-          {ShapeUtil::MakeShape(F32, {5, 4, 3}, {false, true, false}),
-           ShapeUtil::MakeShape(U32, {})})
-          .value();
+  const Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {5, 4, 3}, {false, true, false}),
+       ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   auto init = ConstantR0<float>(&b, 0);
   auto gte = GetTupleElement(p0, 0);
@@ -1520,11 +1473,9 @@ TEST(XlaBuilderTest, DynamicReduce) {
 
 TEST(XlaBuilderTest, DynamicReduceWindow) {
   XlaBuilder b(TestName());
-  const Shape tuple_param_shape =
-      ShapeUtil::MakeValidatedTupleShape(
-          {ShapeUtil::MakeShape(F32, {2, 4, 8}, {true, false, false}),
-           ShapeUtil::MakeShape(U32, {})})
-          .value();
+  const Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {2, 4, 8}, {true, false, false}),
+       ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   auto init = ConstantR0<float>(&b, 0.f);
   auto gte = GetTupleElement(p0, 0);
@@ -1546,11 +1497,9 @@ TEST(XlaBuilderTest, DynamicReduceWindow) {
 
 TEST(XlaBuilderTest, VariadicDynamicReduceWindow) {
   XlaBuilder b(TestName());
-  const Shape tuple_param_shape =
-      ShapeUtil::MakeValidatedTupleShape(
-          {ShapeUtil::MakeShape(F32, {2, 4, 8}, {true, false, false}),
-           ShapeUtil::MakeShape(U32, {})})
-          .value();
+  const Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {2, 4, 8}, {true, false, false}),
+       ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   auto p1 = Parameter(&b, 1, tuple_param_shape, "p1");
   auto gte0 = GetTupleElement(p0, 0);
@@ -1583,12 +1532,10 @@ TEST(XlaBuilderTest, VariadicDynamicReduceWindow) {
 
 TEST(XlaBuilderTest, DynamicSelectAndScatter) {
   XlaBuilder b(TestName());
-  const Shape tuple_param_shape =
-      ShapeUtil::MakeValidatedTupleShape(
-          {ShapeUtil::MakeShape(F32, {2, 4, 8}, {true, false, false}),
-           ShapeUtil::MakeShape(F32, {2, 2, 2}, {true, false, false}),
-           ShapeUtil::MakeShape(U32, {})})
-          .value();
+  const Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {2, 4, 8}, {true, false, false}),
+       ShapeUtil::MakeShape(F32, {2, 2, 2}, {true, false, false}),
+       ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   auto init = ConstantR0<float>(&b, 0.f);
   XlaBuilder bsum(TestName());
@@ -1614,12 +1561,10 @@ TEST(XlaBuilderTest, DynamicSelectAndScatter) {
 
 TEST(XlaBuilderTest, DynamicReshape) {
   XlaBuilder b(TestName());
-  const Shape tuple_param_shape =
-      ShapeUtil::MakeValidatedTupleShape(
-          {ShapeUtil::MakeShape(F32, {2, 3, 4, 5, 6},
-                                {false, false, true, true, false}),
-           ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})})
-          .value();
+  const Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {2, 3, 4, 5, 6},
+                            {false, false, true, true, false}),
+       ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   auto gte = GetTupleElement(p0, 0);  // f32[2, 3, <=4, <=5, 6]
   Reshape(gte, /*new_sizes=*/{6, 4, 5, 2, 3});
@@ -1635,12 +1580,10 @@ TEST(XlaBuilderTest, DynamicReshape) {
 
 TEST(XlaBuilderTest, DynamicSelect) {
   XlaBuilder b(TestName());
-  const Shape tuple_param_shape =
-      ShapeUtil::MakeValidatedTupleShape(
-          {ShapeUtil::MakeShape(F32, {4, 5, 6}, {false, true, false}),
-           ShapeUtil::MakeShape(F32, {4, 5, 6}, {false, true, false}),
-           ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})})
-          .value();
+  const Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {4, 5, 6}, {false, true, false}),
+       ShapeUtil::MakeShape(F32, {4, 5, 6}, {false, true, false}),
+       ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   auto pred = Parameter(&b, 1, ShapeUtil::MakeShape(PRED, {}), "pred");
   auto gte0 = GetTupleElement(p0, 0);
@@ -1658,12 +1601,10 @@ TEST(XlaBuilderTest, DynamicSelect) {
 
 TEST(XlaBuilderTest, DynamicSelectNotCompatible) {
   XlaBuilder b(TestName());
-  const Shape tuple_param_shape =
-      ShapeUtil::MakeValidatedTupleShape(
-          {ShapeUtil::MakeShape(F32, {4, 5, 6}, {false, true, false}),
-           ShapeUtil::MakeShape(F32, {4, 5, 6}, {false, false, true}),
-           ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})})
-          .value();
+  const Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {4, 5, 6}, {false, true, false}),
+       ShapeUtil::MakeShape(F32, {4, 5, 6}, {false, false, true}),
+       ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   auto pred = Parameter(&b, 1, ShapeUtil::MakeShape(PRED, {}), "pred");
   auto gte0 = GetTupleElement(p0, 0);  // f32[4,<=5,6]
@@ -1675,11 +1616,9 @@ TEST(XlaBuilderTest, DynamicSelectNotCompatible) {
 
 TEST(XlaBuilderTest, DynamicTranspose) {
   XlaBuilder b(TestName());
-  const Shape tuple_param_shape =
-      ShapeUtil::MakeValidatedTupleShape(
-          {ShapeUtil::MakeShape(F32, {3, 5}, {true, false}),
-           ShapeUtil::MakeShape(U32, {})})
-          .value();
+  const Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {3, 5}, {true, false}),
+       ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   auto gte = GetTupleElement(p0, 0);
   Transpose(gte, /*permutation=*/{1, 0});
@@ -2266,10 +2205,8 @@ TEST(XlaBuilderTest, OutfeedTokenSharding) {
 
 TEST(XlaBuilderTest, NormalizeTupleSharding) {
   XlaBuilder b(TestName());
-  const Shape tuple_param_shape =
-      ShapeUtil::MakeValidatedTupleShape(
-          {ShapeUtil::MakeShape(F32, {5}), ShapeUtil::MakeShape(F32, {6})})
-          .value();
+  const Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {5}), ShapeUtil::MakeShape(F32, {6})});
   b.SetSharding(sharding_builder::Replicate());
   Parameter(&b, 0, tuple_param_shape, "p0");
   TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
@@ -2830,9 +2767,8 @@ TEST(XlaBuilderTest, UnboundedBatchNormGrad) {
   TF_ASSERT_OK_AND_ASSIGN(const Shape grad_scale, ParseShape("f32[?]"));
   TF_ASSERT_OK_AND_ASSIGN(const Shape grad_offset, ParseShape("f32[?]"));
   TF_ASSERT_OK_AND_ASSIGN(const Shape grad_output, ParseShape("f32[5, ?, 7]"));
-  const Shape expected = ShapeUtil::MakeValidatedTupleShape(
-                             {grad_operand, grad_scale, grad_offset})
-                             .value();
+  const Shape expected =
+      ShapeUtil::MakeTupleShape({grad_operand, grad_scale, grad_offset});
   BatchNormGrad(
       Parameter(&b, 0, operand, "operand"), Parameter(&b, 1, scale, "scale"),
       Parameter(&b, 2, mean, "mean"), Parameter(&b, 3, variance, "variance"),
@@ -2868,8 +2804,7 @@ TEST(XlaBuilderTest, UnboundedBatchNormTraining) {
   TF_ASSERT_OK_AND_ASSIGN(const Shape batch_mean, ParseShape("f32[?]"));
   TF_ASSERT_OK_AND_ASSIGN(const Shape batch_var, ParseShape("f32[?]"));
   const Shape expected =
-      ShapeUtil::MakeValidatedTupleShape({output, batch_mean, batch_var})
-          .value();
+      ShapeUtil::MakeTupleShape({output, batch_mean, batch_var});
   BatchNormTraining(Parameter(&b, 0, operand, "operand"),
                     Parameter(&b, 1, scale, "scale"),
                     Parameter(&b, 2, offset, "offset"), 1.0, 1);
@@ -3315,10 +3250,10 @@ TEST(XlaBuilderTest, UnboundedMap) {
   XlaComputation computation;
   {
     const std::unique_ptr<XlaBuilder> sub_builder = b.CreateSubBuilder("add");
-    Add(Parameter(sub_builder.get(), 0,
-                  ShapeUtil::MakeValidatedScalarShape(F32).value(), "arg0"),
-        Parameter(sub_builder.get(), 1,
-                  ShapeUtil::MakeValidatedScalarShape(F32).value(), "arg1"));
+    Add(Parameter(sub_builder.get(), 0, ShapeUtil::MakeScalarShape(F32),
+                  "arg0"),
+        Parameter(sub_builder.get(), 1, ShapeUtil::MakeScalarShape(F32),
+                  "arg1"));
     TF_ASSERT_OK_AND_ASSIGN(computation, sub_builder->Build());
   }
 
@@ -3434,8 +3369,7 @@ TEST(XlaBuilderTest, UnboundedRecvWithToken) {
 TEST(XlaBuilderTest, UnboundedReduce) {
   XlaBuilder b(TestName());
   const Shape shape = ShapeUtil::MakeShape(F32, {7}, {false});
-  const Shape expected =
-      ShapeUtil::MakeValidatedTupleShape({shape, shape, shape}).value();
+  const Shape expected = ShapeUtil::MakeTupleShape({shape, shape, shape});
 
   TF_ASSERT_OK_AND_ASSIGN(const Shape input0, ParseShape("f32[7, 5]"));
   TF_ASSERT_OK_AND_ASSIGN(const Shape input1, ParseShape("f32[?, 5]"));
@@ -3583,11 +3517,8 @@ TEST(XlaBuilderTest, UnboundedRngNormal) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(const Shape shape, ParseShape("f32[?, 10]"));
   TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
-  RngNormal(
-      Parameter(&b, 0, ShapeUtil::MakeValidatedScalarShape(F32).value(), "mu"),
-      Parameter(&b, 1, ShapeUtil::MakeValidatedScalarShape(F32).value(),
-                "sigma"),
-      shape);
+  RngNormal(Parameter(&b, 0, ShapeUtil::MakeScalarShape(F32), "mu"),
+            Parameter(&b, 1, ShapeUtil::MakeScalarShape(F32), "sigma"), shape);
   TF_ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
                           BuildHloModule(b));
   EXPECT_THAT(GetRoot(*module),
@@ -3598,10 +3529,8 @@ TEST(XlaBuilderTest, UnboundedRngUniform) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(const Shape shape, ParseShape("f32[?, 10]"));
   TF_ASSERT_OK_AND_ASSIGN(const Shape expected, ParseShape("f32[?, 10]"));
-  RngUniform(
-      Parameter(&b, 0, ShapeUtil::MakeValidatedScalarShape(F32).value(), "a"),
-      Parameter(&b, 1, ShapeUtil::MakeValidatedScalarShape(F32).value(), "b"),
-      shape);
+  RngUniform(Parameter(&b, 0, ShapeUtil::MakeScalarShape(F32), "a"),
+             Parameter(&b, 1, ShapeUtil::MakeScalarShape(F32), "b"), shape);
   TF_ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
                           BuildHloModule(b));
   EXPECT_THAT(GetRoot(*module),
@@ -3619,10 +3548,10 @@ TEST(XlaBuilderTest, UnboundedScatter) {
   XlaComputation update_computation;
   {
     const std::unique_ptr<XlaBuilder> sub_builder = b.CreateSubBuilder("add");
-    Add(Parameter(sub_builder.get(), 0,
-                  ShapeUtil::MakeValidatedScalarShape(F32).value(), "arg0"),
-        Parameter(sub_builder.get(), 1,
-                  ShapeUtil::MakeValidatedScalarShape(F32).value(), "arg1"));
+    Add(Parameter(sub_builder.get(), 0, ShapeUtil::MakeScalarShape(F32),
+                  "arg0"),
+        Parameter(sub_builder.get(), 1, ShapeUtil::MakeScalarShape(F32),
+                  "arg1"));
     TF_ASSERT_OK_AND_ASSIGN(update_computation, sub_builder->Build());
   }
 
@@ -3737,10 +3666,10 @@ TEST(XlaBuilderTest, UnboundedSelectAndScatter) {
   {
     const std::unique_ptr<XlaBuilder> sub_builder =
         b.CreateSubBuilder("compare");
-    Compare(Parameter(sub_builder.get(), 0,
-                      ShapeUtil::MakeValidatedScalarShape(F32).value(), "arg0"),
-            Parameter(sub_builder.get(), 1,
-                      ShapeUtil::MakeValidatedScalarShape(F32).value(), "arg1"),
+    Compare(Parameter(sub_builder.get(), 0, ShapeUtil::MakeScalarShape(F32),
+                      "arg0"),
+            Parameter(sub_builder.get(), 1, ShapeUtil::MakeScalarShape(F32),
+                      "arg1"),
             ComparisonDirection::kGe);
     TF_ASSERT_OK_AND_ASSIGN(select, sub_builder->Build());
   }
@@ -3748,10 +3677,10 @@ TEST(XlaBuilderTest, UnboundedSelectAndScatter) {
   XlaComputation scatter;
   {
     const std::unique_ptr<XlaBuilder> sub_builder = b.CreateSubBuilder("add");
-    Add(Parameter(sub_builder.get(), 0,
-                  ShapeUtil::MakeValidatedScalarShape(F32).value(), "arg0"),
-        Parameter(sub_builder.get(), 1,
-                  ShapeUtil::MakeValidatedScalarShape(F32).value(), "arg1"));
+    Add(Parameter(sub_builder.get(), 0, ShapeUtil::MakeScalarShape(F32),
+                  "arg0"),
+        Parameter(sub_builder.get(), 1, ShapeUtil::MakeScalarShape(F32),
+                  "arg1"));
     TF_ASSERT_OK_AND_ASSIGN(scatter, sub_builder->Build());
   }
 
@@ -3825,10 +3754,10 @@ TEST(XlaBuilderTest, UnboundedSort) {
   {
     const std::unique_ptr<XlaBuilder> sub_builder =
         b.CreateSubBuilder("compare");
-    Compare(Parameter(sub_builder.get(), 0,
-                      ShapeUtil::MakeValidatedScalarShape(F32).value(), "arg0"),
-            Parameter(sub_builder.get(), 1,
-                      ShapeUtil::MakeValidatedScalarShape(F32).value(), "arg1"),
+    Compare(Parameter(sub_builder.get(), 0, ShapeUtil::MakeScalarShape(F32),
+                      "arg0"),
+            Parameter(sub_builder.get(), 1, ShapeUtil::MakeScalarShape(F32),
+                      "arg1"),
             ComparisonDirection::kLt);
     TF_ASSERT_OK_AND_ASSIGN(comparator, sub_builder->Build());
   }
@@ -3873,7 +3802,7 @@ TEST(XlaBuilderTest, UnboundedTriangularSolve) {
 TEST(XlaBuilderTest, UnboundedTuple) {
   XlaBuilder b(TestName());
   TF_ASSERT_OK_AND_ASSIGN(const Shape operand, ParseShape("f32[?, 10]"));
-  const Shape expected = ShapeUtil::MakeValidatedTupleShape({operand}).value();
+  const Shape expected = ShapeUtil::MakeTupleShape({operand});
   Tuple(&b, {Parameter(&b, 0, operand, "operand")});
   TF_ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
                           BuildHloModule(b));
@@ -3889,10 +3818,10 @@ TEST(XlaBuilderTest, UnboundedWhile) {
   XlaComputation add;
   {
     const std::unique_ptr<XlaBuilder> sub_builder = b.CreateSubBuilder("add");
-    Add(Parameter(sub_builder.get(), 0,
-                  ShapeUtil::MakeValidatedScalarShape(F32).value(), "arg0"),
-        Parameter(sub_builder.get(), 1,
-                  ShapeUtil::MakeValidatedScalarShape(F32).value(), "arg1"));
+    Add(Parameter(sub_builder.get(), 0, ShapeUtil::MakeScalarShape(F32),
+                  "arg0"),
+        Parameter(sub_builder.get(), 1, ShapeUtil::MakeScalarShape(F32),
+                  "arg1"));
     TF_ASSERT_OK_AND_ASSIGN(add, sub_builder->Build());
   }
 

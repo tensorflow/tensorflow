@@ -156,7 +156,7 @@ absl::StatusOr<Shape> TransferBuffersFromOutfeedInternal(
     outfed_shapes.push_back(std::move(outfed_shape));
   }
   if (is_tuple) {
-    return ShapeUtil::MakeValidatedTupleShape(outfed_shapes).value();
+    return ShapeUtil::MakeTupleShape(outfed_shapes);
   }
   TF_RET_CHECK(outfed_shapes.size() == 1);
   return std::move(outfed_shapes[0]);

@@ -75,8 +75,7 @@ TEST_P(CpuEigenDotOperationTest, SimpleDotOp) {
   HloComputation::Builder builder(TestName());
   DotTestSpec spec = GetParam();
 
-  auto param_shape =
-      ShapeUtil::MakeValidatedShape(spec.primitive_type, {128, 128}).value();
+  auto param_shape = ShapeUtil::MakeShape(spec.primitive_type, {128, 128});
 
   HloInstruction* lhs = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "input"));
@@ -94,8 +93,7 @@ TEST_P(CpuEigenDotOperationTest, DotTransposeOp) {
   HloComputation::Builder builder(TestName());
   DotTestSpec spec = GetParam();
 
-  auto param_shape =
-      ShapeUtil::MakeValidatedShape(spec.primitive_type, {128, 128}).value();
+  auto param_shape = ShapeUtil::MakeShape(spec.primitive_type, {128, 128});
 
   HloInstruction* lhs = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "input"));

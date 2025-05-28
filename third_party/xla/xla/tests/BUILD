@@ -1430,7 +1430,7 @@ xla_test(
         "cpu",
         "gpu",
     ],
-    shard_count = 40,
+    shard_count = 41,
     tags = [
         "cuda-only",
         "optonly",

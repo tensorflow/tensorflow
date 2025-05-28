@@ -83,9 +83,8 @@ TEST_F(ConvCanonicalizationTest, NonCanonicalToCanonical) {
   dnums.set_kernel_output_feature_dimension(0);
   auto output_size = kInputSize - kWindowSize + 1;
   builder.AddInstruction(HloInstruction::CreateConvolve(
-      ShapeUtil::MakeValidatedShape(
-          F32, {kOutputFeatureCount, kBatchSize, output_size, output_size})
-          .value(),
+      ShapeUtil::MakeShape(
+          F32, {kOutputFeatureCount, kBatchSize, output_size, output_size}),
       input, kernel, /*feature_group_count=*/1, /*batch_group_count=*/1,
       conv_window_, dnums, DefaultPrecisionConfig(2)));
 
@@ -147,9 +146,8 @@ TEST_F(ConvCanonicalizationTest, CanonicalStaysTheSame) {
   dnums.set_kernel_output_feature_dimension(3);
   auto output_size = kInputSize - kWindowSize + 1;
   builder.AddInstruction(HloInstruction::CreateConvolve(
-      ShapeUtil::MakeValidatedShape(
-          F32, {kBatchSize, output_size, output_size, kOutputFeatureCount})
-          .value(),
+      ShapeUtil::MakeShape(
+          F32, {kBatchSize, output_size, output_size, kOutputFeatureCount}),
       input, kernel, /*feature_group_count=*/1, /*batch_group_count=*/1,
       conv_window_, dnums, DefaultPrecisionConfig(2)));
 

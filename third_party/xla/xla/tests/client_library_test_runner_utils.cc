@@ -31,7 +31,7 @@ namespace xla {
 
 XlaComputation CreateScalarReluF32() {
   XlaBuilder builder("relu");
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {});
   XlaOp z_value = Parameter(&builder, 0, std::move(shape), "z_value");
   XlaOp zero = ConstantR0<float>(&builder, 0.0f);
   Max(std::move(z_value), std::move(zero));
@@ -42,7 +42,7 @@ XlaComputation CreateScalarReluF32() {
 
 XlaComputation CreateScalarMax(const PrimitiveType test_type) {
   XlaBuilder builder("max");
-  Shape shape = ShapeUtil::MakeValidatedShape(test_type, {}).value();
+  Shape shape = ShapeUtil::MakeShape(test_type, {});
   XlaOp x = Parameter(&builder, 0, shape, "x");
   XlaOp y = Parameter(&builder, 1, shape, "y");
   Max(std::move(x), std::move(y));

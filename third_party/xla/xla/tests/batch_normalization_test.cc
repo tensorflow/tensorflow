@@ -158,12 +158,12 @@ XLA_TEST_F(BatchNormalizationTest, SpecComparisonForward) {
   XlaBuilder builder("batch_normalize_per_spec");
   auto input_activations =
       CheckShape(&builder, ConstantLiteral(&builder, input_literal_),
-                 ShapeUtil::MakeValidatedShape(F32, {3, 2, 1, 1}).value());
+                 ShapeUtil::MakeShape(F32, {3, 2, 1, 1}));
   auto gamma = ConstantR1<float>(&builder, {1.0, 1.0});
   auto beta = ConstantR1<float>(&builder, {0.0, 0.0});
   XlaComputation add = CreateScalarAddComputation(F32, &builder);
   // Reduce all dimensions except dimension 1.
-  Shape TwoElementVectorF32 = ShapeUtil::MakeValidatedShape(F32, {2}).value();
+  Shape TwoElementVectorF32 = ShapeUtil::MakeShape(F32, {2});
   auto sum = CheckShape(
       &builder,
       Reduce(input_activations, ConstantR0<float>(&builder, 0.0f), add,
@@ -191,7 +191,7 @@ XLA_TEST_F(BatchNormalizationTest, SpecComparisonForward) {
   auto standard_deviation = Sqrt(variance);
   auto standard_deviation_above_epsilon =
       CheckShape(&builder, Gt(standard_deviation, epsilon),
-                 ShapeUtil::MakeValidatedShape(PRED, {2}).value());
+                 ShapeUtil::MakeShape(PRED, {2}));
   auto gt_eps =
       Select(standard_deviation_above_epsilon, standard_deviation, epsilon2);
   auto normalization_factors = Reciprocal(gt_eps);

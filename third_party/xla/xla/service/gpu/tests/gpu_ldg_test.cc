@@ -44,7 +44,7 @@ class GpuLdgTest : public GpuCodegenTest {};
 TEST_F(GpuLdgTest, LdgForParamRead) {
   HloComputation::Builder builder(TestName());
 
-  auto shape = ShapeUtil::MakeValidatedShape(F32, {2, 2}).value();
+  auto shape = ShapeUtil::MakeShape(F32, {2, 2});
   HloInstruction* param =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "x"));
   builder.AddInstruction(
@@ -71,7 +71,7 @@ TEST_F(GpuLdgTest, LdgForParamRead) {
 TEST_F(GpuLdgTest, LdgForNonParamRead) {
   HloComputation::Builder builder(TestName());
 
-  auto shape = ShapeUtil::MakeValidatedShape(F32, {2, 2}).value();
+  auto shape = ShapeUtil::MakeShape(F32, {2, 2});
   HloInstruction* param =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "x"));
   HloInstruction* add = builder.AddInstruction(
@@ -115,17 +115,17 @@ TEST_F(GpuLdgTest, NoLdgWhenSharingBuffer) {
   {
     auto embedded_builder = HloComputation::Builder("add");
     auto lhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
-        0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "lhs"));
+        0, ShapeUtil::MakeShape(F32, {}), "lhs"));
     auto rhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
-        1, ShapeUtil::MakeValidatedShape(F32, {}).value(), "rhs"));
+        1, ShapeUtil::MakeShape(F32, {}), "rhs"));
     embedded_builder.AddInstruction(
         HloInstruction::CreateBinary(lhs->shape(), HloOpcode::kAdd, lhs, rhs));
     reduce_computation =
         hlo_module->AddEmbeddedComputation(embedded_builder.Build());
   }
 
-  auto param_shape = ShapeUtil::MakeValidatedShape(F32, {32, 32}).value();
-  auto reduce_shape = ShapeUtil::MakeValidatedShape(F32, {32}).value();
+  auto param_shape = ShapeUtil::MakeShape(F32, {32, 32});
+  auto reduce_shape = ShapeUtil::MakeShape(F32, {32});
   HloInstruction* param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "x"));
   HloInstruction* param2 = builder.AddInstruction(

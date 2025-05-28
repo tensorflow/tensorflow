@@ -127,9 +127,8 @@ TEST_F(GpuIrEmitterUnnestedTest,
   HloComputation::Builder computation_builder(TestName());
 
   // Create parameters and custom call in the computation builder.
-  Shape scalar_shape = ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
-  Shape tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({scalar_shape, scalar_shape}).value();
+  Shape scalar_shape = xla::ShapeUtil::MakeShape(xla::F32, {});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({scalar_shape, scalar_shape});
 
   HloInstruction* param_0 = computation_builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape, "arg_0"));
@@ -193,15 +192,15 @@ TEST_F(GpuIrEmitterUnnestedTest,
   HloComputation::Builder computation_builder(TestName());
 
   // Create parameters and custom call in the computation builder.
-  Shape shape = ShapeUtil::MakeValidatedShape(xla::F32, {32, 256}).value();
+  Shape shape = xla::ShapeUtil::MakeShape(xla::F32, {32, 256});
   HloInstruction* param_0 = computation_builder.AddInstruction(
       HloInstruction::CreateParameter(0, shape, "arg_0"));
   HloInstruction* param_1 = computation_builder.AddInstruction(
       HloInstruction::CreateParameter(1, shape, "arg_1"));
 
   computation_builder.AddInstruction(CreateTritonCustomCall(
-      ShapeUtil::MakeValidatedTupleShape({shape, std::move(shape)}).value(),
-      param_0, param_1, kMLIRTextWithTMAAttributes, kCallName));
+      ShapeUtil::MakeTupleShape({shape, std::move(shape)}), param_0, param_1,
+      kMLIRTextWithTMAAttributes, kCallName));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(computation_builder.Build());
@@ -224,9 +223,8 @@ TEST_F(GpuIrEmitterUnnestedTest, CanNotEmitTritonCustomCallOnPreAmpereGpu) {
   HloComputation::Builder computation_builder(TestName());
 
   // Create parameters and custom call in the computation builder.
-  Shape scalar_shape = ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
-  Shape tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({scalar_shape, scalar_shape}).value();
+  Shape scalar_shape = xla::ShapeUtil::MakeShape(xla::F32, {});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({scalar_shape, scalar_shape});
 
   HloInstruction* param_0 = computation_builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape, "arg_0"));
@@ -255,9 +253,8 @@ TEST_F(GpuIrEmitterUnnestedTest, FailGracefullyIfTritonModuleIsNotParseable) {
 
   HloComputation::Builder computation_builder(TestName());
 
-  Shape scalar_shape = ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
-  Shape tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({scalar_shape, scalar_shape}).value();
+  Shape scalar_shape = xla::ShapeUtil::MakeShape(xla::F32, {});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({scalar_shape, scalar_shape});
 
   HloInstruction* param_0 = computation_builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape, "arg_0"));
@@ -282,9 +279,8 @@ TEST_F(GpuIrEmitterUnnestedTest, FailGracefullyIfCallNameIsInvalid) {
 
   HloComputation::Builder computation_builder(TestName());
 
-  Shape scalar_shape = ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
-  Shape tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({scalar_shape, scalar_shape}).value();
+  Shape scalar_shape = xla::ShapeUtil::MakeShape(xla::F32, {});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({scalar_shape, scalar_shape});
 
   HloInstruction* param_0 = computation_builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape, "arg_0"));
@@ -330,9 +326,8 @@ TEST_F(TritonCustomCallTest, NoArgumentDeduplication) {
 
   HloComputation::Builder computation_builder(TestName());
 
-  Shape scalar_shape = ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
-  Shape tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({scalar_shape, scalar_shape}).value();
+  Shape scalar_shape = xla::ShapeUtil::MakeShape(xla::F32, {});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({scalar_shape, scalar_shape});
 
   HloInstruction* param_0 = computation_builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape, "arg_0"));

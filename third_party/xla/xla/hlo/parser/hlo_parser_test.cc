@@ -4482,7 +4482,7 @@ ENTRY %entrycomp (p: f32[2,2]) -> f32[2,2] {
 TEST_F(HloParserTest, ParseShapeStringR2F32) {
   std::string shape_string = "f32[123,456]";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
-  Shape expected = ShapeUtil::MakeValidatedShape(F32, {123, 456}).value();
+  Shape expected = ShapeUtil::MakeShape(F32, {123, 456});
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual:   " << ShapeUtil::HumanString(actual);
@@ -4491,9 +4491,8 @@ TEST_F(HloParserTest, ParseShapeStringR2F32) {
 TEST_F(HloParserTest, ParseShapeStringUnbounded) {
   std::string shape_string = "f32[?,784]";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
-  Shape expected = ShapeUtil::MakeValidatedShape(
-                       F32, {Shape::kUnboundedSize, 784}, {true, false})
-                       .value();
+  Shape expected =
+      ShapeUtil::MakeShape(F32, {Shape::kUnboundedSize, 784}, {true, false});
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual:   " << ShapeUtil::HumanString(actual);
@@ -4502,10 +4501,9 @@ TEST_F(HloParserTest, ParseShapeStringUnbounded) {
 TEST_F(HloParserTest, ParseShapeStringTupleOfArrays) {
   std::string shape_string = "(f32[1572864],s8[5120,1024])";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
-  Shape expected = ShapeUtil::MakeValidatedTupleShape(
-                       {ShapeUtil::MakeShape(F32, {1572864}),
-                        ShapeUtil::MakeShape(S8, {5120, 1024})})
-                       .value();
+  Shape expected =
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {1572864}),
+                                 ShapeUtil::MakeShape(S8, {5120, 1024})});
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual:   " << ShapeUtil::HumanString(actual);
@@ -4514,16 +4512,13 @@ TEST_F(HloParserTest, ParseShapeStringTupleOfArrays) {
 TEST_F(HloParserTest, ParseShapeStringNestedTuple) {
   std::string shape_string = "(f32[1],(f32[2], token[]), opaque[], f32[3])";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
-  Shape expected =
-      ShapeUtil::MakeValidatedTupleShape(
-          {
-              ShapeUtil::MakeShape(F32, {1}),
-              ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {2}),
-                                         ShapeUtil::MakeTokenShape()}),
-              ShapeUtil::MakeOpaqueShape(),
-              ShapeUtil::MakeShape(F32, {3}),
-          })
-          .value();
+  Shape expected = ShapeUtil::MakeTupleShape({
+      ShapeUtil::MakeShape(F32, {1}),
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(F32, {2}), ShapeUtil::MakeTokenShape()}),
+      ShapeUtil::MakeOpaqueShape(),
+      ShapeUtil::MakeShape(F32, {3}),
+  });
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual:   " << ShapeUtil::HumanString(actual);
@@ -4686,8 +4681,7 @@ TEST_F(HloParserTest, ParseInvalidShapeString) {
 TEST_F(HloParserTest, ParseDynamicArray) {
   std::string shape_string = "f32[123,<=456]";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
-  Shape expected =
-      ShapeUtil::MakeValidatedShape(F32, {123, 456}, {false, true}).value();
+  Shape expected = ShapeUtil::MakeShape(F32, {123, 456}, {false, true});
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual:   " << ShapeUtil::HumanString(actual);
@@ -4696,10 +4690,9 @@ TEST_F(HloParserTest, ParseDynamicArray) {
 TEST_F(HloParserTest, ParseDynamicTuple) {
   std::string shape_string = "(f32[42], u32[<=123,<=456])";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
-  Shape expected = ShapeUtil::MakeValidatedTupleShape(
-                       {ShapeUtil::MakeShape(F32, {42}),
-                        ShapeUtil::MakeShape(U32, {123, 456}, {true, true})})
-                       .value();
+  Shape expected = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {42}),
+       ShapeUtil::MakeShape(U32, {123, 456}, {true, true})});
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual:   " << ShapeUtil::HumanString(actual);
@@ -4857,7 +4850,7 @@ ENTRY InferTernaryShape {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
   EXPECT_TRUE(ShapeUtil::Equal(
       module->entry_computation()->ComputeProgramShape().result(),
-      ShapeUtil::MakeValidatedScalarShape(S32).value()));
+      ShapeUtil::MakeScalarShape(S32)));
 }
 
 TEST_F(HloParserTest, TupleTypo) {
@@ -4884,7 +4877,7 @@ ENTRY InferDotShape {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
   EXPECT_TRUE(ShapeUtil::Equal(
       module->entry_computation()->ComputeProgramShape().result(),
-      ShapeUtil::MakeValidatedShape(F32, {2}, {0}).value()));
+      ShapeUtil::MakeShape(F32, {2}, {0})));
 }
 
 TEST_F(HloParserTest, InferSparseDotShape) {
@@ -4899,7 +4892,7 @@ ENTRY InferSparseDotShape {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
   EXPECT_TRUE(ShapeUtil::Equal(
       module->entry_computation()->ComputeProgramShape().result(),
-      ShapeUtil::MakeValidatedShape(F32, {2}, {0}).value()));
+      ShapeUtil::MakeShape(F32, {2}, {0})));
 }
 
 TEST_F(HloParserTest, InferTupleShape) {
@@ -4940,7 +4933,7 @@ ENTRY InferUnaryShape {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
   EXPECT_TRUE(ShapeUtil::Equal(
       module->entry_computation()->ComputeProgramShape().result(),
-      ShapeUtil::MakeValidatedScalarShape(F32).value()));
+      ShapeUtil::MakeScalarShape(F32)));
 }
 
 TEST_F(HloParserTest, CheckAliasPassthroughParams) {

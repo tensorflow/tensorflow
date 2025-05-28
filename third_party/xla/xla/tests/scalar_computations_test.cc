@@ -167,8 +167,7 @@ XLA_TEST_F(ScalarComputationsTest, SubtractTwoScalarsS32) {
 
 XLA_TEST_F(ScalarComputationsTest, CastS64ToF32) {
   XlaBuilder builder(TestName());
-  auto a = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(S64, {}).value(), "a");
+  auto a = Parameter(&builder, 0, ShapeUtil::MakeShape(S64, {}), "a");
   ConvertElementType(a, F32);
 
   int64_t value = 3LL << 35;
@@ -373,10 +372,9 @@ XLA_TEST_F(ScalarComputationsTest, DivU32s) {
     XlaBuilder builder(TestName());
 
     XlaOp dividend =
-        Parameter(&builder, 0, ShapeUtil::MakeValidatedShape(U32, {}).value(),
-                  "dividend");
-    XlaOp divisor = Parameter(
-        &builder, 1, ShapeUtil::MakeValidatedShape(U32, {}).value(), "divisor");
+        Parameter(&builder, 0, ShapeUtil::MakeShape(U32, {}), "dividend");
+    XlaOp divisor =
+        Parameter(&builder, 1, ShapeUtil::MakeShape(U32, {}), "divisor");
     Div(dividend, divisor);
     TF_ASSERT_OK_AND_ASSIGN(div_computation, builder.Build());
   }
@@ -412,10 +410,9 @@ XLA_TEST_F(ScalarComputationsTest, RemU32s) {
     XlaBuilder builder(TestName());
 
     XlaOp dividend =
-        Parameter(&builder, 0, ShapeUtil::MakeValidatedShape(U32, {}).value(),
-                  "dividend");
-    XlaOp divisor = Parameter(
-        &builder, 1, ShapeUtil::MakeValidatedShape(U32, {}).value(), "divisor");
+        Parameter(&builder, 0, ShapeUtil::MakeShape(U32, {}), "dividend");
+    XlaOp divisor =
+        Parameter(&builder, 1, ShapeUtil::MakeShape(U32, {}), "divisor");
     Rem(dividend, divisor);
     TF_ASSERT_OK_AND_ASSIGN(rem_computation, builder.Build());
   }
@@ -441,8 +438,7 @@ XLA_TEST_F(ScalarComputationsTest, RemU32s) {
 
 XLA_TEST_F(ScalarComputationsTest, RemainderTwoScalarsNonConstDividendS32) {
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(S32, {}).value(), "x");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(S32, {}), "x");
   Rem(x, ConstantR0<int32_t>(&builder, 80000));
 
   Literal literal = LiteralUtil::CreateR0<int32_t>(87919);

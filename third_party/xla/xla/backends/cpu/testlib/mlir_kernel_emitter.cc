@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
-#include "xla/codegen/mlir_kernel_definition.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/work_group.h"
@@ -34,22 +33,21 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::cpu {
-MlirTestKernelEmitter::MlirTestKernelEmitter(absl::string_view mlir,
-                                             absl::string_view kernel_name,
-                                             NumWorkGroups num_workgroups,
-                                             absl::Span<const KernelArg> args)
+MlirKernelEmitter::MlirKernelEmitter(absl::string_view mlir,
+                                     absl::string_view kernel_name,
+                                     NumWorkGroups num_workgroups,
+                                     absl::Span<const KernelArg> args)
     : mlir_(mlir),
       kernel_name_(kernel_name),
       num_workgroups_(num_workgroups),
       args_(args.begin(), args.end()) {
-  for (const MlirTestKernelEmitter::KernelArg& arg : args_) {
+  for (const MlirKernelEmitter::KernelArg& arg : args_) {
     buffer_allocations_.emplace_back(buffer_allocations_.size(), arg.size_bytes,
                                      /*color=*/0);
   }
 }
 
-absl::StatusOr<MlirKernelDefinition>
-MlirTestKernelEmitter::EmitKernelDefinition() {
+absl::StatusOr<KernelDefinition> MlirKernelEmitter::EmitKernelDefinition() {
   std::unique_ptr<mlir::MLIRContext> context = FusionCompiler::CreateContext();
 
   TF_ASSIGN_OR_RETURN(
@@ -72,6 +70,8 @@ MlirTestKernelEmitter::EmitKernelDefinition() {
   KernelSpec kernel_spec(kernel_name_, num_workgroups_,
                          std::move(argument_buffers), std::move(result_buffers),
                          /*invariant_arguments=*/{});
-  return MlirKernelDefinition(std::move(kernel_spec), std::move(source));
+  return KernelDefinition(
+      std::move(kernel_spec),
+      std::make_unique<MlirKernelSource>(std::move(source)));
 }
 }  // namespace xla::cpu

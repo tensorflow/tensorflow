@@ -72,8 +72,7 @@ TEST_F(ReplicatedIOFeedTest, InfeedAndOutfeed) {
     opts.infeed_values.push_back(&infeed_literals[i]);
   }
   opts.infeed_steps = 1;
-  opts.outfeed_shape =
-      ShapeUtil::MakeValidatedScalarShape(PrimitiveType::U32).value();
+  opts.outfeed_shape = ShapeUtil::MakeScalarShape(PrimitiveType::U32);
   opts.outfeed_values = &outfeed_literals;
   opts.use_threads = true;
 

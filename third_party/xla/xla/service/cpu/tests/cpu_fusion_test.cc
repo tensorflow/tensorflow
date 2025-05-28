@@ -151,12 +151,12 @@ TEST_F(CpuFusionTest, ElementwiseOpChainWithNonfusibleInstruction) {
   auto ceil = builder.AddInstruction(
       HloInstruction::CreateUnary(vshape, HloOpcode::kCeil, negate));
 
-  auto cshape = ShapeUtil::MakeValidatedShape(F32, {6}).value();
+  auto cshape = ShapeUtil::MakeShape(F32, {6});
   auto concatenate = builder.AddInstruction(
       HloInstruction::CreateConcatenate(cshape, {ceil, ceil}, /*dimension=*/0));
 
   // Build an x+y computation to use in a reduce.
-  Shape r0f32 = ShapeUtil::MakeValidatedShape(F32, {}).value();
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
   auto embedded_builder = HloComputation::Builder("f32+f32");
   embedded_builder.AddInstruction(HloInstruction::CreateBinary(
       r0f32, HloOpcode::kAdd,

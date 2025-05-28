@@ -24,8 +24,7 @@ namespace {
 class DummyInstruction : public HloInstruction {
  public:
   DummyInstruction()
-      : HloInstruction(HloOpcode::kConstant,
-                       ShapeUtil::MakeValidatedShape(F32, {}).value()) {}
+      : HloInstruction(HloOpcode::kConstant, ShapeUtil::MakeShape(F32, {})) {}
 
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kConstant;
@@ -35,8 +34,7 @@ class DummyInstruction : public HloInstruction {
 class AnotherDummyInstruction : public HloInstruction {
  public:
   AnotherDummyInstruction()
-      : HloInstruction(HloOpcode::kParameter,
-                       ShapeUtil::MakeValidatedShape(F32, {}).value()) {}
+      : HloInstruction(HloOpcode::kParameter, ShapeUtil::MakeShape(F32, {})) {}
 
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kParameter;

@@ -54,7 +54,7 @@ std::string Explain(
 // This file tests the GmockMatch function.  The actual explanation and
 // description returned by matchers is tested in pattern_matchers_test.
 TEST(PatternMatcherGmock, MatchShape) {
-  Shape s = ShapeUtil::MakeValidatedShape(F32, {10, 100}).value();
+  Shape s = ShapeUtil::MakeShape(F32, {10, 100});
   // You can pass const Shape& or a const Shape*.
   EXPECT_THAT(s, GmockMatch(m::Shape()));
   EXPECT_THAT(&s, Not(GmockMatch(m::Shape().WithElementType(F16))));
@@ -68,8 +68,8 @@ TEST(PatternMatcherGmock, MatchLayout) {
 }
 
 TEST(PatternMatchGmock, MatchInstruction) {
-  auto instr = HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeValidatedShape(F32, {42}).value(), "p");
+  auto instr =
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {42}), "p");
   EXPECT_THAT(instr.get(), GmockMatch(m::Parameter()));
   EXPECT_THAT(*instr, GmockMatch(m::Parameter(0)));
   EXPECT_THAT(*instr, Not(GmockMatch(m::Parameter(1))));

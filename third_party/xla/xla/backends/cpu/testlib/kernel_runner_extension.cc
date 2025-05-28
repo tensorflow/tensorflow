@@ -41,15 +41,15 @@ limitations under the License.
 #include "xla/backends/cpu/testlib/llvm_ir_kernel_emitter.h"
 #include "xla/backends/cpu/testlib/mlir_kernel_emitter.h"
 #include "xla/codegen/kernel_definition.h"
+#include "xla/codegen/kernel_emitter.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
-#include "xla/codegen/llvm_kernel_emitter.h"
-#include "xla/codegen/mlir_kernel_definition.h"
-#include "xla/codegen/mlir_kernel_emitter.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/codegen/testlib/kernel_runner.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/fusion_wrapper.h"
@@ -85,30 +85,29 @@ NB_MODULE(_extension, kernel_runner_module) {
   // Use a tuple and cast to NumWorkGroups to take advantage of built in
   // bindings.
   using NbNumWorkGroups = std::tuple<uint64_t, uint64_t, uint64_t>;
-  nb::class_<LlvmTestKernelEmitter, LlvmKernelEmitter>(kernel_runner_module,
-                                                       "LlvmTestKernelEmitter")
-      .def("__init__", [](LlvmKernelEmitter* self, absl::string_view ir,
-                          absl::string_view kernel_name,
-                          NbNumWorkGroups num_workgroups) {
-        new (self)
-            LlvmTestKernelEmitter(ir, kernel_name,
-                                  NumWorkGroups{std::get<0>(num_workgroups),
-                                                std::get<1>(num_workgroups),
-                                                std::get<2>(num_workgroups)},
-                                  {});
-      });
+  nb::class_<LlvmIrKernelEmitter, KernelEmitter>(kernel_runner_module,
+                                                 "LlvmIrKernelEmitter")
+      .def("__init__",
+           [](LlvmIrKernelEmitter* self, absl::string_view ir,
+              absl::string_view kernel_name, NbNumWorkGroups num_workgroups) {
+             new (self)
+                 LlvmIrKernelEmitter(ir, kernel_name,
+                                     NumWorkGroups{std::get<0>(num_workgroups),
+                                                   std::get<1>(num_workgroups),
+                                                   std::get<2>(num_workgroups)},
+                                     {});
+           });
 
-  nb::class_<MlirTestKernelEmitter, MlirKernelEmitter>(kernel_runner_module,
-                                                       "MlirTestKernelEmitter")
+  nb::class_<MlirKernelEmitter, KernelEmitter>(kernel_runner_module,
+                                               "MlirKernelEmitter")
       .def("__init__", [](MlirKernelEmitter* self, absl::string_view ir,
                           absl::string_view kernel_name,
                           NbNumWorkGroups num_workgroups) {
-        new (self)
-            MlirTestKernelEmitter(ir, kernel_name,
-                                  NumWorkGroups{std::get<0>(num_workgroups),
-                                                std::get<1>(num_workgroups),
-                                                std::get<2>(num_workgroups)},
-                                  {});
+        new (self) MlirKernelEmitter(ir, kernel_name,
+                                     NumWorkGroups{std::get<0>(num_workgroups),
+                                                   std::get<1>(num_workgroups),
+                                                   std::get<2>(num_workgroups)},
+                                     {});
       });
 
   kernel_runner_module.def("lower_to_llvm", [](MlirKernelSource& source) {
@@ -156,36 +155,36 @@ NB_MODULE(_extension, kernel_runner_module) {
                                     "TargetMachineFeatures")
       .def("__str__", &TargetMachineFeatures::get_target_feature_string);
 
-  nb::class_<ElementalKernelEmitter, LlvmKernelEmitter>(
-      kernel_runner_module, "ElementalKernelEmitter")
+  nb::class_<ElementalKernelEmitter, KernelEmitter>(kernel_runner_module,
+                                                    "ElementalKernelEmitter")
       .def(nb::init<const HloInstruction*, const BufferAssignment*,
                     const TargetMachineFeatures*>(),
            nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
            nb::keep_alive<1, 4>());
 
-  nb::class_<DotKernelEmitter, LlvmKernelEmitter>(kernel_runner_module,
-                                                  "DotKernelEmitter")
+  nb::class_<DotKernelEmitter, KernelEmitter>(kernel_runner_module,
+                                              "DotKernelEmitter")
       .def(nb::init<const HloInstruction*, const BufferAssignment*,
                     const TargetMachineFeatures*>(),
            nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
            nb::keep_alive<1, 4>());
 
-  nb::class_<ConcatenateKernelEmitter, LlvmKernelEmitter>(
+  nb::class_<ConcatenateKernelEmitter, KernelEmitter>(
       kernel_runner_module, "ConcatenateKernelEmitter")
       .def(nb::init<const HloInstruction*, const BufferAssignment*,
                     const TargetMachineFeatures*>(),
            nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
            nb::keep_alive<1, 4>());
 
-  nb::class_<ComputationKernelEmitter, LlvmKernelEmitter>(
+  nb::class_<ComputationKernelEmitter, KernelEmitter>(
       kernel_runner_module, "ComputationKernelEmitter")
       .def(nb::init<const HloInstruction*, const BufferAssignment*,
                     const TargetMachineFeatures*>(),
            nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
            nb::keep_alive<1, 4>());
 
-  nb::class_<CpuScatterFusion, MlirKernelEmitter>(kernel_runner_module,
-                                                  "ScatterKernelEmitter")
+  nb::class_<CpuScatterFusion, KernelEmitter>(kernel_runner_module,
+                                              "ScatterKernelEmitter")
       .def(
           "__init__",
           [](CpuScatterFusion* self, const HloFusionInstruction* instruction,
@@ -220,8 +219,7 @@ NB_MODULE(_extension, kernel_runner_module) {
                                               "KernelRunner")
       .def_static(
           "create",
-          [](std::unique_ptr<MlirKernelDefinition,
-                             nb::deleter<MlirKernelDefinition>>
+          [](std::unique_ptr<KernelDefinition, nb::deleter<KernelDefinition>>
                  kernel_definition,
              std::unique_ptr<JitCompiler, nb::deleter<JitCompiler>>
                  jit_compiler) {
@@ -229,25 +227,10 @@ NB_MODULE(_extension, kernel_runner_module) {
                 std::move(*kernel_definition), std::move(*jit_compiler));
 
             if (!runner.ok()) {
-              throw std::runtime_error(std::string(runner.status().ToString()));
+              throw std::runtime_error(std::string(runner.status().message()));
             }
 
-            return *std::move(runner);
-          })
-      .def_static(
-          "create", [](std::unique_ptr<LlvmKernelDefinition,
-                                       nb::deleter<LlvmKernelDefinition>>
-                           kernel_definition,
-                       std::unique_ptr<JitCompiler, nb::deleter<JitCompiler>>
-                           jit_compiler) {
-            absl::StatusOr<KernelRunner> runner = KernelRunner::Create(
-                std::move(*kernel_definition), std::move(*jit_compiler));
-
-            if (!runner.ok()) {
-              throw std::runtime_error(std::string(runner.status().ToString()));
-            }
-
-            return *std::move(runner);
+            return std::move(runner).value();
           });
 
   kernel_runner_module.def(

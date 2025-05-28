@@ -475,7 +475,7 @@ absl::Status DynamicDimensionInferenceVisitor::HandleCustomCall(
       if (hlo->operand(0)->shape().is_dynamic_dimension(i)) {
         HloInstruction* dynamic_size =
             hlo->parent()->AddInstruction(HloInstruction::CreateGetTupleElement(
-                ShapeUtil::MakeValidatedScalarShape(S32).value(), hlo, i + 1));
+                ShapeUtil::MakeScalarShape(S32), hlo, i + 1));
         // PadToStatic converts a dynamic dimension to static dimension. It then
         // returns the padded data output and the dynamic sizes of input
         // dimensions.
@@ -1071,11 +1071,11 @@ DynamicDimensionInferenceVisitor::HandleDynamicConvolutionInputGrad(
                hlo->shape().dimensions().size())
       << hlo->ToString();
   // Slice to get corresponding input size.
-  HloInstruction* slice = comp->AddInstruction(HloInstruction::CreateSlice(
-      ShapeUtil::MakeValidatedShape(S32, {1}).value(), input_sizes, {dimension},
-      {dimension + 1}, {1}));
-  HloInstruction* reshape = comp->AddInstruction(HloInstruction::CreateReshape(
-      ShapeUtil::MakeValidatedScalarShape(S32).value(), slice));
+  HloInstruction* slice = comp->AddInstruction(
+      HloInstruction::CreateSlice(ShapeUtil::MakeShape(S32, {1}), input_sizes,
+                                  {dimension}, {dimension + 1}, {1}));
+  HloInstruction* reshape = comp->AddInstruction(
+      HloInstruction::CreateReshape(ShapeUtil::MakeScalarShape(S32), slice));
   SetDynamicSize(hlo, {}, dimension, reshape);
   return absl::OkStatus();
 }
@@ -1195,41 +1195,41 @@ absl::Status DynamicDimensionInferenceVisitor::HandleElementwiseNary(
 
         auto operand_needs_broadcast =
             comp->AddInstruction(HloInstruction::CreateCompare(
-                ShapeUtil::MakeValidatedShape(PRED, {}).value(), dynamic_size,
-                existing_size, ComparisonDirection::kLt));
+                ShapeUtil::MakeShape(PRED, {}), dynamic_size, existing_size,
+                ComparisonDirection::kLt));
         auto is_one = comp->AddInstruction(HloInstruction::CreateCompare(
-            ShapeUtil::MakeValidatedShape(PRED, {}).value(), dynamic_size, one,
+            ShapeUtil::MakeShape(PRED, {}), dynamic_size, one,
             ComparisonDirection::kEq));
         operand_needs_broadcast =
             comp->AddInstruction(HloInstruction::CreateBinary(
-                ShapeUtil::MakeValidatedShape(PRED, {}).value(),
-                HloOpcode::kAnd, is_one, operand_needs_broadcast));
+                ShapeUtil::MakeShape(PRED, {}), HloOpcode::kAnd, is_one,
+                operand_needs_broadcast));
 
         auto existing_needs_broadcast =
             comp->AddInstruction(HloInstruction::CreateCompare(
-                ShapeUtil::MakeValidatedShape(PRED, {}).value(), existing_size,
-                dynamic_size, ComparisonDirection::kLt));
+                ShapeUtil::MakeShape(PRED, {}), existing_size, dynamic_size,
+                ComparisonDirection::kLt));
         is_one = comp->AddInstruction(HloInstruction::CreateCompare(
-            ShapeUtil::MakeValidatedShape(PRED, {}).value(), existing_size, one,
+            ShapeUtil::MakeShape(PRED, {}), existing_size, one,
             ComparisonDirection::kEq));
         existing_needs_broadcast =
             comp->AddInstruction(HloInstruction::CreateBinary(
-                ShapeUtil::MakeValidatedShape(PRED, {}).value(),
-                HloOpcode::kAnd, is_one, existing_needs_broadcast));
+                ShapeUtil::MakeShape(PRED, {}), HloOpcode::kAnd, is_one,
+                existing_needs_broadcast));
 
         auto needs_broadcast =
             comp->AddInstruction(HloInstruction::CreateBinary(
-                ShapeUtil::MakeValidatedShape(PRED, {}).value(), HloOpcode::kOr,
+                ShapeUtil::MakeShape(PRED, {}), HloOpcode::kOr,
                 operand_needs_broadcast, existing_needs_broadcast));
         auto max_size = comp->AddInstruction(HloInstruction::CreateBinary(
-            ShapeUtil::MakeValidatedScalarShape(S32).value(),
-            HloOpcode::kMaximum, dynamic_size, existing_size));
+            ShapeUtil::MakeScalarShape(S32), HloOpcode::kMaximum, dynamic_size,
+            existing_size));
         auto min_size = comp->AddInstruction(HloInstruction::CreateBinary(
-            ShapeUtil::MakeValidatedScalarShape(S32).value(),
-            HloOpcode::kMinimum, dynamic_size, existing_size));
+            ShapeUtil::MakeScalarShape(S32), HloOpcode::kMinimum, dynamic_size,
+            existing_size));
         auto select_size = comp->AddInstruction(HloInstruction::CreateTernary(
-            ShapeUtil::MakeValidatedScalarShape(S32).value(),
-            HloOpcode::kSelect, needs_broadcast, max_size, min_size));
+            ShapeUtil::MakeScalarShape(S32), HloOpcode::kSelect,
+            needs_broadcast, max_size, min_size));
         existing_sizes[dimension] = select_size;
       }
     }
@@ -2127,8 +2127,8 @@ absl::Status DynamicDimensionInferenceVisitor::HandleConditional(
           int64_t output_index = iter.second;
           HloInstruction* dynamic_size = hlo->parent()->AddInstruction(
               HloInstruction::CreateGetTupleElement(
-                  ShapeUtil::MakeValidatedScalarShape(S32).value(),
-                  new_conditional, output_index));
+                  ShapeUtil::MakeScalarShape(S32), new_conditional,
+                  output_index));
           SetDynamicSize(new_conditional, index, dim, dynamic_size,
                          /*clear_dynamic_dimension=*/false);
           SetDynamicSize(new_conditional_extracted, index, dim, dynamic_size,
@@ -2568,12 +2568,10 @@ absl::Status DynamicDimensionInferenceVisitor::InsertPadToStaticOnInstruction(
           // for i-1th input dimension.
           Shape data_output_shape =
               ShapeUtil::MakeStaticShape(element->shape());  // 0th element.
-          Shape output_shape =
-              ShapeUtil::MakeValidatedTupleShape({data_output_shape}).value();
+          Shape output_shape = ShapeUtil::MakeTupleShape({data_output_shape});
           for (int64_t i = 0; i < element->shape().dimensions().size(); ++i) {
-            ShapeUtil::AppendShapeToTuple(
-                ShapeUtil::MakeValidatedScalarShape(S32).value(),
-                &output_shape);
+            ShapeUtil::AppendShapeToTuple(ShapeUtil::MakeScalarShape(S32),
+                                          &output_shape);
           }
           HloInstruction* pad_to_static = inst->parent()->AddInstruction(
               HloInstruction::CreateCustomCall(output_shape, {element},
@@ -2786,10 +2784,10 @@ absl::Status DynamicDimensionInference::AnalyzeDynamicDimensions() {
 
 void DynamicDimensionInference::ReplaceAllDynamicDimensionUsesWith(
     HloInstruction* replace, HloInstruction* with) {
-  CHECK(Shape::Equal().IgnoreLayout()(
-      replace->shape(), ShapeUtil::MakeValidatedScalarShape(S32).value()));
-  CHECK(Shape::Equal().IgnoreLayout()(
-      with->shape(), ShapeUtil::MakeValidatedScalarShape(S32).value()));
+  CHECK(Shape::Equal().IgnoreLayout()(replace->shape(),
+                                      ShapeUtil::MakeScalarShape(S32)));
+  CHECK(Shape::Equal().IgnoreLayout()(with->shape(),
+                                      ShapeUtil::MakeScalarShape(S32)));
   for (auto& kv : dynamic_mapping_) {
     if (kv.second == replace) {
       kv.second = with;

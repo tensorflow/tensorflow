@@ -396,8 +396,7 @@ TEST_F(BufferComparatorTest, BF16) {
       stream_exec_->AllocateArray<Eigen::bfloat16>(element_count));
   InitializeBuffer(stream.get(), BF16, &rng_state, rhs.memory());
 
-  BufferComparator comparator(
-      ShapeUtil::MakeValidatedShape(BF16, {element_count}).value());
+  BufferComparator comparator(ShapeUtil::MakeShape(BF16, {element_count}));
   EXPECT_FALSE(comparator.CompareEqual(stream.get(), lhs.memory(), rhs.memory())
                    .value());
 }

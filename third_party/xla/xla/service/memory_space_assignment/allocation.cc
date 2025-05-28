@@ -399,11 +399,10 @@ absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn) {
   if (sync_mem_op_ != nullptr && sync_mem_op_->opcode() != HloOpcode::kCopy) {
     if (sync_mem_op_->opcode() == HloOpcode::kSlice ||
         sync_mem_op_->opcode() == HloOpcode::kDynamicSlice) {
-      TF_ASSIGN_OR_RETURN(
-          copy_done_,
-          computation->CreateAsyncInstructions(
-              sync_mem_op_, {ShapeUtil::MakeValidatedShape(S32, {}).value()},
-              HloInstruction::kMainExecutionThread, false));
+      TF_ASSIGN_OR_RETURN(copy_done_,
+                          computation->CreateAsyncInstructions(
+                              sync_mem_op_, {ShapeUtil::MakeShape(S32, {})},
+                              HloInstruction::kMainExecutionThread, false));
     } else {
       return Internal("Sync mem op is not a copy, slice, or dynamic slice.");
     }
@@ -425,9 +424,8 @@ absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn) {
       dest_shape.mutable_layout()->clear_split_configs();
     }
     copy_start_ = computation->AddInstruction(HloInstruction::CreateCopyStart(
-        ShapeUtil::MakeValidatedTupleShape(
-            {dest_shape, shape, ShapeUtil::MakeShape(U32, {})})
-            .value(),
+        ShapeUtil::MakeTupleShape(
+            {dest_shape, shape, ShapeUtil::MakeShape(U32, {})}),
         producing_instruction, cross_program_prefetch_index()));
     copy_done_ = computation->AddInstruction(HloInstruction::CreateUnary(
         dest_shape, HloOpcode::kCopyDone, copy_start_));
@@ -807,9 +805,8 @@ absl::Status SlicedCopyAllocation::SliceDetail::CreateAsyncSlice(
   HloInstruction* slice = parent.AddInstruction(
       HloInstruction::CreateSlice(slice_decision.sizing.slice_shape, &producer,
                                   start_indices, limit_indices, strides));
-  TF_ASSIGN_OR_RETURN(
-      copy_done, parent.CreateAsyncInstructions(
-                     slice, {ShapeUtil::MakeValidatedShape(S32, {}).value()}));
+  TF_ASSIGN_OR_RETURN(copy_done, parent.CreateAsyncInstructions(
+                                     slice, {ShapeUtil::MakeShape(S32, {})}));
   copy_start = copy_done->mutable_operand(0);
 
   return absl::OkStatus();
@@ -993,16 +990,14 @@ absl::Status WindowPrefetchedAllocation::InsertWindowPrefetchInstruction(
     HloInstruction* producing_instruction, HloInstruction* use_instruction,
     HloComputation* computation) {
   // Derive the shape for window buffer.
-  Shape buffer_shape =
-      ShapeUtil::MakeValidatedShape(U8, {options_.bytes}).value();
+  Shape buffer_shape = ShapeUtil::MakeShape(U8, {options_.bytes});
   Layout layout = LayoutUtil::MakeLayout({0});
   layout.set_memory_space(options_.alternate_memory_space);
   *buffer_shape.mutable_layout() = layout;
   // Sync flag shape
-  Shape sflag_shape = ShapeUtil::MakeValidatedShape(S32, {}).value();
+  Shape sflag_shape = ShapeUtil::MakeShape(S32, {});
   // Output shape of the WindowPrefetch op.
-  Shape output_shape =
-      ShapeUtil::MakeValidatedTupleShape({buffer_shape, sflag_shape}).value();
+  Shape output_shape = ShapeUtil::MakeTupleShape({buffer_shape, sflag_shape});
 
   // Insert WindowPrefetch op.
   HloInstruction* custom_call =

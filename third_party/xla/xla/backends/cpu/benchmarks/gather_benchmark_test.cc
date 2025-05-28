@@ -54,9 +54,8 @@ static void BM_GatherS32(benchmark::State& state, HloBenchmarkOptions options) {
 
   std::minstd_rand0 engine;
 
-  auto operand_shape = ShapeUtil::MakeValidatedShape(S32, {d0, d1}).value();
-  auto indices_shape =
-      ShapeUtil::MakeValidatedShape(S32, {slice_size, 1}).value();
+  auto operand_shape = ShapeUtil::MakeShape(S32, {d0, d1});
+  auto indices_shape = ShapeUtil::MakeShape(S32, {slice_size, 1});
   auto operand = *LiteralUtil::CreateRandomLiteral<S32>(
       operand_shape, &engine, /*mean=*/50, /*stddev=*/10);
 
