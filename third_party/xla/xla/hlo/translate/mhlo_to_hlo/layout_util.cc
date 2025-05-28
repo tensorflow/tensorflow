@@ -58,8 +58,9 @@ absl::Status RewriteLayoutWithShardedShape(
     for (int64_t i = 0; i < xla_shape->dimensions().size(); ++i) {
       dimensions[i] = limit[i] - offset[i];
     }
-    xla::Shape per_device_xla_shape =
-        xla::ShapeUtil::MakeShape(xla_shape->element_type(), dimensions);
+    xla::Shape per_device_xla_shape = xla::ShapeUtil::MakeValidatedShape(
+                                          xla_shape->element_type(), dimensions)
+                                          .value();
     TF_ASSIGN_OR_RETURN(auto layout_preference,
                         layout_preference_fn
                             ? layout_preference_fn(per_device_xla_shape)

@@ -207,8 +207,8 @@ struct type_caster<xla::BorrowingLiteral> {
         buffers.push_back(c->buf_ptr);
         shapes.push_back(c->shape);
       }
-      value = xla::BorrowingLiteral(buffers,
-                                    xla::ShapeUtil::MakeTupleShape(shapes));
+      value = xla::BorrowingLiteral(
+          buffers, xla::ShapeUtil::MakeValidatedTupleShape(shapes).value());
     } else {
       auto c = xla::CastToArray(input);
       if (!c) {

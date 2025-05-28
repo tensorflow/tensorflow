@@ -29,7 +29,7 @@ namespace xla {
 namespace {
 
 std::unique_ptr<HloInstruction> CreateCP() {
-  Shape shape = ShapeUtil::MakeShape(F32, {4, 4});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {4, 4}).value();
   std::unique_ptr<HloInstruction> p0 =
       HloInstruction::CreateParameter(0, shape, "param");
   std::unique_ptr<HloInstruction> cp =

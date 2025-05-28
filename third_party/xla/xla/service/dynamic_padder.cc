@@ -313,9 +313,11 @@ HloInstruction* PadWithScalar(HloInstruction* inst, int64_t dim,
   CHECK(inst != nullptr && dynamic_size != nullptr &&
         padding_scalar != nullptr);
   const Shape mask_shape =
-      ShapeUtil::MakeShape(xla::S32, inst->shape().dimensions());
+      ShapeUtil::MakeValidatedShape(xla::S32, inst->shape().dimensions())
+          .value();
   const Shape pred_shape =
-      ShapeUtil::MakeShape(xla::PRED, inst->shape().dimensions());
+      ShapeUtil::MakeValidatedShape(xla::PRED, inst->shape().dimensions())
+          .value();
   HloInstruction* iota =
       inst->AddInstruction(HloInstruction::CreateIota(mask_shape, dim));
 
@@ -344,9 +346,13 @@ HloInstruction* GenerateBinaryMask(
   Shape output_shape =
       split_input ? reshape->shape() : reshape->operand(0)->shape();
   const Shape mask_input_shape =
-      ShapeUtil::MakeShape(xla::S32, {input_shape.dimensions(input_dim)});
+      ShapeUtil::MakeValidatedShape(xla::S32,
+                                    {input_shape.dimensions(input_dim)})
+          .value();
   const Shape pred_input_shape =
-      ShapeUtil::MakeShape(xla::PRED, {input_shape.dimensions(input_dim)});
+      ShapeUtil::MakeValidatedShape(xla::PRED,
+                                    {input_shape.dimensions(input_dim)})
+          .value();
   HloInstruction* pred_true = reshape->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
   HloInstruction* input_shape_pred_mask = reshape->AddInstruction(
@@ -498,9 +504,13 @@ absl::StatusOr<bool> RewriteDynamicReshapeSplitInput(
   TF_RET_CHECK(output_dims.size() > 1);
 
   const Shape mask_input_shape =
-      ShapeUtil::MakeShape(xla::S32, {operand_shape.dimensions(input_dim)});
+      ShapeUtil::MakeValidatedShape(xla::S32,
+                                    {operand_shape.dimensions(input_dim)})
+          .value();
   const Shape pred_input_shape =
-      ShapeUtil::MakeShape(xla::PRED, {operand_shape.dimensions(input_dim)});
+      ShapeUtil::MakeValidatedShape(xla::PRED,
+                                    {operand_shape.dimensions(input_dim)})
+          .value();
 
   HloInstruction* zero = reshape->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::Zero(S32)));
@@ -522,9 +532,9 @@ absl::StatusOr<bool> RewriteDynamicReshapeSplitInput(
   auto embedded_builder = HloComputation::Builder("add");
   {
     auto lhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
-        0, ShapeUtil::MakeShape(S32, {}), "lhs"));
+        0, ShapeUtil::MakeValidatedShape(S32, {}).value(), "lhs"));
     auto rhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
-        1, ShapeUtil::MakeShape(S32, {}), "rhs"));
+        1, ShapeUtil::MakeValidatedShape(S32, {}).value(), "rhs"));
     embedded_builder.AddInstruction(
         HloInstruction::CreateBinary(lhs->shape(), HloOpcode::kAdd, lhs, rhs));
   }
@@ -579,8 +589,9 @@ absl::StatusOr<bool> RewriteDynamicReshapeSplitInput(
                                    operand_shape.dimensions().end());
   slice_sizes[input_dim] = 1;
   HloInstruction* gather = reshape->AddInstruction(HloInstruction::CreateGather(
-      ShapeUtil::MakeShape(operand_shape.element_type(),
-                           operand_shape.dimensions()),
+      ShapeUtil::MakeValidatedShape(operand_shape.element_type(),
+                                    operand_shape.dimensions())
+          .value(),
       operand_static, cumsum, gather_dim_numbers, slice_sizes, true));
 
   // Step 4: Feed gather input to original reshape.
@@ -683,7 +694,9 @@ absl::StatusOr<bool> RewriteDynamicReshapeCombineInput(
   const Shape output_shape = reshape->shape();
   const Shape input_shape = reshape->operand(0)->shape();
   const Shape mask_output_shape =
-      ShapeUtil::MakeShape(xla::S32, {output_shape.dimensions(output_dim)});
+      ShapeUtil::MakeValidatedShape(xla::S32,
+                                    {output_shape.dimensions(output_dim)})
+          .value();
 
   // Step 1.
   // Generate binary mask.
@@ -707,26 +720,27 @@ absl::StatusOr<bool> RewriteDynamicReshapeCombineInput(
   HloComputation::Builder comp_builder("compare");
   HloInstruction* lhs_key =
       comp_builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeScalarShape(S32), "lhs_key"));
+          0, ShapeUtil::MakeValidatedScalarShape(S32).value(), "lhs_key"));
   HloInstruction* rhs_key =
       comp_builder.AddInstruction(HloInstruction::CreateParameter(
-          1, ShapeUtil::MakeScalarShape(S32), "rhs_key"));
+          1, ShapeUtil::MakeValidatedScalarShape(S32).value(), "rhs_key"));
 
   // Values for lhs and rhs
   comp_builder.AddInstruction(HloInstruction::CreateParameter(
-      2, ShapeUtil::MakeScalarShape(S32), "lhs_value"));
+      2, ShapeUtil::MakeValidatedScalarShape(S32).value(), "lhs_value"));
   comp_builder.AddInstruction(HloInstruction::CreateParameter(
-      3, ShapeUtil::MakeScalarShape(S32), "rhs_value"));
-  comp_builder.AddInstruction(
-      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), lhs_key,
-                                    rhs_key, ComparisonDirection::kGt));
+      3, ShapeUtil::MakeValidatedScalarShape(S32).value(), "rhs_value"));
+  comp_builder.AddInstruction(HloInstruction::CreateCompare(
+      ShapeUtil::MakeValidatedShape(PRED, {}).value(), lhs_key, rhs_key,
+      ComparisonDirection::kGt));
   HloComputation* compare =
       reshape->GetModule()->AddEmbeddedComputation(comp_builder.Build());
 
   // Use mask_reshaped as key, sort reshaped data as value.
   HloInstruction* sort = reshape->AddInstruction(HloInstruction::CreateSort(
-      ShapeUtil::MakeTupleShape({mask_output_shape, mask_output_shape}), 0,
-      {output_shape_binary_mask, iota}, compare,
+      ShapeUtil::MakeValidatedTupleShape({mask_output_shape, mask_output_shape})
+          .value(),
+      0, {output_shape_binary_mask, iota}, compare,
       /*is_stable=*/true));
 
   HloInstruction* gather_indices = reshape->AddInstruction(
@@ -900,8 +914,8 @@ absl::StatusOr<bool> RewriteReverse(
           dynamic_dimension_inference->GetDynamicSize(reverse, {}, i);
       HloInstruction* start_offset =
           reverse->AddInstruction(HloInstruction::CreateBinary(
-              ShapeUtil::MakeScalarShape(S32), HloOpcode::kSubtract, bound_size,
-              dynamic_size));
+              ShapeUtil::MakeValidatedScalarShape(S32).value(),
+              HloOpcode::kSubtract, bound_size, dynamic_size));
       start_indices.push_back(start_offset);
     } else {
       HloInstruction* zero = reverse->AddInstruction(
@@ -955,7 +969,8 @@ HloInstruction* RewriteInputWithDynamicPadding(
     padding_dim->set_interior_padding(window_dim->base_dilation() - 1);
     HloInstruction* slicing_start =
         conv->AddInstruction(HloInstruction::CreateBinary(
-            ShapeUtil::MakeScalarShape(S32), HloOpcode::kSubtract,
+            ShapeUtil::MakeValidatedScalarShape(S32).value(),
+            HloOpcode::kSubtract,
             conv->AddInstruction(
                 HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(
                     padding_dim->edge_padding_low()))),
@@ -1009,11 +1024,12 @@ absl::StatusOr<bool> RewriteDynamicConvolutionInputGrad(
     grad = PadWithScalar(grad, input_spatial_dim, operand_dynamic_size, zero);
     HloInstruction* slice =
         custom_call_conv->AddInstruction(HloInstruction::CreateSlice(
-            ShapeUtil::MakeShape(S32, {1}),
+            ShapeUtil::MakeValidatedShape(S32, {1}).value(),
             custom_call_conv->mutable_operand(0), {input_spatial_dim},
             {input_spatial_dim + 1}, {1}));
-    HloInstruction* dynamic_input_size = custom_call_conv->AddInstruction(
-        HloInstruction::CreateReshape(ShapeUtil::MakeScalarShape(S32), slice));
+    HloInstruction* dynamic_input_size =
+        custom_call_conv->AddInstruction(HloInstruction::CreateReshape(
+            ShapeUtil::MakeValidatedScalarShape(S32).value(), slice));
     const WindowDimension& window_dim = window.dimensions(spatial_dim_index);
     // Window stride of forward prop is same as base dilation of backward prop.
     DynamicWindowDims dynamic_window_dims = GetWindowedInputGradSize(
@@ -1351,12 +1367,12 @@ absl::StatusOr<bool> RewriteDynamicConcat(
           HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(
               operand->shape().dimensions(concat_dim))));
       offsets[concat_dim] = concat->AddInstruction(HloInstruction::CreateBinary(
-          ShapeUtil::MakeScalarShape(S32), HloOpcode::kAdd, offsets[concat_dim],
-          static_size));
+          ShapeUtil::MakeValidatedScalarShape(S32).value(), HloOpcode::kAdd,
+          offsets[concat_dim], static_size));
     } else {
       offsets[concat_dim] = concat->AddInstruction(HloInstruction::CreateBinary(
-          ShapeUtil::MakeScalarShape(S32), HloOpcode::kAdd, offsets[concat_dim],
-          dynamic_size));
+          ShapeUtil::MakeValidatedScalarShape(S32).value(), HloOpcode::kAdd,
+          offsets[concat_dim], dynamic_size));
     }
   }
   TF_RETURN_IF_ERROR(concat->ReplaceUsesWith(prev_users, rewritten_concat));
@@ -1399,11 +1415,11 @@ absl::StatusOr<bool> RewriteDynamicSort(
   const int64_t param_number_before_rewritten =
       sort->called_computations()[0]->num_parameters();
   auto new_param_0 = HloInstruction::CreateParameter(
-      param_number_before_rewritten, ShapeUtil::MakeScalarShape(PRED),
-      "inbound_lhs");
+      param_number_before_rewritten,
+      ShapeUtil::MakeValidatedScalarShape(PRED).value(), "inbound_lhs");
   auto new_param_1 = HloInstruction::CreateParameter(
-      param_number_before_rewritten + 1, ShapeUtil::MakeScalarShape(PRED),
-      "inbound_rhs");
+      param_number_before_rewritten + 1,
+      ShapeUtil::MakeValidatedScalarShape(PRED).value(), "inbound_rhs");
   std::vector<const HloInstruction*> extra_parameters{new_param_0.get(),
                                                       new_param_1.get()};
   HloComputation* sort_comp = sort->GetModule()->AddEmbeddedComputation(
@@ -1420,15 +1436,16 @@ absl::StatusOr<bool> RewriteDynamicSort(
   // Select the lhs if it is in bounds and the rhs is out of bounds or the
   // sort_comp returns true.
   auto out_of_bound_rhs = sort_comp->AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeScalarShape(PRED), HloOpcode::kNot, inbound_rhs));
+      ShapeUtil::MakeValidatedScalarShape(PRED).value(), HloOpcode::kNot,
+      inbound_rhs));
   auto sort_comp_or_out_of_bound_rhs =
       sort_comp->AddInstruction(HloInstruction::CreateBinary(
-          ShapeUtil::MakeScalarShape(PRED), HloOpcode::kOr,
+          ShapeUtil::MakeValidatedScalarShape(PRED).value(), HloOpcode::kOr,
           sort_comp->root_instruction(), out_of_bound_rhs));
 
   auto new_root = sort_comp->AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeScalarShape(PRED), HloOpcode::kAnd, inbound_lhs,
-      sort_comp_or_out_of_bound_rhs));
+      ShapeUtil::MakeValidatedScalarShape(PRED).value(), HloOpcode::kAnd,
+      inbound_lhs, sort_comp_or_out_of_bound_rhs));
   sort_comp->set_root_instruction(new_root);
   if (sort->shape().IsTuple()) {
     // For sort that is already tuple, simply add another result to the tuple.
@@ -1437,8 +1454,10 @@ absl::StatusOr<bool> RewriteDynamicSort(
   } else {
     auto sort_users = sort->users();
     auto sort_clone = hlo->AddInstruction(sort->Clone());
-    *sort_clone->mutable_shape() = ShapeUtil::MakeTupleShape(
-        {sort->shape(), ShapeUtil::ChangeElementType(operand_shape, PRED)});
+    *sort_clone->mutable_shape() =
+        ShapeUtil::MakeValidatedTupleShape(
+            {sort->shape(), ShapeUtil::ChangeElementType(operand_shape, PRED)})
+            .value();
     auto rewritten_sort = hlo->AddInstruction(
         HloInstruction::CreateGetTupleElement(sort->shape(), sort_clone, 0));
     for (HloInstruction* user : sort_users) {
@@ -1529,32 +1548,36 @@ absl::StatusOr<bool> RewriteDynamicBinaryOp(
           HloInstruction::CreateConstant(LiteralUtil::One(S32)));
 
       auto operand_0_needs_broadcast = binary->parent()->AddInstruction(
-          HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), dim_0,
-                                        dim_1, ComparisonDirection::kLt),
+          HloInstruction::CreateCompare(
+              ShapeUtil::MakeValidatedShape(PRED, {}).value(), dim_0, dim_1,
+              ComparisonDirection::kLt),
           "lhs_less_than_rhs");
       auto is_one = binary->parent()->AddInstruction(
-          HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), dim_0,
-                                        one, ComparisonDirection::kEq),
+          HloInstruction::CreateCompare(
+              ShapeUtil::MakeValidatedShape(PRED, {}).value(), dim_0, one,
+              ComparisonDirection::kEq),
           "lhs_is_one");
       operand_0_needs_broadcast = binary->parent()->AddInstruction(
-          HloInstruction::CreateBinary(ShapeUtil::MakeShape(PRED, {}),
-                                       HloOpcode::kAnd, is_one,
-                                       operand_0_needs_broadcast),
+          HloInstruction::CreateBinary(
+              ShapeUtil::MakeValidatedShape(PRED, {}).value(), HloOpcode::kAnd,
+              is_one, operand_0_needs_broadcast),
           "lhs_needs_implicit_broadcast");
       operand_0 = rewrite_operand(operand_0_needs_broadcast, operand_0);
 
       auto operand_1_needs_broadcast = binary->parent()->AddInstruction(
-          HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), dim_1,
-                                        dim_0, ComparisonDirection::kLt),
+          HloInstruction::CreateCompare(
+              ShapeUtil::MakeValidatedShape(PRED, {}).value(), dim_1, dim_0,
+              ComparisonDirection::kLt),
           "rhs_less_than_lhs");
       is_one = binary->parent()->AddInstruction(
-          HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), dim_1,
-                                        one, ComparisonDirection::kEq),
+          HloInstruction::CreateCompare(
+              ShapeUtil::MakeValidatedShape(PRED, {}).value(), dim_1, one,
+              ComparisonDirection::kEq),
           "rhs_is_one");
       operand_1_needs_broadcast = binary->parent()->AddInstruction(
-          HloInstruction::CreateBinary(ShapeUtil::MakeShape(PRED, {}),
-                                       HloOpcode::kAnd, is_one,
-                                       operand_1_needs_broadcast),
+          HloInstruction::CreateBinary(
+              ShapeUtil::MakeValidatedShape(PRED, {}).value(), HloOpcode::kAnd,
+              is_one, operand_1_needs_broadcast),
           "lhs_needs_implicit_broadcast");
       operand_1 = rewrite_operand(operand_1_needs_broadcast, operand_1);
     }
@@ -1741,8 +1764,9 @@ absl::StatusOr<bool> RewriteDynamicReshape(
     VLOG(2) << "Rewrite dynamic reshape to flatten-unflatten pair. "
             << reshape->ToString();
     int64_t num_elements = ShapeUtil::ElementsIn(operand->shape());
-    Shape flattened_shape =
-        ShapeUtil::MakeShape(operand->shape().element_type(), {num_elements});
+    Shape flattened_shape = ShapeUtil::MakeValidatedShape(
+                                operand->shape().element_type(), {num_elements})
+                                .value();
     HloInstruction* flatten = operand->parent()->AddInstruction(
         HloInstruction::CreateReshape(flattened_shape, operand),
         absl::StrCat(reshape->name(), ".flatten"));

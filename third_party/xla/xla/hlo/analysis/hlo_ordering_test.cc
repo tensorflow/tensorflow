@@ -57,7 +57,8 @@ TEST_F(HloOrderingTest, InstructionsInDifferentComputations) {
   //
   // This results in a diamond-shaped callgraph.
   auto module = CreateNewVerifiedModule();
-  const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
+  const Shape scalar_shape =
+      ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
 
   auto builder_c = HloComputation::Builder("C");
   HloInstruction* c = builder_c.AddInstruction(
@@ -130,7 +131,8 @@ TEST_F(HloOrderingTest, InstructionsInWhileComputations) {
   //   return While(%constant, body, condition)
   //
   auto module = CreateNewVerifiedModule();
-  const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
+  const Shape scalar_shape =
+      ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
 
   auto body_builder = HloComputation::Builder("body");
   auto body_param = body_builder.AddInstruction(
@@ -143,7 +145,7 @@ TEST_F(HloOrderingTest, InstructionsInWhileComputations) {
   auto cond_param = cond_builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape, "cond_param"));
   auto convert = cond_builder.AddInstruction(HloInstruction::CreateConvert(
-      ShapeUtil::MakeShape(xla::PRED, {}), cond_param));
+      ShapeUtil::MakeValidatedShape(xla::PRED, {}).value(), cond_param));
   HloComputation* condition =
       module->AddEmbeddedComputation(cond_builder.Build());
 
@@ -180,7 +182,8 @@ TEST_F(HloOrderingTest, InstructionsInWhileComputations) {
 TEST_F(HloOrderingTest, ParametersDefinedBeforeOthers) {
   // Entry parameter should always be defined before other instruction.
   auto module = CreateNewVerifiedModule();
-  const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
+  const Shape scalar_shape =
+      ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
@@ -213,7 +216,8 @@ TEST_F(HloOrderingTest, ValuesInWhileComputations) {
   //   %add = Add(%constant, %while)
   //
   auto module = CreateNewVerifiedModule();
-  const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
+  const Shape scalar_shape =
+      ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
 
   auto body_builder = HloComputation::Builder("body");
   auto body_param = body_builder.AddInstruction(
@@ -226,7 +230,7 @@ TEST_F(HloOrderingTest, ValuesInWhileComputations) {
   auto cond_param = cond_builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape, "cond_param"));
   auto convert = cond_builder.AddInstruction(HloInstruction::CreateConvert(
-      ShapeUtil::MakeShape(xla::PRED, {}), cond_param));
+      ShapeUtil::MakeValidatedShape(xla::PRED, {}).value(), cond_param));
   HloComputation* condition =
       module->AddEmbeddedComputation(cond_builder.Build());
 
@@ -419,7 +423,8 @@ TEST_F(HloOrderingTest,
   //
   // %root should interfere with %dead.
   auto module = CreateNewVerifiedModule();
-  const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
+  const Shape scalar_shape =
+      ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
 
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* param = builder.AddInstruction(
@@ -467,7 +472,8 @@ TEST_F(HloOrderingTest,
   //
   // %root should interfere with %dead.
   auto module = CreateNewVerifiedModule();
-  const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
+  const Shape scalar_shape =
+      ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
 
   auto subbuilder = HloComputation::Builder(TestName() + ".sub");
   HloInstruction* param = subbuilder.AddInstruction(

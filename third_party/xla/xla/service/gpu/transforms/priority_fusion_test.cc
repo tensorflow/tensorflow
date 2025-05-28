@@ -1241,5 +1241,22 @@ ENTRY main {
   EXPECT_TRUE(IsGenericTritonFusion(*root));
 }
 
+TEST_F(PriorityFusionWithTritonEnabledTest, DoNotFuseIntoRoot) {
+  auto module = *ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    ENTRY %main (p.0: s32[2], p.1: s32[]) -> s32[2] {
+      %p.0 = s32[2]{0} parameter(0)
+      %p.1 = s32[] parameter(1)
+      ROOT %broadcast = s32[2]{0} broadcast(s32[] %p.1), dimensions={}, sharding={replicated}
+      %add = s32[2]{0} add(s32[2]{0} %p.0, s32[2]{0} %broadcast)
+      %tuple.1 = (s32[2]{0}, s32[2]{0}) tuple(s32[2]{0} %add, s32[2]{0} %broadcast)
+      %token.0 = token[] after-all()
+      %outfeed.6 = token[] outfeed((s32[2]{0}, s32[2]{0}) %tuple.1, token[] %token.0), outfeed_shape=(s32[2]{0}, s32[2]{0}), sharding={maximal device=0}
+    })");
+
+  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(false));
+}
+
 }  // namespace gpu
 }  // namespace xla

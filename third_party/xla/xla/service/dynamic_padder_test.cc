@@ -138,16 +138,16 @@ class DynamicPadderTest : public HloTestBase {
   HloComputation* GetScalarAddComputation() {
     auto embedded_builder = HloComputation::Builder("add");
     auto lhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
-        0, ShapeUtil::MakeShape(F32, {}), "lhs"));
+        0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "lhs"));
     auto rhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
-        1, ShapeUtil::MakeShape(F32, {}), "rhs"));
+        1, ShapeUtil::MakeValidatedShape(F32, {}).value(), "rhs"));
     embedded_builder.AddInstruction(
         HloInstruction::CreateBinary(lhs->shape(), HloOpcode::kAdd, lhs, rhs));
     return module_->AddEmbeddedComputation(embedded_builder.Build());
   }
 
   std::unique_ptr<HloModule> module_;
-  const Shape scalar_shape_ = ShapeUtil::MakeShape(S32, {});
+  const Shape scalar_shape_ = ShapeUtil::MakeValidatedShape(S32, {}).value();
 };
 
 class MemoryAlignmentTest : public HloTestBase {};
@@ -187,10 +187,11 @@ TEST_F(MemoryAlignmentTest, TestDataTypeFP16) {
 
 TEST_F(DynamicPadderTest, ReduceTest) {
   auto builder = HloComputation::Builder(TestName());
-  auto input_shape = ShapeUtil::MakeShape(F32, {1, 2, 2});
-  auto reduce_shape = ShapeUtil::MakeShape(F32, {2});
+  auto input_shape = ShapeUtil::MakeValidatedShape(F32, {1, 2, 2}).value();
+  auto reduce_shape = ShapeUtil::MakeValidatedShape(F32, {2}).value();
   auto dynamic_shape =
-      ShapeUtil::MakeShape(F32, {1, 2, 2}, {false, false, true});
+      ShapeUtil::MakeValidatedShape(F32, {1, 2, 2}, {false, false, true})
+          .value();
 
   auto data_param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, input_shape, "data_param"));
@@ -367,11 +368,11 @@ TEST_F(DynamicPadderTest, ConvolutionTest) {
   constexpr int xdim = 3;
   constexpr int ydim = 2;
   constexpr int zdim = 1;
-  auto xy_shape = ShapeUtil::MakeShape(F32, {xdim, ydim});
-  auto yz_shape = ShapeUtil::MakeShape(F32, {ydim, zdim});
-  auto zx_shape = ShapeUtil::MakeShape(F32, {zdim, xdim});
+  auto xy_shape = ShapeUtil::MakeValidatedShape(F32, {xdim, ydim}).value();
+  auto yz_shape = ShapeUtil::MakeValidatedShape(F32, {ydim, zdim}).value();
+  auto zx_shape = ShapeUtil::MakeValidatedShape(F32, {zdim, xdim}).value();
   auto xy_shape_dynamic =
-      ShapeUtil::MakeShape(F32, {xdim, ydim}, {false, true});
+      ShapeUtil::MakeValidatedShape(F32, {xdim, ydim}, {false, true}).value();
 
   auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0, xy_shape, "A"));
@@ -410,11 +411,13 @@ TEST_F(DynamicPadderTest, ConvolutionNoPad) {
   constexpr int xdim = 3;
   constexpr int ydim = 2;
   constexpr int zdim = 1;
-  auto xy_shape = ShapeUtil::MakeShape(F32, {xdim, ydim});
-  auto yz_shape = ShapeUtil::MakeShape(F32, {ydim, zdim});
-  auto zx_shape = ShapeUtil::MakeShape(F32, {zdim, xdim}, {false, true});
+  auto xy_shape = ShapeUtil::MakeValidatedShape(F32, {xdim, ydim}).value();
+  auto yz_shape = ShapeUtil::MakeValidatedShape(F32, {ydim, zdim}).value();
+  auto zx_shape =
+      ShapeUtil::MakeValidatedShape(F32, {zdim, xdim}, {false, true}).value();
 
-  auto dynamic_shape = ShapeUtil::MakeShape(F32, {xdim, ydim}, {true, false});
+  auto dynamic_shape =
+      ShapeUtil::MakeValidatedShape(F32, {xdim, ydim}, {true, false}).value();
 
   auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0, xy_shape, "A"));
@@ -450,9 +453,11 @@ TEST_F(DynamicPadderTest, ConvolutionNoPad) {
 
 TEST_F(DynamicPadderTest, ReduceWindowNoPadForTrivialWindow) {
   auto builder = HloComputation::Builder(TestName());
-  auto input_shape = ShapeUtil::MakeShape(F32, {4, 5});
-  auto reduce_shape = ShapeUtil::MakeShape(F32, {3, 5}, {false, true});
-  auto dynamic_shape = ShapeUtil::MakeShape(F32, {4, 5}, {false, true});
+  auto input_shape = ShapeUtil::MakeValidatedShape(F32, {4, 5}).value();
+  auto reduce_shape =
+      ShapeUtil::MakeValidatedShape(F32, {3, 5}, {false, true}).value();
+  auto dynamic_shape =
+      ShapeUtil::MakeValidatedShape(F32, {4, 5}, {false, true}).value();
 
   auto input = builder.AddInstruction(
       HloInstruction::CreateParameter(0, input_shape, "input"));
@@ -591,7 +596,9 @@ ENTRY main {
   TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
   XLA_LOG_LINES(INFO, module_->ToString());
   auto* root = module_->entry_computation()->root_instruction();
-  EXPECT_EQ(root->shape(), ShapeUtil::MakeShape(F32, {32, 216}, {true, false}));
+  EXPECT_EQ(
+      root->shape(),
+      ShapeUtil::MakeValidatedShape(F32, {32, 216}, {true, false}).value());
   // Find the while loop and ensure that the dynamic dimension size was added to
   // its operand and output.
   HloInstruction* while_inst = nullptr;
@@ -603,12 +610,13 @@ ENTRY main {
       while_inst = inst;
     }
   }
-  EXPECT_EQ(while_inst->shape(),
-            ShapeUtil::MakeTupleShape({ShapeUtil::MakeScalarShape(S32),
-                                       ShapeUtil::MakeScalarShape(S32),
-                                       ShapeUtil::MakeScalarShape(F32),
-                                       ShapeUtil::MakeShape(F32, {32, 216}),
-                                       ShapeUtil::MakeScalarShape(S32)}));
+  EXPECT_EQ(while_inst->shape(), ShapeUtil::MakeValidatedTupleShape(
+                                     {ShapeUtil::MakeScalarShape(S32),
+                                      ShapeUtil::MakeScalarShape(S32),
+                                      ShapeUtil::MakeScalarShape(F32),
+                                      ShapeUtil::MakeShape(F32, {32, 216}),
+                                      ShapeUtil::MakeScalarShape(S32)})
+                                     .value());
 }
 
 TEST_F(DynamicPadderTest, WhileLoopCarriesRequiredDynamicShape) {

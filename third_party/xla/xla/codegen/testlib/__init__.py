@@ -26,11 +26,15 @@ HloInstruction = _extension.HloInstruction
 HloModule = _extension.HloModule
 HloModuleConfig = _extension.HloModuleConfig
 HloOpcode = _extension.HloOpcode
-KernelDefinition = _extension.KernelDefinition
-KernelEmmitter = _extension.KernelEmitter
+KernelDefinitionBase = _extension.KernelDefinitionBase
+KernelEmitterBase = _extension.KernelEmitterBase
 KernelRunner = _extension.KernelRunner
 KernelSpec = _extension.KernelSpec
 LlvmIrKernelSource = _extension.LlvmIrKernelSource
+LlvmKernelDefinition = _extension.LlvmKernelDefinition
+LlvmKernelEmitter = _extension.LlvmKernelEmitter
+MlirKernelDefinition = _extension.MlirKernelDefinition
+MlirKernelEmitter = _extension.MlirKernelEmitter
 MlirKernelSource = _extension.MlirKernelSource
 ScatterDimensionNumbers = _extension.ScatterDimensionNumbers
 # go/keep-sorted end

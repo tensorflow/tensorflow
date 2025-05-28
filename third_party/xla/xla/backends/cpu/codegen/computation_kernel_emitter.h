@@ -27,6 +27,8 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_emitter.h"
+#include "xla/codegen/llvm_kernel_definition.h"
+#include "xla/codegen/llvm_kernel_emitter.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 
@@ -43,13 +45,13 @@ namespace xla::cpu {
 // producing a synthetic buffer_table for all arguments and results (including
 // intermediate instructions), though this may change in the future to use stack
 // allocations for small buffers.
-class ComputationKernelEmitter final : public KernelEmitter {
+class ComputationKernelEmitter final : public LlvmKernelEmitter {
  public:
   ComputationKernelEmitter(const HloInstruction* instr,
                            const BufferAssignment* buffer_assignment,
                            const TargetMachineFeatures* target_machine);
 
-  absl::StatusOr<KernelDefinition> EmitKernelDefinition() final;
+  absl::StatusOr<LlvmKernelDefinition> EmitKernelDefinition() final;
 
  private:
   absl::StatusOr<llvm::Function*> EmitNestedComputation(

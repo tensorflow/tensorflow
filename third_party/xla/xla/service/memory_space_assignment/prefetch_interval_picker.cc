@@ -143,7 +143,8 @@ CostAnalysisPrefetchIntervalPicker::CostAnalysisPrefetchIntervalPicker(
           preferred_overlap_to_async_copy_ratio),
       max_async_copy_elapsed_(
           cost_analysis_.GetAsyncCopyElapsed(
-              ShapeUtil::MakeShape(S32, {mem_size_bytes / 4})) *
+              ShapeUtil::MakeValidatedShape(S32, {mem_size_bytes / 4})
+                  .value()) *
           max_overlap_to_mem_size_async_copy_ratio),
       shape_override_(shape_override ? std::optional(*shape_override)
                                      : std::nullopt) {

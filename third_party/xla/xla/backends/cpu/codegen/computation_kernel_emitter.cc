@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/codegen/llvm_kernel_definition.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -132,7 +133,7 @@ ComputationKernelEmitter::ComputationKernelEmitter(
       buffer_assignment_(buffer_assignment),
       target_machine_(target_machine) {}
 
-absl::StatusOr<KernelDefinition>
+absl::StatusOr<LlvmKernelDefinition>
 ComputationKernelEmitter::EmitKernelDefinition() {
   VLOG(2) << "Emit Computation host kernel: " << instr_->name();
 
@@ -213,15 +214,14 @@ ComputationKernelEmitter::EmitKernelDefinition() {
                                     buffer_table, llvm_nullptr, llvm_nullptr};
   ir_builder.CreateCall(computation_function, args);
 
-  auto source = std::make_unique<LlvmIrKernelSource>(std::move(ctx),
-                                                     std::move(llvm_module));
+  LlvmIrKernelSource source(std::move(ctx), std::move(llvm_module));
 
   KernelSpec spec(kernel_prototype.function->getName(), NumWorkGroups(),
                   std::move(kernel_prototype.argument_buffers),
                   std::move(kernel_prototype.result_buffers),
                   std::move(kernel_prototype.invariant_arguments));
 
-  return KernelDefinition(std::move(spec), std::move(source));
+  return LlvmKernelDefinition(std::move(spec), std::move(source));
 }
 
 absl::StatusOr<llvm::Function*> ComputationKernelEmitter::EmitNestedComputation(

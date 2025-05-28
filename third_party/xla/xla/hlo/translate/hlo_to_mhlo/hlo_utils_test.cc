@@ -39,7 +39,8 @@ TEST(ConvertTensorShapeToType, Simple) {
 
   // Static shape.
   {
-    auto shape = ShapeUtil::MakeShape(PrimitiveType::S32, {8, 128});
+    auto shape =
+        ShapeUtil::MakeValidatedShape(PrimitiveType::S32, {8, 128}).value();
     TF_ASSERT_OK_AND_ASSIGN(
         auto type,
         ConvertTensorShapeToType<mlir::RankedTensorType>(shape, builder));
@@ -52,8 +53,9 @@ TEST(ConvertTensorShapeToType, Simple) {
 
   // Dynamic shape.
   {
-    auto shape =
-        ShapeUtil::MakeShape(PrimitiveType::S32, {8, 128}, {true, false});
+    auto shape = ShapeUtil::MakeValidatedShape(PrimitiveType::S32, {8, 128},
+                                               {true, false})
+                     .value();
     TF_ASSERT_OK_AND_ASSIGN(
         auto type,
         ConvertTensorShapeToType<mlir::RankedTensorType>(shape, builder));

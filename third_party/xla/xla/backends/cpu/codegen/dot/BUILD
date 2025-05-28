@@ -19,6 +19,8 @@ cc_library(
         "//xla/codegen:kernel_emitter",
         "//xla/codegen:kernel_spec",
         "//xla/codegen:llvm_ir_kernel_source",
+        "//xla/codegen:llvm_kernel_definition",
+        "//xla/codegen:llvm_kernel_emitter",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:work_group",
         "//xla/service:buffer_assignment",

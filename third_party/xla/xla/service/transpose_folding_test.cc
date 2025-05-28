@@ -226,14 +226,17 @@ ENTRY entry_computation {
 TEST_F(TransposeFoldingTest, FoldConvDimSwapTransposeRhs) {
   auto builder = HloComputation::Builder("entry_computation");
   HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {2, 3, 1, 1}),
+      /*parameter_number=*/0,
+      ShapeUtil::MakeValidatedShape(F32, {2, 3, 1, 1}).value(),
       /*name=*/"x"));
   HloInstruction* y = builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/1, ShapeUtil::MakeShape(F32, {3, 2, 1, 1}),
+      /*parameter_number=*/1,
+      ShapeUtil::MakeValidatedShape(F32, {3, 2, 1, 1}).value(),
       /*name=*/"y"));
   HloInstruction* transpose_y =
       builder.AddInstruction(HloInstruction::CreateTranspose(
-          ShapeUtil::MakeShape(F32, {2, 3, 1, 1}), y, {1, 0, 2, 3}));
+          ShapeUtil::MakeValidatedShape(F32, {2, 3, 1, 1}).value(), y,
+          {1, 0, 2, 3}));
   auto dnums = XlaBuilder::CreateDefaultConvDimensionNumbers();
   Window window;
   for (int i = 0; i < 2; ++i) {
@@ -284,14 +287,17 @@ TEST_F(TransposeFoldingTest, FoldConvDimSwapTransposeRhs) {
 TEST_F(TransposeFoldingTest, FoldConvComplexTransposeRhs) {
   auto builder = HloComputation::Builder("entry_computation");
   HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {2, 3, 1, 1}),
+      /*parameter_number=*/0,
+      ShapeUtil::MakeValidatedShape(F32, {2, 3, 1, 1}).value(),
       /*name=*/"x"));
   HloInstruction* y = builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/1, ShapeUtil::MakeShape(F32, {1, 2, 1, 3}),
+      /*parameter_number=*/1,
+      ShapeUtil::MakeValidatedShape(F32, {1, 2, 1, 3}).value(),
       /*name=*/"y"));
   HloInstruction* transpose_y =
       builder.AddInstruction(HloInstruction::CreateTranspose(
-          ShapeUtil::MakeShape(F32, {2, 3, 1, 1}), y, {1, 3, 0, 2}));
+          ShapeUtil::MakeValidatedShape(F32, {2, 3, 1, 1}).value(), y,
+          {1, 3, 0, 2}));
   auto dnums = XlaBuilder::CreateDefaultConvDimensionNumbers();
   Window window;
   for (int i = 0; i < 2; ++i) {
@@ -348,14 +354,17 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeRhs) {
 TEST_F(TransposeFoldingTest, FoldConvTransposeLhs) {
   auto builder = HloComputation::Builder("entry_computation");
   HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {3, 2, 1, 1}),
+      /*parameter_number=*/0,
+      ShapeUtil::MakeValidatedShape(F32, {3, 2, 1, 1}).value(),
       /*name=*/"x"));
   HloInstruction* y = builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/1, ShapeUtil::MakeShape(F32, {2, 3, 1, 1}),
+      /*parameter_number=*/1,
+      ShapeUtil::MakeValidatedShape(F32, {2, 3, 1, 1}).value(),
       /*name=*/"y"));
   HloInstruction* transpose_x =
       builder.AddInstruction(HloInstruction::CreateTranspose(
-          ShapeUtil::MakeShape(F32, {2, 3, 1, 1}), x, {1, 0, 2, 3}));
+          ShapeUtil::MakeValidatedShape(F32, {2, 3, 1, 1}).value(), x,
+          {1, 0, 2, 3}));
   auto dnums = XlaBuilder::CreateDefaultConvDimensionNumbers();
   Window window;
   for (int i = 0; i < 2; ++i) {
@@ -417,14 +426,17 @@ TEST_F(TransposeFoldingTest, FoldConvTransposeLhs) {
 TEST_F(TransposeFoldingTest, FoldConvComplexTransposeLhs) {
   auto builder = HloComputation::Builder("entry_computation");
   HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {3, 2, 1, 1}),
+      /*parameter_number=*/0,
+      ShapeUtil::MakeValidatedShape(F32, {3, 2, 1, 1}).value(),
       /*name=*/"x"));
   HloInstruction* y = builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/1, ShapeUtil::MakeShape(F32, {2, 3, 1, 1}),
+      /*parameter_number=*/1,
+      ShapeUtil::MakeValidatedShape(F32, {2, 3, 1, 1}).value(),
       /*name=*/"y"));
   HloInstruction* transpose_x =
       builder.AddInstruction(HloInstruction::CreateTranspose(
-          ShapeUtil::MakeShape(F32, {2, 3, 1, 1}), x, {1, 0, 3, 2}));
+          ShapeUtil::MakeValidatedShape(F32, {2, 3, 1, 1}).value(), x,
+          {1, 0, 3, 2}));
   auto dnums = XlaBuilder::CreateDefaultConvDimensionNumbers();
   Window window;
   for (int i = 0; i < 2; ++i) {

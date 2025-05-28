@@ -172,7 +172,8 @@ static absl::StatusOr<HloInstruction*> RemoveDeadTupleIndices(
         &while_init->shape().tuple_shapes(old_idx));
   }
   Shape new_while_shape =
-      ShapeUtil::MakeTupleShapeWithPtrs(new_while_tuple_elem_shapes);
+      ShapeUtil::MakeValidatedTupleShapeWithPtrs(new_while_tuple_elem_shapes)
+          .value();
 
   // Returns a map from elements in the computation to new instructions which
   // replace the old instructions after we remove unused elements from the while
@@ -707,7 +708,7 @@ static absl::StatusOr<bool> TryRemoveRepeatedWhileTupleIndices(
         }
         if (body_elem->operand(0)->tuple_index() != i) {
           VLOG(2) << "Mismatch between body_elem->operand(0)->tuple_index() "
-                  << body_elem->tuple_index() << " i " << i;
+                  << body_elem->operand(0)->tuple_index() << " i " << i;
           continue;
         }
         if (pivot_body_elem->operand(0) == body_elem->operand(0)) {
@@ -806,7 +807,7 @@ static absl::StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
     }
   }
   Shape new_while_shape =
-      ShapeUtil::MakeTupleShapeWithPtrs(new_while_shape_elems);
+      ShapeUtil::MakeValidatedTupleShapeWithPtrs(new_while_shape_elems).value();
 
   // `new_instrs` holds instructions created outside of a computation for
   // cloning.  Elements added here just need to live until the end of the
@@ -1164,7 +1165,7 @@ static absl::StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
                                }
                              });
   Shape flattened_shape =
-      ShapeUtil::MakeTupleShapeWithPtrs(flattened_shape_elems);
+      ShapeUtil::MakeValidatedTupleShapeWithPtrs(flattened_shape_elems).value();
 
   // `new_instrs` holds instructions created outside of a computation for
   // cloning.  Elements added here just need to live until the end of the
@@ -1358,7 +1359,7 @@ static absl::StatusOr<HloInstruction*> TryMergeInductionVariables(
     VLOG(10) << "Adding new trip counter to end of loop's tuple.";
     trip_counter = new_while_shape.tuple_shapes().size();
     *new_while_shape.add_tuple_shapes() =
-        ShapeUtil::MakeShape(elem_ty, /*dimensions=*/{});
+        ShapeUtil::MakeValidatedShape(elem_ty, /*dimensions=*/{}).value();
     added_trip_counter = true;
   }
 

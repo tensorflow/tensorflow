@@ -176,12 +176,12 @@ ENTRY main {
 }
 )";
 
-  Literal updates =
-      Literal::CreateFromShape(ShapeUtil::MakeShape(F32, {8, 2, 64}));
+  Literal updates = Literal::CreateFromShape(
+      ShapeUtil::MakeValidatedShape(F32, {8, 2, 64}).value());
   updates.PopulateWithValue(1.0f);
 
-  Literal indices =
-      Literal::CreateFromShape(ShapeUtil::MakeShape(S32, {8, 2, 4}));
+  Literal indices = Literal::CreateFromShape(
+      ShapeUtil::MakeValidatedShape(S32, {8, 2, 4}).value());
   indices
       .Populate<int>([&](absl::Span<const int64_t> indices) -> int {
         auto i = indices[2] + indices[1] * 4 + indices[0] * 2 * 4;

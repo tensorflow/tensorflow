@@ -185,12 +185,15 @@ XlaOp TorchGather(XlaOp input, XlaOp index, int64_t dim, bool sparse) {
       }
       auto mask = Eq(
           BroadcastInDim(index, sizes, index_broadcast_dims),
-          Iota(builder, ShapeUtil::MakeShape(index_shape.element_type(), sizes),
+          Iota(builder,
+               ShapeUtil::MakeValidatedShape(index_shape.element_type(), sizes)
+                   .value(),
                dim));
       auto masked_input = Select(
           mask, BroadcastInDim(input, sizes, input_broadcast_dims),
           Zeros(builder,
-                ShapeUtil::MakeShape(input_shape.element_type(), sizes)));
+                ShapeUtil::MakeValidatedShape(input_shape.element_type(), sizes)
+                    .value()));
       return Reduce(masked_input, Zero(builder, input_shape.element_type()),
                     CreateScalarIdentityWithZeroComputation(
                         input_shape.element_type(), builder),
@@ -245,11 +248,14 @@ XlaOp TorchScatterDense(XlaOp input, XlaOp index, XlaOp src, int64_t dim,
     auto mask =
         Eq(BroadcastInDim(index, sizes, index_broadcast_dims),
            Iota(builder,
-                ShapeUtil::MakeShape(index_shape.element_type(), sizes), dim));
-    auto masked_src =
-        Select(mask, BroadcastInDim(src, sizes, index_broadcast_dims),
-               Zeros(builder,
-                     ShapeUtil::MakeShape(input_shape.element_type(), sizes)));
+                ShapeUtil::MakeValidatedShape(index_shape.element_type(), sizes)
+                    .value(),
+                dim));
+    auto masked_src = Select(
+        mask, BroadcastInDim(src, sizes, index_broadcast_dims),
+        Zeros(builder,
+              ShapeUtil::MakeValidatedShape(input_shape.element_type(), sizes)
+                  .value()));
 
     return combiner(
         input,

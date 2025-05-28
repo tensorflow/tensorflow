@@ -20,18 +20,20 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_emitter.h"
+#include "xla/codegen/llvm_kernel_definition.h"
+#include "xla/codegen/llvm_kernel_emitter.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 
 namespace xla::cpu {
 
-class DotKernelEmitter final : public KernelEmitter {
+class DotKernelEmitter final : public LlvmKernelEmitter {
  public:
   DotKernelEmitter(const HloInstruction* instr,
                    const BufferAssignment* buffer_assignment,
                    const TargetMachineFeatures* target_machine);
 
-  absl::StatusOr<KernelDefinition> EmitKernelDefinition() override;
+  absl::StatusOr<LlvmKernelDefinition> EmitKernelDefinition() override;
 
  private:
   const HloInstruction* instr_;

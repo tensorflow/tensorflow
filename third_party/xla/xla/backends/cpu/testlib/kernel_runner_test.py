@@ -52,7 +52,9 @@ class LLvmKernelRunnerTest(absltest.TestCase):
           ret ptr null
         }
     """
-    llvm_emitter = cpu_testlib.LlvmIrKernelEmitter(ir, "LlvmAddI32", (4, 1, 1))
+    llvm_emitter = cpu_testlib.LlvmTestKernelEmitter(
+        ir, "LlvmAddI32", (4, 1, 1)
+    )
 
     kernel_definition = llvm_emitter.emit_kernel_definition()
 
@@ -102,7 +104,9 @@ class MlirKernelRunnerTest(absltest.TestCase):
         }
       }
     """
-    mlir_emitter = cpu_testlib.MlirKernelEmitter(ir, "sum_kernel", (1, 1, 1))
+    mlir_emitter = cpu_testlib.MlirTestKernelEmitter(
+        ir, "sum_kernel", (1, 1, 1)
+    )
 
     kernel_definition = mlir_emitter.emit_kernel_definition()
 

@@ -975,7 +975,8 @@ optional<int64_t> ComputeWhileLoopTripCountUpperBound(
   absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
       replacements;
   auto new_param = HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeTupleShape({cond_gte->shape()}), "temp");
+      0, ShapeUtil::MakeValidatedTupleShape({cond_gte->shape()}).value(),
+      "temp");
   replacements[cond_gte] =
       HloInstruction::CreateGetTupleElement(new_param.get(), 0);
   replacements[while_cond_param] = std::move(new_param);
@@ -999,8 +1000,9 @@ optional<int64_t> ComputeWhileLoopTripCountUpperBound(
   }
 
   Literal cond_result_pred = std::move(eval_result.value());
-  CHECK(Shape::Equal().IgnoreLayout()(cond_result_pred.shape(),
-                                      ShapeUtil::MakeShape(PRED, {})));
+  CHECK(Shape::Equal().IgnoreLayout()(
+      cond_result_pred.shape(),
+      ShapeUtil::MakeValidatedShape(PRED, {}).value()));
 
   // Per the explanation above, if the evaluated condition returns false, the
   // loop executes at most once.

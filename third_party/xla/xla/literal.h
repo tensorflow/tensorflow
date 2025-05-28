@@ -407,7 +407,7 @@ class LiteralBase {
         return;
       }
 
-      CHECK(LayoutUtil::IsDenseArray(subshape));
+      CHECK(subshape.IsArray());
       const int64_t size_bytes = literal.size_bytes(index);
       const int64_t bytes_to_hash = std::min(size_bytes, kByteLimit);
       // When layout insensitive, we need to hash the data bytes in logical
@@ -865,7 +865,7 @@ class LiteralBase {
       return const_cast<char*>(const_cast<const Piece*>(this)->buffer());
     }
     void set_buffer(char* buffer) {
-      DCHECK(LayoutUtil::IsDenseArray(*subshape_));
+      DCHECK(subshape_->IsArray());
       storage_.Emplace<DenseRep>(buffer);
     }
     void MoveDataFrom(Piece& from) {
@@ -882,7 +882,7 @@ class LiteralBase {
 
     // Gets/sets the buffer holding dynamic sizes.
     const DynamicSizeType* dynamic_size_buffer() const {
-      DCHECK(LayoutUtil::IsDenseArray(*subshape_));
+      DCHECK(subshape_->IsArray());
       return tsl::safe_reinterpret_cast<const DynamicSizeType*>(
           buffer() + dynamic_size_buffer_offset());
     }
@@ -892,7 +892,7 @@ class LiteralBase {
     }
 
     int64_t dynamic_size_buffer_bytes() const {
-      DCHECK(LayoutUtil::IsDenseArray(*subshape_));
+      DCHECK(subshape_->IsArray());
       return subshape().dimensions().size() * sizeof(DynamicSizeType);
     }
 
@@ -910,7 +910,7 @@ class LiteralBase {
 
     // Returns the size in bytes of the buffer holding the dense array data.
     int64_t size_bytes_dense() const {
-      DCHECK(LayoutUtil::IsDenseArray(*subshape_));
+      DCHECK(subshape_->IsArray());
       return ShapeUtil::ByteSizeOf(subshape());
     }
 
@@ -1812,7 +1812,7 @@ absl::StatusOr<Literal> Literal::Deserialize(InputIterator begin,
 
 template <typename NativeT>
 absl::Span<const NativeT> LiteralBase::Piece::data() const {
-  DCHECK(LayoutUtil::IsDenseArray(subshape()))
+  DCHECK(subshape().IsArray())
       << __func__ << " is only supported for dense arrays: " << subshape();
   DCHECK(!subshape().has_layout() ||
          subshape().layout().element_size_in_bits() == 0)
@@ -1830,7 +1830,7 @@ absl::Span<const NativeT> LiteralBase::Piece::data() const {
 
 template <typename NativeT>
 absl::Span<NativeT> LiteralBase::Piece::data() {
-  DCHECK(LayoutUtil::IsDenseArray(subshape()))
+  DCHECK(subshape().IsArray())
       << __func__ << " is only supported for dense arrays: " << subshape();
   DCHECK(!subshape().has_layout() ||
          subshape().layout().element_size_in_bits() == 0)
@@ -1848,7 +1848,7 @@ absl::Span<NativeT> LiteralBase::Piece::data() {
 
 template <typename NativeT>
 NativeT LiteralBase::Piece::Get(absl::Span<const int64_t> multi_index) const {
-  DCHECK(LayoutUtil::IsDenseArray(subshape()))
+  DCHECK(subshape().IsArray())
       << __func__ << " is only supported for dense arrays: " << subshape();
   return GetLinear<NativeT>(
       IndexUtil::MultidimensionalIndexToLinearIndex(subshape(), multi_index));
@@ -1857,7 +1857,7 @@ NativeT LiteralBase::Piece::Get(absl::Span<const int64_t> multi_index) const {
 template <typename NativeT>
 void LiteralBase::Piece::Set(absl::Span<const int64_t> multi_index,
                              NativeT value) {
-  DCHECK(LayoutUtil::IsDenseArray(subshape()))
+  DCHECK(subshape().IsArray())
       << __func__ << " is only supported for dense arrays: " << subshape();
   return SetLinear<NativeT>(
       IndexUtil::MultidimensionalIndexToLinearIndex(subshape(), multi_index),
@@ -1866,7 +1866,7 @@ void LiteralBase::Piece::Set(absl::Span<const int64_t> multi_index,
 
 template <typename NativeT>
 NativeT LiteralBase::Piece::GetLinear(int64_t linear_index) const {
-  DCHECK(LayoutUtil::IsDenseArray(subshape()))
+  DCHECK(subshape().IsArray())
       << __func__ << " is only supported for dense arrays: " << subshape();
   DCHECK_LT(linear_index, element_count()) << "linear_index out of bounds";
   return data<NativeT>().data()[linear_index];
@@ -1874,7 +1874,7 @@ NativeT LiteralBase::Piece::GetLinear(int64_t linear_index) const {
 
 template <typename NativeT>
 void LiteralBase::Piece::SetLinear(int64_t linear_index, NativeT value) {
-  DCHECK(LayoutUtil::IsDenseArray(subshape()))
+  DCHECK(subshape().IsArray())
       << __func__ << " is only supported for dense arrays: " << subshape();
   DCHECK_LT(linear_index, element_count()) << "linear_index out of bounds";
   data<NativeT>().data()[linear_index] = value;
@@ -1928,8 +1928,9 @@ inline void MutableLiteralBase::Set(absl::Span<const int64_t> multi_index,
 
 template <typename NativeT>
 NativeT LiteralBase::GetFirstElement() const {
-  CHECK(LayoutUtil::IsDenseArray(shape()))
-      << __func__ << " is only supported for dense arrays: " << shape();
+  CHECK(shape().IsArray()) << __func__
+                           << " is only supported for dense arrays: "
+                           << shape();
   return data<NativeT>().at(0);
 }
 
@@ -1939,7 +1940,7 @@ int64_t LiteralBase::CountEqual(T value) const {
   if (!primitive_util::IsArrayType(ty)) {
     return 0;
   }
-  Literal scalar(ShapeUtil::MakeScalarShape(ty));
+  Literal scalar(ShapeUtil::MakeValidatedScalarShape(ty).value());
   return primitive_util::ArrayTypeSwitch(
       [&](auto primitive_type_constant) -> int64_t {
         using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
@@ -1955,7 +1956,7 @@ int64_t LiteralBase::CountEqual(std::complex<T> value) const {
   if (!primitive_util::IsComplexType(ty)) {
     return 0;
   }
-  Literal scalar(ShapeUtil::MakeScalarShape(ty));
+  Literal scalar(ShapeUtil::MakeValidatedScalarShape(ty).value());
   return primitive_util::ComplexTypeSwitch(
       [&](auto primitive_type_constant) -> int64_t {
         using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
@@ -1980,8 +1981,9 @@ template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE bool LiteralBase::EachCellUntilFailure(
     absl::FunctionRef<bool(absl::Span<const int64_t> indices, NativeT value)>
         per_cell) const {
-  CHECK(LayoutUtil::IsDenseArray(shape()))
-      << __func__ << " is only supported for dense arrays: " << shape();
+  CHECK(shape().IsArray()) << __func__
+                           << " is only supported for dense arrays: "
+                           << shape();
   if (ShapeUtil::IsZeroElementArray(shape())) {
     return true;
   }
@@ -2001,8 +2003,9 @@ template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE void MutableLiteralBase::MutableEachCell(
     absl::FunctionRef<NativeT(absl::Span<const int64_t> indices, NativeT value)>
         per_cell) {
-  CHECK(LayoutUtil::IsDenseArray(shape()))
-      << __func__ << " is only supported for dense arrays: " << shape();
+  CHECK(shape().IsArray()) << __func__
+                           << " is only supported for dense arrays: "
+                           << shape();
   if (ShapeUtil::IsZeroElementArray(shape())) {
     return;
   }
@@ -2019,8 +2022,9 @@ TF_ATTRIBUTE_NOINLINE void MutableLiteralBase::MutableEachCell(
 template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE void MutableLiteralBase::PopulateR1(
     absl::Span<const NativeT> values) {
-  CHECK(LayoutUtil::IsDenseArray(shape()))
-      << __func__ << " is only supported for dense arrays: " << shape();
+  CHECK(shape().IsArray()) << __func__
+                           << " is only supported for dense arrays: "
+                           << shape();
   CHECK_EQ(shape().dimensions().size(), 1);
   if (shape().is_static()) {
     CHECK_EQ(ShapeUtil::ElementsIn(shape()), values.size());
@@ -2036,8 +2040,9 @@ TF_ATTRIBUTE_NOINLINE void MutableLiteralBase::PopulateR1(
 template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE void MutableLiteralBase::PopulateR2(
     std::initializer_list<std::initializer_list<NativeT>> values) {
-  CHECK(LayoutUtil::IsDenseArray(shape()))
-      << __func__ << " is only supported for dense arrays: " << shape();
+  CHECK(shape().IsArray()) << __func__
+                           << " is only supported for dense arrays: "
+                           << shape();
   CHECK_EQ(shape().dimensions().size(), 2);
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
@@ -2069,8 +2074,9 @@ TF_ATTRIBUTE_NOINLINE void MutableLiteralBase::PopulateR2(
 template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE void MutableLiteralBase::PopulateFromArray(
     const Array<NativeT>& values) {
-  CHECK(LayoutUtil::IsDenseArray(shape()))
-      << __func__ << " is only supported for dense arrays: " << shape();
+  CHECK(shape().IsArray()) << __func__
+                           << " is only supported for dense arrays: "
+                           << shape();
   CHECK(shape().IsArray());
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
@@ -2105,7 +2111,7 @@ template <typename NativeT, typename Generator>
 absl::Status MutableLiteralBase::PopulateInternal(Generator&& generator,
                                                   bool parallel) {
   const Shape& this_shape = shape();
-  DCHECK(LayoutUtil::IsDenseArray(this_shape));
+  DCHECK(this_shape.IsArray());
   TF_RET_CHECK(this_shape.element_type() ==
                primitive_util::NativeToPrimitiveType<NativeT>())
       << "Failing to populate literal with element type "
@@ -2124,7 +2130,7 @@ absl::Status MutableLiteralBase::PopulateInternal(Generator&& generator,
 template <typename NativeT, typename Generator,
           MutableLiteralBase::IsGenerator<NativeT, Generator>*>
 absl::Status MutableLiteralBase::Populate(Generator&& generator) {
-  TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
+  TF_RET_CHECK(shape().IsArray())
       << __func__ << " is only supported for dense arrays: " << shape();
   return PopulateInternal<NativeT>(
       [&](absl::Span<const int64_t> indexes, int /*thread_id*/) {
@@ -2135,7 +2141,7 @@ absl::Status MutableLiteralBase::Populate(Generator&& generator) {
 template <typename NativeT, typename Generator,
           MutableLiteralBase::IsParallelGenerator<NativeT, Generator>*>
 absl::Status MutableLiteralBase::PopulateParallel(Generator&& generator) {
-  TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
+  TF_RET_CHECK(shape().IsArray())
       << __func__ << " is only supported for dense arrays: " << shape();
   return PopulateInternal<NativeT>(generator,
                                    /*parallel=*/data<NativeT>().size() > 32);
@@ -2145,7 +2151,7 @@ template <typename NativeT, typename Generator>
 absl::Status MutableLiteralBase::PopulateLinearInternal(Generator&& generator,
                                                         bool parallel) {
   const Shape& this_shape = shape();
-  DCHECK(LayoutUtil::IsDenseArray(this_shape));
+  DCHECK(this_shape.IsArray());
   TF_RET_CHECK(this_shape.element_type() ==
                primitive_util::NativeToPrimitiveType<NativeT>())
       << "Failing to populate literal with element type "
@@ -2164,7 +2170,7 @@ absl::Status MutableLiteralBase::PopulateLinearInternal(Generator&& generator,
 template <typename NativeT, typename Generator,
           MutableLiteralBase::IsLinearGenerator<NativeT, Generator>*>
 absl::Status MutableLiteralBase::PopulateLinear(Generator&& generator) {
-  TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
+  TF_RET_CHECK(shape().IsArray())
       << __func__ << " is only supported for dense arrays: " << shape();
   return PopulateLinearInternal<NativeT>(
       [&](int64_t linear_index, int /*thread_id*/) {
@@ -2175,7 +2181,7 @@ absl::Status MutableLiteralBase::PopulateLinear(Generator&& generator) {
 template <typename NativeT, typename Generator,
           MutableLiteralBase::IsLinearParallelGenerator<NativeT, Generator>*>
 absl::Status MutableLiteralBase::PopulateLinearParallel(Generator&& generator) {
-  TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
+  TF_RET_CHECK(shape().IsArray())
       << __func__ << " is only supported for dense arrays: " << shape();
   return PopulateLinearInternal<NativeT>(
       std::forward<Generator>(generator),
@@ -2184,7 +2190,7 @@ absl::Status MutableLiteralBase::PopulateLinearParallel(Generator&& generator) {
 
 template <typename Populator, MutableLiteralBase::IsPopulator<Populator>*>
 absl::Status MutableLiteralBase::PopulateInplace(Populator&& populator) {
-  TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
+  TF_RET_CHECK(shape().IsArray())
       << __func__ << " is only supported for dense arrays: " << shape();
   PopulateInplaceInternal(
       [&](void* dest, absl::Span<const int64_t> indexes, int /*thread_id*/) {
@@ -2198,7 +2204,7 @@ template <typename Populator,
           MutableLiteralBase::IsParallelPopulator<Populator>*>
 absl::Status MutableLiteralBase::PopulateInplaceParallel(
     Populator&& populator) {
-  TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
+  TF_RET_CHECK(shape().IsArray())
       << __func__ << " is only supported for dense arrays: " << shape();
   PopulateInplaceInternal(std::forward<Populator>(populator),
                           /*parallel=*/element_count() > 32);
@@ -2207,7 +2213,7 @@ absl::Status MutableLiteralBase::PopulateInplaceParallel(
 
 template <typename Populator, MutableLiteralBase::IsLinearPopulator<Populator>*>
 absl::Status MutableLiteralBase::PopulateLinearInplace(Populator&& populator) {
-  TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
+  TF_RET_CHECK(shape().IsArray())
       << __func__ << " is only supported for dense arrays: " << shape();
   PopulateLinearInplaceInternal(
       [&](void* dest, int64_t linear_index, int /*thread_id*/) {
@@ -2221,7 +2227,7 @@ template <typename Populator,
           MutableLiteralBase::IsLinearParallelPopulator<Populator>*>
 absl::Status MutableLiteralBase::PopulateLinearInplaceParallel(
     Populator&& populator) {
-  TF_RET_CHECK(LayoutUtil::IsDenseArray(shape()))
+  TF_RET_CHECK(shape().IsArray())
       << __func__ << " is only supported for dense arrays: " << shape();
   PopulateLinearInplaceInternal(std::forward<Populator>(populator),
                                 /*parallel=*/element_count() > 32);
@@ -2230,8 +2236,9 @@ absl::Status MutableLiteralBase::PopulateLinearInplaceParallel(
 
 template <typename NativeT>
 void MutableLiteralBase::PopulateWithValue(NativeT value) {
-  CHECK(LayoutUtil::IsDenseArray(shape()))
-      << __func__ << " is only supported for dense arrays: " << shape();
+  CHECK(shape().IsArray()) << __func__
+                           << " is only supported for dense arrays: "
+                           << shape();
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
   for (NativeT& element : data<NativeT>()) {
@@ -2241,14 +2248,16 @@ void MutableLiteralBase::PopulateWithValue(NativeT value) {
 
 template <typename NativeT>
 Literal LiteralBase::Replicate(int64_t times) const {
-  CHECK(LayoutUtil::IsDenseArray(shape()))
-      << __func__ << " is only supported for dense arrays: " << shape();
+  CHECK(shape().IsArray()) << __func__
+                           << " is only supported for dense arrays: "
+                           << shape();
   DimensionVector bounds = {times};
   bounds.reserve(shape().dimensions().size() + 1);
   for (int64_t bound : shape().dimensions()) {
     bounds.push_back(bound);
   }
-  Literal literal(ShapeUtil::MakeShape(shape().element_type(), bounds));
+  Literal literal(
+      ShapeUtil::MakeValidatedShape(shape().element_type(), bounds).value());
   int64_t elements = ShapeUtil::ElementsIn(literal.shape());
   if (elements == 0) {
     return literal;
