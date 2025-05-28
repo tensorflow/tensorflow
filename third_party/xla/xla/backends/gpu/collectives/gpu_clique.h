@@ -50,6 +50,9 @@ class GpuClique : public Clique {
   // Checks for async errors for all the communicators in the clique.
   absl::Status HealthCheck() const final;
 
+  // Aborts all communicators in the clique.
+  absl::Status Abort();
+
  private:
   friend LockableGpuClique;
 
@@ -81,6 +84,9 @@ class LockableGpuClique : public Lockable<GpuClique, GpuClique::LockableName> {
   // having to acquire the lock. If at least one of the communicators has an
   // async error, it returns one of the errors.
   absl::Status HealthCheck() const;
+
+  // Aborts all communicators in the clique without taking the lock.
+  absl::Status Abort();
 };
 
 }  // namespace xla::gpu

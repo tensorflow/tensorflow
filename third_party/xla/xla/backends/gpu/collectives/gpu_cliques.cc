@@ -596,4 +596,21 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
                              config);
 }
 
+absl::Status AbortAllCliques() {
+  VLOG(1) << "Aborting all GPU cliques";
+  ProcessGpuCliques& cliques = GetProcessGpuCliques();
+  absl::MutexLock lock(&cliques.mu);
+  absl::Status result;
+  for (auto& [clique_key, lockable_clique] : cliques.map) {
+    VLOG(1) << "Aborting GPU clique " << clique_key.ToString();
+    if (absl::Status s = lockable_clique.Abort(); !s.ok()) {
+      LOG(ERROR) << "Error aborting GPU clique " << clique_key.ToString()
+                 << ": " << s;
+      result = std::move(s);
+    }
+  }
+  cliques.map.clear();
+  return result;
+}
+
 }  // namespace xla::gpu

@@ -128,6 +128,7 @@ class Lockable {
 
  protected:
   const T& value() const { return value_; }
+  T& mutable_value() { return value_; }
 
  private:
   friend class Lock;
