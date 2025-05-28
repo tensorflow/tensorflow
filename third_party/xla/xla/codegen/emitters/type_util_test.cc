@@ -48,8 +48,8 @@ llvm::SmallVector<std::string> TypesToString(
 TEST(TensorShapeTest, ConvertsShape) {
   mlir::MLIRContext ctx;
   mlir::OpBuilder b(&ctx);
-  EXPECT_EQ(TypeToString(
-                TensorShapeToMlirType(ShapeUtil::MakeShape(S32, {4, 5, 6}), b)),
+  EXPECT_EQ(TypeToString(TensorShapeToMlirType(
+                ShapeUtil::MakeValidatedShape(S32, {4, 5, 6}).value(), b)),
             "tensor<4x5x6xi32>");
 }
 
@@ -57,7 +57,7 @@ TEST(TensorShapeTest, ConvertsPred) {
   mlir::MLIRContext ctx;
   mlir::OpBuilder b(&ctx);
   EXPECT_EQ(TypeToString(TensorShapeToMlirType(
-                ShapeUtil::MakeShape(PRED, {4, 5, 6}), b)),
+                ShapeUtil::MakeValidatedShape(PRED, {4, 5, 6}).value(), b)),
             "tensor<4x5x6xi8>");
 }
 
@@ -73,9 +73,9 @@ TEST(TensorShapeTest, ConvertsLayout) {
 TEST(ShapeTest, ConvertsArray) {
   mlir::MLIRContext ctx;
   mlir::OpBuilder b(&ctx);
-  EXPECT_THAT(
-      TypesToString(ShapeToMlirTypes(ShapeUtil::MakeShape(S32, {4, 5, 6}), b)),
-      ElementsAre("tensor<4x5x6xi32>"));
+  EXPECT_THAT(TypesToString(ShapeToMlirTypes(
+                  ShapeUtil::MakeValidatedShape(S32, {4, 5, 6}).value(), b)),
+              ElementsAre("tensor<4x5x6xi32>"));
 }
 
 TEST(ShapeTest, ConvertsTuple) {
@@ -83,10 +83,11 @@ TEST(ShapeTest, ConvertsTuple) {
   mlir::OpBuilder b(&ctx);
 
   EXPECT_THAT(
-      TypesToString(ShapeToMlirTypes(
-          ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(S32, {4, 5, 6}),
-                                     ShapeUtil::MakeShape(F32, {})}),
-          b)),
+      TypesToString(ShapeToMlirTypes(ShapeUtil::MakeValidatedTupleShape(
+                                         {ShapeUtil::MakeShape(S32, {4, 5, 6}),
+                                          ShapeUtil::MakeShape(F32, {})})
+                                         .value(),
+                                     b)),
       ElementsAre("tensor<4x5x6xi32>", "tensor<f32>"));
 }
 
