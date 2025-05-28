@@ -416,21 +416,18 @@ struct PairHash {
 class ResourceInfo {
  public:
   // Associate a VarHandle node and global id to this local subgraph resource.
-  bool SetVarHandle(int node_index, const TfLiteNode* var_handle,
-                    int global_id) {
+  bool SetVarHandle(int node_index, int global_id) {
     if (global_id_ != -1 && global_id_ != global_id) {
       // This VarHandle op is changing the resource tensor to a different value.
       // We can't delegate this.
       return false;
     }
     global_id_ = global_id;
-    var_handle_ = var_handle;
     var_handle_node_index_ = node_index;
     return true;
   }
 
   // A representative VarHandle node that assigns this resource tensor.
-  const TfLiteNode* GetVarHandle() const { return var_handle_; }
   int GetVarHandleNodeIndex() const { return var_handle_node_index_; }
   // A unique ID indicating which handle this resource tensor comes from.
   int GetGlobalId() const { return global_id_; }
@@ -440,7 +437,7 @@ class ResourceInfo {
   // the flags to pass to `xnn_define_tensor` for this tensor.
   bool AddProxyValue(const TfLiteTensor* tensors, int id,
                      uint32_t value_flags = 0) {
-    if (!var_handle_) {
+    if (var_handle_node_index_ < 0) {
       // We don't have a var handle yet, can't be accessed.
       return false;
     }
@@ -465,7 +462,6 @@ class ResourceInfo {
 
  private:
   int global_id_ = -1;
-  const TfLiteNode* var_handle_ = nullptr;
   int var_handle_node_index_ = -1;
   int proxy_value_ = -1;
   uint32_t value_flags_ = 0;
@@ -1193,6 +1189,8 @@ class Subgraph {
   TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node,
                        bool enable_subgraph_reshaping, Delegate* delegate) {
     std::lock_guard<std::mutex> lock(delegate->workspace_mutex_);
+    tflite::Subgraph* this_subgraph =
+        reinterpret_cast<tflite::Subgraph*>(context->impl_);
 
     if (enable_subgraph_reshaping) {
       xnn_status status = xnn_status_invalid_state;
@@ -1249,9 +1247,12 @@ class Subgraph {
     for (std::pair<const int, void*>& io_info : externals_) {
       const auto& resource_it = resources_.find(io_info.first);
       if (resource_it != resources_.end()) {
-        const TfLiteNode* var_handle = resource_it->second.GetVarHandle();
-        if (var_handle) {
-          TF_LITE_ENSURE_STATUS(PrepareVarHandle(context, var_handle));
+        const int node_index = resource_it->second.GetVarHandleNodeIndex();
+        const auto* var_handle_and_registration =
+            this_subgraph->node_and_registration(node_index);
+        if (var_handle_and_registration) {
+          TF_LITE_ENSURE_STATUS(
+              PrepareVarHandle(context, &var_handle_and_registration->first));
         }
       }
     }
@@ -1287,15 +1288,17 @@ class Subgraph {
           io_info.second = data_pointer;
         }
       } else {
-        const TfLiteNode* var_handle = resource_it->second.GetVarHandle();
+        const int node_index = resource_it->second.GetVarHandleNodeIndex();
         int resource_id;
-        if (var_handle) {
+        const auto* var_handle_and_registration =
+            this_subgraph->node_and_registration(node_index);
+        if (var_handle_and_registration) {
           // By invoking VarHandle here, we're effectively reordering these ops
           // to be at the beginning of the subgraph. This is OK because
           // VarHandle has no input dependencies, and we already checked that
           // multiple different VarHandles are not written to the same variable.
-          TF_LITE_ENSURE_STATUS(
-              InvokeVarHandle(context, var_handle, resource_id));
+          TF_LITE_ENSURE_STATUS(InvokeVarHandle(
+              context, &var_handle_and_registration->first, resource_id));
         } else {
           // There was no var handle. Maybe the resource is a static tensor?
           const TfLiteTensor& resource_tensor =
@@ -5128,25 +5131,8 @@ class Subgraph {
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
       const TfLiteTensor* tensors, const TfLiteReshapeParams* reshape_params,
       const std::unordered_map<int, uint32_t>& input_output_tensors) {
-    switch (node->inputs->size) {
-      case 1:
-      case 2:
-        break;
-      default:
-        TF_LITE_MAYBE_KERNEL_LOG(
-            logging_context,
-            "unexpected number of inputs (%d) in node #%d: "
-            "either one or two inputs expected",
-            node->inputs->size, node_index);
-        return kTfLiteError;
-    }
-    if (node->outputs->size != 1) {
-      TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                               "unexpected number of outputs (%d) in node "
-                               "#%d: one output expected",
-                               node->outputs->size, node_index);
-      return kTfLiteError;
-    }
+    TF_LITE_ENSURE_STATUS(CheckNumInputsAndOutputs(
+        logging_context, node, 1, 2, 1, BuiltinOperator_RESHAPE, node_index));
 
     const TfLiteTensor& input_tensor = tensors[node->inputs->data[0]];
     TF_LITE_ENSURE_STATUS(
@@ -6521,7 +6507,7 @@ class Subgraph {
     ResourceInfo& resource_info =
         delegate.GetResourceInfo(node->outputs->data[0]);
     const int global_id = delegate.GetGlobalId(params);
-    resource_info.SetVarHandle(node_index, node, global_id);
+    resource_info.SetVarHandle(node_index, global_id);
     if (subgraph == nullptr) {
       // Always return error here because we don't know the type of this
       // variable yet, so we pretend that we can't handle this. Later, after
@@ -6821,22 +6807,18 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
       return nullptr;  // Hard error.
     }
 
-    if (node->inputs->size != 1) {
-      TF_LITE_KERNEL_LOG(
-          context, "unexpected number of inputs (%d) in %d node %d",
-          node->inputs->size,
-          static_cast<BuiltinOperator>(registration->builtin_code),
-          producer_index);
+    if (Subgraph::CheckNumInputs(
+            context, node, /*expected_num_inputs=*/1,
+            static_cast<BuiltinOperator>(registration->builtin_code),
+            producer_index) != kTfLiteOk) {
       TfLiteIntArrayFree(nodes_to_delegate);
       return nullptr;  // Hard error.
     }
 
-    if (node->outputs->size != 1) {
-      TF_LITE_KERNEL_LOG(
-          context, "unexpected number of outputs (%d) in %d node %d",
-          node->outputs->size,
-          static_cast<BuiltinOperator>(registration->builtin_code),
-          producer_index);
+    if (Subgraph::CheckNumOutputs(
+            context, node, /*expected_num_outputs=*/1,
+            static_cast<BuiltinOperator>(registration->builtin_code),
+            producer_index) != kTfLiteOk) {
       TfLiteIntArrayFree(nodes_to_delegate);
       return nullptr;  // Hard error.
     }

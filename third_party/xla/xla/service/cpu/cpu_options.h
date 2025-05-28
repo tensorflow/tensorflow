@@ -21,11 +21,29 @@ limitations under the License.
 #include <tuple>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/service/hlo_module_config.h"
 
 // Helper functions for querying options that are specific to the CPU backend.
 
 namespace xla::cpu::options {
+
+inline constexpr absl::string_view kXlaOptimizeForSizeCpuOption =
+    "xla_cpu_optimize_for_size";
+inline constexpr absl::string_view kLlvmIrDotTilingFactor =
+    "xla_llvm_dot_tiling_factor";
+inline constexpr absl::string_view kXlaForceEnableExperimentalLlvmIrGemm =
+    "xla_force_enable_experimental_llvm_ir_gemm";
+inline constexpr absl::string_view kLlvmIrGemmTileSize =
+    "xla_llvm_ir_gemm_tile_size";
+inline constexpr absl::string_view kDisableSlpVectorizer =
+    "xla_cpu_disable_slp_vectorizer";
+inline constexpr absl::string_view kDisableLoopUnrolling =
+    "xla_cpu_disable_loop_unrolling";
+inline constexpr absl::string_view kFoldAllConstants =
+    "xla_cpu_fold_all_constants";
+inline constexpr absl::string_view kSmallWhileLoopByteThreshold =
+    "xla_cpu_small_while_loop_byte_threshold";
 
 bool OptimizeForSizeRequested(const HloModuleConfig& config);
 bool VectorizedReduceDisabled(const HloModuleConfig& config);

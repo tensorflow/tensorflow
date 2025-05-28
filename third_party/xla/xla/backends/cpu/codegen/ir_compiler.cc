@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -68,6 +69,25 @@ limitations under the License.
 #include "tsl/platform/cpu_info.h"
 
 namespace xla::cpu {
+
+void SetXlaCpuBackendOptions(llvm::Module& llvm_module,
+                             const LlvmKernelOptions& options) {
+  std::vector<std::string> llvm_kernel_options;
+  if (options.optimize_for_size()) {
+    llvm_kernel_options.emplace_back(options::kXlaOptimizeForSizeCpuOption);
+  }
+  if (options.disable_loop_unrolling()) {
+    llvm_kernel_options.emplace_back(options::kDisableLoopUnrolling);
+  }
+  if (options.slp_vectorizer_disabled()) {
+    llvm_kernel_options.emplace_back(options::kDisableSlpVectorizer);
+  }
+
+  llvm::MDString* options_mdstring = llvm::MDString::get(
+      llvm_module.getContext(), absl::StrJoin(llvm_kernel_options, ","));
+  llvm_module.addModuleFlag(llvm::Module::Error, "xla_backend_extra_options",
+                            options_mdstring);
+}
 
 static llvm::OptimizationLevel GetOptimizationLevel(
     IrCompiler::Options options) {
