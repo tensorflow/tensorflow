@@ -141,6 +141,8 @@ void CoordinationService::TaskState::SetConnected(uint64_t task_incarnation) {
 
 void CoordinationService::TaskState::Disconnect(
     uint64_t grace_period_duration_us) {
+  LOG(INFO) << "Disconnect task " << task_name_ << " with grace period "
+            << grace_period_duration_us;
   disconnect_grace_period_us_ =
       Env::Default()->NowMicros() + grace_period_duration_us;
   state_ = CoordinatedTaskState::TASKSTATE_DISCONNECTED;
@@ -479,6 +481,10 @@ void CoordinationService::ConnectTask(const CoordinatedTask& task,
   task_state->SetTaskIncarnation(incarnation);
   task_state->Connect();
   if (task_state->IsRecoverable()) {
+    LOG(INFO) << "Recoverable task " << task_name
+              << " silently connected again.";
+    RefreshAliveTasksBarrierForReconnectedTask(task);
+    RefreshAliveness();
     LeaveOngoingBarriers(task, "recoverable task silently connected again");
   }
 }
@@ -674,7 +680,7 @@ absl::Status CoordinationService::DisconnectTask(const CoordinatedTask& task) {
     return MakeCoordinationError(absl::FailedPreconditionError(
         absl::StrCat("The task is already disconnected: ", task_name)));
   }
-
+  LOG(INFO) << "Disconnecting task: " << task_name;
   // Disconnect task.
   task_state->Disconnect(
       /*grace_period_duration_us=*/heartbeat_timeout_ms_ * 1000);
@@ -1408,6 +1414,22 @@ CoordinationService::CoordinatedTaskSet CoordinationService::AliveTasks(
   return alive_tasks;
 }
 
+void CoordinationService::RefreshAliveTasksBarrierForReconnectedTask(
+    const CoordinatedTask& reconnected_task) {
+  // If a task reconnected, we need to check if it is in the barrier.
+  // If it is not, we need to add it from the barrier, since it might have
+  // been disconnected before calling the get_alive_tasks barrier and now that
+  // the task has reconnected, we need to ensure we don't block on the same
+  // barrier.
+  auto it = aliveness_states_.begin();
+  while (it != aliveness_states_.end()) {
+    if (!it->in_barrier.contains(reconnected_task)) {
+      // The task reconnected and is still in the barrier.
+      it->in_barrier.insert(reconnected_task);
+    }
+  }
+}
+
 void CoordinationService::RefreshAliveness() {
   // Try to finish every pending GetAliveTasks call.
   auto it = aliveness_states_.begin();
@@ -1447,6 +1469,9 @@ void CoordinationService::GetAliveTasksAsync(
     done(err, {});
     return;
   }
+  LOG(INFO) << "==========================================================";
+  LOG(INFO) << "GetAliveTasksAsync for task: " << GetTaskName(requesting_task);
+  LOG(INFO) << "==========================================================";
 
   // Find the corresponding AlivenessState, creating a new one if needed.
   absl::MutexLock l(&state_mu_);
