@@ -81,6 +81,7 @@ cc_library(
     hdrs = ["xnn_emitter.h"],
     deps = [
         ":xnn_fusion",
+        "//xla:literal",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",

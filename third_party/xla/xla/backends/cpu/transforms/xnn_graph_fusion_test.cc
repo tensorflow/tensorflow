@@ -43,11 +43,11 @@ TEST_F(XnnGraphFusionTest, BasicFusion) {
 HloModule FusionDemonstration
 
 ENTRY entry {
-   %param.0 = f32[1024,1024]{1,0} parameter(0)
-   %param.1 = f32[1024,1024]{1,0} parameter(1)
-   %add.0 = f32[1024,1024]{1,0} add(f32[1024,1024]{1,0} %param.0, f32[1024,1024]{1,0} %param.1)
-   %sub.0 = f32[1024,1024]{1,0} subtract(f32[1024,1024]{1,0} %param.0, f32[1024,1024]{1,0} %param.1)
-   ROOT %result = f32[1024,1024]{1,0} multiply(f32[1024,1024]{1,0} %add.0, f32[1024,1024]{1,0} %sub.0)
+   %param.0 = f32[2,2]{1,0} parameter(0)
+   %constant.0 = f32[2,2]{1,0} constant({ { 1, 2 }, { 3, 4 } })
+   %add.0 = f32[2,2]{1,0} add(f32[2,2]{1,0} %param.0, f32[2,2]{1,0} %constant.0)
+   %sub.0 = f32[2,2]{1,0} subtract(f32[2,2]{1,0} %param.0, f32[2,2]{1,0} %constant.0)
+   ROOT %result = f32[2,2]{1,0} multiply(f32[2,2]{1,0} %add.0, f32[2,2]{1,0} %sub.0)
 }
 
 )";
