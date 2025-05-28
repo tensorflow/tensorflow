@@ -609,7 +609,9 @@ static SortDims GetSortDims(const Shape& shape, int64_t dimension) {
   // We need to normalize shape + layout into a descending layout, so that we
   // can compute access strides according to the physical layout.
   Shape physical_shape =
-      ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(shape);
+      ShapeUtil::MakeValidatedShapeWithDescendingLayoutAndSamePhysicalLayout(
+          shape)
+          .value();
 
   // Map `sort_dimension` from logical to physical.
   auto logical_to_physical = LayoutUtil::MakeLogicalToPhysical(shape.layout());
