@@ -1,4 +1,4 @@
-// RUN: stablehlo-quant-opt %s -split-input-file -stablehlo-convert-shape-to-stablehlo-with-constraints --verify-diagnostics | FileCheck %s
+// RUN: stablehlo-quant-opt %s -split-input-file -tf-stablehlo-convert-shape-to-stablehlo-with-constraints --verify-diagnostics | FileCheck %s
 
 // CHECK-LABEL: func.func @shape_cstr_broadcastable
 func.func @shape_cstr_broadcastable(%arg0: tensor<2xindex>, %arg1: tensor<2xindex>) {
