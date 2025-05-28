@@ -306,6 +306,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
@@ -403,9 +404,11 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
+        "@com_google_absl//absl/log:check",
         "@local_xla//xla/service:custom_call_status_internal",
         # Keep dependencies to a minimum here; this library is used in every AOT
         # binary produced by tfcompile.
+        "@local_xla//xla/backends/cpu/runtime:rng_state_lib",
         "@local_xla//xla:cpu_function_runtime",
         "@local_xla//xla:executable_run_options",
         "@local_xla//xla/service/cpu:buffer_desc",
