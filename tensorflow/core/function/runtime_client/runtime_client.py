@@ -33,3 +33,19 @@ class Runtime(runtime_client_pybind.Runtime):
 
   def CreateFunction(self, function_def: function_pb2.FunctionDef):
     self.CreateFunctionFromString(function_def.SerializeToString())
+
+  def Import(self, path: str):
+    """Import a SavedModel from the given path.
+    
+    This method provides SavedModel loading functionality for the C++ runtime
+    by delegating to the Python implementation.
+    
+    Args:
+      path: Path to the SavedModel directory.
+      
+    Returns:
+      The loaded SavedModel object.
+    """
+    # Import here to avoid circular dependencies
+    from tensorflow.python.saved_model import load
+    return load.load(path)
