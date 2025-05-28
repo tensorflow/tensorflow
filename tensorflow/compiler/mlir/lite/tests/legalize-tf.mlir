@@ -153,6 +153,17 @@ func.func @softmax(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
 // CHECK:  "tfl.softmax"(%arg0) <{beta = 1.000000e+00 : f32}> : (tensor<8x16xf32>) -> tensor<8x16xf32>
 }
 
+func.func @softsign(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
+  %0 = "tf.Softsign"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  func.return %0 : tensor<8x16xf32>
+
+  // CHECK-LABEL: softsign
+  // CHECK:  %[[abs:.*]] = "tfl.abs"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
+  // CHECK:  %[[cst:.*]] = arith.constant dense<1.000000e+00> : tensor<f32>
+  // CHECK:  %[[add_result:.*]] = tfl.add(%[[abs]], %[[cst]]) <{fused_activation_function = "NONE"}> : (tensor<8x16xf32>, tensor<f32>) -> tensor<8x16xf32>
+  // CHECK: %[[RES0:.*]] = tfl.div %arg0, %[[add_result]] {fused_activation_function = "NONE"} : tensor<8x16xf32>
+}
+
 func.func @softplus(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
   %0 = "tf.Softplus"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
   func.return %0 : tensor<8x16xf32>
