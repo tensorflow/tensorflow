@@ -24,10 +24,12 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/report.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_report.h"
 
 namespace mlir::quant::stablehlo {
 namespace {
+
+using ::mlir::tf_quant::stablehlo::QuantizationReport;
 
 // Converts `std::optional<absl::string_view>` to `std::optional<std::string>`.
 // A `std::nullopt` is returned when `view` is `std::nullopt`.
