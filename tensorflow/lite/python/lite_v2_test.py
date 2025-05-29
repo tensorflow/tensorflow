@@ -1386,8 +1386,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     quant_params = detail['quantization_parameters']
     expected_num_params = 1 if disable_per_channel else k_num_filters
     self.assertLen(quant_params['scales'], expected_num_params)
-    if len(quant_params['zero_points']) != 1:
-      self.assertLen(quant_params['zero_points'], expected_num_params)
+    self.assertLen(quant_params['zero_points'], expected_num_params)
 
   def _getIntegerQuantizeDenseModel(self, num_filters=32):
     np.random.seed(0)
@@ -1460,8 +1459,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     quant_params = detail['quantization_parameters']
     expected_num_params = 1 if disable_per_channel_for_dense else k_num_filters
     self.assertLen(quant_params['scales'], expected_num_params)
-    if len(quant_params['zero_points']) != 1:
-      self.assertLen(quant_params['zero_points'], expected_num_params)
+    self.assertLen(quant_params['zero_points'], expected_num_params)
 
   @parameterized.named_parameters(
       ('MlirQuantize', True), ('TocoQuantize', False)
@@ -2962,8 +2960,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     if disable_per_channel:
       expected_num_params = 1
     self.assertLen(quant_params['scales'], expected_num_params)
-    if len(quant_params['zero_points']) != 1:
-      self.assertLen(quant_params['zero_points'], expected_num_params)
+    self.assertLen(quant_params['zero_points'], expected_num_params)
 
   @parameterized.named_parameters(
       ('_INT8Quant_INT32Bias', False, False, dtypes.int32, True),
@@ -3103,8 +3100,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     else:
       expected_num_params = 1 if disable_per_channel else num_filters
     self.assertLen(quant_params['scales'], expected_num_params)
-    if len(quant_params['zero_points']) != 1:
-      self.assertLen(quant_params['zero_points'], expected_num_params)
+    self.assertLen(quant_params['zero_points'], expected_num_params)
 
     input_details = interp.get_input_details()
     output_details = interp.get_output_details()
@@ -3452,8 +3448,7 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     else:
       expected_num_params = 1 if disable_per_channel else num_filters
     self.assertLen(quant_params['scales'], expected_num_params)
-    if len(quant_params['zero_points']) != 1:
-      self.assertLen(quant_params['zero_points'], expected_num_params)
+    self.assertLen(quant_params['zero_points'], expected_num_params)
 
     input_details = interp.get_input_details()
     output_details = interp.get_output_details()
@@ -3686,8 +3681,7 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     quant_params = detail['quantization_parameters']
     expected_num_params = 1 if disable_per_channel_for_dense else k_num_filters
     self.assertLen(quant_params['scales'], expected_num_params)
-    if len(quant_params['zero_points']) != 1:
-      self.assertLen(quant_params['zero_points'], expected_num_params)
+    self.assertLen(quant_params['zero_points'], expected_num_params)
 
 
 class FromJaxModelTest(lite_v2_test_util.ModelTest):
