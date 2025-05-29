@@ -416,7 +416,12 @@ class MemorySpaceAssignment {
 
   // Remove the positions and chunks associated with the instruction from
   // alternate_memory_assignments_.
-  void RemoveAssignmentForInstruction(const HloInstruction* instruction);
+  void RemoveAlternateMemoryAssignmentForInstruction(
+      const HloInstruction* instruction);
+
+  // Remove the scoped memory assignments associated with the instruction.
+  void RemoveScopedMemoryAssignmentForInstruction(
+      const HloInstruction* instruction);
 
   HloModule* module_;
   // Backend specific aliasing information.

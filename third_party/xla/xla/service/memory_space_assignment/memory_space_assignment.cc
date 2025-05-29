@@ -659,7 +659,7 @@ absl::Status MemorySpaceAssignment::ExportAndColorBuffers(
   return absl::OkStatus();
 }
 
-void MemorySpaceAssignment::RemoveAssignmentForInstruction(
+void MemorySpaceAssignment::RemoveAlternateMemoryAssignmentForInstruction(
     const HloInstruction* instruction) {
   auto it = alternate_memory_assignments_.begin();
   auto end = alternate_memory_assignments_.end();
@@ -682,8 +682,32 @@ void MemorySpaceAssignment::RemoveAssignmentForInstruction(
   }
 }
 
+void MemorySpaceAssignment::RemoveScopedMemoryAssignmentForInstruction(
+    const HloInstruction* instruction) {
+  auto it = scoped_memory_assignments_.begin();
+  auto end = scoped_memory_assignments_.end();
+  while (it != end) {
+    ScopedMemorySource scoped_memory_source = it->first;
+    if (scoped_memory_source.instruction == instruction) {
+      VLOG(3) << "Removing instruction from scoped memory assignments.";
+      if (std::next(it) == end) {
+        scoped_memory_assignments_.pop_back();
+        break;
+      } else {
+        // Swap the removed position and chunk with the back and pop back.
+        *it = scoped_memory_assignments_.back();
+        scoped_memory_assignments_.pop_back();
+        end = scoped_memory_assignments_.end();
+      }
+    } else {
+      ++it;
+    }
+  }
+}
+
 absl::Status MemorySpaceAssignment::SimplifyGraph() {
   VLOG(1) << "Simplifying graph...";
+
   for (HloComputation* computation : module_->MakeNonfusionComputations()) {
     // Parallel computations aren't in the schedule and don't need to be
     // modified.
@@ -719,7 +743,7 @@ absl::Status MemorySpaceAssignment::SimplifyGraph() {
           VLOG(4) << "Instruction removed: " << instruction->ToString();
           // Ensure the alternate memory assignments don't contain a reference
           // to the removed instruction.
-          RemoveAssignmentForInstruction(instruction);
+          RemoveAlternateMemoryAssignmentForInstruction(instruction);
           // Instead of deleting the instruction from the schedule, replace it
           // with a nullptr. This is needed because FixSchedule relies on the
           // logical time that is the index into flattened_instructions_ for
@@ -729,6 +753,7 @@ absl::Status MemorySpaceAssignment::SimplifyGraph() {
           if (instruction_it != flattened_instructions_.end()) {
             *instruction_it = nullptr;
           }
+          RemoveScopedMemoryAssignmentForInstruction(instruction);
           TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
           computation_modified = true;
         } else if (instruction->opcode() == HloOpcode::kGetTupleElement) {
