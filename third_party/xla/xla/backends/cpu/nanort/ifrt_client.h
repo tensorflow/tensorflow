@@ -86,7 +86,7 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
   // Returns the underlying NanoRtClient.
   NanoRtClient* nano_client() { return &client_; }
 
-  using HostBufferSemantics = xla::ifrt::Client::HostBufferSemantics;
+  using HostBufferSemantics = ifrt::Client::HostBufferSemantics;
 
   // Creates an array from a host buffer. The buffer will be used directly
   // without a copy if the copy semantics allow it and the layout is row major
@@ -96,17 +96,16 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
       std::optional<absl::Span<const int64_t>> byte_strides,
       ifrt::ShardingRef sharding, HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer,
-      tsl::RCReference<xla::ifrt::UserContext> user_context) override;
+      tsl::RCReference<ifrt::UserContext> user_context) override;
 
   absl::StatusOr<std::vector<ifrt::ArrayRef>> MakeArraysFromHostBufferShards(
       absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
       HostBufferSemantics semantics,
-      tsl::RCReference<xla::ifrt::UserContext> user_context) override;
+      tsl::RCReference<ifrt::UserContext> user_context) override;
 
-  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> MakeErrorArrays(
-      const absl::Status& error,
-      absl::Span<const xla::ifrt::ArraySpec> array_specs,
-      tsl::RCReference<xla::ifrt::UserContext> user_context) override;
+  absl::StatusOr<std::vector<ifrt::ArrayRef>> MakeErrorArrays(
+      const absl::Status& error, absl::Span<const ifrt::ArraySpec> array_specs,
+      tsl::RCReference<ifrt::UserContext> user_context) override;
 
   // Assembles a sharded array from a list of single device arrays. If the
   // provided sharding is specific enough to assemble a dense array, this method
@@ -126,8 +125,8 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
       std::optional<ifrt::MemoryKind> memory_kind,
       ifrt::ArrayCopySemantics semantics) override;
 
-  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> RemapArrays(
-      const ifrt::RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
+  absl::StatusOr<std::vector<ifrt::ArrayRef>> RemapArrays(
+      const ifrt::RemapPlan& plan, absl::Span<ifrt::ArrayRef> arrays,
       ifrt::ArrayCopySemantics semantics) override;
 
   ifrt::Future<> GetReadyFuture(
@@ -150,7 +149,7 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
   absl::Span<ifrt::Device* const> addressable_devices() const override;
   int process_index() const override;
 
-  absl::Span<xla::ifrt::Device* const> GetAllDevices() const override;
+  absl::Span<ifrt::Device* const> GetAllDevices() const override;
 
   absl::StatusOr<ifrt::DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
@@ -169,10 +168,10 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
 
   absl::StatusOr<std::shared_ptr<const PjRtLayout>> GetDefaultLayout(
       ifrt::DType dtype, absl::Span<const int64_t> dims, ifrt::Device* device,
-      xla::ifrt::MemoryKind memory_kind) const override;
+      ifrt::MemoryKind memory_kind) const override;
 
-  tsl::RCReference<xla::ifrt::UserContext> CreateUserContext() override {
-    return tsl::RCReference<xla::ifrt::UserContext>();
+  tsl::RCReference<ifrt::UserContext> CreateUserContext() override {
+    return tsl::RCReference<ifrt::UserContext>();
   }
 
   static char ID;  // NOLINT
