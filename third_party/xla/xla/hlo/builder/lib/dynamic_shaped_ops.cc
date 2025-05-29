@@ -158,7 +158,9 @@ XlaOp DynamicConditional(XlaBuilder* builder, XlaOp predicate,
 
       auto elem =
           ReconsileBranchDifference(root_shape, reference_root_shape, call);
-      if (!elem.ok()) return elem.status();
+      if (!elem.ok()) {
+        return elem.status();
+      }
       return builder.Build();
     };
     TF_ASSIGN_OR_RETURN(
@@ -216,7 +218,9 @@ XlaOp DynamicConditional(
 
       auto elem =
           ReconsileBranchDifference(root_shape, reference_root_shape, call);
-      if (!elem.ok()) return elem.status();
+      if (!elem.ok()) {
+        return elem.status();
+      }
       return builder.Build();
     };
     std::vector<XlaComputation> rewritten_computations;

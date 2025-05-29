@@ -265,9 +265,9 @@ XlaOp Symmetrize(XlaOp x, bool lower) {
       auto im = Select(im_mask, Imag(x), ZerosLike(Imag(x)));
       im = Select(mask, im, -TransposeInMinorDims(im));
       return Complex(re, im);
-    } else {
-      return Select(mask, x, TransposeInMinorDims(x));
     }
+    return Select(mask, x, TransposeInMinorDims(x));
+   
   });
 }
 

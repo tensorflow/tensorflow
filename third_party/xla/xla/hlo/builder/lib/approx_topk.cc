@@ -49,7 +49,7 @@ absl::StatusOr<std::vector<PrimitiveType>> GetOperandTypes(
   for (int i = 0; i < num_operands; ++i) {
     const auto& op_shape = operands_shapes[i];
     const auto& init_shape = init_values_shapes[i];
-    if (op_shape.dimensions().size() == 0) {
+    if (op_shape.dimensions().empty()) {
       return InvalidArgument("ApproxTopK operands must have rank 1+.");
     }
     if (!ShapeUtil::CompatibleIgnoringElementType(operands_shapes[0],

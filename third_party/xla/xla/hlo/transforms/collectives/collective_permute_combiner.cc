@@ -74,8 +74,8 @@ absl::Status CombineCollectivePermutes(
   // CollectivePermute ops with more than one operand produce a tuple.
   TF_RET_CHECK(operands.size() >= 2);
   combined = computation.AddInstruction(HloInstruction::CreateCollectivePermute(
-      ShapeUtil::MakeValidatedTupleShapeWithPtrs(operand_shapes).value(),
-      operands, source_target_pairs, to_combine.front()->channel_id()));
+      ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes), operands,
+      source_target_pairs, to_combine.front()->channel_id()));
 
   // Replace all the smaller CollectivePermutes with elements of the tuple
   // output of the single bigger CollectivePermute.

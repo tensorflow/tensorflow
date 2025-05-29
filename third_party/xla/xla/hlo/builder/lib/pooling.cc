@@ -138,11 +138,10 @@ XlaOp AvgPoolDivideByCount(
     auto divisor = ConstantR0WithType(pooled.builder(), dtype, window_size);
 
     return pooled / divisor;
-  } else {
-    return AvgPoolDivideByCountWithGeneralPadding(pooled, dtype, input_size,
-                                                  padding, window_dimensions,
-                                                  window_strides, data_format);
   }
+  return AvgPoolDivideByCountWithGeneralPadding(pooled, dtype, input_size,
+                                                padding, window_dimensions,
+                                                window_strides, data_format);
 }
 
 }  // namespace

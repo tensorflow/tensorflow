@@ -182,7 +182,7 @@ struct SplitShapePair {
 // Split the shape on a dimension > 1 into two halves.
 SplitShapePair SplitShapeIntoHalves(const Shape& shape) {
   SplitShapePair pair;
-  if (shape.dimensions().size() == 0) {
+  if (shape.dimensions().empty()) {
     pair.half_shape =
         ShapeUtil::MakeValidatedShape(shape.element_type(), {1}).value();
     pair.concat_shape =
@@ -242,7 +242,7 @@ SplitShapePair SplitShapeIntoHalves(const Shape& shape) {
 XlaOp CombineShapePair(absl::Span<const XlaOp> pair,
                        const SplitShapePair& shape_pair,
                        const Shape& original_shape) {
-  if (original_shape.dimensions().size() == 0) {
+  if (original_shape.dimensions().empty()) {
     return Reshape(pair[0], {});
   }
   XlaBuilder* builder = pair[0].builder();
@@ -550,36 +550,35 @@ XlaOp ConvertRandomBitsToUniformFloatingPoint(XlaOp bits, XlaOp minval,
       auto u16_result = exponent | mantissa;
       auto result = BitcastConvertType(u16_result, F16);
       return result - ScalarLike(result, 1.0);
-    } else {
-      // TODO: b/256715195 - Consider using the approach in the F16 case.
-      // Form random mantissa bits for float/double, with a leading 1 bit.
-      int num_bits = primitive_util::BitWidth(bit_type);
-      // Subtract one as SignificandWidth includes the leading 1 bit.
-      int num_mantissa_bits = primitive_util::SignificandWidth(value_type) - 1;
-      if (num_mantissa_bits > num_bits) {
-        return InvalidArgument(
-            "%s bit type argument must have enough bits to cover the number of "
-            "mantissa bits of the result type %s",
-            primitive_util::LowercasePrimitiveTypeName(bit_type),
-            primitive_util::LowercasePrimitiveTypeName(value_type));
-      }
-
-      // Ignore the exponent bits and convert the mantissa bits to the floating
-      // point type.
-      bits = ShiftRightLogical(bits,
-                               ScalarLike(bits, num_bits - num_mantissa_bits));
-
-      // We have an integer-valued floating point number in the range
-      // [0, 2**{num_mantissa_bits}).
-      XlaOp values = ConvertElementType(bits, value_type);
-
-      // Multiply by 2**{-num_mantissa_bits} to get a number in the range
-      // [0.0, 1.0).
-      values = values * ScalarLike(values, std::ldexp(1., -num_mantissa_bits));
-
-      // Multiply and add to shift to the range [minval, maxval).
-      return values * (maxval - minval) + minval;
+    }  // TODO: b/256715195 - Consider using the approach in the F16 case.
+    // Form random mantissa bits for float/double, with a leading 1 bit.
+    int num_bits = primitive_util::BitWidth(bit_type);
+    // Subtract one as SignificandWidth includes the leading 1 bit.
+    int num_mantissa_bits = primitive_util::SignificandWidth(value_type) - 1;
+    if (num_mantissa_bits > num_bits) {
+      return InvalidArgument(
+          "%s bit type argument must have enough bits to cover the number of "
+          "mantissa bits of the result type %s",
+          primitive_util::LowercasePrimitiveTypeName(bit_type),
+          primitive_util::LowercasePrimitiveTypeName(value_type));
     }
+
+    // Ignore the exponent bits and convert the mantissa bits to the floating
+    // point type.
+    bits =
+        ShiftRightLogical(bits, ScalarLike(bits, num_bits - num_mantissa_bits));
+
+    // We have an integer-valued floating point number in the range
+    // [0, 2**{num_mantissa_bits}).
+    XlaOp values = ConvertElementType(bits, value_type);
+
+    // Multiply by 2**{-num_mantissa_bits} to get a number in the range
+    // [0.0, 1.0).
+    values = values * ScalarLike(values, std::ldexp(1., -num_mantissa_bits));
+
+    // Multiply and add to shift to the range [minval, maxval).
+    return values * (maxval - minval) + minval;
+   
   });
 }
 

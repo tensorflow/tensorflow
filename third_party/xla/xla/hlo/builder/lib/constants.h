@@ -89,12 +89,12 @@ XlaOp FullLike(XlaOp prototype, T value) {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(prototype));
     if (ShapeUtil::IsScalar(shape) || shape.IsArray()) {
       return Broadcast(ScalarLike(prototype, value), shape.dimensions());
-    } else {
-      return InvalidArgument(
-          "Prototype shape for BroadcastConstantLike must be a scalar or "
-          "array, but was %s",
-          shape.ToString());
     }
+    return InvalidArgument(
+        "Prototype shape for BroadcastConstantLike must be a scalar or "
+        "array, but was %s",
+        shape.ToString());
+   
   });
 }
 

@@ -60,15 +60,14 @@ std::unique_ptr<HloInstruction> MakeDot(const Shape& shape, HloInstruction* lhs,
 TEST_F(InstructionFusionTest, DotOperationFusion_Basic_0) {
   HloComputation::Builder builder(TestName());
   HloInstruction* arg0 = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeValidatedShape(F32, {1024, 256}).value(), "arg0"));
+      0, ShapeUtil::MakeShape(F32, {1024, 256}), "arg0"));
   HloInstruction* arg1 = builder.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeValidatedShape(F32, {256}).value(), "arg1"));
+      1, ShapeUtil::MakeShape(F32, {256}), "arg1"));
 
   HloInstruction* exp0 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeValidatedShape(F32, {1024, 256}).value(), HloOpcode::kExp,
-      arg0));
+      ShapeUtil::MakeShape(F32, {1024, 256}), HloOpcode::kExp, arg0));
   HloInstruction* dot = builder.AddInstruction(
-      MakeDot(ShapeUtil::MakeValidatedShape(F32, {1024}).value(), exp0, arg1));
+      MakeDot(ShapeUtil::MakeShape(F32, {1024}), exp0, arg1));
 
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
@@ -80,15 +79,14 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Basic_0) {
 TEST_F(InstructionFusionTest, DotOperationFusion_Basic_1) {
   HloComputation::Builder builder(TestName());
   HloInstruction* arg0 = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeValidatedShape(F32, {256}).value(), "arg0"));
+      0, ShapeUtil::MakeShape(F32, {256}), "arg0"));
   HloInstruction* arg1 = builder.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeValidatedShape(F32, {256, 1024}).value(), "arg1"));
+      1, ShapeUtil::MakeShape(F32, {256, 1024}), "arg1"));
 
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeValidatedShape(F32, {256, 1024}).value(), HloOpcode::kExp,
-      arg1));
+      ShapeUtil::MakeShape(F32, {256, 1024}), HloOpcode::kExp, arg1));
   HloInstruction* dot = builder.AddInstruction(
-      MakeDot(ShapeUtil::MakeValidatedShape(F32, {1024}).value(), arg0, exp1));
+      MakeDot(ShapeUtil::MakeShape(F32, {1024}), arg0, exp1));
 
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
@@ -100,18 +98,16 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Basic_1) {
 TEST_F(InstructionFusionTest, DotOperationFusion_Bitcast) {
   HloComputation::Builder builder(TestName());
   HloInstruction* arg0 = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeValidatedShape(F32, {2, 512, 2, 128}).value(), "arg0"));
+      0, ShapeUtil::MakeShape(F32, {2, 512, 2, 128}), "arg0"));
   HloInstruction* arg1 = builder.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeValidatedShape(F32, {256}).value(), "arg1"));
+      1, ShapeUtil::MakeShape(F32, {256}), "arg1"));
 
   HloInstruction* exp0 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeValidatedShape(F32, {2, 512, 2, 128}).value(),
-      HloOpcode::kExp, arg0));
+      ShapeUtil::MakeShape(F32, {2, 512, 2, 128}), HloOpcode::kExp, arg0));
   HloInstruction* bitcast0 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeValidatedShape(F32, {1024, 256}).value(),
-      HloOpcode::kBitcast, exp0));
-  HloInstruction* dot = builder.AddInstruction(MakeDot(
-      ShapeUtil::MakeValidatedShape(F32, {1024}).value(), bitcast0, arg1));
+      ShapeUtil::MakeShape(F32, {1024, 256}), HloOpcode::kBitcast, exp0));
+  HloInstruction* dot = builder.AddInstruction(
+      MakeDot(ShapeUtil::MakeShape(F32, {1024}), bitcast0, arg1));
 
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
@@ -123,18 +119,17 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Bitcast) {
 TEST_F(InstructionFusionTest, DotOperationFusion_Reshape) {
   HloComputation::Builder builder(TestName());
   HloInstruction* arg0 = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeValidatedShape(F32, {2, 512, 2, 128}).value(), "arg0"));
+      0, ShapeUtil::MakeShape(F32, {2, 512, 2, 128}), "arg0"));
   HloInstruction* arg1 = builder.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeValidatedShape(F32, {256}).value(), "arg1"));
+      1, ShapeUtil::MakeShape(F32, {256}), "arg1"));
 
   HloInstruction* exp0 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeValidatedShape(F32, {2, 512, 2, 128}).value(),
-      HloOpcode::kExp, arg0));
+      ShapeUtil::MakeShape(F32, {2, 512, 2, 128}), HloOpcode::kExp, arg0));
   HloInstruction* reshape0 =
       builder.AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeValidatedShape(F32, {1024, 256}).value(), exp0));
-  HloInstruction* dot = builder.AddInstruction(MakeDot(
-      ShapeUtil::MakeValidatedShape(F32, {1024}).value(), reshape0, arg1));
+          ShapeUtil::MakeShape(F32, {1024, 256}), exp0));
+  HloInstruction* dot = builder.AddInstruction(
+      MakeDot(ShapeUtil::MakeShape(F32, {1024}), reshape0, arg1));
 
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
@@ -146,15 +141,14 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Reshape) {
 TEST_F(InstructionFusionTest, DotOperationFusion_TooLarge) {
   HloComputation::Builder builder(TestName());
   HloInstruction* arg0 = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeValidatedShape(F32, {32 * 1024}).value(), "arg0"));
+      0, ShapeUtil::MakeShape(F32, {32 * 1024}), "arg0"));
   HloInstruction* arg1 = builder.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeValidatedShape(F32, {32 * 1024, 256}).value(), "arg1"));
+      1, ShapeUtil::MakeShape(F32, {32 * 1024, 256}), "arg1"));
 
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeValidatedShape(F32, {32 * 1024, 256}).value(),
-      HloOpcode::kExp, arg1));
+      ShapeUtil::MakeShape(F32, {32 * 1024, 256}), HloOpcode::kExp, arg1));
   HloInstruction* dot = builder.AddInstruction(
-      MakeDot(ShapeUtil::MakeValidatedShape(F32, {256}).value(), arg0, exp1));
+      MakeDot(ShapeUtil::MakeShape(F32, {256}), arg0, exp1));
 
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
@@ -166,15 +160,14 @@ TEST_F(InstructionFusionTest, DotOperationFusion_TooLarge) {
 TEST_F(InstructionFusionTest, DotOperationFusion_ElementReuse) {
   HloComputation::Builder builder(TestName());
   HloInstruction* arg0 = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeValidatedShape(F32, {2, 256}).value(), "arg0"));
+      0, ShapeUtil::MakeShape(F32, {2, 256}), "arg0"));
   HloInstruction* arg1 = builder.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeValidatedShape(F32, {256, 1024}).value(), "arg1"));
+      1, ShapeUtil::MakeShape(F32, {256, 1024}), "arg1"));
 
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeValidatedShape(F32, {256, 1024}).value(), HloOpcode::kExp,
-      arg1));
-  HloInstruction* dot = builder.AddInstruction(MakeDot(
-      ShapeUtil::MakeValidatedShape(F32, {2, 1024}).value(), arg0, exp1));
+      ShapeUtil::MakeShape(F32, {256, 1024}), HloOpcode::kExp, arg1));
+  HloInstruction* dot = builder.AddInstruction(
+      MakeDot(ShapeUtil::MakeShape(F32, {2, 1024}), arg0, exp1));
 
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
@@ -287,12 +280,11 @@ class OpcodeFusionTest : public InstructionFusionTest {
     HloComputation::Builder builder(TestName());
     HloInstruction* arg0 =
         builder.AddInstruction(HloInstruction::CreateParameter(
-            0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "arg0"));
+            0, ShapeUtil::MakeShape(F32, {}), "arg0"));
     HloInstruction* one = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
     builder.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeValidatedShape(F32, {}).value(), HloOpcode::kAdd, arg0,
-        one));
+        ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd, arg0, one));
     return module->AddEmbeddedComputation(builder.Build());
   }
 
@@ -300,21 +292,20 @@ class OpcodeFusionTest : public InstructionFusionTest {
     HloComputation::Builder builder(TestName());
     HloInstruction* arg0 =
         builder.AddInstruction(HloInstruction::CreateParameter(
-            0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "arg0"));
+            0, ShapeUtil::MakeShape(F32, {}), "arg0"));
     HloInstruction* arg1 =
         builder.AddInstruction(HloInstruction::CreateParameter(
-            1, ShapeUtil::MakeValidatedShape(F32, {}).value(), "arg1"));
+            1, ShapeUtil::MakeShape(F32, {}), "arg1"));
     builder.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeValidatedShape(F32, {}).value(), HloOpcode::kMaximum,
-        arg0, arg1));
+        ShapeUtil::MakeShape(F32, {}), HloOpcode::kMaximum, arg0, arg1));
     return module->AddEmbeddedComputation(builder.Build());
   }
 };
 
 TEST_F(OpcodeFusionTest, Exponential_Reshape_Negate) {
   HloComputation::Builder builder(TestName());
-  Shape param_shape = ShapeUtil::MakeValidatedShape(F32, {1, 4}).value();
-  Shape result_shape = ShapeUtil::MakeValidatedShape(F32, {4}).value();
+  Shape param_shape = ShapeUtil::MakeShape(F32, {1, 4});
+  Shape result_shape = ShapeUtil::MakeShape(F32, {4});
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "param"));
   HloInstruction* exp1 = builder.AddInstruction(
@@ -334,12 +325,11 @@ TEST_F(OpcodeFusionTest, Exponential_Reshape_Negate) {
 
 TEST_F(OpcodeFusionTest, Broadcast_Reshape_DynamicSlice_Tanh) {
   HloComputation::Builder builder(TestName());
-  Shape param_shape = ShapeUtil::MakeValidatedShape(F32, {8}).value();
-  Shape starts_shape = ShapeUtil::MakeValidatedShape(S32, {}).value();
-  Shape broadcast_shape = ShapeUtil::MakeValidatedShape(F32, {1, 8, 8}).value();
-  Shape reshape_shape = ShapeUtil::MakeValidatedShape(F32, {8, 8}).value();
-  Shape dynamic_slice_shape =
-      ShapeUtil::MakeValidatedShape(F32, {4, 4}).value();
+  Shape param_shape = ShapeUtil::MakeShape(F32, {8});
+  Shape starts_shape = ShapeUtil::MakeShape(S32, {});
+  Shape broadcast_shape = ShapeUtil::MakeShape(F32, {1, 8, 8});
+  Shape reshape_shape = ShapeUtil::MakeShape(F32, {8, 8});
+  Shape dynamic_slice_shape = ShapeUtil::MakeShape(F32, {4, 4});
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "param"));
   HloInstruction* param1 = builder.AddInstruction(
@@ -368,8 +358,8 @@ TEST_F(OpcodeFusionTest, Broadcast_Reshape_DynamicSlice_Tanh) {
 
 TEST_F(OpcodeFusionTest, Broadcast_Negate) {
   HloComputation::Builder builder(TestName());
-  Shape param_shape = ShapeUtil::MakeValidatedShape(F32, {8}).value();
-  Shape result_shape = ShapeUtil::MakeValidatedShape(F32, {8, 8}).value();
+  Shape param_shape = ShapeUtil::MakeShape(F32, {8});
+  Shape result_shape = ShapeUtil::MakeShape(F32, {8, 8});
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "param"));
   HloInstruction* broadcast1 = builder.AddInstruction(
@@ -387,9 +377,9 @@ TEST_F(OpcodeFusionTest, Broadcast_Negate) {
 
 TEST_F(OpcodeFusionTest, DynamicSlice_Negate) {
   HloComputation::Builder builder(TestName());
-  Shape param_shape = ShapeUtil::MakeValidatedShape(F32, {4}).value();
-  Shape slice_shape = ShapeUtil::MakeValidatedShape(S32, {}).value();
-  Shape result_shape = ShapeUtil::MakeValidatedShape(F32, {2}).value();
+  Shape param_shape = ShapeUtil::MakeShape(F32, {4});
+  Shape slice_shape = ShapeUtil::MakeShape(S32, {});
+  Shape result_shape = ShapeUtil::MakeShape(F32, {2});
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "param"));
   HloInstruction* param1 = builder.AddInstruction(
@@ -409,7 +399,7 @@ TEST_F(OpcodeFusionTest, DynamicSlice_Negate) {
 
 TEST_F(OpcodeFusionTest, Exponential_Negate) {
   HloComputation::Builder builder(TestName());
-  Shape param_shape = ShapeUtil::MakeValidatedShape(F32, {4}).value();
+  Shape param_shape = ShapeUtil::MakeShape(F32, {4});
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "param"));
   HloInstruction* exp1 = builder.AddInstruction(
@@ -427,8 +417,8 @@ TEST_F(OpcodeFusionTest, Exponential_Negate) {
 
 TEST_F(OpcodeFusionTest, Reshape_Negate) {
   HloComputation::Builder builder(TestName());
-  Shape param_shape = ShapeUtil::MakeValidatedShape(F32, {4, 4}).value();
-  Shape result_shape = ShapeUtil::MakeValidatedShape(F32, {16}).value();
+  Shape param_shape = ShapeUtil::MakeShape(F32, {4, 4});
+  Shape result_shape = ShapeUtil::MakeShape(F32, {16});
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "param"));
   HloInstruction* reshape1 = builder.AddInstruction(
@@ -446,7 +436,7 @@ TEST_F(OpcodeFusionTest, Reshape_Negate) {
 
 TEST_F(OpcodeFusionTest, Reverse_Negate) {
   HloComputation::Builder builder(TestName());
-  Shape param_shape = ShapeUtil::MakeValidatedShape(F32, {8}).value();
+  Shape param_shape = ShapeUtil::MakeShape(F32, {8});
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "param"));
   HloInstruction* reverse1 = builder.AddInstruction(
@@ -464,15 +454,14 @@ TEST_F(OpcodeFusionTest, Reverse_Negate) {
 
 TEST_F(OpcodeFusionTest, Slice_Negate) {
   HloComputation::Builder builder(TestName());
-  Shape param_shape = ShapeUtil::MakeValidatedShape(F32, {4}).value();
-  Shape slice_shape = ShapeUtil::MakeValidatedShape(F32, {2}).value();
+  Shape param_shape = ShapeUtil::MakeShape(F32, {4});
+  Shape slice_shape = ShapeUtil::MakeShape(F32, {2});
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "param"));
   HloInstruction* slice1 = builder.AddInstruction(
       HloInstruction::CreateSlice(slice_shape, param0, {0}, {4}, {2}));
   builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeValidatedShape(F32, {2}).value(), HloOpcode::kNegate,
-      slice1));
+      ShapeUtil::MakeShape(F32, {2}), HloOpcode::kNegate, slice1));
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
@@ -483,8 +472,8 @@ TEST_F(OpcodeFusionTest, Slice_Negate) {
 
 TEST_F(OpcodeFusionTest, Exponential_Transpose_Negate) {
   HloComputation::Builder builder(TestName());
-  Shape param_shape = ShapeUtil::MakeValidatedShape(F32, {3, 4}).value();
-  Shape result_shape = ShapeUtil::MakeValidatedShape(F32, {4, 3}).value();
+  Shape param_shape = ShapeUtil::MakeShape(F32, {3, 4});
+  Shape result_shape = ShapeUtil::MakeShape(F32, {4, 3});
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "param"));
   // InstructionFusion::ShouldFuse() precludes fusing a transpose whose operand
@@ -508,7 +497,7 @@ TEST_F(OpcodeFusionTest, UnaryMapOfExp) {
   auto module = CreateNewVerifiedModule();
 
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {3, 4}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {3, 4});
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, shape, "param"));
 
@@ -527,7 +516,7 @@ TEST_F(OpcodeFusionTest, BinaryMapOfExps) {
   auto module = CreateNewVerifiedModule();
 
   HloComputation::Builder builder(TestName());
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {3, 4}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {3, 4});
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, shape, "param"));
   HloInstruction* param1 = builder.AddInstruction(
@@ -552,20 +541,17 @@ TEST_F(OpcodeFusionTest, DynamicSliceWithDynamicUpdateSlice) {
   auto module = CreateNewVerifiedModule();
 
   HloComputation::Builder builder(TestName());
-  Shape full_shape =
-      ShapeUtil::MakeValidatedShape(F32, {10, 100, 1000}).value();
-  Shape slice_shape = ShapeUtil::MakeValidatedShape(F32, {10, 1, 1000}).value();
+  Shape full_shape = ShapeUtil::MakeShape(F32, {10, 100, 1000});
+  Shape slice_shape = ShapeUtil::MakeShape(F32, {10, 1, 1000});
 
   std::vector<HloInstruction*> slice_indices, update_indices;
   for (int i = 0; i < 3; ++i) {
     slice_indices.push_back(
         builder.AddInstruction(HloInstruction::CreateParameter(
-            1 + i, ShapeUtil::MakeValidatedShape(U32, {}).value(),
-            "slice_indices")));
+            1 + i, ShapeUtil::MakeShape(U32, {}), "slice_indices")));
     update_indices.push_back(
         builder.AddInstruction(HloInstruction::CreateParameter(
-            5 + i, ShapeUtil::MakeValidatedShape(U32, {}).value(),
-            "update_indices")));
+            5 + i, ShapeUtil::MakeShape(U32, {}), "update_indices")));
   }
   HloInstruction* slice =
       builder.AddInstruction(HloInstruction::CreateDynamicSlice(
@@ -594,31 +580,28 @@ TEST_F(OpcodeFusionTest, MessOfFusibleNodes) {
   auto module = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());
 
-  Shape full_shape =
-      ShapeUtil::MakeValidatedShape(F32, {4, 100, 10, 100, 50}).value();
+  Shape full_shape = ShapeUtil::MakeShape(F32, {4, 100, 10, 100, 50});
 
   auto loop_idx = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeValidatedShape(S32, {}).value(), "param0"));
+      0, ShapeUtil::MakeShape(S32, {}), "param0"));
   auto param1 = builder.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeValidatedShape(S32, {}).value(), "param1"));
+      1, ShapeUtil::MakeShape(S32, {}), "param1"));
 
   auto idx_choice = builder.AddInstruction(HloInstruction::CreateReshape(
-      ShapeUtil::MakeValidatedShape(S32, {}).value(),
+      ShapeUtil::MakeShape(S32, {}),
       builder.AddInstruction(HloInstruction::CreateDynamicSlice(
-          ShapeUtil::MakeValidatedShape(S32, {1}).value(),
+          ShapeUtil::MakeShape(S32, {1}),
           builder.AddInstruction(HloInstruction::CreateParameter(
-              2, ShapeUtil::MakeValidatedShape(S32, {4}).value(), "param2")),
+              2, ShapeUtil::MakeShape(S32, {4}), "param2")),
           {loop_idx},
           /*slice_sizes=*/{1}))));
   auto zero = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0(0)));
 
   auto slice = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
-      ShapeUtil::MakeValidatedShape(F32, {1, 100, 10, 100, 50}).value(),
+      ShapeUtil::MakeShape(F32, {1, 100, 10, 100, 50}),
       builder.AddInstruction(HloInstruction::CreateParameter(
-          3,
-          ShapeUtil::MakeValidatedShape(F32, {100, 100, 10, 100, 50}).value(),
-          "param3")),
+          3, ShapeUtil::MakeShape(F32, {100, 100, 10, 100, 50}), "param3")),
       {idx_choice, zero, zero, zero, zero},
       /*slice_sizes=*/{1, 100, 10, 100, 50}));
 
@@ -643,15 +626,15 @@ void CreateComputationForDotAddOutputFusionTest(const std::string& test_name,
                                                 bool add_extra_use_for_dot) {
   HloComputation::Builder builder(test_name);
 
-  Shape dot_lhs_shape = ShapeUtil::MakeValidatedShape(F32, {m, k}).value();
-  Shape dot_rhs_shape = ShapeUtil::MakeValidatedShape(F32, {k, n}).value();
-  Shape dot_shape = ShapeUtil::MakeValidatedShape(F32, {m, n}).value();
+  Shape dot_lhs_shape = ShapeUtil::MakeShape(F32, {m, k});
+  Shape dot_rhs_shape = ShapeUtil::MakeShape(F32, {k, n});
+  Shape dot_shape = ShapeUtil::MakeShape(F32, {m, n});
   if (m == 1) {
-    dot_lhs_shape = ShapeUtil::MakeValidatedShape(F32, {k}).value();
-    dot_shape = ShapeUtil::MakeValidatedShape(F32, {n}).value();
+    dot_lhs_shape = ShapeUtil::MakeShape(F32, {k});
+    dot_shape = ShapeUtil::MakeShape(F32, {n});
   } else if (n == 1) {
-    dot_rhs_shape = ShapeUtil::MakeValidatedShape(F32, {k}).value();
-    dot_shape = ShapeUtil::MakeValidatedShape(F32, {m}).value();
+    dot_rhs_shape = ShapeUtil::MakeShape(F32, {k});
+    dot_shape = ShapeUtil::MakeShape(F32, {m});
   }
 
   auto* dot_lhs = builder.AddInstruction(
