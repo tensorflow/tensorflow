@@ -3753,15 +3753,27 @@ LogicalResult SendOp::inferReturnTypes(
 }
 
 //===----------------------------------------------------------------------===//
+// SendOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult SendOp::verify() {
+  bool isDeviceToDevice = getChannelHandle().getType() == 1;
+  bool isDeviceToHost = getChannelHandle().getType() == 2;
+  return hlo::verifySendOp(getMhloDialect(getContext()), getLoc(),
+                           isDeviceToDevice, isDeviceToHost,
+                           getIsHostTransfer(), getSourceTargetPairs());
+}
+
+//===----------------------------------------------------------------------===//
 // RecvOp
 //===----------------------------------------------------------------------===//
 
 LogicalResult RecvOp::verify() {
   bool isDeviceToDevice = getChannelHandle().getType() == 1;
   bool isHostToDevice = getChannelHandle().getType() == 3;
-  return hlo::verifyRecvOp(getMhloDialect(getContext()), getLoc(),
-                           isDeviceToDevice, isHostToDevice,
-                           getIsHostTransfer(), getResults());
+  return hlo::verifyRecvOp(
+      getMhloDialect(getContext()), getLoc(), isDeviceToDevice, isHostToDevice,
+      getIsHostTransfer(), getResults(), getSourceTargetPairs());
 }
 
 //===----------------------------------------------------------------------===//
