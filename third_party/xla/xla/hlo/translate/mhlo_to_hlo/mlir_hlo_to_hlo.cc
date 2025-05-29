@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/APInt.h"
@@ -100,6 +101,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/primitive_util.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
@@ -4449,6 +4451,29 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
   else
     data_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
 
+  xla::FrontendAttributes attributes;
+  if (op.getSourceTargetPairs()) {
+    std::vector<std::pair<int64_t, int64_t>> source_target_pairs =
+        Convert_source_target_pairs(op.getSourceTargetPairs());
+
+    std::string source_target_pairs_string =
+        "{" +
+        absl::StrJoin(source_target_pairs, ",",
+                      absl::PairFormatter(
+                          [](std::string* out, int64_t value) {
+                            absl::StrAppend(out, "{", value);
+                          },
+                          ",",
+                          [](std::string* out, int64_t value) {
+                            absl::StrAppend(out, value, "}");
+                          })) +
+        "}";
+
+    (*attributes.mutable_map())[xla::kSendRecvSourceTargetPairsAttr] =
+        source_target_pairs_string;
+  }
+  xla::XlaScopedFrontendAttributesAssignment scoped_attributes(ctx.builder,
+                                                               attributes);
   auto get_sharding = [](const xla::OpSharding& sharding) {
     xla::OpSharding ret;
     if (sharding.type() != xla::OpSharding::TUPLE) {
@@ -4730,6 +4755,29 @@ LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
 
   xla::XlaOp token;
   if (failed(GetXlaOp(op.getToken(), value_map, &token, op))) return failure();
+  xla::FrontendAttributes attributes;
+  if (op.getSourceTargetPairs()) {
+    std::vector<std::pair<int64_t, int64_t>> source_target_pairs =
+        Convert_source_target_pairs(op.getSourceTargetPairs());
+
+    std::string source_target_pairs_string =
+        "{" +
+        absl::StrJoin(source_target_pairs, ",",
+                      absl::PairFormatter(
+                          [](std::string* out, int64_t value) {
+                            absl::StrAppend(out, "{", value);
+                          },
+                          ",",
+                          [](std::string* out, int64_t value) {
+                            absl::StrAppend(out, value, "}");
+                          })) +
+        "}";
+
+    (*attributes.mutable_map())[xla::kSendRecvSourceTargetPairsAttr] =
+        source_target_pairs_string;
+  }
+  xla::XlaScopedFrontendAttributesAssignment scoped_attributes(ctx.builder,
+                                                               attributes);
 
   // SendOp has 1 result, but HLO Send has 3 results. Convert the sharding to a
   // tuple sharding with 3 entries.
