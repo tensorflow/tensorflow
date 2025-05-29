@@ -294,9 +294,9 @@ cc_library(
 )
 
 cc_library(
-    name = "tf_pre_calibration",
-    srcs = ["tf_pre_calibration.cc"],
-    hdrs = ["tf_pre_calibration.h"],
+    name = "pre_calibration",
+    srcs = ["pre_calibration.cc"],
+    hdrs = ["pre_calibration.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/compiler/mlir/quantization/stablehlo:__subpackages__",
@@ -308,32 +308,6 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:tf_passes",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
-        "@com_google_absl//absl/base:nullability",
-        "@com_google_absl//absl/log:die_if_null",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@local_xla//xla/tsl/platform:errors",
-    ],
-)
-
-cc_library(
-    name = "pre_calibration",
-    srcs = ["pre_calibration.cc"],
-    hdrs = ["pre_calibration.h"],
-    compatible_with = get_compatible_with_portable(),
-    visibility = [
-        "//tensorflow/compiler/mlir/quantization/stablehlo:__subpackages__",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:__subpackages__",
-    ],
-    deps = [
-        ":component",
-        ":pass_pipeline",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log:die_if_null",
@@ -470,9 +444,9 @@ cc_library(
         ":component",
         ":context",
         ":post_calibration",
+        ":pre_calibration",
         ":saved_model_export",
         ":saved_model_import",
-        ":tf_pre_calibration",
         ":types",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:component",

@@ -21,7 +21,7 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/config.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_pre_calibration.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pre_calibration.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"  // IWYU pragma: keep
@@ -54,7 +54,7 @@ void TestPreCalibrationComponentPass::runOnOperation() {
   MLIRContext& ctx = getContext();
 
   // Simply runs the PreCalibrationComponent with a default configuration.
-  tf_quant::stablehlo::PreCalibrationComponent component(&ctx);
+  PreCalibrationComponent component(&ctx);
   QuantizationConfig quantization_config{};
   quantization_config.mutable_static_range_ptq_preset();
   quantization_config = ExpandPresets(PopulateDefaults(quantization_config));
