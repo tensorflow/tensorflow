@@ -1719,6 +1719,20 @@ class AnnotationReadySetLt {
   DefaultSchedulerCore::CandidateResult operator()(
       DefaultSchedulerCore::ScheduleCandidate& a,
       DefaultSchedulerCore::ScheduleCandidate& b) const {
+    // Schedule based on the original sequence order if requested.
+    auto a_attr = a.node->GetInstr().get_frontend_attribute(
+        "keep_original_sequence_order_in_group");
+    auto b_attr = b.node->GetInstr().get_frontend_attribute(
+        "keep_original_sequence_order_in_group");
+    if (a_attr.has_value() && b_attr.has_value()) {
+      if (a_attr.value() == "true" && b_attr.value() == "true") {
+        return {a.node->GetOriginalPosition() > b.node->GetOriginalPosition()
+                    ? a
+                    : b,
+                "kOriginalSequenceOrder"};
+      }
+    }
+
     // Schedule an async done.
     if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
             a.node->DoesOccupyAnyResource(), a, b.node->DoesOccupyAnyResource(),
@@ -1735,7 +1749,10 @@ class AnnotationReadySetLt {
   }
 };
 absl::StatusOr<HloGraphNode*> FindAndExtractBestAnnotatedNode(
-    DefaultSchedulerCore::SchedulingState& sched_state) {
+    DefaultSchedulerCore::SchedulingState& sched_state,
+    const std::function<bool(const DefaultSchedulerCore::SchedulingState&,
+                             HloGraphNode*)>&
+        scheduling_instruction_crosses_overlap_limit) {
   using ScheduleCandidate = DefaultSchedulerCore::ScheduleCandidate;
   using CandidateResult = DefaultSchedulerCore::CandidateResult;
   AnnotationReadySetLt ready_lt;
@@ -1748,6 +1765,14 @@ absl::StatusOr<HloGraphNode*> FindAndExtractBestAnnotatedNode(
   for (auto ready_node_it = annotation_ready.begin(),
             e = annotation_ready.end();
        ready_node_it != e; ++ready_node_it) {
+    HloGraphNode* ready_node = *ready_node_it;
+    // If this node would cause the max_concurrent_resource count to go beyond
+    // the limit do not schedule it and pass to the next node.
+    if (scheduling_instruction_crosses_overlap_limit(sched_state, ready_node)) {
+      VLOG(2) << "Skipping node (" << ready_node->GetInstr().name()
+              << ") Reason: scheduling instruction crosses overlap limit";
+      continue;
+    }
     ScheduleCandidate ready_candidate;
     ready_candidate.node = *ready_node_it;
     if (ready_chosen.node == nullptr) {
@@ -1821,8 +1846,10 @@ absl::Status DefaultSchedulerCore::ScheduleAnnotation(
     }());
     VLOG(2) << "Current time: " << sched_state->current_time;
     // Find the best annotated node to schedule.
-    TF_ASSIGN_OR_RETURN(HloGraphNode * node,
-                        FindAndExtractBestAnnotatedNode(*sched_state));
+    TF_ASSIGN_OR_RETURN(
+        HloGraphNode * node,
+        FindAndExtractBestAnnotatedNode(
+            *sched_state, scheduling_instruction_crosses_overlap_limit_));
 
     TF_RET_CHECK(node != nullptr)
         << "Couldn't find an annotated node to schedule.";
@@ -2536,8 +2563,11 @@ DefaultSchedulerCore::GetNumResourcesNeededForAnnotation(
        annotation_tracker_->GetInstructions(comp, annotation)) {
     auto num_resources_needed_per_instr =
         sched_state.async_tracker->GetNumResourcesPerInstruction(*instr);
+    // The minimum number of resources needed for the annotation group is the
+    // maximum number of resources needed for any instruction in the group.
     for (const auto& [resource, usage] : num_resources_needed_per_instr) {
-      num_resources_needed[resource] += usage;
+      num_resources_needed[resource] =
+          std::max(num_resources_needed[resource], usage);
     }
   }
   return num_resources_needed;
