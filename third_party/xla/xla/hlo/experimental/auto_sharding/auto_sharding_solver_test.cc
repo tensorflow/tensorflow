@@ -686,13 +686,13 @@ TEST(AutoShardingEvaluatorTest, NoViolations) {
 TEST(AutoShardingEvaluatorTest, EvaluatesOverbudget) {
   AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
   request.set_memory_budget(100000);
-  request.mutable_overbudget_coeff()->set_coeff(10.0);
+  AutoShardingSolverParams params = GetParams(request);
+  params.overbudget_coeff = 10.0;
   const std::vector<NodeStrategyIdx> s_val = {2 /* violates */, 1, 2, 2, 1};
   const double objective_value = 11138.0;
   const AutoShardingSolverOutput output = {s_val, objective_value};
 
-  const AutoShardingEvaluation evaluation =
-      Evaluate(request, output, GetParams(request));
+  const AutoShardingEvaluation evaluation = Evaluate(request, output, params);
 
   AutoShardingEvaluation expected_evaluation;
   expected_evaluation.total.computation_cost = 158.0;  // 12+21+32+42+51

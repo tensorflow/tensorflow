@@ -110,7 +110,7 @@ AutoShardingEvaluation Evaluate(const AutoShardingSolverRequest& request,
       evaluation.lower_bound.max_memory =
           std::max(evaluation.lower_bound.max_memory,
                    lower_bound_memory_costs[time_idx]);
-      if (request.has_overbudget_coeff()) {
+      if (params.overbudget_coeff.has_value()) {
         total_overbudget =
             std::max(total_overbudget,
                      total_memory_costs[time_idx] - request.memory_budget());
