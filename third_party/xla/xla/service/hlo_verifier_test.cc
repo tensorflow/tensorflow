@@ -108,7 +108,7 @@ class HloVerifierTestLayoutFusion : public HloHardwareIndependentTestBase {
 
 TEST_F(HloVerifierTest, DifferentOperandParents) {
   HloComputation::Builder builder(TestName());
-  const Shape scalar_shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
+  const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
   HloInstruction* param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape, "param"));
   HloInstruction* negate = builder.AddInstruction(
@@ -131,8 +131,8 @@ TEST_F(HloVerifierTest, DifferentOperandParents) {
 
 TEST_F(HloVerifierTest, ResetsShapeVerifierState) {
   HloComputation::Builder builder(TestName());
-  Shape s1 = ShapeUtil::MakeValidatedShape(F32, {1}).value();
-  Shape s2 = ShapeUtil::MakeValidatedShape(F32, {2}).value();
+  Shape s1 = ShapeUtil::MakeShape(F32, {1});
+  Shape s2 = ShapeUtil::MakeShape(F32, {2});
 
   HloInstruction* param =
       builder.AddInstruction(HloInstruction::CreateParameter(0, s1, "param"));
@@ -458,7 +458,7 @@ TEST_F(HloVerifierTest, CheckConditionalBranchIndexOperandShape) {
   auto status = verifier().Run(module.get()).status();
 
   HloInstruction* condition = FindInstruction(module.get(), "b0");
-  *condition->mutable_shape() = ShapeUtil::MakeValidatedShape(F32, {}).value();
+  *condition->mutable_shape() = ShapeUtil::MakeShape(F32, {});
   status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(
@@ -466,7 +466,7 @@ TEST_F(HloVerifierTest, CheckConditionalBranchIndexOperandShape) {
       HasSubstr(
           "first operand of indexed conditional must be a scalar of S32"));
 
-  *condition->mutable_shape() = ShapeUtil::MakeValidatedShape(S32, {4}).value();
+  *condition->mutable_shape() = ShapeUtil::MakeShape(S32, {4});
   status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
@@ -639,11 +639,11 @@ TEST_F(HloVerifierTest, NegativeInteriorPaddingNotAllowed) {
   HloComputation::Builder builder(TestName());
   HloInstruction* param =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeValidatedShape(F32, {100}).value(), "param"));
+          0, ShapeUtil::MakeShape(F32, {100}), "param"));
   PaddingConfig padding_config;
   padding_config.add_dimensions()->set_interior_padding(-1);
   builder.AddInstruction(HloInstruction::CreatePad(
-      ShapeUtil::MakeValidatedShape(F32, {100}).value(), param,
+      ShapeUtil::MakeShape(F32, {100}), param,
       builder.AddInstruction(
           HloInstruction::CreateConstant(LiteralUtil::Zero(F32))),
       padding_config));
@@ -663,11 +663,11 @@ TEST_F(HloVerifierTest, PadNegativeInteriorDilationNotAllowed) {
   HloComputation::Builder builder(TestName());
   HloInstruction* param =
       builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeValidatedShape(F32, {100}).value(), "param"));
+          0, ShapeUtil::MakeShape(F32, {100}), "param"));
   PaddingConfig padding_config;
   padding_config.add_dimensions()->set_interior_padding(-1);
   builder.AddInstruction(HloInstruction::CreatePad(
-      ShapeUtil::MakeValidatedShape(F32, {100}).value(), param,
+      ShapeUtil::MakeShape(F32, {100}), param,
       builder.AddInstruction(
           HloInstruction::CreateConstant(LiteralUtil::Zero(F32).Clone())),
       padding_config));

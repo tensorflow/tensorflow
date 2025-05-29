@@ -60,9 +60,9 @@ class DynamicDimensionInferenceTest : public HloHardwareIndependentTestBase {
   HloComputation* GetAdd() {
     auto embedded_builder = HloComputation::Builder("add");
     auto lhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
-        0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "lhs"));
+        0, ShapeUtil::MakeShape(F32, {}), "lhs"));
     auto rhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
-        1, ShapeUtil::MakeValidatedShape(F32, {}).value(), "rhs"));
+        1, ShapeUtil::MakeShape(F32, {}), "rhs"));
     embedded_builder.AddInstruction(
         HloInstruction::CreateBinary(lhs->shape(), HloOpcode::kAdd, lhs, rhs));
     return module_->AddEmbeddedComputation(embedded_builder.Build());
@@ -71,15 +71,15 @@ class DynamicDimensionInferenceTest : public HloHardwareIndependentTestBase {
   HloComputation* GetAddTuple() {
     auto embedded_builder = HloComputation::Builder("add");
     auto lhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
-        0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "lhs"));
+        0, ShapeUtil::MakeShape(F32, {}), "lhs"));
     auto lhs_1 =
         embedded_builder.AddInstruction(HloInstruction::CreateParameter(
-            1, ShapeUtil::MakeValidatedShape(F32, {}).value(), "lhs.1"));
+            1, ShapeUtil::MakeShape(F32, {}), "lhs.1"));
     auto rhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
-        2, ShapeUtil::MakeValidatedShape(F32, {}).value(), "rhs"));
+        2, ShapeUtil::MakeShape(F32, {}), "rhs"));
     auto rhs_1 =
         embedded_builder.AddInstruction(HloInstruction::CreateParameter(
-            3, ShapeUtil::MakeValidatedShape(F32, {}).value(), "rhs.1"));
+            3, ShapeUtil::MakeShape(F32, {}), "rhs.1"));
     auto add = embedded_builder.AddInstruction(
         HloInstruction::CreateBinary(lhs->shape(), HloOpcode::kAdd, lhs, rhs));
     auto add_1 = embedded_builder.AddInstruction(HloInstruction::CreateBinary(
@@ -91,26 +91,24 @@ class DynamicDimensionInferenceTest : public HloHardwareIndependentTestBase {
   HloComputation* GetGe() {
     auto embedded_builder = HloComputation::Builder("ge");
     auto lhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
-        0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "lhs"));
+        0, ShapeUtil::MakeShape(F32, {}), "lhs"));
     auto rhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
-        1, ShapeUtil::MakeValidatedShape(F32, {}).value(), "rhs"));
+        1, ShapeUtil::MakeShape(F32, {}), "rhs"));
     embedded_builder.AddInstruction(HloInstruction::CreateCompare(
-        ShapeUtil::MakeValidatedShape(PRED, {}).value(), lhs, rhs,
-        ComparisonDirection::kGe));
+        ShapeUtil::MakeShape(PRED, {}), lhs, rhs, ComparisonDirection::kGe));
     return module_->AddEmbeddedComputation(embedded_builder.Build());
   }
 
   std::unique_ptr<HloModule> module_;
   std::unique_ptr<DynamicDimensionInference> inference_;
-  const Shape scalar_shape_ = ShapeUtil::MakeValidatedShape(S32, {}).value();
+  const Shape scalar_shape_ = ShapeUtil::MakeShape(S32, {});
 };
 
 TEST_F(DynamicDimensionInferenceTest, ParamTest) {
   auto builder = HloComputation::Builder(TestName());
-  auto input_shape = ShapeUtil::MakeValidatedShape(F32, {1, 2, 2}).value();
+  auto input_shape = ShapeUtil::MakeShape(F32, {1, 2, 2});
   auto dynamic_shape =
-      ShapeUtil::MakeValidatedShape(F32, {1, 2, 2}, {false, true, false})
-          .value();
+      ShapeUtil::MakeShape(F32, {1, 2, 2}, {false, true, false});
 
   auto param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, input_shape, "param"));
@@ -132,10 +130,9 @@ TEST_F(DynamicDimensionInferenceTest, ElementwiseTest) {
   // When data flows through elementwise, the dynamic dimension size keeps the
   // same.
   auto builder = HloComputation::Builder(TestName());
-  auto input_shape = ShapeUtil::MakeValidatedShape(F32, {1, 2, 2}).value();
+  auto input_shape = ShapeUtil::MakeShape(F32, {1, 2, 2});
   auto dynamic_shape =
-      ShapeUtil::MakeValidatedShape(F32, {1, 2, 2}, {false, true, false})
-          .value();
+      ShapeUtil::MakeShape(F32, {1, 2, 2}, {false, true, false});
 
   auto data_param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, input_shape, "data_param"));
@@ -157,11 +154,10 @@ TEST_F(DynamicDimensionInferenceTest, ElementwiseTest) {
 
 TEST_F(DynamicDimensionInferenceTest, ReduceTestI) {
   auto builder = HloComputation::Builder(TestName());
-  auto input_shape = ShapeUtil::MakeValidatedShape(F32, {1, 2, 2}).value();
-  auto reduce_shape = ShapeUtil::MakeValidatedShape(F32, {2}, {true}).value();
+  auto input_shape = ShapeUtil::MakeShape(F32, {1, 2, 2});
+  auto reduce_shape = ShapeUtil::MakeShape(F32, {2}, {true});
   auto dynamic_shape =
-      ShapeUtil::MakeValidatedShape(F32, {1, 2, 2}, {false, true, false})
-          .value();
+      ShapeUtil::MakeShape(F32, {1, 2, 2}, {false, true, false});
 
   auto data_param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, input_shape, "data_param"));
@@ -190,12 +186,10 @@ TEST_F(DynamicDimensionInferenceTest, ReduceTestI) {
 TEST_F(DynamicDimensionInferenceTest, ReduceTestII) {
   // Same as ReduceTestI, but only reduce one dimension.
   auto builder = HloComputation::Builder(TestName());
-  auto input_shape = ShapeUtil::MakeValidatedShape(F32, {1, 2, 2}).value();
-  auto reduce_shape =
-      ShapeUtil::MakeValidatedShape(F32, {1, 2}, {false, true}).value();
+  auto input_shape = ShapeUtil::MakeShape(F32, {1, 2, 2});
+  auto reduce_shape = ShapeUtil::MakeShape(F32, {1, 2}, {false, true});
   auto dynamic_shape =
-      ShapeUtil::MakeValidatedShape(F32, {1, 2, 2}, {false, false, true})
-          .value();
+      ShapeUtil::MakeShape(F32, {1, 2, 2}, {false, false, true});
 
   auto data_param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, input_shape, "data_param"));
@@ -225,12 +219,10 @@ TEST_F(DynamicDimensionInferenceTest, ReduceTestII) {
 TEST_F(DynamicDimensionInferenceTest, VariadicReduce) {
   // Handle variadic reduce where output is a tuple.
   auto builder = HloComputation::Builder(TestName());
-  auto input_shape = ShapeUtil::MakeValidatedShape(F32, {1, 2, 2}).value();
-  auto reduce_shape =
-      ShapeUtil::MakeValidatedShape(F32, {1, 2}, {false, true}).value();
+  auto input_shape = ShapeUtil::MakeShape(F32, {1, 2, 2});
+  auto reduce_shape = ShapeUtil::MakeShape(F32, {1, 2}, {false, true});
   auto dynamic_shape =
-      ShapeUtil::MakeValidatedShape(F32, {1, 2, 2}, {false, false, true})
-          .value();
+      ShapeUtil::MakeShape(F32, {1, 2, 2}, {false, false, true});
 
   auto data_param_1 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, input_shape, "data_param"));
@@ -255,7 +247,7 @@ TEST_F(DynamicDimensionInferenceTest, VariadicReduce) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0)));
 
   auto reduce = builder.AddInstruction(HloInstruction::CreateReduce(
-      ShapeUtil::MakeValidatedTupleShape({reduce_shape, reduce_shape}).value(),
+      ShapeUtil::MakeTupleShape({reduce_shape, reduce_shape}),
       {dynamic_negate_1, dynamic_negate_2}, {init, init}, {1}, GetAddTuple()));
 
   module_->AddEntryComputation(builder.Build());
@@ -273,14 +265,13 @@ TEST_F(DynamicDimensionInferenceTest, DotTest) {
   constexpr int xdim = 3;
   constexpr int ydim = 2;
   constexpr int zdim = 1;
-  auto xy_shape = ShapeUtil::MakeValidatedShape(F32, {xdim, ydim}).value();
-  auto yz_shape = ShapeUtil::MakeValidatedShape(F32, {ydim, zdim}).value();
-  auto xy_dynamic_shape =
-      ShapeUtil::MakeValidatedShape(F32, {xdim, ydim}, {true, true}).value();
+  auto xy_shape = ShapeUtil::MakeShape(F32, {xdim, ydim});
+  auto yz_shape = ShapeUtil::MakeShape(F32, {ydim, zdim});
+  auto xy_dynamic_shape = ShapeUtil::MakeShape(F32, {xdim, ydim}, {true, true});
   auto yz_dynamic_shape =
-      ShapeUtil::MakeValidatedShape(F32, {ydim, zdim}, {true, false}).value();
+      ShapeUtil::MakeShape(F32, {ydim, zdim}, {true, false});
   auto xz_dynamic_shape =
-      ShapeUtil::MakeValidatedShape(F32, {xdim, zdim}, {true, false}).value();
+      ShapeUtil::MakeShape(F32, {xdim, zdim}, {true, false});
 
   auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0, xy_shape, "A"));
@@ -290,9 +281,8 @@ TEST_F(DynamicDimensionInferenceTest, DotTest) {
       /*parameter_number=*/2, scalar_shape_, "size_param"));
 
   a_param = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
-      ShapeUtil::MakeValidatedShape(F32, xy_shape.dimensions(), {true, false})
-          .value(),
-      a_param, size_param, 0));
+      ShapeUtil::MakeShape(F32, xy_shape.dimensions(), {true, false}), a_param,
+      size_param, 0));
   a_param = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
       xy_dynamic_shape, a_param, size_param, 1));
   b_param = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
@@ -315,14 +305,12 @@ TEST_F(DynamicDimensionInferenceTest, DotTest) {
 
 TEST_F(DynamicDimensionInferenceTest, DotTestBatch) {
   auto builder = HloComputation::Builder(TestName());
-  auto lhs_shape = ShapeUtil::MakeValidatedShape(F32, {4, 128, 2, 8}).value();
-  auto rhs_shape = ShapeUtil::MakeValidatedShape(F32, {4, 128, 2, 8}).value();
-  auto output_shape = ShapeUtil::MakeValidatedShape(F32, {4, 2, 128, 128},
-                                                    {true, false, false, false})
-                          .value();
-  auto lhs_shape_dynamic = ShapeUtil::MakeValidatedShape(
-                               F32, {4, 128, 2, 8}, {true, false, false, false})
-                               .value();
+  auto lhs_shape = ShapeUtil::MakeShape(F32, {4, 128, 2, 8});
+  auto rhs_shape = ShapeUtil::MakeShape(F32, {4, 128, 2, 8});
+  auto output_shape =
+      ShapeUtil::MakeShape(F32, {4, 2, 128, 128}, {true, false, false, false});
+  auto lhs_shape_dynamic =
+      ShapeUtil::MakeShape(F32, {4, 128, 2, 8}, {true, false, false, false});
 
   auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0, lhs_shape, "A"));
@@ -356,15 +344,13 @@ TEST_F(DynamicDimensionInferenceTest, DotTestBatch) {
 
 TEST_F(DynamicDimensionInferenceTest, DotTestMultiContracting) {
   auto builder = HloComputation::Builder(TestName());
-  auto lhs_shape = ShapeUtil::MakeValidatedShape(F32, {2, 2, 8, 64}).value();
-  auto rhs_shape = ShapeUtil::MakeValidatedShape(F32, {2, 2, 512}).value();
-  auto output_shape = ShapeUtil::MakeValidatedShape(F32, {8, 64, 512}).value();
-  auto lhs_shape_dynamic = ShapeUtil::MakeValidatedShape(
-                               F32, {2, 2, 8, 64}, {true, true, false, false})
-                               .value();
+  auto lhs_shape = ShapeUtil::MakeShape(F32, {2, 2, 8, 64});
+  auto rhs_shape = ShapeUtil::MakeShape(F32, {2, 2, 512});
+  auto output_shape = ShapeUtil::MakeShape(F32, {8, 64, 512});
+  auto lhs_shape_dynamic =
+      ShapeUtil::MakeShape(F32, {2, 2, 8, 64}, {true, true, false, false});
   auto rhs_shape_dynamic =
-      ShapeUtil::MakeValidatedShape(F32, {2, 2, 512}, {true, true, false})
-          .value();
+      ShapeUtil::MakeShape(F32, {2, 2, 512}, {true, true, false});
 
   auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0, lhs_shape, "A"));
@@ -374,16 +360,13 @@ TEST_F(DynamicDimensionInferenceTest, DotTestMultiContracting) {
       /*parameter_number=*/2, scalar_shape_, "size_param"));
 
   a_param = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
-      ShapeUtil::MakeValidatedShape(F32, lhs_shape.dimensions(),
-                                    {true, false, false, false})
-          .value(),
+      ShapeUtil::MakeShape(F32, lhs_shape.dimensions(),
+                           {true, false, false, false}),
       a_param, size_param, 0));
   a_param = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
       lhs_shape_dynamic, a_param, size_param, 1));
   b_param = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
-      ShapeUtil::MakeValidatedShape(F32, rhs_shape.dimensions(),
-                                    {true, false, false})
-          .value(),
+      ShapeUtil::MakeShape(F32, rhs_shape.dimensions(), {true, false, false}),
       b_param, size_param, 0));
   b_param = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
       rhs_shape_dynamic, b_param, size_param, 1));
@@ -411,12 +394,11 @@ TEST_F(DynamicDimensionInferenceTest, ConvolutionTest) {
   constexpr int xdim = 3;
   constexpr int ydim = 2;
   constexpr int zdim = 1;
-  auto xy_shape = ShapeUtil::MakeValidatedShape(F32, {xdim, ydim}).value();
-  auto yz_shape = ShapeUtil::MakeValidatedShape(F32, {ydim, zdim}).value();
-  auto xy_shape_dynamic =
-      ShapeUtil::MakeValidatedShape(F32, {xdim, ydim}, {true, true}).value();
+  auto xy_shape = ShapeUtil::MakeShape(F32, {xdim, ydim});
+  auto yz_shape = ShapeUtil::MakeShape(F32, {ydim, zdim});
+  auto xy_shape_dynamic = ShapeUtil::MakeShape(F32, {xdim, ydim}, {true, true});
   auto zx_shape_dynamic =
-      ShapeUtil::MakeValidatedShape(F32, {zdim, xdim}, {false, true}).value();
+      ShapeUtil::MakeShape(F32, {zdim, xdim}, {false, true});
 
   auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0, xy_shape, "A"));
@@ -426,9 +408,8 @@ TEST_F(DynamicDimensionInferenceTest, ConvolutionTest) {
       /*parameter_number=*/2, scalar_shape_, "size_param"));
 
   a_param = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
-      ShapeUtil::MakeValidatedShape(F32, xy_shape.dimensions(), {true, false})
-          .value(),
-      a_param, size_param, 0));
+      ShapeUtil::MakeShape(F32, xy_shape.dimensions(), {true, false}), a_param,
+      size_param, 0));
   a_param = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
       xy_shape_dynamic, a_param, size_param, 1));
 
@@ -457,11 +438,9 @@ TEST_F(DynamicDimensionInferenceTest, ConvolutionTest) {
 TEST_F(DynamicDimensionInferenceTest, TransposeTest) {
   // Test the ability to trace unmodified dimensions
   auto builder = HloComputation::Builder(TestName());
-  auto input_shape = ShapeUtil::MakeValidatedShape(F32, {1, 2, 3}).value();
-  auto output_shape =
-      ShapeUtil::MakeValidatedShape(F32, {3, 2, 1}, {true, true, true}).value();
-  auto dynamic_shape =
-      ShapeUtil::MakeValidatedShape(F32, {1, 2, 3}, {true, true, true}).value();
+  auto input_shape = ShapeUtil::MakeShape(F32, {1, 2, 3});
+  auto output_shape = ShapeUtil::MakeShape(F32, {3, 2, 1}, {true, true, true});
+  auto dynamic_shape = ShapeUtil::MakeShape(F32, {1, 2, 3}, {true, true, true});
 
   auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0, input_shape, "A"));
@@ -473,13 +452,11 @@ TEST_F(DynamicDimensionInferenceTest, TransposeTest) {
       /*parameter_number=*/3, scalar_shape_, "size_param"));
 
   a_param = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
-      ShapeUtil::MakeValidatedShape(F32, {1, 2, 3}, {true, false, false})
-          .value(),
-      a_param, size_param_1, 0));
+      ShapeUtil::MakeShape(F32, {1, 2, 3}, {true, false, false}), a_param,
+      size_param_1, 0));
   a_param = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
-      ShapeUtil::MakeValidatedShape(F32, {1, 2, 3}, {true, true, false})
-          .value(),
-      a_param, size_param_2, 1));
+      ShapeUtil::MakeShape(F32, {1, 2, 3}, {true, true, false}), a_param,
+      size_param_2, 1));
   a_param = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
       dynamic_shape, a_param, size_param_3, 2));
 
@@ -498,11 +475,9 @@ TEST_F(DynamicDimensionInferenceTest, TransposeTest) {
 TEST_F(DynamicDimensionInferenceTest, NonDescendingTransposeTest) {
   // Test the ability to trace unmodified dimensions
   auto builder = HloComputation::Builder(TestName());
-  auto input_shape = ShapeUtil::MakeValidatedShape(F32, {1, 2, 3}).value();
-  auto output_shape =
-      ShapeUtil::MakeValidatedShape(F32, {3, 1, 2}, {true, true, true}).value();
-  auto dynamic_shape =
-      ShapeUtil::MakeValidatedShape(F32, {1, 2, 3}, {true, true, true}).value();
+  auto input_shape = ShapeUtil::MakeShape(F32, {1, 2, 3});
+  auto output_shape = ShapeUtil::MakeShape(F32, {3, 1, 2}, {true, true, true});
+  auto dynamic_shape = ShapeUtil::MakeShape(F32, {1, 2, 3}, {true, true, true});
 
   auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0, input_shape, "A"));
@@ -514,13 +489,11 @@ TEST_F(DynamicDimensionInferenceTest, NonDescendingTransposeTest) {
       /*parameter_number=*/3, scalar_shape_, "size_param"));
 
   a_param = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
-      ShapeUtil::MakeValidatedShape(F32, {1, 2, 3}, {true, false, false})
-          .value(),
-      a_param, size_param_1, 0));
+      ShapeUtil::MakeShape(F32, {1, 2, 3}, {true, false, false}), a_param,
+      size_param_1, 0));
   a_param = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
-      ShapeUtil::MakeValidatedShape(F32, {1, 2, 3}, {true, true, false})
-          .value(),
-      a_param, size_param_2, 1));
+      ShapeUtil::MakeShape(F32, {1, 2, 3}, {true, true, false}), a_param,
+      size_param_2, 1));
   a_param = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
       dynamic_shape, a_param, size_param_3, 2));
 
@@ -539,16 +512,11 @@ TEST_F(DynamicDimensionInferenceTest, NonDescendingTransposeTest) {
 TEST_F(DynamicDimensionInferenceTest, ReshapeTest) {
   // Test the ability to trace unmodified reshape dimensions.
   auto builder = HloComputation::Builder(TestName());
-  auto input_shape =
-      ShapeUtil::MakeValidatedShape(F32, {2, 3, 4, 5, 6}).value();
-  auto output_shape =
-      ShapeUtil::MakeValidatedShape(F32, {6, 4, 1, 5, 2, 3},
-                                    {false, true, false, true, false, false})
-          .value();
-  auto dynamic_shape =
-      ShapeUtil::MakeValidatedShape(F32, {2, 3, 4, 5, 6},
-                                    {false, false, true, true, false})
-          .value();
+  auto input_shape = ShapeUtil::MakeShape(F32, {2, 3, 4, 5, 6});
+  auto output_shape = ShapeUtil::MakeShape(
+      F32, {6, 4, 1, 5, 2, 3}, {false, true, false, true, false, false});
+  auto dynamic_shape = ShapeUtil::MakeShape(F32, {2, 3, 4, 5, 6},
+                                            {false, false, true, true, false});
 
   auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0, input_shape, "A"));
@@ -556,9 +524,8 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeTest) {
       /*parameter_number=*/1, scalar_shape_, "size_param"));
 
   a_param = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
-      ShapeUtil::MakeValidatedShape(F32, {2, 3, 4, 5, 6},
-                                    {false, false, true, false, false})
-          .value(),
+      ShapeUtil::MakeShape(F32, {2, 3, 4, 5, 6},
+                           {false, false, true, false, false}),
       a_param, size_param, 2));
   a_param = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
       dynamic_shape, a_param, size_param, 3));
@@ -582,12 +549,10 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeInferredDimensionTest) {
   // Test the ability to trace inferred dimension when output is bigger than
   // input.
   auto builder = HloComputation::Builder(TestName());
-  auto input_shape = ShapeUtil::MakeValidatedShape(F32, {4, 5}).value();
+  auto input_shape = ShapeUtil::MakeShape(F32, {4, 5});
   auto output_shape =
-      ShapeUtil::MakeValidatedShape(F32, {1, 4, 5}, {true, false, false})
-          .value();
-  auto dynamic_shape =
-      ShapeUtil::MakeValidatedShape(F32, {4, 5}, {true, false}).value();
+      ShapeUtil::MakeShape(F32, {1, 4, 5}, {true, false, false});
+  auto dynamic_shape = ShapeUtil::MakeShape(F32, {4, 5}, {true, false});
 
   auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0, input_shape, "A"));
@@ -610,12 +575,10 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeInferredDimensionTest) {
 TEST_F(DynamicDimensionInferenceTest, ReshapeTestMajorDimension) {
   // Test the ability to trace dimension combining.
   auto builder = HloComputation::Builder(TestName());
-  auto input_shape = ShapeUtil::MakeValidatedShape(F32, {32, 10, 4}).value();
-  auto output_shape =
-      ShapeUtil::MakeValidatedShape(F32, {320, 4}, {true, false}).value();
+  auto input_shape = ShapeUtil::MakeShape(F32, {32, 10, 4});
+  auto output_shape = ShapeUtil::MakeShape(F32, {320, 4}, {true, false});
   auto dynamic_shape =
-      ShapeUtil::MakeValidatedShape(F32, {32, 10, 4}, {true, false, false})
-          .value();
+      ShapeUtil::MakeShape(F32, {32, 10, 4}, {true, false, false});
 
   auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0, input_shape, "A"));
@@ -639,9 +602,9 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeTestMajorDimension) {
 TEST_F(DynamicDimensionInferenceTest, ReshapeIntoScalar) {
   // Test the ability to a reshape into scalar.
   auto builder = HloComputation::Builder(TestName());
-  auto input_shape = ShapeUtil::MakeValidatedShape(F32, {1}).value();
-  auto output_shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
-  auto dynamic_shape = ShapeUtil::MakeValidatedShape(F32, {1}, {true}).value();
+  auto input_shape = ShapeUtil::MakeShape(F32, {1});
+  auto output_shape = ShapeUtil::MakeShape(F32, {});
+  auto dynamic_shape = ShapeUtil::MakeShape(F32, {1}, {true});
 
   auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0, input_shape, "A"));
@@ -689,11 +652,10 @@ ENTRY main {
 TEST_F(DynamicDimensionInferenceTest, BroadcastTest) {
   // Test the ability to trace broadcast dimension.
   auto builder = HloComputation::Builder(TestName());
-  auto input_shape = ShapeUtil::MakeValidatedShape(F32, {2}).value();
+  auto input_shape = ShapeUtil::MakeShape(F32, {2});
   auto output_shape =
-      ShapeUtil::MakeValidatedShape(F32, {3, 2, 4}, {false, true, false})
-          .value();
-  auto dynamic_shape = ShapeUtil::MakeValidatedShape(F32, {2}, {true}).value();
+      ShapeUtil::MakeShape(F32, {3, 2, 4}, {false, true, false});
+  auto dynamic_shape = ShapeUtil::MakeShape(F32, {2}, {true});
 
   auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0, input_shape, "A"));
@@ -718,15 +680,12 @@ TEST_F(DynamicDimensionInferenceTest, BroadcastTest) {
 TEST_F(DynamicDimensionInferenceTest, WhileTest) {
   // Test the ability to trace into while loops.
   auto builder = HloComputation::Builder(TestName());
-  auto input_shape = ShapeUtil::MakeValidatedShape(F32, {2, 4, 4}).value();
+  auto input_shape = ShapeUtil::MakeShape(F32, {2, 4, 4});
   auto dynamic_shape =
-      ShapeUtil::MakeValidatedShape(F32, {2, 4, 4}, {true, false, false})
-          .value();
-  auto tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({input_shape, input_shape}).value();
+      ShapeUtil::MakeShape(F32, {2, 4, 4}, {true, false, false});
+  auto tuple_shape = ShapeUtil::MakeTupleShape({input_shape, input_shape});
   auto dynamic_tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({dynamic_shape, dynamic_shape})
-          .value();
+      ShapeUtil::MakeTupleShape({dynamic_shape, dynamic_shape});
 
   // Body:
   //
@@ -810,25 +769,19 @@ TEST_F(DynamicDimensionInferenceTest, WhileTest) {
 TEST_F(DynamicDimensionInferenceTest, ConditionalInputTest) {
   // Test the ability to trace into conditional loops.
   auto builder = HloComputation::Builder(TestName());
-  auto input_shape = ShapeUtil::MakeValidatedShape(F32, {2, 4, 4}).value();
+  auto input_shape = ShapeUtil::MakeShape(F32, {2, 4, 4});
   auto dynamic_shape =
-      ShapeUtil::MakeValidatedShape(F32, {2, 4, 4}, {true, false, false})
-          .value();
-  auto output_shape = ShapeUtil::MakeValidatedShape(F32, {2, 2, 2}).value();
+      ShapeUtil::MakeShape(F32, {2, 4, 4}, {true, false, false});
+  auto output_shape = ShapeUtil::MakeShape(F32, {2, 2, 2});
   // In this test we set inputs to different branches to different shapes.
-  auto tuple_shape_1 =
-      ShapeUtil::MakeValidatedTupleShape({input_shape}).value();
-  auto tuple_shape_2 =
-      ShapeUtil::MakeValidatedTupleShape({input_shape, input_shape}).value();
-  auto tuple_shape_3 = ShapeUtil::MakeValidatedTupleShape(
-                           {input_shape, input_shape, input_shape})
-                           .value();
+  auto tuple_shape_1 = ShapeUtil::MakeTupleShape({input_shape});
+  auto tuple_shape_2 = ShapeUtil::MakeTupleShape({input_shape, input_shape});
+  auto tuple_shape_3 =
+      ShapeUtil::MakeTupleShape({input_shape, input_shape, input_shape});
   auto tuple_shape_2_dynamic =
-      ShapeUtil::MakeValidatedTupleShape({dynamic_shape, dynamic_shape})
-          .value();
-  auto tuple_shape_3_dynamic = ShapeUtil::MakeValidatedTupleShape(
-                                   {input_shape, dynamic_shape, dynamic_shape})
-                                   .value();
+      ShapeUtil::MakeTupleShape({dynamic_shape, dynamic_shape});
+  auto tuple_shape_3_dynamic =
+      ShapeUtil::MakeTupleShape({input_shape, dynamic_shape, dynamic_shape});
 
   // true branch:
   //
@@ -879,8 +832,7 @@ TEST_F(DynamicDimensionInferenceTest, ConditionalInputTest) {
   //   |            |                 |
   //   +---------Condition------------+
   auto* pred_param = builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/0, ShapeUtil::MakeValidatedScalarShape(PRED).value(),
-      "pred"));
+      /*parameter_number=*/0, ShapeUtil::MakeScalarShape(PRED), "pred"));
 
   auto* tuple_2_param = builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/1, tuple_shape_2, "tuple_2_param"));
@@ -958,13 +910,11 @@ TEST_F(DynamicDimensionInferenceTest, ConditionalInputTest) {
 TEST_F(DynamicDimensionInferenceTest, ReduceWindowBatchTest) {
   // Test the ability to trace reduce window batch dimensions.
   auto builder = HloComputation::Builder(TestName());
-  auto input_shape = ShapeUtil::MakeValidatedShape(F32, {2, 4, 4}).value();
+  auto input_shape = ShapeUtil::MakeShape(F32, {2, 4, 4});
   auto output_shape =
-      ShapeUtil::MakeValidatedShape(F32, {2, 2, 2}, {true, false, false})
-          .value();
+      ShapeUtil::MakeShape(F32, {2, 2, 2}, {true, false, false});
   auto dynamic_shape =
-      ShapeUtil::MakeValidatedShape(F32, {2, 4, 4}, {true, false, false})
-          .value();
+      ShapeUtil::MakeShape(F32, {2, 4, 4}, {true, false, false});
 
   Window window;
   // First dimension is unchanged.
@@ -1012,14 +962,12 @@ TEST_F(DynamicDimensionInferenceTest, ReduceWindowBatchTest) {
 TEST_F(DynamicDimensionInferenceTest, SelectAndScatterTest) {
   // Test the ability to trace select and scatter batch dimensions.
   auto builder = HloComputation::Builder(TestName());
-  auto input_shape = ShapeUtil::MakeValidatedShape(F32, {2, 4, 4}).value();
-  auto source_shape = ShapeUtil::MakeValidatedShape(F32, {2, 2, 2}).value();
+  auto input_shape = ShapeUtil::MakeShape(F32, {2, 4, 4});
+  auto source_shape = ShapeUtil::MakeShape(F32, {2, 2, 2});
   auto input_shape_dynamic =
-      ShapeUtil::MakeValidatedShape(F32, {2, 4, 4}, {true, false, false})
-          .value();
+      ShapeUtil::MakeShape(F32, {2, 4, 4}, {true, false, false});
   auto source_shape_dynamic =
-      ShapeUtil::MakeValidatedShape(F32, {2, 2, 2}, {true, false, false})
-          .value();
+      ShapeUtil::MakeShape(F32, {2, 2, 2}, {true, false, false});
 
   Window window;
   // First dimension is unchanged.
@@ -1072,21 +1020,21 @@ TEST_F(DynamicDimensionInferenceTest, ConcatTest) {
   auto builder = HloComputation::Builder(TestName());
 
   auto data_param = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeValidatedShape(F32, {5, 7}).value(), "data_param_1"));
+      0, ShapeUtil::MakeShape(F32, {5, 7}), "data_param_1"));
   auto data_param_2 = builder.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeValidatedShape(F32, {5, 8}).value(), "data_param_2"));
+      1, ShapeUtil::MakeShape(F32, {5, 8}), "data_param_2"));
   auto size_param = builder.AddInstruction(
       HloInstruction::CreateParameter(2, scalar_shape_, "size_param"));
 
   data_param = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
-      ShapeUtil::MakeValidatedShape(F32, {5, 7}, {true, false}).value(),
-      data_param, size_param, 0));
+      ShapeUtil::MakeShape(F32, {5, 7}, {true, false}), data_param, size_param,
+      0));
   data_param_2 = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
-      ShapeUtil::MakeValidatedShape(F32, {5, 8}, {true, false}).value(),
-      data_param_2, size_param, 0));
+      ShapeUtil::MakeShape(F32, {5, 8}, {true, false}), data_param_2,
+      size_param, 0));
 
   auto* concat = builder.AddInstruction(HloInstruction::CreateConcatenate(
-      ShapeUtil::MakeValidatedShape(F32, {5, 15}, {true, false}).value(),
+      ShapeUtil::MakeShape(F32, {5, 15}, {true, false}),
       {data_param, data_param_2}, 1));
 
   module_->AddEntryComputation(builder.Build());
@@ -1098,11 +1046,10 @@ TEST_F(DynamicDimensionInferenceTest, ConcatTest) {
 TEST_F(DynamicDimensionInferenceTest, SliceTest) {
   auto builder = HloComputation::Builder(TestName());
 
-  auto dynamic_shape =
-      ShapeUtil::MakeValidatedShape(F32, {5, 7}, {false, true}).value();
+  auto dynamic_shape = ShapeUtil::MakeShape(F32, {5, 7}, {false, true});
 
   auto data_param = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeValidatedShape(F32, {5, 7}).value(), "data_param"));
+      0, ShapeUtil::MakeShape(F32, {5, 7}), "data_param"));
   auto size_param = builder.AddInstruction(
       HloInstruction::CreateParameter(1, scalar_shape_, "size_param"));
 
@@ -1124,24 +1071,22 @@ TEST_F(DynamicDimensionInferenceTest, DynamicSliceTest) {
   auto builder = HloComputation::Builder(TestName());
 
   auto data_param = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeValidatedShape(F32, {5, 7}).value(), "data_param"));
+      0, ShapeUtil::MakeShape(F32, {5, 7}), "data_param"));
   auto size_param = builder.AddInstruction(
       HloInstruction::CreateParameter(1, scalar_shape_, "size_param"));
 
   std::vector<HloInstruction*> params;
   for (int i = 0; i < 2; ++i) {
     params.push_back(builder.AddInstruction(HloInstruction::CreateParameter(
-        i + 2, ShapeUtil::MakeValidatedShape(S32, {}).value(),
-        "slice_indices")));
+        i + 2, ShapeUtil::MakeShape(S32, {}), "slice_indices")));
   }
 
   data_param = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
-      ShapeUtil::MakeValidatedShape(F32, {5, 7}, {true, false}).value(),
-      data_param, size_param, 0));
+      ShapeUtil::MakeShape(F32, {5, 7}, {true, false}), data_param, size_param,
+      0));
 
   auto* slice = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
-      ShapeUtil::MakeValidatedShape(F32, {5, 1}, {true, false}).value(),
-      data_param, params,
+      ShapeUtil::MakeShape(F32, {5, 1}, {true, false}), data_param, params,
       /*slice_sizes=*/{5, 1}));
 
   module_->AddEntryComputation(builder.Build());
@@ -1153,19 +1098,18 @@ TEST_F(DynamicDimensionInferenceTest, DynamicSliceTest) {
 TEST_F(DynamicDimensionInferenceTest, SortTest) {
   auto builder = HloComputation::Builder(TestName());
 
-  auto dynamic_shape =
-      ShapeUtil::MakeValidatedShape(F32, {5, 7}, {true, false}).value();
+  auto dynamic_shape = ShapeUtil::MakeShape(F32, {5, 7}, {true, false});
 
   auto data_param = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeValidatedShape(F32, {5, 7}).value(), "data_param"));
+      0, ShapeUtil::MakeShape(F32, {5, 7}), "data_param"));
   auto size_param = builder.AddInstruction(
       HloInstruction::CreateParameter(1, scalar_shape_, "size_param"));
 
   auto compare_builder = HloComputation::Builder("condition");
   compare_builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "param1"));
+      0, ShapeUtil::MakeShape(F32, {}), "param1"));
   compare_builder.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeValidatedShape(F32, {}).value(), "param2"));
+      1, ShapeUtil::MakeShape(F32, {}), "param2"));
   compare_builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
   HloComputation* compare =
@@ -1187,9 +1131,8 @@ TEST_F(DynamicDimensionInferenceTest, SortTest) {
 TEST_F(DynamicDimensionInferenceTest, MultiValueSortTest) {
   auto builder = HloComputation::Builder(TestName());
 
-  auto shape = ShapeUtil::MakeValidatedShape(F32, {5, 7}).value();
-  auto dynamic_shape =
-      ShapeUtil::MakeValidatedShape(F32, {5, 7}, {true, false}).value();
+  auto shape = ShapeUtil::MakeShape(F32, {5, 7});
+  auto dynamic_shape = ShapeUtil::MakeShape(F32, {5, 7}, {true, false});
 
   auto data_param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, shape, "data_param"));
@@ -1198,13 +1141,13 @@ TEST_F(DynamicDimensionInferenceTest, MultiValueSortTest) {
 
   auto compare_builder = HloComputation::Builder("condition");
   compare_builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "param1"));
+      0, ShapeUtil::MakeShape(F32, {}), "param1"));
   compare_builder.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeValidatedShape(F32, {}).value(), "param2"));
+      1, ShapeUtil::MakeShape(F32, {}), "param2"));
   compare_builder.AddInstruction(HloInstruction::CreateParameter(
-      2, ShapeUtil::MakeValidatedShape(F32, {}).value(), "param3"));
+      2, ShapeUtil::MakeShape(F32, {}), "param3"));
   compare_builder.AddInstruction(HloInstruction::CreateParameter(
-      3, ShapeUtil::MakeValidatedShape(F32, {}).value(), "param4"));
+      3, ShapeUtil::MakeShape(F32, {}), "param4"));
   compare_builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
   HloComputation* compare =
@@ -1214,9 +1157,8 @@ TEST_F(DynamicDimensionInferenceTest, MultiValueSortTest) {
       dynamic_shape, data_param, size_param, 0));
 
   auto* sort = builder.AddInstruction(HloInstruction::CreateSort(
-      ShapeUtil::MakeValidatedTupleShape({dynamic_shape, dynamic_shape})
-          .value(),
-      1, {data_param, data_param}, compare,
+      ShapeUtil::MakeTupleShape({dynamic_shape, dynamic_shape}), 1,
+      {data_param, data_param}, compare,
       /*is_stable=*/false));
 
   module_->AddEntryComputation(builder.Build());
@@ -1232,23 +1174,22 @@ TEST_F(DynamicDimensionInferenceTest, DynamicSliceSingleElementTest) {
   auto builder = HloComputation::Builder(TestName());
 
   auto data_param = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeValidatedShape(F32, {5, 7}).value(), "data_param"));
+      0, ShapeUtil::MakeShape(F32, {5, 7}), "data_param"));
   auto* size_param = builder.AddInstruction(
       HloInstruction::CreateParameter(1, scalar_shape_, "size_param"));
 
   std::vector<HloInstruction*> params;
   for (int i = 0; i < 2; ++i) {
     params.push_back(builder.AddInstruction(HloInstruction::CreateParameter(
-        i + 2, ShapeUtil::MakeValidatedShape(S32, {}).value(),
-        "slice_indices")));
+        i + 2, ShapeUtil::MakeShape(S32, {}), "slice_indices")));
   }
 
   data_param = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
-      ShapeUtil::MakeValidatedShape(F32, {5, 7}, {true, false}).value(),
-      data_param, size_param, 0));
+      ShapeUtil::MakeShape(F32, {5, 7}, {true, false}), data_param, size_param,
+      0));
 
   auto* slice = builder.AddInstruction(HloInstruction::CreateDynamicSlice(
-      ShapeUtil::MakeValidatedShape(F32, {1, 1}).value(), data_param, params,
+      ShapeUtil::MakeShape(F32, {1, 1}), data_param, params,
       /*slice_sizes=*/{1, 1}));
 
   module_->AddEntryComputation(builder.Build());
@@ -1261,17 +1202,16 @@ TEST_F(DynamicDimensionInferenceTest, InfersCustomOp) {
   auto builder = HloComputation::Builder(TestName());
 
   auto data_param = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeValidatedShape(F32, {5, 7}).value(), "data_param"));
+      0, ShapeUtil::MakeShape(F32, {5, 7}), "data_param"));
   auto* size_param = builder.AddInstruction(
       HloInstruction::CreateParameter(1, scalar_shape_, "size_param"));
 
   data_param = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
-      ShapeUtil::MakeValidatedShape(F32, {5, 7}, {true, false}).value(),
-      data_param, size_param, 0));
+      ShapeUtil::MakeShape(F32, {5, 7}, {true, false}), data_param, size_param,
+      0));
 
   builder.AddInstruction(HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeValidatedShape(F32, {1, 1}).value(), {data_param},
-      "MyCustomOp", ""));
+      ShapeUtil::MakeShape(F32, {1, 1}), {data_param}, "MyCustomOp", ""));
 
   module_->AddEntryComputation(builder.Build());
 
@@ -1291,16 +1231,15 @@ TEST_F(DynamicDimensionInferenceTest, InfersCustomOp) {
 TEST_F(DynamicDimensionInferenceTest, DynamicReshapeOp) {
   auto builder = HloComputation::Builder(TestName());
   auto input = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeValidatedShape(F32, {9}).value(), "data_input"));
+      0, ShapeUtil::MakeShape(F32, {9}), "data_input"));
   auto six = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(6)));
   // Creates an input of shape [<=9], dynamic size is 6.
   auto dynamic_input =
       builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
-          ShapeUtil::MakeValidatedShape(F32, {9}, {true}).value(), input, six,
-          0));
+          ShapeUtil::MakeShape(F32, {9}, {true}), input, six, 0));
   auto dynamic_size = builder.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeValidatedShape(S32, {}).value(), "size_param"));
+      1, ShapeUtil::MakeShape(S32, {}), "size_param"));
   auto three = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(3)));
 
@@ -1308,8 +1247,8 @@ TEST_F(DynamicDimensionInferenceTest, DynamicReshapeOp) {
 
   auto dynamic_reshape =
       builder.AddInstruction(HloInstruction::CreateDynamicReshape(
-          ShapeUtil::MakeValidatedShape(F32, {3, 3}, {false, true}).value(),
-          dynamic_input, {three, dynamic_size}));
+          ShapeUtil::MakeShape(F32, {3, 3}, {false, true}), dynamic_input,
+          {three, dynamic_size}));
 
   module_->AddEntryComputation(builder.Build());
 
@@ -1321,24 +1260,20 @@ TEST_F(DynamicDimensionInferenceTest, DynamicReshapeOp) {
 TEST_F(DynamicDimensionInferenceTest, ReshapeOpWithMultipleDynamicDimensions) {
   auto builder = HloComputation::Builder(TestName());
   auto input = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeValidatedShape(F32, {9, 2}).value(), "data_input"));
+      0, ShapeUtil::MakeShape(F32, {9, 2}), "data_input"));
   auto six = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(6)));
   input = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
-      ShapeUtil::MakeValidatedShape(F32, {9, 2}, {true, false}).value(), input,
-      six, 0));
+      ShapeUtil::MakeShape(F32, {9, 2}, {true, false}), input, six, 0));
   auto one = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(1)));
   input = builder.AddInstruction(HloInstruction::CreateSetDimensionSize(
-      ShapeUtil::MakeValidatedShape(F32, {9, 2}, {true, true}).value(), input,
-      one, 1));
+      ShapeUtil::MakeShape(F32, {9, 2}, {true, true}), input, one, 1));
 
   // Reshape [<=9, <=2] into [<=9, 1, <=2]
 
   auto dynamic_reshape = builder.AddInstruction(HloInstruction::CreateReshape(
-      ShapeUtil::MakeValidatedShape(F32, {9, 1, 2}, {true, false, true})
-          .value(),
-      input));
+      ShapeUtil::MakeShape(F32, {9, 1, 2}, {true, false, true}), input));
 
   module_->AddEntryComputation(builder.Build());
 

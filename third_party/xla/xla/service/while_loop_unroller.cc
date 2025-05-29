@@ -89,8 +89,8 @@ std::unique_ptr<HloComputation> MakeTrivialLoopCondition(
 
   return condition_builder.Build(
       condition_builder.AddInstruction(HloInstruction::CreateCompare(
-          ShapeUtil::MakeValidatedShape(PrimitiveType::PRED, {}).value(),
-          indvar_instruction, init_value_constant, ComparisonDirection::kLe)));
+          ShapeUtil::MakeShape(PrimitiveType::PRED, {}), indvar_instruction,
+          init_value_constant, ComparisonDirection::kLe)));
 }
 
 // Handle DynamicGte and DynamicTuple custom-calls created during unstacking
