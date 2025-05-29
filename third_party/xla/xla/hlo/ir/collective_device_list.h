@@ -75,6 +75,7 @@ class IotaReplicaGroupList {
     return iota_tile_assignment_.transpose_perm();
   }
   Array<int64_t> ToArray() const { return iota_tile_assignment_.ToArray(); }
+  std::vector<std::vector<int64_t>> flattened_replica_groups() const;
 
   void Print(Printer* printer) const;
 
