@@ -59,8 +59,8 @@ class HloLiveRangeTest : public HloHardwareIndependentTestBase {
   std::unique_ptr<HloLiveRange> hlo_live_range_;
   std::unique_ptr<HloAliasAnalysis> alias_analysis_;
   // Shapes for use in the examples.
-  Shape f32scalar_ = ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
-  Shape f32vec4_ = ShapeUtil::MakeValidatedShape(F32, {4}).value();
+  Shape f32scalar_ = ShapeUtil::MakeShape(xla::F32, {});
+  Shape f32vec4_ = ShapeUtil::MakeShape(F32, {4});
 
   // Returns the buffer defined at the given instruction and index.
   const HloValue* BufferAt(const HloInstruction* instruction,
@@ -271,10 +271,9 @@ TEST_F(HloLiveRangeTest, AliasedParameter) {
 }
 
 TEST_F(HloLiveRangeTest, While) {
-  Shape shape = ShapeUtil::MakeValidatedShape(xla::F32, {2, 3}).value();
-  Shape scalar_shape = ShapeUtil::MakeValidatedShape(xla::F32, {}).value();
-  Shape tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({shape, scalar_shape}).value();
+  Shape shape = ShapeUtil::MakeShape(xla::F32, {2, 3});
+  Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, scalar_shape});
 
   auto cond_builder = HloComputation::Builder("WhileCond");
   HloInstruction* cond_param = cond_builder.AddInstruction(
@@ -283,10 +282,9 @@ TEST_F(HloLiveRangeTest, While) {
       HloInstruction::CreateGetTupleElement(scalar_shape, cond_param, 1));
   HloInstruction* cond_limit = cond_builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(50.f)));
-  HloInstruction* cond_lt =
-      cond_builder.AddInstruction(HloInstruction::CreateCompare(
-          ShapeUtil::MakeValidatedShape(PRED, {}).value(), cond_iter,
-          cond_limit, ComparisonDirection::kLt));
+  HloInstruction* cond_lt = cond_builder.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), cond_iter,
+                                    cond_limit, ComparisonDirection::kLt));
   HloComputation* cond_computation =
       module_->AddEmbeddedComputation(cond_builder.Build());
 
