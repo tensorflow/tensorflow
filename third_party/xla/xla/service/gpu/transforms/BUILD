@@ -659,8 +659,14 @@ cc_library(
 xla_test(
     name = "cudnn_fused_conv_rewriter_test",
     srcs = ["cudnn_fused_conv_rewriter_test.cc"],
+    backend_tags = {
+        "gpu_a100": [
+            "noasan",
+            "nomsan",
+        ],
+    },
     backends = [
-        "gpu_h100",
+        "gpu_a100",
         "gpu_amd_any",
     ] + if_oss(["gpu_any"]),
     shard_count = 10,
