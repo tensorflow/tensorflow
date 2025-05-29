@@ -28,8 +28,8 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/quantization_patterns.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/tf_passes.h"  // IWYU pragma: keep
-#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/tf_quantization_patterns.h"
 
 namespace mlir::tf_quant::stablehlo {
 
@@ -37,6 +37,10 @@ namespace mlir::tf_quant::stablehlo {
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/tf_passes.h.inc"
 
 namespace {
+
+using ::mlir::quant::stablehlo::PopulateAllQuantizablePatterns;
+using ::mlir::quant::stablehlo::PopulateCommonQuantizationPatterns;
+using ::mlir::quant::stablehlo::StableHloQuantizationPattern;
 
 // Base struct for quantization.
 template <typename ConcreteT,

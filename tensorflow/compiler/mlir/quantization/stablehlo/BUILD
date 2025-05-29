@@ -94,9 +94,9 @@ cc_library(
         ":optimize_graph_inc_gen",
         ":quantization_config_proto_cc",
         ":quantization_options_proto_cc",
+        ":quantization_patterns",
         ":remove_sharding_custom_call_inc_gen",
         ":stablehlo_type_utils",
-        ":tf_quantization_patterns",
         ":tf_stablehlo_passes_inc_gen",
         "//tensorflow/compiler/mlir/quantization/common:func",
         "//tensorflow/compiler/mlir/quantization/common:tf_attrs_and_constraints",
@@ -260,10 +260,10 @@ cc_library(
 )
 
 cc_library(
-    name = "tf_quantization_patterns",
-    srcs = ["passes/tf_quantization_patterns.cc"],
+    name = "quantization_patterns",
+    srcs = ["passes/quantization_patterns.cc"],
     hdrs = [
-        "passes/tf_quantization_patterns.h",
+        "passes/quantization_patterns.h",
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
@@ -274,37 +274,6 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/common/tf_quantization_lib",
         "//tensorflow/compiler/mlir/quantization/stablehlo/ops:tf_stablehlo_op_quant_spec",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:path",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:Support",
-        "@stablehlo//:stablehlo_ops",
-    ],
-)
-
-cc_library(
-    name = "quantization_patterns",
-    srcs = ["passes/quantization_patterns.cc"],
-    hdrs = [
-        "passes/quantization_patterns.h",
-    ],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":quantization_config_proto_cc",
-        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
-        "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
-        "//tensorflow/compiler/mlir/quantization/common:lift_as_function_call",
-        "//tensorflow/compiler/mlir/quantization/common:uniform_quantized_types",
-        "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
-        "//tensorflow/compiler/mlir/quantization/stablehlo/ops:stablehlo_op_quant_spec",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:protos_all_cc",
