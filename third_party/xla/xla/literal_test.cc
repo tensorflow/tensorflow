@@ -3179,6 +3179,14 @@ INSTANTIATE_TEST_SUITE_P(
     Tuples, LiteralSerializationTest,
     ::testing::ValuesIn(LiteralSerializationTest::GenerateTupleParams()));
 
+TYPED_TEST(LiteralUtilFloatTest, MaxFiniteValue) {
+  constexpr auto ptype = primitive_util::NativeToPrimitiveType<TypeParam>();
+  auto max_finite_value = LiteralUtil::MaxFiniteValue(ptype);
+  EXPECT_TRUE(ShapeUtil::IsScalar(max_finite_value.shape()));
+  EXPECT_EQ(max_finite_value.Convert(F32)->template Get<float>({}),
+            std::numeric_limits<TypeParam>::max());
+}
+
 //===----------------------------------------------------------------------===//
 // Literal::Broadcast perfrormance benchmarks below.
 //===----------------------------------------------------------------------===//
