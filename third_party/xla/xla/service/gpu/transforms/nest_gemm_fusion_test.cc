@@ -619,7 +619,8 @@ ENTRY e {
     "split_k":1,"num_stages":1,"num_warps":4,"num_ctas":1}}}}
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
-  EXPECT_TRUE(!NestGemmFusion(compute_capability_).Run(module.get()).ok());
+  // We can nest the fusion including the broadcast.
+  EXPECT_TRUE(NestGemmFusion(compute_capability_).Run(module.get()).ok());
   TF_ASSERT_OK(verifier().Run(module.get()).status());
   // Cos should not be rewritten as we cannot hoist bitcast.
   EXPECT_THAT(

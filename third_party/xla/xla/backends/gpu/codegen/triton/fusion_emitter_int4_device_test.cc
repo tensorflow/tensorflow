@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
@@ -26,9 +27,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/autotuning.pb.h"
 #include "xla/error_spec.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
-#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
@@ -100,11 +101,14 @@ class TritonTest : public GpuCodegenTest {
   }
 
   absl::Status MaybeAddTritonGemmConfig(HloModule* module) {
-    auto* fusion = Cast<HloFusionInstruction>(
-        module->entry_computation()->root_instruction());
-    if (!fusion) {
-      return absl::InternalError("Entry root is not a fusion.");
+    auto instructions = module->entry_computation()->instructions();
+    auto it = absl::c_find_if(instructions, [](auto instruction) {
+      return instruction->opcode() == HloOpcode::kFusion;
+    });
+    if (it == instructions.end()) {
+      return absl::InternalError("No fusion in entry computation.");
     }
+    HloInstruction* fusion = *it;
     TF_ASSIGN_OR_RETURN(auto gpu_config,
                         fusion->backend_config<GpuBackendConfig>());
     FusionBackendConfig* backend_config =
@@ -198,7 +202,7 @@ TEST_F(TritonTest, FuseChannelDequantizationFused) {
       kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonTest, DISABLED_FuseSubchannelDequantizationWithTranspose) {
+TEST_F(TritonTest, FuseSubchannelDequantizationWithTranspose) {
   constexpr absl::string_view kHloText = R"(
     HloModule FuseSubchannelDequantizationWithTranspose
 
@@ -238,7 +242,7 @@ TEST_F(TritonTest, DISABLED_FuseSubchannelDequantizationWithTranspose) {
       std::move(module), ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
 }
 
-TEST_F(TritonTest, DISABLED_FuseSubchannelDequantization) {
+TEST_F(TritonTest, FuseSubchannelDequantization) {
   // This test is a Subchannel Dequantization fusion.
   // We run the non-fused version with the goal to fail if an hlo rewrite broke
   // the dequantization logic. The case where we do:
@@ -305,7 +309,7 @@ TEST_F(TritonTest, FuseChannelDequantization) {
       std::move(module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonTest, DISABLED_FuseSubchannelDequantizationFused) {
+TEST_F(TritonTest, FuseSubchannelDequantizationFused) {
   // This test is a Subchannel Dequantization fusion.
   // We run the fused version to avoid the hlo passes.
   // The case where we do:
@@ -362,8 +366,7 @@ TEST_F(TritonTest, DISABLED_FuseSubchannelDequantizationFused) {
       kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonTest,
-       DISABLED_FuseSubchannelDequantizationFusedWithSmallBlockKSize) {
+TEST_F(TritonTest, FuseSubchannelDequantizationFusedWithSmallBlockKSize) {
   // This test is a Subchannel Dequantization fusion.
   // We run the fused version to avoid the hlo passes.
   // The case where we do:
@@ -445,7 +448,7 @@ TEST_F(TritonTest, FuseBroadcastInPrologue) {
       std::move(module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonTest, DISABLED_FuseBroadcastBitcastInPrologue) {
+TEST_F(TritonTest, FuseBroadcastBitcastInPrologue) {
   // This test is a Subchannel Dequantization fusion.
   constexpr absl::string_view kHloText = R"(
     HloModule FuseBroadcastBitcastInPrologue
@@ -972,7 +975,7 @@ TEST_F(TritonTest, RHSWithMinorDimEqualTo1) {
       kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-TEST_F(TritonTest, DISABLED_LHSNonMinorContractingDim) {
+TEST_F(TritonTest, LHSNonMinorContractingDim) {
   // We prove that triton can handle int4 dot with non minor
   // lhs_contracting_dim.
   constexpr absl::string_view kHloText = R"(

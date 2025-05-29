@@ -1467,6 +1467,7 @@ ENTRY main {
 
   // LHS nested fusion.
   const TiledHloInstruction* lhs = dot->operand(0);
+  EXPECT_THAT(lhs->operands(), IsEmpty()) << "operand shouldn't be analyzed.";
   const TiledHloComputation* lhs_nested_computation =
       static_cast<const TiledHloFusionInstruction*>(lhs)->called_computation();
   auto match_lhs = MatchTiledHloInstruction(
@@ -1482,9 +1483,12 @@ ENTRY main {
   EXPECT_THAT(*negate, match_lhs);
   const TiledHloInstruction* lhs_p0 = negate->operand(0);
   EXPECT_THAT(*lhs_p0, match_lhs);
+  EXPECT_EQ(lhs_p0->hlo(), lhs->hlo()->operand(0))
+      << "tiled parameter is not the operand of the nested fusion instruction.";
 
   // RHS nested fusion.
   const TiledHloInstruction* rhs = dot->operand(1);
+  EXPECT_THAT(rhs->operands(), IsEmpty()) << "operand shouldn't be analyzed.";
   const TiledHloComputation* rhs_nested_computation =
       static_cast<const TiledHloFusionInstruction*>(rhs)->called_computation();
   auto match_rhs = MatchTiledHloInstruction(
@@ -1498,6 +1502,8 @@ ENTRY main {
   const TiledHloInstruction* rhs_p0 =
       rhs_nested_computation->GetRoots().front();
   EXPECT_THAT(*rhs_p0, match_rhs);
+  EXPECT_EQ(rhs_p0->hlo(), rhs->hlo()->operand(0))
+      << "tiled parameter is not the operand of the nested fusion instruction.";
 }
 
 TEST_F(SymbolicTileAnalysisTest, EmptyFusionsAreSupported) {
@@ -1524,6 +1530,25 @@ ENTRY main {
                          /*tile_sizes=*/{2}, /*tile_strides=*/{1},
                          /*tile_offsets_indexing=*/
                          "(pid_0) -> (pid_0 * 2), domain: pid_0 in [0, 3]"));
+}
+
+TEST_F(SymbolicTileAnalysisTest, BailsOutOnRootFusion) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+nested {
+  ROOT nested.root = f32[] parameter(0)
+}
+
+fusion {
+  fusion.p0 = f32[] parameter(0)
+  ROOT fusion.root = f32[] fusion(fusion.p0), kind=kLoop, calls=nested
+}
+
+ENTRY main {
+  main.p0 = f32[] parameter(0)
+  ROOT main.root = f32[] fusion(main.p0), kind=kLoop, calls=fusion
+})"));
+  EXPECT_FALSE(TryAnalyzeModule(module.get()).has_value());
 }
 
 TEST_F(SymbolicTileAnalysisTest,
@@ -1622,7 +1647,7 @@ ENTRY main {
        tiled_hlo_computation.instructions()) {
     if (auto tiled_fusion =
             dynamic_cast<const TiledHloFusionInstruction*>(tiled_instr)) {
-      nested_fusions[tiled_fusion->operand(0)->hlo()->parameter_number()] =
+      nested_fusions[tiled_fusion->hlo()->operand(0)->parameter_number()] =
           tiled_fusion;
     }
   }
@@ -1718,7 +1743,7 @@ ENTRY main {
        tiled_hlo_computation.instructions()) {
     if (auto tiled_fusion =
             dynamic_cast<const TiledHloFusionInstruction*>(tiled_instr)) {
-      nested_fusions[tiled_fusion->operand(0)->hlo()->parameter_number()] =
+      nested_fusions[tiled_fusion->hlo()->operand(0)->parameter_number()] =
           tiled_fusion;
     }
   }

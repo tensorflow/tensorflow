@@ -1102,33 +1102,6 @@ absl::StatusOr<ScalarOrTensor> EmitConcatenate(
   return ScalarOrTensor(if_ops.front().getResult(0));
 }
 
-// Given an operand to a (potentially nested) fusion instruction, finds the
-// index of the operand to the outermost fusion it corresponds to.
-//
-// Nested fusion parameter chains should always only traverse parameter nodes.
-int64_t GetOutermostFusionOperandParameterIndex(
-    const HloFusionInstruction* fusion, const HloInstruction* operand) {
-  CHECK(fusion->IsUserOf(operand));
-
-  // Simple case: `fusion` is the outermost fusion.
-  if (!operand->parent()->IsFusionComputation()) {
-    return fusion->operand_index(operand);
-  }
-
-  // While operand is in a nested fusion, walk up to the outermost fusion.
-  while (
-      operand->parent()->FusionInstruction()->parent()->IsFusionComputation()) {
-    // Nests operands should always point to parameters.
-    CHECK(operand->opcode() == HloOpcode::kParameter);
-    int64_t param_number = operand->parameter_number();
-    operand = operand->parent()->FusionInstruction()->operand(param_number);
-  }
-
-  CHECK(operand->parent()->IsFusionComputation());
-  CHECK(operand->opcode() == HloOpcode::kParameter);
-  return operand->parameter_number();
-}
-
 absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
     EmitterLocOpBuilder& b, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
@@ -1138,14 +1111,17 @@ absl::StatusOr<ScalarOrTensor> EmitTiledHloInstruction(
   const HloInstruction* hlo = tiled_hlo.hlo();
   VLOG(4) << "EmitTiledHloInstruction: " << hlo->ToString();
 
-  if (hlo->IsRoot() && hlo->opcode() == HloOpcode::kParameter) {
+  if (hlo->opcode() == HloOpcode::kParameter && !fusion->IsUserOf(hlo)) {
     hlo = hlo->parent()->FusionInstruction()->operand(hlo->parameter_number());
   }
 
   if (fusion->IsUserOf(hlo)) {
-    // If the fusion instruction is a user of `hlo`, then `hlo` is an operand
-    // to the fusion instruction.
-    int64_t arg_index = GetOutermostFusionOperandParameterIndex(fusion, hlo);
+    int64_t arg_index = fusion->operand_index(hlo);
+    // Walk up the parameter chain to find the outermost operand index.
+    while (auto* instr = hlo->parent()->FusionInstruction()) {
+      arg_index = hlo->parameter_number();  // Nested operands are parameters.
+      hlo = instr->operand(arg_index);
+    }
     TF_ASSIGN_OR_RETURN(auto tile_info, TileInfo::Construct(b, pid, tiled_hlo));
     ScalarOrTensor parameter =
         EmitParameterExtract(b, tile_info, fn.getArgument(arg_index));

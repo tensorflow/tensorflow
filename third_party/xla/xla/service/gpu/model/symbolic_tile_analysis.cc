@@ -700,22 +700,31 @@ absl::StatusOr<int64_t> GetRealRootIndex(
       std::make_unique<SymbolicTiledHloInstruction>(
           root_indexing.GetRealRoot(), root_indexing.real_root_indexing));
 
+  if (root_tiled_hlo->hlo()->opcode() == HloOpcode::kFusion) {
+    // This is an acceptable restriction because we expect the user of a nested
+    // fusion to be a dot or concatenate, which prevents it from being a root.
+    return FusionDecision::Forbid("Root fusion instruction is not supported.");
+  }
+
   std::vector<SymbolicTiledHloInstruction*> worklist = {root_tiled_hlo};
 
   while (!worklist.empty()) {
     auto tiled_hlo_instruction = worklist.back();
     worklist.pop_back();
-    HloInstructionAdaptor instruction_adaptor(*tiled_hlo_instruction->hlo(),
-                                              &fusion);
 
-    if (!fusion.ContainsInstruction(instruction_adaptor)) {
+    if (!fusion.ContainsInstruction(tiled_hlo_instruction->hlo())) {
       continue;
+    }
+    if (tiled_hlo_instruction->hlo()->opcode() == HloOpcode::kFusion) {
+      continue;  // Don't analyze parameter operands of nested fusions.
     }
 
     HloInstructionIndexing operands_indexing =
         ComputeOutputToInputIndexing(tiled_hlo_instruction->hlo(),
                                      /*output_id=*/0, ctx);
 
+    HloInstructionAdaptor instruction_adaptor(*tiled_hlo_instruction->hlo(),
+                                              &fusion);
     for (auto [operand, operand_indexing_map_set] :
          llvm::zip(instruction_adaptor.GetOperands(),
                    operands_indexing.indexing_maps)) {
