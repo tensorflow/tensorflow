@@ -91,6 +91,20 @@ std::optional<int64_t> AdvancedMatchShapeCoveringDynamicIndexInstruction(
     const HloInstruction* instr, const HloInstruction* input, HloOpcode opcode,
     const WhileLoopConfig& config);
 
+// More advanced version of the above two methods that handles limited cases of
+// nested while loops. Specifically, it returns true if all of the following are
+// true:
+// 1. The input shape is fully covered by dynamic_update_slice instructions in
+// the while loop (potentially via those in nested loops).
+// 2. In the case of nested loops, there are only two levels of nesting.
+// 3. In the case of nested loops, the input shape and slice shape are
+// effectively square, i.e., all dynamic_update_slice instructions have two
+// dynamic dimensions, and the input shape and slice shape have the same size in
+// both those dimensions.
+// 4. There is a single DUS in the outer while loop.
+absl::StatusOr<bool> IsInputShapeCoveredByDynamicUpdateSliceInstructions(
+    int64_t input_idx, const WhileLoopConfig& config);
+
 // Check if `instr` is a dynamic-slice with the given input and a single dynamic
 // start index that is effectively static, i.e., it is an expression that only
 // involves the iteration variable of the surrounding loop and some constants,

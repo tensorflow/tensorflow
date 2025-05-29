@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -44,8 +45,10 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/constant_value.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/value_range.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tools/hlo_extractor.h"
 #include "xla/tsl/platform/status.h"
@@ -97,18 +100,14 @@ static const HloInstruction* NonConstantOperand(const HloInstruction* instr) {
 }
 
 // If all of instr's operands are either constants or have the form
-//   get-tuple-element(gte_operand, N)
-// for the same value N, returns N.  Otherwise, returns nullopt.
-static optional<int64_t> GetGTEOperandIndex(const HloInstruction* instr,
-                                            const HloInstruction* gte_operand) {
-  VLOG(2) << "GetGTEOperandIndex(" << instr->ToString()
+//   get-tuple-element(gte_operand, x),
+// then returns a vector of all such x. Otherwise, returns nullopt.
+static optional<absl::flat_hash_set<int64_t>> GetGTEOperandIndices(
+    const HloInstruction* instr, const HloInstruction* gte_operand) {
+  VLOG(2) << "GetGTEOperandIndices(" << instr->ToString()
           << ", GTE Operand: " << gte_operand->ToString() << ")";
 
-  // All operands of `instr` must be either constants or of the form
-  //   get-tuple-element(gte_operand, tuple_idx)
-  // for the same value tuple_idx. We also support the case where GTE feeds a
-  // copy that is then used.
-  optional<int64_t> tuple_idx;
+  absl::flat_hash_set<int64_t> tuple_indices = {};
   for (const HloInstruction* operand : instr->operands()) {
     if (operand->opcode() == HloOpcode::kConstant) {
       continue;
@@ -118,26 +117,17 @@ static optional<int64_t> GetGTEOperandIndex(const HloInstruction* instr,
     if (operand->opcode() == HloOpcode::kCopy) {
       possibly_gte = operand->operand(0);
     }
-
     if (possibly_gte->opcode() != HloOpcode::kGetTupleElement) {
       return nullopt;
     }
-
     if (possibly_gte->operand(0) != gte_operand) {
       return nullopt;
     }
 
     int64_t operand_tuple_idx = possibly_gte->tuple_index();
-    // This is the first GTE we are seeing. Set tuple_idx.
-    if (!tuple_idx.has_value()) {
-      tuple_idx = operand_tuple_idx;
-    } else {
-      if (operand_tuple_idx != tuple_idx) {
-        return nullopt;
-      }
-    }
+    tuple_indices.insert(operand_tuple_idx);
   }
-  return tuple_idx;
+  return tuple_indices;
 }
 
 // This function returns true if the operation is a simple scalar operation.
@@ -163,9 +153,9 @@ static bool IsScalarOp(const HloInstruction* op) {
   return ShapeUtil::IsScalar(op->shape());
 }
 
-// If `out` is a function of a single value in the tuple `in` and has no other
-// dependence, i.e. if `out=f(gte(in))`, then this function will return the
-// unique get-tuple-element index for the dependence.
+// If `out` is a function of a some values in the tuple `in` and has no other
+// dependence, i.e. if `out=f(gte1(in), gte2(in),...)`, then this function will
+// return the all the get-tuple-element indices for the dependence.
 //
 // For example, in the following HLO, this function will return `1`:
 //   in = (s32[], s32[], s32[]) tuple(a,b,c)
@@ -173,12 +163,13 @@ static bool IsScalarOp(const HloInstruction* op) {
 //   out = fusion(gte.1), ...
 // Also checks whether all ops on the path from `in` to `out` are ops with a
 // scalar shape.
-static std::optional<int64_t> GetUniqueGTEDependenceIndex(
+static std::optional<absl::flat_hash_set<int64_t>> GetGTEDependenceIndices(
     const HloInstruction* out, const HloInstruction* in) {
   // Fast path : pattern matching.
-  std::optional<int64_t> tuple_idx = GetGTEOperandIndex(out, in);
-  if (tuple_idx != std::nullopt) {
-    return tuple_idx;
+  std::optional<absl::flat_hash_set<int64_t>> tuple_idxs =
+      GetGTEOperandIndices(out, in);
+  if (tuple_idxs != std::nullopt) {
+    return tuple_idxs;
   }
 
   if (out->parent() != in->parent() || !in->shape().IsTuple()) {
@@ -228,18 +219,11 @@ static std::optional<int64_t> GetUniqueGTEDependenceIndex(
     return std::nullopt;
   }
 
-  // We extract the candidate index from the first user. At this point we
-  // already know that the all the users are get-tuple-elements and that there
-  // is atleast one user.
-  int64_t candidate_index = param->users()[0]->tuple_index();
-
-  // We check that all the users of the input instruction `in` (which we already
-  // know to be get-tuple-element instructions) have the same tuple index.
-  if (absl::c_any_of(param->users(),
-                     [candidate_index](const HloInstruction* inst) -> bool {
-                       return inst->tuple_index() != candidate_index;
-                     })) {
-    return std::nullopt;
+  // At this point we already know that the all the users are get-tuple-elements
+  // and that there is at least one user. Now, extract all indices of the users.
+  absl::flat_hash_set<int64_t> candidate_indices;
+  for (const HloInstruction* user : param->users()) {
+    candidate_indices.insert(user->tuple_index());
   }
 
   if (absl::c_any_of(
@@ -249,7 +233,30 @@ static std::optional<int64_t> GetUniqueGTEDependenceIndex(
     return std::nullopt;
   }
 
-  return candidate_index;
+  return candidate_indices;
+}
+
+// If `out` is a function of a single value in the tuple `in` and has no other
+// dependence, i.e. if `out=f(gte(in))`, then this function will return the
+// unique get-tuple-element index for the dependence.
+//
+// For example, in the following HLO, this function will return `1`:
+//   in = (s32[], s32[], s32[]) tuple(a,b,c)
+//   gte.1 = get-tuple-element(in), index=1
+//   out = fusion(gte.1), ...
+// Also checks whether all ops on the path from `in` to `out` are ops with a
+// scalar shape.
+static std::optional<int64_t> GetUniqueGTEDependenceIndex(
+    const HloInstruction* out, const HloInstruction* in) {
+  std::optional<absl::flat_hash_set<int64_t>> tuple_idxs =
+      GetGTEDependenceIndices(out, in);
+  if (!tuple_idxs.has_value()) {
+    return std::nullopt;
+  }
+  if (tuple_idxs->size() != 1) {
+    return std::nullopt;
+  }
+  return *tuple_idxs->begin();
 }
 
 // The below function identifies a subset of all possible auxiliary
@@ -411,35 +418,73 @@ std::vector<const HloInstruction*> GetAuxiliaryLoopInductionVars(
 //
 // If so, returns N.  Otherwise, returns nullopt.
 optional<int64_t> GetLoopInductionVarTupleIdx(const HloInstruction* while_op) {
+  return GetLoopInductionVarTupleIdxWithKnownValues(while_op, {});
+}
+
+// Same as above, but also handles cases where the range of the induction
+// variable depends on previously known values rather than constants.
+optional<int64_t> GetLoopInductionVarTupleIdxWithKnownValues(
+    const HloInstruction* while_op,
+    const absl::flat_hash_map<const HloInstruction*, Range>& known_values) {
   CHECK_EQ(while_op->opcode(), HloOpcode::kWhile);
   VLOG(2) << "Finding induction variable for loop "
           << while_op->ToShortString();
 
-  // The while_cond computation should have the form
+  // The while_cond computation should either have the form
   //
   //   while_cond_root =
   //       op(constants, get-tuple-elem(while_cond_param, N), constants).
+  //
+  // or it has the form
+  //
+  //   while_cond_root = op(constants, get-tuple-elem(while_cond_param, N),
+  //       get-tuple-elem(while_cond_param, M), constants)
+  //
+  //   and M is such that while_op->operand(0)->operand(M) is in known_values.
   //
   // If it does, set indvar_tuple_idx to N.
   auto* while_cond = while_op->while_condition();
   auto* while_cond_root = while_cond->root_instruction();
   auto* while_cond_param = while_cond->parameter_instruction(0);
-  optional<int64_t> indvar_tuple_idx =
-      GetUniqueGTEDependenceIndex(while_cond_root, while_cond_param);
-  if (!indvar_tuple_idx) {
+  optional<absl::flat_hash_set<int64_t>> cond_tuple_indices =
+      GetGTEDependenceIndices(while_cond_root, while_cond_param);
+  if (!cond_tuple_indices.has_value()) {
     VLOG(2) << "Induction variable not found in loop condition: "
             << while_cond->root_instruction()->ToString();
     return nullopt;
   }
 
-  // The while_body computation should have the form:
+  // Exactly one of `cond_tuple_indices` should be not in known_values.
+  int64_t indvar_tuple_idx = -1;
+  if (cond_tuple_indices->size() == 1) {
+    indvar_tuple_idx = *cond_tuple_indices->begin();
+  } else {
+    for (int64_t possible_indvar_tuple_idx : *cond_tuple_indices) {
+      if (!known_values.contains(
+              while_op->operand(0)->operand(possible_indvar_tuple_idx))) {
+        if (indvar_tuple_idx != -1) {
+          VLOG(2) << "Induction variable found in loop condition: "
+                  << while_cond->root_instruction()->ToString();
+          return nullopt;
+        }
+        indvar_tuple_idx = possible_indvar_tuple_idx;
+      }
+    }
+  }
+  if (indvar_tuple_idx == -1) {
+    VLOG(2) << "Induction variable not found in loop condition: "
+            << while_cond->root_instruction()->ToString();
+    return nullopt;
+  }
+
+  // We have found the induction variable.
+  // The rest of the method verifies that the while body is of the form:
   //
-  // Form 1:
-  //   while_body_inc =
-  //       op(constants, get-tuple-elem(while_body_param, N), constants)
-  //   while_body_root = tuple(..., while_body_inc, ...)
+  //   inc = op(constants, get-tuple-elem(while_body_param, N), constants)
+  //   root = tuple(..., inc, ...)  // inc is N'th operand of tuple().
   //
-  // where while_body_inc is operand N of while_body_root.
+  // where N is the same as the induction variable found in the while condition.
+
   auto* while_body = while_op->while_body();
   auto* while_body_root = while_body->root_instruction();
   if (while_body_root->opcode() != HloOpcode::kTuple) {
@@ -449,7 +494,7 @@ optional<int64_t> GetLoopInductionVarTupleIdx(const HloInstruction* while_op) {
   }
   const HloInstruction* while_body_inc;
   while_body_inc = TraceThroughCopyAndGteTupleChain(
-      while_body_root->operand(*indvar_tuple_idx));
+      while_body_root->operand(indvar_tuple_idx));
   auto* while_body_param = while_body->parameter_instruction(0);
   optional<int64_t> while_body_indvar_tuple_idx =
       GetUniqueGTEDependenceIndex(while_body_inc, while_body_param);
@@ -462,7 +507,7 @@ optional<int64_t> GetLoopInductionVarTupleIdx(const HloInstruction* while_op) {
   if (while_body_indvar_tuple_idx != indvar_tuple_idx) {
     VLOG(2) << "Tuple index of induction variable does not match between loop "
                "condition ("
-            << *indvar_tuple_idx << ") and while body ("
+            << indvar_tuple_idx << ") and while body ("
             << *while_body_indvar_tuple_idx << ")";
     return nullopt;
   }
@@ -475,7 +520,7 @@ optional<int64_t> GetLoopInductionVarTupleIdx(const HloInstruction* while_op) {
     return nullopt;
   }
 
-  VLOG(2) << "Induction variable's tuple index: " << *indvar_tuple_idx;
+  VLOG(2) << "Induction variable's tuple index: " << indvar_tuple_idx;
   return indvar_tuple_idx;
 }
 
@@ -511,13 +556,20 @@ optional<Range> MatchTrivialLoopRange(const HloInstruction* while_op) {
   if (!indvar_tuple_idx.has_value()) {
     return nullopt;
   }
-  if (!while_op->operand(0)->operand(*indvar_tuple_idx)->IsConstant()) {
-    return nullopt;
+  return MatchLoopRangeWithKnownValues(while_op, *indvar_tuple_idx, {});
+}
+
+optional<Range> MatchLoopRangeWithKnownValues(
+    const HloInstruction* while_op, const int64_t induction_var_idx,
+    const absl::flat_hash_map<const HloInstruction*, Range>& known_values) {
+  const HloInstruction* indvar_init_instr =
+      while_op->operand(0)->operand(induction_var_idx);
+  if (!indvar_init_instr->IsConstant()) {
+    return std::nullopt;
   }
-  const Literal& indvar_init =
-      while_op->operand(0)->operand(*indvar_tuple_idx)->literal();
 
   // First, find the scalar constant init that `i` is initialized to.
+  const Literal& indvar_init = indvar_init_instr->literal();
   optional<int64_t> indvar_init_val =
       LiteralUtil::LiteralAsScalarInt64(indvar_init);
   if (!indvar_init_val) {
@@ -531,12 +583,12 @@ optional<Range> MatchTrivialLoopRange(const HloInstruction* while_op) {
   // number.
   auto* while_body = while_op->while_body();
   auto* while_body_indvar_update =
-      while_body->root_instruction()->mutable_operand(indvar_tuple_idx.value());
+      while_body->root_instruction()->mutable_operand(induction_var_idx);
   auto* while_body_indvar = NonConstantOperand(while_body_indvar_update);
   if (while_body_indvar == nullptr ||
       while_body_indvar !=
           hlo_query::GetUniqueGteInstruction(
-              while_body->parameter_instruction(0), indvar_tuple_idx.value())) {
+              while_body->parameter_instruction(0), induction_var_idx)) {
     VLOG(2) << "Pattern-match failed: update of induction variable is not in "
                "the form of op(gte, constant): "
             << while_body_indvar_update->ToString();
@@ -582,30 +634,50 @@ optional<Range> MatchTrivialLoopRange(const HloInstruction* while_op) {
     return nullopt;
   }
   // Check that we do op(i, N) or op(N, i) as the while condition.  Capture the
-  // value N.
+  // value N. N can either be a constant or a GTE that points to a known value.
   auto* while_cond = while_op->while_condition();
   auto* while_cond_root = while_cond->root_instruction();
-  auto* while_cond_indvar = NonConstantOperand(while_cond_root);
-  if (while_cond_indvar == nullptr ||
-      while_cond_indvar !=
-          hlo_query::GetUniqueGteInstruction(
-              while_cond->parameter_instruction(0), indvar_tuple_idx.value())) {
+
+  auto* while_cond_indvar = hlo_query::GetUniqueGteInstruction(
+      while_cond->parameter_instruction(0), induction_var_idx);
+
+  if (while_cond_indvar == nullptr) {
     VLOG(2) << "Pattern-match failed: while condition is not supported.";
     return std::nullopt;
   }
   HloInstruction* while_cond_bound = nullptr;
   if (!Match(while_cond_root,
-             m::Op().WithBinaryOperandsAnyOrder(
-                 m::Op().Is(while_cond_indvar),
-                 m::ConstantEffectiveScalar(&while_cond_bound)))) {
+             m::Op().WithBinaryOperandsAnyOrder(m::Op().Is(while_cond_indvar),
+                                                m::Op(&while_cond_bound)))) {
     VLOG(2) << "Pattern-match failed: while condition is not of the form "
                "op(i, N) or op(N, i).";
     return nullopt;
   }
-  // Note: If this succeeds, the constant `N` is representable as an int64_t --
-  // that is, if it's an XLA U64, it fits within an int64_t.
-  optional<int64_t> while_cond_bound_val =
-      LiteralUtil::LiteralAsScalarInt64(while_cond_bound->literal());
+
+  // Check if while_cond_bound is a GTE of a known value or a constant.
+  optional<int64_t> while_cond_bound_val = std::nullopt;
+  if (while_cond_bound->IsConstant()) {
+    while_cond_bound_val =
+        LiteralUtil::LiteralAsScalarInt64(while_cond_bound->literal());
+  } else {
+    if (while_cond_bound->opcode() != HloOpcode::kGetTupleElement) {
+      VLOG(2) << "Pattern-match failed: while condition bound is not a "
+                 "constant or a get-tuple-element.";
+      return std::nullopt;
+    }
+    int64_t cond_bound_tuple_idx = while_cond_bound->tuple_index();
+    auto it =
+        known_values.find(while_op->operand(0)->operand(cond_bound_tuple_idx));
+    if (it == known_values.end()) {
+      VLOG(2) << "Pattern-match failed: while condition bound is not a "
+                 "constant or a get-tuple-element.";
+      return std::nullopt;
+    }
+    if (it->second.IsSingleValue()) {
+      while_cond_bound_val = it->second.GetSingleSignedValue();
+    }
+  }
+
   if (!while_cond_bound_val) {
     VLOG(2) << "Pattern-match failed: while condition induction variable is "
                "not a constant scalar representable as an int64_t.";
