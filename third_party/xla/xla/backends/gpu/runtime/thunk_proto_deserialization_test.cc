@@ -87,26 +87,16 @@ TEST(ThunkProtoDeserializationTest, CopyThunk) {
       )pb",
       &proto));
 
-  Thunk::ThunkInfo thunk_info;
-  thunk_info.profile_annotation = "profile_annotation";
-  thunk_info.execution_stream_id = 123;
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Thunk> thunk,
                           DeserializeThunkProto(proto, buffer_allocations));
-
-  auto* copy_thunk_ptr = dynamic_cast<CopyThunk*>(thunk.get());
-  ASSERT_NE(copy_thunk_ptr, nullptr);  // Check the cast succeeded
-  EXPECT_EQ(
-      *copy_thunk_ptr,
-      CopyThunk(thunk_info,
-                BufferAllocation::Slice(&buffer_allocations[0],
-                                        /*offset=*/128, /*size=*/384),
-                BufferAllocation::Slice(&buffer_allocations[1], /*offset=*/0,
-                                        /*size=*/256),
-                /*mem_size=*/256));
+  auto* copy_thunk = dynamic_cast<CopyThunk*>(thunk.get());
+  ASSERT_NE(copy_thunk, nullptr);  // Check the cast succeeded
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, copy_thunk->ToProto());
+  EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
 TEST(ThunkProtoDeserializationTest, DeviceToHostCopyThunk) {
@@ -131,28 +121,16 @@ TEST(ThunkProtoDeserializationTest, DeviceToHostCopyThunk) {
       )pb",
       &proto));
 
-  Thunk::ThunkInfo thunk_info;
-  thunk_info.profile_annotation = "profile_annotation";
-  thunk_info.execution_stream_id = 123;
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Thunk> thunk,
                           DeserializeThunkProto(proto, buffer_allocations));
-
-  auto* d2h_copy_thunk_ptr = dynamic_cast<DeviceToHostCopyThunk*>(thunk.get());
-  ASSERT_NE(d2h_copy_thunk_ptr, nullptr);  // Check the cast succeeded
-  EXPECT_EQ(*d2h_copy_thunk_ptr,
-            DeviceToHostCopyThunk(
-                thunk_info,
-                BufferAllocation::Slice(&buffer_allocations[0],
-                                        /*offset=*/128, /*size=*/384),
-                BufferAllocation::Slice(&buffer_allocations[1], /*offset=*/0,
-                                        /*size=*/256),
-                /*mem_size=*/256,
-                /*events=*/nullptr,
-                /*instr=*/nullptr));
+  auto* copy_thunk = dynamic_cast<DeviceToHostCopyThunk*>(thunk.get());
+  ASSERT_NE(copy_thunk, nullptr);  // Check the cast succeeded
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, copy_thunk->ToProto());
+  EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
 TEST(ThunkProtoDeserializationTest, HostToDeviceCopyThunk) {
@@ -177,28 +155,16 @@ TEST(ThunkProtoDeserializationTest, HostToDeviceCopyThunk) {
       )pb",
       &proto));
 
-  Thunk::ThunkInfo thunk_info;
-  thunk_info.profile_annotation = "profile_annotation";
-  thunk_info.execution_stream_id = 123;
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Thunk> thunk,
                           DeserializeThunkProto(proto, buffer_allocations));
-
-  auto* h2d_copy_thunk_ptr = dynamic_cast<HostToDeviceCopyThunk*>(thunk.get());
-  ASSERT_NE(h2d_copy_thunk_ptr, nullptr);  // Check the cast succeeded
-  EXPECT_EQ(*h2d_copy_thunk_ptr,
-            HostToDeviceCopyThunk(
-                thunk_info,
-                BufferAllocation::Slice(&buffer_allocations[0],
-                                        /*offset=*/128, /*size=*/384),
-                BufferAllocation::Slice(&buffer_allocations[1], /*offset=*/0,
-                                        /*size=*/256),
-                /*mem_size=*/256,
-                /*events=*/nullptr,
-                /*instr=*/nullptr));
+  auto* copy_thunk = dynamic_cast<HostToDeviceCopyThunk*>(thunk.get());
+  ASSERT_NE(copy_thunk, nullptr);  // Check the cast succeeded
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, copy_thunk->ToProto());
+  EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
 TEST(ThunkProtoDeserializationTest, WhileThunk) {
