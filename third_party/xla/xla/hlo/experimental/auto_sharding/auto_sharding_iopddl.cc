@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <utility>
 #include <vector>
@@ -280,24 +281,29 @@ AutoShardingSolverRequest ConvertToSolverRequest(
 }
 
 std::vector<int64_t> GetFollowers(const iopddl::Problem& problem) {
-  std::vector<int64_t> followers(problem.nodes.size(), -1);
+  std::vector<std::vector<int64_t>> followees(problem.nodes.size());
   for (iopddl::EdgeIdx edge_idx = 0; edge_idx < problem.edges.size();
        ++edge_idx) {
     const iopddl::Edge& edge = problem.edges[edge_idx];
     if (IsEdgeFollower(problem, edge)) {
-      if (edge.nodes[1] > edge.nodes[0]) {  // followers[large_idx] = small_idx
-        followers[edge.nodes[1]] = edge.nodes[0];
-      } else if (edge.nodes[0] > edge.nodes[1]) {
-        followers[edge.nodes[0]] = edge.nodes[1];
-      }
+      followees[edge.nodes[0]].push_back(edge.nodes[1]);
+      followees[edge.nodes[1]].push_back(edge.nodes[0]);
     }
   }
-  // Remove all transitive arcs (to ensure that each node follows a leaf).
-  for (NodeIdx node_idx = 0; node_idx < problem.nodes.size(); ++node_idx) {
-    if (followers[node_idx] != -1) {
-      while (followers[followers[node_idx]] != -1) {
-        followers[node_idx] = followers[followers[node_idx]];
+  // Ensure that followees (and their followees, etc.) follow the root node.
+  std::vector<int64_t> followers(problem.nodes.size(), -1);
+  std::function<void(int64_t, int64_t)> propagate = [&](int64_t root_idx,
+                                                        int64_t node_idx) {
+    if (root_idx < node_idx && followers[node_idx] == -1) {
+      followers[node_idx] = root_idx;
+      for (int64_t followee_idx : followees[node_idx]) {
+        propagate(root_idx, followee_idx);
       }
+    }
+  };
+  for (NodeIdx root_idx = 0; root_idx < problem.nodes.size(); ++root_idx) {
+    for (int64_t node_idx : followees[root_idx]) {
+      propagate(root_idx, node_idx);
     }
   }
   return followers;
