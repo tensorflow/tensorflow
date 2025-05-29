@@ -64,47 +64,52 @@ std::unique_ptr<const DiffResult> ConstructDiffResult(
     if (left_node->is_root) {
       continue;
     }
-    diff_result->node_props.insert({left_node->instruction, left_node->props});
+
+    diff_result->node_props_left.insert(
+        {left_node->instruction, left_node->props});
+
+    // The node is unmatched
     if (!mappings.InstructionMapContainsLeft(left_node)) {
       diff_result->left_module_unmatched_instructions.insert(
           left_node->instruction);
       continue;
     }
+
+    // The node is matched
     const HloInstructionNode* right_node =
         mappings.left_to_right_instruction_map.left.find(left_node)->second;
     const HloInstructionNodeMappingProps& mapping_props =
         mappings.left_to_right_instruction_map.left.find(left_node)->info;
 
+    // Fill in matcher debug info.
+    diff_result->map_by[std::make_pair(left_node->instruction,
+                                       right_node->instruction)] =
+        mapping_props.matcher_type;
+    diff_result->matcher_debug_info[std::make_pair(left_node->instruction,
+                                                   right_node->instruction)] =
+        mapping_props.matcher_debug_info;
+
     if (IsChangedInstruction(left_node, right_node)) {
       diff_result->changed_instructions[left_node->instruction] =
           right_node->instruction;
-      diff_result->map_by[std::make_pair(left_node->instruction,
-                                         right_node->instruction)] =
-          mapping_props.matcher_type;
       continue;
     }
     // If node position is unchanged, add to unchanged instructions.
     if (mapping_props.unchanged) {
       diff_result->unchanged_instructions[left_node->instruction] =
           right_node->instruction;
-      diff_result->map_by[std::make_pair(left_node->instruction,
-                                         right_node->instruction)] =
-          mapping_props.matcher_type;
       continue;
     }
     // TODO(b/369851244): Add moved instructions to diff result.
     diff_result->unchanged_instructions[left_node->instruction] =
         right_node->instruction;
-    diff_result->map_by[std::make_pair(left_node->instruction,
-                                       right_node->instruction)] =
-        mapping_props.matcher_type;
   }
 
   for (const HloInstructionNode* right_node : right_all_nodes) {
     if (right_node->is_root) {
       continue;
     }
-    diff_result->node_props.insert(
+    diff_result->node_props_right.insert(
         {right_node->instruction, right_node->props});
     if (!mappings.InstructionMapContainsRight(right_node)) {
       diff_result->right_module_unmatched_instructions.insert(

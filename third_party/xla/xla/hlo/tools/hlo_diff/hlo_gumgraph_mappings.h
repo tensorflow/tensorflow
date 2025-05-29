@@ -18,7 +18,9 @@
 #define XLA_HLO_TOOLS_HLO_DIFF_HLO_GUMGRAPH_MAPPINGS_H_
 
 #include <cstdint>
+#include <string>
 
+#include "absl/strings/string_view.h"
 #include "boost/bimap.hpp"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph_node.h"
 #include "xla/service/call_graph.h"
@@ -47,6 +49,7 @@ enum class ComputationMatchType : std::uint8_t { kExact, kSignature };
 struct HloInstructionNodeMappingProps {
   bool unchanged = false;
   MatcherType matcher_type = MatcherType::kNotSet;
+  std::string matcher_debug_info;
 };
 
 // Aggregated match characteristics of a mapped CallGraphNode.
@@ -79,11 +82,15 @@ struct HloGumgraphMappings {
 
   // Maps two nodes if they are not already mapped. Returns true if mapping
   // was performed.
-  inline bool MapInstructionsIfAbsent(const HloInstructionNode* left,
-                                      const HloInstructionNode* right,
-                                      const MatcherType matcher_type) {
+  inline bool MapInstructionsIfAbsent(
+      const HloInstructionNode* left, const HloInstructionNode* right,
+      const MatcherType matcher_type,
+      absl::string_view matcher_debug_info = "") {
+    HloInstructionNodeMappingProps props;
+    props.matcher_type = matcher_type;
+    props.matcher_debug_info = std::string(matcher_debug_info);
     auto [it, inserted] = left_to_right_instruction_map.insert(
-        InstructionPair(left, right, {.matcher_type = matcher_type}));
+        InstructionPair(left, right, props));
 
     return inserted;
   }
@@ -93,9 +100,10 @@ struct HloGumgraphMappings {
   inline bool MapComputationsIfAbsent(
       const CallGraphNode& left, const CallGraphNode& right,
       const ComputationMatchType computation_match_type) {
-    auto [it, inserted] =
-        left_to_right_computation_map.insert(CallGraphNodePair(
-            &left, &right, {.computation_match_type = computation_match_type}));
+    HloCallGraphNodeMappingProps props;
+    props.computation_match_type = computation_match_type;
+    auto [it, inserted] = left_to_right_computation_map.insert(
+        CallGraphNodePair(&left, &right, props));
 
     return inserted;
   }
