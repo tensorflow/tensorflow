@@ -143,7 +143,7 @@ XLA_TEST_F(TransferManagerTest, TransferR1LargeF32) {
 XLA_TEST_F(TransferManagerTest, TransferR1LargeUnalignedF32) {
   std::vector<float> test_vector(1025);
   std::iota(test_vector.begin(), test_vector.end(), 0);
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {1024}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {1024});
   BorrowingLiteral literal(reinterpret_cast<const char*>(&test_vector[1]),
                            shape);
   auto device_buffer = AllocateDeviceBuffer(shape);

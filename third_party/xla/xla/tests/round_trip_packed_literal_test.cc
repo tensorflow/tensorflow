@@ -55,8 +55,7 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR1F32Length2) {
   std::unique_ptr<tsl::RandomAccessFile> f;
   TF_CHECK_OK(tsl::Env::Default()->NewRandomAccessFile(fname, &f));
   PackedLiteralReader reader(f.release());
-  Literal actual =
-      reader.Read(ShapeUtil::MakeValidatedShape(F32, {2}).value()).value();
+  Literal actual = reader.Read(ShapeUtil::MakeShape(F32, {2})).value();
   EXPECT_TRUE(reader.IsExhausted());
 
   EXPECT_EQ(42.0, actual.Get<float>({0}));
@@ -82,8 +81,7 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim0Minor) {
   TF_CHECK_OK(tsl::Env::Default()->NewRandomAccessFile(fname, &f));
   PackedLiteralReader reader(f.release());
   Literal actual =
-      reader.Read(ShapeUtil::MakeValidatedShape(F32, {2, 2}).value(), &layout)
-          .value();
+      reader.Read(ShapeUtil::MakeShape(F32, {2, 2}), &layout).value();
   EXPECT_TRUE(reader.IsExhausted());
 
   EXPECT_EQ(42.0f, actual.Get<float>({0, 0}));
@@ -114,8 +112,7 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim1Minor) {
   TF_CHECK_OK(tsl::Env::Default()->NewRandomAccessFile(fname, &f));
   PackedLiteralReader reader(f.release());
   Literal actual =
-      reader.Read(ShapeUtil::MakeValidatedShape(F32, {2, 2}).value(), &layout)
-          .value();
+      reader.Read(ShapeUtil::MakeShape(F32, {2, 2}), &layout).value();
   EXPECT_TRUE(reader.IsExhausted());
 
   EXPECT_EQ(42.0f, actual.Get<float>({0, 0}));

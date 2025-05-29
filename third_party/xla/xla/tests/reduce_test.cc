@@ -86,8 +86,7 @@ class ReduceTest : public ClientLibraryTestBase {
     // clang-format on
     CHECK(ShapeUtil::Equal(
         literal_3d_.shape(),
-        ShapeUtil::MakeValidatedShape(F32, {/*z=*/4, /*y=*/2, /*x=*/3})
-            .value()))
+        ShapeUtil::MakeShape(F32, {/*z=*/4, /*y=*/2, /*x=*/3})))
         << literal_3d_.shape().ToString();
   }
 
@@ -95,8 +94,7 @@ class ReduceTest : public ClientLibraryTestBase {
   void RunR1ToR0Test(int64_t element_count) {
     XlaBuilder builder(TestName());
     XlaComputation add_f32 = CreateScalarAddComputation(F32, &builder);
-    const Shape input_shape =
-        ShapeUtil::MakeValidatedShape(F32, {element_count}).value();
+    const Shape input_shape = ShapeUtil::MakeShape(F32, {element_count});
     auto input = Parameter(&builder, 0, input_shape, "input");
     auto zero = ConstantR0<float>(&builder, 0.0);
     Reduce(input, zero, add_f32, /*dimensions_to_reduce=*/{0});
@@ -122,8 +120,7 @@ class ReduceTest : public ClientLibraryTestBase {
   void RunR1ToR0PredTest(bool and_reduce, absl::Span<const int> input_data) {
     const int element_count = input_data.size();
     XlaBuilder builder(TestName());
-    const Shape input_shape =
-        ShapeUtil::MakeValidatedShape(S32, {element_count}).value();
+    const Shape input_shape = ShapeUtil::MakeShape(S32, {element_count});
     auto input_par = Parameter(&builder, 0, input_shape, "input");
     auto pred_values =
         Eq(input_par, ConstantR1<int>(&builder, element_count, 1));
@@ -161,8 +158,7 @@ class ReduceTest : public ClientLibraryTestBase {
   void RunR2ToR1PredTest(bool and_reduce, int64_t rows, int64_t minor = 1,
                          int64_t major = 0) {
     XlaBuilder builder(TestName());
-    const Shape input_shape =
-        ShapeUtil::MakeValidatedShape(U8, {rows, cols}).value();
+    const Shape input_shape = ShapeUtil::MakeShape(U8, {rows, cols});
     auto input = Parameter(&builder, 0, input_shape, "input");
     auto input_pred = Eq(input, ConstantR0<uint8_t>(&builder, 1));
 
@@ -208,8 +204,7 @@ class ReduceTest : public ClientLibraryTestBase {
                      int64_t major = 0) {
     XlaBuilder builder(TestName());
     XlaComputation add_f32 = CreateScalarAddComputation(F32, &builder);
-    const Shape input_shape =
-        ShapeUtil::MakeValidatedShape(F32, {rows, cols}).value();
+    const Shape input_shape = ShapeUtil::MakeShape(F32, {rows, cols});
     auto input = Parameter(&builder, 0, input_shape, "input");
     auto zero = ConstantR0<float>(&builder, 0.0);
     Reduce(input, zero, add_f32, /*dimensions_to_reduce=*/{0, 1});
@@ -237,8 +232,7 @@ class ReduceTest : public ClientLibraryTestBase {
                      int64_t major = 0) {
     XlaBuilder builder(TestName());
     XlaComputation add_f32 = CreateScalarAddComputation(F32, &builder);
-    const Shape input_shape =
-        ShapeUtil::MakeValidatedShape(F32, {rows, cols}).value();
+    const Shape input_shape = ShapeUtil::MakeShape(F32, {rows, cols});
     auto input = Parameter(&builder, 0, input_shape, "input");
     auto zero = ConstantR0<float>(&builder, 0.0);
     Reduce(input, zero, add_f32, /*dimensions_to_reduce=*/{0});
@@ -449,8 +443,7 @@ XLA_TEST_F(ReduceTest, ReduceElementwiseR2_111x50_To_R1) {
 
   XlaBuilder builder(TestName());
   XlaComputation add_f32 = CreateScalarAddComputation(F32, &builder);
-  const Shape input_shape =
-      ShapeUtil::MakeValidatedShape(F32, {rows, cols}).value();
+  const Shape input_shape = ShapeUtil::MakeShape(F32, {rows, cols});
   auto input = Parameter(&builder, 0, input_shape, "input");
   auto zero = ConstantR0<float>(&builder, 0.0);
   auto log_ = Log(input);
@@ -481,8 +474,7 @@ XLA_TEST_F(ReduceTest, TransposeAndReduceElementwiseR2_111x50_To_R1) {
 
   XlaBuilder builder(TestName());
   XlaComputation add_f32 = CreateScalarAddComputation(F32, &builder);
-  const Shape input_shape =
-      ShapeUtil::MakeValidatedShape(F32, {rows, cols}).value();
+  const Shape input_shape = ShapeUtil::MakeShape(F32, {rows, cols});
   auto input = Parameter(&builder, 0, input_shape, "input");
   auto zero = ConstantR0<float>(&builder, 0.0);
   auto log_ = Log(input);
@@ -514,8 +506,7 @@ XLA_TEST_F(ReduceTest, TransposeAndReduceElementwiseR2_111x50_To_R1) {
 XLA_TEST_F(ReduceTest, TransposeAndReduceR3_12x111x50_To_R2) {
   XlaBuilder builder(TestName());
   XlaComputation add_f32 = CreateScalarAddComputation(F32, &builder);
-  const Shape input_shape =
-      ShapeUtil::MakeValidatedShape(F32, {12, 111, 50}).value();
+  const Shape input_shape = ShapeUtil::MakeShape(F32, {12, 111, 50});
   XlaOp input = Parameter(&builder, 0, input_shape, "input");
   XlaOp zero = ConstantR0<float>(&builder, 0.0);
   XlaOp transpose = Transpose(input, /*permutation=*/{1, 0, 2});
@@ -531,8 +522,7 @@ XLA_TEST_F(ReduceTest, Reshape_111x2x25Reduce_111x50_To_R1) {
 
   XlaBuilder builder(TestName());
   XlaComputation add_f32 = CreateScalarAddComputation(F32, &builder);
-  const Shape input_shape =
-      ShapeUtil::MakeValidatedShape(F32, {rows, 2, cols / 2}).value();
+  const Shape input_shape = ShapeUtil::MakeShape(F32, {rows, 2, cols / 2});
   auto input = Parameter(&builder, 0, input_shape, "input");
   auto zero = ConstantR0<float>(&builder, 0.0);
   auto log_ = Tanh(input);
@@ -946,13 +936,13 @@ XLA_TEST_F(ReduceInitializerTest, U64InitializerBigValue) {
 // a 1D array with one element, should not be the init value.
 XLA_TEST_F(ReduceTest, ReduceIdentity) {
   XlaBuilder builder(TestName());
-  Shape single_float = ShapeUtil::MakeValidatedShape(F32, {}).value();
+  Shape single_float = ShapeUtil::MakeShape(F32, {});
   Parameter(&builder, 0, single_float, "lhs-unused");
   Parameter(&builder, 1, single_float, "rhs-used");
   auto computation_status = builder.Build();
   TF_ASSERT_OK(computation_status.status());
 
-  Shape operand_shape = ShapeUtil::MakeValidatedShape(F32, {1}).value();
+  Shape operand_shape = ShapeUtil::MakeShape(F32, {1});
   Reduce(Parameter(&builder, 0, operand_shape, "operand"),
          Parameter(&builder, 1, single_float, "init"),
          computation_status.value(), {0});
@@ -1004,8 +994,7 @@ XLA_TEST_F(ReduceTest, R0ReduceInDisguise) {
   XlaBuilder builder(TestName());
   XlaComputation add_f32 = CreateScalarAddComputation(F32, &builder);
   constexpr int element_count = 127;
-  const Shape input_shape =
-      ShapeUtil::MakeValidatedShape(F32, {element_count, 1}).value();
+  const Shape input_shape = ShapeUtil::MakeShape(F32, {element_count, 1});
   auto input = Parameter(&builder, 0, input_shape, "input");
   auto zero = ConstantR0<float>(&builder, 0.0);
   Reduce(input, zero, add_f32, /*dimensions_to_reduce=*/{0});
