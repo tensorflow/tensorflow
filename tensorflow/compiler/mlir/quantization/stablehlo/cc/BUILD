@@ -438,9 +438,9 @@ cc_library(
 )
 
 cc_library(
-    name = "tf_post_calibration",
-    srcs = ["tf_post_calibration.cc"],
-    hdrs = ["tf_post_calibration.h"],
+    name = "post_calibration",
+    srcs = ["post_calibration.cc"],
+    hdrs = ["post_calibration.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":component",
@@ -462,30 +462,6 @@ cc_library(
 )
 
 cc_library(
-    name = "post_calibration",
-    srcs = ["post_calibration.cc"],
-    hdrs = ["post_calibration.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":component",
-        ":config",
-        ":pass_pipeline",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/stablehlo/instrumentations:save_report",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
-        "@com_google_absl//absl/base:nullability",
-        "@com_google_absl//absl/log:die_if_null",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@local_xla//xla/mlir_hlo:mhlo_passes",
-        "@local_xla//xla/tsl/platform:errors",
-    ],
-)
-
-cc_library(
     name = "static_range_ptq",
     srcs = ["static_range_ptq.cc"],
     hdrs = ["static_range_ptq.h"],
@@ -493,9 +469,9 @@ cc_library(
     deps = [
         ":component",
         ":context",
+        ":post_calibration",
         ":saved_model_export",
         ":saved_model_import",
-        ":tf_post_calibration",
         ":tf_pre_calibration",
         ":types",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
