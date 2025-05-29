@@ -172,8 +172,7 @@ static absl::StatusOr<HloInstruction*> RemoveDeadTupleIndices(
         &while_init->shape().tuple_shapes(old_idx));
   }
   Shape new_while_shape =
-      ShapeUtil::MakeValidatedTupleShapeWithPtrs(new_while_tuple_elem_shapes)
-          .value();
+      ShapeUtil::MakeTupleShapeWithPtrs(new_while_tuple_elem_shapes);
 
   // Returns a map from elements in the computation to new instructions which
   // replace the old instructions after we remove unused elements from the while
@@ -807,7 +806,7 @@ static absl::StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
     }
   }
   Shape new_while_shape =
-      ShapeUtil::MakeValidatedTupleShapeWithPtrs(new_while_shape_elems).value();
+      ShapeUtil::MakeTupleShapeWithPtrs(new_while_shape_elems);
 
   // `new_instrs` holds instructions created outside of a computation for
   // cloning.  Elements added here just need to live until the end of the
@@ -1165,7 +1164,7 @@ static absl::StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
                                }
                              });
   Shape flattened_shape =
-      ShapeUtil::MakeValidatedTupleShapeWithPtrs(flattened_shape_elems).value();
+      ShapeUtil::MakeTupleShapeWithPtrs(flattened_shape_elems);
 
   // `new_instrs` holds instructions created outside of a computation for
   // cloning.  Elements added here just need to live until the end of the
@@ -1359,7 +1358,7 @@ static absl::StatusOr<HloInstruction*> TryMergeInductionVariables(
     VLOG(10) << "Adding new trip counter to end of loop's tuple.";
     trip_counter = new_while_shape.tuple_shapes().size();
     *new_while_shape.add_tuple_shapes() =
-        ShapeUtil::MakeValidatedShape(elem_ty, /*dimensions=*/{}).value();
+        ShapeUtil::MakeShape(elem_ty, /*dimensions=*/{});
     added_trip_counter = true;
   }
 

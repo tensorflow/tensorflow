@@ -3911,10 +3911,9 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
             iota->shape().dimensions().size() > 1
                 ? target_index.SourceIndexOfBroadcast(
                       iota->shape(),
-                      ShapeUtil::MakeValidatedShapeWithDescendingLayout(
+                      ShapeUtil::MakeShapeWithDescendingLayout(
                           element_type,
-                          {iota->shape().dimensions(iota->iota_dimension())})
-                          .value(),
+                          {iota->shape().dimensions(iota->iota_dimension())}),
                       {iota->iota_dimension()}, b_)
                 : target_index;
         llvm::Value* elem_index_linear = elem_index.linear();
@@ -4203,9 +4202,7 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalReduceWindow(
     window_size.push_back(dim.size());
   }
   const IrArray::Index window_index = loops.AddLoopsForShape(
-      ShapeUtil::MakeValidatedShape(operand_element_types[0], window_size)
-          .value(),
-      "window");
+      ShapeUtil::MakeShape(operand_element_types[0], window_size), "window");
   CHECK_EQ(window_index.size(), index.size());
 
   SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), b_);

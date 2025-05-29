@@ -82,8 +82,7 @@ class GenericTransferManagerTest : public ::testing::Test {
 };
 
 TEST_F(GenericTransferManagerTest, TransferLiteralToDevice) {
-  ScopedShapedBuffer buffer =
-      AllocateBuffer(ShapeUtil::MakeValidatedShape(U16, {2, 2}).value());
+  ScopedShapedBuffer buffer = AllocateBuffer(ShapeUtil::MakeShape(U16, {2, 2}));
   Literal literal = LiteralUtil::CreateR2<uint16_t>({{1, 2}, {3, 4}});
   TF_ASSERT_OK(transfer_manager_.TransferLiteralToDevice(stream_.get(), literal,
                                                          buffer));
@@ -118,7 +117,7 @@ TEST_F(GenericTransferManagerTest, TransferLiteralToDeviceInt4) {
     SCOPED_TRACE(absl::StrCat("pack=", pack));
     transfer_manager_.pack_subbyte_types_ = pack;
     ScopedShapedBuffer buffer =
-        AllocateBuffer(ShapeUtil::MakeValidatedShape(S4, {2, 2}).value());
+        AllocateBuffer(ShapeUtil::MakeShape(S4, {2, 2}));
     TF_ASSERT_OK(transfer_manager_.TransferLiteralToDevice(stream_.get(),
                                                            literal, buffer));
     se::DeviceMemoryBase device_mem = buffer.buffers().element({});
@@ -135,8 +134,7 @@ TEST_F(GenericTransferManagerTest, TransferLiteralToDeviceInt4) {
 }
 
 TEST_F(GenericTransferManagerTest, TransferLiteralFromDevice) {
-  ScopedShapedBuffer buffer =
-      AllocateBuffer(ShapeUtil::MakeValidatedShape(U16, {2, 2}).value());
+  ScopedShapedBuffer buffer = AllocateBuffer(ShapeUtil::MakeShape(U16, {2, 2}));
 
   se::DeviceMemoryBase device_mem = buffer.buffers().element({});
   uint16_t* device_ptr = static_cast<uint16_t*>(device_mem.opaque());
@@ -157,7 +155,7 @@ TEST_F(GenericTransferManagerTest, TransferLiteralFromDeviceInt4) {
     SCOPED_TRACE(absl::StrCat("pack=", pack));
     transfer_manager_.pack_subbyte_types_ = pack;
     ScopedShapedBuffer buffer =
-        AllocateBuffer(ShapeUtil::MakeValidatedShape(S4, {2, 2}).value());
+        AllocateBuffer(ShapeUtil::MakeShape(S4, {2, 2}));
 
     se::DeviceMemoryBase device_mem = buffer.buffers().element({});
     uint8_t* device_ptr = static_cast<uint8_t*>(device_mem.opaque());
@@ -184,7 +182,7 @@ TEST_F(GenericTransferManagerTest, TransferLiteralFromDeviceInt4) {
 }
 
 TEST_F(GenericTransferManagerTest, ChooseCompactLayoutForShape) {
-  auto shape = ShapeUtil::MakeValidatedShape(S4, {2, 2}).value();
+  auto shape = ShapeUtil::MakeShape(S4, {2, 2});
   TF_ASSERT_OK_AND_ASSIGN(auto compact_shape,
                           transfer_manager_.ChooseCompactLayoutForShape(shape));
   EXPECT_TRUE(Shape::Equal().IgnoreLayout()(compact_shape, shape));

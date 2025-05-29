@@ -40,7 +40,7 @@ TEST_F(HloExecutionProfileTest, Basic) {
   const HloInstruction* dot_instruction =
       hlo_module->entry_computation()->root_instruction();
   const HloInstruction* add_instruction = dot_instruction->operand(1);
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {30, 30}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {30, 30});
 
   auto shape_size_function = [&](const Shape& shape) {
     const int64_t pointer_size = 8;
