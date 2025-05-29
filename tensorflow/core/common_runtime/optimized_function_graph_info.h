@@ -20,6 +20,7 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 
+#include "absl/status/statusor.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/optimized_function_graph.pb.h"
 #include "tensorflow/core/framework/types.h"
