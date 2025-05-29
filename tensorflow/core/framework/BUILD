@@ -844,6 +844,7 @@ tf_cuda_library(
         "variant_tensor_data.h",
     ],
     visibility = [
+        "//learning/brain/research/ml_for_systems/cost_models/rankflags:__subpackages__",
         "//learning/gemini/gemax/core/models/gemini3/vision/vision_decoder:__pkg__",
         "//learning/infra/runtime/experimental/mixed_engine:__subpackages__",
         "//tensorflow:__pkg__",
