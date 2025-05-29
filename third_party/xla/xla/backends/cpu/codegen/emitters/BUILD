@@ -44,6 +44,7 @@ cc_library(
         "//xla/codegen:mlir_kernel_source",
         "//xla/codegen/emitters:computation_partitioner",
         "//xla/codegen/emitters:elemental_hlo_to_mlir",
+        "//xla/codegen/emitters:kernel_api_builder",
         "//xla/codegen/emitters:type_util",
         "//xla/codegen/emitters/ir:xla",
         "//xla/codegen/emitters/ir:xla_attrs_inc_gen",

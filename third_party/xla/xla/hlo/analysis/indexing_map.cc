@@ -787,6 +787,7 @@ SmallVector<AffineExpr, 4> MapSymbolsToComposedSymbolsList(
 
 }  // namespace
 
+// TODO(willfroom): Change the names to work items/groups.
 static constexpr absl::string_view kVarKindDefault = "default";
 static constexpr absl::string_view kVarKindThreadX = "th_x";
 static constexpr absl::string_view kVarKindThreadY = "th_y";

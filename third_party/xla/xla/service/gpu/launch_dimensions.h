@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
+#include "xla/runtime/work_dimensions.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -75,6 +76,8 @@ class LaunchDimensions {
                         thread_counts_per_block_.y, ", ",
                         thread_counts_per_block_.z, "}");
   }
+
+  WorkDimensions AsWorkDimensions() const;
 
  private:
   se::BlockDim block_counts_;

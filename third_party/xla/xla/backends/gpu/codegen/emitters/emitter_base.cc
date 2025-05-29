@@ -171,44 +171,6 @@ void AddRanges(llvm::Function* func, const LaunchDimensions& launch_dims,
   }
 }
 
-bool Needs64Bits(const Shape& shape) {
-  return shape.IsArray() ? !IsInt32(ShapeUtil::ElementsIn(shape))
-                         : absl::c_any_of(shape.tuple_shapes(), Needs64Bits);
-}
-
-bool Is64BitIndex(const HloInstruction* instr, int operand) {
-  const auto& shape = instr->operand(operand)->shape();
-  return shape.element_type() == PrimitiveType::S64 ||
-         shape.element_type() == PrimitiveType::U64;
-}
-
-bool Needs64BitIndices(const HloComputation* computation) {
-  for (auto* instr : computation->instructions()) {
-    // Check if any HLO instructions directly take 64 bit indices as operands.
-    switch (instr->opcode()) {
-      case HloOpcode::kDynamicSlice:
-      case HloOpcode::kDynamicUpdateSlice:
-        for (int i = 1; i < instr->operand_count(); ++i) {
-          if (Is64BitIndex(instr, i)) return true;
-        }
-        break;
-      case HloOpcode::kGather:
-      case HloOpcode::kScatter:
-        CHECK(instr->shape().IsArray()) << "Variadic scatter is unsupported.";
-        if (Is64BitIndex(instr, 1)) return true;
-        break;
-      default:
-        break;
-    }
-
-    if (Needs64Bits(instr->shape()) ||
-        absl::c_any_of(instr->called_computations(), Needs64BitIndices)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 absl::Status RunPassPipeline(mlir::ModuleOp module, const HloModule& hlo_module,
                              mlir::PassManager& pm,
                              absl::string_view entry_function_name) {
@@ -293,13 +255,6 @@ llvm::SmallVector<Value> EmitterBase::EmitThreadAndBlockIds(
   auto& b = builder;
   return {EmitThreadId(b, 0), EmitThreadId(b, 1), EmitThreadId(b, 2),
           EmitBlockId(b, 0),  EmitBlockId(b, 1),  EmitBlockId(b, 2)};
-}
-
-llvm::SmallVector<mlir::Value> EmitterBase::EmitWorkGroupIds(
-    mlir::ImplicitLocOpBuilder& builder) const {
-  return {EmitWorkGroupId(builder, WorkGroupDimension::x),
-          EmitWorkGroupId(builder, WorkGroupDimension::y),
-          EmitWorkGroupId(builder, WorkGroupDimension::z)};
 }
 
 absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
@@ -513,14 +468,7 @@ absl::Status EmitterBase::EmitMlir(mlir::ModuleOp module, FuncOp entry_function,
         epilogue, subgraph_to_mlir_fn[&epilogue], call_targets));
   }
 
-  int index_bitwidth =
-      Needs64BitIndices(fusion.fused_instructions_computation()) ? 64 : 32;
-  mlir::OpBuilder b(module->getContext());
-  auto index_layout = mlir::DataLayoutEntryAttr::get(
-      b.getIndexType(), b.getI32IntegerAttr(index_bitwidth));
-  module->setAttr(
-      mlir::DLTIDialect::kDataLayoutAttrName,
-      mlir::DataLayoutSpecAttr::get(module->getContext(), {index_layout}));
+  emitters::SetIndexDataLayout(module, fusion);
 
   return EmitEntryFunction(computations, call_targets, entry_function, fusion);
 }

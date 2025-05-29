@@ -249,6 +249,7 @@ cc_library(
         "//xla:status_macros",
         "//xla:util",
         "//xla/backends/gpu/runtime:thunk",
+        "//xla/codegen/emitters:kernel_api_builder",
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",

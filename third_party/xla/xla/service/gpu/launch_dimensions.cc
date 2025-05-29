@@ -17,7 +17,13 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 
+#include "absl/log/check.h"
+#include "xla/runtime/work_cluster.h"
+#include "xla/runtime/work_dimensions.h"
+#include "xla/runtime/work_group.h"
+#include "xla/runtime/work_item.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -27,6 +33,14 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+WorkDimensions LaunchDimensions::AsWorkDimensions() const {
+  return WorkDimensions{
+      NumWorkClusters{},
+      NumWorkGroups{block_counts_.x, block_counts_.y, block_counts_.z},
+      NumWorkItems{thread_counts_per_block_.x, thread_counts_per_block_.y,
+                   thread_counts_per_block_.z}};
+}
 
 LaunchDimensions CalculateLaunchDimensions(
     const Shape& shape, const se::DeviceDescription& gpu_device_info,

@@ -18,11 +18,19 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/ImplicitLocOpBuilder.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Value.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/runtime/work_dimensions.h"
+#include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/shape.h"
 
 namespace xla::emitters {
 
@@ -35,6 +43,19 @@ absl::StatusOr<mlir::func::FuncOp> EmitKernelApi(
     const BufferAssignment* buffer_assignment,
     const KernelArguments::BufferAlignment& buffer_alignment,
     absl::string_view entry_function_name);
+
+void SetIndexDataLayout(mlir::ModuleOp module,
+                        const HloInstruction& hlo_instruction);
+
+// Get the default indexing map for the given work dimensions, unroll factor,
+// and output shape.
+IndexingMap GetDefaultWorkItemIndexingMap(const WorkDimensions& work_dimensions,
+                                          int unroll_factor, const Shape& shape,
+                                          mlir::MLIRContext* ctx);
+
+// Emits the work group id ops annotated with the range of each dimension.
+llvm::SmallVector<mlir::Value> EmitWorkGroupIds(
+    mlir::ImplicitLocOpBuilder& builder, const NumWorkGroups& num_work_groups);
 
 }  // namespace xla::emitters
 

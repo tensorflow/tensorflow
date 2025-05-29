@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
+#include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -114,7 +115,8 @@ absl::Status LoopFusion::EmitEntryFunction(
 
   mlir::MLIRContext* context = builder.getContext();
 
-  auto workgroup_ids = EmitWorkGroupIds(builder);
+  auto workgroup_ids = emitters::EmitWorkGroupIds(
+      builder, launch_dimensions().AsWorkDimensions().num_work_groups);
 
   auto indexing =
       ComputeThreadIdToOutputIndexing(0, entry_function.getContext());

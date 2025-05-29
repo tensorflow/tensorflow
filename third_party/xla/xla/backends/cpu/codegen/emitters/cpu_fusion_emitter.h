@@ -55,11 +55,6 @@ absl::StatusOr<emitters::CallTargetProvider> EmitCallTargets(
     const emitters::PartitionedComputations& computations,
     const std::vector<emitters::EpilogueSpecification>& epilogues);
 
-// Set the data layout attribute of the module based on the called instructions
-// of the fusion.
-void SetDataLayoutAttribute(mlir::ModuleOp module,
-                            const HloFusionInstruction& fusion);
-
 // Creates a module op with the name of the fusion using `GetFusionName`.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateNamedMlirModuleOp(
     const HloFusionInstruction& fusion, mlir::Builder& builder);

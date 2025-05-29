@@ -287,18 +287,6 @@ absl::StatusOr<emitters::CallTargetProvider> EmitCallTargets(
   return call_targets;
 }
 
-void SetDataLayoutAttribute(mlir::ModuleOp module,
-                            const HloFusionInstruction& fusion) {
-  int index_bitwidth =
-      Needs64BitIndices(fusion.fused_instructions_computation()) ? 64 : 32;
-  mlir::OpBuilder b(module->getContext());
-  auto index_layout = mlir::DataLayoutEntryAttr::get(
-      b.getIndexType(), b.getI32IntegerAttr(index_bitwidth));
-  module->setAttr(
-      mlir::DLTIDialect::kDataLayoutAttrName,
-      mlir::DataLayoutSpecAttr::get(module->getContext(), {index_layout}));
-}
-
 int64_t CeilDiv(int64_t a, int64_t b) { return (a + b - 1) / b; }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateNamedMlirModuleOp(

@@ -134,9 +134,14 @@ cc_library(
     deps = [
         "//xla:shape_util",
         "//xla:util",
+        "//xla/runtime:work_cluster",
+        "//xla/runtime:work_dimensions",
+        "//xla/runtime:work_group",
+        "//xla/runtime:work_item",
         "//xla/service:platform_util",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:launch_dim",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
     ],
 )
