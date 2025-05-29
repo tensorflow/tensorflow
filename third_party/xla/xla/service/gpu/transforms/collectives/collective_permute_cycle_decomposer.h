@@ -32,16 +32,16 @@ namespace xla {
 // {{3,2},{2,1},{1,0}, {0,3}}) into two CollectivePermute instructions. The pass
 // leads to undefined behavior if
 //   1. A communication pattern contains both forward and backward cycles, or
-//   2. if the communication pattern cannot be broken into two cycle-free
+//   2. If the communication pattern cannot be broken into two cycle-free
 //      sub-patterns (i.e. after the initial pass, we still have at least one
 //      cycle within one or more of the sub patterns).
 // Here is an example.
 //
-// before transformation:
+// Before the transformation:
 //     start = (<rt>, <rt>) collective-permute(data),
 //       source_target_pairs={{0,1},{1,2},{2,3},{3,0}}
 //
-// after transformation:
+// After the transformation:
 //     partition-id = u32[] partition-id()
 //     constant = u32[] constant(0)
 //     compare = pred[] compare(u32[] partition-id, u32[] constant),
@@ -65,8 +65,8 @@ class CollectivePermuteCycleDecomposer : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  // Transform only if the size of the CollectivePermute data >= threshold.
-  int64_t threshold_in_bytes_;
+  // Transform only if the size of the collective permute data is >= threshold.
+  const int64_t threshold_in_bytes_;
 };
 
 }  // namespace xla

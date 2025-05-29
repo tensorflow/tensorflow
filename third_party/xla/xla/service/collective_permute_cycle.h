@@ -23,7 +23,6 @@ limitations under the License.
 
 namespace xla {
 namespace collective_permute_cycle {
-// TODO: b/388623407 - rename kUnknown to kNone
 enum class CycleType { kNone, kForward, kBackward };
 
 // Splits input into backward (first) and forwards (second) edges.
