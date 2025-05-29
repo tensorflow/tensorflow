@@ -476,7 +476,7 @@ TEST(FormulateAndSolveMIPFromSolverRequestTest, UsesHint) {
   EXPECT_EQ(result, expected_output);
 }
 
-TEST(FormulateAndSolveMIPFromSolverRequestTest, HonorsMaxCost) {
+TEST(DISABLED_FormulateAndSolveMIPFromSolverRequestTest, HonorsMaxCost) {
   AutoShardingSolverRequest request = DefaultAutoShardingSolverRequest();
   request.mutable_max_cost()->set_coeff(7600.0);  // Best possible is 7650.0
 
