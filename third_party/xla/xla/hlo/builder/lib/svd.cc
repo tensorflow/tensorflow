@@ -127,9 +127,8 @@ absl::StatusOr<HouseHolderResult> HouseRow(
   }
 
   TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
-  auto idx = Iota(
-      builder, ShapeUtil::MakeValidatedShape(S32, x_shape.dimensions()).value(),
-      num_dims - 1);
+  auto idx = Iota(builder, ShapeUtil::MakeShape(S32, x_shape.dimensions()),
+                  num_dims - 1);
   auto zeros = ZerosLike(x);
   auto v = Select(Gt(idx, j), x, zeros);
 
@@ -194,9 +193,8 @@ absl::StatusOr<HouseHolderResult> HouseCol(
   }
 
   TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
-  auto idx = Iota(
-      builder, ShapeUtil::MakeValidatedShape(S32, x_shape.dimensions()).value(),
-      num_dims - 2);
+  auto idx = Iota(builder, ShapeUtil::MakeShape(S32, x_shape.dimensions()),
+                  num_dims - 2);
   auto zeros = ZerosLike(x);
   auto v = Select(Gt(idx, i), x, zeros);
 

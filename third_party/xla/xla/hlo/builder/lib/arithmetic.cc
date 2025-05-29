@@ -45,7 +45,7 @@ XlaComputation CreateScalarComputation(const std::string& name,
         absl::StrCat(name, "_", PrimitiveType_Name(type)));
   }
 
-  const Shape scalar = ShapeUtil::MakeValidatedShape(type, {}).value();
+  const Shape scalar = ShapeUtil::MakeShape(type, {});
   auto lhs = Parameter(b.get(), 0, scalar, "lhs");
   auto rhs = Parameter(b.get(), 1, scalar, "rhs");
   generator(lhs, rhs);
@@ -122,14 +122,14 @@ static XlaComputation CreateMinMaxComputation(XlaBuilder* outer_builder,
                                               bool is_min) {
   auto sub_builder = outer_builder->CreateSubBuilder("minmax_func");
   XlaBuilder* b = sub_builder.get();
-  XlaOp lhs_value = Parameter(
-      b, 0, ShapeUtil::MakeValidatedShape(value_type, {}).value(), "lhs_value");
-  XlaOp lhs_index = Parameter(
-      b, 1, ShapeUtil::MakeValidatedShape(index_type, {}).value(), "lhs_index");
-  XlaOp rhs_value = Parameter(
-      b, 2, ShapeUtil::MakeValidatedShape(value_type, {}).value(), "rhs_value");
-  XlaOp rhs_index = Parameter(
-      b, 3, ShapeUtil::MakeValidatedShape(index_type, {}).value(), "rhs_index");
+  XlaOp lhs_value =
+      Parameter(b, 0, ShapeUtil::MakeShape(value_type, {}), "lhs_value");
+  XlaOp lhs_index =
+      Parameter(b, 1, ShapeUtil::MakeShape(index_type, {}), "lhs_index");
+  XlaOp rhs_value =
+      Parameter(b, 2, ShapeUtil::MakeShape(value_type, {}), "rhs_value");
+  XlaOp rhs_index =
+      Parameter(b, 3, ShapeUtil::MakeShape(index_type, {}), "rhs_index");
 
   XlaOp cmp = is_min ? Le(lhs_value, rhs_value) : Ge(lhs_value, rhs_value);
   XlaOp max = Select(cmp, lhs_value, rhs_value);
@@ -155,8 +155,7 @@ XlaOp ArgMinMax(XlaOp input, PrimitiveType output_type, int axis, bool is_min) {
     auto index_type = dimension_size <= INT32_MAX ? S32 : output_type;
     XlaOp index_init_value = Zero(builder, index_type);
     auto iota_shape =
-        ShapeUtil::MakeValidatedShape(index_type, input_shape.dimensions())
-            .value();
+        ShapeUtil::MakeShape(index_type, input_shape.dimensions());
     XlaOp iota = Iota(builder, iota_shape, axis);
 
     XlaComputation reducer = CreateMinMaxComputation(

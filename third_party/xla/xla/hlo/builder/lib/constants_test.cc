@@ -81,7 +81,7 @@ XLA_TEST_F(ConstantsTest, ZeroF32) {
 
 XLA_TEST_F(ConstantsTest, ZerosS32) {
   XlaBuilder builder(TestName());
-  Zeros(&builder, ShapeUtil::MakeValidatedShape(S32, {2, 2}).value());
+  Zeros(&builder, ShapeUtil::MakeShape(S32, {2, 2}));
   ComputeAndCompareR2<int32_t>(&builder, {{0, 0}, {0, 0}}, {});
 }
 

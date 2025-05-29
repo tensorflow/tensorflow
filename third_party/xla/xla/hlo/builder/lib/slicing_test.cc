@@ -267,8 +267,8 @@ XLA_TEST_F(SlicingTest, DoubleEmptyIndexSelect) {
   xla::XlaBuilder builder(TestName());
 
   xla::XlaOp input, index;
-  Literal l(ShapeUtil::MakeValidatedShape(F32, {0, 1, 2, 0}).value());
-  Literal i(ShapeUtil::MakeValidatedShape(S32, {0}).value());
+  Literal l(ShapeUtil::MakeShape(F32, {0, 1, 2, 0}));
+  Literal i(ShapeUtil::MakeShape(S32, {0}));
   TF_ASSERT_OK_AND_ASSIGN(
       auto input_data,
       CreateParameterAndTransferLiteral(0, l, "input", &builder, &input));
@@ -283,7 +283,7 @@ XLA_TEST_F(SlicingTest, EmptyIndexSelectNonZero) {
   xla::XlaBuilder builder(TestName());
 
   xla::XlaOp input, index;
-  Literal l(ShapeUtil::MakeValidatedShape(F32, {0, 2}).value());
+  Literal l(ShapeUtil::MakeShape(F32, {0, 2}));
   TF_ASSERT_OK_AND_ASSIGN(
       auto input_data,
       CreateParameterAndTransferLiteral(0, l, "input", &builder, &input));

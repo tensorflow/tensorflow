@@ -46,10 +46,9 @@ LuDecompositionResult LuDecomposition(XlaOp a) {
     pivot_dims.push_back(std::min(m, n));
     std::vector<int64_t> perm_dims = batch_dims;
     perm_dims.push_back(m);
-    Shape lu_shape = ShapeUtil::MakeValidatedTupleShape(
-                         {a_shape, ShapeUtil::MakeShape(S32, pivot_dims),
-                          ShapeUtil::MakeShape(S32, perm_dims)})
-                         .value();
+    Shape lu_shape = ShapeUtil::MakeTupleShape(
+        {a_shape, ShapeUtil::MakeShape(S32, pivot_dims),
+         ShapeUtil::MakeShape(S32, perm_dims)});
     // The TPU compiler has a rewrite pass that lowers an LuDecomposition
     // CustomCall.
     // TODO(phawkins): upgrade LU decomposition to a first-class HLO operator
