@@ -35,6 +35,7 @@
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/tools/hlo_diff/graph/analysis/hlo_value_tracing.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph_node.h"
+#include "xla/hlo/tools/hlo_diff/graph/utils/cycle_detector.h"
 #include "xla/hlo/tools/hlo_diff/graph/utils/hlo_gumgraph_dfs.h"
 #include "xla/hlo/tools/hlo_diff/utils/hlo_diff_util.h"
 #include "xla/service/call_graph.h"
@@ -231,7 +232,7 @@ HloGumgraph::PrecomputeGenerations() {
   }
 
   if (!indegrees.empty()) {
-    LOG(WARNING) << "Cycle detected in the graph.";
+    DetectAndLogAllCycles(AllNodes());
     return absl::InternalError("Cycle detected in the graph");
   }
   return init_zero_indegrees;
