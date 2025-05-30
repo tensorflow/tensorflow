@@ -24,13 +24,11 @@
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph_node.h"
 #include "xla/hlo/tools/hlo_diff/graph/utils/hlo_gumgraph_bfs.h"
 #include "xla/hlo/tools/hlo_diff/hlo_gumgraph_mappings.h"
 #include "xla/hlo/tools/hlo_diff/proto/diff_result.pb.h"
-#include "xla/hlo/tools/hlo_diff/utils/hlo_diff_util.h"
 
 namespace xla {
 namespace hlo_diff {
@@ -38,11 +36,8 @@ namespace {
 
 bool IsChangedInstruction(const HloInstructionNode* left_node,
                           const HloInstructionNode* right_node) {
-  uint64_t left_fingerprint = GetHloInstructionFingerprint(
-      left_node->instruction, HloPrintOptions::Fingerprint());
-  uint64_t right_fingerprint = GetHloInstructionFingerprint(
-      right_node->instruction, HloPrintOptions::Fingerprint());
-  return left_fingerprint != right_fingerprint;
+  return left_node->props.canonical_fingerprint !=
+         right_node->props.canonical_fingerprint;
 }
 
 }  // namespace

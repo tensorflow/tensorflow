@@ -234,6 +234,7 @@ ENTRY entry {
           /*generation=*/1,
           /*height=*/3, /*subgraph_fingerprint=*/8543065396480500811U,
           /*fingerprint=*/7968662072287666665U,
+          /*canonical_fingerprint=*/962574172336760684U,
           /*sibling_position=*/FieldsAre(/*index=*/0, /*size=*/1),
           /*pre_order_graph_position=*/FieldsAre(/*index=*/1, /*size=*/5)));
   EXPECT_THAT(
@@ -242,6 +243,7 @@ ENTRY entry {
           /*generation=*/2,
           /*height=*/2, /*subgraph_fingerprint=*/12467718903949982030U,
           /*fingerprint=*/7968662072287666665U,
+          /*canonical_fingerprint=*/962574172336760684U,
           /*sibling_position=*/FieldsAre(/*index=*/0, /*size=*/1),
           /*pre_order_graph_position=*/FieldsAre(/*index=*/3, /*size=*/5)));
   EXPECT_THAT(
@@ -250,6 +252,7 @@ ENTRY entry {
           /*generation=*/3,
           /*height=*/1, /*subgraph_fingerprint=*/3183718271480206887U,
           /*fingerprint=*/3183718271480206887U,
+          /*canonical_fingerprint=*/1545292564424961499U,
           /*sibling_position=*/FieldsAre(/*index=*/1, /*size=*/2),
           /*pre_order_graph_position=*/FieldsAre(/*index=*/2, /*size=*/5)));
   EXPECT_THAT(
@@ -258,6 +261,7 @@ ENTRY entry {
           /*generation=*/3,
           /*height=*/1, /*subgraph_fingerprint=*/856105463456541506U,
           /*fingerprint=*/856105463456541506U,
+          /*canonical_fingerprint=*/2283891754502192697U,
           /*sibling_position=*/FieldsAre(/*index=*/0, /*size=*/2),
           /*pre_order_graph_position=*/FieldsAre(/*index=*/4, /*size=*/5)));
 
@@ -297,6 +301,7 @@ ENTRY entry {
           /*generation=*/1,
           /*height=*/3, /*subgraph_fingerprint=*/11491866794545709423U,
           /*fingerprint=*/13023796333337170182U,
+          /*canonical_fingerprint=*/962574172336760684U,
           /*sibling_position=*/FieldsAre(/*index=*/0, /*size=*/1),
           /*pre_order_graph_position=*/FieldsAre(/*index=*/1, /*size=*/5)));
 
@@ -306,6 +311,7 @@ ENTRY entry {
           /*generation=*/2,
           /*height=*/2, /*subgraph_fingerprint=*/11413025457497517292U,
           /*fingerprint=*/13023796333337170182U,
+          /*canonical_fingerprint=*/962574172336760684U,
           /*sibling_position=*/FieldsAre(/*index=*/0, /*size=*/1),
           /*pre_order_graph_position=*/FieldsAre(/*index=*/3, /*size=*/5)));
   EXPECT_THAT(
@@ -314,6 +320,7 @@ ENTRY entry {
           /*generation=*/3,
           /*height=*/1, /*subgraph_fingerprint=*/18045659843081992748U,
           /*fingerprint=*/18045659843081992748U,
+          /*canonical_fingerprint=*/1545292564424961499U,
           /*sibling_position=*/FieldsAre(/*index=*/1, /*size=*/2),
           /*pre_order_graph_position=*/FieldsAre(/*index=*/2, /*size=*/5)));
   EXPECT_THAT(
@@ -322,6 +329,7 @@ ENTRY entry {
           /*generation=*/3,
           /*height=*/1, /*subgraph_fingerprint=*/7851455295828926644U,
           /*fingerprint=*/7851455295828926644U,
+          /*canonical_fingerprint=*/2283891754502192697U,
           /*sibling_position=*/FieldsAre(/*index=*/0, /*size=*/2),
           /*pre_order_graph_position=*/FieldsAre(/*index=*/4, /*size=*/5)));
 
