@@ -29,14 +29,13 @@ on:
         options:
         - 'yes'
         - 'no'
-  pull_request: # TODO(juliagmt): update after testing
+  push:
     branches:
       - main
 
-# Cancel in-progress runs for the same branch if a new commit is pushed
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'main' }}
 
 jobs:
   # =================================================================
@@ -45,10 +44,9 @@ jobs:
   generate_matrix:
     name: Generate Postsubmit Matrix
     # Condition: Run if manually dispatched OR if it's a push event to the main branch.
-    # TODO(juliagmt): update after testing.
-    # if: |
-    #   github.event_name == 'workflow_dispatch' ||
-    #   (github.event_name == 'pull_request' && github.ref == 'refs/heads/main')
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.ref == 'refs/heads/main')
     uses: ./.github/workflows/generate_benchmark_matrix.yml
     with:
       workflow_type: 'POSTSUBMIT'
