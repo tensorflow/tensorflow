@@ -954,7 +954,10 @@ tf_proto_library(
     make_default_target_header_only = True,
     protodeps = ["@local_xla//xla/tsl/protobuf:test_log_proto"],
     # Not to be used outside of tensorflow/core.
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/tools/test:__pkg__",
+    ],
     exports = ["@local_xla//xla/tsl/protobuf:test_log_proto"],
 )
 
