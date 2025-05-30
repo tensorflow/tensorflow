@@ -623,7 +623,8 @@ TEST(TFCompileTest, LookupNameIndex) {
 
 TEST(TFCompileTest, ProgramShape) {
   using xla::ShapeUtil;
-  const xla::Shape f32_2x2 = ShapeUtil::MakeShape(xla::F32, {2, 2});
+  const xla::Shape f32_2x2 =
+      ShapeUtil::MakeValidatedShape(xla::F32, {2, 2}).value();
 
   // add doesn't have the program shape defined.
   AddComp add;
