@@ -932,6 +932,43 @@ TEST_F(WhileLoopSimplifierTest, RemoveRepeatedParams) {
       new_while_shape));
 }
 
+TEST_F(WhileLoopSimplifierTest, RepeatedParamsWithDomain) {
+  const std::string hlo_string = R"(
+  HloModule SwappingTupleElements
+
+  SwappingTupleElements.body {
+    loop_var = (s32[], s32[], s32[]) parameter(0)
+    get-tuple-element = s32[] get-tuple-element(loop_var), index=0
+    get-tuple-element.1 = s32[] get-tuple-element(loop_var), index=1
+    get-tuple-element.2 = s32[] get-tuple-element(loop_var), index=2
+    y = s32[] add(get-tuple-element.1, get-tuple-element.2)
+    ROOT tuple = (s32[], s32[], s32[]) tuple(s32[] get-tuple-element, y,
+      s32[] get-tuple-element.2)
+  }
+
+  SwappingTupleElements.always_true {
+   param = (s32[], s32[], s32[]) parameter(0)
+   dom0 = (s32[], s32[], s32[]) domain((s32[], s32[], s32[]) param), domain={kind="sharding", entry={maximal device=0}, exit={maximal device=1}}
+   get-tuple-element = s32[] get-tuple-element(dom0), index=0
+   get-tuple-element.1 = s32[] get-tuple-element(dom0), index=1
+   less-than = pred[] compare(get-tuple-element, get-tuple-element.1), direction=LT
+   ROOT dom1 = pred[] domain(pred[] less-than), domain={kind="sharding", entry={maximal device=1}, exit={maximal device=0}}
+  }
+
+  ENTRY SwappingTupleElements {
+   x = s32[] parameter(0)
+   y = s32[] parameter(1)
+   tuple.1 = (s32[], s32[], s32[]) tuple(s32[] x, s32[] y, s32[] x)
+   ROOT while = (s32[], s32[], s32[]) while(tuple.1),
+     condition=SwappingTupleElements.always_true,
+     body=SwappingTupleElements.body
+  }
+  )";
+
+  auto m = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).value());
+}
+
 // A group of elements are inter-dependent, but unused as by the output.
 TEST_F(WhileLoopSimplifierTest, LoopWithUnusedGroupSimplified) {
   const std::string hlo_string = R"(
