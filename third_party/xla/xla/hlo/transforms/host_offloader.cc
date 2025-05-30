@@ -1187,6 +1187,19 @@ absl::StatusOr<bool> HostOffloader::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
 
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      ShapeUtil::ForEachMutableLeafShape(
+          instruction->mutable_shape(),
+          [&](Shape* subshape, const ShapeIndex& output_shape_index) {
+            if (subshape->has_layout()) {
+              SetMemorySpace(subshape, Layout::kDefaultMemorySpace);
+            }
+          });
+    }
+  }
+
   // Remove redundant copies to and from host (conservatively) starting
   // from the outputs of the host offloaded computations. Iterate over all
   // instructions and look for XLA host offload annotations.
