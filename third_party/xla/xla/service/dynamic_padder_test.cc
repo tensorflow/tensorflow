@@ -1584,6 +1584,50 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
+XLA_TEST_F(ExecutionTest, DynamicDimensionReduceInCall) {
+  const std::string hlo_text = R"(
+HloModule TensorFlowScatterV1
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+call_with_dynamic_dimension {
+  param = s32[<=5] parameter(0)
+  init = s32[] constant(0)
+  ROOT reduce = s32[] reduce(param, init),
+      dimensions={0},
+      to_apply=update_s32
+}
+
+ENTRY main {
+  param0 = s32[5] parameter(0)
+  param1 = s32[5] parameter(1)
+  const0 = s32[] constant(3)
+  const1 = s32[] constant(4)
+  param0_padded = s32[<=5] set-dimension-size(param0, const0), dimensions={0}
+  param1_padded = s32[<=5] set-dimension-size(param1, const1), dimensions={0}
+  reduced0 = s32[] call(param0_padded), to_apply=call_with_dynamic_dimension
+  reduced1 = s32[] call(param1_padded), to_apply=call_with_dynamic_dimension
+  ROOT add = s32[] add(reduced0, reduced1)
+}
+)";
+
+  // Input has upper bound of 5, dynamic dimension is 3.
+  Literal operand0 = LiteralUtil::CreateR1<int32_t>({1, 2, 3, 4, 5});
+  Literal operand1 = LiteralUtil::CreateR1<int32_t>({6, 7, 8, 9, 10});
+  auto module = GetHloModule(hlo_text);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result, PadAndExecute(std::move(module), {&operand0, &operand1}));
+
+  Literal expected = LiteralUtil::CreateR0<int32_t>(36);
+
+  EXPECT_EQ(result, expected);
+}
+
 XLA_TEST_F(ExecutionTest, ReshapeComplicated) {
   // [2, <=4, 4]
   //       |
