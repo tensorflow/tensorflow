@@ -3086,7 +3086,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
   tsl::profiler::TraceMe traceme("TfrtGpuBuffer::CopyToMemorySpace");
   PjRtDevice* dst_device = dst_memory_space->devices()[0];
 
-  VLOG(1) << " TfrtGpuBuffer::CopyToMemorySpace:  dst_device: " << dst_device
+  VLOG(1) << "TfrtGpuBuffer::CopyToMemorySpace:  dst_device: "
+          << dst_device->DebugString()
           << " dst_memory_space: " << dst_memory_space->kind();
 
   // Copying across PjRtClients involves a copy through the host.
@@ -3776,7 +3777,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
       };
 
   auto prepare_inputs =
-      [blocking_thread_pool = client_->blocking_thread_pool(),
+      [replica, blocking_thread_pool = client_->blocking_thread_pool(),
        launch_id(options.launch_id), executable_name(name()), device,
        tracked_buffers(std::move(tracked_buffers)),
        buffer_is_donated(std::move(buffer_is_donated)),
@@ -3808,8 +3809,9 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
           }
         }
 
-        VLOG(3) << "prepare_inputs for " << executable_name << " on device "
-                << device->DebugString();
+        VLOG(3) << "prepare_inputs for " << executable_name
+                << ", launch_id: " << launch_id << ", replica: " << replica
+                << ", device: " << device->DebugString();
         DCHECK_EQ(tracked_buffers.size(), buffer_is_donated.size());
 
         absl::Status status = CheckBufferCompatibilities(
