@@ -31,18 +31,16 @@ class GpuNoAliasTest : public GpuCodegenTest {};
 TEST_F(GpuNoAliasTest, Concat) {
   HloComputation::Builder builder(TestName());
 
-  auto param_shape = ShapeUtil::MakeValidatedShape(F32, {2, 2}).value();
+  auto param_shape = ShapeUtil::MakeShape(F32, {2, 2});
   HloInstruction* param_x = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "x"));
   HloInstruction* param_y = builder.AddInstruction(
       HloInstruction::CreateParameter(1, param_shape, "y"));
   HloInstruction* concat =
       builder.AddInstruction(HloInstruction::CreateConcatenate(
-          ShapeUtil::MakeValidatedShape(F32, {2, 4}).value(),
-          {param_x, param_y}, 1));
+          ShapeUtil::MakeShape(F32, {2, 4}), {param_x, param_y}, 1));
   builder.AddInstruction(HloInstruction::CreateConcatenate(
-      ShapeUtil::MakeValidatedShape(F32, {2, 6}).value(), {concat, param_x},
-      1));
+      ShapeUtil::MakeShape(F32, {2, 6}), {concat, param_x}, 1));
 
   std::unique_ptr<HloComputation> computation = builder.Build();
 
