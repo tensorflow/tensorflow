@@ -1094,19 +1094,6 @@ xla_cc_test(
     ],
 )
 
-# TODO(b/401293975): Remove this target and migrate Jax to use the proto target directly.
-cc_library(
-    name = "compile_options_proto_cc",
-    hdrs = [
-        "compile_options.pb.h",
-        "compile_options.proto.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//xla/pjrt/proto:compile_options_proto_cc",
-    ],
-)
-
 cc_library(
     name = "exceptions",
     hdrs = ["exceptions.h"],
