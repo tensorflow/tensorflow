@@ -787,10 +787,9 @@ HloSendInstruction::HloSendInstruction(HloInstruction* operand,
                                        bool is_host_transfer)
     : HloSendRecvInstruction(
           HloOpcode::kSend,
-          ShapeUtil::MakeValidatedTupleShape({CHECK_NOTNULL(operand)->shape(),
-                                              ShapeUtil::MakeShape(U32, {}),
-                                              ShapeUtil::MakeTokenShape()})
-              .value(),
+          ShapeUtil::MakeTupleShape({CHECK_NOTNULL(operand)->shape(),
+                                     ShapeUtil::MakeShape(U32, {}),
+                                     ShapeUtil::MakeTokenShape()}),
           channel_id, is_host_transfer) {
   AppendOperand(operand);
   AppendOperand(token);
@@ -838,12 +837,11 @@ HloRecvInstruction::HloRecvInstruction(const Shape& shape,
                                        HloInstruction* token,
                                        std::optional<int64_t> channel_id,
                                        bool is_host_transfer)
-    : HloSendRecvInstruction(HloOpcode::kRecv,
-                             ShapeUtil::MakeValidatedTupleShape(
-                                 {shape, ShapeUtil::MakeShape(U32, {}),
-                                  ShapeUtil::MakeTokenShape()})
-                                 .value(),
-                             channel_id, is_host_transfer) {
+    : HloSendRecvInstruction(
+          HloOpcode::kRecv,
+          ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U32, {}),
+                                     ShapeUtil::MakeTokenShape()}),
+          channel_id, is_host_transfer) {
   AppendOperand(token);
 }
 
@@ -860,10 +858,9 @@ HloRecvDoneInstruction::HloRecvDoneInstruction(HloRecvInstruction* operand,
                                                bool is_host_transfer)
     : HloSendRecvInstruction(
           HloOpcode::kRecvDone,
-          ShapeUtil::MakeValidatedTupleShape(
+          ShapeUtil::MakeTupleShape(
               {ShapeUtil::GetTupleElementShape(operand->shape(), 0),
-               ShapeUtil::MakeTokenShape()})
-              .value(),
+               ShapeUtil::MakeTokenShape()}),
           operand->channel_id(), is_host_transfer) {
   AppendOperand(operand);
 }
@@ -873,10 +870,9 @@ HloRecvDoneInstruction::HloRecvDoneInstruction(
     bool is_host_transfer)
     : HloSendRecvInstruction(
           HloOpcode::kRecvDone,
-          ShapeUtil::MakeValidatedTupleShape(
+          ShapeUtil::MakeTupleShape(
               {ShapeUtil::GetTupleElementShape(operand->shape(), 0),
-               ShapeUtil::MakeTokenShape()})
-              .value(),
+               ShapeUtil::MakeTokenShape()}),
           channel_id, is_host_transfer) {
   AppendOperand(operand);
 }
@@ -2842,9 +2838,8 @@ HloInfeedInstruction::HloInfeedInstruction(const Shape& infeed_shape,
                                            HloInstruction* token_operand,
                                            const std::string& config)
     : HloInstruction(HloOpcode::kInfeed,
-                     ShapeUtil::MakeValidatedTupleShape(
-                         {infeed_shape, ShapeUtil::MakeTokenShape()})
-                         .value()),
+                     ShapeUtil::MakeTupleShape(
+                         {infeed_shape, ShapeUtil::MakeTokenShape()})),
       infeed_config_(config) {
   AppendOperand(token_operand);
 }
