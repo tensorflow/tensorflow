@@ -40,7 +40,7 @@ class CpuExternalConstantsTest : public CpuCodegenTest {
     Array2D<float> backing_array(rows, cols);
     backing_array.FillUnique();
 
-    auto shape = ShapeUtil::MakeValidatedShape(F32, {rows, cols}).value();
+    auto shape = ShapeUtil::MakeShape(F32, {rows, cols});
 
     HloInstruction* constant =
         builder.AddInstruction(HloInstruction::CreateConstant(
