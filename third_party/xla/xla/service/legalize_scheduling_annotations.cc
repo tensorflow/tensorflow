@@ -333,16 +333,30 @@ bool LegalizeSchedulingAnnotations::RemoveTrivialGroups(
         Annotation,
         absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>>&
         annotation_to_instruction) {
-  bool changed = false;
-  for (auto& [annotation, comp_inst_vector] : annotation_to_instruction) {
+  absl::flat_hash_map<AnnotationGroupId, std::vector<HloInstruction*>>
+      group_id_to_instruction;
+  for (const auto& [annotation, comp_inst_vector] : annotation_to_instruction) {
     for (const auto& [comp, annotated_instructions] : comp_inst_vector) {
-      if (annotated_instructions.size() == 1 &&
-          !config_.keep_trivial_sync_annotation(annotated_instructions[0])) {
-        // Remove annotations from synchronous operations (control flow, TC
-        // custom calls) since they won't do anything and will just get in the
-        // way of scheduling.
-        changed |= RemoveSchedulingAnnotation(annotated_instructions[0]);
+      for (const auto& annotated_instruction : annotated_instructions) {
+        group_id_to_instruction[annotation.group_id.value()].push_back(
+            annotated_instruction);
       }
+    }
+  }
+
+  bool changed = false;
+  for (const auto& [group_id, annotated_instructions] :
+       group_id_to_instruction) {
+    if (annotated_instructions.size() == 1 &&
+        !config_.keep_trivial_sync_annotation(annotated_instructions[0])) {
+      // Remove annotations from synchronous operations (control flow, TC
+      // custom calls) since they won't do anything and will just get in the
+      // way of scheduling.
+      VLOG(2) << "Removing trivial group: " << group_id
+              << " from instruction: " << annotated_instructions[0]->name();
+      changed |= RemoveSchedulingAnnotation(annotated_instructions[0]);
+    } else {
+      VLOG(3) << "Retaining nontrivial group: " << group_id;
     }
   }
   return changed;
