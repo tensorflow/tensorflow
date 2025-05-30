@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
 #include "xla/layout.h"
@@ -531,8 +532,11 @@ void HloCompareInstruction::PrintExtraAttributesImpl(
   printer.Next([this](Printer* printer) {
     AppendCat(printer, "direction=", ComparisonDirectionToString(direction()));
   });
-  if (compare_.GetType() !=
-      Comparison::DefaultComparisonType(operand(0)->shape().element_type())) {
+  // We might want to print a HloInstruction which has been cleand up and has no
+  // operands anymore. This should not result in a crash.
+  if (operand_count() == 0 || operand(0) == nullptr ||
+      compare_.GetType() != Comparison::DefaultComparisonType(
+                                operand(0)->shape().element_type())) {
     printer.Next([this](Printer* printer) {
       AppendCat(printer, "type=", ComparisonTypeToString(compare_.GetType()));
     });
@@ -697,7 +701,9 @@ HloInstructionProto HloChannelInstruction::ToProto() const {
 
 void HloChannelInstruction::PrintExtraAttributesImpl(
     AttributePrinter& printer, const HloPrintOptions& /*options*/) const {
-  if (!channel_id_) return;
+  if (!channel_id_) {
+    return;
+  }
   printer.Next([this](Printer* printer) {
     AppendCat(printer, "channel_id=", *channel_id_);
   });
@@ -1340,12 +1346,11 @@ HloCollectivePermuteInstruction::CloneWithNewOperandsImpl(
         opcode(), shape,
         absl::Span<HloInstruction* const>(new_operands.subspan(0, 1)),
         source_target_pairs(), channel_id());
-  } else {
-    return std::make_unique<HloCollectivePermuteInstruction>(
-        opcode(), shape, new_operands[0], new_operands[1], new_operands[2],
-        new_operands[3], source_target_pairs(), dynamic_slice_sizes_list(),
-        channel_id());
   }
+  return std::make_unique<HloCollectivePermuteInstruction>(
+      opcode(), shape, new_operands[0], new_operands[1], new_operands[2],
+      new_operands[3], source_target_pairs(), dynamic_slice_sizes_list(),
+      channel_id());
 }
 
 HloReverseInstruction::HloReverseInstruction(
@@ -3557,10 +3562,9 @@ HloDynamicSliceInstruction::CloneWithNewOperandsImpl(
     // TODO(b/118437727): Old form, remove this path.
     return std::make_unique<HloDynamicSliceInstruction>(
         shape, new_operands[0], new_operands[1], dynamic_slice_sizes_);
-  } else {
-    return std::make_unique<HloDynamicSliceInstruction>(
-        shape, new_operands[0], new_operands.subspan(1), dynamic_slice_sizes_);
   }
+  return std::make_unique<HloDynamicSliceInstruction>(
+      shape, new_operands[0], new_operands.subspan(1), dynamic_slice_sizes_);
 }
 
 HloGatherInstruction::HloGatherInstruction(

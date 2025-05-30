@@ -165,5 +165,33 @@ TEST_F(HloInstructionTest, ComparatorWorksWith64BitUniqueIds) {
   EXPECT_THAT(instructions,
               ElementsAre(param1.get(), param2.get(), param3.get()));
 }
+
+TEST_F(HloInstructionTest, PrintCompareOpWorksIfDead) {
+  const char* const kModuleStr = R"(
+    HloModule m
+    ENTRY main {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT result = pred[] compare(p0, p1), direction=GT, type=TOTALORDER
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(
+      root->ToString(),
+      "%result = pred[] compare(%p0, %p1), direction=GT, type=TOTALORDER");
+  module->entry_computation()->set_root_instruction(
+      root->mutable_operand(0), /*accept_different_shape=*/true);
+  root->DetachFromOperandsAndUsers();
+  EXPECT_EQ(
+      root->ToString(),
+      "%result = pred[] compare(null , null ), direction=GT, type=TOTALORDER");
+  TF_ASSERT_OK(module->entry_computation()->RemoveInstruction(root));
+  EXPECT_EQ(root->ToString(),
+            "%result = pred[] compare(), direction=GT, type=TOTALORDER");
+  *module->mutable_entry_computation_layout() =
+      module->compute_computation_layout();
+}
 }  // namespace
 }  // namespace xla
