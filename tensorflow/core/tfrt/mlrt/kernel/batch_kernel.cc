@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/mlrt/kernel/batch_kernel.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <functional>
@@ -47,44 +48,6 @@ namespace {
 
 constexpr char kMlrtBatchFunctionName[] = "MlrtBatchFunction";
 constexpr char kOpKernelRunnerCacheResourceName[] = "MlrtOpKernelCache";
-
-// The custom KernelFrame for tf_mlrt.batch_function op.
-struct BatchFunctionOp : mlrt::KernelFrame {
-  using KernelFrame::KernelFrame;
-
-  static constexpr char kName[] = "tf_mlrt.batch_function";
-  static constexpr bool kUseCustomDevice = false;
-
-  mlrt::RegisterValueSpan<tfrt_stub::FallbackTensor> args() const {
-    return arguments();
-  }
-
-  absl::string_view device_name() const {
-    return attributes().GetAs<mlrt::bc::String>(0).Get();
-  }
-
-  tensorflow::Device* device() const {
-    return context().fallback_request_state().cpu_device();
-  }
-
-  mlrt::bc::Function f() const {
-    uint32_t func_idx = attributes().GetAs<uint32_t>(1);
-    return execution_context()
-        .loaded_executable()
-        .executable()
-        .functions()[func_idx];
-  }
-
-  absl::string_view node_def_text() const {
-    return attributes().GetAs<mlrt::bc::String>(2).Get();
-  }
-
-  Context& context() const {
-    return execution_context().GetUserContext<Context>();
-  }
-
-  void Invoke();
-};
 
 // A thread local variable for passing the mlrt::ExecutionContext in the same
 // thread.
@@ -120,18 +83,20 @@ class ScopedBatchFunctionMlrtContext {
   mlrt::ExecutionContext* last_context_ = nullptr;
 };
 
-void BatchFunctionOp::Invoke() {
-  ScopedBatchFunctionMlrtContext scoped_context(&execution_context());
+template <typename Frame>
+void BatchFunctionInvokeHelper(Frame& frame) {
+  ScopedBatchFunctionMlrtContext scoped_context(&frame.execution_context());
 
-  const auto& fallback_request_state = context().fallback_request_state();
+  const auto& fallback_request_state = frame.context().fallback_request_state();
 
-  auto* runner_cache = context()
-                           .resource_context()
-                           .GetOrCreateResource<tfrt_stub::OpKernelRunnerCache>(
-                               kOpKernelRunnerCacheResourceName);
+  auto* runner_cache =
+      frame.context()
+          .resource_context()
+          .template GetOrCreateResource<tfrt_stub::OpKernelRunnerCache>(
+              kOpKernelRunnerCacheResourceName);
 
-  auto attr_builder = [node_def_text = node_def_text(),
-                       f = f()](tensorflow::AttrValueMap* attr_value_map) {
+  auto attr_builder = [node_def_text = frame.node_def_text(), f = frame.f()](
+                          tensorflow::AttrValueMap* attr_value_map) {
     tensorflow::NodeDef node_def;
     // TODO(182876485): Remove the conditional selection after protobuf version
     // is bumped up.
@@ -155,21 +120,21 @@ void BatchFunctionOp::Invoke() {
   };
 
   tfrt::Location loc;
-  loc.data = absl::bit_cast<intptr_t>(f());
+  loc.data = absl::bit_cast<intptr_t>(frame.f());
 
   auto kernel_runner = runner_cache->GetOrCreate(
-      loc, kMlrtBatchFunctionName, device_name(), args().size(), attr_builder,
-      fallback_request_state.device_manager(),
+      loc, kMlrtBatchFunctionName, frame.device_name(), frame.args().size(),
+      attr_builder, fallback_request_state.device_manager(),
       fallback_request_state.process_function_library_runtime());
 
   if (ABSL_PREDICT_FALSE(!kernel_runner.ok())) {
-    execution_context().Fail(std::move(kernel_runner).status());
+    frame.execution_context().Fail(std::move(kernel_runner).status());
     return;
   }
 
   DCHECK((*kernel_runner)->IsAsync());
   ExecuteKernelRunner</*IsAsync=*/true>(
-      *this, context(), fallback_request_state, **kernel_runner);
+      frame, frame.context(), fallback_request_state, **kernel_runner);
 }
 
 // A customized BatchResource whose batch function is a mlrt::bc::Function.
@@ -402,6 +367,85 @@ void MlrtBatchResource::ProcessFuncBatchImpl(
   done(execution_context.status());
 }
 
+// The custom KernelFrame for tf_mlrt.batch_function op.
+struct BatchFunctionOp : mlrt::KernelFrame {
+  using KernelFrame::KernelFrame;
+
+  static constexpr char kName[] = "tf_mlrt.batch_function";
+  static constexpr bool kUseCustomDevice = false;
+
+  mlrt::RegisterValueSpan<tfrt_stub::FallbackTensor> args() const {
+    return arguments();
+  }
+
+  absl::string_view device_name() const {
+    return attributes().GetAs<mlrt::bc::String>(0).Get();
+  }
+
+  tensorflow::Device* device() const {
+    return context().fallback_request_state().cpu_device();
+  }
+
+  mlrt::bc::Function f() const {
+    uint32_t func_idx = attributes().GetAs<uint32_t>(1);
+    return execution_context()
+        .loaded_executable()
+        .executable()
+        .functions()[func_idx];
+  }
+
+  absl::string_view node_def_text() const {
+    return attributes().GetAs<mlrt::bc::String>(2).Get();
+  }
+
+  Context& context() const {
+    return execution_context().GetUserContext<Context>();
+  }
+
+  void Invoke() { BatchFunctionInvokeHelper(*this); }
+};
+
+struct BatchFunctionWithDeviceOp : mlrt::KernelFrame {
+  using KernelFrame::KernelFrame;
+
+  static constexpr char kName[] = "tf_mlrt.batch_function.device";
+  static constexpr bool kUseCustomDevice = true;
+
+  // This is NOT the custom device name. Keep this for backwards compatibility.
+  absl::string_view device_name() const {
+    return attributes().GetAs<mlrt::bc::String>(0).Get();
+  }
+
+  mlrt::bc::Function f() const {
+    uint32_t func_idx = attributes().GetAs<uint32_t>(1);
+    return execution_context()
+        .loaded_executable()
+        .executable()
+        .functions()[func_idx];
+  }
+
+  absl::string_view node_def_text() const {
+    return attributes().GetAs<mlrt::bc::String>(2).Get();
+  }
+
+  Context& context() const {
+    return execution_context().GetUserContext<Context>();
+  }
+
+  void Invoke() { BatchFunctionInvokeHelper(*this); }
+  mlrt::RegisterValueSpan<tfrt_stub::FallbackTensor> args() const {
+    return arguments().drop_front();
+  }
+
+  mlrt::bc::Span<uint8_t> last_uses() const {
+    return KernelFrame::last_uses().drop_front();
+  }
+
+  const std::shared_ptr<tensorflow::Device>& device() const {
+    return arguments()[0].Get<std::shared_ptr<tensorflow::Device>>();
+  }
+};
+
 REGISTER_KERNEL_BUILDER(
     Name(kMlrtBatchFunctionName).Device(DEVICE_CPU),
     tfrt_stub::BatchFunctionFallbackKernel<MlrtBatchResource>);
@@ -445,6 +489,7 @@ REGISTER_OP(kMlrtBatchFunctionName)
 // this Register function.
 void RegisterTfMlrtBatchKernels(mlrt::KernelRegistry& registry) {
   registry.Register<BatchFunctionOp>();
+  registry.Register<BatchFunctionWithDeviceOp>();
 }
 
 }  // namespace tf_mlrt

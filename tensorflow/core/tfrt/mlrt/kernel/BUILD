@@ -155,7 +155,9 @@ cc_library(
 
 tf_cc_shared_test(
     name = "kernel_test",
-    srcs = ["kernel_test.cc"],
+    srcs = [
+        "kernel_test.cc",
+    ],
     tags = ["no_oss"],
     deps = [
         ":batch_kernel",
@@ -181,6 +183,34 @@ tf_cc_shared_test(
         "@local_xla//xla/tsl/platform:status_matchers",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:ref_count",
+    ],
+)
+
+tf_cc_shared_test(
+    name = "batch_kernel_test",
+    srcs = ["batch_kernel_test.cc"],
+    deps = [
+        ":batch_kernel",
+        ":context",
+        ":kernel",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/kernels:math",
+        "//tensorflow/core/ops:math_ops_op_lib",
+        "//tensorflow/core/tfrt/fallback:device_with_custom_allocator",
+        "//tensorflow/core/tfrt/fallback:fallback_state",
+        "//tensorflow/core/tfrt/mlrt/bytecode:executable",
+        "//tensorflow/core/tfrt/mlrt/interpreter:execute",
+        "//tensorflow/core/tfrt/mlrt/interpreter:interpreter_testutil",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@local_xla//xla/tsl/platform:status_matchers",
+        "@tf_runtime//:hostcontext",
     ],
 )
 
