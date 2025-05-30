@@ -380,8 +380,7 @@ Future<> PjRtArray::CopyToHostBuffer(
     literal = std::make_unique<xla::MutableBorrowingLiteral>(
         static_cast<char*>(data), *xla_shape);
   } else {
-    auto xla_shape =
-        ShapeUtil::MakeValidatedShapeWithDescendingLayout(*dtype, dims).value();
+    auto xla_shape = ShapeUtil::MakeShapeWithDescendingLayout(*dtype, dims);
     literal = std::make_unique<xla::MutableBorrowingLiteral>(
         static_cast<char*>(data), xla_shape);
   }
