@@ -40,6 +40,8 @@ cc_library(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "//tensorflow/lite/delegates/utils/experimental/stable_delegate:delegate_loader",
+        "//tensorflow/lite/delegates/utils/experimental/stable_delegate:tflite_settings_json_parser",
         "//tensorflow/lite/kernels:reference_ops",
         "//tensorflow/lite/kernels/internal:compatibility",
         "@com_google_absl//absl/memory",
