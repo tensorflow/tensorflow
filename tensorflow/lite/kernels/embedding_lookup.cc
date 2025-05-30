@@ -33,6 +33,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 
+#include "fp16/fp16.h"  // from @FP16
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -126,9 +127,88 @@ TfLiteStatus EvalSimple(TfLiteContext* context, TfLiteNode* node,
   return kTfLiteOk;
 }
 
+void Unpack4Bit(double scaling_factor, int col_size, const int8_t* value_ptr,
+                float* output_ptr) {
+  for (int j = 0; j < col_size; j++) {
+    int i8_idx = j;
+    int i4_idx = i8_idx / 2;
+    bool even = i8_idx % 2 == 0;
+    int8_t i4_val = value_ptr[i4_idx];
+    int8_t i8_val = even ? static_cast<int8_t>(i4_val << 4) >> 4 : i4_val >> 4;
+    output_ptr[j] = i8_val * scaling_factor;
+  }
+}
+
+TfLiteStatus EvalBlockwise(TfLiteContext* context, TfLiteNode* node,
+                           const TfLiteTensor* lookup,
+                           const TfLiteTensor* value, TfLiteTensor* output) {
+  if (value->type != kTfLiteInt4) {
+    TF_LITE_KERNEL_LOG(
+        context,
+        "Embedding Lookup: Blockwise embedding lookup only supports Int4 data");
+    return kTfLiteError;
+  }
+  if (value->dims->size != 2) {
+    TF_LITE_KERNEL_LOG(
+        context,
+        "Embedding Lookup: Blockwise embedding lookup only supports 2D data");
+    return kTfLiteError;
+  }
+  const int row_size = SizeOfDimension(value, 0);
+
+  // col_size after we flatten tensor into 2D.
+  int col_size = 1;
+  for (int i = 1; i < NumDimensions(value); i++) {
+    col_size *= SizeOfDimension(value, i);
+  }
+
+  float* output_ptr = GetTensorData<float>(output);
+  const int8_t* value_ptr = GetTensorData<int8_t>(value);
+  const int32_t* lookup_data = GetTensorData<int32_t>(lookup);
+
+  const auto quantization_params =
+      reinterpret_cast<const TfLiteBlockwiseQuantization*>(
+          value->quantization.params);
+  const TfLiteTensor& scale = context->tensors[quantization_params->scale];
+  const int blocksize = quantization_params->blocksize;
+  const int dimension_size = SizeOfDimension(lookup, 0);
+  if (col_size % blocksize != 0) {
+    TF_LITE_KERNEL_LOG(context,
+                       "Embedding Lookup: lookup dimension %d must be "
+                       "divisible by blocksize %d",
+                       col_size, blocksize);
+    return kTfLiteError;
+  }
+  int num_blocks = col_size / blocksize;
+  for (int i = 0; i < dimension_size; i++) {
+    int idx = lookup_data[i];
+    if (idx >= row_size || idx < 0) {
+      TF_LITE_KERNEL_LOG(context,
+                         "Embedding Lookup: index out of bounds. "
+                         "Got %d, and bounds are [0, %d]",
+                         idx, row_size - 1);
+      return kTfLiteError;
+    }
+    for (int j = 0; j < num_blocks; ++j) {
+      uint16_t raw_scaling_factor =
+          GetTensorData<uint16_t>(&scale)[j + idx * num_blocks];
+      uint32_t fp32_scaling_factor = fp16_ieee_to_fp32_bits(raw_scaling_factor);
+      double scaling_factor = *reinterpret_cast<float*>(&fp32_scaling_factor);
+
+      Unpack4Bit(scaling_factor, blocksize,
+                 &value_ptr[(j * blocksize + idx * col_size) / 2],
+                 &output_ptr[j * blocksize + i * col_size]);
+    }
+  }
+  return kTfLiteOk;
+}
+
 TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
                         const TfLiteTensor* lookup, const TfLiteTensor* value,
                         TfLiteTensor* output) {
+  if (value->quantization.type == kTfLiteBlockwiseQuantization) {
+    return EvalBlockwise(context, node, lookup, value, output);
+  }
   const int row_size = SizeOfDimension(value, 0);
 
   // col_size after we flatten tensor into 2D.
@@ -164,15 +244,8 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
       }
 
       if (value->type == kTfLiteInt4) {
-        for (int j = 0; j < col_size; j++) {
-          int i8_idx = j + idx * col_size;
-          int i4_idx = i8_idx / 2;
-          bool even = i8_idx % 2 == 0;
-          int8_t i4_val = value_ptr[i4_idx];
-          int8_t i8_val =
-              even ? static_cast<int8_t>(i4_val << 4) >> 4 : i4_val >> 4;
-          output_ptr[j + i * col_size] = i8_val * scaling_factor;
-        }
+        Unpack4Bit(scaling_factor, col_size, &value_ptr[idx * col_size / 2],
+                   &output_ptr[i * col_size]);
       } else {
         for (int j = 0; j < col_size; j++) {
           output_ptr[j + i * col_size] =
