@@ -404,7 +404,7 @@ static mlir::FailureOr<xla::Shape> ExtractXlaShape(mlir::Operation* op) {
       }
     }
     if (subshapes.size() > 1) {
-      return xla::ShapeUtil::MakeValidatedTupleShape(subshapes).value();
+      return xla::ShapeUtil::MakeTupleShape(subshapes);
     }
     return subshapes[0];
   }
@@ -1539,7 +1539,7 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
   if (subshapes.size() == 1)
     data_shape = subshapes[0];
   else
-    data_shape = xla::ShapeUtil::MakeValidatedTupleShape(subshapes).value();
+    data_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
 
   auto get_sharding = [](const xla::OpSharding& sharding) {
     xla::OpSharding ret;
@@ -1626,8 +1626,7 @@ LogicalResult ExportXlaOp(InfeedOp op, OpLoweringContext ctx) {
     subshapes.push_back(xla::TypeToShape(item.value()));
   }
 
-  xla::Shape data_shape =
-      xla::ShapeUtil::MakeValidatedTupleShape(subshapes).value();
+  xla::Shape data_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
   auto xla_result = xla::InfeedWithToken(token, data_shape,
                                          std::string(op.getInfeedConfig()));
   ctx.builder->ClearSharding();
@@ -1667,8 +1666,7 @@ LogicalResult ExportXlaOp(OutfeedOp op, OpLoweringContext ctx) {
   for (auto operand : op.getInputs())
     subshapes.push_back(xla::TypeToShape(operand.getType()));
 
-  xla::Shape shape_with_layout =
-      xla::ShapeUtil::MakeValidatedTupleShape(subshapes).value();
+  xla::Shape shape_with_layout = xla::ShapeUtil::MakeTupleShape(subshapes);
 
   xla::XlaOp token;
   if (failed(GetXlaOp(op.getToken(), value_map, &token, op))) return failure();
@@ -2556,7 +2554,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     for (const auto& item : op.getResults().getType()) {
       subshapes.push_back(xla::TypeToShape(item));
     }
-    result_shape = xla::ShapeUtil::MakeValidatedTupleShape(subshapes).value();
+    result_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
   }
 
   xla::XlaOp custom_call;
@@ -3464,8 +3462,7 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
   for (const auto& item : op.getResults().getType()) {
     subshapes.push_back(xla::TypeToShape(item));
   }
-  xla::Shape data_shape =
-      xla::ShapeUtil::MakeValidatedTupleShape(subshapes).value();
+  xla::Shape data_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
 
   xla::XlaOp exportedOp = xla::internal::XlaBuilderFriend::BuildAsyncDone(
       ctx.builder, operand, data_shape);
@@ -4264,7 +4261,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     for (const auto& item : op.getResults().getType()) {
       subshapes.push_back(xla::TypeToShape(item));
     }
-    result_shape = xla::ShapeUtil::MakeValidatedTupleShape(subshapes).value();
+    result_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
   }
 
   xla::XlaOp custom_call;
@@ -4324,8 +4321,7 @@ LogicalResult ExportXlaOp(InfeedOp op, OpLoweringContext ctx) {
     subshapes.push_back(xla::TypeToShape(item.value()));
   }
 
-  xla::Shape data_shape =
-      xla::ShapeUtil::MakeValidatedTupleShape(subshapes).value();
+  xla::Shape data_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
   auto xla_result = xla::InfeedWithToken(token, data_shape,
                                          std::string(op.getInfeedConfig()));
   ctx.builder->ClearSharding();
@@ -4386,8 +4382,7 @@ LogicalResult ExportXlaOp(OutfeedOp op, OpLoweringContext ctx) {
   for (auto operand : op.getInputs())
     subshapes.push_back(xla::TypeToShape(operand.getType()));
 
-  xla::Shape shape_with_layout =
-      xla::ShapeUtil::MakeValidatedTupleShape(subshapes).value();
+  xla::Shape shape_with_layout = xla::ShapeUtil::MakeTupleShape(subshapes);
 
   xla::XlaOp token;
   if (failed(GetXlaOp(op.getToken(), value_map, &token, op))) return failure();
@@ -4452,7 +4447,7 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
   if (subshapes.size() == 1)
     data_shape = subshapes[0];
   else
-    data_shape = xla::ShapeUtil::MakeValidatedTupleShape(subshapes).value();
+    data_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
 
   auto get_sharding = [](const xla::OpSharding& sharding) {
     xla::OpSharding ret;
@@ -5908,8 +5903,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
             SetEntryTupleShardings(block, builder, arg_shardings, &arg_shapes)))
       return failure();
 
-    xla::Shape input_shape =
-        xla::ShapeUtil::MakeValidatedTupleShape(arg_shapes).value();
+    xla::Shape input_shape = xla::ShapeUtil::MakeTupleShape(arg_shapes);
     // TODO(bartchr): we are saving location information on single params
     // but not tuple params. Do the same for tuple params. To do so, either
     // fuse all the `mlir::Location`s or join the operation name strings with
@@ -5950,9 +5944,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
         // fuse all the `mlir::Location`s or join the operation name strings
         // with ";" (which is essentially the same).
         auto tuple = xla::Parameter(
-            builder, 0,
-            xla::ShapeUtil::MakeValidatedTupleShape(arg_shapes).value(),
-            kArgTuple);
+            builder, 0, xla::ShapeUtil::MakeTupleShape(arg_shapes), kArgTuple);
 
         for (BlockArgument& arg : block->getArguments()) {
           auto num = arg.getArgNumber();
@@ -5984,10 +5976,8 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
         // Applicable only for IfOp or CaseOp. No implicit operands implies no
         // xla parameters. In this case, we create an empty tuple as the
         // block-parameter.
-        xla::Parameter(
-            builder, 0,
-            xla::ShapeUtil::MakeValidatedTupleShape(arg_shapes).value(),
-            kArgEmptyTuple);
+        xla::Parameter(builder, 0, xla::ShapeUtil::MakeTupleShape(arg_shapes),
+                       kArgEmptyTuple);
       }
     } else {
       for (BlockArgument& arg : block->getArguments()) {
