@@ -6596,6 +6596,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
     }
   }
   static_unpacked_data_map_[subgraph_index].clear();
+  static_unpacked_data_[subgraph_index].clear();
   static_unpack_nodes_.clear();
   static_sparse_weights_.clear();
   f16_input_tensor_for_dequant_f32_tensor_.clear();
