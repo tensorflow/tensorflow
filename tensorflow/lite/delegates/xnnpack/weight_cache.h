@@ -62,6 +62,8 @@ struct XNNPackCacheHeader {
   uint64_t buffer_list_size;
 };
 
+bool IsCompatibleCacheFile(const char* path);
+
 struct PackIdentifier {
   enum { kNoId = SIZE_MAX };
   uint64_t pack_algorithm_id = kNoId;
