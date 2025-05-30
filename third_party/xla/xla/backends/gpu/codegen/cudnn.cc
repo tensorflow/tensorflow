@@ -15,19 +15,19 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/cudnn.h"
 
+#include <memory>
+
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/runtime/cudnn_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/kernel_reuse_cache.h"
-#include "tsl/platform/statusor.h"
-#if GOOGLE_CUDA
-#include "xla/backends/gpu/runtime/cudnn_thunk.h"
-#endif
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -35,7 +35,6 @@ namespace gpu {
 absl::StatusOr<FusionEmissionResult> CuDnnFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
-#if GOOGLE_CUDA
   VLOG(3) << fusion.ToString();
 
   TF_ASSIGN_OR_RETURN(
@@ -48,9 +47,6 @@ absl::StatusOr<FusionEmissionResult> CuDnnFusion::Emit(
       Thunk::ThunkInfo::WithProfileAnnotation(&fusion),
       kernel_arguments.args()));
   return result;
-#else
-  return absl::UnimplementedError("cuDNN support requires CUDA");
-#endif
 }
 
 }  // namespace gpu
