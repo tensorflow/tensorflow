@@ -16,6 +16,7 @@
 
 # pylint: disable=unused-import
 import functools
+import time
 
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -160,6 +161,79 @@ class CachedClassPropertyTest(test.TestCase):
       MyClass().value = 12
     with self.assertRaises(AttributeError):
       del MyClass().value
+
+  def testCachedClassPropertyWithTimeout(self):
+    log = []  # log all calls to `MyClass.value`.
+
+    class MyClass(object):
+
+      @decorator_utils.cached_classproperty(timeout=0.1)  # 0.1 second timeout
+      def value(cls):  # pylint: disable=no-self-argument
+        log.append(cls)
+        return cls.__name__
+
+    class MySubclass(MyClass):
+      pass
+
+    # Property is computed first time it is accessed.
+    self.assertLen(log, 0)
+    self.assertEqual(MyClass.value, "MyClass")
+    self.assertEqual(log, [MyClass])
+
+    # Cached value is used within timeout.
+    self.assertEqual(MyClass.value, "MyClass")
+    self.assertEqual(log, [MyClass])
+
+    # Wait for timeout to expire.
+    time.sleep(0.2)
+
+    # Property is recomputed after timeout.
+    self.assertEqual(MyClass.value, "MyClass")
+    self.assertEqual(log, [MyClass, MyClass])
+
+    # Subclass behaves independently.
+    self.assertEqual(MySubclass.value, "MySubclass")
+    self.assertEqual(log, [MyClass, MyClass, MySubclass])
+    self.assertEqual(MySubclass.value, "MySubclass")
+    self.assertEqual(log, [MyClass, MyClass, MySubclass])
+
+  def testCachedClassPropertyResetCache(self):
+    log = []  # log all calls to `MyClass.value`.
+
+    class MyClass(object):
+
+      @decorator_utils.cached_classproperty
+      def value(cls):  # pylint: disable=no-self-argument
+        log.append(cls)
+        return cls.__name__
+
+    class MySubclass(MyClass):
+      pass
+
+    # Property is computed first time it is accessed.
+    self.assertLen(log, 0)
+    self.assertEqual(MyClass.value, "MyClass")
+    self.assertEqual(log, [MyClass])
+
+    # Cached value is used.
+    self.assertEqual(MyClass.value, "MyClass")
+    self.assertEqual(log, [MyClass])
+
+    # Reset cache and verify property is recomputed.
+    MyClass.value.reset_cache(MyClass)
+    self.assertEqual(MyClass.value, "MyClass")
+    self.assertEqual(log, [MyClass, MyClass])
+
+    # Subclass cache is unaffected.
+    self.assertEqual(MySubclass.value, "MySubclass")
+    self.assertEqual(log, [MyClass, MyClass, MySubclass])
+    self.assertEqual(MySubclass.value, "MySubclass")
+    self.assertEqual(log, [MyClass, MyClass, MySubclass])
+
+    # Reset subclass cache.
+    MySubclass.value.reset_cache(MySubclass)
+    self.assertEqual(MySubclass.value, "MySubclass")
+    self.assertEqual(log, [MyClass, MyClass, MySubclass, MySubclass])
 
 
 if __name__ == "__main__":
