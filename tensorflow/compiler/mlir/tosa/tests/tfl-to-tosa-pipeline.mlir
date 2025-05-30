@@ -1666,25 +1666,167 @@ func.func @test_concatv2(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>,
 
 // -----
 
-// CHECK-LABEL: test_stack
+// CHECK-LABEL: test_pack
 // CHECK-DAG: %[[VAR0:.*]] = tosa.concat %arg0, %arg1, %arg2, %arg3 {axis = 0 : i32}
 // CHECK-DAG: %[[VAR10:.*]] = tosa.const_shape {values = dense<[4, 13, 21, 3]> : tensor<4xindex>}
 // CHECK: %[[VAR1:.*]] = tosa.reshape %[[VAR0]], %[[VAR10]]
-func.func @test_stack(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>, %arg2: tensor<13x21x3xf32>, %arg3: tensor<13x21x3xf32>) -> tensor<4x13x21x3xf32> {
+func.func @test_pack(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>, %arg2: tensor<13x21x3xf32>, %arg3: tensor<13x21x3xf32>) -> tensor<4x13x21x3xf32> {
   %0 = "tfl.pack"(%arg0, %arg1, %arg2, %arg3)  {axis = 0 : i32, values_count = 4 : i32}  : (tensor<13x21x3xf32>, tensor<13x21x3xf32>, tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<4x13x21x3xf32>
   func.return %0 : tensor<4x13x21x3xf32>
 }
 
 // -----
 
-// CHECK-LABEL: test_stack_end
+// CHECK-LABEL: test_pack_end
 // CHECK-DAG: %[[VAR0:.*]] = tosa.concat %arg0, %arg1 {axis = 0 : i32}
 // CHECK-DAG: %[[VAR10:.*]] = tosa.const_shape {values = dense<[2, 13, 21, 3]> : tensor<4xindex>}
 // CHECK: %[[VAR1:.*]] = tosa.reshape %[[VAR0]], %[[VAR10]]
 // CHECK: %[[TRANSPOSE:.*]] = tosa.transpose %[[VAR1]] {perms = array<i32: 1, 2, 3, 0>}
-func.func @test_stack_end(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>) -> tensor<13x21x3x2xf32> {
+func.func @test_pack_end(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>) -> tensor<13x21x3x2xf32> {
   %0 = "tfl.pack"(%arg0, %arg1)  {axis = 3 : i32, values_count = 2 : i32}  : (tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3x2xf32>
   func.return %0 : tensor<13x21x3x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_pack_neg_begin
+// CHECK-DAG: %[[VAR0:.*]] = tosa.concat %arg0, %arg1, %arg2, %arg3 {axis = 0 : i32}
+// CHECK-DAG: %[[VAR10:.*]] = tosa.const_shape  {values = dense<[4, 13, 21, 3]> : tensor<4xindex>}
+// CHECK: %[[VAR1:.*]] = tosa.reshape %[[VAR0]], %[[VAR10]]
+func.func @test_pack_neg_begin(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>, %arg2: tensor<13x21x3xf32>, %arg3: tensor<13x21x3xf32>) -> tensor<4x13x21x3xf32> {
+  %0 = "tfl.pack"(%arg0, %arg1, %arg2, %arg3)  {axis = -4 : i32, values_count = 4 : i32}  : (tensor<13x21x3xf32>, tensor<13x21x3xf32>, tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<4x13x21x3xf32>
+  func.return %0 : tensor<4x13x21x3xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_pack_neg_end
+// CHECK-DAG: %[[VAR0:.*]] = tosa.concat %arg0, %arg1 {axis = 0 : i32}
+// CHECK-DAG: %[[VAR10:.*]] = tosa.const_shape  {values = dense<[2, 13, 21, 3]> : tensor<4xindex>}
+// CHECK: %[[VAR1:.*]] = tosa.reshape %[[VAR0]], %[[VAR10]]
+// CHECK: %[[TRANSPOSE:.*]] = tosa.transpose %[[VAR1]] {perms = array<i32: 1, 2, 3, 0>}
+func.func @test_pack_neg_end(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>) -> tensor<13x21x3x2xf32> {
+  %0 = "tfl.pack"(%arg0, %arg1)  {axis = -1 : i32, values_count = 2 : i32}  : (tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3x2xf32>
+  func.return %0 : tensor<13x21x3x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_pack_unknown_input_dims
+// CHECK-DAG: %[[OUT_SHAPE:.*]] = tosa.const_shape  {values = dense<[3, 1, 2, 4]> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK-DAG: %[[C0:.*]] = "tosa.const"() <{values = dense<{{.*}}> : tensor<1x2x4xi32>}> : () -> tensor<1x2x4xi32>
+// CHECK-DAG: %[[C1:.*]] = "tosa.const"() <{values = dense<{{.*}}> : tensor<1x2x4xi32>}> : () -> tensor<1x2x4xi32>
+// CHECK-DAG: %[[C2:.*]] = tosa.const_shape  {values = dense<[1, 2, 4]> : tensor<3xindex>} : () -> !tosa.shape<3>
+// CHECK-DAG: %[[RESHAPE1:.*]] = tosa.reshape %arg0, %[[C2]] : (tensor<*xi32>, !tosa.shape<3>) -> tensor<1x2x4xi32>
+// CHECK-DAG: %[[CONCAT:.*]] = tosa.concat %[[RESHAPE1]], %[[C0]], %[[C1]] {axis = 0 : i32} : (tensor<1x2x4xi32>, tensor<1x2x4xi32>, tensor<1x2x4xi32>) -> tensor<3x2x4xi32>
+// CHECK-DAG: %[[RESHAPE2:.*]] = tosa.reshape %[[CONCAT]], %[[OUT_SHAPE]] : (tensor<3x2x4xi32>, !tosa.shape<4>) -> tensor<3x1x2x4xi32>
+func.func @test_pack_unknown_input_dims(%arg0: tensor<*xi32>) -> tensor<3x1x2x4xi32> {
+  %0 = arith.constant dense<[[[120, 4, 85, 12], [6, 12, 5, 1]]]> : tensor<1x2x4xi32>
+  %1 = arith.constant dense<[[[65, 45, 7, 12], [6, 12, 13, 7]]]> : tensor<1x2x4xi32>
+  %2 = "tfl.pack"(%arg0, %0, %1) {axis = 0 : i32, values_count = 3 : i32} : (tensor<*xi32>, tensor<1x2x4xi32>, tensor<1x2x4xi32>) -> tensor<3x1x2x4xi32>
+  func.return %2 : tensor<3x1x2x4xi32>
+}
+
+// -----
+
+// CHECK-LABEL: test_pack_unknown_input_dims2
+// CHECK-DAG: %[[OUT_SHAPE:.*]] = tosa.const_shape  {values = dense<[1, 2, 3, 4]> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK-DAG: %[[C0:.*]] = "tosa.const"() <{values = dense<{{.*}}> : tensor<1x2x4xi32>}> : () -> tensor<1x2x4xi32>
+// CHECK-DAG: %[[C1:.*]] = "tosa.const"() <{values = dense<{{.*}}> : tensor<1x2x4xi32>}> : () -> tensor<1x2x4xi32>
+// CHECK-DAG: %[[C2:.*]] = tosa.const_shape  {values = dense<[1, 2, 4]> : tensor<3xindex>} : () -> !tosa.shape<3>
+// CHECK-DAG: %[[RESHAPE1:.*]] = tosa.reshape %arg0, %[[C2]] : (tensor<*xi32>, !tosa.shape<3>) -> tensor<1x2x4xi32>
+// CHECK-DAG: %[[CONCAT:.*]] = tosa.concat %[[C0]], %[[RESHAPE1]], %[[C1]] {axis = 2 : i32} : (tensor<1x2x4xi32>, tensor<1x2x4xi32>, tensor<1x2x4xi32>) -> tensor<1x2x12xi32>
+// CHECK-DAG: %[[RESHAPE2:.*]] = tosa.reshape %[[CONCAT]], %[[OUT_SHAPE]] : (tensor<1x2x12xi32>, !tosa.shape<4>) -> tensor<1x2x3x4xi32>
+func.func @test_pack_unknown_input_dims2(%arg0: tensor<*xi32>) -> tensor<1x2x3x4xi32> {
+  %0 = arith.constant dense<[[[1202, 5, 85, 3], [6, 13, 5, 7]]]> : tensor<1x2x4xi32>
+  %1 = arith.constant dense<[[[80, 45, 16, 12], [2, 5, 5, 7]]]> : tensor<1x2x4xi32>
+  %2 = "tfl.pack"(%0, %arg0, %1) {axis = 2 : i32, values_count = 3 : i32} : (tensor<1x2x4xi32>, tensor<*xi32>, tensor<1x2x4xi32>) -> tensor<1x2x3x4xi32>
+  return %2 : tensor<1x2x3x4xi32>
+}
+
+// -----
+
+// CHECK-LABEL: test_pack_unknown_input_dim_negative_axis
+// CHECK-DAG: %[[OUT_SHAPE:.*]] = tosa.const_shape  {values = dense<[1, 3, 2, 4]> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK-DAG: %[[C0:.*]] = "tosa.const"() <{values = dense<{{.*}}> : tensor<1x2x4xi32>}> : () -> tensor<1x2x4xi32>
+// CHECK-DAG: %[[C1:.*]] = "tosa.const"() <{values = dense<{{.*}}> : tensor<1x2x4xi32>}> : () -> tensor<1x2x4xi32>
+// CHECK-DAG: %[[C2:.*]] = tosa.const_shape  {values = dense<[1, 2, 4]> : tensor<3xindex>} : () -> !tosa.shape<3>
+// CHECK-DAG: %[[RESHAPE1:.*]] = tosa.reshape %arg0, %[[C2]] : (tensor<*xi32>, !tosa.shape<3>) -> tensor<1x2x4xi32>
+// CHECK-DAG: %[[CONCAT:.*]] = tosa.concat %[[C0]], %[[RESHAPE1]], %[[C1]] {axis = 1 : i32} : (tensor<1x2x4xi32>, tensor<1x2x4xi32>, tensor<1x2x4xi32>) -> tensor<1x6x4xi32>
+// CHECK-DAG: %[[RESHAPE2:.*]] = tosa.reshape %[[CONCAT]], %[[OUT_SHAPE]] : (tensor<1x6x4xi32>, !tosa.shape<4>) -> tensor<1x3x2x4xi32>
+// CHECK: return %[[RESHAPE2]] : tensor<1x3x2x4xi32>
+func.func @test_pack_unknown_input_dim_negative_axis(%arg0: tensor<*xi32>) -> tensor<1x3x2x4xi32> {
+  %0 = arith.constant dense<[[[115, 5, 12, 45], [6, 12, 5, 505]]]> : tensor<1x2x4xi32>
+  %1 = arith.constant dense<[[[85, 45, 6, 3], [6, 12, 3, 7]]]> : tensor<1x2x4xi32>
+  %2 = "tfl.pack"(%0, %arg0, %1) {axis = -3 : i32, values_count = 3 : i32} : (tensor<1x2x4xi32>, tensor<*xi32>, tensor<1x2x4xi32>) -> tensor<1x3x2x4xi32>
+  return %2 : tensor<1x3x2x4xi32>
+}
+
+// -----
+
+// CHECK-LABEL: test_pack_unknown_output_dims
+// CHECK-DAG: %[[C0:.*]] = tosa.const_shape  {values = dense<[3, 1, 2, 4]> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK-DAG: %[[C1:.*]] = "tosa.const"() <{values = dense<{{.*}}> : tensor<1x2x4xi32>}> : () -> tensor<1x2x4xi32>
+// CHECK-DAG: %[[C2:.*]] = "tosa.const"() <{values = dense<{{.*}}> : tensor<1x2x4xi32>}> : () -> tensor<1x2x4xi32>
+// CHECK-DAG: %[[CONCAT:.*]] = tosa.concat %[[C1]], %arg0, %[[C2]] {axis = 0 : i32} : (tensor<1x2x4xi32>, tensor<1x2x4xi32>, tensor<1x2x4xi32>) -> tensor<3x2x4xi32>
+// CHECK-DAG: %[[RESHAPE:.*]] = tosa.reshape %[[CONCAT]], %[[C0]] : (tensor<3x2x4xi32>, !tosa.shape<4>) -> tensor<3x1x2x4xi32>
+// CHECK-DAG: %[[TRANSPOSE:.*]] = tosa.transpose %[[RESHAPE]] {perms = array<i32: 1, 2, 3, 0>} : (tensor<3x1x2x4xi32>) -> tensor<1x2x4x3xi32>
+// CHECK: return %[[TRANSPOSE]] : tensor<1x2x4x3xi32>
+func.func @test_pack_unknown_output_dims(%arg0: tensor<1x2x4xi32>) -> tensor<*xi32> {
+  %0 = arith.constant dense<[[[32, 5, 1250, 45], [6, 12, 14, 7]]]> : tensor<1x2x4xi32>
+  %1 = arith.constant dense<[[[17, 17, 17, 17], [6, 12, 5, 5]]]> : tensor<1x2x4xi32>
+  %2 = "tfl.pack"(%0, %arg0, %1) {axis = -1 : i32, values_count = 3 : i32} : (tensor<1x2x4xi32>, tensor<1x2x4xi32>, tensor<1x2x4xi32>) -> tensor<*xi32>
+  return %2 : tensor<*xi32>
+}
+
+// -----
+
+// CHECK-LABEL: test_pack_unknown_output_dims2
+// CHECK-DAG: %[[SHAPE4:.*]] = tosa.const_shape  {values = dense<{{.*}}> : tensor<4xindex>} : () -> !tosa.shape<4>
+// CHECK-DAG: %[[C1:.*]] = "tosa.const"() <{values = dense<{{.*}}> : tensor<1x2x4xi32>}> : () -> tensor<1x2x4xi32>
+// CHECK-DAG: %[[C2:.*]] = "tosa.const"() <{values = dense<{{.*}}> : tensor<1x2x4xi32>}> : () -> tensor<1x2x4xi32>
+// CHECK-DAG: %[[SHAPE3:.*]] = tosa.const_shape  {values = dense<{{.*}}> : tensor<3xindex>} : () -> !tosa.shape<3>
+// CHECK-DAG: %[[RESHAPE1:.*]] = tosa.reshape %arg0, %[[SHAPE3]] : (tensor<*xi32>, !tosa.shape<3>) -> tensor<1x2x4xi32>
+// CHECK-DAG: %[[CONCAT:.*]] = tosa.concat %[[RESHAPE1]], %[[C1]], %[[C2]] {axis = 2 : i32} : (tensor<1x2x4xi32>, tensor<1x2x4xi32>, tensor<1x2x4xi32>) -> tensor<1x2x12xi32>
+// CHECK-DAG: %[[RESHAPE2:.*]] = tosa.reshape %[[CONCAT]], %[[SHAPE4]] : (tensor<1x2x12xi32>, !tosa.shape<4>) -> tensor<1x2x3x4xi32>
+// CHECK: return %[[RESHAPE2]] : tensor<1x2x3x4xi32>
+func.func @test_pack_unknown_output_dims2(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+  %0 = arith.constant dense<[[[9, 115, 8, 5], [600, 12, 5, 71]]]> : tensor<1x2x4xi32>
+  %1 = arith.constant dense<[[[85, 45, 6, 12], [6, 50, 41, 7]]]> : tensor<1x2x4xi32>
+  %2 = "tfl.pack"(%arg0, %0, %1) {axis = 2 : i32, values_count = 3 : i32} : (tensor<*xi32>, tensor<1x2x4xi32>, tensor<1x2x4xi32>) -> tensor<*xi32>
+  return %2 : tensor<*xi32>
+}
+
+// -----
+
+// CHECK-LABEL: test_pack_unknown_input_dim_rank0
+// CHECK-DAG: %[[C0:.*]] = "tosa.const"() <{values = dense<{{.*}}> : tensor<1xi32>}> : () -> tensor<1xi32>
+// CHECK-DAG: %[[C1:.*]] = "tosa.const"() <{values = dense<{{.*}}> : tensor<1xi32>}> : () -> tensor<1xi32>
+// CHECK-DAG: %[[SHAPE:.*]] = tosa.const_shape  {values = dense<{{.*}}> : tensor<1xindex>} : () -> !tosa.shape<1>
+// CHECK-DAG: %[[RESHAPE:.*]] = tosa.reshape %arg0, %[[SHAPE]] : (tensor<*xi32>, !tosa.shape<1>) -> tensor<1xi32>
+// CHECK-DAG: %[[CONCAT:.*]] = tosa.concat %[[RESHAPE]], %[[C1]], %[[C0]] {axis = 0 : i32} : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<3xi32>
+// CHECK: return %[[CONCAT]] : tensor<3xi32>
+func.func @test_pack_unknown_input_dim_rank0(%arg0: tensor<*xi32>) -> tensor<3xi32> {
+  %0 = arith.constant dense<1200> : tensor<i32>
+  %1 = arith.constant dense<85> : tensor<i32>
+  %2 = "tfl.pack"(%arg0, %0, %1) {axis = 0 : i32, values_count = 3 : i32} : (tensor<*xi32>, tensor<i32>, tensor<i32>) -> tensor<3xi32>
+  return %2 : tensor<3xi32>
+}
+
+// -----
+
+//CHECK-LABEL: test_pack_unknown_output_dim_rank0
+// CHECK-DAG: %[[C0:.*]] = "tosa.const"() <{values = dense<{{.*}}> : tensor<1xi32>}> : () -> tensor<1xi32>
+// CHECK-DAG: %[[C1:.*]] = "tosa.const"() <{values = dense<{{.*}}> : tensor<1xi32>}> : () -> tensor<1xi32>
+// CHECK-DAG: %[[SHAPE:.*]] = tosa.const_shape  {values = dense<{{.*}}> : tensor<1xindex>} : () -> !tosa.shape<1>
+// CHECK-DAG: %[[RESHAPE:.*]] = tosa.reshape %arg0, %[[SHAPE]] : (tensor<i32>, !tosa.shape<1>) -> tensor<1xi32>
+// CHECK-DAG: %[[CONCAT:.*]] = tosa.concat %[[RESHAPE]], %[[C1]], %[[C0]] {axis = 0 : i32} : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<3xi32>
+// CHECK: return %[[CONCAT]] : tensor<3xi32>
+func.func @test_pack_unknown_output_dim_rank0(%arg0: tensor<i32>) -> tensor<*xi32> {
+  %0 = arith.constant dense<78> : tensor<i32>
+  %1 = arith.constant dense<79> : tensor<i32>
+  %2 = "tfl.pack"(%arg0, %0, %1) {axis = 0 : i32, values_count = 3 : i32} : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<*xi32>
+  return %2 : tensor<*xi32>
 }
 
 // -----
