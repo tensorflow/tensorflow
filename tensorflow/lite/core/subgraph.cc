@@ -157,14 +157,15 @@ TfLiteQuantizationParams GetLegacyQuantization(
       static_cast<TfLiteAffineQuantization*>(quantization.params);
   if (!affine_quantization || !affine_quantization->scale ||
       !affine_quantization->zero_point ||
-      affine_quantization->scale->size != 1 ||
-      affine_quantization->zero_point->size != 1) {
+      affine_quantization->scale->size != 1) {
     return legacy_quantization;
   }
 
   // We know its per-layer quantization now.
   legacy_quantization.scale = affine_quantization->scale->data[0];
-  legacy_quantization.zero_point = affine_quantization->zero_point->data[0];
+  legacy_quantization.zero_point =
+      affine_quantization->zero_point ? affine_quantization->zero_point->data[0]
+                                      : 0;
   return legacy_quantization;
 }
 
