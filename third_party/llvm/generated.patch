@@ -1,44 +1,4 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/lib/Lex/ModuleMap.cpp b/clang/lib/Lex/ModuleMap.cpp
---- a/clang/lib/Lex/ModuleMap.cpp
-+++ b/clang/lib/Lex/ModuleMap.cpp
-@@ -310,10 +310,8 @@
-   } else if (Header.HasBuiltinHeader && !Header.Size && !Header.ModTime) {
-     // There's a builtin header but no corresponding on-disk header. Assume
-     // this was supposed to modularize the builtin header alone.
--  } else if ((Header.Kind == Module::HK_Excluded) ||
--             (Header.Kind == Module::HK_Textual)) {
--    // Ignore excluded and textual header files as a module can be built with
--    // such headers missing.
-+  } else if (Header.Kind == Module::HK_Excluded) {
-+    // Ignore missing excluded header files. They're optional anyway.
-   } else {
-     // If we find a module that has a missing header, we mark this module as
-     // unavailable and store the header directive for displaying diagnostics.
-diff -ruN --strip-trailing-cr a/clang/test/Modules/Inputs/submodules/module.modulemap b/clang/test/Modules/Inputs/submodules/module.modulemap
---- a/clang/test/Modules/Inputs/submodules/module.modulemap
-+++ b/clang/test/Modules/Inputs/submodules/module.modulemap
-@@ -30,7 +30,3 @@
-   module * { export * }
-   export *
- }
--
--module missing_textual_header {
--  textual header "missing_textual.h"
--}
-diff -ruN --strip-trailing-cr a/clang/test/Modules/missing-header.m b/clang/test/Modules/missing-header.m
---- a/clang/test/Modules/missing-header.m
-+++ b/clang/test/Modules/missing-header.m
-@@ -8,9 +8,6 @@
- @import missing_unavailable_headers.not_missing; // OK
- // CHECK-NOT: missing_unavailable_headers
- 
--@import missing_textual_header; // OK
--// CHECK-NOT: missing_textual_header
--
- @import missing_headers;
- // CHECK: module.modulemap:15:27: error: header 'missing.h' not found
- // CHECK: could not build module 'missing_headers'
 diff -ruN --strip-trailing-cr a/libcxx/include/__algorithm/shuffle.h b/libcxx/include/__algorithm/shuffle.h
 --- a/libcxx/include/__algorithm/shuffle.h
 +++ b/libcxx/include/__algorithm/shuffle.h
@@ -321,22 +281,6 @@ diff -ruN --strip-trailing-cr a/libcxx/include/__algorithm/sort.h b/libcxx/inclu
    std::sort(__first, __last, __less<>());
  }
  
-diff -ruN --strip-trailing-cr a/libcxx/include/any b/libcxx/include/any
---- a/libcxx/include/any
-+++ b/libcxx/include/any
-@@ -120,12 +120,10 @@
- #  include <__undef_macros>
- 
- _LIBCPP_BEGIN_UNVERSIONED_NAMESPACE_STD
--_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
- class _LIBCPP_EXPORTED_FROM_ABI _LIBCPP_AVAILABILITY_BAD_ANY_CAST bad_any_cast : public bad_cast {
- public:
-   const char* what() const _NOEXCEPT override;
- };
--_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
- _LIBCPP_END_UNVERSIONED_NAMESPACE_STD
- 
- _LIBCPP_BEGIN_NAMESPACE_STD
 diff -ruN --strip-trailing-cr a/libcxx/include/__atomic/atomic_sync.h b/libcxx/include/__atomic/atomic_sync.h
 --- a/libcxx/include/__atomic/atomic_sync.h
 +++ b/libcxx/include/__atomic/atomic_sync.h
@@ -356,25 +300,6 @@ diff -ruN --strip-trailing-cr a/libcxx/include/__atomic/atomic_sync.h b/libcxx/i
  
  template <class _AtomicWaitable, class _Poll>
  struct __atomic_wait_backoff_impl {
-diff -ruN --strip-trailing-cr a/libcxx/include/barrier b/libcxx/include/barrier
---- a/libcxx/include/barrier
-+++ b/libcxx/include/barrier
-@@ -97,7 +97,6 @@
- 
- class __barrier_algorithm_base;
- 
--_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
- _LIBCPP_AVAILABILITY_SYNC _LIBCPP_EXPORTED_FROM_ABI __barrier_algorithm_base*
- __construct_barrier_algorithm_base(ptrdiff_t& __expected);
- 
-@@ -106,7 +105,6 @@
- 
- _LIBCPP_AVAILABILITY_SYNC _LIBCPP_EXPORTED_FROM_ABI void
- __destroy_barrier_algorithm_base(__barrier_algorithm_base* __barrier) noexcept;
--_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
- 
- template <class _CompletionF>
- class __barrier_base {
 diff -ruN --strip-trailing-cr a/libcxx/include/__charconv/from_chars_floating_point.h b/libcxx/include/__charconv/from_chars_floating_point.h
 --- a/libcxx/include/__charconv/from_chars_floating_point.h
 +++ b/libcxx/include/__charconv/from_chars_floating_point.h
@@ -498,25 +423,6 @@ diff -ruN --strip-trailing-cr a/libcxx/include/__chrono/system_clock.h b/libcxx/
  _LIBCPP_END_NAMESPACE_STD
  
  #endif // _LIBCPP___CHRONO_SYSTEM_CLOCK_H
-diff -ruN --strip-trailing-cr a/libcxx/include/codecvt b/libcxx/include/codecvt
---- a/libcxx/include/codecvt
-+++ b/libcxx/include/codecvt
-@@ -71,7 +71,6 @@
- #    if _LIBCPP_STD_VER < 26 || defined(_LIBCPP_BUILDING_LIBRARY) || defined(_LIBCPP_ENABLE_CXX26_REMOVED_CODECVT)
- 
- _LIBCPP_BEGIN_NAMESPACE_STD
--_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
- 
- enum _LIBCPP_DEPRECATED_IN_CXX17 codecvt_mode { consume_header = 4, generate_header = 2, little_endian = 1 };
- 
-@@ -580,7 +579,6 @@
- };
- _LIBCPP_SUPPRESS_DEPRECATED_POP
- 
--_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
- _LIBCPP_END_NAMESPACE_STD
- 
- #    endif // _LIBCPP_STD_VER < 26 || defined(_LIBCPP_BUILDING_LIBRARY) || defined(_LIBCPP_ENABLE_CXX26_REMOVED_CODECVT)
 diff -ruN --strip-trailing-cr a/libcxx/include/__condition_variable/condition_variable.h b/libcxx/include/__condition_variable/condition_variable.h
 --- a/libcxx/include/__condition_variable/condition_variable.h
 +++ b/libcxx/include/__condition_variable/condition_variable.h
@@ -536,19 +442,6 @@ diff -ruN --strip-trailing-cr a/libcxx/include/__condition_variable/condition_va
  _LIBCPP_END_NAMESPACE_STD
  
  _LIBCPP_POP_MACROS
-diff -ruN --strip-trailing-cr a/libcxx/include/condition_variable b/libcxx/include/condition_variable
---- a/libcxx/include/condition_variable
-+++ b/libcxx/include/condition_variable
-@@ -340,9 +340,7 @@
- 
- #    endif // _LIBCPP_STD_VER >= 20
- 
--_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
- _LIBCPP_EXPORTED_FROM_ABI void notify_all_at_thread_exit(condition_variable&, unique_lock<mutex>);
--_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
- 
- _LIBCPP_END_NAMESPACE_STD
- 
 diff -ruN --strip-trailing-cr a/libcxx/include/__config b/libcxx/include/__config
 --- a/libcxx/include/__config
 +++ b/libcxx/include/__config
@@ -862,25 +755,6 @@ diff -ruN --strip-trailing-cr a/libcxx/include/__format/format_error.h b/libcxx/
  
  [[noreturn]] inline _LIBCPP_HIDE_FROM_ABI void __throw_format_error(const char* __s) {
  #  if _LIBCPP_HAS_EXCEPTIONS
-diff -ruN --strip-trailing-cr a/libcxx/include/fstream b/libcxx/include/fstream
---- a/libcxx/include/fstream
-+++ b/libcxx/include/fstream
-@@ -220,7 +220,6 @@
- #    include <__undef_macros>
- 
- _LIBCPP_BEGIN_NAMESPACE_STD
--_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
- 
- #    if _LIBCPP_STD_VER >= 26 && defined(_LIBCPP_WIN32API)
- _LIBCPP_EXPORTED_FROM_ABI void* __filebuf_windows_native_handle(FILE* __file) noexcept;
-@@ -1570,7 +1569,6 @@
- extern template class _LIBCPP_EXTERN_TEMPLATE_TYPE_VIS basic_filebuf<char>;
- #    endif
- 
--_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
- _LIBCPP_END_NAMESPACE_STD
- 
- _LIBCPP_POP_MACROS
 diff -ruN --strip-trailing-cr a/libcxx/include/__functional/function.h b/libcxx/include/__functional/function.h
 --- a/libcxx/include/__functional/function.h
 +++ b/libcxx/include/__functional/function.h
@@ -950,25 +824,6 @@ diff -ruN --strip-trailing-cr a/libcxx/include/__functional/hash.h b/libcxx/incl
  #else
  _LIBCPP_HIDE_FROM_ABI inline size_t __hash_memory(const void* __ptr, size_t __size) _NOEXCEPT {
    return __murmur2_or_cityhash<size_t>()(__ptr, __size);
-diff -ruN --strip-trailing-cr a/libcxx/include/future b/libcxx/include/future
---- a/libcxx/include/future
-+++ b/libcxx/include/future
-@@ -420,7 +420,6 @@
- #    include <__undef_macros>
- 
- _LIBCPP_BEGIN_NAMESPACE_STD
--_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
- 
- // enum class future_errc
- _LIBCPP_DECLARE_STRONG_ENUM(future_errc){
-@@ -2062,7 +2061,6 @@
- 
- inline shared_future<void> future<void>::share() _NOEXCEPT { return shared_future<void>(std::move(*this)); }
- 
--_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
- _LIBCPP_END_NAMESPACE_STD
- 
- _LIBCPP_POP_MACROS
 diff -ruN --strip-trailing-cr a/libcxx/include/__hash_table b/libcxx/include/__hash_table
 --- a/libcxx/include/__hash_table
 +++ b/libcxx/include/__hash_table
@@ -982,44 +837,6 @@ diff -ruN --strip-trailing-cr a/libcxx/include/__hash_table b/libcxx/include/__h
  
  template <class _NodePtr>
  struct __hash_node_base {
-diff -ruN --strip-trailing-cr a/libcxx/include/ios b/libcxx/include/ios
---- a/libcxx/include/ios
-+++ b/libcxx/include/ios
-@@ -247,7 +247,6 @@
- #    include <__undef_macros>
- 
- _LIBCPP_BEGIN_NAMESPACE_STD
--_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
- 
- typedef ptrdiff_t streamsize;
- 
-@@ -872,7 +871,6 @@
-   return __str;
- }
- 
--_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
- _LIBCPP_END_NAMESPACE_STD
- 
- _LIBCPP_POP_MACROS
-diff -ruN --strip-trailing-cr a/libcxx/include/istream b/libcxx/include/istream
---- a/libcxx/include/istream
-+++ b/libcxx/include/istream
-@@ -187,7 +187,6 @@
- #    include <__undef_macros>
- 
- _LIBCPP_BEGIN_NAMESPACE_STD
--_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
- 
- template <class _CharT, class _Traits>
- class basic_istream : virtual public basic_ios<_CharT, _Traits> {
-@@ -1399,7 +1398,6 @@
- #    endif
- extern template class _LIBCPP_EXTERN_TEMPLATE_TYPE_VIS basic_iostream<char>;
- 
--_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
- _LIBCPP_END_NAMESPACE_STD
- 
- _LIBCPP_POP_MACROS
 diff -ruN --strip-trailing-cr a/libcxx/include/__locale b/libcxx/include/__locale
 --- a/libcxx/include/__locale
 +++ b/libcxx/include/__locale
@@ -1039,25 +856,6 @@ diff -ruN --strip-trailing-cr a/libcxx/include/__locale b/libcxx/include/__local
  _LIBCPP_END_NAMESPACE_STD
  
  #endif // _LIBCPP_HAS_LOCALIZATION
-diff -ruN --strip-trailing-cr a/libcxx/include/locale b/libcxx/include/locale
---- a/libcxx/include/locale
-+++ b/libcxx/include/locale
-@@ -246,7 +246,6 @@
- #    include <__undef_macros>
- 
- _LIBCPP_BEGIN_NAMESPACE_STD
--_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
- 
- #    if defined(__APPLE__) || defined(__FreeBSD__)
- #      define _LIBCPP_GET_C_LOCALE 0
-@@ -3679,7 +3678,6 @@
- 
- #    endif // _LIBCPP_STD_VER < 26 || defined(_LIBCPP_ENABLE_CXX26_REMOVED_WSTRING_CONVERT)
- 
--_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
- _LIBCPP_END_NAMESPACE_STD
- 
- _LIBCPP_POP_MACROS
 diff -ruN --strip-trailing-cr a/libcxx/include/__locale_dir/support/windows.h b/libcxx/include/__locale_dir/support/windows.h
 --- a/libcxx/include/__locale_dir/support/windows.h
 +++ b/libcxx/include/__locale_dir/support/windows.h
@@ -1327,25 +1125,6 @@ diff -ruN --strip-trailing-cr a/libcxx/include/__mutex/once_flag.h b/libcxx/incl
  
  #ifndef _LIBCPP_CXX03_LANG
  
-diff -ruN --strip-trailing-cr a/libcxx/include/mutex b/libcxx/include/mutex
---- a/libcxx/include/mutex
-+++ b/libcxx/include/mutex
-@@ -215,7 +215,6 @@
- #  include <__undef_macros>
- 
- _LIBCPP_BEGIN_NAMESPACE_STD
--_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
- 
- #  if _LIBCPP_HAS_THREADS
- 
-@@ -492,7 +491,6 @@
- #    endif // _LIBCPP_STD_VER >= 17
- #  endif   // _LIBCPP_HAS_THREADS
- 
--_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
- _LIBCPP_END_NAMESPACE_STD
- 
- _LIBCPP_POP_MACROS
 diff -ruN --strip-trailing-cr a/libcxx/include/__new/exceptions.h b/libcxx/include/__new/exceptions.h
 --- a/libcxx/include/__new/exceptions.h
 +++ b/libcxx/include/__new/exceptions.h
@@ -1412,25 +1191,6 @@ diff -ruN --strip-trailing-cr a/libcxx/include/__ostream/print.h b/libcxx/includ
  
  #    if _LIBCPP_HAS_UNICODE
  template <class = void> // TODO PRINT template or availability markup fires too eagerly (http://llvm.org/PR61563).
-diff -ruN --strip-trailing-cr a/libcxx/include/print b/libcxx/include/print
---- a/libcxx/include/print
-+++ b/libcxx/include/print
-@@ -54,7 +54,6 @@
- 
- _LIBCPP_BEGIN_NAMESPACE_STD
- 
--_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
- #  ifdef _LIBCPP_WIN32API
- _LIBCPP_EXPORTED_FROM_ABI bool __is_windows_terminal(FILE* __stream);
- 
-@@ -73,7 +72,6 @@
- #  elif __has_include(<unistd.h>)
- _LIBCPP_EXPORTED_FROM_ABI bool __is_posix_terminal(FILE* __stream);
- #  endif // _LIBCPP_WIN32API
--_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
- 
- #  if _LIBCPP_STD_VER >= 23
- 
 diff -ruN --strip-trailing-cr a/libcxx/include/__pstl/backends/libdispatch.h b/libcxx/include/__pstl/backends/libdispatch.h
 --- a/libcxx/include/__pstl/backends/libdispatch.h
 +++ b/libcxx/include/__pstl/backends/libdispatch.h
@@ -1491,6 +1251,360 @@ diff -ruN --strip-trailing-cr a/libcxx/include/__random/random_device.h b/libcxx
  _LIBCPP_END_NAMESPACE_STD
  
  _LIBCPP_POP_MACROS
+diff -ruN --strip-trailing-cr a/libcxx/include/__system_error/error_category.h b/libcxx/include/__system_error/error_category.h
+--- a/libcxx/include/__system_error/error_category.h
++++ b/libcxx/include/__system_error/error_category.h
+@@ -25,7 +25,6 @@
+ 
+ class _LIBCPP_HIDDEN __do_message;
+ 
+-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
+ class _LIBCPP_EXPORTED_FROM_ABI error_category {
+ public:
+   virtual ~error_category() _NOEXCEPT;
+@@ -70,7 +69,6 @@
+ 
+ [[__gnu__::__const__]] _LIBCPP_EXPORTED_FROM_ABI const error_category& generic_category() _NOEXCEPT;
+ [[__gnu__::__const__]] _LIBCPP_EXPORTED_FROM_ABI const error_category& system_category() _NOEXCEPT;
+-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
+ 
+ _LIBCPP_END_NAMESPACE_STD
+ 
+diff -ruN --strip-trailing-cr a/libcxx/include/__system_error/error_code.h b/libcxx/include/__system_error/error_code.h
+--- a/libcxx/include/__system_error/error_code.h
++++ b/libcxx/include/__system_error/error_code.h
+@@ -39,7 +39,6 @@
+ void make_error_code() = delete;
+ } // namespace __adl_only
+ 
+-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
+ class _LIBCPP_EXPORTED_FROM_ABI error_code {
+   int __val_;
+   const error_category* __cat_;
+@@ -84,7 +83,6 @@
+ 
+   _LIBCPP_HIDE_FROM_ABI explicit operator bool() const _NOEXCEPT { return __val_ != 0; }
+ };
+-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
+ 
+ inline _LIBCPP_HIDE_FROM_ABI error_code make_error_code(errc __e) _NOEXCEPT {
+   return error_code(static_cast<int>(__e), generic_category());
+diff -ruN --strip-trailing-cr a/libcxx/include/__system_error/error_condition.h b/libcxx/include/__system_error/error_condition.h
+--- a/libcxx/include/__system_error/error_condition.h
++++ b/libcxx/include/__system_error/error_condition.h
+@@ -46,7 +46,6 @@
+ void make_error_condition() = delete;
+ } // namespace __adl_only
+ 
+-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
+ class _LIBCPP_EXPORTED_FROM_ABI error_condition {
+   int __val_;
+   const error_category* __cat_;
+@@ -88,7 +87,6 @@
+ 
+   _LIBCPP_HIDE_FROM_ABI explicit operator bool() const _NOEXCEPT { return __val_ != 0; }
+ };
+-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
+ 
+ inline _LIBCPP_HIDE_FROM_ABI error_condition make_error_condition(errc __e) _NOEXCEPT {
+   return error_condition(static_cast<int>(__e), generic_category());
+diff -ruN --strip-trailing-cr a/libcxx/include/__system_error/system_error.h b/libcxx/include/__system_error/system_error.h
+--- a/libcxx/include/__system_error/system_error.h
++++ b/libcxx/include/__system_error/system_error.h
+@@ -22,7 +22,6 @@
+ #endif
+ 
+ _LIBCPP_BEGIN_NAMESPACE_STD
+-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
+ 
+ class _LIBCPP_EXPORTED_FROM_ABI system_error : public runtime_error {
+   error_code __ec_;
+@@ -53,7 +52,6 @@
+ #endif
+ }
+ 
+-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
+ _LIBCPP_END_NAMESPACE_STD
+ 
+ #endif // _LIBCPP___SYSTEM_ERROR_SYSTEM_ERROR_H
+diff -ruN --strip-trailing-cr a/libcxx/include/__system_error/throw_system_error.h b/libcxx/include/__system_error/throw_system_error.h
+--- a/libcxx/include/__system_error/throw_system_error.h
++++ b/libcxx/include/__system_error/throw_system_error.h
+@@ -18,9 +18,7 @@
+ 
+ _LIBCPP_BEGIN_NAMESPACE_STD
+ 
+-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
+ [[__noreturn__]] _LIBCPP_EXPORTED_FROM_ABI void __throw_system_error(int __ev, const char* __what_arg);
+-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
+ 
+ _LIBCPP_END_NAMESPACE_STD
+ 
+diff -ruN --strip-trailing-cr a/libcxx/include/__thread/support/windows.h b/libcxx/include/__thread/support/windows.h
+--- a/libcxx/include/__thread/support/windows.h
++++ b/libcxx/include/__thread/support/windows.h
+@@ -19,7 +19,6 @@
+ #endif
+ 
+ _LIBCPP_BEGIN_NAMESPACE_STD
+-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
+ 
+ using __libcpp_timespec_t = ::timespec;
+ 
+@@ -129,7 +128,6 @@
+ 
+ _LIBCPP_EXPORTED_FROM_ABI int __libcpp_tls_set(__libcpp_tls_key __key, void* __p);
+ 
+-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
+ _LIBCPP_END_NAMESPACE_STD
+ 
+ #endif // _LIBCPP___THREAD_SUPPORT_WINDOWS_H
+diff -ruN --strip-trailing-cr a/libcxx/include/__thread/this_thread.h b/libcxx/include/__thread/this_thread.h
+--- a/libcxx/include/__thread/this_thread.h
++++ b/libcxx/include/__thread/this_thread.h
+@@ -32,9 +32,7 @@
+ 
+ #if _LIBCPP_HAS_THREADS
+ 
+-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
+ _LIBCPP_EXPORTED_FROM_ABI void sleep_for(const chrono::nanoseconds& __ns);
+-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
+ 
+ template <class _Rep, class _Period>
+ _LIBCPP_HIDE_FROM_ABI void sleep_for(const chrono::duration<_Rep, _Period>& __d) {
+diff -ruN --strip-trailing-cr a/libcxx/include/__thread/thread.h b/libcxx/include/__thread/thread.h
+--- a/libcxx/include/__thread/thread.h
++++ b/libcxx/include/__thread/thread.h
+@@ -42,7 +42,6 @@
+ #include <__undef_macros>
+ 
+ _LIBCPP_BEGIN_NAMESPACE_STD
+-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
+ 
+ #if _LIBCPP_HAS_THREADS
+ 
+@@ -257,7 +256,6 @@
+ 
+ #endif // _LIBCPP_HAS_THREADS
+ 
+-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
+ _LIBCPP_END_NAMESPACE_STD
+ 
+ _LIBCPP_POP_MACROS
+diff -ruN --strip-trailing-cr a/libcxx/include/__verbose_abort b/libcxx/include/__verbose_abort
+--- a/libcxx/include/__verbose_abort
++++ b/libcxx/include/__verbose_abort
+@@ -20,10 +20,8 @@
+ 
+ // This function should never be called directly from the code -- it should only be called through
+ // the _LIBCPP_VERBOSE_ABORT macro.
+-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
+ [[__noreturn__]] _LIBCPP_AVAILABILITY_VERBOSE_ABORT _LIBCPP_OVERRIDABLE_FUNC_VIS _LIBCPP_ATTRIBUTE_FORMAT(
+     __printf__, 1, 2) void __libcpp_verbose_abort(const char* __format, ...) _NOEXCEPT;
+-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
+ 
+ // _LIBCPP_VERBOSE_ABORT(format, args...)
+ //
+diff -ruN --strip-trailing-cr a/libcxx/include/any b/libcxx/include/any
+--- a/libcxx/include/any
++++ b/libcxx/include/any
+@@ -120,12 +120,10 @@
+ #  include <__undef_macros>
+ 
+ _LIBCPP_BEGIN_UNVERSIONED_NAMESPACE_STD
+-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
+ class _LIBCPP_EXPORTED_FROM_ABI _LIBCPP_AVAILABILITY_BAD_ANY_CAST bad_any_cast : public bad_cast {
+ public:
+   const char* what() const _NOEXCEPT override;
+ };
+-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
+ _LIBCPP_END_UNVERSIONED_NAMESPACE_STD
+ 
+ _LIBCPP_BEGIN_NAMESPACE_STD
+diff -ruN --strip-trailing-cr a/libcxx/include/barrier b/libcxx/include/barrier
+--- a/libcxx/include/barrier
++++ b/libcxx/include/barrier
+@@ -97,7 +97,6 @@
+ 
+ class __barrier_algorithm_base;
+ 
+-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
+ _LIBCPP_AVAILABILITY_SYNC _LIBCPP_EXPORTED_FROM_ABI __barrier_algorithm_base*
+ __construct_barrier_algorithm_base(ptrdiff_t& __expected);
+ 
+@@ -106,7 +105,6 @@
+ 
+ _LIBCPP_AVAILABILITY_SYNC _LIBCPP_EXPORTED_FROM_ABI void
+ __destroy_barrier_algorithm_base(__barrier_algorithm_base* __barrier) noexcept;
+-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
+ 
+ template <class _CompletionF>
+ class __barrier_base {
+diff -ruN --strip-trailing-cr a/libcxx/include/codecvt b/libcxx/include/codecvt
+--- a/libcxx/include/codecvt
++++ b/libcxx/include/codecvt
+@@ -71,7 +71,6 @@
+ #    if _LIBCPP_STD_VER < 26 || defined(_LIBCPP_BUILDING_LIBRARY) || defined(_LIBCPP_ENABLE_CXX26_REMOVED_CODECVT)
+ 
+ _LIBCPP_BEGIN_NAMESPACE_STD
+-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
+ 
+ enum _LIBCPP_DEPRECATED_IN_CXX17 codecvt_mode { consume_header = 4, generate_header = 2, little_endian = 1 };
+ 
+@@ -580,7 +579,6 @@
+ };
+ _LIBCPP_SUPPRESS_DEPRECATED_POP
+ 
+-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
+ _LIBCPP_END_NAMESPACE_STD
+ 
+ #    endif // _LIBCPP_STD_VER < 26 || defined(_LIBCPP_BUILDING_LIBRARY) || defined(_LIBCPP_ENABLE_CXX26_REMOVED_CODECVT)
+diff -ruN --strip-trailing-cr a/libcxx/include/condition_variable b/libcxx/include/condition_variable
+--- a/libcxx/include/condition_variable
++++ b/libcxx/include/condition_variable
+@@ -340,9 +340,7 @@
+ 
+ #    endif // _LIBCPP_STD_VER >= 20
+ 
+-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
+ _LIBCPP_EXPORTED_FROM_ABI void notify_all_at_thread_exit(condition_variable&, unique_lock<mutex>);
+-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
+ 
+ _LIBCPP_END_NAMESPACE_STD
+ 
+diff -ruN --strip-trailing-cr a/libcxx/include/fstream b/libcxx/include/fstream
+--- a/libcxx/include/fstream
++++ b/libcxx/include/fstream
+@@ -220,7 +220,6 @@
+ #    include <__undef_macros>
+ 
+ _LIBCPP_BEGIN_NAMESPACE_STD
+-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
+ 
+ #    if _LIBCPP_STD_VER >= 26 && defined(_LIBCPP_WIN32API)
+ _LIBCPP_EXPORTED_FROM_ABI void* __filebuf_windows_native_handle(FILE* __file) noexcept;
+@@ -1570,7 +1569,6 @@
+ extern template class _LIBCPP_EXTERN_TEMPLATE_TYPE_VIS basic_filebuf<char>;
+ #    endif
+ 
+-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
+ _LIBCPP_END_NAMESPACE_STD
+ 
+ _LIBCPP_POP_MACROS
+diff -ruN --strip-trailing-cr a/libcxx/include/future b/libcxx/include/future
+--- a/libcxx/include/future
++++ b/libcxx/include/future
+@@ -420,7 +420,6 @@
+ #    include <__undef_macros>
+ 
+ _LIBCPP_BEGIN_NAMESPACE_STD
+-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
+ 
+ // enum class future_errc
+ _LIBCPP_DECLARE_STRONG_ENUM(future_errc){
+@@ -2062,7 +2061,6 @@
+ 
+ inline shared_future<void> future<void>::share() _NOEXCEPT { return shared_future<void>(std::move(*this)); }
+ 
+-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
+ _LIBCPP_END_NAMESPACE_STD
+ 
+ _LIBCPP_POP_MACROS
+diff -ruN --strip-trailing-cr a/libcxx/include/ios b/libcxx/include/ios
+--- a/libcxx/include/ios
++++ b/libcxx/include/ios
+@@ -247,7 +247,6 @@
+ #    include <__undef_macros>
+ 
+ _LIBCPP_BEGIN_NAMESPACE_STD
+-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
+ 
+ typedef ptrdiff_t streamsize;
+ 
+@@ -872,7 +871,6 @@
+   return __str;
+ }
+ 
+-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
+ _LIBCPP_END_NAMESPACE_STD
+ 
+ _LIBCPP_POP_MACROS
+diff -ruN --strip-trailing-cr a/libcxx/include/istream b/libcxx/include/istream
+--- a/libcxx/include/istream
++++ b/libcxx/include/istream
+@@ -187,7 +187,6 @@
+ #    include <__undef_macros>
+ 
+ _LIBCPP_BEGIN_NAMESPACE_STD
+-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
+ 
+ template <class _CharT, class _Traits>
+ class basic_istream : virtual public basic_ios<_CharT, _Traits> {
+@@ -1399,7 +1398,6 @@
+ #    endif
+ extern template class _LIBCPP_EXTERN_TEMPLATE_TYPE_VIS basic_iostream<char>;
+ 
+-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
+ _LIBCPP_END_NAMESPACE_STD
+ 
+ _LIBCPP_POP_MACROS
+diff -ruN --strip-trailing-cr a/libcxx/include/locale b/libcxx/include/locale
+--- a/libcxx/include/locale
++++ b/libcxx/include/locale
+@@ -246,7 +246,6 @@
+ #    include <__undef_macros>
+ 
+ _LIBCPP_BEGIN_NAMESPACE_STD
+-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
+ 
+ #    if defined(__APPLE__) || defined(__FreeBSD__)
+ #      define _LIBCPP_GET_C_LOCALE 0
+@@ -3679,7 +3678,6 @@
+ 
+ #    endif // _LIBCPP_STD_VER < 26 || defined(_LIBCPP_ENABLE_CXX26_REMOVED_WSTRING_CONVERT)
+ 
+-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
+ _LIBCPP_END_NAMESPACE_STD
+ 
+ _LIBCPP_POP_MACROS
+diff -ruN --strip-trailing-cr a/libcxx/include/mutex b/libcxx/include/mutex
+--- a/libcxx/include/mutex
++++ b/libcxx/include/mutex
+@@ -215,7 +215,6 @@
+ #  include <__undef_macros>
+ 
+ _LIBCPP_BEGIN_NAMESPACE_STD
+-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
+ 
+ #  if _LIBCPP_HAS_THREADS
+ 
+@@ -492,7 +491,6 @@
+ #    endif // _LIBCPP_STD_VER >= 17
+ #  endif   // _LIBCPP_HAS_THREADS
+ 
+-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
+ _LIBCPP_END_NAMESPACE_STD
+ 
+ _LIBCPP_POP_MACROS
+diff -ruN --strip-trailing-cr a/libcxx/include/print b/libcxx/include/print
+--- a/libcxx/include/print
++++ b/libcxx/include/print
+@@ -54,7 +54,6 @@
+ 
+ _LIBCPP_BEGIN_NAMESPACE_STD
+ 
+-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
+ #  ifdef _LIBCPP_WIN32API
+ _LIBCPP_EXPORTED_FROM_ABI bool __is_windows_terminal(FILE* __stream);
+ 
+@@ -73,7 +72,6 @@
+ #  elif __has_include(<unistd.h>)
+ _LIBCPP_EXPORTED_FROM_ABI bool __is_posix_terminal(FILE* __stream);
+ #  endif // _LIBCPP_WIN32API
+-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
+ 
+ #  if _LIBCPP_STD_VER >= 23
+ 
 diff -ruN --strip-trailing-cr a/libcxx/include/regex b/libcxx/include/regex
 --- a/libcxx/include/regex
 +++ b/libcxx/include/regex
@@ -1634,146 +1748,6 @@ diff -ruN --strip-trailing-cr a/libcxx/include/strstream b/libcxx/include/strstr
  
  _LIBCPP_END_NAMESPACE_STD
  
-diff -ruN --strip-trailing-cr a/libcxx/include/__system_error/error_category.h b/libcxx/include/__system_error/error_category.h
---- a/libcxx/include/__system_error/error_category.h
-+++ b/libcxx/include/__system_error/error_category.h
-@@ -25,7 +25,6 @@
- 
- class _LIBCPP_HIDDEN __do_message;
- 
--_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
- class _LIBCPP_EXPORTED_FROM_ABI error_category {
- public:
-   virtual ~error_category() _NOEXCEPT;
-@@ -70,7 +69,6 @@
- 
- [[__gnu__::__const__]] _LIBCPP_EXPORTED_FROM_ABI const error_category& generic_category() _NOEXCEPT;
- [[__gnu__::__const__]] _LIBCPP_EXPORTED_FROM_ABI const error_category& system_category() _NOEXCEPT;
--_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
- 
- _LIBCPP_END_NAMESPACE_STD
- 
-diff -ruN --strip-trailing-cr a/libcxx/include/__system_error/error_code.h b/libcxx/include/__system_error/error_code.h
---- a/libcxx/include/__system_error/error_code.h
-+++ b/libcxx/include/__system_error/error_code.h
-@@ -39,7 +39,6 @@
- void make_error_code() = delete;
- } // namespace __adl_only
- 
--_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
- class _LIBCPP_EXPORTED_FROM_ABI error_code {
-   int __val_;
-   const error_category* __cat_;
-@@ -84,7 +83,6 @@
- 
-   _LIBCPP_HIDE_FROM_ABI explicit operator bool() const _NOEXCEPT { return __val_ != 0; }
- };
--_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
- 
- inline _LIBCPP_HIDE_FROM_ABI error_code make_error_code(errc __e) _NOEXCEPT {
-   return error_code(static_cast<int>(__e), generic_category());
-diff -ruN --strip-trailing-cr a/libcxx/include/__system_error/error_condition.h b/libcxx/include/__system_error/error_condition.h
---- a/libcxx/include/__system_error/error_condition.h
-+++ b/libcxx/include/__system_error/error_condition.h
-@@ -46,7 +46,6 @@
- void make_error_condition() = delete;
- } // namespace __adl_only
- 
--_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
- class _LIBCPP_EXPORTED_FROM_ABI error_condition {
-   int __val_;
-   const error_category* __cat_;
-@@ -88,7 +87,6 @@
- 
-   _LIBCPP_HIDE_FROM_ABI explicit operator bool() const _NOEXCEPT { return __val_ != 0; }
- };
--_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
- 
- inline _LIBCPP_HIDE_FROM_ABI error_condition make_error_condition(errc __e) _NOEXCEPT {
-   return error_condition(static_cast<int>(__e), generic_category());
-diff -ruN --strip-trailing-cr a/libcxx/include/__system_error/system_error.h b/libcxx/include/__system_error/system_error.h
---- a/libcxx/include/__system_error/system_error.h
-+++ b/libcxx/include/__system_error/system_error.h
-@@ -22,7 +22,6 @@
- #endif
- 
- _LIBCPP_BEGIN_NAMESPACE_STD
--_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
- 
- class _LIBCPP_EXPORTED_FROM_ABI system_error : public runtime_error {
-   error_code __ec_;
-@@ -53,7 +52,6 @@
- #endif
- }
- 
--_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
- _LIBCPP_END_NAMESPACE_STD
- 
- #endif // _LIBCPP___SYSTEM_ERROR_SYSTEM_ERROR_H
-diff -ruN --strip-trailing-cr a/libcxx/include/__system_error/throw_system_error.h b/libcxx/include/__system_error/throw_system_error.h
---- a/libcxx/include/__system_error/throw_system_error.h
-+++ b/libcxx/include/__system_error/throw_system_error.h
-@@ -18,9 +18,7 @@
- 
- _LIBCPP_BEGIN_NAMESPACE_STD
- 
--_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
- [[__noreturn__]] _LIBCPP_EXPORTED_FROM_ABI void __throw_system_error(int __ev, const char* __what_arg);
--_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
- 
- _LIBCPP_END_NAMESPACE_STD
- 
-diff -ruN --strip-trailing-cr a/libcxx/include/__thread/support/windows.h b/libcxx/include/__thread/support/windows.h
---- a/libcxx/include/__thread/support/windows.h
-+++ b/libcxx/include/__thread/support/windows.h
-@@ -19,7 +19,6 @@
- #endif
- 
- _LIBCPP_BEGIN_NAMESPACE_STD
--_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
- 
- using __libcpp_timespec_t = ::timespec;
- 
-@@ -129,7 +128,6 @@
- 
- _LIBCPP_EXPORTED_FROM_ABI int __libcpp_tls_set(__libcpp_tls_key __key, void* __p);
- 
--_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
- _LIBCPP_END_NAMESPACE_STD
- 
- #endif // _LIBCPP___THREAD_SUPPORT_WINDOWS_H
-diff -ruN --strip-trailing-cr a/libcxx/include/__thread/this_thread.h b/libcxx/include/__thread/this_thread.h
---- a/libcxx/include/__thread/this_thread.h
-+++ b/libcxx/include/__thread/this_thread.h
-@@ -32,9 +32,7 @@
- 
- #if _LIBCPP_HAS_THREADS
- 
--_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
- _LIBCPP_EXPORTED_FROM_ABI void sleep_for(const chrono::nanoseconds& __ns);
--_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
- 
- template <class _Rep, class _Period>
- _LIBCPP_HIDE_FROM_ABI void sleep_for(const chrono::duration<_Rep, _Period>& __d) {
-diff -ruN --strip-trailing-cr a/libcxx/include/__thread/thread.h b/libcxx/include/__thread/thread.h
---- a/libcxx/include/__thread/thread.h
-+++ b/libcxx/include/__thread/thread.h
-@@ -42,7 +42,6 @@
- #include <__undef_macros>
- 
- _LIBCPP_BEGIN_NAMESPACE_STD
--_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
- 
- #if _LIBCPP_HAS_THREADS
- 
-@@ -257,7 +256,6 @@
- 
- #endif // _LIBCPP_HAS_THREADS
- 
--_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
- _LIBCPP_END_NAMESPACE_STD
- 
- _LIBCPP_POP_MACROS
 diff -ruN --strip-trailing-cr a/libcxx/include/valarray b/libcxx/include/valarray
 --- a/libcxx/include/valarray
 +++ b/libcxx/include/valarray
@@ -1811,20 +1785,6 @@ diff -ruN --strip-trailing-cr a/libcxx/include/variant b/libcxx/include/variant
  _LIBCPP_END_UNVERSIONED_NAMESPACE_STD
  
  _LIBCPP_BEGIN_NAMESPACE_STD
-diff -ruN --strip-trailing-cr a/libcxx/include/__verbose_abort b/libcxx/include/__verbose_abort
---- a/libcxx/include/__verbose_abort
-+++ b/libcxx/include/__verbose_abort
-@@ -20,10 +20,8 @@
- 
- // This function should never be called directly from the code -- it should only be called through
- // the _LIBCPP_VERBOSE_ABORT macro.
--_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
- [[__noreturn__]] _LIBCPP_AVAILABILITY_VERBOSE_ABORT _LIBCPP_OVERRIDABLE_FUNC_VIS _LIBCPP_ATTRIBUTE_FORMAT(
-     __printf__, 1, 2) void __libcpp_verbose_abort(const char* __format, ...) _NOEXCEPT;
--_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
- 
- // _LIBCPP_VERBOSE_ABORT(format, args...)
- //
 diff -ruN --strip-trailing-cr a/libcxx/src/algorithm.cpp b/libcxx/src/algorithm.cpp
 --- a/libcxx/src/algorithm.cpp
 +++ b/libcxx/src/algorithm.cpp
@@ -2442,23 +2402,6 @@ diff -ruN --strip-trailing-cr a/libcxx/src/shared_mutex.cpp b/libcxx/src/shared_
  
 -_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
  _LIBCPP_END_NAMESPACE_STD
-diff -ruN --strip-trailing-cr a/libcxx/src/stdexcept.cpp b/libcxx/src/stdexcept.cpp
---- a/libcxx/src/stdexcept.cpp
-+++ b/libcxx/src/stdexcept.cpp
-@@ -18,7 +18,6 @@
- #endif
- 
- _LIBCPP_BEGIN_NAMESPACE_STD
--_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
- 
- void __throw_runtime_error(const char* msg) {
- #if _LIBCPP_HAS_EXCEPTIONS
-@@ -28,5 +27,4 @@
- #endif
- }
- 
--_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
- _LIBCPP_END_NAMESPACE_STD
 diff -ruN --strip-trailing-cr a/libcxx/src/std_stream.h b/libcxx/src/std_stream.h
 --- a/libcxx/src/std_stream.h
 +++ b/libcxx/src/std_stream.h
@@ -2478,6 +2421,23 @@ diff -ruN --strip-trailing-cr a/libcxx/src/std_stream.h b/libcxx/src/std_stream.
  _LIBCPP_END_NAMESPACE_STD
  
  _LIBCPP_POP_MACROS
+diff -ruN --strip-trailing-cr a/libcxx/src/stdexcept.cpp b/libcxx/src/stdexcept.cpp
+--- a/libcxx/src/stdexcept.cpp
++++ b/libcxx/src/stdexcept.cpp
+@@ -18,7 +18,6 @@
+ #endif
+ 
+ _LIBCPP_BEGIN_NAMESPACE_STD
+-_LIBCPP_BEGIN_EXPLICIT_ABI_ANNOTATIONS
+ 
+ void __throw_runtime_error(const char* msg) {
+ #if _LIBCPP_HAS_EXCEPTIONS
+@@ -28,5 +27,4 @@
+ #endif
+ }
+ 
+-_LIBCPP_END_EXPLICIT_ABI_ANNOTATIONS
+ _LIBCPP_END_NAMESPACE_STD
 diff -ruN --strip-trailing-cr a/libcxx/src/string.cpp b/libcxx/src/string.cpp
 --- a/libcxx/src/string.cpp
 +++ b/libcxx/src/string.cpp
@@ -2671,36 +2631,17 @@ diff -ruN --strip-trailing-cr a/lldb/tools/lldb-dap/Protocol/ProtocolTypes.h b/l
  };
  bool fromJSON(const llvm::json::Value &,
                DisassembledInstruction::PresentationHint &, llvm::json::Path);
-diff -ruN --strip-trailing-cr a/mlir/include/mlir/Query/Matcher/SliceMatchers.h b/mlir/include/mlir/Query/Matcher/SliceMatchers.h
---- a/mlir/include/mlir/Query/Matcher/SliceMatchers.h
-+++ b/mlir/include/mlir/Query/Matcher/SliceMatchers.h
-@@ -114,6 +114,7 @@
-   };
-   LogicalResult result = getBackwardSlice(rootOp, &backwardSlice, options);
-   assert(result.succeeded() && "expected backward slice to succeed");
-+  (void)result;
-   return options.inclusive ? backwardSlice.size() > 1
-                            : backwardSlice.size() >= 1;
- }
-diff -ruN --strip-trailing-cr a/mlir/lib/Analysis/SliceAnalysis.cpp b/mlir/lib/Analysis/SliceAnalysis.cpp
---- a/mlir/lib/Analysis/SliceAnalysis.cpp
-+++ b/mlir/lib/Analysis/SliceAnalysis.cpp
-@@ -180,6 +180,7 @@
-     LogicalResult result =
-         getBackwardSlice(currentOp, &backwardSlice, backwardSliceOptions);
-     assert(result.succeeded());
-+    (void)result;
-     slice.insert_range(backwardSlice);
+diff -ruN --strip-trailing-cr a/mlir/include/mlir/Dialect/Bufferization/Transforms/Bufferize.h b/mlir/include/mlir/Dialect/Bufferization/Transforms/Bufferize.h
+--- a/mlir/include/mlir/Dialect/Bufferization/Transforms/Bufferize.h
++++ b/mlir/include/mlir/Dialect/Bufferization/Transforms/Bufferize.h
+@@ -26,6 +26,7 @@
  
-     // Compute and insert the forwardSlice starting from currentOp.
-@@ -204,6 +205,7 @@
-   };
-   LogicalResult result = getBackwardSlice(value, &slice, sliceOptions);
-   assert(result.succeeded());
-+  (void)result;
+ class AnalysisState;
+ struct BufferizationOptions;
++class BufferizationState;
+ class OpFilter;
  
-   // Check that none of the operands of the operations in the backward slice are
-   // loop iteration arguments, and neither is the value itself.
+ /// Bufferization statistics for debugging. These can be printed after running
 diff -ruN --strip-trailing-cr a/mlir/lib/Conversion/MemRefToLLVM/MemRefToLLVM.cpp b/mlir/lib/Conversion/MemRefToLLVM/MemRefToLLVM.cpp
 --- a/mlir/lib/Conversion/MemRefToLLVM/MemRefToLLVM.cpp
 +++ b/mlir/lib/Conversion/MemRefToLLVM/MemRefToLLVM.cpp
@@ -2726,75 +2667,6 @@ diff -ruN --strip-trailing-cr a/mlir/lib/Conversion/MemRefToLLVM/MemRefToLLVM.cp
      // Fields 4 and 5: Update sizes and strides.
      Value stride = nullptr, nextSize = nullptr;
      for (int i = viewMemRefType.getRank() - 1; i >= 0; --i) {
-diff -ruN --strip-trailing-cr a/mlir/lib/Conversion/VectorToGPU/VectorToGPU.cpp b/mlir/lib/Conversion/VectorToGPU/VectorToGPU.cpp
---- a/mlir/lib/Conversion/VectorToGPU/VectorToGPU.cpp
-+++ b/mlir/lib/Conversion/VectorToGPU/VectorToGPU.cpp
-@@ -320,6 +320,7 @@
-     LogicalResult result =
-         getBackwardSlice(currentOp, &backwardSlice, backwardSliceOptions);
-     assert(result.succeeded() && "expected a backward slice");
-+    (void)result;
-     slice.insert_range(backwardSlice);
- 
-     // Compute and insert the forwardSlice starting from currentOp.
-diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/Linalg/Transforms/HoistPadding.cpp b/mlir/lib/Dialect/Linalg/Transforms/HoistPadding.cpp
---- a/mlir/lib/Dialect/Linalg/Transforms/HoistPadding.cpp
-+++ b/mlir/lib/Dialect/Linalg/Transforms/HoistPadding.cpp
-@@ -126,11 +126,13 @@
-   for (Value v : valuesDefinedAbove) {
-     LogicalResult result = getBackwardSlice(v, &backwardSlice, sliceOptions);
-     assert(result.succeeded() && "expected a backward slice");
-+    (void)result;
-   }
-   // Then, add the backward slice from padOp itself.
-   LogicalResult result =
-       getBackwardSlice(padOp.getOperation(), &backwardSlice, sliceOptions);
-   assert(result.succeeded() && "expected a backward slice");
-+  (void)result;
- }
- 
- //===----------------------------------------------------------------------===//
-diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/NVGPU/TransformOps/NVGPUTransformOps.cpp b/mlir/lib/Dialect/NVGPU/TransformOps/NVGPUTransformOps.cpp
---- a/mlir/lib/Dialect/NVGPU/TransformOps/NVGPUTransformOps.cpp
-+++ b/mlir/lib/Dialect/NVGPU/TransformOps/NVGPUTransformOps.cpp
-@@ -293,6 +293,7 @@
-     if (stage0Ops.contains(&op)) {
-       LogicalResult result = getBackwardSlice(&op, &dependencies, options);
-       assert(result.succeeded() && "expected a backward slice");
-+      (void)result;
-     }
-   }
- 
-diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/SCF/Transforms/TileUsingInterface.cpp b/mlir/lib/Dialect/SCF/Transforms/TileUsingInterface.cpp
---- a/mlir/lib/Dialect/SCF/Transforms/TileUsingInterface.cpp
-+++ b/mlir/lib/Dialect/SCF/Transforms/TileUsingInterface.cpp
-@@ -1774,6 +1774,7 @@
-   for (auto operand : consumerOp->getOperands()) {
-     LogicalResult result = getBackwardSlice(operand, &slice, options);
-     assert(result.succeeded() && "expected a backward slice");
-+    (void)result;
-   }
- 
-   if (!slice.empty()) {
-diff -ruN --strip-trailing-cr a/mlir/lib/Transforms/Utils/RegionUtils.cpp b/mlir/lib/Transforms/Utils/RegionUtils.cpp
---- a/mlir/lib/Transforms/Utils/RegionUtils.cpp
-+++ b/mlir/lib/Transforms/Utils/RegionUtils.cpp
-@@ -1096,6 +1096,7 @@
-   llvm::SetVector<Operation *> slice;
-   LogicalResult result = getBackwardSlice(op, &slice, options);
-   assert(result.succeeded() && "expected a backward slice");
-+  (void)result;
- 
-   // If the slice contains `insertionPoint` cannot move the dependencies.
-   if (slice.contains(insertionPoint)) {
-@@ -1162,6 +1163,7 @@
-   for (auto value : prunedValues) {
-     LogicalResult result = getBackwardSlice(value, &slice, options);
-     assert(result.succeeded() && "expected a backward slice");
-+    (void)result;
-   }
- 
-   // If the slice contains `insertionPoint` cannot move the dependencies.
 diff -ruN --strip-trailing-cr a/mlir/test/Conversion/MemRefToLLVM/memref-to-llvm.mlir b/mlir/test/Conversion/MemRefToLLVM/memref-to-llvm.mlir
 --- a/mlir/test/Conversion/MemRefToLLVM/memref-to-llvm.mlir
 +++ b/mlir/test/Conversion/MemRefToLLVM/memref-to-llvm.mlir
@@ -2843,25 +2715,3 @@ diff -ruN --strip-trailing-cr a/mlir/test/Conversion/MemRefToLLVM/memref-to-llvm
  
  // -----
  
-diff -ruN --strip-trailing-cr a/mlir/test/lib/Dialect/Affine/TestVectorizationUtils.cpp b/mlir/test/lib/Dialect/Affine/TestVectorizationUtils.cpp
---- a/mlir/test/lib/Dialect/Affine/TestVectorizationUtils.cpp
-+++ b/mlir/test/lib/Dialect/Affine/TestVectorizationUtils.cpp
-@@ -157,6 +157,7 @@
-     LogicalResult result =
-         getBackwardSlice(m.getMatchedOperation(), &backwardSlice);
-     assert(result.succeeded() && "expected a backward slice");
-+    (void)result;
-     outs << "\nmatched: " << *m.getMatchedOperation()
-          << " backward static slice: ";
-     for (auto *op : backwardSlice)
-diff -ruN --strip-trailing-cr a/mlir/test/lib/IR/TestSlicing.cpp b/mlir/test/lib/IR/TestSlicing.cpp
---- a/mlir/test/lib/IR/TestSlicing.cpp
-+++ b/mlir/test/lib/IR/TestSlicing.cpp
-@@ -43,6 +43,7 @@
-   options.omitUsesFromAbove = false;
-   LogicalResult result = getBackwardSlice(op, &slice, options);
-   assert(result.succeeded() && "expected a backward slice");
-+  (void)result;
-   for (Operation *slicedOp : slice)
-     builder.clone(*slicedOp, mapper);
-   builder.create<func::ReturnOp>(loc);

@@ -67,7 +67,8 @@ struct ReshapeOpInterface
   }
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
-                          const BufferizationOptions &options) const {
+                          const BufferizationOptions &options,
+                          const bufferization::BufferizationState &) const {
     auto reshapeOp = cast<mhlo::ReshapeOp>(op);
     auto unrankedOperandType =
         mlir::dyn_cast<UnrankedTensorType>(reshapeOp.getOperand().getType());
@@ -106,7 +107,8 @@ struct DynamicReshapeOpInterface
   }
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
-                          const BufferizationOptions &options) const {
+                          const BufferizationOptions &options,
+                          const bufferization::BufferizationState &) const {
     auto reshapeOp = cast<mhlo::DynamicReshapeOp>(op);
 
     // The buffer still has the old (pre-reshape) type.
@@ -263,7 +265,8 @@ struct DynamicBroadcastInDimOpInterface
   }
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
-                          const BufferizationOptions &options) const {
+                          const BufferizationOptions &options,
+                          const bufferization::BufferizationState&) const {
     auto broadcastInDimOp = cast<mhlo::DynamicBroadcastInDimOp>(op);
     auto resultType =
         mlir::dyn_cast<RankedTensorType>(broadcastInDimOp.getType());
