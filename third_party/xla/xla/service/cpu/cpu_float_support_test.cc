@@ -78,8 +78,8 @@ TEST_P(SkipInstructionTest, Bf16InF32Out) {
 
   // Create the HLO module: p0 <op> p1.
   HloComputation::Builder builder("SkipInstructionTest");
-  Shape input_shape = ShapeUtil::MakeShape(BF16, {100, 100});
-  Shape output_shape = ShapeUtil::MakeShape(F32, {100, 100});
+  Shape input_shape = ShapeUtil::MakeValidatedShape(BF16, {100, 100}).value();
+  Shape output_shape = ShapeUtil::MakeValidatedShape(F32, {100, 100}).value();
   HloInstruction* p0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, input_shape, "p0"));
   HloInstruction* p1 = builder.AddInstruction(

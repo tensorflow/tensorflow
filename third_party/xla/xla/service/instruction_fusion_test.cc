@@ -121,7 +121,7 @@ TEST_F(InstructionFusionTest, FuseInstructionsIntoMultiOutput) {
 
 TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusible) {
   HloComputation::Builder builder(TestName());
-  auto shape = ShapeUtil::MakeShape(F32, {16, 16});
+  auto shape = ShapeUtil::MakeValidatedShape(F32, {16, 16}).value();
   auto param0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "0"));
   auto param1 =
@@ -323,7 +323,7 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusibleRecursively) {
 
 TEST_F(InstructionFusionTest, AllowUnaryDuplication) {
   HloComputation::Builder builder(TestName());
-  auto shape = ShapeUtil::MakeShape(F32, {16, 16});
+  auto shape = ShapeUtil::MakeValidatedShape(F32, {16, 16}).value();
   auto param0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "0"));
   HloInstruction* unary1 = builder.AddInstruction(
@@ -346,8 +346,8 @@ TEST_F(InstructionFusionTest, AllowUnaryDuplication) {
 }
 
 TEST_F(InstructionFusionTest, AllowEffectiveUnaryDuplication) {
-  auto shape = ShapeUtil::MakeShape(F32, {16, 16});
-  auto small_shape = ShapeUtil::MakeShape(F32, {16});
+  auto shape = ShapeUtil::MakeValidatedShape(F32, {16, 16}).value();
+  auto small_shape = ShapeUtil::MakeValidatedShape(F32, {16}).value();
   HloComputation::Builder builder(TestName());
   auto param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, small_shape, "0"));
