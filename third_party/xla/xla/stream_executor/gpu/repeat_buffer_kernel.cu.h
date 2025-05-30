@@ -1,4 +1,4 @@
-/* Copyright 2024 The OpenXLA Authors.
+/* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,14 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef XLA_STREAM_EXECUTOR_GPU_REPEAT_BUFFER_KERNEL_CU_H_
+#define XLA_STREAM_EXECUTOR_GPU_REPEAT_BUFFER_KERNEL_CU_H_
+
 #include <cstdint>
 
-namespace xla::gpu::repeat_buffer_kernel {
-namespace {
+namespace stream_executor::gpu {
+
 // Populate the last `buffer_size - repeat_size` bytes of `buffer` by repeating
 // the first `repeat_size` bytes. This should be launched with at least
 // `repeat_size` threads in total.
-__global__ void RepeatBufferKernel(char* buffer, int64_t repeat_size,
+__global__ void RepeatBufferKernelImpl(char* buffer, int64_t repeat_size,
                                    int64_t buffer_size) {
   int64_t global_index = blockDim.x * blockIdx.x + threadIdx.x;
   if (global_index >= repeat_size) {
@@ -32,6 +35,7 @@ __global__ void RepeatBufferKernel(char* buffer, int64_t repeat_size,
     buffer[dst_index] = src_value;
   }
 }
-}  // namespace
-void* kernel() { return reinterpret_cast<void*>(RepeatBufferKernel); }
-}  // namespace xla::gpu::repeat_buffer_kernel
+
+}  // namespace stream_executor::gpu
+
+#endif  // XLA_STREAM_EXECUTOR_GPU_REPEAT_BUFFER_KERNEL_CU_H_

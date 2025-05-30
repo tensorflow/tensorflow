@@ -52,6 +52,8 @@ limitations under the License.
 #include "xla/stream_executor/data_type.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/gpu/gpu_kernel_registry.h"
+#include "xla/stream_executor/gpu/repeat_buffer_kernel.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -417,10 +419,6 @@ typename std::enable_if<std::is_floating_point<T>::value,
   return std::uniform_real_distribution<T>(lhs, rhs)(*gen);
 }
 
-namespace repeat_buffer_kernel {
-void* kernel();
-}
-
 template <typename T>
 static void InitializeTypedBuffer(se::Stream* stream,
                                   se::DeviceMemoryBase buffer,
@@ -489,10 +487,10 @@ static void InitializeTypedBuffer(se::Stream* stream,
   CHECK_EQ(elements_to_fill, buffer.size() / sizeof(T) - host_buffer_size);
   se::StreamExecutor* executor = stream->parent();
   auto kernel =
-      se::TypedKernelFactory<se::DeviceMemoryBase, int64_t, int64_t>::Create(
-          executor, "RepeatBufferKernel", repeat_buffer_kernel::kernel());
+      stream_executor::gpu::GpuKernelRegistry::GetGlobalRegistry()
+          .LoadKernel<stream_executor::gpu::RepeatBufferKernel>(executor);
   if (!kernel.ok()) {
-    LOG(FATAL) << "Could not create RepeatBufferKernel: " << kernel.status();
+    LOG(FATAL) << "Could not load RepeatBufferKernel: " << kernel.status();
   }
   // Launch the kernel with at least host_buffer_bytes threads. Each thread
   // will read one byte of `host_buffer` from the start of `buffer`, where the

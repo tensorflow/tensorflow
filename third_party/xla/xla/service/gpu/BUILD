@@ -7,14 +7,6 @@ load(
     "if_rocm_is_configured",
 )
 load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal")
-load(
-    "//xla/service/gpu:build_defs.bzl",
-    "gpu_kernel_library",
-)
-load(
-    "//xla/stream_executor:build_defs.bzl",
-    "if_gpu_is_configured",
-)
 load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla/tsl:tsl.bzl",
@@ -2310,24 +2302,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "stream_executor_util_kernel_stub",
-    srcs = ["stream_executor_util_kernel_stub.cc"],
-)
-
-gpu_kernel_library(
-    name = "stream_executor_util_kernel",
-    srcs = ["stream_executor_util_kernel.cu.cc"],
-    tags = ["gpu"],
-    deps = if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-    ]) + if_rocm_is_configured([
-        "@local_config_rocm//rocm:rocm_headers",
-        "@local_config_rocm//rocm:rocm_config",
-        "@local_config_rocm//rocm:hip",
-    ]),
-)
-
-cc_library(
     name = "stream_executor_util",
     srcs = ["stream_executor_util.cc"],
     hdrs = ["stream_executor_util.h"],
@@ -2352,8 +2326,9 @@ cc_library(
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:typed_kernel_factory",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/stream_executor/gpu:repeat_buffer_kernel",
         "//xla/tsl/protobuf:dnn_proto_cc",
-        "//xla/tsl/util:env_var",
         "//xla/tsl/util/proto:proto_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
@@ -2369,10 +2344,7 @@ cc_library(
         "@local_tsl//tsl/platform:ml_dtypes",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
-    ] + if_gpu_is_configured(
-        if_false = [":stream_executor_util_kernel_stub"],
-        if_true = [":stream_executor_util_kernel"],
-    ),
+    ],
 )
 
 xla_cc_test(
