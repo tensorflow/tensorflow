@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/autotuner/backends/gpu/triton.h"
+#include "xla/backends/gpu/autotuner/triton.h"
 
 #include <memory>
 #include <vector>

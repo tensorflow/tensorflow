@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/autotuner/backends/gpu/fission.h"
+#include "xla/backends/gpu/autotuner/fission.h"
 
 #include <iterator>
 #include <memory>
@@ -27,9 +27,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotuning.pb.h"
-#include "xla/backends/autotuner/backends/gpu/cublas.h"
-#include "xla/backends/autotuner/backends/gpu/cublaslt.h"
-#include "xla/backends/autotuner/backends/gpu/custom_kernel.h"
+#include "xla/backends/gpu/autotuner/cublas.h"
+#include "xla/backends/gpu/autotuner/cublaslt.h"
+#include "xla/backends/gpu/autotuner/custom_kernel.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"

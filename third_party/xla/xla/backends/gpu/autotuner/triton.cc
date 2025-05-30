@@ -13,13 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/autotuner/backends/gpu/triton.h"
+#include "xla/backends/gpu/autotuner/triton.h"
 
-#include <algorithm>
-#include <array>
-#include <cstdint>
 #include <memory>
-#include <variant>
+#include <optional>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -27,10 +24,15 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/simplifiers/float_normalization.h"
+#include "xla/hlo/utils/hlo_query.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/compiler.h"
+#include "xla/service/gpu/autotuning/dot_search_space.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -40,9 +42,8 @@ limitations under the License.
 #include "xla/service/gpu/transforms/nest_gemm_fusion.h"
 #include "xla/service/gpu/transforms/priority_fusion.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tools/hlo_decomposer.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -50,17 +51,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
-namespace {
-
-// Search space for exhaustive matmul autotuning.
-constexpr std::array<int, 6> kBlockSizes = {16, 32, 64, 128, 256, 512};
-constexpr std::array<int, 4> kNumStages = {1, 2, 3, 4};
-constexpr std::array<int, 4> kNumWarps = {2, 4, 8, 16};
-constexpr std::array<int, 5> kSplitK = {1, 2, 4, 8, 16};
-constexpr std::array<int, 5> kNumCtas = {1, 2, 4, 8, 16};
-
-}  // namespace
 
 using TritonBackendConfig = AutotuneResult::TritonGemmKey;
 
@@ -72,53 +62,32 @@ TritonBackend::GetSupportedConfigs(
     return absl::InvalidArgumentError(
         "TritonBackend does not support this instruction.");
   }
-  se::GpuComputeCapability gcc =
-      target_config().device_description.gpu_compute_capability();
-  bool is_rocm = std::holds_alternative<se::RocmComputeCapability>(gcc);
-  auto cuda_compute_capability = std::get_if<se::CudaComputeCapability>(&gcc);
+  const HloDotInstruction* dot =
+      Cast<HloDotInstruction>(hlo_query::GetFirstInstructionWithOpcode(
+          *instr.fused_instructions_computation(), HloOpcode::kDot));
+  TritonDotFusionSearchSpace search_space(target_config().device_description,
+                                          dot);
 
-  bool tune_ctas = !is_rocm && cuda_compute_capability &&
-                   cuda_compute_capability->IsAtLeastHopper();
+  bool supports_contracting_split =
+      HloBfsFindAll({dot}, [&](const HloInstruction* node) {
+        return node->opcode() == HloOpcode::kSlice;
+      }).empty();
+  bool autotune_contracting_split =
+      supports_contracting_split &&
+      debug_options().xla_gpu_enable_split_k_autotuning();
 
-  const int64_t threads_per_warp =
-      target_config().device_description.threads_per_warp();
   std::vector<std::unique_ptr<BackendConfig>> configs;
-  for (int num_stages : kNumStages) {
-    for (int tile_m : kBlockSizes) {
-      for (int tile_n : kBlockSizes) {
-        for (int tile_k : kBlockSizes) {
-          const int tile_lhs = tile_m * tile_k;
-          const int tile_rhs = tile_k * tile_n;
-          for (int num_warps : kNumWarps) {
-            // Each thread should read at least one input element.
-            if (num_warps * threads_per_warp > std::min(tile_lhs, tile_rhs)) {
-              break;
-            }
-            for (int split_k : kSplitK) {
-              // Split-K autotuning may be disabled by a flag.
-              if (debug_options().xla_gpu_enable_split_k_autotuning() &&
-                  split_k > 1) {
-                break;
-              }
-              for (int num_ctas : kNumCtas) {
-                // Clusters are only supported on Hopper.
-                // Autotuning this parameter is enabled by a flag.
-                if (!tune_ctas && num_ctas > 1) {
-                  break;
-                }
-                if (num_ctas > num_warps) {
-                  break;
-                }
-                configs.push_back(std::make_unique<TritonBackendConfig>(
-                    TritonGemmConfig(tile_m, tile_n, tile_k, split_k,
-                                     num_stages, num_warps, num_ctas)
-                        .ToProto()));
-              }
-            }
-          }
-        }
-      }
-    }
+  VLOG(1) << "Generating configs from search space: "
+          << search_space.ToString();
+  // We don't need to consider small_dot here. The new search space will
+  // already generate a unique config for small problems.
+  std::vector<TritonGemmConfig> gemm_configs = search_space.GenerateConfigs(
+      /*force_contracting_split=*/autotune_contracting_split
+          ? std::nullopt
+          : std::make_optional(1));
+  configs.reserve(gemm_configs.size());
+  for (const auto& config : gemm_configs) {
+    configs.push_back(std::make_unique<TritonBackendConfig>(config.ToProto()));
   }
   return configs;
 }
