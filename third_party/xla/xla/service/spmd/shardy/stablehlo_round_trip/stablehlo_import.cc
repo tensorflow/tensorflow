@@ -661,14 +661,14 @@ class ImportShardingsPass
   ArrayRef<bool> allowPropagationToResults;
 };
 
+}  // namespace
+
 std::unique_ptr<mlir::Pass> createImportShardingsPass(
     ArrayRef<bool> allowPropagationToArgs,
     ArrayRef<bool> allowPropagationToResults) {
   return std::make_unique<ImportShardingsPass>(allowPropagationToArgs,
                                                allowPropagationToResults);
 }
-
-}  // namespace
 
 void registerStablehloImportShardingsPass() {
   mlir::registerPass(

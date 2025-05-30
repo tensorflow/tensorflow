@@ -2489,6 +2489,35 @@ class Subgraph {
     return kTfLiteError;
   }
 
+  // A float16 -> float32 dequantize may have been elided, determines the type
+  // to be float16 if so, otherwise returns the tensor type.
+  static TfLiteType GetTensorType(const Delegate& delegate,
+                                  const TfLiteTensor* tensors, int tensor_id) {
+    return delegate.f16_input_tensor_for_dequant_f32_tensor_.count(tensor_id)
+               ? kTfLiteFloat16
+               : tensors[tensor_id].type;
+  }
+
+  static TfLiteStatus CheckFilterAndBiasTypes(const Delegate& delegate,
+                                              TfLiteContext* logging_context,
+                                              const TfLiteTensor* tensors,
+                                              int filter_id, int bias_id,
+                                              int node_index) {
+    TfLiteType filter_type = GetTensorType(delegate, tensors, filter_id);
+    if (filter_type == kTfLiteFloat16 || filter_type == kTfLiteFloat32) {
+      TfLiteType bias_type = GetTensorType(delegate, tensors, bias_id);
+      if (bias_type != filter_type) {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            logging_context,
+            "in node #%d, filter and bias types %s and %s are not the same",
+            node_index, TfLiteTypeGetName(filter_type),
+            TfLiteTypeGetName(bias_type));
+        return kTfLiteError;
+      }
+    }
+    return kTfLiteOk;
+  }
+
   static TfLiteStatus CheckTensorShape(TfLiteContext* context,
                                        const TfLiteTensor& tensor,
                                        int min_num_dims, int max_num_dims,
@@ -3556,16 +3585,17 @@ class Subgraph {
         logging_context, input_tensor, 4, node->inputs->data[0],
         BuiltinOperator_CONV_2D, node_index));
 
-    const TfLiteTensor& filter_tensor = tensors[node->inputs->data[1]];
+    const int filter_tensor_id = node->inputs->data[1];
+    const TfLiteTensor& filter_tensor = tensors[filter_tensor_id];
     TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQCInt8Type(
         delegate, logging_context, filter_tensor,
-        /*expected_quantized_dimension=*/0, node->inputs->data[1], node_index));
-    TF_LITE_ENSURE_STATUS(CheckTensorShape(
-        logging_context, filter_tensor, 4, node->inputs->data[1],
-        BuiltinOperator_CONV_2D, node_index));
-    if (quasi_static_tensors.count(node->inputs->data[1]) == 0) {
+        /*expected_quantized_dimension=*/0, filter_tensor_id, node_index));
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorShape(logging_context, filter_tensor, 4, filter_tensor_id,
+                         BuiltinOperator_CONV_2D, node_index));
+    if (quasi_static_tensors.count(filter_tensor_id) == 0) {
       TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
-          logging_context, filter_tensor, node->inputs->data[1],
+          logging_context, filter_tensor, filter_tensor_id,
           BuiltinOperator_CONV_2D, node_index));
     }
 
@@ -3588,6 +3618,10 @@ class Subgraph {
           logging_context, bias_tensor, node->inputs->data[2],
           BuiltinOperator_CONV_2D, node_index));
     }
+
+    TF_LITE_ENSURE_STATUS(CheckFilterAndBiasTypes(delegate, logging_context,
+                                                  tensors, filter_tensor_id,
+                                                  bias_tensor_id, node_index));
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
     TF_LITE_ENSURE_STATUS(
@@ -3730,7 +3764,7 @@ class Subgraph {
             static_cast<size_t>(output_channels) / groups, output_min,
             output_max,
             /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
-            /*filter_id=*/input_output_tensors.at(node->inputs->data[1]),
+            /*filter_id=*/input_output_tensors.at(filter_tensor_id),
             /*bias_id=*/input_output_tensors.at(node->inputs->data[2]),
             /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
             flags);
@@ -3765,16 +3799,17 @@ class Subgraph {
         logging_context, input_tensor, 4, node->inputs->data[0],
         BuiltinOperator_DEPTHWISE_CONV_2D, node_index));
 
-    const TfLiteTensor& filter_tensor = tensors[node->inputs->data[1]];
+    const int filter_tensor_id = node->inputs->data[1];
+    const TfLiteTensor& filter_tensor = tensors[filter_tensor_id];
     TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrQCInt8Type(
         delegate, logging_context, filter_tensor,
-        /*expected_quantized_dimension=*/3, node->inputs->data[1], node_index));
-    TF_LITE_ENSURE_STATUS(CheckTensorShape(
-        logging_context, filter_tensor, 4, node->inputs->data[1],
-        BuiltinOperator_DEPTHWISE_CONV_2D, node_index));
-    if (quasi_static_tensors.count(node->inputs->data[1]) == 0) {
+        /*expected_quantized_dimension=*/3, filter_tensor_id, node_index));
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorShape(logging_context, filter_tensor, 4, filter_tensor_id,
+                         BuiltinOperator_DEPTHWISE_CONV_2D, node_index));
+    if (quasi_static_tensors.count(filter_tensor_id) == 0) {
       TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
-          logging_context, filter_tensor, node->inputs->data[1],
+          logging_context, filter_tensor, filter_tensor_id,
           BuiltinOperator_DEPTHWISE_CONV_2D, node_index));
     }
 
@@ -3797,6 +3832,10 @@ class Subgraph {
           logging_context, bias_tensor, node->inputs->data[2],
           BuiltinOperator_DEPTHWISE_CONV_2D, node_index));
     }
+
+    TF_LITE_ENSURE_STATUS(CheckFilterAndBiasTypes(delegate, logging_context,
+                                                  tensors, filter_tensor_id,
+                                                  bias_tensor_id, node_index));
 
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
     TF_LITE_ENSURE_STATUS(
@@ -3850,8 +3889,8 @@ class Subgraph {
                                 dwconv_params->depth_multiplier),
           output_min, output_max,
           /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
-          /*filter_id=*/input_output_tensors.at(node->inputs->data[1]),
-          /*bias_id=*/input_output_tensors.at(node->inputs->data[2]),
+          /*filter_id=*/input_output_tensors.at(filter_tensor_id),
+          /*bias_id=*/input_output_tensors.at(bias_tensor_id),
           /*output_id=*/input_output_tensors.at(node->outputs->data[0]), flags);
       if (status != xnn_status_success) {
         TF_LITE_KERNEL_LOG(
@@ -4460,20 +4499,20 @@ class Subgraph {
         CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input_tensor,
                                        node->inputs->data[0], node_index));
 
-    const TfLiteTensor& filter_tensor = tensors[node->inputs->data[1]];
-    TF_LITE_ENSURE_STATUS(CheckTensorShape(
-        logging_context, filter_tensor, 2, node->inputs->data[1],
-        BuiltinOperator_FULLY_CONNECTED, node_index));
+    const int filter_tensor_id = node->inputs->data[1];
+    const TfLiteTensor& filter_tensor = tensors[filter_tensor_id];
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorShape(logging_context, filter_tensor, 2, filter_tensor_id,
+                         BuiltinOperator_FULLY_CONNECTED, node_index));
     // Dynamic filter is supported, but only for FP32.
     if (!(delegate.support_dynamic_fully_connected_operator() &&
           filter_tensor.type == kTfLiteFloat32)) {
       TF_LITE_ENSURE_STATUS(CheckTensorFloat32OrFloat16OrQCInt4OrQCInt8Type(
           delegate, logging_context, filter_tensor,
-          /*expected_quantized_dimension=*/0, node->inputs->data[1],
-          node_index));
-      if (quasi_static_tensors.count(node->inputs->data[1]) == 0) {
+          /*expected_quantized_dimension=*/0, filter_tensor_id, node_index));
+      if (quasi_static_tensors.count(filter_tensor_id) == 0) {
         TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
-            logging_context, filter_tensor, node->inputs->data[1],
+            logging_context, filter_tensor, filter_tensor_id,
             BuiltinOperator_FULLY_CONNECTED, node_index));
       }
     }
@@ -4507,6 +4546,10 @@ class Subgraph {
                 BuiltinOperator_FULLY_CONNECTED, node_index));
           }
         }
+
+        TF_LITE_ENSURE_STATUS(CheckFilterAndBiasTypes(
+            delegate, logging_context, tensors, filter_tensor_id,
+            bias_tensor_id, node_index));
       }
     }
 
@@ -4581,7 +4624,7 @@ class Subgraph {
             reinterpret_cast<TfLiteAffineQuantization*>(
                 filter_tensor.quantization.params);
         xnn_datatype filter_datatype = GetXNNPackDatatype(
-            logging_context, filter_tensor, node->inputs->data[1]);
+            logging_context, filter_tensor, filter_tensor_id);
         if (filter_datatype == xnn_datatype_qint8) {
           filter_datatype = xnn_datatype_qcint8;
           TfLiteFloatArrayFree(filter_params->scale);
@@ -4638,7 +4681,7 @@ class Subgraph {
           case xnn_datatype_qbint4: {
             const auto* quantization_params =
                 reinterpret_cast<const TfLiteBlockwiseQuantization*>(
-                    tensors[node->inputs->data[1]].quantization.params);
+                    tensors[filter_tensor_id].quantization.params);
             const TfLiteTensor& scale_tensor =
                 tensors[quantization_params->scale];
             status = xnn_define_blockwise_quantized_tensor_value_v2(
@@ -4678,7 +4721,7 @@ class Subgraph {
         const xnn_status status = xnn_define_fully_connected(
             subgraph, output_min, output_max,
             /*input_id=*/input_value_id,
-            /*filter_id=*/input_output_tensors.at(node->inputs->data[1]),
+            /*filter_id=*/input_output_tensors.at(filter_tensor_id),
             /*bias_id=*/bias_tensor_id >= 0
                 ? input_output_tensors.at(bias_tensor_id)
                 : XNN_INVALID_VALUE_ID,
