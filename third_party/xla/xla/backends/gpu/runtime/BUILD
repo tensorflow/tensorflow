@@ -977,6 +977,7 @@ cc_library(
         "//xla/core/collectives:rank_id",
         "//xla/hlo/ir:hlo",
         "//xla/service:collective_ops_utils",
+        "//xla/service:rendezvous",
         "//xla/service/gpu/transforms/collectives:collective_ops_utils",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:memory_allocation",
