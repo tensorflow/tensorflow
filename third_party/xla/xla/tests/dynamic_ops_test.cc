@@ -999,7 +999,7 @@ void BM_DynamicSlice(::testing::benchmark::State& state) {
   auto stream = client->mutable_backend()->BorrowStream(device_ordinal).value();
 
   // Create dynamic slice start indices as a parameter: shape [4]
-  auto start_indices_shape = ShapeUtil::MakeShape(S32, {});
+  auto start_indices_shape = ShapeUtil::MakeValidatedShape(S32, {}).value();
   std::vector<XlaOp> start_indices(4);
   std::vector<ScopedShapedBuffer> shaped_buffers;
   std::vector<const Shape*> host_shapes(4);

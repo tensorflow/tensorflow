@@ -183,7 +183,7 @@ void PrngTest::UniformChiSquared(int32_t range_size, int32_t expected_count,
   XlaBuilder builder(TestName());
   RngUniform(ConstantR0<int32_t>(&builder, 0),
              ConstantR0<int32_t>(&builder, range_size),
-             ShapeUtil::MakeShape(S32, {sample_size}));
+             ShapeUtil::MakeValidatedShape(S32, {sample_size}).value());
 
   SetSeed(seed);
   auto actual = ExecuteAndTransfer(&builder, /*arguments=*/{}).value();
@@ -242,10 +242,11 @@ XLA_TEST_F(PrngTest, MapUsingRng) {
   // Build a x -> (x + U[0,1)) computation.
   auto build_sum_rng = [](XlaBuilder& builder) {
     auto b = builder.CreateSubBuilder("sum_with_rng");
-    auto x = Parameter(b.get(), 0, ShapeUtil::MakeShape(F32, {}), "input");
+    auto x = Parameter(b.get(), 0,
+                       ShapeUtil::MakeValidatedShape(F32, {}).value(), "input");
     Add(x,
         RngUniform(ConstantR0<float>(b.get(), 0), ConstantR0<float>(b.get(), 1),
-                   ShapeUtil::MakeShape(F32, {})));
+                   ShapeUtil::MakeValidatedShape(F32, {}).value()));
     return b->BuildAndNoteError();
   };
 
@@ -286,7 +287,7 @@ XLA_TEST_F(PrngTest, PassInGlobalRngSeed) {
   auto build_computation = [this]() {
     XlaBuilder builder(TestName());
     RngUniform(ConstantR0<float>(&builder, 0), ConstantR0<float>(&builder, 1),
-               ShapeUtil::MakeShape(F32, {10}));
+               ShapeUtil::MakeValidatedShape(F32, {10}).value());
     return builder.Build();
   };
 
@@ -346,10 +347,10 @@ XLA_TEST_F(PrngTest, DifferentValuesForIdenticalRngNodesInSameComputation) {
     XlaBuilder builder(TestName());
     auto a = RngUniform(ConstantR0<int32_t>(&builder, 0),
                         ConstantR0<int32_t>(&builder, 100),
-                        ShapeUtil::MakeShape(S32, {10}));
+                        ShapeUtil::MakeValidatedShape(S32, {10}).value());
     auto b = RngUniform(ConstantR0<int32_t>(&builder, 0),
                         ConstantR0<int32_t>(&builder, 100),
-                        ShapeUtil::MakeShape(S32, {10}));
+                        ShapeUtil::MakeValidatedShape(S32, {10}).value());
     Tuple(&builder, {a, b});
     return builder.Build();
   };
@@ -374,7 +375,7 @@ XLA_TEST_F(PrngTest, DifferentValuesForIdenticalRngNodesInSameComputation) {
 XLA_TEST_F(PrngTest, TenValuesN01) {
   XlaBuilder builder(TestName());
   RngNormal(ConstantR0<float>(&builder, 0), ConstantR0<float>(&builder, 1),
-            ShapeUtil::MakeShape(F32, {10}));
+            ShapeUtil::MakeValidatedShape(F32, {10}).value());
 
   SetSeed(42);
   ExecuteAndTransfer(&builder, /*arguments=*/{}).value();
@@ -387,7 +388,7 @@ XLA_TEST_F(PrngTest, RngUniformCrash) {
   // This used to crash XLA during LLVM IR generation for CPUs.
   RngUniform(ConstantR0<int32_t>(&builder, 0),
              ConstantR0<int32_t>(&builder, 1000 * 1000),
-             ShapeUtil::MakeShape(S32, {}));
+             ShapeUtil::MakeValidatedShape(S32, {}).value());
   SetSeed(0);
   ExecuteAndTransfer(&builder, /*arguments=*/{}).value();
 }

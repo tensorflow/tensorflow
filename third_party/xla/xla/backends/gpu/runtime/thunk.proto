@@ -79,6 +79,11 @@ message GemmThunkProto {
   bool deterministic = 6;
 }
 
+message WaitForStreamsThunkProto {
+  int64 stream_id = 1;
+  int64 wait_for_stream_id = 2;
+}
+
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
 
@@ -91,6 +96,7 @@ message ThunkProto {
     WhileThunkProto while_thunk = 7;
     KernelThunkProto kernel_thunk = 8;
     GemmThunkProto gemm_thunk = 9;
+    WaitForStreamsThunkProto wait_for_streams_thunk = 10;
   }
 }
 

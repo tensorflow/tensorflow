@@ -682,7 +682,9 @@ absl::Status IrEmitter::HandleSort(HloInstruction* hlo) {
 
   // Normalize the shape and the dimension to sort.
   Shape normalized_keys_shape =
-      ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(keys_shape);
+      ShapeUtil::MakeValidatedShapeWithDescendingLayoutAndSamePhysicalLayout(
+          keys_shape)
+          .value();
   auto logical_to_physical =
       LayoutUtil::MakeLogicalToPhysical(keys_shape.layout());
   TF_RET_CHECK(sort->sort_dimension() < logical_to_physical.size());
@@ -2373,7 +2375,8 @@ absl::Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
   for (int i = 1; i < hlo->shape().tuple_shapes().size(); ++i) {
     // Read from the metadata section of the dynamic input (operand 0).
     const Shape& dim_shape = ShapeUtil::GetSubshape(hlo->shape(), {i});
-    TF_RET_CHECK(Shape::Equal()(dim_shape, ShapeUtil::MakeScalarShape(S32)));
+    TF_RET_CHECK(Shape::Equal()(
+        dim_shape, ShapeUtil::MakeValidatedScalarShape(S32).value()));
     TF_ASSIGN_OR_RETURN(BufferAllocation::Slice dim_size_slice,
                         assignment_.GetUniqueSlice(hlo, {i}));
     llvm::Value* dest_dim_size_address =

@@ -1523,7 +1523,19 @@ cc_library(
         "//xla/stream_executor:stream",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "wait_for_streams_thunk_test",
+    srcs = ["wait_for_streams_thunk_test.cc"],
+    deps = [
+        ":thunk",
+        ":wait_for_streams_thunk",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1843,6 +1855,7 @@ cc_library(
         ":sequential_thunk",
         ":thunk",
         ":thunk_proto_cc",
+        ":wait_for_streams_thunk",
         ":while_thunk",
         "//xla/service:buffer_assignment",
         "//xla/tsl/platform:statusor",
@@ -1862,6 +1875,7 @@ xla_cc_test(
         ":thunk",
         ":thunk_proto_cc",
         ":thunk_proto_deserialization",
+        ":wait_for_streams_thunk",
         ":while_thunk",
         "//xla/service:buffer_assignment",
         "//xla/tsl/platform:statusor",

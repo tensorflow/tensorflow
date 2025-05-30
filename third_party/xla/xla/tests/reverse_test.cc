@@ -91,8 +91,8 @@ class FloatReverseTest : public ClientLibraryTestRunnerMixin<
 
 TEST_P(FloatReverseTest, Reverses) {
   const ReverseSpec& spec = GetParam();
-  std::vector<float> input_vector(
-      ShapeUtil::ElementsIn(ShapeUtil::MakeShape(F32, spec.input_dims)));
+  std::vector<float> input_vector(ShapeUtil::ElementsIn(
+      ShapeUtil::MakeValidatedShape(F32, spec.input_dims).value()));
   std::iota(input_vector.begin(), input_vector.end(), 0.0);
   const Literal r1_literal = LiteralUtil::CreateR1<float>(input_vector);
   TF_ASSERT_OK_AND_ASSIGN(const Literal input_literal,

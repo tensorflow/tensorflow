@@ -337,5 +337,22 @@ TEST(ThunkProtoDeserializationTest, ConditionalThunk) {
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
+TEST(ThunkProtoDeserializationTest, WaitForStreamsThunk) {
+  ThunkProto proto;
+  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        thunk_info { execution_stream_id: 7 }
+        wait_for_streams_thunk { stream_id: 1 wait_for_stream_id: 2 }
+      )pb",
+      &proto));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Thunk> thunk,
+      DeserializeThunkProto(proto, /*buffer_allocations=*/{}));
+
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  EXPECT_THAT(round_trip_proto, EqualsProto(proto));
+}
+
 }  // namespace
 }  // namespace xla::gpu
