@@ -428,6 +428,41 @@ ENTRY entry {
             graph_r->GetRoot().props.subgraph_fingerprint);
 }
 
+TEST_F(HloGumgraphTest, CalledComputationWithMultipleCallsitesAreNotInlined) {
+  const absl::string_view hlo_string = R"(
+    HloModule MultipleCallerComputationChainedExecution
+  
+    _where_26.3690 (Arg_0.3686: pred[], Arg_1.3687: s32[], Arg_2.3688: s32[]) -> s32[] {
+      Arg_0.3686 = pred[] parameter(0)
+      Arg_1.3687 = s32[] parameter(1)
+      Arg_2.3688 = s32[] parameter(2)
+      ROOT select.3689 = s32[] select(Arg_0.3686, Arg_1.3687, Arg_2.3688)
+    }
+  
+    ENTRY main {
+      parameter.1 = pred[] parameter(0)
+      parameter.2 = s32[] parameter(1)
+      parameter.3 = s32[] parameter(2)
+      parameter.4 = pred[] parameter(3)
+      parameter.5 = s32[] parameter(4)
+      call.1 = s32[] call(parameter.1, parameter.2, parameter.3), to_apply=_where_26.3690
+      ROOT call.2 = s32[] call(parameter.4, parameter.5, call.1), to_apply=_where_26.3690
+    }
+    )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph,
+                          HloGumgraph::Create(module.get()));
+  EXPECT_EQ(SelectNodeByName(*graph, "parameter.1")->parents.size(), 1);
+  EXPECT_EQ(SelectNodeByName(*graph, "parameter.4")->parents.size(), 1);
+  EXPECT_EQ(
+      SelectNodeByName(*graph, "parameter.1")->parents[0]->instruction->name(),
+      "call.1");
+  EXPECT_EQ(
+      SelectNodeByName(*graph, "parameter.4")->parents[0]->instruction->name(),
+      "call.2");
+}
+
 using HloGumgraphDeathTest = HloGumgraphTest;
 
 TEST_F(HloGumgraphDeathTest, CreateWithNullHloModuleFails) {
