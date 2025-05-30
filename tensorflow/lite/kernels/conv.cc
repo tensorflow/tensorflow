@@ -367,8 +367,10 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
     const auto* affine_quantization =
         reinterpret_cast<TfLiteAffineQuantization*>(
             filter->quantization.params);
-    for (int i = 0; i < affine_quantization->zero_point->size; ++i) {
-      TF_LITE_ENSURE_EQ(context, affine_quantization->zero_point->data[i], 0);
+    if (affine_quantization->zero_point) {
+      for (int i = 0; i < affine_quantization->zero_point->size; ++i) {
+        TF_LITE_ENSURE_EQ(context, affine_quantization->zero_point->data[i], 0);
+      }
     }
   }
 
