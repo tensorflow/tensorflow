@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
 #include "xla/literal_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_buffer.h"
@@ -51,6 +52,8 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -840,6 +843,136 @@ absl::Status HostOffloader::DynamifySlice(HloInstruction* slice) {
   return absl::OkStatus();
 }
 
+namespace {
+
+absl::Status HandleHostCopyWithDynamicUpdateSlice(HloInstruction* instruction,
+                                                  HloInstruction* dus) {
+  Shape on_device_shape = instruction->operand(0)->shape();
+  on_device_shape.mutable_layout()->set_memory_space(
+      Layout::kDefaultMemorySpace);
+  HloInstruction* copy =
+      instruction->AddInstruction(HloInstruction::CreateUnary(
+          on_device_shape, HloOpcode::kCopy, instruction->mutable_operand(0)));
+  Shape on_device_xposed_shape = on_device_shape;
+  on_device_xposed_shape.mutable_layout()->mutable_minor_to_major()->assign(
+      instruction->shape().layout().minor_to_major().begin(),
+      instruction->shape().layout().minor_to_major().end());
+  HloInstruction* transpose = nullptr;
+  if (instruction->operand(0)->shape().layout().minor_to_major() !=
+      instruction->shape().layout().minor_to_major()) {
+    transpose = instruction->AddInstruction(HloInstruction::CreateUnary(
+        instruction->shape(), HloOpcode::kCopy, copy));
+  } else {
+    LOG(WARNING) << "Non-transpose copy on host: " << instruction->name();
+    transpose = copy;
+  }
+  transpose->mutable_shape()->mutable_layout()->set_memory_space(
+      Layout::kDefaultMemorySpace);
+  TF_RETURN_IF_ERROR(dus->ReplaceOperandWith(0, transpose));
+  dus->mutable_shape()->mutable_layout()->set_memory_space(
+      Layout::kDefaultMemorySpace);
+  HloInstruction* copy_back = instruction->AddInstruction(
+      HloInstruction::CreateUnary(instruction->shape(), HloOpcode::kCopy, dus));
+  // VLOG(0) << "copy_back: " << copy_back->ToString();
+  // VLOG(0) << "transpose: " << transpose->ToString();
+  // VLOG(0) << "dus: " << dus->ToString();
+  TF_RETURN_IF_ERROR(dus->ReplaceAllUsesWith(copy_back));
+  for (HloInstruction* user : instruction->users()) {
+    if (user->opcode() == HloOpcode::kDynamicSlice) {
+      TF_RETURN_IF_ERROR(user->ReplaceOperandWith(0, transpose));
+    } else {
+      LOG(FATAL) << "Unexpected user: " << user->ToString();
+    }
+  }
+  return absl::OkStatus();
+}
+
+// absl::Status HandleHostCopyWithDynamicSliceOnly(HloInstruction* instruction)
+// {
+//   for (HloInstruction* ds : instruction->users()) {
+//     CHECK_EQ(ds->opcode(), HloOpcode::kDynamicSlice);
+//     CHECK_NE(ds->shape().layout().memory_space(), Layout::kHostMemorySpace);
+//     Shape final_ds_shape = ds->shape();
+//     TF_RETURN_IF_ERROR(
+//         ds->ReplaceOperandWith(0, instruction->mutable_operand(0)));
+//     Shape new_ds_shape = ds->shape();
+//     new_ds_shape.clear_layout();
+//     new_ds_shape.mutable_layout()->mutable_minor_to_major()->assign(
+//         ds->operand(0)->shape().layout().minor_to_major().begin(),
+//         ds->operand(0)->shape().layout().minor_to_major().end());
+//     *ds->mutable_shape() = new_ds_shape;
+//     HloInstruction* copy = instruction->AddInstruction(
+//         HloInstruction::CreateUnary(final_ds_shape, HloOpcode::kCopy, ds));
+//     TF_RETURN_IF_ERROR(ds->ReplaceAllUsesWith(copy));
+//   }
+//   return absl::OkStatus();
+// }
+
+}  // namespace
+
+absl::StatusOr<bool> HostOffloader::RewriteHostCopies(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  bool changed = false;
+  for (HloComputation* computation :
+       module->MakeComputationPostOrder(execution_threads)) {
+    for (HloInstruction* instruction :
+         computation->MakeInstructionPostOrder()) {
+      if (instruction->opcode() != HloOpcode::kCopy ||
+          instruction->shape().layout().memory_space() !=
+              Layout::kHostMemorySpace ||
+          instruction->operand(0)->shape().layout().memory_space() !=
+              Layout::kHostMemorySpace) {
+        continue;
+      }
+      // Expect it to be offloaded to host computation.
+      CHECK(instruction->has_frontend_attributes());
+
+      auto users = instruction->users();
+      int64_t dus_count = 0;
+      bool has_others = false;
+      for (HloInstruction* user : users) {
+        if (user->opcode() == HloOpcode::kDynamicUpdateSlice) {
+          dus_count++;
+        } else if (user->opcode() == HloOpcode::kDynamicSlice) {
+          continue;
+        } else {
+          has_others = true;
+          break;
+        }
+      }
+      if (has_others) {
+        continue;
+      }
+      if (dus_count > 1) {
+        LOG(WARNING) << "Multiple DUS users: " << instruction->name();
+        continue;
+      }
+
+      if (dus_count == 1) {
+        HloInstruction* dus = nullptr;
+        for (HloInstruction* user : users) {
+          if (user->opcode() == HloOpcode::kDynamicUpdateSlice) {
+            dus = user;
+            break;
+          }
+        }
+        CHECK(dus != nullptr);
+        if (dus->operand(0) != instruction) {
+          continue;
+        }
+        TF_RETURN_IF_ERROR(
+            HandleHostCopyWithDynamicUpdateSlice(instruction, dus));
+        changed = true;
+      }
+      // else if (has_ds) {
+      //   TF_RETURN_IF_ERROR(HandleHostCopyWithDynamicSliceOnly(instruction));
+      // }
+    }
+  }
+  return changed;
+}
+
 absl::StatusOr<bool> HostOffloader::ApplySchedulingFix(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -1240,6 +1373,10 @@ absl::StatusOr<bool> HostOffloader::Run(
       }
     }
   }
+
+  TF_ASSIGN_OR_RETURN(bool rewrite_host_copies,
+                      RewriteHostCopies(module, execution_threads));
+  changed = changed || rewrite_host_copies;
 
   TF_ASSIGN_OR_RETURN(bool applied_scheduling_fix,
                       ApplySchedulingFix(module, execution_threads));
