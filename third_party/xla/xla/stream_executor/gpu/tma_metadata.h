@@ -21,9 +21,9 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/status/statusor.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/SmallVector.h"
+#include "absl/types/span.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -79,10 +79,10 @@ class TmaDescriptor {
 
   // Constructs TmaDescriptor to be used at runtime.
   static absl::StatusOr<TmaDescriptor> Create(
-      llvm::ArrayRef<uint64_t> global_dims,
-      llvm::ArrayRef<uint64_t> global_strides,
-      llvm::ArrayRef<uint32_t> box_dims,
-      llvm::ArrayRef<uint32_t> element_strides, int element_byte_width,
+      absl::Span<const uint64_t> global_dims,
+      absl::Span<const uint64_t> global_strides,
+      absl::Span<const uint32_t> box_dims,
+      absl::Span<const uint32_t> element_strides, int element_byte_width,
       TmaInterleave interleave = TmaInterleave::kNone,
       TmaSwizzle swizzle = TmaSwizzle::kNone,
       TmaL2Promotion l2_promotion = TmaL2Promotion::kNone,
@@ -99,18 +99,20 @@ class TmaDescriptor {
 
   // Array containing tensor size (number of elements) along each of the rank
   // dimensions.
-  llvm::ArrayRef<uint64_t> global_dims() const { return global_dims_; }
+  absl::Span<const uint64_t> global_dims() const { return global_dims_; }
 
   // Array containing stride size (in bytes) along each of the rank dimensions.
-  llvm::ArrayRef<uint64_t> global_strides() const { return global_strides_; }
+  absl::Span<const uint64_t> global_strides() const { return global_strides_; }
 
   // Array containing traversal box size (number of elements) along each of the
   // rank dimensions. Specifies how many elements to be traversed along each
   // tensor dimension. Can be max 256.
-  llvm::ArrayRef<uint32_t> box_dims() const { return box_dims_; }
+  absl::Span<const uint32_t> box_dims() const { return box_dims_; }
 
   // Array containing traversal stride in each of the rank dimensions.
-  llvm::ArrayRef<uint32_t> element_strides() const { return element_strides_; }
+  absl::Span<const uint32_t> element_strides() const {
+    return element_strides_;
+  }
 
   // Type of interleaved layout the tensor addresses.
   TmaInterleave interleave() const { return interleave_; }
@@ -126,10 +128,10 @@ class TmaDescriptor {
   TmaFloatOobFill float_oob_fill() const { return float_oob_fill_; }
 
  private:
-  TmaDescriptor(llvm::ArrayRef<uint64_t> global_dims,
-                llvm::ArrayRef<uint64_t> global_strides,
-                llvm::ArrayRef<uint32_t> box_dims,
-                llvm::ArrayRef<uint32_t> element_strides, int element_size,
+  TmaDescriptor(absl::Span<const uint64_t> global_dims,
+                absl::Span<const uint64_t> global_strides,
+                absl::Span<const uint32_t> box_dims,
+                absl::Span<const uint32_t> element_strides, int element_size,
                 TmaInterleave interleave, TmaSwizzle swizzle,
                 TmaL2Promotion l2_promotion, TmaFloatOobFill float_oob_fill);
 
@@ -141,19 +143,19 @@ class TmaDescriptor {
 
   // Array containing tensor size (number of elements) along each of the rank
   // dimensions.
-  llvm::SmallVector<uint64_t> global_dims_;
+  absl::InlinedVector<uint64_t, 5> global_dims_;
 
   // Array containing stride size (in bytes) along each of the rank - 1
   // dimensions.
-  llvm::SmallVector<uint64_t> global_strides_;
+  absl::InlinedVector<uint64_t, 5> global_strides_;
 
   // Array containing traversal box size (number of elements) along each of the
   // rank dimensions. Specifies how many elements to be traversed along each
   // tensor dimension. Can be max 256.
-  llvm::SmallVector<uint32_t> box_dims_;
+  absl::InlinedVector<uint32_t, 5> box_dims_;
 
   // Array containing traversal stride in each of the rank dimensions.
-  llvm::SmallVector<uint32_t> element_strides_;
+  absl::InlinedVector<uint32_t, 5> element_strides_;
 
   // Type of interleaved layout the tensor addresses.
   TmaInterleave interleave_;
