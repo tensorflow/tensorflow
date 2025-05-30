@@ -233,3 +233,21 @@ cc_library(
         "@com_google_absl//absl/log:check",
     ],
 )
+
+xla_cc_test(
+    name = "bipartite_matcher_utils_test",
+    srcs = ["bipartite_matcher_utils_test.cc"],
+    deps = [
+        ":bipartite_matcher_utils",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/hlo/tools/hlo_diff:hlo_gumgraph_mappings",
+        "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph",
+        "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph_node",
+        "//xla/hlo/tools/hlo_diff/utils:test_util",
+        "//xla/service:call_graph",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
