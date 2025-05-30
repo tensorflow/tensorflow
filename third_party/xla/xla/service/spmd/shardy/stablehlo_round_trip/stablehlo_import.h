@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Pass/PassManager.h"
@@ -68,6 +69,9 @@ void addStablehloImportPipeline(mlir::OpPassManager& pm,
                                 mlir::ArrayRef<bool> allowPropagationToArgs,
                                 mlir::ArrayRef<bool> allowPropagationToResults);
 
+std::unique_ptr<mlir::Pass> createImportShardingsPass(
+    mlir::ArrayRef<bool> allowPropagationToArgs,
+    mlir::ArrayRef<bool> allowPropagationToResults);
 }  // namespace sdy
 }  // namespace xla
 
