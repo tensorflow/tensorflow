@@ -220,8 +220,8 @@ class _CachedClassProperty(object):
     self._last_updated.pop(objtype, None)
 
 
-def cached_classproperty(func):
-  return _CachedClassProperty(func)
+def cached_classproperty(func, timeout=None):
+  return _CachedClassProperty(func, timeout=timeout)
 
 
 cached_classproperty.__doc__ = _CachedClassProperty.__doc__
