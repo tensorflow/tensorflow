@@ -654,8 +654,12 @@ XLA_TEST_F(DotOperationTest, MatrixVectorC64) {
 
   XlaBuilder builder(TestName());
   auto prim_type = primitive_util::NativeToPrimitiveType<complex64>();
-  Dot(Parameter(&builder, 0, ShapeUtil::MakeShape(prim_type, {1, 4}), "lhs"),
-      Parameter(&builder, 1, ShapeUtil::MakeShape(prim_type, {4, 2}), "rhs"));
+  Dot(Parameter(&builder, 0,
+                ShapeUtil::MakeValidatedShape(prim_type, {1, 4}).value(),
+                "lhs"),
+      Parameter(&builder, 1,
+                ShapeUtil::MakeValidatedShape(prim_type, {4, 2}).value(),
+                "rhs"));
 
   Array2D<complex64> expected({{30.0, -2.0}});
 
@@ -1662,7 +1666,7 @@ XLA_TEST_F(DotOperationTest, DotRank2AndRank2NonDefaultContractionDims) {
   Array2D<float> rhs_array({{5.0f, 6.0f}, {7.0f, 8.0f}});
   auto rhs_constant = ConstantR2FromArray2D(&builder, rhs_array);
 
-  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 2}).value();
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(0);
   dot_dnums.add_rhs_contracting_dimensions(0);
@@ -1683,11 +1687,13 @@ class EinsumTest : public DotOperationTest,
 XLA_TEST_P(EinsumTest, SimpleEinsumTest) {
   XlaBuilder builder(TestName());
   auto x = AddParam(
-      MakeFakeLiteral(ShapeUtil::MakeShape(F32, std::get<0>(GetParam())))
+      MakeFakeLiteral(
+          ShapeUtil::MakeValidatedShape(F32, std::get<0>(GetParam())).value())
           .value(),
       &builder);
   auto y = AddParam(
-      MakeFakeLiteral(ShapeUtil::MakeShape(F32, std::get<1>(GetParam())))
+      MakeFakeLiteral(
+          ShapeUtil::MakeValidatedShape(F32, std::get<1>(GetParam())).value())
           .value(),
       &builder);
   auto config = std::get<2>(GetParam());
@@ -1772,11 +1778,13 @@ class BatchDotTest : public DotOperationTest,
 XLA_TEST_P(BatchDotTest, BroadcastingBatchDotTest) {
   XlaBuilder builder(TestName());
   auto x = AddParam(
-      MakeFakeLiteral(ShapeUtil::MakeShape(F32, std::get<0>(GetParam())))
+      MakeFakeLiteral(
+          ShapeUtil::MakeValidatedShape(F32, std::get<0>(GetParam())).value())
           .value(),
       &builder);
   auto y = AddParam(
-      MakeFakeLiteral(ShapeUtil::MakeShape(F32, std::get<1>(GetParam())))
+      MakeFakeLiteral(
+          ShapeUtil::MakeValidatedShape(F32, std::get<1>(GetParam())).value())
           .value(),
       &builder);
   auto batch_dot = BatchDot(x, y);
@@ -2370,8 +2378,9 @@ void DOT_ReorderContracting(::testing::benchmark::State& state) {
   input_arr.FillIota(0);
   const_arr.FillIota(0);
   XlaBuilder builder("ReorderContracting");
-  auto t0 =
-      Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {d0, d1, d2}), "param0");
+  auto t0 = Parameter(&builder, 0,
+                      ShapeUtil::MakeValidatedShape(F32, {d0, d1, d2}).value(),
+                      "param0");
   auto t1 = Transpose(t0, {0, 2, 1});
   auto lhs = Reshape(t1, {d0, d2 * d1});
   auto rhs = ConstantR2FromArray2D(&builder, const_arr);
