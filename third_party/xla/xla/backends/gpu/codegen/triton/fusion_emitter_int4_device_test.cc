@@ -385,10 +385,6 @@ TEST_F(TritonTest,
 }
 
 TEST_F(TritonTest, FuseBroadcastInPrologue) {
-  // TODO(rocm): weekly-sync 25-02-21
-  if (std::holds_alternative<stream_executor::RocmComputeCapability>(GpuComputeComp())) {
-    GTEST_SKIP() << "Currently disabled on ROCm.";
-  }
   constexpr absl::string_view kHloText = R"(
     HloModule FuseBroadcastInPrologue
 
@@ -435,13 +431,14 @@ TEST_F(TritonTest, DISABLED_FuseBroadcastBitcastInPrologue) {
     CHECK:    %[[bitcast:.*]] = bf16[256,1024]{1,0} bitcast
     CHECK:    ROOT %[[dot:.*]] = f32[1024,512]{1,0} dot
     CHECK:    ENTRY %main
-TEST_F(TritonTest, FuseBroadcastBitcastMultiplyInPrologue) {
-  
-  GTEST_SKIP() << "weekly-sync 250211: skipped due to LLVM/Triton issues";
-=======
+  )"));
+  EXPECT_TRUE(RunAndCompare(std::move(module),
+                            ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
+}
+
 TEST_F(TritonTest, DISABLED_FuseBroadcastBitcastMultiplyInPrologue) {
->>>>>>> upstream/master
   // This test is a Subchannel Dequantization fusion.
+  GTEST_SKIP() << "weekly-sync 250211: skipped due to LLVM/Triton issues";
   constexpr absl::string_view kHloText = R"(
     HloModule FuseBroadcastBitcastMultiplyInPrologue
 
@@ -587,10 +584,6 @@ TEST_F(TritonTest, DotWithInt4WeightsOnLhsFusedWithMultiplyByChannelScales) {
 }
 
 TEST_F(TritonTest, FuseMultiplyInPrologue) {
-  // TODO(rocm): weekly-sync 25-02-21
-  if (std::holds_alternative<stream_executor::RocmComputeCapability>(GpuComputeComp())) {
-    GTEST_SKIP() << "Currently disabled on ROCm.";
-  }
   constexpr absl::string_view kHloText = R"(
     HloModule FuseMultiplyInPrologue
 
