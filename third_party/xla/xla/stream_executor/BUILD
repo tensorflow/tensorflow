@@ -258,8 +258,35 @@ cc_library(
 
 cc_library(
     name = "launch_dim",
+    srcs = ["launch_dim.cc"],
     hdrs = ["launch_dim.h"],
-    deps = ["@com_google_absl//absl/strings"],
+    deps = [
+        ":launch_dim_proto_cc",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+tf_proto_library(
+    name = "launch_dim_proto",
+    srcs = ["launch_dim.proto"],
+)
+
+xla_cc_test(
+    name = "launch_dim_test",
+    srcs = ["launch_dim_test.cc"],
+    deps = [
+        ":launch_dim",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:protobuf",
+    ],
 )
 
 cc_library(
