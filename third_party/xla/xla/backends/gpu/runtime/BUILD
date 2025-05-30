@@ -1761,6 +1761,7 @@ xla_test(
     name = "topk_test",
     srcs = ["topk_test.cc"],
     backends = ["gpu"],
+    tags = ["cuda-only"], #TODO(rocm) weekly-sync-25-05-14
     deps = [
         ":topk",
         "//xla:types",

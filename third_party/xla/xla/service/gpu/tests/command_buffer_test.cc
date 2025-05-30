@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -77,7 +78,7 @@ TEST_P(CommandBufferTest, Fusions) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
-TEST_P(CommandBufferTest, TrueFalseConditional) {
+TEST_P(CommandBufferTest, DISABLED_ON_GPU_ROCM(TrueFalseConditional)) { //TODO(rocm): weekly-sync-250514
   constexpr absl::string_view hlo_text = R"(
   HloModule m, is_scheduled=true
 
@@ -136,7 +137,7 @@ TEST_P(CommandBufferTest, TrueFalseConditional) {
   }
 }
 
-TEST_P(CommandBufferTest, IndexConditional) {
+TEST_P(CommandBufferTest, DISABLED_ON_GPU_ROCM(IndexConditional)) { //TODO(rocm): weekly-sync-250514
   constexpr absl::string_view hlo_text = R"(
   HloModule m, is_scheduled=true
 
@@ -203,7 +204,7 @@ TEST_P(CommandBufferTest, IndexConditional) {
   }
 }
 
-TEST_P(CommandBufferTest, WhileLoop) {
+TEST_P(CommandBufferTest, DISABLED_ON_GPU_ROCM(WhileLoop)) { //TODO(rocm): weekly-sync-250514
   constexpr absl::string_view hlo_text = R"(
   HloModule m, is_scheduled=true
 

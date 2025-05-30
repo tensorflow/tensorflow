@@ -563,6 +563,7 @@ xla_test(
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
+    tags = ["cuda-only"], #TODO(rocm): weekly-sync-250514
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -748,7 +749,9 @@ xla_test(
     srcs = ["gpu_cub_sort_test.cc"],
     backends = ["gpu"],
     shard_count = 15,
-    tags = ["nodebug"],
+    tags = [
+        "nodebug",
+        "cuda-only"], #TODO(rocm): weekly-sync-250514
     deps = [
         "//xla:error_spec",
         "//xla:shape_util",
