@@ -786,6 +786,10 @@ HloInstruction* InstructionFusion::AddFusionInstruction(
             consumer->shape(), kind, consumer,
             absl::StrCat(HloOpcodeString(producer->opcode()), "_",
                          HloOpcodeString(consumer->opcode()), "_")));
+    // A fussion instruction does not require an original value, which should
+    // have the same value as the root of the fused computation. However, we
+    // copy the value nontheless to simplify some use cases that involve
+    // fusions.
     TF_CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
   }
   fusion_instruction->set_called_computations_execution_thread(

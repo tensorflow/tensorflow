@@ -1654,7 +1654,8 @@ absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
     new_instruction->set_frontend_attributes(
         old_instruction->frontend_attributes());
   }
-  MoveOriginalValue(old_instruction, new_instruction);
+
+  new_instruction->CopyOriginalValue(old_instruction, /*clone=*/false);
 
   // Like the metadata above, if the user didn't specify any sharding
   // information on the new instruction we should copy the old sharding

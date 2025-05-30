@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -26,12 +27,14 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
@@ -74,6 +77,24 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
         outer_->AddInstruction(std::move(new_hlo));
     TF_RETURN_IF_ERROR(NoteMapping(hlo, new_hlo_pointer));
 
+    new_hlo_pointer->CopyOriginalValue(hlo, /*clone=*/true);
+    if (std::shared_ptr<OriginalValue> original_value =
+            new_hlo_pointer->original_value()) {
+      for (auto& leaf : original_value->leaves()) {
+        std::optional<OriginalTensor>& original_tensor = leaf.second;
+        if (original_tensor.has_value()) {
+          std::string call_instruction_name;
+          if (std::shared_ptr<OriginalValue> call_original_value =
+                  call_->original_value()) {
+            call_instruction_name =
+                call_original_value->leaf_begin()->second->instruction_name;
+          }
+          absl::StrAppend(&original_tensor->instruction_name, "/",
+                          call_instruction_name);
+        }
+      }
+    }
+
     // Account for control edges.
     for (HloInstruction* control_predecessor : hlo->control_predecessors()) {
       TF_ASSIGN_OR_RETURN(HloInstruction * new_control_predecessor,
@@ -107,15 +128,21 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
     TF_ASSIGN_OR_RETURN(HloInstruction * new_root, Resolve(root));
     VLOG(1) << "Replacing all uses of " << call_->ToString()
             << " with new root " << new_root->ToString();
+    auto original_value = new_root->original_value();
     // We must relay the control dependencies from this call instruction to the
     // successors too after inlining. The will now depend on the newly inlined
     // root.
-    return outer_
-        ->ReplaceInstruction(
-            /*old_instruction=*/call_, /*new_instruction=*/new_root,
-            /*preserve_sharding=*/false, /*relay_control_dependency=*/true,
-            /*remove_unused_operands=*/true)
-        .status();
+    auto result =
+        outer_
+            ->ReplaceInstruction(
+                /*old_instruction=*/call_, /*new_instruction=*/new_root,
+                /*preserve_sharding=*/false, /*relay_control_dependency=*/true,
+                /*remove_unused_operands=*/true)
+            .status();
+    // Restores the original value of the new root, which gets overwritten when
+    // it's used to replace the call instruction.
+    new_root->set_original_value(original_value);
+    return result;
   }
 
   CallInliner::InlinedInstructionMap ConsumeInstructionMap() {

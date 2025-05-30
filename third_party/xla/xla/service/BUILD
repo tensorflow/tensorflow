@@ -5871,6 +5871,7 @@ xla_cc_test(
     name = "propagate_original_value_test",
     srcs = ["propagate_original_value_test.cc"],
     deps = [
+        ":call_inliner",
         ":instruction_fusion",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",

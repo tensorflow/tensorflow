@@ -2393,6 +2393,10 @@ class HloInstruction {
   std::shared_ptr<OriginalValue> original_value() const;
   void set_original_value(std::shared_ptr<OriginalValue> original_value);
 
+  // Copy original value from the input instruction. This performs a deep copy
+  // if clone is set to true. Otherwise, it performs a shallow copy.
+  void CopyOriginalValue(const HloInstruction* instruction, bool clone);
+
  protected:
   // Internal constructor for a given opcode/shape, other fields must be filled
   // by factory methods.
