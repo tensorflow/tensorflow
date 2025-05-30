@@ -124,6 +124,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":launch_dimensions_proto_cc",
         "//xla:shape_util",
         "//xla:util",
         "//xla/runtime:work_cluster",
@@ -133,8 +134,30 @@ cc_library(
         "//xla/service:platform_util",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:launch_dim",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_proto_library(
+    name = "launch_dimensions_proto",
+    srcs = ["launch_dimensions.proto"],
+    protodeps = ["//xla/stream_executor:launch_dim_proto"],
+)
+
+xla_cc_test(
+    name = "launch_dimensions_test",
+    srcs = ["launch_dimensions_test.cc"],
+    deps = [
+        ":launch_dimensions",
+        "//xla/stream_executor:launch_dim",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
