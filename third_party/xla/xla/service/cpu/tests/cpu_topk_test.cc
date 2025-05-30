@@ -38,8 +38,8 @@ using CpuTopKTest = CpuCodegenTest;
 
 TEST_F(CpuTopKTest, CallRuntimeUnbatched) {
   XlaBuilder builder(TestName());
-  XlaOp input =
-      Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {100}), "input");
+  XlaOp input = Parameter(
+      &builder, 0, ShapeUtil::MakeValidatedShape(F32, {100}).value(), "input");
   TopK(input, 10);
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation xla_computation, builder.Build());
 
@@ -66,7 +66,8 @@ TEST_F(CpuTopKTest, CallRuntimeUnbatched) {
 TEST_F(CpuTopKTest, CallRuntimeBatched) {
   XlaBuilder builder(TestName());
   XlaOp input =
-      Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {5, 100}), "input");
+      Parameter(&builder, 0,
+                ShapeUtil::MakeValidatedShape(F32, {5, 100}).value(), "input");
   TopK(input, 10);
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation xla_computation, builder.Build());
 

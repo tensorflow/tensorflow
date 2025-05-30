@@ -15,7 +15,10 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
+#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
@@ -91,6 +94,9 @@ void protobuf_inline_symbols_enforcer() {
   worker_config.default_instance();
 
   tensorflow::data::DataServiceMetadata data_service_metadata;
+  tensorflow::quantization::QuantizationOptions quantization_options;
+  tensorflow::CoordinatedTask coordinated_task;
+  tensorflow::DeviceAttributes device_attributes;
 }
 }  // namespace python
 }  // namespace tensorflow

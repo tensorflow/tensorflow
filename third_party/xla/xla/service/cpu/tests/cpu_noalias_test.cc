@@ -55,19 +55,22 @@ TEST_F(CpuNoAliasTest, Concat) {
   HloComputation::Builder builder(TestName());
 
   Literal literal = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
-  auto param_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  auto param_shape = ShapeUtil::MakeValidatedShape(F32, {2, 2}).value();
   HloInstruction* param_x = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "x"));
   HloInstruction* param_y = builder.AddInstruction(
       HloInstruction::CreateParameter(1, param_shape, "y"));
   HloInstruction* concat1 =
       builder.AddInstruction(HloInstruction::CreateConcatenate(
-          ShapeUtil::MakeShape(F32, {2, 4}), {param_x, param_y}, 1));
+          ShapeUtil::MakeValidatedShape(F32, {2, 4}).value(),
+          {param_x, param_y}, 1));
   HloInstruction* concat2 =
       builder.AddInstruction(HloInstruction::CreateConcatenate(
-          ShapeUtil::MakeShape(F32, {2, 6}), {concat1, param_x}, 1));
+          ShapeUtil::MakeValidatedShape(F32, {2, 6}).value(),
+          {concat1, param_x}, 1));
   HloInstruction* add = builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(F32, {2, 6}), HloOpcode::kAdd, concat2, concat2));
+      ShapeUtil::MakeValidatedShape(F32, {2, 6}).value(), HloOpcode::kAdd,
+      concat2, concat2));
 
   std::unique_ptr<HloComputation> computation = builder.Build();
 
@@ -114,7 +117,7 @@ TEST_F(CpuNoAliasTest, Concat) {
   {
     auto concat1_val = llvm::cast<llvm::GlobalVariable>(
         ir_module.getOrInsertGlobal("concat1", array2d_type));
-    auto shape = ShapeUtil::MakeShape(F32, {2, 4});
+    auto shape = ShapeUtil::MakeValidatedShape(F32, {2, 4}).value();
     llvm_ir::IrArray concat1_array(concat1_val, concat1_val->getValueType(),
                                    shape);
     aa.AddAliasingInformationToIrArray(*concat1, &concat1_array);
@@ -126,7 +129,7 @@ TEST_F(CpuNoAliasTest, Concat) {
   {
     auto concat2_val = llvm::cast<llvm::GlobalVariable>(
         ir_module.getOrInsertGlobal("concat2", array2d_type));
-    auto shape = ShapeUtil::MakeShape(F32, {2, 6});
+    auto shape = ShapeUtil::MakeValidatedShape(F32, {2, 6}).value();
     llvm_ir::IrArray concat2_array(concat2_val, concat2_val->getValueType(),
                                    shape);
     aa.AddAliasingInformationToIrArray(*concat2, &concat2_array);
@@ -138,7 +141,7 @@ TEST_F(CpuNoAliasTest, Concat) {
   {
     auto concat2_val = llvm::cast<llvm::GlobalVariable>(
         ir_module.getOrInsertGlobal("add", array2d_type));
-    auto shape = ShapeUtil::MakeShape(F32, {2, 6});
+    auto shape = ShapeUtil::MakeValidatedShape(F32, {2, 6}).value();
     llvm_ir::IrArray add_array(concat2_val, concat2_val->getValueType(), shape);
     aa.AddAliasingInformationToIrArray(*add, &add_array);
     llvm_ir::IrArray::Index zero_2d({zero, zero}, shape, zero->getType());

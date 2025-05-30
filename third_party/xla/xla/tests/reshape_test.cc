@@ -531,7 +531,7 @@ TEST_P(ReshapeTest, ToScalar) {
   for (int rank = 0; rank < 8; ++rank) {
     XlaBuilder b(TestName());
     std::vector<int64_t> ones(rank, 1);  // this is {1, ..., 1}.
-    Literal input_literal(ShapeUtil::MakeShape(F32, ones));
+    Literal input_literal(ShapeUtil::MakeValidatedShape(F32, ones).value());
     std::vector<int64_t> zeros(rank, 0);  // this is {0, ..., 0}.
     input_literal.Set<float>(zeros, 83.0f);
 

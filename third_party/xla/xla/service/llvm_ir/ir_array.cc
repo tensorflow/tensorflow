@@ -175,8 +175,10 @@ IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
 IrArray::Index::Index(absl::Span<llvm::Value* const> multidim,
                       absl::Span<int64_t const> dimensions,
                       llvm::Type* index_type)
-    : Index(multidim, ShapeUtil::MakeShape(/*arbitrary*/ PRED, dimensions),
-            index_type) {}
+    : Index(
+          multidim,
+          ShapeUtil::MakeValidatedShape(/*arbitrary*/ PRED, dimensions).value(),
+          index_type) {}
 
 IrArray::Index::Index(absl::Span<llvm::Value* const> multidim,
                       const Shape& shape, llvm::Type* index_type)
@@ -218,7 +220,7 @@ IrArray::IrArray(llvm::Value* base_ptr, llvm::Type* pointee_type, Shape shape)
 
 // Returns whether the given linear index is valid on the given shape.
 bool IrArray::Index::LinearValidOnShape(const Shape& a) const {
-  auto b = ShapeUtil::MakeShape(a.element_type(), dims_);
+  auto b = ShapeUtil::MakeValidatedShape(a.element_type(), dims_).value();
   *b.mutable_layout() = layout_;
   return linear_ != nullptr &&
          ShapeUtil::ElementsIn(a) == ShapeUtil::ElementsIn(b) &&
@@ -385,7 +387,7 @@ IrArray::Index IrArray::Index::SourceIndexOfBitcast(
 
 IrArray::Index IrArray::Index::SourceIndexOfBitcast(
     const Shape& operand_shape, llvm::IRBuilderBase* builder) const {
-  auto shape = ShapeUtil::MakeShape(F32, dims_);
+  auto shape = ShapeUtil::MakeValidatedShape(F32, dims_).value();
   *shape.mutable_layout() = layout_;
   return SourceIndexOfBitcast(shape, operand_shape, builder);
 }

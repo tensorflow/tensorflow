@@ -63,8 +63,9 @@ TEST_P(CpuFFITest, EmulateImpureCallbackWithTokens) {
   HloInstruction* p0 = builder.AddInstruction(HloInstruction::CreateToken());
   auto instr = Cast<HloCustomCallInstruction>(
       builder.AddInstruction(HloInstruction::CreateCustomCall(
-          ShapeUtil::MakeTupleShape(
-              {ShapeUtil::MakeTokenShape(), ShapeUtil::MakeShape(S32, {})}),
+          ShapeUtil::MakeValidatedTupleShape(
+              {ShapeUtil::MakeTokenShape(), ShapeUtil::MakeShape(S32, {})})
+              .value(),
           {p0}, "__xla_test$$io_callback", "",
           CustomCallApiVersion::API_VERSION_TYPED_FFI)));
 
