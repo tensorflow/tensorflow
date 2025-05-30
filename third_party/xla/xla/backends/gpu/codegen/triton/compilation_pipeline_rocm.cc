@@ -32,7 +32,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/rocm_rocdl_path.h"
 #include "triton/Conversion/TritonGPUToLLVM/Passes.h"
-#include "triton/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.h"
+#include "triton/Conversion/TritonToTritonGPU/Passes.h"
 #include "triton/Dialect/Triton/Transforms/Passes.h"
 #include "triton/Dialect/TritonGPU/Transforms/Passes.h"
 #include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
@@ -69,20 +69,21 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
   // Based on make_ttir() in
   // @triton//:third_party/amd/backend/compiler.py
   pm->addPass(mlir::createInlinerPass());
-  pm->addPass(mt::createRewriteTensorPointerPass());
+  pm->addPass(mt::createTritonRewriteTensorPointer());
+  pm->addPass(mt::createTritonRewriteTensorDescriptorToPointer());
   pm->addPass(mlir::createCanonicalizerPass());
-  pm->addPass(mt::createCombineOpsPass());
-  pm->addPass(mt::createReorderBroadcastPass());
+  pm->addPass(mt::createTritonCombineOps());
+  pm->addPass(mt::createTritonReorderBroadcast());
   pm->addPass(mlir::createCSEPass());
   pm->addPass(mlir::createLoopInvariantCodeMotionPass());
   pm->addPass(mlir::createSymbolDCEPass());
-  pm->addPass(mt::createLoopUnrollPass());
+  pm->addPass(mt::createTritonLoopUnroll());
 
   // Based on make_ttgir() in
   // @triton//:third_party/amd/backend/compiler.py
-  pm->addPass(mt::createConvertTritonToTritonGPUPass(
-      absl::StrCat("hip:", cc.gfx_version()), num_warps, threadsPerWarp,
-      num_ctas));
+  pm->addPass(mt::createConvertTritonToTritonGPU(
+      {absl::StrCat("hip:", cc.gfx_version()), num_warps, threadsPerWarp,
+       num_ctas}));
   pm->addPass(mt::gpu::createTritonGPUCoalesce());
   pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm->addPass(mt::gpu::createTritonGPUOptimizeThreadLocality());

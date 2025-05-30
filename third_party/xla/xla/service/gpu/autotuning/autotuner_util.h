@@ -112,7 +112,7 @@ class AutotuneCacheKey {
   // Tie a version to the cache key in order to invalidate the cache when
   // necessary. This should be incremented on triton upgrades or any other
   // changes that may affect the autotuning results.
-  static constexpr int kCurrentVersion = 6;
+  static constexpr int kCurrentVersion = 7;
 
   AutotuneCacheKey(const se::DeviceDescription& device_description,
                    const HloInstruction& instruction)
