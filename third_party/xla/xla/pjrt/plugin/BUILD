@@ -50,4 +50,5 @@ cc_library(
 cc_library(
     name = "static_registration",
     hdrs = ["static_registration.h"],
+    deps = ["//xla/pjrt:pjrt_api"],
 )
