@@ -78,6 +78,23 @@ absl::Status RetCheckPrintAbslStringify() {
   return absl::OkStatus();
 }
 
+absl::Status RetCheckPrintChar() {
+  char c = 'x';
+  TF_RET_CHECK(false) << c;
+  return absl::OkStatus();
+}
+
+absl::Status RetCheckPrintUnreadableChar() {
+  signed char c = static_cast<char>(127);
+  TF_RET_CHECK(false) << c;
+  return absl::OkStatus();
+}
+
+absl::Status RetCheckPrintNullptr() {
+  TF_RET_CHECK(false) << nullptr;
+  return absl::OkStatus();
+}
+
 TEST(StatusMacros, RetCheckFailing) {
   absl::Status status = RetCheckFail();
   EXPECT_EQ(status.code(), tsl::error::INTERNAL);
@@ -199,6 +216,25 @@ TEST(StatusMacros, RetCheckPrintAbslStringify) {
   EXPECT_EQ(status.code(), tsl::error::INTERNAL);
   EXPECT_THAT(status.message(),
               ::testing::ContainsRegex("RET_CHECK.*Stringify-123"));
+}
+
+TEST(StatusMacros, RetCheckPrintChar) {
+  absl::Status status = RetCheckPrintChar();
+  EXPECT_EQ(status.code(), tsl::error::INTERNAL);
+  EXPECT_THAT(status.message(), ::testing::ContainsRegex("RET_CHECK.*'x'"));
+}
+
+TEST(StatusMacros, RetCheckPrintUnreadableChar) {
+  absl::Status status = RetCheckPrintUnreadableChar();
+  EXPECT_EQ(status.code(), tsl::error::INTERNAL);
+  EXPECT_THAT(status.message(),
+              ::testing::ContainsRegex("RET_CHECK.*signed char value 127"));
+}
+
+TEST(StatusMacros, RetCheckPrintNullptr) {
+  absl::Status status = RetCheckPrintNullptr();
+  EXPECT_EQ(status.code(), tsl::error::INTERNAL);
+  EXPECT_THAT(status.message(), ::testing::ContainsRegex("RET_CHECK.*nullptr"));
 }
 
 }  // namespace xla
