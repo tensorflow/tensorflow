@@ -33,9 +33,7 @@ limitations under the License.
 
 namespace xla::gpu {
 
-namespace {
-
-std::optional<AllGatherCombiner::GroupKey> DefaultCombinerKey(
+static std::optional<AllGatherCombiner::GroupKey> DefaultCombinerKey(
     const HloInstruction* instruction, const HloDomainMap& domain_map,
     bool combine_by_dim, bool combine_different_dtypes) {
   std::optional<AllGatherCombiner::GroupKey> key =
@@ -52,7 +50,7 @@ std::optional<AllGatherCombiner::GroupKey> DefaultCombinerKey(
   return key;
 }
 
-std::optional<AllGatherCombiner::GroupKey> PipelinedCombinerKey(
+static std::optional<AllGatherCombiner::GroupKey> PipelinedCombinerKey(
     const HloInstruction* instruction, const HloDomainMap& domain_map,
     bool combine_by_dim, bool combine_different_dtypes) {
   if (!IsPipelinedCollective(*instruction)) {
@@ -62,7 +60,7 @@ std::optional<AllGatherCombiner::GroupKey> PipelinedCombinerKey(
                                        combine_different_dtypes);
 }
 
-std::optional<AllGatherCombiner::GroupKey> SynchronousCombinerKey(
+static std::optional<AllGatherCombiner::GroupKey> SynchronousCombinerKey(
     const HloInstruction* instruction, const HloDomainMap& domain_map,
     bool combine_by_dim, bool combine_different_dtypes) {
   if (!IsCombinableSyncCollective(*instruction)) {
@@ -75,8 +73,6 @@ std::optional<AllGatherCombiner::GroupKey> SynchronousCombinerKey(
   return AllGatherCombiner::CombineKey(instruction, domain_map, combine_by_dim,
                                        combine_different_dtypes);
 }
-
-}  // namespace
 
 absl::StatusOr<bool> GpuAllGatherCombiner::Run(
     HloModule* module,

@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 
 namespace xla {
+
 bool AllGatherDynamicSliceSimplifier::InstructionMatchesPattern(
     HloInstruction* instruction) {
   if (HloPredicateIsNotOp<HloOpcode::kDynamicSlice>(instruction)) {

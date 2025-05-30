@@ -39,18 +39,17 @@ limitations under the License.
 #include "xla/util.h"
 
 namespace xla::gpu {
-namespace {
 
 static constexpr const char kCollectiveIdAttr[] = "collective_id";
 static constexpr const char kCollectiveSyncAttr[] = "sync_collective";
 
-std::string CollectiveId(const HloInstruction* instr) {
+static std::string CollectiveId(const HloInstruction* instr) {
   return absl::StrCat(instr->unique_id());
 }
 
 // Annotate all collective instructions with a unique identifier that will be
 // preserved after async collective conversion.
-void AnnotateCollectives(HloModule* module) {
+static void AnnotateCollectives(HloModule* module) {
   HloPredicate is_collective = [](const HloInstruction* instr) {
     return hlo_query::IsCollectiveCommunicationOp(instr->opcode());
   };
@@ -60,13 +59,14 @@ void AnnotateCollectives(HloModule* module) {
       });
 }
 
-absl::Status AnnotateSyncCollectives(HloModule* module) {
+static absl::Status AnnotateSyncCollectives(HloModule* module) {
   HloPassPipeline pipeline("annotate-sync-collectives");
   pipeline.AddPass<GpuConvertAsyncCollectivesToSync>();
   return pipeline.Run(module).status();
 }
 
-absl::flat_hash_set<std::string> SyncCollectiveIds(const HloModule& module) {
+static absl::flat_hash_set<std::string> SyncCollectiveIds(
+    const HloModule& module) {
   absl::flat_hash_set<std::string> sync_collective_ids;
   HloPredicate is_sync_collective = [](const HloInstruction* instr) {
     return IsGPUSyncCollective(*instr);
@@ -82,7 +82,7 @@ absl::flat_hash_set<std::string> SyncCollectiveIds(const HloModule& module) {
 
 // Return the set of collective instructions that are synchronous post
 // scheduling.
-absl::StatusOr<absl::flat_hash_set<std::string>> SynchronousCollectives(
+static absl::StatusOr<absl::flat_hash_set<std::string>> SynchronousCollectives(
     const HloModule& module, int64_t pointer_size,
     const se::DeviceDescription& device_info) {
   std::unique_ptr<HloModule> cloned_module = module.Clone();
@@ -94,8 +94,6 @@ absl::StatusOr<absl::flat_hash_set<std::string>> SynchronousCollectives(
   TF_RETURN_IF_ERROR(AnnotateSyncCollectives(cloned_module.get()));
   return SyncCollectiveIds(*cloned_module);
 }
-
-}  // namespace
 
 absl::StatusOr<bool> CollectiveCombinerAnnotator::Run(
     HloModule* module,

@@ -45,9 +45,8 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 namespace xla {
-namespace {
 
-std::vector<HloInstruction*> GetOutputs(HloInstruction& instruction) {
+static std::vector<HloInstruction*> GetOutputs(HloInstruction& instruction) {
   if (!instruction.shape().IsTuple()) {
     return {&instruction};
   }
@@ -63,15 +62,17 @@ std::vector<HloInstruction*> GetOutputs(HloInstruction& instruction) {
   return outputs;
 }
 
+namespace {
 struct DecomposedReplicaGroups {
   std::vector<ReplicaGroup> scatter_gather_groups;
   std::vector<ReplicaGroup> new_all_reduce_groups;
 };
+}  // namespace
 
 // Returns the global device id for the given replica id. Returns nullopt if
 // if the replica id can refer to multiple devices, or if the pass does not
 // support the CollectiveOpGroupMode.
-std::optional<GlobalDeviceId> TryConvertingReplicaIdToDeviceId(
+static std::optional<GlobalDeviceId> TryConvertingReplicaIdToDeviceId(
     int64_t replica_id, const DeviceAssignment& device_assignment,
     CollectiveOpGroupMode collective_group_mode) {
   if (collective_group_mode == CollectiveOpGroupMode::kCrossReplica) {
@@ -95,10 +96,11 @@ std::optional<GlobalDeviceId> TryConvertingReplicaIdToDeviceId(
   return std::nullopt;
 }
 
-absl::StatusOr<std::optional<DecomposedReplicaGroups>> TryDecomposeReplicaGroup(
-    const ReplicaGroup& replica_group,
-    const DeviceAssignment& device_assignment, size_t num_devices_per_host,
-    CollectiveOpGroupMode collective_group_mode) {
+static absl::StatusOr<std::optional<DecomposedReplicaGroups>>
+TryDecomposeReplicaGroup(const ReplicaGroup& replica_group,
+                         const DeviceAssignment& device_assignment,
+                         size_t num_devices_per_host,
+                         CollectiveOpGroupMode collective_group_mode) {
   int group_size = replica_group.replica_ids_size();
   TF_RET_CHECK(group_size > 0);
 
@@ -151,7 +153,7 @@ absl::StatusOr<std::optional<DecomposedReplicaGroups>> TryDecomposeReplicaGroup(
                                   std::move(new_all_reduce_groups)}};
 }
 
-absl::StatusOr<std::optional<DecomposedReplicaGroups>>
+static absl::StatusOr<std::optional<DecomposedReplicaGroups>>
 TryDecomposeReplicaGroups(const HloAllReduceInstruction& all_reduce,
                           size_t num_devices_per_host) {
   const DeviceAssignment& device_assignment =
@@ -234,8 +236,8 @@ TryDecomposeReplicaGroups(const HloAllReduceInstruction& all_reduce,
 //
 // When applied repeatedly, this transformation will reproduce the same pattern
 // as described in the BlueConnect paper.
-absl::StatusOr<bool> TryDecomposeAllReduce(HloAllReduceInstruction* all_reduce,
-                                           size_t num_devices_per_host) {
+static absl::StatusOr<bool> TryDecomposeAllReduce(
+    HloAllReduceInstruction* all_reduce, size_t num_devices_per_host) {
   TF_RET_CHECK(all_reduce);
   TF_RET_CHECK(!all_reduce->has_sharding());
 
@@ -331,8 +333,6 @@ absl::StatusOr<bool> TryDecomposeAllReduce(HloAllReduceInstruction* all_reduce,
           .status());
   return true;
 }
-
-}  // namespace
 
 absl::StatusOr<bool> AllReduceBlueConnect::Run(
     HloModule* module,
