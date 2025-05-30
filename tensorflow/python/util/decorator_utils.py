@@ -15,6 +15,7 @@
 
 """Utility functions for writing decorators (which modify docstrings)."""
 import sys
+import time
 
 
 def get_qualified_name(function):
