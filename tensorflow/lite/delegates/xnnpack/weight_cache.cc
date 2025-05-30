@@ -788,4 +788,22 @@ PackIdentifier MMapWeightCacheProvider::BuildPackIdentifier(
                         /*bias_id=*/get_buffer_id(key.bias)};
 }
 
+bool IsCompatibleCacheFile(const char* path) {
+  FileDescriptor fd = FileDescriptor::Open(path, O_RDONLY);
+  XNNPACK_RETURN_CHECK(fd.IsValid(), "Could not open file: %s: %s.", path,
+                       strerror(errno));
+  XNNPackCacheHeader header;
+  XNNPACK_RETURN_CHECK(fd.Read(&header, sizeof(header)),
+                       "Couldn't read file header.");
+  XNNPACK_RETURN_CHECK(
+      header.version == XNNPackCacheHeader::kVersion,
+      "Cache header version is incompatible. Expected %d, got %d.",
+      XNNPackCacheHeader::kVersion, header.version);
+  XNNPACK_RETURN_CHECK(xnn_experimental_check_build_identifier(
+                           header.xnnpack_build_identifier,
+                           sizeof(header.xnnpack_build_identifier)),
+                       "Cache header build identifier is different.");
+  return true;
+}
+
 }  // namespace tflite::xnnpack
