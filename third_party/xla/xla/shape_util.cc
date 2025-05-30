@@ -380,7 +380,7 @@ ShapeUtil::MakeValidatedShapeWithSparseLayout(
     for (const Shape& s : shape.tuple_shapes()) {
       result_shapes.push_back(MoveDimToMajor(s, dim));
     }
-    return ShapeUtil::MakeTupleShape(result_shapes);
+    return MakeValidatedTupleShape(result_shapes).value();
   }
 
   Shape ret = shape;
@@ -516,7 +516,7 @@ ShapeUtil::MakeValidatedShapeWithDescendingLayoutAndSamePhysicalLayout(
 }
 
 /* static */ void ShapeUtil::AppendMajorDimension(int bound, Shape* shape) {
-  CHECK(LayoutUtil::IsDenseArray(*shape));
+  CHECK(shape->IsArray());
   if (shape->has_layout()) {
     shape->mutable_layout()->add_minor_to_major(shape->dimensions().size());
   }
@@ -541,7 +541,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
 }
 
 /* static */ void ShapeUtil::AppendMinorDimension(int bound, Shape* shape) {
-  CHECK(LayoutUtil::IsDenseArray(*shape));
+  CHECK(shape->IsArray());
   shape->add_dimensions(bound);
   if (shape->has_layout()) {
     // Append an empty field to the layout.
@@ -652,7 +652,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
 
   std::vector<Shape> new_elements(tuple.tuple_shapes().begin() + start,
                                   tuple.tuple_shapes().begin() + limit);
-  return MakeTupleShape(new_elements);
+  return MakeValidatedTupleShape(new_elements).value();
 }
 
 // Returns the shape of a real or imaginary component.
@@ -909,7 +909,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
   TF_DCHECK_OK(ValidateShapeWithOptionalLayout(shape));
   int64_t allocated_element_count;
 
-  CHECK(LayoutUtil::IsDenseArray(shape)) << shape.ToString();
+  CHECK(shape.IsArray()) << shape.ToString();
   allocated_element_count = ElementsIn(shape);
 
   if (shape.has_layout() && shape.layout().element_size_in_bits() != 0) {
@@ -1087,7 +1087,7 @@ absl::Status ValidateNonLayoutProperties(const Shape& shape) {
     for (const Shape& operand : original.tuple_shapes()) {
       new_operands.push_back(ChangeElementType(operand, type));
     }
-    return MakeTupleShape(new_operands);
+    return MakeValidatedTupleShape(new_operands).value();
   }
   Shape new_shape = original;
   new_shape.set_element_type(type);
@@ -1241,7 +1241,7 @@ ShapeUtil::PackedFactorFor1DInterleavedArray(const Shape& shape) {
   //   L*    = P.L
   //
   if (shape.has_layout()) {
-    CHECK(LayoutUtil::IsDenseArray(shape));
+    CHECK(shape.IsArray());
     Layout* new_layout = new_shape.mutable_layout();
     new_layout->clear_minor_to_major();
     for (auto index : ComposePermutations(InversePermutation(permutation),
@@ -1372,8 +1372,8 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
 /* static */ bool ShapeUtil::TransposeIsBitcast(
     const Shape& input_shape, const Shape& output_shape,
     absl::Span<const int64_t> dimension_mapping, bool ignore_element_type) {
-  CHECK(LayoutUtil::IsDenseArray(input_shape)) << input_shape.ToString(true);
-  CHECK(LayoutUtil::IsDenseArray(output_shape)) << output_shape.ToString(true);
+  CHECK(input_shape.IsArray()) << input_shape.ToString(true);
+  CHECK(output_shape.IsArray()) << output_shape.ToString(true);
   CHECK(input_shape.has_layout()) << input_shape.ToString(true);
   CHECK(output_shape.has_layout()) << output_shape.ToString(true);
 
@@ -1423,8 +1423,8 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
 /* static */ bool ShapeUtil::ReshapeIsBitcast(const Shape& input_shape,
                                               const Shape& output_shape,
                                               bool ignore_element_type) {
-  CHECK(LayoutUtil::IsDenseArray(input_shape)) << input_shape.ToString(true);
-  CHECK(LayoutUtil::IsDenseArray(output_shape)) << output_shape.ToString(true);
+  CHECK(input_shape.IsArray()) << input_shape.ToString(true);
+  CHECK(output_shape.IsArray()) << output_shape.ToString(true);
   CHECK(input_shape.has_layout()) << input_shape.ToString(true);
   CHECK(output_shape.has_layout()) << output_shape.ToString(true);
 
@@ -1551,10 +1551,14 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
     // as input_shape/output_shape and the dimension-0-major layout. These two
     // shapes are used for conversion between logical linear indices and
     // multi-dimensional indices.
-    Shape input_shape_dim0_major = MakeShapeWithDescendingLayout(
-        input_shape.element_type(), input_shape.dimensions());
-    Shape output_shape_dim0_major = MakeShapeWithDescendingLayout(
-        output_shape.element_type(), output_shape.dimensions());
+    Shape input_shape_dim0_major =
+        MakeValidatedShapeWithDescendingLayout(input_shape.element_type(),
+                                               input_shape.dimensions())
+            .value();
+    Shape output_shape_dim0_major =
+        MakeValidatedShapeWithDescendingLayout(output_shape.element_type(),
+                                               output_shape.dimensions())
+            .value();
 
     for (int64_t input_dim = 0; input_dim < input_shape.dimensions().size();
          ++input_dim) {
@@ -1636,9 +1640,11 @@ ShapeUtil::DecomposeBitcastToTrt(const Shape& input_shape,
 
   BitcastDecompositionTrt decomposition;
   decomposition.transpose1_shape =
-      MakeShapeWithDescendingLayoutAndSamePhysicalLayout(input_shape);
+      MakeValidatedShapeWithDescendingLayoutAndSamePhysicalLayout(input_shape)
+          .value();
   decomposition.reshape_shape =
-      MakeShapeWithDescendingLayoutAndSamePhysicalLayout(output_shape);
+      MakeValidatedShapeWithDescendingLayoutAndSamePhysicalLayout(output_shape)
+          .value();
   CHECK(ReshapeIsBitcast(decomposition.transpose1_shape,
                          decomposition.reshape_shape,
                          /*ignore_element_type=*/true));
@@ -1997,7 +2003,8 @@ struct ParallelState {
   }
 
   // Create the shape of the "work" which has same layout as the original shape.
-  Shape work_shape = ShapeUtil::MakeShape(shape.element_type(), work_dims);
+  Shape work_shape =
+      MakeValidatedShape(shape.element_type(), work_dims).value();
   *work_shape.mutable_layout() = shape.layout();
 
   // We target one task (partition) per available thread.
@@ -2140,7 +2147,7 @@ std::optional<absl::InlinedVector<int64_t, 4>> ShapeUtil::ByteStrides(
 }
 
 /*static*/ int64_t ShapeUtil::ArraySize(const Shape& shape) {
-  CHECK(LayoutUtil::IsDenseArray(shape));
+  CHECK(shape.IsArray());
   if (shape.layout().tiles().empty()) {
     return ByteSizeOfElements(shape);
   }
@@ -2181,7 +2188,7 @@ std::optional<absl::InlinedVector<int64_t, 4>> ShapeUtil::ByteStrides(
 }
 
 /*static*/ int64_t ShapeUtil::ArrayDataSize(const Shape& shape) {
-  CHECK(LayoutUtil::IsDenseArray(shape));
+  CHECK(shape.IsArray());
   absl::InlinedVector<int64_t, 4> indices;
   for (int64_t dim : shape.dimensions()) {
     indices.push_back(dim - 1);
