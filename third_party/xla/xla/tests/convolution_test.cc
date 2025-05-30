@@ -60,13 +60,10 @@ class ConvolutionTest : public ClientLibraryTestRunnerMixin<
   }
 
  protected:
-#if XLA_TEST_BACKEND_GPU
   // XLA:GPU sometimes uses FFT convolution which isn't as precise as spatial
   // convolution. So relax the absolute error threshold.
-  ErrorSpec error_spec_ = ErrorSpec(1e-2, 1e-3);
-#else
-  ErrorSpec error_spec_ = ErrorSpec(1e-4, 1e-3);
-#endif
+  ErrorSpec error_spec_ = test::DeviceIs(test::kGpu) ? ErrorSpec(1e-2, 1e-3)
+                                                     : ErrorSpec(1e-4, 1e-3);
 };
 
 using TestTypes = ::testing::Types<
