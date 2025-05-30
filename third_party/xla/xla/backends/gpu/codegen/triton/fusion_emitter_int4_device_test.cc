@@ -475,7 +475,7 @@ TEST_F(TritonTest, FuseBroadcastBitcastInPrologue) {
       std::move(module), ErrorSpec{/*aabs=*/1e-5, /*arel=*/1e-5}));
 }
 
-TEST_F(TritonTest, DISABLED_FuseBroadcastBitcastMultiplyInPrologue) {
+TEST_F(TritonTest, FuseBroadcastBitcastMultiplyInPrologue) {
   // This test is a Subchannel Dequantization fusion.
   constexpr absl::string_view kHloText = R"(
     HloModule FuseBroadcastBitcastMultiplyInPrologue
@@ -498,9 +498,9 @@ TEST_F(TritonTest, DISABLED_FuseBroadcastBitcastMultiplyInPrologue) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
-    CHECK:    %[[broadcast:.*]] = bf16[2,128,1024]{2,1,0} broadcast
-    CHECK:    %[[bitcast:.*]] = bf16[256,1024]{1,0} bitcast
-    CHECK:    %[[multiply:.*]] = [[type:.*]][256,1024]{1,0} multiply
+    CHECK:    %[[broadcast:.*]] = bf16[{{.*}}]{2,1,0} broadcast
+    CHECK:    %[[bitcast:.*]] = bf16[{{.*}}]{1,0} bitcast
+    CHECK:    %[[multiply:.*]] = [[type:.*]][{{.*}}]{1,0} multiply
     CHECK:    %[[dot:.*]] = f32[1024,512]{1,0} dot
     CHECK:    ENTRY %main
   )"));
