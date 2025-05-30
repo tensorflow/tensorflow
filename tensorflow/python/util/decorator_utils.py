@@ -158,11 +158,12 @@ class _CachedClassProperty(object):
   """Cached class property decorator.
 
   Transforms a class method into a property whose value is computed once
-  and then cached as a normal attribute for the life of the class.  Example
-  usage:
+  and then cached as a normal attribute for the life of the class. The cached
+  value can be cleared manually using `reset_cache` or automatically after a
+  specified `timeout` period (if provided). Example usage:
 
   >>> class MyClass(object):
-  ...   @cached_classproperty
+  ...   @cached_classproperty(timeout=60)  # Cache expires after 60 seconds
   ...   def value(cls):
   ...     print("Computing value")
   ...     return '<property of %s>' % cls.__name__
@@ -173,21 +174,34 @@ class _CachedClassProperty(object):
   '<property of MyClass>'
   >>> MyClass.value  # uses cached value
   '<property of MyClass>'
+  >>> MyClass.value.reset_cache(MyClass)  # clear cache
+  >>> MyClass.value
+  Computing value
+  '<property of MyClass>'
   >>> MySubclass.value
   Computing value
   '<property of MySubclass>'
 
   This decorator is similar to `functools.cached_property`, but it adds a
   property to the class, not to individual instances.
+
+  Args:
+    func: The function to be cached.
+    timeout: Optional float, specifying the cache expiration time in seconds.
   """
 
-  def __init__(self, func):
+  def __init__(self, func, timeout=None):
     self._func = func
     self._cache = {}
+    self._last_updated = {}
+    self._timeout = timeout
 
   def __get__(self, obj, objtype):
-    if objtype not in self._cache:
+    if objtype not in self._cache or (
+        self._timeout and time.time() - self._last_updated.get(objtype, 0) > self._timeout
+    ):
       self._cache[objtype] = self._func(objtype)
+      self._last_updated[objtype] = time.time()
     return self._cache[objtype]
 
   def __set__(self, obj, value):
@@ -195,6 +209,15 @@ class _CachedClassProperty(object):
 
   def __delete__(self, obj):
     raise AttributeError('property %s is read-only' % self._func.__name__)
+
+  def reset_cache(self, objtype):
+    """Clears the cached value for the specified class.
+
+    Args:
+      objtype: The class whose cached value should be cleared.
+    """
+    self._cache.pop(objtype, None)
+    self._last_updated.pop(objtype, None)
 
 
 def cached_classproperty(func):
