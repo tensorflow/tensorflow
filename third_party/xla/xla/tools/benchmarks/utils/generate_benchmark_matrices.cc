@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/tools/benchmarks/utils/generate_benchmark_matrices.h"
 
-#include <algorithm>
-#include <cctype>
 #include <cstdlib>
 #include <string>
 #include <vector>
