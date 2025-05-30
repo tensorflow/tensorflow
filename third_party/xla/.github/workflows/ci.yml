@@ -56,7 +56,7 @@ jobs:
           },
           {
             pool: "linux-arm64-c4a-16",
-            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-arm64:latest",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-arm64:latest",
             name: "XLA Linux ARM64 CPU",
             repo: "openxla/xla",
           },
