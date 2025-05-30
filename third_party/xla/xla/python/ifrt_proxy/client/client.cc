@@ -189,13 +189,20 @@ absl::StatusOr<std::unique_ptr<Client>> Client::Create(
   std::string runtime_type =
       absl::StrCat("proxy/", init_response.runtime_type());
 
+  AttributeMap client_attributes({});
+  if (init_response.has_client_attributes()) {
+    TF_ASSIGN_OR_RETURN(
+        client_attributes,
+        AttributeMap::FromProto(init_response.client_attributes()));
+  }
+
   auto client = absl::WrapUnique(new Client(
       std::move(rpc_helper), init_response.session_id(),
       init_response.platform_name(), init_response.platform_version(),
       init_response.platform_id(), init_response.process_index(), runtime_type,
       std::move(devices), std::move(primary_device_ptrs),
-      std::move(addressable_device_ptrs), all_device_ptrs,
-      std::move(memories)));
+      std::move(addressable_device_ptrs), all_device_ptrs, std::move(memories),
+      std::move(client_attributes)));
   for (ifrt::Device* device : all_device_ptrs) {
     tensorflow::down_cast<Device*>(device)->client_ = client.get();
   }
@@ -210,15 +217,15 @@ Client::Client(std::shared_ptr<RpcHelper> rpc_helper, uint64_t session_id,
                std::vector<xla::ifrt::Device*> primary_device_ptrs,
                std::vector<xla::ifrt::Device*> addressable_device_ptrs,
                std::vector<xla::ifrt::Device*> all_device_ptrs,
-               absl::flat_hash_map<int, std::unique_ptr<Memory>> memories)
+               absl::flat_hash_map<int, std::unique_ptr<Memory>> memories,
+               AttributeMap attributes)
     : rpc_helper_(rpc_helper),
       platform_name_(std::move(platform_name)),
       platform_version_(std::move(platform_version)),
       platform_id_(platform_id),
       process_index_(process_index),
       runtime_type_(std::move(runtime_type)),
-      // TODO(b/309059940): Forward the backend attributes to the client.
-      attributes_(AttributeMap::Map()),
+      attributes_(std::move(attributes)),
       devices_(std::move(devices)),
       primary_device_ptrs_(primary_device_ptrs),
       addressable_device_ptrs_(std::move(addressable_device_ptrs)),

@@ -28,6 +28,7 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -92,6 +93,7 @@ namespace {
 using ::testing::_;
 using ::testing::ByMove;
 using ::testing::DoAll;
+using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 using ::testing::Invoke;
@@ -252,6 +254,9 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
   void SetUp() override {
     auto mock_client = std::make_unique<xla::ifrt::MockClient>();
 
+    ON_CALL(*mock_client, Attributes())
+        .WillByDefault(ReturnRef(client_attributes_));
+
     std::vector<xla::ifrt::Device*> raw_device_ptrs;
     for (int i = 0; i < 2; ++i) {
       auto mock_device = std::make_unique<xla::ifrt::MockDevice>();
@@ -400,12 +405,11 @@ class IfrtBackendHandlerTest : public IfrtBackendTest {
   absl::Mutex mu_;
   uint64_t current_op_id_ ABSL_GUARDED_BY(mu_) = 1;
   uint64_t current_host_buffer_handle_ = 1;
-
+  xla::ifrt::AttributeMap client_attributes_{xla::ifrt::AttributeMap::Map(
+      {{"test_key", xla::ifrt::AttributeMap::StringValue("test_value")}})};
   std::unique_ptr<IfrtBackend> backend_;
 };
 
-// TODO(b/315809436): Test needs rewrite because protobuf matchers are not OSS
-#if defined(PLATFORM_GOOGLE)
 TEST_P(IfrtBackendHandlerTest, Init) {
   EXPECT_CALL(*mock_client_, platform_name())
       .WillRepeatedly(Return("ifrt_backend"));
@@ -459,147 +463,58 @@ TEST_P(IfrtBackendHandlerTest, Init) {
   auto request = NewIfrtRequest(NewOpId());
   request->mutable_init_request();
 
-  if (Version().protocol_version() <= 3) {
-    EXPECT_THAT(CallBackend(std::move(request)),
-                IsOkAndHolds(Pointee(
-                    Partially(IgnoringRepeatedFieldOrdering(EquivToProto(R"pb(
-                      init_response {
-                        session_id: 12345
-                        platform_name: "ifrt_backend"
-                        platform_version: "n/a"
-                        platform_id: 42
-                        process_index: 1
-                        runtime_type: "ifrt-service"
-                        all_devices {
-                          id: 0
-                          device_kind: "mock"
-                          default_memory_id: 0
-                          memory_ids: [ 0 ]
-                          deprecated_attributes {
-                            key: "name"
-                            value { string_value: "device0" }
-                          }
-                        }
-                        all_devices {
-                          id: 1
-                          device_kind: "mock"
-                          default_memory_id: 1
-                          memory_ids: [ 1 ]
-                          deprecated_attributes {
-                            key: "name"
-                            value { string_value: "device1" }
-                          }
-                        }
-                        memories {
-                          id: 0
-                          memory_space_kind: "mock"
-                          device_ids: [ 0 ]
-                        }
-                        memories {
-                          id: 1
-                          memory_space_kind: "mock"
-                          device_ids: [ 1 ]
-                        }
-                      }
-                    )pb"))))));
-  } else if (Version().protocol_version() < 7) {
-    EXPECT_THAT(CallBackend(std::move(request)),
-                IsOkAndHolds(Pointee(
-                    Partially(IgnoringRepeatedFieldOrdering(EquivToProto(R"pb(
-                      init_response {
-                        session_id: 12345
-                        platform_name: "ifrt_backend"
-                        platform_version: "n/a"
-                        platform_id: 42
-                        process_index: 1
-                        runtime_type: "ifrt-service"
-                        all_devices {
-                          id: 0
-                          device_kind: "mock"
-                          default_memory_id: 0
-                          memory_ids: [ 0 ]
-                          attributes {
-                            attributes {
-                              key: "name"
-                              value { string_value: "device0" }
-                            }
-                          }
-                        }
-                        all_devices {
-                          id: 1
-                          device_kind: "mock"
-                          default_memory_id: 1
-                          memory_ids: [ 1 ]
-                          attributes {
-                            attributes {
-                              key: "name"
-                              value { string_value: "device1" }
-                            }
-                          }
-                        }
-                        memories {
-                          id: 0
-                          memory_space_kind: "mock"
-                          device_ids: [ 0 ]
-                        }
-                        memories {
-                          id: 1
-                          memory_space_kind: "mock"
-                          device_ids: [ 1 ]
-                        }
-                      }
-                    )pb"))))));
-  } else {
-    EXPECT_THAT(CallBackend(std::move(request)),
-                IsOkAndHolds(Pointee(
-                    Partially(IgnoringRepeatedFieldOrdering(EquivToProto(R"pb(
-                      init_response {
-                        session_id: 12345
-                        platform_name: "ifrt_backend"
-                        platform_version: "n/a"
-                        platform_id: 42
-                        process_index: 1
-                        runtime_type: "ifrt-service"
-                        all_devices {
-                          id: 0
-                          device_kind: "mock"
-                          default_memory_id: 0
-                          memory_ids: [ 0 ]
-                          attributes {
-                            attributes {
-                              key: "name"
-                              value { string_value: "device0" }
-                            }
-                          }
-                        }
-                        all_devices {
-                          id: 1
-                          device_kind: "mock"
-                          default_memory_id: 1
-                          memory_ids: [ 1 ]
-                          attributes {
-                            attributes {
-                              key: "name"
-                              value { string_value: "device1" }
-                            }
-                          }
-                        }
-                        primary_device_ids: [ 0, 1 ]
-                        memories {
-                          id: 0
-                          memory_space_kind: "mock"
-                          device_ids: [ 0 ]
-                        }
-                        memories {
-                          id: 1
-                          memory_space_kind: "mock"
-                          device_ids: [ 1 ]
-                        }
-                      }
-                    )pb"))))));
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtResponse> response,
+                          CallBackend(std::move(request)));
+  ASSERT_TRUE(response->has_init_response()) << response->DebugString();
+
+  InitResponse init_response = std::move(response->init_response());
+  LOG(INFO) << "init_response: " << init_response.DebugString();
+
+  EXPECT_EQ(init_response.session_id(), 12345);
+  EXPECT_EQ(init_response.platform_name(), "ifrt_backend");
+  EXPECT_EQ(init_response.platform_version(), "n/a");
+  EXPECT_EQ(init_response.platform_id(), 42);
+  EXPECT_EQ(init_response.process_index(), 1);
+  EXPECT_EQ(init_response.runtime_type(), "ifrt-service");
+
+  EXPECT_EQ(init_response.all_devices().size(), 2);
+  for (auto device : init_response.all_devices()) {
+    int device_canonical_num = device.id();
+    EXPECT_EQ(device.device_kind(), "mock");
+    EXPECT_EQ(device.default_memory_id(), device_canonical_num);
+    EXPECT_EQ(device.memory_ids().size(), 1);
+    EXPECT_EQ(device.memory_ids(0), device_canonical_num);
+    std::string expected_name = absl::StrCat("device", device_canonical_num);
+    if (Version().protocol_version() <= 3) {
+      EXPECT_EQ(device.deprecated_attributes().size(), 1);
+      EXPECT_EQ(device.deprecated_attributes().at("name").string_value(),
+                expected_name);
+    } else {
+      EXPECT_EQ(device.attributes().attributes().size(), 1);
+      EXPECT_EQ(device.attributes().attributes().at("name").string_value(),
+                expected_name);
+    }
   }
+
+  EXPECT_EQ(init_response.memories().size(), 2);
+  for (auto memory : init_response.memories()) {
+    int memory_canonical_num = memory.id();
+    EXPECT_EQ(memory.memory_space_kind(), "mock");
+    EXPECT_EQ(memory.device_ids().size(), 1);
+    EXPECT_EQ(memory.device_ids(0), memory_canonical_num);
+  }
+
+  if (Version().protocol_version() > 7) {
+    EXPECT_THAT(init_response.primary_device_ids(), ElementsAre(0, 1));
+  }
+
+  EXPECT_EQ(init_response.client_attributes().attributes().size(), 1);
+  EXPECT_EQ(init_response.client_attributes()
+                .attributes()
+                .at("test_key")
+                .string_value(),
+            "test_value");
 }
-#endif
 
 // TODO(b/282757875): Use the MockRuntime fixture to cover the error cases for
 // MakeArrayFromHostBuffer and CopyToHostBuffer methods as well.
