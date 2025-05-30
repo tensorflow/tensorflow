@@ -190,8 +190,9 @@ struct ComputeOpAndFuncBufferizePass
     options.opFilter.allowDialect<bufferization::BufferizationDialect,
                                   linalg::LinalgDialect, mhlo::MhloDialect,
                                   shape::ShapeDialect, vector::VectorDialect>();
-
-    if (failed(bufferization::bufferizeOp(getOperation(), options))) {
+    bufferization::BufferizationState bufferizationState;
+    if (failed(bufferization::bufferizeOp(getOperation(), options,
+                                          bufferizationState))) {
       signalPassFailure();
       return;
     }
@@ -286,7 +287,9 @@ struct OneShotBufferizePass
     opts.bufferAlignment = 64;
 
     ModuleOp module = getOperation();
-    if (failed(bufferization::runOneShotModuleBufferize(module, opts))) {
+    bufferization::BufferizationState bufferizationState;
+    if (failed(bufferization::runOneShotModuleBufferize(module, opts,
+                                                        bufferizationState))) {
       signalPassFailure();
     }
   }
@@ -365,7 +368,9 @@ struct FinalBufferizePass
         arith::ArithDialect, bufferization::BufferizationDialect,
         linalg::LinalgDialect, func::FuncDialect, shape::ShapeDialect,
         tensor::TensorDialect, vector::VectorDialect>();
-    if (failed(bufferization::bufferizeOp(getOperation(), options))) {
+    bufferization::BufferizationState bufferizationState;
+    if (failed(bufferization::bufferizeOp(getOperation(), options,
+                                          bufferizationState))) {
       signalPassFailure();
       return;
     }
