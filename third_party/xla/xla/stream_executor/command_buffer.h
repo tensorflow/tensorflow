@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/platform.h"
 
 namespace stream_executor {
 
@@ -142,8 +143,8 @@ class CommandBuffer {
   // Creates a kernel launch command.
   virtual absl::StatusOr<const Command*> CreateLaunch(
       const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
-      const KernelArgs& args,
-      absl::Span<const Command* const> dependencies) = 0;
+      const KernelArgs& args, absl::Span<const Command* const> dependencies,
+      StreamPriority priority = StreamPriority::Default) = 0;
 
   // Updates a kernel launch command.
   virtual absl::Status UpdateLaunch(const Command* command,
@@ -263,6 +264,9 @@ class CommandBuffer {
                                    DeviceMemory<bool> pred,
                                    UpdateCommands update_cond,
                                    UpdateCommands update_body) = 0;
+
+  // Set the priority of all nodes in the command buffer.
+  virtual absl::Status SetPriority(StreamPriority priority) = 0;
 
   // Submits the command buffer for execution.
   virtual absl::Status Submit(Stream* stream) {
