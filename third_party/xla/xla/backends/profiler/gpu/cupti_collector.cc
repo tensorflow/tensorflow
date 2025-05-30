@@ -246,6 +246,11 @@ class PerDeviceCollector {
                               GetStatTypeStr(StatType::kCudaGraphId)),
                           event.graph_id);
     }
+    if (event.graph_node_id != 0) {
+      xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
+                              GetStatTypeStr(StatType::kCudaGraphNodeId)),
+                          event.graph_node_id);
+    }
     if (event.type == CuptiTracerEventType::Kernel &&
         event.source == CuptiTracerEventSource::Activity) {
       DeviceOccupancyParams params{};
@@ -341,6 +346,15 @@ class PerDeviceCollector {
                                   GetStatTypeStr(StatType::kCudaGraphOrigId)),
                               event.cuda_graph_info.orig_graph_id);
         }
+      }
+    } else if (event.type == CuptiTracerEventType::CudaGraphNodeMap) {
+      if (event.source == CuptiTracerEventSource::DriverCallback) {
+        xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
+                                GetStatTypeStr(StatType::kCudaGraphOrigId)),
+                            event.cuda_graph_info.orig_graph_id);
+        xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
+                                GetStatTypeStr(StatType::kCudaGraphOrigNodeId)),
+                            event.cuda_graph_info.orig_graph_node_id);
       }
     }
 

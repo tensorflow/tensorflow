@@ -367,7 +367,10 @@ const StatTypeMap& GetStatTypeMap() {
        {"device_offset_ps", kDeviceOffsetPs},
        {"device_duration_ps", kDeviceDurationPs},
        {"scope_range_id", kScopeRangeId},
-       {"core_details", kCoreDetails}});
+       {"core_details", kCoreDetails},
+       {"cuda_graph_node_id", kCudaGraphNodeId},
+       {"cuda_orig_graph_id", kCudaOrigGraphId},
+       {"cuda_graph_orig_node_id", kCudaGraphOrigNodeId}});
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
 }

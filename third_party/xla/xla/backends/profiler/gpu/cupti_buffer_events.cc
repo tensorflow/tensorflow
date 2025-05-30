@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
@@ -640,6 +641,8 @@ const char *GetTraceEventTypeName(const CuptiTracerEventType &type) {
       return "ThreadMarkerStart";
     case CuptiTracerEventType::ThreadMarkerEnd:
       return "ThreadMarkerEnd";
+    case CuptiTracerEventType::CudaGraphNodeMap:
+      return "CudaGraphNodeMap";
     case CuptiTracerEventType::Unsupported:
       return "";
   }
