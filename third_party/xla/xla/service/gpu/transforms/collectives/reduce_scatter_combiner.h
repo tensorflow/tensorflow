@@ -35,9 +35,10 @@ class GpuReduceScatterCombiner : public ReduceScatterCombiner {
  public:
   GpuReduceScatterCombiner(const se::DeviceDescription& device_info,
                            const int default_combine_threshold_in_bytes,
-                           int64_t combine_threshold_in_bytes,
-                           int64_t combine_threshold_count, bool combine_by_dim,
-                           int64_t pointer_size)
+                           const int64_t combine_threshold_in_bytes,
+                           const int64_t combine_threshold_count,
+                           const bool combine_by_dim,
+                           const int64_t pointer_size)
       : ReduceScatterCombiner(combine_threshold_in_bytes,
                               combine_threshold_count, combine_by_dim),
         device_info_(device_info),
@@ -56,7 +57,7 @@ class GpuReduceScatterCombiner : public ReduceScatterCombiner {
  private:
   const se::DeviceDescription& device_info_;
   const int default_combine_threshold_in_bytes_;
-  int64_t pointer_size_;
+  const int64_t pointer_size_;
 };
 
 }  // namespace xla::gpu

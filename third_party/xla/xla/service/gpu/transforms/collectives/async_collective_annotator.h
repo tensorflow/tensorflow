@@ -31,8 +31,8 @@ namespace gpu {
 // Annotate async collectives with CollectiveBackendConfig.
 class AsyncCollectiveAnnotator : public HloModulePass {
  public:
-  explicit AsyncCollectiveAnnotator(HloPredicate is_collective_async)
-      : is_collective_async_(std::move(is_collective_async)) {}
+  explicit AsyncCollectiveAnnotator(const HloPredicate is_collective_async)
+      : is_collective_async_(is_collective_async) {}
   absl::string_view name() const override {
     return "async-collective-annotator";
   }
@@ -43,7 +43,7 @@ class AsyncCollectiveAnnotator : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  HloPredicate is_collective_async_;
+  const HloPredicate is_collective_async_;
 };
 
 }  // namespace gpu
