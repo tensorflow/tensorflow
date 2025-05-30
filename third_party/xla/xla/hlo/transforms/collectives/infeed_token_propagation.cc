@@ -204,7 +204,7 @@ absl::Status CanonicalizeConditionalInstruction(HloInstruction* conditional) {
     HloInstruction* parameter = branch->parameter_instruction(0);
     if (!parameter->shape().IsTuple()) {
       *parameter->mutable_shape() =
-          ShapeUtil::MakeValidatedTupleShape({parameter->shape()}).value();
+          ShapeUtil::MakeTupleShape({parameter->shape()});
       if (parameter->has_sharding()) {
         HloSharding sharding =
             HloSharding::Tuple(parameter->shape(), {parameter->sharding()});
@@ -265,7 +265,7 @@ absl::Status CanonicalizeWhileInstruction(HloInstruction* loop) {
   HloInstruction* body_parameter = body->parameter_instruction(0);
   if (!body_parameter->shape().IsTuple()) {
     *body_parameter->mutable_shape() =
-        ShapeUtil::MakeValidatedTupleShape({body_parameter->shape()}).value();
+        ShapeUtil::MakeTupleShape({body_parameter->shape()});
     if (body_parameter->has_sharding()) {
       HloSharding sharding = HloSharding::Tuple(body_parameter->shape(),
                                                 {body_parameter->sharding()});
@@ -288,7 +288,7 @@ absl::Status CanonicalizeWhileInstruction(HloInstruction* loop) {
   HloInstruction* cond_parameter = cond->parameter_instruction(0);
   if (!cond_parameter->shape().IsTuple()) {
     *cond_parameter->mutable_shape() =
-        ShapeUtil::MakeValidatedTupleShape({cond_parameter->shape()}).value();
+        ShapeUtil::MakeTupleShape({cond_parameter->shape()});
     if (cond_parameter->has_sharding()) {
       HloSharding sharding = HloSharding::Tuple(cond_parameter->shape(),
                                                 {cond_parameter->sharding()});
@@ -302,8 +302,7 @@ absl::Status CanonicalizeWhileInstruction(HloInstruction* loop) {
 
   // Tuplify the while instruction if needed.
   if (!loop->shape().IsTuple()) {
-    *loop->mutable_shape() =
-        ShapeUtil::MakeValidatedTupleShape({loop->shape()}).value();
+    *loop->mutable_shape() = ShapeUtil::MakeTupleShape({loop->shape()});
     if (loop->has_sharding()) {
       HloSharding sharding =
           HloSharding::Tuple(loop->shape(), {loop->sharding()});
