@@ -174,12 +174,12 @@ TEST(WorkQueueTest, WorkerConcurrency) {
 
 TEST(WorkQueueTest, WorkerParallelize) {
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
-  Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(), 8);
 
   std::vector<size_t> data(1024, 0);
 
-  auto event = Worker::Parallelize(
-      &device, 128, 1024, [&](size_t task_index) { ++data[task_index]; });
+  auto event =
+      Worker::Parallelize(threads.AsEigenThreadPool(), 128, 1024,
+                          [&](size_t task_index) { ++data[task_index]; });
   tsl::BlockUntilReady(event);
 
   std::vector<size_t> expected(1024, 1);
@@ -188,7 +188,6 @@ TEST(WorkQueueTest, WorkerParallelize) {
 
 TEST(WorkQueueTest, WorkerParallelizeDeadlockProof) {
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 8);
-  Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(), 8);
 
   std::vector<size_t> data(10 * 1024, 0);
   absl::BlockingCounter counter(10);
@@ -199,7 +198,7 @@ TEST(WorkQueueTest, WorkerParallelizeDeadlockProof) {
   for (size_t i = 0; i < 10; ++i) {
     threads.Schedule([&, i] {
       auto event = Worker::Parallelize(
-          &device, 32, 1024,
+          threads.AsEigenThreadPool(), 32, 1024,
           [&](size_t task_index) { ++data[i * 1024 + task_index]; });
       tsl::BlockUntilReady(event);
       counter.DecrementCount();
