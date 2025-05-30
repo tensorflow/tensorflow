@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <array>
 #include <cmath>
-#include <cstdint>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -74,14 +73,14 @@ TEST(LdexpTest, EmitLdexpF64) {
                           std::numeric_limits<double>::infinity(),
                           -std::numeric_limits<double>::infinity(),
                           std::numeric_limits<double>::quiet_NaN()};
-  int64_t exponents[] = {0, 1, -1, 10, -10, 50, -50, -700, 700};
+  int exponents[] = {0, 1, -1, 10, -10, 50, -50, -700, 700};
 
   for (double a_val : test_values) {
-    for (int64_t exp_val : exponents) {
+    for (int exp_val : exponents) {
       double expected = std::ldexp(a_val, exp_val);
       llvm::Expected<double> result_or_err =
-          runner.RunJitTest<double(double, int64_t), double>("xla.ldexp.1xf64",
-                                                             a_val, exp_val);
+          runner.RunJitTest<double(double, int), double>(
+              LdexpF64FunctionName(1), a_val, exp_val);
       if (auto e = result_or_err.takeError()) {
         EXPECT_TRUE(false) << "Error: " << toString(std::move(e));
       }
@@ -99,9 +98,10 @@ TEST(LdexpTest, EmitLdexpF64) {
 TEST(LdexpTest, ClampsExponent) {
   JitRunner runner = CreateJitRunnerWithLdexpF64(llvm::Type::getDoubleTy);
 
-  auto run = [&runner](double a, int64_t exp) {
+  auto run = [&runner](double a, int exp) {
     return runner
-        .RunJitTest<double(double, int64_t), double>("xla.ldexp.1xf64", a, exp)
+        .RunJitTest<double(double, int), double>(LdexpF64FunctionName(1), a,
+                                                 exp)
         .get();
   };
   EXPECT_THAT(run(2.0, 1e9), Eq(std::numeric_limits<double>::infinity()));
@@ -123,15 +123,15 @@ TEST(LdexpTest, EmitLdexpF64_Vector4) {
       {-2.0, -0.5, 0.0, std::numeric_limits<double>::infinity()},
       {-std::numeric_limits<double>::infinity(),
        std::numeric_limits<double>::quiet_NaN(), 0, -23434}};
-  int64_t exponents[] = {0, 1, -1, 10, -10, 50, -50};
+  int exponents[] = {0, 1, -1, 10, -10, 50, -50};
 
   for (const DoubleArray4 input_values : test_values) {
-    for (int64_t exp_val : exponents) {
-      std::array<int64_t, 4> exp_val_vec = {exp_val, exp_val, exp_val, exp_val};
+    for (int exp_val : exponents) {
+      std::array<int, 4> exp_val_vec = {exp_val, exp_val, exp_val, exp_val};
 
       llvm::Expected<DoubleArray4> result_or_err =
-          runner.RunJitBinaryVectorized<4>("xla.ldexp.4xf64", input_values,
-                                           exp_val_vec);
+          runner.RunJitBinaryVectorized<4>(LdexpF64FunctionName(4),
+                                           input_values, exp_val_vec);
       if (auto e = result_or_err.takeError()) {
         EXPECT_TRUE(false) << "Error: " << toString(std::move(e));
       }

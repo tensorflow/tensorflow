@@ -103,6 +103,7 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> ParseLlvmIr(
       llvm::parseIR(llvm::MemoryBufferRef(ir_content, "input"), error, context);
 
   if (!module) {
+    error.print("ir-compiler-opt", llvm::errs());
     return absl::InvalidArgumentError(
         absl::StrCat("Failed to parse LLVM IR: ", error.getMessage().str()));
   }

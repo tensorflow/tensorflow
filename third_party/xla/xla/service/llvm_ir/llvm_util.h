@@ -133,6 +133,12 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
                                   llvm::LLVMContext& context);
 
+// Returns the XLA primitive type which represents the given LLVM type.
+// If `default_to_signed_for_integers` is true, then integer types will be
+// treated as signed if they are not explicitly specified as unsigned.
+PrimitiveType PrimitiveTypeFromIrType(
+    llvm::Type* type, bool default_to_signed_for_integers = true);
+
 // Returns the type size in bits. If "type" is a struct, it must be packed.
 int GetSizeInBits(llvm::Type* type);
 

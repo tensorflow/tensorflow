@@ -142,13 +142,15 @@ TEST(IrCompilerTest, OverrideIrCompilerCompileOptions) {
   // vectorization happened/did not happen.
   EXPECT_THAT(vectorized_module_ir, ::testing::HasSubstr("wide.load"));
   EXPECT_THAT(non_vectorized_module_ir,
-              ::testing::Not(::testing::HasSubstr("wide.load")));
+              ::testing::Not(::testing::HasSubstr("wide.load")))
+      << non_vectorized_module_ir;
 
   EXPECT_THAT(vectorized_module_ir,
-              ::testing::ContainsRegex("fadd <[0-9]+ x float>"));
-  EXPECT_THAT(
-      non_vectorized_module_ir,
-      ::testing::Not(::testing::ContainsRegex("fadd <[0-9]+ x float>")));
+              ::testing::ContainsRegex("fadd <[0-9]+ x float>"))
+      << vectorized_module_ir;
+  EXPECT_THAT(non_vectorized_module_ir,
+              ::testing::Not(::testing::ContainsRegex("fadd <[0-9]+ x float>")))
+      << non_vectorized_module_ir;
 }
 
 }  // namespace

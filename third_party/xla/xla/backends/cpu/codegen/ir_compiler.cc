@@ -61,6 +61,7 @@ limitations under the License.
 #include "llvm/Transforms/Instrumentation/DataFlowSanitizer.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/backends/cpu/codegen/polynomial_approximations.h"
+#include "xla/codegen/math_approximations_lib.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -334,6 +335,8 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
       std::make_unique<llvm::TargetLibraryInfoImpl>(target_triple);
   target_library_info_impl->addVectorizableFunctions(
       PolynomialApproximationsVectorization());
+  codegen::MathFunctionLib math_lib;
+  target_library_info_impl->addVectorizableFunctions(math_lib.Vectorizations());
 
   fam.registerPass(
       [&] { return llvm::TargetLibraryAnalysis(*target_library_info_impl); });
@@ -355,6 +358,7 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
     pm.addPass(pb.buildO0DefaultPipeline(opt_level));
   } else {
     pm.addPass(pb.buildPerModuleDefaultPipeline(opt_level));
+    math_lib.BeforeOptimization(module);
   }
 
   {
@@ -369,6 +373,9 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
   }
 
   pm.run(module, mam);
+  if (opt_level != llvm::OptimizationLevel::O0) {
+    math_lib.AfterOptimization(module, pto, opt_level);
+  }
 
   {
     std::string error_string;
@@ -376,8 +383,8 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
     if (llvm::verifyModule(module, &error_stream)) {
       return llvm::make_error<llvm::StringError>(
           llvm::errc::invalid_argument,
-          absl::StrFormat("Invalid LLVM IR after optimizations:\n%s",
-                          error_stream.str()));
+          absl::StrFormat("Invalid LLVM IR after optimizations:\n%s\n%s",
+                          error_stream.str(), llvm_ir::DumpToString(&module)));
     }
   }
 

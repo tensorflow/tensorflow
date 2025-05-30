@@ -63,6 +63,7 @@ cc_library(
         ":polynomial_approximations",
         "//xla:util",
         "//xla:xla_proto_cc",
+        "//xla/codegen:math_approximations_lib",
         "//xla/service:hlo_module_config",
         "//xla/service/cpu:backend_config_proto_cc",
         "//xla/service/cpu:cpu_options",

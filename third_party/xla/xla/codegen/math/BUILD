@@ -6,10 +6,19 @@ load(
     "if_llvm_system_z_available",
     "if_llvm_x86_available",
 )
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [":friends"],
     licenses = ["notice"],
+)
+
+package_group(
+    name = "friends",
+    includes = [
+        "//xla:friends",
+    ],
 )
 
 cc_library(

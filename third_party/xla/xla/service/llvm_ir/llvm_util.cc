@@ -106,6 +106,48 @@ llvm::Module* ModuleFromIRBuilder(llvm::IRBuilderBase* b) {
   return module;
 }
 
+PrimitiveType PrimitiveTypeFromIrIntegerType(
+    llvm::IntegerType* type, bool default_to_signed_for_integers) {
+  // PRED (boolean) is typically a 1-bit integer.
+  if (type->getBitWidth() == 1) {
+    return PRED;
+  }
+
+  // LLVM's llvm::IntegerType (e.g., i8, i32) does not distinguish between
+  // signed and unsigned types by itself. The interpretation (signed/unsigned)
+  // depends on the operations using these types (e.g., sdiv vs. udiv).
+  // The 'default_to_signed_for_integers' flag helps make a choice here.
+  switch (type->getBitWidth()) {
+    case 8:
+      return default_to_signed_for_integers ? S8 : U8;
+    case 16:
+      return default_to_signed_for_integers ? S16 : U16;
+    case 32:
+      return default_to_signed_for_integers ? S32 : U32;
+    case 64:
+      return default_to_signed_for_integers ? S64 : U64;
+    default:
+      return PRIMITIVE_TYPE_INVALID;
+  }
+}
+
+std::optional<PrimitiveType> PrimitiveComplexTypeFromIrStructType(
+    llvm::StructType* struct_type) {
+  // XLA C64 is typically represented as an LLVM struct {float, float}.
+  // XLA C128 is typically represented as an LLVM struct {double, double}.
+  if (struct_type->getNumElements() == 2) {
+    llvm::Type* el_type0 = struct_type->getElementType(0);
+    llvm::Type* el_type1 = struct_type->getElementType(1);
+    if (el_type0->isFloatTy() && el_type1->isFloatTy()) {
+      return C64;  // Complex64
+    }
+    if (el_type0->isDoubleTy() && el_type1->isDoubleTy()) {
+      return C128;  // Complex128
+    }
+  }
+  return std::nullopt;
+}
+
 }  // namespace
 
 std::string DumpToString(const llvm::Module* module) {
@@ -263,6 +305,51 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
     default:
       LOG(FATAL) << "unsupported type " << element_type;
   }
+}
+
+PrimitiveType PrimitiveTypeFromIrType(llvm::Type* type,
+                                      bool default_to_signed_for_integers) {
+  if (!type) {
+    return PRIMITIVE_TYPE_INVALID;
+  }
+
+  // If it's a vector type, XLA PrimitiveType refers to the element type.
+  // So, we get the underlying element type for further checks.
+  if (type->isVectorTy()) {
+    type = llvm::cast<llvm::VectorType>(type)->getElementType();
+  }
+
+  // Floating-point types
+  if (type->isHalfTy()) {
+    return F16;
+  }
+  if (type->isBFloatTy()) {
+    return BF16;
+  }
+  if (type->isFloatTy()) {
+    return F32;
+  }
+  if (type->isDoubleTy()) {
+    return F64;
+  }
+
+  if (type->isIntegerTy()) {
+    return PrimitiveTypeFromIrIntegerType(llvm::cast<llvm::IntegerType>(type),
+                                          default_to_signed_for_integers);
+  }
+
+  if (type->isStructTy()) {
+    if (auto result = PrimitiveComplexTypeFromIrStructType(
+            llvm::cast<llvm::StructType>(type))) {
+      return *result;
+    }
+  }
+
+  if (type->isPointerTy()) {
+    return OPAQUE_TYPE;
+  }
+
+  return PRIMITIVE_TYPE_INVALID;
 }
 
 int GetSizeInBits(llvm::Type* type) {
