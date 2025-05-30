@@ -2984,7 +2984,8 @@ absl::StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfGather(
   const int n =
       right_operand->shape().dimensions(1 - rhs_contracting_dimension);
   auto memoized_shape =
-      ShapeUtil::MakeShape(dot->shape().element_type(), {m, n});
+      ShapeUtil::MakeValidatedShape(dot->shape().element_type(), {m, n})
+          .value();
   simplifier_->UpdateLayout(&memoized_shape);
   auto* memoized_inst = dot->AddInstruction(
       HloInstruction::CreateDot(memoized_shape, left_operand, right_operand,
@@ -3000,9 +3001,9 @@ absl::StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfGather(
 
   // Slice out start and 0 components and reorder if necessary.
   auto indices_type = dynamic_slice->operand(1)->shape().element_type();
-  Shape s_shape = ShapeUtil::MakeShape(indices_type, {1});
+  Shape s_shape = ShapeUtil::MakeValidatedShape(indices_type, {1}).value();
   simplifier_->UpdateLayout(&s_shape);
-  Shape d_shape = ShapeUtil::MakeShape(indices_type, {2});
+  Shape d_shape = ShapeUtil::MakeValidatedShape(indices_type, {2}).value();
   simplifier_->UpdateLayout(&d_shape);
   HloInstruction* non_zero_start =
       dynamic_slice->mutable_operand(1 + index_of_non_zero_start);
@@ -3188,8 +3189,9 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
   }
   HloInstruction* rhs_reshape =
       dot->AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeShape(constant->shape().element_type(),
-                               rhs_unsquished_shape_dims),
+          ShapeUtil::MakeValidatedShape(constant->shape().element_type(),
+                                        rhs_unsquished_shape_dims)
+              .value(),
           constant));
   rhs = rhs_reshape;
 
@@ -3225,8 +3227,9 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
   }
   HloInstruction* rhs_transpose =
       dot->AddInstruction(HloInstruction::CreateTranspose(
-          ShapeUtil::MakeShape(constant->shape().element_type(),
-                               rhs_transpose_shape_dims),
+          ShapeUtil::MakeValidatedShape(constant->shape().element_type(),
+                                        rhs_transpose_shape_dims)
+              .value(),
           rhs_reshape, rhs_transpose_dims));
   rhs = rhs_transpose;
 
@@ -4227,8 +4230,9 @@ absl::Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
     HloInstruction* new_operand = gather->mutable_operand(0);
     if (!operand_shape.dimensions().empty()) {
       TF_ASSIGN_OR_RETURN(new_operand,
-                          MakeReshapeHlo(ShapeUtil::MakeScalarShape(
-                                             operand_shape.element_type()),
+                          MakeReshapeHlo(ShapeUtil::MakeValidatedScalarShape(
+                                             operand_shape.element_type())
+                                             .value(),
                                          new_operand));
     }
     HloInstruction* new_gather =
@@ -4246,10 +4250,13 @@ absl::Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
     const int64_t operand_elements = operand_shape.dimensions(0);
     auto get_value = [&](int64_t i) {
       auto slice = gather->AddInstruction(HloInstruction::CreateSlice(
-          ShapeUtil::MakeShape(operand_shape.element_type(), {1}),
+          ShapeUtil::MakeValidatedShape(operand_shape.element_type(), {1})
+              .value(),
           gather->mutable_operand(0), {i}, {i + 1}, {1}));
       auto scalar = gather->AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeShape(operand_shape.element_type(), {}), slice));
+          ShapeUtil::MakeValidatedShape(operand_shape.element_type(), {})
+              .value(),
+          slice));
       return gather->AddInstruction(
           HloInstruction::CreateBroadcast(gather->shape(), scalar, {}));
     };
@@ -6361,7 +6368,9 @@ absl::Status AlgebraicSimplifierVisitor::HandleReshape(
         }
       }
       auto new_slice = reshape->AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeShape(old_slice_shape.element_type(), new_slice_shape),
+          ShapeUtil::MakeValidatedShape(old_slice_shape.element_type(),
+                                        new_slice_shape)
+              .value(),
           slice));
       new_dus_operands[1] = new_slice;
       auto new_dus =
@@ -6596,8 +6605,9 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::TryToReorderSliceAndReshape(
     }
     HloInstruction* new_slice =
         slice->AddInstruction(HloInstruction::CreateSlice(
-            ShapeUtil::MakeShape(new_slice_shape.element_type(),
-                                 new_slice_limits),
+            ShapeUtil::MakeValidatedShape(new_slice_shape.element_type(),
+                                          new_slice_limits)
+                .value(),
             new_slice_operand, new_slice_starts, new_slice_limits,
             new_slice_stides));
     simplifier_->UpdateLayout(new_slice->mutable_shape());
@@ -7262,8 +7272,9 @@ absl::Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
     }
     HloInstruction* new_dynamic_slice =
         dynamic_slice->AddInstruction(HloInstruction::CreateDynamicSlice(
-            ShapeUtil::MakeShape(dynamic_slice->shape().element_type(),
-                                 slice_sizes),
+            ShapeUtil::MakeValidatedShape(dynamic_slice->shape().element_type(),
+                                          slice_sizes)
+                .value(),
             reshape_operand, starts, slice_sizes));
     return ReplaceWithNewInstruction(
         dynamic_slice, HloInstruction::CreateReshape(dynamic_slice->shape(),
@@ -9681,17 +9692,23 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToDot(
 
   // We already checked feature_dimension is most minor, so data in input_shape
   // and row-major {conv_width,input_channels} are bitwise identical.
-  Shape new_input_shape = ShapeUtil::MakeShapeWithDescendingLayout(
-      input_shape.element_type(), {conv_width, input_channels});
+  Shape new_input_shape =
+      ShapeUtil::MakeValidatedShapeWithDescendingLayout(
+          input_shape.element_type(), {conv_width, input_channels})
+          .value();
   simplifier_->UpdateLayout(&new_input_shape);
   // We already checked input_feature_dimension is more major than
   // output_feature_dimension, so data in filter_shape and row-major
   // {input_channels,output_channels} are bitwise identical.
-  Shape new_filter_shape = ShapeUtil::MakeShapeWithDescendingLayout(
-      filter_shape.element_type(), {input_channels, output_channels});
+  Shape new_filter_shape =
+      ShapeUtil::MakeValidatedShapeWithDescendingLayout(
+          filter_shape.element_type(), {input_channels, output_channels})
+          .value();
   simplifier_->UpdateLayout(&new_filter_shape);
-  Shape dot_output_shape = ShapeUtil::MakeShapeWithDescendingLayout(
-      convolution_shape.element_type(), {conv_width, output_channels});
+  Shape dot_output_shape =
+      ShapeUtil::MakeValidatedShapeWithDescendingLayout(
+          convolution_shape.element_type(), {conv_width, output_channels})
+          .value();
   simplifier_->UpdateLayout(&dot_output_shape);
 
   auto new_lhs = add_bitcast(new_input_shape, lhs);

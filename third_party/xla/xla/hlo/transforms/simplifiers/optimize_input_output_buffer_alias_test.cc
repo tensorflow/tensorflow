@@ -36,15 +36,18 @@ class OptimizeInputOutputBufferAliasTest
     : public HloHardwareIndependentTestBase {
  protected:
   OptimizeInputOutputBufferAliasTest() {
-    r1f32_ = ShapeUtil::MakeShape(F32, {4});
-    r2f32_ = ShapeUtil::MakeShape(F32, {4, 5});
-    r3f32_ = ShapeUtil::MakeShape(F32, {4, 5, 6});
-    r4f32_ = ShapeUtil::MakeShape(F32, {4, 5, 6, 7});
-    d1f32_ = ShapeUtil::MakeShape(F32, {256}, /*dynamic_dimensions=*/{true});
-    d2f32_ = ShapeUtil::MakeShape(F32, {128, 128},
-                                  /*dynamic_dimensions=*/{false, true});
+    r1f32_ = ShapeUtil::MakeValidatedShape(F32, {4}).value();
+    r2f32_ = ShapeUtil::MakeValidatedShape(F32, {4, 5}).value();
+    r3f32_ = ShapeUtil::MakeValidatedShape(F32, {4, 5, 6}).value();
+    r4f32_ = ShapeUtil::MakeValidatedShape(F32, {4, 5, 6, 7}).value();
+    d1f32_ =
+        ShapeUtil::MakeValidatedShape(F32, {256}, /*dynamic_dimensions=*/{true})
+            .value();
+    d2f32_ = ShapeUtil::MakeValidatedShape(F32, {128, 128},
+                                           /*dynamic_dimensions=*/{false, true})
+                 .value();
     // Static shape with same size as dynamic shape `d1f32_`.
-    d3f32_ = ShapeUtil::MakeShape(F32, {512});
+    d3f32_ = ShapeUtil::MakeValidatedShape(F32, {512}).value();
   }
   void CreatePassAndBufferDonorConfig(
       bool registered_donor_buffer_only = false) {
@@ -93,8 +96,9 @@ class OptimizeInputOutputBufferAliasTest
 // All shapes are different, so no aliasing is available.
 TEST_F(OptimizeInputOutputBufferAliasTest, AllDifferentBufferSizes) {
   CreatePassAndBufferDonorConfig(false);
-  std::vector<Shape> input = {ShapeUtil::MakeTupleShape({r1f32_, r2f32_})};
-  Shape output = ShapeUtil::MakeTupleShape({r3f32_, r4f32_});
+  std::vector<Shape> input = {
+      ShapeUtil::MakeValidatedTupleShape({r1f32_, r2f32_}).value()};
+  Shape output = ShapeUtil::MakeValidatedTupleShape({r3f32_, r4f32_}).value();
   bool changed = BuildAliasConfig(input, output);
   EXPECT_FALSE(changed);
   EXPECT_EQ(AliasCount(), 0);
@@ -104,8 +108,11 @@ TEST_F(OptimizeInputOutputBufferAliasTest, AllDifferentBufferSizes) {
 TEST_F(OptimizeInputOutputBufferAliasTest, OrderedNonNestedTuple) {
   CreatePassAndBufferDonorConfig(false);
   std::vector<Shape> input = {
-      ShapeUtil::MakeTupleShape({r1f32_, r2f32_, r3f32_, r4f32_})};
-  Shape output = ShapeUtil::MakeTupleShape({r1f32_, r2f32_, r3f32_, r4f32_});
+      ShapeUtil::MakeValidatedTupleShape({r1f32_, r2f32_, r3f32_, r4f32_})
+          .value()};
+  Shape output =
+      ShapeUtil::MakeValidatedTupleShape({r1f32_, r2f32_, r3f32_, r4f32_})
+          .value();
   bool changed = BuildAliasConfig(input, output);
   EXPECT_TRUE(changed);
   EXPECT_EQ(AliasCount(), 4);
@@ -121,8 +128,11 @@ TEST_F(OptimizeInputOutputBufferAliasTest, OrderedNonNestedTuple) {
 TEST_F(OptimizeInputOutputBufferAliasTest, PartialReuseNonNestedTuple) {
   CreatePassAndBufferDonorConfig(false);
   std::vector<Shape> input = {
-      ShapeUtil::MakeTupleShape({r1f32_, r1f32_, r2f32_, r2f32_})};
-  Shape output = ShapeUtil::MakeTupleShape({r1f32_, r2f32_, r3f32_, r4f32_});
+      ShapeUtil::MakeValidatedTupleShape({r1f32_, r1f32_, r2f32_, r2f32_})
+          .value()};
+  Shape output =
+      ShapeUtil::MakeValidatedTupleShape({r1f32_, r2f32_, r3f32_, r4f32_})
+          .value();
   bool changed = BuildAliasConfig(input, output);
   EXPECT_TRUE(changed);
 
@@ -139,8 +149,11 @@ TEST_F(OptimizeInputOutputBufferAliasTest, PartialReuseNonNestedTuple) {
 TEST_F(OptimizeInputOutputBufferAliasTest, UnorderedNonNestedTuple) {
   CreatePassAndBufferDonorConfig(false);
   std::vector<Shape> input = {
-      ShapeUtil::MakeTupleShape({r1f32_, r2f32_, r3f32_, r4f32_})};
-  Shape output = ShapeUtil::MakeTupleShape({r4f32_, r3f32_, r2f32_, r1f32_});
+      ShapeUtil::MakeValidatedTupleShape({r1f32_, r2f32_, r3f32_, r4f32_})
+          .value()};
+  Shape output =
+      ShapeUtil::MakeValidatedTupleShape({r4f32_, r3f32_, r2f32_, r1f32_})
+          .value();
   bool changed = BuildAliasConfig(input, output);
   EXPECT_TRUE(changed);
 
@@ -154,10 +167,14 @@ TEST_F(OptimizeInputOutputBufferAliasTest, UnorderedNonNestedTuple) {
 
 TEST_F(OptimizeInputOutputBufferAliasTest, UnorderedNestedTuple) {
   CreatePassAndBufferDonorConfig(false);
-  std::vector<Shape> input = {ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeTupleShape({r1f32_}), r2f32_, r3f32_, r4f32_})};
-  Shape output = ShapeUtil::MakeTupleShape(
-      {r1f32_, ShapeUtil::MakeTupleShape({r3f32_, r2f32_}), r2f32_});
+  std::vector<Shape> input = {
+      ShapeUtil::MakeValidatedTupleShape(
+          {ShapeUtil::MakeTupleShape({r1f32_}), r2f32_, r3f32_, r4f32_})
+          .value()};
+  Shape output =
+      ShapeUtil::MakeValidatedTupleShape(
+          {r1f32_, ShapeUtil::MakeTupleShape({r3f32_, r2f32_}), r2f32_})
+          .value();
   bool changed = BuildAliasConfig(input, output);
   EXPECT_TRUE(changed);
 
@@ -172,7 +189,9 @@ TEST_F(OptimizeInputOutputBufferAliasTest, UnorderedNestedTuple) {
 TEST_F(OptimizeInputOutputBufferAliasTest, MultipleParameters) {
   CreatePassAndBufferDonorConfig(false);
   std::vector<Shape> input = {{r1f32_, r2f32_, r3f32_, r4f32_}};
-  Shape output = ShapeUtil::MakeTupleShape({r4f32_, r3f32_, r2f32_, r1f32_});
+  Shape output =
+      ShapeUtil::MakeValidatedTupleShape({r4f32_, r3f32_, r2f32_, r1f32_})
+          .value();
   bool changed = BuildAliasConfig(input, output);
   EXPECT_TRUE(changed);
 
@@ -186,8 +205,9 @@ TEST_F(OptimizeInputOutputBufferAliasTest, MultipleParameters) {
 
 TEST_F(OptimizeInputOutputBufferAliasTest, BufferDonorOnly) {
   CreatePassAndBufferDonorConfig(true);
-  std::vector<Shape> input = {ShapeUtil::MakeTupleShape({r1f32_, r2f32_})};
-  Shape output = ShapeUtil::MakeTupleShape({r2f32_, r1f32_});
+  std::vector<Shape> input = {
+      ShapeUtil::MakeValidatedTupleShape({r1f32_, r2f32_}).value()};
+  Shape output = ShapeUtil::MakeValidatedTupleShape({r2f32_, r1f32_}).value();
 
   TF_CHECK_OK(buffer_donor_config_.AddBufferDonor(0, {0}));
   EXPECT_TRUE(buffer_donor_config_.ParameterIsBufferDonor(0, {0}));
@@ -205,8 +225,9 @@ TEST_F(OptimizeInputOutputBufferAliasTest, BufferDonorOnly) {
 // No aliasing on dynamic shapes with tuple.
 TEST_F(OptimizeInputOutputBufferAliasTest, DynamicShapeWithTuple) {
   CreatePassAndBufferDonorConfig(false);
-  std::vector<Shape> input = {ShapeUtil::MakeTupleShape({d1f32_, d2f32_})};
-  Shape output = ShapeUtil::MakeTupleShape({d1f32_, d2f32_});
+  std::vector<Shape> input = {
+      ShapeUtil::MakeValidatedTupleShape({d1f32_, d2f32_}).value()};
+  Shape output = ShapeUtil::MakeValidatedTupleShape({d1f32_, d2f32_}).value();
   bool changed = BuildAliasConfig(input, output);
   EXPECT_FALSE(changed);
   EXPECT_EQ(AliasCount(), 0);
@@ -248,9 +269,12 @@ TEST_F(OptimizeInputOutputBufferAliasTest, DynamicShapeBufferInput) {
 TEST_F(OptimizeInputOutputBufferAliasTest, AllDifferentMemorySpaces) {
   CreatePassAndBufferDonorConfig(false);
   std::vector<Shape> input = {
-      ShapeUtil::MakeTupleShape({r1f32_, r2f32_, r3f32_, r4f32_})};
-  Shape output = ShapeUtil::MakeTupleShape({r1f32_, r2f32_, r3f32_, r4f32_});
-  for (int i = 0; i < output.tuple_shapes_size(); ++i) {
+      ShapeUtil::MakeValidatedTupleShape({r1f32_, r2f32_, r3f32_, r4f32_})
+          .value()};
+  Shape output =
+      ShapeUtil::MakeValidatedTupleShape({r1f32_, r2f32_, r3f32_, r4f32_})
+          .value();
+  for (int i = 0; i < output.tuple_shapes().size(); ++i) {
     output.mutable_tuple_shapes(i)->mutable_layout()->set_memory_space(
         Layout::kHostMemorySpace);
   }

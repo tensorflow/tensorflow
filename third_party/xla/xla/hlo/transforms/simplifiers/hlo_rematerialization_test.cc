@@ -514,7 +514,7 @@ TEST_F(RecomputeAndCompressHloRematerializationTest,
     auto param = builder.AddInstruction(
         HloInstruction::CreateParameter(0, vec1024_shape_, "param"));
     auto concat = builder.AddInstruction(HloInstruction::CreateConcatenate(
-        ShapeUtil::MakeShape(xla::F32, {2048}), {param, param},
+        ShapeUtil::MakeValidatedShape(xla::F32, {2048}).value(), {param, param},
         /*dimension=*/0));
     builder.AddInstruction(HloInstruction::CreateSlice(
         vec1024_shape_, concat, /*start_indices=*/{0},
@@ -1145,12 +1145,14 @@ class CompressingRematerializationTest : public RematerializationTestBase {
       return 4;
     }
     Shape descending_shape =
-        ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(shape);
+        ShapeUtil::MakeValidatedShapeWithDescendingLayoutAndSamePhysicalLayout(
+            shape)
+            .value();
     int64_t size =
         ShapeUtil::ByteSizeOfPrimitiveType(descending_shape.element_type());
-    for (int64_t i = 0; i < descending_shape.dimensions_size(); ++i) {
+    for (int64_t i = 0; i < descending_shape.dimensions().size(); ++i) {
       int64_t dim = descending_shape.dimensions(i);
-      if (i == descending_shape.dimensions_size() - 1) {
+      if (i == descending_shape.dimensions().size() - 1) {
         dim = RoundUpTo<int64_t>(dim, 64);
       }
       size *= dim;
@@ -1161,7 +1163,7 @@ class CompressingRematerializationTest : public RematerializationTestBase {
   // Swap the layout of the two most-minor dimensions if the second-minor
   // dimension is bigger than the most-minor dimension.
   static absl::StatusOr<Shape> ChooseCompactLayoutForShape(const Shape& shape) {
-    if (shape.dimensions_size() != 2) {
+    if (shape.dimensions().size() != 2) {
       return shape;
     }
     Shape result = shape;
@@ -1584,7 +1586,7 @@ TEST_P(IndirectUseTest, IndirectUseRematerialized) {
     auto param = builder.AddInstruction(
         HloInstruction::CreateParameter(0, vec1024_shape_, "param"));
     auto concat = builder.AddInstruction(HloInstruction::CreateConcatenate(
-        ShapeUtil::MakeShape(xla::F32, {2048}), {param, param},
+        ShapeUtil::MakeValidatedShape(xla::F32, {2048}).value(), {param, param},
         /*dimension=*/0));
     builder.AddInstruction(HloInstruction::CreateSlice(
         vec1024_shape_, concat, /*start_indices=*/{0},

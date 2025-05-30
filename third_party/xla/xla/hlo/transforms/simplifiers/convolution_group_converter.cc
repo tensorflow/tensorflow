@@ -176,7 +176,8 @@ HloInstruction* GetExpandedFilterMask(
   Shape expanded_filter_shape =
       ExpandedFilterShape(filter_shape, group_count, kernel_input_feature_dim);
   Shape mask_shape =
-      ShapeUtil::MakeShape(S32, expanded_filter_shape.dimensions());
+      ShapeUtil::MakeValidatedShape(S32, expanded_filter_shape.dimensions())
+          .value();
   int64_t output_feature = filter_shape.dimensions(kernel_output_feature_dim);
   int64_t group_size = filter_shape.dimensions(kernel_input_feature_dim);
 
@@ -198,7 +199,8 @@ HloInstruction* GetExpandedFilterMask(
   // Compare the broadcasted output feature linspace to the input feature
   // linspace to create a diagonal predicate.
   Shape predicate_shape =
-      ShapeUtil::MakeShape(PRED, expanded_filter_shape.dimensions());
+      ShapeUtil::MakeValidatedShape(PRED, expanded_filter_shape.dimensions())
+          .value();
   return add_instruction(HloInstruction::CreateCompare(
       predicate_shape, broadcasted_mask1, broadcasted_mask2,
       ComparisonDirection::kEq));
@@ -379,7 +381,7 @@ absl::Status ConvolutionVisitor::HandleBatchGroupCount(
 
     auto reduce_function = [&]() -> HloComputation* {
       HloComputation::Builder b("add_computation");
-      Shape shape = ShapeUtil::MakeShape(reduce_type, {});
+      Shape shape = ShapeUtil::MakeValidatedShape(reduce_type, {}).value();
       auto lhs =
           b.AddInstruction(HloInstruction::CreateParameter(0, shape, "lhs"));
       auto rhs =
@@ -525,8 +527,9 @@ absl::Status ConvolutionVisitor::HandleConvolution(
     dim_numbers.add_kernel_spatial_dimensions(kernel_output_feature_dim + 1);
     HloInstruction* new_filter =
         computation_->AddInstruction(HloInstruction::CreateReshape(
-            ShapeUtil::MakeShape(filter->shape().element_type(),
-                                 new_filter_dimension),
+            ShapeUtil::MakeValidatedShape(filter->shape().element_type(),
+                                          new_filter_dimension)
+                .value(),
             filter));
 
     auto new_activation_shape = convolution->operand(0)->shape();
@@ -575,8 +578,10 @@ absl::Status ConvolutionVisitor::HandleConvolution(
     }
     dim_numbers.add_output_spatial_dimensions(
         dim_numbers.output_feature_dimension() + 1);
-    auto new_convolution_output_shape = ShapeUtil::MakeShape(
-        convolution->shape().element_type(), new_output_dimension);
+    auto new_convolution_output_shape =
+        ShapeUtil::MakeValidatedShape(convolution->shape().element_type(),
+                                      new_output_dimension)
+            .value();
     HloInstruction* new_convolution =
         computation_->AddInstruction(HloInstruction::CreateConvolve(
             new_convolution_output_shape, new_activation, new_filter,

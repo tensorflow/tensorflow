@@ -2260,13 +2260,14 @@ absl::StatusOr<int64_t> OffloadInstruction(MemoryUsageTracker* memory_tracker,
   Shape instruction_shape_host = best_instruction->shape();
   instruction_shape_host.mutable_layout()->set_memory_space(
       memory_tracker->options().host_memory_offload_config->host_memory_space);
-  Shape context_shape = ShapeUtil::MakeShape(U32, {});
+  Shape context_shape = ShapeUtil::MakeValidatedShape(U32, {}).value();
 
   // Create copy instructions to and from host memory.
   HloInstruction* copy_start_to_host =
       computation->AddInstruction(HloInstruction::CreateCopyStart(
-          ShapeUtil::MakeTupleShape({instruction_shape_host,
-                                     instruction_shape_device, context_shape}),
+          ShapeUtil::MakeValidatedTupleShape(
+              {instruction_shape_host, instruction_shape_device, context_shape})
+              .value(),
           best_instruction));
   HloInstruction* copy_done_to_host =
       computation->AddInstruction(HloInstruction::CreateUnary(
@@ -2274,8 +2275,9 @@ absl::StatusOr<int64_t> OffloadInstruction(MemoryUsageTracker* memory_tracker,
 
   HloInstruction* copy_start_to_device =
       computation->AddInstruction(HloInstruction::CreateCopyStart(
-          ShapeUtil::MakeTupleShape({instruction_shape_device,
-                                     instruction_shape_host, context_shape}),
+          ShapeUtil::MakeValidatedTupleShape(
+              {instruction_shape_device, instruction_shape_host, context_shape})
+              .value(),
           copy_done_to_host));
   HloInstruction* copy_done_to_device = computation->AddInstruction(
       HloInstruction::CreateUnary(instruction_shape_device,

@@ -118,7 +118,7 @@ absl::Status ReduceWindowRewriter::ReplaceReduceWindowWithReshape(
   HloInstruction* new_reduce_window = reduce_window->parent()->AddInstruction(
       HloInstruction::CreateReduceWindow(
           reduce_window->shape().IsTuple()
-              ? ShapeUtil::MakeTupleShape(r2_output_shapes)
+              ? ShapeUtil::MakeValidatedTupleShape(r2_output_shapes).value()
               : r2_output_shapes[0],
           r2_operands, reduce_window->init_values(), r2_window,
           reduce_window->to_apply()));
@@ -329,7 +329,7 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
   auto outer_reduce_window =
       parent->AddInstruction(HloInstruction::CreateReduceWindow(
           reduce_window->shape().IsTuple()
-              ? ShapeUtil::MakeTupleShape(tiled_shapes)
+              ? ShapeUtil::MakeValidatedTupleShape(tiled_shapes).value()
               : tiled_shapes[0],
           tiled_sources, init_values, outer_window, reduce_window->to_apply()));
 
@@ -380,7 +380,7 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
   auto inner_reduce_window =
       parent->AddInstruction(HloInstruction::CreateReduceWindow(
           reduce_window->shape().IsTuple()
-              ? ShapeUtil::MakeTupleShape(column_shapes)
+              ? ShapeUtil::MakeValidatedTupleShape(column_shapes).value()
               : column_shapes[0],
           last_cols, init_values, inner_window, reduce_window->to_apply()));
   std::vector<int64_t> exclusive_slice_starts(rank, 0);

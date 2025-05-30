@@ -63,8 +63,9 @@ absl::StatusOr<HloInstruction*> GatherSimplifier::ExpandInstruction(
   auto slice_sizes = Permute(gather->gather_slice_sizes(), operand_permutation);
   std::vector<int64_t> output_dims = {start_indices->shape().dimensions(0)};
   absl::c_copy(slice_sizes, std::back_inserter(output_dims));
-  Shape output_shape =
-      ShapeUtil::MakeShape(operand->shape().element_type(), output_dims);
+  Shape output_shape = ShapeUtil::MakeValidatedShape(
+                           operand->shape().element_type(), output_dims)
+                           .value();
 
   std::vector<int64_t> offset_dims(operand_rank);
   absl::c_iota(offset_dims, 1);
