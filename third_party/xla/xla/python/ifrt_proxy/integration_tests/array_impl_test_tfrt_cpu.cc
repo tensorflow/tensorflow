@@ -20,7 +20,7 @@
 
 int main(int argc, char** argv) {
   const std::string disabled[] = {
-      // TfrtCpuBuffer::ToLiteral() currently does not respect the layout of the
+      // PjRtCpuBuffer::ToLiteral() currently does not respect the layout of the
       // destination literal.
       "ArrayImplTest.MakeArrayFromHostBufferAndCopyToHostBufferWithByteStrides",
 

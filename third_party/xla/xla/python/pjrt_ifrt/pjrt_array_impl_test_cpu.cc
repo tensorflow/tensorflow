@@ -18,7 +18,7 @@ limitations under the License.
 #include "xla/python/ifrt/test_util.h"
 
 int main(int argc, char** argv) {
-  // TfrtCpuBuffer::ToLiteral() currently does not respect the layout of the
+  // CpuBuffer::ToLiteral() currently does not respect the layout of the
   // destination literal.
   static constexpr absl::string_view kFilter =
       "-ArrayImplTest."
