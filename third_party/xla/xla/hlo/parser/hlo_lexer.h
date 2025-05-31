@@ -90,6 +90,13 @@ enum class TokKind {
 
 std::string TokKindToString(TokKind kind);
 
+constexpr uint64_t kNoneMask = 0;
+constexpr uint64_t kDimLabelsDxDPadDecimalMask =
+    (1ULL << static_cast<int>(TokKind::kDimLabels)) |
+    (1ULL << static_cast<int>(TokKind::kDxD)) |
+    (1ULL << static_cast<int>(TokKind::kPad)) |
+    (1ULL << static_cast<int>(TokKind::kDecimal));
+
 // Lexer for the HloModule::ToString() format text.
 //
 // This class is meant to be used by hlo_parser.cc.  You shouldn't need to use
@@ -100,7 +107,9 @@ class HloLexer {
     current_ptr_ = buf_.data();
   }
 
-  TokKind Lex() { return token_state_.current_kind = LexToken(); }
+  TokKind Lex(uint64_t skip_mask = kNoneMask) {
+    return token_state_.current_kind = LexToken(skip_mask);
+  }
 
   TokKind GetKind() const { return token_state_.current_kind; }
   std::string GetStrVal() const {
@@ -172,14 +181,15 @@ class HloLexer {
   // current buffer.
   bool CanDereference(const char* ptr) const;
 
-  TokKind LexToken();
+  TokKind LexToken(uint64_t skip_mask);
 
   TokKind LexIdentifier();
   TokKind LexPercent();
   TokKind LexShape();
   TokKind LexConstant();
-  TokKind LexNumberOrPattern();
+  TokKind LexNumberOrPattern(uint64_t skip_mask);
   TokKind LexString();
+  TokKind LexInt64Impl();
 
   std::optional<int64_t> LexNanPayload(absl::string_view& consumable);
 
