@@ -42,25 +42,25 @@ compare {
 // CHECK:         %[[VAL_25:.*]] = icmp slt i64 %[[VAL_24]], 3
 // CHECK:         br i1 %[[VAL_25]], label %[[VAL_26:.*]], label %[[VAL_27:.*]]
 // CHECK:       smaller_keys_index-after:                         ; preds = %[[VAL_28:.*]], %[[VAL_18]]
-// CHECK-PTX:     call void @llvm.nvvm.barrier0
+// CHECK-PTX:     call void @llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)
 // CHECK-GCN:     call void @llvm.amdgcn.s.barrier
 // CHECK:         %[[VAL_29:.*]] = mul i64 %[[VAL_15]], 2
 // CHECK:         %[[VAL_30:.*]] = icmp uge i64 %[[VAL_29]], 0
 // CHECK:         br i1 %[[VAL_30]], label %[[VAL_31:.*]], label %[[VAL_32:.*]]
 // CHECK:       is_last_tile-after:                               ; preds = %[[VAL_33:.*]], %[[VAL_34:.*]]
-// CHECK-PTX:     call void @llvm.nvvm.barrier0
+// CHECK-PTX:     call void @llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)
 // CHECK-GCN:     call void @llvm.amdgcn.s.barrier
 // CHECK:         %[[VAL_35:.*]] = mul i64 %[[VAL_15]], 2
 // CHECK:         %[[VAL_36:.*]] = icmp uge i64 %[[VAL_35]], 0
 // CHECK:         br i1 %[[VAL_36]], label %[[VAL_37:.*]], label %[[VAL_38:.*]]
 // CHECK:       is_last_tile-after9:                              ; preds = %[[VAL_39:.*]], %[[VAL_40:.*]]
-// CHECK-PTX:     call void @llvm.nvvm.barrier0
+// CHECK-PTX:     call void @llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)
 // CHECK-GCN:     call void @llvm.amdgcn.s.barrier
 // CHECK:         %[[VAL_41:.*]] = mul i64 %[[VAL_15]], 2
 // CHECK:         %[[VAL_42:.*]] = icmp uge i64 %[[VAL_41]], 0
 // CHECK:         br i1 %[[VAL_42]], label %[[VAL_43:.*]], label %[[VAL_44:.*]]
 // CHECK:       is_last_tile-after24:                             ; preds = %[[VAL_45:.*]], %[[VAL_46:.*]]
-// CHECK-PTX:     call void @llvm.nvvm.barrier0
+// CHECK-PTX:     call void @llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)
 // CHECK-GCN:     call void @llvm.amdgcn.s.barrier
 // CHECK:         %[[VAL_47:.*]] = shl i64 %[[VAL_15]], 1
 // CHECK:         %[[VAL_48:.*]] = icmp slt i64 %[[VAL_47]], 3
@@ -351,25 +351,25 @@ compare {
 // CHECK:         %[[VAL_219:.*]] = icmp slt i64 %[[VAL_218]], 3
 // CHECK:         br i1 %[[VAL_219]], label %[[VAL_220:.*]], label %[[VAL_221:.*]]
 // CHECK:       smaller_keys_index-after2:                        ; preds = %[[VAL_222:.*]], %[[VAL_216]]
-// CHECK-PTX:     call void @llvm.nvvm.barrier0
+// CHECK-PTX:     call void @llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)
 // CHECK-GCN:     call void @llvm.amdgcn.s.barrier
 // CHECK:         %[[VAL_223:.*]] = mul i64 %[[VAL_204]], 2
 // CHECK:         %[[VAL_224:.*]] = icmp uge i64 %[[VAL_223]], 0
 // CHECK:         br i1 %[[VAL_224]], label %[[VAL_225:.*]], label %[[VAL_226:.*]]
 // CHECK:       is_last_tile-after:                               ; preds = %[[VAL_227:.*]], %[[VAL_228:.*]]
-// CHECK-PTX:     call void @llvm.nvvm.barrier0
+// CHECK-PTX:     call void @llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)
 // CHECK-GCN:     call void @llvm.amdgcn.s.barrier
 // CHECK:         %[[VAL_229:.*]] = mul i64 %[[VAL_204]], 2
 // CHECK:         %[[VAL_230:.*]] = icmp uge i64 %[[VAL_229]], 0
 // CHECK:         br i1 %[[VAL_230]], label %[[VAL_231:.*]], label %[[VAL_232:.*]]
 // CHECK:       is_last_tile-after13:                             ; preds = %[[VAL_233:.*]], %[[VAL_234:.*]]
-// CHECK-PTX:     call void @llvm.nvvm.barrier0
+// CHECK-PTX:     call void @llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)
 // CHECK-GCN:     call void @llvm.amdgcn.s.barrier
 // CHECK:         %[[VAL_235:.*]] = mul i64 %[[VAL_204]], 2
 // CHECK:         %[[VAL_236:.*]] = icmp uge i64 %[[VAL_235]], 0
 // CHECK:         br i1 %[[VAL_236]], label %[[VAL_237:.*]], label %[[VAL_238:.*]]
 // CHECK:       is_last_tile-after28:                             ; preds = %[[VAL_239:.*]], %[[VAL_240:.*]]
-// CHECK-PTX:     call void @llvm.nvvm.barrier0
+// CHECK-PTX:     call void @llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)
 // CHECK-GCN:     call void @llvm.amdgcn.s.barrier
 // CHECK:         %[[VAL_241:.*]] = shl i64 %[[VAL_204]], 1
 // CHECK:         %[[VAL_242:.*]] = icmp slt i64 %[[VAL_241]], 3
