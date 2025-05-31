@@ -90,8 +90,9 @@ void CpuInstructionFusion::ComputeInstructionsToSkip(
       module->config().debug_options().xla_cpu_use_fusion_emitters();
   for (auto* computation : computations_list) {
     for (auto* instruction : computation->MakeInstructionPostOrder()) {
-      if (instruction->IsCustomFusion() ||
-          instruction->opcode() == HloOpcode::kCustomCall) {
+      if (instruction->IsCustomFusion()) {
+        instructions_to_skip_.insert(instruction);
+      } else if (instruction->opcode() == HloOpcode::kCustomCall) {
         HloCallableInstruction* callable =
             Cast<HloCallableInstruction>(instruction);
         if (callable->called_computations().empty()) {

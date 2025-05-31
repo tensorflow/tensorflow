@@ -976,7 +976,7 @@ ENTRY main {
                      HloOpcode::kConstant, HloOpcode::kAdd, HloOpcode::kAdd});
 }
 
-TEST_F(InstructionFusionTest, SkipCustomFusions) {
+TEST_F(InstructionFusionTest, SkipCustomFusionsBasic) {
   absl::string_view module_string = R"(
 HloModule module
 
@@ -992,6 +992,34 @@ ENTRY %main (Arg_0: f32[10,10], Arg_1: f32[10,10]) -> f32[10,10] {
   %Arg_0 = f32[10,10]{1,0} parameter(0), metadata={op_name="x"}
   %Arg_1 = f32[10,10]{1,0} parameter(1), metadata={op_name="y"}
   ROOT %subtract_multiply_fusion = f32[10,10]{1,0} fusion(f32[10,10]{1,0} %Arg_0, f32[10,10]{1,0} %Arg_1), kind=kCustom, calls=%fused_computation
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(module_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          CpuInstructionFusion().Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(InstructionFusionTest, SkipCustomFusions) {
+  absl::string_view module_string = R"(
+HloModule module
+
+%fused_computation (param_0: f32[10,10], param_1: f32[10,10]) -> f32[10,10] {
+  %param_0 = f32[10,10] parameter(0)
+  %param_1 = f32[10,10] parameter(1)
+  %add = f32[10,10] add(f32[10,10] %param_0, f32[10,10] %param_1)
+  %subtract = f32[10,10] subtract(f32[10,10] %param_0, f32[10,10] %param_1)
+  ROOT %multiply = f32[10,10] multiply(f32[10,10] %add, f32[10,10] %subtract)
+}
+
+ENTRY %main (Arg_0: f32[10,10], Arg_1: f32[10,10]) -> f32[10,10] {
+  %Arg_0 = f32[10,10] parameter(0)
+  %Arg_1 = f32[10,10] parameter(1)
+  %Add = f32[10,10] add(f32[10,10] %Arg_0, f32[10,10] %Arg_1)
+  %Sub = f32[10,10] subtract(f32[10,10] %Arg_0, f32[10,10] %Arg_1)
+  ROOT %subtract_multiply_fusion = f32[10,10] fusion(f32[10,10] %Add, f32[10,10] %Sub), kind=kCustom, calls=%fused_computation
 }
 )";
 
