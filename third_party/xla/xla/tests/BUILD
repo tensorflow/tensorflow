@@ -3874,6 +3874,7 @@ cc_library(
         ["//visibility:public"],
     ),
     deps = [
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
