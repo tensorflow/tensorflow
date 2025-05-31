@@ -289,7 +289,8 @@ Value CreateSendOp(OpBuilder& builder, Location loc, Value operand,
                                                /*handle=*/GetNextChannelId(),
                                                /*type=*/2);
   auto send = builder.create<SendOp>(
-      loc, token.getType(), operand, token, channel_handle,
+      loc, token.getType(), operand, token,
+      /*source_target_pairs=*/builder.getI64VectorAttr({}), channel_handle,
       /*is_host_transfer=*/builder.getBoolAttr(true));
 
   SetFrontendAttributes(send, index, key, operand.getType(),
@@ -310,9 +311,10 @@ Value CreateRecvOp(OpBuilder& builder, Location loc, Value result,
                                                /*type=*/3);
   auto result_type = result.getType();
   SmallVector<Type, 2> recv_result_type = {result_type, token.getType()};
-  auto recv =
-      builder.create<RecvOp>(loc, recv_result_type, token, channel_handle,
-                             /*is_host_transfer=*/builder.getBoolAttr(true));
+  auto recv = builder.create<RecvOp>(
+      loc, recv_result_type, token,
+      /*source_target_pairs=*/builder.getI64VectorAttr({}), channel_handle,
+      /*is_host_transfer=*/builder.getBoolAttr(true));
 
   SetFrontendAttributes(recv, index, key, result_type,
                         /*device_to_host=*/false, host_handler_name);
