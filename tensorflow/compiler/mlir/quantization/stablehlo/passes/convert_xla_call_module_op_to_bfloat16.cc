@@ -36,7 +36,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "stablehlo/api/PortableApi.h"  // from @stablehlo
 #include "stablehlo/dialect/Serialization.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"  // IWYU pragma: keep
@@ -120,17 +119,18 @@ void ConvertXlaCallModuleOpToBfloat16Pass::runOnOperation() {
     // Convert the `tf.XlaCallModuleOp` to bfloat16 and add casts around it.
     builder.setInsertionPoint(op);
     for (auto& op_operand : op->getOpOperands()) {
-      if (IsLargeFloatType(op_operand.get().getType())) {
+      if (quant::stablehlo::IsLargeFloatType(op_operand.get().getType())) {
         op_operand.set(builder.create<TF::CastOp>(
-            op->getLoc(), ToBfloat16Type(op_operand.get().getType()),
+            op->getLoc(),
+            quant::stablehlo::ToBfloat16Type(op_operand.get().getType()),
             op_operand.get()));
       }
     }
     builder.setInsertionPointAfter(op);
     for (auto op_result : op->getOpResults()) {
-      if (IsLargeFloatType(op_result.getType())) {
+      if (quant::stablehlo::IsLargeFloatType(op_result.getType())) {
         const Type original_type = op_result.getType();
-        op_result.setType(ToBfloat16Type(original_type));
+        op_result.setType(quant::stablehlo::ToBfloat16Type(original_type));
         const Value cast =
             builder.create<TF::CastOp>(op->getLoc(), original_type, op_result);
         op_result.replaceAllUsesExcept(cast, cast.getDefiningOp());

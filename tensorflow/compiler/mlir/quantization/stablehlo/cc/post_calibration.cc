@@ -23,7 +23,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_pass_pipeline.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/instrumentations/tf_save_report.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/instrumentations/save_report.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
@@ -36,7 +36,6 @@ using ::stablehlo::quantization::PipelineConfig;
 using ::stablehlo::quantization::QuantizationConfig;
 using ::stablehlo::quantization::QuantizationSpecs;
 using ::tensorflow::quantization::RunPasses;
-using tf_quant::stablehlo::SaveQuantizationReportInstrumentation;
 
 PostCalibrationComponent::PostCalibrationComponent(
     MLIRContext* absl_nonnull ctx)

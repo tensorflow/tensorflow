@@ -25,11 +25,16 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/permutation.h"
 
 namespace mlir::quant::stablehlo {
+
+using tf_quant::HasRankOf;
+using tf_quant::kNchwToNhwcPermutation;
+using tf_quant::kNhwcToNchwPermutation;
+using tf_quant::kOihwToHwioPermutation;
 
 #define GEN_PASS_DEF_NCHWCONVOLUTIONTONHWCPASS
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h.inc"
@@ -60,7 +65,7 @@ class RewriteNchwConvolutionToNhwc
       return failure();
     }
 
-    if (!IsOpNotQuantized(op)) return failure();
+    if (!quant::IsOpNotQuantized(op)) return failure();
 
     const ConvDimensionNumbersAttr dimension_nums = op.getDimensionNumbers();
     const bool dimension_nums_matched =
@@ -168,7 +173,7 @@ class RewriteNchwConvolutionToNhwc
   TensorType GetTransposedTensorType(
       const TensorType type, const ArrayRef<int64_t> permutation) const {
     const SmallVector<int64_t> after_shape =
-        Permute<int64_t>(type.getShape(), permutation);
+        quant::Permute<int64_t>(type.getShape(), permutation);
     return type.cloneWith(after_shape, type.getElementType());
   }
 };

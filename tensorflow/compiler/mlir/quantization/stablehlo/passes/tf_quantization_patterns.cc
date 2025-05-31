@@ -52,7 +52,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_traits.h"
 #include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/ops/tf_stablehlo_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"

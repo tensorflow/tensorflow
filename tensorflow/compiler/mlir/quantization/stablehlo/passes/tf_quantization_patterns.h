@@ -38,10 +38,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/common/tf_lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_traits.h"
 #include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/ops/tf_stablehlo_op_quant_spec.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/ops/stablehlo_op_quant_spec.h"
 #include "tensorflow/core/framework/types.pb.h"
 
 namespace mlir::tf_quant::stablehlo {
+
+using quant::stablehlo::GetStableHloQuantConstraints;
+using quant::stablehlo::IsOpQuantizableStableHlo;
 
 // Checks whether an op is connected with a quantized composite function. If
 // not, the same-scale op will not be quantized. This decision is based on the

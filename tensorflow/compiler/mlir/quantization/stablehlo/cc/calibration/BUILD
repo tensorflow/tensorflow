@@ -52,8 +52,8 @@ cc_library(
     deps = [
         ":representative_dataset",
         ":statistics",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:passes",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:tf_passes",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:component",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:debugger",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:io",

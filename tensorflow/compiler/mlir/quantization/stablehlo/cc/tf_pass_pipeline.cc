@@ -21,13 +21,24 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/transforms/Passes.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/tf_passes.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 
 namespace mlir::tf_quant::stablehlo {
+
+using quant::stablehlo::createConvertShapeToStablehloWithConstraintsPass;
+using quant::stablehlo::createDeferActivationTransposePass;
+using quant::stablehlo::createFoldConstantTransposePass;
+using quant::stablehlo::CreateLiftQuantizableSpotsAsFunctionsPass;
+using quant::stablehlo::createNchwConvolutionToNhwcPass;
+using quant::stablehlo::
+    createReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass;
+using quant::stablehlo::createRestoreFunctionNamePass;
+using quant::stablehlo::createUnwrapXlaCallModuleOpPass;
+using quant::stablehlo::QuantizeCompositeFunctionsPassOptions;
 
 using ::stablehlo::quantization::CalibrationOptions;
 using ::stablehlo::quantization::DebuggerConfig;
