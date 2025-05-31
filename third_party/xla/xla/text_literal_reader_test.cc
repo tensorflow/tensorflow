@@ -42,8 +42,8 @@ TEST(TextLiteralReaderTest, ReadsR3File) {
       tsl::WriteStringToFile(tsl::Env::Default(), fname, contents).ok());
 
   Literal literal = TextLiteralReader::ReadPath(fname).value();
-  EXPECT_TRUE(ShapeUtil::Equal(
-      ShapeUtil::MakeValidatedShape(F32, {1, 2, 3}).value(), literal.shape()));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {1, 2, 3}), literal.shape()));
   EXPECT_EQ(42.5, literal.Get<float>({0, 0, 0}));
   EXPECT_EQ(43.5, literal.Get<float>({0, 0, 1}));
   EXPECT_EQ(44.5, literal.Get<float>({0, 0, 2}));

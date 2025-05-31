@@ -576,10 +576,8 @@ template <typename NativeT>
 template <typename NativeT>
 /* static */ Literal LiteralUtil::CreateFullWithDescendingLayout(
     absl::Span<const int64_t> dimensions, NativeT value) {
-  Literal literal(
-      ShapeUtil::MakeValidatedShapeWithDescendingLayout(
-          primitive_util::NativeToPrimitiveType<NativeT>(), dimensions)
-          .value());
+  Literal literal(ShapeUtil::MakeShapeWithDescendingLayout(
+      primitive_util::NativeToPrimitiveType<NativeT>(), dimensions));
   literal.PopulateWithValue(value);
   return literal;
 }

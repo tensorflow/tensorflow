@@ -92,8 +92,7 @@ TEST(Layout, ToStringForSplitConfigs) {
 
 TEST(Layout, ToStringForPhysicalShape) {
   Layout layout({0, 1});
-  *layout.mutable_physical_shape() =
-      ShapeUtil::MakeValidatedShape(S32, {10, 20}).value();
+  *layout.mutable_physical_shape() = ShapeUtil::MakeShape(S32, {10, 20});
   EXPECT_EQ(layout.ToString(), "{0,1:P(s32[10,20]{1,0})}");
 }
 
@@ -184,8 +183,7 @@ TEST(Layout, LayoutToFromProto) {
   expect_unchanged(Layout({1, 0}, {}));
   expect_unchanged(Layout(
       {1, 0}, {}, PRIMITIVE_TYPE_INVALID, PRIMITIVE_TYPE_INVALID, 1, 0, 0, {},
-      std::make_unique<Shape>(
-          ShapeUtil::MakeValidatedShape(S32, {10, 10}).value())));
+      std::make_unique<Shape>(ShapeUtil::MakeShape(S32, {10, 10}))));
   expect_unchanged(Layout({0, 1}, {Tile({123})})
                        .add_split_configs(SplitConfig(0, {3}))
                        .add_split_configs(SplitConfig(1, {0, 4})));

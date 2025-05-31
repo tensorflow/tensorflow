@@ -38,7 +38,7 @@ void SetMinorToMajorLayout(Shape* shape, std::vector<int64_t> dimensions) {
 TEST(IndexUtilTest, VectorIndexing) {
   // Vectors are trivially laid out and the linear index should always be the
   // same as the "multidimensional" index.
-  Shape vector_shape = ShapeUtil::MakeValidatedShape(F32, {100}).value();
+  Shape vector_shape = ShapeUtil::MakeShape(F32, {100});
   EXPECT_EQ(42,
             IndexUtil::MultidimensionalIndexToLinearIndex(vector_shape, {42}));
   auto multi_index =
@@ -49,7 +49,7 @@ TEST(IndexUtilTest, VectorIndexing) {
 
 TEST(IndexUtilTest, MatrixIndexingRowMajor) {
   // Set layout to [0, 1]. That is, row major.
-  Shape matrix_shape_01 = ShapeUtil::MakeValidatedShape(F32, {10, 20}).value();
+  Shape matrix_shape_01 = ShapeUtil::MakeShape(F32, {10, 20});
   SetMinorToMajorLayout(&matrix_shape_01, {0, 1});
 
   // If index is {a, b} then linear index should be: a + b * 10
@@ -66,7 +66,7 @@ TEST(IndexUtilTest, MatrixIndexingRowMajor) {
 
 TEST(IndexUtilTest, MatrixIndexingColumnMajor) {
   // Set layout to [1, 0]. That is, column major.
-  Shape matrix_shape_10 = ShapeUtil::MakeValidatedShape(F32, {10, 20}).value();
+  Shape matrix_shape_10 = ShapeUtil::MakeShape(F32, {10, 20});
   SetMinorToMajorLayout(&matrix_shape_10, {1, 0});
 
   // If index is {a, b} then linear index should be: a * 20 + b
@@ -83,7 +83,7 @@ TEST(IndexUtilTest, MatrixIndexingColumnMajor) {
 
 TEST(IndexUtilTest, ThreeDArrayIndexing210) {
   // Set layout to [2, 1, 0]. That is, column major.
-  Shape shape_210 = ShapeUtil::MakeValidatedShape(F32, {10, 20, 30}).value();
+  Shape shape_210 = ShapeUtil::MakeShape(F32, {10, 20, 30});
   SetMinorToMajorLayout(&shape_210, {2, 1, 0});
 
   // If index is {a, b, c} then linear index should be:
@@ -96,7 +96,7 @@ TEST(IndexUtilTest, ThreeDArrayIndexing210) {
 
 TEST(IndexUtilTest, ThreeDArrayIndexing120) {
   // Set layout to [1, 2, 0]
-  Shape shape_120 = ShapeUtil::MakeValidatedShape(F32, {10, 20, 30}).value();
+  Shape shape_120 = ShapeUtil::MakeShape(F32, {10, 20, 30});
   SetMinorToMajorLayout(&shape_120, {1, 2, 0});
 
   // If index is {a, b, c} then linear index should be:
@@ -109,8 +109,7 @@ TEST(IndexUtilTest, ThreeDArrayIndexing120) {
 
 TEST(IndexUtilTest, FourDArrayIndexing3210) {
   // Set layout to [3, 2, 1,0]. That is, column major.
-  Shape shape_3210 =
-      ShapeUtil::MakeValidatedShape(F32, {10, 20, 30, 40}).value();
+  Shape shape_3210 = ShapeUtil::MakeShape(F32, {10, 20, 30, 40});
   SetMinorToMajorLayout(&shape_3210, {3, 2, 1, 0});
 
   // If index is {a, b, c, d} then linear index should be:
@@ -134,9 +133,7 @@ TEST(IndexUtilTest, LinearToMultiToLinear) {
   minor_to_major_orders.push_back({4, 5, 1, 2, 6, 0, 3});
 
   for (auto minor_to_major_order : minor_to_major_orders) {
-    Shape shape =
-        ShapeUtil::MakeValidatedShape(F32, {10, 20, 30, 40, 30, 20, 10})
-            .value();
+    Shape shape = ShapeUtil::MakeShape(F32, {10, 20, 30, 40, 30, 20, 10});
     SetMinorToMajorLayout(&shape, minor_to_major_order);
     for (auto linear_index : linear_indexes) {
       auto multi_index =
@@ -148,7 +145,7 @@ TEST(IndexUtilTest, LinearToMultiToLinear) {
 }
 
 TEST(IndexUtilTest, BumpIndices2x2) {
-  auto shape = ShapeUtil::MakeValidatedShape(S32, {2, 2}).value();
+  auto shape = ShapeUtil::MakeShape(S32, {2, 2});
   std::vector<int64_t> indices = {0, 0};
   EXPECT_TRUE(IndexUtil::BumpIndices(shape, absl::MakeSpan(indices)));
   EXPECT_THAT(indices, ::testing::ElementsAre(0, 1));
