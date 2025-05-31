@@ -13,8 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <vector>
+
+#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -922,6 +927,82 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInput")
               c, kWeightsIndex, kPreservedValenciesIndex,
               kPreservedVectorsIndex, kPreservedWeightsIndex,
               kActivationGradientsIndex, kTablesIndex, num_tables));
+      return absl::OkStatus();
+    });
+
+REGISTER_OP("XlaSparseActivationsUnstack")
+    .Attr("num_tables: int >= 1")
+    .Attr("sample_counts: list(int) >= 1")
+    .Attr("features: list(int) >= 1")
+    .Attr("interleaved: bool")
+    .Attr("input_dtype: type")
+    .Attr("dtype: type")
+    .Input("stacked_activations: input_dtype")
+    .Output("unstacked_activations: num_tables * dtype")
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
+      int num_tables;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_tables", &num_tables));
+      std::vector<int> sample_counts;
+      TF_RETURN_IF_ERROR(c->GetAttr("sample_counts", &sample_counts));
+      if (sample_counts.size() != num_tables) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Invalid number of sample counts. Expected: %d, got: %d",
+            num_tables, sample_counts.size()));
+      }
+      std::vector<int> features;
+      TF_RETURN_IF_ERROR(c->GetAttr("features", &features));
+      if (features.size() != num_tables) {
+        return absl::InvalidArgumentError(
+            absl::StrFormat("Invalid number of features. Expected: %d, got: %d",
+                            num_tables, features.size()));
+      }
+      DataType dtype;
+      TF_RETURN_IF_ERROR(c->GetAttr("input_dtype", &dtype));
+      if (dtype != DT_FLOAT) {
+        return absl::InvalidArgumentError(
+            absl::StrFormat("Unsupported dtype for stacked activations: %s",
+                            DataType_Name(dtype)));
+      }
+      for (int i = 0; i < num_tables; ++i) {
+        shape_inference::ShapeHandle unstacked_activation_shape =
+            c->Matrix(sample_counts[i], features[i]);
+        c->set_output(i, unstacked_activation_shape);
+      }
+      return absl::OkStatus();
+    });
+
+REGISTER_OP("XlaSparseGradientsStack")
+    .Attr("num_tables: int >= 1")
+    .Attr("interleaved: bool")
+    .Attr("input_dtype: type")
+    .Attr("dtype: type")
+    .Input("unstacked_gradients: num_tables * input_dtype")
+    .Output("stacked_gradients: dtype")
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
+      int num_tables;
+      TF_RETURN_IF_ERROR(c->GetAttr("num_tables", &num_tables));
+      if (c->num_inputs() != num_tables) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Invalid number of gradients. Expected: %d, got: %d", num_tables,
+            c->num_inputs()));
+      }
+      int total_sample_count = 0;
+      std::vector<int> features(num_tables);
+      for (int i = 0; i < num_tables; ++i) {
+        features[i] = c->Value(c->Dim(c->input(i), 1));
+        total_sample_count += c->Value(c->Dim(c->input(0), 0));
+      }
+      DataType dtype;
+      TF_RETURN_IF_ERROR(c->GetAttr("dtype", &dtype));
+      if (dtype != DT_FLOAT) {
+        return absl::InvalidArgumentError(
+            absl::StrFormat("Unsupported dtype for stacked gradients: %s",
+                            DataType_Name(dtype)));
+      }
+      int padded_feature = xla::RoundUpTo(*absl::c_max_element(features), 8);
+      shape_inference::ShapeHandle stacked_gradients_shape =
+          c->Matrix(total_sample_count, padded_feature);
+      c->set_output(0, stacked_gradients_shape);
       return absl::OkStatus();
     });
 

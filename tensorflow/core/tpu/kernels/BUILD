@@ -199,6 +199,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@local_xla//xla:literal_util",
         "@local_xla//xla:shape_util",
+        "@local_xla//xla:util",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/hlo/builder:xla_builder",
         "@local_xla//xla/hlo/builder:xla_computation",
