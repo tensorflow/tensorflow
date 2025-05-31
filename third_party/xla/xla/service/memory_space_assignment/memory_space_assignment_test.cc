@@ -14340,6 +14340,140 @@ ENTRY main {
                                 /*expect_bitcasted_io=*/true));
 }
 
+TEST_F(MemorySpaceAssignmentTest, TestAsyncCopyCustomKernel) {
+  absl::string_view hlo_string = R"(
+HloModule jit_f, is_scheduled=true, entry_computation_layout={(f32[8,128]{1,0:T(8,128)})->(f32[8,128]{1,0:T(8,128)}, f32[8,128]{1,0:T(8,128)})}, allow_spmd_sharding_propagation_to_parameters={true}, allow_spmd_sharding_propagation_to_output={true,true}
+
+ENTRY %main.13 (Arg_0.1: f32[8,128]) -> (f32[8,128], f32[8,128]) {
+  %Arg_0.1 = f32[8,128]{1,0:T(8,128)} parameter(0), metadata={op_name="x"}
+  %copy.9 = f32[8,128]{1,0:T(8,128)} copy(%Arg_0.1)
+  %copy.6 = f32[8,128]{1,0:T(8,128)} copy(%copy.9)
+  %copy_start.2 = (f32[8,128]{1,0:T(8,128)}, f32[8,128]{1,0:T(8,128)}, s32[]{:T(128)S(2)}) custom-call(%copy.9), custom_call_target="tpu_custom_call", operand_layout_constraints={f32[8,128]{1,0}}, output_to_operand_aliasing={{0}: (0, {})}, control-predecessors={%copy.6}, metadata={op_name="jit(f)/jit(main)/copy_start/pallas_call" source_file="third_party/py/jax/tests/pallas/tpu_pallas_async_test.py" source_line=48}, backend_config={"custom_call_config": {"body": "TUzvUgFNTElSZ29vZ2xlMy10cnVuawABGQcBAwUBAwcDBwkLDQOvixEBhQcLCwuFDwsbCw8LMwsLCwtVCwsLGwtzCw8PCw8PCxsPDwsfDw8LHw8PCx8PDwsfDw8LJw8PCx8PDwsfDw8LHw8LHwUHXWGFAQ8jDwcjFw8fBQNNAsYGHwUPBREFE2FmZmluZV9tYXA8KGQwLCBkMSkgLT4gKGQwLCBkMSk+ABEDAQUVAwUREwcVBRcRAxEFGQMLGRsdHyMLJQsHJwUbAQEFHQ0NYWZmaW5lX21hcDwoKSAtPiAoKT4ABR8FIQUjAwUrLS8xBSUjCw0xAQAAAAAAAAABAAAAAQAAAAAAAAAAAAAABScRCwEdNTcFKRU5Px07PQUrLQMHXQ1tFUFHHUNFBS0tAwlhJYERFUlPHUtNBS8tAweWBCE7FVFXHVNVBTEtAwe6BBkhFVlfHVtdBTMtBQdiLSdxFWFnHWNlBTUtBQnyLUf6LQcVaW8da20FNy0FB0omDUUVcXcdc3UFOS0NB1IGGy8VeX8de30FOy0NB5IHDTcdgYMFPS0FB1ImCT8jdHB1Lm1lbW9yeV9zcGFjZTxhbnk+ACN0cHUubWVtb3J5X3NwYWNlPHZtZW0+ACN0cHUubWVtb3J5X3NwYWNlPHNlbWFwaG9yZV9tZW0+ABeFBSECBAUJAQIECxeHBSECBAUJF4kBDyEBAgIFCQEBBwkBIXRwdS5kbWFfc2VtYXBob3JlAARLBQERAQ8HAwEFAxEBFwcDCQsJAQEBAQcBCQEFBTMpBwEFBwcAAQYDAQUBACYLPxkJFUcVNXeNSX8XEykLIyEdKSUtNxNRcxkhFQ8JHRFidWlsdGluAHN0YWJsZV9tb3NhaWMAdHB1AG1vZHVsZQBmdW5jLmZ1bmMAdHB1LmVucXVldWVfZG1hAGZ1bmMucmV0dXJuAHRoaXJkX3BhcnR5L3B5L2pheC90ZXN0cy9wYWxsYXMvdHB1X3BhbGxhc19hc3luY190ZXN0LnB5AHRoaXJkX3BhcnR5L3B5L2Fic2wvdGVzdGluZy9hYnNsdGVzdC5weQBzeW1fbmFtZQB0aGlyZF9wYXJ0eS9weS9hYnNsL2FwcC5weQBzdGFibGVfbW9zYWljLnZlcnNpb24AY29weV9zdGFydF9rZXJuZWwAZGltZW5zaW9uX3NlbWFudGljcwBmdW5jdGlvbl90eXBlAHNjYWxhcl9wcmVmZXRjaABzY3JhdGNoX29wZXJhbmRzAG1haW4Ab3BlcmFuZFNlZ21lbnRTaXplcwBwcmlvcml0eQAvZG1hX3N0YXJ0AG1ha2VfYXN5bmNfY29weS48bG9jYWxzPi5jb3B5X3N0YXJ0Ljxsb2NhbHM+LmNvcHlfc3RhcnRfa2VybmVsAG1ha2VfYXN5bmNfY29weS48bG9jYWxzPi5jb3B5X3N0YXJ0AFBhbGxhc0NhbGxBc3luY0NvcHlUZXN0LnRlc3RfbXVsdGlwbGVfYXN5bmNfY29weV9pbnRvX3ZtZW0uPGxvY2Fscz4uZgBQYWxsYXNDYWxsQXN5bmNDb3B5VGVzdC50ZXN0X211bHRpcGxlX2FzeW5jX2NvcHlfaW50b192bWVtAF9ydW5fYW5kX2dldF90ZXN0c19yZXN1bHQAcnVuX3Rlc3RzAF9ydW5faW5fYXBwLjxsb2NhbHM+Lm1haW5fZnVuY3Rpb24AX3J1bl9tYWluAHJ1bgBfcnVuX2luX2FwcAA=", "serialization_format": 1, "needs_layout_passes": true, "output_memory_space_colors": [{"shape_index":[1],"color":1},{"shape_index":[2],"color":2}], "input_memory_space_colors": []}}
+  %get-tuple-element.5 = s32[]{:T(128)S(2)} get-tuple-element(%copy_start.2), index=2, metadata={op_name="jit(f)/jit(main)/copy_start/pallas_call" source_file="third_party/py/jax/tests/pallas/tpu_pallas_async_test.py" source_line=48}
+  %get-tuple-element.4 = f32[8,128]{1,0:T(8,128)} get-tuple-element(%copy_start.2), index=1, metadata={op_name="jit(f)/jit(main)/copy_start/pallas_call" source_file="third_party/py/jax/tests/pallas/tpu_pallas_async_test.py" source_line=48}
+  %get-tuple-element.3 = f32[8,128]{1,0:T(8,128)} get-tuple-element(%copy_start.2), index=0, metadata={op_name="jit(f)/jit(main)/copy_start/pallas_call" source_file="third_party/py/jax/tests/pallas/tpu_pallas_async_test.py" source_line=48}
+  %copy_done.2 = f32[8,128]{1,0:T(8,128)} custom-call(%get-tuple-element.3, %get-tuple-element.4, %get-tuple-element.5), custom_call_target="tpu_custom_call", operand_layout_constraints={f32[8,128]{1,0}, f32[8,128]{1,0}, s32[]}, output_to_operand_aliasing={{}: (1, {})}, control-predecessors={%copy.6}, metadata={op_name="jit(f)/jit(main)/copy_done/pallas_call" source_file="third_party/py/jax/tests/pallas/tpu_pallas_async_test.py" source_line=75}, backend_config={"custom_call_config": {"body": "TUzvUgFNTElSZ29vZ2xlMy10cnVuawABGQcBAwUBAwcDBwkLDQOjgQ8BewcLCwuFDwsbCw8LMwsLCwtVCwsLDwsPDwsbDw8LHw8PCx8PDwsfDw8LHw8PCycPDwsfDw8LHw8PCx8PCx8FB11hhQENIw8jBxcfBQNNAhYGHwUPBREFE2FmZmluZV9tYXA8KGQwLCBkMSkgLT4gKGQwLCBkMSk+ABEDAQUVAwUREwcVBRcRAxEFGQMLGRsdHyMLJQsHJwUbAQEFHQ0LYWZmaW5lX21hcDwoKSAtPiAoKT4ABR8FIQUjHSstBSUVLzUdMTMFJy0DB5MNaxU3PR05OwUpLQMJlxWrJRU/RR1BQwUrLQMHngQVORVHTR1JSwUtLQMHugQZIRVPVR1RUwUvLQUHYi0ncRVXXR1ZWwUxLQUJ8i1H+i0HFV9lHWFjBTMtBQdKJg1FFWdtHWlrBTUtDQdSBhsvFW91HXFzBTctDQeSBw03HXd5BTktBQdSJgk/I3RwdS5tZW1vcnlfc3BhY2U8YW55PgAjdHB1Lm1lbW9yeV9zcGFjZTx2bWVtPgAjdHB1Lm1lbW9yeV9zcGFjZTxzZW1hcGhvcmVfbWVtPgAXfQUhAgQHCQECBBd7BSECBAcJCxd/AQ0hBQkFAQkBASF0cHUuZG1hX3NlbWFwaG9yZQAESQUBEQEPBwMBBQMRARcHAwkLCQUBAQEJAQEBBQQpBwUBAwcAAQYDAQUBAI4KOxkJFUcVNXeNR3sVCyMhHSkjLTcTUXMZHRUPCR0RYnVpbHRpbgBzdGFibGVfbW9zYWljAHRwdQBtb2R1bGUAZnVuYy5mdW5jAHRwdS53YWl0X2RtYTIAZnVuYy5yZXR1cm4AdGhpcmRfcGFydHkvcHkvamF4L3Rlc3RzL3BhbGxhcy90cHVfcGFsbGFzX2FzeW5jX3Rlc3QucHkAdGhpcmRfcGFydHkvcHkvYWJzbC90ZXN0aW5nL2Fic2x0ZXN0LnB5AHN5bV9uYW1lAHRoaXJkX3BhcnR5L3B5L2Fic2wvYXBwLnB5AHN0YWJsZV9tb3NhaWMudmVyc2lvbgBjb3B5X2RvbmVfa2VybmVsAGRpbWVuc2lvbl9zZW1hbnRpY3MAZnVuY3Rpb25fdHlwZQBzY2FsYXJfcHJlZmV0Y2gAc2NyYXRjaF9vcGVyYW5kcwBtYWluAC9kbWFfd2FpdABtYWtlX2FzeW5jX2NvcHkuPGxvY2Fscz4uY29weV9kb25lLjxsb2NhbHM+LmNvcHlfZG9uZV9rZXJuZWwAbWFrZV9hc3luY19jb3B5Ljxsb2NhbHM+LmNvcHlfZG9uZQBQYWxsYXNDYWxsQXN5bmNDb3B5VGVzdC50ZXN0X211bHRpcGxlX2FzeW5jX2NvcHlfaW50b192bWVtLjxsb2NhbHM+LmYAUGFsbGFzQ2FsbEFzeW5jQ29weVRlc3QudGVzdF9tdWx0aXBsZV9hc3luY19jb3B5X2ludG9fdm1lbQBfcnVuX2FuZF9nZXRfdGVzdHNfcmVzdWx0AHJ1bl90ZXN0cwBfcnVuX2luX2FwcC48bG9jYWxzPi5tYWluX2Z1bmN0aW9uAF9ydW5fbWFpbgBydW4AX3J1bl9pbl9hcHAA", "serialization_format": 1, "needs_layout_passes": true, "output_memory_space_colors": [{"color":1}], "input_memory_space_colors": [{"operand_index":1,"color":1}]}}
+  %copy_start.3 = (f32[8,128]{1,0:T(8,128)}, f32[8,128]{1,0:T(8,128)}, s32[]{:T(128)S(2)}) custom-call(%copy.6), custom_call_target="tpu_custom_call", operand_layout_constraints={f32[8,128]{1,0}}, output_to_operand_aliasing={{0}: (0, {})}, metadata={op_name="jit(f)/jit(main)/copy_start/pallas_call" source_file="third_party/py/jax/tests/pallas/tpu_pallas_async_test.py" source_line=48}, backend_config={"custom_call_config": {"body": "TUzvUgFNTElSZ29vZ2xlMy10cnVuawABGQcBAwUBAwcDBwkLDQOvixEBhQcLCwuFDwsbCw8LMwsLCwtVCwsLGwtzCw8PCw8PCxsPDwsfDw8LHw8PCx8PDwsfDw8LJw8PCx8PDwsfDw8LHw8LHwUHXWGFAQ8jDwcjFw8fBQNNAsYGHwUPBREFE2FmZmluZV9tYXA8KGQwLCBkMSkgLT4gKGQwLCBkMSk+ABEDAQUVAwUREwcVBRcRAxEFGQMLGRsdHyMLJQsHJwUbAQEFHQ0NYWZmaW5lX21hcDwoKSAtPiAoKT4ABR8FIQUjAwUrLS8xBSUjCw0xAQAAAAAAAAABAAAAAQAAAAAAAAAAAAAABScRCwEdNTcFKRU5Px07PQUrLQMHXQ1tFUFHHUNFBS0tAwlhJYERFUlPHUtNBS8tAweaBCM9FVFXHVNVBTEtAwe6BBkhFVlfHVtdBTMtBQdiLSdxFWFnHWNlBTUtBQnyLUf6LQcVaW8da20FNy0FB0omDUUVcXcdc3UFOS0NB1IGGy8VeX8de30FOy0NB5IHDTcdgYMFPS0FB1ImCT8jdHB1Lm1lbW9yeV9zcGFjZTxhbnk+ACN0cHUubWVtb3J5X3NwYWNlPHZtZW0+ACN0cHUubWVtb3J5X3NwYWNlPHNlbWFwaG9yZV9tZW0+ABeFBSECBAUJAQIECxeHBSECBAUJF4kBDyEBAgIFCQEBBwkBIXRwdS5kbWFfc2VtYXBob3JlAARLBQERAQ8HAwEFAxEBFwcDCQsJAQEBAQcBCQEFBTMpBwEFBwcAAQYDAQUBACYLPxkJFUcVNXeNSX8XEykLIyEdKSUtNxNRcxkhFQ8JHRFidWlsdGluAHN0YWJsZV9tb3NhaWMAdHB1AG1vZHVsZQBmdW5jLmZ1bmMAdHB1LmVucXVldWVfZG1hAGZ1bmMucmV0dXJuAHRoaXJkX3BhcnR5L3B5L2pheC90ZXN0cy9wYWxsYXMvdHB1X3BhbGxhc19hc3luY190ZXN0LnB5AHRoaXJkX3BhcnR5L3B5L2Fic2wvdGVzdGluZy9hYnNsdGVzdC5weQBzeW1fbmFtZQB0aGlyZF9wYXJ0eS9weS9hYnNsL2FwcC5weQBzdGFibGVfbW9zYWljLnZlcnNpb24AY29weV9zdGFydF9rZXJuZWwAZGltZW5zaW9uX3NlbWFudGljcwBmdW5jdGlvbl90eXBlAHNjYWxhcl9wcmVmZXRjaABzY3JhdGNoX29wZXJhbmRzAG1haW4Ab3BlcmFuZFNlZ21lbnRTaXplcwBwcmlvcml0eQAvZG1hX3N0YXJ0AG1ha2VfYXN5bmNfY29weS48bG9jYWxzPi5jb3B5X3N0YXJ0Ljxsb2NhbHM+LmNvcHlfc3RhcnRfa2VybmVsAG1ha2VfYXN5bmNfY29weS48bG9jYWxzPi5jb3B5X3N0YXJ0AFBhbGxhc0NhbGxBc3luY0NvcHlUZXN0LnRlc3RfbXVsdGlwbGVfYXN5bmNfY29weV9pbnRvX3ZtZW0uPGxvY2Fscz4uZgBQYWxsYXNDYWxsQXN5bmNDb3B5VGVzdC50ZXN0X211bHRpcGxlX2FzeW5jX2NvcHlfaW50b192bWVtAF9ydW5fYW5kX2dldF90ZXN0c19yZXN1bHQAcnVuX3Rlc3RzAF9ydW5faW5fYXBwLjxsb2NhbHM+Lm1haW5fZnVuY3Rpb24AX3J1bl9tYWluAHJ1bgBfcnVuX2luX2FwcAA=", "serialization_format": 1, "needs_layout_passes": true, "output_memory_space_colors": [{"shape_index":[1],"color":1},{"shape_index":[2],"color":2}], "input_memory_space_colors": []}}
+  %get-tuple-element.9 = s32[]{:T(128)S(2)} get-tuple-element(%copy_start.3), index=2, metadata={op_name="jit(f)/jit(main)/copy_start/pallas_call" source_file="third_party/py/jax/tests/pallas/tpu_pallas_async_test.py" source_line=48}
+  %get-tuple-element.8 = f32[8,128]{1,0:T(8,128)} get-tuple-element(%copy_start.3), index=1, metadata={op_name="jit(f)/jit(main)/copy_start/pallas_call" source_file="third_party/py/jax/tests/pallas/tpu_pallas_async_test.py" source_line=48}
+  %get-tuple-element.7 = f32[8,128]{1,0:T(8,128)} get-tuple-element(%copy_start.3), index=0, metadata={op_name="jit(f)/jit(main)/copy_start/pallas_call" source_file="third_party/py/jax/tests/pallas/tpu_pallas_async_test.py" source_line=48}
+  %copy_done.3 = f32[8,128]{1,0:T(8,128)} custom-call(%get-tuple-element.7, %get-tuple-element.8, %get-tuple-element.9), custom_call_target="tpu_custom_call", operand_layout_constraints={f32[8,128]{1,0}, f32[8,128]{1,0}, s32[]}, output_to_operand_aliasing={{}: (1, {})}, metadata={op_name="jit(f)/jit(main)/copy_done/pallas_call" source_file="third_party/py/jax/tests/pallas/tpu_pallas_async_test.py" source_line=75}, backend_config={"custom_call_config": {"body": "TUzvUgFNTElSZ29vZ2xlMy10cnVuawABGQcBAwUBAwcDBwkLDQOjgQ8BewcLCwuFDwsbCw8LMwsLCwtVCwsLDwsPDwsbDw8LHw8PCx8PDwsfDw8LHw8PCycPDwsfDw8LHw8PCx8PCx8FB11hhQENIw8jBxcfBQNNAhYGHwUPBREFE2FmZmluZV9tYXA8KGQwLCBkMSkgLT4gKGQwLCBkMSk+ABEDAQUVAwUREwcVBRcRAxEFGQMLGRsdHyMLJQsHJwUbAQEFHQ0LYWZmaW5lX21hcDwoKSAtPiAoKT4ABR8FIQUjHSstBSUVLzUdMTMFJy0DB5MNaxU3PR05OwUpLQMJlxWrJRU/RR1BQwUrLQMHogQXPRVHTR1JSwUtLQMHugQZIRVPVR1RUwUvLQUHYi0ncRVXXR1ZWwUxLQUJ8i1H+i0HFV9lHWFjBTMtBQdKJg1FFWdtHWlrBTUtDQdSBhsvFW91HXFzBTctDQeSBw03HXd5BTktBQdSJgk/I3RwdS5tZW1vcnlfc3BhY2U8YW55PgAjdHB1Lm1lbW9yeV9zcGFjZTx2bWVtPgAjdHB1Lm1lbW9yeV9zcGFjZTxzZW1hcGhvcmVfbWVtPgAXfQUhAgQHCQECBBd7BSECBAcJCxd/AQ0hBQkFAQkBASF0cHUuZG1hX3NlbWFwaG9yZQAESQUBEQEPBwMBBQMRARcHAwkLCQUBAQEJAQEBBQQpBwUBAwcAAQYDAQUBAI4KOxkJFUcVNXeNR3sVCyMhHSkjLTcTUXMZHRUPCR0RYnVpbHRpbgBzdGFibGVfbW9zYWljAHRwdQBtb2R1bGUAZnVuYy5mdW5jAHRwdS53YWl0X2RtYTIAZnVuYy5yZXR1cm4AdGhpcmRfcGFydHkvcHkvamF4L3Rlc3RzL3BhbGxhcy90cHVfcGFsbGFzX2FzeW5jX3Rlc3QucHkAdGhpcmRfcGFydHkvcHkvYWJzbC90ZXN0aW5nL2Fic2x0ZXN0LnB5AHN5bV9uYW1lAHRoaXJkX3BhcnR5L3B5L2Fic2wvYXBwLnB5AHN0YWJsZV9tb3NhaWMudmVyc2lvbgBjb3B5X2RvbmVfa2VybmVsAGRpbWVuc2lvbl9zZW1hbnRpY3MAZnVuY3Rpb25fdHlwZQBzY2FsYXJfcHJlZmV0Y2gAc2NyYXRjaF9vcGVyYW5kcwBtYWluAC9kbWFfd2FpdABtYWtlX2FzeW5jX2NvcHkuPGxvY2Fscz4uY29weV9kb25lLjxsb2NhbHM+LmNvcHlfZG9uZV9rZXJuZWwAbWFrZV9hc3luY19jb3B5Ljxsb2NhbHM+LmNvcHlfZG9uZQBQYWxsYXNDYWxsQXN5bmNDb3B5VGVzdC50ZXN0X211bHRpcGxlX2FzeW5jX2NvcHlfaW50b192bWVtLjxsb2NhbHM+LmYAUGFsbGFzQ2FsbEFzeW5jQ29weVRlc3QudGVzdF9tdWx0aXBsZV9hc3luY19jb3B5X2ludG9fdm1lbQBfcnVuX2FuZF9nZXRfdGVzdHNfcmVzdWx0AHJ1bl90ZXN0cwBfcnVuX2luX2FwcC48bG9jYWxzPi5tYWluX2Z1bmN0aW9uAF9ydW5fbWFpbgBydW4AX3J1bl9pbl9hcHAA", "serialization_format": 1, "needs_layout_passes": true, "output_memory_space_colors": [{"color":1}], "input_memory_space_colors": [{"operand_index":1,"color":1}]}}
+  ROOT %tuple.12 = (f32[8,128]{1,0:T(8,128)}, f32[8,128]{1,0:T(8,128)}) tuple(%copy_done.2, %copy_done.3)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+
+  HloInstruction* copy_start_2 = FindInstruction(module.get(), "copy_start.2");
+  HloPosition copy_start_2_position{copy_start_2, {1}};
+  HloUse copy_start_2_use{copy_start_2, 0, {}};
+  HloInstruction* copy_start_3 = FindInstruction(module.get(), "copy_start.3");
+  HloPosition copy_start_3_position{copy_start_3, {1}};
+  HloUse copy_start_3_use{copy_start_3, 0, {}};
+  HloInstruction* copy_done_2 = FindInstruction(module.get(), "copy_done.2");
+  HloUse copy_done_2_use{copy_done_2, 1, {}};
+  HloInstruction* copy_done_3 = FindInstruction(module.get(), "copy_done.3");
+  HloUse copy_done_3_use{copy_done_3, 1, {}};
+
+  memory_space_options.buffer_colorings = {
+      {copy_start_2_position, kAlternateMemorySpace},
+      {copy_start_3_position, kAlternateMemorySpace},
+      {copy_done_2_use, kAlternateMemorySpace},
+      {copy_done_3_use, kAlternateMemorySpace},
+      {copy_start_2_use, kDefaultMemorySpace},
+      {copy_start_3_use, kDefaultMemorySpace}};
+
+  memory_space_options.alternate_memory_space = 1;
+  memory_space_options.max_size_in_bytes = 50266112;
+  memory_space_options.alignment_in_bytes = 4096;
+  memory_space_options.replicated_split_dimension = -1;
+  memory_space_options.any_split_dimension = -2;
+  memory_space_options.reduce_scoped_memory_limit = 0;
+  memory_space_options.allocate_reserved_scoped_memory_at_same_offset = true;
+  memory_space_options.max_outstanding_prefetches = 40;
+  memory_space_options.max_outstanding_evictions = 40;
+  memory_space_options.while_use_extra_outstanding_prefetch_limit = 4;
+  memory_space_options.max_retries = 2;
+  memory_space_options.max_repacks = 0;
+  memory_space_options.repack_after_every_allocation = 0;
+  memory_space_options.verify = 0;
+  memory_space_options.enable_cross_program_prefetch = 1;
+  memory_space_options.default_cross_program_prefetch_heuristic = 0;
+  memory_space_options.enable_cross_program_prefetch_freeing = 1;
+  memory_space_options.max_cross_program_prefetches = 1;
+  memory_space_options.cross_program_prefetch_permissive_mode = 0;
+  memory_space_options.enable_while_redundant_eviction_elimination = 1;
+  memory_space_options.use_repeated_instance_for_preferred_prefetch_time = 0;
+  memory_space_options.enforce_prefetch_fifo_order = 0;
+  memory_space_options.enable_sync_copy_replacement = 1;
+  memory_space_options.enable_sync_slice_replacement = 1;
+  memory_space_options.extend_async_copies_limit_for_sync_mem_op_conversion = 0;
+  memory_space_options.inefficient_use_to_copy_ratio = 0.5;
+  memory_space_options.always_spill_to_default_memory = 0;
+  memory_space_options.enable_window_prefetch = 0;
+  memory_space_options.window_prefetch_mode =
+      WindowPrefetchMode::kWindowExposure;
+  memory_space_options.expanded_scoped_alternate_memory_mode =
+      ExpandedScopedAlternateMemoryMode::DISABLED;
+  memory_space_options.post_module_scoped_alternate_memory_size_in_bytes = 0;
+  memory_space_options.position_requires_contiguous_allocation_fn =
+      [](const HloPosition& position) {
+        return position.instruction->name() == "copy_start.2" ||
+               position.instruction->name() == "copy_start.3";
+      };
+  memory_space_options.is_allowed_in_alternate_mem_fn =
+      [&](const HloValue& value) {
+        // Check if the value belongs in the entry computation.
+        HloInstruction* instruction = value.instruction();
+        HloComputation* computation = instruction->parent();
+        if ((instruction->name() == "copy_start.2" ||
+             instruction->name() == "copy_start.3") &&
+            value.index() == ShapeIndex({1})) {
+          return true;
+        }
+        bool in_entry_computation =
+            (computation == computation->parent()->entry_computation());
+        if (in_entry_computation &&
+            instruction->opcode() == HloOpcode::kParameter) {
+          return value.shape().has_layout() &&
+                 value.shape().layout().memory_space() != kDefaultMemorySpace;
+        }
+        return true;
+      };
+
+  XLA_VLOG_LINES(3, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options);
+  XLA_VLOG_LINES(3, "After MSA: \n" + module->ToString());
+
+  EXPECT_EQ(FindInstruction(module.get(), "copy_done.2")
+                ->operand(1)
+                ->shape()
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+
+  EXPECT_EQ(FindInstruction(module.get(), "copy_done.3")
+                ->operand(1)
+                ->shape()
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+
+  EXPECT_EQ(FindInstruction(module.get(), "copy_done.2")
+                ->shape()
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+
+  EXPECT_EQ(FindInstruction(module.get(), "copy_done.3")
+                ->shape()
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+}
+
 }  // namespace
 }  // namespace memory_space_assignment
 }  // namespace xla

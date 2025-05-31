@@ -573,6 +573,7 @@ cc_library(
         ":slice",
         ":tuning_utils",
         ":utils",
+        "//util/symbolize",
         "//xla:debug_options_flags",
         "//xla:shape_tree",
         "//xla:shape_util",
