@@ -16,24 +16,36 @@ limitations under the License.
 // //third_party/tensorflow/compiler/mlir/lite/transforms/prepare_quantize_dynamic_range.cc
 // This transformation pass applies quantization propagation on TF dialect.
 
-#include <algorithm>
 #include <memory>
-#include <string>
 #include <utility>
-#include <vector>
 
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Rewrite/FrozenRewritePatternSet.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_attrs_and_constraints.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/ops/temp_tf_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 
 //===----------------------------------------------------------------------===//
@@ -46,6 +58,11 @@ namespace {
 
 using QuantizationUnit = std::pair<Operation*, int>;
 using QuantizationUnits = llvm::SetVector<QuantizationUnit>;
+using ::mlir::tf_quant::GetTFOpQuantSpec;
+using ::mlir::tf_quant::GetUniformQuantizedPerAxisTypeForWeight;
+using ::mlir::tf_quant::GetUniformQuantizedTypeForWeight;
+using ::mlir::tf_quant::OpQuantSpec;
+using ::mlir::tf_quant::QuantizationSpecs;
 using ::tensorflow::quantization::OpSet;
 
 // Applies prepare quantization on the model in TF dialect for dynamic range
@@ -54,7 +71,7 @@ class PrepareQuantizeDRQPass
     : public PassWrapper<PrepareQuantizeDRQPass, OperationPass<ModuleOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TF::TensorFlowDialect, ::mlir::quant::QuantDialect,
-                    ::mlir::quantfork::QuantizationForkDialect>();
+                    ::mlir::quant::ir::TFQuantDialect>();
   }
 
  public:
@@ -220,19 +237,19 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
     // creating a new DQ-op.
     for (auto connected_op : op->getUsers()) {
       auto q_op =
-          llvm::dyn_cast_or_null<quantfork::QuantizeCastOp>(connected_op);
+          llvm::dyn_cast_or_null<mlir::quant::ir::QuantizeCastOp>(connected_op);
       if (q_op && q_op.getType() == cast_type) {
-        auto dq_op = llvm::cast<quantfork::DequantizeCastOp>(
+        auto dq_op = llvm::cast<mlir::quant::ir::DequantizeCastOp>(
             q_op.getResult().use_begin()->getOwner());
         quantize_op->setOperand(quantize_operand_num, dq_op);
         return false;
       }
     }
     rewriter.setInsertionPointAfter(op);
-    auto q = rewriter.create<quantfork::QuantizeCastOp>(op->getLoc(), cast_type,
-                                                        op.getResult());
-    auto dq = rewriter.create<quantfork::DequantizeCastOp>(op->getLoc(),
-                                                           expressed_type, q);
+    auto q = rewriter.create<mlir::quant::ir::QuantizeCastOp>(
+        op->getLoc(), cast_type, op.getResult());
+    auto dq = rewriter.create<mlir::quant::ir::DequantizeCastOp>(
+        op->getLoc(), expressed_type, q);
     quantize_op->setOperand(quantize_operand_num, dq.getResult());
     return true;
   }
@@ -258,7 +275,7 @@ class PrepareDRQQuantizableOp : public OpRewritePattern<arith::ConstantOp> {
 
 // Remove all the stats ops which are redundant for dynamic range quantizaiton.
 void PrepareQuantizeDRQPass::removeAllStatsOp(func::FuncOp func) {
-  func.walk([&](quantfork::StatisticsOp stats_op) {
+  func.walk([&](mlir::quant::ir::StatisticsOp stats_op) {
     stats_op.replaceAllUsesWith(stats_op.getArg());
     stats_op.erase();
   });

@@ -29,7 +29,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
@@ -60,7 +60,7 @@ class ConvertCustomAggregationOpToQuantStatsPass
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<TF::TensorFlowDialect>();
     registry.insert<quant::QuantDialect>();
-    registry.insert<quantfork::QuantizationForkDialect>();
+    registry.insert<mlir::quant::ir::TFQuantDialect>();
   }
 
   void runOnOperation() override;
@@ -94,8 +94,9 @@ class ConvertCustomAggregationOpToQuantStats
     ElementsAttr axis_stats;
     IntegerAttr axis;
 
-    quantfork::StatisticsOp stats_op = rewriter.create<quantfork::StatisticsOp>(
-        op->getLoc(), op.getInput(), layer_stats, axis_stats, axis);
+    mlir::quant::ir::StatisticsOp stats_op =
+        rewriter.create<mlir::quant::ir::StatisticsOp>(
+            op->getLoc(), op.getInput(), layer_stats, axis_stats, axis);
     op.getOutput().replaceAllUsesWith(stats_op.getResult());
     return success();
   }

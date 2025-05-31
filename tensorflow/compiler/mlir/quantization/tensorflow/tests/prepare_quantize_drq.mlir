@@ -13,8 +13,8 @@ module {
 
 // CHECK-LABEL: func @matmul
 // CHECK-DAG: %[[CONST:.*]] = arith.constant dense<0.000000e+00> : tensor<2x1024xf32>
-// CHECK: %0 = "quantfork.qcast"(%[[CONST]]) : (tensor<2x1024xf32>) -> tensor<2x1024x!quant.uniform<i8<-127:127>:f32, 3.9370078740157481E-9>>
-// CHECK: %1 = "quantfork.dcast"(%0) : (tensor<2x1024x!quant.uniform<i8<-127:127>:f32, 3.9370078740157481E-9>>) -> tensor<2x1024xf32>
+// CHECK: %0 = "quantization.qcast"(%[[CONST]]) : (tensor<2x1024xf32>) -> tensor<2x1024x!quant.uniform<i8<-127:127>:f32, 3.9370078740157481E-9>>
+// CHECK: %1 = "quantization.dcast"(%0) : (tensor<2x1024x!quant.uniform<i8<-127:127>:f32, 3.9370078740157481E-9>>) -> tensor<2x1024xf32>
 // CHECK: %2 = "tf.PartitionedCall"(%arg0, %1) <{config = "", config_proto = "", executor_type = "", f = @composite_matmul_fn}> {_tfl_quant_trait = "fully_quantizable"} : (tensor<1x2x2x3xf32>, tensor<2x1024xf32>) -> tensor<*xf32>
 // CHECK: return %2 : tensor<*xf32>
 
@@ -41,8 +41,8 @@ module {
 // CHECK-LABEL: func @conv2d
 // CHECK-DAG: %[[CONST_0:.*]] = arith.constant dense<0.000000e+00> : tensor<2xf32>
 // CHECK-DAG: %[[CONST_1:.*]] = arith.constant dense<3.000000e+00> : tensor<2x3x3x512xf32>
-// CHECK: %0 = "quantfork.qcast"(%[[CONST_1]]) : (tensor<2x3x3x512xf32>) -> tensor<2x3x3x512x!quant.uniform<i8<-127:127>:f32, 0.023622047244094488>>
-// CHECK: %1 = "quantfork.dcast"(%0) : (tensor<2x3x3x512x!quant.uniform<i8<-127:127>:f32, 0.023622047244094488>>) -> tensor<2x3x3x512xf32>
+// CHECK: %0 = "quantization.qcast"(%[[CONST_1]]) : (tensor<2x3x3x512xf32>) -> tensor<2x3x3x512x!quant.uniform<i8<-127:127>:f32, 0.023622047244094488>>
+// CHECK: %1 = "quantization.dcast"(%0) : (tensor<2x3x3x512x!quant.uniform<i8<-127:127>:f32, 0.023622047244094488>>) -> tensor<2x3x3x512xf32>
 // CHECK: %2 = "tf.PartitionedCall"(%arg0, %1) <{config = "", config_proto = "", executor_type = "", f = @composite_conv2d_fn_1}> {_tfl_quant_trait = "fully_quantizable"} : (tensor<1x3x4x3xf32>, tensor<2x3x3x512xf32>) -> tensor<*xf32>
 // CHECK: %3 = "tf.BiasAdd"(%2, %[[CONST_0]])
 // CHECK: return %3 : tensor<*xf32>
@@ -72,8 +72,8 @@ module {
 // CHECK-LABEL: func @depthwise_conv
 // CHECK-DAG: %[[CONST_0:.*]] = arith.constant dense<0.000000e+00> : tensor<2xf32>
 // CHECK-DAG: %[[CONST_1:.*]] = arith.constant dense<3.000000e+00> : tensor<2x3x1x1536xf32>
-// CHECK: %0 = "quantfork.qcast"(%[[CONST_1]]) : (tensor<2x3x1x1536xf32>) -> tensor<2x3x1x1536x!quant.uniform<i8<-127:127>:f32, 0.023622047244094488>>
-// CHECK: %1 = "quantfork.dcast"(%0) : (tensor<2x3x1x1536x!quant.uniform<i8<-127:127>:f32, 0.023622047244094488>>) -> tensor<2x3x1x1536xf32>
+// CHECK: %0 = "quantization.qcast"(%[[CONST_1]]) : (tensor<2x3x1x1536xf32>) -> tensor<2x3x1x1536x!quant.uniform<i8<-127:127>:f32, 0.023622047244094488>>
+// CHECK: %1 = "quantization.dcast"(%0) : (tensor<2x3x1x1536x!quant.uniform<i8<-127:127>:f32, 0.023622047244094488>>) -> tensor<2x3x1x1536xf32>
 // CHECK: %2 = "tf.PartitionedCall"(%arg0, %1) <{config = "", config_proto = "", executor_type = "", f = @composite_depthwise_conv2d_fn_0}> {_tfl_quant_trait = "fully_quantizable"} : (tensor<1x3x4x512xf32>, tensor<2x3x1x1536xf32>) -> tensor<*xf32>
 // CHECK: %3 = "tf.BiasAdd"(%2, %[[CONST_0]])
 // CHECK: return %3 : tensor<*xf32>
