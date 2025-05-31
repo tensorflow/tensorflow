@@ -568,11 +568,18 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
                         sub_buffer = std::move(sub_buffer), buffer_index,
                         is_last_transfer, on_done = std::move(on_done),
                         this]() mutable {
-      tsl::profiler::TraceMe traceme(
-          "TfrtGpuAsyncHostToDeviceTransferManager::"
-          "TransferRawDataToSubBuffer::"
-          "copy_to_gpu");
-
+      tsl::profiler::TraceMe traceme([&] {
+        return tsl::profiler::TraceMeEncode(
+            "TfrtGpuAsyncHostToDeviceTransferManager::"
+            "TransferRawDataToSubBuffer::"
+            "copy_to_gpu",
+            {
+                {"device", device_->id()},
+                {"buffer_index", buffer_index},
+                {"size", transfer_size},
+                {"is_last_transfer", is_last_transfer},
+            });
+      });
       if (transfer_size != 0) {
         if (staging_buffer != nullptr) {
           std::memcpy(staging_buffer.get(), data, transfer_size);
@@ -2035,8 +2042,10 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
                       dst_definition_event(std::move(dst_definition_event)),
                       gpu_buffer{gpu_buffer.CopyRef()}](
                          HostMemoryAllocator::OwnedPtr staging_buffer) {
-    tsl::profiler::TraceMe traceme("H2D GPU copy");
-
+    tsl::profiler::TraceMe traceme([&] {
+      return tsl::profiler::TraceMeEncode(
+          "H2D GPU copy", {{"device", device->id()}, {"size", packed_size}});
+    });
     auto stream = device->stream();
 
     se::DeviceMemoryBase dest = gpu_buffer->buffer();
@@ -2844,7 +2853,13 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteral(MutableLiteralBase* literal) {
     }
 
     {
-      tsl::profiler::TraceMe traceme2("D2H GPU copy");
+      tsl::profiler::TraceMe traceme2([&] {
+        return tsl::profiler::TraceMeEncode("D2H GPU copy",
+                                            {
+                                                {"device", device->id()},
+                                                {"size", byte_size},
+                                            });
+      });
       MarkGpuEventReadyOnExit ready_on_exit(std::move(usage_event));
 
       auto stream = device->stream();
@@ -2979,7 +2994,13 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst,
           }
 
           {
-            tsl::profiler::TraceMe traceme2("D2H GPU copy");
+            tsl::profiler::TraceMe traceme2([&] {
+              return tsl::profiler::TraceMeEncode("D2H GPU copy",
+                                                  {
+                                                      {"device", device->id()},
+                                                      {"size", transfer_size},
+                                                  });
+            });
             MarkGpuEventReadyOnExit ready_on_exit(std::move(usage_event));
             auto stream = device->stream();
             void* host_ptr =
@@ -3145,7 +3166,14 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
                 << src_device->id() << " to "
                 << allocated_dst_buffer->buffer().opaque() << " on device "
                 << dst_device->id();
-        tsl::profiler::TraceMe traceme("D2D copy");
+        tsl::profiler::TraceMe trace([&] {
+          return tsl::profiler::TraceMeEncode(
+              "D2D copy", {
+                              {"src_device", src_device->id()},
+                              {"dst_device", dst_device->id()},
+                              {"size", src_buffer->buffer().size()},
+                          });
+        });
 
         MarkGpuEventReadyOnExit ready_on_exit_src(std::move(src_usage_event));
         MarkGpuEventReadyOnExit ready_on_exit_dst(std::move(dst_usage_event));
@@ -3627,9 +3655,10 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         tsl::profiler::TraceMeProducer producer(
             [&] {
               return tsl::profiler::TraceMeEncode(
-                  "execute_fn",
-                  {{"launch_id", std::to_string(launch_id)},
-                   {"device_ordinal", device->local_device_id().value()}});
+                  "execute_fn", {
+                                    {"launch_id", std::to_string(launch_id)},
+                                    {"device_id", device->id()},
+                                });
             },
             tsl::profiler::ContextType::kTfExecutor, launch_id);
 
