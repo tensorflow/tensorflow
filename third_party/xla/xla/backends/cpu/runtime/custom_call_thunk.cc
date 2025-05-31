@@ -192,7 +192,18 @@ static absl::StatusOr<CustomCallThunk::CustomCallTarget> ToCustomCallTarget(
         auto fn = reinterpret_cast<v1_signature>(target);
         fn(out, in);
       };
+
     case CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
+#ifdef PLATFORM_GOOGLE
+      LOG(FATAL)
+#else
+      LOG(ERROR)
+#endif
+          << "Custom call API version `API_VERSION_STATUS_RETURNING` is not "
+             "supported by XLA:CPU. Prefer "
+             "https://docs.jax.dev/en/latest/ffi.html. It will be fully "
+             "removed in November 2025.";
+
       using v2_signature = void (*)(void* /*out*/, const void** /*in*/,
                                     XlaCustomCallStatus* /*status*/);
       return [target](void* out, const void** in, const char* opaque,
