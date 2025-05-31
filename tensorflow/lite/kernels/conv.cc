@@ -372,6 +372,14 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
     }
   }
 
+  // Validate stride values
+  TF_LITE_ENSURE(context, params->stride_height > 0);
+  TF_LITE_ENSURE(context, params->stride_width > 0);
+
+  // Validate dilation values
+  TF_LITE_ENSURE(context, params->dilation_height_factor > 0);
+  TF_LITE_ENSURE(context, params->dilation_width_factor > 0);
+
   const TfLiteTensor* bias = nullptr;
 
   // TODO(ahentz): At this point the optimized versions require 'bias'. We can
