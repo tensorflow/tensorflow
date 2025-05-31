@@ -10,49 +10,12 @@ package(
 )
 
 cc_library(
-    name = "tf_save_report",
-    srcs = ["tf_save_report.cc"],
-    hdrs = ["tf_save_report.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:tf_report",
-        "@com_google_absl//absl/base:nullability",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-    ],
-)
-
-tf_cc_test(
-    name = "tf_save_report_test",
-    srcs = ["tf_save_report_test.cc"],
-    deps = [
-        ":tf_save_report",
-        "//tensorflow/compiler/mlir/quantization/common:tf_test_base",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:tf_passes",
-        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:io",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_xla//xla/tsl/platform:status_matchers",
-    ],
-)
-
-cc_library(
     name = "save_report",
     srcs = ["save_report.cc"],
     hdrs = ["save_report.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:report",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:tf_report",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings:string_view",
@@ -67,9 +30,9 @@ tf_cc_test(
     srcs = ["save_report_test.cc"],
     deps = [
         ":save_report",
-        "//tensorflow/compiler/mlir/quantization/common:test_base",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:passes",
+        "//tensorflow/compiler/mlir/quantization/common:tf_test_base",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:tf_passes",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:io",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
