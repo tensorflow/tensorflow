@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/transforms/memory_space_propagation.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/layout.h"
 #include "xla/service/buffer_value.h"
@@ -2285,6 +2286,10 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
     }
   }
 
+  if (options_.enable_window_prefetch) {
+    WindowPrefetch();
+  }
+
   if (options_.expanded_scoped_alternate_memory_mode ==
       ExpandedScopedAlternateMemoryMode::ENABLED) {
     ExtendScopedAlternateMemoryAllocations();
@@ -2854,7 +2859,8 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
           definition_time_for_allocation_value.at(&allocation_value_to_update),
           RequiresNoCopyAlternateMemAllocation(allocation_value_to_update),
           all_use_times, entry.only_extend_existing_allocation,
-          allocation_values.subspan(0, alloc_value_idx));
+          allocation_values.subspan(0, alloc_value_idx),
+          /*shape_override=*/std::nullopt);
       if (options_.allocation_request_modifier_testing_fn) {
         options_.allocation_request_modifier_testing_fn(request);
       }
@@ -3033,7 +3039,8 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
     bool require_no_copy_alternate_mem_allocation,
     const std::vector<int64_t>& all_use_times,
     bool only_extend_existing_allocation,
-    absl::Span<AllocationValue> processed_allocation_values) {
+    absl::Span<AllocationValue> processed_allocation_values,
+    std::optional<Shape> shape_override) {
   const HloUse& hlo_use = use.hlo_use;
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
   bool require_copy_allocation = false;
@@ -3289,6 +3296,9 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
     request.allocation_value_to_update = &allocation_value_to_update;
   }
 
+  if (shape_override.has_value()) {
+    request.shape_override = shape_override;
+  }
   request.end_time = use_time;
   request.only_extend_existing_allocation = only_extend_existing_allocation;
   request.processed_allocation_values = processed_allocation_values;
@@ -5250,7 +5260,7 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
       }
     }
     AllocationResult prefetch_result =
-        Prefetch(request, **prev_allocation_in_default_mem_it, nullptr,
+        Prefetch(request, **prev_allocation_in_default_mem_it,
                  /*force_prefetch=*/
                  request.require_end_colored_in_alternate_memory);
     if (prefetch_result == AllocationResult::kSuccess) {
@@ -5319,10 +5329,6 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
   (*prev_allocation_in_default_mem_it)->Extend(request.end_time);
   (*prev_allocation_in_default_mem_it)->AddUse(request.use->hlo_use);
 
-  // If the buffer is placed in default memory, we can try window prefetching
-  // it, which will try to prefetch only a window worth of data to alternate
-  // memory.
-  WindowPrefetch(request, **prev_allocation_in_default_mem_it);
   return allocation_result;
 }
 
@@ -5830,81 +5836,191 @@ std::string DescribeSlicedBufferMove(
 
 }  // namespace
 
-AllocationResult MsaAlgorithm::WindowPrefetch(
-    const AllocationRequest& request,
-    Allocation& prev_allocation_in_default_mem) {
-  if (!options_.enable_window_prefetch) {
-    return AllocationResult::kSuccess;
+void MsaAlgorithm::WindowPrefetchOperand(HloInstruction* instruction,
+                                         int64_t operand_index, int64_t bytes) {
+  CHECK(options_.enable_window_prefetch);
+
+  // Get the operand. Skip the get-tuple-element instructions.
+  HloInstruction* operand = instruction->mutable_operand(operand_index);
+  HloUse use = {instruction, operand_index};
+  ShapeIndex shape_index = {};
+  while (operand->opcode() == HloOpcode::kGetTupleElement) {
+    int64_t index = operand->tuple_index();
+    shape_index.push_front(index);
+    operand = operand->mutable_operand(0);
   }
+  HloValue hlo_value(alias_analysis_.dataflow_analysis()
+                         .GetValueDefinedAt(operand, shape_index)
+                         .id(),
+                     operand, shape_index);
+  int64_t start_time = hlo_live_range_.instruction_schedule().at(operand);
+  int64_t end_time = hlo_live_range_.instruction_schedule().at(instruction);
 
-  const HloUse use = request.use->hlo_use;
-  VLOG(3) << "Considering window prefetch for use=" << use.ToString();
+  // Create a buffer interval, which has the same start and end time as the
+  // operand. The hlo value is the operand.
+  MsaBufferInterval buffer_interval;
+  buffer_interval.buffer = &hlo_value;
+  buffer_interval.size = bytes;
+  buffer_interval.start = start_time;
+  buffer_interval.end = end_time;
+  buffer_interval.need_allocation = true;
 
-  // Get the window prefetch details for this use.
-  WindowPrefetchDetail details =
-      options_.window_prefetch_detail_fn(use.instruction);
-  for (const WindowPrefetchDetail::WindowDetail& window : details.windows()) {
-    if (window.operand() != use.operand_number) {
+  // Create an allocation_values using the buffer interval.
+  std::vector<AllocationValue> allocation_values;
+  allocation_values.emplace_back(&hlo_value, hlo_value.defining_position(),
+                                 bytes);
+  allocation_values[0].AddUse(use, end_time);
+
+  // Create an allocation request using the allocation_value.
+  AllocationValue& allocation_value = allocation_values[0];
+  AllocationValue::Use& allocation_value_use = allocation_value.uses()[0];
+  std::vector<int64_t> all_use_times = {end_time};
+  AllocationRequest request = CreateAllocationRequest(
+      allocation_value, allocation_value,
+      /*use=*/allocation_value_use, /*previous_use=*/nullptr,
+      /*preferred_offset=*/nullptr,
+      /*definition_time=*/start_time,
+      /*require_no_copy_alternate_mem_allocation=*/false,
+      /*all_use_times=*/all_use_times,
+      /*only_extend_existing_allocation=*/false,
+      /*processed_allocation_values=*/{},
+      /*shape_override=*/
+      ShapeUtil::MakeValidatedShape(U8, {bytes}).value());
+
+  // Create a dummy allocation that is in the default memory, this is needed for
+  // creating a WindowPrefetchedAllocation. This allocation does not need to be
+  // appended to the allocation sequence.
+  PinnedAllocation dummy_prev_allocation(
+      /*defining_position=*/{instruction, shape_index}, MemorySpace::kDefault,
+      /*chunk=*/std::nullopt, request.inclusive_start_time,
+      request.inclusive_start_time);
+
+  // Construct the options needed for creating the window prefetch allocation.
+  WindowPrefetchedAllocation::Options options;
+  options.bytes = bytes;
+  options.alternate_memory_space = options_.alternate_memory_space;
+  options.notify_operand_appended_fn = options_.notify_operand_appended_fn;
+  request.window_prefetch_options = &options;
+
+  if (options_.window_prefetch_mode == WindowPrefetchMode::kWindowPrefetch) {
+    // Window prefetch mode
+    Prefetch(request, dummy_prev_allocation);
+  } else {
+    // Window exposure mode, we only need to find a chunk for the window
+    // buffer.
+    CHECK(options_.window_prefetch_mode == WindowPrefetchMode::kWindowExposure);
+    // Adjust the start time of the buffer interval to be the use time. This is
+    // because we only need the buffer to be alive at the use time.
+    buffer_interval.start = end_time;
+    std::optional<Chunk> candidate_chunk = FindBestChunkCandidate(
+        request, /*preferred_offset=*/nullptr, &buffer_interval);
+    if (candidate_chunk.has_value()) {
+      AddToPendingChunks(buffer_interval, *candidate_chunk);
+
+      AllocationSequence* allocation_sequence =
+          allocation_value.mutable_allocation_sequence();
+      allocation_sequence->push_back(
+          std::make_unique<WindowPrefetchedAllocation>(
+              dummy_prev_allocation, use, *candidate_chunk, end_time - 1,
+              end_time, options));
+      CreateOrAddToAliasedOffset(*allocation_sequence->back(),
+                                 /*aliased_offset=*/nullptr);
+      allocation_sequence->back()->AddUse(use);
+    }
+  }
+  // Finalize the allocation values. This adds the newly created allocation to
+  // allocations_.
+  FinalizeAllocations(absl::MakeSpan(allocation_values));
+}
+
+void MsaAlgorithm::WindowPrefetch() {
+  CHECK(options_.enable_window_prefetch);
+
+  // Sites where the operand is in the default memory and can be window
+  // prefetched.
+  absl::flat_hash_set<std::pair<HloInstruction*, int>>
+      window_prefetchable_sites;
+
+  // At this point, we don't have the memory space colored in the original
+  // instruction, but we know which operands and outputs are in the alternate
+  // memory. So we clone the instruction and color the operands and outputs that
+  // are in the alternate memory. Then we propagate the memory space to the
+  // cloned computation and use the cloned computation to determine the operand
+  // span size.
+
+  // Map of the original instruction to a clone of the instruction.
+  absl::flat_hash_map<HloInstruction*, HloInstruction*> cloned_insts;
+  const std::vector<HloInstruction*>& instruction_sequence =
+      hlo_live_range_.flattened_instruction_sequence().instructions();
+  for (HloInstruction* instruction : instruction_sequence) {
+    if (!instruction->IsOutputFusion() && !instruction->IsLoopFusion()) {
       continue;
     }
 
-    // Construct the options needed for creating the window prefetch allocation.
-    WindowPrefetchedAllocation::Options options;
-    options.bytes = window.size();
-    options.alternate_memory_space = options_.alternate_memory_space;
-    options.notify_operand_appended_fn = options_.notify_operand_appended_fn;
+    // This lambda sets an hlo's memory space to the alternate memory space.
+    auto color_hlo = [&](HloInstruction* hlo, ShapeIndex shape_index) {
+      ShapeUtil::GetMutableSubshape(hlo->mutable_shape(), shape_index)
+          ->mutable_layout()
+          ->set_memory_space(options_.alternate_memory_space);
+    };
 
-    // Construct the request for prefetching the content of the window.
-    AllocationRequest window_prefetch_request = request;
-    window_prefetch_request.window_prefetch_options = &options;
-    window_prefetch_request.size = window.size();
-    int64_t end_time = request.end_time;
-    window_prefetch_request.end_time = end_time;
-    std::vector<int64_t> all_use_times = {end_time};
-    window_prefetch_request.all_use_times = all_use_times;
+    // Make a clone of the instruction.
+    HloInstruction* cloned =
+        instruction->parent()->AddInstruction(instruction->Clone());
+    cloned_insts[instruction] = cloned;
 
-    if (options_.window_prefetch_mode == WindowPrefetchMode::kWindowPrefetch) {
-      // Window prefetch mode
-      const Shape shape = ShapeUtil::MakeShape(U8, {window.size()});
-      Prefetch(window_prefetch_request, prev_allocation_in_default_mem, &shape);
-    } else {
-      // Window exposure mode, we only need to find a chunk for the window
-      // buffer.
-      CHECK(options_.window_prefetch_mode ==
-            WindowPrefetchMode::kWindowExposure);
-      MsaBufferInterval alternate_mem_interval;
-      alternate_mem_interval.buffer =
-          request.allocation_value_to_update->value();
-      alternate_mem_interval.size = window.size();
-      alternate_mem_interval.end = end_time;
-      alternate_mem_interval.start = end_time;
-      std::optional<Chunk> candidate_chunk = FindBestChunkCandidate(
-          window_prefetch_request, /*preferred_offset=*/nullptr,
-          &alternate_mem_interval);
-      if (candidate_chunk.has_value()) {
-        AddToPendingChunks(alternate_mem_interval, *candidate_chunk);
-
-        AllocationSequence* allocation_sequence =
-            request.allocation_value_to_update->mutable_allocation_sequence();
-        allocation_sequence->push_back(
-            std::make_unique<WindowPrefetchedAllocation>(
-                prev_allocation_in_default_mem, use, *candidate_chunk,
-                end_time - 1, end_time, options));
-        CreateOrAddToAliasedOffset(*allocation_sequence->back(),
-                                   /*aliased_offset=*/nullptr);
-        allocation_sequence->back()->AddUse(use);
+    // Color the cloned instruction's parameters and output.
+    for (int i = 0; i < instruction->operand_count(); ++i) {
+      auto it = operands_in_alternate_memory_map_.find(instruction);
+      if (it == operands_in_alternate_memory_map_.end() ||
+          !it->second.contains({i, {}})) {
+        // For the operand in the default memory, insert it into the set of
+        // window prefetchable sites.
+        window_prefetchable_sites.insert({instruction, i});
+      } else {
+        // For the operand in the alternate memory, color the parameter.
+        color_hlo(cloned->fused_parameters()[i], {});
+      }
+    }
+    // Color the cloned instruction's output.
+    if (auto it = outputs_in_alternate_memory_map_.find(instruction);
+        it != outputs_in_alternate_memory_map_.end()) {
+      for (const auto& shape_index : it->second) {
+        color_hlo(cloned, shape_index);
       }
     }
   }
-  return AllocationResult::kSuccess;
+
+  // Propagate the memory space to the cloned fusion computations.
+  MemorySpacePropagation memory_space_propagation(
+      /*propagate_from_parameters=*/true);
+  if (options_.hlo_module != nullptr) {
+    TF_CHECK_OK(memory_space_propagation.Run(options_.hlo_module).status());
+  }
+
+  // Prefetch the window buffers.
+  for (const auto& [instruction, operand_number] : window_prefetchable_sites) {
+    CHECK(options_.op_span_size_fn);
+    int64_t span_size = options_.op_span_size_fn(
+        instruction, cloned_insts[instruction], operand_number);
+    if (span_size != 0) {
+      WindowPrefetchOperand(instruction, operand_number, span_size);
+    }
+  }
+
+  // Remove the cloned instructions.
+  for (auto [_, cloned] : cloned_insts) {
+    HloComputation* computation = cloned->parent();
+    TF_CHECK_OK(computation->RemoveInstruction(cloned));
+    computation->Cleanup();
+  }
 }
 
 AllocationResult MsaAlgorithm::Prefetch(
     const AllocationRequest& request,
-    Allocation& prev_allocation_in_default_mem, const Shape* shape,
-    bool force_prefetch) {
-  AllocationResult result = PrefetchWithResourceConstraints(
-      request, prev_allocation_in_default_mem, shape);
+    Allocation& prev_allocation_in_default_mem, bool force_prefetch) {
+  AllocationResult result =
+      PrefetchWithResourceConstraints(request, prev_allocation_in_default_mem);
   if (result == AllocationResult::kSuccess || !force_prefetch) {
     return result;
   }
@@ -5941,7 +6057,7 @@ AllocationResult MsaAlgorithm::Prefetch(
 
 AllocationResult MsaAlgorithm::PrefetchWithResourceConstraints(
     const AllocationRequest& request,
-    Allocation& prev_allocation_in_default_mem, const Shape* shape) {
+    Allocation& prev_allocation_in_default_mem) {
   // Try partially placing the buffer in the alternate space. The time that is
   // overlapped will be used to asynchronously copy the buffer from the
   // default memory to the alternate memory.
@@ -5982,8 +6098,8 @@ AllocationResult MsaAlgorithm::PrefetchWithResourceConstraints(
     return check_result;
   }
   const HloUse& use = request.use->hlo_use;
-  if (shape != nullptr) {
-    context.full_shape = shape;
+  if (request.shape_override.has_value()) {
+    context.full_shape = &*request.shape_override;
   } else {
     context.full_shape = &ShapeUtil::GetSubshape(
         use.instruction->operand(use.operand_number)->shape(),
