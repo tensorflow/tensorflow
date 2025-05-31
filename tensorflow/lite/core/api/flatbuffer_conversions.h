@@ -318,6 +318,10 @@ TfLiteStatus ParseResizeNearestNeighbor(const Operator* op,
                                         BuiltinDataAllocator* allocator,
                                         void** builtin_data);
 
+TfLiteStatus ParseReverseV2(const Operator* op, ErrorReporter* error_reporter,
+                            BuiltinDataAllocator* allocator,
+                            void** builtin_data);
+
 TfLiteStatus ParseRound(const Operator* op, ErrorReporter* error_reporter,
                         BuiltinDataAllocator* allocator, void** builtin_data);
 
