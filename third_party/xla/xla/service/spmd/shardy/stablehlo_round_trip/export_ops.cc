@@ -121,13 +121,14 @@ void rewriteCollectiveOp(mlir::Operation* op, mlir::Value input,
   mlir::sdy::setShardings(copyOp, sharding);
 }
 
-class ReshardPattern : public OpConversionPattern<ReshardOp> {
+template <class OpTy>
+class ShardingPattern : public OpConversionPattern<OpTy> {
  public:
-  using OpConversionPattern::OpConversionPattern;
+  using OpConversionPattern<OpTy>::OpConversionPattern;
 
  private:
   LogicalResult matchAndRewrite(
-      ReshardOp op, OpAdaptor adaptor,
+      OpTy op, typename OpTy::Adaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
     rewriteCollectiveOp(op, adaptor.getInput(), adaptor.getSharding(),
                         rewriter);
@@ -171,7 +172,8 @@ class ExportOpsPass
     // should not be deduped via folding. Fortunately, folding only happens in
     // greedy pattern rewriters. ExportHloShardingsPass does a simple walk,
     // which keeps the constants as is.
-    patterns.add<ConstantPattern, AllReducePattern, ReshardPattern,
+    patterns.add<ConstantPattern, AllReducePattern, ShardingPattern<ReshardOp>,
+                 ShardingPattern<ShardingConstraintOp>,
                  PropagationBarrierPattern, CollectivePattern<AllGatherOp>,
                  CollectivePattern<AllSliceOp>, CollectivePattern<AllToAllOp>,
                  CollectivePattern<CollectivePermuteOp>,
