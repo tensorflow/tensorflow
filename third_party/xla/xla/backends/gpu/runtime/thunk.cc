@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/nullability.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
@@ -135,6 +136,10 @@ Thunk::CollectiveExecuteParams::Create(
                                  ? &gpu_options->clique_id_callback()
                                  : nullptr;
 
+  auto* incarnations = gpu_options && gpu_options->incarnations().has_value()
+                           ? &*gpu_options->incarnations()
+                           : nullptr;
+
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                       GetGlobalDeviceId(device_id_map, local_device_ordinal));
 
@@ -142,7 +147,7 @@ Thunk::CollectiveExecuteParams::Create(
       collectives, run_options.stream()->parent(),
       run_options.run_options().run_id(), async_streams, local_device_ordinal,
       global_device_id, run_options.run_options().device_assignment(),
-      device_id_map, clique_id_callback, collective_max_nchannels,
+      device_id_map, clique_id_callback, incarnations, collective_max_nchannels,
       p2p_max_nchannels);
 }
 
@@ -152,6 +157,7 @@ Thunk::CollectiveExecuteParams::CollectiveExecuteParams(
     GlobalDeviceId global_device_id, const DeviceAssignment* device_assn,
     const GlobalDeviceIdMap* global_device_id_map,
     const CliqueIdCallback* nccl_clique_id_callback,
+    const absl::flat_hash_map<GlobalDeviceId, uint64_t>* incarnations,
     int64_t collective_max_nchannels, int64_t p2p_max_nchannels)
     : collectives(collectives),
       executor(executor),
@@ -162,6 +168,7 @@ Thunk::CollectiveExecuteParams::CollectiveExecuteParams(
       device_assn(device_assn),
       global_device_id_map(global_device_id_map),
       nccl_clique_id_callback(nccl_clique_id_callback),
+      incarnations(incarnations),
       collective_max_nchannels(collective_max_nchannels),
       p2p_max_nchannels(p2p_max_nchannels) {}
 

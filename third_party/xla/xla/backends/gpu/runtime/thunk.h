@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -290,21 +291,21 @@ class Thunk {
     const DeviceAssignment* device_assn;
     const GlobalDeviceIdMap* global_device_id_map;
     const CliqueIdCallback* nccl_clique_id_callback;
+    const absl::flat_hash_map<GlobalDeviceId, uint64_t>* incarnations;
 
     int64_t collective_max_nchannels;
     int64_t p2p_max_nchannels;
 
    private:
-    CollectiveExecuteParams(GpuCollectives* collectives,
-                            se::StreamExecutor* executor, RunId run_id,
-                            absl::Span<se::Stream* const> async_streams,
-                            int64_t local_device_ordinal,
-                            GlobalDeviceId global_device_id,
-                            const DeviceAssignment* device_assn,
-                            const GlobalDeviceIdMap* global_device_id_map,
-                            const CliqueIdCallback* nccl_clique_id_callback,
-                            int64_t collective_max_nchannels,
-                            int64_t p2p_max_nchannels);
+    CollectiveExecuteParams(
+        GpuCollectives* collectives, se::StreamExecutor* executor, RunId run_id,
+        absl::Span<se::Stream* const> async_streams,
+        int64_t local_device_ordinal, GlobalDeviceId global_device_id,
+        const DeviceAssignment* device_assn,
+        const GlobalDeviceIdMap* global_device_id_map,
+        const CliqueIdCallback* nccl_clique_id_callback,
+        const absl::flat_hash_map<GlobalDeviceId, uint64_t>* incarnations,
+        int64_t collective_max_nchannels, int64_t p2p_max_nchannels);
   };
 
   //===--------------------------------------------------------------------===//
