@@ -209,8 +209,10 @@ class StablehloExportManualReductionCollectivesPass
     mlir::IRRewriter rewriter(moduleOp.getContext());
     int64_t nextChannelId = getNextChannelId(moduleOp);
     moduleOp.walk([&](sdy::AllReduceOp allReduce) {
-      // TODO(tomnatan): Only convert all-reduce ops that are marked by Shardy.
-      convertAllReduce(allReduce, nextChannelId++, rewriter);
+      if (auto sharding = sdy::getSharding(allReduce.getTensor());
+          sharding && !sharding.getUnreducedAxes().empty()) {
+        convertAllReduce(allReduce, nextChannelId++, rewriter);
+      }
     });
   }
 
