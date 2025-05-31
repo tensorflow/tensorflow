@@ -1,3 +1,19 @@
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
+--- stablehlo/stablehlo/dialect/StablehloOps.cpp
++++ stablehlo/stablehlo/dialect/StablehloOps.cpp
+@@ -1408,6 +1408,12 @@
+   build(builder, result, resultTy, operand);
+ }
+ 
++// If the input and output type are the same, this is a NoOp.
++OpFoldResult ConvertOp::fold(FoldAdaptor adaptor) {
++  if (getType() == getOperand().getType()) return getOperand();
++  return {};
++}
++
+ //===----------------------------------------------------------------------===//
+ // AllToAllOp
+ //===----------------------------------------------------------------------===//
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/dialect/StablehloOps.h
 --- stablehlo/stablehlo/dialect/StablehloOps.h
 +++ stablehlo/stablehlo/dialect/StablehloOps.h
@@ -42,7 +58,16 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/di
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
 --- stablehlo/stablehlo/dialect/StablehloOps.td
 +++ stablehlo/stablehlo/dialect/StablehloOps.td
-@@ -1161,7 +1161,8 @@
+@@ -293,6 +293,8 @@
+   }];
+   let builders = [
+     OpBuilder<(ins "Value":$operand, "Type":$result_element_ty)>];
++
++  let hasFolder = 1;
+ }
+ 
+ def StableHLO_ClzOp: StableHLO_UnaryElementwiseOp<"count_leading_zeros",
+@@ -1161,7 +1163,8 @@
  //===----------------------------------------------------------------------===//
  
  def StableHLO_InfeedOp : StableHLO_Op<"infeed", [
@@ -52,7 +77,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
      ]> {
    let summary = "Infeed operation";
    let description = [{
-@@ -1188,7 +1189,8 @@
+@@ -1188,7 +1191,8 @@
  
  def StableHLO_OutfeedOp : StableHLO_Op<"outfeed", [
        DeclareOpInterfaceMethods<InferTypeOpInterface>,
@@ -62,7 +87,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
      ]> {
    let summary = "Outfeed operation";
    let description = [{
-@@ -1214,7 +1216,8 @@
+@@ -1214,7 +1218,8 @@
  
  def StableHLO_SendOp : StableHLO_Op<"send", [
        DeclareOpInterfaceMethods<InferTypeOpInterface>,
@@ -72,7 +97,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
      ]> {
    let summary = "Send operation";
    let description = [{
-@@ -1243,7 +1246,8 @@
+@@ -1243,7 +1248,8 @@
  }
  
  def StableHLO_RecvOp : StableHLO_Op<"recv", [
@@ -211,6 +236,19 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloApi.cpp b/stablehl
  
    m.def(
        "deserialize_portable_artifact",
+diff --ruN a/stablehlo/stablehlo/tests/canonicalize.mlir b/stablehlo/stablehlo/tests/canonicalize.mlir
+--- stablehlo/stablehlo/tests/canonicalize.mlir
++++ stablehlo/stablehlo/tests/canonicalize.mlir
+@@ -11,3 +11,9 @@
+ 
+ // CHECK: return %arg1
+ }
++
++func.func @fold_convert(%arg0: tensor<i32>) -> (tensor<i32>) {
++ %0 = stablehlo.convert %arg0 : tensor<i32>
++ return %0 : tensor<i32>
++// CHECK: return %arg0
++}
 diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
 --- stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
 +++ stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
