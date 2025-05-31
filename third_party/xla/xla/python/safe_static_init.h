@@ -16,11 +16,9 @@ limitations under the License.
 #ifndef XLA_PYTHON_SAFE_STATIC_INIT_H_
 #define XLA_PYTHON_SAFE_STATIC_INIT_H_
 
-#include <atomic>
 #include <memory>
 
 #include "absl/synchronization/mutex.h"
-#include "nanobind/nanobind.h"
 
 namespace xla {
 
@@ -30,6 +28,10 @@ namespace xla {
 // Expected signature of `init_fn` function: `std::unique_ptr<T> init_fn()`.
 // We have the following assumptions on `init_fn` function:
 // a) it can call python code and may release the GIL.
+// When the function is called we do not hold any non-GIL or
+// free-threading mutex.
+// b) function can be called multiple times if invoked concurrently,
+// but the output from all but one will be discarded.
 //
 // Usage:
 // Instead of incorrect code with potential deadlock
@@ -52,26 +54,19 @@ namespace xla {
 template <typename T, typename F>
 T& SafeStaticInit(F init_fn) {
   static absl::Mutex mutex;
-  static std::atomic<T*> output{nullptr};
-  // Opportunistic check outside the lock.
-  if (T* result = output.load()) {
-    return *result;
+  static T* output = nullptr;
+  {
+    absl::MutexLock lock(&mutex);
+    if (output) {
+      return *output;
+    }
   }
-  // Locking must always be ordered, so we must release and reacquire
-  // the gil because init_fn() may release the gil which forces us
-  // to order mutex before gil.
-  // In free-threading mode, the effect is the same but we are ordering
-  // mutex before any critical sections because release_gil releases
-  // all critical sections.
-  nanobind::gil_scoped_release release_gil;
+  std::unique_ptr<T> p = init_fn();
   absl::MutexLock lock(&mutex);
-  // Second check under the lock.
-  if (T* result = output.load()) {
-    return *result;
+  if (!output) {
+    output = p.release();
   }
-  nanobind::gil_scoped_acquire acquire_gil;
-  output.store(init_fn().release());
-  return *output.load();
+  return *output;
 }
 
 }  // namespace xla
