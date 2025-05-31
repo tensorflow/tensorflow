@@ -1,12 +1,13 @@
-# Hermetic CUDA overview
+# Hermetic CUDA, CUDNN, NCCL and NVSHMEM overview
 
-Hermetic CUDA uses a specific downloadable version of CUDA instead of the user’s
-locally installed CUDA. Bazel will download CUDA, CUDNN and NCCL distributions,
-and then use CUDA libraries and tools as dependencies in various Bazel targets.
+Hermetic CUDA/CUDNN/NCCL/NVSHMEM use specific downloadable redistribution
+versions instead of the user’s locally installed packages. Bazel will download
+CUDA, CUDNN, NCCL and NVSHMEM redistributions, and then use libraries and tools
+as dependencies in various Bazel targets.
 This enables more reproducible builds for Google ML projects and supported CUDA
 versions.
 
-## Supported hermetic CUDA, CUDNN versions
+## Supported hermetic CUDA, CUDNN, NVSHMEM versions
 
 The supported CUDA versions are specified in `CUDA_REDIST_JSON_DICT`
 dictionary,
@@ -16,16 +17,20 @@ The supported CUDNN versions are specified in `CUDNN_REDIST_JSON_DICT`
 dictionary,
 [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl).
 
+The supported NVSHMEM versions are specified in `NVSHMEM_REDIST_JSON_DICT`
+dictionary,
+[third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl).
+
 The `.bazelrc` files of individual projects have `HERMETIC_CUDA_VERSION`,
-`HERMETIC_CUDNN_VERSION` environment variables set to the versions used by
-default when `--config=cuda` is specified in Bazel command options.
+`HERMETIC_CUDNN_VERSION`, `HERMETIC_NVSHMEM_VERSION` environment variables set
+to the versions used by default when `--config=cuda` is specified in Bazel
+command options.
 
-## Environment variables controlling the hermetic CUDA/CUDNN versions
+## Environment variables controlling the hermetic CUDA/CUDNN/NVSHMEM versions
 
-`HERMETIC_CUDA_VERSION` environment variable should consist of major, minor and
-patch CUDA version, e.g. `12.6.3`.
-`HERMETIC_CUDNN_VERSION` environment variable should consist of major, minor and
-patch CUDNN version, e.g. `9.3.0`.
+`HERMETIC_CUDA_VERSION`, `HERMETIC_CUDNN_VERSION`, `HERMETIC_NVSHMEM_VERSION`
+environment variables should consist of major, minor and
+patch redistribution version, e.g. `12.6.3`.
 
 Three ways to set the environment variables for Bazel commands:
 
@@ -33,16 +38,19 @@ Three ways to set the environment variables for Bazel commands:
 # Add an entry to your `.bazelrc` file
 build:cuda --repo_env=HERMETIC_CUDA_VERSION="12.6.3"
 build:cuda --repo_env=HERMETIC_CUDNN_VERSION="9.3.0"
+build:cuda --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
 
 # OR pass it directly to your specific build command
 bazel build --config=cuda <target> \
 --repo_env=HERMETIC_CUDA_VERSION="12.6.3" \
---repo_env=HERMETIC_CUDNN_VERSION="9.3.0"
+--repo_env=HERMETIC_CUDNN_VERSION="9.3.0" \
+--repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
 
 # If .bazelrc doesn't have corresponding entries and the environment variables
 # are not passed to bazel command, you can set them globally in your shell:
 export HERMETIC_CUDA_VERSION="12.6.3"
 export HERMETIC_CUDNN_VERSION="9.3.0"
+export HERMETIC_NVSHMEM_VERSION="3.2.5"
 ```
 
 If `HERMETIC_CUDA_VERSION` and `HERMETIC_CUDNN_VERSION` are not present, the
@@ -53,7 +61,7 @@ compatibility with non-hermetic CUDA/CUDNN repository rules.
 The mapping between CUDA version and NCCL distribution version to be downloaded
 is specified in [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
 
-## Configure hermetic CUDA
+## Configure hermetic CUDA, CUDNN and NCCL
 
 1. In the downstream project dependent on XLA, add the following lines to the
    bottom of the `WORKSPACE` file:
@@ -151,10 +159,66 @@ is specified in [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https:
    see [NVIDIA documentation](https://docs.nvidia.com/deploy/cuda-compatibility/index.html#forward-compatibility-support-across-major-toolkit-versions) for the
    details.
 
-## Upgrade hermetic CUDA/CUDNN version
+## Configure hermetic NVSHMEM
+
+1. In the downstream project dependent on XLA, add the following lines to the
+   bottom of the `WORKSPACE` file:
+
+   Note: use @local_tsl instead of @tsl in Tensorflow project.
+
+   ```
+   load(
+    "@local_xla//third_party/nvshmem/hermetic:nvshmem_json_init_repository.bzl",
+    "nvshmem_json_init_repository",
+   )
+
+   nvshmem_json_init_repository()
+
+   load(
+      "@nvshmem_redist_json//:distributions.bzl",
+      "NVSHMEM_REDISTRIBUTIONS",
+   )
+   load(
+      "@local_xla//third_party/nvshmem/hermetic:nvshmem_redist_init_repository.bzl",
+      "nvshmem_redist_init_repository",
+   )
+
+   nvshmem_redist_init_repository(
+      nvshmem_redistributions = NVSHMEM_REDISTRIBUTIONS,
+   )
+
+   load(
+      "@local_xla//third_party/nvshmem/hermetic:nvshmem_configure.bzl",
+      "nvshmem_configure",
+   )
+
+   nvshmem_configure(name = "local_config_nvshmem")
+   ```
+
+2. To select specific version of hermetic NVSHMEM, set the
+   `HERMETIC_NVSHMEM_VERSION` environment variable. Use only supported versions.
+   You may set the environment
+   variables directly in your shell or in `.bazelrc` file as shown below:
+   ```
+   build:cuda --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
+   ```
+
+3. To enable hermetic NVSHMEM during test execution, or when running a binary
+   via bazel, make sure to add
+   `--@local_config_nvshmem//cuda:include_nvshmem_libs=true`
+   flag to your bazel command. You can provide it either directly in a shell or
+   in `.bazelrc`:
+   ```
+   build:cuda --@local_config_nvshmem//cuda:include_nvshmem_libs=true
+   ```
+   The flag is needed to make sure that NVSHMEM dependencies are properly
+   provided to test executables. The flag is false by default to avoid unwanted
+   coupling of Google-released Python wheels to NVSHMEM binaries.
+
+## Upgrade hermetic CUDA/CUDNN/NVSHMEM version
 
 1.  Create and submit a pull request with updated `CUDA_REDIST_JSON_DICT`,
-    `CUDNN_REDIST_JSON_DICT` dictionaries in
+    `CUDNN_REDIST_JSON_DICT`, `NVSHMEM_REDIST_JSON_DICT` dictionaries in
     [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl).
 
     Update `CUDA_NCCL_WHEELS` in
@@ -170,34 +234,40 @@ is specified in [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https:
     if needed.
 
 2.  For each Google ML project create a separate pull request with updated
-    `HERMETIC_CUDA_VERSION` and `HERMETIC_CUDNN_VERSION` in `.bazelrc` file.
+    `HERMETIC_CUDA_VERSION`, `HERMETIC_CUDNN_VERSION`,
+    `HERMETIC_NVSHMEM_VERSION` in `.bazelrc` file.
 
     The PR presubmit job executions will launch bazel tests and download
-    hermetic CUDA/CUDNN distributions. Verify that the presubmit jobs passed
-    before submitting the PR.
+    hermetic CUDA/CUDNN/NVSHMEM distributions. Verify that the presubmit jobs
+    passed before submitting the PR.
 
 3.  For the time optimization some build/test configurations utilize mirrored
     `.tar` redistributions. The `json` file with information about the mirrored
     `.tar` redistributions is uploaded some time later after
-    `CUDA_REDIST_JSON_DICT` and `CUDNN_REDIST_JSON_DICT` are updated. One can
-    download these files using
+    `CUDA_REDIST_JSON_DICT`, `CUDNN_REDIST_JSON_DICT`,
+    `NVSHMEM_REDIST_JSON_DICT` are updated. One can download these files using
     `wget "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cuda/redist/redistrib_<cuda_version>_tar.json"`
-    for `CUDA` and
+    for `CUDA`,
     `wget "https://storage.googleapis.com/mirror.tensorflow.org/developer.download.nvidia.com/compute/cudnn/redist/redistrib_<cudnn_version>_tar.json"`
-    for `CUDNN`.
+    for `CUDNN` and
+    `wget "https://developer.download.nvidia.com/compute/nvshmem/redist/redistrib_<nvshmem_version>_tar.json"`
+    for `NVSHMEM`.
     After that create and submit a pull request with updated
     `MIRRORED_TARS_CUDA_REDIST_JSON_DICT`,
-    `MIRRORED_TARS_CUDNN_REDIST_JSON_DICT` dictionaries in
+    `MIRRORED_TARS_CUDNN_REDIST_JSON_DICT`,
+    `MIRRORED_TARS_NVSHMEM_REDIST_JSON_DICT` dictionaries in
     [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl).
 
-## Pointing to CUDA/CUDNN/NCCL redistributions on local file system
+## Pointing to CUDA/CUDNN/NCCL/NVSHMEM redistributions on local file system
 
-You can use the local CUDA/CUDNN/NCCL dirs as a source of redistributions. The following additional environment variables are required:
+You can use the local CUDA/CUDNN/NCCL/NVSHMEM dirs as a source of
+redistributions. The following additional environment variables are required:
 
 ```
 LOCAL_CUDA_PATH
 LOCAL_CUDNN_PATH
 LOCAL_NCCL_PATH
+LOCAL_NVSHMEM_PATH
 ```
 
 Example:
@@ -207,21 +277,25 @@ Example:
 build:cuda --repo_env=LOCAL_CUDA_PATH="/foo/bar/nvidia/cuda"
 build:cuda --repo_env=LOCAL_CUDNN_PATH="/foo/bar/nvidia/cudnn"
 build:cuda --repo_env=LOCAL_NCCL_PATH="/foo/bar/nvidia/nccl"
+build:cuda --repo_env=LOCAL_NVSHMEM_PATH="/foo/bar/nvidia/nvshmem"
 
 # OR pass it directly to your specific build command
 bazel build --config=cuda <target> \
 --repo_env=LOCAL_CUDA_PATH="/foo/bar/nvidia/cuda" \
 --repo_env=LOCAL_CUDNN_PATH="/foo/bar/nvidia/cudnn" \
---repo_env=LOCAL_NCCL_PATH="/foo/bar/nvidia/nccl"
+--repo_env=LOCAL_NCCL_PATH="/foo/bar/nvidia/nccl" \
+--repo_env=LOCAL_NVSHMEM_PATH="/foo/bar/nvidia/nvshmem"
 
 # If .bazelrc doesn't have corresponding entries and the environment variables
 # are not passed to bazel command, you can set them globally in your shell:
 export LOCAL_CUDA_PATH="/foo/bar/nvidia/cuda"
 export LOCAL_CUDNN_PATH="/foo/bar/nvidia/cudnn"
 export LOCAL_NCCL_PATH="/foo/bar/nvidia/nccl"
+export LOCAL_NVSHMEM_PATH="/foo/bar/nvidia/nvshmem"
 ```
 
-The structure of the folders inside CUDA dir should be the following (as if the archived redistributions were unpacked into one place):
+The structure of the folders inside CUDA/CUDNN/NCCL/NVSHMEM dirs should be the
+following (as if the archived redistributions were unpacked into one place):
 
 ```
 <LOCAL_CUDA_PATH>/
@@ -247,16 +321,26 @@ The structure of the folders inside NCCL dir should be the following:
     lib/
 ```
 
-## Custom CUDA/CUDNN archives and NCCL wheels
+The structure of the folders inside NVSHMEM dir should be the following:
+
+```
+<LOCAL_NVSHMEM_PATH>
+    include/
+    lib/
+    bin/
+```
+
+## Custom CUDA/CUDNN/NVSHMEM archives and NCCL wheels
 
 There are three options that allow usage of custom CUDA/CUDNN distributions.
 
-### Custom CUDA/CUDNN redistribution JSON files
+### Custom CUDA/CUDNN/NVSHMEM redistribution JSON files
 
 This option allows to use custom distributions for all CUDA/CUDNN dependencies
 in Google ML projects.
 
-1. Create `cuda_redist.json` and/or `cudnn_redist.json` files.
+1. Create `cuda_redist.json` and/or `cudnn_redist.json` and/or
+`nvshmem_redist.json` files.
 
    `cuda_redist.json` show follow the format below:
 
@@ -292,6 +376,25 @@ in Google ML projects.
    }
    ```
 
+   `nvshmem_redist.json` show follow the format below:
+
+   ```
+   {
+      "libnvshmem": {
+         "linux-x86_64": {
+            "cuda12": {
+            "relative_path": "libnvshmem/linux-x86_64/libnvshmem-linux-x86_64-3.2.5_cuda12-archive.tar.xz",
+            }
+         },
+         "linux-sbsa": {
+            "cuda12": {
+            "relative_path": "libnvshmem/linux-sbsa/libnvshmem-linux-sbsa-3.2.5_cuda12-archive.tar.xz",
+            }
+         }
+      }
+   }
+   ```
+
    The `relative_path` field can be replaced with `full_path` for the full URLs
    and absolute local paths starting with `file:///`.
 
@@ -316,23 +419,39 @@ in Google ML projects.
       cuda_json_dict = _CUDA_JSON_DICT,
       cudnn_json_dict = _CUDNN_JSON_DICT,
    )
+
+   _NVSHMEM_JSON_DICT = {
+      "3.2.5": [
+         "file:///home/user/Downloads/redistrib_3.2.5.json",
+      ],
+   }
+
+   nvshmem_json_init_repository(
+      nvshmem_json_dict = _NVSHMEM_JSON_DICT,
+   )
    ```
 
    If JSON files contain relative paths to distributions, the path prefix should
-   be updated in `cuda_redist_init_repositories()` and
-   `cudnn_redist_init_repository()` calls. Example
+   be updated in `cuda_redist_init_repositories()`,
+   `cudnn_redist_init_repository()`, `nvshmem_redist_init_repository()` calls.
+   Example:
 
    ```
    cuda_redist_init_repositories(
       cuda_redistributions = CUDA_REDISTRIBUTIONS,
       cuda_redist_path_prefix = "file:///usr/Downloads/dists/",
    )
+
+   nvshmem_redist_init_repositories(
+      nvshmem_redistributions = NVSHMEM_REDISTRIBUTIONS,
+      nvshmem_redist_path_prefix = "file:///usr/Downloads/dists/",
+   )
    ```
 
-### Custom CUDA/CUDNN distributions
+### Custom CUDA/CUDNN/NVSHMEM distributions
 
-This option allows to use custom distributions for some CUDA/CUDNN dependencies
-in Google ML projects.
+This option allows to use custom distributions for some CUDA/CUDNN/NVSHMEM
+dependencies in Google ML projects.
 
 1. In the downstream project dependent on XLA, remove the lines below:
 
@@ -342,16 +461,22 @@ in Google ML projects.
    <...>
       "CUDNN_REDIST_JSON_DICT",
    <...>
+      "NVSHMEM_REDIST_JSON_DICT",
+   <...>
 
-   cuda_json_init_repository(
-      cuda_json_dict = CUDA_REDIST_JSON_DICT,
-      cudnn_json_dict = CUDNN_REDIST_JSON_DICT,
-   )
+   cuda_json_init_repository()
 
    load(
       "@cuda_redist_json//:distributions.bzl",
       "CUDA_REDISTRIBUTIONS",
       "CUDNN_REDISTRIBUTIONS",
+   )
+
+   nvshmem_json_init_repository()
+
+   load(
+      "@nvshmem_redist_json//:distributions.bzl",
+      "NVSHMEM_REDISTRIBUTIONS",
    )
    ```
 
@@ -391,13 +516,33 @@ in Google ML projects.
    }
    ```
 
+   The dictionary with NVSHMEM distributions show follow the format below:
+
+   ```
+   _CUSTOM_NVSHMEM_REDISTRIBUTIONS = {
+      "libnvshmem": {
+         "linux-x86_64": {
+            "cuda12": {
+            "relative_path": "libnvshmem/linux-x86_64/libnvshmem-linux-x86_64-3.2.5_cuda12-archive.tar.xz",
+            }
+         },
+         "linux-sbsa": {
+            "cuda12": {
+            "relative_path": "libnvshmem/linux-sbsa/libnvshmem-linux-sbsa-3.2.5_cuda12-archive.tar.xz",
+            }
+         }
+      }
+   }
+   ```
+
    The `relative_path` field can be replaced with `full_path` for the full URLs
    and absolute local paths starting with `file:///`.
 
 2. In the same `WORKSPACE` file, pass the created dictionaries to the repository
    rule. If the dictionaries contain relative paths to distributions, the path
-   prefix should be updated in `cuda_redist_init_repositories()` and
-   `cudnn_redist_init_repository()` calls.
+   prefix should be updated in `cuda_redist_init_repositories()`,
+   `cudnn_redist_init_repository()` and `nvshmem_redist_init_repository()`
+   calls.
 
    ```
    cuda_redist_init_repositories(
@@ -408,6 +553,11 @@ in Google ML projects.
    cudnn_redist_init_repository(
       cudnn_redistributions = _CUSTOM_CUDNN_REDISTRIBUTIONS,
       cudnn_redist_path_prefix = "file:///home/usr/Downloads/dists/cudnn/"
+   )
+
+   nvshmem_redist_init_repository(
+      nvshmem_redistributions = _CUSTOM_NVSHMEM_REDISTRIBUTIONS,
+      nvshmem_redist_path_prefix = "file:///home/usr/Downloads/dists/nvshmem/"
    )
    ```
 ### Combination of the options above
