@@ -262,6 +262,8 @@ cc_library(
     deps = [
         ":vector_ir_builder",
         "//xla:xla_data_proto_cc",
+        "//xla/codegen/math:string_interner",
+        "//xla/codegen/math:vec_name_mangler",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/service/llvm_ir:math_ops",
         "//xla/tsl/platform:logging",
