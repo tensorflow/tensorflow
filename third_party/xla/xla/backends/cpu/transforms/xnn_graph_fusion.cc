@@ -33,9 +33,8 @@ namespace cpu {
 
 FusionDecision XnnGraphFusion::ShouldFuse(HloInstruction* consumer,
                                           int64_t operand_index) {
-  if (!IsXnnGraphFusion(consumer)) {
-    if (!(consumer->IsRoot() && IsOpSupported(consumer)))
-      return FusionDecision::Forbid("Unsupported consumer");
+  if (!IsXnnGraphFusion(consumer) && !IsOpSupported(consumer)) {
+    return FusionDecision::Forbid("Unsupported consumer");
   }
 
   HloInstruction* producer = consumer->mutable_operand(operand_index);
