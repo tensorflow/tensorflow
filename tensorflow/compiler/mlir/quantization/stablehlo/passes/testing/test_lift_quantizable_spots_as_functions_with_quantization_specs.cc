@@ -21,8 +21,8 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/testing/passes.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/tf_passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"  // IWYU pragma: keep
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
@@ -128,7 +128,7 @@ void TestLiftQuantizableSpotsAsFunctionsWithQuantizationSpecsPass::
   }
 
   pass_manager.addPass(
-      tf_quant::stablehlo::CreateLiftQuantizableSpotsAsFunctionsPass(
+      quant::stablehlo::CreateLiftQuantizableSpotsAsFunctionsPass(
           *quantization_specs));
 
   if (failed(pass_manager.run(getOperation()))) {

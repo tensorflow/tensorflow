@@ -41,7 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/saved_model_export.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/types.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/tf_passes.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
@@ -97,9 +97,8 @@ absl::Status RunCalibrationPasses(
       CalibrationComponent::kName,
       /*add_passes_func=*/
       [calibration_data_dir, &skipping_aggregator_ops](PassManager& pm) {
-        pm.addPass(
-            tf_quant::stablehlo::CreateInsertCalibrationStatisticsSaverPass(
-                calibration_data_dir, skipping_aggregator_ops));
+        pm.addPass(CreateInsertCalibrationStatisticsSaverPass(
+            calibration_data_dir, skipping_aggregator_ops));
       },
       ctx, module_op);
 }

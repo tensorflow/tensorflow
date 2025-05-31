@@ -27,12 +27,14 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir::quant::stablehlo {
+
+using tf_quant::kQuantTraitAttrName;
 
 #define GEN_PASS_DEF_UNWRAPXLACALLMODULEOPPASS
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h.inc"
