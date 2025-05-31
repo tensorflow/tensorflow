@@ -787,6 +787,7 @@ cc_library(
     hdrs = ["kernel_thunk.h"],
     deps = [
         ":thunk",
+        "//xla:shape_util",
         "//xla:types",
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/hlo/ir:hlo",
@@ -1827,7 +1828,10 @@ tf_proto_library(
         "thunk.proto",
     ],
     protodeps = [
+        # keep sorted
         "//xla/service:buffer_assignment_proto",
+        "//xla/service/gpu:launch_dimensions_proto",
+        "//xla/stream_executor:launch_dim_proto",
         "//xla/stream_executor/gpu:gpu_blas_lt_proto",
     ],
 )
@@ -1840,6 +1844,7 @@ cc_library(
         ":conditional_thunk",
         ":copy_thunk",
         ":gemm_thunk",
+        ":kernel_thunk",
         ":sequential_thunk",
         ":thunk",
         ":thunk_proto_cc",

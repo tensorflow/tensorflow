@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
+#include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
@@ -78,6 +79,11 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
   if (thunk_proto.has_gemm_thunk()) {
     return GemmThunk::FromProto(std::move(thunk_info), thunk_proto.gemm_thunk(),
                                 buffer_allocations);
+  }
+
+  if (thunk_proto.has_kernel_thunk()) {
+    return KernelThunk::FromProto(
+        std::move(thunk_info), thunk_proto.kernel_thunk(), buffer_allocations);
   }
   return absl::InvalidArgumentError("Unknown thunk type found in ThunkProto.");
 }

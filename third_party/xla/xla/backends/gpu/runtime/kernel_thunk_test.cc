@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 
+#include <array>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -138,13 +141,60 @@ TEST(KernelThunkTest, ToProto) {
           written: false
           written: true
           kernel_name: "kernel123"
-          launch_block_counts { x: 32 y: 31 z: 30 }
-          launch_thread_counts_per_block { x: 256 y: 255 z: 254 }
-          cluster_dim { x: 8 y: 7 z: 6 }
+          launch_dimensions {
+            block_counts { coordinates { x: 32 y: 31 z: 30 } }
+            thread_counts_per_block { coordinates { x: 256 y: 255 z: 254 } }
+          }
+          cluster_dim { coordinates { x: 8 y: 7 z: 6 } }
           shmem_bytes: 1024
         }
       )pb"));
 }
 
+TEST(KernelThunkTest, ToAndFromProto) {
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.profile_annotation = "DotGeneral";
+  thunk_info.execution_stream_id = 123;
+
+  std::array allocations{
+      BufferAllocation{/*index=*/0, /*size=*/1024, /*color=*/0},
+      BufferAllocation{/*index=*/0, /*size=*/256, /*color=*/0}};
+
+  // Note that slices keep a pointer to the allocation. Therefore `allocations`
+  // shouldn't be mutated afterwards.
+  BufferAllocation::Slice slice0(&allocations.at(0), /*offset=*/0,
+                                 /*size=*/1024);
+  BufferAllocation::Slice slice1(&allocations.at(1), /*offset=*/0,
+                                 /*size=*/256);
+
+  std::vector<emitters::KernelArgument> kernel_arguments = {
+      emitters::KernelArgument(ShapeUtil::MakeShape(F32, {1024}), slice0,
+                               /*written=*/false),
+      emitters::KernelArgument(ShapeUtil::MakeShape(F32, {256}), slice1,
+                               /*written=*/true)};
+
+  LaunchDimensions launch_dimensions(se::BlockDim(32, 31, 30),
+                                     se::ThreadDim(256, 255, 254));
+  se::ClusterDim cluster_dim(8, 7, 6);
+  constexpr absl::string_view kKernelName = "kernel123";
+  constexpr int kSharedMemoryBytes = 1024;
+  KernelThunk thunk(thunk_info, std::string{kKernelName}, kernel_arguments,
+                    launch_dimensions, cluster_dim, kSharedMemoryBytes,
+                    /*tma_metadata=*/std::nullopt);
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
+  ASSERT_TRUE(proto.has_kernel_thunk());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<KernelThunk> reconstructed_thunk,
+      KernelThunk::FromProto(thunk_info, proto.kernel_thunk(), allocations));
+
+  EXPECT_THAT(reconstructed_thunk->cluster_dim(), cluster_dim);
+  EXPECT_THAT(reconstructed_thunk->kernel_name(), kKernelName);
+  EXPECT_THAT(reconstructed_thunk->launch_dimensions(), launch_dimensions);
+  EXPECT_THAT(reconstructed_thunk->shmem_bytes(), kSharedMemoryBytes);
+  EXPECT_THAT(reconstructed_thunk->written(),
+              ::testing::ElementsAre(false, true));
+  EXPECT_THAT(reconstructed_thunk->arguments(),
+              ::testing::ElementsAre(slice0, slice1));
+}
 }  // namespace
 }  // namespace xla::gpu
