@@ -14,9 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/graph/collective_order.h"
 
+#include <memory>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include <gmock/gmock.h>
+#include "absl/log/log.h"
+#include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/graph_def_builder_util.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
