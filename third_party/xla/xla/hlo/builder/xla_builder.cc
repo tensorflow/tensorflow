@@ -261,9 +261,10 @@ XlaOp XlaBuilderFriend::BuildCopyStart(
 
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape,
                         builder->GetShapePtr(operand));
-    Shape u32 = ShapeUtil::MakeScalarShape(PrimitiveType::U32);
-    Shape shape =
-        ShapeUtil::MakeTupleShapeWithPtrs({operand_shape, operand_shape, &u32});
+    Shape u32 = ShapeUtil::MakeValidatedScalarShape(PrimitiveType::U32).value();
+    Shape shape = ShapeUtil::MakeValidatedTupleShapeWithPtrs(
+                      {operand_shape, operand_shape, &u32})
+                      .value();
     *instr.mutable_shape() = shape.ToProto();
 
     return builder->AddInstruction(std::move(instr), HloOpcode::kCopyStart,
@@ -350,10 +351,11 @@ XlaOp XlaBuilderFriend::BuildSend(XlaBuilder* builder, XlaOp operand,
     TF_ASSIGN_OR_RETURN(const Shape* shape, builder->GetShapePtr(operand));
     // Send instruction produces a tuple of {aliased operand, U32 context,
     // token}.
-    *send_instr.mutable_shape() =
-        ShapeUtil::MakeTupleShape({*shape, ShapeUtil::MakeShape(U32, {}),
-                                   ShapeUtil::MakeTokenShape()})
-            .ToProto();
+    *send_instr.mutable_shape() = ShapeUtil::MakeValidatedTupleShape(
+                                      {*shape, ShapeUtil::MakeShape(U32, {}),
+                                       ShapeUtil::MakeTokenShape()})
+                                      .value()
+                                      .ToProto();
     send_instr.set_channel_id(handle.handle());
     send_instr.set_is_host_transfer(is_host_transfer);
     return builder->AddInstruction(std::move(send_instr), HloOpcode::kSend,
@@ -383,8 +385,9 @@ XlaOp XlaBuilderFriend::BuildRecv(XlaBuilder* builder, XlaOp token,
     // token}.
     HloInstructionProto recv_instr;
     *recv_instr.mutable_shape() =
-        ShapeUtil::MakeTupleShape(
+        ShapeUtil::MakeValidatedTupleShape(
             {shape, ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeTokenShape()})
+            .value()
             .ToProto();
     recv_instr.set_channel_id(handle.handle());
     recv_instr.set_is_host_transfer(is_host_transfer);
@@ -400,7 +403,8 @@ XlaOp XlaBuilderFriend::BuildRecvDone(XlaBuilder* builder, XlaOp token,
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     HloInstructionProto recv_done_instr;
     *recv_done_instr.mutable_shape() =
-        ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeTokenShape()})
+        ShapeUtil::MakeValidatedTupleShape({shape, ShapeUtil::MakeTokenShape()})
+            .value()
             .ToProto();
     recv_done_instr.set_channel_id(handle.handle());
     recv_done_instr.set_is_host_transfer(is_host_transfer);
@@ -1167,9 +1171,10 @@ absl::StatusOr<XlaOp> XlaBuilder::AddBroadcastSequence(
         i, operand_shape->is_dynamic_dimension(i));
   }
 
-  Shape reshaped_shape =
-      ShapeUtil::MakeShape(operand_shape->element_type(), reshaped_dimensions,
-                           reshaped_dynamic_dimensions);
+  Shape reshaped_shape = ShapeUtil::MakeValidatedShape(
+                             operand_shape->element_type(), reshaped_dimensions,
+                             reshaped_dynamic_dimensions)
+                             .value();
 
   // Eliminate the size one dimensions.
   // The added reshape reduces the rank of the tensor. Hence we cannot directly
@@ -1565,7 +1570,8 @@ XlaOp XlaBuilder::Iota(const Shape& shape, int64_t iota_dimension) {
 }
 
 XlaOp XlaBuilder::Iota(PrimitiveType type, int64_t size) {
-  return Iota(ShapeUtil::MakeShape(type, {size}), /*iota_dimension=*/0);
+  return Iota(ShapeUtil::MakeValidatedShape(type, {size}).value(),
+              /*iota_dimension=*/0);
 }
 
 XlaOp XlaBuilder::Call(XlaComputationId computation,
@@ -2561,7 +2567,8 @@ XlaOp XlaBuilder::Infeed(const Shape& shape, const std::string& config) {
       return InvalidArgument("Given shape to Infeed must have a layout");
     }
     const Shape infeed_instruction_shape =
-        ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeTokenShape()});
+        ShapeUtil::MakeValidatedTupleShape({shape, ShapeUtil::MakeTokenShape()})
+            .value();
     *instr.mutable_shape() = infeed_instruction_shape.ToProto();
     instr.set_infeed_config(config);
 
@@ -2645,7 +2652,8 @@ XlaOp XlaBuilder::InfeedWithToken(XlaOp token, const Shape& shape,
       return InvalidArgument("Given shape to Infeed must have a layout");
     }
     const Shape infeed_instruction_shape =
-        ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeTokenShape()});
+        ShapeUtil::MakeValidatedTupleShape({shape, ShapeUtil::MakeTokenShape()})
+            .value();
 
     if (shape.IsArray() && sharding() &&
         sharding()->type() == OpSharding::OTHER) {
@@ -3215,9 +3223,10 @@ XlaOp XlaBuilder::RngBitGenerator(RandomAlgorithm algorithm,
       return InvalidArgument("Unsupported shape for RngBitGenerator: %s",
                              PrimitiveType_Name(shape.element_type()));
     }
-    return RngBitGeneratorInternal(
-        ShapeUtil::MakeTupleShapeWithPtrs({&state_shape, &output_shape}),
-        algorithm, initial_state);
+    return RngBitGeneratorInternal(ShapeUtil::MakeValidatedTupleShapeWithPtrs(
+                                       {&state_shape, &output_shape})
+                                       .value(),
+                                   algorithm, initial_state);
   });
 }
 
@@ -3888,7 +3897,8 @@ XlaOp XlaBuilder::CrossReplicaSum(
       element_shape = shape;
     }
     const Shape scalar_shape =
-        ShapeUtil::MakeShape(element_shape->element_type(), {});
+        ShapeUtil::MakeValidatedShape(element_shape->element_type(), {})
+            .value();
     auto b = CreateSubBuilder("sum");
     auto x = b->Parameter(/*parameter_number=*/0, scalar_shape, "x");
     auto y = b->Parameter(/*parameter_number=*/1, scalar_shape, "y");
@@ -4292,7 +4302,9 @@ XlaOp XlaBuilder::CollectivePermuteImpl(
         Shape shape,
         ShapeInference::InferCollectivePermuteShape(operand_shapes, inplace));
     *instr.mutable_shape() =
-        ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes).ToProto();
+        ShapeUtil::MakeValidatedTupleShapeWithPtrs(operand_shapes)
+            .value()
+            .ToProto();
 
     for (const auto& pair : source_target_pairs) {
       auto* proto_pair = instr.add_source_target_pairs();
@@ -4313,7 +4325,8 @@ XlaOp XlaBuilder::CollectivePermuteImpl(
 XlaOp XlaBuilder::ReplicaId() {
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     HloInstructionProto instr;
-    *instr.mutable_shape() = ShapeUtil::MakeShape(U32, {}).ToProto();
+    *instr.mutable_shape() =
+        ShapeUtil::MakeValidatedShape(U32, {}).value().ToProto();
     return AddInstruction(std::move(instr), HloOpcode::kReplicaId, {});
   });
 }
@@ -4528,9 +4541,10 @@ XlaOp XlaBuilder::SendToHost(XlaOp operand, XlaOp token,
     // token}.
     HloInstructionProto send_instr;
     *send_instr.mutable_shape() =
-        ShapeUtil::MakeTupleShape({shape_with_layout,
-                                   ShapeUtil::MakeShape(U32, {}),
-                                   ShapeUtil::MakeTokenShape()})
+        ShapeUtil::MakeValidatedTupleShape({shape_with_layout,
+                                            ShapeUtil::MakeShape(U32, {}),
+                                            ShapeUtil::MakeTokenShape()})
+            .value()
             .ToProto();
     send_instr.set_channel_id(handle.handle());
     send_instr.set_is_host_transfer(true);
@@ -4571,8 +4585,9 @@ XlaOp XlaBuilder::RecvFromHost(XlaOp token, const Shape& shape,
     // token}.
     HloInstructionProto recv_instr;
     *recv_instr.mutable_shape() =
-        ShapeUtil::MakeTupleShape(
+        ShapeUtil::MakeValidatedTupleShape(
             {shape, ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeTokenShape()})
+            .value()
             .ToProto();
     recv_instr.set_channel_id(handle.handle());
     recv_instr.set_is_host_transfer(true);
@@ -4581,7 +4596,8 @@ XlaOp XlaBuilder::RecvFromHost(XlaOp token, const Shape& shape,
 
     HloInstructionProto recv_done_instr;
     *recv_done_instr.mutable_shape() =
-        ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeTokenShape()})
+        ShapeUtil::MakeValidatedTupleShape({shape, ShapeUtil::MakeTokenShape()})
+            .value()
             .ToProto();
     recv_done_instr.set_channel_id(handle.handle());
     recv_done_instr.set_is_host_transfer(true);
