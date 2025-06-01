@@ -15,17 +15,22 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/graph_view.h"
 
-#include <atomic>
-#include <deque>
-#include <memory>
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <string>
-#include <unordered_map>
+#include <tuple>
+#include <type_traits>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/edgeset.h"
 #include "tensorflow/core/graph/graph.h"
