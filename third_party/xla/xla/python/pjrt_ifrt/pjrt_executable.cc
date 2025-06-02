@@ -293,7 +293,7 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
     xla::Shape result_shape;
     std::vector<xla::Shape> output_shapes;
     if (tuple_output) {
-      result_shape = ShapeUtil::MakeValidatedTupleShape(result_shapes).value();
+      result_shape = xla::ShapeUtil::MakeTupleShape(result_shapes);
       output_shapes = std::move(result_shapes);
     } else {
       result_shape = result_shapes.front();
@@ -380,7 +380,7 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::CreateInternal(
       // directly take `xla::DimensionVector` as inputs.
       tile_shape_dimensions =
           xla::ShapeUtil::CreateDimensionVectorFromShape(sharding->TileShape(
-              ShapeUtil::MakeValidatedShape(element_type, dimensions).value()));
+              xla::ShapeUtil::MakeShape(element_type, dimensions)));
     }
     output_shardings.push_back(ifrt::ConcreteEvenSharding::Create(
         executable_devices, memory_kind,
