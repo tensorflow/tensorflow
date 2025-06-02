@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "xla/service/cpu/cpu_executable.h"
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+
 #define EIGEN_USE_THREADS
 
 #include <stdint.h>
@@ -26,7 +30,6 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/base/dynamic_annotations.h"
