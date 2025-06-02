@@ -31,6 +31,33 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "cycle_detector",
+    srcs = ["cycle_detector.cc"],
+    hdrs = ["cycle_detector.h"],
+    deps = [
+        "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph_node",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "cycle_detector_test",
+    srcs = ["cycle_detector_test.cc"],
+    deps = [
+        ":cycle_detector",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph_node",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 xla_cc_test(
     name = "hlo_gumgraph_dfs_test",
     srcs = ["hlo_gumgraph_dfs_test.cc"],

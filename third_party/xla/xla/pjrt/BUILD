@@ -453,24 +453,10 @@ xla_cc_test(
 
 cc_library(
     name = "pjrt_common",
-    srcs = ["pjrt_common.cc"],
     hdrs = ["pjrt_common.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
-        "//xla/pjrt/proto:pjrt_value_type_proto_cc",
         "//xla/tsl/lib/gtl:int_type",
-    ],
-)
-
-xla_cc_test(
-    name = "pjrt_common_test",
-    srcs = ["pjrt_common_test.cc"],
-    deps = [
-        ":pjrt_common",
-        "//xla/pjrt/proto:pjrt_value_type_proto_cc",
-        "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -858,6 +844,8 @@ cc_library(
         "//xla:ef57",
         "//xla:permutation_util",
         "//xla:util",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
@@ -869,8 +857,6 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
@@ -895,11 +881,11 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest_main",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test_benchmark",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
@@ -1091,19 +1077,6 @@ xla_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
-    ],
-)
-
-# TODO(b/401293975): Remove this target and migrate Jax to use the proto target directly.
-cc_library(
-    name = "compile_options_proto_cc",
-    hdrs = [
-        "compile_options.pb.h",
-        "compile_options.proto.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//xla/pjrt/proto:compile_options_proto_cc",
     ],
 )
 

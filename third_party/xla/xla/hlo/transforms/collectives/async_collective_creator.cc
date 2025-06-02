@@ -71,12 +71,11 @@ absl::StatusOr<ReplacedAsync> CreateAsyncAllGather(
   for (const HloInstruction* op : ag->operands()) {
     operand_shapes.push_back(&op->shape());
   }
-  Shape shape = ShapeUtil::MakeValidatedTupleShape(
-                    {ag->operand_count() > 1
-                         ? ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes)
-                         : *operand_shapes[0],
-                     ag->shape()})
-                    .value();
+  Shape shape = ShapeUtil::MakeTupleShape(
+      {ag->operand_count() > 1
+           ? ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes)
+           : *operand_shapes[0],
+       ag->shape()});
   HloInstruction* start =
       instruction->AddInstruction(HloInstruction::CreateAllGatherStart(
           shape, ag->operands(), ag->all_gather_dimension(), ag->device_list(),

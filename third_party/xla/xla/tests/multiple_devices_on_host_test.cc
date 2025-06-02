@@ -26,7 +26,7 @@ namespace xla {
 namespace {
 absl::StatusOr<XlaComputation> BuildComputation() {
   XlaBuilder b("computation");
-  Shape scalar_s32 = ShapeUtil::MakeValidatedShape(S32, {}).value();
+  Shape scalar_s32 = ShapeUtil::MakeShape(S32, {});
   XlaOp infeed = InfeedWithToken(CreateToken(&b), scalar_s32);
   return b.Build(OutfeedWithToken(
       GetTupleElement(infeed, 0) +
@@ -93,7 +93,7 @@ void TestWithDeviceCount(const int device_count) {
 
   for (int device_ordinal = 0; device_ordinal < device_count;
        device_ordinal++) {
-    Literal outfeed(ShapeUtil::MakeValidatedShape(S32, {}).value());
+    Literal outfeed(ShapeUtil::MakeShape(S32, {}));
     TF_ASSERT_OK(client->TransferFromOutfeedLocal(device_ordinal, &outfeed));
     EXPECT_EQ(outfeed,
               LiteralUtil::CreateR0<int32_t>(device_ordinal * 100 + 1));

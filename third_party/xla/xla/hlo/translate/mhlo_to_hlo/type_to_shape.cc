@@ -73,7 +73,7 @@ std::optional<DimLevelType> ConvertDimLevelType(
 Shape TypeToShape(mlir::Type type) {
   PrimitiveType ptype = ConvertMlirTypeToPrimitiveType(type);
   if (ptype != PrimitiveType::PRIMITIVE_TYPE_INVALID)
-    return ShapeUtil::MakeValidatedShape(ptype, {}).value();
+    return ShapeUtil::MakeShape(ptype, {});
 
   if (type.isIntOrFloat()) {
     auto* context = type.getContext();
@@ -86,7 +86,7 @@ Shape TypeToShape(mlir::Type type) {
     mlir::Type element_type = v.getElementType();
     PrimitiveType primitive_type = ConvertMlirTypeToPrimitiveType(element_type);
     if (primitive_type != PrimitiveType::PRIMITIVE_TYPE_INVALID)
-      return ShapeUtil::MakeValidatedShape(primitive_type, span).value();
+      return ShapeUtil::MakeShape(primitive_type, span);
   } else if (auto m = mlir::dyn_cast<mlir::MemRefType>(type)) {
     llvm::SmallVector<int64_t, 6> span(m.getShape().begin(),
                                        m.getShape().end());
@@ -103,7 +103,7 @@ Shape TypeToShape(mlir::Type type) {
     // vector type case (i.e., it is, modulo the layout, the same dimensions
     // and primitive type).
     if (m.getLayout().isIdentity())
-      return ShapeUtil::MakeValidatedShape(primitive_type, span).value();
+      return ShapeUtil::MakeShape(primitive_type, span);
 
     llvm::SmallVector<int64_t, 4> strides;
     int64_t offset;
@@ -190,15 +190,14 @@ Shape TypeToShape(mlir::Type type) {
           .value();
     }
 
-    return ShapeUtil::MakeValidatedShape(primitive_type, shape, is_dynamic)
-        .value();
+    return ShapeUtil::MakeShape(primitive_type, shape, is_dynamic);
   } else if (auto tuple_type = mlir::dyn_cast<mlir::TupleType>(type)) {
     llvm::SmallVector<Shape, 4> shapes;
     shapes.reserve(tuple_type.size());
     for (mlir::Type sub_type : tuple_type.getTypes()) {
       shapes.push_back(TypeToShape(sub_type));
     }
-    return ShapeUtil::MakeValidatedTupleShape(shapes).value();
+    return ShapeUtil::MakeTupleShape(shapes);
 
   } else if (mlir::isa<mlir::mhlo::TokenType>(type) ||
              mlir::isa<mlir::stablehlo::TokenType>(type)) {

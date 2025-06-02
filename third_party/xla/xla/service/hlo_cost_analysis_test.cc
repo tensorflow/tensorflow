@@ -67,8 +67,7 @@ class HloCostAnalysisTest : public ::testing::Test {
     // Create a computation for a unary user function: x => exp(x + 0.5)
     {
       XlaBuilder builder("add_and_exp");
-      auto x = Parameter(&builder, 0,
-                         ShapeUtil::MakeValidatedShape(F32, {}).value(), "x");
+      auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
       auto half = ConstantR0<float>(&builder, 0.5);
       Exp(Add(x, half));
       auto computation_status = builder.Build();
@@ -79,10 +78,8 @@ class HloCostAnalysisTest : public ::testing::Test {
     // Create a computation for a binary user function: (x, y) => x + y
     {
       XlaBuilder builder("add");
-      auto x = Parameter(&builder, 0,
-                         ShapeUtil::MakeValidatedShape(F32, {}).value(), "x");
-      auto y = Parameter(&builder, 1,
-                         ShapeUtil::MakeValidatedShape(F32, {}).value(), "y");
+      auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
+      auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {}), "y");
       Add(x, y);
       auto computation_status = builder.Build();
       TF_CHECK_OK(computation_status.status());
@@ -92,8 +89,7 @@ class HloCostAnalysisTest : public ::testing::Test {
     // Create a computation for a sigmoid function: x => 1 / (1 + exp(-x))
     {
       XlaBuilder builder("sigmoid");
-      auto x = Parameter(&builder, 0,
-                         ShapeUtil::MakeValidatedShape(F32, {}).value(), "x");
+      auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
       auto one = ConstantR0<float>(&builder, 1.0);
       Div(one, Add(one, Exp(Neg(x))));
       auto computation_status = builder.Build();
@@ -104,10 +100,8 @@ class HloCostAnalysisTest : public ::testing::Test {
     // Create a computation for a binary max function: (x, y) => max (x, y)
     {
       XlaBuilder builder("max");
-      auto x = Parameter(&builder, 0,
-                         ShapeUtil::MakeValidatedShape(F32, {}).value(), "x");
-      auto y = Parameter(&builder, 1,
-                         ShapeUtil::MakeValidatedShape(F32, {}).value(), "y");
+      auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
+      auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {}), "y");
       Max(x, y);
       auto computation_status = builder.Build();
       TF_CHECK_OK(computation_status.status());
@@ -117,10 +111,8 @@ class HloCostAnalysisTest : public ::testing::Test {
     // Create a computation for a binary GT function: (x, y) => x > y
     {
       XlaBuilder builder("gt");
-      auto x = Parameter(&builder, 0,
-                         ShapeUtil::MakeValidatedShape(F32, {}).value(), "x");
-      auto y = Parameter(&builder, 1,
-                         ShapeUtil::MakeValidatedShape(F32, {}).value(), "y");
+      auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
+      auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {}), "y");
       Gt(x, y);
       auto computation_status = builder.Build();
       TF_CHECK_OK(computation_status.status());
@@ -152,10 +144,8 @@ class HloCostAnalysisTest : public ::testing::Test {
 
 TEST_F(HloCostAnalysisTest, MatrixMultiply) {
   XlaBuilder builder("matrix_multiply");
-  auto lhs = Parameter(
-      &builder, 0, ShapeUtil::MakeValidatedShape(F32, {10, 5}).value(), "lhs");
-  auto rhs = Parameter(
-      &builder, 1, ShapeUtil::MakeValidatedShape(F32, {5, 30}).value(), "rhs");
+  auto lhs = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {10, 5}), "lhs");
+  auto rhs = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {5, 30}), "rhs");
   Dot(lhs, rhs);
 
   // Run HLO cost analysis.
@@ -182,11 +172,9 @@ TEST_F(HloCostAnalysisTest, MatrixMultiply) {
 TEST_F(HloCostAnalysisTest, DotGeneral) {
   XlaBuilder builder("matrix_multiply");
   auto lhs =
-      Parameter(&builder, 0,
-                ShapeUtil::MakeValidatedShape(F32, {10, 5, 5}).value(), "lhs");
+      Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {10, 5, 5}), "lhs");
   auto rhs =
-      Parameter(&builder, 1,
-                ShapeUtil::MakeValidatedShape(F32, {5, 5, 30}).value(), "rhs");
+      Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {5, 5, 30}), "rhs");
   DotDimensionNumbers dnums;
   dnums.add_lhs_contracting_dimensions(1);
   dnums.add_lhs_contracting_dimensions(2);
@@ -220,11 +208,9 @@ TEST_F(HloCostAnalysisTest, DotGeneral) {
 TEST_F(HloCostAnalysisTest, DotGeneral2) {
   XlaBuilder builder("matrix_multiply");
   auto lhs =
-      Parameter(&builder, 0,
-                ShapeUtil::MakeValidatedShape(F32, {10, 5, 5}).value(), "lhs");
+      Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {10, 5, 5}), "lhs");
   auto rhs =
-      Parameter(&builder, 1,
-                ShapeUtil::MakeValidatedShape(F32, {5, 5, 30}).value(), "rhs");
+      Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {5, 5, 30}), "rhs");
   DotDimensionNumbers dnums;
   dnums.add_lhs_contracting_dimensions(1);
   dnums.add_lhs_batch_dimensions(2);
@@ -257,10 +243,8 @@ TEST_F(HloCostAnalysisTest, DotGeneral2) {
 
 TEST_F(HloCostAnalysisTest, DotGeneral3) {
   XlaBuilder builder("matrix_multiply");
-  auto lhs = Parameter(
-      &builder, 0, ShapeUtil::MakeValidatedShape(F32, {10, 5}).value(), "lhs");
-  auto rhs = Parameter(
-      &builder, 1, ShapeUtil::MakeValidatedShape(F32, {5, 30}).value(), "rhs");
+  auto lhs = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {10, 5}), "lhs");
+  auto rhs = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {5, 30}), "rhs");
   DotDimensionNumbers dnums;
   DotGeneral(lhs, rhs, dnums);
 
@@ -288,8 +272,7 @@ TEST_F(HloCostAnalysisTest, DotGeneral3) {
 
 TEST_F(HloCostAnalysisTest, Map) {
   XlaBuilder builder("map");
-  auto input = Parameter(
-      &builder, 0, ShapeUtil::MakeValidatedShape(F32, {10}).value(), "in");
+  auto input = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {10}), "in");
   Map(&builder, {input}, add_and_exp_, {0});
 
   // Run HLO cost analysis.
@@ -310,17 +293,15 @@ TEST_F(HloCostAnalysisTest, Map) {
 
 TEST_F(HloCostAnalysisTest, Convolution) {
   XlaBuilder builder("convolution");
-  auto input = Parameter(&builder, 0,
-                         ShapeUtil::MakeValidatedShape(
-                             F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/10,
-                                   /*x_dim=*/20})
-                             .value(),
-                         "input");
+  auto input = Parameter(
+      &builder, 0,
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/10,
+                                 /*x_dim=*/20}),
+      "input");
   auto kernel = Parameter(
       &builder, 1,
-      ShapeUtil::MakeValidatedShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/3,
-                                          /*x_dim=*/3})
-          .value(),
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/3,
+                                 /*x_dim=*/3}),
       "kernel");
   Conv(input, kernel, {1, 1}, Padding::kValid);
 
@@ -354,18 +335,16 @@ TEST_F(HloCostAnalysisTest, ConvolutionSame) {
   const int oh = ih;
   const int sx = 1;
   const int sy = 1;
-  auto input = Parameter(&builder, 0,
-                         ShapeUtil::MakeValidatedShape(
-                             F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/ih,
-                                   /*x_dim=*/iw})
-                             .value(),
-                         "input");
-  auto kernel = Parameter(&builder, 1,
-                          ShapeUtil::MakeValidatedShape(
-                              F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/kh,
-                                    /*x_dim=*/kw})
-                              .value(),
-                          "kernel");
+  auto input = Parameter(
+      &builder, 0,
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/ih,
+                                 /*x_dim=*/iw}),
+      "input");
+  auto kernel = Parameter(
+      &builder, 1,
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/kh,
+                                 /*x_dim=*/kw}),
+      "kernel");
   Conv(input, kernel, {sx, sy}, Padding::kSame);
 
   // Run HLO cost analysis.
@@ -395,16 +374,14 @@ TEST_F(HloCostAnalysisTest, ConvolutionSame) {
 TEST_F(HloCostAnalysisTest, ConvolutionExtreme) {
   XlaBuilder builder("convolution");
   constexpr int64_t kLarge = 512 * 1024;
-  auto input = Parameter(&builder, 0,
-                         ShapeUtil::MakeValidatedShape(
-                             F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/kLarge})
-                             .value(),
-                         "input");
-  auto kernel = Parameter(&builder, 1,
-                          ShapeUtil::MakeValidatedShape(
-                              F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/kLarge})
-                              .value(),
-                          "kernel");
+  auto input = Parameter(
+      &builder, 0,
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/kLarge}),
+      "input");
+  auto kernel = Parameter(
+      &builder, 1,
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/kLarge}),
+      "kernel");
   ConvGeneralDilated(input, kernel, {kLarge - 1}, {{0, 0}}, {kLarge}, {1},
                      XlaBuilder::CreateDefaultConvDimensionNumbers(1));
 
@@ -420,16 +397,14 @@ TEST_F(HloCostAnalysisTest, ConvolutionExtreme) {
 TEST_F(HloCostAnalysisTest, ConvolutionExtreme2) {
   XlaBuilder builder("convolution");
   constexpr int64_t kLarge = 512 * 1024;
-  auto input = Parameter(&builder, 0,
-                         ShapeUtil::MakeValidatedShape(
-                             F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/1})
-                             .value(),
-                         "input");
-  auto kernel = Parameter(&builder, 1,
-                          ShapeUtil::MakeValidatedShape(
-                              F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/kLarge})
-                              .value(),
-                          "kernel");
+  auto input = Parameter(
+      &builder, 0,
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/1}),
+      "input");
+  auto kernel = Parameter(
+      &builder, 1,
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/kLarge}),
+      "kernel");
   ConvGeneralDilated(input, kernel, {1}, {{kLarge - 1, kLarge - 1}}, {1}, {1},
                      XlaBuilder::CreateDefaultConvDimensionNumbers(1));
 
@@ -444,18 +419,16 @@ TEST_F(HloCostAnalysisTest, ConvolutionExtreme2) {
 
 TEST_F(HloCostAnalysisTest, ConvolutionWithFeatureGroup) {
   XlaBuilder builder("convolution");
-  auto input = Parameter(&builder, 0,
-                         ShapeUtil::MakeValidatedShape(
-                             F32, {/*p_dim=*/1, /*z_dim=*/120, /*y_dim=*/10,
-                                   /*x_dim=*/20})
-                             .value(),
-                         "input");
-  auto kernel = Parameter(&builder, 1,
-                          ShapeUtil::MakeValidatedShape(
-                              F32, {/*p_dim=*/120, /*z_dim=*/1, /*y_dim=*/3,
-                                    /*x_dim=*/3})
-                              .value(),
-                          "kernel");
+  auto input = Parameter(
+      &builder, 0,
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/120, /*y_dim=*/10,
+                                 /*x_dim=*/20}),
+      "input");
+  auto kernel = Parameter(
+      &builder, 1,
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/120, /*z_dim=*/1, /*y_dim=*/3,
+                                 /*x_dim=*/3}),
+      "kernel");
   Conv(input, kernel, {1, 1}, Padding::kValid, /*feature_group_count=*/120);
 
   // Run HLO cost analysis.
@@ -484,8 +457,7 @@ TEST_F(HloCostAnalysisTest, ConvolutionWithFeatureGroup) {
 TEST_F(HloCostAnalysisTest, Reduce) {
   XlaBuilder builder("reduce");
   auto input =
-      Parameter(&builder, 0,
-                ShapeUtil::MakeValidatedShape(F32, {10, 20}).value(), "input");
+      Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {10, 20}), "input");
   Reduce(input, ConstantR0<float>(&builder, 0.0f), add_, {1});
 
   // Run HLO cost analysis.
@@ -509,8 +481,7 @@ TEST_F(HloCostAnalysisTest, Reduce) {
 TEST_F(HloCostAnalysisTest, ReduceWindow) {
   XlaBuilder builder("reduce_window");
   auto input =
-      Parameter(&builder, 0,
-                ShapeUtil::MakeValidatedShape(F32, {10, 20}).value(), "input");
+      Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {10, 20}), "input");
   ReduceWindow(input, ConstantR0<float>(&builder, 0), add_, {4, 5}, {4, 5},
                Padding::kValid);
 
@@ -533,8 +504,8 @@ TEST_F(HloCostAnalysisTest, ReduceWindow) {
 
 TEST_F(HloCostAnalysisTest, ReduceWindowWithOverlaps) {
   XlaBuilder builder("reduce_window");
-  auto input = Parameter(
-      &builder, 0, ShapeUtil::MakeValidatedShape(F32, {8, 8}).value(), "input");
+  auto input =
+      Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {8, 8}), "input");
   ReduceWindow(input, ConstantR0<float>(&builder, 0), add_, {4, 5}, {2, 1},
                Padding::kValid);
 
@@ -589,7 +560,7 @@ ENTRY fusion.50 {
 
 TEST_F(HloCostAnalysisTest, ReduceWindowVariadic) {
   XlaBuilder builder("reduce_window_variadic");
-  auto elem_shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
+  auto elem_shape = ShapeUtil::MakeShape(F32, {});
   auto p2 = Parameter(&builder, 0, elem_shape, "x0");
   auto p3 = Parameter(&builder, 1, elem_shape, "x1");
   auto p4 = Parameter(&builder, 2, elem_shape, "y0");
@@ -598,11 +569,9 @@ TEST_F(HloCostAnalysisTest, ReduceWindowVariadic) {
   Tuple(&builder, compute_vec);
   TF_ASSERT_OK_AND_ASSIGN(auto compute_tuple, builder.Build());
   auto input1 =
-      Parameter(&builder, 0,
-                ShapeUtil::MakeValidatedShape(F32, {10, 20}).value(), "input1");
+      Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {10, 20}), "input1");
   auto input2 =
-      Parameter(&builder, 1,
-                ShapeUtil::MakeValidatedShape(F32, {10, 20}).value(), "input2");
+      Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {10, 20}), "input2");
   auto init = ConstantR0<float>(&builder, 0);
   ReduceWindow({input1, input2}, {init, init}, compute_tuple, {4, 5}, {4, 5},
                Padding::kValid);
@@ -627,11 +596,9 @@ TEST_F(HloCostAnalysisTest, ReduceWindowVariadic) {
 TEST_F(HloCostAnalysisTest, SelectAndScatter) {
   XlaBuilder builder("select_and_scatter");
   auto operand =
-      Parameter(&builder, 0,
-                ShapeUtil::MakeValidatedShape(F32, {10, 20}).value(), "input");
+      Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {10, 20}), "input");
   auto source =
-      Parameter(&builder, 1, ShapeUtil::MakeValidatedShape(F32, {2, 4}).value(),
-                "source");
+      Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {2, 4}), "source");
   SelectAndScatter(operand, gt_, {4, 5}, {4, 5}, Padding::kValid, source,
                    ConstantR0<float>(&builder, 0), add_);
 
@@ -692,13 +659,10 @@ TEST_F(HloCostAnalysisTest, BroadcastCountMultipleInputAccesses) {
 TEST_F(HloCostAnalysisTest, FullyConnectedForward) {
   XlaBuilder builder("fully_connected_forward");
   auto input =
-      Parameter(&builder, 0,
-                ShapeUtil::MakeValidatedShape(F32, {10, 5}).value(), "input");
+      Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {10, 5}), "input");
   auto weight =
-      Parameter(&builder, 1,
-                ShapeUtil::MakeValidatedShape(F32, {5, 20}).value(), "weight");
-  auto bias = Parameter(
-      &builder, 2, ShapeUtil::MakeValidatedShape(F32, {20}).value(), "bias");
+      Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {5, 20}), "weight");
+  auto bias = Parameter(&builder, 2, ShapeUtil::MakeShape(F32, {20}), "bias");
   // sigmoid(input * weight + bias)
   Map(&builder, {Add(Dot(input, weight), bias, {1})}, sigmoid_, {0, 1});
 
@@ -718,12 +682,10 @@ TEST_F(HloCostAnalysisTest, MatmulAndConvolutionCanBeTheSameComputation) {
   HloCostAnalysis conv_analysis;
   {
     XlaBuilder builder("conv_looking_matmul");
-    auto lhs = Parameter(
-        &builder, 0, ShapeUtil::MakeValidatedShape(F32, {64, 64, 1, 1}).value(),
-        "input");
-    auto rhs = Parameter(
-        &builder, 1, ShapeUtil::MakeValidatedShape(F32, {64, 64, 1, 1}).value(),
-        "weights");
+    auto lhs = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {64, 64, 1, 1}),
+                         "input");
+    auto rhs = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {64, 64, 1, 1}),
+                         "weights");
     Conv(lhs, rhs, {1, 1}, Padding::kSame);
     auto hlo_module = BuildHloGraph(&builder);
     ASSERT_IS_OK(hlo_module->entry_computation()->root_instruction()->Accept(
@@ -733,12 +695,10 @@ TEST_F(HloCostAnalysisTest, MatmulAndConvolutionCanBeTheSameComputation) {
   HloCostAnalysis matmul_analysis;
   {
     XlaBuilder builder("matmul");
-    auto lhs = Parameter(&builder, 0,
-                         ShapeUtil::MakeValidatedShape(F32, {64, 64}).value(),
-                         "input");
-    auto rhs = Parameter(&builder, 1,
-                         ShapeUtil::MakeValidatedShape(F32, {64, 64}).value(),
-                         "weights");
+    auto lhs =
+        Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {64, 64}), "input");
+    auto rhs =
+        Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {64, 64}), "weights");
     Dot(lhs, rhs);
     auto hlo_module = BuildHloGraph(&builder);
     ASSERT_IS_OK(hlo_module->entry_computation()->root_instruction()->Accept(
@@ -839,7 +799,7 @@ TEST_F(FusionCostAnalysis, LoopFusion) {
   // Do this 4 times with different per-second rates to test the computation of
   // bottleneck time on fusion nodes.
   for (int i = 0; i < 4; ++i) {
-    Shape r2f32 = ShapeUtil::MakeValidatedShape(F32, {2, 2}).value();
+    Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 2});
 
     // Fuse all instructions in complicated expression:
     //
@@ -1098,7 +1058,7 @@ ENTRY temp {
 }
 
 TEST_F(FusionCostAnalysis, LoopFusionTupleOutput) {
-  Shape r2f32 = ShapeUtil::MakeValidatedShape(F32, {2, 2}).value();
+  Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 2});
 
   // Same as above but the fusion outputs a tuple.
   HloComputation::Builder builder(TestName());
@@ -1163,8 +1123,7 @@ TEST_F(FusionCostAnalysis, LoopFusionTupleOutput) {
 }
 
 TEST_F(FusionCostAnalysis, NoLayout) {
-  Shape shape_with_layout =
-      ShapeUtil::MakeValidatedShape(F32, {2, 3, 4, 5}).value();
+  Shape shape_with_layout = ShapeUtil::MakeShape(F32, {2, 3, 4, 5});
   // Instructions within a fused op may have no layout.
   Shape shape_without_layout = shape_with_layout;
   shape_without_layout.clear_layout();
@@ -1381,10 +1340,8 @@ TEST_F(HloCostAnalysisTest, TupleCost) {
   HloCostAnalysis analysis;
 
   XlaBuilder builder("tuple");
-  auto x = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(F32, {123}).value(), "x");
-  auto y = Parameter(&builder, 1,
-                     ShapeUtil::MakeValidatedShape(F32, {42}).value(), "y");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {123}), "x");
+  auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {42}), "y");
   Tuple(&builder, {x, y});
   auto hlo_module = BuildHloGraph(&builder);
 
@@ -1409,9 +1366,9 @@ TEST_F(DomainCostAnalysis, DomainCost) {
 
   HloComputation::Builder builder("domain");
   auto x = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeValidatedShape(F32, {123}).value(), "x"));
-  auto y = builder.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeValidatedShape(F32, {42}).value(), "y"));
+      0, ShapeUtil::MakeShape(F32, {123}), "x"));
+  auto y = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, ShapeUtil::MakeShape(F32, {42}), "y"));
   auto tuple = builder.AddInstruction(HloInstruction::CreateTuple({x, y}));
   auto domain = builder.AddInstruction(
       HloInstruction::CreateDomain(tuple->shape(), tuple, nullptr, nullptr));
@@ -1429,17 +1386,15 @@ TEST_F(DomainCostAnalysis, DomainCost) {
 
 TEST_F(HloCostAnalysisTest, BaseDilatedConvolution) {
   XlaBuilder builder("BaseDilatedConvolution");
-  auto input = Parameter(&builder, 0,
-                         ShapeUtil::MakeValidatedShape(
-                             F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/10,
-                                   /*x_dim=*/20})
-                             .value(),
-                         "input");
+  auto input = Parameter(
+      &builder, 0,
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/10,
+                                 /*x_dim=*/20}),
+      "input");
   auto kernel = Parameter(
       &builder, 1,
-      ShapeUtil::MakeValidatedShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/3,
-                                          /*x_dim=*/3})
-          .value(),
+      ShapeUtil::MakeShape(F32, {/*p_dim=*/1, /*z_dim=*/1, /*y_dim=*/3,
+                                 /*x_dim=*/3}),
       "kernel");
 
   ConvGeneralDilated(input, kernel, /*window_strides=*/{1, 1},
@@ -1459,8 +1414,7 @@ TEST_F(HloCostAnalysisTest, BaseDilatedConvolution) {
 TEST_F(HloCostAnalysisTest, Slice) {
   // Test the analysis on a slice.
   XlaBuilder builder("slice");
-  auto x = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(F32, {2}).value(), "x");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2}), "x");
   Slice(x, {0}, {1}, {1});
   auto hlo_module = BuildHloGraph(&builder);
 
@@ -1479,8 +1433,7 @@ TEST_F(HloCostAnalysisTest, Slice) {
 TEST_F(HloCostAnalysisTest, DynamicSlice) {
   // Test the analysis on a slice.
   XlaBuilder builder("dynamic-slice");
-  auto x = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(F32, {2}).value(), "x");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2}), "x");
   DynamicSlice(x, absl::Span<const XlaOp>({ConstantR0<int32_t>(&builder, 1)}),
                {1});
   auto hlo_module = BuildHloGraph(&builder);
@@ -1501,8 +1454,7 @@ TEST_F(HloCostAnalysisTest, DynamicSlice) {
 TEST_F(HloCostAnalysisTest, DynamicUpdateSlice) {
   // Test the analysis on a slice.
   XlaBuilder builder("dynamic-update-slice");
-  auto x = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(F32, {2}).value(), "x");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2}), "x");
   DynamicUpdateSlice(
       x, ConstantR1<float>(&builder, {1.0}),
       absl::Span<const XlaOp>({ConstantR0<int32_t>(&builder, 1)}));
@@ -1526,8 +1478,8 @@ TEST_F(HloCostAnalysisTest, DynamicUpdateSlice) {
 TEST_F(HloCostAnalysisTest, Gather) {
   // Test the analysis on a gather.
   XlaBuilder builder("gather");
-  Shape operand_shape = ShapeUtil::MakeValidatedShape(S32, {3, 3}).value();
-  Shape indices_shape = ShapeUtil::MakeValidatedShape(S32, {2}).value();
+  Shape operand_shape = ShapeUtil::MakeShape(S32, {3, 3});
+  Shape indices_shape = ShapeUtil::MakeShape(S32, {2});
 
   auto operand = Parameter(&builder, 0, operand_shape, "operand");
   auto indices = Parameter(&builder, 1, indices_shape, "indices");
@@ -1556,8 +1508,8 @@ TEST_F(HloCostAnalysisTest, Gather) {
 TEST_F(HloCostAnalysisTest, GatherBatchingDims) {
   // Test the analysis on a gather.
   XlaBuilder builder("gather");
-  Shape operand_shape = ShapeUtil::MakeValidatedShape(S32, {5, 3, 3}).value();
-  Shape indices_shape = ShapeUtil::MakeValidatedShape(S32, {5}).value();
+  Shape operand_shape = ShapeUtil::MakeShape(S32, {5, 3, 3});
+  Shape indices_shape = ShapeUtil::MakeShape(S32, {5});
 
   auto operand = Parameter(&builder, 0, operand_shape, "operand");
   auto indices = Parameter(&builder, 1, indices_shape, "indices");
@@ -1588,9 +1540,9 @@ TEST_F(HloCostAnalysisTest, GatherBatchingDims) {
 TEST_F(HloCostAnalysisTest, Scatter) {
   // Test the analysis on a scatter.
   XlaBuilder builder("scatter");
-  Shape operand_shape = ShapeUtil::MakeValidatedShape(F32, {3, 3}).value();
-  Shape indices_shape = ShapeUtil::MakeValidatedShape(S32, {2}).value();
-  Shape values_shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
+  Shape operand_shape = ShapeUtil::MakeShape(F32, {3, 3});
+  Shape indices_shape = ShapeUtil::MakeShape(S32, {2});
+  Shape values_shape = ShapeUtil::MakeShape(F32, {2, 3});
 
   auto operand = Parameter(&builder, 0, operand_shape, "operand");
   auto indices = Parameter(&builder, 1, indices_shape, "indices");
@@ -1621,9 +1573,9 @@ TEST_F(HloCostAnalysisTest, Scatter) {
 TEST_F(HloCostAnalysisTest, ScatterBatchingDims) {
   // Test the analysis on a scatter.
   XlaBuilder builder("scatter");
-  Shape operand_shape = ShapeUtil::MakeValidatedShape(F32, {5, 3, 3}).value();
-  Shape indices_shape = ShapeUtil::MakeValidatedShape(S32, {5}).value();
-  Shape values_shape = ShapeUtil::MakeValidatedShape(F32, {5, 3}).value();
+  Shape operand_shape = ShapeUtil::MakeShape(F32, {5, 3, 3});
+  Shape indices_shape = ShapeUtil::MakeShape(S32, {5});
+  Shape values_shape = ShapeUtil::MakeShape(F32, {5, 3});
 
   auto operand = Parameter(&builder, 0, operand_shape, "operand");
   auto indices = Parameter(&builder, 1, indices_shape, "indices");
@@ -1656,11 +1608,11 @@ TEST_F(HloCostAnalysisTest, ScatterBatchingDims) {
 TEST_F(HloCostAnalysisTest, MultioutputScatter) {
   // Test the analysis on a scatter.
   XlaBuilder builder("scatter");
-  Shape operand0_shape = ShapeUtil::MakeValidatedShape(F32, {3, 3}).value();
-  Shape operand1_shape = ShapeUtil::MakeValidatedShape(S32, {3, 3}).value();
-  Shape indices_shape = ShapeUtil::MakeValidatedShape(S32, {2}).value();
-  Shape values0_shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
-  Shape values1_shape = ShapeUtil::MakeValidatedShape(S32, {2, 3}).value();
+  Shape operand0_shape = ShapeUtil::MakeShape(F32, {3, 3});
+  Shape operand1_shape = ShapeUtil::MakeShape(S32, {3, 3});
+  Shape indices_shape = ShapeUtil::MakeShape(S32, {2});
+  Shape values0_shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape values1_shape = ShapeUtil::MakeShape(S32, {2, 3});
 
   auto operand0 = Parameter(&builder, 0, operand0_shape, "operand0");
   auto operand1 = Parameter(&builder, 1, operand1_shape, "operand1");
@@ -1674,14 +1626,10 @@ TEST_F(HloCostAnalysisTest, MultioutputScatter) {
   dim_numbers.add_scatter_dims_to_operand_dims(0);
   auto add = [] {
     XlaBuilder builder("add");
-    auto x0 = Parameter(&builder, 0,
-                        ShapeUtil::MakeValidatedShape(F32, {}).value(), "x0");
-    auto x1 = Parameter(&builder, 1,
-                        ShapeUtil::MakeValidatedShape(S32, {}).value(), "x1");
-    auto y0 = Parameter(&builder, 2,
-                        ShapeUtil::MakeValidatedShape(F32, {}).value(), "y0");
-    auto y1 = Parameter(&builder, 3,
-                        ShapeUtil::MakeValidatedShape(S32, {}).value(), "y1");
+    auto x0 = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x0");
+    auto x1 = Parameter(&builder, 1, ShapeUtil::MakeShape(S32, {}), "x1");
+    auto y0 = Parameter(&builder, 2, ShapeUtil::MakeShape(F32, {}), "y0");
+    auto y1 = Parameter(&builder, 3, ShapeUtil::MakeShape(S32, {}), "y1");
     Tuple(&builder, {Add(x0, y0), Add(x1, y1)});
     auto computation_status = builder.Build();
     TF_CHECK_OK(computation_status.status());
@@ -1740,7 +1688,7 @@ ENTRY e {
 }
 
 TEST_F(FusionCostAnalysis, RevisitModifiedFusion) {
-  Shape r2f32 = ShapeUtil::MakeValidatedShape(F32, {2, 2}).value();
+  Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 2});
   HloComputation::Builder builder(TestName());
   HloInstruction* c1 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR2F32Linspace(

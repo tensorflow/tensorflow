@@ -500,6 +500,10 @@ class XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp
 
     xla::FrontendAttributes tc_frontend_attributes;
     xla::FrontendAttributes sc_frontend_attributes;
+    xla::FrontendAttributes tuple_frontend_attributes;
+
+    tuple_frontend_attributes.mutable_map()->insert(
+        {"_xla_compute_type", "sparse"});
 
     sc_frontend_attributes.mutable_map()->insert(
         {"_xla_compute_type", "sparse"});
@@ -549,14 +553,19 @@ class XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp
         xla::ShapeUtil::MakeTupleShape(
             {valencies_shape, vectors_shape, gains_shape}));
 
+    // Emit get-tuple-element with the sparse core device frontend attribute.
+    // This is necessary for XLA to fuse the SparseCore custom call and the
+    // gte's to avoid accidentally introducing nested tuples.
+    builder->SetFrontendAttributes(tuple_frontend_attributes);
+
+    xla::XlaOp valencies = xla::GetTupleElement(sc_lookup_result_tuple, 0);
+    xla::XlaOp vectors = xla::GetTupleElement(sc_lookup_result_tuple, 1);
+
     // Emit the custom combiner computation into an HLO computation.
     OP_REQUIRES_VALUE(xla::XlaComputation custom_combiner_tc_computation, ctx,
                       BuildTcCustomCombinerComputation(ctx, feature_width));
 
     builder->SetFrontendAttributes(tc_frontend_attributes);
-
-    xla::XlaOp valencies = xla::GetTupleElement(sc_lookup_result_tuple, 0);
-    xla::XlaOp vectors = xla::GetTupleElement(sc_lookup_result_tuple, 1);
 
     std::vector<xla::XlaOp> tc_combiner_args = {valencies, vectors};
     if (num_weights_ > 0) {

@@ -186,14 +186,13 @@ ENTRY entry {
 
   // Create a new computation and add it as a callee.
   auto builder = HloComputation::Builder("mul");
-  auto a = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "a"));
-  auto b = builder.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeValidatedShape(F32, {}).value(), "b"));
+  auto a = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "a"));
+  auto b = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, ShapeUtil::MakeShape(F32, {}), "b"));
 
   builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeValidatedShape(F32, {}).value(), HloOpcode::kMultiply, a,
-      b));
+      ShapeUtil::MakeShape(F32, {}), HloOpcode::kMultiply, a, b));
 
   HloComputation *mul_comp = module->AddEmbeddedComputation(builder.Build());
 

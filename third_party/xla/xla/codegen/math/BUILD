@@ -6,9 +6,11 @@ load(
     "if_llvm_system_z_available",
     "if_llvm_x86_available",
 )
+load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//xla:__subpackages__"],
     licenses = ["notice"],
 )
 
@@ -90,4 +92,28 @@ cc_library(
         "//xla:fp_util",
         "@com_google_googletest//:gtest_for_library",
     ],
+)
+
+cc_library(
+    name = "vec_name_mangler",
+    hdrs = ["vec_name_mangler.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "vec_name_mangler_test",
+    srcs = ["vec_name_mangler_test.cc"],
+    deps = [
+        ":vec_name_mangler",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "string_interner",
+    hdrs = ["string_interner.h"],
+    deps = ["@com_google_absl//absl/strings:string_view"],
 )

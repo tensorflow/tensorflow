@@ -157,6 +157,14 @@ NativeT GetMaxImpl() {
 }
 
 template <typename NativeT>
+NativeT GetMaxFiniteImpl() {
+  if constexpr (IsReal<NativeT>::value) {
+    return std::numeric_limits<NativeT>::max();
+  }
+  LOG(FATAL) << "No finite max value for given type.";
+}
+
+template <typename NativeT>
 NativeT GetMinImpl() {
   if constexpr (IsReal<NativeT>::value) {
     if constexpr (std::numeric_limits<NativeT>::has_infinity) {
@@ -170,6 +178,13 @@ NativeT GetMinImpl() {
 template <PrimitiveType kType>
 struct MaxProvider {
   NativeT<kType> operator()() const { return GetMaxImpl<NativeT<kType>>(); }
+};
+
+template <PrimitiveType kType>
+struct MaxFiniteProvider {
+  NativeT<kType> operator()() const {
+    return GetMaxFiniteImpl<NativeT<kType>>();
+  }
 };
 
 template <PrimitiveType kType>
@@ -510,6 +525,10 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
 
 /* static */ Literal LiteralUtil::MaxValue(PrimitiveType primitive_type) {
   return CreateScalar<MaxProvider>(primitive_type);
+}
+
+/* static */ Literal LiteralUtil::MaxFiniteValue(PrimitiveType primitive_type) {
+  return CreateScalar<MaxFiniteProvider>(primitive_type);
 }
 
 /* static */ absl::StatusOr<Literal> LiteralUtil::NanValue(

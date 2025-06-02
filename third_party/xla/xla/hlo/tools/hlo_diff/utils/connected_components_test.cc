@@ -34,8 +34,8 @@ using ::testing::UnorderedElementsAre;
 // Helper function to create a simple HloComputation
 std::unique_ptr<HloComputation> MakeComputation(absl::string_view name) {
   auto builder = HloComputation::Builder(name);
-  HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "x"));
+  HloInstruction* x = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "x"));
   builder.AddInstruction(HloInstruction::CreateTuple({x}));
   return builder.Build();
 }

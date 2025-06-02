@@ -1901,8 +1901,7 @@ HloInstruction::CreateCollectivePermuteStart(
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateReplicaId(
     const Shape& shape) {
-  CHECK(Shape::Equal().IgnoreLayout()(
-      shape, ShapeUtil::MakeValidatedShape(U32, {}).value()))
+  CHECK(Shape::Equal().IgnoreLayout()(shape, ShapeUtil::MakeShape(U32, {})))
       << "HloInstruction replica-id must have a shape of u32[], but "
       << shape.ToString() << " is specified";
   return absl::WrapUnique(new HloInstruction(HloOpcode::kReplicaId, shape));
@@ -1910,8 +1909,7 @@ HloInstruction::CreateCollectivePermuteStart(
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreatePartitionId(
     const Shape& shape) {
-  CHECK(Shape::Equal().IgnoreLayout()(
-      shape, ShapeUtil::MakeValidatedShape(U32, {}).value()))
+  CHECK(Shape::Equal().IgnoreLayout()(shape, ShapeUtil::MakeShape(U32, {})))
       << "HloInstruction partition-id must have a shape of u32[], but "
       << shape.ToString() << " is specified";
   return absl::WrapUnique(new HloInstruction(HloOpcode::kPartitionId, shape));
@@ -2261,9 +2259,8 @@ HloInstruction::CreateBroadcastSequence(
   }
   // Eliminate the size one dimensions.
   HloInstruction* reshaped_operand = adder(HloInstruction::CreateReshape(
-      ShapeUtil::MakeValidatedShape(operand->shape().element_type(),
-                                    reshaped_dimensions)
-          .value(),
+      ShapeUtil::MakeShape(operand->shape().element_type(),
+                           reshaped_dimensions),
       operand));
   reshaped_operand->set_metadata(operand->metadata());
   if (operand->has_sharding()) {
@@ -2513,8 +2510,7 @@ HloInstruction::CreateCompositeCall(const Shape& shape,
   for (auto element : elements) {
     element_shapes.push_back(&element->shape());
   }
-  Shape tuple_shape =
-      ShapeUtil::MakeValidatedTupleShapeWithPtrs(element_shapes).value();
+  Shape tuple_shape = ShapeUtil::MakeTupleShapeWithPtrs(element_shapes);
   return CreateVariadic(tuple_shape, HloOpcode::kTuple, elements);
 }
 
@@ -5980,6 +5976,12 @@ std::shared_ptr<OriginalValue> HloInstruction::original_value() const {
 void HloInstruction::set_original_value(
     std::shared_ptr<OriginalValue> original_value) {
   original_value_ = original_value;
+}
+
+void HloInstruction::CopyOriginalValue(const HloInstruction* instruction,
+                                       bool clone) {
+  ::xla::CopyOriginalValue(/*src_instruction=*/instruction,
+                           /*dest_instruction=*/this, clone);
 }
 
 }  // namespace xla

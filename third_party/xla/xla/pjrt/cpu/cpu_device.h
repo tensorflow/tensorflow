@@ -36,9 +36,9 @@ limitations under the License.
 
 namespace xla {
 
-class TfrtCpuDevice final : public PjRtDevice {
+class PjRtCpuDevice final : public PjRtDevice {
  public:
-  explicit TfrtCpuDevice(int process_id, int local_device_id,
+  explicit PjRtCpuDevice(int process_id, int local_device_id,
                          int max_inflight_computations = 32);
 
   const CpuDeviceDescription& description() const override {

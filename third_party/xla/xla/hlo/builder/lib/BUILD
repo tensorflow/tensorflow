@@ -739,6 +739,7 @@ xla_test(
         "//xla:literal",
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/testlib:test",
         "//xla/tests:client_library_test_runner_mixin",

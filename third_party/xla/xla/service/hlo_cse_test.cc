@@ -130,7 +130,7 @@ TEST_F(HloCseTest, ConstantsSameValueDifferentType) {
   constants.push_back(builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f))));
 
-  const Shape shape_r0 = ShapeUtil::MakeValidatedShape(F32, {}).value();
+  const Shape shape_r0 = ShapeUtil::MakeShape(F32, {});
   for (int64_t i = 0; i < constants.size(); ++i) {
     constants[i] = builder.AddInstruction(
         HloInstruction::CreateConvert(shape_r0, constants[i]));
@@ -420,7 +420,7 @@ TEST_F(HloCseTest, FusionInternalCSE) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
-  const Shape shape_r0 = ShapeUtil::MakeValidatedShape(F32, {}).value();
+  const Shape shape_r0 = ShapeUtil::MakeShape(F32, {});
   auto param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, shape_r0, "p0"));
   auto param1 = builder.AddInstruction(
@@ -506,11 +506,11 @@ TEST_F(HloCseTest, DoNotCombineRng) {
   auto constant2 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
   auto rng1 = builder.AddInstruction(HloInstruction::CreateRng(
-      ShapeUtil::MakeValidatedShape(F32, {}).value(),
-      RandomDistribution::RNG_UNIFORM, {constant1, constant2}));
+      ShapeUtil::MakeShape(F32, {}), RandomDistribution::RNG_UNIFORM,
+      {constant1, constant2}));
   auto rng2 = builder.AddInstruction(HloInstruction::CreateRng(
-      ShapeUtil::MakeValidatedShape(F32, {}).value(),
-      RandomDistribution::RNG_UNIFORM, {constant1, constant2}));
+      ShapeUtil::MakeShape(F32, {}), RandomDistribution::RNG_UNIFORM,
+      {constant1, constant2}));
 
   builder.AddInstruction(HloInstruction::CreateBinary(
       constant1->shape(), HloOpcode::kAdd, rng1, rng2));
@@ -557,7 +557,7 @@ TEST_F(HloCseTest, DoNotCombineCallsToImpureFunctions) {
   // rng_function is an impure function because it does RNG.
   HloComputation* rng_function = nullptr;
   {
-    Shape scalar_shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
+    Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
     auto builder = HloComputation::Builder(TestName() + "_rng_fun");
     auto constant1 = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
@@ -566,7 +566,7 @@ TEST_F(HloCseTest, DoNotCombineCallsToImpureFunctions) {
     auto rng = builder.AddInstruction(HloInstruction::CreateRng(
         scalar_shape, RandomDistribution::RNG_UNIFORM, {constant1, constant2}));
     auto param = builder.AddInstruction(HloInstruction::CreateParameter(
-        0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "param"));
+        0, ShapeUtil::MakeShape(F32, {}), "param"));
     builder.AddInstruction(HloInstruction::CreateBinary(
         scalar_shape, HloOpcode::kAdd, rng, param));
     rng_function = module->AddEmbeddedComputation(builder.Build());

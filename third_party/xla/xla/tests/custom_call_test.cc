@@ -191,8 +191,8 @@ using ::testing::HasSubstr;
 
 class CustomCallTest : public HloPjRtTestBase {
  protected:
-  Shape r0f32_ = ShapeUtil::MakeValidatedShape(F32, {}).value();
-  Shape r2f32_ = ShapeUtil::MakeValidatedShape(F32, {2, 2}).value();
+  Shape r0f32_ = ShapeUtil::MakeShape(F32, {});
+  Shape r2f32_ = ShapeUtil::MakeShape(F32, {2, 2});
 };
 
 XLA_TEST_F(CustomCallTest, CustomCallR0F32Add2) {
@@ -275,8 +275,7 @@ XLA_TEST_F(CustomCallTest, ReportsFailure) {
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   builder.AddInstruction(HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeValidatedShape(F32, {}).value(), {constant},
-      "CustomCallFail",
+      ShapeUtil::MakeShape(F32, {}), {constant}, "CustomCallFail",
       /*opaque=*/"", CustomCallApiVersion::API_VERSION_STATUS_RETURNING));
 
   module->AddEntryComputation(builder.Build());
@@ -293,15 +292,13 @@ XLA_TEST_F(CustomCallTest, ReportsFirstFailure) {
   auto constant_1 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
   auto res_1 = builder.AddInstruction(HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeValidatedShape(F32, {}).value(), {constant_1},
-      "CustomCallFail",
+      ShapeUtil::MakeShape(F32, {}), {constant_1}, "CustomCallFail",
       /*opaque=*/"", CustomCallApiVersion::API_VERSION_STATUS_RETURNING));
   auto res_2 = builder.AddInstruction(HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeValidatedShape(F32, {}).value(), {res_1}, "CustomCallFail",
+      ShapeUtil::MakeShape(F32, {}), {res_1}, "CustomCallFail",
       /*opaque=*/"", CustomCallApiVersion::API_VERSION_STATUS_RETURNING));
   builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeValidatedShape(F32, {}).value(), HloOpcode::kAdd, res_1,
-      res_2));
+      ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd, res_1, res_2));
 
   module->AddEntryComputation(builder.Build());
 
@@ -361,7 +358,7 @@ class CustomCallClientAPITest
 XLA_TEST_F(CustomCallClientAPITest, IllegalCustomCallTarget) {
   XlaBuilder builder(TestName());
   CustomCall(&builder, "$illegal", /*operands=*/{},
-             ShapeUtil::MakeValidatedShape(F32, {1}).value());
+             ShapeUtil::MakeShape(F32, {1}));
 
   EXPECT_IS_NOT_OK(ExecuteAndTransfer(&builder, /*arguments=*/{}).status());
 }
@@ -859,13 +856,12 @@ XLA_TEST_F(FfiCustomCallTest, Tokens) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
-  std::vector<Shape> ret = {ShapeUtil::MakeValidatedShape(F32, {}).value(),
+  std::vector<Shape> ret = {ShapeUtil::MakeShape(F32, {}),
                             ShapeUtil::MakeTokenShape()};
 
   auto* token = builder.AddInstruction(HloInstruction::CreateToken());
   builder.AddInstruction(HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeValidatedTupleShape(ret).value(), {token},
-      "__xla_test$$tokens", "",
+      ShapeUtil::MakeTupleShape(ret), {token}, "__xla_test$$tokens", "",
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
   module->AddEntryComputation(builder.Build());
@@ -1066,7 +1062,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiHandleBufferBaseDouble) {
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<double>(42.0f)));
   builder.AddInstruction(HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeValidatedShape(F64, {}).value(), {constant},
+      ShapeUtil::MakeShape(F64, {}), {constant},
       "__xla_test$$FfiR0FAdd2BufferBase", "",
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
@@ -1224,21 +1220,21 @@ XLA_TEST_F(FfiCustomCallTest, FfiUsedInOtherComputations) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR2FromArray2D(
           Array2D<float>{{1.0f, 2.0f}, {3.0f, 4.0f}})));
   auto incremented = builder.AddInstruction(HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeValidatedShape(F32, {1, 2, 2}).value(), {input},
+      ShapeUtil::MakeShape(F32, {1, 2, 2}), {input},
       "__xla_test$$FfiF32Add1ToValues",
       /*opaque=*/"",
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
   auto incremented_again =
       builder.AddInstruction(HloInstruction::CreateCustomCall(
-          ShapeUtil::MakeValidatedShape(F32, {1, 2, 2}).value(), {incremented},
+          ShapeUtil::MakeShape(F32, {1, 2, 2}), {incremented},
           "__xla_test$$FfiF32Add1ToValues",
           /*opaque=*/"",
           /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
   // Concatenate the values along first dim.
-  builder.AddInstruction(HloInstruction::CreateConcatenate(
-      ShapeUtil::MakeValidatedShape(F32, {2, 2, 2}).value(),
-      {incremented, incremented_again}, 0));
+  builder.AddInstruction(
+      HloInstruction::CreateConcatenate(ShapeUtil::MakeShape(F32, {2, 2, 2}),
+                                        {incremented, incremented_again}, 0));
 
   module->AddEntryComputation(builder.Build());
 
@@ -1310,8 +1306,8 @@ XLA_TEST_F(FfiCustomCallTest, FfiTupleOutput) {
   auto input1 =
       builder.AddInstruction(HloInstruction::CreateParameter(1, r0f32_, "p1"));
   builder.AddInstruction(HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeValidatedTupleShape({r0f32_, r0f32_}).value(),
-      {input0, input1}, "__xla_test$$FfiF32TupleSwap", /*opaque=*/"",
+      ShapeUtil::MakeTupleShape({r0f32_, r0f32_}), {input0, input1},
+      "__xla_test$$FfiF32TupleSwap", /*opaque=*/"",
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
   module->AddEntryComputation(builder.Build());
@@ -1837,7 +1833,7 @@ static absl::StatusOr<LocalClient*> CreateClient() {
 
 TEST_F(CustomCallClientAPITest, FfiExecutionContext) {
   XlaBuilder b(TestName());
-  const Shape shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
+  const Shape shape = ShapeUtil::MakeShape(F32, {});
   CustomCall(&b, "xla.cpu.ffi_execution_context", /*operands=*/{}, shape,
              /*opaque=*/"",
              /*has_side_effect=*/false,

@@ -45,12 +45,12 @@ namespace xla::cpu {
 
 // oneDNN runtime instantiated for the fusion operation.
 struct OneDnnFusionThunk::OneDnnRuntime {
-  OneDnnRuntime(OneDnnFusion fusion, const Eigen::ThreadPoolDevice* device);
+  OneDnnRuntime(OneDnnFusion fusion, Eigen::ThreadPoolInterface* thread_pool);
 
   OneDnnRuntime(OneDnnRuntime&&) = default;
   OneDnnRuntime& operator=(OneDnnRuntime&&) = default;
 
-  absl::Status Invoke(const Eigen::ThreadPoolDevice* device,
+  absl::Status Invoke(Eigen::ThreadPoolInterface* thread_pool,
                       absl::Span<se::DeviceMemoryBase> arguments,
                       absl::Span<se::DeviceMemoryBase> results);
 
@@ -64,14 +64,14 @@ struct OneDnnFusionThunk::OneDnnRuntime {
 };
 
 OneDnnFusionThunk::OneDnnRuntime::OneDnnRuntime(
-    OneDnnFusion fusion, const Eigen::ThreadPoolDevice* device)
+    OneDnnFusion fusion, Eigen::ThreadPoolInterface* thread_pool)
     : fusion(std::move(fusion)),
-      threadpool(std::make_unique<OneDnnThreadPool>(device)),
+      threadpool(std::make_unique<OneDnnThreadPool>(thread_pool)),
       engine(dnnl::engine::kind::cpu, 0),
       stream(dnnl::threadpool_interop::make_stream(engine, threadpool.get())) {}
 
 absl::Status OneDnnFusionThunk::OneDnnRuntime::Invoke(
-    const Eigen::ThreadPoolDevice* device,
+    Eigen::ThreadPoolInterface* thread_pool,
     absl::Span<se::DeviceMemoryBase> arguments,
     absl::Span<se::DeviceMemoryBase> results) {
   // Number of arguments and results must match the number of logical tensors.
@@ -80,8 +80,8 @@ absl::Status OneDnnFusionThunk::OneDnnRuntime::Invoke(
   TF_RET_CHECK(results.size() == fusion.results.size())
       << "Results size mismatch";
 
-  // Update the threadpool device.
-  threadpool->set_device(device);
+  // Update the underlying Eigen thread pool.
+  threadpool->set_thread_pool(thread_pool);
 
   // Create tensors for arguments.
   std::vector<dnnl::graph::tensor> argument_data;
@@ -109,7 +109,7 @@ absl::Status OneDnnFusionThunk::OneDnnRuntime::Invoke(
 
 absl::StatusOr<OneDnnFusionThunk::OneDnnRuntime>
 OneDnnFusionThunk::CreateOneDnnRuntime(
-    const Eigen::ThreadPoolDevice* device,
+    Eigen::ThreadPoolInterface* thread_pool,
     absl::FunctionRef<absl::StatusOr<OneDnnFusion>()> builder) {
   VLOG(3) << absl::StreamFormat(
       "Create oneDNN runtime for `%s` operation: num_created=%d",
@@ -118,7 +118,7 @@ OneDnnFusionThunk::CreateOneDnnRuntime(
   // Construct oneDNN fusion using user-provided builder function.
   TF_ASSIGN_OR_RETURN(OneDnnFusion fusion, builder());
 
-  OneDnnRuntime runtime(std::move(fusion), device);
+  OneDnnRuntime runtime(std::move(fusion), thread_pool);
 
   // Compile constructed graph for given engine.
   for (const auto& partition : runtime.fusion.graph.get_partitions()) {
@@ -144,9 +144,9 @@ OneDnnFusionThunk::OneDnnFusionThunk(Info info, std::vector<Argument> arguments,
       arguments_(std::move(arguments)),
       results_(std::move(results)),
       builder_(std::move(builder)),
-      onednn_runtime_pool_([this](const Eigen::ThreadPoolDevice* device) {
+      onednn_runtime_pool_([this](Eigen::ThreadPoolInterface* thread_pool) {
         return CreateOneDnnRuntime(
-            device, [this] { return builder_(arguments_, results_); });
+            thread_pool, [this] { return builder_(arguments_, results_); });
       }) {}
 
 OneDnnFusionThunk::~OneDnnFusionThunk() = default;
@@ -203,11 +203,13 @@ tsl::AsyncValueRef<OneDnnFusionThunk::ExecuteEvent> OneDnnFusionThunk::Execute(
                                   results_buffers[i].opaque());
   }
 
-  const Eigen::ThreadPoolDevice* device = params.intra_op_threadpool;
+  Eigen::ThreadPoolInterface* thread_pool =
+      params.intra_op_threadpool->getPool();
 
   // Borrow oneDNN runtime from the pool.
-  TF_ASSIGN_OR_RETURN(auto runtime, onednn_runtime_pool_.GetOrCreate(device));
-  TF_RETURN_IF_ERROR(runtime->Invoke(params.intra_op_threadpool,
+  TF_ASSIGN_OR_RETURN(auto runtime,
+                      onednn_runtime_pool_.GetOrCreate(thread_pool));
+  TF_RETURN_IF_ERROR(runtime->Invoke(thread_pool,
                                      absl::MakeSpan(arguments_buffers),
                                      absl::MakeSpan(results_buffers)));
 

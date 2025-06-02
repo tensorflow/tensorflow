@@ -895,6 +895,20 @@ TfLiteStatus InterpreterBuilder::operator()(
     return cleanup_and_error();
   }
 
+  if (options_.GetUseSignatureTensorNames()) {
+    for (auto& signature_def : (*interpreter)->signature_defs_) {
+      auto* subgraph = (*interpreter)->subgraph(signature_def.subgraph_index);
+      for (auto& [name, tensor_index] : signature_def.inputs) {
+        auto tensor = subgraph->tensor(tensor_index);
+        tensor->name = name.c_str();
+      }
+      for (auto& [name, tensor_index] : signature_def.outputs) {
+        auto tensor = subgraph->tensor(tensor_index);
+        tensor->name = name.c_str();
+      }
+    }
+  }
+
   if ((*interpreter)->SetMetadata(metadata_) != kTfLiteOk) {
     return cleanup_and_error();
   }

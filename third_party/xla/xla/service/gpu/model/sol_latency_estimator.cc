@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
+#include "xla/service/gpu/model/matmul_interpolator.h"
 #include "xla/service/gpu/model/sol_gpu_cost_model.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -266,6 +267,12 @@ LatencyEstimator::TimeCost SolLatencyEstimator::NodeCost(
     return kLowCost;
   }
 
+  if (std::optional<absl::Duration> matmul_duration =
+          matmul_interpolator_->EstimatedRuntime(*instr);
+      matmul_duration.has_value()) {
+    return absl::ToDoubleMicroseconds(*matmul_duration);
+  }
+
   absl::Duration total_estimated_time =
       gpu_performance_model_
           .EstimateRunTimeForInstruction(instr, &*cost_analysis_)
@@ -282,13 +289,13 @@ SolLatencyEstimator::SolLatencyEstimator(
     std::unique_ptr<LatencyEstimator> latency_estimator,
     const se::DeviceDescription& gpu_info,
     HloCostAnalysis::ShapeSizeFunction shape_size_function,
-    HloComputation* computation)
+    const HloComputation* computation)
     : config_(config),
       gpu_info_(gpu_info),
       gpu_performance_model_(gpu_info),
       latency_estimator_(std::move(latency_estimator)),
       shape_size_function_(shape_size_function),
-      sol_flags_(SolGPUCostModel::GetConfig(computation->parent())) {
+      sol_flags_(SolGPUCostModel::GetConfig(computation->parent(), gpu_info)) {
   cost_analysis_.emplace(
       GpuHloCostAnalysis::Options{shape_size_function_,
                                   /*per_second_rates=*/{},
@@ -322,6 +329,23 @@ SolLatencyEstimator::SolLatencyEstimator(
   }
   if (collective_interpolator.ok()) {
     collective_interpolator_ = *std::move(collective_interpolator);
+  }
+
+  absl::StatusOr<std::unique_ptr<MatmulInterpolator>> matmul_interpolator;
+  absl::StatusOr<HloInstructionProfileList> matmul_profiles =
+      ReadProfiles(computation->parent()
+                       ->config()
+                       .debug_options()
+                       .xla_gpu_experimental_matmul_perf_table_path(),
+                   gpu_info);
+  if (matmul_profiles.ok()) {
+    matmul_interpolator =
+        MatmulInterpolator::Create(*matmul_profiles, gpu_info);
+  } else {
+    matmul_interpolator = MatmulInterpolator::Create(gpu_info);
+  }
+  if (matmul_interpolator.ok()) {
+    matmul_interpolator_ = *std::move(matmul_interpolator);
   }
 }
 

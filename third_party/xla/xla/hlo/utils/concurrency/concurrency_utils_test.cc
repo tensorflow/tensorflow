@@ -173,7 +173,7 @@ class HloComputationTest : public HloHardwareIndependentTestBase {
     return module;
   };
 
-  Shape r0f32_ = ShapeUtil::MakeValidatedShape(F32, {}).value();
+  Shape r0f32_ = ShapeUtil::MakeShape(F32, {});
 
   TslTaskExecutor task_executor_{5};
 };

@@ -282,10 +282,8 @@ SmallVector<Value> ReductionFusion::EmitterState::WriteToSharedMemory(
   SmallVector<Value> tiles;
   for (auto* reduction : reductions) {
     for (int i = 0; i < reduction->operand_count() / 2; ++i) {
-      auto tile_shape =
-          ShapeUtil::MakeValidatedShapeWithDescendingLayout(
-              reduction->operand(i)->shape().element_type(), shape)
-              .value();
+      auto tile_shape = ShapeUtil::MakeShapeWithDescendingLayout(
+          reduction->operand(i)->shape().element_type(), shape);
       tiles.push_back(builder.create<AllocateSharedOp>(
           emitters::TensorShapeToMlirType(tile_shape, builder)));
     }
@@ -743,9 +741,8 @@ IndexingMap SmallColumnReductionFusion::ComputeReductionInputIndexing(
   auto map =
       GetIndexingMap({block_id, linear_index}, {loop_size_, vector_size_}) *
       GetBitcastMap({num_blocks_[0], input_shape_[1] * input_shape_[2]},
-                    ShapeUtil::MakeValidatedShapeWithDescendingLayout(
-                        PrimitiveType::U8, input_shape_)
-                        .value(),
+                    ShapeUtil::MakeShapeWithDescendingLayout(PrimitiveType::U8,
+                                                             input_shape_),
                     ctx);
 
   for (auto [result, dim_size] :

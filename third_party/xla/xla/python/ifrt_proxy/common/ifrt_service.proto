@@ -237,6 +237,8 @@ message InitResponse {
   }
 
   repeated Memory memories = 9;
+
+  AttributeMapProto client_attributes = 11;
 }
 
 // ================ Future-related operations ================

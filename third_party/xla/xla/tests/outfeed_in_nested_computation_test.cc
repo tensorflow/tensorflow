@@ -41,13 +41,11 @@ class OutfeedInNestedComputationTest : public LocalClientTestBase {};
 XLA_TEST_F(OutfeedInNestedComputationTest, OutfeedInWhile) {
   XlaBuilder b(TestName());
 
-  Shape state_tuple_array_shape =
-      ShapeUtil::MakeValidatedShape(xla::S32, {10, 5}).value();
-  Shape int_shape = ShapeUtil::MakeValidatedShape(xla::S32, {}).value();
+  Shape state_tuple_array_shape = ShapeUtil::MakeShape(xla::S32, {10, 5});
+  Shape int_shape = ShapeUtil::MakeShape(xla::S32, {});
   Shape state_tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({int_shape, state_tuple_array_shape})
-          .value();
-  Shape xfeed_shape = ShapeUtil::MakeValidatedShape(xla::S32, {2}).value();
+      ShapeUtil::MakeTupleShape({int_shape, state_tuple_array_shape});
+  Shape xfeed_shape = ShapeUtil::MakeShape(xla::S32, {2});
 
   XlaOp some_buffer = Broadcast(ConstantR0<int32_t>(&b, 0), {10, 5});
   XlaOp num_iter = Infeed(&b, int_shape);
@@ -135,8 +133,8 @@ XLA_TEST_F(OutfeedInNestedComputationTest, OutfeedInWhile) {
 XLA_TEST_F(OutfeedInNestedComputationTest, OutfeedInConditional) {
   XlaBuilder b(TestName());
 
-  Shape condition_shape = ShapeUtil::MakeValidatedShape(xla::PRED, {}).value();
-  Shape result_shape = ShapeUtil::MakeValidatedShape(xla::PRED, {}).value();
+  Shape condition_shape = ShapeUtil::MakeShape(xla::PRED, {});
+  Shape result_shape = ShapeUtil::MakeShape(xla::PRED, {});
 
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation true_computation, [&] {
     XlaBuilder inner_builder("true_computation");

@@ -20,12 +20,13 @@ limitations under the License.
 #include <memory>  // IWYU pragma: keep
 #include <utility>
 
+#include "absl/log/check.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringMap.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectRegistry.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/TypeID.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
+#include "shardy/dialect/sdy/ir/utils.h"
 #include "shardy/dialect/sdy/transforms/common/sharding_walker.h"
 
 namespace xla {
@@ -44,7 +46,6 @@ namespace {
 
 using ::llvm::DenseMapInfo;
 using ::llvm::SmallDenseMap;
-using ::llvm::StringMap;
 using ::mlir::ArrayRef;
 using ::mlir::DenseMap;
 using ::mlir::DenseSet;
@@ -55,96 +56,189 @@ using ::mlir::SymbolTable;
 using ::mlir::sdy::AxisRefAttr;
 using ::mlir::sdy::DimensionShardingAttr;
 using ::mlir::sdy::MeshAttr;
+using ::mlir::sdy::MeshAxisAttr;
 using ::mlir::sdy::MeshOp;
+using ::mlir::sdy::SubAxisInfoAttr;
 using ::mlir::sdy::TensorShardingAttr;
 
 namespace sdy = ::mlir::sdy;
 
+using AxisRefMap = SmallDenseMap<AxisRefAttr, AxisRefAttr>;
+using TotalDeviceCountMapInfo = DenseMapInfo<int64_t>;
 using DeviceIdsMapInfo = DenseMapInfo<ArrayRef<int64_t>>;
+using AxisRefVector = SmallVector<AxisRefAttr>;
 
-// A mesh without the axis names. This is used as a key to find meshes with the
-// same `axisSizes` and `deviceIds`, since a mesh with the same axis sizes and
-// device IDs is equivalent to another mesh with the same axis names even if
-// they have different axis names.
-struct MeshWithUnamedAxes {
-  SmallVector<int64_t> axisSizes;
+bool hasFakeAxis(MeshOp mesh) {
+  ArrayRef<MeshAxisAttr> axes = mesh.getMesh().getAxes();
+  if (axes.empty()) {
+    return false;
+  }
+  return axes[0].getName().starts_with("_");
+}
+
+struct MeshDeviceIdentifier {
+  int64_t totalDeviceCount;
   ArrayRef<int64_t> deviceIds;
+
+  MeshDeviceIdentifier(int64_t totalDeviceCount, ArrayRef<int64_t> deviceIds)
+      : totalDeviceCount(totalDeviceCount), deviceIds(deviceIds) {}
+
+  // Use -1 as the total device count for empty meshes, to distinguish them
+  // from meshes with all axes of size 1.
+  explicit MeshDeviceIdentifier(MeshAttr mesh)
+      : MeshDeviceIdentifier(mesh.getAxes().empty() ? -1 : mesh.getTotalSize(),
+                             mesh.getDeviceIds()) {}
 };
 
-// SmallVector is not hashable by default, so we need to define a custom
-// hasher. This is safe here since each element isn't mutable, so the key
-// is stable.
-struct MeshWithUnamedAxesInfo : public DenseMapInfo<MeshWithUnamedAxes> {
-  static inline MeshWithUnamedAxes getEmptyKey() {
-    return {{}, DeviceIdsMapInfo::getEmptyKey()};
+struct MeshDeviceIdentifierInfo : public DenseMapInfo<MeshDeviceIdentifier> {
+  static inline MeshDeviceIdentifier getEmptyKey() {
+    return {TotalDeviceCountMapInfo::getEmptyKey(),
+            DeviceIdsMapInfo::getEmptyKey()};
   }
 
-  static inline MeshWithUnamedAxes getTombstoneKey() {
-    return {{}, DeviceIdsMapInfo::getTombstoneKey()};
+  static inline MeshDeviceIdentifier getTombstoneKey() {
+    return {TotalDeviceCountMapInfo::getTombstoneKey(),
+            DeviceIdsMapInfo::getTombstoneKey()};
+  }
+  static unsigned getHashValue(const MeshDeviceIdentifier& inputs) {
+    return llvm::hash_combine(
+        TotalDeviceCountMapInfo::getHashValue(inputs.totalDeviceCount),
+        DeviceIdsMapInfo::getHashValue(inputs.deviceIds));
   }
 
-  static unsigned getHashValue(const MeshWithUnamedAxes& inputs) {
-    return llvm::hash_combine(llvm::hash_combine_range(inputs.axisSizes.begin(),
-                                                       inputs.axisSizes.end()),
-                              DeviceIdsMapInfo::getHashValue(inputs.deviceIds));
-  }
-
-  static bool isEqual(const MeshWithUnamedAxes& lhs,
-                      const MeshWithUnamedAxes& rhs) {
-    return lhs.axisSizes == rhs.axisSizes && lhs.deviceIds == rhs.deviceIds;
+  static bool isEqual(const MeshDeviceIdentifier& lhs,
+                      const MeshDeviceIdentifier& rhs) {
+    return lhs.totalDeviceCount == rhs.totalDeviceCount &&
+           lhs.deviceIds == rhs.deviceIds;
   }
 };
 
-// Maps a set vector of axis sizes to the main mesh with those matching axis
-// sizes.
-using MeshWithUnamedAxesToFirstMeshMap =
-    SmallDenseMap<MeshWithUnamedAxes, MeshOp, 4, MeshWithUnamedAxesInfo>;
-// Maps a mesh to the main mesh name that will be used (which has the same axis
-// sizes that were in `AxisSizesToFirstMeshMap`) and a map of old axis name to
-// the axis names in the main mesh.
+class AddAxisOrMergeInserter {
+ public:
+  using iterator_category = std::output_iterator_tag;
+  using value_type = void;
+  using difference_type = void;
+  using pointer = void;
+  using reference = void;
+
+  explicit AddAxisOrMergeInserter(AxisRefVector* newAxisRefs,
+                                  const MeshAttr* mesh)
+      : axisRefs(newAxisRefs), mesh(mesh) {}
+
+  // The core logic: assignment calls push_back
+  AddAxisOrMergeInserter& operator=(const AxisRefAttr& value) {
+    sdy::addAxisOrMerge(*axisRefs, value, *mesh);
+    return *this;
+  }
+
+  AddAxisOrMergeInserter& operator*() { return *this; }
+  AddAxisOrMergeInserter& operator++() { return *this; }
+  AddAxisOrMergeInserter& operator++(int) { return *this; }
+
+ private:
+  AxisRefVector* axisRefs;
+  const MeshAttr* mesh;
+};
+
+// Try to map the axes of `targetMesh` to the (sub)axes of `mainMesh`. If
+// successful, `targetToMainAxisMap` will be populated.
+bool mapTargetAxesToMainAxes(MeshOp targetMesh, MeshOp mainMesh,
+                             AxisRefMap& targetToMainAxisMap,
+                             mlir::MLIRContext* context) {
+  ArrayRef<MeshAxisAttr> mainAxes = mainMesh.getMesh().getAxes();
+  ArrayRef<MeshAxisAttr> targetAxes = targetMesh.getMesh().getAxes();
+  int mainAxisIndex = 0, targetAxisIndex = 0;
+  int64_t preSize = 1, remainingMainAxisSize = 1;
+  while (mainAxisIndex < mainAxes.size() &&
+         targetAxisIndex < targetAxes.size()) {
+    const MeshAxisAttr mainAxis = mainAxes[mainAxisIndex];
+    const MeshAxisAttr targetAxis = targetAxes[targetAxisIndex];
+    if (mainAxis.getSize() == 1 && targetAxis.getSize() != 1) {
+      mainAxisIndex++;
+      continue;
+    }
+    // We can leave mainAxis of size 1 without being mapped.
+    if (targetAxis.getSize() == 1 && mainAxis.getSize() != 1) {
+      return false;
+    }
+    // The targetAxis of size 1 can only be mapped to a mainAxis of size 1.
+    if (remainingMainAxisSize == 1) {
+      remainingMainAxisSize = mainAxis.getSize();
+    }
+    if (remainingMainAxisSize % targetAxis.getSize() != 0) {
+      return false;
+    }
+    const AxisRefAttr targetAxisRef =
+        AxisRefAttr::get(context, targetAxis.getName());
+    // Set SubAxisInfoAttr to null when target axis maps to an entire main axis.
+    const AxisRefAttr mainAxisRef = AxisRefAttr::get(
+        context, mainAxis.getName(),
+        mainAxis.getSize() == targetAxis.getSize()
+            ? nullptr
+            : SubAxisInfoAttr::get(context, preSize, targetAxis.getSize()));
+    targetToMainAxisMap[targetAxisRef] = mainAxisRef;
+    preSize *= targetAxis.getSize();
+    targetAxisIndex++;
+    remainingMainAxisSize /= targetAxis.getSize();
+    if (remainingMainAxisSize == 1) {
+      preSize = 1;
+      mainAxisIndex++;
+    }
+  }
+  CHECK_EQ(remainingMainAxisSize, 1);
+  return mainAxisIndex == mainAxes.size() &&
+         targetAxisIndex == targetAxes.size();
+}
+
+// Maps a pair of <total number of devices, device_ids> to a list of meshes
+// that share those properties. Total number of devices is used to distinguish
+// default meshes.
+using MeshIdentifierToMainMeshesMap =
+    SmallDenseMap<MeshDeviceIdentifier, MeshOp, 4, MeshDeviceIdentifierInfo>;
+
+// Maps a mesh name to the main mesh name that will be used to replace it, and a
+// map of old axes to the (sub)axes in the main mesh.
 using MeshToAxisMap =
-    SmallDenseMap<StringRef, std::pair<StringRef, StringMap<StringRef>>>;
+    SmallDenseMap<StringRef, std::pair<StringRef, AxisRefMap>>;
 
 // Builds a map of meshes to the main mesh name that will be used (which has the
-// same axis sizes that were in `AxisSizesToFirstMeshMap`) and a map of old axis
-// name to the axis names in the main mesh.
+// same total number of devices and device_ids) and a map of old axis name to
+// the axis names in the main mesh.
 //
 // NOTE: the main mesh will not be saved as a key in the map, since it won't
 // need to be replaced.
 MeshToAxisMap buildDuplicateMeshesToAxisMap(ModuleOp moduleOp) {
+  MeshIdentifierToMainMeshesMap meshIdentifierToMainMeshesMap;
   MeshToAxisMap duplicateMeshesToAxisMap;
-  MeshWithUnamedAxesToFirstMeshMap meshWithUnamedAxesToFirstMeshMap;
+  // Use the first mesh with real axes as the main mesh. Use the first mesh if
+  // all meshes have fake axes.
   for (MeshOp meshOp : moduleOp.getOps<MeshOp>()) {
-    SmallVector<int64_t> meshSizes;
-    MeshAttr meshAttr = meshOp.getMeshAttr();
-    meshSizes.reserve(meshAttr.getAxes().size());
-    for (sdy::MeshAxisAttr axis : meshAttr.getAxes()) {
-      meshSizes.push_back(axis.getSize());
-    }
-    if (meshSizes.empty() && !meshOp.getMesh().isMaximal()) {
-      // This can happen for empty maximal meshes. Use {-1} for it since an
-      // empty/tombstone value can't be used as a key in the map.
-      meshSizes = {-1};
-    }
-    // NOTE: we don't allow an explicit iota list of device IDs as part of
-    // verification. So we don't need to worry about an empty list of device IDs
-    // and an iota list of device IDs being equivalent but different keys in the
-    // map.
-    auto [entries, inserted] = meshWithUnamedAxesToFirstMeshMap.try_emplace(
-        MeshWithUnamedAxes{meshSizes, meshOp.getMesh().getDeviceIds()}, meshOp);
+    auto [entries, inserted] = meshIdentifierToMainMeshesMap.try_emplace(
+        MeshDeviceIdentifier{meshOp.getMesh()}, meshOp);
     if (inserted) {
       continue;
     }
-    StringMap<StringRef> oldToNewAxis;
-    MeshOp mainMesh = entries->getSecond();
-    for (auto [oldAxis, newAxisName] :
-         llvm::zip_equal(meshOp.getMeshAttr().getAxes(),
-                         mainMesh.getMeshAttr().getAxes())) {
-      oldToNewAxis[oldAxis.getName()] = newAxisName.getName();
+    MeshOp& mainMesh = entries->getSecond();
+    // Update the main mesh if current mesh is real and main mesh is fake.
+    if (hasFakeAxis(meshOp) || !hasFakeAxis(mainMesh)) {
+      continue;
     }
-    duplicateMeshesToAxisMap.try_emplace(
-        meshOp.getSymName(), mainMesh.getSymName(), std::move(oldToNewAxis));
-  };
+    mainMesh = meshOp;
+  }
+  for (MeshOp targetMesh : moduleOp.getOps<MeshOp>()) {
+    MeshOp mainMesh = meshIdentifierToMainMeshesMap.lookup(
+        MeshDeviceIdentifier{targetMesh.getMesh()});
+    if (targetMesh == mainMesh) {
+      continue;
+    }
+    SmallDenseMap<AxisRefAttr, AxisRefAttr> targetToMainAxisMap;
+    if (mapTargetAxesToMainAxes(targetMesh, mainMesh, targetToMainAxisMap,
+                                moduleOp.getContext())) {
+      duplicateMeshesToAxisMap.try_emplace(targetMesh.getSymName(),
+                                           mainMesh.getSymName(),
+                                           std::move(targetToMainAxisMap));
+    }
+  }
   return duplicateMeshesToAxisMap;
 }
 
@@ -170,33 +264,50 @@ void dedupMeshes(ModuleOp moduleOp,
           return oldSharding;
         }
         auto [mainMeshName, axisMap] = meshNameAndAxisMap->getSecond();
+        MeshAttr newMesh =
+            sdy::getMeshOp(SymbolTable(moduleOp), mainMeshName).getMesh();
         auto buildNewAxisRef = [&, &axisMap = axisMap](AxisRefAttr oldAxisRef) {
-          return AxisRefAttr::get(context, axisMap.at(oldAxisRef.getName()),
-                                  oldAxisRef.getSubAxisInfo());
+          // If the old axis had a sub-axis info, we need to look up the
+          // corresponding main axis without sub-axis info, and build the new
+          // axis info.
+          if (oldAxisRef.getSubAxisInfo()) {
+            AxisRefAttr mappedAxisRef =
+                axisMap.at(AxisRefAttr::get(context, oldAxisRef.getName()));
+            SubAxisInfoAttr newSubAxisInfo = SubAxisInfoAttr::get(
+                context,
+                mappedAxisRef.getSubAxisPreSize() *
+                    oldAxisRef.getSubAxisInfo().getPreSize(),
+                oldAxisRef.getSubAxisInfo().getSize());
+            return AxisRefAttr::get(context, mappedAxisRef.getName(),
+                                    newSubAxisInfo);
+          }
+          return axisMap.at(oldAxisRef);
         };
         SmallVector<DimensionShardingAttr> newDimShardings;
         newDimShardings.reserve(oldSharding.getDimShardings().size());
         for (DimensionShardingAttr oldDimSharding :
              oldSharding.getDimShardings()) {
-          SmallVector<AxisRefAttr> newAxisRefs;
+          AxisRefVector newAxisRefs;
           newAxisRefs.reserve(oldDimSharding.getAxes().size());
           llvm::transform(oldDimSharding.getAxes(),
-                          std::back_inserter(newAxisRefs), buildNewAxisRef);
+                          AddAxisOrMergeInserter(&newAxisRefs, &newMesh),
+                          buildNewAxisRef);
           newDimShardings.push_back(DimensionShardingAttr::get(
               context, newAxisRefs, oldDimSharding.getIsClosed(),
               oldDimSharding.getPriority()));
         }
         auto buildNewAxisRefList =
-            [buildNewAxisRef](ArrayRef<AxisRefAttr> oldAxisRefs) {
-              SmallVector<AxisRefAttr> newAxisRefs;
+            [buildNewAxisRef, newMesh](ArrayRef<AxisRefAttr> oldAxisRefs) {
+              AxisRefVector newAxisRefs;
               newAxisRefs.reserve(oldAxisRefs.size());
-              llvm::transform(oldAxisRefs, std::back_inserter(newAxisRefs),
+              llvm::transform(oldAxisRefs,
+                              AddAxisOrMergeInserter(&newAxisRefs, &newMesh),
                               buildNewAxisRef);
               return newAxisRefs;
             };
-        SmallVector<AxisRefAttr> newReplicatedAxes =
+        AxisRefVector newReplicatedAxes =
             buildNewAxisRefList(oldSharding.getReplicatedAxes());
-        SmallVector<AxisRefAttr> newUnreducedAxes =
+        AxisRefVector newUnreducedAxes =
             buildNewAxisRefList(oldSharding.getUnreducedAxes());
         return TensorShardingAttr::get(context, mainMeshName, newDimShardings,
                                        newReplicatedAxes, newUnreducedAxes);

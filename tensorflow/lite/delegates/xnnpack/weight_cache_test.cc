@@ -1087,5 +1087,38 @@ TEST_P(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
   }
 }
 
+class IsCompatibleCacheFileTest : public testing::Test {
+ public:
+  void SetUp() override {
+    header_.version = XNNPackCacheHeader::kVersion;
+    memcpy(header_.xnnpack_build_identifier,
+           xnn_experimental_get_build_identifier_data(),
+           xnn_experimental_get_build_identifier_size());
+  }
+
+  bool WriteHeaderAndReturnIsCompatibleCacheFile() {
+    const bool res = fd_.Write(&header_, sizeof(header_));
+    fd_.Close();
+    return res && IsCompatibleCacheFile(fd_.GetCPath());
+  }
+
+  XNNPackCacheHeader header_{};
+  TempFileDesc fd_;
+};
+
+TEST_F(IsCompatibleCacheFileTest, ReturnsTrueForACorrectHeader) {
+  EXPECT_TRUE(WriteHeaderAndReturnIsCompatibleCacheFile());
+}
+
+TEST_F(IsCompatibleCacheFileTest, ReturnsFalseForWrongHeaderVersion) {
+  header_.version += 1;
+  EXPECT_FALSE(WriteHeaderAndReturnIsCompatibleCacheFile());
+}
+
+TEST_F(IsCompatibleCacheFileTest, ReturnsFalseForWrongBuildIdentifier) {
+  header_.xnnpack_build_identifier[0] += 1;
+  EXPECT_FALSE(WriteHeaderAndReturnIsCompatibleCacheFile());
+}
+
 }  // namespace
 }  // namespace tflite::xnnpack

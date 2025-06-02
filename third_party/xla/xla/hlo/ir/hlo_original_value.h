@@ -46,14 +46,11 @@ class OriginalValue : public ShapeTree<std::optional<OriginalTensor>> {
       const xla::OriginalValueProto& original_value_proto);
 };
 
-// Associates the original value of the source to the destination instruction.
-// Note the original values of fused instructions are copied when they are added
-// into a fusion, so it's not required to move the value if the target is a
-// fusion instruction, which should have the same original value as the root of
-// the fused computation anyway. However, we will move the value nontheless to
-// simplify some use cases that involve fusions.
-void MoveOriginalValue(const HloInstruction* src_instruction,
-                       HloInstruction* dest_instruction);
+// Copies the original value of the source to the destination instruction. This
+// performs a deep copy if clone is set to true. Otherwise, it performs a
+// shallow copy.
+void CopyOriginalValue(const HloInstruction* src_instruction,
+                       HloInstruction* dest_instruction, bool clone);
 }  // namespace xla
 
 #endif  // XLA_HLO_IR_HLO_ORIGINAL_VALUE_H_

@@ -2987,6 +2987,7 @@ cc_library(
     hdrs = ["dynamic_padder.h"],
     deps = [
         ":call_graph",
+        ":call_inliner",
         ":dynamic_dimension_inference",
         ":dynamic_window_utils",
         ":hlo_creation_utils",
@@ -3003,6 +3004,7 @@ cc_library(
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/hlo/transforms/simplifiers:flatten_call_graph",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/tsl/lib/monitoring:gauge",
         "@com_google_absl//absl/algorithm:container",
@@ -5869,6 +5871,7 @@ xla_cc_test(
     name = "propagate_original_value_test",
     srcs = ["propagate_original_value_test.cc"],
     deps = [
+        ":call_inliner",
         ":instruction_fusion",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -5958,6 +5961,7 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test_helpers",
+        "//xla/hlo/utils:hlo_matchers",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",

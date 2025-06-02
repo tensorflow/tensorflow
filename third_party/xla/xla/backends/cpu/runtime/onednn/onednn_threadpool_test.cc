@@ -53,10 +53,7 @@ static absl::StatusOr<dnnl::graph::graph> CreateExpGraph(
 
 TEST(OneDnnThreadPoolTest, Binary) {
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "test", 32);
-  Eigen::ThreadPoolDevice device(threads.AsEigenThreadPool(),
-                                 threads.NumThreads());
-
-  OneDnnThreadPool threadpool(&device);
+  OneDnnThreadPool threadpool(threads.AsEigenThreadPool());
 
   int64_t d0 = 100;
   int64_t d1 = 1000;

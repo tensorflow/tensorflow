@@ -73,10 +73,8 @@ SelfAdjointEigResult SelfAdjointEig(XlaOp a, bool lower, int64_t max_iter,
             : type;
     std::vector<int64_t> eigvals_dims = batch_dims;
     eigvals_dims.push_back(m);
-    Shape eigh_shape =
-        ShapeUtil::MakeValidatedTupleShape(
-            {a_shape, ShapeUtil::MakeShape(eigvals_type, eigvals_dims)})
-            .value();
+    Shape eigh_shape = ShapeUtil::MakeTupleShape(
+        {a_shape, ShapeUtil::MakeShape(eigvals_type, eigvals_dims)});
     // TODO(phawkins): upgrade Eigh decomposition to a first-class HLO operator.
     std::string opaque =
         absl::StrFormat("%d,%d,%d,%f", lower, sort_eigenvalues, max_iter, tol);

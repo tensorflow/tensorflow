@@ -187,7 +187,8 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
          std::vector<xla::ifrt::Device*> primary_device_ptrs,
          std::vector<xla::ifrt::Device*> addressable_device_ptrs,
          std::vector<xla::ifrt::Device*> all_device_ptrs,
-         absl::flat_hash_map<int, std::unique_ptr<Memory>> memories);
+         absl::flat_hash_map<int, std::unique_ptr<Memory>> memories,
+         AttributeMap attributes);
 
   // rpc_helper_ will be referenced by various IFRT objects whose lifetime is
   // managed by the layer above the IFRT interface, so shared_ptr is

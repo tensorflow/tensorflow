@@ -787,11 +787,11 @@ class HloInstruction {
 
   // Creates an instruction that returns a U32 replica ID.
   static std::unique_ptr<HloInstruction> CreateReplicaId(
-      const Shape& shape = ShapeUtil::MakeValidatedShape(U32, {}).value());
+      const Shape& shape = ShapeUtil::MakeShape(U32, {}));
 
   // Creates an instruction that returns a U32 partition ID.
   static std::unique_ptr<HloInstruction> CreatePartitionId(
-      const Shape& shape = ShapeUtil::MakeValidatedShape(U32, {}).value());
+      const Shape& shape = ShapeUtil::MakeShape(U32, {}));
 
   // Creates a conversion instruction, where operand is the data to convert and
   // shape is the target shape for the conversion.
@@ -2392,6 +2392,10 @@ class HloInstruction {
 
   std::shared_ptr<OriginalValue> original_value() const;
   void set_original_value(std::shared_ptr<OriginalValue> original_value);
+
+  // Copy original value from the input instruction. This performs a deep copy
+  // if clone is set to true. Otherwise, it performs a shallow copy.
+  void CopyOriginalValue(const HloInstruction* instruction, bool clone);
 
  protected:
   // Internal constructor for a given opcode/shape, other fields must be filled

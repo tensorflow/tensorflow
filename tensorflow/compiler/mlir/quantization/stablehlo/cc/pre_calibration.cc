@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pass_pipeline.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_pass_pipeline.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
@@ -38,8 +38,9 @@ absl::StatusOr<ModuleOp> PreCalibrationComponent::Run(
   TF_RETURN_IF_ERROR(RunPasses(
       kName, /*add_passes_func=*/
       [&config](PassManager& pm) {
-        AddPreCalibrationPasses(pm, config.calibration_options(),
-                                config.specs(), config.debugger_config());
+        tf_quant::stablehlo::AddPreCalibrationPasses(
+            pm, config.calibration_options(), config.specs(),
+            config.debugger_config());
       },
       *ctx_, module_op));
   return module_op;

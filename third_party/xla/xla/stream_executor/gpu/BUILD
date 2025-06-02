@@ -172,6 +172,7 @@ cc_library(
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:platform",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:env",
@@ -766,13 +767,14 @@ cc_library(
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@llvm-project//llvm:Support",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -784,7 +786,6 @@ xla_cc_test(
         "//xla/tsl/platform:status_matchers",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -839,6 +840,7 @@ exports_files([
     "buffer_comparator_kernel_lib.cu.h",
     "all_reduce_kernel_lib.cu.h",
     "ragged_all_to_all_kernel_lib.cu.h",
+    "repeat_buffer_kernel.cu.h",
 ])
 
 cc_library(
@@ -875,5 +877,38 @@ cc_library(
     deps = [
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:kernel",
+    ],
+)
+
+cc_library(
+    name = "repeat_buffer_kernel",
+    hdrs = ["repeat_buffer_kernel.h"],
+    deps = [
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
+    ],
+)
+
+xla_test(
+    name = "repeat_buffer_kernel_test",
+    srcs = ["repeat_buffer_kernel_test.cc"],
+    backends = ["gpu"],
+    disabled_backends = [],
+    deps = [
+        ":gpu_kernel_registry",
+        ":repeat_buffer_kernel",
+        "//xla/service:platform_util",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )

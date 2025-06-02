@@ -475,9 +475,9 @@ xla_cc_test(
 )
 
 xla_cc_test(
-    name = "pjrt_array_impl_test_tfrt_cpu",
+    name = "pjrt_array_impl_test_cpu",
     size = "small",
-    srcs = ["pjrt_array_impl_test_tfrt_cpu.cc"],
+    srcs = ["pjrt_array_impl_test_cpu.cc"],
     deps = [
         ":pjrt_cpu_client_multi_process_test_lib",
         "//xla/python/ifrt:array_impl_test_lib",
@@ -488,7 +488,7 @@ xla_cc_test(
 )
 
 xla_cc_test(
-    name = "pjrt_client_impl_test_tfrt_cpu",
+    name = "pjrt_client_impl_test_cpu",
     size = "small",
     srcs = [],
     deps = [
@@ -499,9 +499,9 @@ xla_cc_test(
 )
 
 xla_cc_test(
-    name = "pjrt_executable_impl_test_tfrt_cpu",
+    name = "pjrt_executable_impl_test_cpu",
     size = "small",
-    srcs = ["pjrt_executable_impl_test_tfrt_cpu.cc"],
+    srcs = ["pjrt_executable_impl_test_cpu.cc"],
     deps = [
         ":pjrt_cpu_client_multi_process_test_lib",
         ":xla_executable_impl_test_lib",
@@ -512,7 +512,7 @@ xla_cc_test(
 )
 
 xla_cc_test(
-    name = "pjrt_tuple_impl_test_tfrt_cpu",
+    name = "pjrt_tuple_impl_test_cpu",
     size = "small",
     srcs = [],
     deps = [
@@ -523,7 +523,7 @@ xla_cc_test(
 )
 
 xla_cc_test(
-    name = "pjrt_remap_impl_test_tfrt_cpu",
+    name = "pjrt_remap_impl_test_cpu",
     size = "small",
     srcs = [],
     deps = [

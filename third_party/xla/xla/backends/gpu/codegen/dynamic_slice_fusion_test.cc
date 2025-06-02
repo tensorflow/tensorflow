@@ -13,15 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/strings/ascii.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -34,7 +37,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
-#include "xla/service/custom_call_target_registry.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -42,10 +44,10 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
+#include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/errors.h"
@@ -54,35 +56,14 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
-#define PLATFORM "CUDA"
-#if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"  // IWYU pragma: keep
-#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
-#include "third_party/gpus/cuda/include/driver_types.h"
-#elif TENSORFLOW_USE_ROCM
-#include "rocm/include/hip/hip_runtime.h"
-#define PLATFORM "ROCM"
-#endif
-
-#if GOOGLE_CUDA
-#define gpuSuccess cudaSuccess
-#define gpuMemcpyAsync cudaMemcpyAsync
-#define gpuMemcpyDeviceToDevice cudaMemcpyDeviceToDevice
-#define gpuMemcpy cudaMemcpy
-#define gpuMemcpyDeviceToHost cudaMemcpyDeviceToHost
-#define gpuMemcpyHostToDevice cudaMemcpyHostToDevice
-#elif TENSORFLOW_USE_ROCM
-#define gpuSuccess hipSuccess
-#define gpuMemcpyAsync hipMemcpyAsync
-#define gpuMemcpyDeviceToDevice hipMemcpyDeviceToDevice
-#define gpuMemcpy hipMemcpy
-#define gpuMemcpyDeviceToHost hipMemcpyDeviceToHost
-#define gpuMemcpyHostToDevice hipMemcpyHostToDevice
-#endif
-
 namespace xla {
 namespace gpu {
 namespace {
+
+std::string GetPlatformName() {
+  return absl::AsciiStrToUpper(
+      PlatformUtil::CanonicalPlatformName("gpu").value());
+}
 
 using ::testing::ElementsAre;
 using ::testing::Optional;
@@ -986,7 +967,9 @@ XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
                            .Arg<ffi::AnyBuffer>()  // src
                            .Ret<ffi::AnyBuffer>()  // dst
 );
-XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", PLATFORM,
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", "CUDA",
+                         kMemcpy);
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", "ROCM",
                          kMemcpy);
 
 TEST_F(DynamicSliceFusionTest, CustomCallSimple) {
@@ -995,7 +978,7 @@ TEST_F(DynamicSliceFusionTest, CustomCallSimple) {
              /*operands=*/
              {Slice(Broadcast(ConstantR0WithType(&b, F32, 42.0), {256}), {0},
                     {128}, {1})},
-             ShapeUtil::MakeValidatedShape(F32, {128}).value(), /*opaque=*/"",
+             ShapeUtil::MakeShape(F32, {128}), /*opaque=*/"",
              /*has_side_effect=*/false,
              /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
@@ -1016,7 +999,7 @@ TEST_F(DynamicSliceFusionTest, CustomCallSimple) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
-  DynamicSliceFusionRewriter pass(PLATFORM);
+  DynamicSliceFusionRewriter pass(GetPlatformName());
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
@@ -1097,8 +1080,10 @@ XLA_FFI_DEFINE_HANDLER(kSubBuffers, SubBuffers,
                            .Ret<ffi::AnyBuffer>()  // dst5
                            .Ret<ffi::AnyBuffer>()  // dst6
 );
-XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$subbuffers",
-                         PLATFORM, kSubBuffers);
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$subbuffers", "CUDA",
+                         kSubBuffers);
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$subbuffers", "ROCM",
+                         kSubBuffers);
 
 TEST_F(DynamicSliceFusionTest, CustomCallWithTuple) {
   XlaBuilder b(TestName());
@@ -1124,26 +1109,22 @@ TEST_F(DynamicSliceFusionTest, CustomCallWithTuple) {
                               Broadcast(ConstantR0WithType(&b, F32, 6), {32}),
                               Broadcast(ConstantR0WithType(&b, F32, 7), {64}),
                           }),
-                    Slice(Parameter(&b, 0,
-                                    ShapeUtil::MakeValidatedShape(S32, {4, 128})
-                                        .value(),
+                    Slice(Parameter(&b, 0, ShapeUtil::MakeShape(S32, {4, 128}),
                                     "p0"),
                           {1, 0}, {4, 128}, {1, 1}),
                 }),
       },
-      ShapeUtil::MakeValidatedTupleShape(
-          {
-              ShapeUtil::MakeShape(F32, {8}),
-              ShapeUtil::MakeTupleShape({
-                  ShapeUtil::MakeShape(F32, {128}),
-                  ShapeUtil::MakeShape(F32, {256}),
-              }),
-              ShapeUtil::MakeShape(F32, {1024}),
-              ShapeUtil::MakeShape(F32, {4, 8}),
-              ShapeUtil::MakeShape(F32, {3, 128}),
-              ShapeUtil::MakeShape(F32, {32 + 64}),
-          })
-          .value(),
+      ShapeUtil::MakeTupleShape({
+          ShapeUtil::MakeShape(F32, {8}),
+          ShapeUtil::MakeTupleShape({
+              ShapeUtil::MakeShape(F32, {128}),
+              ShapeUtil::MakeShape(F32, {256}),
+          }),
+          ShapeUtil::MakeShape(F32, {1024}),
+          ShapeUtil::MakeShape(F32, {4, 8}),
+          ShapeUtil::MakeShape(F32, {3, 128}),
+          ShapeUtil::MakeShape(F32, {32 + 64}),
+      }),
       /*opaque=*/"",
       /*has_side_effect=*/false,
       /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
@@ -1168,7 +1149,7 @@ TEST_F(DynamicSliceFusionTest, CustomCallWithTuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
 
-  DynamicSliceFusionRewriter pass(PLATFORM);
+  DynamicSliceFusionRewriter pass(GetPlatformName());
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
@@ -1185,7 +1166,9 @@ XLA_FFI_DEFINE_HANDLER(kNoOp, NoOp,
                            .Ctx<ffi::Stream>()     // stream
                            .Arg<ffi::AnyBuffer>()  // operand
 );
-XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$noop", PLATFORM,
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$noop", "CUDA",
+                         kNoOp);
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$noop", "ROCM",
                          kNoOp);
 
 TEST_F(DynamicSliceFusionTest, NilTuple) {
@@ -1219,7 +1202,7 @@ TEST_F(DynamicSliceFusionTest, NilTuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
 
-  DynamicSliceFusionRewriter pass(PLATFORM);
+  DynamicSliceFusionRewriter pass(GetPlatformName());
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
@@ -2514,11 +2497,9 @@ TEST_F(DynamicSliceFusionTest, DynamicCustomCallSimple) {
   CustomCall(
       &b, "__xla_test$$memcpy",
       /*operands=*/
-      {DynamicSlice(
-          Parameter(&b, 0, ShapeUtil::MakeValidatedShape(S32, {4, 128}).value(),
-                    "p0"),
-          {ConstantR0(&b, 2), ConstantR0(&b, 0)}, {2, 128})},
-      ShapeUtil::MakeValidatedShape(F32, {2, 128}).value(), /*opaque=*/"",
+      {DynamicSlice(Parameter(&b, 0, ShapeUtil::MakeShape(S32, {4, 128}), "p0"),
+                    {ConstantR0(&b, 2), ConstantR0(&b, 0)}, {2, 128})},
+      ShapeUtil::MakeShape(F32, {2, 128}), /*opaque=*/"",
       /*has_side_effect=*/false,
       /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
       /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
@@ -2538,7 +2519,7 @@ TEST_F(DynamicSliceFusionTest, DynamicCustomCallSimple) {
                                             computation.proto(), hlo_config));
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
-  DynamicSliceFusionRewriter pass(PLATFORM);
+  DynamicSliceFusionRewriter pass(GetPlatformName());
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
@@ -2563,35 +2544,30 @@ TEST_F(DynamicSliceFusionTest, DynamicCustomCallWithTuple) {
                 }),
           Slice(Broadcast(ConstantR0WithType(&b, F32, 5), {8, 8}), {0, 0},
                 {4, 8}, {1, 1}),
-          Tuple(
-              &b,
-              {
-                  Tuple(&b,
-                        {
-                            Broadcast(ConstantR0WithType(&b, F32, 6), {32}),
-                            Broadcast(ConstantR0WithType(&b, F32, 7), {64}),
-                        }),
-                  DynamicSlice(
-                      Parameter(
-                          &b, 0,
-                          ShapeUtil::MakeValidatedShape(S32, {4, 128}).value(),
-                          "p0"),
-                      {ConstantR0(&b, 20), ConstantR0(&b, 0)}, {3, 128}),
-              }),
+          Tuple(&b,
+                {
+                    Tuple(&b,
+                          {
+                              Broadcast(ConstantR0WithType(&b, F32, 6), {32}),
+                              Broadcast(ConstantR0WithType(&b, F32, 7), {64}),
+                          }),
+                    DynamicSlice(
+                        Parameter(&b, 0, ShapeUtil::MakeShape(S32, {4, 128}),
+                                  "p0"),
+                        {ConstantR0(&b, 20), ConstantR0(&b, 0)}, {3, 128}),
+                }),
       },
-      ShapeUtil::MakeValidatedTupleShape(
-          {
-              ShapeUtil::MakeShape(F32, {8}),
-              ShapeUtil::MakeTupleShape({
-                  ShapeUtil::MakeShape(F32, {128}),
-                  ShapeUtil::MakeShape(F32, {256}),
-              }),
-              ShapeUtil::MakeShape(F32, {1024}),
-              ShapeUtil::MakeShape(F32, {4, 8}),
-              ShapeUtil::MakeShape(F32, {3, 128}),
-              ShapeUtil::MakeShape(F32, {32 + 64}),
-          })
-          .value(),
+      ShapeUtil::MakeTupleShape({
+          ShapeUtil::MakeShape(F32, {8}),
+          ShapeUtil::MakeTupleShape({
+              ShapeUtil::MakeShape(F32, {128}),
+              ShapeUtil::MakeShape(F32, {256}),
+          }),
+          ShapeUtil::MakeShape(F32, {1024}),
+          ShapeUtil::MakeShape(F32, {4, 8}),
+          ShapeUtil::MakeShape(F32, {3, 128}),
+          ShapeUtil::MakeShape(F32, {32 + 64}),
+      }),
       /*opaque=*/"",
       /*has_side_effect=*/false,
       /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
@@ -2616,7 +2592,7 @@ TEST_F(DynamicSliceFusionTest, DynamicCustomCallWithTuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
 
-  DynamicSliceFusionRewriter pass(PLATFORM);
+  DynamicSliceFusionRewriter pass(GetPlatformName());
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
   EXPECT_TRUE(*RunFileCheck(hlo_opt->ToString(), R"(
@@ -2699,15 +2675,17 @@ XLA_FFI_DEFINE_HANDLER(kSubBuffers2, SubBuffers2,
                            .Ret<ffi::AnyBuffer>()  // dst5
                            .Ret<ffi::AnyBuffer>()  // dst6
 );
-XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$subbuffers2",
-                         PLATFORM, kSubBuffers2);
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$subbuffers2", "CUDA",
+                         kSubBuffers2);
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$subbuffers2", "ROCM",
+                         kSubBuffers2);
 
 TEST_F(DynamicSliceFusionTest, CustomCallDUSTuple) {
   XlaBuilder b(TestName());
-  auto big_buffer1 = Parameter(
-      &b, 0, ShapeUtil::MakeValidatedShape(F32, {10, 128}).value(), "p0");
-  auto big_buffer2 = Parameter(
-      &b, 1, ShapeUtil::MakeValidatedShape(F32, {10, 256}).value(), "p1");
+  auto big_buffer1 =
+      Parameter(&b, 0, ShapeUtil::MakeShape(F32, {10, 128}), "p0");
+  auto big_buffer2 =
+      Parameter(&b, 1, ShapeUtil::MakeShape(F32, {10, 256}), "p1");
   auto custom_call = CustomCall(
       &b, "__xla_test$$subbuffers2", /*operands=*/
       {
@@ -2738,21 +2716,19 @@ TEST_F(DynamicSliceFusionTest, CustomCallDUSTuple) {
                       }),
               }),
       },
-      ShapeUtil::MakeValidatedTupleShape(
-          {
-              ShapeUtil::MakeShape(F32, {8}),
-              ShapeUtil::MakeTupleShape({
-                  ShapeUtil::MakeShape(F32, {128}),
-                  ShapeUtil::MakeShape(F32, {256}),
-              }),
-              ShapeUtil::MakeShape(F32, {1024}),
-              ShapeUtil::MakeShape(F32, {4, 8}),
-              ShapeUtil::MakeTupleShape({
-                  ShapeUtil::MakeShape(F32, {5, 128}),
-                  ShapeUtil::MakeShape(F32, {3, 128}),
-              }),
-          })
-          .value(),
+      ShapeUtil::MakeTupleShape({
+          ShapeUtil::MakeShape(F32, {8}),
+          ShapeUtil::MakeTupleShape({
+              ShapeUtil::MakeShape(F32, {128}),
+              ShapeUtil::MakeShape(F32, {256}),
+          }),
+          ShapeUtil::MakeShape(F32, {1024}),
+          ShapeUtil::MakeShape(F32, {4, 8}),
+          ShapeUtil::MakeTupleShape({
+              ShapeUtil::MakeShape(F32, {5, 128}),
+              ShapeUtil::MakeShape(F32, {3, 128}),
+          }),
+      }),
       /*opaque=*/"",
       /*has_side_effect=*/false,
       /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
@@ -2769,11 +2745,9 @@ TEST_F(DynamicSliceFusionTest, CustomCallDUSTuple) {
       big_buffer2,
       xla::internal::XlaBuilderFriend::BuildBitcast(
           &b, GetTupleElement(custom_call, 2),
-          ShapeUtil::MakeValidatedShape(F32, {4, 256}).value()),
-      {Parameter(&b, 2, ShapeUtil::MakeValidatedShape(S32, {}).value(),
-                 "start0"),
-       Parameter(&b, 3, ShapeUtil::MakeValidatedShape(S32, {}).value(),
-                 "start1")});
+          ShapeUtil::MakeShape(F32, {4, 256})),
+      {Parameter(&b, 2, ShapeUtil::MakeShape(S32, {}), "start0"),
+       Parameter(&b, 3, ShapeUtil::MakeShape(S32, {}), "start1")});
   Tuple(&b, {dus1, dus2, dus3});
 
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
@@ -2795,7 +2769,7 @@ TEST_F(DynamicSliceFusionTest, CustomCallDUSTuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
 
-  DynamicSliceFusionRewriter pass(PLATFORM);
+  DynamicSliceFusionRewriter pass(GetPlatformName());
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 

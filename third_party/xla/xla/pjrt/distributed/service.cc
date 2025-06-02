@@ -97,6 +97,8 @@ DistributedRuntimeService::Get(
     const CoordinationServiceImpl::Options& options) {
   ::grpc::ServerBuilder builder;
   builder.AddListeningPort(address, credentials);
+  builder.SetMaxReceiveMessageSize(-1);
+  builder.SetMaxSendMessageSize(-1);
   VLOG(1) << "Distributed runtime service address " << address;
   auto service = std::make_unique<DistributedRuntimeService>(options, &builder);
   if (!service->server_) {

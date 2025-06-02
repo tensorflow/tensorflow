@@ -105,13 +105,11 @@ XLA_TEST_F(CopyOpTest, CopyDynamicR1S1310720U32Dynamic0) {
     GTEST_SKIP();
   }
   Shape bounded_shape =
-      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {1310720}, {true})
-          .value();
-  TestDynamicCopyOp(
-      LiteralUtil::CreateRandomLiteral<PrimitiveType::F32>(
-          ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {0}).value(), 0, 1)
-          .value(),
-      bounded_shape);
+      ShapeUtil::MakeShape(PrimitiveType::F32, {1310720}, {true});
+  TestDynamicCopyOp(LiteralUtil::CreateRandomLiteral<PrimitiveType::F32>(
+                        ShapeUtil::MakeShape(PrimitiveType::F32, {0}), 0, 1)
+                        .value(),
+                    bounded_shape);
 }
 
 XLA_TEST_F(CopyOpTest, CopyDynamicR1S1310720U32Dynamic106632) {
@@ -120,12 +118,10 @@ XLA_TEST_F(CopyOpTest, CopyDynamicR1S1310720U32Dynamic106632) {
     GTEST_SKIP();
   }
   Shape bounded_shape =
-      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {1310720}, {true})
-          .value();
+      ShapeUtil::MakeShape(PrimitiveType::F32, {1310720}, {true});
   TestDynamicCopyOp(
       LiteralUtil::CreateRandomLiteral<PrimitiveType::F32>(
-          ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {106632}).value(),
-          0, 1)
+          ShapeUtil::MakeShape(PrimitiveType::F32, {106632}), 0, 1)
           .value(),
       bounded_shape);
 }
@@ -136,12 +132,10 @@ XLA_TEST_F(CopyOpTest, CopyDynamicR1S1310720U32Dynamic1310720) {
     GTEST_SKIP();
   }
   Shape bounded_shape =
-      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {1310720}, {true})
-          .value();
+      ShapeUtil::MakeShape(PrimitiveType::F32, {1310720}, {true});
   TestDynamicCopyOp(
       LiteralUtil::CreateRandomLiteral<PrimitiveType::F32>(
-          ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {1310720}).value(),
-          0, 1)
+          ShapeUtil::MakeShape(PrimitiveType::F32, {1310720}), 0, 1)
           .value(),
       bounded_shape);
 }
@@ -151,13 +145,11 @@ XLA_TEST_F(CopyOpTest, CopyDynamicR1S512U32Dynamic64) {
   if (test_runner().HasProperty(HloRunnerPropertyTag::kCpu)) {
     GTEST_SKIP();
   }
-  Shape bounded_shape =
-      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {512}, {true}).value();
-  TestDynamicCopyOp(
-      LiteralUtil::CreateRandomLiteral<PrimitiveType::F32>(
-          ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {64}).value(), 0, 1)
-          .value(),
-      bounded_shape);
+  Shape bounded_shape = ShapeUtil::MakeShape(PrimitiveType::F32, {512}, {true});
+  TestDynamicCopyOp(LiteralUtil::CreateRandomLiteral<PrimitiveType::F32>(
+                        ShapeUtil::MakeShape(PrimitiveType::F32, {64}), 0, 1)
+                        .value(),
+                    bounded_shape);
 }
 
 XLA_TEST_F(CopyOpTest, CopyR3F32_2x2x3) {

@@ -230,6 +230,9 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
             return delegated_->GetDefaultLayout(dtype, dims, device,
                                                 memory_kind);
           });
+  ON_CALL(*this, Attributes).WillByDefault([this]() -> const AttributeMap& {
+    return delegated_->Attributes();
+  });
 }
 // LINT.ThenChange()
 

@@ -2855,6 +2855,7 @@ static absl::Status TransformLoopBackward(
   }
   // Record the loop variant parameters used in the backward chain.
   LoopVariantParameterInfo loop_variant_parameter_info;
+  annotation_map.clear();
   // Clone loop in the body of the new loop. We change some things like
   // input/output shapes and how we connect loop iterator to the original
   // chains that we are pipelining.

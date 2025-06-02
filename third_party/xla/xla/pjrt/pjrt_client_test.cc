@@ -441,7 +441,7 @@ TEST(PjRtClientTest, CopyToDeviceAsync) {
                                             *device_1->default_memory_space()));
   }
 
-  // The destructor of TfrtCpuBuffer should wait for outstanding copy.
+  // The destructor of PjRtCpuBuffer should wait for outstanding copy.
   buffer.reset();
 
   for (const auto& result : results) {
@@ -488,7 +488,7 @@ TEST(PjRtClientTest, CopyToDeviceAsyncExternalCpuOnly) {
                                             *device_1->default_memory_space()));
   }
 
-  // The destructor of TfrtCpuBuffer should wait for outstanding copy.
+  // The destructor of PjRtCpuBuffer should wait for outstanding copy.
   buffer.reset();
 
   for (const auto& result : results) {

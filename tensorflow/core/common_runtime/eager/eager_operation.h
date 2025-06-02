@@ -197,8 +197,8 @@ class EagerOperation : public ImmediateExecutionOperation {
   // This is useful if we want the EagerOperation to point to a different
   // function.
   void UpdateName(const string& name) {
-    op_name_ = name.c_str();
     attrs_.set_op_name(name);
+    op_name_ = attrs_.op_name().c_str();
   }
 
   // Like TensorHandles, EagerOperations may be placed either on a virtual

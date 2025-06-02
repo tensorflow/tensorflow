@@ -198,12 +198,12 @@ tsl::AsyncValueRef<LaunchEvent> Kernel::Launch(
 
   if (ABSL_PREDICT_TRUE(num_workgroups.y == 1 && num_workgroups.z == 1)) {
     return Worker::Parallelize(
-        device, num_workers, num_tasks,
+        device->getPool(), num_workers, num_tasks,
         ParallelTask<true>(kernel_, num_workgroups, args));
   }
 
   return Worker::Parallelize(
-      device, num_workers, num_tasks,
+      device->getPool(), num_workers, num_tasks,
       ParallelTask<false>(kernel_, num_workgroups, args));
 }
 

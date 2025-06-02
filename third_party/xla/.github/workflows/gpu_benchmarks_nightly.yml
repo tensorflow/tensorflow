@@ -40,7 +40,7 @@ jobs:
           },
           {
             os: "linux-x86-a4-224-b200-1gpu",
-            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-cuda12.8-cudnn9.8:latest",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-cuda12.8-cudnn9.8:latest",
             pretty_name: "XLA Linux x86 GPU A4 224 vcpu Presubmit",
           },
           # Expect more GPU types in the future.

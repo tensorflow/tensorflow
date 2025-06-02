@@ -824,6 +824,7 @@ cc_library(
         ":make_batch_pointers_kernel_rocm",
         ":miopen_plugin",
         ":ragged_all_to_all_kernel_rocm",
+        ":repeat_buffer_kernel_rocm",
         ":rocblas_plugin",
         ":rocm_helpers",
         ":rocm_platform",
@@ -1052,6 +1053,7 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/gpu:gpu_command_buffer",
         "//xla/stream_executor/gpu:scoped_gpu_graph_exec",
@@ -1180,6 +1182,27 @@ rocm_library(
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:topk_kernel",
         "//xla/tsl/lib/math:math_util",
+        "@local_config_rocm//rocm:rocm_headers",
+    ],
+    alwayslink = 1,
+)
+
+rocm_library(
+    name = "repeat_buffer_kernel_rocm",
+    srcs = [
+        "repeat_buffer_kernel_rocm.cc",
+        "//xla/stream_executor/gpu:repeat_buffer_kernel.cu.h",
+    ],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        ":rocm_platform_id",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/stream_executor/gpu:repeat_buffer_kernel",
         "@local_config_rocm//rocm:rocm_headers",
     ],
     alwayslink = 1,

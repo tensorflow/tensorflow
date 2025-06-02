@@ -4662,7 +4662,7 @@ ENTRY entry {
     if (instr->opcode() == HloOpcode::kReshape) {
       TF_ASSERT_OK_AND_ASSIGN(std::optional<int64_t> id,
                               GetSchedulingAnnotationGroupId(instr));
-      EXPECT_EQ(id, 4);
+      EXPECT_TRUE(id == 6 || id == 4);
     } else if (instr->opcode() == HloOpcode::kAllGather) {
       TF_ASSERT_OK_AND_ASSIGN(std::optional<int64_t> id,
                               GetSchedulingAnnotationGroupId(instr));
@@ -4670,7 +4670,7 @@ ENTRY entry {
     } else if (instr->opcode() == HloOpcode::kAllReduce) {
       TF_ASSERT_OK_AND_ASSIGN(std::optional<int64_t> id,
                               GetSchedulingAnnotationGroupId(instr));
-      EXPECT_EQ(id, 6);
+      EXPECT_EQ(id, 7);
     }
   }
 }

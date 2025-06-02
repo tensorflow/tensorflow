@@ -108,8 +108,7 @@ namespace {
 TEST_F(KernelApiIrBuilderTest, BuildKernelPrototype) {
   auto hlo = std::make_unique<HloModule>("test", HloModuleConfig());
 
-  auto shape =
-      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {4, 2}).value();
+  auto shape = ShapeUtil::MakeShape(PrimitiveType::F32, {4, 2});
 
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice arg0(&alloc, /*offset=*/0, /*size=*/256);
@@ -317,8 +316,7 @@ TEST_F(KernelApiIrBuilderTest, MixedBuffers) {
 TEST_F(KernelApiIrBuilderTestNoBufferValidation, PartialOverlap) {
   auto hlo = std::make_unique<HloModule>("test", HloModuleConfig());
 
-  auto shape =
-      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {4, 2}).value();
+  auto shape = ShapeUtil::MakeShape(PrimitiveType::F32, {4, 2});
 
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice arg0(&alloc, /*offset=*/0, /*size=*/256);

@@ -746,6 +746,7 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleInit(
     m->set_debug_string(AsProtoStringData(memory->DebugString()));
     m->set_to_string(AsProtoStringData(memory->ToString()));
   }
+  *init_resp->mutable_client_attributes() = client_->Attributes().ToProto();
 
   return response;
 }

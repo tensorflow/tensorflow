@@ -94,8 +94,8 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE void ParallelLoopRunner::ScheduleAll(
   auto parallelize =
       [this, num_workers, num_tasks,
        parallel_task = std::forward<ParallelTask>(parallel_task)](tsl::Chain) {
-        return Worker::Parallelize(device_, num_workers, num_tasks,
-                                   std::move(parallel_task));
+        return Worker::Parallelize(device_.load()->getPool(), num_workers,
+                                   num_tasks, std::move(parallel_task));
       };
 
   done_event_ = done_event_.FlatMap(parallelize);

@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/service/gpu/model/collective_interpolator.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model.h"
+#include "xla/service/gpu/model/matmul_interpolator.h"
 #include "xla/service/gpu/model/sol_gpu_cost_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/latency_hiding_scheduler.h"
@@ -41,7 +42,7 @@ class SolLatencyEstimator : public LatencyEstimator {
                       std::unique_ptr<LatencyEstimator> latency_estimator,
                       const se::DeviceDescription& gpu_info,
                       HloCostAnalysis::ShapeSizeFunction shape_size_function,
-                      HloComputation* computation);
+                      const HloComputation* computation);
 
   TimeCost GetLatencyBetween(const HloGraphNode& from,
                              const HloGraphNode& target) const override;
@@ -75,6 +76,7 @@ class SolLatencyEstimator : public LatencyEstimator {
   HloCostAnalysis::ShapeSizeFunction shape_size_function_;
   const SolGPUCostModel::Config sol_flags_;
   std::unique_ptr<CollectiveInterpolator> collective_interpolator_;
+  std::unique_ptr<MatmulInterpolator> matmul_interpolator_;
 };
 
 }  // namespace gpu

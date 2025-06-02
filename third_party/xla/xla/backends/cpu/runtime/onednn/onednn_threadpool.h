@@ -31,30 +31,32 @@ namespace xla::cpu {
 class OneDnnThreadPool final
     : public dnnl::threadpool_interop::threadpool_iface {
  public:
-  explicit OneDnnThreadPool(const Eigen::ThreadPoolDevice* device)
-      : device_(device) {}
+  explicit OneDnnThreadPool(Eigen::ThreadPoolInterface* thread_pool)
+      : thread_pool_(thread_pool) {}
 
-  int get_num_threads() const final { return device_->numThreadsInPool(); }
+  int get_num_threads() const final { return thread_pool_->NumThreads(); }
 
-  bool get_in_parallel() const final { return device_->currentThreadId() >= 0; }
+  bool get_in_parallel() const final {
+    return thread_pool_->CurrentThreadId() >= 0;
+  }
 
   uint64_t get_flags() const final { return 0; }
 
   void parallel_for(int n, const std::function<void(int, int)>& fn) final {
     // It is perfectly safe to block here as Worker implements work stealing
     // that guarantees forward progress and deadlock freedom, even if we are
-    // running in the same thread pool as the Eigen device.
-    tsl::BlockUntilReady(Worker::Parallelize(device_,
-                                             device_->numThreadsInPool(), n,
+    // running in the same thread pool as the Eigen thread_pool.
+    tsl::BlockUntilReady(Worker::Parallelize(thread_pool_,
+                                             thread_pool_->NumThreads(), n,
                                              [fn, n](size_t i) { fn(i, n); }));
   }
 
-  const void set_device(const Eigen::ThreadPoolDevice* device) {
-    device_ = device;
+  const void set_thread_pool(Eigen::ThreadPoolInterface* thread_pool) {
+    thread_pool_ = thread_pool;
   }
 
  private:
-  const Eigen::ThreadPoolDevice* device_;
+  Eigen::ThreadPoolInterface* thread_pool_;
 };
 
 }  // namespace xla::cpu

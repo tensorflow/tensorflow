@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
 #include "xla/layout.h"
@@ -531,8 +532,11 @@ void HloCompareInstruction::PrintExtraAttributesImpl(
   printer.Next([this](Printer* printer) {
     AppendCat(printer, "direction=", ComparisonDirectionToString(direction()));
   });
-  if (compare_.GetType() !=
-      Comparison::DefaultComparisonType(operand(0)->shape().element_type())) {
+  // We might want to print a HloInstruction which has been cleand up and has no
+  // operands anymore. This should not result in a crash.
+  if (operand_count() == 0 || operand(0) == nullptr ||
+      compare_.GetType() != Comparison::DefaultComparisonType(
+                                operand(0)->shape().element_type())) {
     printer.Next([this](Printer* printer) {
       AppendCat(printer, "type=", ComparisonTypeToString(compare_.GetType()));
     });
@@ -697,7 +701,9 @@ HloInstructionProto HloChannelInstruction::ToProto() const {
 
 void HloChannelInstruction::PrintExtraAttributesImpl(
     AttributePrinter& printer, const HloPrintOptions& /*options*/) const {
-  if (!channel_id_) return;
+  if (!channel_id_) {
+    return;
+  }
   printer.Next([this](Printer* printer) {
     AppendCat(printer, "channel_id=", *channel_id_);
   });
@@ -787,10 +793,9 @@ HloSendInstruction::HloSendInstruction(HloInstruction* operand,
                                        bool is_host_transfer)
     : HloSendRecvInstruction(
           HloOpcode::kSend,
-          ShapeUtil::MakeValidatedTupleShape({CHECK_NOTNULL(operand)->shape(),
-                                              ShapeUtil::MakeShape(U32, {}),
-                                              ShapeUtil::MakeTokenShape()})
-              .value(),
+          ShapeUtil::MakeTupleShape({CHECK_NOTNULL(operand)->shape(),
+                                     ShapeUtil::MakeShape(U32, {}),
+                                     ShapeUtil::MakeTokenShape()}),
           channel_id, is_host_transfer) {
   AppendOperand(operand);
   AppendOperand(token);
@@ -838,12 +843,11 @@ HloRecvInstruction::HloRecvInstruction(const Shape& shape,
                                        HloInstruction* token,
                                        std::optional<int64_t> channel_id,
                                        bool is_host_transfer)
-    : HloSendRecvInstruction(HloOpcode::kRecv,
-                             ShapeUtil::MakeValidatedTupleShape(
-                                 {shape, ShapeUtil::MakeShape(U32, {}),
-                                  ShapeUtil::MakeTokenShape()})
-                                 .value(),
-                             channel_id, is_host_transfer) {
+    : HloSendRecvInstruction(
+          HloOpcode::kRecv,
+          ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U32, {}),
+                                     ShapeUtil::MakeTokenShape()}),
+          channel_id, is_host_transfer) {
   AppendOperand(token);
 }
 
@@ -860,10 +864,9 @@ HloRecvDoneInstruction::HloRecvDoneInstruction(HloRecvInstruction* operand,
                                                bool is_host_transfer)
     : HloSendRecvInstruction(
           HloOpcode::kRecvDone,
-          ShapeUtil::MakeValidatedTupleShape(
+          ShapeUtil::MakeTupleShape(
               {ShapeUtil::GetTupleElementShape(operand->shape(), 0),
-               ShapeUtil::MakeTokenShape()})
-              .value(),
+               ShapeUtil::MakeTokenShape()}),
           operand->channel_id(), is_host_transfer) {
   AppendOperand(operand);
 }
@@ -873,10 +876,9 @@ HloRecvDoneInstruction::HloRecvDoneInstruction(
     bool is_host_transfer)
     : HloSendRecvInstruction(
           HloOpcode::kRecvDone,
-          ShapeUtil::MakeValidatedTupleShape(
+          ShapeUtil::MakeTupleShape(
               {ShapeUtil::GetTupleElementShape(operand->shape(), 0),
-               ShapeUtil::MakeTokenShape()})
-              .value(),
+               ShapeUtil::MakeTokenShape()}),
           channel_id, is_host_transfer) {
   AppendOperand(operand);
 }
@@ -1344,12 +1346,11 @@ HloCollectivePermuteInstruction::CloneWithNewOperandsImpl(
         opcode(), shape,
         absl::Span<HloInstruction* const>(new_operands.subspan(0, 1)),
         source_target_pairs(), channel_id());
-  } else {
-    return std::make_unique<HloCollectivePermuteInstruction>(
-        opcode(), shape, new_operands[0], new_operands[1], new_operands[2],
-        new_operands[3], source_target_pairs(), dynamic_slice_sizes_list(),
-        channel_id());
   }
+  return std::make_unique<HloCollectivePermuteInstruction>(
+      opcode(), shape, new_operands[0], new_operands[1], new_operands[2],
+      new_operands[3], source_target_pairs(), dynamic_slice_sizes_list(),
+      channel_id());
 }
 
 HloReverseInstruction::HloReverseInstruction(
@@ -2056,9 +2057,8 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
 
   if (clone != instruction_to_append) {
     // Copy over the original value to the clone of a fused instruction.
-    if (auto original_value = instruction_to_append->original_value()) {
-      clone->set_original_value(original_value);
-    }
+    clone->CopyOriginalValue(instruction_to_append,
+                             /*clone=*/false);
     VLOG(2) << "New clone:\n" << clone->ToString();
   }
 
@@ -2436,9 +2436,7 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
     // This is necessary as the clone will be cloned again when the clone is
     // fused in FuseInstructionIntoMultiOutput(). This can be skipped if we
     // improve the code to only clone once as stated in the preceding comment.
-    if (auto original_value = fused_instruction->original_value()) {
-      cloned_instruction->set_original_value(original_value);
-    }
+    cloned_instruction->CopyOriginalValue(fused_instruction, /*clone=*/true);
     unfused_instructions.push_back(cloned_instruction);
     InsertOrDie(&old_to_new, fused_instruction, cloned_instruction);
   }
@@ -2842,9 +2840,8 @@ HloInfeedInstruction::HloInfeedInstruction(const Shape& infeed_shape,
                                            HloInstruction* token_operand,
                                            const std::string& config)
     : HloInstruction(HloOpcode::kInfeed,
-                     ShapeUtil::MakeValidatedTupleShape(
-                         {infeed_shape, ShapeUtil::MakeTokenShape()})
-                         .value()),
+                     ShapeUtil::MakeTupleShape(
+                         {infeed_shape, ShapeUtil::MakeTokenShape()})),
       infeed_config_(config) {
   AppendOperand(token_operand);
 }
@@ -3562,10 +3559,9 @@ HloDynamicSliceInstruction::CloneWithNewOperandsImpl(
     // TODO(b/118437727): Old form, remove this path.
     return std::make_unique<HloDynamicSliceInstruction>(
         shape, new_operands[0], new_operands[1], dynamic_slice_sizes_);
-  } else {
-    return std::make_unique<HloDynamicSliceInstruction>(
-        shape, new_operands[0], new_operands.subspan(1), dynamic_slice_sizes_);
   }
+  return std::make_unique<HloDynamicSliceInstruction>(
+      shape, new_operands[0], new_operands.subspan(1), dynamic_slice_sizes_);
 }
 
 HloGatherInstruction::HloGatherInstruction(
