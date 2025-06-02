@@ -96,7 +96,7 @@ TokKind HloLexer::LookAhead() {
   return kind;
 }
 
-TokKind HloLexer::LexToken() {
+TokKind HloLexer::LexToken(uint64_t skip_mask) {
   while (true) {
     token_state_.token_start = current_ptr_;
 
@@ -138,7 +138,7 @@ TokKind HloLexer::LexToken() {
           current_ptr_++;
           return TokKind::kArrow;
         }
-        tmp = LexNumberOrPattern();
+        tmp = LexNumberOrPattern(skip_mask);
         if (tmp == TokKind::kError && current_char == '?') {
           return TokKind::kQuestionMark;
         }
@@ -435,47 +435,40 @@ bool ConsumeNegativeNanPattern(absl::string_view& consumable) {
 //   [-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?(x[-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?)*
 // int ::=  [-]?[0-9]+
 // negative inf ::= '-inf'
-TokKind HloLexer::LexNumberOrPattern() {
+TokKind HloLexer::LexNumberOrPattern(uint64_t skip_mask) {
   absl::string_view consumable = StringViewFromPointers(
       token_state_.token_start, buf_.data() + buf_.size());
-  if (ConsumeFloatPattern(consumable)) {
+  if (!(skip_mask & (1ULL << static_cast<int>(TokKind::kDecimal))) &&
+      ConsumeFloatPattern(consumable)) {
     current_ptr_ = consumable.data();
     CHECK(absl::SimpleAtod(std::string(token_state_.token_start, current_ptr_),
                            &token_state_.decimal_val));
     return TokKind::kDecimal;
   }
 
-  if (ConsumeDimLabelsPattern(consumable)) {
+  if (!(skip_mask & (1ULL << static_cast<int>(TokKind::kDimLabels))) &&
+      ConsumeDimLabelsPattern(consumable)) {
     current_ptr_ = consumable.data();
     token_state_.str_val.assign(token_state_.token_start, current_ptr_);
     return TokKind::kDimLabels;
   }
 
-  if (ConsumeDxDPattern(consumable)) {
+  if (!(skip_mask & (1ULL << static_cast<int>(TokKind::kDxD))) &&
+      ConsumeDxDPattern(consumable)) {
     current_ptr_ = consumable.data();
     token_state_.str_val.assign(token_state_.token_start, current_ptr_);
     return TokKind::kDxD;
   }
 
-  if (ConsumePadPattern(consumable)) {
+  if (!(skip_mask & (1ULL << static_cast<int>(TokKind::kPad))) &&
+      ConsumePadPattern(consumable)) {
     current_ptr_ = consumable.data();
     token_state_.str_val.assign(token_state_.token_start, current_ptr_);
     return TokKind::kPad;
   }
 
-  if (ConsumeIntPattern(consumable)) {
-    current_ptr_ = consumable.data();
-    auto slice = StringViewFromPointers(token_state_.token_start, current_ptr_);
-    if (absl::SimpleAtoi(slice, &token_state_.int64_val)) {
-      return TokKind::kInt;
-    }
-    uint64_t uint64_val;
-    if (absl::SimpleAtoi(slice, &uint64_val)) {
-      token_state_.int64_val = absl::bit_cast<int64_t>(uint64_val);
-      return TokKind::kInt;
-    }
-    LOG(ERROR) << "Failed to parse int literal: " << slice;
-    return TokKind::kError;
+  if (LexInt64Impl() != TokKind::kError) {
+    return TokKind::kInt;
   }
 
   if (ConsumeNegativeInfPattern(consumable)) {
@@ -498,6 +491,25 @@ TokKind HloLexer::LexNumberOrPattern() {
     return TokKind::kDecimal;
   }
 
+  return TokKind::kError;
+}
+
+TokKind HloLexer::LexInt64Impl() {
+  absl::string_view consumable = StringViewFromPointers(
+      token_state_.token_start, buf_.data() + buf_.size());
+  if (ConsumeIntPattern(consumable)) {
+    current_ptr_ = consumable.data();
+    auto slice = StringViewFromPointers(token_state_.token_start, current_ptr_);
+    if (absl::SimpleAtoi(slice, &token_state_.int64_val)) {
+      return TokKind::kInt;
+    }
+    uint64_t uint64_val;
+    if (absl::SimpleAtoi(slice, &uint64_val)) {
+      token_state_.int64_val = absl::bit_cast<int64_t>(uint64_val);
+      return TokKind::kInt;
+    }
+    LOG(ERROR) << "Failed to parse int literal: " << slice;
+  }
   return TokKind::kError;
 }
 
