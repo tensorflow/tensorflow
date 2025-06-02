@@ -1228,11 +1228,18 @@ TEST(StreamExecutorGpuClientTest, GetDeviceFabricInfo) {
                 ->local_device_state();
         if (local_device_state != nullptr) {
           se::StreamExecutor* executor = local_device_state->executor();
-          if (std::stoi(MakeComputeCapabilityString(
-                  &executor->GetDeviceDescription())) == 9) {
-            auto fabric_info = GetDeviceFabricInfo(executor->device_ordinal());
-            if (fabric_info.ok()) {
-              ADD_FAILURE();
+          if (auto* cc = std::get_if<se::CudaComputeCapability>(
+                  &executor->GetDeviceDescription().gpu_compute_capability())) {
+            if (cc->IsAtLeastHopper()) {
+              TF_ASSERT_OK_AND_ASSIGN(
+                  std::string fabric_info,
+                  GetDeviceFabricInfo(executor->device_ordinal()));
+              // Hopper devices have empty fabric info, MNNVL Blackwell devices
+              // have meaningful fabric info.
+              if (cc->IsHopper()) {
+                EXPECT_EQ(fabric_info,
+                          "00000000-0000-0000-0000-000000000000/0");
+              }
             }
           }
         }
