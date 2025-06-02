@@ -2866,8 +2866,8 @@ bool HloInfeedInstruction::IdenticalSlowPath(
     const HloInstruction& other,
     absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
-  // Not yet supported.
-  return false;
+  return ShapeUtil::Equal(shape(), other.shape()) &&
+         infeed_config() == other.infeed_config();
 }
 
 std::unique_ptr<HloInstruction> HloInfeedInstruction::CloneWithNewOperandsImpl(
@@ -2913,8 +2913,8 @@ bool HloOutfeedInstruction::IdenticalSlowPath(
     const HloInstruction& other,
     absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
-  // Not yet supported.
-  return false;
+  return ShapeUtil::Equal(outfeed_shape(), other.outfeed_shape()) &&
+         outfeed_config() == other.outfeed_config();
 }
 
 std::unique_ptr<HloInstruction> HloOutfeedInstruction::CloneWithNewOperandsImpl(
