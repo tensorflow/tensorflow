@@ -516,7 +516,7 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
 
   if (options.xla_gpu_enable_analytical_sol_latency_estimator()) {
     LOG(INFO) << "Using Speed-of-Light (SoL) analytical latency estimator";
-    return std::make_unique<SolLatencyEstimator>(
+    return *SolLatencyEstimator::Create(
         config, std::move(gpu_latency_estimator), gpu_device_info,
         ShapeSizeBytesFunction(pointer_size), module.entry_computation());
   }

@@ -5,6 +5,13 @@ package(
 
 licenses(["notice"])
 
+config_setting(
+    name = "x86_64",
+    constraint_values = [
+        "@platforms//cpu:x86_64",
+    ],
+)
+
 cc_library(
     name = "zstdlib",
     srcs = glob([
@@ -14,6 +21,11 @@ cc_library(
         "compress/*.h",
         "decompress/*.c",
         "decompress/*.h",
+    ]) + select({
+        ":x86_64": glob(["decompress/*_amd64.S"]),
+        "//conditions:default": [],
+    }),
+    hdrs = glob([
+        "*.h",
     ]),
-    hdrs = ["zstd.h"],
 )

@@ -160,7 +160,9 @@ cc_library(
         "@triton//:TritonLLVMIR",
         "@triton//:TritonNvidiaGPUTransforms",
         "@triton//:TritonToTritonGPU",
+        "@triton//:TritonToTritonGPUPasses",
         "@triton//:TritonTransforms",
+        "@triton//:WarpSpecialization",
     ]) + if_cuda_is_configured([
         "//xla/service/gpu/llvm_gpu_backend:nvptx_backend",
         "//xla/service/gpu/llvm_gpu_backend:nvptx_libdevice_path",

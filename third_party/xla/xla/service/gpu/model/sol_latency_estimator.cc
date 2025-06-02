@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -190,6 +191,35 @@ std::optional<absl::Duration> DispatchEstimation(
   }
 }
 
+absl::StatusOr<std::unique_ptr<CollectiveInterpolator>>
+CreateCollectiveInterpolator(const HloModule& module,
+                             const se::DeviceDescription& device_info) {
+  absl::StatusOr<HloInstructionProfileList> collective_profiles =
+      ReadProfiles(module.config()
+                       .debug_options()
+                       .xla_gpu_experimental_collective_perf_table_path(),
+                   device_info);
+  std::unique_ptr<CollectiveInterpolator> collective_interpolator;
+  if (collective_profiles.ok()) {
+    return CollectiveInterpolator::Create(*collective_profiles, device_info);
+  }
+  return CollectiveInterpolator::Create(device_info);
+}
+
+absl::StatusOr<std::unique_ptr<MatmulInterpolator>> CreateMatmulInterpolator(
+    const HloModule& module, const se::DeviceDescription& device_info) {
+  absl::StatusOr<HloInstructionProfileList> matmul_profiles =
+      ReadProfiles(module.config()
+                       .debug_options()
+                       .xla_gpu_experimental_matmul_perf_table_path(),
+                   device_info);
+  std::unique_ptr<MatmulInterpolator> matmul_interpolator;
+  if (matmul_profiles.ok()) {
+    return MatmulInterpolator::Create(*matmul_profiles, device_info);
+  }
+  return MatmulInterpolator::Create(device_info);
+}
+
 }  // namespace
 
 /*static*/ absl::Duration SolLatencyEstimator::ComputeCollectiveTime(
@@ -240,6 +270,35 @@ std::optional<absl::Duration> DispatchEstimation(
   return absl::ZeroDuration();
 }
 
+/*static*/ absl::StatusOr<std::unique_ptr<SolLatencyEstimator>>
+SolLatencyEstimator::Create(
+    const SchedulerConfig& config,
+    std::unique_ptr<LatencyEstimator> latency_estimator,
+    const se::DeviceDescription& gpu_info,
+    HloCostAnalysis::ShapeSizeFunction shape_size_function,
+    const HloComputation* computation) {
+  auto cost_analysis =
+      std::make_unique<GpuHloCostAnalysis>(GpuHloCostAnalysis::Options{
+          shape_size_function,
+          /*per_second_rates=*/{},
+          /*min_latencies_seconds=*/{},
+          /*count_multiple_input_accesses=*/true,
+      });
+  SolGPUCostModel::Config sol_config =
+      SolGPUCostModel::GetConfig(computation->parent(), gpu_info);
+  TF_RETURN_IF_ERROR(computation->Accept(cost_analysis.get()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<CollectiveInterpolator> collective_interpolator,
+      CreateCollectiveInterpolator(*computation->parent(), gpu_info));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<MatmulInterpolator> matmul_interpolator,
+      CreateMatmulInterpolator(*computation->parent(), gpu_info));
+  return std::unique_ptr<SolLatencyEstimator>(new SolLatencyEstimator(
+      config, std::move(latency_estimator), gpu_info, std::move(cost_analysis),
+      shape_size_function, sol_config, std::move(collective_interpolator),
+      std::move(matmul_interpolator)));
+}
+
 LatencyEstimator::TimeCost SolLatencyEstimator::GetLatencyBetween(
     const HloGraphNode& from, const HloGraphNode& target) const {
   const HloOpcode from_op = from.GetInstr().opcode();
@@ -288,66 +347,20 @@ SolLatencyEstimator::SolLatencyEstimator(
     const SchedulerConfig& config,
     std::unique_ptr<LatencyEstimator> latency_estimator,
     const se::DeviceDescription& gpu_info,
-    HloCostAnalysis::ShapeSizeFunction shape_size_function,
-    const HloComputation* computation)
+    std::unique_ptr<const GpuHloCostAnalysis> cost_analysis,
+    const HloCostAnalysis::ShapeSizeFunction shape_size_function,
+    const SolGPUCostModel::Config sol_flags,
+    std::unique_ptr<CollectiveInterpolator> collective_interpolator,
+    std::unique_ptr<MatmulInterpolator> matmul_interpolator)
     : config_(config),
       gpu_info_(gpu_info),
       gpu_performance_model_(gpu_info),
+      cost_analysis_(std::move(cost_analysis)),
       latency_estimator_(std::move(latency_estimator)),
       shape_size_function_(shape_size_function),
-      sol_flags_(SolGPUCostModel::GetConfig(computation->parent(), gpu_info)) {
-  cost_analysis_.emplace(
-      GpuHloCostAnalysis::Options{shape_size_function_,
-                                  /*per_second_rates=*/{},
-                                  /*min_latencies_seconds=*/{},
-                                  /*count_multiple_input_accesses=*/true},
-      gpu_info_);
-  if (!computation->Accept(&cost_analysis_.value()).ok()) {
-    VLOG(1) << "Cannot analyze computation: " << computation->ToString();
-  }
-
-  if (sol_flags_.nccl_op_launch_time == absl::ZeroDuration() ||
-      sol_flags_.nic_speed_gbps == 0 ||
-      sol_flags_.chunk_prep_time == absl::ZeroDuration() ||
-      sol_flags_.rtt == absl::ZeroDuration() || sol_flags_.gpus_per_node == 0) {
-    VLOG(1) << "[SoL] Failed to parse SoL system config options.";
-  }
-
-  absl::StatusOr<std::unique_ptr<CollectiveInterpolator>>
-      collective_interpolator;
-  absl::StatusOr<HloInstructionProfileList> collective_profiles =
-      ReadProfiles(computation->parent()
-                       ->config()
-                       .debug_options()
-                       .xla_gpu_experimental_collective_perf_table_path(),
-                   gpu_info);
-  if (collective_profiles.ok()) {
-    collective_interpolator =
-        CollectiveInterpolator::Create(*collective_profiles, gpu_info);
-  } else {
-    collective_interpolator = CollectiveInterpolator::Create(gpu_info);
-  }
-  if (collective_interpolator.ok()) {
-    collective_interpolator_ = *std::move(collective_interpolator);
-  }
-
-  absl::StatusOr<std::unique_ptr<MatmulInterpolator>> matmul_interpolator;
-  absl::StatusOr<HloInstructionProfileList> matmul_profiles =
-      ReadProfiles(computation->parent()
-                       ->config()
-                       .debug_options()
-                       .xla_gpu_experimental_matmul_perf_table_path(),
-                   gpu_info);
-  if (matmul_profiles.ok()) {
-    matmul_interpolator =
-        MatmulInterpolator::Create(*matmul_profiles, gpu_info);
-  } else {
-    matmul_interpolator = MatmulInterpolator::Create(gpu_info);
-  }
-  if (matmul_interpolator.ok()) {
-    matmul_interpolator_ = *std::move(matmul_interpolator);
-  }
-}
+      sol_flags_(sol_flags),
+      collective_interpolator_(std::move(collective_interpolator)),
+      matmul_interpolator_(std::move(matmul_interpolator)) {}
 
 }  // namespace gpu
 }  // namespace xla
