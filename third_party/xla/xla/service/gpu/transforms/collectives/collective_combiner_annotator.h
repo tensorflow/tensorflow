@@ -45,8 +45,8 @@ class CollectiveCombinerAnnotator : public HloModulePass {
   }
 
  private:
-  se::DeviceDescription device_info_;
-  int64_t pointer_size_;
+  const se::DeviceDescription device_info_;
+  const int64_t pointer_size_;
 };
 
 // Returns true if `instr` is a combinable sync collective. False otherwise.
