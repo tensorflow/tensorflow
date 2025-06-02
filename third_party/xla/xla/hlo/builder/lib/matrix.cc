@@ -300,8 +300,7 @@ xla::XlaOp EinsumDiagonalMask(XlaOp x, absl::Span<const int64_t> config) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
-    Shape iota_shape =
-        ShapeUtil::MakeValidatedShape(S32, x_shape.dimensions()).value();
+    Shape iota_shape = ShapeUtil::MakeShape(S32, x_shape.dimensions());
     XlaOp mask = ConstantR0(builder, true);
 
     for (auto label = config.begin(); label != config.end(); ++label) {

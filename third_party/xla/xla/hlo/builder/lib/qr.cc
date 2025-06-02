@@ -49,12 +49,9 @@ QrDecomposition Qr(XlaOp a) {
                                    a_shape.dimensions().end());
     taus_dims.pop_back();
     taus_dims.back() = std::min(m, n);
-    auto taus_shape =
-        ShapeUtil::MakeValidatedShape(a_shape.element_type(), taus_dims)
-            .value();
+    auto taus_shape = ShapeUtil::MakeShape(a_shape.element_type(), taus_dims);
 
-    Shape qr_shape =
-        ShapeUtil::MakeValidatedTupleShape({a_shape, taus_shape}).value();
+    Shape qr_shape = ShapeUtil::MakeTupleShape({a_shape, taus_shape});
     auto qr = CustomCall(a.builder(), "Qr", {a}, qr_shape);
     a = GetTupleElement(qr, 0);
     auto taus = GetTupleElement(qr, 1);
