@@ -98,6 +98,8 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"
@@ -893,6 +895,23 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawHostToDevice(
             "StreamExecutorGpuClient::CopyRawHostToDevice",
             keys.traceme_context_id);
       });
+}
+
+absl::Status StreamExecutorGpuClient::UpdateCompileOptionsInternal(
+    CompileOptions* options, ExecutableExtras* returned_extras,
+    bool lookup_addressable_devices) {
+  TF_RETURN_IF_ERROR(PjRtStreamExecutorClient::UpdateCompileOptionsInternal(
+      options, returned_extras, lookup_addressable_devices));
+  TF_ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology_description,
+                      GetTopologyDescription());
+  const auto& gpu_topology =
+      tensorflow::down_cast<const xla::StreamExecutorGpuTopologyDescription&>(
+          *topology_description);
+  if (gpu_topology.gpu_topology_ptr() != nullptr) {
+    options->executable_build_options.set_global_device_id_to_slice_id(
+        gpu_topology.gpu_topology().global_device_id_to_slice_id());
+  }
+  return absl::OkStatus();
 }
 
 PjRtFuture<> StreamExecutorGpuClient::CopyRawDeviceToHost(

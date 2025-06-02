@@ -35,6 +35,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::testing::ElementsAre;
+
 TEST(TopologyTest, BuildGlobalTopology) {
   std::vector<LocalTopologyProto> locals(2);
   DeviceProto* d0 = locals[0].add_devices();
@@ -319,6 +321,8 @@ TEST(TopologyTest, BuildGpuTopology) {
   EXPECT_EQ(gpu_topology.num_slices(), 2);
   EXPECT_EQ(gpu_topology.num_hosts_per_slice(), 1);
   EXPECT_EQ(gpu_topology.num_devices_per_host(), 2);
+  EXPECT_THAT(gpu_topology.global_device_id_to_slice_id(),
+              ElementsAre(0, 0, 1, 1));
 }
 
 TEST(TopologyTest, BuildGpuTopologyWithDifferentNumHostsPerSlice) {
@@ -349,6 +353,8 @@ TEST(TopologyTest, BuildGpuTopologyWithDifferentNumHostsPerSlice) {
   EXPECT_EQ(gpu_topology.num_slices(), -1);
   EXPECT_EQ(gpu_topology.num_hosts_per_slice(), -1);
   EXPECT_EQ(gpu_topology.num_devices_per_host(), -1);
+  EXPECT_THAT(gpu_topology.global_device_id_to_slice_id(),
+              ElementsAre(0, 0, 1));
 }
 
 TEST(TopologyTest, BuildGpuTopologyWithDifferentNumDevicesPerHost) {
@@ -377,6 +383,8 @@ TEST(TopologyTest, BuildGpuTopologyWithDifferentNumDevicesPerHost) {
   EXPECT_EQ(gpu_topology.num_slices(), -1);
   EXPECT_EQ(gpu_topology.num_hosts_per_slice(), -1);
   EXPECT_EQ(gpu_topology.num_devices_per_host(), -1);
+  EXPECT_THAT(gpu_topology.global_device_id_to_slice_id(),
+              ElementsAre(0, 0, 1));
 }
 }  // namespace
 }  // namespace xla

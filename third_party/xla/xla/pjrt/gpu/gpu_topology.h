@@ -26,15 +26,28 @@ limitations under the License.
 namespace xla {
 class GpuTopology {
  public:
-  explicit GpuTopology(const std::vector<int>& gpu_device_ids,
-                       absl::string_view platform_version, int32_t num_slices,
-                       int32_t num_hosts_per_slice,
-                       int32_t num_devices_per_host)
+  explicit GpuTopology(
+      const std::vector<int>& gpu_device_ids,
+      absl::string_view platform_version, int32_t num_slices,
+      int32_t num_hosts_per_slice, int32_t num_devices_per_host,
+      const std::vector<int>& global_device_id_to_slice_id = {})
       : devices_ids_(gpu_device_ids),
         platform_version_(platform_version),
         num_slices_(num_slices),
         num_hosts_per_slice_(num_hosts_per_slice),
-        num_devices_per_host_(num_devices_per_host) {}
+        num_devices_per_host_(num_devices_per_host),
+        global_device_id_to_slice_id_([&] {
+          if (!global_device_id_to_slice_id.empty()) {
+            return global_device_id_to_slice_id;
+          }
+          std::vector<int> device_id_to_slice_id;
+          device_id_to_slice_id.resize(gpu_device_ids.size());
+          for (int device_id : gpu_device_ids) {
+            device_id_to_slice_id[device_id] =
+                device_id / (num_devices_per_host * num_hosts_per_slice);
+          }
+          return device_id_to_slice_id;
+        }()) {}
 
   bool operator==(const GpuTopology& other) const {
     return devices_ids_ == other.devices_ids_ &&
@@ -62,6 +75,10 @@ class GpuTopology {
   int32_t num_hosts_per_slice() const { return num_hosts_per_slice_; }
   int32_t num_devices_per_host() const { return num_devices_per_host_; }
 
+  const std::vector<int>& global_device_id_to_slice_id() const {
+    return global_device_id_to_slice_id_;
+  }
+
  private:
   const std::vector<int> devices_ids_;
   const std::string platform_version_;
@@ -73,6 +90,8 @@ class GpuTopology {
     return num_slices_ != -1 && num_hosts_per_slice_ != -1 &&
            num_devices_per_host_ != -1;
   }
+
+  const std::vector<int> global_device_id_to_slice_id_;
 };
 
 }  // namespace xla

@@ -94,7 +94,9 @@ LocalService::CompileExecutables(
       false,
       {},
       {build_options.key_value_store(), build_options.process_index(),
-       build_options.process_count()}};
+       build_options.process_count()},
+      build_options.global_device_id_to_slice_id(),
+  };
   if (build_options.num_partitions() == 1) {
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<Executable> executable,

@@ -24,5 +24,7 @@ message GpuTopologyProto {
   // The number of devices for each host.
   int32 num_devices_per_host = 6;
 
+  repeated int32 global_device_id_to_slice_id = 8;
+
   reserved 7;  // Was: core_count_per_chip
 }

@@ -1165,6 +1165,9 @@ TEST(GpuTopology, FromProto) {
         num_slices: 2
         num_hosts_per_slice: 1
         num_devices_per_host: 3
+        global_device_id_to_slice_id: 0
+        global_device_id_to_slice_id: 1
+        global_device_id_to_slice_id: 2
       )pb",
       &msg));
 
@@ -1174,6 +1177,8 @@ TEST(GpuTopology, FromProto) {
   EXPECT_THAT(gpu_topology->num_slices(), 2);
   EXPECT_THAT(gpu_topology->num_hosts_per_slice(), 1);
   EXPECT_THAT(gpu_topology->num_devices_per_host(), 3);
+  EXPECT_THAT(gpu_topology->global_device_id_to_slice_id(),
+              ElementsAre(0, 1, 2));
 }
 
 TEST(GpuTopology, ToProto) {
@@ -1181,13 +1186,15 @@ TEST(GpuTopology, ToProto) {
                            /*platform_version=*/"platform_version",
                            /*num_slices=*/2,
                            /*num_hosts_per_slice=*/1,
-                           /*num_devices_per_host=*/3);
+                           /*num_devices_per_host=*/3,
+                           /*global_device_id_to_slice_id=*/{0, 1, 2});
   GpuTopologyProto msg = gpu_topology.ToProto();
   EXPECT_THAT(msg.device_ids(), ElementsAre(3, 2, 1));
   EXPECT_THAT(msg.platform_version(), "platform_version");
   EXPECT_THAT(msg.num_slices(), 2);
   EXPECT_THAT(msg.num_hosts_per_slice(), 1);
   EXPECT_THAT(msg.num_devices_per_host(), 3);
+  EXPECT_THAT(msg.global_device_id_to_slice_id(), ElementsAre(0, 1, 2));
 }
 
 TEST(StreamExecutorGpuClientTest, DistributedInit) {
