@@ -106,6 +106,7 @@ absl::Status RunAllReduce(GpuCollectives* collectives,
         return absl::OkStatus();
       });
   tsl::BlockUntilReady(event);
+  VLOG(3) << "Done performing all-reduce for ordinal: " << device_ordinal;
   if (event.IsError()) {
     return event.GetError();
   }
@@ -296,6 +297,7 @@ absl::Status RunReduceScatter(GpuCollectives* collectives,
         return absl::OkStatus();
       });
   tsl::BlockUntilReady(event);
+  VLOG(3) << "Done performing reduce-scatter for ordinal: " << device_ordinal;
   if (event.IsError()) {
     return event.GetError();
   }
