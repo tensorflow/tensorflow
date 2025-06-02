@@ -504,6 +504,21 @@ TEST_F(IndexingAnalysisTest, BitcastIsReshape) {
                           )"));
 }
 
+TEST_F(IndexingAnalysisTest, ReshapePreservesSize1Dims) {
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[32] parameter(0)
+      ROOT bitcast = f32[1, 32] bitcast(p0)
+    }
+  )"));
+  EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
+                            operand id = 0
+                              (d0, d1) -> (d0 * 32 + d1),
+                              domain: d0 in [0, 0], d1 in [0, 31]
+                          )"));
+}
+
 TEST_F(IndexingAnalysisTest, BitcastIsTranspose) {
   auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
     HloModule m
