@@ -487,7 +487,11 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
       TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
           stream, literal, shaped_buffer));
 
-      absl::Status status = stream->BlockHostUntilDone();
+      absl::Status status;
+      {
+        tsl::profiler::TraceMe traceme("BlockHostUntilDone");
+        status = stream->BlockHostUntilDone();
+      }
       VLOG(3) << "Finish transfer h2d for literal with shape "
               << literal.shape().ToString() << " on device "
               << device_->DebugString() << " with status " << status;
@@ -596,7 +600,11 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
         TF_CHECK_OK(stream->Memcpy(&sub_buffer, host_data_ptr, transfer_size))
             << "Failed to copy data to GPU";
 
-        absl::Status status = stream->BlockHostUntilDone();
+        absl::Status status;
+        {
+          tsl::profiler::TraceMe traceme("BlockHostUntilDone");
+          status = stream->BlockHostUntilDone();
+        }
         VLOG(3) << "H2D copy done: " << status;
         CHECK_OK(status) << "Failed to block host until done";
       }
@@ -907,12 +915,15 @@ SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
       }
 
       // Wait for the data to be available on the host.
-      absl::Status st = stream->BlockHostUntilDone();
+      {
+        tsl::profiler::TraceMe traceme("BlockHostUntilDone");
+        status = stream->BlockHostUntilDone();
+      }
       VLOG(3) << "D2H copy done. " << status;
-      if (!st.ok()) {
+      if (!status.ok()) {
         done_event.SetError(absl::InternalError(absl::StrFormat(
             "failed to synchronize send operation with a stream: %s",
-            st.message())));
+            status.message())));
         return;
       }
 
@@ -2063,7 +2074,10 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
       dst_definition_event.SetError(status);
       return;
     }
-    status = stream->BlockHostUntilDone();
+    {
+      tsl::profiler::TraceMe traceme("BlockHostUntilDone");
+      status = stream->BlockHostUntilDone();
+    }
     VLOG(3) << "H2D copy done. " << status;
     if (status.ok()) {
       copy_event.SetStateConcrete();
@@ -2177,7 +2191,11 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
                 TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
                     stream, literal, shaped_buffer));
 
-                auto status = stream->BlockHostUntilDone();
+                absl::Status status;
+                {
+                  tsl::profiler::TraceMe traceme("BlockHostUntilDone");
+                  status = stream->BlockHostUntilDone();
+                }
                 CHECK_OK(status) << "Failed to block host until done";
                 VLOG(3) << "BufferFromHostLiteral done for device_buffer: "
                         << device_buffer << " AsyncValue: " << av.get();
@@ -2592,7 +2610,10 @@ absl::StatusOr<Shape> TfrtGpuBuffer::logical_on_device_shape() {
   auto stream = device_->stream();
   TF_RETURN_IF_ERROR(
       transfer_manager->ReadDynamicShapes(stream, &shaped_buffer, &ret_shape));
-  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  {
+    tsl::profiler::TraceMe traceme("BlockHostUntilDone");
+    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+  }
   return ret_shape;
 }
 
@@ -2870,7 +2891,11 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteral(MutableLiteralBase* literal) {
                               byte_size))
           << "stream->Memcpy failed copying from GPU to host";
 
-      absl::Status status = stream->BlockHostUntilDone();
+      absl::Status status;
+      {
+        tsl::profiler::TraceMe traceme("BlockHostUntilDone");
+        status = stream->BlockHostUntilDone();
+      }
       VLOG(3) << "D2H copy done. " << status;
       if (!status.ok()) {
         VLOG(3) << "stream->BlockHostUntilDone failed: " << status;
@@ -3010,7 +3035,11 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst,
                     << host_ptr << " (" << transfer_size << " bytes)";
             CHECK_OK(stream->Memcpy(host_ptr, *sub_buffer, transfer_size))
                 << "stream->Memcpy failed copying from GPU to host";
-            absl::Status status = stream->BlockHostUntilDone();
+            absl::Status status;
+            {
+              tsl::profiler::TraceMe traceme("BlockHostUntilDone");
+              status = stream->BlockHostUntilDone();
+            }
             VLOG(3) << "D2H copy done. " << status;
             if (!status.ok()) {
               LOG(ERROR) << "stream->BlockHostUntilDone failed: " << status;
@@ -3204,7 +3233,10 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
           dst_definition_event.SetError(status);
           return;
         }
-        status = stream->BlockHostUntilDone();
+        {
+          tsl::profiler::TraceMe traceme("BlockHostUntilDone");
+          status = stream->BlockHostUntilDone();
+        }
         if (status.ok()) {
           VLOG(3) << "D2D copy done. dst: " << dst.opaque();
           dst_definition_event.SetStateConcrete();
@@ -3788,7 +3820,11 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
         // has completed, so that the next execute_fn can start.
         scheduled_event.SetStateConcrete();
 
-        absl::Status status = stream->BlockHostUntilDone();
+        absl::Status status;
+        {
+          tsl::profiler::TraceMe traceme("BlockHostUntilDone");
+          status = stream->BlockHostUntilDone();
+        }
         if (!status.ok()) {
           LOG(ERROR) << "BlockHostUntilDone failed for executable "
                      << executable_name << " on device "
