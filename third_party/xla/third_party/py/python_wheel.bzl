@@ -1,5 +1,29 @@
 """ Repository and build rules for Python wheels packaging utilities. """
 
+load("@rules_python//python:py_info.bzl", RulesPythonPyInfo = "PyInfo")
+load("@rules_python//python/api:api.bzl", "py_common")
+
+def _get_builtin_py_info():
+    # May be None in Bazel 8+
+    if PyInfo == None:
+        return None
+
+    # Bazel 8's autoloading may make them the same
+    if PyInfo == RulesPythonPyInfo:
+        return None
+
+    # Within Google, it is aliased to a stub provider
+    if "unimplemented" in str(PyInfo):
+        return None
+    return PyInfo
+
+_BuiltinPyInfo = _get_builtin_py_info()
+_py_info_providers = [
+    [RulesPythonPyInfo],
+] + (
+    [[_BuiltinPyInfo]] if _BuiltinPyInfo else []
+)
+
 def _get_host_environ(repository_ctx, name, default_value = None):
     """Returns the value of an environment variable on the host platform.
 
@@ -133,20 +157,19 @@ Examples:
 """  # buildifier: disable=no-effect
 
 def _transitive_py_deps_impl(ctx):
-    outputs = depset(
-        [],
-        transitive = [dep[PyInfo].transitive_sources for dep in ctx.attr.deps],
-    )
-
+    py_api = py_common.get(ctx)
+    info = py_api.PyInfoBuilder()
+    info.merge_targets(ctx.attr.deps)
+    outputs = info.transitive_sources.build()
     return DefaultInfo(files = outputs)
 
 _transitive_py_deps = rule(
     attrs = {
         "deps": attr.label_list(
             allow_files = True,
-            providers = [PyInfo],
+            providers = _py_info_providers,
         ),
-    },
+    } | py_common.API_ATTRS,
     implementation = _transitive_py_deps_impl,
 )
 
@@ -156,7 +179,7 @@ def transitive_py_deps(name, deps = []):
 
 """Collects python files that a target depends on.
 
-It traverses dependencies of provided targets, collect their direct and 
+It traverses dependencies of provided targets, collect their direct and
 transitive python deps and then return a list of paths to files.
 """  # buildifier: disable=no-effect
 
