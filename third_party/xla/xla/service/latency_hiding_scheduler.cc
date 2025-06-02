@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/map_util.h"
@@ -1131,6 +1132,18 @@ class ReadySetLt {
             "kForceDelay")) {
       return *value;
     }
+
+    // Use the preference value (comes from a heuristic) to choose between the
+    // two candidates.
+    // If two preferences are the same regular LHS logic will run as usual,
+    // we take advantage of this fact when initializing the heuristic algorithm.
+    if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
+            a.node->GetPreference() > b.node->GetPreference(), a,
+            b.node->GetPreference() > a.node->GetPreference(), b,
+            "kPreference")) {
+      return *value;
+    }
+
     std::pair<int64_t, int64_t> a_increase = {0, 0};
     std::pair<int64_t, int64_t> b_increase = {0, 0};
 
@@ -2618,12 +2631,19 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
       module_pressure_state_->GetPressureStateForComputation(computation)
           .live_ids_at_bottom);
 
+  // TODO: b/417942271 - Cache and Re-use the postprocessed scheduling graph for
+  // brkga.
   SchedulingState sched_state(
       &module_schedule.sequence(computation), alias_analysis_.get(),
       latency_estimator_, async_tracker_, &memory_pressure_tracker, config_);
   async_tracker_->PostProcessScheduleGraph(&sched_state.sched_graph,
                                            latency_estimator_);
+
   sched_state.sched_graph.InitializeGraphAnalysis(async_tracker_);
+  if (graph_processing_hook_) {
+    TF_RETURN_IF_ERROR(graph_processing_hook_(&sched_state.sched_graph));
+  }
+
   VLOG(5) << "Just built graph:";
 
   if (annotation_tracker_->HasAnnotations(computation)) {
@@ -2708,6 +2728,7 @@ DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
       LogInstruction(*r_it);
     }
   }
+
   module_pressure_state_->UpdatePressureStateForComputation(
       computation, memory_pressure_tracker.pressure_state());
   absl::c_reverse(sched_state.new_sequence_reversed);
@@ -3001,6 +3022,39 @@ void LatencyHidingScheduler::LogScheduleStatistics(
              .ToString());
 }
 
+absl::StatusOr<std::pair<std::vector<HloInstruction*>, ComputationScheduleInfo>>
+LatencyHidingScheduler::ScheduleWithPreferences(
+    HloModule* module, const std::vector<double>& preferences,
+    const HloComputation* computation) {
+  auto set_preferences = [&](HloScheduleGraph* graph) -> absl::Status {
+    VLOG(3) << "Setting scheduling preferences.";
+    graph->SetPreferences(preferences);
+    return absl::OkStatus();
+  };
+  TF_RETURN_IF_ERROR(scheduler_core_->SetGraphProcessingHook(set_preferences));
+  TF_ASSIGN_OR_RETURN(auto new_schedule,
+                      scheduler_core_->ScheduleComputation(computation));
+
+  // Save the old schedule.
+  auto old_schedule = std::vector<HloInstruction*>(
+      module->schedule().sequence(computation).instructions());
+  // Temporarily use the new schedule to capture stats.
+  module->schedule().set_sequence(computation,
+                                  absl::MakeConstSpan(new_schedule));
+  LatencyHidingScheduler::SchedulerStatistics stats =
+      LatencyHidingStatistics(computation, latency_estimator_.get(),
+                              async_tracker_.get(), shape_size_bytes_);
+  // Restore the old schedule.
+  module->schedule().set_sequence(computation,
+                                  absl::MakeConstSpan(old_schedule));
+
+  ComputationScheduleInfo schedule_info;
+  schedule_info.total_wasted_cycles = stats.GetTotalWastedCycles();
+  schedule_info.peak_memory = scheduler_core_->GetMemoryPeak();
+
+  return std::make_pair(new_schedule, schedule_info);
+}
+
 absl::StatusOr<bool> LatencyHidingScheduler::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -3011,21 +3065,20 @@ absl::StatusOr<bool> LatencyHidingScheduler::Run(
   // allows us to not having to think for now about memory pressure.
   CHECK(module->has_schedule()) << "LatencyHidingScheduler expects a base "
                                    "schedule that minimizes memory pressure.";
-  std::vector<HloComputation*> computations_to_schedule;
-  computations_to_schedule.reserve(module->computation_count());
+  computations_to_schedule_.reserve(module->computation_count());
   // Collect which computations have latency hiding opportunities.
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     for (auto* instr : computation->instructions()) {
       if (async_tracker_->IsSupportedAsyncStart(*instr) ||
           async_tracker_->IsSupportedAsyncDone(*instr)) {
-        computations_to_schedule.push_back(computation);
+        computations_to_schedule_.push_back(computation);
         break;
       }
     }
   }
 
-  if (computations_to_schedule.empty()) {
+  if (computations_to_schedule_.empty()) {
     return false;
   }
   absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>
@@ -3036,7 +3089,7 @@ absl::StatusOr<bool> LatencyHidingScheduler::Run(
     TF_RETURN_IF_ERROR(scheduler_core_->CaptureScheduleProto());
   }
 
-  for (HloComputation* computation : computations_to_schedule) {
+  for (HloComputation* computation : computations_to_schedule_) {
     TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
                         scheduler_core_->ScheduleComputation(computation));
     saved_schedules[computation] = std::move(new_schedule);
@@ -3054,7 +3107,7 @@ absl::StatusOr<bool> LatencyHidingScheduler::Run(
               << scheduler_core_->GetMemoryLimit() * 0.9;
     TF_RETURN_IF_ERROR(scheduler_core_->InitializeScheduler(module));
     scheduler_core_->SetMemoryLimit(scheduler_core_->GetMemoryLimit() * 0.9);
-    for (HloComputation* computation : computations_to_schedule) {
+    for (HloComputation* computation : computations_to_schedule_) {
       TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
                           scheduler_core_->ScheduleComputation(computation));
       saved_schedules[computation] = std::move(new_schedule);
@@ -3072,7 +3125,7 @@ absl::StatusOr<bool> LatencyHidingScheduler::Run(
     ModulePressureState pressure_state =
         ModulePressureState(module, alias_analysis.get(), shape_size_bytes_);
     pressure_state.InitializePressureStates();
-    for (HloComputation* computation : computations_to_schedule) {
+    for (HloComputation* computation : computations_to_schedule_) {
       VLOG(1) << "[" << name() << "] Statistics before scheduling:";
       XLA_VLOG_LINES(
           1, LatencyHidingStatistics(computation, latency_estimator_.get(),
@@ -3086,7 +3139,7 @@ absl::StatusOr<bool> LatencyHidingScheduler::Run(
     ModulePressureState post_scheduling_pressure_state =
         ModulePressureState(module, alias_analysis.get(), shape_size_bytes_);
     post_scheduling_pressure_state.InitializePressureStates();
-    for (HloComputation* computation : computations_to_schedule) {
+    for (HloComputation* computation : computations_to_schedule_) {
       VLOG(1) << "[" << name() << "] Statistics after scheduling:";
       XLA_VLOG_LINES(
           1, LatencyHidingStatistics(computation, latency_estimator_.get(),
@@ -3096,7 +3149,7 @@ absl::StatusOr<bool> LatencyHidingScheduler::Run(
                  .ToString());
     }
   } else {
-    for (HloComputation* computation : computations_to_schedule) {
+    for (HloComputation* computation : computations_to_schedule_) {
       module->schedule().set_sequence(
           computation, absl::MakeConstSpan(saved_schedules[computation]));
     }
