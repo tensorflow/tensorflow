@@ -33,7 +33,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/LogicalResult.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
@@ -43,11 +42,11 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
@@ -56,8 +55,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "shardy/dialect/sdy/ir/dialect.h"  // from @shardy
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
-#include "stablehlo/dialect/Serialization.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
 #include "stablehlo/transforms/StablehloRefineShapes.h"  // from @stablehlo
@@ -68,6 +67,7 @@ limitations under the License.
 #include "xla/hlo/translate/stablehlo.h"
 #include "xla/mlir/utils/type_util.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/python/refine_polymorphic_shapes.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
@@ -406,14 +406,14 @@ absl::Status XlaCallModuleLoader::LoadModule(
 
   // Parse the StableHLO/VHLO bytecode
   {
-    mlir::StatusScopedDiagnosticHandler diag_handler(context_);
-    module_ =
-        mlir::stablehlo::deserializePortableArtifact(module_str, context_);
-    if (!module_) {
+    absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> module_or_status =
+        xla::ParseMlirModuleString(module_str, *context_);
+    if (!module_or_status.ok()) {
       return absl::InvalidArgumentError(
           absl::StrCat("Cannot deserialize computation: ",
-                       diag_handler.ConsumeStatus().ToString()));
+                       module_or_status.status().message()));
     }
+    module_ = std::move(module_or_status.value());
   }
   VLOG(3) << "Parsed serialized module (version = " << version
           << ", platforms = [" << absl::StrJoin(platforms, ", ")
@@ -469,10 +469,10 @@ absl::Status XlaCallModuleLoader::ValidateXlaCallModuleInvariants() {
 
   module_->walk([&](mlir::Operation *op) {
     // StableHLO programs created by jax2tf only contain operations
-    // from Builtin, Func and StableHLO dialects.
+    // from Builtin, Func, StableHLO, Shardy dialects.
     if (!llvm::isa<mlir::BuiltinDialect, mlir::chlo::ChloDialect,
-                   mlir::func::FuncDialect, mlir::stablehlo::StablehloDialect>(
-            op->getDialect())) {
+                   mlir::func::FuncDialect, mlir::stablehlo::StablehloDialect,
+                   mlir::sdy::SdyDialect>(op->getDialect())) {
       op->emitOpError() << "is an op from an unsupported dialect";
       moduleValidationFailed = true;
     }
