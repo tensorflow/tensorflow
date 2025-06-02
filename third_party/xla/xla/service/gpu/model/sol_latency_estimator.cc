@@ -335,12 +335,17 @@ LatencyEstimator::TimeCost SolLatencyEstimator::NodeCost(
     return absl::ToDoubleMicroseconds(*matmul_duration);
   }
 
-  absl::Duration total_estimated_time =
-      gpu_performance_model_
-          .EstimateRunTimeForInstruction(instr, &*cost_analysis_)
-          .exec_time;
-  LatencyEstimator::TimeCost cost_in_us =
-      absl::ToDoubleMicroseconds(total_estimated_time);
+  LatencyEstimator::TimeCost cost_in_us;
+  if (instr->opcode() == HloOpcode::kFusion &&
+      (instr->IsLoopFusion() || instr->IsInputFusion())) {
+    absl::Duration total_estimated_time =
+        gpu_performance_model_
+            .EstimateRunTimeForInstruction(instr, &*cost_analysis_)
+            .exec_time;
+    cost_in_us = absl::ToDoubleMicroseconds(total_estimated_time);
+  } else {
+    cost_in_us = 0.01 * kLowCost;
+  }
   VLOG(10) << "Analytical estimator calculated cost for: " << instr->name()
            << ". Cost: " << cost_in_us;
   return cost_in_us;
