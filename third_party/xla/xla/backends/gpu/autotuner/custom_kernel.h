@@ -13,16 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_AUTOTUNER_BACKENDS_GPU_CUBLASLT_H_
-#define XLA_BACKENDS_AUTOTUNER_BACKENDS_GPU_CUBLASLT_H_
+#ifndef XLA_BACKENDS_GPU_AUTOTUNER_CUSTOM_KERNEL_H_
+#define XLA_BACKENDS_GPU_AUTOTUNER_CUSTOM_KERNEL_H_
 
 #include <memory>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/backends/autotuner/backends/gpu/gpu_codegen_backend.h"
+#include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/compiler.h"
@@ -32,22 +31,13 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// A codegen backend for cuBLASLt.
-// This backend is used to autotune cuBLASLt algorithms.
-//
-// The CublasLt backend requires a fusion instruction with a cuBLASLt custom
-// call.
-// CuBLASLt custom calls are represented as:
-// ```
-//   %custom-call.1 = .. custom-call(...),
-//   custom_call_target="__cublas$lt&matmul"
-// ```
-class CublasLtBackend : public GpuCodegenBackend {
+// A codegen backend for custom kernels.
+class CustomKernelBackend : public GpuCodegenBackend {
  public:
-  explicit CublasLtBackend(const Compiler::TargetConfig* target_config,
-                           const DebugOptions* debug_options,
-                           Compiler* compiler)
-      : GpuCodegenBackend("CublasLt", target_config, debug_options, compiler) {}
+  explicit CustomKernelBackend(const Compiler::TargetConfig* target_config,
+                               const DebugOptions* debug_options,
+                               Compiler* compiler)
+      : GpuCodegenBackend("Cublas", target_config, debug_options, compiler) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(
@@ -64,11 +54,12 @@ class CublasLtBackend : public GpuCodegenBackend {
   absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> hlo_module,
       const Compiler::CompileOptions& options) override {
-    return absl::UnimplementedError("Not implemented.");
+    return absl::InvalidArgumentError(
+        "CustomKernelBackend doesn't support wrapping in a module.");
   }
 };
 
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_BACKENDS_AUTOTUNER_BACKENDS_GPU_CUBLASLT_H_
+#endif  // XLA_BACKENDS_GPU_AUTOTUNER_CUSTOM_KERNEL_H_

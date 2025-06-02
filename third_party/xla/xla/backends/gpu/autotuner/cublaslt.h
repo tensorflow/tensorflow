@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_AUTOTUNER_BACKENDS_GPU_CUDNN_H_
-#define XLA_BACKENDS_AUTOTUNER_BACKENDS_GPU_CUDNN_H_
+#ifndef XLA_BACKENDS_GPU_AUTOTUNER_CUBLASLT_H_
+#define XLA_BACKENDS_GPU_AUTOTUNER_CUBLASLT_H_
 
 #include <memory>
 #include <vector>
@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/autotuner/backends/gpu/gpu_codegen_backend.h"
+#include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/compiler.h"
@@ -32,33 +32,22 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// A codegen backend for cuDNN.
-// Determines execution plan id. Requires a device with cuDNN >= 9.0.
-// Note: We only support cudnn fusions containing a dot.
+// A codegen backend for cuBLASLt.
+// This backend is used to autotune cuBLASLt algorithms.
 //
-// A Cudnn fusion is a fusion with a custom call target of "__cudnn$fusion":
+// The CublasLt backend requires a fusion instruction with a cuBLASLt custom
+// call.
+// CuBLASLt custom calls are represented as:
 // ```
-// fusion {
-//   p0 = f32[3,28,32] parameter(0)
-//   p1 = f32[3,28,32] parameter(1)
-//   ROOT d = f32[3,32,32] dot(p0, p1),
-//     lhs_batch_dims={0}, rhs_batch_dims={0},
-//     lhs_contracting_dims={1}, rhs_contracting_dims={1}
-// }
-
-// ENTRY e {
-//   p0 = f32[3,28,32] parameter(0)
-//   p1 = f32[3,28,32] parameter(1)
-//   ROOT _ = f32[3,32,32] fusion(p0, p1), kind=kCustom, calls=fusion,
-//     backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
-// })";
+//   %custom-call.1 = .. custom-call(...),
+//   custom_call_target="__cublas$lt&matmul"
 // ```
-
-class CudnnBackend : public GpuCodegenBackend {
+class CublasLtBackend : public GpuCodegenBackend {
  public:
-  explicit CudnnBackend(const Compiler::TargetConfig* target_config,
-                        const DebugOptions* debug_options, Compiler* compiler)
-      : GpuCodegenBackend("Cublas", target_config, debug_options, compiler) {}
+  explicit CublasLtBackend(const Compiler::TargetConfig* target_config,
+                           const DebugOptions* debug_options,
+                           Compiler* compiler)
+      : GpuCodegenBackend("CublasLt", target_config, debug_options, compiler) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(
@@ -69,9 +58,7 @@ class CudnnBackend : public GpuCodegenBackend {
       const HloInstruction& instr) override;
 
   absl::Status ApplyConfig(HloInstruction& instr,
-                           const BackendConfig& config) override {
-    return absl::UnimplementedError("Not implemented.");
-  }
+                           const BackendConfig& config) override;
 
  private:
   absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
@@ -84,4 +71,4 @@ class CudnnBackend : public GpuCodegenBackend {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_BACKENDS_AUTOTUNER_BACKENDS_GPU_CUDNN_H_
+#endif  // XLA_BACKENDS_GPU_AUTOTUNER_CUBLASLT_H_

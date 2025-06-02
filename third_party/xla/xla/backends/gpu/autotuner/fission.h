@@ -13,35 +13,47 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_AUTOTUNER_BACKENDS_GPU_TRITON_H_
-#define XLA_BACKENDS_AUTOTUNER_BACKENDS_GPU_TRITON_H_
+#ifndef XLA_BACKENDS_GPU_AUTOTUNER_FISSION_H_
+#define XLA_BACKENDS_GPU_AUTOTUNER_FISSION_H_
 
 #include <memory>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "xla/backends/autotuner/backends/gpu/gpu_codegen_backend.h"
+#include "absl/strings/string_view.h"
+#include "xla/backends/gpu/autotuner/cublas.h"
+#include "xla/backends/gpu/autotuner/cublaslt.h"
+#include "xla/backends/gpu/autotuner/custom_kernel.h"
+#include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
-
 namespace gpu {
 
-class TritonBackend : public GpuCodegenBackend {
+// The FissionBackend tries to unfuse a fusion instruction.
+// The resulting 'configurations" (HloModules) are equivalent to the original
+// hlo graph but try to use a different backend for the dot operation: cublas,
+// cublasLt, custom calls. If the CustomKernel registry matches a hlo
+// subgraph, it will generate a config using the CustomKernel.
+class FissionBackend : public GpuCodegenBackend {
  public:
-  explicit TritonBackend(const Compiler::TargetConfig* target_config,
-                         const DebugOptions* debug_options, Compiler* compiler)
-      : GpuCodegenBackend("Triton", target_config, debug_options, compiler) {}
+  explicit FissionBackend(const Compiler::TargetConfig* target_config,
+                          const DebugOptions* debug_options, Compiler* compiler)
+      : GpuCodegenBackend("Fission", target_config, debug_options, compiler),
+        cublas_backend_(target_config, debug_options, compiler),
+        cublaslt_backend_(target_config, debug_options, compiler),
+        custom_kernel_backend_(target_config, debug_options, compiler) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(
       const HloInstruction& instr,
       stream_executor::StreamExecutor* stream_executor) override;
+
   absl::StatusOr<std::unique_ptr<BackendConfig>> GetDefaultConfig(
       const HloInstruction& instr) override;
 
@@ -51,12 +63,16 @@ class TritonBackend : public GpuCodegenBackend {
  private:
   absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> hlo_module,
-      const Compiler::CompileOptions& options) override;
+      const Compiler::CompileOptions& options) override {
+    return absl::UnimplementedError("Not implemented.");
+  }
 
-  bool IsSupported(const HloInstruction& instr);
+  CublasBackend cublas_backend_;
+  CublasLtBackend cublaslt_backend_;
+  CustomKernelBackend custom_kernel_backend_;
 };
 
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_BACKENDS_AUTOTUNER_BACKENDS_GPU_TRITON_H_
+#endif  // XLA_BACKENDS_GPU_AUTOTUNER_FISSION_H_

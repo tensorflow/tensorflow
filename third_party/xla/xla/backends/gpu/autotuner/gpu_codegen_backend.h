@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_AUTOTUNER_BACKENDS_GPU_GPU_CODEGEN_BACKEND_H_
-#define XLA_BACKENDS_AUTOTUNER_BACKENDS_GPU_GPU_CODEGEN_BACKEND_H_
+#ifndef XLA_BACKENDS_GPU_AUTOTUNER_GPU_CODEGEN_BACKEND_H_
+#define XLA_BACKENDS_GPU_AUTOTUNER_GPU_CODEGEN_BACKEND_H_
 
 #include <memory>
 #include <optional>
@@ -94,4 +94,4 @@ class GpuCodegenBackend : public CodegenBackend {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_BACKENDS_AUTOTUNER_BACKENDS_GPU_GPU_CODEGEN_BACKEND_H_
+#endif  // XLA_BACKENDS_GPU_AUTOTUNER_GPU_CODEGEN_BACKEND_H_

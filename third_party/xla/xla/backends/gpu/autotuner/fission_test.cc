@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/autotuner/backends/gpu/fission.h"
+#include "xla/backends/gpu/autotuner/fission.h"
 
 #include <memory>
 #include <string>
