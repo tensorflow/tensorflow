@@ -15,8 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/tensor_handle_data.h"
 
+#include <cstdint>
+#include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include "absl/status/status.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
