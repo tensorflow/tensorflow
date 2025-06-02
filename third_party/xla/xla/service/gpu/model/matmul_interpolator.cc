@@ -282,7 +282,7 @@ MatmulInterpolator::Create(const se::DeviceDescription& device_info) {
   auto fallback_interpolator =
       std::make_unique<EuclideanWeightedAverageInterpolator<4>>(
           fixed_complement_off, factor_of_two_complement_on,
-          /*max_context=*/std::array<int64_t, 4>{8, 8192, 8192, 8192},
+          /*max_context=*/std::array<int64_t, 4>{4, 8192, 8192, 8192},
           /*min_context=*/std::array<int64_t, 4>{1, 512, 512, 512});
   for (const auto& [dtype_key, specs] : spec_map) {
     (*interpolators)[dtype_key] =
