@@ -108,6 +108,7 @@ cc_library(
 cc_library(
     name = "auto_sharding_solver",
     srcs = [
+        "auto_sharding_cpsat_for_problem.cc",
         "auto_sharding_cpsat_for_request.cc",
         "auto_sharding_evaluator_for_problem.cc",
         "auto_sharding_evaluator_for_request.cc",
@@ -423,6 +424,8 @@ xla_cc_test(
 xla_cc_test(
     name = "auto_sharding_solver_test",
     srcs = [
+        "auto_sharding_cpsat_for_problem_test.cc",
+        "auto_sharding_cpsat_for_request_test.cc",
         "auto_sharding_memory_test.cc",
         "auto_sharding_solver_test.cc",
     ],
