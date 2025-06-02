@@ -30,33 +30,33 @@ TEST(WeightedDeltaCompareTest, ReturnsZeroWhenEqual) {
     EXPECT_EQ(cmp, 0) << "Comparison should return 0 for equal deltas";
 }
 
-// Tests that WeightedDeltaCompare returns negative when a < b.
-TEST(WeightedDeltaCompareTest, ReturnsNegativeWhenALessThanB) {
+// Tests that WeightedDeltaCompare returns positive when a < b.
+TEST(WeightedDeltaCompareTest, ReturnsPositiveWhenALessThanB) {
     WeightedDelta a{1.0f, 3.0f};
     WeightedDelta b{2.0f, 5.0f};
     int cmp = tf_tracking::WeightedDeltaCompare(&a, &b);
-    EXPECT_LT(cmp, 0) << "Comparison should return negative when a < b";
+    EXPECT_GT(cmp, 0) << "Comparison should return positive when a < b";
 }
 
-// Tests that WeightedDeltaCompare returns positive when a > b.
-TEST(WeightedDeltaCompareTest, ReturnsPositiveWhenAGreaterThanB) {
+// Tests that WeightedDeltaCompare returns negative when a > b.
+TEST(WeightedDeltaCompareTest, ReturnsNegativeWhenAGreaterThanB) {
     WeightedDelta a{1.0f, 7.0f};
     WeightedDelta b{2.0f, 5.0f};
     int cmp = tf_tracking::WeightedDeltaCompare(&a, &b);
-    EXPECT_GT(cmp, 0) << "Comparison should return positive when a > b";
+    EXPECT_LT(cmp, 0) << "Comparison should return negative when a > b";
 }
 
 // Tests that qsort with WeightedDeltaCompare produces stable ordering.
 TEST(WeightedDeltaCompareTest, QSortStableOrdering) {
     WeightedDelta arr[3] = {
-        {1.0f, 2.0f},
+        {1.0f, 1.0f},
         {2.0f, 2.0f},
-        {3.0f, 1.0f}
+        {3.0f, 2.0f}
     };
     qsort(arr, 3, sizeof(WeightedDelta), tf_tracking::WeightedDeltaCompare);
-    EXPECT_FLOAT_EQ(arr[0].delta, 1.0f);
+    EXPECT_FLOAT_EQ(arr[0].delta, 2.0f);
     EXPECT_FLOAT_EQ(arr[1].delta, 2.0f);
-    EXPECT_FLOAT_EQ(arr[2].delta, 2.0f);
+    EXPECT_FLOAT_EQ(arr[2].delta, 1.0f);
 }
 
 // Tests that KeypointCompare returns 0 when scores are equal.
@@ -71,8 +71,8 @@ TEST(KeypointCompareTest, ReturnsZeroWhenEqual) {
     EXPECT_EQ(cmp, 0);
 }
 
-// Tests that KeypointCompare returns negative when a < b.
-TEST(KeypointCompareTest, ReturnsNegativeWhenALessThanB) {
+// Tests that KeypointCompare returns positive when a < b.
+TEST(KeypointCompareTest, ReturnsPositiveWhenALessThanB) {
     Keypoint a(0, 0);
     a.score_ = 3.0f;
     a.type_ = 0;
@@ -80,11 +80,11 @@ TEST(KeypointCompareTest, ReturnsNegativeWhenALessThanB) {
     b.score_ = 5.0f;
     b.type_ = 1;
     int cmp = KeypointCompare(&a, &b);
-    EXPECT_LT(cmp, 0);
+    EXPECT_GT(cmp, 0);
 }
 
-// Tests that KeypointCompare returns positive when a > b.
-TEST(KeypointCompareTest, ReturnsPositiveWhenAGreaterThanB) {
+// Tests that KeypointCompare returns negative when a > b.
+TEST(KeypointCompareTest, ReturnsNegativeWhenAGreaterThanB) {
     Keypoint a(0, 0);
     a.score_ = 5.0f;
     a.type_ = 0;
@@ -92,7 +92,7 @@ TEST(KeypointCompareTest, ReturnsPositiveWhenAGreaterThanB) {
     b.score_ = 3.0f;
     b.type_ = 1;
     int cmp = KeypointCompare(&a, &b);
-    EXPECT_GT(cmp, 0);
+    EXPECT_LT(cmp, 0);
 }
 
 // Tests that qsort with KeypointCompare produces stable ordering.
@@ -102,14 +102,14 @@ TEST(KeypointCompareTest, QSortStableOrdering) {
         Keypoint(1, 1),
         Keypoint(2, 2)
     };
-    arr[0].score_ = 2.0f; arr[0].type_ = 0;
+    arr[0].score_ = 1.0f; arr[0].type_ = 0;
     arr[1].score_ = 2.0f; arr[1].type_ = 1;
-    arr[2].score_ = 1.0f; arr[2].type_ = 2;
+    arr[2].score_ = 2.0f; arr[2].type_ = 2;
 
     qsort(arr, 3, sizeof(Keypoint), KeypointCompare);
-    EXPECT_FLOAT_EQ(arr[0].score_, 1.0f);
+    EXPECT_FLOAT_EQ(arr[0].score_, 2.0f);
     EXPECT_FLOAT_EQ(arr[1].score_, 2.0f);
-    EXPECT_FLOAT_EQ(arr[2].score_, 2.0f);
+    EXPECT_FLOAT_EQ(arr[2].score_, 1.0f);
 }
 
-}
+}   // namespace tf_tracking

@@ -70,7 +70,7 @@ void KeypointDetector::ScoreKeypoints(const ImageData& image_data,
 /**
  * @brief Comparison function for sorting Keypoint structs by score.
  *
- * Returns -1 if a < b, 1 if a > b, and 0 if equal.
+ * Returns 1 if a < b, -1 if a > b, and 0 if equal.
  * This is suitable for use with qsort and ensures stable ordering when scores are equal.
  *
  * @param a Pointer to first Keypoint.
@@ -80,8 +80,8 @@ void KeypointDetector::ScoreKeypoints(const ImageData& image_data,
 inline int KeypointCompare(const void* const a, const void* const b) {
   float score_a = reinterpret_cast<const Keypoint*>(a)->score_;
   float score_b = reinterpret_cast<const Keypoint*>(b)->score_;
-  if (score_a < score_b) return -1;
-  if (score_a > score_b) return 1;
+  if (score_a < score_b) return 1;
+  if (score_a > score_b) return -1;
   return 0;
 }
 
