@@ -620,9 +620,6 @@ static int64_t NumUnnestedReductions(const HloInstruction& instr,
   return cache->GetNumUnnestedReductions(instr);
 }
 
-// This function limits the maximum number of operands to a fusion, and the
-// amount of shared memory which can be consumed by the fusion.
-//
 // There's a cap on how many parameters we can pass to a CUDA kernel, but
 // exactly what that limit is hazy, as it depends on (among other things) how
 // much GPU constant memory is in use for other purposes.
@@ -643,27 +640,9 @@ static int64_t NumUnnestedReductions(const HloInstruction& instr,
 // If the fusion is a producer/consumer fusion and instr1 is the
 // consumer and instr2 is the producer, set is_consumer_producer_fusion
 // to true to enable more fusion.
-FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
-                                  const HloInstruction& instr2,
-                                  const se::DeviceDescription& device_info,
-                                  bool is_consumer_producer_fusion,
-                                  FusionInfoCache* cache /*=nullptr*/) {
-  if (SharedMemoryUsage(instr1, cache, device_info) +
-          SharedMemoryUsage(instr2, cache, device_info) >
-      device_info.shared_memory_per_block()) {
-    return FusionDecision::Forbid(
-               "shared memory usage would be over the budget of ")
-           << device_info.shared_memory_per_block() << "B";
-  }
-
-  if (NumUnnestedReductions(instr1, cache, device_info) +
-          NumUnnestedReductions(instr2, cache, device_info) >
-      kMaxUnnestedReductionOutputsPerFusion) {
-    return FusionDecision::Forbid("over ")
-           << kMaxUnnestedReductionOutputsPerFusion
-           << " unnested reductions in fusion";
-  }
-
+FusionDecision FusionFitsInParameterLimit(const HloInstruction& instr1,
+                                          const HloInstruction& instr2,
+                                          bool is_consumer_producer_fusion) {
   // Compute the number of outputs of the (possibly multi-output) fusion node
   // we're considering creating.
   //
@@ -728,6 +707,37 @@ FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
         "per fusion");
   }
   return FusionDecision::Allow();
+}
+
+// This function limits the maximum number of operands to a fusion, the number
+// of unnested reductions in multi-output fusions, and the amount of shared
+// memory which can be consumed by the fusion.
+//
+// If the fusion is a producer/consumer fusion and instr1 is the
+// consumer and instr2 is the producer, set is_consumer_producer_fusion
+// to true to enable more fusion.
+FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
+                                  const HloInstruction& instr2,
+                                  const se::DeviceDescription& device_info,
+                                  bool is_consumer_producer_fusion,
+                                  FusionInfoCache* cache /*=nullptr*/) {
+  if (SharedMemoryUsage(instr1, cache, device_info) +
+          SharedMemoryUsage(instr2, cache, device_info) >
+      device_info.shared_memory_per_block()) {
+    return FusionDecision::Forbid(
+               "shared memory usage would be over the budget of ")
+           << device_info.shared_memory_per_block() << "B";
+  }
+
+  if (NumUnnestedReductions(instr1, cache, device_info) +
+          NumUnnestedReductions(instr2, cache, device_info) >
+      kMaxUnnestedReductionOutputsPerFusion) {
+    return FusionDecision::Forbid("over ")
+           << kMaxUnnestedReductionOutputsPerFusion
+           << " unnested reductions in fusion";
+  }
+  return FusionFitsInParameterLimit(instr1, instr2,
+                                    is_consumer_producer_fusion);
 }
 
 bool IsFusibleAsMultiOutputFusionRoot(
