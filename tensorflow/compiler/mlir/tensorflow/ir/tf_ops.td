@@ -877,7 +877,8 @@ An op which shards the input based on the given sharding attribute.
     TF_Tensor:$input,
 
     DefaultValuedStrAttr<StrAttr, "">:$sharding,
-    OptionalAttr<StrAttr>:$_XlaSharding
+    OptionalAttr<StrAttr>:$_XlaSharding,
+    OptionalAttr<StrAttr>:$_XlaShardingV2
   );
 
   let results = (outs
@@ -1967,12 +1968,12 @@ Op that copies host tensors to device with bounded dynamic shape support.
   }];
 
   let description = [{
-This op copies the padded tensor on cpu to TPU without the padded data. `tensors` 
+This op copies the padded tensor on cpu to TPU without the padded data. `tensors`
 is a list of cpu tensors with padded data. `unpadded_sizes` is a list of shape
-tensors which describes unpadded size of each dimension for each cpu tensor. 
+tensors which describes unpadded size of each dimension for each cpu tensor.
 The size of the `unpadded_sizes` should be the same as `tensors`. They are both
 on host. `tpu_tensors` are list of tpu device tensors without the padded data.
-`tpu_tensors` also has the same size of the `tensors` and the shapes of 
+`tpu_tensors` also has the same size of the `tensors` and the shapes of
 `tpu_tensors` are determined by the `unpadded_sizes`.
   }];
 

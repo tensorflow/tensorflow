@@ -108,9 +108,8 @@ void CopyOriginalValue(const HloInstruction* src_instruction,
   if (!src_instruction || !dest_instruction ||
       !ShapeUtil::Compatible(src_instruction->shape(),
                              dest_instruction->shape())) {
-    LOG(WARNING)
-        << "Expect the new instruction to have the same shape with the old "
-           "instruction when moving over original_value";
+    VLOG(1) << "Expect the new instruction to have the same shape with the old "
+               "instruction when moving over original_value";
     return;
   }
 

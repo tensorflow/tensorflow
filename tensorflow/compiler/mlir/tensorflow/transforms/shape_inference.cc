@@ -1285,7 +1285,7 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
         xla_call_module_context_.get(), op.getVersion(), op.getModule(),
         std::move(disabled_checks), std::move(platforms),
         /*num_invocation_args=*/op.getArgs().size(),
-        op.getHasTokenInputOutput());
+        op.getHasTokenInputOutput(), op.getUseShardyPartitioner());
     if (!l.ok()) {
       llvm::errs() << "Parsing error in XlaCallModule: "
                    << l.status().ToString() << "\n";

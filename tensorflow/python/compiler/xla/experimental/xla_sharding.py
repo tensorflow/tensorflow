@@ -204,11 +204,14 @@ class Sharding(object):
             tile_assignment_dimensions=tile_assignment_dims,
             tile_assignment_devices=range(num_devices)))
 
-  def apply_to_tensor(self,
-                      tensor,
-                      assign_tuple_sharding=False,
-                      use_sharding_op=False,
-                      unspecified_dims=None):
+  def apply_to_tensor(
+      self,
+      tensor,
+      assign_tuple_sharding=False,
+      use_sharding_op=False,
+      unspecified_dims=None,
+      sharding_v2_proto=None,
+  ):
     """Applies this Sharding attribute to `tensor`.
 
     Args:
@@ -216,6 +219,7 @@ class Sharding(object):
       assign_tuple_sharding: If the sharding type should be a tuple.
       use_sharding_op: Whether to create a sharding op on `tensor`.
       unspecified_dims: An optional list of dimensions unspecified.
+      sharding_v2_proto: The v2 sharding proto to use.
 
     Returns:
       The tensor with Sharding attribute.
@@ -261,6 +265,11 @@ class Sharding(object):
     # pylint: disable=protected-access
     tensor.op._set_attr('_XlaSharding',
                         attr_value_pb2.AttrValue(s=proto.SerializeToString()))
+    if sharding_v2_proto:
+      tensor.op._set_attr(
+          '_XlaShardingV2',
+          attr_value_pb2.AttrValue(s=sharding_v2_proto.SerializeToString()),
+      )
     return tensor
 
   def apply_to_operation(self, operation):

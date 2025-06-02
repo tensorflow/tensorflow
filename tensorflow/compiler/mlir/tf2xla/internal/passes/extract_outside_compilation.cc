@@ -507,11 +507,11 @@ LogicalResult GetShardingOfValue(Operation* context_op, Value val,
   // val should always have a defining op because cluster inputs always have
   // defining ops.
   assert(op);
-  StringAttr sharding_attr = op->getAttrOfType<StringAttr>("_XlaSharding");
+  StringAttr sharding_attr = op->getAttrOfType<StringAttr>("_XlaShardingV2");
   if (!sharding_attr)
     return context_op->emitOpError()
            << "A map_outside_compilation op's input should have an explicit "
-              "sharding. There is no _XlaSharding attribute on the input op.";
+              "sharding. There is no _XlaShardingV2 attribute on the input op.";
   sharding = sharding_attr.str();
   return mlir::success();
 }
