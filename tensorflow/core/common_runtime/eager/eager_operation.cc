@@ -371,7 +371,7 @@ absl::Status EagerOperation::Reset(
   if (eager_func_params.has_value()) {
     eager_func_params_ = eager_func_params;
   }
-  op_name_ = op;
+  op_name_ = std::string(op);
   return SetDeviceName(device_name);
 }
 
