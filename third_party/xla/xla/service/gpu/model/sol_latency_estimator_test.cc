@@ -89,10 +89,11 @@ class SolLatencyEstimatorTest : public HloHardwareIndependentTestBase,
 
   absl::Duration ComputeNodeCost(const HloInstruction& instr,
                                  const HloComputation* computation) {
-    SolLatencyEstimator estimator(
-        scheduler_config_, std::make_unique<DummyLatencyEstimator>(),
-        gpu_device_info_, shape_size_fn_, computation);
-    LatencyEstimator::TimeCost cost_val = estimator.NodeCost(&instr);
+    std::unique_ptr<SolLatencyEstimator> estimator =
+        *SolLatencyEstimator::Create(
+            scheduler_config_, std::make_unique<DummyLatencyEstimator>(),
+            gpu_device_info_, shape_size_fn_, computation);
+    LatencyEstimator::TimeCost cost_val = estimator->NodeCost(&instr);
     return absl::Microseconds(static_cast<int64_t>(cost_val));
   }
 
