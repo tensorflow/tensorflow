@@ -60,6 +60,7 @@ using tsl::profiler::kSparseCoreOpLineName;          // NOLINT
 using tsl::profiler::kSparseCorePlaneRegex;          // NOLINT
 using tsl::profiler::kSparseCoreStepLineName;        // NOLINT
 using tsl::profiler::kStepLineName;                  // NOLINT
+using tsl::profiler::kStreamLineName;                // NOLINT
 using tsl::profiler::kTaskEnvPlaneName;              // NOLINT
 using tsl::profiler::kTensorFlowNameScopeLineName;   // NOLINT
 using tsl::profiler::kTensorFlowOpLineName;          // NOLINT

@@ -51,6 +51,7 @@ const absl::string_view kHostCpusPlaneName = "Host CPUs";
 const absl::string_view kSyscallsPlaneName = "Syscalls";
 
 const absl::string_view kStepLineName = "Steps";
+const absl::string_view kStreamLineName = "Stream";
 const absl::string_view kSparseCoreStepLineName = "Sparse Core Steps";
 const absl::string_view kSparseCoreModuleLineName = "Sparse Core Modules";
 const absl::string_view kSparseCoreOpLineName = "Sparse Core Ops";
