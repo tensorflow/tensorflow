@@ -137,6 +137,9 @@ struct SchedulerConfig {
   int64_t send_recv_host_overlap_limit = 1;
   int64_t copy_overlap_limit = 1;
   uint64_t memory_limit = UINT64_MAX;
+  int64_t max_hops_to_closest_selective_overlap = 0;
+  int64_t rerun = 0;
+  int64_t parallel_collective_overlap_limit = 1;
   bool schedule_send_recvs = false;
   // Consider send recv as the same resource. Some platforms do not take well
   // overlapping the send/recv ops between themselves.
@@ -149,9 +152,7 @@ struct SchedulerConfig {
   bool resource_serializing = false;
   bool depth_based_memory_pressure_reduction = false;
   bool enable_selective_resources = false;
-  int64_t max_hops_to_closest_selective_overlap = 0;
-  int64_t rerun = 0;
-  int64_t parallel_collective_overlap_limit = 1;
+  bool flexible_scheduling_annotation_scheduling = false;
 };
 
 // Class used estimate latency between instructions and cost of HLOs.
@@ -682,6 +683,7 @@ class HloGraphNode {
     annotation_ = annotation;
     return absl::OkStatus();
   }
+  void ClearAnnotation() { annotation_ = -1; }
   std::string ToString(const AsyncTracker* async_tracker = nullptr) const {
     std::string result;
     absl::StrAppend(&result, "Instr: ", instr_->ToShortString(), "\n");
@@ -1244,6 +1246,9 @@ class DefaultSchedulerCore : public SchedulerCore {
     ReadyQueueSet annotation_ready;
     // Annotation that is currently being scheduled.
     int64_t ongoing_annotation = kInvalidAnnotation;
+    // If this set is not empty it means that we shouldn't schedule any more
+    // annotated nodes until empty.
+    absl::flat_hash_set<HloGraphNode*> nodes_holding_annotations;
     // Reference to this scheduler run configuration.
     const SchedulerConfig& config;
     SchedulingState(const HloInstructionSequence* instr_sequence,
