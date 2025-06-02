@@ -5961,6 +5961,7 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test_helpers",
+        "//xla/hlo/utils:hlo_matchers",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
