@@ -3176,4 +3176,50 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
     }
   }];
 }
+
+def TF_XlaSparseActivationsUnstackOp : TF_Op<"XlaSparseActivationsUnstack", [Pure]> {
+  let summary = [{
+    XlaSparseActivationsUnstackOp attempts to fuse transpose, relayout,
+    conversion, stacking and optionally interleaving of the embedding
+    activations, while also offloading this work to SparseCore.
+
+    The op assumes its operand is in SparseCore layout, while also being F32.
+    The output is a tuple of tensors in TensorCore layout, in any data type.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$stacked_activations,
+
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$num_tables,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<1>]>:$sample_counts,
+    ConfinedAttr<I64ArrayAttr, [ArrayMinCount<1>]>:$features,
+    BoolAttr:$interleaved
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$unstacked_embedding_activations
+  );
+}
+
+def TF_XlaSparseGradientsStackOp : TF_Op<"XlaSparseGradientsStack", [Pure]> {
+  let summary = [{
+    XlaSparseGradientsStackOp attempts to fuse transpose, relayout, conversion,
+    unstacking and optionally interleaving of the embedding gradients, while
+    also offloading this work to SparseCore.
+
+    The op assumes its operands are in TensoreCore layout and in any data type.
+    The output is in SparseCore layout and is expected to be F32.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$unstacked_gradients,
+
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$num_tables,
+    BoolAttr:$interleaved
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$stacked_gradients
+  );
+}
 #endif // TF_OPS
