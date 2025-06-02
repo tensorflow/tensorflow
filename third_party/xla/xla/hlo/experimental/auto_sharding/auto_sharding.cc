@@ -1997,9 +1997,7 @@ CreateAutoShardingSolverRequestAndCallSolver(
   }
 
   const auto converted_problem = ConvertToProblem(request);
-  const auto converted_request = ConvertToSolverRequest(converted_problem);
-  return FormulateAndSolveMIPFromSolverRequest(converted_request,
-                                               GetParams(request));
+  return FormulateAndSolveMIPFromProblem(converted_problem, GetParams(request));
 }
 
 void CheckHloSharding(
