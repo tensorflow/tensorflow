@@ -55,11 +55,11 @@ class CollectiveInterpolator {
       InterpolatorKey, std::unique_ptr<InterpolatorBase<int64_t, 2>>>>;
 
   static absl::StatusOr<std::unique_ptr<CollectiveInterpolator>> Create(
-      const HloInstructionProfileList& profiles,
+      int num_devices_per_host, const HloInstructionProfileList& profiles,
       const se::DeviceDescription& device_info);
 
   static absl::StatusOr<std::unique_ptr<CollectiveInterpolator>> Create(
-      const se::DeviceDescription& device_info);
+      int num_devices_per_host, const se::DeviceDescription& device_info);
 
   // Constructs the semantically correct module from the profile.
   // Usually the root instruction of the entry computation is of interest and is
@@ -75,12 +75,15 @@ class CollectiveInterpolator {
   // Uses `EuclideanNNInterpolator` to figure get the closest neighbour from
   // profiles.
   explicit CollectiveInterpolator(InterpolatorMap interpolators,
-                                  const se::DeviceDescription& device_info)
-      : interpolators_(std::move(interpolators)), device_info_(device_info) {}
+                                  const se::DeviceDescription& device_info,
+                                  int num_devices_per_host)
+      : interpolators_(std::move(interpolators)),
+        device_info_(device_info),
+        num_devices_per_host_(num_devices_per_host) {}
 
   InterpolatorMap interpolators_;
-
   const se::DeviceDescription& device_info_;
+  int num_devices_per_host_;
 };
 
 }  // namespace xla::gpu

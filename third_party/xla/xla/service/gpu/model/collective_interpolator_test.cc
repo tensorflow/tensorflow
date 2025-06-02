@@ -82,7 +82,8 @@ class CollectiveInterpolationTest : public TestWithParam<ParametrizedTestCase> {
     }
     device_info_ = TestGpuDeviceInfo::RTXA6000DeviceInfo(
         stream_executor::CudaComputeCapability::Hopper());
-    interpolator_ = *CollectiveInterpolator::Create(profiles, device_info_);
+    interpolator_ = *CollectiveInterpolator::Create(kNumGpusPerHost, profiles,
+                                                    device_info_);
   }
 
  protected:
@@ -899,8 +900,9 @@ INSTANTIATE_TEST_SUITE_P(
 TEST(CollectiveInterpolatorTest, LoadsDefaultProfile) {
   auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo(
       stream_executor::CudaComputeCapability::Hopper());
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CollectiveInterpolator> interpolator,
-                          CollectiveInterpolator::Create(device_info));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CollectiveInterpolator> interpolator,
+      CollectiveInterpolator::Create(kNumGpusPerHost, device_info));
   absl::string_view kHlo = R"(
     HloModule m, num_partitions=8
 

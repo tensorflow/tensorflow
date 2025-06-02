@@ -1191,6 +1191,7 @@ cc_library(
         ":collective_interpolator",
         ":hlo_op_profile_proto_cc",
         ":hlo_op_profiles",
+        ":sol_gpu_cost_model",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/utils:hlo_query",

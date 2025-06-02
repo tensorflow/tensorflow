@@ -192,7 +192,7 @@ std::optional<absl::Duration> DispatchEstimation(
 }
 
 absl::StatusOr<std::unique_ptr<CollectiveInterpolator>>
-CreateCollectiveInterpolator(const HloModule& module,
+CreateCollectiveInterpolator(int num_devices_per_host, const HloModule& module,
                              const se::DeviceDescription& device_info) {
   absl::StatusOr<HloInstructionProfileList> collective_profiles =
       ReadProfiles(module.config()
@@ -201,9 +201,10 @@ CreateCollectiveInterpolator(const HloModule& module,
                    device_info);
   std::unique_ptr<CollectiveInterpolator> collective_interpolator;
   if (collective_profiles.ok()) {
-    return CollectiveInterpolator::Create(*collective_profiles, device_info);
+    return CollectiveInterpolator::Create(num_devices_per_host,
+                                          *collective_profiles, device_info);
   }
-  return CollectiveInterpolator::Create(device_info);
+  return CollectiveInterpolator::Create(num_devices_per_host, device_info);
 }
 
 absl::StatusOr<std::unique_ptr<MatmulInterpolator>> CreateMatmulInterpolator(
@@ -259,8 +260,9 @@ absl::StatusOr<std::unique_ptr<MatmulInterpolator>> CreateMatmulInterpolator(
   if (auto* collective_instr = DynCast<HloCollectiveInstruction>(
           instr.IsAsynchronous() ? instr.async_wrapped_instruction() : &instr);
       collective_instr != nullptr) {
-    absl::StatusOr<GPUCommunicationType> communication_type = CommunicationType(
-        *collective_instr, gpu_device_info.gpu_compute_capability());
+    absl::StatusOr<GPUCommunicationType> communication_type =
+        CommunicationType(sol_flags.gpus_per_node, *collective_instr,
+                          gpu_device_info.gpu_compute_capability());
     return DispatchEstimation(communication_type, *collective_instr,
                               gpu_device_info, sol_flags, analysis,
                               collective_interpolator)
@@ -289,7 +291,8 @@ SolLatencyEstimator::Create(
   TF_RETURN_IF_ERROR(computation->Accept(cost_analysis.get()));
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<CollectiveInterpolator> collective_interpolator,
-      CreateCollectiveInterpolator(*computation->parent(), gpu_info));
+      CreateCollectiveInterpolator(sol_config.gpus_per_node,
+                                   *computation->parent(), gpu_info));
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<MatmulInterpolator> matmul_interpolator,
       CreateMatmulInterpolator(*computation->parent(), gpu_info));

@@ -75,7 +75,7 @@ absl::StatusOr<int> GetNumParticipatingDevices(
 }
 
 absl::StatusOr<InterpolationSpecification> Spec(
-    const HloInstructionProfile& profile,
+    int num_devices_per_host, const HloInstructionProfile& profile,
     const se::DeviceDescription& device_info) {
   auto module = CollectiveInterpolator::ConstructModule(profile);
   if (module == nullptr) {
@@ -89,9 +89,9 @@ absl::StatusOr<InterpolationSpecification> Spec(
   TF_RETURN_IF_ERROR(collective->Accept(&analysis));
   int64_t bytes_transferred = analysis.BytesTransferred(*collective);
 
-  TF_ASSIGN_OR_RETURN(
-      auto comm,
-      CommunicationType(*collective, device_info.gpu_compute_capability()));
+  TF_ASSIGN_OR_RETURN(auto comm,
+                      CommunicationType(num_devices_per_host, *collective,
+                                        device_info.gpu_compute_capability()));
   TF_ASSIGN_OR_RETURN(int num_devices,
                       GetNumParticipatingDevices(collective->device_list()));
 
@@ -283,7 +283,8 @@ absl::StatusOr<HloInstructionProfileList> ReadDefaultProfiles(
 }  // namespace
 
 /*static*/ absl::StatusOr<std::unique_ptr<CollectiveInterpolator>>
-CollectiveInterpolator::Create(const se::DeviceDescription& device_info) {
+CollectiveInterpolator::Create(int num_devices_per_host,
+                               const se::DeviceDescription& device_info) {
   auto interpolators = std::make_unique<absl::flat_hash_map<
       InterpolatorKey, std::unique_ptr<InterpolatorBase<int64_t, 2>>>>();
 
@@ -291,7 +292,7 @@ CollectiveInterpolator::Create(const se::DeviceDescription& device_info) {
                       ReadDefaultProfiles(device_info));
   for (auto& profile : profiles.entries()) {
     TF_ASSIGN_OR_RETURN(InterpolationSpecification spec,
-                        Spec(profile, device_info));
+                        Spec(num_devices_per_host, profile, device_info));
     CollectiveInterpolator::InterpolatorKey key{
         /*opcode=*/spec.opcode,
         /*communication_type=*/spec.comm,
@@ -311,19 +312,20 @@ CollectiveInterpolator::Create(const se::DeviceDescription& device_info) {
     interpolators->at(key)->Add(point,
                                 profile.network_throughput_bytes_per_sec());
   }
-  return std::unique_ptr<CollectiveInterpolator>(
-      new CollectiveInterpolator(std::move(interpolators), device_info));
+  return std::unique_ptr<CollectiveInterpolator>(new CollectiveInterpolator(
+      std::move(interpolators), device_info, num_devices_per_host));
 }
 
 /*static*/ absl::StatusOr<std::unique_ptr<CollectiveInterpolator>>
-CollectiveInterpolator::Create(const HloInstructionProfileList& profiles,
+CollectiveInterpolator::Create(int num_devices_per_host,
+                               const HloInstructionProfileList& profiles,
                                const se::DeviceDescription& device_info) {
   auto interpolators = std::make_unique<absl::flat_hash_map<
       InterpolatorKey, std::unique_ptr<InterpolatorBase<int64_t, 2>>>>();
 
   for (auto& profile : profiles.entries()) {
     TF_ASSIGN_OR_RETURN(InterpolationSpecification spec,
-                        Spec(profile, device_info));
+                        Spec(num_devices_per_host, profile, device_info));
     CollectiveInterpolator::InterpolatorKey key{
         /*opcode=*/spec.opcode,
         /*communication_type=*/spec.comm,
@@ -338,8 +340,8 @@ CollectiveInterpolator::Create(const HloInstructionProfileList& profiles,
     interpolators->at(key)->Add(point,
                                 profile.network_throughput_bytes_per_sec());
   }
-  return std::unique_ptr<CollectiveInterpolator>(
-      new CollectiveInterpolator(std::move(interpolators), device_info));
+  return std::unique_ptr<CollectiveInterpolator>(new CollectiveInterpolator(
+      std::move(interpolators), device_info, num_devices_per_host));
 }
 
 std::optional<absl::Duration> CollectiveInterpolator::EstimatedRuntime(
@@ -347,7 +349,8 @@ std::optional<absl::Duration> CollectiveInterpolator::EstimatedRuntime(
   GpuHloCostAnalysis analysis(GpuHloCostAnalysis::Options(), device_info_);
   CHECK_OK(instr.Accept(&analysis));
   int64_t bytes_transferred = analysis.BytesTransferred(instr);
-  auto comm = CommunicationType(instr, device_info_.gpu_compute_capability());
+  auto comm = CommunicationType(num_devices_per_host_, instr,
+                                device_info_.gpu_compute_capability());
   if (!comm.ok()) {
     return std::nullopt;
   }

@@ -40,7 +40,7 @@ absl::StatusOr<bool> SolGpuCostModelStatsCollection::Run(
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<CollectiveInterpolator> collective_interpolator,
-      CollectiveInterpolator::Create(device_info_));
+      CollectiveInterpolator::Create(config.gpus_per_node, device_info_));
 
   hlo_query::ForEachInstructionWithPred(
       *module,

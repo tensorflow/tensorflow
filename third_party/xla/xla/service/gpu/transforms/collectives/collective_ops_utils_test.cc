@@ -123,7 +123,8 @@ TEST_F(CommunicationTypeTest, DetectsSingleHost8Devices) {
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
-  EXPECT_THAT(CommunicationType(*instr, device_info().gpu_compute_capability()),
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
               IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
 }
 
@@ -145,7 +146,8 @@ TEST_F(CommunicationTypeTest, DetectsSingleHost4Devices) {
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
-  EXPECT_THAT(CommunicationType(*instr, device_info().gpu_compute_capability()),
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
               IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
 }
 
@@ -167,7 +169,8 @@ TEST_F(CommunicationTypeTest, DetectsSingleHost16Devices) {
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
-  EXPECT_THAT(CommunicationType(*instr, device_info().gpu_compute_capability()),
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
               IsOkAndHolds(GPUCommunicationType::SINGLE_HOST));
 }
 
@@ -189,7 +192,8 @@ TEST_F(CommunicationTypeTest, DetectRailAlignedAllDevices) {
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
-  EXPECT_THAT(CommunicationType(*instr, device_info().gpu_compute_capability()),
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
               IsOkAndHolds(GPUCommunicationType::RAIL_ALIGNED));
 }
 
@@ -214,7 +218,8 @@ TEST_F(CommunicationTypeTest, DetectRailAlignedHalfMesh) {
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
-  EXPECT_THAT(CommunicationType(*instr, device_info().gpu_compute_capability()),
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
               IsOkAndHolds(GPUCommunicationType::RAIL_ALIGNED));
 }
 
@@ -236,7 +241,8 @@ TEST_F(CommunicationTypeTest, DetectNonRailAligned) {
 
   HloCollectiveInstruction* instr = Cast<HloCollectiveInstruction>(
       module->entry_computation()->root_instruction());
-  EXPECT_THAT(CommunicationType(*instr, device_info().gpu_compute_capability()),
+  EXPECT_THAT(CommunicationType(/*num_devices_per_host=*/8, *instr,
+                                device_info().gpu_compute_capability()),
               IsOkAndHolds(GPUCommunicationType::NON_RAIL_ALIGNED));
 }
 
