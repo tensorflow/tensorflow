@@ -50,6 +50,7 @@ jobs:
     defaults:
       run:
         shell: bash
+    timeout-minutes: 60
 
     steps:
       - name: Checkout OpenXLA
