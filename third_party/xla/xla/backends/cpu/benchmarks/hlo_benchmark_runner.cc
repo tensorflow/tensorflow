@@ -173,7 +173,7 @@ absl::Status RunHloBenchmark(benchmark::State& state,
   }
   std::unique_ptr<PjRtLoadedExecutable> executable;
   if (benchmark_options.aot_options) {
-    auto* cpu_client = tsl::down_cast<TfrtCpuClient*>(client.get());
+    auto* cpu_client = tsl::down_cast<PjRtCpuClient*>(client.get());
     TF_ASSIGN_OR_RETURN(executable, cpu_client->CompileAheadOfTimeAndLoad(
                                         computation, compile_options,
                                         *benchmark_options.aot_options));

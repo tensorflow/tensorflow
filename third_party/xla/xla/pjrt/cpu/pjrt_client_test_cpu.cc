@@ -25,7 +25,7 @@ namespace {
 const bool kUnused = (RegisterTestClientFactory([]() {
                         CpuClientOptions options;
                         options.cpu_device_count = 4;
-                        return GetTfrtCpuClient(std::move(options));
+                        return GetPjRtCpuClient(std::move(options));
                       }),
                       true);
 
