@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/hlo/tools/hlo_diff/matchers/bipartite_matcher_utils.h"
+#include "xla/hlo/tools/hlo_diff/matchers/bipartite_matching.h"
 
 #include <memory>
 #include <vector>

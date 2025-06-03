@@ -16,13 +16,12 @@
 
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph_node.h"
 #include "xla/hlo/tools/hlo_diff/hlo_gumgraph_mappings.h"
-#include "xla/hlo/tools/hlo_diff/matchers/bipartite_matcher_utils.h"
+#include "xla/hlo/tools/hlo_diff/matchers/bipartite_matching.h"
 #include "xla/service/call_graph.h"
 
 namespace xla {

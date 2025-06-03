@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_HLO_TOOLS_HLO_DIFF_MATCHERS_BIPARTITE_MATCHER_UTILS_H_
-#define XLA_HLO_TOOLS_HLO_DIFF_MATCHERS_BIPARTITE_MATCHER_UTILS_H_
+#ifndef XLA_HLO_TOOLS_HLO_DIFF_MATCHERS_BIPARTITE_MATCHING_H_
+#define XLA_HLO_TOOLS_HLO_DIFF_MATCHERS_BIPARTITE_MATCHING_H_
 
 #include <vector>
 
@@ -41,4 +41,4 @@ void MatchSameTypeInstructions(
 }  // namespace hlo_diff
 }  // namespace xla
 
-#endif  // XLA_HLO_TOOLS_HLO_DIFF_MATCHERS_BIPARTITE_MATCHER_UTILS_H_
+#endif  // XLA_HLO_TOOLS_HLO_DIFF_MATCHERS_BIPARTITE_MATCHING_H_
