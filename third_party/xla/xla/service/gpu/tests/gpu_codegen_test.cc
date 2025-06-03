@@ -73,8 +73,9 @@ std::string GpuCodegenTest::MakePlatformSpecificLlvm(absl::string_view input) {
       input,
       {{"KERNEL_ANNOTATION",
         is_built_with_rocm_ ? "amdgpu_kernel void" : "ptx_kernel void"},
-       {"BARRIER",
-        is_built_with_rocm_ ? "@llvm.amdgcn.s.barrier" : "@llvm.nvvm.barrier0"},
+       {"BARRIER()", is_built_with_rocm_
+                         ? "@llvm.amdgcn.s.barrier()"
+                         : "@llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)"},
        {"SHUFFLE", is_built_with_rocm_ ? "i32 @llvm.amdgcn.ds.swizzle"
                                        : "float @llvm.nvvm.shfl.sync.down.f32"},
        {"TIDX", is_built_with_rocm_ ? "@llvm.amdgcn.workitem.id.x"
