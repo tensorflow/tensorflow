@@ -310,6 +310,7 @@ cc_library(
     deps = [
         ":types",
         ":util",
+        "@com_google_absl//absl/base",
     ],
 )
 
