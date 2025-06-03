@@ -2018,7 +2018,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
                                  transpose{std::move(transpose)}, should_pack,
                                  on_done_with_host_buffer = std::move(
                                      on_done_with_host_buffer)]() mutable {
-    tsl::profiler::TraceMe traceme("H2D staging copy");
+    tsl::profiler::TraceMe traceme("BufferFromHostBuffer::H2D_staging_copy");
 
     HostMemoryAllocator::OwnedPtr staging_buffer =
         allocator->Allocate(transpose ? byte_size : packed_size);
@@ -2055,7 +2055,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
                          HostMemoryAllocator::OwnedPtr staging_buffer) {
     tsl::profiler::TraceMe traceme([&] {
       return tsl::profiler::TraceMeEncode(
-          "H2D GPU copy", {{"device", device->id()}, {"size", packed_size}});
+          "BufferFromHostBuffer::H2D_GPU_copy",
+          {{"device", device->id()}, {"size", packed_size}});
     });
     auto stream = device->stream();
 
@@ -2174,7 +2175,8 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
               [literal, av = avs[0], device_buffer, shape, this,
                device = tsl::down_cast<TfrtGpuDevice*>(device),
                usage_event = std::move(usage_event)]() mutable {
-                tsl::profiler::TraceMe traceme("H2D Dispatch");
+                tsl::profiler::TraceMe traceme(
+                    "BufferFromHostLiteral::H2D_Dispatch");
                 TransferManager* transfer_manager =
                     xla_client()->backend().transfer_manager();
 
@@ -2846,7 +2848,7 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteral(MutableLiteralBase* literal) {
                        usage_event(std::move(usage_event)), literal, promise,
                        client = client_, on_device_shape{on_device_shape_},
                        unpack_subbyte_types, transpose]() mutable {
-    tsl::profiler::TraceMe traceme("D2H copy");
+    tsl::profiler::TraceMe traceme("ToLiteral::D2H_copy");
     if (device_buffer->definition_event().IsError()) {
       usage_event.SetStateConcrete();
       VLOG(3) << "device_buffer->definition_event().GetError(): "
@@ -2875,7 +2877,7 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteral(MutableLiteralBase* literal) {
 
     {
       tsl::profiler::TraceMe traceme2([&] {
-        return tsl::profiler::TraceMeEncode("D2H GPU copy",
+        return tsl::profiler::TraceMeEncode("ToLiteral::D2H_GPU_copy",
                                             {
                                                 {"device", device->id()},
                                                 {"size", byte_size},
@@ -2905,7 +2907,7 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteral(MutableLiteralBase* literal) {
     }
     void* buffer;
     if (should_unpack) {
-      tsl::profiler::TraceMe traceme("D2H staging copy");
+      tsl::profiler::TraceMe traceme("ToLiteral::D2H_staging_copy");
       int64_t unpacked_size = ShapeUtil::ElementsIn(on_device_shape);
       if (transpose != nullptr) {
         buffer = tsl::port::AlignedMalloc(unpacked_size,
@@ -2977,7 +2979,7 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst,
       {device_buffer->definition_event().CopyRCRef()},
       [device(device_), device_buffer, usage_event(std::move(usage_event)), dst,
        promise, client = client_, offset, transfer_size]() mutable {
-        tsl::profiler::TraceMe traceme("D2H copy");
+        tsl::profiler::TraceMe traceme("CopyRawToHostFuture::D2H_copy");
         if (device_buffer->definition_event().IsError()) {
           usage_event.SetStateConcrete();
           LOG(ERROR) << "device_buffer->definition_event().GetError(): "
@@ -3020,11 +3022,12 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst,
 
           {
             tsl::profiler::TraceMe traceme2([&] {
-              return tsl::profiler::TraceMeEncode("D2H GPU copy",
-                                                  {
-                                                      {"device", device->id()},
-                                                      {"size", transfer_size},
-                                                  });
+              return tsl::profiler::TraceMeEncode(
+                  "CopyRawToHostFuture::D2H_GPU_copy",
+                  {
+                      {"device", device->id()},
+                      {"size", transfer_size},
+                  });
             });
             MarkGpuEventReadyOnExit ready_on_exit(std::move(usage_event));
             auto stream = device->stream();
@@ -3053,7 +3056,8 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst,
             return;
           }
           if (staging_buffer != nullptr) {
-            tsl::profiler::TraceMe traceme3("D2H staging copy");
+            tsl::profiler::TraceMe traceme3(
+                "CopyRawToHostFuture::D2H staging copy");
             std::memcpy(dst.value(), staging_buffer.get(), transfer_size);
             VLOG(3) << "D2H staging copy done: " << staging_buffer.get()
                     << " -> " << dst.value() << " (" << transfer_size
@@ -3197,11 +3201,12 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
                 << dst_device->id();
         tsl::profiler::TraceMe trace([&] {
           return tsl::profiler::TraceMeEncode(
-              "D2D copy", {
-                              {"src_device", src_device->id()},
-                              {"dst_device", dst_device->id()},
-                              {"size", src_buffer->buffer().size()},
-                          });
+              "CopyToMemorySpace::D2D_copy",
+              {
+                  {"src_device", src_device->id()},
+                  {"dst_device", dst_device->id()},
+                  {"size", src_buffer->buffer().size()},
+              });
         });
 
         MarkGpuEventReadyOnExit ready_on_exit_src(std::move(src_usage_event));
