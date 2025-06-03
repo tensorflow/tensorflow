@@ -35,13 +35,17 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/ops/uniform_op_quant_spec.h"
+#include "third_party/protobuf/text_format.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_uniform_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/util/quantization/uniform_quant_ops_attr.pb.h"
 
 namespace mlir::quant {
+
+using tf_quant::GetUniformOpQuantSpec;
+using tf_quant::OpQuantSpec;
 
 using QuantMethod = tensorflow::quantization::QuantizationMethod::PresetMethod;
 
