@@ -1,22 +1,5 @@
 load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain", "use_cpp_toolchain")
-load("@rules_python//python:py_info.bzl", RulesPythonPyInfo = "PyInfo")
 load("@rules_python//python:py_library.bzl", "py_library")
-
-def _get_builtin_py_info():
-    # May be None in Bazel 8+
-    if PyInfo == None:
-        return None
-
-    # Bazel 8's autoloading may make them the same
-    if PyInfo == RulesPythonPyInfo:
-        return None
-
-    # Within Google, it is aliased to a stub provider
-    if "unimplemented" in str(PyInfo):
-        return None
-    return PyInfo
-
-_BuiltinPyInfo = _get_builtin_py_info()
 
 PywrapInfo = provider(
     fields = {
@@ -844,8 +827,8 @@ def _pywrap_info_wrapper_impl(ctx):
         ctx.attr.deps[0][DefaultInfo].default_runfiles,
     )
 
-    providers = [
-        RulesPythonPyInfo(transitive_sources = depset()),
+    return [
+        PyInfo(transitive_sources = depset()),
         PywrapInfo(
             cc_info = ctx.attr.deps[0][CcInfo],
             default_runfiles = default_runfiles,
@@ -856,9 +839,6 @@ def _pywrap_info_wrapper_impl(ctx):
             starlark_only = ctx.attr.starlark_only,
         ),
     ]
-    if _BuiltinPyInfo:
-        providers.append(_BuiltinPyInfo(transitive_sources = depset()))
-    return providers
 
 _pywrap_info_wrapper = rule(
     attrs = {
@@ -879,8 +859,8 @@ def _cc_only_pywrap_info_wrapper_impl(ctx):
         ctx.attr.deps[0][DefaultInfo].default_runfiles,
     )
 
-    providers = [
-        RulesPythonPyInfo(transitive_sources = depset()),
+    return [
+        PyInfo(transitive_sources = depset()),
         PywrapInfo(
             cc_info = wrapped_dep[CcInfo],
             owner = ctx.label,
@@ -891,9 +871,6 @@ def _cc_only_pywrap_info_wrapper_impl(ctx):
             starlark_only = False,
         ),
     ]
-    if _BuiltinPyInfo:
-        providers.append(_BuiltinPyInfo(transitive_sources = depset()))
-    return providers
 
 _cc_only_pywrap_info_wrapper = rule(
     attrs = {
@@ -998,9 +975,7 @@ collected_pywrap_infos = rule(
     attrs = {
         "deps": attr.label_list(
             aspects = [_pywrap_info_collector_aspect],
-            providers = [[RulesPythonPyInfo]] + (
-                [[_BuiltinPyInfo]] if _BuiltinPyInfo else []
-            ),
+            providers = [PyInfo],
         ),
         "pywrap_count": attr.int(mandatory = True, default = 1),
         "starlark_only_pywrap_count": attr.int(mandatory = True, default = 0),
