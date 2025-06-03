@@ -280,11 +280,25 @@ absl::StatusOr<HloInstructionProfileList> ReadDefaultProfiles(
   return profile.entries().at(key);
 }
 
+int64_t GetBytesTransferred(const HloInstruction& instr,
+                            const se::DeviceDescription& device_info,
+                            const GpuHloCostAnalysis* analysis) {
+  if (analysis != nullptr) {
+    return analysis->BytesTransferred(instr);
+  }
+  GpuHloCostAnalysis adhoc(GpuHloCostAnalysis::Options(), device_info);
+  CHECK_OK(instr.Accept(&adhoc));
+  return adhoc.BytesTransferred(instr);
+}
+
 }  // namespace
 
+// We can get rid of `analysis` being nullptr once we get rid of stats
+// collection passes.
 /*static*/ absl::StatusOr<std::unique_ptr<CollectiveInterpolator>>
 CollectiveInterpolator::Create(int num_devices_per_host,
-                               const se::DeviceDescription& device_info) {
+                               const se::DeviceDescription& device_info,
+                               const GpuHloCostAnalysis* analysis) {
   auto interpolators = std::make_unique<absl::flat_hash_map<
       InterpolatorKey, std::unique_ptr<InterpolatorBase<int64_t, 2>>>>();
 
@@ -313,13 +327,14 @@ CollectiveInterpolator::Create(int num_devices_per_host,
                                 profile.network_throughput_bytes_per_sec());
   }
   return std::unique_ptr<CollectiveInterpolator>(new CollectiveInterpolator(
-      std::move(interpolators), device_info, num_devices_per_host));
+      std::move(interpolators), device_info, num_devices_per_host, analysis));
 }
 
 /*static*/ absl::StatusOr<std::unique_ptr<CollectiveInterpolator>>
 CollectiveInterpolator::Create(int num_devices_per_host,
                                const HloInstructionProfileList& profiles,
-                               const se::DeviceDescription& device_info) {
+                               const se::DeviceDescription& device_info,
+                               const GpuHloCostAnalysis* analysis) {
   auto interpolators = std::make_unique<absl::flat_hash_map<
       InterpolatorKey, std::unique_ptr<InterpolatorBase<int64_t, 2>>>>();
 
@@ -341,14 +356,13 @@ CollectiveInterpolator::Create(int num_devices_per_host,
                                 profile.network_throughput_bytes_per_sec());
   }
   return std::unique_ptr<CollectiveInterpolator>(new CollectiveInterpolator(
-      std::move(interpolators), device_info, num_devices_per_host));
+      std::move(interpolators), device_info, num_devices_per_host, analysis));
 }
 
 std::optional<absl::Duration> CollectiveInterpolator::EstimatedRuntime(
     const HloCollectiveInstruction& instr) const {
-  GpuHloCostAnalysis analysis(GpuHloCostAnalysis::Options(), device_info_);
-  CHECK_OK(instr.Accept(&analysis));
-  int64_t bytes_transferred = analysis.BytesTransferred(instr);
+  int64_t bytes_transferred =
+      GetBytesTransferred(instr, device_info_, analysis_);
   auto comm = CommunicationType(num_devices_per_host_, instr,
                                 device_info_.gpu_compute_capability());
   if (!comm.ok()) {

@@ -193,7 +193,8 @@ std::optional<absl::Duration> DispatchEstimation(
 
 absl::StatusOr<std::unique_ptr<CollectiveInterpolator>>
 CreateCollectiveInterpolator(int num_devices_per_host, const HloModule& module,
-                             const se::DeviceDescription& device_info) {
+                             const se::DeviceDescription& device_info,
+                             const GpuHloCostAnalysis& analysis) {
   absl::StatusOr<HloInstructionProfileList> collective_profiles =
       ReadProfiles(module.config()
                        .debug_options()
@@ -201,10 +202,11 @@ CreateCollectiveInterpolator(int num_devices_per_host, const HloModule& module,
                    device_info);
   std::unique_ptr<CollectiveInterpolator> collective_interpolator;
   if (collective_profiles.ok()) {
-    return CollectiveInterpolator::Create(num_devices_per_host,
-                                          *collective_profiles, device_info);
+    return CollectiveInterpolator::Create(
+        num_devices_per_host, *collective_profiles, device_info, &analysis);
   }
-  return CollectiveInterpolator::Create(num_devices_per_host, device_info);
+  return CollectiveInterpolator::Create(num_devices_per_host, device_info,
+                                        &analysis);
 }
 
 absl::StatusOr<std::unique_ptr<MatmulInterpolator>> CreateMatmulInterpolator(
@@ -278,21 +280,25 @@ SolLatencyEstimator::Create(
     std::unique_ptr<LatencyEstimator> latency_estimator,
     const se::DeviceDescription& gpu_info,
     HloCostAnalysis::ShapeSizeFunction shape_size_function,
-    const HloComputation* computation) {
-  auto cost_analysis =
-      std::make_unique<GpuHloCostAnalysis>(GpuHloCostAnalysis::Options{
-          shape_size_function,
-          /*per_second_rates=*/{},
-          /*min_latencies_seconds=*/{},
-          /*count_multiple_input_accesses=*/true,
-      });
+    const HloComputation* computation,
+    std::unique_ptr<GpuHloCostAnalysis> cost_analysis) {
+  if (cost_analysis == nullptr) {
+    cost_analysis =
+        std::make_unique<GpuHloCostAnalysis>(GpuHloCostAnalysis::Options{
+            shape_size_function,
+            /*per_second_rates=*/{},
+            /*min_latencies_seconds=*/{},
+            /*count_multiple_input_accesses=*/true,
+        });
+    TF_RETURN_IF_ERROR(computation->Accept(cost_analysis.get()));
+  }
   SolGPUCostModel::Config sol_config =
       SolGPUCostModel::GetConfig(computation->parent(), gpu_info);
-  TF_RETURN_IF_ERROR(computation->Accept(cost_analysis.get()));
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<CollectiveInterpolator> collective_interpolator,
       CreateCollectiveInterpolator(sol_config.gpus_per_node,
-                                   *computation->parent(), gpu_info));
+                                   *computation->parent(), gpu_info,
+                                   *cost_analysis));
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<MatmulInterpolator> matmul_interpolator,
       CreateMatmulInterpolator(*computation->parent(), gpu_info));

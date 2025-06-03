@@ -44,17 +44,20 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/collectives/async_collective_creator.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/layout.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/flag_utils.h"
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/model/analytical_latency_estimator.h"
+#include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/sol_latency_estimator.h"
 #include "xla/service/gpu/transforms/collectives/async_collective_annotator.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
@@ -516,9 +519,18 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
 
   if (options.xla_gpu_enable_analytical_sol_latency_estimator()) {
     VLOG(1) << "Using Speed-of-Light (SoL) analytical latency estimator";
+    auto cost_analysis =
+        std::make_unique<GpuHloCostAnalysis>(GpuHloCostAnalysis::Options{
+            ShapeSizeBytesFunction(pointer_size),
+            /*per_second_rates=*/{},
+            /*min_latencies_seconds=*/{},
+            /*count_multiple_input_accesses=*/true,
+        });
+    CHECK_OK(module.entry_computation()->Accept(cost_analysis.get()));
     return *SolLatencyEstimator::Create(
         config, std::move(gpu_latency_estimator), gpu_device_info,
-        ShapeSizeBytesFunction(pointer_size), module.entry_computation());
+        ShapeSizeBytesFunction(pointer_size), module.entry_computation(),
+        std::move(cost_analysis));
   }
   return gpu_latency_estimator;
 }
