@@ -38,7 +38,9 @@ void MatchInstructionsWithMultipleCandidates(
     const HloGumgraph& left_graph, const HloGumgraph& right_graph,
     const absl::flat_hash_set<const HloInstructionNode*>& left_instructions,
     const absl::flat_hash_set<const HloInstructionNode*>& right_instructions,
-    HloGumgraphMappings& mappings, const MatcherType& matcher_type) {
+    HloGumgraphMappings& mappings,
+    absl::flat_hash_set<const HloInstructionNode*>& matched_instructions,
+    const MatcherType& matcher_type) {
   for (const HloInstructionNode* left : left_instructions) {
     double max_match_score = 0.0;
     std::vector<const HloInstructionNode*> right_candidates;
@@ -56,7 +58,11 @@ void MatchInstructionsWithMultipleCandidates(
 
     // Avoid matching instructions with multiple candidates.
     if (right_candidates.size() == 1) {
-      mappings.MapInstructionsIfAbsent(left, right_candidates[0], matcher_type);
+      if (mappings.MapInstructionsIfAbsent(left, right_candidates[0],
+                                           matcher_type)) {
+        matched_instructions.insert(left);
+        matched_instructions.insert(right_candidates[0]);
+      }
     }
   }
 }
@@ -66,8 +72,8 @@ void MatchInstructionsWithMultipleCandidates(
 // frameworks. Note that for XLA generated computations, the metadata is not
 // consistently specified.
 void MatchInstructionsWithSameMetadataOpName(
-    const absl::flat_hash_set<const HloInstructionNode*>& left_instructions,
-    const absl::flat_hash_set<const HloInstructionNode*>& right_instructions,
+    const std::vector<const HloInstructionNode*>& left_instructions,
+    const std::vector<const HloInstructionNode*>& right_instructions,
     HloGumgraphMappings& mappings,
     absl::flat_hash_set<const HloInstructionNode*>& matched_instructions,
     const MatcherType& matcher_type) {
@@ -93,10 +99,11 @@ void MatchInstructionsWithSameMetadataOpName(
 
     // Avoid matching instructions with multiple candidates.
     if (candidates_found == 1) {
-      mappings.MapInstructionsIfAbsent(left_instruction, candidate,
-                                       matcher_type);
-      matched_instructions.insert(left_instruction);
-      matched_instructions.insert(candidate);
+      if (mappings.MapInstructionsIfAbsent(left_instruction, candidate,
+                                           matcher_type)) {
+        matched_instructions.insert(left_instruction);
+        matched_instructions.insert(candidate);
+      }
     }
   }
 }
@@ -106,10 +113,10 @@ void MatchInstructionsWithSameMetadataOpName(
 // - Match instructions with multiple candidates using similarity measures.
 void MatchInstructionsByShape(
     const HloGumgraph& left_graph, const HloGumgraph& right_graph,
-    const absl::flat_hash_set<const HloInstructionNode*>& left_instructions,
-    const absl::flat_hash_set<const HloInstructionNode*>& right_instructions,
+    const std::vector<const HloInstructionNode*>& left_instructions,
+    const std::vector<const HloInstructionNode*>& right_instructions,
     HloGumgraphMappings& mappings,
-    const absl::flat_hash_set<const HloInstructionNode*>& matched_instructions,
+    absl::flat_hash_set<const HloInstructionNode*>& matched_instructions,
     const MatcherType& matcher_type) {
   absl::flat_hash_map<std::string,
                       absl::flat_hash_set<const HloInstructionNode*>>
@@ -142,15 +149,51 @@ void MatchInstructionsByShape(
       // Match unique instructions with the same shape.
       if (shape_left_instructions.size() == 1 &&
           shape_right_instructions.size() == 1) {
-        mappings.MapInstructionsIfAbsent(*shape_left_instructions.begin(),
-                                         *shape_right_instructions.begin(),
-                                         matcher_type);
+        if (mappings.MapInstructionsIfAbsent(*shape_left_instructions.begin(),
+                                             *shape_right_instructions.begin(),
+                                             matcher_type)) {
+          matched_instructions.insert(*shape_left_instructions.begin());
+          matched_instructions.insert(*shape_right_instructions.begin());
+        }
       } else {
         // Match instructions with multiple candidates using
         // similarity measures.
         MatchInstructionsWithMultipleCandidates(
             left_graph, right_graph, shape_left_instructions,
-            shape_right_instructions, mappings, matcher_type);
+            shape_right_instructions, mappings, matched_instructions,
+            matcher_type);
+      }
+    }
+  }
+}
+
+void MatchInstructionsByPosition(
+    const std::vector<const HloInstructionNode*>& left_instructions,
+    const std::vector<const HloInstructionNode*>& right_instructions,
+    HloGumgraphMappings& mappings,
+    absl::flat_hash_set<const HloInstructionNode*>& matched_instructions,
+    const MatcherType& matcher_type) {
+  std::vector<const HloInstructionNode*> unmatched_left_instructions,
+      unmatched_right_instructions;
+  for (const HloInstructionNode* left_instruction : left_instructions) {
+    if (!matched_instructions.contains(left_instruction)) {
+      unmatched_left_instructions.push_back(left_instruction);
+    }
+  }
+  for (const HloInstructionNode* right_instruction : right_instructions) {
+    if (!matched_instructions.contains(right_instruction)) {
+      unmatched_right_instructions.push_back(right_instruction);
+    }
+  }
+  // Map by position only if the two sets are of the same size.
+  if (unmatched_left_instructions.size() ==
+      unmatched_right_instructions.size()) {
+    for (int i = 0; i < unmatched_left_instructions.size(); ++i) {
+      if (mappings.MapInstructionsIfAbsent(unmatched_left_instructions[i],
+                                           unmatched_right_instructions[i],
+                                           matcher_type)) {
+        matched_instructions.insert(unmatched_left_instructions[i]);
+        matched_instructions.insert(unmatched_right_instructions[i]);
       }
     }
   }
@@ -160,9 +203,10 @@ void MatchInstructionsByShape(
 
 void MatchSameTypeInstructions(
     const HloGumgraph& left_graph, const HloGumgraph& right_graph,
-    const absl::flat_hash_set<const HloInstructionNode*>& left_instructions,
-    const absl::flat_hash_set<const HloInstructionNode*>& right_instructions,
-    HloGumgraphMappings& mappings, const MatcherType& matcher_type) {
+    const std::vector<const HloInstructionNode*>& left_instructions,
+    const std::vector<const HloInstructionNode*>& right_instructions,
+    HloGumgraphMappings& mappings, const MatcherType& matcher_type,
+    bool map_by_position) {
   if (left_instructions.empty() || right_instructions.empty()) {
     return;
   }
@@ -178,6 +222,7 @@ void MatchSameTypeInstructions(
         << "All instructions must have the same opcode.";
   }
 
+  // TODO(b/422221753): Use HloGumgraphMappings to track matched instructions.
   absl::flat_hash_set<const HloInstructionNode*> matched_instructions;
   // Phase 0: Direct mapping if only one instruction in each set.
   if (left_instructions.size() == 1 && right_instructions.size() == 1) {
@@ -195,6 +240,12 @@ void MatchSameTypeInstructions(
   MatchInstructionsByShape(left_graph, right_graph, left_instructions,
                            right_instructions, mappings, matched_instructions,
                            matcher_type);
+
+  // Phase 3: Map still unmatched instructions by position.
+  if (map_by_position) {
+    MatchInstructionsByPosition(left_instructions, right_instructions, mappings,
+                                matched_instructions, matcher_type);
+  }
 }
 
 }  // namespace hlo_diff
