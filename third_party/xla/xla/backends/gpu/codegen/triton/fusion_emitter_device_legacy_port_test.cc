@@ -1638,7 +1638,8 @@ ENTRY e {
 
 // TODO(b/393299275): this should be rewritten to work on post-optimization HLO,
 // and potentially have an associated fusion test.
-TEST_F(TritonGemmTestWithSplitK, SplitKWithTrivialDimension) {
+// Disabled because pads are not supported in the new emitter yet.
+TEST_F(TritonGemmTestWithSplitK, DISABLED_SplitKWithTrivialDimension) {
   constexpr absl::string_view kHloText = R"(
 ENTRY entry_computation {
   p0 = f16[1001,1]{1,0} parameter(0)
