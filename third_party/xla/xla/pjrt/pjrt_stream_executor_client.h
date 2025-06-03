@@ -334,11 +334,6 @@ class PjRtStreamExecutorClient : public PjRtClient {
       const LiteralSlice& literal, PjRtMemorySpace* memory_space,
       const Layout* device_layout) override;
 
-  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-  MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
-                              PjRtDevice* device,
-                              PjRtCrossHostRecvNotifier notifier) override;
-
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtMemorySpace* memory_space,
       std::function<void()> on_delete_callback,
@@ -382,16 +377,9 @@ class PjRtStreamExecutorClient : public PjRtClient {
   friend class PjRtStreamExecutorBuffer;
   friend class PjRtStreamExecutorRawBuffer;
 
-  virtual absl::Status EnqueueCrossHostReceive(
-      absl::Span<const std::unique_ptr<PjRtBuffer>> buffers,
-      std::shared_ptr<BufferSequencingEvent> definition_event,
-      PjRtCrossHostRecvNotifier notifier) const {
-    return Unimplemented("Cross host receives not implemented.");
-  }
-
-  virtual void CopyToRemoteDevice(
-      PjRtBuffer* buffer, absl::string_view serialized_descriptor,
-      PjRtBuffer::RemoteSendCallback on_done) const {
+  virtual void CopyToRemoteDevice(PjRtBuffer* buffer,
+                                  absl::string_view serialized_descriptor,
+                                  PjRtBuffer::RemoteSendCallback on_done) {
     on_done(Unimplemented("Cross host sends not implemented."),
             /*sends_were_enqueued=*/false);
   }
