@@ -186,3 +186,12 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
     ],
 )
+
+cc_library(
+    name = "hlo_fusion_spec",
+    hdrs = ["hlo_fusion_spec.h"],
+    deps = [
+        "//xla/hlo/utils:hlo_traversal",
+        "@com_google_absl//absl/container:inlined_vector",
+    ],
+)

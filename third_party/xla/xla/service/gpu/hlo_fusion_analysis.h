@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "xla/codegen/hlo_fusion_spec.h"
 #include "xla/codegen/ir_emission_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -69,21 +70,22 @@ class HloFusionAnalysis {
                                   const HloInstruction& consumer,
                                   const se::DeviceDescription& device_info);
 
-  const HloFusionAdaptor& fusion() const { return *fusion_; }
+  const HloFusionAdaptor& fusion() const { return fusion_spec_.fusion(); }
+  const HloFusionSpec& fusion_spec() const { return fusion_spec_; }
 
   const absl::InlinedVector<HloInstructionAdaptor, 2>& fusion_roots() const {
-    return fusion_roots_;
+    return fusion_spec_.fusion_roots();
   }
   HloInstructionAdaptor fusion_root(int64_t i) const {
-    return fusion_roots_[i];
+    return fusion_spec_.fusion_root(i);
   }
-  int64_t fusion_root_count() const { return fusion_roots_.size(); }
+  int64_t fusion_root_count() const { return fusion_spec_.fusion_root_count(); }
 
   const absl::InlinedVector<HloInstructionAdaptor, 2>& fusion_heroes() const {
-    return fusion_heroes_;
+    return fusion_spec_.fusion_heroes();
   }
   HloInstructionAdaptor fusion_hero(int64_t i) const {
-    return fusion_heroes_[i];
+    return fusion_spec_.fusion_hero(i);
   }
 
   // Determines the fusion type for the emitter.
@@ -111,9 +113,7 @@ class HloFusionAnalysis {
 
  private:
   HloFusionAnalysis(FusionBackendConfig fusion_backend_config,
-                    std::unique_ptr<HloFusionAdaptor> fusion,
-                    absl::InlinedVector<HloInstructionAdaptor, 2> fusion_roots,
-                    absl::InlinedVector<HloInstructionAdaptor, 2> fusion_heroes,
+                    HloFusionSpec fusion_spec,
                     const se::DeviceDescription* device_info,
                     std::optional<TransposeDescription> tiled_transpose,
                     InputOutputInfo input_output_info);
@@ -122,16 +122,7 @@ class HloFusionAnalysis {
 
   FusionBackendConfig fusion_backend_config_;
 
-  // Owning pointer to the fusion adaptor object.
-  std::unique_ptr<HloFusionAdaptor> fusion_;
-
-  // A list of all roots of the fusion. The instruction adaptors have `fusion_`
-  // as their parent and should not outlive `fusion_`.
-  absl::InlinedVector<HloInstructionAdaptor, 2> fusion_roots_;
-
-  // A list of all heroes of the fusion. The instruction adaptors have `fusion_`
-  // as their parent and should not outlive `fusion_`.
-  absl::InlinedVector<HloInstructionAdaptor, 2> fusion_heroes_;
+  HloFusionSpec fusion_spec_;
 
   const se::DeviceDescription* device_info_;
   std::optional<TransposeDescription> tiled_transpose_;

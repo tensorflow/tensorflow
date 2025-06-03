@@ -2419,6 +2419,7 @@ cc_library(
         ":ir_emission_utils",
         ":reduction_utils",
         "//xla:shape_util",
+        "//xla/codegen:hlo_fusion_spec",
         "//xla/codegen:ir_emission_utils",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
