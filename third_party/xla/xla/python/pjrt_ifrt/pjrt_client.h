@@ -16,10 +16,12 @@ limitations under the License.
 #ifndef XLA_PYTHON_PJRT_IFRT_PJRT_CLIENT_H_
 #define XLA_PYTHON_PJRT_IFRT_PJRT_CLIENT_H_
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/base/nullability.h"
@@ -57,6 +59,7 @@ limitations under the License.
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/pjrt_compiler.h"
+#include "xla/shape.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/xla_data.pb.h"
@@ -101,10 +104,16 @@ class PjRtClient final
   struct CreateOptions {
     std::shared_ptr<xla::PjRtClient> pjrt_client;
 
-    // KV store for sharing topology information. If present, PJRT-IFRT will do
-    // its own topology exchange. If omitted, we will trust whatever topology
-    // information the PJRT client reports.
+    // KV store for coordinating cross-host device transfers and sharing
+    // topology information. If present and `use_kv_store_for_topology_exchange`
+    // is true, PJRT-IFRT will do its own topology exchange. If omitted or
+    // `use_kv_store_for_topology_exchange` is false, we will trust whatever
+    // topology information the PJRT client reports.
     std::shared_ptr<xla::KeyValueStoreInterface> kv_store = nullptr;
+
+    // If true, use the KV store for topology exchange. Ignored if kv_store is
+    // not provided.
+    bool use_kv_store_for_topology_exchange = true;
 
     // Number of distributed processes. Ignored if kv_store is omitted.
     int num_processes = 1;
@@ -326,6 +335,32 @@ class PjRtClient final
   absl::flat_hash_map<xla::PjRtDevice*, PjRtDevice*> device_map_;
   absl::flat_hash_map<xla::PjRtMemorySpace*, PjRtMemory*> memory_map_;
   absl::flat_hash_map<DeviceId, PjRtDevice*> device_id_map_;
+
+  // Copies arrays from source to destination devices when at least one of the
+  // (source, destination) pairs is cross-host.
+  absl::StatusOr<std::vector<ArrayRef>> CopyArraysForCrossHost(
+      absl::Span<ArrayRef> arrays, DeviceListRef src_devices,
+      DeviceListRef dst_devices, std::optional<MemoryKind> memory_kind);
+
+  // Extracts receive descriptors from a key-value store and sends buffers to a
+  // remote device.
+  absl::Status CrossHostSendBuffers(PjRtBuffers buffers,
+                                    const std::vector<int64_t>& keys,
+                                    const std::string& key_prefix);
+
+  // Populates a key-value store with receive descriptors and places buffers
+  // from a cross-host send onto device.
+  absl::StatusOr<PjRtBuffers> CrossHostReceiveBuffers(
+      absl::Span<const xla::Shape> shapes, xla::PjRtDevice* device,
+      const std::vector<int64_t>& keys, const std::string& key_prefix);
+
+  // Creates a unique identifier for each cross-host transfer. Every process
+  // must call it, regardless of whether it participates in the cross-host
+  // transfer, so that the returned value must be the same in all processes.
+  int64_t CreateNewTransferKey();
+
+  std::atomic<int64_t> next_transfer_key_ = 0;
+  std::shared_ptr<xla::KeyValueStoreInterface> kv_store_;
 };
 
 }  // namespace ifrt

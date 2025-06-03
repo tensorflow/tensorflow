@@ -41,6 +41,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/layout.h"
@@ -709,16 +710,18 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
   xla::PjRtClient* pjrt_client = client->pjrt_client();
 
   GlobalTopology global_topology;
-  if (!options.kv_store) {
+  if (!options.kv_store || !options.use_kv_store_for_topology_exchange) {
     TF_ASSIGN_OR_RETURN(global_topology,
                         MakeGlobalTopologyFromPjRtClient(pjrt_client, options));
   } else {
     if (options.global_device_mapping.has_value()) {
       return InvalidArgument(
-          "global_device_mapping and kv_store cannot be set at the same time");
+          "global_device_mapping and kv_store cannot be set at the same time "
+          "if use_kv_store_for_topology_exchange is true.");
     }
-    // If a KV-store was provided, we perform a topology exchange to aggregate
-    // topology information from all processes.
+    // If a KV-store was provided and `use_kv_store_for_topology_exchange` is
+    // true, we perform a topology exchange to aggregate topology information
+    // from all processes.
     const LocalTopologyProto local_topology_proto =
         MakeLocalTopologyFromPjRtClient(pjrt_client, options);
     TF_ASSIGN_OR_RETURN(global_topology,
@@ -817,6 +820,8 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
       }
     }
   }
+
+  client->kv_store_ = std::move(options.kv_store);
 
   LogDeviceSummary(client.get());
   return client;
@@ -1186,22 +1191,199 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::CopyArrays(
     }
   }
 
-  std::vector<ArrayRef> new_arrays;
-  new_arrays.reserve(arrays.size());
-  for (const auto& array : arrays) {
-    if (auto* const pjrt_array = llvm::dyn_cast<PjRtArray>(array.get())) {
-      TF_ASSIGN_OR_RETURN(new_arrays.emplace_back(),
-                          pjrt_array->Copy(devices, memory_kind, semantics));
-    } else if (auto* const string_array =
-                   llvm::dyn_cast<BasicStringArray>(array.get())) {
-      TF_ASSIGN_OR_RETURN(new_arrays.emplace_back(),
-                          string_array->Copy(devices, memory_kind, semantics));
-    } else {
+  DeviceListRef src_devices = arrays[0]->sharding().devices();
+  DeviceListRef dst_devices;
+  bool all_host_local_transfers = true;
+  if (devices.has_value()) {
+    dst_devices = *devices;
+    if (src_devices->size() != dst_devices->size()) {
       return absl::InvalidArgumentError(
-          "Unsupported array type for PjRtClient::CopyArrays");
+          "CopyArrays only supports destination device list of the same size "
+          "as the array device lists.");
+    };
+    for (int i = 0; i < dst_devices->size(); ++i) {
+      if (dst_devices->devices()[i]->ProcessIndex() !=
+          src_devices->devices()[i]->ProcessIndex()) {
+        all_host_local_transfers = false;
+        break;
+      }
     }
   }
+
+  std::vector<ArrayRef> new_arrays;
+  new_arrays.reserve(arrays.size());
+  if (all_host_local_transfers) {
+    for (const ArrayRef& array : arrays) {
+      if (auto* const pjrt_array = llvm::dyn_cast<PjRtArray>(array.get())) {
+        TF_ASSIGN_OR_RETURN(new_arrays.emplace_back(),
+                            pjrt_array->Copy(devices, memory_kind, semantics));
+      } else if (auto* const string_array =
+                     llvm::dyn_cast<BasicStringArray>(array.get())) {
+        TF_ASSIGN_OR_RETURN(
+            new_arrays.emplace_back(),
+            string_array->Copy(devices, memory_kind, semantics));
+      } else {
+        return absl::InvalidArgumentError(
+            "Unsupported array type for PjRtClient::CopyArrays");
+      }
+    }
+    return new_arrays;
+  }
+  return CopyArraysForCrossHost(arrays, src_devices, dst_devices, memory_kind);
+}
+
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
+PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
+                                   DeviceListRef src_devices,
+                                   DeviceListRef dst_devices,
+                                   std::optional<MemoryKind> memory_kind) {
+  if (kv_store_ == nullptr) {
+    return absl::FailedPreconditionError(
+        "KV store must be present for cross-host device transfers in "
+        "PjRtClient::CopyArraysForCrossHost.");
+  }
+  std::vector<ArrayRef> new_arrays;
+  new_arrays.reserve(arrays.size());
+  const std::string key_prefix = "ifrt_cross_host_transfer_";
+  std::vector<PjRtBuffers> recv_buffers;
+  recv_buffers.reserve(dst_devices->AddressableDeviceList()->size());
+  int j = 0;  // Counter for the addressable buffers.
+  for (int i = 0; i < dst_devices->size(); ++i) {
+    // TODO(emilyaf): Extend CreateNewTransferKey to take N and return N keys
+    // as a performance optimization.
+    std::vector<int64_t> transfer_keys;
+    transfer_keys.reserve(arrays.size());
+    for (int k = 0; k < arrays.size(); ++k) {
+      transfer_keys.push_back(CreateNewTransferKey());
+    }
+
+    if (src_devices->devices()[i]->IsAddressable()) {
+      if (dst_devices->devices()[i]->IsAddressable()) {
+        // TODO(emilyaf): Support host-local transfers alongside cross-host
+        // transfers.
+        return absl::UnimplementedError(absl::StrFormat(
+            "Cross-host transfers are currently supported only if every "
+            "shard requires a cross-host transfer. A host-local transfer "
+            "was requested from device %s to device %s.",
+            src_devices->devices()[i]->DebugString(),
+            dst_devices->devices()[i]->DebugString()));
+      }
+
+      PjRtArray::PjRtBuffers send_buffers;
+      send_buffers.reserve(arrays.size());
+      for (ArrayRef& array : arrays) {
+        if (auto* const pjrt_array = llvm::dyn_cast<PjRtArray>(array.get())) {
+          auto buffers = pjrt_array->pjrt_buffers();
+          send_buffers.push_back(buffers[j]);
+        } else {
+          // TODO(emilyaf): Support string arrays.
+          return absl::InvalidArgumentError(
+              "Unsupported array type for cross-host "
+              "PjRtClient::CopyArraysForCrossHost");
+        }
+      }
+      TF_RETURN_IF_ERROR(
+          CrossHostSendBuffers(send_buffers, transfer_keys, key_prefix));
+      ++j;
+    } else if (dst_devices->devices()[i]->IsAddressable()) {
+      std::vector<xla::Shape> recv_shapes;
+      recv_shapes.reserve(arrays.size());
+      for (const ArrayRef& array : arrays) {
+        if (auto* const pjrt_array = llvm::dyn_cast<PjRtArray>(array.get())) {
+          TF_ASSIGN_OR_RETURN(auto dtype, ToPrimitiveType(pjrt_array->dtype()));
+          TF_ASSIGN_OR_RETURN(
+              Shape shard_shape,
+              pjrt_array->sharding().GetShardShape(pjrt_array->shape()));
+          xla::Shape recv_shape =
+              xla::ShapeUtil::MakeShape(dtype, shard_shape.dims());
+          recv_shapes.push_back(std::move(recv_shape));
+        } else {
+          return absl::InvalidArgumentError(
+              "Unsupported array type for cross-host "
+              "PjRtClient::CopyArraysForCrossHost");
+        }
+      }
+      TF_ASSIGN_OR_RETURN(
+          xla::PjRtGlobalDeviceId pjrt_global_device_id,
+          GetPjRtGlobalDeviceId(dst_devices->devices()[i]->Id()));
+      TF_ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
+                          pjrt_client_->LookupDevice(pjrt_global_device_id));
+      TF_ASSIGN_OR_RETURN(recv_buffers.emplace_back(),
+                          CrossHostReceiveBuffers(recv_shapes, pjrt_device,
+                                                  transfer_keys, key_prefix));
+    }
+  }
+
+  for (int i = 0; i < arrays.size(); ++i) {
+    PjRtArray::PjRtBuffers new_buffers;
+    new_buffers.reserve(dst_devices->AddressableDeviceList()->size());
+    int k = 0;
+    for (Device* device : dst_devices->devices()) {
+      if (device->IsAddressable()) {
+        new_buffers.push_back(std::move(recv_buffers[k++][i]));
+      }
+    }
+    TF_ASSIGN_OR_RETURN(ShardingRef new_sharding,
+                        arrays[i]->shared_ptr_sharding()->WithDeviceAssignment(
+                            dst_devices, memory_kind));
+    TF_ASSIGN_OR_RETURN(auto new_layout, arrays[i]->layout());
+    TF_ASSIGN_OR_RETURN(
+        new_arrays.emplace_back(),
+        PjRtArray::Create(this, arrays[i]->dtype(), arrays[i]->shape(),
+                          std::move(new_sharding), std::move(new_buffers),
+                          std::move(new_layout)));
+  }
   return new_arrays;
+}
+
+int64_t PjRtClient::CreateNewTransferKey() { return next_transfer_key_++; }
+
+absl::Status PjRtClient::CrossHostSendBuffers(PjRtBuffers buffers,
+                                              const std::vector<int64_t>& keys,
+                                              const std::string& key_prefix) {
+  if (keys.size() != buffers.size()) {
+    return absl::InternalError(
+        "CrossHostSendBuffers: keys must be the same size as buffers.");
+  }
+  for (int i = 0; i < keys.size(); ++i) {
+    auto promise = PjRtFuture<std::string>::CreatePromise();
+    PjRtFuture<std::string> descriptor_future(promise);
+    std::string key = absl::StrCat(key_prefix, keys[i]);
+    // TODO(emilyaf): Make this timeout configurable.
+    TF_ASSIGN_OR_RETURN(std::string descriptor,
+                        kv_store_->Get(key, absl::Seconds(10)));
+    promise.Set(std::move(descriptor));
+    auto on_done = [](absl::Status status, bool sends_were_enqueued) {
+      CHECK_OK(status);
+    };
+    buffers[i]->CopyToRemoteDevice(descriptor_future, on_done);
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<PjRtArray::PjRtBuffers> PjRtClient::CrossHostReceiveBuffers(
+    absl::Span<const xla::Shape> shapes, xla::PjRtDevice* device,
+    const std::vector<int64_t>& keys, const std::string& key_prefix) {
+  auto notifier = [this, keys, key_prefix](
+                      absl::StatusOr<xla::PjRtCrossHostRecvState> recv_state) {
+    CHECK_OK(recv_state);
+    CHECK_EQ(recv_state->descriptors.size(), keys.size());
+    for (int i = 0; i < keys.size(); ++i) {
+      std::string key = absl::StrCat(key_prefix, keys[i]);
+      absl::Status status = kv_store_->Set(
+          key, recv_state->descriptors[i].serialized_descriptors.front());
+      CHECK_OK(status);
+    }
+  };
+  TF_ASSIGN_OR_RETURN(auto recv_buffers,
+                      pjrt_client_->MakeCrossHostReceiveBuffers(
+                          shapes, device, std::move(notifier)));
+  PjRtArray::PjRtBuffers buffers;
+  buffers.reserve(recv_buffers.size());
+  for (auto& recv_buffer : recv_buffers) {
+    buffers.push_back(std::move(recv_buffer));
+  }
+  return buffers;
 }
 
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::RemapArrays(
