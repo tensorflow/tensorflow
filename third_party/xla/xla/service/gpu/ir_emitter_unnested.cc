@@ -1698,8 +1698,6 @@ absl::Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
                         GetAllocationSliceForHlo(sort->operand(i), {}));
 
     if (destination_buffer != source_address) {
-      // TODO(b/26783907): Figure out why we never seem to share buffers for
-      // key/value sort.
       VLOG(2) << op_name << " requires initial D2D copy for operand " << i;
       AddThunkToThunkSequence(std::make_unique<DeviceToDeviceCopyThunk>(
           Thunk::ThunkInfo::WithProfileAnnotation(sort),
