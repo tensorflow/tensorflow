@@ -476,7 +476,6 @@ cc_test(
     # CC_TEST_OK=tests imported from the IOPDDL library.
     name = "iopddl_test",
     srcs = ["iopddl_test.cc"],
-    data = ["example.json"],
     deps = [
         ":iopddl_lib",
         "//xla/tsl/platform:status_matchers",
