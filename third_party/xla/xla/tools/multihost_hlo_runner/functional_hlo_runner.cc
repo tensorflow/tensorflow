@@ -145,15 +145,17 @@ absl::StatusOr<Literal> MakeFakeLiteralWithSameValue(const Shape& shape,
 }
 
 const FixedOptionSetFlagParser<InputFormat>& GetInputFormatParser() {
-  static const auto& parser = GetFixedOptionSetFlagParser<InputFormat>(
-      {{"text", InputFormat::kText},
-       {"proto_text", InputFormat::kProtoText},
-       {"proto_binary", InputFormat::kProtoBinary},
-       {"snapshot_proto_binary", InputFormat::kSnapshotProtoBinary},
-       {"unoptimized_snapshot_proto_binary",
-        InputFormat::kUnoptimizedSnapshotProtoBinary},
-       {"unoptimized_snapshot_proto_text",
-        InputFormat::kUnoptimizedSnapshotProtoText}});
+  static const auto& parser = GetFixedOptionSetFlagParser<InputFormat>({
+      {"text", InputFormat::kText},
+      {"proto_text", InputFormat::kProtoText},
+      {"proto_binary", InputFormat::kProtoBinary},
+      {"snapshot_proto_binary", InputFormat::kSnapshotProtoBinary},
+      {"unoptimized_snapshot_proto_binary",
+       InputFormat::kUnoptimizedSnapshotProtoBinary},
+      {"unoptimized_snapshot_proto_text",
+       InputFormat::kUnoptimizedSnapshotProtoText},
+      {"serialized_pjrt_executable", InputFormat::kSerializedPjRtExecutable},
+  });
   return parser;
 }
 
@@ -561,6 +563,12 @@ FunctionalHloRunner::LoadHloModuleAndArguments(absl::string_view hlo_file,
           ReadModuleFromUnoptimizedSnapshotTextProtoFile(hlo_file));
       break;
     }
+    case InputFormat::kSerializedPjRtExecutable: {
+      LOG(INFO) << "Skipping loading HLO module and arguments for serialized "
+                   "PjRtExecutable.";
+      return hlo_module_and_arguments;
+      break;
+    }
     default:
       LOG(FATAL) << "Cannot process input format: "
                  << AbslUnparseFlag(input_format);
@@ -627,6 +635,18 @@ FunctionalHloRunner::LoadAndRun(PjRtClient& client,
   for (int i = 0; i < hlo_module_and_arguments.arguments.size(); ++i) {
     loaded_arguments[client.devices()[i]->id()] =
         std::move(hlo_module_and_arguments.arguments[i]);
+  }
+
+  if (input_format == InputFormat::kSerializedPjRtExecutable) {
+    std::string serialized_executable;
+    TF_RETURN_IF_ERROR(tsl::ReadFileToString(
+        tsl::Env::Default(), std::string(hlo_file), &serialized_executable));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                        client.LoadSerializedExecutable(
+                            serialized_executable,
+                            /*options=*/std::nullopt, LoadOptions()));
+    return Run(client, executable.get(), loaded_arguments, running_options,
+               engine);
   }
 
   return CompileAndRun(
