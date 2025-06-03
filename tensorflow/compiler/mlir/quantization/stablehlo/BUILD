@@ -838,7 +838,7 @@ tf_cc_binary(
         ":tf_passes",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/quantization/common/ir:QuantOps",
-        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:tf_pass_pipeline",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:pass_pipeline",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_dialect_passes",

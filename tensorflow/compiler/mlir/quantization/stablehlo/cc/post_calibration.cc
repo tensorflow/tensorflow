@@ -22,7 +22,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/config.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_pass_pipeline.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pass_pipeline.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/instrumentations/save_report.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
@@ -51,8 +51,8 @@ absl::StatusOr<ModuleOp> PostCalibrationComponent::Run(
             std::make_unique<SaveQuantizationReportInstrumentation>(
                 GetReportFilePath(config)));
 
-        tf_quant::stablehlo::AddPostCalibrationPasses(
-            pm, config.pipeline_config(), config.specs());
+        quant::stablehlo::AddPostCalibrationPasses(pm, config.pipeline_config(),
+                                                   config.specs());
       },
       *ctx_, module_op));
   return module_op;
@@ -61,7 +61,7 @@ absl::StatusOr<ModuleOp> PostCalibrationComponent::Run(
 void PostCalibrationComponent::AddPasses(
     OpPassManager& pm, const QuantizationSpecs& specs,
     const PipelineConfig& pipeline_config) const {
-  tf_quant::stablehlo::AddPostCalibrationPasses(pm, pipeline_config, specs);
+  quant::stablehlo::AddPostCalibrationPasses(pm, pipeline_config, specs);
 }
 
 }  // namespace mlir::quant::stablehlo
