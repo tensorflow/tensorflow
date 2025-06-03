@@ -1698,12 +1698,14 @@ absl::Status IrEmitterUnnested::EmitSort(const HloSortInstruction* sort) {
                         GetAllocationSliceForHlo(sort->operand(i), {}));
 
     if (destination_buffer != source_address) {
-      VLOG(2) << op_name << " requires initial D2D copy for operand " << i;
+      LOG(ERROR) << op_name << " requires initial D2D copy for operand " << i;
       AddThunkToThunkSequence(std::make_unique<DeviceToDeviceCopyThunk>(
           Thunk::ThunkInfo::WithProfileAnnotation(sort),
           /*source_buffer=*/source_address,
           /*destination_buffer=*/destination_buffer,
           /*mem_size=*/ShapeUtil::ByteSizeOf(sort->operand(i)->shape())));
+    } else {
+      LOG(ERROR) << "No memcpy required for operand " << i;
     }
   }
 

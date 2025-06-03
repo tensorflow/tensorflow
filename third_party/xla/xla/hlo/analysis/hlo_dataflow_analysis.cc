@@ -2176,6 +2176,8 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
   if (user->opcode() == HloOpcode::kSort) {
     // Only valid if there are no other users.
     if (operand->users().size() != 1) {
+      LOG(ERROR) << "Cannot share " << operand->name()
+                 << "'s buffer because more than 1 user";
       return false;
     }
     // If we only sort keys, the output of sort is not a tuple, so we can always
@@ -2186,6 +2188,9 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     CHECK(!user_index.empty());
     // Only share with the right tuple element buffer.
     const auto operand_indices = user->OperandIndices(operand);
+    LOG(ERROR) << "Share " << operand->name() << "'s buffer? "
+               << operand_indices.size() << " " << user_index[0] << " "
+               << operand_indices[0] << " " << user->ToString();
     return operand_indices.size() == 1 && user_index[0] == operand_indices[0];
   }
   if (user->opcode() == HloOpcode::kCall) {
