@@ -18,7 +18,9 @@ syntax = "proto3";
 package xla.gpu;
 
 import "xla/service/buffer_assignment.proto";
+import "xla/service/gpu/launch_dimensions.proto";
 import "xla/stream_executor/gpu/gpu_blas_lt.proto";
+import "xla/stream_executor/launch_dim.proto";
 import "xla/xla_data.proto";
 
 // Contains basic pieces of information that every thunk type has.
@@ -55,20 +57,13 @@ message WhileThunkProto {
   optional int64 trip_count = 4;
 }
 
-message Dim3DProto {
-  int64 x = 1;
-  int64 y = 2;
-  int64 z = 3;
-}
-
 message KernelThunkProto {
   repeated xla.buffer_assignment.BufferAllocationSliceProto args = 1;
   repeated bool written = 2;
   string kernel_name = 3;
-  Dim3DProto launch_block_counts = 4;
-  Dim3DProto launch_thread_counts_per_block = 5;
-  optional Dim3DProto cluster_dim = 6;
-  int64 shmem_bytes = 7;
+  LaunchDimensionsProto launch_dimensions = 4;
+  optional stream_executor.ClusterDimProto cluster_dim = 5;
+  int64 shmem_bytes = 6;
 }
 
 message GemmThunkProto {
