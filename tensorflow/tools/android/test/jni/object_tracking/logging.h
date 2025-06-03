@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_LOGGING_H_
 #define TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_LOGGING_H_
 
+#ifdef __ANDROID__
 #include <android/log.h>
+#endif
 #include <string.h>
 #include <ostream>
 #include <sstream>
