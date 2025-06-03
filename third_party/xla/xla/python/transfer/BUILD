@@ -102,6 +102,7 @@ cc_library(
     hdrs = ["streaming_ifrt.h"],
     deps = [
         ":streaming",
+        ":transfer_socket_proto_cc",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_future",
         "//xla/pjrt:raw_buffer",

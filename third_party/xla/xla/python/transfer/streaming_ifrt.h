@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_device.h"
 #include "xla/python/transfer/streaming.h"
+#include "xla/python/transfer/transfer_socket.pb.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace aux {

@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/transfer/streaming.h"
+#include "xla/python/transfer/transfer_socket.pb.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
 
