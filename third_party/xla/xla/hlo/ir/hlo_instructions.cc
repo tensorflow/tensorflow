@@ -3203,6 +3203,25 @@ HloCustomCallInstruction::HloCustomCallInstruction(
   set_raw_backend_config_string(std::move(opaque));
 }
 
+HloCustomCallInstruction::HloCustomCallInstruction(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloComputation* to_apply, absl::string_view custom_call_target,
+    std::string opaque, absl::Span<const Shape> operand_shapes_with_layout,
+    CustomCallApiVersion api_version)
+    : HloCallableInstruction(HloOpcode::kCustomCall, shape, operands, to_apply),
+      custom_call_target_(custom_call_target),
+      feature_group_count_(1),
+      batch_group_count_(1),
+      layout_constrained_(true),
+      padding_type_(PaddingType::PADDING_INVALID),
+      operand_shapes_with_layout_(operand_shapes_with_layout.begin(),
+                                  operand_shapes_with_layout.end()),
+      custom_call_has_side_effect_(false),
+      custom_call_schedule_(CustomCallSchedule::SCHEDULE_NONE),
+      api_version_(api_version) {
+  set_raw_backend_config_string(std::move(opaque));
+}
+
 HloInstructionProto HloCustomCallInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
   if (window_ != nullptr) {
