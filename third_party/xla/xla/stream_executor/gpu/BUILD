@@ -21,7 +21,6 @@ load(
 )
 load(
     "//xla/stream_executor:build_defs.bzl",
-    "if_gpu_is_configured",
     "stream_executor_gpu_friends",
 )
 load(
@@ -338,18 +337,15 @@ cc_library(
     ],
 )
 
-gpu_kernel_library(
+cc_library(
     name = "redzone_allocator_kernel",
-    srcs = [
-        "redzone_allocator_kernel.cu.cc",
+    hdrs = [
+        "redzone_allocator_kernel.h",
     ],
-    tags = ["gpu"],
-    deps = if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-    ]) + if_rocm_is_configured([
-        "@local_config_rocm//rocm:rocm_headers",
-        "@local_config_rocm//rocm:rocm_config",
-    ]),
+    deps = [
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
+    ],
 )
 
 cc_library(
@@ -360,18 +356,17 @@ cc_library(
     hdrs = ["redzone_allocator.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
-        ":gpu_asm_opts",
+        ":gpu_kernel_registry",
+        ":redzone_allocator_kernel",
         "//xla:shape_util",
         "//xla/service/gpu:stream_executor_util",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:device_memory_handle",
-        "//xla/stream_executor:kernel",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor:typed_kernel_factory",
         "//xla/tsl/framework:allocator",
         "//xla/tsl/lib/math:math_util",
         "//xla/tsl/platform:errors",
@@ -383,11 +378,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
-    ] + if_gpu_is_configured([
-        ":redzone_allocator_kernel",
-    ]),
+    ],
 )
 
 xla_test(
@@ -841,6 +832,7 @@ exports_files([
     "all_reduce_kernel_lib.cu.h",
     "ragged_all_to_all_kernel_lib.cu.h",
     "repeat_buffer_kernel.cu.h",
+    "redzone_allocator_kernel_lib.cu.h",
 ])
 
 cc_library(

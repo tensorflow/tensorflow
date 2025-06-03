@@ -1044,6 +1044,7 @@ cc_library(
         ":cufft_plugin",
         ":make_batch_pointers_kernel_cuda",
         ":ragged_all_to_all_kernel_cuda",
+        ":redzone_allocator_kernel_cuda",
         ":repeat_buffer_kernel_cuda",
         ":topk_kernel_cuda",
         "//xla/tsl/cuda:cusolver",
@@ -2082,6 +2083,26 @@ cuda_library(
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:repeat_buffer_kernel",
+    ],
+    alwayslink = 1,
+)
+
+cuda_library(
+    name = "redzone_allocator_kernel_cuda",
+    srcs = [
+        "redzone_allocator_kernel_cuda.cu.cc",
+        "//xla/stream_executor/gpu:redzone_allocator_kernel_lib.cu.h",
+    ],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":cuda_platform_id",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/stream_executor/gpu:redzone_allocator_kernel",
     ],
     alwayslink = 1,
 )

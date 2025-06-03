@@ -13,20 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef XLA_STREAM_EXECUTOR_GPU_REDZONE_ALLOCATOR_KERNEL_LIB_CU_H_
+#define XLA_STREAM_EXECUTOR_GPU_REDZONE_ALLOCATOR_KERNEL_LIB_CU_H_
+
 #include <cstdint>
 
-namespace stream_executor::redzone_checker_kernel {
+namespace stream_executor::gpu {
 
-namespace {
-__global__ void kernel_func(uint8_t* input_buffer, uint8_t redzone_pattern,
-                            uint64_t buffer_length,
-                            uint32_t* out_mismatched_ptr) {
+__global__ void RedzoneAllocatorKernelImpl(uint8_t* input_buffer,
+                                           uint8_t redzone_pattern,
+                                           uint64_t buffer_length,
+                                           uint32_t* out_mismatched_ptr) {
   uint64_t idx = threadIdx.x + blockIdx.x * blockDim.x;
-  if (idx >= buffer_length) return;
-  if (input_buffer[idx] != redzone_pattern) atomicAdd(out_mismatched_ptr, 1);
+  if (idx >= buffer_length) {
+    return;
+  }
+  if (input_buffer[idx] != redzone_pattern) {
+    atomicAdd(out_mismatched_ptr, 1);
+  }
 }
-}  // namespace
+}  // namespace stream_executor::gpu
 
-void* kernel() { return reinterpret_cast<void*>(kernel_func); }
-
-}  // namespace stream_executor::redzone_checker_kernel
+#endif  // XLA_STREAM_EXECUTOR_GPU_REDZONE_ALLOCATOR_KERNEL_LIB_CU_H_
