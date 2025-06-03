@@ -16,10 +16,17 @@ limitations under the License.
 #ifndef XLA_PJRT_MLIR_TO_HLO_H_
 #define XLA_PJRT_MLIR_TO_HLO_H_
 
+#include <cstdint>
+#include <optional>
+#include <string>
+
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectRegistry.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "xla/hlo/builder/xla_computation.h"
 
 namespace xla {
@@ -62,6 +69,7 @@ std::string GetDefaultStablehloVersion(
 //   For plugin_version < 41, returns `SerializeUsingNativeBytecode`.
 //   For plugin_version >= 41, returns `SerializeUsingVersionedStablehlo`.
 absl::StatusOr<std::string> Serialize(mlir::ModuleOp mlir_module,
+                                      std::optional<int64_t> plugin_version,
                                       absl::string_view target,
                                       bool inplace = false);
 
@@ -78,7 +86,7 @@ absl::StatusOr<std::string> Serialize(mlir::ModuleOp mlir_module,
 // portable artifacts, use SerializeUsingNativeBytecode.
 absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
     mlir::ModuleOp mlir_module, absl::string_view requested_target,
-    bool inplace = false);
+    bool inplace = false, std::optional<int64_t> plugin_version = std::nullopt);
 
 // Given a module that might be a portable artifact, deserialize and upgrade it
 // back to StableHLO.
