@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -1326,7 +1327,72 @@ namespace {
 
 using ::xla::gpu::ir_emitter_triton_internal::DumpTritonIR;
 
+// Given a tiling specification for a fusion and an annotated fusion, derives a
+// tiling for the annotated fusion.
+//
+// Note that the tiling extracted here is voluntarily not checked against the
+// specification, which means that it could be invalid. This should only be the
+// case, though, if this logic gets stale, or if the fusion does not contain
+// the required annotations. Checking constraints is not cheap, so we left it up
+// to the caller to decide when to check the constraints.
+//
+// TODO(b/421837868): this belongs near/in `BlockLevelParameters`, but we start
+// with this here in order to allow an incremental replacement.
+absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
+    const HloFusionInstruction* fusion,
+    const SymbolicTileAnalysis& symbolic_tile_analysis,
+    const BlockLevelParameters& block_level_parameters) {
+  Tiling::TileMapping tile_mapping;
+  int64_t real_root_index = symbolic_tile_analysis.real_root_index();
+  const HloInstruction* real_root =
+      symbolic_tile_analysis.GetRoots()[real_root_index];
+
+  for (const auto& [hlo, num_tiling_parameters] :
+       symbolic_tile_analysis.GetTilingSpecification().parameter_mapping()) {
+    // TODO(b/419026602): handle reductions.
+    if (hlo->opcode() == HloOpcode::kDot) {
+      const HloInstruction* lhs = hlo->operand(0);
+      // When encountering a `dot`, we always expect its operands to be nests.
+      auto backend_config = lhs->backend_config<GpuBackendConfig>();
+      if (!backend_config.ok() || !backend_config->fusion_backend_config()
+                                       .has_block_level_fusion_config()) {
+        return absl::FailedPreconditionError(
+            absl::StrCat("No block_level_fusion_config in ", lhs->ToString()));
+      }
+      std::vector<int64_t> lhs_output_tile_sizes =
+          BlockLevelParameters::FromBlockLevelFusionConfig(
+              backend_config->fusion_backend_config()
+                  .block_level_fusion_config())
+              .output_tile_sizes.front();
+
+      absl::InlinedVector<int64_t, 4> dot_tiling_parameters;
+      dot_tiling_parameters.reserve(num_tiling_parameters);
+      for (int64_t contracting_dim_id :
+           hlo->dot_dimension_numbers().lhs_contracting_dimensions()) {
+        dot_tiling_parameters.push_back(
+            lhs_output_tile_sizes[contracting_dim_id]);
+      }
+
+      tile_mapping[hlo] = dot_tiling_parameters;
+    }
+
+    // TODO(b/390559452): this should change for generalized multi-output
+    // fusions.
+    if (hlo == real_root) {
+      absl::Span<const int64_t> output_tile_sizes =
+          block_level_parameters.output_tile_sizes[real_root_index];
+      tile_mapping[hlo].insert(tile_mapping[hlo].end(),
+                               output_tile_sizes.begin(),
+                               output_tile_sizes.end());
+    }
+  }
+
+  return Tiling(std::move(tile_mapping));
+}
+
 // Generate Triton IR inside 'fn', using the given block_level_parameters.
+// TODO(b/421837868): `BlockLevelParameters` should hold all the necessary
+// tiling information.
 absl::StatusOr<SmallVector<Value>> EmitGeneric(
     mlir::OpBuilder builder, absl::string_view libdevice_path,
     const se::DeviceDescription& device_info,
@@ -1349,6 +1415,13 @@ absl::StatusOr<SmallVector<Value>> EmitGeneric(
 
   const auto& symbolic_tile_analysis =
       std::get<SymbolicTileAnalysis>(symbolic_tile_analysis_or);
+
+  // TODO(b/421837868): unify the logic to extract tiling parameters with
+  // `BlockLevelParameters`.
+  TF_ASSIGN_OR_RETURN(Tiling tiling,
+                      TilingFromAnnotatedFusion(fusion, symbolic_tile_analysis,
+                                                block_level_parameters));
+
   // TODO(b/372454662): Decide which root to use. Currently, we only support
   // "simple" multi-output fusions that have just one root without users. This
   // root appears last in def-before-use order. We derive the tiling from this
@@ -1366,7 +1439,7 @@ absl::StatusOr<SmallVector<Value>> EmitGeneric(
   TF_RET_CHECK(root_index < symbolic_tile_analysis.GetRoots().size());
   TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
                       symbolic_tile_analysis.ComputeTiledHloInstructions(
-                          block_level_parameters.output_tile_sizes[root_index],
+                          tiling,
                           /*constraints_are_known_satisfied=*/false,
                           /*compute_all_tile_offset_indexing_maps=*/true));
   VLOG(3) << "EmitGeneric: tiled HLO computation:\n"
