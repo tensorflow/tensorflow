@@ -782,7 +782,8 @@ ENTRY main {
 })"));
   std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
   ASSERT_TRUE(analysis.has_value());
-  const ConstraintExpression& constraints = analysis->GetConstraints();
+  const ConstraintExpression& constraints =
+      analysis->GetTilingSpecification().constraints();
   EXPECT_THAT(constraints, MatchConstraintExpressionString(
                                "2 mod d0 in [0, 0] || d0 mod 2 in [0, 0]"));
 }
@@ -801,7 +802,8 @@ ENTRY main {
 })"));
   std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
   ASSERT_TRUE(analysis.has_value());
-  const ConstraintExpression& constraints = analysis->GetConstraints();
+  const ConstraintExpression& constraints =
+      analysis->GetTilingSpecification().constraints();
   EXPECT_THAT(constraints, MatchConstraintExpressionString(
                                "2 mod d0 in [0, 0] || d0 mod 2 in [0, 0]"));
 }
@@ -880,7 +882,8 @@ ENTRY main {
 })"));
   std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
   ASSERT_TRUE(analysis.has_value());
-  const ConstraintExpression& constraints = analysis->GetConstraints();
+  const ConstraintExpression& constraints =
+      analysis->GetTilingSpecification().constraints();
   EXPECT_THAT(constraints, MatchConstraintExpressionString(
                                "6 mod d0 in [0, 0] && 8 mod d1 in [0, 0] || "
                                "6 mod d0 in [0, 0] && d1 mod 8 in [0, 0] || "
@@ -972,7 +975,8 @@ ENTRY main {
   ASSERT_TRUE(analysis.has_value());
   // Each bitcast in the above module introduces one disjoint constraint. Once
   // they are aggregated, we have four disjoint constraints!
-  const ConstraintExpression& constraints = analysis->GetConstraints();
+  const ConstraintExpression& constraints =
+      analysis->GetTilingSpecification().constraints();
   EXPECT_THAT(constraints, MatchConstraintExpressionString(
                                "6 mod d0 in [0, 0] && 8 mod d1 in [0, 0] || "
                                "6 mod d0 in [0, 0] && d1 mod 8 in [0, 0] || "

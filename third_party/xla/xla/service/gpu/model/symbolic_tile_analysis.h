@@ -342,15 +342,6 @@ class SymbolicTileAnalysis {
     return symbolic_tiled_hlo_instructions_;
   }
 
-  // Returns the constraints for the parameters of the symbolic tiled HLO
-  // computation. This is the intersection of the constraints of all the
-  // symbolic tiles encountered throughout the computation.
-  // TODO(b/421837868): replace uses with calls to
-  // `GetTilingSpecification.constraints()`.
-  [[deprecated]] const ConstraintExpression& GetConstraints() const {
-    return tiling_specification_.constraints();
-  }
-
   // Returns the `TilingSpecification` for the fusion that was used to construct
   // the analysis.
   //
