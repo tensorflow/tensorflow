@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -87,6 +88,7 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kConcatenate:
     case HloOpcode::kCopy:
+    case HloOpcode::kConstant:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kGather:
@@ -101,7 +103,11 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
     case HloOpcode::kTranspose:
     // Other special ops.
     case HloOpcode::kBitcast:
+    case HloOpcode::kBitcastConvert:
+    case HloOpcode::kConvert:
+    case HloOpcode::kCompare:
     case HloOpcode::kReducePrecision:
+    case HloOpcode::kXor:
       return true;
     // Elementwise ops.
     case HloOpcode::kExp:
@@ -135,6 +141,15 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
     // Reduction.
     case HloOpcode::kReduce:
       return absl::c_all_of(hlo.called_computations().front()->instructions(),
+                            [this](const HloInstruction* hlo) {
+                              return hlo->opcode() == HloOpcode::kParameter ||
+                                     this->IsSupported(*hlo);
+                            });
+    // Sort
+    case HloOpcode::kSort:
+      VLOG(10) << "Sort: " << hlo.ToString();
+      VLOG(10) << "Comparator: " << hlo.to_apply()->ToString();
+      return absl::c_all_of(hlo.to_apply()->instructions(),
                             [this](const HloInstruction* hlo) {
                               return hlo->opcode() == HloOpcode::kParameter ||
                                      this->IsSupported(*hlo);
