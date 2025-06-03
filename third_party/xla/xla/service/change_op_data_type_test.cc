@@ -15,14 +15,15 @@ limitations under the License.
 
 #include "xla/service/change_op_data_type.h"
 
-#include <string>
-#include <tuple>
-#include <vector>
+#include <memory>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {

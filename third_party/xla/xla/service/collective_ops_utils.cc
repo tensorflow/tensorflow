@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 
 #include <cstdint>
+#include <iterator>
 #include <optional>
 #include <set>
 #include <string>
@@ -23,7 +24,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
