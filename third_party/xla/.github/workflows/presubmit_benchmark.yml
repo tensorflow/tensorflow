@@ -40,7 +40,9 @@ on:
       - unlabeled
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  # Group all jobs for a given PR together, and cancel presubmit if a new commit is pushed.
+  group: ${{ github.workflow }}-${{ github.head_ref }}
+  cancel-in-progress: true
 
 jobs:
   # ================================================================
