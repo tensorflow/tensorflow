@@ -3415,7 +3415,7 @@ absl::Status PjRtStreamExecutorClient::UpdateCompileOptionsInternal(
     }
     if (addressable_devices.empty()) {
       if (build_options.device_ordinal() < 0) {
-        build_options.set_device_ordinal(0);
+        build_options.set_device_ordinal(client()->default_device_ordinal());
       }
     } else {
       if (build_options.device_ordinal() < 0) {
