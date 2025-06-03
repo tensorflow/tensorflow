@@ -329,6 +329,26 @@ XLA_TEST_F(CustomCallTest, TransitiveCustomCallReportsFirstFailure) {
   EXPECT_THAT(status.message(), HasSubstr("Failed: 1.0"));
 }
 
+XLA_TEST_F(CustomCallTest, FillStatusMsgWithBackendConfigStr) {
+  const char* const kModuleStr = R"(
+    HloModule m
+    ENTRY test {
+      c0 = f32[] constant(1.0)
+      ROOT dummy-result = f32[] custom-call(f32[] %c0),
+                                custom_call_target="CustomCallFailWithBackendConfigStr",
+                                backend_config="foo",
+                                api_version=API_VERSION_STATUS_RETURNING_UNIFIED
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+
+  auto status = Execute(std::move(module), {}).status();
+  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
+  EXPECT_THAT(status.message(),
+              HasSubstr("Fail with raw backend config str: foo"));
+}
+
 class CustomCallClientAPITest
     : public ClientLibraryTestRunnerMixin<
           HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {};

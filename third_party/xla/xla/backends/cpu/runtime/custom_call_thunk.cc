@@ -178,16 +178,13 @@ static absl::StatusOr<CustomCallThunk::CustomCallTarget> ToCustomCallTarget(
   switch (api_version) {
     case CustomCallApiVersion::API_VERSION_ORIGINAL:
 #ifdef PLATFORM_GOOGLE
-      return InvalidArgument(
-          "Custom call API version `API_VERSION_ORIGINAL` is not supported "
-          "by XLA:CPU. Prefer https://docs.jax.dev/en/latest/ffi.html. It "
-          "will be fully removed in November 2025.");
+      LOG(FATAL)
 #else
       LOG(ERROR)
+#endif
           << "Custom call API version `API_VERSION_ORIGINAL` is not supported "
              "by XLA:CPU. Prefer https://docs.jax.dev/en/latest/ffi.html. It "
              "will be fully removed in November 2025.";
-#endif
 
       using v1_signature = void (*)(void* /*out*/, const void** /*in*/);
       return [target](void* out, const void** in, const char* opaque,
@@ -195,7 +192,6 @@ static absl::StatusOr<CustomCallThunk::CustomCallTarget> ToCustomCallTarget(
         auto fn = reinterpret_cast<v1_signature>(target);
         fn(out, in);
       };
-
     case CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
       using v2_signature = void (*)(void* /*out*/, const void** /*in*/,
                                     XlaCustomCallStatus* /*status*/);
@@ -204,21 +200,7 @@ static absl::StatusOr<CustomCallThunk::CustomCallTarget> ToCustomCallTarget(
         auto fn = reinterpret_cast<v2_signature>(target);
         fn(out, in, status);
       };
-
     case CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED:
-#ifdef PLATFORM_GOOGLE
-      return InvalidArgument(
-          "Custom call API version `API_VERSION_STATUS_RETURNING_UNIFIED` is "
-          "not supported by XLA:CPU. Prefer "
-          "https://docs.jax.dev/en/latest/ffi.html. It "
-          "will be fully removed in November 2025.");
-#else
-      LOG(ERROR)
-          << "Custom call API version `API_VERSION_STATUS_RETURNING_UNIFIED` "
-             "is not supported by XLA:CPU. Prefer "
-             "https://docs.jax.dev/en/latest/ffi.html. It "
-             "will be fully removed in November 2025.";
-#endif
       using v3_signature =
           void (*)(void* /*out*/, const void** /*in*/, const char* /*opaque*/,
                    size_t /*opaque_len*/, XlaCustomCallStatus* /*status*/);
