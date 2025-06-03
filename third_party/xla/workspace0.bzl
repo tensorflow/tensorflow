@@ -121,6 +121,16 @@ def workspace():
         ],
     )
 
+    MLT_TAG = "gcc9-patch"
+    http_archive(
+        name = "rules_ml_toolchain",
+        #sha256 = "f00c93bb392bd943218d530401a9e7e63a6605462d1317997a3854f893653fa2",
+        strip_prefix = "rules_ml_toolchain-{tag}".format(tag = MLT_TAG),
+        urls = [
+            "https://github.com/google-ml-infra/rules_ml_toolchain/archive/refs/heads/{tag}.zip".format(tag = MLT_TAG),
+        ],
+    )
+
     # Now, finally use the rules
     apple_rules_dependencies()
     swift_rules_dependencies()
