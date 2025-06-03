@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
 #include "xla/tsl/framework/cancellation.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status.h"
@@ -318,14 +319,15 @@ class CoordinationServiceAgent {
   absl::StatusOr<std::vector<tensorflow::CoordinatedTask>> GetAliveTasks(
       const std::vector<tensorflow::CoordinatedTask>& tasks);
 
-  // Returns the latest known set of incarnation ids for all alive tasks, in
-  // sorted order. Incarnation ids can be refreshed by calling GetAliveTasks.
+  // Returns the latest known set of incarnation ids for the provided
+  // tasks. Incarnation ids can be refreshed by calling GetAliveTasks.
   //
   // When a task starts executing, it generates a random 64 bit incarnation id.
   // If a task fails and restarts, for example, it will have a different
   // incarnation id before and after it fails. This allows us to distinguish
   // different executions of the same task.
-  std::vector<uint64_t> Incarnations() const;
+  absl::StatusOr<std::vector<IncarnationId>> Incarnations(
+      absl::Span<const int> tasks) const;
 
   // Registers a JobStateCallback that will be invoked when the state of the job
   // changes. Multiple changes to the job state may be coalesced into a single
@@ -372,7 +374,7 @@ class CoordinationServiceAgent {
   void StopWatchingJobState();
 
   Env* env_ = nullptr;  // Not owned.
-  const uint64_t incarnation_id_ = random::New64();
+  const IncarnationId incarnation_id_{random::New64()};
   tensorflow::CoordinatedTask task_;
   tensorflow::CoordinationServiceConfig configs_;
   StatusCallback error_fn_;
@@ -386,7 +388,7 @@ class CoordinationServiceAgent {
       ABSL_GUARDED_BY(state_mu_);
   absl::flat_hash_set<std::string> ongoing_barriers_ ABSL_GUARDED_BY(state_mu_);
 
-  uint64_t leader_incarnation_ = 0;
+  IncarnationId leader_incarnation_{0};
   tensorflow::DeviceInfo cluster_devices_;
 
   absl::Mutex shutdown_mu_;
@@ -399,9 +401,10 @@ class CoordinationServiceAgent {
   std::unique_ptr<Thread> job_state_watcher_thread_
       ABSL_GUARDED_BY(job_state_watcher_mu_);
 
-  // The latest known set of incarnation ids for all alive tasks.
+  // The latest known incarnation ids for all alive tasks, keyed by task id.
   mutable absl::Mutex incarnations_mu_;
-  std::vector<uint64_t> incarnations_ ABSL_GUARDED_BY(incarnations_mu_);
+  absl::flat_hash_map<int, IncarnationId> incarnations_
+      ABSL_GUARDED_BY(incarnations_mu_);
 
   // Must outlive coordination client which may need to access it within
   // GetKeyValueAsync() callbacks.

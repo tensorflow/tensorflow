@@ -92,6 +92,7 @@ cc_library(
     deps = [
         "//xla/core/collectives:clique_key",
         "//xla/service:global_device_id",
+        "//xla/tsl/distributed_runtime/coordination:coordination_service",
         "//xla/tsl/lib/gtl:int_type",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",

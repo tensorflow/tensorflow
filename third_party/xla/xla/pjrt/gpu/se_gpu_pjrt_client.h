@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
 #include "xla/tsl/framework/allocator.h"
 #include "tsl/platform/casts.h"
 
@@ -112,6 +113,8 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
     return kv_store_;
   }
 
+  gpu::GpuExecutableRunOptions* gpu_run_options() override;
+
   absl::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
@@ -162,6 +165,9 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       ExecutableRunOptions run_options) override;
 
  private:
+  absl::StatusOr<absl::flat_hash_map<GlobalDeviceId, tsl::IncarnationId>>
+  GetLatestIncarnations();
+
   xla::StreamExecutorGpuTopologyDescription topology_;
   std::shared_ptr<KeyValueStoreInterface> kv_store_;
   std::shared_ptr<DistributedRuntimeClient> distributed_client_;
