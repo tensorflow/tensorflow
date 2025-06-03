@@ -43,7 +43,7 @@ TEST(CopyThunkTest, CopyEmptyShape) {
   BufferAllocation::Slice dst_slice =
       CreateBufferAllocationSlice(src_alloc, 0, 0);
 
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {0, 2}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {0, 2});
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto thunk,
@@ -117,7 +117,7 @@ TEST(CopyThunkTest, CopyTransposedEmptyShape) {
   BufferAllocation::Slice dst_slice =
       CreateBufferAllocationSlice(src_alloc, 0, 0);
 
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {0, 2}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {0, 2});
 
   Shape transposed_shape = shape;
   *transposed_shape.mutable_layout() = LayoutUtil::MakeLayout({0, 1});
