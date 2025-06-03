@@ -22,6 +22,7 @@ limitations under the License.
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <limits>
@@ -410,6 +411,8 @@ struct PairHash {
   }
 };
 
+using Buffer = std::vector<char>;
+
 // This class stores information about a resource tensor in a subgraph.
 class ResourceInfo {
  public:
@@ -549,7 +552,6 @@ class Delegate {
           reinterpret_cast<tflite::Subgraph*>(context->impl_);
       num_subgraphs = this_subgraph->GetSubgraphs()->size();
     }
-    static_unpacked_data_map_.resize(num_subgraphs);
     static_unpacked_data_.resize(num_subgraphs);
 #if !defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__)
     pthreadpool_t threadpool = nullptr;
@@ -762,11 +764,7 @@ class Delegate {
   // Unpacked data for quasi-static tensors, i.e. tensors produced by
   // dequantizing or unpacking static buffers.
   // One map per subgraph is stored.
-  std::vector<std::vector<char>> static_unpacked_data_;
-  // Mapping from a tensor index for a quasi-static tensor to the offset to
-  // its unpacked data within static_unpacked_data_.
-  // One map per subgraph is stored.
-  std::vector<std::unordered_map<int, size_t>> static_unpacked_data_map_;
+  std::vector<std::unordered_map<int, Buffer>> static_unpacked_data_;
   // Set of indices of nodes which unpack static data, e.g. Dequantize
   // operators which convert FP16 static weights to FP32. These nodes are simply
   // ignored in the delegate implementation, because their outputs are
@@ -858,12 +856,13 @@ class Subgraph {
         &params->input_tensors->data[0],
         &params->input_tensors->data[params->input_tensors->size]);
     std::unordered_set<int> outputs;
+    const std::unordered_map<int, Buffer>& static_unpacked_data =
+        delegate.static_unpacked_data_[subgraph_index];
     for (int o = 0; o < params->output_tensors->size; o++) {
       const int output_tensor_idx = params->output_tensors->data[o];
       // Exclude quasi-static tensors and shared variable tensors which may have
       // become subgraph outputs after partitioning.
-      if (delegate.static_unpacked_data_map_[subgraph_index].count(
-              output_tensor_idx) == 0 &&
+      if (static_unpacked_data.count(output_tensor_idx) == 0 &&
           context->tensors[output_tensor_idx].type != kTfLiteResource) {
         outputs.insert(output_tensor_idx);
       }
@@ -1048,11 +1047,9 @@ class Subgraph {
           data = tensor->data.raw_const;
         } else {
           // Check for quasi-static data.
-          const auto it =
-              delegate.static_unpacked_data_map_[subgraph_index].find(t);
-          if (it != delegate.static_unpacked_data_map_[subgraph_index].end()) {
-            data = delegate.static_unpacked_data_[subgraph_index].data() +
-                   it->second;
+          const auto it = static_unpacked_data.find(t);
+          if (it != static_unpacked_data.end()) {
+            data = it->second.data();
           }
         }
       }
@@ -1087,8 +1084,7 @@ class Subgraph {
 
     // Create a set of quasi-static tensors for VisitNode function
     std::unordered_set<int> quasi_static_tensors;
-    for (const std::pair<const int, size_t>& entry :
-         delegate.static_unpacked_data_map_[subgraph_index]) {
+    for (const std::pair<const int, Buffer>& entry : static_unpacked_data) {
       quasi_static_tensors.insert(entry.first);
     }
 
@@ -6590,12 +6586,13 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
     tflite::Subgraph* this_subgraph =
         reinterpret_cast<tflite::Subgraph*>(context->impl_);
     subgraph_index = this_subgraph->GetSubgraphIndex();
-    if (subgraph_index >= static_unpacked_data_map_.size()) {
-      static_unpacked_data_map_.resize(subgraph_index + 1);
-      static_unpacked_data_.resize(subgraph_index + 1);
-    }
   }
-  static_unpacked_data_map_[subgraph_index].clear();
+  if (subgraph_index >= static_unpacked_data_.size()) {
+    static_unpacked_data_.resize(subgraph_index + 1);
+  }
+  std::unordered_map<int, Buffer>& static_unpacked_data =
+      static_unpacked_data_[subgraph_index];
+  static_unpacked_data.clear();
   static_unpack_nodes_.clear();
   static_sparse_weights_.clear();
   f16_input_tensor_for_dequant_f32_tensor_.clear();
@@ -6841,10 +6838,9 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
     const TfLiteTensor& input_tensor = context->tensors[node->inputs->data[0]];
 
     // Consider the case when the input to unpacking node is quasi-static.
-    const auto static_unpacked_input_it_ =
-        static_unpacked_data_map_[subgraph_index].find(node->inputs->data[0]);
-    if (static_unpacked_input_it_ ==
-        static_unpacked_data_map_[subgraph_index].end()) {
+    const auto static_unpacked_input_it =
+        static_unpacked_data.find(node->inputs->data[0]);
+    if (static_unpacked_input_it == static_unpacked_data.end()) {
       if (input_tensor.allocation_type != kTfLiteMmapRo) {
         TF_LITE_KERNEL_LOG(
             context,
@@ -6855,6 +6851,10 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
         return nullptr;  // Hard error.
       }
     }
+    const char* packed_data =
+        static_unpacked_input_it != static_unpacked_data.end()
+            ? static_unpacked_input_it->second.data()
+            : static_cast<const char*>(input_tensor.data.data);
 
     const TfLiteTensor& output_tensor = context->tensors[t];
     size_t tensor_elements = output_tensor.bytes;
@@ -6878,26 +6878,13 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
       }
     }
 
-    // Align to XNN_EXTRA_BYTES bytes
-    while (static_unpacked_data_[subgraph_index].size() % XNN_EXTRA_BYTES !=
-           0) {
-      static_unpacked_data_[subgraph_index].push_back(0);
-    }
-    const size_t tensor_offset = static_unpacked_data_[subgraph_index].size();
-    static_unpacked_data_[subgraph_index].resize(tensor_offset +
-                                                 context->tensors[t].bytes);
+    Buffer unpacked_data_buffer(context->tensors[t].bytes + XNN_EXTRA_BYTES);
+    char* unpacked_data = unpacked_data_buffer.data();
+    static_unpacked_data[t] = std::move(unpacked_data_buffer);
+
     // TFLITE_LOG(tflite::TFLITE_LOG_VERBOSE,
     //            "Allocating %zu bytes for static tensor %i.",
     //            context->tensors[t].bytes, t);
-
-    char* unpacked_data =
-        static_unpacked_data_[subgraph_index].data() + tensor_offset;
-    const char* packed_data =
-        static_unpacked_input_it_ !=
-                static_unpacked_data_map_[subgraph_index].end()
-            ? static_unpacked_data_[subgraph_index].data() +
-                  static_unpacked_input_it_->second
-            : static_cast<const char*>(input_tensor.data.data);
     switch (registration->builtin_code) {
       case kTfLiteBuiltinDequantize: {
         // Such a condition has been checked when preparing to unpack
@@ -7001,8 +6988,6 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
         TfLiteIntArrayFree(nodes_to_delegate);
         return nullptr;  // Hard error.
     }
-
-    static_unpacked_data_map_[subgraph_index][t] = tensor_offset;
   }
 
   // Now that the unpacking is done, we can update the weight cache mappings.
@@ -7022,16 +7007,12 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
       return nullptr;  // Hard error.
     }
     const TfLiteTensor& input_tensor = context->tensors[node->inputs->data[0]];
-    const auto tensor_offset = static_unpacked_data_map_[subgraph_index][t];
-    char* unpacked_data =
-        static_unpacked_data_[subgraph_index].data() + tensor_offset;
-    const auto static_unpacked_input_it_ =
-        static_unpacked_data_map_[subgraph_index].find(node->inputs->data[0]);
+    char* unpacked_data = static_unpacked_data[t].data();
+    const auto static_unpacked_input_it =
+        static_unpacked_data.find(node->inputs->data[0]);
     const char* packed_data =
-        static_unpacked_input_it_ !=
-                static_unpacked_data_map_[subgraph_index].end()
-            ? static_unpacked_data_[subgraph_index].data() +
-                  static_unpacked_input_it_->second
+        static_unpacked_input_it != static_unpacked_data.end()
+            ? static_unpacked_input_it->second.data()
             : static_cast<const char*>(input_tensor.data.data);
     weight_cache_provider_.RemapDataBuffer(packed_data, unpacked_data);
   }
