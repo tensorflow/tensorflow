@@ -331,8 +331,11 @@ cc_library(
 cc_library(
     name = "safe_static_init",
     hdrs = ["safe_static_init.h"],
+    copts = ["-fexceptions"],
+    features = ["-use_header_modules"],
     deps = [
         "@com_google_absl//absl/synchronization",
+        "@nanobind",
     ],
 )
 
