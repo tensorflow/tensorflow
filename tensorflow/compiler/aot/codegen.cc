@@ -21,30 +21,42 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/aot/compile.h"
+#include "tensorflow/compiler/aot/embedded_constant_buffers.h"
 #include "tensorflow/compiler/aot/embedded_protocol_buffers.h"
+#include "tensorflow/compiler/aot/thunk_proto_execution_deserializer.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
+#include "xla/backends/cpu/runtime/thunk.pb.h"
+#include "xla/backends/cpu/runtime/thunk_proto_serdes.h"
 #include "xla/cpu_function_runtime.h"
-#include "xla/service/compiler.h"
 #include "xla/service/cpu/buffer_info_util.h"
+#include "xla/service/cpu/cpu_aot_compilation_result.h"
+#include "xla/service/cpu/cpu_executable.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tsl/platform/casts.h"
 
 namespace tensorflow {
 namespace tfcompile {
@@ -238,7 +250,7 @@ absl::Status GenResultMethods(const tf2xla::Config& config,
   if (ps.result().element_type() != xla::TUPLE) {
     // The XlaCompiler we use to build the xla computation always generates a
     // tuple result, and we rely on this to simplify code generation.
-    return errors::Internal("codegen requires the XLA result to be a tuple");
+    return xla::Internal("codegen requires the XLA result to be a tuple");
   }
   size_t num_results = ps.result().tuple_shapes_size();
   int readonly_variables = absl::c_count_if(
@@ -486,30 +498,436 @@ absl::Status CheckEqual(size_t a, size_t b, absl::string_view error_msg) {
   }
   return absl::OkStatus();
 }
+
+absl::StatusOr<std::string> GenFunctionDeclaration(
+    const xla::cpu::SymbolProto& symbol) {
+  std::string function_declaration;
+
+  switch (symbol.function_type_id()) {
+    case xla::cpu::SymbolProto::COMPARATOR:
+      absl::StrAppend(
+          &function_declaration, " void ", symbol.name(),
+          "(bool* result, const void* run_options, const void** params, "
+          "const void* buffer_table, const void* status, "
+          "const void* prof_counters);");
+      break;
+    case xla::cpu::SymbolProto::KERNEL:
+      absl::StrAppend(&function_declaration, " XLA_CPU_KernelError* ",
+                      symbol.name(),
+                      "(const XLA_CPU_KernelCallFrame* call_frame);");
+      break;
+    default:
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unsupported symbol kind: ", symbol.function_type_id()));
+  }
+  return function_declaration;
+}
+
+absl::StatusOr<std::string> GenFunctionDeclarations(
+    absl::Span<xla::cpu::SymbolProto> compiled_symbols) {
+  std::string function_declarations =
+      !compiled_symbols.empty() ? "extern \"C\" {\n" : "";
+  for (const auto& symbol : compiled_symbols) {
+    TF_ASSIGN_OR_RETURN(std::string function_declaration,
+                        GenFunctionDeclaration(symbol));
+    absl::StrAppend(&function_declarations, function_declaration, "\n");
+  }
+  if (!compiled_symbols.empty()) {
+    function_declarations += "}\n";
+  }
+  return function_declarations;
+}
+
+absl::StatusOr<std::string> GenSymbolMapInitializerString(
+    absl::Span<xla::cpu::SymbolProto> entry_point_symbols) {
+  std::string symbol_map_initializer = "{";
+  for (const auto& symbol : entry_point_symbols) {
+    absl::StrAppend(&symbol_map_initializer,
+                    "  std::pair<std::string, void*>{\"", symbol.name(),
+                    "\", reinterpret_cast<void*>(", symbol.name(), ")},");
+  }
+  symbol_map_initializer += "}";
+  return symbol_map_initializer;
+}
+
+std::vector<xla::cpu::SymbolProto> ExtractEntryPointSymbols(
+    const xla::cpu::CompilationResultProto& proto) {
+  std::vector<xla::cpu::SymbolProto> compiled_symbols;
+  for (const auto& symbol : proto.compiled_symbols()) {
+    compiled_symbols.push_back(symbol);
+  }
+
+  std::vector<xla::cpu::SymbolProto> entry_point_symbols;
+
+  auto check_if_compiled_symbol_and_add_entry_point =
+      [](const std::string& symbol_name,
+         const std::vector<xla::cpu::SymbolProto>& compiled_symbols,
+         std::vector<xla::cpu::SymbolProto>& entry_point_symbols) {
+        auto it = std::find_if(compiled_symbols.begin(), compiled_symbols.end(),
+                               [&symbol_name](const auto& symbol) {
+                                 return symbol.name() == symbol_name;
+                               });
+
+        if (it != compiled_symbols.end()) {
+          entry_point_symbols.push_back(*it);
+        }
+      };
+
+  xla::cpu::ForEachThunkProto(
+      proto.thunk_sequence(), [&entry_point_symbols, &compiled_symbols,
+                               &check_if_compiled_symbol_and_add_entry_point](
+                                  const xla::cpu::ThunkProto& thunk) {
+        if (thunk.has_kernel_thunk()) {
+          auto symbol_name = thunk.kernel_thunk().kernel_name();
+          check_if_compiled_symbol_and_add_entry_point(
+              symbol_name, compiled_symbols, entry_point_symbols);
+        } else if (thunk.has_sort_thunk()) {
+          auto symbol_name = thunk.sort_thunk().comparator_name();
+          check_if_compiled_symbol_and_add_entry_point(
+              symbol_name, compiled_symbols, entry_point_symbols);
+        }
+      });
+
+  return entry_point_symbols;
+}
+
+bool HasThunkKind(const xla::cpu::ThunkSequenceProto& thunk_sequence,
+                  xla::cpu::ThunkProto::ImplCase kind) {
+  bool has_kind = false;
+  xla::cpu::ForEachThunkProto(
+      thunk_sequence, [&kind, &has_kind](const xla::cpu::ThunkProto& thunk) {
+        if (thunk.impl_case() == kind) {
+          has_kind = true;
+        }
+      });
+
+  return has_kind;
+}
+
+absl::StatusOr<std::vector<xla::cpu::ThunkProto>> ExtractThunksOfKind(
+    const xla::cpu::ThunkSequenceProto& thunk_sequence,
+    xla::cpu::ThunkProto::ImplCase kind) {
+  std::vector<xla::cpu::ThunkProto> matching_thunks;
+
+  xla::cpu::ForEachThunkProto(
+      thunk_sequence,
+      [&kind, &matching_thunks](const xla::cpu::ThunkProto& thunk) {
+        if (thunk.impl_case() == kind) {
+          matching_thunks.push_back(thunk);
+        }
+      });
+
+  return matching_thunks;
+}
+
+absl::StatusOr<std::string> GetThunkSpecificConstantAllocationsInitializers(
+    const xla::cpu::CompilationResultProto& proto,
+    const EmbeddedConstantBuffers& embedded_constant_buffers) {
+  std::vector<absl::string_view> constant_buffer_accesses;
+  constant_buffer_accesses.reserve(
+      embedded_constant_buffers.variable_decls.size());
+  for (const auto& variable_decl : embedded_constant_buffers.variable_decls) {
+    constant_buffer_accesses.push_back(variable_decl.cpp_access_shim);
+  }
+  std::string constant_allocations_initializer = absl::StrCat(
+      R"(
+{
+)",
+      absl::StrJoin(constant_buffer_accesses, ", "),
+      R"(
+};
+)");
+
+  return constant_allocations_initializer;
+}
+
+absl::Status ExtendRewrites(
+    std::vector<std::pair<std::string, std::string>>& rewrites,
+    const xla::cpu::CpuAotCompilationResultThunks* aot_thunks,
+    const MetadataResult& metadata_result, const CodegenOpts& codegen_opts,
+    const EmbeddedConstantBuffers& embedded_constant_buffers) {
+  std::vector<xla::cpu::SymbolProto> entry_point_symbols =
+      ExtractEntryPointSymbols(aot_thunks->proto());
+
+  TF_ASSIGN_OR_RETURN(
+      const std::string symbol_map_initializer,
+      GenSymbolMapInitializerString(absl::MakeSpan(entry_point_symbols)));
+
+  TF_ASSIGN_OR_RETURN(
+      const std::string function_declarations_from_obj_files,
+      GenFunctionDeclarations(absl::MakeSpan(entry_point_symbols)));
+
+  const int64_t buffer_infos_size = aot_thunks->buffer_infos().size();
+  const std::optional<size_t> temp_allocation_index =
+      aot_thunks->temp_allocation_index();
+  if (temp_allocation_index.has_value() &&
+      (*temp_allocation_index < 0 ||
+       *temp_allocation_index >= buffer_infos_size)) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "temp allocation index: ", *temp_allocation_index,
+        " is outside the range of temp sizes: [0,", buffer_infos_size, ")"));
+  }
+
+  std::vector<std::string> runtime_specific_includes = {R"(
+#include "absl/log/check.h"
+#include "xla/backends/cpu/runtime/kernel_c_api.h"
+#include "xla/types.h")"};
+
+  if (HasThunkKind(aot_thunks->proto().thunk_sequence(),
+                   xla::cpu::ThunkProto::kDotThunk)) {
+    runtime_specific_includes.push_back(
+        R"(#include "xla/service/cpu/runtime_matmul.h")");
+    runtime_specific_includes.push_back(
+        R"(#include "xla/service/cpu/runtime_single_threaded_matmul.h")");
+  }
+
+  if (HasThunkKind(aot_thunks->proto().thunk_sequence(),
+                   xla::cpu::ThunkProto::kConvolutionThunk)) {
+    runtime_specific_includes.push_back(
+        R"(#include "xla/service/cpu/runtime_conv2d.h")");
+
+    runtime_specific_includes.push_back(
+        R"(#include "xla/service/cpu/runtime_single_threaded_conv2d.h")");
+  }
+
+  if (HasThunkKind(aot_thunks->proto().thunk_sequence(),
+                   xla::cpu::ThunkProto::kSortThunk)) {
+    runtime_specific_includes.push_back(
+        R"(#include "xla/service/cpu/runtime_key_value_sort.h")");
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      const auto rng_thunks,
+      ExtractThunksOfKind(aot_thunks->proto().thunk_sequence(),
+                          xla::cpu::ThunkProto::kRngGetAndUpdateStateThunk));
+
+  std::string executable_proto_getter = "";
+  std::string thunk_specific_run_impl = "";
+  std::string nanort_specific_static_data_setters = "";
+  std::string thunk_specific_static_data_setters = "";
+  std::string thunk_run_impl_getter = "";
+  std::string embedded_constant_buffers_initializer_getter = "";
+  std::string rng_deltas_initializer_getter = "";
+  std::string computation_class_base = "";
+
+  if (codegen_opts.use_xla_nanort_runtime) {
+    executable_proto_getter = absl::StrReplaceAll(
+        R"(static const ::xla::cpu::CompilationResultProto* StaticCompilationResultProto() {
+    static const ::xla::cpu::CompilationResultProto* kCompilationResultProto = {{EXECUTABLE_PROTO_SHIM_EXPRESSION}};
+    return kCompilationResultProto;
+  })",
+        {{"{{EXECUTABLE_PROTO_SHIM_EXPRESSION}}",
+          metadata_result.cpu_executable_access_shim}});
+
+    runtime_specific_includes.push_back(
+        R"(#include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function_thunks.h")");
+
+    nanort_specific_static_data_setters =
+        "set_static_data_compilation_result_proto(data, "
+        "StaticCompilationResultProto());";
+
+    computation_class_base = "XlaCompiledCpuFunctionThunks";
+  } else {
+    ThunkProtoExecutionDeserializer thunk_proto_execution_deserializer;
+    TF_ASSIGN_OR_RETURN(const std::string run_impl,
+                        std::move(thunk_proto_execution_deserializer)
+                            .GetThunkSpecificRunImpl(aot_thunks->proto()));
+
+    nanort_specific_static_data_setters =
+        "set_static_data_compilation_result_proto(data, nullptr);";
+
+    computation_class_base = "XlaCompiledCpuFunction";
+
+    thunk_specific_static_data_setters =
+        R"(set_static_data_thunk_run_impl(data, ThunkRunImplFunction());
+        set_static_data_embedded_constant_buffers(data, EmbeddedConstantBuffers());
+        set_static_data_rng_state_deltas(data, RngStateDeltas());)";
+
+    std::vector<int64_t> rng_deltas;
+    rng_deltas.reserve(rng_thunks.size());
+    for (const auto& rng_thunk : rng_thunks) {
+      rng_deltas.push_back(rng_thunk.rng_get_and_update_state_thunk().delta());
+    }
+    rng_deltas_initializer_getter = absl::StrReplaceAll(
+        R"(
+  static std::vector<int64_t> RngStateDeltas() {
+    return {
+      {{RNG_DELTAS}}
+    };
+  }
+  )",
+        {{"{{RNG_DELTAS}}", absl::StrJoin(rng_deltas, ", ")}});
+
+    thunk_run_impl_getter = absl::StrReplaceAll(
+        R"(
+  static std::function<bool(
+        void** buffer_table, xla::ExecutableRunOptions*,
+        std::vector<std::unique_ptr<xla::cpu::RngState>>&)>
+  ThunkRunImplFunction() {
+    return [](void** buffer_table, xla::ExecutableRunOptions* run_options, 
+    std::vector<std::unique_ptr<xla::cpu::RngState>>& rng_states) {
+      {{THUNK_RUN_IMPL}}
+      return true;
+    };
+  }
+  )",
+        {{"{{THUNK_RUN_IMPL}}", run_impl}});
+  }
+
+  auto embedded_constant_buffers_initializer_getter_format = R"(
+  static std::vector<std::pair<uint64_t, char*>> EmbeddedConstantBuffers() {
+    return {{EMBEDDED_CONSTANT_BUFFERS}};
+  }
+  )";
+
+  TF_ASSIGN_OR_RETURN(auto const_buffs_initializer,
+                      GetThunkSpecificConstantAllocationsInitializers(
+                          aot_thunks->proto(), embedded_constant_buffers));
+  embedded_constant_buffers_initializer_getter = absl::StrReplaceAll(
+      embedded_constant_buffers_initializer_getter_format,
+      {{"{{EMBEDDED_CONSTANT_BUFFERS}}", const_buffs_initializer}});
+
+  std::vector<std::pair<std::string, std::string>> rewrites_thunks = {
+      {"{{SYMBOL_MAP_INITIALIZER}}", symbol_map_initializer},
+      {"{{FUNCTION_DECLARATIONS_FROM_OBJ_FILES}}",
+       function_declarations_from_obj_files},
+      {"{{TEMP_ALLOCATION_INDEX}}", temp_allocation_index.has_value()
+                                        ? absl::StrCat(*temp_allocation_index)
+                                        : "std::nullopt"},
+      {"{{RUNTIME_SPECIFIC_INCLUDES}}",
+       absl::StrJoin(runtime_specific_includes, "\n")},
+      {"{{EXECUTABLE_PROTO_GETTER}}", executable_proto_getter},
+      {"{{THUNK_SPECIFIC_STATIC_DATA_SETTERS}}",
+       thunk_specific_static_data_setters},
+      {"{{THUNK_RUN_IMPL_GETTER}}", thunk_run_impl_getter},
+      {"{{EMBEDDED_CONSTANT_BUFFERS_INITIALIZER_GETTER}}",
+       embedded_constant_buffers_initializer_getter},
+      {"{{RNG_DELTAS_INITIALIZER_GETTER}}", rng_deltas_initializer_getter},
+      {"{{NANORT_SPECIFIC_STATIC_DATA_SETTERS}}",
+       nanort_specific_static_data_setters},
+      {"{{IS_THUNK_MODE}}", "true"},
+      {"{{COMPUTATION_CLASS_BASE}}", computation_class_base},
+      // TODO(basioli): Remove these once legacy runtime is removed.
+      {"{{LEGACY_SPECIFIC_STATIC_DATA_SETTERS}}", ""},
+      {"{{LEGACY_SPECIFIC_STATIC_DATA_GENERATORS}}", ""}};
+
+  rewrites.insert(rewrites.end(), rewrites_thunks.begin(),
+                  rewrites_thunks.end());
+
+  return absl::OkStatus();
+}
+
 }  // namespace
 
-absl::Status GenerateHeader(const CodegenOpts& opts,
-                            const tf2xla::Config& config,
-                            const CompileResult& compile_result,
-                            const MetadataResult& metadata_result,
-                            string* header) {
+absl::Status ExtendRewrites(
+    std::vector<std::pair<std::string, std::string>>& rewrites,
+    const xla::cpu::CpuAotCompilationResultLegacy* aot_legacy,
+    const MetadataResult& metadata_result, const CodegenOpts& opts,
+    const std::string& raw_function_entry_identifier) {
+  const int64_t result_index = aot_legacy->result_buffer_index();
+  const int64_t buffer_infos_size = aot_legacy->buffer_infos().size();
+  if (result_index < 0 || result_index >= buffer_infos_size) {
+    return errors::InvalidArgument("result index: ", result_index,
+                                   " is outside the range of temp sizes: [0,",
+                                   buffer_infos_size, ")");
+  }
+
+  const string include_hlo_profile_printer_data_proto =
+      opts.gen_hlo_profile_printer_data
+          ? R"(#include "xla/service/hlo_profile_printer_data.pb.h")"
+          : "";
+
+  // When HLO profiling is disabled we only forward declare the
+  // HloProfilePrinter protobuf.  So we can only conditionally emit this code
+  // calling HloProfilePrinter::profile_counters_size.
+  const string assign_profile_counters_size =
+      opts.gen_hlo_profile_printer_data
+          ? "set_static_data_profile_counters_size(data, "
+            "get_static_data_hlo_profile_printer_data(data)->"
+            "profile_counters_size());"
+          : "";
+
+  const std::string function_declarations_from_obj_files = absl::StrReplaceAll(
+      R"(// (Implementation detail) Entry point to the function in the object file.
+extern "C" void {{ENTRY}}(
+   void* result, const ::xla::ExecutableRunOptions* run_options,
+   const void** args, void** temps, XlaCustomCallStatus* status,
+   int64_t* profile_counters);
+)",
+      {{"{{ENTRY}}", raw_function_entry_identifier}});
+
+  const std::string legacy_specific_static_data_setters = absl::StrReplaceAll(
+      R"(
+set_static_data_raw_function(data, {{RAW_FUNCTION_ENTRY_IDENTIFIER}});
+set_static_data_hlo_profile_printer_data(data, StaticHloProfilePrinterData());
+{{ASSIGN_PROFILE_COUNTERS_SIZE}}
+)",
+      {
+          {"{{RAW_FUNCTION_ENTRY_IDENTIFIER}}", raw_function_entry_identifier},
+          {"{{ASSIGN_PROFILE_COUNTERS_SIZE}}", assign_profile_counters_size},
+      });
+
+  const std::string legacy_specific_static_data_generators =
+      absl::StrReplaceAll(
+          R"(
+// Metadata that can be used to pretty-print profile counters.
+ static const ::xla::HloProfilePrinterData* StaticHloProfilePrinterData() {
+   static const ::xla::HloProfilePrinterData* kHloProfilePrinterData =
+     {{HLO_PROFILE_PRINTER_DATA_SHIM_EXPRESSION}};
+   return kHloProfilePrinterData;
+}
+)",
+          {
+              {"{{HLO_PROFILE_PRINTER_DATA_SHIM_EXPRESSION}}",
+               metadata_result.hlo_profile_printer_data_access_shim},
+          });
+
+  std::vector<std::pair<std::string, std::string>> rewrites_legacy = {
+      {"{{SYMBOL_MAP_INITIALIZER}}", "{}"},
+      {"{{FUNCTION_DECLARATIONS_FROM_OBJ_FILES}}",
+       function_declarations_from_obj_files},
+      {"{{TEMP_ALLOCATION_INDEX}}", "std::nullopt"},
+      {"{{RUNTIME_SPECIFIC_INCLUDES}}", include_hlo_profile_printer_data_proto},
+      {"{{EXECUTABLE_PROTO_GETTER}}", ""},
+      {"{{THUNK_SPECIFIC_STATIC_DATA_SETTERS}}",
+       "set_static_data_thunk_run_impl(data, nullptr);"},
+      {"{{THUNK_RUN_IMPL_GETTER}}", ""},
+      {"{{EMBEDDED_CONSTANT_BUFFERS_INITIALIZER_GETTER}}", ""},
+      {"{{RNG_DELTAS_INITIALIZER_GETTER}}", ""},
+      {"{{NANORT_SPECIFIC_STATIC_DATA_SETTERS}}",
+       "set_static_data_compilation_result_proto(data, nullptr);"},
+      {"{{COMPUTATION_CLASS_BASE}}", "XlaCompiledCpuFunction"},
+      {"{{IS_THUNK_MODE}}", "false"},
+      {"{{LEGACY_SPECIFIC_STATIC_DATA_SETTERS}}",
+       legacy_specific_static_data_setters},
+      {"{{LEGACY_SPECIFIC_STATIC_DATA_GENERATORS}}",
+       legacy_specific_static_data_generators},
+  };
+
+  rewrites.insert(rewrites.end(), rewrites_legacy.begin(),
+                  rewrites_legacy.end());
+
+  return absl::OkStatus();
+}
+
+absl::Status GenerateHeader(
+    const CodegenOpts& opts, const tf2xla::Config& config,
+    const CompileResult& compile_result, const MetadataResult& metadata_result,
+    const EmbeddedConstantBuffers& embedded_constant_buffers, string* header) {
   TF_RETURN_IF_ERROR(ValidateConfig(config));
   TF_RETURN_IF_ERROR(ValidateFeedFetchCppNames(config));
-  const int64_t result_index = compile_result.aot->result_buffer_index();
+
+  const bool is_aot_thunks = compile_result.is_aot_thunks();
+
   const std::vector<BufferInfo>& buffer_infos =
-      compile_result.aot->buffer_infos();
+      compile_result.get_aot()->buffer_infos();
+
   const std::vector<int32> arg_index_table =
       ::xla::cpu::CreateArgIndexTableFromBufferInfos(buffer_infos);
   const std::vector<int32> result_index_table =
       ::xla::cpu::CreateResultIndexTableFromBufferInfos(buffer_infos);
   std::vector<string> buffer_infos_as_strings =
       BufferInfosToCppExpression(buffer_infos);
-  const int64_t buffer_infos_size = buffer_infos.size();
-  if (result_index < 0 || result_index >= buffer_infos_size) {
-    return errors::InvalidArgument("result index: ", result_index,
-                                   " is outside the range of temp sizes: [0,",
-                                   buffer_infos.size(), ")");
-  }
 
   // Compute sizes and generate methods.
   std::vector<BufferInfo> buffer_infos_for_args =
@@ -574,23 +992,9 @@ absl::Status GenerateHeader(const CodegenOpts& opts,
           ? R"(#include "xla/xla_data.pb.h")"
           : "";
 
-  const string include_hlo_profile_printer_data_proto =
-      opts.gen_hlo_profile_printer_data
-          ? R"(#include "xla/service/hlo_profile_printer_data.pb.h")"
-          : "";
-
-  // When HLO profiling is disabled we only forward declare the
-  // HloProfilePrinter protobuf.  So we can only conditionally emit this code
-  // calling HloProfilePrinter::profile_counters_size.
-  const string assign_profile_counters_size =
-      opts.gen_hlo_profile_printer_data
-          ? "set_static_data_profile_counters_size(data, "
-            "get_static_data_hlo_profile_printer_data(data)->"
-            "profile_counters_size());"
-          : "";
-
-  // Use a poor-man's text templating mechanism; first populate the full header
-  // with placeholder tokens, and then rewrite the tokens with real values.
+  // Use a poor-man's text templating mechanism; first populate the full
+  // header with placeholder tokens, and then rewrite the tokens with real
+  // values.
   *header =
       R"(// Generated by tfcompile, the TensorFlow graph compiler.  DO NOT EDIT!
 //
@@ -604,18 +1008,14 @@ absl::Status GenerateHeader(const CodegenOpts& opts,
 #define TFCOMPILE_GENERATED_{{ENTRY}}_H_  // NOLINT(build/header_guard)
 
 {{INCLUDE_XLA_DATA_PROTO}}
-{{INCLUDE_HLO_PROFILE_PRINTER_DATA_PROTO}}
+{{RUNTIME_SPECIFIC_INCLUDES}}
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace Eigen { struct ThreadPoolDevice; }
 namespace xla { class ExecutableRunOptions; }
 
-// (Implementation detail) Entry point to the function in the object file.
-extern "C" void {{ENTRY}}(
-    void* result, const ::xla::ExecutableRunOptions* run_options,
-    const void** args, void** temps, XlaCustomCallStatus* status,
-    int64_t* profile_counters);
+{{FUNCTION_DECLARATIONS_FROM_OBJ_FILES}}
 
 {{DECLS_FROM_OBJ_FILE}}
 
@@ -651,7 +1051,7 @@ extern "C" void {{ENTRY}}(
 //   arg bytes aligned:  {{ARG_BYTES_ALIGNED}}
 //   temp bytes total:   {{TEMP_BYTES_TOTAL}}
 //   temp bytes aligned: {{TEMP_BYTES_ALIGNED}}
-class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
+class {{CLASS}} final : public tensorflow::{{COMPUTATION_CLASS_BASE}} {
  public:
   // Number of input arguments for the compiled computation.
   static constexpr size_t kNumArgs = {{ARG_NUM}};
@@ -671,7 +1071,7 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
     static XlaCompiledCpuFunction::StaticData* kStaticData = [](){
       XlaCompiledCpuFunction::StaticData* data =
         new XlaCompiledCpuFunction::StaticData;
-      set_static_data_raw_function(data, {{ENTRY}});
+      set_static_data_function_library_symbol_map(data, FunctionLibrarySymbolMap());
       set_static_data_buffer_infos(data, BufferInfos());
       set_static_data_num_buffers(data, kNumBuffers);
       set_static_data_result_index_table(data, ResultIndexToBufferIndex());
@@ -679,16 +1079,16 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
       set_static_data_arg_index_table(data, ArgIndexToBufferIndex());
       set_static_data_num_args(data, kNumArgs);
       set_static_data_num_variables(data, kNumVariables);
-      set_static_data_result_index(data, kResultIndex);
+      set_static_data_temp_allocation_index(data, kTempAllocationIndex);
       set_static_data_arg_shape_infos(data, ArgShapeInfos());
       set_static_data_result_shape_infos(data, ResultShapeInfos());
       set_static_data_arg_names(data, StaticArgNames());
       set_static_data_variable_names(data, StaticVariableNames());
       set_static_data_result_names(data, StaticResultNames());
       set_static_data_program_shape(data, StaticProgramShape());
-      set_static_data_hlo_profile_printer_data(
-          data, StaticHloProfilePrinterData());
-{{ASSIGN_PROFILE_COUNTERS_SIZE}}
+      {{THUNK_SPECIFIC_STATIC_DATA_SETTERS}}
+      {{NANORT_SPECIFIC_STATIC_DATA_SETTERS}}
+      {{LEGACY_SPECIFIC_STATIC_DATA_SETTERS}}
       return data;
     }();
     return *kStaticData;
@@ -696,7 +1096,7 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
 
   {{CLASS}}(AllocMode alloc_mode =
             AllocMode::ARGS_VARIABLES_RESULTS_PROFILES_AND_TEMPS)
-      : XlaCompiledCpuFunction(StaticData(), alloc_mode) {}
+      : {{COMPUTATION_CLASS_BASE}}(StaticData(), alloc_mode) {}
 
   {{CLASS}}(const {{CLASS}}&) = delete;
   {{CLASS}}& operator=(const {{CLASS}}&) = delete;
@@ -787,8 +1187,8 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
     return kArgIndexToBufferIndex;
   }
 
-  // The 0-based index of the result tuple in the temporary buffers.
-  static constexpr size_t kResultIndex = {{RESULT_INDEX}};
+  // Temp allocation index..
+  static constexpr std::optional<size_t> kTempAllocationIndex = {{TEMP_ALLOCATION_INDEX}};
 
   // Shapes of the input arguments.
 {{ARG_SHAPE_INFOS}};
@@ -811,12 +1211,17 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
     return kShape;
   }
 
-  // Metadata that can be used to pretty-print profile counters.
-  static const ::xla::HloProfilePrinterData* StaticHloProfilePrinterData() {
-    static const ::xla::HloProfilePrinterData* kHloProfilePrinterData =
-      {{HLO_PROFILE_PRINTER_DATA_SHIM_EXPRESSION}};
-    return kHloProfilePrinterData;
+  {{EXECUTABLE_PROTO_GETTER}}
+  {{THUNK_RUN_IMPL_GETTER}}
+  {{EMBEDDED_CONSTANT_BUFFERS_INITIALIZER_GETTER}}
+  {{RNG_DELTAS_INITIALIZER_GETTER}}
+  {{LEGACY_SPECIFIC_STATIC_DATA_GENERATORS}}
+
+  static absl::flat_hash_map<std::string, void*> FunctionLibrarySymbolMap() {
+    return {{SYMBOL_MAP_INITIALIZER}};
   }
+ protected:
+  bool is_thunk_mode() const override { return {{IS_THUNK_MODE}}; }
 };
 {{NS_END}}
 
@@ -824,8 +1229,16 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
 
 // clang-format on
 )";
+
+  std::vector<std::string> decls_from_obj_file =
+      metadata_result.header_variable_decls;
+  for (const auto& constant_buffer_var_info :
+       embedded_constant_buffers.variable_decls) {
+    decls_from_obj_file.push_back(constant_buffer_var_info.variable_decl);
+  }
+
   // The replacement strategy is naive, but good enough for our purposes.
-  const std::vector<std::pair<string, string>> rewrites = {
+  std::vector<std::pair<string, string>> rewrites = {
       {"{{ARG_BYTES_ALIGNED}}", absl::StrCat(arg_bytes_aligned)},
       {"{{ARG_BYTES_TOTAL}}", absl::StrCat(arg_bytes_total)},
       {"{{ARG_NAMES_CODE}}", arg_names_code},
@@ -835,17 +1248,10 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
       {"{{ARG_INDEX_TABLE}}", absl::StrJoin(arg_index_table, ", ")},
       {"{{RESULT_NUM}}", absl::StrCat(result_index_table.size())},
       {"{{RESULT_INDEX_TABLE}}", absl::StrJoin(result_index_table, ", ")},
-
-      {"{{ASSIGN_PROFILE_COUNTERS_SIZE}}", assign_profile_counters_size},
       {"{{CLASS}}", opts.class_name},
-      {"{{DECLS_FROM_OBJ_FILE}}",
-       absl::StrJoin(metadata_result.header_variable_decls, "\n")},
+      {"{{DECLS_FROM_OBJ_FILE}}", absl::StrJoin(decls_from_obj_file, "\n")},
       {"{{ENTRY}}", compile_result.entry_point},
-      {"{{HLO_PROFILE_PRINTER_DATA_SHIM_EXPRESSION}}",
-       metadata_result.hlo_profile_printer_data_access_shim},
       {"{{INCLUDE_XLA_DATA_PROTO}}", include_xla_data_proto},
-      {"{{INCLUDE_HLO_PROFILE_PRINTER_DATA_PROTO}}",
-       include_hlo_profile_printer_data_proto},
       {"{{METHODS_ARG}}\n", methods_arg},
       {"{{METHODS_RESULT}}\n", methods_result},
       {"{{METHODS_VARIABLE}}\n", methods_variable},
@@ -855,14 +1261,24 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
       {"{{PROGRAM_SHAPE_SHIM_EXPRESSION}}",
        metadata_result.program_shape_access_shim},
       {"{{VARIABLE_NAMES_CODE}}", variable_names_code},
-      {"{{RESULT_INDEX}}", absl::StrCat(result_index)},
       {"{{RESULT_NAMES_CODE}}", result_names_code},
       {"{{RESULT_SHAPE_INFOS}}", result_shape_infos},
       {"{{TEMP_BYTES_ALIGNED}}", absl::StrCat(temp_bytes_aligned)},
       {"{{TEMP_BYTES_TOTAL}}", absl::StrCat(temp_bytes_total)},
       {"{{NUM_BUFFERS}}", absl::StrCat(buffer_infos.size())},
       {"{{BUFFER_INFOS_AS_STRING}}",
-       absl::StrJoin(buffer_infos_as_strings, ",\n")}};
+       absl::StrJoin(buffer_infos_as_strings, ",\n")},
+  };
+
+  if (is_aot_thunks) {
+    TF_RETURN_IF_ERROR(
+        ExtendRewrites(rewrites, compile_result.get_aot_thunks().value(),
+                       metadata_result, opts, embedded_constant_buffers));
+  } else {
+    TF_RETURN_IF_ERROR(
+        ExtendRewrites(rewrites, compile_result.get_aot_legacy().value(),
+                       metadata_result, opts, compile_result.entry_point));
+  }
   absl::StrReplaceAll(rewrites, header);
   return absl::OkStatus();
 }
@@ -876,6 +1292,51 @@ static string CreateUniqueIdentifier(const CodegenOpts& opts,
 
   absl::StrAppend(&result, "_", opts.class_name, "_", suffix);
   return result;
+}
+
+absl::StatusOr<EmbeddedConstantBuffers> GenerateConstantBuffersData(
+    const CodegenOpts& opts, const CompileResult& compile_result) {
+  TF_ASSIGN_OR_RETURN(auto aot_thunk_result, compile_result.get_aot_thunks());
+
+  // Create a temporary object for aot_thunk_result to be able to call
+  // LoadExecutable without moving the original object.
+  TF_ASSIGN_OR_RETURN(auto serialized, aot_thunk_result->SerializeAsString());
+  TF_ASSIGN_OR_RETURN(
+      auto aot_thunk_result_temp,
+      xla::cpu::CpuAotCompilationResultThunks::FromString(serialized, nullptr));
+
+  TF_ASSIGN_OR_RETURN(
+      auto executable,
+      std::move(*aot_thunk_result_temp).LoadExecutable(nullptr, nullptr));
+
+  xla::cpu::CpuExecutable* cpu_executable =
+      tsl::down_cast<xla::cpu::CpuExecutable*>(executable.get());
+
+  std::vector<ConstantToEmbed> constants_to_embed;
+
+  int constant_identifier = 0;
+  for (const auto& constant : cpu_executable->constants()) {
+    const uint8_t* constant_data_bytes_ptr = reinterpret_cast<const uint8_t*>(
+        constant.AsDeviceMemoryBase().opaque());
+    const size_t constant_size = constant.AsDeviceMemoryBase().size();
+
+    // NOTE(basioli): Some constants are empty, we don't need to embed them
+    if (constant_size == 0) {
+      continue;
+    }
+
+    ConstantToEmbed constant_to_embed;
+    constant_to_embed.SerializeIntoBuffer(
+        absl::MakeSpan(constant_data_bytes_ptr, constant_size));
+
+    constant_to_embed.symbol_prefix = CreateUniqueIdentifier(
+        opts, absl::StrCat("Constant_", std::to_string(constant_identifier++)));
+
+    constants_to_embed.push_back(std::move(constant_to_embed));
+  }
+
+  return CreateEmbeddedConstantBuffers(opts.target_triple,
+                                       absl::MakeSpan(constants_to_embed));
 }
 
 absl::Status GenerateMetadata(const CodegenOpts& opts,
@@ -893,32 +1354,53 @@ absl::Status GenerateMetadata(const CodegenOpts& opts,
     program_shape->clear_parameter_names();
   }
 
-  // When asked to serialize a null protobuf, CreateEmbeddedProtocolBuffer gives
-  // a shim that evaluates to nullptr, which is what we want.
+  const bool is_aot_thunks = compile_result.is_aot_thunks();
 
-  ProtobufToEmbed program_shape_protobuf{
-      CreateUniqueIdentifier(opts, "ProgramShapeProto"),
-      "::xla::ProgramShapeProto", program_shape.get()};
+  // When asked to serialize a null protobuf, CreateEmbeddedProtocolBuffer
+  // gives a shim that evaluates to nullptr, which is what we want.
+  std::vector<ProtobufToEmbed> protobufs_to_embed;
+  protobufs_to_embed.push_back(
+      ProtobufToEmbed{CreateUniqueIdentifier(opts, "ProgramShapeProto"),
+                      "::xla::ProgramShapeProto", program_shape.get()});
 
-  ProtobufToEmbed hlo_profile_printer_data_protobuf{
-      CreateUniqueIdentifier(opts, "HloProfilePrinterData"),
-      "::xla::HloProfilePrinterData",
-      compile_result.aot->hlo_profile_printer_data()};
+  if (is_aot_thunks) {
+    protobufs_to_embed.push_back(
+        ProtobufToEmbed{CreateUniqueIdentifier(opts, "HloProfilePrinterData"),
+                        "::xla::HloProfilePrinterData", nullptr});
+    protobufs_to_embed.push_back(
+        ProtobufToEmbed{CreateUniqueIdentifier(opts, "CompilationResultProto"),
+                        "::xla::cpu::CompilationResultProto",
+                        &compile_result.get_aot_thunks().value()->proto()});
+  } else {
+    protobufs_to_embed.push_back(ProtobufToEmbed{
+        CreateUniqueIdentifier(opts, "HloProfilePrinterData"),
+        "::xla::HloProfilePrinterData",
+        compile_result.get_aot_legacy().value()->hlo_profile_printer_data()});
+
+    protobufs_to_embed.push_back(
+        ProtobufToEmbed{CreateUniqueIdentifier(opts, "CompilationResultProto"),
+                        "::xla::cpu::CompilationResultProto", nullptr});
+  }
 
   TF_ASSIGN_OR_RETURN(
       EmbeddedProtocolBuffers embedded_protobufs,
-      CreateEmbeddedProtocolBuffers(
-          opts.target_triple,
-          {program_shape_protobuf, hlo_profile_printer_data_protobuf}));
+      CreateEmbeddedProtocolBuffers(opts.target_triple, protobufs_to_embed));
 
   metadata_result->program_shape_access_shim =
       std::move(embedded_protobufs.cpp_shims[0].expression);
+  metadata_result->header_variable_decls.emplace_back(
+      std::move(embedded_protobufs.cpp_shims[0].variable_decl));
+
   metadata_result->hlo_profile_printer_data_access_shim =
       std::move(embedded_protobufs.cpp_shims[1].expression);
   metadata_result->header_variable_decls.emplace_back(
-      std::move(embedded_protobufs.cpp_shims[0].variable_decl));
-  metadata_result->header_variable_decls.emplace_back(
       std::move(embedded_protobufs.cpp_shims[1].variable_decl));
+
+  metadata_result->cpu_executable_access_shim =
+      std::move(embedded_protobufs.cpp_shims[2].expression);
+  metadata_result->header_variable_decls.emplace_back(
+      std::move(embedded_protobufs.cpp_shims[2].variable_decl));
+
   metadata_result->object_file_data =
       std::move(embedded_protobufs.object_file_data);
   return absl::OkStatus();
@@ -959,10 +1441,11 @@ absl::Status ValidateCppIdent(absl::string_view ident, absl::string_view msg) {
   // C++11 Standard.  Note that nondigit is defined as [_a-zA-Z] and digit is
   // defined as [0-9].
   //
-  // Technically the standard also allows for `universal-character-name`, with a
-  // table of allowed unicode ranges, as well as `other implementation-defined
-  // characters`.  We disallow those here to give better error messages, at the
-  // expensive of being more restrictive than the standard.
+  // Technically the standard also allows for `universal-character-name`, with
+  // a table of allowed unicode ranges, as well as `other
+  // implementation-defined characters`.  We disallow those here to give
+  // better error messages, at the expensive of being more restrictive than
+  // the standard.
   if (ident[0] != '_' && !IsAlpha(ident[0])) {
     return errors::InvalidArgument("illegal leading char: ", msg);
   }

@@ -50,6 +50,24 @@ def _tfcompile_model_library_rule_impl(ctx):
         "--out_session_module=" + session_module_pb.path,
     ]
 
+    additional_xla_flags = ctx.attr.xla_flags
+
+    # TODO(basioli): Remove this once the thunk runtime is the default for tfcompile.
+    default_xla_flags = ["--xla_cpu_use_thunk_runtime=false"]
+
+    # If user didn't specify a flag, add the default.
+    for flag in default_xla_flags:
+        if flag.split("=")[0] not in ctx.attr.xla_flags:
+            additional_xla_flags += " " + flag
+
+    # TODO(basioli): After cross tool lands the conditional can be removed, and this can be moved
+    # above.
+    if "--xla_cpu_use_thunk_runtime=true" in additional_xla_flags:
+        constant_buffers_object_file = ctx.actions.declare_file("%s_tfcompile_constant_buffers.o" % ctx.attr.model_name)
+        output_flags.append("--out_constant_buffers_object=" + constant_buffers_object_file.path)
+        out_files.append(constant_buffers_object_file)
+        output_dict["object_files"].append(constant_buffers_object_file)
+
     tfcompile_env = {
         "XLA_FLAGS": ("--xla_cpu_enable_fast_math=true " +
                       "--xla_cpu_fast_math_honor_nans=false " +
@@ -57,7 +75,7 @@ def _tfcompile_model_library_rule_impl(ctx):
                       "--xla_cpu_fast_math_honor_functions=false " +
                       "--xla_cpu_fast_math_honor_division=false " +
                       "--xla_cpu_enable_fast_min_max=true " +
-                      ctx.attr.xla_flags + " " +
+                      additional_xla_flags + " " +
                       "$${XLA_FLAGS:-}' "),
         "CUDA_VISIBLE_DEVICES": "",
     }
@@ -298,6 +316,10 @@ def _tf_library(
         testonly = testonly,
     )
 
+    use_xla_nanort_runtime = False
+    if tfcompile_flags and "--use_xla_nanort_runtime" in tfcompile_flags:
+        use_xla_nanort_runtime = True
+
     # The cc_library rule packaging up the header and object file, and needed
     # kernel implementations.
     native.cc_library(
@@ -310,8 +332,12 @@ def _tf_library(
             # These deps are required by all tf_library targets even if
             # include_standard_runtime_deps is False.  Without them, the
             # generated code will fail to compile.
+            "//third_party/absl/log:check",
             "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
+            "@local_xla//xla:types",
+            "@local_xla//xla/backends/cpu/runtime:kernel_c_api",
             "//tensorflow/core:framework_lite",
+            "@local_xla//xla/backends/cpu/runtime:rng_state_lib",
         ] + (need_xla_data_proto and [
             # If we're generating the program shape, we must depend on the
             # proto.
@@ -329,6 +355,8 @@ def _tf_library(
             "@local_xla//xla/service/cpu:runtime_single_threaded_conv2d",
             "@local_xla//xla/service/cpu:runtime_single_threaded_matmul",
             "@eigen_archive//:eigen3",
+        ] or []) + (use_xla_nanort_runtime and [
+            "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function_thunks",
         ] or []) + (deps or []),
         tags = tags,
         copts = copts,

@@ -13,7 +13,52 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
+#include <cstdint>
+#include <cstring>
+#include <vector>
+
+// TODO(basioli): We are still supporting both runtimes. This enables us to test
+// both of them.
+#if defined(ENABLE_XLA_THUNK_TEST)
+#include "tensorflow/compiler/aot/tests/test_graph_tfadd_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_saver_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfassert_eq_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfcond_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tffunction_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfgather_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfmatmul_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfmatmul_with_constant_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfrandom_uniform_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfscatter_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfsplits_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tftop_k_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfvariable_readonly_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfvariable_sequential_updates_thunks.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfvariable_thunks.h"
+
+#elif defined(ENABLE_XLA_NANORT_TEST)
+
+#include "tensorflow/compiler/aot/tests/test_graph_tfadd_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_saver_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfassert_eq_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfcond_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tffunction_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfgather_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfmatmul_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfmatmul_with_constant_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfrandom_uniform_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfscatter_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfsplits_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tftop_k_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfvariable_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfvariable_readonly_nanort.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfvariable_sequential_updates_nanort.h"
+
+#else
 
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt.h"
@@ -23,19 +68,24 @@ limitations under the License.
 #include "tensorflow/compiler/aot/tests/test_graph_tffunction.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfgather.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmul.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfmatmul_with_constant.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfrandom_uniform.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfscatter.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfsplits.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tftop_k.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfvariable.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfvariable_readonly.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfvariable_sequential_updates.h"
+
+#endif
+
 #include "tensorflow/compiler/tf2xla/xla_compiled_cpu_function.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "xla/xla_data.pb.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -576,6 +626,80 @@ TEST(TFCompileTest, VariableSequentialUpdatesNoAlloc) {
   EXPECT_TRUE(fn.Run());
   EXPECT_EQ(fn.error_msg(), "");
   EXPECT_NEAR(x, 0.594322f, 1e-6);
+}
+
+TEST(TFCompileTest, MatMulWithConstants) {
+  Eigen::ThreadPool tp(2);
+  Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
+
+  foo::bar::MatMulWithConstantComp matmul;
+  matmul.set_thread_pool(&device);
+  EXPECT_EQ(matmul.arg0_data(), matmul.arg_data(0));
+
+  // Test using the argN() methods.
+  {
+    for (int i = 0; i < 512; ++i) {
+      for (int j = 0; j < 1024; ++j) {
+        matmul.arg0(i, j) = 1;
+      }
+    }
+
+    EXPECT_TRUE(matmul.Run());
+    EXPECT_EQ(matmul.error_msg(), "");
+    std::vector<float> results(512 * 256, 1024);
+    for (int i = 0; i < results.size(); ++i) {
+      ASSERT_EQ(matmul.result0(i / 512, i % 256), results[i]);
+      ASSERT_EQ(matmul.result0_data()[i], results[i]);
+    }
+    EXPECT_EQ(matmul.result0_data(), matmul.result_data(0));
+  }
+}
+
+TEST(TFCompileTest, RandomUniform) {
+  RandomUniformComp random_uniform;
+  EXPECT_TRUE(random_uniform.Run());
+  EXPECT_EQ(random_uniform.error_msg(), "");
+  EXPECT_LE(random_uniform.result0(), 5.0);
+  EXPECT_GE(random_uniform.result0(), 0.0);
+}
+TEST(TFCompileTest, Scatter) {
+  ScatterComp scatter;
+
+  const std::vector<int32_t> indices0 = {4, 3, 1, 7};
+  const std::vector<float> updates0 = {9.0, 10.0, 11.0, 12.0};
+
+  const std::vector<int32_t> indices1 = {2, 5, 3, 6};
+  const std::vector<float> updates1 = {17.0, 2.0, 5.0, -1.0};
+
+  std::memcpy(scatter.arg0_data(), indices0.data(),
+              indices0.size() * sizeof(int32_t));
+  std::memcpy(scatter.arg1_data(), updates0.data(),
+              updates0.size() * sizeof(float));
+
+  std::memcpy(scatter.arg2_data(), indices1.data(),
+              indices1.size() * sizeof(int32_t));
+  std::memcpy(scatter.arg3_data(), updates1.data(),
+              updates1.size() * sizeof(float));
+
+  EXPECT_TRUE(scatter.Run());
+  EXPECT_EQ(scatter.error_msg(), "");
+
+  const std::vector<float> expected0 = {0, 11, 0, 10, 9, 0, 0, 12};
+  const std::vector<float> expected1 = {0, 0, 17, 5, 0, 2, -1, 0};
+
+  // NOTE(basioli): Shape is hardcoded to 8 in tensorflow config.
+  EXPECT_EQ(scatter.result0_count(), expected0.size());
+
+  for (int i = 0; i < scatter.result0_count(); ++i) {
+    EXPECT_EQ(scatter.result0(i), expected0[i]);
+  }
+
+  // NOTE(basioli): Shape is hardcoded to 8 in tensorflow config.
+  EXPECT_EQ(scatter.result1_count(), expected1.size());
+
+  for (int i = 0; i < scatter.result1_count(); ++i) {
+    EXPECT_EQ(scatter.result1(i), expected1[i]) << "i: " << i;
+  }
 }
 
 TEST(TFCompileTest, AssertEqAndReturnDiff) {
