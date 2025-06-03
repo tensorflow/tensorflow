@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_SERVICE_SPMD_SHARDY_UTILS_H_
 
 #include <cstdint>
-#include <functional>
 #include <optional>
 #include <string>
 
@@ -29,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeRange.h"
@@ -138,6 +138,18 @@ std::string duplicateShardingsAtIndices(
 // would return ["x", "y":1(2), "y":2(2), "y":4(4), "z"].
 mlir::SmallVector<mlir::sdy::AxisRefAttr> getOrderedAxisRefs(
     mlir::Attribute shardingOrAxisList, mlir::sdy::MeshAttr mesh);
+
+// Returns true if the module has at least one GSPMD attribute or op, like an
+// `mhlo.sharding` attribute or `Sharding` custom call.
+// TODO(b/420837831): delete this once we don't fall back to GSPMD.
+bool hasGspmdAttrsOrOps(mlir::ModuleOp module);
+
+// Check if the module has any sort of Shardy mesh:
+// - `mesh`
+// - `maximal_mesh_{X}`
+// - `empty_mesh`
+// TODO(b/420837831): delete this once we don't fall back to GSPMD.
+bool hasShardyMesh(mlir::ModuleOp module);
 
 }  // namespace sdy
 }  // namespace xla

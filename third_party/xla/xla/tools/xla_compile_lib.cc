@@ -194,9 +194,10 @@ absl::StatusOr<std::unique_ptr<HloModule>> LoadModule(
 
   // Convert Mhlo to Hlo Module.
   XlaComputation xla_computation;
-  TF_RETURN_IF_ERROR(
-      MlirToXlaComputation(*module, xla_computation, /*use_tuple_args=*/false,
-                           /*return_tuple=*/false, /*use_shardy=*/false));
+  TF_RETURN_IF_ERROR(MlirToXlaComputation(*module, xla_computation,
+                                          /*use_tuple_args=*/false,
+                                          /*return_tuple=*/false,
+                                          /*exec_build_options=*/nullptr));
   HloModuleProto hlo_module_proto = xla_computation.proto();
 
   TF_ASSIGN_OR_RETURN(ProgramShape shape, xla_computation.GetProgramShape());

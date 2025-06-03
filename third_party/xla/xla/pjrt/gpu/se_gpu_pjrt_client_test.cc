@@ -2624,7 +2624,7 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id,
     TF_RETURN_IF_ERROR(MlirToXlaComputation(*module, computation,
                                             /*use_tuple_args=*/false,
                                             /*return_tuple=*/false,
-                                            /*use_shardy=*/false));
+                                            /*exec_build_options=*/nullptr));
     TF_ASSIGN_OR_RETURN(executable,
                         client->CompileAndLoad(computation, compile_options));
   } else {

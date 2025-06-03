@@ -33,10 +33,12 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeRange.h"
+#include "mlir/IR/Visitors.h"
 #include "mlir/Support/LLVM.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/register.h"
@@ -297,6 +299,38 @@ SmallVector<AxisRefAttr> getOrderedAxisRefs(Attribute shardingOrAxisList,
   }
 
   return axisRefs;
+}
+
+bool hasGspmdAttrsOrOps(mlir::ModuleOp module) {
+  for (auto func : module.getOps<mlir::func::FuncOp>()) {
+    for (int64_t arg_index = 0; arg_index < func.getNumArguments();
+         ++arg_index) {
+      if (func.getArgAttr(arg_index, sdy::kXlaShardingAttr)) {
+        return true;
+      }
+    }
+    for (int64_t resultIndex = 0; resultIndex < func.getNumResults();
+         ++resultIndex) {
+      if (func.getResultAttr(resultIndex, sdy::kXlaShardingAttr)) {
+        return true;
+      }
+    }
+  }
+  // Check the module for a `Sharding` custom call.
+  bool hasGspmd = false;
+  module->walk([&hasGspmd](mlir::stablehlo::CustomCallOp custom_call) {
+    if (custom_call.getCallTargetName() == sdy::kShardingCustomCallTargetName &&
+        custom_call->hasAttr(sdy::kXlaShardingAttr)) {
+      hasGspmd = true;
+      return mlir::WalkResult::interrupt();
+    }
+    return mlir::WalkResult::advance();
+  });
+  return hasGspmd;
+}
+
+bool hasShardyMesh(mlir::ModuleOp module) {
+  return !module.getOps<mlir::sdy::MeshOp>().empty();
 }
 
 }  // namespace sdy

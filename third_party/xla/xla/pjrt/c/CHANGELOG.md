@@ -1,5 +1,10 @@
 # PJRT C API changelog
 
+## 0.70
+
+* Added optional `plugin_version` argument to `SerializeUsingVersionedStablehlo`
+  and `Serialize`.
+
 ## 0.69
 
 * Implemented PjRtClient::CreateUninitializedBuffer
