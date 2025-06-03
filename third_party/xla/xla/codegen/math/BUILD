@@ -10,8 +10,15 @@ load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//xla:__subpackages__"],
+    default_visibility = [":friends"],
     licenses = ["notice"],
+)
+
+package_group(
+    name = "friends",
+    includes = [
+        "//xla:friends",
+    ],
 )
 
 cc_library(
@@ -116,4 +123,35 @@ cc_library(
     name = "string_interner",
     hdrs = ["string_interner.h"],
     deps = ["@com_google_absl//absl/strings:string_view"],
+)
+
+cc_library(
+    name = "math_compiler_lib",
+    srcs = ["math_compiler_lib.cc"],
+    hdrs = ["math_compiler_lib.h"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Analysis",
+        "@llvm-project//llvm:IPO",
+        "@llvm-project//llvm:InstCombine",
+        "@llvm-project//llvm:Passes",
+        "@llvm-project//llvm:Scalar",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+xla_cc_test(
+    name = "math_compiler_lib_test",
+    srcs = ["math_compiler_lib_test.cc"],
+    deps = [
+        ":math_compiler_lib",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+    ],
 )
