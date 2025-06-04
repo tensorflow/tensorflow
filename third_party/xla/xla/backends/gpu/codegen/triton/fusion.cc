@@ -47,7 +47,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/service/gpu/autotuning/dot_search_space.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -184,30 +186,29 @@ absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
       CHECK_EQ(fusion_kind, kTritonGemmFusionKind);
       // TODO(bchetioui): port matmul emitter to fully use the new
       // infrastructure.
-      BlockLevelParameters block_level_parameters;
-      if (!backend_config.has_triton_gemm_config()) {
-        LOG(WARNING) << "Using fallback triton GEMM config for op "
-                     << fusion.name();
-        // TODO(bchetioui): deduplicate default matmul config information.
-        auto& triton_config = *backend_config.mutable_triton_gemm_config();
-        triton_config.set_block_m(64);
-        triton_config.set_block_k(64);
-        triton_config.set_block_n(64);
-        triton_config.set_split_k(1);
-        triton_config.set_num_stages(1);
-        triton_config.set_num_warps(2);
-        triton_config.set_num_ctas(1);
+      TritonGemmConfig config;
+      if (backend_config.has_triton_gemm_config()) {
+        TF_ASSIGN_OR_RETURN(config, TritonGemmConfig::FromProto(
+                                        backend_config.triton_gemm_config()));
+      } else {
+        std::optional<const HloInstruction*> dot = HloBfsFindIf(
+            {fusion.fused_expression_root()}, [](const HloInstruction* instr) {
+              return instr->opcode() == HloOpcode::kDot;
+            });
+        CHECK(dot.has_value());
+        TritonDotFusionSearchSpace search_space(
+            ir_emitter_context.gpu_device_info(),
+            static_cast<const HloDotInstruction*>(dot.value()));
+        config =
+            search_space.GenerateConfigs(/*force_contracting_split=*/1).front();
+        LOG(WARNING) << "Using fallback triton GEMM config" << config.ToString()
+                     << " for op " << fusion.name();
       }
 
       // TODO(bchetioui): move calculation of launch dimensions to
       // 'launch_config()'.
-      TF_ASSIGN_OR_RETURN(
-          TritonGemmConfig config,
-          TritonGemmConfig::FromProto(backend_config.triton_gemm_config()));
-
       TF_ASSIGN_OR_RETURN(auto analysis, TritonFusionAnalysis::Execute(
                                              *hlo_computation, config.split_k));
-
       TF_ASSIGN_OR_RETURN(
           launch_dimensions,
           GetMatMulLaunchDimensions(analysis, analysis_.fusion(), config,

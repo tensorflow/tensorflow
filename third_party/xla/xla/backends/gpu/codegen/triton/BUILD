@@ -50,6 +50,7 @@ cc_library(
         "//xla/service/gpu:launch_dimensions",
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu:triton_fusion_analysis",
+        "//xla/service/gpu/autotuning:dot_search_space",
         "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:llvm_util",
