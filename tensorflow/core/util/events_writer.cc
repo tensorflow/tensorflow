@@ -17,8 +17,13 @@ limitations under the License.
 
 #include <stddef.h>  // for NULL
 
+#include <cstdint>
 #include <memory>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
