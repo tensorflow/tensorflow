@@ -686,10 +686,11 @@ _linker_input_filters = rule(
     implementation = _linker_input_filters_impl,
 )
 
-def pywrap_common_library(name, dep, filter_name = None):
+def pywrap_common_library(name, dep, filter_name = None, **kwargs):
     native.alias(
         name = name,
         actual = "%s_cc_library" % (filter_name if filter_name else dep + "_common"),
+        **kwargs
     )
 
 def pywrap_binaries(name, dep, **kwargs):
