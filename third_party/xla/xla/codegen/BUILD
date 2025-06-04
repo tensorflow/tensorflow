@@ -86,6 +86,7 @@ cc_library(
     hdrs = ["kernel_spec.h"],
     deps = [
         "//xla/runtime:work_cluster",
+        "//xla/runtime:work_dimensions",
         "//xla/runtime:work_group",
         "//xla/runtime:work_item",
         "//xla/service:buffer_assignment",
