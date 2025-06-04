@@ -688,6 +688,11 @@ class Delegate {
     return true;
   }
 
+  bool consistent_arithmetic() const {
+    return (options_.flags &
+            TFLITE_XNNPACK_DELEGATE_FLAG_SLOW_CONSISTENT_ARITHMETIC) != 0;
+  }
+
   bool transient_indirection_buffer() const {
 #ifdef XNNPACK_DELEGATE_USE_TRANSIENT_INDIRECTION_BUFFERS
     return true;
@@ -1118,6 +1123,9 @@ class Subgraph {
     }
     if (delegate.transient_indirection_buffer()) {
       flags |= XNN_FLAG_TRANSIENT_INDIRECTION_BUFFER;
+    }
+    if (delegate.consistent_arithmetic()) {
+      flags |= XNN_FLAG_SLOW_CONSISTENT_ARITHMETIC;
     }
     if (delegate.force_fp16()) {
       flags |= XNN_FLAG_FORCE_FP16_INFERENCE;
