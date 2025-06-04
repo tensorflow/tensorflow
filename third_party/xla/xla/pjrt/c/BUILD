@@ -155,6 +155,7 @@ cc_library(
     name = "pjrt_c_api_raw_buffer_external",
     srcs = ["pjrt_c_api_raw_buffer_external.cc"],
     hdrs = ["pjrt_c_api_raw_buffer_external.h"],
+    visibility = internal_visibility(["//xla/pjrt:friends"]),
     deps = [
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
