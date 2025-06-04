@@ -220,5 +220,6 @@ cc_library(
     deps = [
         "//xla/hlo/utils:hlo_traversal",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:span",
     ],
 )

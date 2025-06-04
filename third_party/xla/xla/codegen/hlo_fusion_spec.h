@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/types/span.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 
 namespace xla {
@@ -41,7 +42,7 @@ class HloFusionSpec {
 
   const HloFusionAdaptor& fusion() const { return *fusion_; }
 
-  const absl::InlinedVector<HloInstructionAdaptor, 2>& fusion_roots() const {
+  absl::Span<const HloInstructionAdaptor> fusion_roots() const {
     return fusion_roots_;
   }
   HloInstructionAdaptor fusion_root(int64_t i) const {
@@ -49,7 +50,7 @@ class HloFusionSpec {
   }
   int64_t fusion_root_count() const { return fusion_roots_.size(); }
 
-  const absl::InlinedVector<HloInstructionAdaptor, 2>& fusion_heroes() const {
+  absl::Span<const HloInstructionAdaptor> fusion_heroes() const {
     return fusion_heroes_;
   }
   HloInstructionAdaptor fusion_hero(int64_t i) const {

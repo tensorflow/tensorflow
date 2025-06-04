@@ -20,8 +20,8 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/types/span.h"
 #include "xla/codegen/hlo_fusion_spec.h"
 #include "xla/codegen/ir_emission_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -73,7 +73,7 @@ class HloFusionAnalysis {
   const HloFusionAdaptor& fusion() const { return fusion_spec_.fusion(); }
   const HloFusionSpec& fusion_spec() const { return fusion_spec_; }
 
-  const absl::InlinedVector<HloInstructionAdaptor, 2>& fusion_roots() const {
+  absl::Span<const HloInstructionAdaptor> fusion_roots() const {
     return fusion_spec_.fusion_roots();
   }
   HloInstructionAdaptor fusion_root(int64_t i) const {
@@ -81,7 +81,7 @@ class HloFusionAnalysis {
   }
   int64_t fusion_root_count() const { return fusion_spec_.fusion_root_count(); }
 
-  const absl::InlinedVector<HloInstructionAdaptor, 2>& fusion_heroes() const {
+  absl::Span<const HloInstructionAdaptor> fusion_heroes() const {
     return fusion_spec_.fusion_heroes();
   }
   HloInstructionAdaptor fusion_hero(int64_t i) const {
