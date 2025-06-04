@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
@@ -34,11 +35,18 @@ namespace xla::cpu {
 // pipeline.
 class FusionCompiler {
  public:
+  struct CompilationHooks {
+    absl::AnyInvocable<void(mlir::ModuleOp)> pre_optimization;
+    absl::AnyInvocable<void(mlir::ModuleOp)> post_optimization;
+    absl::AnyInvocable<void(mlir::ModuleOp)> post_lowering;
+  };
+
   struct Options {
     int32_t vector_width;
   };
 
-  explicit FusionCompiler(Options options) : options_(std::move(options)) {}
+  explicit FusionCompiler(Options options, CompilationHooks hooks = {})
+      : options_(std::move(options)), hooks_(std::move(hooks)) {}
 
   // Compile a given MLIR module to LLVM, using the provided LLVM context.
   absl::StatusOr<std::unique_ptr<llvm::Module>> Compile(
@@ -53,6 +61,7 @@ class FusionCompiler {
 
  private:
   Options options_;
+  CompilationHooks hooks_;
 };
 
 }  // namespace xla::cpu
