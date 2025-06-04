@@ -32,11 +32,12 @@ cc_library(
     ],
     hdrs = [
         "config.h",
+        "flow_cache.h",
         "frame_pair.h",
         "geom.h",
-        "image_data.h",
         "image.h",
         "image-inl.h",
+        "image_data.h",
         "image_utils.h",
         "integral_image.h",
         "keypoint.h",
@@ -49,13 +50,12 @@ cc_library(
         "time_log.h",
         "tracked_object.h",
         "utils.h",
-        "flow_cache.h",
-    ],
-    defines = [
-        "STANDALONE_DEMO_LIB",
     ],
     copts = [
         "-std=c++17",
+    ],
+    defines = [
+        "STANDALONE_DEMO_LIB",
     ],
 )
 
