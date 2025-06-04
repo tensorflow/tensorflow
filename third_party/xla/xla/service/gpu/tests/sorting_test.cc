@@ -47,6 +47,42 @@ namespace xla {
 namespace gpu {
 namespace {
 
+class TypeSupportTest : public GpuCodegenTest,
+                        public ::testing::WithParamInterface<PrimitiveType> {};
+
+TEST_P(TypeSupportTest, SortSupportsType) {
+  constexpr char kHloTemplate[] = R"(
+compare {
+p.0.lhs = $0[] parameter(0)
+p.0.rhs = $0[] parameter(1)
+ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+}
+
+ENTRY test {
+p0 = $0[32]{0} parameter(0)
+ROOT sort = $0[32]{0} sort(p0), dimensions={0}, is_stable=true,
+to_apply=compare
+})";
+  std::string hlo = absl::Substitute(
+      kHloTemplate, primitive_util::LowercasePrimitiveTypeName(GetParam()));
+  EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{0, 0}));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    , TypeSupportTest,
+    // 4bit types like U4, S4, or F4E2M1FN are currently not supported.
+    // F8E8M0FNU cannot represent NaNs and fails the test below.
+    ::testing::ValuesIn({
+        PRED,                               // boolean
+        S8,         S16,    S32,      S64,  // signed
+        U8,         U16,    U32,      U64,  // unsigned
+        F8E5M2,     F8E4M3, F8E4M3FN, F8E4M3B11FNUZ, F8E3M4, F8E5M2FNUZ,
+        F8E4M3FNUZ, F16,    BF16,     F32,           F64  // floating point
+    }),
+    [](const ::testing::TestParamInfo<TypeSupportTest::ParamType>& info) {
+      return primitive_util::LowercasePrimitiveTypeName(info.param);
+    });
+
 class SortingTest : public GpuCodegenTest {
  protected:
   SortingTest() {}
