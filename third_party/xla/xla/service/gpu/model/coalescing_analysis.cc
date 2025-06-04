@@ -271,10 +271,8 @@ std::optional<GroupedByOpIndexingMap> GetThreadIdToInputMemoryLayoutsMaps(
             GetIndexingMapFromLogicalToPhysicalLayout(operand_shape,
                                                       mlir_context);
         IndexingMap operand_physical_to_linearized_shape = GetBitcastMap(
-            ShapeUtil::
-                MakeValidatedShapeWithDescendingLayoutAndSamePhysicalLayout(
-                    operand_shape)
-                    .value(),
+            ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+                operand_shape),
             GetLinearizedShape(operand_shape), mlir_context);
         IndexingMap operand_logical_to_linearized_physical_shape =
             operand_logical_to_physical_map *

@@ -84,6 +84,9 @@ class KernelThunk : public Thunk {
   std::string ToString(int indent) const override;
 
   absl::StatusOr<ThunkProto> ToProto() const override;
+  static absl::StatusOr<std::unique_ptr<KernelThunk>> FromProto(
+      ThunkInfo thunk_info, const KernelThunkProto& proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
 
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;

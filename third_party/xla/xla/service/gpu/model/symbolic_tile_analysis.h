@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/model/constraint_expression.h"
 #include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
@@ -88,33 +87,64 @@ using SymbolicTileAnalysisOrError =
 // them.
 class TilingSpecification {
  public:
-  // Constructs a tiling specification for a given fusion. The derivation is
-  // only guaranteed to succeed in the absence of nested output tuple shapes and
-  // tokens.
-  static absl::StatusOr<TilingSpecification> FromFusionAdaptor(
-      const HloFusionAdaptor& fusion_adaptor);
+  // Associates a number of tiling parameters to an instruction. Since there is
+  // never any ambiguity about the ordering of tiling parameters within a single
+  // instruction, this is sufficient information to describe both how many
+  // tiling parameters are introduced for the given instruction, as well as
+  // their semantics (i.e. what contracting dimension they correspond to, or
+  // what output dimension they correspond to).
+  struct InstructionAndNumTilingParameters {
+    // The instruction that this `InstructionAndNumTilingParameters` is
+    // associated with.
+    const HloInstruction* instruction;
+    // The number of tile sizes that must be specified for the instruction.
+    int64_t num_tiling_parameters;
+  };
 
-  // Same as the overload using `HloFusionAdaptor`, but for a fusion
-  // instruction.
-  static absl::StatusOr<TilingSpecification> FromFusion(
-      const HloFusionInstruction& fusion);
+  // An ordered sequence of `InstructionAndNumTilingParameters`s. Since
+  // parameter mapping within a single `InstructionAndNumTilingParameters`
+  // is unambiguous, this abstraction provides enough information to describe
+  // the ordering of a set of tiling parameters---e.g. for a whole fusion.
+  using ParameterMapping = std::vector<InstructionAndNumTilingParameters>;
 
-  // Returns the underlying map describing the necessary parameters for each
-  // relevant instruction in the fusion.
-  const absl::flat_hash_map<const HloInstruction*, int64_t>&
-  num_tile_sizes_by_instruction() const {
-    return num_tile_sizes_by_instruction_;
+  // Returns the parameter mapping for the entire fusion the specification is
+  // derived from.
+  //
+  // The instructions are guaranteed to be in use-before-def order, and it is
+  // guaranteed that an instruction will only ever appear at most once.
+  const ParameterMapping& parameter_mapping() const {
+    return parameter_mapping_;
   }
 
- private:
-  explicit TilingSpecification(
-      absl::flat_hash_map<const HloInstruction*, int64_t>
-          num_tile_sizes_by_instruction)
-      : num_tile_sizes_by_instruction_(
-            std::move(num_tile_sizes_by_instruction)) {};
+  // Returns the constraints for the parameters of the tiling specification.
+  const ConstraintExpression& constraints() const { return constraints_; }
 
-  absl::flat_hash_map<const HloInstruction*, int64_t>
-      num_tile_sizes_by_instruction_;
+  // Given the index of a tile size parameter for the given HLO instruction,
+  // returns its overall parameter index within the `TilingSpecification`'s
+  // parameter mapping.
+  absl::StatusOr<int64_t> ParameterIndex(const HloInstruction* hlo,
+                                         int64_t index) const;
+
+  // Returns the total number of parameters in the tiling specification.
+  int64_t num_parameters() const { return num_parameters_; }
+
+ private:
+  // `SymbolicTileAnalysis` is the only class allowed to construct
+  // `TilingSpecification`s.
+  friend class SymbolicTileAnalysis;
+  explicit TilingSpecification(ParameterMapping parameter_mapping,
+                               ConstraintExpression constraints)
+      : parameter_mapping_(std::move(parameter_mapping)),
+        constraints_(std::move(constraints)) {
+    num_parameters_ = 0;
+    for (const auto& [_, num_tiling_parameters] : parameter_mapping_) {
+      num_parameters_ += num_tiling_parameters;
+    }
+  };
+
+  ParameterMapping parameter_mapping_;
+  ConstraintExpression constraints_;
+  int64_t num_parameters_;
 };
 
 // `Tiling`s are instantiations of `TilingSpecification`s, and the conformance
@@ -156,6 +186,18 @@ class Tiling {
   absl::StatusOr<absl::Span<const int64_t>> TileSizesForInstruction(
       const HloInstruction* hlo) const;
 
+  // Returns the underlying mapping from instructions to tile sizes.
+  const TileMapping& tile_sizes() const { return tile_sizes_; }
+
+  // Returns a flattened list of tile sizes that conforms to the parameter
+  // mapping defined by the parameter `TilingSpecification`.
+  //
+  // Note that `Flatten` does not check whether this tiling conforms to the
+  // parameter `TilingSpecification`, and it is the caller's responsibility to
+  // ensure that this is the case.
+  absl::StatusOr<std::vector<int64_t>> Flatten(
+      const TilingSpecification& tiling_specification) const;
+
  private:
   TileMapping tile_sizes_;
 };
@@ -178,7 +220,8 @@ struct RootIndexing {
   // output index.
   absl::InlinedVector<const HloInstruction*, 2> roots;
 
-  // Indexing map to the "real" root.
+  // Indexing map from the tiling parameters to the "real root"'s output
+  // indexing space.
   IndexingMap real_root_indexing;
 };
 
@@ -189,6 +232,11 @@ class EmitterSpecificConstraints {
  public:
   virtual ~EmitterSpecificConstraints() = default;
 
+  // Returns `true` if the given tiling parameters satisfy the constraints.
+  //
+  // The tiling parameters are expected to be flattened as per the parameter
+  // mapping defined by the `TilingSpecification` underlying the
+  // `SymbolicTileAnalysis`'s of interest.
   virtual absl::StatusOr<bool> ParametersSatisfyConstraints(
       absl::Span<const int64_t> tile_parameters) const = 0;
 };
@@ -235,10 +283,10 @@ class SymbolicTileAnalysis {
       EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder =
           nullptr);
 
-  // Returns a graph of HLO instructions tiled with the given tile parameters.
-  // The provided tile parameters must satisfy the analysis's constraints.
+  // Returns a graph of HLO instructions tiled with the given tiling parameters.
+  // The provided tiling parameters must satisfy the analysis's constraints.
   // By default, `ComputeTiledHloInstructions` performs a check that the
-  // constraints are satisfied by the chosen tiled parameters. Setting
+  // constraints are satisfied by the chosen tiling parameters. Setting
   // `constraints_are_known_satisfied` to true bypasses this check.
   //
   // If `compute_all_tile_offset_indexing_maps == true`, all
@@ -246,7 +294,25 @@ class SymbolicTileAnalysis {
   // the indexing maps will be set only for instructions that have equal hash to
   // deduplicate them.
   absl::StatusOr<TiledHloComputation> ComputeTiledHloInstructions(
-      absl::Span<const int64_t> tile_parameters,
+      const ::xla::gpu::Tiling& tiling,
+      bool constraints_are_known_satisfied = false,
+      bool compute_all_tile_offset_indexing_maps = false) const;
+
+  // Returns a graph of HLO instructions tiled with the given tiling parameters.
+  // The provided tiling parameters must satisfy the analysis's constraints.
+  // By default, `ComputeTiledHloInstructions` performs a check that the
+  // constraints are satisfied by the chosen tiling parameters. Setting
+  // `constraints_are_known_satisfied` to true bypasses this check.
+  //
+  // If `compute_all_tile_offset_indexing_maps == true`, all
+  // `TiledHloInstruction`s will have tile offset indexing maps set. Otherwise,
+  // the indexing maps will be set only for instructions that have equal hash to
+  // deduplicate them.
+  //
+  // This variant can only be used for fusions with no hidden nested parameters.
+  [[deprecated]] absl::StatusOr<TiledHloComputation>
+  ComputeTiledHloInstructions(
+      absl::Span<const int64_t> output_tile_sizes,
       bool constraints_are_known_satisfied = false,
       bool compute_all_tile_offset_indexing_maps = false) const;
 
@@ -269,13 +335,6 @@ class SymbolicTileAnalysis {
     return root_indexing_.real_root_indexing;
   }
 
-  // Returns the number of tile parameters in this symbolic analysis.
-  // TODO(b/390569102): This assumes that there is only one root that matters
-  // for computing the tiling, and that it is the last symbolic tiled hlo
-  // instruction in the list.
-  int64_t num_tile_parameters() const {
-    return root_indexing_.real_root_indexing.GetDimVarsCount();
-  }
 
   // Returns the symbolic tiled HLO instructions in def-before-use order.
   const std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&
@@ -283,10 +342,14 @@ class SymbolicTileAnalysis {
     return symbolic_tiled_hlo_instructions_;
   }
 
-  // Returns the constraints for the parameters of the symbolic tiled HLO
-  // computation. This is the intersection of the constraints of all the
-  // symbolic tiles encountered throughout the computation.
-  const ConstraintExpression& GetConstraints() const { return constraints_; }
+  // Returns the `TilingSpecification` for the fusion that was used to construct
+  // the analysis.
+  //
+  // The `TilingSpecification` wraps the shape of the tiling parameters, and
+  // their associated constraints.
+  const TilingSpecification& GetTilingSpecification() const {
+    return tiling_specification_;
+  }
 
   // Returns true if a list of tile parameters satisfies the symbolic tile
   // analysis's constraints. If provided, also checks the emitter-specific
@@ -296,8 +359,26 @@ class SymbolicTileAnalysis {
   // correctly. Returns an error if the constraints cannot be evaluated
   // correctly. This is typically the case if too few tile parameters are
   // provided to fully reduce the constraint expressions to constants.
-  absl::StatusOr<bool> ParametersSatisfyConstraints(
+  //
+  // This is a convenience overload for the case when only output tile sizes
+  // need to be set.
+  //
+  // DEPRECATED: Use `ParametersSatisfyConstraints(const Tiling& tiling)`
+  // instead. This is not safe for fusions involving hidden parameters.
+  //
+  // TODO(b/421837868): deprecate `SymbolicTileAnalysis::Tiling` everywhere to
+  // use logic that supports nests everywhere.
+  [[deprecated]] absl::StatusOr<bool> ParametersSatisfyConstraints(
       absl::Span<const int64_t> tile_parameters) const;
+
+  // Returns `true` if a `Tiling` conforms to the symbolic tile analysis's
+  // `TilingSpecification`. If provided, also checks the emitter-specific
+  // constraints.
+  //
+  // Returns `false` if the tiling does not conform to the tiling
+  // specification.
+  absl::StatusOr<bool> ParametersSatisfyConstraints(
+      const ::xla::gpu::Tiling& tiling) const;
 
   // Return the underlying MLIRContext.
   mlir::MLIRContext* GetMLIRContext() const { return context_; };
@@ -318,23 +399,35 @@ class SymbolicTileAnalysis {
   SymbolicTileAnalysis(
       std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>
           symbolic_tiled_hlo_instructions,
-      const RootIndexing& root_indexing, ConstraintExpression constraints,
+      const RootIndexing& root_indexing,
+      TilingSpecification tiling_specification,
       std::unique_ptr<EmitterSpecificConstraints> emitter_specific_constraints,
       mlir::MLIRContext* context)
       : symbolic_tiled_hlo_instructions_(
             std::move(symbolic_tiled_hlo_instructions)),
         root_indexing_(std::move(root_indexing)),
-        constraints_(std::move(constraints)),
+        tiling_specification_(std::move(tiling_specification)),
         emitter_specific_constraints_(std::move(emitter_specific_constraints)),
         context_(context) {}
 
   // Computes indexing information for the roots of the computation.
   static absl::StatusOr<RootIndexing> GetRootIndexing(
-      const HloFusionAdaptor& fusion, mlir::MLIRContext* ctx);
+      const HloFusionAdaptor& fusion,
+      const TilingSpecification::ParameterMapping& parameter_mapping,
+      mlir::MLIRContext* ctx);
 
   static SymbolicTileAnalysisOrError AnalyzeFusionImpl(
-      const HloFusionAdaptor& fusion, mlir::MLIRContext* ctx,
-      const RootIndexing& root_indexing,
+      const HloFusionAdaptor& fusion,
+      const TilingSpecification::ParameterMapping& parameter_mapping,
+      mlir::MLIRContext* ctx, const RootIndexing& root_indexing,
+      IndexingMap::SimplifyPointDimensions simplification_mode,
+      EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder);
+
+  // Helper for `AnalyzeFusion` to handle nested fusions.
+  static SymbolicTileAnalysisOrError AnalyzeNestedFusion(
+      const HloFusionAdaptor& fusion,
+      const TilingSpecification::ParameterMapping& parameter_mapping,
+      mlir::MLIRContext* ctx, const IndexingMap& indexing_map,
       IndexingMap::SimplifyPointDimensions simplification_mode,
       EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder);
 
@@ -345,8 +438,9 @@ class SymbolicTileAnalysis {
   // Indexing information for the root of the computation.
   RootIndexing root_indexing_;
 
-  // See the documentation of GetConstraints().
-  ConstraintExpression constraints_;
+  // The tiling specification for the fusion that was used to construct the
+  // analysis.
+  TilingSpecification tiling_specification_;
 
   // Additional emitter-specific constraints on tile parameters. May be null if
   // no builder was provided when constructing the analysis.

@@ -535,7 +535,7 @@ TEST_P(AutoMixedPrecisionParamTest, PreserveCPUNodes) {
   EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("clr1")->attr().at("T").type(), DT_HALF);
   EXPECT_EQ(output_view.GetNode("allow1")->attr().at("T").type(), DT_HALF);
-  EXPECT_EQ(output_view.GetNode("infer1")->attr().at("T").type(), DT_HALF);
+  EXPECT_EQ(output_view.GetNode("infer1")->attr().at("T").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("allow2")->attr().at("T").type(), DT_FLOAT);
   EXPECT_EQ(output_view.GetNode("clr2")->attr().at("T").type(), DT_FLOAT);
 
@@ -543,7 +543,7 @@ TEST_P(AutoMixedPrecisionParamTest, PreserveCPUNodes) {
   EXPECT_EQ(tensors.size(), tensors_expected.size());
   EXPECT_EQ(tensors.size(), item.fetch.size());
   for (int i = 0; i < item.fetch.size(); ++i) {
-    test::ExpectTensorNear<float>(tensors_expected[i], tensors[i], 1e-4);
+    test::ExpectTensorNear<float>(tensors_expected[i], tensors[i], 1e-6);
   }
 }
 

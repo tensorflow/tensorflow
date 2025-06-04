@@ -415,6 +415,14 @@ INSTANTIATE_TEST_SUITE_P(
             // flops/sec and scaling by new dimensions.
             /*expected_duration=*/absl::Microseconds(69),
         },
+        {
+            /*test_name=*/"interpolate_larger_batch_fp8",
+            /*spec=*/
+            {/*b=*/8, /*m=*/2048, /*n=*/2048, /*k=*/2048, /*clock_cycles=*/0},
+            // Expected duration based on nearest point (1,2048,2048,2048)
+            // flops/sec and scaling by new dimensions.
+            /*expected_duration=*/absl::Microseconds(280),
+        },
     }),
     [](const TestParamInfo<MatmulInterpolatorDefaultTableTest::ParamType>&
            info) { return info.param.test_name; });

@@ -37,7 +37,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_pass_pipeline.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pass_pipeline.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/types.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/convert_asset_args.h"
@@ -175,7 +175,7 @@ ExportedModel CreateExportedModelFromGraphDef(
 
 void AddExportPasses(mlir::PassManager& pm,
                      const bool duplicate_shape_determining_constants) {
-  tf_quant::stablehlo::AddCallModuleSerializationPasses(pm);
+  quant::stablehlo::AddCallModuleSerializationPasses(pm);
   if (duplicate_shape_determining_constants) {
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::tf_quant::CreateDuplicateShapeDeterminingConstantsPass());

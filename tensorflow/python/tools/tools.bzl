@@ -129,6 +129,7 @@ def saved_model_compile_aot(
             "{}.h".format(name),
             "{}.o".format(name),
             "{}_metadata.o".format(name),
+            "{}_constants.o".format(name),
             "{}_makefile.inc".format(name),
         ],
         cmd = (
@@ -158,6 +159,7 @@ def saved_model_compile_aot(
             [
                 ":{}.o".format(name),
                 ":{}_metadata.o".format(name),
+                ":{}_constants.o".format(name),
             ],
             force_compile = force_without_xla_support_flag,
         ),

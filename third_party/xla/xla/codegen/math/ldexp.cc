@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/codegen/math/ldexp.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <string>
 
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
@@ -49,6 +51,11 @@ llvm::Value* IntMin(llvm::IRBuilderBase& builder, llvm::Value* v1,
 }
 }  // namespace
 
+std::string LdexpF64FunctionName(size_t num_elements) {
+  return absl::StrCat("xla.ldexp.v", num_elements, "f64.v", num_elements,
+                      "i32");
+}
+
 llvm::Function* CreateLdexpF64(llvm::Module* module, llvm::Type* vector_type) {
   // This implementation closely follows Eigen's ldexp implementation:
   // https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Core/arch/Default/GenericPacketMathFunctions.h#L226
@@ -61,26 +68,22 @@ llvm::Function* CreateLdexpF64(llvm::Module* module, llvm::Type* vector_type) {
   CHECK(vector_type->getScalarType()->isDoubleTy())
       << "Only F64 (double) is supported for ldexp.";
 
-  // Determine scalar or vector width for type creation.
   int num_elements = 1;
   llvm::Type* i64_type = llvm::Type::getInt64Ty(module->getContext());
+  llvm::Type* input_int_type = llvm::Type::getInt32Ty(module->getContext());
 
   if (llvm::VectorType* vec_ty =
           llvm::dyn_cast<llvm::VectorType>(vector_type)) {
     num_elements = vec_ty->getElementCount().getKnownMinValue();
     i64_type = llvm::VectorType::get(i64_type, num_elements, false);
+    input_int_type = llvm::VectorType::get(input_int_type, num_elements, false);
   }
 
-  llvm::FunctionType* ldexp_func_type =
-      llvm::FunctionType::get(vector_type, {vector_type, i64_type}, false);
-  llvm::Function* ldexp_func = llvm::Function::Create(
-      ldexp_func_type, llvm::Function::ExternalLinkage,
-      absl::StrCat("xla.ldexp.", num_elements, "xf64"), module);
-  llvm::AttributeList attrs = ldexp_func->getAttributes();
-  attrs =
-      attrs.addFnAttribute(module->getContext(), llvm::Attribute::AlwaysInline);
-  ldexp_func->setAttributes(attrs);
-
+  llvm::FunctionType* ldexp_func_type = llvm::FunctionType::get(
+      vector_type, {vector_type, input_int_type}, false);
+  llvm::Function* ldexp_func =
+      llvm::Function::Create(ldexp_func_type, llvm::Function::InternalLinkage,
+                             LdexpF64FunctionName(num_elements), module);
   llvm::Argument* a = ldexp_func->getArg(0);
   a->setName("a");
   llvm::Argument* exponent = ldexp_func->getArg(1);
@@ -106,7 +109,9 @@ llvm::Function* CreateLdexpF64(llvm::Module* module, llvm::Type* vector_type) {
 
   // Clamp the exponent: e = min(max(exponent, -max_exponent), max_exponent).
   llvm::Value* neg_max_exponent = builder.CreateNeg(max_exponent);
-  llvm::Value* clamped_exponent = IntMax(builder, exponent, neg_max_exponent);
+  llvm::Value* sext_exponent = builder.CreateSExt(exponent, i64_type);
+  llvm::Value* clamped_exponent =
+      IntMax(builder, sext_exponent, neg_max_exponent);
   clamped_exponent = IntMin(builder, clamped_exponent, max_exponent);
 
   llvm::Value* two_i64_for_shift = int_vec(2);

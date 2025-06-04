@@ -72,10 +72,9 @@ class LessThanComparator : public FunctionLibrary {
 TEST_P(SortThunkTest, DescendingSortPlainArray) {
   bool is_stable = GetParam();
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto data,
-      LiteralUtil::CreateRandomLiteral<F32>(
-          ShapeUtil::MakeValidatedShape(F32, {10000}).value(), 1.0f, 0.1f));
+  TF_ASSERT_OK_AND_ASSIGN(auto data,
+                          LiteralUtil::CreateRandomLiteral<F32>(
+                              ShapeUtil::MakeShape(F32, {10000}), 1.0f, 0.1f));
 
   BufferAllocations allocations = CreateBufferAllocations(data);
   BufferAllocation alloc = CreateBufferAllocation(0, data);
@@ -316,7 +315,7 @@ void BM_Sort1D(benchmark::State& state) {
   CHECK_GE(num_inputs, 1) << "Number of inputs must be at least 1";  // Crash OK
 
   auto data = LiteralUtil::CreateRandomLiteral<F32>(
-      ShapeUtil::MakeValidatedShape(F32, {input_size}).value(), 1.0f, 1.0f);
+      ShapeUtil::MakeShape(F32, {input_size}), 1.0f, 1.0f);
   CHECK_OK(data) << "Failed to create random literal";  // Crash OK
 
   // We use dummy data to create additional inputs, but we don't use it for

@@ -61,7 +61,8 @@ class SolLatencyEstimator : public LatencyEstimator {
       std::unique_ptr<LatencyEstimator> latency_estimator,
       const se::DeviceDescription& gpu_info,
       HloCostAnalysis::ShapeSizeFunction shape_size_function,
-      const HloComputation* computation);
+      const HloComputation* computation,
+      std::unique_ptr<GpuHloCostAnalysis> cost_analysis = nullptr);
 
   static constexpr TimeCost kLowCost = 1.0;
   static constexpr TimeCost kLowLatency = 1.0;

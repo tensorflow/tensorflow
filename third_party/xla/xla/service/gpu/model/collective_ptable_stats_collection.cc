@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/service/gpu/model/collective_interpolator.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
+#include "xla/service/gpu/model/sol_gpu_cost_model.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -68,8 +69,11 @@ absl::StatusOr<bool> CollectivePerfTableStatsCollection::Run(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(HloInstructionProfileList profiles,
                       CollectProfiles(perf_table_path_, device_info_));
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<CollectiveInterpolator> interpolator,
-                      CollectiveInterpolator::Create(profiles, device_info_));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<CollectiveInterpolator> interpolator,
+      CollectiveInterpolator::Create(
+          SolGPUCostModel::GetConfig(module, device_info_).gpus_per_node,
+          profiles, device_info_));
   hlo_query::ForEachInstructionWithPred(
       *module,
       [](const HloInstruction* instr) {

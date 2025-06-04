@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -282,6 +283,23 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
         state_->bulk_transport_->Send(std::move(msg));
       }
 
+      void SendError(size_t req_id, size_t offset, size_t size, bool is_largest,
+                     absl::Status error) override {
+        SocketTransferRequest response;
+        auto* packet = response.mutable_error_packet();
+        if (error.message().size() < 2048) {
+          packet->set_error_message(std::string(error.message()));
+        } else {
+          packet->set_error_message(absl::StrCat(
+              error.message().substr(0, 2048), "... truncated ..."));
+        }
+        packet->set_offset(offset);
+        packet->set_size(size);
+        packet->set_req_id(req_id);
+        packet->set_is_largest(is_largest);
+        state_->SendFrame(response);
+      }
+
      private:
       SocketNetworkState* state_;
     };
@@ -303,9 +321,18 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
         return HandlePacket(req.bulk_transport());
       case SocketTransferRequest::kHalfClose:
         return HandlePacket(req.half_close());
+      case SocketTransferRequest::kErrorPacket:
+        return HandlePacket(req.error_packet());
       default:
         LOG(FATAL) << "Implement: " << req.DebugString();
     }
+  }
+
+  void HandlePacket(const SocketTransferPacketErrorHeader& packet) {
+    auto dest = GetNextDest(packet.req_id(), packet.offset(), packet.size(),
+                            packet.is_largest());
+    dest->Poison(absl::InternalError(
+        absl::StrCat("Error while transferring: ", packet.error_message())));
   }
 
   void HandlePacket(const SocketTransferEstablishBulkTransport& req) {

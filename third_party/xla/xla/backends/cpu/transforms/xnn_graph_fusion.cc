@@ -65,6 +65,10 @@ HloInstruction* XnnGraphFusion::Fuse(HloInstruction* producer,
 }
 
 bool XnnGraphFusion::IsOpSupported(HloInstruction* instr) const {
+  if (!XnnDatatype(instr->shape().element_type()).ok()) {
+    return false;
+  }
+
   switch (instr->opcode()) {
     case HloOpcode::kAdd:
     case HloOpcode::kSubtract:

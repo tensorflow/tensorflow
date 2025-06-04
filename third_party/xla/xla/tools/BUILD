@@ -680,6 +680,7 @@ xla_test(
     local_defines = if_cuda(["GOOGLE_CUDA"]),
     deps = [
         ":matmul_perf_table_gen",
+        "//xla:xla_data_proto_cc",
         "//xla/service/gpu/model:hlo_op_profile_proto_cc",
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
@@ -865,6 +866,7 @@ xla_test(
         ":matmul_perf_table_gen_main_lib",
         "//xla/service:hlo_runner",
         "//xla/service:platform_util",
+        "//xla/service/gpu/model:hlo_op_profile_proto_cc",
         "//xla/service/gpu/model:hlo_op_profiles",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/log:check",

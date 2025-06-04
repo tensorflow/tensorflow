@@ -16,13 +16,12 @@
 
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph_node.h"
 #include "xla/hlo/tools/hlo_diff/hlo_gumgraph_mappings.h"
-#include "xla/hlo/tools/hlo_diff/matchers/bipartite_matcher_utils.h"
+#include "xla/hlo/tools/hlo_diff/matchers/bipartite_matching.h"
 #include "xla/service/call_graph.h"
 
 namespace xla {
@@ -36,44 +35,44 @@ void MatchComputationParams(const HloGumgraph& left_graph,
                             const CallGraphNode& right_computation,
                             HloGumgraphMappings& mappings,
                             const MatcherType& matcher_type) {
-  absl::flat_hash_set<const HloInstructionNode*> left_params, right_params;
+  std::vector<const HloInstructionNode*> left_params, right_params;
   for (const HloInstruction* param :
        left_computation.computation()->parameter_instructions()) {
-    left_params.insert(left_graph.GetNode(param));
+    left_params.push_back(left_graph.GetNode(param));
   }
   for (const HloInstruction* param :
        right_computation.computation()->parameter_instructions()) {
-    right_params.insert(right_graph.GetNode(param));
+    right_params.push_back(right_graph.GetNode(param));
   }
-
+  bool map_by_position = !left_computation.computation()->IsEntryComputation();
   MatchSameTypeInstructions(left_graph, right_graph, left_params, right_params,
-                            mappings, matcher_type);
+                            mappings, matcher_type, map_by_position);
 }
 
 // Match constant instructions between the left and right computations.
-void MatchComputationConstants(const HloGumgraph& left,
-                               const HloGumgraph& right,
+void MatchComputationConstants(const HloGumgraph& left_graph,
+                               const HloGumgraph& right_graph,
                                const CallGraphNode& left_computation,
                                const CallGraphNode& right_computation,
                                HloGumgraphMappings& mappings,
                                const MatcherType& matcher_type) {
-  absl::flat_hash_set<const HloInstructionNode*> left_constants,
-      right_constants;
+  std::vector<const HloInstructionNode*> left_constants, right_constants;
   for (const HloInstruction* instruction :
        left_computation.computation()->instructions()) {
     if (instruction->IsConstant()) {
-      left_constants.insert(left.GetNode(instruction));
+      left_constants.push_back(left_graph.GetNode(instruction));
     }
   }
   for (const HloInstruction* instruction :
        right_computation.computation()->instructions()) {
     if (instruction->IsConstant()) {
-      right_constants.insert(right.GetNode(instruction));
+      right_constants.push_back(right_graph.GetNode(instruction));
     }
   }
-
-  MatchSameTypeInstructions(left, right, left_constants, right_constants,
-                            mappings, matcher_type);
+  bool map_by_position = !left_computation.computation()->IsEntryComputation();
+  MatchSameTypeInstructions(left_graph, right_graph, left_constants,
+                            right_constants, mappings, matcher_type,
+                            map_by_position);
 }
 
 // Match the call site instruction and it's operands for a matched left and

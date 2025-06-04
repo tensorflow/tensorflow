@@ -34,8 +34,9 @@ on:
       - main
 
 concurrency:
+  # Run every push to main and do not cancel in-progress jobs; the timeout is 60 minutes.
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
-  cancel-in-progress: ${{ github.ref != 'main' }}
+  cancel-in-progress: false
 
 jobs:
   # =================================================================

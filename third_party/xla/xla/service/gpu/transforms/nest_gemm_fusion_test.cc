@@ -600,19 +600,19 @@ HloModule t
 
 triton_dot {
   p0 = f32[3,4] parameter(0)
-  p0_broadcast = f32[3,4,5] broadcast(p0), dimensions={0,1}
-  p0_cos = f32[3,4,5] cosine(p0_broadcast)
+  p0_broadcast = f32[3,4,16] broadcast(p0), dimensions={0,1}
+  p0_cos = f32[3,4,16] cosine(p0_broadcast)
   // Bitcast mixes operand and broadcasted dimensions and cannot be hoisted.
-  p0_reshape = f32[3,20] bitcast(p0_cos)
+  p0_reshape = f32[3,64] bitcast(p0_cos)
 
-  p1 = f32[20,7]{1,0} parameter(1)
+  p1 = f32[64,7]{1,0} parameter(1)
   ROOT result = f32[3,7]{1,0} dot(p0_reshape, p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
 ENTRY e {
   p0 = f32[3,4] parameter(0)
-  p1 = f32[20,7] parameter(1)
+  p1 = f32[64,7] parameter(1)
   ROOT result = f32[3,7] fusion(p0, p1), kind=kCustom, calls=triton_dot,
     backend_config={"fusion_backend_config": {kind: "__triton_gemm",
     triton_gemm_config: {"block_m":32,"block_n":16,"block_k":8,
@@ -625,7 +625,7 @@ ENTRY e {
   // Cos should not be rewritten as we cannot hoist bitcast.
   EXPECT_THAT(
       RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
-CHECK: f32[3,4,5]{2,1,0} cosine
+CHECK: f32[3,4,16]{2,1,0} cosine
 )"),
       IsOkAndHolds(true));
 }
@@ -803,7 +803,7 @@ triton_dot {
   bitcast = f32[2,3,7] bitcast(transpose)
   p1 = f32[2,5,7] parameter(1)
   ROOT result = f32[2,3,5] dot(bitcast, p1),
-    lhs_contracting_dims={2}, lhs_batch_dims={0}, 
+    lhs_contracting_dims={2}, lhs_batch_dims={0},
     rhs_contracting_dims={2}, rhs_batch_dims={0}
 }
 
@@ -837,7 +837,7 @@ triton_dot {
   bitcast = f32[1,6,7] bitcast(transpose)
   p1 = f32[1,5,7] parameter(1)
   ROOT result = f32[1,6,5] dot(bitcast, p1),
-    lhs_contracting_dims={2}, lhs_batch_dims={0}, 
+    lhs_contracting_dims={2}, lhs_batch_dims={0},
     rhs_contracting_dims={2}, rhs_batch_dims={0}
 }
 
@@ -870,7 +870,7 @@ gemm_dot {
   bitcast0 = f16[3,96,12,122] bitcast(transpose)
   bitcast1 = f16[3456,122] bitcast(bitcast0)
   p1 = f16[122,5] parameter(1)
-  ROOT dot = f16[3456,5]{1,0} dot(bitcast1, p1), 
+  ROOT dot = f16[3456,5]{1,0} dot(bitcast1, p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 

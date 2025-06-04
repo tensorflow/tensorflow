@@ -86,6 +86,7 @@ cc_library(
     hdrs = ["kernel_spec.h"],
     deps = [
         "//xla/runtime:work_cluster",
+        "//xla/runtime:work_dimensions",
         "//xla/runtime:work_group",
         "//xla/runtime:work_item",
         "//xla/service:buffer_assignment",
@@ -184,5 +185,42 @@ cc_library(
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/container:inlined_vector",
+    ],
+)
+
+cc_library(
+    name = "math_lib",
+    srcs = ["math_lib.cc"],
+    hdrs = ["math_lib.h"],
+    deps = [
+        "//xla:xla_data_proto_cc",
+        "//xla/codegen/math:ldexp",
+        "//xla/codegen/math:string_interner",
+        "//xla/codegen/math:vec_name_mangler",
+        "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Analysis",
+        "@llvm-project//llvm:ExecutionEngine",
+        "@llvm-project//llvm:IPO",
+        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:Passes",
+        "@llvm-project//llvm:Scalar",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:TransformUtils",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+cc_library(
+    name = "hlo_fusion_spec",
+    hdrs = ["hlo_fusion_spec.h"],
+    deps = [
+        "//xla/hlo/utils:hlo_traversal",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:span",
     ],
 )

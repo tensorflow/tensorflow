@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status_matchers.h"
@@ -43,7 +44,8 @@ using tsl::testing::IsOkAndHolds;
 using tsl::testing::StatusIs;
 
 TEST(GpuKernelRegistryTest, RegisterKernel) {
-  GpuKernelRegistry registry;
+  PlatformObjectRegistry object_registry;
+  GpuKernelRegistry registry{&object_registry};
   MultiKernelLoaderSpec cuda_spec(1);
   MultiKernelLoaderSpec rocm_spec(42);
 
@@ -73,7 +75,8 @@ TEST(GpuKernelRegistryTest, RegisterKernelConcurrently) {
   // This test will show races in the registry implementation when run with
   // `--config=tsan`.
 
-  GpuKernelRegistry registry;
+  PlatformObjectRegistry object_registry;
+  GpuKernelRegistry registry{&object_registry};
 
   tsl::thread::ThreadPool pool(tsl::Env::Default(), "test_pool", 2);
 
@@ -96,7 +99,8 @@ TEST(GpuKernelRegistryTest, RegisterKernelConcurrently) {
 }
 
 TEST(GpuKernelRegistryTest, FindKernel) {
-  GpuKernelRegistry registry;
+  PlatformObjectRegistry object_registry;
+  GpuKernelRegistry registry{&object_registry};
   MultiKernelLoaderSpec spec(333);
 
   ASSERT_THAT(registry.RegisterKernel<TestKernelTrait>(
@@ -122,7 +126,8 @@ TEST(GpuKernelRegistryTest, FindKernelConcurrently) {
   // This test will show races in the registry implementation when run with
   // `--config=tsan`.
 
-  GpuKernelRegistry registry;
+  PlatformObjectRegistry object_registry;
+  GpuKernelRegistry registry{&object_registry};
   MultiKernelLoaderSpec spec(333);
 
   ASSERT_THAT(registry.RegisterKernel<TestKernelTrait>(

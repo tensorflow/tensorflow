@@ -32,7 +32,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_pass_pipeline.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pass_pipeline.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_passes.h"
@@ -52,7 +52,7 @@ limitations under the License.
 namespace tensorflow {
 namespace quantization {
 
-using ::mlir::tf_quant::stablehlo::AddXlaCallModuleOpDeserializationPasses;
+using ::mlir::quant::stablehlo::AddXlaCallModuleOpDeserializationPasses;
 
 // Adds passes that unfuse MHLO ops that do not have their equivalents in
 // StableHLO.

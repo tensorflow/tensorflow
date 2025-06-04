@@ -74,8 +74,6 @@ struct Problem {
 absl::StatusOr<TotalCost> Evaluate(const Problem& problem,
                                    const Solution& solution);
 
-absl::StatusOr<Problem> ReadProblem(const std::string& filename);
-
 }  // namespace iopddl
 
 #endif  // XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_IOPDDL_H_

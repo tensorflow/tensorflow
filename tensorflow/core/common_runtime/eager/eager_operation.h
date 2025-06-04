@@ -198,7 +198,7 @@ class EagerOperation : public ImmediateExecutionOperation {
   // function.
   void UpdateName(const string& name) {
     attrs_.set_op_name(name);
-    op_name_ = attrs_.op_name().c_str();
+    op_name_ = attrs_.op_name();
   }
 
   // Like TensorHandles, EagerOperations may be placed either on a virtual
@@ -249,7 +249,7 @@ class EagerOperation : public ImmediateExecutionOperation {
   }
 
   // Op name recorded for memory debugging purpose.
-  const char* op_name() const { return op_name_; }
+  absl::string_view op_name() const { return op_name_; }
 
   // For LLVM style RTTI.
   static bool classof(const AbstractOperation* ptr) {
@@ -277,7 +277,7 @@ class EagerOperation : public ImmediateExecutionOperation {
                                     const std::vector<DataType>& dtypes);
 
   tensorflow::EagerContext& ctx_;
-  const char* op_name_ = nullptr;
+  std::string op_name_;
   AttrBuilder attrs_;
   const AttrTypeMap* attr_types_;
 

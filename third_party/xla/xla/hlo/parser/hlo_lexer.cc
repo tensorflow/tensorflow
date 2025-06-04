@@ -96,7 +96,7 @@ TokKind HloLexer::LookAhead() {
   return kind;
 }
 
-TokKind HloLexer::LexToken() {
+TokKind HloLexer::LexToken(uint64_t skip_mask) {
   while (true) {
     token_state_.token_start = current_ptr_;
 
@@ -138,7 +138,7 @@ TokKind HloLexer::LexToken() {
           current_ptr_++;
           return TokKind::kArrow;
         }
-        tmp = LexNumberOrPattern();
+        tmp = LexNumberOrPattern(skip_mask);
         if (tmp == TokKind::kError && current_char == '?') {
           return TokKind::kQuestionMark;
         }
@@ -382,6 +382,48 @@ TokKind HloLexer::LexPercent() {
   return TokKind::kError;
 }
 
+namespace {
+
+bool ConsumeFloatPattern(absl::string_view& consumable) {
+  static LazyRE2 float_pattern = {
+      R"([-]?((\d+|\d+[.]\d*|\d*[.]\d+)([eE][+-]?\d+))|[-]?(\d+[.]\d*|\d*[.]\d+))"};
+  return RE2::Consume(&consumable, *float_pattern);
+}
+
+bool ConsumeDimLabelsPattern(absl::string_view& consumable) {
+  static LazyRE2 dim_labels_pattern = {
+      R"([0-9bf?]{2,}_[0-9io?]{2,}->[0-9bf?]{2,})"};
+  return RE2::Consume(&consumable, *dim_labels_pattern);
+}
+
+bool ConsumeDxDPattern(absl::string_view& consumable) {
+  static LazyRE2 dxd_pattern = {R"([0-9]+(x[0-9]+)+)"};
+  return RE2::Consume(&consumable, *dxd_pattern);
+}
+
+bool ConsumePadPattern(absl::string_view& consumable) {
+  static LazyRE2 pad_pattern = {
+      R"([-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?(x[-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?)*)"};
+  return RE2::Consume(&consumable, *pad_pattern);
+}
+
+bool ConsumeIntPattern(absl::string_view& consumable) {
+  static LazyRE2 int_pattern = {R"([-]?\d+)"};
+  return RE2::Consume(&consumable, *int_pattern);
+}
+
+bool ConsumeNegativeInfPattern(absl::string_view& consumable) {
+  static LazyRE2 neg_inf = {"-inf"};
+  return RE2::Consume(&consumable, *neg_inf);
+}
+
+bool ConsumeNegativeNanPattern(absl::string_view& consumable) {
+  static LazyRE2 neg_nan = {"-nan"};
+  return RE2::Consume(&consumable, *neg_nan);
+}
+
+}  // namespace
+
 // Lex integer and floating-point values, -inf, and patterns for dim labels,
 // dxd (e.g. 1x2x3), and pad.
 //
@@ -393,66 +435,48 @@ TokKind HloLexer::LexPercent() {
 //   [-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?(x[-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?)*
 // int ::=  [-]?[0-9]+
 // negative inf ::= '-inf'
-TokKind HloLexer::LexNumberOrPattern() {
+TokKind HloLexer::LexNumberOrPattern(uint64_t skip_mask) {
   absl::string_view consumable = StringViewFromPointers(
       token_state_.token_start, buf_.data() + buf_.size());
-  static LazyRE2 float_pattern = {
-      R"([-]?((\d+|\d+[.]\d*|\d*[.]\d+)([eE][+-]?\d+))|[-]?(\d+[.]\d*|\d*[.]\d+))"};
-  if (RE2::Consume(&consumable, *float_pattern)) {
+  if (!(skip_mask & (1ULL << static_cast<int>(TokKind::kDecimal))) &&
+      ConsumeFloatPattern(consumable)) {
     current_ptr_ = consumable.data();
     CHECK(absl::SimpleAtod(std::string(token_state_.token_start, current_ptr_),
                            &token_state_.decimal_val));
     return TokKind::kDecimal;
   }
 
-  static LazyRE2 dim_labels_pattern = {
-      R"([0-9bf?]{2,}_[0-9io?]{2,}->[0-9bf?]{2,})"};
-  static LazyRE2 dxd_pattern = {R"([0-9]+(x[0-9]+)+)"};
-  static LazyRE2 pad_pattern = {
-      R"([-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?(x[-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?)*)"};
-
-  if (RE2::Consume(&consumable, *dim_labels_pattern)) {
+  if (!(skip_mask & (1ULL << static_cast<int>(TokKind::kDimLabels))) &&
+      ConsumeDimLabelsPattern(consumable)) {
     current_ptr_ = consumable.data();
     token_state_.str_val.assign(token_state_.token_start, current_ptr_);
     return TokKind::kDimLabels;
   }
 
-  if (RE2::Consume(&consumable, *dxd_pattern)) {
+  if (!(skip_mask & (1ULL << static_cast<int>(TokKind::kDxD))) &&
+      ConsumeDxDPattern(consumable)) {
     current_ptr_ = consumable.data();
     token_state_.str_val.assign(token_state_.token_start, current_ptr_);
     return TokKind::kDxD;
   }
 
-  if (RE2::Consume(&consumable, *pad_pattern)) {
+  if (!(skip_mask & (1ULL << static_cast<int>(TokKind::kPad))) &&
+      ConsumePadPattern(consumable)) {
     current_ptr_ = consumable.data();
     token_state_.str_val.assign(token_state_.token_start, current_ptr_);
     return TokKind::kPad;
   }
 
-  static LazyRE2 int_pattern = {R"([-]?\d+)"};
-  if (RE2::Consume(&consumable, *int_pattern)) {
-    current_ptr_ = consumable.data();
-    auto slice = StringViewFromPointers(token_state_.token_start, current_ptr_);
-    if (absl::SimpleAtoi(slice, &token_state_.int64_val)) {
-      return TokKind::kInt;
-    }
-    uint64_t uint64_val;
-    if (absl::SimpleAtoi(slice, &uint64_val)) {
-      token_state_.int64_val = absl::bit_cast<int64_t>(uint64_val);
-      return TokKind::kInt;
-    }
-    LOG(ERROR) << "Failed to parse int literal: " << slice;
-    return TokKind::kError;
+  if (LexInt64Impl() != TokKind::kError) {
+    return TokKind::kInt;
   }
 
-  static LazyRE2 neg_inf = {"-inf"};
-  if (RE2::Consume(&consumable, *neg_inf)) {
+  if (ConsumeNegativeInfPattern(consumable)) {
     current_ptr_ = consumable.data();
     return TokKind::kNegInf;
   }
 
-  static LazyRE2 neg_nan = {"-nan"};
-  if (RE2::Consume(&consumable, *neg_nan)) {
+  if (ConsumeNegativeNanPattern(consumable)) {
     current_ptr_ = consumable.data();
 
     std::optional<int64_t> payload;
@@ -467,6 +491,25 @@ TokKind HloLexer::LexNumberOrPattern() {
     return TokKind::kDecimal;
   }
 
+  return TokKind::kError;
+}
+
+TokKind HloLexer::LexInt64Impl() {
+  absl::string_view consumable = StringViewFromPointers(
+      token_state_.token_start, buf_.data() + buf_.size());
+  if (ConsumeIntPattern(consumable)) {
+    current_ptr_ = consumable.data();
+    auto slice = StringViewFromPointers(token_state_.token_start, current_ptr_);
+    if (absl::SimpleAtoi(slice, &token_state_.int64_val)) {
+      return TokKind::kInt;
+    }
+    uint64_t uint64_val;
+    if (absl::SimpleAtoi(slice, &uint64_val)) {
+      token_state_.int64_val = absl::bit_cast<int64_t>(uint64_val);
+      return TokKind::kInt;
+    }
+    LOG(ERROR) << "Failed to parse int literal: " << slice;
+  }
   return TokKind::kError;
 }
 

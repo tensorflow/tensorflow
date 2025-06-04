@@ -40,7 +40,7 @@ XlaCompiledCpuFunctionThunks::XlaCompiledCpuFunctionThunks(
 
   std::unique_ptr<xla::cpu::FunctionLibrary> function_library =
       std::make_unique<xla::cpu::AotCompiledFunctionLibrary>(
-          static_data.function_library_symbol_map_);
+          function_library_symbol_map());
 
   auto aot_compilation_result =
       xla::cpu::CpuAotCompilationResultThunks::FromString(

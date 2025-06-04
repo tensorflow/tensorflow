@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
-#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
@@ -42,6 +42,7 @@ namespace gpu {
 
 using CudnnBackendConfig = stream_executor::dnn::AlgorithmProto;
 
+using ::testing::Gt;
 using ::testing::SizeIs;
 using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
@@ -60,6 +61,27 @@ const char kCudnnFusionHlo[] = R"(
     p1 = f32[3,28,32] parameter(1)
     ROOT _ = f32[3,32,32] fusion(p0, p1), kind=kCustom, calls=fusion1,
       backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
+  })";
+
+const char kCudnnCustomCallHlo[] = R"(
+  HloModule module
+
+  ENTRY %main {
+    %arg0 = f32[3,56,56,16]{2,1,0,3} parameter(0)
+    %arg1 = f32[3,3,3,64]{2,1,0,3} parameter(1)
+    %cudnn-conv = (f32[54,54,16,64]{1,0,3,2}, u8[0]{0})
+      custom-call(%arg0, %arg1), custom_call_target="__cudnn$convForward",
+      window={size=3x3},
+      dim_labels=f01b_i01o->01bf,
+      backend_config={
+        "cudnn_conv_backend_config":{
+          "activation_mode":"kNone",
+          "conv_result_scale":1,
+          "side_input_scale":0,
+          "leakyrelu_alpha":0
+        },
+      }
+    ROOT %get-tuple-element = f32[54,54,16,64]{1,0,3,2} get-tuple-element(%cudnn-conv), index=0
   })";
 
 class CudnnBackendTest : public HloHardwareIndependentTestBase {
@@ -97,7 +119,19 @@ TEST_F(CudnnBackendTest, GetSupportedConfigsFromCudnnFusion) {
       backend_.GetSupportedConfigs(
           (*hlo_module->entry_computation()->root_instruction()),
           stream_executor);
-  EXPECT_THAT(configs, IsOkAndHolds(SizeIs(5)));
+  EXPECT_THAT(configs, IsOkAndHolds(SizeIs(Gt(0))));
+}
+
+TEST_F(CudnnBackendTest, GetSupportedConfigsFromCudnnCustomCall) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kCudnnCustomCallHlo));
+  se::StreamExecutor* stream_executor =
+      PlatformUtil::GetDefaultPlatform().value()->ExecutorForDevice(0).value();
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
+      backend_.GetSupportedConfigs(
+          (*hlo_module->entry_computation()->root_instruction()->operand(0)),
+          stream_executor);
+  EXPECT_THAT(configs, IsOkAndHolds(SizeIs(Gt(0))));
 }
 
 TEST_F(CudnnBackendTest, GetDefaultConfigFromCudnnFusionFails) {

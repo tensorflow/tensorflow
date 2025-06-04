@@ -35,7 +35,7 @@ enum class GPUCommunicationType {
 };
 
 absl::StatusOr<GPUCommunicationType> CommunicationType(
-    const HloCollectiveInstruction& instr,
+    int num_devices_per_host, const HloCollectiveInstruction& instr,
     const se::GpuComputeCapability& gpu_version);
 
 // Returns true if instruction is a synchronous collective op.

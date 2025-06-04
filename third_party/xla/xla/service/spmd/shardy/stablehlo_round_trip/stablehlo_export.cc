@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "xla/service/spmd/shardy/round_trip_common/export_named_computations.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_callback_custom_calls.h"
+#include "xla/service/spmd/shardy/stablehlo_round_trip/export_manual_reduction_collectives.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_ops.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_shardings.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/shard_map_export.h"
@@ -30,6 +31,7 @@ namespace xla {
 namespace sdy {
 
 void addStablehloExportPipeline(mlir::OpPassManager& pm) {
+  pm.addPass(createStablehloExportManualReductionCollectivesPass());
   // This pass converts `sdy.constant` (which isn't foldable) into
   // `stablehlo.constant` (which is foldable), therefore greedy pattern
   // rewriters shouldn't be applied before converting to HLO as they apply

@@ -48,20 +48,6 @@ using TensorIdMap = absl::flat_hash_map<const HloInstruction*, uint32_t>;
 // XLA <-> XNNPACK type conversion library.
 //===----------------------------------------------------------------------===//
 
-static absl::StatusOr<xnn_datatype> XnnDatatype(const PrimitiveType& type) {
-  switch (type) {
-    case BF16:
-      return xnn_datatype_bf16;
-    case F16:
-      return xnn_datatype_fp16;
-    case F32:
-      return xnn_datatype_fp32;
-    default:
-      return InvalidArgument("Unsupported XNNPACK data type: %s",
-                             primitive_util::LowercasePrimitiveTypeName(type));
-  }
-}
-
 static absl::StatusOr<xnn_unary_operator> XnnUnaryOperator(
     const HloOpcode& opcode) {
   switch (opcode) {
@@ -216,8 +202,12 @@ static absl::StatusOr<uint32_t> DefineBinaryOp(xnn_subgraph_t subgraph,
   xnn_binary_params params = {-std::numeric_limits<float>::infinity(),
                               std::numeric_limits<float>::infinity()};
 
+  // In XLA, broadcasts are explicit ops, allowing XNNPACK to assume there is no
+  // broadcasting in the elementwise operation itself, which simplifies data
+  // dependencies.
+  const uint32_t flags = XNN_FLAG_NO_BROADCAST;
   XNN_RETURN_IF_ERROR(xnn_define_binary(subgraph, binary_op, &params, lhs, rhs,
-                                        out, /*flags=*/0));
+                                        out, /*flags=*/flags));
 
   return out;
 }
@@ -250,12 +240,17 @@ static absl::StatusOr<uint32_t> DefineBatchMatMul(xnn_subgraph_t subgraph,
   VLOG(3) << absl::StreamFormat("  tensors: lhs=%d, rhs=%d, out=%d", lhs, rhs,
                                 out);
 
+  // In XLA, broadcasts are explicit ops, allowing XNNPACK to assume there is no
+  // broadcasting in the elementwise operation itself, which simplifies data
+  // dependencies.
+  uint32_t flags = XNN_FLAG_NO_BROADCAST;
   // IsXnnDotSupported has verified that rhs_contracting_dimensions has size 1.
-  bool rhs_canonical =
-      dnums.rhs_contracting_dimensions(0) == dnums.rhs_batch_dimensions_size();
-  XNN_RETURN_IF_ERROR(xnn_define_batch_matrix_multiply(
-      subgraph, lhs, rhs, out,
-      /*flags=*/rhs_canonical ? 0 : XNN_FLAG_TRANSPOSE_B));
+  if (dnums.rhs_contracting_dimensions(0) !=
+      dnums.rhs_batch_dimensions_size()) {
+    flags |= XNN_FLAG_TRANSPOSE_B;
+  }
+  XNN_RETURN_IF_ERROR(xnn_define_batch_matrix_multiply(subgraph, lhs, rhs, out,
+                                                       /*flags=*/flags));
 
   return out;
 }

@@ -3265,13 +3265,8 @@ absl::StatusOr<bool> ShardingPropagation::Run(
             inst->copy_sharding(sharded_inst);
           }
         }
-        if (instruction->opcode() == HloOpcode::kWhile) {
-          computation_map[instruction->while_body()] = instruction;
-          computation_map[instruction->while_condition()] = instruction;
-        } else {
-          for (HloComputation* c : instruction->called_computations()) {
-            computation_map[c] = instruction;
-          }
+        for (HloComputation* c : instruction->called_computations()) {
+          computation_map[c] = instruction;
         }
       }
     }

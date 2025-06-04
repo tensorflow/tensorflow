@@ -28,6 +28,7 @@ package_group(
         "//third_party/gxlang/...",
         "//third_party/openxla_pjrt_plugin/...",
         "//third_party/py/jax/...",
+        "//third_party/torch_tpu/...",
     ],
 )
 
@@ -453,10 +454,24 @@ xla_cc_test(
 
 cc_library(
     name = "pjrt_common",
+    srcs = ["pjrt_common.cc"],
     hdrs = ["pjrt_common.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
+        "//xla/pjrt/proto:pjrt_value_type_proto_cc",
         "//xla/tsl/lib/gtl:int_type",
+    ],
+)
+
+xla_cc_test(
+    name = "pjrt_common_test",
+    srcs = ["pjrt_common_test.cc"],
+    deps = [
+        ":pjrt_common",
+        "//xla/pjrt/proto:pjrt_value_type_proto_cc",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -707,6 +722,7 @@ cc_library(
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
         "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
+        "//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_export",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
