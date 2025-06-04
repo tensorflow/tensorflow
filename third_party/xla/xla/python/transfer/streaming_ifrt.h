@@ -155,6 +155,7 @@ class PjRtBufferEntry : public PullTable::Entry {
   struct BufferRef {
     std::shared_ptr<xla::PjRtBuffer> buffer;
     size_t buf_size;
+    xla::PjRtFuture<> ready_future;
   };
   explicit PjRtBufferEntry(std::vector<BufferRef> arrs,
                            std::shared_ptr<PremappedCopierState> state,
