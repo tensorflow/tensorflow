@@ -1,0 +1,11 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize \
+// RUN:   -xla-gpu-test-transform-loops -xla-lower-tensors | FileCheck %s
+
+fusion {
+  p0 = f8e4m3fn[23,42]{1,0} parameter(0)
+  p1 = f8e4m3fn[42,1]{1,0} parameter(1)
+  ROOT %dot = f8e4m3fn[23,1]{1,0} dot(p0, p1),
+   lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+// CHECK: arith.bitcast %{{.*}} : i8 to f8E4M3FN
+// CHECK: arith.bitcast %{{.*}} : f8E4M3FN to i8

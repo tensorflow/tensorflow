@@ -383,8 +383,12 @@ struct RewriteTensorExtract : OpRewritePattern<mlir::tensor::ExtractOp> {
           b.create<mlir::arith::SelectOp>(is_low_nibble, load, high_value));
     }
 
-    rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(op, op.getType(),
-                                                            load);
+    if (op.getType().isIntOrFloat()) {
+      rewriter.replaceOpWithNewOp<arith::BitcastOp>(op, op.getType(), load);
+    } else {
+      rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(op, op.getType(),
+                                                              load);
+    }
     return success();
   }
 };
@@ -511,8 +515,10 @@ struct RewriteTensorInsert : OpRewritePattern<mlir::tensor::InsertOp> {
       mlir::LLVMTypeConverter converter(getContext());
       auto llvm_type = converter.convertType(scalar_value.getType());
       scalar_value =
-          b.create<UnrealizedConversionCastOp>(llvm_type, scalar_value)
-              .getResult(0);
+          scalar_value.getType().isIntOrFloat()
+              ? b.create<arith::BitcastOp>(llvm_type, scalar_value)
+              : b.create<UnrealizedConversionCastOp>(llvm_type, scalar_value)
+                    .getResult(0);
       b.create<ml::StoreOp>(scalar_value, gep);
       op.replaceAllUsesWith(op.getDest());
     }
