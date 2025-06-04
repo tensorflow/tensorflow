@@ -3413,9 +3413,14 @@ TfrtGpuExecutable::TfrtGpuExecutable(
 absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
     const ExecuteOptions& options, bool fill_future, TfrtGpuDevice* device) {
-  tsl::profiler::TraceMeProducer activity("TfrtGpuExecutable::ExecuteHelper",
-                                          tsl::profiler::ContextType::kPjRt,
-                                          options.launch_id);
+  tsl::profiler::TraceMeProducer activity(
+      [&] {
+        return tsl::profiler::TraceMeEncode("TfrtGpuExecutable::ExecuteHelper",
+                                            {{"launch_id", options.launch_id},
+                                             {"device_id", device->id()},
+                                             {"name", name()}});
+      },
+      tsl::profiler::ContextType::kPjRt, options.launch_id);
 
   std::shared_ptr<DeviceAssignment> device_assignment;
   if (device == nullptr) {
@@ -3689,15 +3694,15 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
                 << ", launch_id: " << launch_id << ", replica: " << replica
                 << ", device: " << device->DebugString();
 
-        tsl::profiler::TraceMeProducer producer(
+        tsl::profiler::TraceMeConsumer producer(
             [&] {
               return tsl::profiler::TraceMeEncode(
                   "execute_fn", {
-                                    {"launch_id", std::to_string(launch_id)},
+                                    {"launch_id", launch_id},
                                     {"device_id", device->id()},
                                 });
             },
-            tsl::profiler::ContextType::kTfExecutor, launch_id);
+            tsl::profiler::ContextType::kPjRt, launch_id);
 
         auto set_error = [&](absl::Status status) {
           for (auto& output_buffer : output_buffers) {
@@ -3862,7 +3867,14 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
        input_buffer_sizes_in_bytes(
            input_buffer_sizes_in_bytes_[executable_idx])]() mutable {
         tsl::profiler::TraceMeConsumer activity(
-            "prepare_inputs", tsl::profiler::ContextType::kPjRt, launch_id);
+            [&] {
+              return tsl::profiler::TraceMeEncode(
+                  "prepare_inputs", {
+                                        {"launch_id", launch_id},
+                                        {"device_id", device->id()},
+                                    });
+            },
+            tsl::profiler::ContextType::kPjRt, launch_id);
 
         auto set_error = [&](absl::Status status) {
           complete_event.SetError(status);
