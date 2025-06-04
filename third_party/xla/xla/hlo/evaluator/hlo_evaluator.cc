@@ -1241,14 +1241,14 @@ absl::Status HloEvaluator::EvaluateInternal(
             /*recursively_evaluate_nonconstant_operands=*/true));
         // Except for the above and following cases, we do not support handling
         // unknown operands for other HLOs. So mark the result as unknown.
-        if ((!GetEvaluatedLiteralFor(operand).IsKnown() &&
-             instruction->opcode() != HloOpcode::kCopy &&
+        if ((instruction->opcode() != HloOpcode::kCopy &&
              instruction->opcode() != HloOpcode::kCopyStart &&
              instruction->opcode() != HloOpcode::kCopyDone &&
              instruction->opcode() != HloOpcode::kAsyncStart &&
              instruction->opcode() != HloOpcode::kAsyncUpdate &&
              instruction->opcode() != HloOpcode::kAsyncDone &&
-             instruction->opcode() != HloOpcode::kWhile)) {
+             instruction->opcode() != HloOpcode::kWhile &&
+             !GetEvaluatedLiteralFor(operand).IsKnown())) {
           SetEvaluatedLiteralFor(instruction,
                                  Literal::CreateFromShapeWithUnknownLeafArrays(
                                      instruction->shape()));
@@ -1601,23 +1601,21 @@ absl::Status HloEvaluator::HandleCompare(const HloInstruction* compare) {
 
 absl::Status HloEvaluator::HandleTuple(const HloInstruction* tuple) {
   std::vector<const Literal*> operand_literals;
-  std::vector<Literal> operand_literal_values;
   if (!visitor_shape_index_.empty()) {
     // We only need to evaluate tuple at visitor_shape_index_. The other
     // operands might not have been evaluated, so mark the other operands as
     // undetermined.
     int64_t tuple_index = visitor_shape_index_.front();
-    operand_literal_values.resize(tuple->operand_count());
     for (int operand_index = 0; operand_index < tuple->operand_count();
          ++operand_index) {
       if (operand_index == tuple_index) {
         operand_literals.push_back(
             &GetEvaluatedLiteralFor(tuple->operand(operand_index)));
       } else {
-        operand_literal_values[operand_index] =
+        operand_literal_values_.push_back(std::make_unique<Literal>(
             Literal::CreateFromShapeWithUndeterminedLeafArrays(
-                ShapeUtil::GetSubshape(tuple->shape(), {operand_index}));
-        operand_literals.push_back(&operand_literal_values[operand_index]);
+                ShapeUtil::GetSubshape(tuple->shape(), {operand_index}))));
+        operand_literals.push_back(operand_literal_values_.back().get());
       }
     }
   } else {
@@ -1635,12 +1633,11 @@ absl::Status HloEvaluator::HandleTuple(const HloInstruction* tuple) {
   }
   Literal new_result = Literal::CreateFromShapeWithUndeterminedLeafArrays(
       ShapeUtil::MakeTupleShapeWithPtrs(element_shapes));
-  for (int i = 0, end = operand_literals.size(); i < end; ++i) {
-    TF_RETURN_IF_ERROR(
-        new_result.CopyFrom(*operand_literals[i], /*dest_shape_index=*/{i}));
-  }
-
   if (state_.has_evaluated(tuple)) {
+    for (int i = 0, end = operand_literals.size(); i < end; ++i) {
+      TF_RETURN_IF_ERROR(
+          new_result.CopyFrom(*operand_literals[i], /*dest_shape_index=*/{i}));
+    }
     CHECK(new_result.IsDetermined(visitor_shape_index_));
     Literal literal = Literal::CreateFromShape(new_result.shape());
     TF_RETURN_IF_ERROR(
@@ -1649,7 +1646,14 @@ absl::Status HloEvaluator::HandleTuple(const HloInstruction* tuple) {
                          /*src_shape_index=*/visitor_shape_index_));
     SetEvaluatedLiteralFor(tuple, std::move(literal));
   } else {
-    SetEvaluatedLiteralFor(tuple, std::move(new_result));
+    std::vector<ShapeIndexPair> shape_index_pairs;
+    for (int i = 0, end = operand_literals.size(); i < end; ++i) {
+      shape_index_pairs.push_back(
+          ShapeIndexPair{.dst_shape_index = {i}, .src_shape_index = {}});
+    }
+    SetEvaluatedLazyLiteralFor(tuple, std::move(operand_literals),
+                               std::move(new_result),
+                               std::move(shape_index_pairs));
   }
   return absl::OkStatus();
 }
@@ -3229,10 +3233,9 @@ absl::Status HloEvaluator::HandleGetTupleElement(
 
   Literal literal =
       Literal(ShapeUtil::GetTupleElementShape(operand->shape(), index));
-  TF_RETURN_IF_ERROR(literal.CopyFrom(operand_tuple_literal,
-                                      /*dest_shape_index=*/{},
-                                      /*src_shape_index=*/{index}));
-  SetEvaluatedLiteralFor(get_tuple_element, std::move(literal));
+  SetEvaluatedLazyLiteralFor(
+      get_tuple_element, {&operand_tuple_literal}, std::move(literal),
+      {ShapeIndexPair{.dst_shape_index = {}, .src_shape_index = {index}}});
   return absl::OkStatus();
 }
 
@@ -3618,8 +3621,11 @@ absl::StatusOr<Literal> TryParseAndEvaluateWhileInductionVar(
 absl::Status HloEvaluator::HandleWhile(const HloInstruction* while_hlo) {
   const HloComputation* cond_comp = while_hlo->while_condition();
   const HloComputation* body_comp = while_hlo->while_body();
+  const HloInstruction* while_operand = while_hlo->operand(0);
   // Initialize the loop carried valued with the input to the While instruction.
-  auto lcv = GetEvaluatedLiteralFor(while_hlo->operand(0)).Clone();
+  Literal lcv = enable_partial_evaluation_
+                    ? ExtractEvaluatedLiteralFor(while_operand)
+                    : GetEvaluatedLiteralFor(while_operand).Clone();
   if (!lcv.IsKnown()) {
     std::optional<ParsedWhileLoop> parsed_while_loop =
         PatternMatchParseWhileLoop(while_hlo,

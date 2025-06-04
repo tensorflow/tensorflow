@@ -402,10 +402,24 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
       return *state_.arg(hlo->parameter_number());
     }
 
-    const Literal* literal = state_.find_evaluated(hlo);
+    LazyLiteral* literal = state_.find_evaluated(hlo);
     CHECK(literal != nullptr)
         << "could not find evaluated value for: " << hlo->ToString();
-    return *literal;
+    return literal->EvaluatedLiteral();
+  }
+
+  bool IsLazyWatingLiteralFor(const HloInstruction* hlo) {
+    if (hlo->IsConstant()) {
+      return false;
+    }
+    if (hlo->opcode() == HloOpcode::kParameter && state_.has_args()) {
+      return false;
+    }
+
+    LazyLiteral* literal = state_.find_evaluated(hlo);
+    CHECK(literal != nullptr)
+        << "could not find evaluated value for: " << hlo->ToString();
+    return !literal->IsEvaluated();
   }
 
   // Returns the already-evaluated literal result for the instruction and
@@ -434,7 +448,7 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
       return true;
     }
 
-    const Literal* literal = state_.find_evaluated(hlo);
+    const LazyLiteral* literal = state_.find_evaluated(hlo);
     if (literal == nullptr) {
       return false;
     }
@@ -452,6 +466,86 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   void SetEvaluatedLiteralFor(const HloInstruction* hlo, Literal literal) {
     state_.set_evaluated(hlo, std::move(literal));
   }
+
+  struct ShapeIndexPair {
+    ShapeIndex dst_shape_index;
+    ShapeIndex src_shape_index;
+  };
+
+  void SetEvaluatedLazyLiteralFor(
+      const HloInstruction* hlo, std::vector<const Literal*> reference_literals,
+      Literal dummy_literal, std::vector<ShapeIndexPair> shape_index_pairs) {
+    state_.set_evaluated_lazy(hlo, reference_literals, std::move(dummy_literal),
+                              std::move(shape_index_pairs));
+  }
+
+  class LazyLiteral {
+   public:
+    explicit LazyLiteral(Literal literal)
+        : evaluated_literal_(std::make_unique<Literal>(std::move(literal))) {
+      is_evaluated_ = true;
+    }
+
+    LazyLiteral(std::vector<const Literal*> reference_literals,
+                Literal dummy_literal,
+                std::vector<ShapeIndexPair> shape_index_pairs)
+        : evaluated_literal_(
+              std::make_unique<Literal>(std::move(dummy_literal))),
+          reference_literals_(reference_literals),
+          shape_index_pairs_(std::move(shape_index_pairs)) {
+      is_evaluated_ = false;
+      BuildReverseShapeIndexMap();
+    }
+
+    bool IsEvaluated() const { return is_evaluated_; }
+
+    Literal& GetEvaluatedLiteral() {
+      if (is_evaluated_) {
+        return *evaluated_literal_;
+      }
+      CHECK_EQ(reference_literals_.size(), shape_index_pairs_.size());
+      for (int i = 0; i < reference_literals_.size(); ++i) {
+        TF_CHECK_OK(evaluated_literal_->CopyFrom(
+            *reference_literals_[i],
+            /*dest_shape_index=*/shape_index_pairs_[i].dst_shape_index,
+            /*src_shape_index=*/shape_index_pairs_[i].src_shape_index));
+      }
+      is_evaluated_ = true;
+      return *evaluated_literal_;
+    }
+
+    const Literal& EvaluatedLiteral() { return GetEvaluatedLiteral(); }
+
+    bool IsDetermined(const ShapeIndex& shape_index) const {
+      if (is_evaluated_) {
+        return evaluated_literal_->IsDetermined(shape_index);
+      }
+      if (!reverse_shape_index_map_.contains(shape_index)) {
+        LOG(WARNING) << "Shape index " << shape_index.ToString()
+                     << " not found in reverse shape index map. This is likely "
+                        "an unexpected condition for symbolic evaluations.";
+        return false;
+      }
+      int reverse_idx = reverse_shape_index_map_.at(shape_index);
+      const ShapeIndex& src_shape_index =
+          shape_index_pairs_.at(reverse_idx).src_shape_index;
+      return reference_literals_.at(reverse_idx)->IsDetermined(src_shape_index);
+    }
+
+   private:
+    void BuildReverseShapeIndexMap() {
+      for (int i = 0; i < shape_index_pairs_.size(); ++i) {
+        auto& shape_index_pair = shape_index_pairs_[i];
+        reverse_shape_index_map_[shape_index_pair.dst_shape_index] = i;
+      }
+    }
+
+    std::unique_ptr<Literal> evaluated_literal_;
+    std::vector<const Literal*> reference_literals_;
+    std::vector<ShapeIndexPair> shape_index_pairs_;
+    absl::flat_hash_map<const ShapeIndex, int> reverse_shape_index_map_;
+    bool is_evaluated_;
+  };
 
   // EvaluationState encapsulates the state of an in-progress evaluation. Once
   // evaluation is complete the state is cleaned up.
@@ -482,12 +576,29 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
 
     // Sets the evaluated literal for the given instruction.
     void set_evaluated(const HloInstruction* hlo, Literal literal) {
-      evaluated_[hlo] = std::move(literal);
+      // Erase the old entry if it exists to avoid issues with assignment
+      // operators and to ensure we are replacing the content.
+      evaluated_.erase(hlo);
+      // Emplace the new entry, constructing LazyLiteral in place.
+      // This uses the constructor: LazyLiteral(Literal literal_arg)
+      // by forwarding hlo and std::move(literal) to the pair constructor,
+      // which in turn constructs LazyLiteral from std::move(literal).
+      evaluated_.emplace(hlo, std::move(literal));
+    }
+
+    void set_evaluated_lazy(const HloInstruction* hlo,
+                            std::vector<const Literal*> reference_literals,
+                            Literal dummy_literal,
+                            std::vector<ShapeIndexPair> shape_index_pairs) {
+      evaluated_.erase(hlo);
+      evaluated_.emplace(
+          hlo, LazyLiteral(reference_literals, std::move(dummy_literal),
+                           std::move(shape_index_pairs)));
     }
 
     // Returns the evaluated literal for the given instruction, or nullptr if
     // the instruction has not been evaluated.
-    Literal* find_evaluated(const HloInstruction* hlo) {
+    LazyLiteral* find_evaluated(const HloInstruction* hlo) {
       if (auto it = evaluated_.find(hlo); it != evaluated_.end()) {
         return &it->second;
       }
@@ -501,7 +612,8 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
 
     // Extracts the evaluated literal for the given instruction and returns it.
     Literal extract_evaluated(const HloInstruction* hlo) {
-      return std::move(evaluated_.extract(hlo).mapped());
+      LazyLiteral literal = std::move(evaluated_.extract(hlo).mapped());
+      return std::move(literal.GetEvaluatedLiteral());
     }
 
    private:
@@ -519,7 +631,7 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
     // TODO(b/35950897): have better memory management here to free instructions
     // that are no longer a parent for any other subsequent instruction in
     // post-ordering.
-    absl::node_hash_map<const HloInstruction*, Literal> evaluated_;
+    absl::node_hash_map<const HloInstruction*, LazyLiteral> evaluated_;
   };
 
   EvaluationState& state() { return state_; }
@@ -599,7 +711,7 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault {
   // TODO(ezhulenev): Move partial evaluation members to EvaluationState.
   ShapeIndex visitor_shape_index_;
   bool enable_partial_evaluation_ = false;
-
+  std::vector<std::unique_ptr<Literal>> operand_literal_values_;
   // Mutable evaluation state that holds the state of an in-progress evaluation.
   EvaluationState state_;
 
