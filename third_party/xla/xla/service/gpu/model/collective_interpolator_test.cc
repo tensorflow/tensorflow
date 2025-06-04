@@ -433,6 +433,18 @@ INSTANTIATE_TEST_SUITE_P(
     CollectiveInterpolationTestInstantiation, CollectiveInterpolationTest,
     ValuesIn<ParametrizedTestCase>({
         {
+            /*test_name=*/"AR_rail_aligned_exact_nodes",
+            /*spec=*/
+            {
+                /*opcode=*/HloOpcode::kAllReduce,
+                /*comm=*/
+                GPUCommunicationType::RAIL_ALIGNED,
+                /*tensor_size=*/1024,
+                /*num_nodes=*/2,
+            },
+            /*expected_duration=*/absl::Seconds(1),
+        },
+        {
             /*test_name=*/"AR_rail_aligned_extrapolate_nodes",
             /*spec=*/
             {
@@ -479,6 +491,18 @@ INSTANTIATE_TEST_SUITE_P(
                 /*num_nodes=*/2,
             },
             /*expected_duration=*/absl::Milliseconds(1250),
+        },
+        {
+            /*test_name=*/"AR_nonrail_aligned_exact_nodes",
+            /*spec=*/
+            {
+                /*opcode=*/HloOpcode::kAllReduce,
+                /*comm=*/
+                GPUCommunicationType::NON_RAIL_ALIGNED,
+                /*tensor_size=*/1024,
+                /*num_nodes=*/2,
+            },
+            /*expected_duration=*/absl::Seconds(2),
         },
         {
             /*test_name=*/"AR_nonrail_aligned_extrapolate_nodes",
@@ -589,6 +613,18 @@ INSTANTIATE_TEST_SUITE_P(
             /*expected_duration=*/absl::Milliseconds(625),
         },
         {
+            /*test_name=*/"RS_rail_aligned_exact_nodes",
+            /*spec=*/
+            {
+                /*opcode=*/HloOpcode::kReduceScatter,
+                /*comm=*/
+                GPUCommunicationType::RAIL_ALIGNED,
+                /*tensor_size=*/1024,
+                /*num_nodes=*/2,
+            },
+            /*expected_duration=*/absl::Seconds(1),
+        },
+        {
             /*test_name=*/"RS_rail_aligned_extrapolate_nodes",
             /*spec=*/
             {
@@ -635,6 +671,18 @@ INSTANTIATE_TEST_SUITE_P(
                 /*num_nodes=*/2,
             },
             /*expected_duration=*/absl::Milliseconds(1250),
+        },
+        {
+            /*test_name=*/"RS_nonrail_aligned_exact_nodes",
+            /*spec=*/
+            {
+                /*opcode=*/HloOpcode::kReduceScatter,
+                /*comm=*/
+                GPUCommunicationType::NON_RAIL_ALIGNED,
+                /*tensor_size=*/1024,
+                /*num_nodes=*/2,
+            },
+            /*expected_duration=*/absl::Seconds(2),
         },
         {
             /*test_name=*/"RS_nonrail_aligned_extrapolate_nodes",
@@ -733,6 +781,18 @@ INSTANTIATE_TEST_SUITE_P(
             /*expected_duration=*/absl::Milliseconds(625),
         },
         {
+            /*test_name=*/"AG_rail_aligned_exact_nodes",
+            /*spec=*/
+            {
+                /*opcode=*/HloOpcode::kAllGather,
+                /*comm=*/
+                GPUCommunicationType::RAIL_ALIGNED,
+                /*tensor_size=*/1024,
+                /*num_nodes=*/2,
+            },
+            /*expected_duration=*/absl::Seconds(1),
+        },
+        {
             /*test_name=*/"AG_rail_aligned_extrapolate_nodes",
             /*spec=*/
             {
@@ -779,6 +839,18 @@ INSTANTIATE_TEST_SUITE_P(
                 /*num_nodes=*/2,
             },
             /*expected_duration=*/absl::Milliseconds(1250),
+        },
+        {
+            /*test_name=*/"AG_nonrail_aligned_exact_nodes",
+            /*spec=*/
+            {
+                /*opcode=*/HloOpcode::kAllGather,
+                /*comm=*/
+                GPUCommunicationType::NON_RAIL_ALIGNED,
+                /*tensor_size=*/1024,
+                /*num_nodes=*/2,
+            },
+            /*expected_duration=*/absl::Seconds(2),
         },
         {
             /*test_name=*/"AG_nonrail_aligned_extrapolate_nodes",
