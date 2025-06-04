@@ -67,7 +67,7 @@ int64_t CountSplitAllegianceParental(const HloGumgraph& left,
                                      const HloGumgraph& right,
                                      const HloGumgraphMappings& mappings) {
   int64_t count = 0;
-  for (const auto it : mappings.left_to_right_instruction_map.left) {
+  for (const auto& it : mappings.left_to_right_instruction_map.left) {
     if (it.first->children.size() != it.second->children.size()) {
       continue;
     }
