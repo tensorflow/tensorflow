@@ -87,7 +87,7 @@ absl::StatusOr<SingleBufferCopyPlan> SetupTransferDestList(
 
   results.dests.push_back(MakeDmaDestination(atm, 0, copy_size));
   TF_ASSIGN_OR_RETURN(auto arr,
-                   ifrt_client->CreatePjRtArray(atm->RetrieveBuffer(0)));
+                      ifrt_client->CreatePjRtArray(atm->RetrieveBuffer(0)));
   results.arrays.push_back(std::move(arr));
   return results;
 }
@@ -144,10 +144,11 @@ TEST(PremappedCopierState, RoundTrip) {
 
   std::vector<int32_t> result;
   result.resize(test_pattern.size());
-  TF_ASSERT_OK(pull_result_arr
-                ->CopyToHostBuffer(result.data(), std::nullopt,
-                                   xla::ifrt::ArrayCopySemantics::kReuseInput)
-                .Await());
+  TF_ASSERT_OK(
+      pull_result_arr
+          ->CopyToHostBuffer(result.data(), std::nullopt,
+                             xla::ifrt::ArrayCopySemantics::kReuseInput)
+          .Await());
   EXPECT_EQ(result, test_pattern);
 }
 

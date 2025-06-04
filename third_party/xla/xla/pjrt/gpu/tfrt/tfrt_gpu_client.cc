@@ -2171,40 +2171,39 @@ TfrtGpuClient::BufferFromHostLiteral(const LiteralSlice& literal,
   // It is OK to capture `buffer` pointer because the `output_buffer` can't
   // be deleted until all the usage holds have gone away.
   VLOG(4) << "BufferFromHostLiteral for device_buffer: " << device_buffer;
-  EnqueueWork(non_blocking_thread_pool_.get(),
-              [literal, av = avs[0], device_buffer, shape, this,
-               device = tsl::down_cast<TfrtGpuDevice*>(device),
-               usage_event = std::move(usage_event)]() mutable {
-                tsl::profiler::TraceMe traceme(
-                    "BufferFromHostLiteral::H2D_Dispatch");
-                TransferManager* transfer_manager =
-                    xla_client()->backend().transfer_manager();
+  EnqueueWork(
+      non_blocking_thread_pool_.get(),
+      [literal, av = avs[0], device_buffer, shape, this,
+       device = tsl::down_cast<TfrtGpuDevice*>(device),
+       usage_event = std::move(usage_event)]() mutable {
+        tsl::profiler::TraceMe traceme("BufferFromHostLiteral::H2D_Dispatch");
+        TransferManager* transfer_manager =
+            xla_client()->backend().transfer_manager();
 
-                auto stream = device->stream();
+        auto stream = device->stream();
 
-                const auto& buffer = device_buffer->buffer();
-                if (literal.shape().IsArray()) {
-                  CHECK_EQ(literal.size_bytes(), buffer->size_bytes());
-                }
+        const auto& buffer = device_buffer->buffer();
+        if (literal.shape().IsArray()) {
+          CHECK_EQ(literal.size_bytes(), buffer->size_bytes());
+        }
 
-                ShapedBuffer shaped_buffer =
-                    buffer->AsShapedBuffer(shape, device);
+        ShapedBuffer shaped_buffer = buffer->AsShapedBuffer(shape, device);
 
-                TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
-                    stream, literal, shaped_buffer));
+        TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
+            stream, literal, shaped_buffer));
 
-                absl::Status status;
-                {
-                  tsl::profiler::TraceMe traceme("BlockHostUntilDone");
-                  status = stream->BlockHostUntilDone();
-                }
-                CHECK_OK(status) << "Failed to block host until done";
-                VLOG(3) << "BufferFromHostLiteral done for device_buffer: "
-                        << device_buffer << " AsyncValue: " << av.get();
+        absl::Status status;
+        {
+          tsl::profiler::TraceMe traceme("BlockHostUntilDone");
+          status = stream->BlockHostUntilDone();
+        }
+        CHECK_OK(status) << "Failed to block host until done";
+        VLOG(3) << "BufferFromHostLiteral done for device_buffer: "
+                << device_buffer << " AsyncValue: " << av.get();
 
-                av->SetStateConcrete();
-                usage_event.SetStateConcrete();
-              });
+        av->SetStateConcrete();
+        usage_event.SetStateConcrete();
+      });
   return std::unique_ptr<PjRtBuffer>(std::move(output_buffer));
 }
 
