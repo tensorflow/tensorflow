@@ -116,7 +116,7 @@ jobs:
       - name: Build Binaries
         id: build_binaries
         run: |
-           bash "${RESOLVED_SCRIPT_DIR}/build_binaries.sh"
+           python3 "${RESOLVED_SCRIPT_DIR}/build_binaries.py"
         env:
           OUTPUT_DIR: ${{ env.RESOLVED_OUTPUT_DIR }}
       - name: Prepare Benchmark Artifact
