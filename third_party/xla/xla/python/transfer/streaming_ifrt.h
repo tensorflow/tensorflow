@@ -77,7 +77,8 @@ struct DmaCopyChunk {
 
 // Copies into subdivisions of scratch asyncly in parallel calling on_done
 // sequentially when the copy has finished.
-class PremappedCopierState {
+class PremappedCopierState
+    : public std::enable_shared_from_this<PremappedCopierState> {
  public:
   PremappedCopierState(std::shared_ptr<absl::Span<uint8_t>> scratch,
                        size_t max_num_parallel_copies, size_t xfer_size);
