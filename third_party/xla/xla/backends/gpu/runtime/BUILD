@@ -1302,10 +1302,14 @@ cc_library(
     hdrs = ["replica_id_thunk.h"],
     deps = [
         ":thunk",
+        ":thunk_proto_cc",
         "//xla/service:buffer_assignment",
+        "//xla/service:computation_placer_hdr",
         "//xla/service:global_device_id",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -1463,6 +1467,22 @@ xla_cc_test(
         ":thunk",
         ":thunk_proto_cc",
         ":triangular_solve_thunk",
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/log:check",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:protobuf",
+    ],
+)
+
+xla_cc_test(
+    name = "replica_id_thunk_test",
+    srcs = ["replica_id_thunk_test.cc"],
+    deps = [
+        ":replica_id_thunk",
+        ":thunk",
+        ":thunk_proto_cc",
         "//xla/service:buffer_assignment",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:proto_matchers",
@@ -1879,6 +1899,7 @@ cc_library(
         ":copy_thunk",
         ":gemm_thunk",
         ":kernel_thunk",
+        ":replica_id_thunk",
         ":sequential_thunk",
         ":thunk",
         ":thunk_proto_cc",
