@@ -14,9 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 
-#include <array>
 #include <cstddef>
-#include <cstdint>
 #include <optional>
 #include <string>
 #include <tuple>
