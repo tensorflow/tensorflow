@@ -1006,6 +1006,7 @@ selects.config_setting_group(
 package_group(
     name = "internal",
     packages = [
+        "//cloud/tpu/multipod/pathways/...",
         "//devtools/python/indexer/...",
         "//learning/brain/keras/...",
         "//learning/brain/mlir/...",
