@@ -596,3 +596,9 @@ cc_library(
         "@com_google_googletest//:gtest_for_library",
     ],
 )
+
+cc_library(
+    name = "pjrt_c_api_tpu_internal",
+    hdrs = ["pjrt_c_api_tpu_internal.h"],
+    deps = [":pjrt_c_api_hdrs"],
+)
