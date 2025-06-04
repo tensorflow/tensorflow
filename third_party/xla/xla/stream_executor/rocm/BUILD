@@ -428,6 +428,7 @@ cc_library(
     deps = [
         ":hipsolver_wrapper",
         ":rocblas_wrapper",
+        ":rocm_platform_id",
         ":rocsolver_wrapper",
         "//xla:comparison_util",
         "//xla:util",
@@ -436,6 +437,7 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:gpu_solver_context",
         "//xla/stream_executor:stream",
+        "//xla/stream_executor/platform:platform_object_registry",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/memory",
@@ -443,6 +445,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@local_config_rocm//rocm:rocm_headers",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -829,6 +832,7 @@ cc_library(
         ":rocblas_plugin",
         ":rocm_helpers",
         ":rocm_platform",
+        ":rocm_solver_context",
         ":topk_kernel_rocm",
     ] + [":cub_sort_kernel_rocm_" + suffix for suffix in get_cub_sort_kernel_types()],
     alwayslink = 1,

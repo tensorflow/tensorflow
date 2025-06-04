@@ -71,58 +71,10 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
-#include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/ffi/api/c_api.h"
-#include "xla/ffi/attribute_map.h"
-#include "xla/ffi/ffi_api.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
-#include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_schedule.h"
-#include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/layout.h"
-#include "xla/layout_util.h"
-#include "xla/literal.h"
-#include "xla/mlir/utils/error_util.h"
-#include "xla/mlir_hlo/transforms/gpu_passes.h"
-#include "xla/primitive_util.h"
-#include "xla/service/buffer_assignment.h"
-#include "xla/service/call_graph.h"
-#include "xla/service/collective_ops_utils.h"
-#include "xla/service/custom_call_status.h"
-#include "xla/service/custom_call_target_registry.h"
-#include "xla/service/global_device_id.h"
-#include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/cublas_cudnn.h"
-#include "xla/service/gpu/gpu_constants.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
-#ifdef GOOGLE_CUDA
-#include "xla/stream_executor/cuda/cuda_solver_context.h"
-#endif  // GOOGLE_CUDA
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
-#include "xla/backends/gpu/runtime/topk.h"
-#include "xla/codegen/emitters/kernel_arguments.h"
-#include "xla/service/gpu/execution_stream_assignment.h"
-#include "xla/service/gpu/gpu_conv_runner.h"
-#include "xla/service/gpu/gpu_norm_runner.h"
-#include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/ir_emitter.h"
-#include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/gpu/ir_emitter_nested.h"
-#include "xla/service/gpu/kernel_reuse_cache.h"
-#include "xla/service/gpu/kernels/custom_kernel.h"
-#include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/model/tiled_hlo_computation.h"
-#include "xla/service/gpu/parallel_loop_emitter.h"
-#ifdef TENSORFLOW_USE_ROCM
-#include "xla/stream_executor/rocm/rocm_solver_context.h"
-#endif  // TENSORFLOW_USE_ROCM
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/all_gather_thunk.h"
 #include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/all_to_all_thunk.h"
@@ -156,9 +108,50 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/send_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/topk.h"
 #include "xla/backends/gpu/runtime/triangular_solve_thunk.h"
 #include "xla/backends/gpu/runtime/wait_for_streams_thunk.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
+#include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/ffi/api/c_api.h"
+#include "xla/ffi/attribute_map.h"
+#include "xla/ffi/ffi_api.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
+#include "xla/literal.h"
+#include "xla/mlir/utils/error_util.h"
+#include "xla/mlir_hlo/transforms/gpu_passes.h"
+#include "xla/primitive_util.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/call_graph.h"
+#include "xla/service/collective_ops_utils.h"
+#include "xla/service/custom_call_status.h"
+#include "xla/service/custom_call_target_registry.h"
+#include "xla/service/global_device_id.h"
+#include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/execution_stream_assignment.h"
+#include "xla/service/gpu/gpu_constants.h"
+#include "xla/service/gpu/gpu_conv_runner.h"
+#include "xla/service/gpu/gpu_norm_runner.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/ir_emitter.h"
+#include "xla/service/gpu/ir_emitter_context.h"
+#include "xla/service/gpu/ir_emitter_nested.h"
+#include "xla/service/gpu/kernel_reuse_cache.h"
+#include "xla/service/gpu/kernels/custom_kernel.h"
+#include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/model/tiled_hlo_computation.h"
+#include "xla/service/gpu/parallel_loop_emitter.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/triton_call.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
@@ -168,12 +161,17 @@ limitations under the License.
 #include "xla/service/llvm_ir/loop_emitter.h"
 #include "xla/service/llvm_ir/sort_util.h"
 #include "xla/service/name_uniquer.h"
+#include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
+#include "xla/stream_executor/gpu_solver_context.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
@@ -1050,16 +1048,22 @@ absl::Status IrEmitterUnnested::EmitCholeskyThunk(const HloInstruction* instr) {
         /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
   }
 
-#if GOOGLE_CUDA
-  auto solver_creator = stream_executor::CudaSolverContext::Create;
-#else
-  auto solver_creator = stream_executor::RocmSolverContext::Create;
-#endif
+  TF_ASSIGN_OR_RETURN(
+      se::Platform * platform,
+      PlatformUtil::GetPlatform(ir_emitter_context_->platform_name()));
+
+  TF_ASSIGN_OR_RETURN(
+      std::function<
+          absl::StatusOr<std::unique_ptr<stream_executor::GpuSolverContext>>()>
+          solver_creator,
+      stream_executor::PlatformObjectRegistry::GetGlobalRegistry()
+          .FindObject<stream_executor::GpuSolverContextFactory>(
+              platform->id()));
 
   thunks.push_back(std::make_unique<CholeskyThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), options, a_buffer,
       workspace_buffer, info_buffer, shape.element_type(), batch_size, n,
-      solver_creator));
+      std::move(solver_creator)));
 
   // Elide the sequential thunk if there's no copy.
   if (thunks.size() == 1) {

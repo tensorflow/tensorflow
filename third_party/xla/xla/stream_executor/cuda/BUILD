@@ -327,6 +327,7 @@ cc_library(
         "gpu",
     ],
     deps = [
+        ":cuda_platform_id",
         "//xla:comparison_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -334,6 +335,7 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:gpu_solver_context",
         "//xla/stream_executor:stream",
+        "//xla/stream_executor/platform:platform_object_registry",
         "//xla/tsl/cuda:cusolver",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
@@ -343,6 +345,7 @@ cc_library(
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1040,6 +1043,7 @@ cc_library(
         ":buffer_comparator_kernel_cuda",
         ":cublas_plugin",
         ":cuda_platform",
+        ":cuda_solver_context",
         ":cudnn_plugin",
         ":cufft_plugin",
         ":make_batch_pointers_kernel_cuda",
