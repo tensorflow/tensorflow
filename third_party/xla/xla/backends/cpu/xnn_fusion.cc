@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <utility>
 
+#include "xnnpack.h"
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -27,9 +28,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
@@ -130,6 +133,20 @@ absl::StatusOr<bool> IsXnnDotSupported(
   return dot_canonical_dims.lhs_canonical &&
          !dot_canonical_dims.lhs_column_major &&
          !dot_canonical_dims.rhs_column_major;
+}
+
+absl::StatusOr<xnn_datatype> XnnDatatype(const PrimitiveType& type) {
+  switch (type) {
+    case BF16:
+      return xnn_datatype_bf16;
+    case F16:
+      return xnn_datatype_fp16;
+    case F32:
+      return xnn_datatype_fp32;
+    default:
+      return InvalidArgument("Unsupported XNNPACK data type: %s",
+                             primitive_util::LowercasePrimitiveTypeName(type));
+  }
 }
 
 }  // namespace xla::cpu

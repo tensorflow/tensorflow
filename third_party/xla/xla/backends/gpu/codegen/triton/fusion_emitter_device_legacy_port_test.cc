@@ -898,10 +898,8 @@ e {
 // TODO(b/393299275): this test may have some value while Triton tiling
 // propagation is being replaced, but has little worth as a codegen test.
 // Consider moving this.
-// TODO(b/393299275): likely uncovered a bug in `NestGemmFusion`, where after
-// transformations and collapse of a dimension, broadcast dimensions are wrong.
 TEST_F(TritonGemmTest,
-       DISABLED_BroadcastsOfTriviallySizedContractingDimensionsAreSupported) {
+       BroadcastsOfTriviallySizedContractingDimensionsAreSupported) {
   constexpr absl::string_view kHloText = R"(
 f {
   a = f16[2] parameter(0)
@@ -1605,14 +1603,10 @@ ENTRY e {
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 }
 
-// TODO(b/393299275): symbolic tile analysis fails to derive a tile for one
-// outer parameter here. However, we shouldn't be deriving this tile anyway,
-// and the underlying indexing map is incorrect. This requires a fix in
-// symbolic tile derivation.
 // TODO(b/393299275): this should just be a fusion test and does not need to be
 // in the codegen directory.
 TEST_F(TritonGemmTestWithSplitK,
-       DISABLED_SplitKDoesNotBreakSlicedFragmentedContractingDimension) {
+       SplitKDoesNotBreakSlicedFragmentedContractingDimension) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f16[16,8,128]{2,1,0} parameter(0)
@@ -1629,8 +1623,8 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(kHloText));
   EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
+      GetNonBitcastRoot(module->entry_computation()),
+      GmockMatch(m::Fusion(m::Parameter(), m::Bitcast(m::Parameter()))
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
@@ -1638,7 +1632,8 @@ ENTRY e {
 
 // TODO(b/393299275): this should be rewritten to work on post-optimization HLO,
 // and potentially have an associated fusion test.
-TEST_F(TritonGemmTestWithSplitK, SplitKWithTrivialDimension) {
+// Disabled because pads are not supported in the new emitter yet.
+TEST_F(TritonGemmTestWithSplitK, DISABLED_SplitKWithTrivialDimension) {
   constexpr absl::string_view kHloText = R"(
 ENTRY entry_computation {
   p0 = f16[1001,1]{1,0} parameter(0)
@@ -1778,10 +1773,10 @@ ENTRY e {
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
 // in the codegen directory.
-// TODO(b/393299275): symbolic tile analysis fails to derive a tile for one
-// outer parameter here. However, we shouldn't be deriving this tile anyway,
-// and the underlying indexing map is incorrect. This requires a fix in
-// symbolic tile derivation.
+// TODO(b/393299275): we are again the unfortunate victims of a `bitcast`. This
+// time, the `bitcast` we need to hoist needs to be hoisted *upwards* but is
+// located after the dot (it collapses two consecutive non-contracting
+// dimensions together).
 TEST_F(TritonGemmTest, DISABLED_SplitLHSInputOutputIsFused) {
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
@@ -2905,10 +2900,10 @@ ENTRY e {
                                       /*run_hlo_passes=*/false));
 }
 
-// TODO(b/393299275): symbolic tile analysis fails to derive a tile for one
-// outer parameter here. However, we shouldn't be deriving this tile anyway,
-// and the underlying indexing map is incorrect. This requires a fix in
-// symbolic tile derivation.
+// TODO(b/393299275): it seems like this requires recognizing that the merge of
+// the two transposes in the fusion allows hoisting the final bitcast (`b1`).
+// I'm not sure if this is even required, since now we canonicalize transposes
+// before fusing.
 TEST_F(CompareTest, DISABLED_DifferentLayoutsAreSupportedInOneScope) {
   const std::string kHloTextTest = R"(
 triton_dot {

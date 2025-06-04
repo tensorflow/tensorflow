@@ -1940,7 +1940,7 @@ int64_t LiteralBase::CountEqual(T value) const {
   if (!primitive_util::IsArrayType(ty)) {
     return 0;
   }
-  Literal scalar(ShapeUtil::MakeValidatedScalarShape(ty).value());
+  Literal scalar(ShapeUtil::MakeScalarShape(ty));
   return primitive_util::ArrayTypeSwitch(
       [&](auto primitive_type_constant) -> int64_t {
         using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
@@ -1956,7 +1956,7 @@ int64_t LiteralBase::CountEqual(std::complex<T> value) const {
   if (!primitive_util::IsComplexType(ty)) {
     return 0;
   }
-  Literal scalar(ShapeUtil::MakeValidatedScalarShape(ty).value());
+  Literal scalar(ShapeUtil::MakeScalarShape(ty));
   return primitive_util::ComplexTypeSwitch(
       [&](auto primitive_type_constant) -> int64_t {
         using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
@@ -2256,8 +2256,7 @@ Literal LiteralBase::Replicate(int64_t times) const {
   for (int64_t bound : shape().dimensions()) {
     bounds.push_back(bound);
   }
-  Literal literal(
-      ShapeUtil::MakeValidatedShape(shape().element_type(), bounds).value());
+  Literal literal(ShapeUtil::MakeShape(shape().element_type(), bounds));
   int64_t elements = ShapeUtil::ElementsIn(literal.shape());
   if (elements == 0) {
     return literal;

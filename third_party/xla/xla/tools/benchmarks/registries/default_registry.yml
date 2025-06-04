@@ -29,14 +29,14 @@ benchmarks: [
       hardware_category: GPU_L4
       topology: { num_hosts: 1, num_devices_per_host: 1, multi_host: false, multi_device: false }
       target_metrics: [GPU_DEVICE_TIME, GPU_DEVICE_MEMCPY_TIME]
-      workflow_type: [PRESUBMIT, POSTSUBMIT]
+      workflow_type: [PRESUBMIT, POSTSUBMIT, SCHEDULED]
       runtime_flags: ["--num_repeats=5"]
     },
     {
       hardware_category: CPU_X86
       topology: { num_hosts: 1, num_devices_per_host: 1, multi_host: false, multi_device: false }
       target_metrics: [CPU_TIME]
-      workflow_type: [PRESUBMIT, POSTSUBMIT]
+      workflow_type: [PRESUBMIT, POSTSUBMIT, SCHEDULED]
       runtime_flags: ["--num_repeats=5"]
     }
     ]

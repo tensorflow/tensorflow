@@ -83,6 +83,18 @@ bool ProcessScalar(HloInstruction* scalar) {
   return processed;
 }
 
+bool ProcessComputation(HloComputation* computation) {
+  bool changed = false;
+  for (HloInstruction* i : computation->MakeInstructionPostOrder()) {
+    if (i->opcode() == HloOpcode::kFusion) {
+      changed |= ProcessComputation(i->fused_instructions_computation());
+    } else {
+      changed |= ProcessScalar(i);
+    }
+  }
+  return changed;
+}
+
 absl::StatusOr<bool> FusionConstantSinking::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -91,9 +103,7 @@ absl::StatusOr<bool> FusionConstantSinking::Run(
 
   bool changed = false;
   for (HloComputation* c : module->MakeNonfusionComputations()) {
-    for (HloInstruction* i : c->MakeInstructionPostOrder()) {
-      changed |= ProcessScalar(i);
-    }
+    changed |= ProcessComputation(c);
   }
 
   if (changed) {

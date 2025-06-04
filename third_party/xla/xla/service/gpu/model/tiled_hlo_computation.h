@@ -23,7 +23,6 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/SmallVector.h"
-#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/iterator_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/model/tiled_hlo_instruction.h"
@@ -36,6 +35,8 @@ namespace gpu {
 // A container for block-level parameters. Currently only used for Triton
 // fusions.
 struct BlockLevelParameters {
+  // TODO(b/421837868): migrate to carry a full tiling instance wherever
+  // possible?
   std::vector<std::vector<int64_t>> output_tile_sizes;
 
   // Triton-specific parameters.

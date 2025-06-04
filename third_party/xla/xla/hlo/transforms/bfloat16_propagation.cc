@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
+#include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/map_util.h"
 #include "xla/service/float_support.h"
@@ -567,6 +568,12 @@ bool BFloat16Propagation::InstructionIsCandidateForBF16Output(
         return false;
       }
     }
+  }
+  if (hlo->opcode() == HloOpcode::kDynamicSlice &&
+      hlo->operand(0)->shape().has_layout() &&
+      hlo->operand(0)->shape().layout().memory_space() ==
+          Layout::kHostMemorySpace) {
+    return false;
   }
   return true;
 }

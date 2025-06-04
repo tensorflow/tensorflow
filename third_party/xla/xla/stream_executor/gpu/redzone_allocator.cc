@@ -36,11 +36,11 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/device_memory_handle.h"
-#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/gpu/gpu_kernel_registry.h"
+#include "xla/stream_executor/gpu/redzone_allocator_kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/typed_kernel_factory.h"  // IWYU pragma: keep
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -60,12 +60,6 @@ static T RoundUpToNearest(T value, T divisor) {
 constexpr int64_t kRhsRedzoneAlign = 4;
 
 using RedzoneCheckStatus = RedzoneAllocator::RedzoneCheckStatus;
-
-using ComparisonKernel = TypedKernel<DeviceMemory<uint8_t>, uint8_t, uint64_t,
-                                     DeviceMemory<uint64_t>>;
-namespace redzone_checker_kernel {
-void* kernel();
-}
 
 RedzoneAllocator::RedzoneAllocator(Stream* stream,
                                    DeviceMemoryAllocator* memory_allocator,
@@ -170,11 +164,10 @@ static absl::StatusOr<RedzoneCheckStatus> CheckRedzoneHost(
 // Run the redzone checker on the provided buffer redzone.
 //
 // Increment out_param if mismatch occurs.
-static absl::Status RunRedzoneChecker(Stream* stream,
-                                      const DeviceMemory<uint8_t>& redzone,
-                                      uint8_t redzone_pattern,
-                                      const DeviceMemory<uint64_t>& out_param,
-                                      ComparisonKernel& comparison_kernel) {
+static absl::Status RunRedzoneChecker(
+    Stream* stream, const DeviceMemory<uint8_t>& redzone,
+    uint8_t redzone_pattern, const DeviceMemory<uint64_t>& out_param,
+    gpu::RedzoneAllocatorKernel::KernelType& comparison_kernel) {
   StreamExecutor* executor = stream->parent();
 
   if (redzone.size() == 0) {
@@ -214,8 +207,9 @@ static absl::Status ReinitializeRedzone(Stream* stream,
 static absl::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
     Stream* stream, DeviceMemoryBase memory,
     const DeviceMemory<uint64_t>& out_param,
-    ComparisonKernel& comparison_kernel, int64_t user_allocation_size,
-    uint64_t redzone_size, uint8_t redzone_pattern) {
+    gpu::RedzoneAllocatorKernel::KernelType& comparison_kernel,
+    int64_t user_allocation_size, uint64_t redzone_size,
+    uint8_t redzone_pattern) {
   int64_t rhs_slop =
       RoundUpToNearest<int64_t>(user_allocation_size, kRhsRedzoneAlign) -
       user_allocation_size;
@@ -276,9 +270,9 @@ absl::StatusOr<DeviceMemoryBase> RedzoneAllocator::CreateBuffer(
 absl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
   StreamExecutor* executor = stream_->parent();
 
-  TF_ASSIGN_OR_RETURN(auto kernel, ComparisonKernel::FactoryType::Create(
-                                       executor, "RedzoneCheckerKernel",
-                                       redzone_checker_kernel::kernel()));
+  TF_ASSIGN_OR_RETURN(auto kernel,
+                      gpu::GpuKernelRegistry::GetGlobalRegistry()
+                          .LoadKernel<gpu::RedzoneAllocatorKernel>(executor));
 
   DeviceMemoryHandle out_param(executor, executor->AllocateScalar<uint64_t>());
   TF_RETURN_IF_ERROR(

@@ -1515,7 +1515,7 @@ CpuCompiler::CompileCpuExecutable(std::unique_ptr<HloModule> module) {
     // resolved kernels in the compiled LLVM module and execute them together
     // with Thunks implemented as library calls (e.g. oneDNN or Eigen).
     ThunkEmitter thunk_emitter(ir_emitter2, *assignment,
-                               target_machine_features, module->config());
+                               target_machine_features, *module);
     TF_ASSIGN_OR_RETURN(ThunkSequence thunks,
                         thunk_emitter.EmitEntryComputation(*module));
 
@@ -2211,7 +2211,7 @@ CpuCompiler::CompileAheadOfTimeThunks(
   // resolved kernels in the compiled LLVM module and execute them together
   // with Thunks implemented as library calls (e.g. oneDNN or Eigen).
   ThunkEmitter thunk_emitter(ir_emitter2, *assignment, target_machine_features,
-                             module->config(), thunk_emitter_options);
+                             *module, thunk_emitter_options);
   TF_ASSIGN_OR_RETURN(ThunkSequence thunks,
                       thunk_emitter.EmitEntryComputation(*module));
 

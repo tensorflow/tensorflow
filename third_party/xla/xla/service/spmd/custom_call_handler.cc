@@ -142,12 +142,10 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallTopK(
 
   // Each partition needs to do TopK separately, thus the base shape
   // becomes [batch_size, k * shard_count].
-  const Shape replicated_shape =
-      ShapeUtil::MakeValidatedTupleShape(
-          {ShapeUtil::MakeShape(hlo->operand(0)->shape().element_type(),
-                                {batch_size, k * shard_count}),
-           ShapeUtil::MakeShape(S32, {batch_size, k * shard_count})})
-          .value();
+  const Shape replicated_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(hlo->operand(0)->shape().element_type(),
+                            {batch_size, k * shard_count}),
+       ShapeUtil::MakeShape(S32, {batch_size, k * shard_count})});
   auto custom_call_sharding =
       sharding.GetTupleSharding(replicated_shape).value();
   auto shard_shape =
@@ -178,8 +176,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallTopK(
       b_.AddInstruction(HloInstruction::CreateGetTupleElement(
           topk->shape().tuple_shapes(1), topk, 1));
   auto partition_id_s32 = b_.AddInstruction(HloInstruction::CreateConvert(
-      ShapeUtil::MakeValidatedShape(S32, partition_id_->shape().dimensions())
-          .value(),
+      ShapeUtil::MakeShape(S32, partition_id_->shape().dimensions()),
       partition_state.partition_id));
   // Add per partition offset to index, index returned from CustomCall always
   // starts from 0.
@@ -215,15 +212,12 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallTopK(
                       XlaComputationToHloComputation(comparator, module_));
   // Each partition needs to do TopK separately, thus the base shape for sort
   // becomes [ceil(batch_size / batch_dim_partition), k * shard_count].
-  const Shape sort_shape =
-      ShapeUtil::MakeValidatedTupleShape(
-          {ShapeUtil::MakeShape(
-               hlo->operand(0)->shape().element_type(),
-               {CeilOfRatio(batch_size, batch_dim_partition), k * shard_count}),
-           ShapeUtil::MakeShape(S32,
-                                {CeilOfRatio(batch_size, batch_dim_partition),
-                                 k * shard_count})})
-          .value();
+  const Shape sort_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(
+           hlo->operand(0)->shape().element_type(),
+           {CeilOfRatio(batch_size, batch_dim_partition), k * shard_count}),
+       ShapeUtil::MakeShape(S32, {CeilOfRatio(batch_size, batch_dim_partition),
+                                  k * shard_count})});
   auto sort = b_.AddInstruction(HloInstruction::CreateSort(
       sort_shape, sort_dim, {replicated_value_gte, replicated_index_gte},
       compare_computation, true));

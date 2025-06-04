@@ -44,10 +44,18 @@ absl::Status ParseMlirModuleStringAndConvertToXlaComputation(
     absl::string_view mlir_module_str, XlaComputation& xla_computation,
     bool use_tuple_args, bool return_tuple);
 
-// Export an MHLO + Shardy module into a pure MHLO module, to prepare for a
-// round trip to HLO, such that the Shardy ops and attributes are preserved when
-// going back to MLIR for Shardy propagation.
+// Export a StableHLO + Shardy module into a pure StableHLO module, to prepare
+// for a round trip to HLO, such that the Shardy ops and attributes are
+// preserved when going back to MLIR for Shardy propagation.
 absl::Status ExportShardyForHloRoundTrip(mlir::ModuleOp module);
+
+// Export a StableHLO + Shardy module into a pure StableHLO module, targeting
+// the GSPMD partitioner. No round tripping back to MLIR is needed, since GSPMD
+// expected HLO, unlike `ExportShardyForHloRoundTrip`.
+// This function should only be used when Shardy is enabled in JAX, but JAX
+// export loaded a GSPMD checkpoint.
+// TODO(b/420837831): delete this once we don't fall back to GSPMD.
+absl::Status ExportShardyForGSPMD(mlir::ModuleOp module);
 
 // Returns a version of StableHLO ~12w old, for forward compatibility with PJRT
 // plugins on a quarterly update cycle.

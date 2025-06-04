@@ -309,6 +309,27 @@ ENTRY e {
       /*expected_latency=*/absl::Microseconds(8),
   };
 
+  EstimatorTestCase simple_fusion_elementwise = {
+      /*test_name=*/"simple_fusion_elementwise",
+      /*module_string=*/R"(
+HloModule m
+
+comp {
+  p0 = bf16[1024,1024] parameter(0)
+  p1 = bf16[1024,1024] parameter(1)
+  ROOT ret = bf16[1024,1024] add(p0,p1)
+}
+
+ENTRY e {
+  p0 = bf16[1024,1024] parameter(0)
+  p1 = bf16[1024,1024] parameter(1)
+  ROOT _ =  bf16[1024,1024] fusion(p0,p1), kind=kInput, calls=comp
+})",
+      /*opcode_to_find=*/HloOpcode::kFusion,
+      /*cost_type=*/CostType::kNodeCost,
+      /*expected_latency=*/absl::Microseconds(8),
+  };
+
   return {all_gather_intra_host,
           all_gather_inter_host_pairwise,
           all_gather_all_ranks,
@@ -316,7 +337,8 @@ ENTRY e {
           matmul_bf16_1024_4096_512,
           matmul_f32_batch4_256_1024_256,
           triton_matmul_bf16_batch1_1024_1024_1024,
-          cublas_matmul_bf16_batch1_1024_1024_1024};
+          cublas_matmul_bf16_batch1_1024_1024_1024,
+          simple_fusion_elementwise};
 }
 
 INSTANTIATE_TEST_SUITE_P(SolLatencyEstimatorTests, SolLatencyEstimatorTest,

@@ -26,6 +26,14 @@ limitations under the License.
 
 namespace xla::test {
 namespace {
+
+absl::string_view GetXlaTestDevice() { return GetEnvOrDie("XLA_TEST_DEVICE"); }
+
+std::vector<absl::string_view> GetXlaTestModifiers() {
+  return absl::StrSplit(GetEnvOrDie("XLA_TEST_MODIFIERS"), ',');
+}
+}  // namespace
+
 absl::string_view GetEnvOrDie(const char* key) {
   const char* val = std::getenv(key);
   CHECK_NE(val, nullptr)
@@ -34,13 +42,6 @@ absl::string_view GetEnvOrDie(const char* key) {
          "sets the environment appropriately (e.g. `xla_test`).";
   return val;
 }
-
-absl::string_view GetXlaTestDevice() { return GetEnvOrDie("XLA_TEST_DEVICE"); }
-
-std::vector<absl::string_view> GetXlaTestModifiers() {
-  return absl::StrSplit(GetEnvOrDie("XLA_TEST_MODIFIERS"), ',');
-}
-}  // namespace
 
 bool DeviceIs(absl::string_view device) { return device == GetXlaTestDevice(); }
 

@@ -530,9 +530,14 @@ cc_library(
     name = "model_building",
     srcs = ["model_building.cc"],
     hdrs = ["model_building.h"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
     deps = [
         ":subgraph",
+        "//tensorflow/lite:array",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",

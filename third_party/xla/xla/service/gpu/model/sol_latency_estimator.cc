@@ -192,8 +192,9 @@ std::optional<absl::Duration> DispatchEstimation(
 }
 
 absl::StatusOr<std::unique_ptr<CollectiveInterpolator>>
-CreateCollectiveInterpolator(const HloModule& module,
-                             const se::DeviceDescription& device_info) {
+CreateCollectiveInterpolator(int num_devices_per_host, const HloModule& module,
+                             const se::DeviceDescription& device_info,
+                             const GpuHloCostAnalysis& analysis) {
   absl::StatusOr<HloInstructionProfileList> collective_profiles =
       ReadProfiles(module.config()
                        .debug_options()
@@ -201,9 +202,11 @@ CreateCollectiveInterpolator(const HloModule& module,
                    device_info);
   std::unique_ptr<CollectiveInterpolator> collective_interpolator;
   if (collective_profiles.ok()) {
-    return CollectiveInterpolator::Create(*collective_profiles, device_info);
+    return CollectiveInterpolator::Create(
+        num_devices_per_host, *collective_profiles, device_info, &analysis);
   }
-  return CollectiveInterpolator::Create(device_info);
+  return CollectiveInterpolator::Create(num_devices_per_host, device_info,
+                                        &analysis);
 }
 
 absl::StatusOr<std::unique_ptr<MatmulInterpolator>> CreateMatmulInterpolator(
@@ -259,8 +262,9 @@ absl::StatusOr<std::unique_ptr<MatmulInterpolator>> CreateMatmulInterpolator(
   if (auto* collective_instr = DynCast<HloCollectiveInstruction>(
           instr.IsAsynchronous() ? instr.async_wrapped_instruction() : &instr);
       collective_instr != nullptr) {
-    absl::StatusOr<GPUCommunicationType> communication_type = CommunicationType(
-        *collective_instr, gpu_device_info.gpu_compute_capability());
+    absl::StatusOr<GPUCommunicationType> communication_type =
+        CommunicationType(sol_flags.gpus_per_node, *collective_instr,
+                          gpu_device_info.gpu_compute_capability());
     return DispatchEstimation(communication_type, *collective_instr,
                               gpu_device_info, sol_flags, analysis,
                               collective_interpolator)
@@ -276,20 +280,25 @@ SolLatencyEstimator::Create(
     std::unique_ptr<LatencyEstimator> latency_estimator,
     const se::DeviceDescription& gpu_info,
     HloCostAnalysis::ShapeSizeFunction shape_size_function,
-    const HloComputation* computation) {
-  auto cost_analysis =
-      std::make_unique<GpuHloCostAnalysis>(GpuHloCostAnalysis::Options{
-          shape_size_function,
-          /*per_second_rates=*/{},
-          /*min_latencies_seconds=*/{},
-          /*count_multiple_input_accesses=*/true,
-      });
+    const HloComputation* computation,
+    std::unique_ptr<GpuHloCostAnalysis> cost_analysis) {
+  if (cost_analysis == nullptr) {
+    cost_analysis =
+        std::make_unique<GpuHloCostAnalysis>(GpuHloCostAnalysis::Options{
+            shape_size_function,
+            /*per_second_rates=*/{},
+            /*min_latencies_seconds=*/{},
+            /*count_multiple_input_accesses=*/true,
+        });
+    TF_RETURN_IF_ERROR(computation->Accept(cost_analysis.get()));
+  }
   SolGPUCostModel::Config sol_config =
       SolGPUCostModel::GetConfig(computation->parent(), gpu_info);
-  TF_RETURN_IF_ERROR(computation->Accept(cost_analysis.get()));
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<CollectiveInterpolator> collective_interpolator,
-      CreateCollectiveInterpolator(*computation->parent(), gpu_info));
+      CreateCollectiveInterpolator(sol_config.gpus_per_node,
+                                   *computation->parent(), gpu_info,
+                                   *cost_analysis));
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<MatmulInterpolator> matmul_interpolator,
       CreateMatmulInterpolator(*computation->parent(), gpu_info));
@@ -332,12 +341,17 @@ LatencyEstimator::TimeCost SolLatencyEstimator::NodeCost(
     return absl::ToDoubleMicroseconds(*matmul_duration);
   }
 
-  absl::Duration total_estimated_time =
-      gpu_performance_model_
-          .EstimateRunTimeForInstruction(instr, &*cost_analysis_)
-          .exec_time;
-  LatencyEstimator::TimeCost cost_in_us =
-      absl::ToDoubleMicroseconds(total_estimated_time);
+  LatencyEstimator::TimeCost cost_in_us;
+  if (instr->opcode() == HloOpcode::kFusion &&
+      (instr->IsLoopFusion() || instr->IsInputFusion())) {
+    absl::Duration total_estimated_time =
+        gpu_performance_model_
+            .EstimateRunTimeForInstruction(instr, &*cost_analysis_)
+            .exec_time;
+    cost_in_us = absl::ToDoubleMicroseconds(total_estimated_time);
+  } else {
+    cost_in_us = 0.01 * kLowCost;
+  }
   VLOG(10) << "Analytical estimator calculated cost for: " << instr->name()
            << ". Cost: " << cost_in_us;
   return cost_in_us;

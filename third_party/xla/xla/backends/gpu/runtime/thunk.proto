@@ -18,7 +18,10 @@ syntax = "proto3";
 package xla.gpu;
 
 import "xla/service/buffer_assignment.proto";
+import "xla/service/gpu/launch_dimensions.proto";
 import "xla/stream_executor/gpu/gpu_blas_lt.proto";
+import "xla/stream_executor/launch_dim.proto";
+import "xla/xla_data.proto";
 
 // Contains basic pieces of information that every thunk type has.
 message ThunkInfoProto {
@@ -54,20 +57,13 @@ message WhileThunkProto {
   optional int64 trip_count = 4;
 }
 
-message Dim3DProto {
-  int64 x = 1;
-  int64 y = 2;
-  int64 z = 3;
-}
-
 message KernelThunkProto {
   repeated xla.buffer_assignment.BufferAllocationSliceProto args = 1;
   repeated bool written = 2;
   string kernel_name = 3;
-  Dim3DProto launch_block_counts = 4;
-  Dim3DProto launch_thread_counts_per_block = 5;
-  optional Dim3DProto cluster_dim = 6;
-  int64 shmem_bytes = 7;
+  LaunchDimensionsProto launch_dimensions = 4;
+  optional stream_executor.ClusterDimProto cluster_dim = 5;
+  int64 shmem_bytes = 6;
 }
 
 message GemmThunkProto {
@@ -84,6 +80,23 @@ message WaitForStreamsThunkProto {
   int64 wait_for_stream_id = 2;
 }
 
+message TriangularSolveThunkProto {
+  xla.TriangularSolveOptions options = 1;
+  xla.buffer_assignment.BufferAllocationSliceProto a_buffer = 2;
+  xla.buffer_assignment.BufferAllocationSliceProto b_buffer = 3;
+  xla.buffer_assignment.BufferAllocationSliceProto temp_buffer = 4;
+  xla.PrimitiveType type = 5;
+  int64 batch_size = 6;
+  int64 m = 7;
+  int64 n = 8;
+  int64 a_batch_stride = 9;
+  int64 b_batch_stride = 10;
+}
+
+message ReplicaIdThunkProto {
+  xla.buffer_assignment.BufferAllocationSliceProto dest_buffer = 1;
+}
+
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
 
@@ -97,6 +110,8 @@ message ThunkProto {
     KernelThunkProto kernel_thunk = 8;
     GemmThunkProto gemm_thunk = 9;
     WaitForStreamsThunkProto wait_for_streams_thunk = 10;
+    TriangularSolveThunkProto triangular_solve_thunk = 11;
+    ReplicaIdThunkProto replica_id_thunk = 12;
   }
 }
 

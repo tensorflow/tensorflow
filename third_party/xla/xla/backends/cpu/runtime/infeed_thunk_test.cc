@@ -36,7 +36,7 @@ TEST(InfeedThunkTest, BufferAndResourceUses) {
 
   InfeedThunk::InfeedBuffer infeed_buffer = {
       infeed_slice,
-      ShapeUtil::MakeValidatedShape(F32, {10}).value(),
+      ShapeUtil::MakeShape(F32, {10}),
   };
 
   auto consume_token = Resource::Create(Resource::kToken);

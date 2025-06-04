@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -39,6 +40,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
+#include "xla/codegen/emitters/computation_partitioner.h"
+#include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/emitters/type_util.h"
@@ -52,6 +55,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -296,6 +300,65 @@ llvm::SmallVector<mlir::Value> EmitWorkGroupIds(
   set_range(work_group_id_z, num_work_groups.z);
 
   return {work_group_id_x, work_group_id_y, work_group_id_z};
+}
+
+static absl::flat_hash_map<const PartitionedComputation::Subgraph*,
+                           mlir::func::FuncOp>
+GetSubgraphToMlirFunction(mlir::ModuleOp module,
+                          const PartitionedComputations& computations) {
+  auto subgraph_to_mlir_fn = computations.DeclareFunctions(module);
+
+  // Erase subgraphs for all heroes that aren't used anywhere else. This is
+  // necessary because the instructions may not have elemental implementations
+  // (scatter).
+  for (const auto& epilogue : computations.epilogues()) {
+    for (const auto& [hero, arity] : epilogue.injected_value_starts) {
+      if (hero->user_count() == 0) {
+        subgraph_to_mlir_fn.extract(&computations.FindSubgraph(hero))
+            .mapped()
+            .erase();
+      }
+    }
+  }
+
+  // The epilogue functions replace the root tuple.
+  auto* root = computations.fusion()->root_instruction();
+  if (root->opcode() == HloOpcode::kTuple &&
+      !computations.epilogues().empty()) {
+    subgraph_to_mlir_fn.extract(&computations.FindSubgraph(root))
+        .mapped()
+        .erase();
+  }
+
+  return subgraph_to_mlir_fn;
+}
+
+absl::StatusOr<CallTargetProvider> EmitPartitionedComputations(
+    mlir::ModuleOp module, const PartitionedComputations& computations) {
+  auto subgraph_to_mlir_fn = GetSubgraphToMlirFunction(module, computations);
+
+  auto call_targets =
+      computations.CreateCallTargetProvider(subgraph_to_mlir_fn);
+  for (const auto& comp : computations.partitioned_computations()) {
+    for (const auto& subgraph : comp.subgraphs()) {
+      if (subgraph_to_mlir_fn.contains(&subgraph)) {
+        TF_RETURN_IF_ERROR(SubgraphToMlirFunction(
+            comp, subgraph, subgraph_to_mlir_fn[&subgraph], call_targets));
+      }
+    }
+  }
+
+  const HloComputation* fused_computation = computations.fusion();
+  for (const auto& epilogue : computations.epilogues()) {
+    if (epilogue.roots.empty()) {
+      continue;
+    }
+    TF_RETURN_IF_ERROR(SubgraphToMlirFunction(
+        computations.FindPartitionedComputation(fused_computation), epilogue,
+        subgraph_to_mlir_fn[&epilogue], call_targets));
+  }
+
+  return call_targets;
 }
 
 }  // namespace xla::emitters

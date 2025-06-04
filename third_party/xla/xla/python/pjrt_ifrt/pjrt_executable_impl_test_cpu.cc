@@ -18,7 +18,7 @@ limitations under the License.
 #include "xla/python/ifrt/test_util.h"
 
 int main(int argc, char** argv) {
-  // TfrtCpuExecutable::IsDeleted() always returns false.
+  // PjRtCpuExecutable::IsDeleted() always returns false.
   static constexpr absl::string_view kFilter =
       "-LoadedExecutableImplTest.IsDeleted";
   xla::ifrt::test_util::SetTestFilterIfNotUserSpecified(kFilter);

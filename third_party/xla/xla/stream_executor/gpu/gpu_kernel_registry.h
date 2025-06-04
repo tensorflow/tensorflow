@@ -17,19 +17,14 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_GPU_GPU_KERNEL_REGISTRY_H_
 
 #include <functional>
-#include <tuple>
-#include <typeindex>
-#include <typeinfo>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"  // IWYU pragma: keep
+#include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/typed_kernel_factory.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/statusor.h"
@@ -39,7 +34,7 @@ namespace stream_executor::gpu {
 // This is a global registry for GPU kernels.
 //
 // The registry is keyed by a KernelTrait, which is a struct that contains the
-// KernelType and the target platform.
+// KernelType.
 //
 // KernelTrait example:
 //
@@ -53,18 +48,20 @@ namespace stream_executor::gpu {
 // The registry is thread-safe. Registered kernels are immutable and cannot be
 // overwritten.
 //
-// Use the macro GPU_KERNEL_REGISTRY_REGISTER_STATIC_KERNEL to register a
+// Use the macro GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY to register a
 // kernel during application initialization.
 class GpuKernelRegistry {
  public:
+  explicit GpuKernelRegistry(PlatformObjectRegistry* object_registry)
+      : object_registry_(object_registry) {}
+
   // Loads a kernel from the registry into the given executor. The kernel is
   // identified by the KernelTrait. This function is thread-safe.
   template <typename KernelTrait>
   absl::StatusOr<typename KernelTrait::KernelType> LoadKernel(
       StreamExecutor* executor) {
-    TF_ASSIGN_OR_RETURN(
-        const MultiKernelLoaderSpec& spec,
-        GetKernelSpec(typeid(KernelTrait), executor->GetPlatform()->id()));
+    TF_ASSIGN_OR_RETURN(const MultiKernelLoaderSpec& spec,
+                        FindKernel<KernelTrait>(executor->GetPlatform()->id()));
 
     return KernelTrait::KernelType::FactoryType::Create(executor, spec);
   }
@@ -76,31 +73,33 @@ class GpuKernelRegistry {
   template <typename KernelTrait>
   absl::StatusOr<std::reference_wrapper<const MultiKernelLoaderSpec>>
   FindKernel(Platform::Id platform_id) {
-    return GetKernelSpec(typeid(KernelTrait), platform_id);
+    return object_registry_->FindObject<KernelTraitAdaptor<KernelTrait>>(
+        platform_id);
   }
 
   // Registers a kernel `kernel` in the registry. This function is thread-safe.
   template <typename KernelTrait>
   absl::Status RegisterKernel(Platform::Id platform_id,
                               const MultiKernelLoaderSpec& kernel) {
-    return RegisterKernel(typeid(KernelTrait), platform_id, kernel);
+    return object_registry_->RegisterObject<KernelTraitAdaptor<KernelTrait>>(
+        platform_id, kernel);
   }
 
   // Returns a reference to the process-wide instance of the registry.
   static GpuKernelRegistry& GetGlobalRegistry();
 
  private:
-  absl::Status RegisterKernel(const std::type_info& type,
-                              Platform::Id platform_id,
-                              const MultiKernelLoaderSpec& kernel);
+  // This is the trait type that we use to register the kernels in the
+  // PlatformObjectRegistry. Since it's a private type, no one outside of this
+  // class can access our registered kernels or register something on our
+  // behalf. The trait is parametrized by the actual KernelTrait, so we will
+  // have one PlatformObjectRegistry trait per KernelTrait.
+  template <typename KernelTrait>
+  struct KernelTraitAdaptor {
+    using Type = MultiKernelLoaderSpec;
+  };
 
-  absl::StatusOr<std::reference_wrapper<const MultiKernelLoaderSpec>>
-  GetKernelSpec(const std::type_info& type, Platform::Id platform_id);
-
-  absl::Mutex mutex_;
-  using KernelRegistryKey = std::tuple<std::type_index, Platform::Id>;
-  absl::flat_hash_map<KernelRegistryKey, MultiKernelLoaderSpec> kernel_specs_
-      ABSL_GUARDED_BY(mutex_);
+  PlatformObjectRegistry* object_registry_;
 };
 
 #define GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(                \

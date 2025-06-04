@@ -70,6 +70,7 @@ limitations under the License.
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
+#include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_export.h"
 #include "xla/service/spmd/shardy/utils.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
@@ -196,7 +197,22 @@ absl::Status ExportShardyForHloRoundTrip(mlir::ModuleOp module) {
   if (!mlir::succeeded(pm.run(module))) {
     const absl::Status status = diagnostic_handler.ConsumeStatus();
     return absl::InvalidArgumentError(
-        absl::StrCat("Shardy export failed;\n\nDetailed "
+        absl::StrCat("Shardy export for HLO round trip failed;\n\nDetailed "
+                     "error from MLIR: ",
+                     status.message()));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ExportShardyForGSPMD(mlir::ModuleOp module) {
+  mlir::MLIRContext* context = module.getContext();
+  mlir::PassManager pm(context);
+  xla::sdy::addStablehloExportPipeline(pm);
+  mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
+  if (!mlir::succeeded(pm.run(module))) {
+    const absl::Status status = diagnostic_handler.ConsumeStatus();
+    return absl::InvalidArgumentError(
+        absl::StrCat("Shardy export for GSPMD failed;\n\nDetailed "
                      "error from MLIR: ",
                      status.message()));
   }

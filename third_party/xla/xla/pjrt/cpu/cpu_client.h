@@ -76,9 +76,9 @@ limitations under the License.
 
 namespace xla {
 
-class TfrtCpuClient final : public CommonPjRtClient {
+class PjRtCpuClient final : public CommonPjRtClient {
  public:
-  ~TfrtCpuClient() override;
+  ~PjRtCpuClient() override;
 
   int process_index() const override { return process_index_; }
 
@@ -132,7 +132,7 @@ class TfrtCpuClient final : public CommonPjRtClient {
                             CompileOptions options,
                             const AotCompilationOptions& aot_options);
 
-  // For TfrtCpuClient, `options` is mandatory.
+  // For PjRtCpuClient, `options` is mandatory.
   // This function returns an InvalidArgument error if `std::nullopt` is passed.
   // TODO(b/237720161): make it actually optional
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
@@ -246,11 +246,11 @@ class TfrtCpuClient final : public CommonPjRtClient {
       const Layout* device_layout) const override;
 
  private:
-  friend class TfrtCpuExecutable;
-  friend absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
+  friend class PjRtCpuExecutable;
+  friend absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtCpuClient(
       CpuClientOptions options);
 
-  TfrtCpuClient(
+  PjRtCpuClient(
       int process_index, std::vector<std::unique_ptr<PjRtCpuDevice>> devices,
       std::shared_ptr<cpu::CpuCollectives> collectives, size_t num_threads,
       bool asynchronous, bool legacy_memory_space_behavior,
@@ -330,7 +330,7 @@ class PjRtCpuBuffer final : public AbstractCpuBuffer {
  public:
   PjRtCpuBuffer(Shape on_device_shape,
                 std::unique_ptr<TrackedCpuDeviceBuffer> tracked_device_buffer,
-                TfrtCpuClient* client, PjRtCpuDevice* device,
+                PjRtCpuClient* client, PjRtCpuDevice* device,
                 PjRtMemorySpace* memory_space);
 
   PjRtCpuBuffer(const PjRtCpuBuffer&) = delete;
@@ -340,7 +340,7 @@ class PjRtCpuBuffer final : public AbstractCpuBuffer {
 
   PjRtMemorySpace* memory_space() const override { return memory_space_; }
   PjRtCpuDevice* device() const override { return device_; }
-  TfrtCpuClient* client() const override { return client_; }
+  PjRtCpuClient* client() const override { return client_; }
 
   PjRtFuture<> CopyRawToHost(void* dst, int64_t offset,
                              int64_t transfer_size) override;
@@ -357,14 +357,14 @@ class PjRtCpuBuffer final : public AbstractCpuBuffer {
  private:
   absl::string_view buffer_name() const override { return "PjRtCpuBuffer"; }
 
-  TfrtCpuClient* client_;
+  PjRtCpuClient* client_;
   PjRtCpuDevice* const device_;
   PjRtMemorySpace* const memory_space_;
 };
 
-class TfrtCpuExecutable final : public PjRtLoadedExecutable {
+class PjRtCpuExecutable final : public PjRtLoadedExecutable {
  public:
-  TfrtCpuExecutable(
+  PjRtCpuExecutable(
       int num_replicas, int num_partitions,
       std::shared_ptr<DeviceAssignment> device_assignment,
       bool parameter_is_tupled_arguments, CompileOptions compile_options,
@@ -372,11 +372,11 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
       BufferAllocation::Index result_buffer_index,
       absl::InlinedVector<BufferAllocation::Index, 4> result_buffer_indices,
       std::vector<LogicalDeviceIds> addressable_device_logical_ids,
-      std::vector<PjRtDevice*> addressable_devices, TfrtCpuClient* client);
+      std::vector<PjRtDevice*> addressable_devices, PjRtCpuClient* client);
 
-  ~TfrtCpuExecutable() override = default;
+  ~PjRtCpuExecutable() override = default;
 
-  TfrtCpuClient* client() const override { return client_; }
+  PjRtCpuClient* client() const override { return client_; }
 
   absl::string_view name() const override {
     return cpu_executable_->shared_module()->name();
@@ -468,7 +468,7 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   }
 
  private:
-  friend class TfrtCpuClient;
+  friend class PjRtCpuClient;
 
   absl::Status SetUpDonation(bool tuple_inputs);
 
@@ -481,10 +481,10 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   absl::StatusOr<Result> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, const RunId& run_id, const ExecuteOptions& options,
-      TfrtCpuClient::CollectiveLaunchEvent last_collective_launch_event,
+      PjRtCpuClient::CollectiveLaunchEvent last_collective_launch_event,
       bool fill_future, PjRtCpuDevice* device = nullptr);
 
-  TfrtCpuClient* client_;
+  PjRtCpuClient* client_;
 
   int num_replicas_;
   int num_partitions_;
@@ -531,20 +531,20 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
 };
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> ABSL_DEPRECATED(
-    "Use public XLA:CPU GetXlaPjrtCpuClient instead")
-    GetTfrtCpuClient(CpuClientOptions options);
+    "Use public XLA:CPU GetXlaPjRtCpuClient instead")
+    GetPjRtCpuClient(CpuClientOptions options);
 
 // Deprecated. Use the overload that takes 'options' instead.
 inline absl::StatusOr<std::unique_ptr<PjRtClient>> ABSL_DEPRECATED(
-    "Use public XLA:CPU GetXlaPjrtCpuClient instead")
-    GetTfrtCpuClient(bool asynchronous) {
+    "Use public XLA:CPU GetXlaPjRtCpuClient instead")
+    GetPjRtCpuClient(bool asynchronous) {
   CpuClientOptions options;
   options.asynchronous = asynchronous;
-  return GetTfrtCpuClient(std::move(options));
+  return GetPjRtCpuClient(std::move(options));
 }
 
 // Deprecated. Use the overload that takes 'options' instead.
-inline absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
+inline absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtCpuClient(
     bool asynchronous, int cpu_device_count,
     int max_inflight_computations_per_device = 32) {
   CpuClientOptions options;
@@ -552,7 +552,7 @@ inline absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
   options.cpu_device_count = cpu_device_count;
   options.max_inflight_computations_per_device =
       max_inflight_computations_per_device;
-  return GetTfrtCpuClient(std::move(options));
+  return GetPjRtCpuClient(std::move(options));
 }
 
 }  // namespace xla

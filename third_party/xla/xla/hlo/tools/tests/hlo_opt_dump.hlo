@@ -1,17 +1,17 @@
 // RUN: hlo-opt %s --xla_dump_to=%t_dump_dir --passes=dce,algsimp
 // RUN: ls %t_dump_dir | sort | FileCheck %s --check-prefix="DUMP"
-// RUN: hlo-opt --xla_dump_to=%t_dump_dir_with_passes --xla_dump_hlo_pass_re=".*" --passes=dce,algsimp %s 
+// RUN: hlo-opt --xla_dump_to=%t_dump_dir_with_passes --xla_dump_hlo_pass_re=".*" --passes=dce,algsimp %s
 // RUN: ls %t_dump_dir_with_passes | sort | FileCheck %s --check-prefix="DUMP_WITH_PASSES"
 
-// DUMP: module_0000.m.after_optimization.txt
-// DUMP-NEXT: module_0000.m.before_optimization.txt
-// DUMP-NEXT: module_0000.m.debug_options
+// DUMP: module_0000.m.{{.*}}after_optimization.txt
+// DUMP-NEXT: module_0000.m.{{.*}}before_optimization.txt
+// DUMP-NEXT: module_0000.m.{{.*}}debug_options
 
-// DUMP_WITH_PASSES: module_0000.m.0000.transforms_pipeline.after_pipeline-start.before_dce.txt
-// DUMP_WITH_PASSES-NEXT: module_0000.m.0001.transforms_pipeline.after_algsimp.before_pipeline-end.txt
-// DUMP_WITH_PASSES-NEXT: module_0000.m.after_optimization.txt
-// DUMP_WITH_PASSES-NEXT: module_0000.m.before_optimization.txt
-// DUMP_WITH_PASSES-NEXT: module_0000.m.debug_options
+// DUMP_WITH_PASSES: module_0000.m.{{.*}}0000.transforms_pipeline.after_pipeline-start.before_dce.txt
+// DUMP_WITH_PASSES-NEXT: module_0000.m.{{.*}}0001.transforms_pipeline.after_algsimp.before_pipeline-end.txt
+// DUMP_WITH_PASSES-NEXT: module_0000.m.{{.*}}after_optimization.txt
+// DUMP_WITH_PASSES-NEXT: module_0000.m.{{.*}}before_optimization.txt
+// DUMP_WITH_PASSES-NEXT: module_0000.m.{{.*}}debug_options
 
 HloModule m
 test {

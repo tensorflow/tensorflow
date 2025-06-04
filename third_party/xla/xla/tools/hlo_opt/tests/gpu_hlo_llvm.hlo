@@ -23,7 +23,7 @@ HloModule Test, is_scheduled=true
 
 
 // CHECK-LABEL: fusion
-// CHECK-PTX:     call void @llvm.nvvm.barrier0
+// CHECK-PTX:     call void @llvm.nvvm.barrier.cta.sync.aligned.all(i32 0)
 // CHECK-GCN:     call void @llvm.amdgcn.s.barrier
 fused_computation {
   param_0 = f32[100,200]{1,0} parameter(0)

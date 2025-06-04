@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "xla/pjrt/c/pjrt_c_api_tpu.h"
-#include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/plugin/plugin_names.h"
 #include "xla/pjrt/plugin/static_registration.h"
 

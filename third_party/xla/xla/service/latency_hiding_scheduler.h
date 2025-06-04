@@ -137,6 +137,9 @@ struct SchedulerConfig {
   int64_t send_recv_host_overlap_limit = 1;
   int64_t copy_overlap_limit = 1;
   uint64_t memory_limit = UINT64_MAX;
+  int64_t max_hops_to_closest_selective_overlap = 0;
+  int64_t rerun = 0;
+  int64_t parallel_collective_overlap_limit = 1;
   bool schedule_send_recvs = false;
   // Consider send recv as the same resource. Some platforms do not take well
   // overlapping the send/recv ops between themselves.
@@ -149,9 +152,7 @@ struct SchedulerConfig {
   bool resource_serializing = false;
   bool depth_based_memory_pressure_reduction = false;
   bool enable_selective_resources = false;
-  int64_t max_hops_to_closest_selective_overlap = 0;
-  int64_t rerun = 0;
-  int64_t parallel_collective_overlap_limit = 1;
+  bool flexible_scheduling_annotation_scheduling = false;
 };
 
 // Class used estimate latency between instructions and cost of HLOs.
@@ -334,6 +335,9 @@ class AsyncTracker {
 // Base class for the core scheduling algorithm.
 class SchedulerCore {
  public:
+  // Hook function to modify scheduling graph before scheduler runs.
+  using GraphProcessingHook = std::function<absl::Status(HloScheduleGraph*)>;
+
   virtual absl::Status InitializeScheduler(const HloModule* module) = 0;
 
   virtual absl::Status CaptureScheduleProto() = 0;
@@ -348,6 +352,13 @@ class SchedulerCore {
   virtual void SetMemoryLimit(uint64_t new_limit) = 0;
   virtual uint64_t GetMemoryLimit() = 0;
   virtual int64_t GetRerunTimes() = 0;
+
+  // Set a graph processing hook that will run before scheduling a computation.
+  // Heuristics can use this to set scheduling preferences to the scheduling
+  // graph nodes.
+  virtual absl::Status SetGraphProcessingHook(const GraphProcessingHook& hook) {
+    return absl::UnimplementedError("Unimplemented. ");
+  }
 };
 
 // Tracks user annotations for scheduling.
@@ -567,6 +578,8 @@ class HloGraphNode {
     num_hops_to_closest_selective_resource_occupier_ =
         num_hops_to_closest_selective_resource_occupier;
   }
+  void SetPreference(double preference) { preference_ = preference; }
+  double GetPreference() const { return preference_; }
   ResourcesVector GetResources() const { return resources_; }
   bool DoesOccupyAnyResource() { return does_occupy_any_resource_; }
   bool DoesReleaseAnyResource() { return does_release_any_resource_; }
@@ -670,6 +683,7 @@ class HloGraphNode {
     annotation_ = annotation;
     return absl::OkStatus();
   }
+  void ClearAnnotation() { annotation_ = -1; }
   std::string ToString(const AsyncTracker* async_tracker = nullptr) const {
     std::string result;
     absl::StrAppend(&result, "Instr: ", instr_->ToShortString(), "\n");
@@ -775,6 +789,10 @@ class HloGraphNode {
   int64_t annotation_ = kInvalidAnnotation;
   // Number of ready nodes if this node is scheduled.
   size_t ready_nodes_if_scheduled_ = 0;
+  // Preference value used for scheduling heuristics,
+  // a graph node having a higher preference value means it's scheduled
+  // earlier. See ReadySetLt::operator()
+  double preference_ = 0.0;
 };
 
 // Schedule graph that can be used to drive scheduling
@@ -811,6 +829,24 @@ class HloScheduleGraph {
     auto it = instr_order_map_.find(instr);
     CHECK(it != instr_order_map_.end());
     return it->second;
+  }
+
+  // Return node preference values in original order.
+  std::vector<double> GetPreferences() {
+    std::vector<double> preferences;
+    preferences.reserve(original_order_.size());
+    for (const HloInstruction* instr : original_order_) {
+      preferences.push_back(nodes_[instr]->GetPreference());
+    }
+    return preferences;
+  }
+
+  // Set node preference values in original order.
+  void SetPreferences(const std::vector<double>& preferences) {
+    CHECK_EQ(preferences.size(), original_order_.size());
+    for (int i = 0; i < original_order_.size(); ++i) {
+      nodes_[original_order_[i]]->SetPreference(preferences[i]);
+    }
   }
 
  private:
@@ -1062,7 +1098,17 @@ class ModulePressureState {
       const HloComputation* comp,
       MemoryPressureTracker::MemoryPressureState state) {
     memory_pressure_states_[comp] = state;
-    memory_peak_ = std::max(memory_peak_, state.memory_peak);
+    if (memory_pressure_states_.contains(comp)) {
+      // Rescheduling computation that has already been scheduled
+      // can only happen during preference/heuristic rescheduling.
+      // Recalculate memory peak.
+      memory_peak_ = 0;
+      for (auto& memory_state : memory_pressure_states_) {
+        memory_peak_ = std::max(memory_peak_, memory_state.second.memory_peak);
+      }
+    } else {
+      memory_peak_ = state.memory_peak;
+    }
   }
   // Returns the underlying pressure state cache object
   const PressureStateMap& pressure_state_cache() const {
@@ -1081,6 +1127,13 @@ class ModulePressureState {
       memory_pressure_states_;
   BufferInfoTracker buffer_tracker_;
   int64_t memory_peak_ = 0;
+};
+
+// Light data structure containing information on the schedule of a computation,
+// can be used by a heuristic to evaluate the quality of the schedule.
+struct ComputationScheduleInfo {
+  double total_wasted_cycles;
+  uint64_t peak_memory;
 };
 
 // Implementation of the default scheduling algorithm.
@@ -1122,6 +1175,11 @@ class DefaultSchedulerCore : public SchedulerCore {
                            reason};
   }
 
+  absl::Status SetGraphProcessingHook(
+      const SchedulerCore::GraphProcessingHook& hook) override {
+    graph_processing_hook_ = hook;
+    return absl::OkStatus();
+  }
   // The scheduling state contains everything that is required for the
   // bookkeeping of the scheduling algorithm. Functions that perform operations
   // over the scheduling state can directly operate on the state contained into
@@ -1188,6 +1246,9 @@ class DefaultSchedulerCore : public SchedulerCore {
     ReadyQueueSet annotation_ready;
     // Annotation that is currently being scheduled.
     int64_t ongoing_annotation = kInvalidAnnotation;
+    // If this set is not empty it means that we shouldn't schedule any more
+    // annotated nodes until empty.
+    absl::flat_hash_set<HloGraphNode*> nodes_holding_annotations;
     // Reference to this scheduler run configuration.
     const SchedulerConfig& config;
     SchedulingState(const HloInstructionSequence* instr_sequence,
@@ -1253,6 +1314,11 @@ class DefaultSchedulerCore : public SchedulerCore {
   int64_t GetMemoryPeak() override {
     return module_pressure_state_->GetMemoryPeak();
   }
+  int64_t GetMemoryPeakForComputation(const HloComputation* computation) const {
+    return module_pressure_state_->GetPressureStateForComputation(computation)
+        .memory_peak;
+  }
+
   uint64_t GetMemoryLimit() override { return config_.memory_limit; }
   void SetMemoryLimit(uint64_t new_limit) override {
     this->config_.memory_limit = new_limit;
@@ -1304,6 +1370,7 @@ class DefaultSchedulerCore : public SchedulerCore {
   std::unique_ptr<AnnotationTracker> annotation_tracker_;
   std::optional<ScheduleProto> schedule_proto_;
   const HloModule* module_ = nullptr;
+  SchedulerCore::GraphProcessingHook graph_processing_hook_;
 };
 
 // A scheduler oriented to hiding latencies of operations that can run in
@@ -1363,19 +1430,28 @@ class LatencyHidingScheduler : public HloModulePass {
       const HloAliasAnalysis* alias_analysis = nullptr,
       ModulePressureState* pressure_state = nullptr);
 
+  // Even with random preferences this function will always return a schedule
+  // that obeys overlap constraints.
+  absl::StatusOr<
+      std::pair<std::vector<HloInstruction*>, ComputationScheduleInfo>>
+  ScheduleWithPreferences(HloModule* module,
+                          const std::vector<double>& preferences,
+                          const HloComputation* computation);
+
   using HloPassInterface::Run;
+
   absl::StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   virtual void LogScheduleStatistics(const HloComputation* computation);
 
- private:
+ protected:
   std::shared_ptr<LatencyEstimator> latency_estimator_;
   std::shared_ptr<AsyncTracker> async_tracker_;
   std::unique_ptr<SchedulerCore> scheduler_core_;
   const HloCostAnalysis::ShapeSizeFunction shape_size_bytes_;
-  absl::flat_hash_set<HloComputation*> computations_to_schedule_;
+  std::vector<HloComputation*> computations_to_schedule_;
 };
 
 }  // namespace xla

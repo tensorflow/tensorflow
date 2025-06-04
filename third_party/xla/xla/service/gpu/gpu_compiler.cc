@@ -2642,8 +2642,12 @@ absl::Status GpuCompiler::RunPreSchedulingPasses(
     pipeline.AddPass<GpuCostModelStatsCollection>(gpu_device_info,
                                                   cost_analysis_options);
     // S-curve model analysis for collectives.
-    pipeline.AddPass<SolGpuCostModelStatsCollection>(gpu_device_info,
-                                                     ShapeSizeBytesFunction());
+    if (module->config()
+            .debug_options()
+            .xla_gpu_enable_analytical_sol_latency_estimator()) {
+      pipeline.AddPass<SolGpuCostModelStatsCollection>(
+          gpu_device_info, ShapeSizeBytesFunction(), pointer_size_);
+    }
 
     // Perf tables model analysis for collectives.
     if (std::string collective_perf_table_path =

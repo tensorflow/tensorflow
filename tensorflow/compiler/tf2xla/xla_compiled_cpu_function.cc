@@ -17,8 +17,14 @@ limitations under the License.
 
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <iostream>
+#include <memory>
 
+#include "absl/log/check.h"
+#include "xla/backends/cpu/runtime/rng_state_lib.h"
 #include "xla/cpu_function_runtime.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -40,8 +46,10 @@ int32 GetResultIndex(const int32* result_index_table, int32 num_results) {
 
 XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
                                                AllocMode alloc_mode)
-    : temp_allocation_index_(static_data.temp_allocation_index_),
+    : function_library_symbol_map_(static_data.function_library_symbol_map_),
+      temp_allocation_index_(static_data.temp_allocation_index_),
       raw_function_(static_data.raw_function_),
+      thunk_run_impl_(static_data.thunk_run_impl_),
       result_index_(GetResultIndex(static_data.result_index_table_,
                                    static_data.num_results_)),
       buffer_table_(new void*[static_data.num_buffers_]),
@@ -74,9 +82,42 @@ XlaCompiledCpuFunction::XlaCompiledCpuFunction(const StaticData& static_data,
   if (hlo_profiling_enabled()) {
     profile_counters_ = new int64_t[static_data.profile_counters_size_]();
   }
+
+  // Setup constants.
+  if (!static_data.embedded_constant_buffers_.empty()) {
+    size_t embedded_constant_buffers_idx = 0;
+    for (size_t i = 0; i < num_buffers(); ++i) {
+      if (!buffer_infos()[i].is_constant()) {
+        continue;
+      }
+
+      const auto& [buffer_size, buffer_data] =
+          static_data
+              .embedded_constant_buffers_[embedded_constant_buffers_idx++];
+
+      CHECK(buffer_size == buffer_infos()[i].size());
+      std::memcpy(static_cast<char*>(buffer_table()[i]), buffer_data,
+                  buffer_infos()[i].size());
+    }
+
+    CHECK(embedded_constant_buffers_idx ==
+          static_data.embedded_constant_buffers_.size());
+  }
+
+  // Setup rng states
+  {
+    rng_states_.reserve(static_data.rng_state_deltas_.size());
+    for (int64_t delta : static_data.rng_state_deltas_) {
+      rng_states_.emplace_back(std::make_unique<xla::cpu::RngState>(delta));
+    }
+  }
 }
 
 bool XlaCompiledCpuFunction::Run() {
+  if (thunk_run_impl_ != nullptr) {
+    return thunk_run_impl_(buffer_table_, &run_options_, rng_states_);
+  }
+
   XlaCustomCallStatus status;
   raw_function_(buffer_table_[result_index_], &run_options_, nullptr,
                 buffer_table_, &status, profile_counters_);

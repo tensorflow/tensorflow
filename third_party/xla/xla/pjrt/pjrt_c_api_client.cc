@@ -1730,8 +1730,10 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
   args.options->non_donatable_input_indices =
       non_donatable_input_indices_storage.data();
   args.num_devices = argument_handles.size();
-  CHECK_GT(args.num_devices, 0);
-  args.num_args = argument_handles[0].size();
+
+  // If the executable has no addressable devices, `num_args` cannot be
+  // determined but it is unused. 0 serves as a placeholder.
+  args.num_args = (args.num_devices > 0) ? argument_handles[0].size() : 0;
   if (device_complete_events.has_value() || using_host_callbacks) {
     device_complete_events->resize(args.num_devices);
     args.device_complete_events = device_complete_events->data();
@@ -1900,9 +1902,10 @@ PjRtCApiLoadedExecutable::Execute(
     }
   }
 
+  int inner_size =
+      c_output_lists_storage.empty() ? 0 : c_output_lists_storage[0].size();
   return Convert2DCBuffersToCppBuffers(args.output_lists, args.num_devices,
-                                       c_output_lists_storage[0].size(),
-                                       client_);
+                                       inner_size, client_);
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>

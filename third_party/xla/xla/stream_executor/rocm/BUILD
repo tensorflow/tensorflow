@@ -428,6 +428,7 @@ cc_library(
     deps = [
         ":hipsolver_wrapper",
         ":rocblas_wrapper",
+        ":rocm_platform_id",
         ":rocsolver_wrapper",
         "//xla:comparison_util",
         "//xla:util",
@@ -436,6 +437,7 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:gpu_solver_context",
         "//xla/stream_executor:stream",
+        "//xla/stream_executor/platform:platform_object_registry",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/memory",
@@ -443,6 +445,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@local_config_rocm//rocm:rocm_headers",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -824,10 +827,12 @@ cc_library(
         ":make_batch_pointers_kernel_rocm",
         ":miopen_plugin",
         ":ragged_all_to_all_kernel_rocm",
+        ":redzone_allocator_kernel_rocm",
         ":repeat_buffer_kernel_rocm",
         ":rocblas_plugin",
         ":rocm_helpers",
         ":rocm_platform",
+        ":rocm_solver_context",
         ":topk_kernel_rocm",
     ] + [":cub_sort_kernel_rocm_" + suffix for suffix in get_cub_sort_kernel_types()],
     alwayslink = 1,
@@ -1203,6 +1208,27 @@ rocm_library(
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:repeat_buffer_kernel",
+        "@local_config_rocm//rocm:rocm_headers",
+    ],
+    alwayslink = 1,
+)
+
+rocm_library(
+    name = "redzone_allocator_kernel_rocm",
+    srcs = [
+        "redzone_allocator_kernel_rocm.cu.cc",
+        "//xla/stream_executor/gpu:redzone_allocator_kernel_lib.cu.h",
+    ],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        ":rocm_platform_id",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/stream_executor/gpu:redzone_allocator_kernel",
         "@local_config_rocm//rocm:rocm_headers",
     ],
     alwayslink = 1,

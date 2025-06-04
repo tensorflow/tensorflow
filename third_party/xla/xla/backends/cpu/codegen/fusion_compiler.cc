@@ -172,13 +172,32 @@ static int GetLlvmFunctionDefCount(mlir::ModuleOp m) {
 
 absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
     llvm::LLVMContext& llvm_context, mlir::ModuleOp mlir_module) {
-  mlir::PassManager pass_manager(mlir_module.getContext());
+  mlir::PassManager optimization_pass_manager(mlir_module.getContext());
 
-  AddXlaOpsOptimizationPasses(pass_manager);
-  AddLoopTransformationPasses(pass_manager);
-  AddLoweringPasses(pass_manager, options_.vector_width);
+  if (hooks_.pre_optimization) {
+    hooks_.pre_optimization(mlir_module);
+  }
 
-  TF_RETURN_IF_ERROR(RunPassPipeline(mlir_module, pass_manager, nullptr));
+  AddXlaOpsOptimizationPasses(optimization_pass_manager);
+  AddLoopTransformationPasses(optimization_pass_manager);
+
+  TF_RETURN_IF_ERROR(
+      RunPassPipeline(mlir_module, optimization_pass_manager, nullptr));
+
+  if (hooks_.post_optimization) {
+    hooks_.post_optimization(mlir_module);
+  }
+
+  mlir::PassManager lowering_pass_manager(mlir_module.getContext());
+
+  AddLoweringPasses(lowering_pass_manager, options_.vector_width);
+
+  TF_RETURN_IF_ERROR(
+      RunPassPipeline(mlir_module, lowering_pass_manager, nullptr));
+
+  if (hooks_.post_lowering) {
+    hooks_.post_lowering(mlir_module);
+  }
 
   // At the end of the MLIR pipeline we must have just one function definition.
   // This helps later compilation stages, where each thunk is assumed to be a

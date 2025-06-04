@@ -2096,6 +2096,16 @@ class HloCustomCallInstruction : public HloCallableInstruction {
                            absl::Span<const Shape> operand_shapes_with_layout,
                            CustomCallApiVersion api_version);
 
+  // Constructor for a custom call with constrained layout and a to_apply
+  // computation. 'shape' and 'operands_with_layout' must all have layouts.
+  HloCustomCallInstruction(const Shape& shape,
+                           absl::Span<HloInstruction* const> operands,
+                           HloComputation* to_apply,
+                           absl::string_view custom_call_target,
+                           std::string opaque,
+                           absl::Span<const Shape> operand_shapes_with_layout,
+                           CustomCallApiVersion api_version);
+
   // Constructor for a custom call with a to_apply computation.
   HloCustomCallInstruction(const Shape& shape,
                            absl::Span<HloInstruction* const> operands,

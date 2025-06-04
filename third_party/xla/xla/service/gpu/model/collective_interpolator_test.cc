@@ -82,7 +82,8 @@ class CollectiveInterpolationTest : public TestWithParam<ParametrizedTestCase> {
     }
     device_info_ = TestGpuDeviceInfo::RTXA6000DeviceInfo(
         stream_executor::CudaComputeCapability::Hopper());
-    interpolator_ = *CollectiveInterpolator::Create(profiles, device_info_);
+    interpolator_ = *CollectiveInterpolator::Create(kNumGpusPerHost, profiles,
+                                                    device_info_);
   }
 
  protected:
@@ -101,24 +102,20 @@ class CollectiveInterpolationTest : public TestWithParam<ParametrizedTestCase> {
       case HloOpcode::kAllReduce:
       case HloOpcode::kAllReduceStart:
         device_list = CollectiveDeviceList(CommToDeviceList(comm, num_hosts));
-        shape =
-            ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {tensor_size / 4})
-                .value();
+        shape = ShapeUtil::MakeShape(PrimitiveType::F32, {tensor_size / 4});
         break;
       case HloOpcode::kReduceScatter:
         device_list = CollectiveDeviceList(CommToDeviceList(comm, num_hosts));
-        shape = ShapeUtil::MakeValidatedShape(
-                    PrimitiveType::F32,
-                    {tensor_size / (4 * device_list.iota_replica_group_list()
-                                            ->num_devices_per_group())})
-                    .value();
+        shape = ShapeUtil::MakeShape(
+            PrimitiveType::F32,
+            {tensor_size /
+             (4 *
+              device_list.iota_replica_group_list()->num_devices_per_group())});
         break;
       case HloOpcode::kAllGather:
       case HloOpcode::kAllGatherStart:
         device_list = CollectiveDeviceList(CommToDeviceList(comm, num_hosts));
-        shape =
-            ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {tensor_size / 4})
-                .value();
+        shape = ShapeUtil::MakeShape(PrimitiveType::F32, {tensor_size / 4});
         break;
       default:
         LOG(FATAL) << "Unsupported test spec.";
@@ -899,8 +896,9 @@ INSTANTIATE_TEST_SUITE_P(
 TEST(CollectiveInterpolatorTest, LoadsDefaultProfile) {
   auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo(
       stream_executor::CudaComputeCapability::Hopper());
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CollectiveInterpolator> interpolator,
-                          CollectiveInterpolator::Create(device_info));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CollectiveInterpolator> interpolator,
+      CollectiveInterpolator::Create(kNumGpusPerHost, device_info));
   absl::string_view kHlo = R"(
     HloModule m, num_partitions=8
 

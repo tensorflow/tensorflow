@@ -90,13 +90,13 @@ __device__ __forceinline__ void VecOp(Vec<T>& res, const Vec<T>& vec) {
   res.data[3] = ApplyBinaryOp<T, ReductionKindT>(res.data[3], vec.data[3]);
 }
 
-__device__ __forceinline__ bool CompareExchange(uint32_t* addr,
-                                                uint32_t compare,
-                                                uint32_t val) {
+__device__ __forceinline__ bool CompareExchange(
+    uint32_t* addr, uint32_t compare, uint32_t val,
+    ::cuda::memory_order memory_order_success) {
 #if __CUDA_ARCH__ >= 600
   ::cuda::atomic_ref<uint32_t, ::cuda::thread_scope_system> ref(*addr);
-  return ref.compare_exchange_strong(compare, val,
-                                     ::cuda::memory_order_acq_rel);
+  return ref.compare_exchange_strong(compare, val, memory_order_success,
+                                     ::cuda::memory_order_relaxed);
 #else
   assert(false);
   return true;
@@ -104,12 +104,16 @@ __device__ __forceinline__ bool CompareExchange(uint32_t* addr,
 }
 
 __device__ __forceinline__ void PutSignalFlag(uint32_t* addr) {
-  while (!CompareExchange(addr, 0, 1)) {
+  // During signaling release semantics are used to ensure that writes
+  // by the current thread are visible to the waiting thread.
+  while (!CompareExchange(addr, 0, 1, ::cuda::memory_order_release)) {
   }
 }
 
 __device__ __forceinline__ void WaitSignalFlag(uint32_t* addr) {
-  while (!CompareExchange(addr, 1, 0)) {
+  // During waiting we use acquire semantics to ensure all memory writes by the
+  // remote thread are visible to the current thread.
+  while (!CompareExchange(addr, 1, 0, ::cuda::memory_order_acquire)) {
   }
 }
 
