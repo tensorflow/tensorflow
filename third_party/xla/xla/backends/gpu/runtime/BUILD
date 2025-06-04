@@ -2106,3 +2106,17 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
     ],
 )
+
+cc_library(
+    name = "cuda_vendor",
+    hdrs = [
+        ":vendor.h",
+    ],
+    defines = ["JAX_GPU_CUDA=1"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/tsl/cuda:cupti",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cudnn_header",
+    ],
+)
