@@ -247,7 +247,7 @@ PjrtCApiTestBase::create_transfer_manager(const xla::Shape& host_shape) {
   absl::StatusOr<BufferMemoryLayoutData> result =
       ConvertToBufferMemoryLayoutData(host_shape.layout());
   CHECK_OK(result);
-  BufferMemoryLayoutData c_layout_data = result.value();
+  BufferMemoryLayoutData c_layout_data = std::move(result.value());
   std::vector<PJRT_Buffer_MemoryLayout*> device_layout_list(1);
   device_layout_list[0] = &(c_layout_data.c_layout);
   args.device_layouts = device_layout_list.data();
