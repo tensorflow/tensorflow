@@ -21,7 +21,7 @@ TFCI_BUILD_PIP_PACKAGE_WHEEL_NAME_ARG="--repo_env=WHEEL_NAME=tensorflow"
 TFCI_DOCKER_ENABLE=1
 TFCI_DOCKER_IMAGE=us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-arm64:latest
 TFCI_DOCKER_PULL_ENABLE=1
-TFCI_DOCKER_REBUILD_ARGS="--target=tf ci/official/containers/linux_arm64"
+TFCI_DOCKER_REBUILD_ARGS="--target=tf ci/official/containers/ml_build_arm64"
 TFCI_INDEX_HTML_ENABLE=1
 TFCI_LIB_SUFFIX="-cpu-linux-arm64"
 TFCI_OUTPUT_DIR=build_output
