@@ -787,18 +787,14 @@ cc_library(
     deps = [
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:platform",
-        "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:typed_kernel_factory",
         "//xla/stream_executor/platform:initialize",
+        "//xla/stream_executor/platform:platform_object_registry",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -810,6 +806,7 @@ xla_cc_test(
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/cuda:cuda_platform_id",
+        "//xla/stream_executor/platform:platform_object_registry",
         "//xla/stream_executor/rocm:rocm_platform_id",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:status_matchers",
