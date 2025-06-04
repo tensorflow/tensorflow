@@ -15940,6 +15940,43 @@ ENTRY entry {
   EXPECT_THAT(replica_groups[0].replica_ids(), ::testing::ElementsAre(0, 1));
 }
 
+TEST_P(SpmdPartitioningTest, UnreducedDot) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  a = f32[8,1024]{1,0} parameter(0), sharding={devices=[1,2]0,1}
+  b = f32[1024,256]{1,0} parameter(1), sharding={devices=[2,1]0,1}
+  dot = f32[8,256]{1,0} dot(a, b), lhs_contracting_dims={1}, rhs_contracting_dims={0}, frontend_attributes={sdy.has_unreduced_axes="true"}
+  ROOT copy = f32[8,256]{1,0} copy(dot), sharding={replicated}, frontend_attributes={sdy.has_unreduced_axes="true"}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Copy(op::Dot()));
+  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
+}
+
+TEST_P(SpmdPartitioningTest, UnreducedPopulation) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  constant = s32[2,4]{1,0} constant({{1,1,1,1},{1,1,1,1}}), sharding={maximal device=0}
+  a = s32[2,4]{1,0} parameter(0), sharding={devices=[1,2]0,1}
+  add = s32[2,4]{1,0} add(constant, a), frontend_attributes={sdy.has_unreduced_axes="true"}
+  ROOT %copy = s32[2,4]{1,0} copy(%add), sharding={replicated}, frontend_attributes={sdy.has_unreduced_axes="true"}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  // Check that we use all-reduce to reshard the operands of the add in spite
+  // that the `add` has unreduced axes.
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Copy(op::Add(op::AllReduce(), op::AllReduce())));
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla
