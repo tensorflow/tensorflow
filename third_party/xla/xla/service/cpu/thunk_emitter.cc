@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "xla/backends/cpu/codegen/computation_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/dot/dot_kernel_emitter.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/elemental/elemental_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/emitters/cpu_scatter_emitter.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
+#include "xla/backends/cpu/codegen/fusion_emitter.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/runtime/all_gather_thunk.h"
@@ -88,6 +90,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/cpu/backend_config.pb.h"
+#include "xla/service/cpu/cpu_options.h"
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/service/cpu/ir_emitter2.h"
@@ -765,6 +768,28 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
 
     TF_ASSIGN_OR_RETURN(MlirKernelDefinition kernel_definition,
                         kernel_emitter->EmitKernelDefinition());
+
+    auto [kernel_spec, kernel_source] =
+        std::move(kernel_definition).ReleaseStorage();
+
+    TF_ASSIGN_OR_RETURN(LlvmIrKernelSource llvm_ir_kernel_source,
+                        fusion_compiler_.Compile(std::move(kernel_source)));
+
+    kernels_.push_back({kernel_spec.name(),
+                        std::move(llvm_ir_kernel_source).thread_safe_module()});
+
+    return MakeKernelThunkSequence(
+        instruction, std::move(kernel_spec),
+        /*min_alignment=*/cpu_function_runtime::MinAlign());
+  }
+
+  if (options::UseExperimentalLoopFusion(hlo_module_config_) &&
+      fusion->fusion_kind() == HloFusionInstruction::FusionKind::kLoop) {
+    std::unique_ptr<mlir::MLIRContext> context =
+        FusionCompiler::CreateContext();
+    TF_ASSIGN_OR_RETURN(
+        MlirKernelDefinition kernel_definition,
+        EmitFusionKernel(*context, *fusion, &buffer_assignment_));
 
     auto [kernel_spec, kernel_source] =
         std::move(kernel_definition).ReleaseStorage();
