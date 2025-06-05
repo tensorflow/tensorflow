@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
