@@ -39,8 +39,8 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_lift_as_function_call.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration/calibration_parameters.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
@@ -53,6 +53,10 @@ namespace mlir {
 namespace quant {
 namespace {
 
+using ::mlir::tf_quant::GetQuantizationMethod;
+using ::mlir::tf_quant::kOriginalStablehloEntryFunctionAttrName;
+using ::mlir::tf_quant::QuantizationTrait;
+using ::mlir::tf_quant::QuantTraitValues;
 using ::stablehlo::quantization::CalibrationOptions;
 using ::stablehlo::quantization::Method;
 

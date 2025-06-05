@@ -44,7 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/constants.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/python/unfreeze_constants.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -178,18 +178,18 @@ void AddExportPasses(mlir::PassManager& pm,
   quant::stablehlo::AddCallModuleSerializationPasses(pm);
   if (duplicate_shape_determining_constants) {
     pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::tf_quant::CreateDuplicateShapeDeterminingConstantsPass());
+        mlir::quant::CreateDuplicateShapeDeterminingConstantsPass());
   }
 
-  pm.addPass(mlir::tf_quant::CreateInsertMainFunctionPass());
-  pm.addPass(mlir::tf_quant::CreateLiftHashTableOpsAsArgsPass());
+  pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
+  pm.addPass(mlir::quant::CreateLiftHashTableOpsAsArgsPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());
   pm.addPass(mlir::CreateBreakUpIslandsPass());
-  pm.addPass(mlir::tf_quant::CreateMergeInitializerFunctionOpsToMainPass());
-  pm.addPass(mlir::tf_quant::CreateMergeSaveFunctionOpsToMainPass());
+  pm.addPass(mlir::quant::CreateMergeInitializerFunctionOpsToMainPass());
+  pm.addPass(mlir::quant::CreateMergeSaveFunctionOpsToMainPass());
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::tf_quant::CreateMergeDuplicateResourceOpsPass());
+      mlir::quant::CreateMergeDuplicateResourceOpsPass());
 
   // Used to clean up the "tf._noinliner" attribute that is previously used to
   // prevent certain functions from being inlined (see
