@@ -22,6 +22,11 @@ package(
     default_visibility = default_ifrt_proxy_visibility,
 )
 
+config_setting(
+    name = "ifrt_proxy_google_internal_allow_insecure",
+    values = {"copt": "-DIFRT_PROXY_GOOGLE_INTERNAL_ALLOW_INSECURE"},
+)
+
 # Export headers referenced by the google-internal-version of grpc_credentials.
 exports_files(
     ["grpc_credentials.h"],
@@ -64,6 +69,10 @@ cc_library(
     hdrs = [
         "grpc_credentials_possibly_insecure_wrapper.h",
     ],
+    defines = select({
+        ":ifrt_proxy_google_internal_allow_insecure": ["IFRT_PROXY_GOOGLE_INTERNAL_ALLOW_INSECURE=1"],
+        "//conditions:default": [],
+    }),
     visibility = ["//xla/python/ifrt_proxy:__subpackages__"],
     deps = [
         ":grpc_credentials",
