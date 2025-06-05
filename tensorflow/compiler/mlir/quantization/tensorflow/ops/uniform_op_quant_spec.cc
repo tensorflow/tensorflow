@@ -18,10 +18,12 @@ limitations under the License.
 
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir::quant {
+
+using ::mlir::tf_quant::OpQuantSpec;
 
 std::unique_ptr<OpQuantSpec> GetUniformOpQuantSpec(Operation* op) {
   auto spec = std::make_unique<OpQuantSpec>();

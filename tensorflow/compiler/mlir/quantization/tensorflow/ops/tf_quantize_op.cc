@@ -34,7 +34,7 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/utils/tf_quantize_op_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -42,6 +42,10 @@ limitations under the License.
 namespace mlir {
 namespace quant {
 namespace {
+
+using ::mlir::tf_quant::GetUniformQuantizedTypeForWeight;
+using ::mlir::tf_quant::Quantize;
+
 constexpr StringRef kDequantizeFunctionName = "composite_dequantize";
 constexpr StringRef kUniformQuantizationFunctionName = "uniform";
 

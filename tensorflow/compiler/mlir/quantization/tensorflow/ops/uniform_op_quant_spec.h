@@ -20,10 +20,12 @@ limitations under the License.
 #include <memory>
 
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
 
 namespace mlir {
 namespace quant {
+
+using ::mlir::tf_quant::OpQuantSpec;
 
 // Returns the spec for the given operation that can be used for both of
 // dynamic and static range quantization.
