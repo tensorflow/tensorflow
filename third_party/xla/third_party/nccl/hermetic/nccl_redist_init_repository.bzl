@@ -16,17 +16,18 @@
 
 load("//third_party:repo.bzl", "tf_mirror_urls")
 load(
-    "//third_party/gpus/cuda/hermetic:cuda_redist_init_repositories.bzl",
+    "//third_party/gpus:nvidia_common_rules.bzl",
     "OS_ARCH_DICT",
     "create_build_file",
     "create_dummy_build_file",
     "create_version_file",
     "get_archive_name",
+    "get_cuda_version",
     "get_env_var",
     "get_lib_name_to_version_dict",
     "get_major_library_version",
     "get_version_and_template_lists",
-    "use_local_path",
+    "use_local_redist_path",
 )
 load(
     "//third_party/gpus/cuda/hermetic:cuda_redist_versions.bzl",
@@ -37,8 +38,7 @@ load(
 def _use_downloaded_nccl_wheel(repository_ctx):
     # buildifier: disable=function-docstring-args
     """ Downloads NCCL wheel and inits hermetic NCCL repository."""
-    cuda_version = (get_env_var(repository_ctx, "HERMETIC_CUDA_VERSION") or
-                    get_env_var(repository_ctx, "TF_CUDA_VERSION"))
+    cuda_version = get_cuda_version(repository_ctx)
     major_version = ""
     if not cuda_version:
         # If no CUDA version is found, comment out cc_import targets.
@@ -108,15 +108,10 @@ def _use_downloaded_nccl_wheel(repository_ctx):
 
     create_version_file(repository_ctx, major_version)
 
-def _use_local_nccl_path(repository_ctx, local_nccl_path):
-    # buildifier: disable=function-docstring-args
-    """ Creates symlinks and initializes hermetic NCCL repository."""
-    use_local_path(repository_ctx, local_nccl_path, ["include", "lib"])
-
 def _cuda_nccl_repo_impl(repository_ctx):
     local_nccl_path = get_env_var(repository_ctx, "LOCAL_NCCL_PATH")
     if local_nccl_path:
-        _use_local_nccl_path(repository_ctx, local_nccl_path)
+        use_local_redist_path(repository_ctx, local_nccl_path, ["include", "lib"])
     else:
         _use_downloaded_nccl_wheel(repository_ctx)
 
@@ -129,12 +124,6 @@ cuda_nccl_repo = repository_rule(
         "build_templates": attr.label_list(mandatory = True),
         "strip_prefix": attr.string(),
     },
-    environ = [
-        "HERMETIC_CUDA_VERSION",
-        "TF_CUDA_VERSION",
-        "LOCAL_NCCL_PATH",
-        "CUDA_REDIST_TARGET_PLATFORM",
-    ],
 )
 
 def nccl_redist_init_repository(

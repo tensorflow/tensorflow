@@ -702,28 +702,8 @@ _CUDA_NVCC = "CUDA_NVCC"
 _TF_SYSROOT = "TF_SYSROOT"
 _TMPDIR = "TMPDIR"
 
-_ENVIRONS = [
-    _CC,
-    _CLANG_CUDA_COMPILER_PATH,
-    TF_NEED_CUDA,
-    _TF_NEED_ROCM,
-    _TF_NVCC_CLANG,
-    _CUDA_NVCC,
-    TF_CUDA_VERSION,
-    HERMETIC_CUDA_VERSION,
-    _TF_CUDA_COMPUTE_CAPABILITIES,
-    _HERMETIC_CUDA_COMPUTE_CAPABILITIES,
-    _TF_SYSROOT,
-    "TMP",
-    _TMPDIR,
-    "LOCAL_CUDA_PATH",
-    "LOCAL_CUDNN_PATH",
-    USE_CUDA_REDISTRIBUTIONS,
-]
-
 cuda_configure = repository_rule(
     implementation = _cuda_configure_impl,
-    environ = _ENVIRONS,
     attrs = {
         "environ": attr.string_dict(),
         "cccl_version": attr.label(default = Label("@cuda_cccl//:version.bzl")),
