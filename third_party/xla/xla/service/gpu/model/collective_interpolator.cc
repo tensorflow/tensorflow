@@ -56,6 +56,14 @@ namespace xla::gpu {
 
 namespace {
 
+constexpr int64_t kMaxDefaultTransferSizeBytes = 1 << 30;
+
+constexpr int64_t kMinDefaultTransferSizeBytes = 1 << 10;
+
+constexpr int64_t kMaxDefaultNumberOfParticipatingDevices = 8;
+
+constexpr int64_t kMinDefaultNumberOfParticipatingDevices = 2;
+
 struct InterpolationSpecification {
   HloOpcode opcode;
   GPUCommunicationType comm;
@@ -373,12 +381,12 @@ ConstructExactInterpolators(int num_devices_per_host,
     };
     auto exact_it = exact_interpolators->find(exact_key);
     if (exact_it == exact_interpolators->end()) {
-      auto interpolator =
-          std::make_unique<EuclideanComplementInterpolator<int64_t, 1>>(
-              /*next_context=*/std::array<int64_t, 1>{-1},
-              /*next_power_context=*/std::array<int64_t, 1>{1},
-              /*max_context=*/std::array<int64_t, 1>{1 << 30},
-              /*min_context=*/std::array<int64_t, 1>{1 << 10});
+      auto interpolator = std::make_unique<
+          EuclideanComplementInterpolator<int64_t, 1>>(
+          /*next_context=*/std::array<int64_t, 1>{-1},
+          /*next_power_context=*/std::array<int64_t, 1>{1},
+          /*max_context=*/std::array<int64_t, 1>{kMaxDefaultTransferSizeBytes},
+          /*min_context=*/std::array<int64_t, 1>{kMinDefaultTransferSizeBytes});
 
       (*exact_interpolators)[exact_key] = std::move(interpolator);
     }
@@ -444,8 +452,12 @@ ConstructFallbackInterpolators(int num_devices_per_host,
           std::make_unique<EuclideanComplementInterpolator<int64_t, 2>>(
               /*next_context=*/std::array<int64_t, 2>{-1, -1},
               /*next_power_context=*/std::array<int64_t, 2>{1, 1},
-              /*max_context=*/std::array<int64_t, 2>{1 << 30, 8},
-              /*min_context=*/std::array<int64_t, 2>{1 << 10, 8});
+              /*max_context=*/
+              std::array<int64_t, 2>{kMaxDefaultTransferSizeBytes,
+                                     kMaxDefaultNumberOfParticipatingDevices},
+              /*min_context=*/
+              std::array<int64_t, 2>{kMinDefaultTransferSizeBytes,
+                                     kMinDefaultNumberOfParticipatingDevices});
 
       (*fallback_interpolators)[key] = std::move(interpolator);
     }
