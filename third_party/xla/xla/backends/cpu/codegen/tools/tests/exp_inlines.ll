@@ -1,5 +1,5 @@
 ; RUN: ir-compiler-opt %s | FileCheck %s
-; Checks that when we emit xla.ldexp, it gets inlined and vectorized.
+; Checks that when we emit xla.exp, it gets inlined and vectorized.
 
 target triple = "x86_64-unknown-linux-gnu"
 
@@ -18,7 +18,7 @@ define dso_local void @func(double* %0, double* %1, i32 %2) local_unnamed_addr #
   %9 = phi i64 [ 0, %5 ], [ %15, %8 ]
   %10 = getelementptr inbounds nuw double, ptr %1, i64 %9
   %11 = load double, ptr %10, align 8
-  %13 = tail call double @local_xla.ldexp.f64.i32(double %11, i32 noundef 3) #1
+  %13 = tail call double @local_xla.exp.f64(double %11) #1
   %14 = getelementptr inbounds nuw double, ptr %0, i64 %9
   store double %13, ptr %14, align 8
   %15 = add nuw nsw i64 %9, 1
@@ -26,17 +26,21 @@ define dso_local void @func(double* %0, double* %1, i32 %2) local_unnamed_addr #
   br i1 %16, label %7, label %8
 }
 
-; Check that we have vectorized and inlined the call to ldexp.
+; Check that we have vectorized and inlined the call to ldexp:
 ; CHECK: vector.body:
-; The following line is a result of inlining ldexp(x, 3) + constant folding + vectorization.
-; CHECK: fmul <{{[0-9]+}} x double> %wide.load{{[0-9]?}}, splat (double 8.0
+; Check that the call to ldexp is inlined:
+; CHECK: %b{{.*}} = ashr <{{[0-9]+}} x i64> {{.*}}splat (i64 2)
+; CHECK-NOT: {{.*}}call{{.*}}ldexp
+; vectorized minimum:
+; CHECK call <{{[0-9]+}} x double> @llvm.minimum.v4f64{{.+}}0x40862E42FEFA39EF
+; CHECK-NOT: {{.*}}call{{.*}}ldexp
 
-; Check that the loop epilogue still does unvectorized fmul
+; Check that the loop epilogue does an unvectorized minimum.
 ; CHECK: scalar.ph:
-; CHECK: fmul double {{.*}}8.0
+; CHECK: call double @llvm.minimum.f64{{.+}}0x40862E42FEFA39EF
 
-declare double @local_xla.ldexp.f64.i32(double, i32) #1
+declare double @local_xla.exp.f64(double) #1
 
 attributes #0 = {  mustprogress nofree norecurse nounwind memory(argmem: readwrite) uwtable }
 attributes #1 = {  mustprogress nocallback nofree nounwind willreturn memory(none) }
-attributes #3 = {  nounwind  }
+attributes #3 = {  nounwind }

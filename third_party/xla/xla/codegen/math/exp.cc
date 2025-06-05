@@ -50,6 +50,9 @@ limitations under the License.
 
 namespace xla::codegen::math {
 ::std::string ExpF64FunctionName(size_t num_elements) {
+  if (num_elements == 1) {
+    return "xla.exp.f64";
+  }
   return absl::StrCat("xla.exp.v", num_elements, "f64");
 }
 
@@ -193,17 +196,11 @@ llvm::Function* CreateExpF64(llvm::Module* module, llvm::Type* input_type) {
   // exp_g_approx now holds the approximation for exp(g).
 
   // Convert n (stored as float vector) to an integer vector for ldexp.
-  llvm::Type* int_type = builder.getInt32Ty();
-  if (input_type->isVectorTy()) {
-    int_type = llvm::VectorType::get(int_type, num_elements, false);
-  }
-  llvm::Value* n_int = builder.CreateFPToSI(n, int_type, "n_float_to_int");
+  llvm::Function* ldexp_fn = CreateLdexpF64(module, input_type);
+  llvm::Value* n_int =
+      builder.CreateFPToSI(n, ldexp_fn->getArg(1)->getType(), "n_float_to_int");
 
   // Reconstruct exp(x) = exp(g) * 2^n using ldexp(exp_g_approx, n_int_vec).
-  llvm::FunctionType* ldexp_func_type =
-      llvm::FunctionType::get(input_type, {input_type, int_type}, false);
-  llvm::FunctionCallee ldexp_fn = module->getOrInsertFunction(
-      LdexpF64FunctionName(num_elements), ldexp_func_type);
   llvm::Value* calculated_exp_val = builder.CreateCall(
       ldexp_fn, {exp_g_approx, n_int}, "calculated_exp_val_ldexp");
 

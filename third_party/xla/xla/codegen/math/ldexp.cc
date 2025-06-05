@@ -52,6 +52,9 @@ llvm::Value* IntMin(llvm::IRBuilderBase& builder, llvm::Value* v1,
 }  // namespace
 
 std::string LdexpF64FunctionName(size_t num_elements) {
+  if (num_elements == 1) {
+    return "xla.ldexp.f64.i32";
+  }
   return absl::StrCat("xla.ldexp.v", num_elements, "f64.v", num_elements,
                       "i32");
 }
@@ -84,6 +87,7 @@ llvm::Function* CreateLdexpF64(llvm::Module* module, llvm::Type* vector_type) {
   llvm::Function* ldexp_func =
       llvm::Function::Create(ldexp_func_type, llvm::Function::InternalLinkage,
                              LdexpF64FunctionName(num_elements), module);
+  ldexp_func->addFnAttr(llvm::Attribute::AlwaysInline);
   llvm::Argument* a = ldexp_func->getArg(0);
   a->setName("a");
   llvm::Argument* exponent = ldexp_func->getArg(1);
@@ -95,7 +99,7 @@ llvm::Function* CreateLdexpF64(llvm::Module* module, llvm::Type* vector_type) {
   llvm::IRBuilder<> builder = llvm::IRBuilder<>(entry_block);
 
   auto int_vec = [=](int64_t val) {
-    return llvm::ConstantInt::get(i64_type, val);
+    return llvm::ConstantInt::get(i64_type, val, true);
   };
 
   // Constants for double (F64) based on IEEE 754 standard.
@@ -116,7 +120,7 @@ llvm::Function* CreateLdexpF64(llvm::Module* module, llvm::Type* vector_type) {
 
   llvm::Value* two_i64_for_shift = int_vec(2);
   // floor(e/4):
-  llvm::Value* b = builder.CreateAShr(clamped_exponent, two_i64_for_shift);
+  llvm::Value* b = builder.CreateAShr(clamped_exponent, two_i64_for_shift, "b");
 
   // Calculate 2^b (first factor 'c') using bit manipulation:
   //    a. Add `b` to the exponent `bias` (integer addition).
