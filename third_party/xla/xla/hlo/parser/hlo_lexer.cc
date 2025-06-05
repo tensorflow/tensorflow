@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <optional>
 #include <string>
 #include <utility>
@@ -495,22 +496,56 @@ TokKind HloLexer::LexNumberOrPattern(uint64_t skip_mask) {
 }
 
 TokKind HloLexer::LexInt64Impl() {
-  absl::string_view consumable = StringViewFromPointers(
-      token_state_.token_start, buf_.data() + buf_.size());
-  if (ConsumeIntPattern(consumable)) {
-    current_ptr_ = consumable.data();
-    auto slice = StringViewFromPointers(token_state_.token_start, current_ptr_);
-    if (absl::SimpleAtoi(slice, &token_state_.int64_val)) {
-      return TokKind::kInt;
+  // This effectively matches the RE2 pattern R"([-]?\d+)".
+  const char* pos = token_state_.token_start;
+  bool has_digits = false;
+  int64_t int64_val = 0;
+  if (*pos == '-') {
+    ++pos;
+    // Lexing negative integer:
+    while (true) {
+      uint8_t c = static_cast<uint8_t>(*pos) - static_cast<uint8_t>('0');
+      if (c > 9) {
+        break;
+      }
+      has_digits = true;
+      if (int64_val < std::numeric_limits<int64_t>::min() / 10) {
+        return TokKind::kError;
+      }
+      int64_val *= 10;
+      if (int64_val < std::numeric_limits<int64_t>::min() + c) {
+        return TokKind::kError;
+      }
+      int64_val -= c;
+      ++pos;
     }
-    uint64_t uint64_val;
-    if (absl::SimpleAtoi(slice, &uint64_val)) {
-      token_state_.int64_val = absl::bit_cast<int64_t>(uint64_val);
-      return TokKind::kInt;
+  } else {
+    uint64_t uint64_val = 0;
+    // Lexing non-negative integer:
+    while (true) {
+      uint8_t c = static_cast<uint8_t>(*pos) - static_cast<uint8_t>('0');
+      if (c > 9) {
+        break;
+      }
+      has_digits = true;
+      if (uint64_val > std::numeric_limits<uint64_t>::max() / 10) {
+        return TokKind::kError;
+      }
+      uint64_val *= 10;
+      if (uint64_val > std::numeric_limits<uint64_t>::max() - c) {
+        return TokKind::kError;
+      }
+      uint64_val += c;
+      ++pos;
     }
-    LOG(ERROR) << "Failed to parse int literal: " << slice;
+    int64_val = absl::bit_cast<int64_t>(uint64_val);
   }
-  return TokKind::kError;
+  if (!has_digits) {
+    return TokKind::kError;
+  }
+  token_state_.int64_val = int64_val;
+  current_ptr_ = pos;
+  return TokKind::kInt;
 }
 
 std::pair<unsigned, unsigned> HloLexer::GetLineAndColumn(LocTy location) const {
