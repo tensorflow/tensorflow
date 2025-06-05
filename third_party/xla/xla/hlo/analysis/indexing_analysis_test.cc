@@ -43,7 +43,7 @@ MATCHER_P2(MatchInstrIndexing, operand_id, indexing_map_matchers, "") {
 
 using IndexingAnalysisTest = IndexingTestBase;
 
-TEST_F(IndexingAnalysisTest, FuseProducerConsumerOutputToInputIndexing) {
+TEST_F(IndexingAnalysisTest, GroupIndexingMapsByProducers) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
