@@ -1,5 +1,10 @@
 # PJRT C API changelog
 
+## 0.69
+
+* Added optional `plugin_version` argument to `SerializeUsingVersionedStablehlo`
+  and `Serialize`.
+
 ## 0.68
 
 * Changed the type of ``topology`` in
