@@ -121,9 +121,8 @@ HloInstructionSequence& HloSchedule::GetOrCreateSequence(
     execution_threads_[computation->unique_id()] =
         std::string(computation->execution_thread());
     return sequences_[computation->unique_id()];
-  } else {
-    return it->second;
   }
+  return it->second;
 }
 
 const HloInstructionSequence& HloSchedule::sequence(
