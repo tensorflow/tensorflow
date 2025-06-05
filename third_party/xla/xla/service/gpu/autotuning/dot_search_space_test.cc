@@ -22,6 +22,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -96,17 +97,18 @@ class DefaultDeviceDotSearchSpaceTest : public HloHardwareIndependentTestBase {
 
   absl::StatusOr<std::unique_ptr<VerifiedHloModule>> GetDefaultDotModule(
       int lhs_parallel_dim = 1024, int rhs_parallel_dim = 1024,
-      int contracting_dim = 1024) {
+      int contracting_dim = 1024, absl::string_view type = "f16") {
     constexpr const char* kModuleTextFormat = R"(
 ENTRY e {
-  p0 = f16[%d,%d] parameter(0)
-  p1 = f16[%d,%d] parameter(1)
-  ROOT r = f16[%d,%d] dot(p0, p1),
+  p0 = %s[%d,%d] parameter(0)
+  p1 = %s[%d,%d] parameter(1)
+  ROOT r = %s[%d,%d] dot(p0, p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
     return ParseAndReturnVerifiedModule(absl::StrFormat(
-        kModuleTextFormat, lhs_parallel_dim, contracting_dim, contracting_dim,
-        rhs_parallel_dim, lhs_parallel_dim, rhs_parallel_dim));
+        kModuleTextFormat, type, lhs_parallel_dim, contracting_dim, type,
+        contracting_dim, rhs_parallel_dim, type, lhs_parallel_dim,
+        rhs_parallel_dim));
   }
 
   HloDotInstruction* GetDot(VerifiedHloModule* module) {
@@ -347,6 +349,20 @@ TEST_F(DotSearchSpaceTest, ConsidersAppropriateCtaSizeForTileSize) {
                                    NumWarpsIs(Eq(4)))),
                     Contains(AllOf(BlockMIs(Eq(64)), BlockNIs(Eq(64)),
                                    NumWarpsIs(Eq(8))))));
+}
+
+// TODO: b/422419331 - Remove this once Triton properly handles 32-bit dots.
+TEST_F(DotSearchSpaceTest, ConsidersSmallCtasFor32BitDot) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> module,
+      GetDefaultDotModule(/*lhs_parallel_dim=*/8 * 1024,
+                          /*rhs_parallel_dim=*/8 * 1024,
+                          /*contracting_dim=*/1024, /*type=*/"f32"));
+  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
+
+  EXPECT_THAT(
+      search_space.GenerateConfigs(),
+      Contains(AllOf(BlockMIs(Eq(64)), BlockNIs(Eq(32)), NumWarpsIs(Eq(2)))));
 }
 
 TEST_F(DotSearchSpaceTest, FindsFullCacheLineContractingTileSize) {
