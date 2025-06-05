@@ -123,6 +123,7 @@ class GrpcClientSession : public ClientSession {
 
   // Ensures logic inside `Finish()` is internally called only once.
   absl::once_flag finish_once_;
+  absl::Notification finish_once_called_;
 
   // References to gRPC objects used to read and write to the stream.
   const std::shared_ptr<grpc::GrpcIfrtService::StubInterface> stub_;

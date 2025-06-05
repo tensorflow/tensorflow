@@ -192,10 +192,15 @@ void GrpcClientSession::ReadLoop() {
 }
 
 void GrpcClientSession::Finish(const absl::Status& client_status) {
-  LOG(INFO) << "GrpcClientSession: Finish() called with client status "
-            << client_status;
+  LOG(ERROR) << "GrpcClientSession::Finish(): Not an error, just capturing an"
+             << "important event, called with client status " << client_status
+             << "; previously called? "
+             << finish_once_called_.HasBeenNotified();
 
   absl::call_once(finish_once_, [&] {
+    LOG(INFO) << "GrpcClientSession::Finish(): calling context_->TryCancel().";
+    finish_once_called_.Notify();
+
     context_->TryCancel();
 
     LOG(INFO) << "GrpcClientSession: Waiting for reader thread to stop.";
@@ -230,8 +235,9 @@ void GrpcClientSession::Finish(const absl::Status& client_status) {
       }
     }
 
-    LOG(INFO) << "GrpClientSession::Finish(): calling terminated cb with "
-              << combined_status;
+    LOG(ERROR) << "GrpClientSession::Finish(): Not an error, just capturing an "
+               << "important event: calling terminated cb with "
+               << combined_status;
     stream_terminated_cb_(combined_status);
   });
 }
