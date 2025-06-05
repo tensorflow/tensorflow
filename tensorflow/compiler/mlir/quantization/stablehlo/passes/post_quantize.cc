@@ -16,6 +16,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -23,15 +24,20 @@ limitations under the License.
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"  // IWYU pragma: keep
 
 namespace mlir::quant::stablehlo {
+
+using tf_quant::FoldTrivalRequantizeOp;
+using tf_quant::kVolatileOpAttrName;
+using tf_quant::Quantize;
 
 #define GEN_PASS_DEF_POSTQUANTIZEPASS
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h.inc"
@@ -53,15 +59,16 @@ class PostQuantizePass : public impl::PostQuantizePassBase<PostQuantizePass> {
 // ModifyIONodesPass in TFLite use cases.
 // Removes the back-to-back quantize and dequantize ops with volatile attribute.
 class RemoveVolatileQdqPattern
-    : public OpRewritePattern<quantfork::DequantizeCastOp> {
+    : public OpRewritePattern<mlir::quant::ir::DequantizeCastOp> {
  public:
   explicit RemoveVolatileQdqPattern(MLIRContext* context)
-      : OpRewritePattern<quantfork::DequantizeCastOp>(context) {}
+      : OpRewritePattern<mlir::quant::ir::DequantizeCastOp>(context) {}
 
-  LogicalResult matchAndRewrite(quantfork::DequantizeCastOp op,
+  LogicalResult matchAndRewrite(mlir::quant::ir::DequantizeCastOp op,
                                 PatternRewriter& rewriter) const override {
     auto input_op = op.getArg().getDefiningOp();
-    if (auto q = llvm::dyn_cast_or_null<quantfork::QuantizeCastOp>(input_op)) {
+    if (auto q =
+            llvm::dyn_cast_or_null<mlir::quant::ir::QuantizeCastOp>(input_op)) {
       if (!q->getAttr(kVolatileOpAttrName)) return failure();
 
       // If the quantize op is a requantize op, it is being used in other scale
@@ -70,7 +77,7 @@ class RemoveVolatileQdqPattern
       if (const QuantizedType qtype =
               QuantizedType::getQuantizedElementType(q.getArg().getType())) {
         rewriter.setInsertionPoint(op);
-        rewriter.replaceOpWithNewOp<quantfork::DequantizeCastOp>(
+        rewriter.replaceOpWithNewOp<mlir::quant::ir::DequantizeCastOp>(
             op, op.getResult().getType(), q.getArg());
         return success();
       }
@@ -107,11 +114,11 @@ class QuantizeConstPattern
 
 // Replaces quantfork.dcast with stablehlo.uniform_dequantize.
 class ConvertDequantizeCastToUniformDequantizePattern
-    : public OpRewritePattern<quantfork::DequantizeCastOp> {
+    : public OpRewritePattern<mlir::quant::ir::DequantizeCastOp> {
  public:
   explicit ConvertDequantizeCastToUniformDequantizePattern(MLIRContext* context)
-      : OpRewritePattern<quantfork::DequantizeCastOp>(context) {}
-  LogicalResult matchAndRewrite(quantfork::DequantizeCastOp dq_op,
+      : OpRewritePattern<mlir::quant::ir::DequantizeCastOp>(context) {}
+  LogicalResult matchAndRewrite(mlir::quant::ir::DequantizeCastOp dq_op,
                                 PatternRewriter& rewriter) const override {
     rewriter.replaceOpWithNewOp<mlir::stablehlo::UniformDequantizeOp>(
         dq_op, dq_op.getResult().getType(), dq_op.getArg());
@@ -121,11 +128,11 @@ class ConvertDequantizeCastToUniformDequantizePattern
 
 // Replaces quantfork.qcast with stablehlo.uniform_quantize.
 class ConvertQuantizeCastToUniformQuantizePattern
-    : public OpRewritePattern<quantfork::QuantizeCastOp> {
+    : public OpRewritePattern<mlir::quant::ir::QuantizeCastOp> {
  public:
   explicit ConvertQuantizeCastToUniformQuantizePattern(MLIRContext* context)
-      : OpRewritePattern<quantfork::QuantizeCastOp>(context) {}
-  LogicalResult matchAndRewrite(quantfork::QuantizeCastOp q_op,
+      : OpRewritePattern<mlir::quant::ir::QuantizeCastOp>(context) {}
+  LogicalResult matchAndRewrite(mlir::quant::ir::QuantizeCastOp q_op,
                                 PatternRewriter& rewriter) const override {
     rewriter.replaceOpWithNewOp<mlir::stablehlo::UniformQuantizeOp>(
         q_op, q_op.getResult().getType(), q_op.getArg());
@@ -138,7 +145,7 @@ void PostQuantizePass::runOnOperation() {
   func::FuncOp func = getOperation();
   MLIRContext* ctx = func.getContext();
   // TODO: b/307463853 - Consider splitting passes for each pattern set.
-  patterns.add<FoldTrivalRequantizeOp<quantfork::QuantizeCastOp>,
+  patterns.add<FoldTrivalRequantizeOp<mlir::quant::ir::QuantizeCastOp>,
                RemoveVolatileQdqPattern>(ctx);
   if (failed(applyPatternsGreedily(func, std::move(patterns)))) {
     signalPassFailure();

@@ -30,8 +30,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/pass_pipeline.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/testing/passes.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/tf_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
@@ -45,7 +45,7 @@ int main(int argc, char** argv) {
 
   mlir::registerAllPasses();
   mlir::registerTensorFlowPasses();
-  mlir::tf_quant::stablehlo::registerPasses();
+  mlir::quant::stablehlo::registerPasses();
   mlir::quant::stablehlo::registerBridgePasses();
   mlir::stablehlo::registerPasses();
   mlir::mhlo::registerAllMhloPasses();

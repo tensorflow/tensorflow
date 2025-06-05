@@ -258,8 +258,8 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:passes",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:tf_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:tf_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",

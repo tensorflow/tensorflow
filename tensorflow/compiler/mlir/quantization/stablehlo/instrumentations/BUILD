@@ -31,8 +31,8 @@ tf_cc_test(
     deps = [
         ":save_report",
         "//tensorflow/compiler/mlir/quantization/common:tf_test_base",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:passes",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:tf_passes",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:io",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
