@@ -60,7 +60,7 @@ cc_library(
 )
 
 # Definition of the test for the object tracking library
-cc_test(
+tf_native_cc_binary(
     name = "object_tracking_test",
     srcs = [
         "object_tracking_test.cc",
