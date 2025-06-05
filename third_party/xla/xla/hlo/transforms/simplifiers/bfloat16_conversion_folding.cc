@@ -172,20 +172,20 @@ absl::Status BFloat16ConversionFoldingVisitor::DefaultAction(
   // Do not fold BF16 conversions for instructions related to tuples, entry and
   // exit of a computation, fusion, convert, side-effecting instructions,
   // in-place operations and control flow.
-  if (hlo->opcode() == HloOpcode::kTuple ||                      //
-      hlo->opcode() == HloOpcode::kGetTupleElement ||            //
-      hlo->opcode() == HloOpcode::kConstant ||                   //
-      hlo->opcode() == HloOpcode::kParameter ||                  //
-      hlo->opcode() == HloOpcode::kFusion ||                     //
-      hlo->opcode() == HloOpcode::kBitcastConvert ||             //
-      hlo->opcode() == HloOpcode::kConvert ||                    //
-      hlo->opcode() == HloOpcode::kCall ||                       //
-      hlo->opcode() == HloOpcode::kCustomCall ||                 //
-      hlo->opcode() == HloOpcode::kWhile ||                      //
-      hlo->opcode() == HloOpcode::kConditional ||                //
-      hlo->opcode() == HloOpcode::kAsyncStart ||                 //
-      hlo->opcode() == HloOpcode::kAsyncDone ||                  //
-      HloDataflowAnalysis::IsInPlaceOperation(hlo->opcode()) ||  //
+  if (hlo->opcode() == HloOpcode::kTuple ||                             //
+      hlo->opcode() == HloOpcode::kGetTupleElement ||                   //
+      hlo->opcode() == HloOpcode::kConstant ||                          //
+      hlo->opcode() == HloOpcode::kParameter ||                         //
+      hlo->opcode() == HloOpcode::kFusion ||                            //
+      hlo->opcode() == HloOpcode::kBitcastConvert ||                    //
+      hlo->opcode() == HloOpcode::kConvert ||                           //
+      hlo->opcode() == HloOpcode::kCall ||                              //
+      hlo->opcode() == HloOpcode::kCustomCall ||                        //
+      hlo->opcode() == HloOpcode::kWhile ||                             //
+      hlo->opcode() == HloOpcode::kConditional ||                       //
+      hlo->opcode() == HloOpcode::kAsyncStart ||                        //
+      hlo->opcode() == HloOpcode::kAsyncDone ||                         //
+      !HloDataflowAnalysis::GetInPlaceInputOutputPairs(hlo).empty() ||  //
       hlo->HasSideEffectNoRecurse()) {
     return absl::OkStatus();
   }
