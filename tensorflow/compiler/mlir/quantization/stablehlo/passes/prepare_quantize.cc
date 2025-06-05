@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_driver.h"
 #include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
-#include "tensorflow/compiler/mlir/quantization/stablehlo/ops/tf_stablehlo_op_quant_spec.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/ops/stablehlo_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -42,8 +42,6 @@ namespace quant {
 namespace stablehlo {
 
 using tf_quant::kVolatileOpAttrName;
-using tf_quant::stablehlo::GetStableHloOpQuantSpec;
-using tf_quant::stablehlo::GetStableHloQuantConstraints;
 
 #define GEN_PASS_DEF_PREPAREQUANTIZEPASS
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h.inc"

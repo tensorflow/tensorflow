@@ -66,7 +66,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/temp_tf_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/utils/tf_tf_to_uniform_attribute_utils.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/utils/tf_to_uniform_attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -77,6 +77,13 @@ limitations under the License.
 namespace mlir {
 namespace tf_quant {
 namespace {
+
+using quant::FillAttributesForUniformQuantizedAddOp;
+using quant::FillAttributesForUniformQuantizedClipByValueOp;
+using quant::FillAttributesForUniformQuantizedConvolutionOp;
+using quant::FillAttributesForUniformQuantizedDotOp;
+using quant::FillAttributesForUniformQuantizeOp;
+using quant::FillAttributesForUniformRequantizeOp;
 
 using QuantMethod = tensorflow::quantization::QuantizationMethod::PresetMethod;
 using ::tensorflow::quantization::OpSet;
