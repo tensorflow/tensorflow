@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/gpu/model/experimental/symbolic_tile.h"
 
@@ -48,7 +49,7 @@ MATCHER_P(MatchString, symbolic_tile_string, "") {
       result_listener);
 }
 
-class SymbolicAnalysisTest : public HloHardwareIndependentTestBase {
+class SymbolicTilePropagationTest : public HloHardwareIndependentTestBase {
  public:
   HloInstruction* ParseAndGetRoot(absl::string_view hlo_string) {
     auto module_or = ParseAndReturnVerifiedModule(hlo_string);
@@ -82,7 +83,7 @@ ExperimentalSymbolicTile GetTestSymbolicTile(int64_t rank,
       AffineMap::get(rank, rank, results, mlir_context), {}};
 }
 
-TEST_F(SymbolicAnalysisTest, ElementwiseOp) {
+TEST_F(SymbolicTilePropagationTest, ElementwiseOp) {
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {

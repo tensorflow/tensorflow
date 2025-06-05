@@ -45,6 +45,7 @@ xla_cc_test(
         ":symbolic_tile",
         "//xla/hlo/analysis:indexing_test_utils",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:string_view",
