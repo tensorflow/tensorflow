@@ -179,9 +179,15 @@ PjrtCApiTestBase::CreateBufferFromHostBufferArgs(
   return args;
 }
 
+std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>
+PjrtCApiTestBase::create_buffer(PJRT_Device* device) {
+  xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<float>({4});
+  return create_uninitialized_buffer(shape, device);
+}
+
 std::pair<std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>,
           xla::PjRtFuture<>>
-PjrtCApiTestBase::create_buffer(PJRT_Device* device) {
+PjrtCApiTestBase::create_iota_buffer(PJRT_Device* device) {
   xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<float>({4});
   std::vector<float> float_data(4);
   std::iota(float_data.begin(), float_data.end(), 41.0f);
@@ -219,6 +225,43 @@ PjrtCApiTestBase::create_buffer_from_data(const std::vector<float>& float_data,
       ::pjrt::ConvertCEventToCppFuture(get_event_args.event, api_);
 
   return std::make_pair(std::move(buffer), buffer_ready_event);
+}
+
+std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>
+PjrtCApiTestBase::create_uninitialized_buffer(const xla::Shape& shape,
+                                              PJRT_Device* device) {
+  PJRT_Client_CreateUninitializedBuffer_Args args;
+  args.struct_size = PJRT_Client_CreateUninitializedBuffer_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.client = client_;
+
+  args.shape_dims = shape.dimensions().data();
+  args.shape_num_dims = shape.dimensions().size();
+  args.shape_element_type = pjrt::ConvertToPjRtBufferType(shape.element_type());
+
+  absl::StatusOr<pjrt::BufferMemoryLayoutData> c_layout_data;
+  if (shape.has_layout()) {
+    c_layout_data = pjrt::ConvertToBufferMemoryLayoutData(shape.layout());
+    CHECK_OK(c_layout_data);
+    args.shape_layout = &c_layout_data->c_layout;
+  } else {
+    args.shape_layout = nullptr;
+  }
+
+  if (device == nullptr) {
+    device = GetClientAddressableDevices()[0];
+  }
+  args.device = device;
+  args.memory = nullptr;
+
+  auto transfer_error =
+      ToUniquePtr(api_->PJRT_Client_CreateUninitializedBuffer(&args));
+  EXPECT_EQ(transfer_error, nullptr);
+
+  std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter> buffer(
+      args.buffer, ::pjrt::MakeBufferDeleter(api_));
+
+  return buffer;
 }
 
 std::unique_ptr<PJRT_Error, ::pjrt::PJRT_ErrorDeleter>
