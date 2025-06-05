@@ -77,17 +77,17 @@ def FoldFusedBatchNormV3: Pattern<
      (HasNoUseOf:$root__5)]>;
 
 class HasEqualElementSize<list<int> shape_1, list<int> shape_2> : Constraint<
-  CPred<"quant::HasEqualElementSize($0, $1,"
+  CPred<"HasEqualElementSize($0, $1,"
   "llvm::ArrayRef<int>({" # !interleave(shape_1, ", ") # "}),"
   "llvm::ArrayRef<int>({" # !interleave(shape_2, ", ") # "}))">,
   "Checks if the given dimensions contain the same number of elements.">;
 
 def ReshapableTo1DTensor : Constraint<
-  CPred<"quant::ReshapableTo1DTensor(llvm::cast<ShapedType>($0.getType()))">,
+  CPred<"ReshapableTo1DTensor(llvm::cast<ShapedType>($0.getType()))">,
   "Checks if the value dims are all ones except the right most dim">;
 
 def ReshapeTo1DTensor : NativeCodeCall<
-  "quant::ReshapeTo1DTensor($_builder, $_loc, $0)">;
+  "ReshapeTo1DTensor($_builder, $_loc, $0)">;
 
 def HasEqualShape : Constraint<CPred<
   "llvm::cast<ShapedType>($0.getType()).hasRank() && "

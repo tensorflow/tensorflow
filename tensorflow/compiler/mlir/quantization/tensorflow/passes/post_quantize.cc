@@ -20,12 +20,20 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"  // IWYU pragma: keep
 
 //===----------------------------------------------------------------------===//
 // The post-quantize Passes.
@@ -33,6 +41,9 @@ limitations under the License.
 namespace mlir {
 namespace quant {
 namespace {
+
+using ::mlir::tf_quant::FoldTrivalRequantizeOp;
+using ::mlir::tf_quant::kVolatileOpAttrName;
 
 // Applies all the clean up steps after quantization.
 class PostQuantizePass
@@ -66,14 +77,15 @@ enum RemoveVolatileOpsType {
 // Remove the back-to-back quantize and dequantize ops with volatile attribute.
 template <RemoveVolatileOpsType remove_volatile_ops_type>
 struct RemoveVolatileOps
-    : public OpRewritePattern<quantfork::DequantizeCastOp> {
+    : public OpRewritePattern<mlir::quant::ir::DequantizeCastOp> {
   explicit RemoveVolatileOps(MLIRContext* context)
-      : OpRewritePattern<quantfork::DequantizeCastOp>(context, 1) {}
+      : OpRewritePattern<mlir::quant::ir::DequantizeCastOp>(context, 1) {}
 
-  LogicalResult matchAndRewrite(quantfork::DequantizeCastOp op,
+  LogicalResult matchAndRewrite(mlir::quant::ir::DequantizeCastOp op,
                                 PatternRewriter& rewriter) const override {
     auto input_op = op.getArg().getDefiningOp();
-    if (auto q = llvm::dyn_cast_or_null<quantfork::QuantizeCastOp>(input_op)) {
+    if (auto q =
+            llvm::dyn_cast_or_null<mlir::quant::ir::QuantizeCastOp>(input_op)) {
       if (!q->getAttr(kVolatileOpAttrName)) return failure();
 
       if (remove_volatile_ops_type == kPreserveInputsAndOutputs) {
@@ -90,7 +102,7 @@ struct RemoveVolatileOps
       if (auto qtype =
               QuantizedType::getQuantizedElementType(q.getArg().getType())) {
         rewriter.setInsertionPoint(op);
-        rewriter.replaceOpWithNewOp<quantfork::DequantizeCastOp>(
+        rewriter.replaceOpWithNewOp<mlir::quant::ir::DequantizeCastOp>(
             op, op.getResult().getType(), q.getArg());
         return success();
       }
@@ -106,13 +118,13 @@ struct RemoveVolatileOps
 // or the opposite. If none of its input and output is quantized, the op has
 // no effect and should be removed.
 class RemoveRedundantScast
-    : public mlir::OpRewritePattern<quantfork::StorageCastOp> {
+    : public mlir::OpRewritePattern<mlir::quant::ir::StorageCastOp> {
  public:
   explicit RemoveRedundantScast(MLIRContext* context)
-      : OpRewritePattern<quantfork::StorageCastOp>(context) {}
+      : OpRewritePattern<mlir::quant::ir::StorageCastOp>(context) {}
 
  private:
-  LogicalResult matchAndRewrite(quantfork::StorageCastOp scast_op,
+  LogicalResult matchAndRewrite(mlir::quant::ir::StorageCastOp scast_op,
                                 PatternRewriter& rewriter) const override {
     if (QuantizedType::getQuantizedElementType(scast_op.getArg().getType()) ||
         QuantizedType::getQuantizedElementType(scast_op.getType())) {
@@ -130,7 +142,7 @@ void PostQuantizePass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto func = getOperation();
   auto* ctx = func.getContext();
-  patterns.add<FoldTrivalRequantizeOp<quantfork::QuantizeCastOp>,
+  patterns.add<FoldTrivalRequantizeOp<mlir::quant::ir::QuantizeCastOp>,
                RemoveVolatileOps<kPreserveNone>, RemoveRedundantScast>(ctx);
   populateWithGenerated(patterns);
   if (failed(applyPatternsGreedily(func, std::move(patterns)))) {

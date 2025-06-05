@@ -39,10 +39,10 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/ops/temp_tf_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -55,21 +55,29 @@ namespace quant {
 //===----------------------------------------------------------------------===//
 namespace {
 
+using ::mlir::quant::ir::DequantizeCastOp;
+using ::mlir::quant::ir::QuantizeCastOp;
+using ::mlir::quant::ir::StorageCastOp;
+using ::mlir::tf_quant::CustomMap;
+using ::mlir::tf_quant::GetTfQuantScaleSpec;
+using ::mlir::tf_quant::kQuantTraitAttrName;
+using ::mlir::tf_quant::OpQuantScaleSpecGetter;
+using ::mlir::tf_quant::QuantizationPattern;
+using ::mlir::tf_quant::QuantizationSpecs;
+using ::mlir::tf_quant::QuantPassSpec;
 using ::tensorflow::quantization::OpSet;
 
 enum QuantizationTrait { kFullQuantization, kDynamicRangeQuantization };
 
 // Base struct for quantization.
 template <QuantizationTrait quantization_trait, typename ConcreteT,
-          typename RootOpT = quantfork::DequantizeCastOp>
+          typename RootOpT = DequantizeCastOp>
 struct TFQuantizationBase
-    : public QuantizationPattern<ConcreteT, quantfork::QuantizeCastOp,
-                                 quantfork::DequantizeCastOp,
+    : public QuantizationPattern<ConcreteT, QuantizeCastOp, DequantizeCastOp,
                                  /*VerifierT=*/void, RootOpT> {
   explicit TFQuantizationBase(MLIRContext* ctx,
                               const QuantPassSpec& quant_params)
-      : QuantizationPattern<ConcreteT, quantfork::QuantizeCastOp,
-                            quantfork::DequantizeCastOp,
+      : QuantizationPattern<ConcreteT, QuantizeCastOp, DequantizeCastOp,
                             /*VerifierT=*/void, RootOpT>(ctx, quant_params) {}
 
   // Custom op quantization is not supported.
@@ -130,11 +138,11 @@ struct TFFullQuantization
 // the quantizable ops without floating-point operands.
 struct TFFullQuantizationReverse
     : public TFQuantizationBase<kFullQuantization, TFFullQuantizationReverse,
-                                quantfork::QuantizeCastOp> {
+                                QuantizeCastOp> {
   explicit TFFullQuantizationReverse(MLIRContext* ctx,
                                      const QuantPassSpec& quant_params)
       : TFQuantizationBase<kFullQuantization, TFFullQuantizationReverse,
-                           quantfork::QuantizeCastOp>(ctx, quant_params) {}
+                           QuantizeCastOp>(ctx, quant_params) {}
 };
 
 // Dynamic range quantization rewrite pattern using DQ as the root op.
@@ -150,14 +158,13 @@ struct TFDynamicRangeQuantization
 // Removes quantize-dequantize pairs that are not used in the quantization.
 // The benefit of this pattern is set to lower value than other patterns, so
 // that the other patterns can work on quantize/dequantize ops first.
-class RemoveUnusedQdqPattern
-    : public OpRewritePattern<quantfork::DequantizeCastOp> {
+class RemoveUnusedQdqPattern : public OpRewritePattern<DequantizeCastOp> {
  public:
   explicit RemoveUnusedQdqPattern(MLIRContext* context)
-      : OpRewritePattern<quantfork::DequantizeCastOp>(context) {}
-  LogicalResult matchAndRewrite(quantfork::DequantizeCastOp dq_op,
+      : OpRewritePattern<DequantizeCastOp>(context) {}
+  LogicalResult matchAndRewrite(DequantizeCastOp dq_op,
                                 PatternRewriter& rewriter) const override {
-    auto q_op = dq_op.getArg().getDefiningOp<quantfork::QuantizeCastOp>();
+    auto q_op = dq_op.getArg().getDefiningOp<QuantizeCastOp>();
     if (!q_op) return failure();
 
     dq_op.replaceAllUsesWith(q_op.getArg());
@@ -165,19 +172,18 @@ class RemoveUnusedQdqPattern
   }
 };
 
-class QuantizeSameScaleOpsPattern
-    : public OpRewritePattern<quantfork::DequantizeCastOp> {
+class QuantizeSameScaleOpsPattern : public OpRewritePattern<DequantizeCastOp> {
  public:
   explicit QuantizeSameScaleOpsPattern(
       MLIRContext* context, OpQuantScaleSpecGetter op_quant_scale_spec_getter,
       OpSet target_opset)
       // Set the score to a large number so it is always preferred, after
       // quantization patterns.
-      : OpRewritePattern<quantfork::DequantizeCastOp>(context, /*benefit=*/200),
+      : OpRewritePattern<DequantizeCastOp>(context, /*benefit=*/200),
         op_quant_scale_spec_getter_(op_quant_scale_spec_getter),
         target_opset_(target_opset) {}
 
-  LogicalResult matchAndRewrite(quantfork::DequantizeCastOp op,
+  LogicalResult matchAndRewrite(DequantizeCastOp op,
                                 PatternRewriter& rewriter) const override {
     SmallVector<Operation*, 4> quantizing_ops;
     auto users = op.getResult().getUsers();
@@ -188,8 +194,7 @@ class QuantizeSameScaleOpsPattern
     // preceding dequantize ops and succeding quantize ops.
     for (Operation* quantizing_op : quantizing_ops) {
       // If it is requantize op, we shouldn't rewrite this op.
-      if (llvm::isa<quantfork::QuantizeCastOp, quantfork::DequantizeCastOp>(
-              quantizing_op)) {
+      if (llvm::isa<QuantizeCastOp, DequantizeCastOp>(quantizing_op)) {
         return failure();
       }
 
@@ -226,11 +231,11 @@ class QuantizeSameScaleOpsPattern
         }
 
         Type elem_type = llvm::cast<TensorType>(operand_type).getElementType();
-        if (auto dq_op = dyn_cast_or_null<quantfork::DequantizeCastOp>(
-                operand.getDefiningOp())) {
+        if (auto dq_op =
+                dyn_cast_or_null<DequantizeCastOp>(operand.getDefiningOp())) {
           auto dq_arg_type = llvm::cast<TensorType>(dq_op.getArg().getType());
           auto qtype = llvm::cast<QuantizedType>(dq_arg_type.getElementType());
-          auto scast_op = rewriter.create<quantfork::StorageCastOp>(
+          auto scast_op = rewriter.create<StorageCastOp>(
               dq_op->getLoc(), dq_arg_type.clone(qtype.getStorageType()),
               dq_op.getArg());
           inputs.push_back(scast_op.getResult());
@@ -260,9 +265,8 @@ class QuantizeSameScaleOpsPattern
         auto result_tensor_type = llvm::cast<TensorType>(result_type);
         // If the user is the Quantize op, it must be the only user.
         if (result.hasOneUse() &&
-            llvm::isa<quantfork::QuantizeCastOp>(*result.user_begin())) {
-          auto user =
-              llvm::cast<quantfork::QuantizeCastOp>(*result.user_begin());
+            llvm::isa<QuantizeCastOp>(*result.user_begin())) {
+          auto user = llvm::cast<QuantizeCastOp>(*result.user_begin());
           outputs_replaced.insert(
               {user.getResult(), enumerated_result.index()});
           auto qtype = llvm::cast<QuantizedType>(
@@ -299,7 +303,7 @@ class QuantizeSameScaleOpsPattern
       for (const auto& output_index_pair : outputs_replaced) {
         Value output = output_index_pair.getFirst();
         int output_index = output_index_pair.getSecond();
-        auto scast_op = rewriter.create<quantfork::StorageCastOp>(
+        auto scast_op = rewriter.create<StorageCastOp>(
             output.getLoc(), output.getType(),
             quantized_op->getResult(output_index));
         output.replaceAllUsesWith(scast_op);
@@ -318,8 +322,7 @@ class QuantizeSameScaleOpsPattern
   // this policy might change as well.
   bool IsConnectedWithCompsiteFunction(Operation* same_scale_op) const {
     for (const auto& operand : same_scale_op->getOperands()) {
-      auto dq_op = dyn_cast_or_null<quantfork::DequantizeCastOp>(
-          operand.getDefiningOp());
+      auto dq_op = dyn_cast_or_null<DequantizeCastOp>(operand.getDefiningOp());
       if (!dq_op) continue;
 
       Operation* preceding_op = dq_op.getArg().getDefiningOp();
@@ -333,8 +336,8 @@ class QuantizeSameScaleOpsPattern
       }
 
       // Check if the preceding op is a quantized same-scale op.
-      if (llvm::isa<quantfork::StorageCastOp>(preceding_op)) {
-        auto sc_op = llvm::cast<quantfork::StorageCastOp>(preceding_op);
+      if (llvm::isa<StorageCastOp>(preceding_op)) {
+        auto sc_op = llvm::cast<StorageCastOp>(preceding_op);
         auto sc_arg_type = llvm::dyn_cast<TensorType>(sc_op.getArg().getType());
         if (sc_arg_type.getElementType().isInteger(8)) {
           return true;
@@ -345,11 +348,11 @@ class QuantizeSameScaleOpsPattern
     for (const auto& result : same_scale_op->getResults()) {
       // If the user is the Quantize op, it must be the only user.
       if (!result.hasOneUse() ||
-          !llvm::isa<quantfork::QuantizeCastOp>(*result.user_begin())) {
+          !llvm::isa<QuantizeCastOp>(*result.user_begin())) {
         continue;
       }
 
-      auto q_op = llvm::cast<quantfork::QuantizeCastOp>(*result.user_begin());
+      auto q_op = llvm::cast<QuantizeCastOp>(*result.user_begin());
       for (auto following_op : q_op->getUsers()) {
         // Check whether the preceding op is a quantized composite function.
         if (llvm::isa<TF::PartitionedCallOp>(following_op)) {
@@ -359,8 +362,8 @@ class QuantizeSameScaleOpsPattern
         }
 
         // Check if the preceding op is a quantized same-scale op.
-        if (llvm::isa<quantfork::StorageCastOp>(following_op)) {
-          auto sc_op = llvm::cast<quantfork::StorageCastOp>(following_op);
+        if (llvm::isa<StorageCastOp>(following_op)) {
+          auto sc_op = llvm::cast<StorageCastOp>(following_op);
           auto sc_arg_type =
               llvm::dyn_cast<TensorType>(sc_op.getResult().getType());
           if (sc_arg_type.getElementType().isInteger(8)) {
@@ -416,17 +419,16 @@ class QuantizeSameScaleOpsPattern
 // we cast its input to float and its output to int8 as a workaround.
 // TODO(b/229183248): Remove this workaround after int8 kernels have been
 // added to TF and XLA.
-struct QuantizeAvgPoolOpPattern
-    : public OpRewritePattern<quantfork::StorageCastOp> {
+struct QuantizeAvgPoolOpPattern : public OpRewritePattern<StorageCastOp> {
   explicit QuantizeAvgPoolOpPattern(MLIRContext* context)
-      : OpRewritePattern<quantfork::StorageCastOp>(context, /*benefit=*/100) {}
+      : OpRewritePattern<StorageCastOp>(context, /*benefit=*/100) {}
 
-  LogicalResult matchAndRewrite(quantfork::StorageCastOp sc_op,
+  LogicalResult matchAndRewrite(StorageCastOp sc_op,
                                 PatternRewriter& rewriter) const override {
     auto avg_pool_op = sc_op.getArg().getDefiningOp<TF::AvgPoolOp>();
     if (!avg_pool_op) return failure();
-    auto preceding_sc_op = dyn_cast_or_null<quantfork::StorageCastOp>(
-        avg_pool_op.getValue().getDefiningOp());
+    auto preceding_sc_op =
+        dyn_cast_or_null<StorageCastOp>(avg_pool_op.getValue().getDefiningOp());
     if (!preceding_sc_op) return failure();
 
     // Check if the same-scale requirement is met.

@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 
@@ -33,9 +33,6 @@ using ::stablehlo::quantization::CalibrationOptions;
 using ::stablehlo::quantization::DebuggerConfig;
 using ::stablehlo::quantization::PipelineConfig;
 using ::stablehlo::quantization::QuantizationSpecs;
-using tf_quant::CreateAddDumpTensorOpPass;
-using tf_quant::CreateConvertCustomAggregationOpToQuantStatsPass;
-using tf_quant::CreateInsertCustomAggregationOpsPass;
 
 void AddPreCalibrationPasses(OpPassManager& pm,
                              const CalibrationOptions& calibration_options,

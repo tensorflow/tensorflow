@@ -13,11 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <memory>
 #include <utility>
+#include <vector>
 
+#include "absl/algorithm/container.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
@@ -27,8 +32,10 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -37,11 +44,13 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/constant_fold.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/tf_constant_fold.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/remove_identity_op_pattern.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
 
@@ -49,6 +58,11 @@ namespace mlir {
 namespace quant {
 namespace {
 
+using ::mlir::tf_quant::CloneOpWithReplacedOperands;
+using ::mlir::tf_quant::ConstantFoldOpIfPossible;
+using ::mlir::tf_quant::ConstantFoldQuantizableOperands;
+using ::mlir::tf_quant::Create1DConstValue;
+using ::mlir::tf_quant::HasStaticShape;
 using ::tensorflow::quantization::OpSet;
 
 class PrepareLiftingPass
@@ -208,7 +222,7 @@ Value MakeOneDimValueBroadcastable(OpBuilder& builder, Location loc,
 
 // Checks if a value can be symmetrically quantized.
 bool CanBeSymmetricallyQuantized(Value weight) {
-  auto dq_op = weight.getDefiningOp<quantfork::DequantizeCastOp>();
+  auto dq_op = weight.getDefiningOp<mlir::quant::ir::DequantizeCastOp>();
   if (!dq_op) return true;
 
   auto qtype =
@@ -243,12 +257,12 @@ SmallVector<T> MultiplyTwoArrays(ArrayRef<T> a, ArrayRef<T> b) {
 // params. This function only supports symmetrically quantized values.
 Value MultiplyFakeQuantValue(OpBuilder& builder, Location loc, Value value,
                              Value multiplier) {
-  auto dq_op = value.getDefiningOp<quantfork::DequantizeCastOp>();
+  auto dq_op = value.getDefiningOp<mlir::quant::ir::DequantizeCastOp>();
   if (!dq_op) {
     auto mul_op = builder.create<TF::MulOp>(loc, value, multiplier);
     return mul_op.getResult();
   }
-  auto q_op = dq_op.getArg().getDefiningOp<quantfork::QuantizeCastOp>();
+  auto q_op = dq_op.getArg().getDefiningOp<mlir::quant::ir::QuantizeCastOp>();
   if (!q_op) return {};
 
   Value float_value = q_op.getArg();
@@ -302,9 +316,9 @@ Value MultiplyFakeQuantValue(OpBuilder& builder, Location loc, Value value,
         per_axis_type.getStorageTypeMin(), per_axis_type.getStorageTypeMax());
   }
 
-  auto quantize = builder.create<quantfork::QuantizeCastOp>(
+  auto quantize = builder.create<mlir::quant::ir::QuantizeCastOp>(
       q_op.getLoc(), new_value_type.clone(new_qtype), new_value);
-  auto dequantize = builder.create<quantfork::DequantizeCastOp>(
+  auto dequantize = builder.create<mlir::quant::ir::DequantizeCastOp>(
       dq_op.getLoc(), new_value_type, quantize.getResult());
   return dequantize.getResult();
 }

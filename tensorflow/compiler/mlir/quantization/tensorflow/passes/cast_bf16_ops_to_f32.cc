@@ -22,12 +22,14 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
 namespace quant {
 namespace {
+
+using ::mlir::tf_quant::CloneTypeWithNewElementType;
 
 class CastBf16OpsToF32Pass
     : public PassWrapper<CastBf16OpsToF32Pass, OperationPass<ModuleOp>> {
