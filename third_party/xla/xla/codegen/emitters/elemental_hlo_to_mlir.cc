@@ -180,7 +180,7 @@ absl::StatusOr<SmallVector<Value, 1>> EmitReduce(
   auto* mlir_context = b.getContext();
   HloInstructionIndexing indexing =
       ComputeOutputToInputIndexing(instr, 0, mlir_context);
-  const auto& indexing_map = *indexing.indexing_maps[0].begin();
+  const IndexingMap& indexing_map = indexing.indexing_maps[0].begin()->map();
 
   SmallVector<Value, 1> init_values;
   for (int i = instr->operand_count() / 2; i < instr->operand_count(); ++i) {
@@ -213,7 +213,7 @@ absl::StatusOr<SmallVector<Value, 1>> EmitReduceWindow(
   MLIRContext* mlir_context = b.getContext();
   HloInstructionIndexing indexing =
       ComputeOutputToInputIndexing(instr, 0, mlir_context);
-  auto indexing_map = *indexing.indexing_maps[0].begin();
+  IndexingMap indexing_map = indexing.indexing_maps[0].begin()->map();
   indexing_map.RescaleSymbols();
 
   auto reduce_window = DynCast<HloReduceWindowInstruction>(instr);
@@ -438,7 +438,8 @@ SmallVector<SmallVector<Value, 3>, 2> GetInputIndices(
   for (auto& maps : indexing.indexing_maps) {
     CHECK_EQ(maps.size(), 1);
     CHECK(!maps.begin()->IsUndefined());
-    indices.push_back(ApplyIndexing(*maps.begin(), output_indices, {}, b));
+    indices.push_back(
+        ApplyIndexing(maps.begin()->map(), output_indices, {}, b));
   }
   return indices;
 }
@@ -449,7 +450,7 @@ absl::StatusOr<SmallVector<Value, 1>> EmitPad(
   auto result_element_type =
       PrimitiveTypeToMlirType(instr->shape().element_type(), b);
   auto indexing = ComputeOutputToInputIndexing(instr, 0, b.getContext());
-  const auto& indexing_map = *indexing.indexing_maps[0].begin();
+  const IndexingMap& indexing_map = indexing.indexing_maps[0].begin()->map();
   Value is_in_bounds = CheckConstraints(indexing_map, indices, {}, b);
 
   auto if_op = b.create<IfOp>(mlir::TypeRange{result_element_type},
@@ -518,8 +519,10 @@ absl::StatusOr<SmallVector<Value, 1>> EmitDotLoop(
       PrimitiveTypeToMlirType(instr->shape().element_type(), b);
   HloInstructionIndexing indexing =
       ComputeOutputToInputIndexing(instr, /*output_id=*/0, b.getContext());
-  const IndexingMap& lhs_indexing_map = *indexing.indexing_maps.at(0).begin();
-  const IndexingMap& rhs_indexing_map = *indexing.indexing_maps.at(1).begin();
+  const IndexingMap& lhs_indexing_map =
+      indexing.indexing_maps.at(0).begin()->map();
+  const IndexingMap& rhs_indexing_map =
+      indexing.indexing_maps.at(1).begin()->map();
 
   const mlir::Type accumulator_type =
       result_element_type.isBF16() ? b.getF32Type() : result_element_type;

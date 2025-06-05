@@ -43,6 +43,8 @@ absl::StatusOr<bool> IsXnnDotSupported(
     const TargetMachineFeatures* cpu_features = nullptr);
 
 absl::StatusOr<xnn_datatype> XnnDatatype(const PrimitiveType& type);
+absl::StatusOr<xnn_unary_operator> XnnUnaryOperator(const HloOpcode& opcode);
+absl::StatusOr<xnn_binary_operator> XnnBinaryOperator(const HloOpcode& opcode);
 
 }  // namespace xla::cpu
 

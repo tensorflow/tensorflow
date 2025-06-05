@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
+#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -37,23 +38,48 @@ namespace xla::gpu {
 
 class CollectiveInterpolator {
  public:
-  struct InterpolatorKey {
+  struct FallbackInterpolatorKey {
     HloOpcode opcode;
     GPUCommunicationType communication_type;
 
     template <typename H>
-    friend H AbslHashValue(H h, const InterpolatorKey& key) {
+    friend H AbslHashValue(H h, const FallbackInterpolatorKey& key) {
       return H::combine(std::move(h), key.opcode, key.communication_type);
     }
 
-    bool operator==(const InterpolatorKey& other) const {
+    bool operator==(const FallbackInterpolatorKey& other) const {
       return opcode == other.opcode &&
              communication_type == other.communication_type;
     }
   };
 
-  using InterpolatorMap = std::unique_ptr<absl::flat_hash_map<
-      InterpolatorKey, std::unique_ptr<InterpolatorBase<int64_t, 2>>>>;
+  struct ExactInterpolatorKey {
+    HloOpcode opcode;
+    CollectiveDeviceList device_list;
+    std::optional<PrimitiveType> data_type;
+
+    template <typename H>
+    friend H AbslHashValue(H h, const ExactInterpolatorKey& key) {
+      return H::combine(
+          std::move(h), key.opcode,
+          key.device_list.ToString(/*print_full_replica_group_list=*/true),
+          key.data_type);
+    }
+
+    bool operator==(const ExactInterpolatorKey& other) const {
+      return opcode == other.opcode &&
+             device_list.ToString(/*print_full_replica_group_list=*/true) ==
+                 other.device_list.ToString(
+                     /*print_full_replica_group_list=*/true) &&
+             data_type == other.data_type;
+    }
+  };
+
+  using FallbackInterpolatorMap = std::unique_ptr<absl::flat_hash_map<
+      FallbackInterpolatorKey, std::unique_ptr<InterpolatorBase<int64_t, 2>>>>;
+
+  using ExactInterpolatorMap = std::unique_ptr<absl::flat_hash_map<
+      ExactInterpolatorKey, std::unique_ptr<InterpolatorBase<int64_t, 1>>>>;
 
   static absl::StatusOr<std::unique_ptr<CollectiveInterpolator>> Create(
       int num_devices_per_host, const HloInstructionProfileList& profiles,
@@ -75,18 +101,19 @@ class CollectiveInterpolator {
       const HloCollectiveInstruction& instr) const;
 
  private:
-  // Uses `EuclideanNNInterpolator` to figure get the closest neighbour from
-  // profiles.
-  explicit CollectiveInterpolator(InterpolatorMap interpolators,
-                                  const se::DeviceDescription& device_info,
-                                  int num_devices_per_host,
-                                  const GpuHloCostAnalysis* analysis)
-      : interpolators_(std::move(interpolators)),
+  explicit CollectiveInterpolator(
+      ExactInterpolatorMap exact_interpolators,
+      FallbackInterpolatorMap fallback_interpolators,
+      const se::DeviceDescription& device_info, int num_devices_per_host,
+      const GpuHloCostAnalysis* analysis)
+      : exact_interpolators_(std::move(exact_interpolators)),
+        fallback_interpolators_(std::move(fallback_interpolators)),
         device_info_(device_info),
         num_devices_per_host_(num_devices_per_host),
         analysis_(analysis) {}
 
-  InterpolatorMap interpolators_;
+  ExactInterpolatorMap exact_interpolators_;
+  FallbackInterpolatorMap fallback_interpolators_;
   const se::DeviceDescription& device_info_;
   int num_devices_per_host_;
   const GpuHloCostAnalysis* analysis_;

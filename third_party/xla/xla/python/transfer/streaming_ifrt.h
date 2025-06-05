@@ -77,7 +77,8 @@ struct DmaCopyChunk {
 
 // Copies into subdivisions of scratch asyncly in parallel calling on_done
 // sequentially when the copy has finished.
-class PremappedCopierState {
+class PremappedCopierState
+    : public std::enable_shared_from_this<PremappedCopierState> {
  public:
   PremappedCopierState(std::shared_ptr<absl::Span<uint8_t>> scratch,
                        size_t max_num_parallel_copies, size_t xfer_size);
@@ -154,6 +155,7 @@ class PjRtBufferEntry : public PullTable::Entry {
   struct BufferRef {
     std::shared_ptr<xla::PjRtBuffer> buffer;
     size_t buf_size;
+    xla::PjRtFuture<> ready_future;
   };
   explicit PjRtBufferEntry(std::vector<BufferRef> arrs,
                            std::shared_ptr<PremappedCopierState> state,

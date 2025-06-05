@@ -319,34 +319,13 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "tf_report",
-    srcs = ["tf_report.cc"],
-    hdrs = ["tf_report.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":io",
-        "//tensorflow/compiler/mlir/quantization/common:tf_lift_as_function_call",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:protobuf",
-    ],
-)
-
-cc_library(
     name = "report",
     srcs = ["report.cc"],
     hdrs = ["report.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":io",
-        "//tensorflow/compiler/mlir/quantization/common:lift_as_function_call",
+        "//tensorflow/compiler/mlir/quantization/common:tf_lift_as_function_call",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow",
         "@com_google_absl//absl/status",

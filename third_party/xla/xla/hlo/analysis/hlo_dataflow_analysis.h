@@ -209,9 +209,10 @@ class HloDataflowAnalysis {
 
   const HloModule& module() const { return module_; }
 
-  // Returns true if the operation is an in-place operation and its operand 0
-  // must alias with the output.
-  static bool IsInPlaceOperation(HloOpcode opcode);
+  // Returns true if `hlo` is potentially an in-place operation (i.e. operands
+  // must alias with the outputs). GetInPlaceInputOutputPairs() will only return
+  // aliasing pairs if this method returns true.
+  static bool IsPotentialInPlaceOperation(const HloInstruction* hlo);
 
   // Returns true if the operation is the start/done of an asynchronous
   // operation, where the buffer used/produced by the op needs to stay alive

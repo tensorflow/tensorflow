@@ -533,13 +533,14 @@ absl::Status GpuHloCostAnalysis::HandleAllGatherStart(
 
 absl::Status GpuHloCostAnalysis::HandleAsyncStart(const HloInstruction* hlo) {
   auto* async_start = DynCast<HloAsyncStartInstruction>(hlo);
-  if (async_start->async_wrapped_opcode() != HloOpcode::kReduceScatter) {
-    VLOG(2) << "Only Reduce Scatter is supported.";
-    return absl::OkStatus();
-  }
-
   TF_RETURN_IF_ERROR(hlo->async_wrapped_instruction()->Accept(this));
-  return HandleReduceScatter(async_start->async_wrapped_instruction());
+  if (async_start->async_wrapped_opcode() == HloOpcode::kReduceScatter) {
+    return HandleReduceScatter(async_start->async_wrapped_instruction());
+  }
+  if (async_start->async_wrapped_opcode() == HloOpcode::kAllToAll) {
+    return HandleAllToAll(async_start->async_wrapped_instruction());
+  }
+  return absl::OkStatus();
 }
 
 absl::Status GpuHloCostAnalysis::HandleReduceScatter(
@@ -560,6 +561,12 @@ absl::Status GpuHloCostAnalysis::HandleReduceScatter(
   current_properties_[kFlopsKey] = GetFlopsForElementwiseOp(
       hlo->to_apply()->root_instruction()->opcode(), hlo->shape());
 
+  return absl::OkStatus();
+}
+
+absl::Status GpuHloCostAnalysis::HandleAllToAll(const HloInstruction* hlo) {
+  int64_t bytes_transferred = ShapeSize(hlo->shape(), options_.shape_size);
+  current_properties_[kCollBytesTransferred] = bytes_transferred;
   return absl::OkStatus();
 }
 

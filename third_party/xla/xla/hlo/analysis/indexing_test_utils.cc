@@ -76,7 +76,9 @@ HloInstructionIndexing IndexingTestBase::GetOutputToInputIndexing(
   HloInstructionIndexing indexing =
       ComputeOutputToInputIndexing(instr, output_id, &mlir_context_);
 
-  if (!use_physical_layout) return indexing;
+  if (!use_physical_layout) {
+    return indexing;
+  }
 
   IndexingMap output_permutation = GetIndexingMapFromPhysicalLayoutToLogical(
       GetOutputShape(instr, output_id), &mlir_context_);
@@ -86,16 +88,16 @@ HloInstructionIndexing IndexingTestBase::GetOutputToInputIndexing(
     IndexingMap operand_permutation = GetIndexingMapFromLogicalToPhysicalLayout(
         instr->operand(operand_id)->shape(), &mlir_context_);
 
-    absl::flat_hash_set<IndexingMap> operand_indexing_maps;
-    for (const IndexingMap& indexing_map : indexing_maps) {
+    OperandIndexingSet operand_indexing_maps;
+    for (const OperandIndexing& indexing_map : indexing_maps) {
       auto normalized_indexing_map = indexing_map;
       if (!output_permutation.GetAffineMap().isIdentity()) {
-        normalized_indexing_map =
-            ComposeIndexingMaps(output_permutation, normalized_indexing_map);
+        normalized_indexing_map = ComposeOperandIndexing(
+            OperandIndexing(output_permutation), normalized_indexing_map);
       }
       if (!operand_permutation.GetAffineMap().isIdentity()) {
-        normalized_indexing_map =
-            ComposeIndexingMaps(normalized_indexing_map, operand_permutation);
+        normalized_indexing_map = ComposeOperandIndexing(
+            normalized_indexing_map, OperandIndexing(operand_permutation));
       }
       operand_indexing_maps.insert(normalized_indexing_map);
     }
@@ -109,26 +111,30 @@ HloInstructionIndexing IndexingTestBase::GetInputToOutputIndexing(
   HloInstructionIndexing indexing =
       ComputeInputToOutputIndexing(instr, input_id, &mlir_context_);
 
-  if (!use_physical_layout) return indexing;
+  if (!use_physical_layout) {
+    return indexing;
+  }
 
-  IndexingMap input_permutation = GetIndexingMapFromPhysicalLayoutToLogical(
-      instr->operand(input_id)->shape(), &mlir_context_);
+  OperandIndexing input_permutation =
+      OperandIndexing(GetIndexingMapFromPhysicalLayoutToLogical(
+          instr->operand(input_id)->shape(), &mlir_context_));
 
   for (const auto& [output_id, indexing_maps] :
        llvm::enumerate(indexing.indexing_maps)) {
-    IndexingMap operand_permutation = GetIndexingMapFromLogicalToPhysicalLayout(
-        GetOutputShape(instr, output_id), &mlir_context_);
+    OperandIndexing operand_permutation =
+        OperandIndexing(GetIndexingMapFromLogicalToPhysicalLayout(
+            GetOutputShape(instr, output_id), &mlir_context_));
 
-    absl::flat_hash_set<IndexingMap> operand_indexing_maps;
-    for (const IndexingMap& indexing_map : indexing_maps) {
+    OperandIndexingSet operand_indexing_maps;
+    for (const OperandIndexing& indexing_map : indexing_maps) {
       auto normalized_indexing_map = indexing_map;
-      if (!input_permutation.GetAffineMap().isIdentity()) {
+      if (!input_permutation.map().GetAffineMap().isIdentity()) {
         normalized_indexing_map =
-            ComposeIndexingMaps(input_permutation, normalized_indexing_map);
+            ComposeOperandIndexing(input_permutation, normalized_indexing_map);
       }
-      if (!operand_permutation.GetAffineMap().isIdentity()) {
-        normalized_indexing_map =
-            ComposeIndexingMaps(normalized_indexing_map, operand_permutation);
+      if (!operand_permutation.map().GetAffineMap().isIdentity()) {
+        normalized_indexing_map = ComposeOperandIndexing(
+            normalized_indexing_map, operand_permutation);
       }
       operand_indexing_maps.insert(normalized_indexing_map);
     }

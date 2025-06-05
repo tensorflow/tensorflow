@@ -1144,6 +1144,7 @@ cc_library(
         ":hlo_op_profiles",
         ":interpolator",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:collective_ops_utils",
         "//xla/service:hlo_module_config",

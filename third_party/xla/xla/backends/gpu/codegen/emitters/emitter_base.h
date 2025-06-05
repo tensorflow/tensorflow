@@ -66,10 +66,12 @@ class EmitterBase : public KernelFusionInterface {
 
   // Visible for testing. `buffer_assignment` is optional for testing (assigns
   // a different buffer to each tensor).
-  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateMLIRModule(
+  virtual absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateMLIRModule(
       mlir::MLIRContext& context, const HloFusionInstruction& fusion,
       const std::string& entry_function_name,
       const BufferAssignment* buffer_assignment) const;
+
+  static mlir::DialectRegistry GetDialectRegistry();
 
  protected:
   // Returns the set of instructions that will be isolated in the partitioned,

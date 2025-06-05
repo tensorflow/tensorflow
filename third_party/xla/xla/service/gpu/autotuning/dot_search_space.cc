@@ -318,6 +318,12 @@ TritonDotFusionSearchSpace::GetMinOutputTile() const {
 }
 
 int TritonDotFusionSearchSpace::GetMinWarpsPerCta() const {
+  if (operand_bitwidth_ >= 32) {
+    // Triton is generating quite suboptimal code for 32-bit dots, especially
+    // when we use wgmma, or larger blocks.
+    // TODO: b/422419331 - Remove this once Triton properly handles 32-bit dots.
+    return kMinWarpsPerCtaForOccupancy;
+  }
   if (device_description_.cuda_compute_capability().IsAtLeastHopper() &&
       !should_optimize_for_occupancy_) {
     VLOG(5) << "Computing num_warps: Want to use wgmma, so num_warps >= "

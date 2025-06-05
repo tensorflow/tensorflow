@@ -95,9 +95,10 @@ TritonEmitterConstraints::DeriveCustomConstraints(
       MLIRContext* ctx = instruction->symbolic_tile().size_map().getContext();
 
       IndexingMap reshape_indexing_map =
-          *ComputeOutputToInputIndexing(hlo, /*output_id=*/0, ctx)
-               .indexing_maps[0]
-               .begin();
+          ComputeOutputToInputIndexing(hlo, /*output_id=*/0, ctx)
+              .indexing_maps[0]
+              .begin()
+              ->map();
 
       std::optional<SymbolicTile> reshape_symbolic_tile =
           SymbolicTile::FromIndexingMap(reshape_indexing_map);

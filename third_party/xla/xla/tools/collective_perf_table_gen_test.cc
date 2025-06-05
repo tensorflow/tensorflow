@@ -85,6 +85,7 @@ TEST_F(CollectivePerfTableGenTest, FactorStepGeneratesConfigs) {
       CollectivePerfTableGen::CollectiveType::ALL_REDUCE,
       CollectivePerfTableGen::CollectiveType::ALL_GATHER,
       CollectivePerfTableGen::CollectiveType::REDUCE_SCATTER,
+      CollectivePerfTableGen::CollectiveType::ALL_TO_ALL,
   };
   cfg_.replica_groups_list.emplace_back("[1,1]<=[1]");
   CollectivePerfTableGen::StepSpec spec{
@@ -100,7 +101,7 @@ TEST_F(CollectivePerfTableGenTest, FactorStepGeneratesConfigs) {
 
   DeviceHloInstructionProfiles profiles = gen->ComputeTable();
   EXPECT_EQ(profiles.entries_size(), 1);
-  EXPECT_EQ(profiles.entries().begin()->second.entries_size(), 12);
+  EXPECT_EQ(profiles.entries().begin()->second.entries_size(), 16);
 }
 
 TEST_F(CollectivePerfTableGenTest, HappyPathWorks) {

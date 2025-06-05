@@ -15,7 +15,7 @@ cc_library(
     hdrs = ["save_report.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:tf_report",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/cc:report",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings:string_view",

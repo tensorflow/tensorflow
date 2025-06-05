@@ -1201,11 +1201,14 @@ absl::StatusOr<std::vector<ArrayRef>> PjRtClient::CopyArrays(
           "CopyArrays only supports destination device list of the same size "
           "as the array device lists.");
     };
-    for (int i = 0; i < dst_devices->size(); ++i) {
-      if (dst_devices->devices()[i]->ProcessIndex() !=
-          src_devices->devices()[i]->ProcessIndex()) {
-        all_host_local_transfers = false;
-        break;
+    if (src_devices->size() > 0 && (src_devices->devices()[0]->client() ==
+                                    dst_devices->devices()[0]->client())) {
+      for (int i = 0; i < dst_devices->size(); ++i) {
+        if (dst_devices->devices()[i]->ProcessIndex() !=
+            src_devices->devices()[i]->ProcessIndex()) {
+          all_host_local_transfers = false;
+          break;
+        }
       }
     }
   }

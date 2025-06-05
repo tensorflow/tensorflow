@@ -1107,36 +1107,33 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
                        post_order.end());
     }
     return post_order;
-  } else {
-    // The topological sort is a reverse post-order, reverse it so we get a
-    // post-order.
-    std::vector<HloComputation*> post_order;
-    post_order.reserve(computations_.size());
-    int num_computations = 0;
-    for (auto it = topological_sort_.rbegin(); it != topological_sort_.rend();
-         ++it) {
-      ++num_computations;
-      if (execution_threads.empty() ||
-          execution_threads.contains(it->execution_thread())) {
-        post_order.push_back(&*it);
-      }
+  }  // The topological sort is a reverse post-order, reverse it so we get a
+  // post-order.
+  std::vector<HloComputation*> post_order;
+  post_order.reserve(computations_.size());
+  int num_computations = 0;
+  for (auto it = topological_sort_.rbegin(); it != topological_sort_.rend();
+       ++it) {
+    ++num_computations;
+    if (execution_threads.empty() ||
+        execution_threads.contains(it->execution_thread())) {
+      post_order.push_back(&*it);
     }
-
-    if (num_computations != computations_.size()) {
-      for (HloComputation& computation : topological_sort_) {
-        LOG(ERROR) << "Reverse postorder: " << computation.name() << " ("
-                   << computation.parent()->name() << ")";
-      }
-      for (auto& computation : computations_) {
-        LOG(ERROR) << "Computations: " << computation->name() << " ("
-                   << computation->parent()->name() << ")";
-      }
-      LOG(FATAL) << "Mismatch computation count: post_order="
-                 << post_order.size()
-                 << " computation_count=" << computations_.size();
-    }
-    return post_order;
   }
+
+  if (num_computations != computations_.size()) {
+    for (HloComputation& computation : topological_sort_) {
+      LOG(ERROR) << "Reverse postorder: " << computation.name() << " ("
+                 << computation.parent()->name() << ")";
+    }
+    for (auto& computation : computations_) {
+      LOG(ERROR) << "Computations: " << computation->name() << " ("
+                 << computation->parent()->name() << ")";
+    }
+    LOG(FATAL) << "Mismatch computation count: post_order=" << post_order.size()
+               << " computation_count=" << computations_.size();
+  }
+  return post_order;
 }
 
 namespace {
@@ -1171,7 +1168,9 @@ void SortComputationsByContent(std::vector<HloComputation*>* computations) {
     }
     // Avoid computing fingerprints of (potentially) giant computation strings
     // just to compare when a == b
-    if (a == b) return false;
+    if (a == b) {
+      return false;
+    }
 
     return fingerprint_map.GetFingerprint(a) <
            fingerprint_map.GetFingerprint(b);
