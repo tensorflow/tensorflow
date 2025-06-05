@@ -48,32 +48,6 @@ using TensorIdMap = absl::flat_hash_map<const HloInstruction*, uint32_t>;
 // XLA <-> XNNPACK type conversion library.
 //===----------------------------------------------------------------------===//
 
-static absl::StatusOr<xnn_unary_operator> XnnUnaryOperator(
-    const HloOpcode& opcode) {
-  switch (opcode) {
-    case HloOpcode::kConvert:
-      return xnn_unary_convert;
-    default:
-      return InvalidArgument("Unsupported XNNPACK unary operator: %s",
-                             HloOpcodeString(opcode));
-  }
-}
-
-static absl::StatusOr<xnn_binary_operator> XnnBinaryOperator(
-    const HloOpcode& opcode) {
-  switch (opcode) {
-    case HloOpcode::kAdd:
-      return xnn_binary_add;
-    case HloOpcode::kMultiply:
-      return xnn_binary_multiply;
-    case HloOpcode::kSubtract:
-      return xnn_binary_subtract;
-    default:
-      return InvalidArgument("Unsupported XNNPACK binary operator: %s",
-                             HloOpcodeString(opcode));
-  }
-}
-
 static std::vector<size_t> XnnDimensions(const Shape& shape) {
   std::vector<size_t> dims;
   for (auto& dim : shape.dimensions()) {
