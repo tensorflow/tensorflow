@@ -65,7 +65,8 @@ class MockQueueRunner : public RunnerInterface {
   explicit MockQueueRunner(Coordinator* coord) {
     coord_ = coord;
     join_counter_ = nullptr;
-    thread_pool_.reset(new thread::ThreadPool(Env::Default(), "test-pool", 10));
+    thread_pool_ =
+        std::make_unique<thread::ThreadPool>(Env::Default(), "test-pool", 10);
     stopped_ = false;
   }
 
@@ -153,7 +154,7 @@ TEST(CoordinatorTest, TestRequestStop) {
   Notification start;
   std::unique_ptr<MockQueueRunner> qr;
   for (int i = 0; i < 10; i++) {
-    qr.reset(new MockQueueRunner(&coord));
+    qr = std::make_unique<MockQueueRunner>(&coord);
     qr->StartCounting(&counter, 10, &start);
     TF_ASSERT_OK(coord.RegisterRunner(std::move(qr)));
   }
