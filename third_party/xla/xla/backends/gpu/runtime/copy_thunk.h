@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -59,6 +60,24 @@ class DeviceToDeviceCopyThunk : public Thunk {
     return destination_buffer_;
   }
   uint64_t size_bytes() const { return mem_size_; }
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
+  static absl::StatusOr<std::unique_ptr<DeviceToDeviceCopyThunk>> FromProto(
+      ThunkInfo thunk_info, const DeviceToDeviceCopyThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
+
+  friend bool operator==(const DeviceToDeviceCopyThunk& lhs,
+                         const DeviceToDeviceCopyThunk& rhs) {
+    return std::tie(lhs.source_buffer_, lhs.destination_buffer_,
+                    lhs.mem_size_) ==
+           std::tie(rhs.source_buffer_, rhs.destination_buffer_, rhs.mem_size_);
+  }
+
+  friend bool operator!=(const DeviceToDeviceCopyThunk& lhs,
+                         const DeviceToDeviceCopyThunk& rhs) {
+    return !(lhs == rhs);
+  }
 
  private:
   const BufferAllocation::Slice source_buffer_;

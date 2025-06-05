@@ -85,7 +85,7 @@ std::string KernelThunk::ToString(int indent) const {
 }
 
 absl::StatusOr<ThunkProto> KernelThunk::ToProto() const {
-  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
+  TF_ASSIGN_OR_RETURN(ThunkProto proto, GetBaseProto());
   auto* kernel_proto = proto.mutable_kernel_thunk();
   for (const auto& arg : args_) {
     TF_ASSIGN_OR_RETURN(*kernel_proto->add_args(), arg.ToProto());
