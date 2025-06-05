@@ -1,7 +1,13 @@
+// === Checking dump with dump for passes disabled ===
 // RUN: hlo-opt %s --xla_dump_to=%t_dump_dir --passes=dce,algsimp
 // RUN: ls %t_dump_dir | sort | FileCheck %s --check-prefix="DUMP"
-// RUN: hlo-opt --xla_dump_to=%t_dump_dir_with_passes --xla_dump_hlo_pass_re=".*" --passes=dce,algsimp %s
+// RUN: cat %t_dump_dir/module_0000.m.*after_optimization.txt | FileCheck %s --check-prefix="MODULE_WITHOUT_LARGE_CONSTANTS"
+
+// === Checking dumping with dump for passes enabled ===
+// RUN: hlo-opt --xla_dump_to=%t_dump_dir_with_passes --xla_dump_hlo_pass_re=".*" --xla_gpu_dot_merger_threshold_mb=3253 --xla_dump_large_constants=true --passes=dce,algsimp %s 
 // RUN: ls %t_dump_dir_with_passes | sort | FileCheck %s --check-prefix="DUMP_WITH_PASSES"
+// RUN: cat %t_dump_dir_with_passes/module_0000.m.*debug_options | FileCheck %s --check-prefix="DEBUG_OPTIONS_DUMP"
+// RUN: cat %t_dump_dir_with_passes/module_0000.m.*after_optimization.txt | FileCheck %s --check-prefix="MODULE_WITH_LARGE_CONSTANTS"
 
 // DUMP: module_0000.m.{{.*}}after_optimization.txt
 // DUMP-NEXT: module_0000.m.{{.*}}before_optimization.txt
@@ -13,9 +19,19 @@
 // DUMP_WITH_PASSES-NEXT: module_0000.m.{{.*}}before_optimization.txt
 // DUMP_WITH_PASSES-NEXT: module_0000.m.{{.*}}debug_options
 
+// DEBUG_OPTIONS_DUMP: xla_gpu_dot_merger_threshold_mb: 3253
+// DEBUG_OPTIONS_DUMP-NEXT: xla_dump_to:
+// DEBUG_OPTIONS_DUMP-NEXT: xla_dump_hlo_pass_re:
+// DEBUG_OPTIONS_DUMP-NEXT: xla_dump_large_constants: true
+
+// MODULE_WITHOUT_LARGE_CONSTANTS: %c2 = s32[12]{0} constant({...})
+// MODULE_WITH_LARGE_CONSTANTS: %c2 = s32[12]{0} constant({10, 6, 3, 2, 5, 3, 7, 4, 2, 3, 1, 0})
+
 HloModule m
 test {
-    p0 = s32[11] parameter(0)
-    c = s32[11] constant({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10})
-    ROOT x = s32[11] multiply(p0, c)
+    p0 = s32[12] parameter(0)
+    c1 = s32[12] constant({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11})
+    c2 = s32[12] constant({10, 6, 3, 2, 5, 3, 7, 4, 2, 3, 1, 0})
+    x = s32[12] multiply(p0, c1)
+    ROOT y = s32[12] add(x, c2)
 }

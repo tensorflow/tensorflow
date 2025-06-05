@@ -18,6 +18,7 @@ limitations under the License.
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
+#include <fstream>
 #include <limits>
 #include <memory>
 #include <string>
@@ -2378,13 +2379,15 @@ bool ParseFlagsFromDebugOptionsFile(absl::string_view filename) {
   VLOG(2) << "Parsing flags from file: " << filename;
   // Read the file content
   std::string file_content;
-  absl::Status status = tsl::ReadFileToString(
-      tsl::Env::Default(), std::string(filename), &file_content);
-  if (!status.ok()) {
-    LOG(ERROR) << "Failed to read file: " << filename
-               << ", error: " << status.ToString();
+  std::ifstream file{std::string(filename)};
+  if (!file.is_open()) {
+    LOG(ERROR) << "Failed to open file: " << filename;
     return false;
   }
+  std::stringstream buffer;
+  buffer << file.rdbuf();
+  file_content = buffer.str();
+  file.close();
   DebugOptions new_debug_options;
   tsl::protobuf::TextFormat::Parser parser;
   tsl::protobuf::TextFormat::ParseInfoTree tree;
