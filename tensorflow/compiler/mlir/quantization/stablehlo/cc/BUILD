@@ -190,7 +190,7 @@ tf_cc_test(
     srcs = ["saved_model_export_test.cc"],
     deps = [
         ":saved_model_export",
-        "//tensorflow/compiler/mlir/quantization/common:tf_test_base",
+        "//tensorflow/compiler/mlir/quantization/common:test_base",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/core:all_kernels",  # buildcleaner: keep Required to export to GraphDef
         "//tensorflow/core:core_cpu_base",
@@ -244,7 +244,7 @@ tf_cc_test(
     deps = [
         ":saved_model_import",
         ":types",
-        "//tensorflow/compiler/mlir/quantization/common:tf_test_base",
+        "//tensorflow/compiler/mlir/quantization/common:test_base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",

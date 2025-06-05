@@ -123,7 +123,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/core/c:tflite_common",
         "//tensorflow/compiler/mlir/lite/kernels:padding",
         "//tensorflow/compiler/mlir/quantization/common:tf_attrs_and_constraints",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:tf_constant_fold",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:constant_fold",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Support",

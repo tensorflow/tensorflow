@@ -30,7 +30,7 @@ tf_cc_test(
     srcs = ["save_report_test.cc"],
     deps = [
         ":save_report",
-        "//tensorflow/compiler/mlir/quantization/common:tf_test_base",
+        "//tensorflow/compiler/mlir/quantization/common:test_base",
         "//tensorflow/compiler/mlir/quantization/stablehlo:passes",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc:io",

@@ -46,7 +46,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/tf_attrs_and_constraints.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/tf_constant_fold.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/constant_fold.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/remove_identity_op_pattern.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
@@ -59,8 +59,6 @@ namespace quant {
 namespace {
 
 using ::mlir::tf_quant::CloneOpWithReplacedOperands;
-using ::mlir::tf_quant::ConstantFoldOpIfPossible;
-using ::mlir::tf_quant::ConstantFoldQuantizableOperands;
 using ::mlir::tf_quant::Create1DConstValue;
 using ::mlir::tf_quant::HasStaticShape;
 using ::tensorflow::quantization::OpSet;
