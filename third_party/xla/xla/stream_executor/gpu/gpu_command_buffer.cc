@@ -124,6 +124,14 @@ GpuCommandBuffer::ToGraphNodeDependencies(
   return handles;
 }
 
+absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateEmptyCmd(
+    absl::Span<const Command* const> dependencies, StreamPriority priority) {
+  TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
+  TF_ASSIGN_OR_RETURN(GraphNodeHandle handle,
+                      CreateEmptyNode(ToGraphNodeDependencies(dependencies)));
+  return AppendCommand(GpuCommand{handle});
+}
+
 absl::StatusOr<const CommandBuffer::Command*>
 GpuCommandBuffer::CreateLaunchWithPackedArgs(
     const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
