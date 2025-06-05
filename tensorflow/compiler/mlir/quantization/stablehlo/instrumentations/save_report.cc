@@ -24,7 +24,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/tf_report.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/cc/report.h"
 
 namespace mlir::quant::stablehlo {
 namespace {
@@ -37,7 +37,7 @@ std::optional<std::string> OptionalStringViewToOptionalString(
   return std::make_optional<std::string>(*view);
 }
 
-using tf_quant::stablehlo::QuantizationReport;
+using quant::stablehlo::QuantizationReport;
 
 // Whether the pass is `QuantizeCompositeFunctionPass`.
 bool IsQuantizeCompositeFunctionPass(Pass* absl_nullable pass,
