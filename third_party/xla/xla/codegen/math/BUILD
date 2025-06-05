@@ -155,3 +155,39 @@ xla_cc_test(
         "@llvm-project//llvm:ir_headers",
     ],
 )
+
+cc_library(
+    name = "exp",
+    srcs = ["exp.cc"],
+    hdrs = ["exp.h"],
+    deps = [
+        ":ldexp",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Analysis",
+        "@llvm-project//llvm:Core",  # buildcleaner: keep
+        "@llvm-project//llvm:ExecutionEngine",
+        "@llvm-project//llvm:IPO",
+        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:Passes",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:TransformUtils",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+xla_cc_test(
+    name = "exp_test",
+    srcs = ["exp_test.cc"],
+    deps = [
+        ":exp",
+        ":ldexp",
+        ":simple_jit_runner",
+        ":test_matchers",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)

@@ -77,6 +77,56 @@ class JitRunner {
     return result;
   }
 
+  // Run a JITed function that takes a vector of one argument and returns a
+  // vector of results. The function is expected to have the following
+  // prototype:
+  //   void func(ArgType* result, const ArgType* arg)
+  template <size_t VectorSize, typename ArgType>
+  llvm::Expected<std::array<ArgType, VectorSize>> RunJitUnaryVectorized(
+      const std::string& original_function_name,
+      const std::array<ArgType, VectorSize>& arg) {
+    std::string wrapper_function_key =
+        original_function_name + "_wrapper_" + std::to_string(VectorSize);
+
+    // Define the C++ function pointer type for the wrapper
+    using WrapperFnPtrType = void (*)(ArgType*, const ArgType*);
+
+    // Check if the wrapper's function pointer is already cached
+    auto it = wrapper_ptr_cache_.find(wrapper_function_key);
+    WrapperFnPtrType wrapper_ptr = nullptr;
+
+    if (it != wrapper_ptr_cache_.end()) {
+      wrapper_ptr = tsl::safe_reinterpret_cast<WrapperFnPtrType>(it->second);
+    } else {
+      // Wrapper not in cache, need to generate and add it
+      llvm::Expected<void*> created_wrapper_ptr_or_err =
+          CreateVectorWrapperFunction(
+              original_function_name, VectorSize,
+              primitive_util::NativeToPrimitiveType<ArgType>(),
+              {primitive_util::NativeToPrimitiveType<ArgType>()});
+      if (auto e = created_wrapper_ptr_or_err.takeError()) {
+        return llvm::make_error<llvm::StringError>(
+            llvm::errc::not_supported, llvm::toString(std::move(e)));
+      }
+      wrapper_ptr = tsl::safe_reinterpret_cast<WrapperFnPtrType>(
+          created_wrapper_ptr_or_err.get());
+      wrapper_ptr_cache_[wrapper_function_key] =
+          created_wrapper_ptr_or_err.get();  // Store raw address
+    }
+
+    alignas(32) std::array<ArgType, VectorSize> result_array;
+    // Required to satisfy MSAN, which doesn't instrument the JITed code.
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(result_array.data(),
+                                        result_array.size() * sizeof(ArgType));
+    // Copy the arguments to make sure they are aligned. We could require
+    // callers to pass aligned arrays, but the errors if they don't are hard to
+    // debug, and most input arrays are likely to be small enough that a copy
+    // during test is cheap.
+    alignas(32) std::array<ArgType, VectorSize> arg_aligned = arg;
+    (*wrapper_ptr)(result_array.data(), arg_aligned.data());
+    return result_array;
+  }
+
   // Run a JITed function that takes a vector of arguments and returns a vector
   // of results.
   // The function is expected to have the following prototype:
@@ -129,6 +179,7 @@ class JitRunner {
     alignas(32) std::array<Arg2Type, VectorSize> arg2_aligned = arg2;
     (*wrapper_ptr)(result_array.data(), arg1_aligned.data(),
                    arg2_aligned.data());
+
     return result_array;
   }
 
