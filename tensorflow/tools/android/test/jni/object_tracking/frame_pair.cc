@@ -187,11 +187,6 @@ int FramePair::FillScales(const Point2f& old_center,
   return num_good;
 }
 
-struct WeightedDelta {
-  float weight;
-  float delta;
-};
-
 /**
  * @brief Comparison function for sorting WeightedDelta structs by delta value.
  *

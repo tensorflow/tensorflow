@@ -24,6 +24,7 @@ limitations under the License.
 #include <time.h>
 #include <iostream>
 #include <sstream>
+#include <cstdarg>
 
 LogMessage::LogMessage(const char* fname, int line, int severity)
     : fname_(fname), line_(line), severity_(severity) {}

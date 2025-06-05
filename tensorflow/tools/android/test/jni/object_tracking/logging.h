@@ -19,6 +19,15 @@ limitations under the License.
 #ifdef __ANDROID__
 #include <android/log.h>
 #endif
+#ifndef __ANDROID__
+// Stub definitions for non-Android platforms
+#define ANDROID_LOG_INFO    0
+#define ANDROID_LOG_WARN    1
+#define ANDROID_LOG_ERROR   2
+#define ANDROID_LOG_FATAL   3
+#define ANDROID_LOG_VERBOSE 4
+inline int __android_log_write(int, const char*, const char*) { return 0; }
+#endif
 #include <string.h>
 #include <ostream>
 #include <sstream>
