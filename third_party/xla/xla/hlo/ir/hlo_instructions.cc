@@ -1503,13 +1503,6 @@ HloTransposeInstruction::HloTransposeInstruction(
   AppendOperand(operand);
 }
 
-bool HloTransposeInstruction::IsRank2Transpose() const {
-  return dimensions() == std::vector<int64_t>({1, 0}) &&
-         shape().dimensions().size() == 2 &&
-         std::equal(shape().dimensions().begin(), shape().dimensions().end(),
-                    operand(0)->shape().dimensions().rbegin());
-}
-
 std::unique_ptr<HloInstruction>
 HloTransposeInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,

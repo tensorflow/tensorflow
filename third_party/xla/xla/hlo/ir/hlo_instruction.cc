@@ -5556,11 +5556,6 @@ int64_t HloInstruction::inferred_dimension() const {
   return Cast<HloReshapeInstruction>(this)->inferred_dimension();
 }
 
-bool HloInstruction::IsRank2Transpose() const {
-  auto transpose = DynCast<HloTransposeInstruction>(this);
-  return transpose != nullptr && transpose->IsRank2Transpose();
-}
-
 int64_t HloInstruction::slice_starts(int64_t dimension) const {
   return Cast<HloSliceInstruction>(this)->slice_starts(dimension);
 }

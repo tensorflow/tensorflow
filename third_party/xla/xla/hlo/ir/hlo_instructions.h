@@ -1132,8 +1132,6 @@ class HloTransposeInstruction : public HloDimensionsInstruction {
  public:
   explicit HloTransposeInstruction(const Shape& shape, HloInstruction* operand,
                                    absl::Span<const int64_t> dimensions);
-  // Returns whether this instruction does a rank-2 transposition.
-  bool IsRank2Transpose() const;
 
   static bool ClassOf(const HloInstruction* hlo) {
     return hlo->opcode() == HloOpcode::kTranspose;

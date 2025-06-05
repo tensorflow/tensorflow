@@ -2107,9 +2107,6 @@ class HloInstruction {
   // Delegates to HloReshapeInstruction::inferred_dimension.
   int64_t inferred_dimension() const;
 
-  // Returns whether this instruction does a rank-2 transposition.
-  bool IsRank2Transpose() const;
-
   // Delegates to HloSliceInstruction::slice_start.
   int64_t slice_starts(int64_t dimension) const;
   const std::vector<int64_t>& slice_starts() const;
