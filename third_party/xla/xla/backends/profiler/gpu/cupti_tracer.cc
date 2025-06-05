@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
@@ -1059,9 +1060,73 @@ void CuptiTracer::Disable() {
   tsl::profiler::AnnotationStack::Enable(false);
 }
 
+void CuptiTracer::SetDefaultCallbackIds(
+    std::vector<CUpti_driver_api_trace_cbid_enum> &cbids) {
+  cbids = {
+      // KERNEL
+      CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel,
+#if CUDA_VERSION >= 11080  // CUDA 11.8
+      CUPTI_DRIVER_TRACE_CBID_cuLaunchKernelEx,
+#endif  // CUDA_VERSION >= 11080
+      // MEMCPY
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpy,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoDAsync_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoH_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoHAsync_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoD_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoA_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoA_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpy2D_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DUnaligned_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DAsync_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpy3D_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DAsync_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoA_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoAAsync_v2,
+      // MemAlloc
+      CUPTI_DRIVER_TRACE_CBID_cuMemAlloc_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemAllocPitch_v2,
+      // MemFree
+      CUPTI_DRIVER_TRACE_CBID_cuMemFree_v2,
+      // Memset
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD8_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD16_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD32_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD8Async,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD16Async,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD32Async,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8Async,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16Async,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32Async,
+      // GENERIC
+      CUPTI_DRIVER_TRACE_CBID_cuStreamSynchronize,
+#if CUDA_VERSION >= 12080  // CUDA 12.8
+      CUPTI_DRIVER_TRACE_CBID_cuGraphCreate,
+      CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiate,
+      CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch,
+      CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch_ptsz,
+      CUPTI_DRIVER_TRACE_CBID_cuGraphClone,
+      CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiate_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiateWithFlags,
+      CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiateWithParams,
+      CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiateWithParams_ptsz,
+#endif  // CUDA_VERSION >= 12080
+  };
+}
+
 absl::Status CuptiTracer::FlushEventsToCollector() {
-  if (!api_tracing_enabled_ && !activity_tracing_enabled_)
+  if (!api_tracing_enabled_ && !activity_tracing_enabled_) {
     return absl::OkStatus();
+  }
 
   // Need get the cached activity buffers first, but send to collector after
   // the callback events are processed.
