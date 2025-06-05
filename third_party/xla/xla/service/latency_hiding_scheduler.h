@@ -152,7 +152,13 @@ struct SchedulerConfig {
   bool resource_serializing = false;
   bool depth_based_memory_pressure_reduction = false;
   bool enable_selective_resources = false;
+
+  // Freely schedule nodes at the start of a scheduling group, allowing the
+  // scheduler to delay them to promote better overlap.
   bool flexible_scheduling_annotation_scheduling = false;
+  // If the above flag is also set, force the scheduler to provide maximum delay
+  // to nodes at the stat of a scheduling group.
+  bool aggressive_flexible_annotation_scheduling = false;
 };
 
 // Class used estimate latency between instructions and cost of HLOs.

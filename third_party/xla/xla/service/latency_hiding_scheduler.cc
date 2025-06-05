@@ -1875,6 +1875,9 @@ absl::Status DefaultSchedulerCore::ScheduleAnnotation(
       VLOG(2) << "Non ready instr: " << node->GetInstr().name();
       ++non_ready_instr;
       node->ClearAnnotation();
+      if (config_.aggressive_flexible_annotation_scheduling) {
+        node->SetForceDelay(true);
+      }
       sched_state->nodes_holding_annotations.insert(node);
       continue;
     }
