@@ -249,6 +249,51 @@ std::unique_ptr<HloModule> AllGatherModule(
   return module;
 }
 
+std::unique_ptr<HloModule> AllToAllModule(
+    const HloInstructionProfile& profile) {
+  HloModuleConfig config;
+  auto module = std::make_unique<HloModule>("m", config);
+  auto shape = Shape::FromProto(profile.instruction().shape());
+  if (!shape.ok()) {
+    VLOG(1) << "Cannot parse shape: " << profile.DebugString();
+    return nullptr;
+  }
+
+  HloComputation::Builder entry_builder("entry");
+  CollectiveDeviceList collective_device_list(
+      IotaReplicaGroupList::FromProto(profile.instruction()
+                                          .collective_device_list()
+                                          .iota_replica_group_list()));
+
+  HloInstruction* p0 = entry_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, *shape, "p0"));
+  entry_builder.AddInstruction(HloInstruction::CreateAllToAll(
+      *shape, {p0}, collective_device_list,
+      profile.instruction().constrain_layout(),
+      profile.instruction().channel_id(),
+      profile.instruction().use_global_device_ids()));
+  module->AddEntryComputation(entry_builder.Build());
+  return module;
+}
+
+std::optional<CollectiveDeviceList> CanonicalDeviceList(
+    const HloCollectiveInstruction& instr) {
+  if (instr.device_list().iota_replica_group_list().has_value()) {
+    return instr.device_list();
+  }
+  auto num_groups_and_devices = GetReplicaGroupCountAndSize(&instr);
+  if (!num_groups_and_devices.ok() || !num_groups_and_devices->has_value()) {
+    VLOG(1) << "Failed to determine a number of devices participating in "
+               "the collective: "
+            << instr.ToString();
+    return std::nullopt;
+  }
+
+  IotaReplicaGroupList iota((*num_groups_and_devices)->first,
+                            (*num_groups_and_devices)->second);
+  return CollectiveDeviceList(iota);
+}
+
 HloOpcode AsyncToSyncOpcode(const HloCollectiveInstruction& instr) {
   HloOpcode opcode = instr.opcode();
   switch (opcode) {
@@ -294,6 +339,17 @@ int64_t GetBytesTransferred(const HloInstruction& instr,
   return adhoc.BytesTransferred(instr);
 }
 
+bool RequiresAccumulation(HloOpcode opcode) {
+  switch (opcode) {
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kReduceScatter:
+      return true;
+    default:
+      return false;
+  }
+}
+
 absl::StatusOr<std::unique_ptr<
     absl::flat_hash_map<CollectiveInterpolator::ExactInterpolatorKey,
                         std::unique_ptr<InterpolatorBase<int64_t, 1>>>>>
@@ -311,7 +367,9 @@ ConstructExactInterpolators(int num_devices_per_host,
     CollectiveInterpolator::ExactInterpolatorKey exact_key{
         /*opcode=*/spec.opcode,
         /*device_list=*/spec.device_list,
-        /*data_type=*/spec.data_type,
+        /*data_type=*/
+        RequiresAccumulation(spec.opcode) ? std::make_optional(spec.data_type)
+                                          : std::nullopt,
     };
     auto exact_it = exact_interpolators->find(exact_key);
     if (exact_it == exact_interpolators->end()) {
@@ -429,17 +487,6 @@ ConstructFallbackNNInterpolators(int num_devices_per_host,
   return fallback_interpolators;
 }
 
-bool RequiresAccumulation(const HloCollectiveInstruction& instr) {
-  switch (instr.opcode()) {
-    case HloOpcode::kAllReduceStart:
-    case HloOpcode::kAllReduce:
-    case HloOpcode::kReduceScatter:
-      return true;
-    default:
-      return false;
-  }
-}
-
 }  // namespace
 
 // We can get rid of `analysis` being nullptr once we get rid of stats
@@ -488,21 +535,23 @@ std::optional<absl::Duration> CollectiveInterpolator::EstimatedRuntime(
   int64_t bytes_transferred =
       GetBytesTransferred(instr, device_info_, analysis_);
 
-  ExactInterpolatorKey exact_key{
-      /*opcode=*/instr.opcode(),
-      /*device_list=*/instr.device_list(),
-      /*data_type=*/
-      RequiresAccumulation(instr)
-          ? std::make_optional(instr.shape().element_type())
-          : std::nullopt,
-  };
+  std::optional<CollectiveDeviceList> devices = CanonicalDeviceList(instr);
+  if (devices.has_value()) {
+    ExactInterpolatorKey exact_key{
+        /*opcode=*/instr.opcode(),
+        /*device_list=*/*devices,
+        /*data_type=*/
+        RequiresAccumulation(instr.opcode())
+            ? std::make_optional(instr.shape().element_type())
+            : std::nullopt,
+    };
 
-  if (exact_interpolators_->contains(exact_key)) {
-    std::array<int64_t, 1> point({bytes_transferred});
-    return absl::Seconds(1.0 * bytes_transferred /
-                         exact_interpolators_->at(exact_key)->Eval(point));
+    if (exact_interpolators_->contains(exact_key)) {
+      std::array<int64_t, 1> point({bytes_transferred});
+      return absl::Seconds(1.0 * bytes_transferred /
+                           exact_interpolators_->at(exact_key)->Eval(point));
+    }
   }
-
   // Fallback interpolation.
   auto comm = CommunicationType(num_devices_per_host_, instr,
                                 device_info_.gpu_compute_capability());
@@ -537,6 +586,8 @@ std::optional<absl::Duration> CollectiveInterpolator::EstimatedRuntime(
     case HloOpcode::kAllGather:
     case HloOpcode::kAllGatherStart:
       return AllGatherModule(profile);
+    case HloOpcode::kAllToAll:
+      return AllToAllModule(profile);
     default:
       LOG(FATAL) << "Unsupported profile instruction: "
                  << profile.DebugString();
