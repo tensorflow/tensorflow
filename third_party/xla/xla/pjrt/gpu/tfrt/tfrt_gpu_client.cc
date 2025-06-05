@@ -2886,12 +2886,39 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteral(MutableLiteralBase* literal) {
 
       auto stream = device->stream();
 
+      if (VLOG_IS_ON(2)) {
+        absl::Status host_callback_status = stream->DoHostCallback(
+            [device_ptr = device_buffer->buffer()->buffer().opaque(),
+             host_ptr = buffer_ptr, byte_size]() {
+              VLOG(1) << "Start device D2H copy: " << device_ptr << " -> "
+                      << host_ptr << " (" << byte_size << " bytes)";
+            });
+        if (!host_callback_status.ok()) {
+          LOG(WARNING)
+              << "Failed to do host callback for start device D2H copy. "
+              << ", status = " << host_callback_status;
+        }
+      }
+
       VLOG(3) << "D2H copy: " << device_buffer->buffer()->buffer().opaque()
               << " -> " << buffer_ptr << " (" << byte_size << " bytes)";
       CHECK_OK(stream->Memcpy(buffer_ptr, device_buffer->buffer()->buffer(),
                               byte_size))
           << "stream->Memcpy failed copying from GPU to host";
 
+      if (VLOG_IS_ON(2)) {
+        absl::Status host_callback_status = stream->DoHostCallback(
+            [device_ptr = device_buffer->buffer()->buffer().opaque(),
+             host_ptr = buffer_ptr, byte_size]() {
+              VLOG(1) << "Finish device D2H copy: " << device_ptr << " -> "
+                      << host_ptr << " (" << byte_size << " bytes)";
+            });
+        if (!host_callback_status.ok()) {
+          LOG(WARNING)
+              << "Failed to do host callback for finish device D2H copy. "
+              << ", status = " << host_callback_status;
+        }
+      }
       absl::Status status;
       {
         tsl::profiler::TraceMe traceme("BlockHostUntilDone");
