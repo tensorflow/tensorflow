@@ -241,10 +241,11 @@ std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToInputIndexing(
   if (!GetDescriptionForTiledTransposeEmitter(hero)) {
     auto map = ComposeIndexingMaps(
         *ComputeThreadIdToOutputIndexing(root_index, mlir_context),
-        *ComputeOutputToInputIndexing(
-             &analysis_.fusion_root(root_index).instruction(), 0, mlir_context)
-             .indexing_maps[hero_operand_index]
-             .begin());
+        ComputeOutputToInputIndexing(
+            &analysis_.fusion_root(root_index).instruction(), 0, mlir_context)
+            .indexing_maps[hero_operand_index]
+            .begin()
+            ->map());
     map.Simplify();
     return map;
   }

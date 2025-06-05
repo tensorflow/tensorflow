@@ -73,8 +73,8 @@ std::optional<IndexingMap> LoopFusion::ComputeThreadIdToInputIndexing(
       &analysis_.fusion_root(root_index).instruction();
   auto output_to_input_indexing =
       ComputeOutputToInputIndexing(fusion_root, /*output_id=*/0, ctx);
-  IndexingMapSet output_to_input_indexing_set =
-      output_to_input_indexing.indexing_maps[hero_operand_index];
+  IndexingMapSet output_to_input_indexing_set = ToIndexingMapSet(
+      output_to_input_indexing.indexing_maps[hero_operand_index]);
   // Since we are computing the indexing for a non-fusion op, there is only one
   // indexing map per operand.
   CHECK_EQ(output_to_input_indexing_set.size(), 1);

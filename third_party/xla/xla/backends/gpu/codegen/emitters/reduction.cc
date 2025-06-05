@@ -517,10 +517,11 @@ std::optional<IndexingMap> ReductionFusion::ComputeThreadIdToInputIndexing(
   if (!groups_.is_reduction_root[root_index]) {
     return ComposeIndexingMaps(
         *ComputeThreadIdToOutputIndexing(root_index, ctx),
-        *ComputeOutputToInputIndexing(
-             &analysis_.fusion_root(root_index).instruction(), 0, ctx)
-             .indexing_maps[hero_operand_index]
-             .begin());
+        ComputeOutputToInputIndexing(
+            &analysis_.fusion_root(root_index).instruction(), 0, ctx)
+            .indexing_maps[hero_operand_index]
+            .begin()
+            ->map());
   }
   auto projected_map = ComputeReductionInputIndexing(ctx);
   AddGroupIdConstraint(projected_map, root_index, groups_);

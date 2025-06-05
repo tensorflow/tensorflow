@@ -55,9 +55,9 @@ TEST_F(SymbolicTileTest, CanPropagateTileFromDotOutputToInputs) {
     }
   )"));
 
-  EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
-      Optional(MatchSymbolicTileString(R"(
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(
+                  input_indexing.indexing_maps[0].begin()->map()),
+              Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
           offset_map: (d0, d1, d2) -> (0, 0, 0)
           size_map: (d0, d1, d2) -> (d0, d1, 19)
@@ -74,9 +74,9 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughTrivialReshape) {
     }
   )"));
 
-  EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
-      Optional(MatchSymbolicTileString(R"(
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(
+                  input_indexing.indexing_maps[0].begin()->map()),
+              Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0, d1, d2, d3) -> (0, 0, 0)
         size_map: (d0, d1, d2, d3) -> (d1, d2, d3)
@@ -96,9 +96,9 @@ TEST_F(SymbolicTileTest,
 
   // TODO(bchetioui): support expanding one dimension to more than two
   // dimensions and constrain accordingly.
-  EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
-      Optional(MatchSymbolicTileString(R"(
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(
+                  input_indexing.indexing_maps[0].begin()->map()),
+              Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0, d1) -> (0, 0, 0, 0)
         size_map: (d0, d1) -> (1, (d0 + 5) floordiv 6, d0 - ((d0 - 1) floordiv 6) * 6, d1)
@@ -118,8 +118,8 @@ TEST_F(SymbolicTileTest,
     }
   )"));
 
-  std::optional<SymbolicTile> symbolic_tile =
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin());
+  std::optional<SymbolicTile> symbolic_tile = SymbolicTile::FromIndexingMap(
+      input_indexing.indexing_maps[0].begin()->map());
 
   // Collapsed dimensions force us to create nested conditionals, since the
   // stride of the output corresponds to the stride of the minormost expression
@@ -174,9 +174,9 @@ TEST_F(SymbolicTileTest, FailsToPropagateTileThroughNonTrivialReshape) {
     }
   )"));
 
-  EXPECT_EQ(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
-      std::nullopt);
+  EXPECT_EQ(SymbolicTile::FromIndexingMap(
+                input_indexing.indexing_maps[0].begin()->map()),
+            std::nullopt);
 }
 
 TEST_F(SymbolicTileTest, CanPropagateTileThroughElementwiseOp) {
@@ -189,9 +189,9 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughElementwiseOp) {
     }
   )"));
 
-  EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
-      Optional(MatchSymbolicTileString(R"(
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(
+                  input_indexing.indexing_maps[0].begin()->map()),
+              Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0) -> (0)
         size_map: (d0) -> (d0)
@@ -208,9 +208,9 @@ TEST_F(SymbolicTileTest, CanPropagateTileFromBroadcastOutputToInput) {
     }
   )"));
 
-  EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
-      Optional(MatchSymbolicTileString(R"(
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(
+                  input_indexing.indexing_maps[0].begin()->map()),
+              Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0, d1) -> (0)
         size_map: (d0, d1) -> (d1)
@@ -234,9 +234,9 @@ TEST_F(SymbolicTileTest, CanPropagateTileFromReduceOutputToInput) {
     }
   )"));
 
-  EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
-      Optional(MatchSymbolicTileString(R"(
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(
+                  input_indexing.indexing_maps[0].begin()->map()),
+              Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0) -> (0, 0)
         size_map: (d0) -> (125, d0)
@@ -253,9 +253,9 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughReverse) {
     }
   )"));
 
-  EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
-      Optional(MatchSymbolicTileString(R"(
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(
+                  input_indexing.indexing_maps[0].begin()->map()),
+              Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0) -> (178)
         size_map: (d0) -> (d0)
@@ -272,9 +272,9 @@ TEST_F(SymbolicTileTest, CanPropagateTileFromSliceOutputToInput) {
     }
   )"));
 
-  EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
-      Optional(MatchSymbolicTileString(R"(
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(
+                  input_indexing.indexing_maps[0].begin()->map()),
+              Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0, d1) -> (40, 20)
         size_map: (d0, d1) -> (d0, d1)
@@ -291,9 +291,9 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughTranspose) {
     }
   )"));
 
-  EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
-      Optional(MatchSymbolicTileString(R"(
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(
+                  input_indexing.indexing_maps[0].begin()->map()),
+              Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0, d1) -> (0, 0)
         size_map: (d0, d1) -> (d1, d0)
@@ -313,25 +313,25 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughConcatenate) {
     }
   )"));
 
-  EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
-      Optional(MatchSymbolicTileString(R"(
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(
+                  input_indexing.indexing_maps[0].begin()->map()),
+              Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0, d1, d2) -> (0, 0, 0)
         size_map: (d0, d1, d2) -> (d0, d1, d2)
         stride_map: (d0, d1, d2) -> (1, 1, 1)
       )")));
-  EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[1].begin()),
-      Optional(MatchSymbolicTileString(R"(
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(
+                  input_indexing.indexing_maps[1].begin()->map()),
+              Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0, d1, d2) -> (0, -5, 0)
         size_map: (d0, d1, d2) -> (d0, d1, d2)
         stride_map: (d0, d1, d2) -> (1, 1, 1)
       )")));
-  EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[2].begin()),
-      Optional(MatchSymbolicTileString(R"(
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(
+                  input_indexing.indexing_maps[2].begin()->map()),
+              Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0, d1, d2) -> (0, -16, 0)
         size_map: (d0, d1, d2) -> (d0, d1, d2)
@@ -350,9 +350,9 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughPadOpWithoutInteriorPadding) {
     }
   )"));
 
-  EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
-      Optional(MatchSymbolicTileString(R"(
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(
+                  input_indexing.indexing_maps[0].begin()->map()),
+              Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0, d1) -> (-2, -1)
         size_map: (d0, d1) -> (d0, d1)
@@ -376,14 +376,14 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughDynamicSlice) {
 
   ASSERT_EQ(input_indexing.indexing_maps.size(), 4);
 
-  EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
-      // d0, d1, d2: tile sizes
-      // s0, s1: runtime parameters
-      // Note: We don't have d0 in the size map's rhs, because the first dim
-      // of the tile size can only be 1. The second offset is optimized to 0,
-      // because that is the only possible value.
-      Optional(MatchSymbolicTileString(R"(
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(
+                  input_indexing.indexing_maps[0].begin()->map()),
+              // d0, d1, d2: tile sizes
+              // s0, s1: runtime parameters
+              // Note: We don't have d0 in the size map's rhs, because the first
+              // dim of the tile size can only be 1. The second offset is
+              // optimized to 0, because that is the only possible value.
+              Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0, d1, d2)[s0, s1, s2] -> (s0, s1, s2)
         size_map: (d0, d1, d2) -> (d0, d1, d2)
@@ -394,9 +394,9 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughDynamicSlice) {
           s2 in [0, 226],
       )")));
   for (int i = 1; i <= 3; i++) {
-    EXPECT_THAT(
-        SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[i].begin()),
-        Optional(MatchSymbolicTileString(R"(
+    EXPECT_THAT(SymbolicTile::FromIndexingMap(
+                    input_indexing.indexing_maps[i].begin()->map()),
+                Optional(MatchSymbolicTileString(R"(
         Symbolic tile with
           offset_map: (d0, d1, d2) -> ()
           size_map: (d0, d1, d2) -> ()
@@ -420,19 +420,19 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughDynamicUpdateSlice) {
 
   ASSERT_EQ(input_indexing.indexing_maps.size(), 4);
 
-  EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
-      Optional(MatchSymbolicTileString(R"(
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(
+                  input_indexing.indexing_maps[0].begin()->map()),
+              Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0, d1) -> (0, 0)
         size_map: (d0, d1) -> (d0, d1)
         stride_map: (d0, d1) -> (1, 1)
       )")));
-  EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[1].begin()),
-      // d0, d1: tile sizes
-      // s0, s1: runtime parameters
-      Optional(MatchSymbolicTileString(R"(
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(
+                  input_indexing.indexing_maps[1].begin()->map()),
+              // d0, d1: tile sizes
+              // s0, s1: runtime parameters
+              Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0, d1)[s0, s1] -> (-s0, -s1)
         size_map: (d0, d1) -> (d0, d1)
@@ -442,9 +442,9 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughDynamicUpdateSlice) {
           s1 in [0, 20],
       )")));
   for (int i = 2; i <= 3; i++) {
-    EXPECT_THAT(
-        SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[i].begin()),
-        Optional(MatchSymbolicTileString(R"(
+    EXPECT_THAT(SymbolicTile::FromIndexingMap(
+                    input_indexing.indexing_maps[i].begin()->map()),
+                Optional(MatchSymbolicTileString(R"(
         Symbolic tile with
           offset_map: (d0, d1) -> ()
           size_map: (d0, d1) -> ()
@@ -467,11 +467,11 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughGather) {
 
   ASSERT_EQ(input_indexing.indexing_maps.size(), 2);
 
-  EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
-      // d0, d1, d2, d3: tile sizes
-      // s0, s1: runtime parameters
-      Optional(MatchSymbolicTileString(R"(
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(
+                  input_indexing.indexing_maps[0].begin()->map()),
+              // d0, d1, d2, d3: tile sizes
+              // s0, s1: runtime parameters
+              Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0, d1, d2, d3)[s0, s1] -> (s0, s1, 0)
         size_map: (d0, d1, d2, d3) -> (d1, d2, d3)
@@ -481,9 +481,9 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughGather) {
           s1 in [0, 68],
       )")));
 
-  EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[1].begin()),
-      Optional(MatchSymbolicTileString(R"(
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(
+                  input_indexing.indexing_maps[1].begin()->map()),
+              Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0, d1, d2, d3) -> (0, 0)
         size_map: (d0, d1, d2, d3) -> (d0, 2)
@@ -508,9 +508,9 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughSplitReshapeOfReverse) {
     }
   )"));
 
-  EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
-      Optional(MatchSymbolicTileString(R"(
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(
+                  input_indexing.indexing_maps[0].begin()->map()),
+              Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0, d1) -> (0, 7, 5, 0)
         size_map: (d0, d1) ->
@@ -538,9 +538,9 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughReverseOfCombiningReshape) {
     }
   )"));
 
-  EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
-      Optional(MatchSymbolicTileString(R"(
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(
+                  input_indexing.indexing_maps[0].begin()->map()),
+              Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0, d1, d2, d3) -> (23, 0)
         size_map: (d0, d1, d2, d3) -> ((d0 * d1) * d2, d3)
@@ -573,9 +573,9 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughSplitReductionOfSplittedAxis) {
     }
   )"));
 
-  EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
-      Optional(MatchSymbolicTileString(R"(
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(
+                  input_indexing.indexing_maps[0].begin()->map()),
+              Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: () -> (0)
         size_map: () -> (18)
@@ -643,9 +643,9 @@ TEST_F(SymbolicTileTest,
     }
   )"));
 
-  EXPECT_EQ(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
-      std::nullopt);
+  EXPECT_EQ(SymbolicTile::FromIndexingMap(
+                input_indexing.indexing_maps[0].begin()->map()),
+            std::nullopt);
 }
 
 TEST_F(SymbolicTileTest,
@@ -666,9 +666,9 @@ TEST_F(SymbolicTileTest,
     }
   )"));
 
-  EXPECT_EQ(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
-      std::nullopt);
+  EXPECT_EQ(SymbolicTile::FromIndexingMap(
+                input_indexing.indexing_maps[0].begin()->map()),
+            std::nullopt);
 }
 
 TEST_F(SymbolicTileTest,
@@ -690,9 +690,9 @@ TEST_F(SymbolicTileTest,
     }
   )"));
 
-  EXPECT_EQ(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
-      std::nullopt);
+  EXPECT_EQ(SymbolicTile::FromIndexingMap(
+                input_indexing.indexing_maps[0].begin()->map()),
+            std::nullopt);
 }
 
 TEST_F(SymbolicTileTest,
@@ -715,9 +715,9 @@ TEST_F(SymbolicTileTest,
     }
   )"));
 
-  EXPECT_EQ(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
-      std::nullopt);
+  EXPECT_EQ(SymbolicTile::FromIndexingMap(
+                input_indexing.indexing_maps[0].begin()->map()),
+            std::nullopt);
 }
 
 TEST_F(SymbolicTileTest,
@@ -748,9 +748,9 @@ TEST_F(SymbolicTileTest,
     }
   )"));
 
-  EXPECT_EQ(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[1].begin()),
-      std::nullopt);
+  EXPECT_EQ(SymbolicTile::FromIndexingMap(
+                input_indexing.indexing_maps[1].begin()->map()),
+            std::nullopt);
 }
 
 TEST_F(SymbolicTileTest, CanCombineCompatibleConstraints) {
@@ -762,9 +762,9 @@ TEST_F(SymbolicTileTest, CanCombineCompatibleConstraints) {
     }
   )"));
 
-  EXPECT_THAT(
-      SymbolicTile::FromIndexingMap(*input_indexing.indexing_maps[0].begin()),
-      Optional(MatchSymbolicTileString(R"(
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(
+                  input_indexing.indexing_maps[0].begin()->map()),
+              Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0, d1) -> (0, 0, 0, 0, 0)
         size_map: (d0, d1) -> (1, (d0 + 5) floordiv 6, d0 - ((d0 - 1) floordiv 6) * 6, (d1 + 7) floordiv 8, d1 - ((d1 - 1) floordiv 8) * 8)
