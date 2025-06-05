@@ -462,3 +462,53 @@ xla_cc_test(
         "//xla/stream_executor/cuda:cuda_platform",
     ]),
 )
+
+cc_library(
+    name = "gpu_profiler",
+    srcs = ["gpu_profiler.cc"],
+    hdrs = ["gpu_profiler.h"],
+    deps = [
+        "//xla:executable_run_options",
+        "//xla/backends/autotuner:profiler",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:executable",
+        "//xla/service:maybe_owning_device_memory",
+        "//xla/service/gpu:gpu_executable_run_options",
+        "//xla/service/gpu/autotuning:redzone_buffers",
+        "//xla/stream_executor:device_memory_allocator",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor:stream_executor_memory_allocator",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_test(
+    name = "gpu_profiler_test",
+    srcs = ["gpu_profiler_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        ":gpu_profiler",
+        "//xla:executable_run_options",
+        "//xla:shape_util",
+        "//xla/backends/autotuner:profiler",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:executable",
+        "//xla/service:platform_util",
+        "//xla/stream_executor:platform",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
