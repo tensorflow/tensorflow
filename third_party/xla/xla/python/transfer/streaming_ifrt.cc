@@ -178,7 +178,8 @@ void PremappedCopierState::StartWorkUnlocked(const WorkList& work_list) {
   for (WorkQueueItem* work_item : work_list) {
     auto& wu = work_item->work;
     wu.copy_fn(work_item->dest_buffer, wu.offset, wu.size)
-        .OnReady([this, work_item](absl::Status s) {
+        .OnReady([this, this_shared = shared_from_this(),
+                  work_item](absl::Status s) {
           WorkList work_list2;
           {
             absl::MutexLock l(&mu_);
@@ -275,6 +276,10 @@ bool RawBufferEntry::Handle(tsl::RCReference<ConnectionState> state,
         [state, copier_state = state_, xfer_size = xfer_size_,
          buf_size = arrs_[bid].buf_size, req_id, bid,
          buffer = std::move(arrs_[bid].buffer)](absl::Status s) {
+          if (!s.ok()) {
+            state->SendError(req_id, 0, buf_size, true, s);
+            return;
+          }
           for (size_t i = 0; i * xfer_size < buf_size; ++i) {
             DmaCopyChunk blob;
             blob.copy_fn = [buffer](
@@ -313,40 +318,55 @@ bool RawBufferEntry::Handle(tsl::RCReference<ConnectionState> state,
 PjRtBufferEntry::PjRtBufferEntry(std::vector<BufferRef> arrs,
                                  std::shared_ptr<PremappedCopierState> state,
                                  size_t xfer_size)
-    : arrs_(std::move(arrs)), state_(state), xfer_size_(xfer_size) {}
+    : arrs_(std::move(arrs)), state_(state), xfer_size_(xfer_size) {
+  for (auto& arr : arrs_) {
+    if (!arr.ready_future.IsValid()) {
+      arr.ready_future = arr.buffer->GetReadyFuture();
+    }
+  }
+}
 bool PjRtBufferEntry::Handle(tsl::RCReference<ConnectionState> state,
                              const SocketTransferPullRequest& req,
                              size_t base_req_id) {
   for (uint64_t bid : req.buffer_ids()) {
     auto req_id = base_req_id;
     ++base_req_id;
-    for (size_t i = 0; i * xfer_size_ < arrs_[bid].buf_size; ++i) {
-      DmaCopyChunk blob;
-      blob.copy_fn = [buffer = arrs_[bid].buffer](
-                         void* dst, int64_t offset,
-                         int64_t transfer_size) -> xla::PjRtFuture<> {
-        return buffer->CopyRawToHost(dst, offset, transfer_size);
-      };
-      blob.buffer_id = bid;
-      blob.offset = i * xfer_size_;
-      blob.size = std::min(xfer_size_, arrs_[bid].buf_size - blob.offset);
-      bool is_largest = blob.size + blob.offset == arrs_[bid].buf_size;
-      state_->ScheduleCopy(
-          std::move(blob),
-          [req_id, state, copier_state = state_, is_largest](
-              PremappedCopierState* copier_state_ptr, absl::StatusOr<void*> buf,
-              const DmaCopyChunk& chunk) {
-            if (!buf.ok()) {
-              state->SendError(req_id, chunk.offset, chunk.size, is_largest,
-                               buf.status());
-              return;
-            }
-            state->Send(req_id, buf.value(), chunk.offset, chunk.size,
-                        is_largest, [copier_state, buf = buf.value()]() {
-                          copier_state->ReturnBuffer(buf);
-                        });
-          });
-    }
+    arrs_[bid].ready_future.OnReady(
+        [state, copier_state = state_, xfer_size = xfer_size_,
+         buf_size = arrs_[bid].buf_size, req_id, bid,
+         buffer = std::move(arrs_[bid].buffer)](absl::Status s) {
+          if (!s.ok()) {
+            state->SendError(req_id, 0, buf_size, true, s);
+            return;
+          }
+          for (size_t i = 0; i * xfer_size < buf_size; ++i) {
+            DmaCopyChunk blob;
+            blob.copy_fn = [buffer = std::move(buffer)](
+                               void* dst, int64_t offset,
+                               int64_t transfer_size) -> xla::PjRtFuture<> {
+              return buffer->CopyRawToHost(dst, offset, transfer_size);
+            };
+            blob.buffer_id = bid;
+            blob.offset = i * xfer_size;
+            blob.size = std::min(xfer_size, buf_size - blob.offset);
+            bool is_largest = blob.size + blob.offset == buf_size;
+            copier_state->ScheduleCopy(
+                std::move(blob),
+                [req_id, state, copier_state, is_largest](
+                    PremappedCopierState* copier_state_ptr,
+                    absl::StatusOr<void*> buf, const DmaCopyChunk& chunk) {
+                  if (!buf.ok()) {
+                    state->SendError(req_id, chunk.offset, chunk.size,
+                                     is_largest, buf.status());
+                    return;
+                  }
+                  state->Send(req_id, buf.value(), chunk.offset, chunk.size,
+                              is_largest, [copier_state, buf = buf.value()]() {
+                                copier_state->ReturnBuffer(buf);
+                              });
+                });
+          }
+        });
   }
 
   num_consumed_bufs_ += req.buffer_ids().size();

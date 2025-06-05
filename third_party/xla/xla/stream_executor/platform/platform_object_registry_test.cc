@@ -22,6 +22,7 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 
 namespace stream_executor {
@@ -149,6 +150,19 @@ TEST(PlatformObjectRegistryTest, FindStaticallyRegisteredObject) {
       PlatformObjectRegistry::GetGlobalRegistry().FindObject<StaticTestTrait>(
           stream_executor::cuda::kCudaPlatformId),
       IsOkAndHolds(142));
+}
+
+TEST(PlatformObjectRegistryTest, FindObjectReturnsConstNonDanglingReference) {
+  PlatformObjectRegistry registry;
+
+  ASSERT_THAT(registry.RegisterObject<TestTrait>(
+                  stream_executor::cuda::kCudaPlatformId, 33),
+              IsOk());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const int& value,
+      registry.FindObject<TestTrait>(stream_executor::cuda::kCudaPlatformId));
+  EXPECT_THAT(value, 33);
 }
 
 }  // namespace

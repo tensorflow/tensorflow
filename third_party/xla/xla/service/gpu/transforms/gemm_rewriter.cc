@@ -606,11 +606,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
 
-    CHECK(!instr->IsRank2Transpose());
-    if (instr->operand(0)->IsRank2Transpose() ||
-        instr->operand(1)->IsRank2Transpose()) {
-      return absl::OkStatus();
-    }
     // Create a GemmBackendConfig based on the instruction.
     TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
                         instr->backend_config<GpuBackendConfig>());

@@ -24,17 +24,21 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -44,6 +48,7 @@ using CudnnBackendConfig = stream_executor::dnn::AlgorithmProto;
 
 using ::testing::Gt;
 using ::testing::SizeIs;
+using ::tsl::proto_testing::EqualsProto;
 using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
@@ -142,6 +147,34 @@ TEST_F(CudnnBackendTest, GetDefaultConfigFromCudnnFusionFails) {
       backend_.GetDefaultConfig(
           (*hlo_module->entry_computation()->root_instruction()));
   EXPECT_THAT(config, StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST_F(CudnnBackendTest, ApplyConfigToCudnnFusion) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kCudnnFusionHlo));
+  CudnnBackendConfig config;
+  config.set_algo_id(1);
+  HloInstruction* fusion_instr =
+      hlo_module->entry_computation()->root_instruction();
+  TF_ASSERT_OK(backend_.ApplyConfig(*fusion_instr, config));
+  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                          fusion_instr->backend_config<GpuBackendConfig>());
+  EXPECT_EQ(gpu_config.fusion_backend_config().cudnn_fusion_config().plan_id(),
+            1);
+}
+
+TEST_F(CudnnBackendTest, ApplyConfigToCudnnCustomCall) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kCudnnCustomCallHlo));
+  CudnnBackendConfig config;
+  config.set_algo_id(1);
+  HloInstruction* fusion_instr =
+      hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
+  TF_ASSERT_OK(backend_.ApplyConfig(*fusion_instr, config));
+  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
+                          fusion_instr->backend_config<GpuBackendConfig>());
+  EXPECT_THAT(gpu_config.cudnn_conv_backend_config().algorithm(),
+              EqualsProto(config));
 }
 
 }  // namespace gpu

@@ -43,15 +43,17 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout_util.h"
 #include "xla/map_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape_util.h"
-#include "xla/types.h"
+#include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -816,9 +818,8 @@ bool HloDataflowAnalysis::UpdateConditionalValueSet(
   }
   if (ssa_form_) {
     return Phi(conditional, inputs);
-  } else {
-    return GetInstructionValueSet(conditional).AssignUnionOf(inputs);
   }
+  return GetInstructionValueSet(conditional).AssignUnionOf(inputs);
 }
 
 bool HloDataflowAnalysis::UpdateCopyValueSet(HloInstruction* copy) {
@@ -994,9 +995,8 @@ bool HloDataflowAnalysis::UpdateParameterValueSet(HloInstruction* parameter) {
   }
   if (ssa_form_ && need_phi) {
     return Phi(parameter, inputs);
-  } else {
-    return GetInstructionValueSet(parameter).AssignUnionOf(inputs);
   }
+  return GetInstructionValueSet(parameter).AssignUnionOf(inputs);
 }
 
 bool HloDataflowAnalysis::UpdateTupleValueSet(HloInstruction* tuple) {
@@ -1031,9 +1031,8 @@ bool HloDataflowAnalysis::UpdateWhileValueSet(HloInstruction* xla_while) {
       &GetInstructionValueSet(xla_while->operand(0))};
   if (ssa_form_) {
     return Phi(xla_while, inputs);
-  } else {
-    return GetInstructionValueSet(xla_while).AssignUnionOf(inputs);
   }
+  return GetInstructionValueSet(xla_while).AssignUnionOf(inputs);
 }
 
 bool HloDataflowAnalysis::UpdateAllGatherStartValueSet(
@@ -1833,9 +1832,19 @@ bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
   return true;
 }
 
-/*static*/ bool HloDataflowAnalysis::IsInPlaceOperation(HloOpcode opcode) {
+/*static*/ bool HloDataflowAnalysis::IsPotentialInPlaceOperation(
+    const HloInstruction* hlo) {
+  HloOpcode opcode = hlo->opcode();
   return opcode == HloOpcode::kDynamicUpdateSlice ||
-         opcode == HloOpcode::kScatter;
+         opcode == HloOpcode::kScatter ||
+         (opcode == HloOpcode::kCollectivePermute &&
+          hlo->operands().size() == 4) ||
+         (opcode == HloOpcode::kCollectivePermuteStart &&
+          hlo->operands().size() == 4) ||
+         opcode == HloOpcode::kCustomCall ||
+         opcode == HloOpcode::kAllReduceStart || opcode == HloOpcode::kFusion ||
+         opcode == HloOpcode::kSetDimensionSize ||
+         opcode == HloOpcode::kRaggedAllToAll;
 }
 
 /*static*/ bool HloDataflowAnalysis::IsAsynchronousOperationStart(
@@ -1954,20 +1963,21 @@ GetFusionInstructionInPlaceInputOutputPairs(const HloInstruction* instruction) {
 /*static*/ std::vector<std::pair<HloOperandIndex, ShapeIndex>>
 HloDataflowAnalysis::GetInPlaceInputOutputPairs(
     const HloInstruction* instruction) {
-  if (IsInPlaceOperation(instruction->opcode())) {
-    const HloScatterInstruction* scatter =
-        DynCast<HloScatterInstruction>(instruction);
-    if (scatter && scatter->scatter_operand_count() > 1) {
-      std::vector<std::pair<HloOperandIndex, ShapeIndex>> pairs;
-      pairs.reserve(scatter->scatter_operand_count());
-      for (int i = 0, n = scatter->scatter_operand_count(); i < n; ++i) {
-        pairs.emplace_back(HloOperandIndex{i, {}}, ShapeIndex{i});
-      }
-      return pairs;
-    }
-    return {{HloOperandIndex{0, {}}, {}}};
-  } else if (instruction->opcode() == HloOpcode::kCollectivePermute &&
-             instruction->operands().size() == 4) {
+  if (!IsPotentialInPlaceOperation(instruction)) {
+    return {};
+  }
+  int64_t num_in_place_operands = instruction->operand_count();
+  const HloScatterInstruction* scatter =
+      DynCast<HloScatterInstruction>(instruction);
+  if (scatter) {
+    num_in_place_operands = scatter->scatter_operand_count();
+  } else if (instruction->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    num_in_place_operands = 1;
+  }
+
+  // Ops that require special handling.
+  if (instruction->opcode() == HloOpcode::kCollectivePermute &&
+      instruction->operands().size() == 4) {
     if (instruction->operand(1)->shape().IsTuple()) {
       std::vector<std::pair<HloOperandIndex, ShapeIndex>> in_place_pairs(
           {{HloOperandIndex{1, {}}, {}}});
@@ -1976,11 +1986,11 @@ HloDataflowAnalysis::GetInPlaceInputOutputPairs(
         in_place_pairs.push_back({HloOperandIndex{1, {i}}, {i}});
       }
       return in_place_pairs;
-    } else {
-      return {{HloOperandIndex{1, {}}, {}}};
     }
-  } else if (instruction->opcode() == HloOpcode::kCollectivePermuteStart &&
-             instruction->operands().size() == 4) {
+    return {{HloOperandIndex{1, {}}, {}}};
+  }
+  if (instruction->opcode() == HloOpcode::kCollectivePermuteStart &&
+      instruction->operands().size() == 4) {
     if (instruction->operand(1)->shape().IsTuple()) {
       std::vector<std::pair<HloOperandIndex, ShapeIndex>> in_place_pairs(
           {{HloOperandIndex{1, {}}, {1}}});
@@ -1989,12 +1999,12 @@ HloDataflowAnalysis::GetInPlaceInputOutputPairs(
         in_place_pairs.push_back({HloOperandIndex{1, {i}}, {1, i}});
       }
       return in_place_pairs;
-    } else {
-      return {{HloOperandIndex{1, {}}, {1}}};
     }
-  } else if (instruction->opcode() == HloOpcode::kCustomCall) {
+    return {{HloOperandIndex{1, {}}, {1}}};
+  }
+  if (instruction->opcode() == HloOpcode::kCustomCall) {
     // Custom Calls previously assumed that aliased operands were
-    // forwarded, but now supports modifiction semantics.
+    // forwarded, but now supports modification semantics.
     const auto& aliasing_pairs = Cast<HloCustomCallInstruction>(instruction)
                                      ->output_to_operand_aliasing();
     std::vector<std::pair<HloOperandIndex, ShapeIndex>> in_place_pairs;
@@ -2008,17 +2018,8 @@ HloDataflowAnalysis::GetInPlaceInputOutputPairs(
            output_shape_index});
     }
     return in_place_pairs;
-  } else if (instruction->opcode() == HloOpcode::kAllReduceStart) {
-    if (instruction->operands().size() == 1) {
-      return {{HloOperandIndex{0, {}}, {}}};
-    }
-    std::vector<std::pair<HloOperandIndex, ShapeIndex>> in_place_pairs;
-    in_place_pairs.reserve(instruction->operands().size());
-    for (int i = 0; i < instruction->operands().size(); i++) {
-      in_place_pairs.push_back({HloOperandIndex{i, {}}, {i}});
-    }
-    return in_place_pairs;
-  } else if (instruction->opcode() == HloOpcode::kFusion) {
+  }
+  if (instruction->opcode() == HloOpcode::kFusion) {
     const auto& aliasing_pairs =
         Cast<HloFusionInstruction>(instruction)->output_to_operand_aliasing();
     // WARNING: The users of fusion's output_to_operand_aliasing should be aware
@@ -2039,7 +2040,8 @@ HloDataflowAnalysis::GetInPlaceInputOutputPairs(
       }
     }
     return in_place_pairs;
-  } else if (instruction->opcode() == HloOpcode::kSetDimensionSize) {
+  }
+  if (instruction->opcode() == HloOpcode::kSetDimensionSize) {
     int64_t dimension = instruction->dimension();
     std::vector<std::pair<HloOperandIndex, ShapeIndex>> in_place_pairs;
     if (instruction->shape().is_dynamic_dimension(dimension) ==
@@ -2047,11 +2049,22 @@ HloDataflowAnalysis::GetInPlaceInputOutputPairs(
       in_place_pairs.push_back({HloOperandIndex{0, {}}, {}});
     }
     return in_place_pairs;
-  } else if (instruction->opcode() == HloOpcode::kRaggedAllToAll) {
+  }
+  if (instruction->opcode() == HloOpcode::kRaggedAllToAll) {
     return {{HloOperandIndex{1, {}}, {}}};
   }
 
-  return {};
+  // Default handling: one operand shares buffer with single output.
+  if (num_in_place_operands == 1) {
+    return {{HloOperandIndex{0, {}}, {}}};
+  }
+  // Default handling: operand i shares buffer with output i.
+  std::vector<std::pair<HloOperandIndex, ShapeIndex>> in_place_pairs;
+  in_place_pairs.reserve(num_in_place_operands);
+  for (int i = 0; i < num_in_place_operands; i++) {
+    in_place_pairs.push_back({HloOperandIndex{i, {}}, {i}});
+  }
+  return in_place_pairs;
 }
 
 bool HloDataflowAnalysis::CanShareOperandBufferWithUser(

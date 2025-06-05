@@ -56,6 +56,7 @@ xla_cc_test(
         "//xla/stream_executor/rocm:rocm_platform_id",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],

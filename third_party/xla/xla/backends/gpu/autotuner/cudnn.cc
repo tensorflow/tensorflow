@@ -254,5 +254,43 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> CudnnBackend::GetDefaultConfig(
       "Cudnn backend doesn't support getting a default config.");
 }
 
+absl::Status ApplyConfigToCudnnFusion(HloInstruction& instr,
+                                      const CudnnBackendConfig& config) {
+  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                      instr.backend_config<GpuBackendConfig>());
+  FusionBackendConfig* backend_config =
+      gpu_config.mutable_fusion_backend_config();
+  backend_config->mutable_cudnn_fusion_config()->set_plan_id(config.algo_id());
+  TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
+  return absl::OkStatus();
+}
+
+absl::Status ApplyConfigToCudnnCustomCall(HloInstruction& instr,
+                                          const CudnnBackendConfig& config) {
+  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                      instr.backend_config<GpuBackendConfig>());
+  CudnnConvBackendConfig* cudnn_conv_config =
+      gpu_config.mutable_cudnn_conv_backend_config();
+  *cudnn_conv_config->mutable_algorithm() = config;
+  TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
+  return absl::OkStatus();
+}
+
+absl::Status CudnnBackend::ApplyConfig(HloInstruction& instr,
+                                       const BackendConfig& config) {
+  const CudnnBackendConfig& algorithm_config =
+      static_cast<const CudnnBackendConfig&>(config);
+  if (instr.opcode() == HloOpcode::kFusion) {
+    return ApplyConfigToCudnnFusion(instr, algorithm_config);
+  }
+
+  if (instr.opcode() == HloOpcode::kCustomCall) {
+    return ApplyConfigToCudnnCustomCall(instr, algorithm_config);
+  }
+
+  return absl::UnimplementedError(
+      "Cudnn backend doesn't support this instruction.");
+};
+
 }  // namespace gpu
 }  // namespace xla

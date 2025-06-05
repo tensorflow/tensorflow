@@ -121,9 +121,8 @@ void HloInstruction::Users::Clear() {
 bool HloInstruction::Users::Contains(const HloInstruction* instruction) const {
   if (user_map_ == nullptr) {
     return std::find(users_.begin(), users_.end(), instruction) != users_.end();
-  } else {
-    return user_map_->contains(instruction);
   }
+  return user_map_->contains(instruction);
 }
 
 void HloInstruction::Users::AddUser(HloInstruction* user) {
@@ -150,11 +149,10 @@ int64_t HloInstruction::Users::UserId(HloInstruction* user) {
     auto it = std::find(users_.begin(), users_.end(), user);
     CHECK(it != users_.end());
     return it - users_.begin();
-  } else {
-    auto result = user_map_->find(user);
-    CHECK(result != user_map_->end());
-    return result->second;
   }
+  auto result = user_map_->find(user);
+  CHECK(result != user_map_->end());
+  return result->second;
 }
 
 void HloInstruction::Users::MaybeRemoveUser(HloInstruction* user) {
@@ -3692,10 +3690,9 @@ std::string HloInstruction::SignatureString() const {
 absl::string_view PrintName(absl::string_view name, bool print_ids) {
   if (print_ids) {
     return name;
-  } else {
-    auto dot_position = name.find_first_of('.');
-    return name.substr(0, dot_position);
   }
+  auto dot_position = name.find_first_of('.');
+  return name.substr(0, dot_position);
 }
 
 namespace {
@@ -3864,7 +3861,8 @@ bool HloInstruction::IsCrossModuleAllReduce() const {
   if (opcode() == HloOpcode::kAllReduce ||
       opcode() == HloOpcode::kAllReduceStart) {
     return channel_id() != std::nullopt;
-  } else if (opcode() == HloOpcode::kAllReduceDone) {
+  }
+  if (opcode() == HloOpcode::kAllReduceDone) {
     CHECK_EQ(operand_count(), 1);
     const HloInstruction* operand = this->operand(0);
     CHECK_EQ(operand->opcode(), HloOpcode::kAllReduceStart);
@@ -3877,7 +3875,8 @@ bool HloInstruction::IsCrossReplicaAllReduce() const {
   if (opcode() == HloOpcode::kAllReduce ||
       opcode() == HloOpcode::kAllReduceStart) {
     return channel_id() == std::nullopt;
-  } else if (opcode() == HloOpcode::kAllReduceDone) {
+  }
+  if (opcode() == HloOpcode::kAllReduceDone) {
     CHECK_EQ(operand_count(), 1);
     const HloInstruction* operand = this->operand(0);
     CHECK_EQ(operand->opcode(), HloOpcode::kAllReduceStart);
@@ -3988,7 +3987,9 @@ void HloInstruction::PrintWithCanonicalNameMap(
 void HloInstruction::PrintOperandsWithCanonicalNameMap(
     Printer* printer, const HloPrintOptions& options,
     CanonicalNameMap* canonical_name_map) const {
-  if (operands_.empty()) return;
+  if (operands_.empty()) {
+    return;
+  }
   absl::Span<HloInstruction* const> slice(operands_);
   constexpr int64_t kMaxOperandsToShowIfCompact = 4;
   if (options.compact_operands() &&
@@ -4015,12 +4016,16 @@ void HloInstruction::PrintOperandsWithCanonicalNameMap(
         // In a top-level HloInstruction::ToString() call, the operand name is
         // not part of the canonical string.
         DCHECK(!options.print_percent());  // no need to call PrintNameInternal
-        if (add_space) printer->Append(" ");
+        if (add_space) {
+          printer->Append(" ");
+        }
         printer->Append(
             canonical_name_map->LookupOrInsert(operand->unique_id()));
       }
     } else if (options.print_operand_names()) {
-      if (add_space) printer->Append(" ");
+      if (add_space) {
+        printer->Append(" ");
+      }
       PrintNameInternal(printer, operand->name(), options);
     }
   };
@@ -5101,7 +5106,9 @@ std::string StatisticsVizToString(const StatisticsViz& statistics_viz) {
   // of attribute=value pairs,
   // e.g., statistics={visualizing_index=0, count_nan=100, count_inf=200}.
 
-  if (statistics_viz.statistics().empty()) return "{}";
+  if (statistics_viz.statistics().empty()) {
+    return "{}";
+  }
 
   std::vector<Statistic> all_statistics(statistics_viz.statistics().begin(),
                                         statistics_viz.statistics().end());
@@ -5554,11 +5561,6 @@ int64_t HloInstruction::dimension() const {
 
 int64_t HloInstruction::inferred_dimension() const {
   return Cast<HloReshapeInstruction>(this)->inferred_dimension();
-}
-
-bool HloInstruction::IsRank2Transpose() const {
-  auto transpose = DynCast<HloTransposeInstruction>(this);
-  return transpose != nullptr && transpose->IsRank2Transpose();
 }
 
 int64_t HloInstruction::slice_starts(int64_t dimension) const {

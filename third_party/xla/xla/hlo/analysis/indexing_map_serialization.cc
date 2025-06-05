@@ -169,7 +169,9 @@ class Parser {
 
  private:
   void ConsumeWhitespace() {
-    while (it_ != input_.end() && std::isspace(*it_)) ++it_;
+    while (it_ != input_.end() && std::isspace(*it_)) {
+      ++it_;
+    }
   }
 
   // Parses the next token from the input and sets the iterator to the position
@@ -277,7 +279,9 @@ bool Parser::ParseCommaSeparatedVarList(
   }
   std::string element;
   while (parse_element_fn(*this)) {
-    if (ConsumeToken(Token::Kind::kComma)) continue;
+    if (ConsumeToken(Token::Kind::kComma)) {
+      continue;
+    }
     return ConsumeToken(right_delimiter);
   }
   return false;
@@ -337,16 +341,16 @@ Token Parser::GetNextTokenImpl() {
       if (*it_ == '>') {
         ++it_;
         return Token{"->", Token::Kind::kArrow};
-      } else if (std::isdigit(*it_)) {
+      }
+      if (std::isdigit(*it_)) {
         auto start = it_ - 1;
         while (it_ != input_.end() && std::isdigit(*it_)) {
           ++it_;
         }
         StringRef spelling = input_.substr(start - input_.data(), it_ - start);
         return Token{spelling, Token::Kind::kIntLiteral};
-      } else {
-        return Token{"-", Token::Kind::kMinus};
       }
+      return Token{"-", Token::Kind::kMinus};
     }
   }
   StringRef spelling = input_.substr(start - input_.data(), 1);

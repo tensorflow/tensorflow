@@ -153,6 +153,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:AffineToStandard",
         "@llvm-project//mlir:AffineTransforms",
@@ -168,6 +169,7 @@ cc_library(
         "@llvm-project//mlir:LLVMIRTransforms",
         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
         "@llvm-project//mlir:MathDialect",
+        "@llvm-project//mlir:MathToLLVM",
         "@llvm-project//mlir:MemRefTransforms",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
@@ -593,6 +595,38 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "fusion_emitter",
+    srcs = ["fusion_emitter.cc"],
+    hdrs = ["fusion_emitter.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/backends/cpu:alignment",
+        "//xla/codegen:hlo_fusion_spec",
+        "//xla/codegen:mlir_kernel_definition",
+        "//xla/codegen/emitters:kernel_arguments",
+        "//xla/codegen/emitters:loop_kernel_emitter",
+        "//xla/codegen/emitters/ir:xla",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_traversal",
+        "//xla/runtime:work_cluster",
+        "//xla/runtime:work_dimensions",
+        "//xla/runtime:work_group",
+        "//xla/runtime:work_item",
+        "//xla/service:buffer_assignment",
+        "//xla/service/cpu:backend_config_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
 xla_cc_test(
     name = "symbol_name_util_test",
     srcs = ["symbol_name_util_test.cc"],
@@ -606,6 +640,22 @@ xla_cc_test(
 py_strict_test(
     name = "computation_kernel_emitter_test",
     srcs = ["computation_kernel_emitter_test.py"],
+    tags = [
+        "no_oss",
+    ],
+    deps = [
+        "//third_party/py/numpy",
+        "//xla/backends/cpu/testlib",
+        "//xla/codegen/testlib",
+        "//xla/python:xla_extension",
+        "@absl_py//absl/testing:absltest",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_strict_test(
+    name = "fusion_emitter_test",
+    srcs = ["fusion_emitter_test.py"],
     tags = [
         "no_oss",
     ],

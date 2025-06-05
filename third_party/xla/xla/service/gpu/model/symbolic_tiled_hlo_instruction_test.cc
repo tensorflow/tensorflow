@@ -69,7 +69,7 @@ ENTRY main {
   // kParameter instructions inside the fusion and produces indexing for fusion
   // operands.
   IndexingMap p0_indexing =
-      *output_to_input_indexing[fusion->operand(0)].begin();
+      output_to_input_indexing[fusion->operand(0)].begin()->map();
   std::optional<SymbolicTile> p0_symbolic_tile =
       SymbolicTile::FromIndexingMap(p0_indexing);
   ASSERT_TRUE(p0_symbolic_tile.has_value());
@@ -78,7 +78,7 @@ ENTRY main {
   ASSERT_TRUE(p0_symbolic_tile.has_value());
 
   IndexingMap p1_indexing =
-      *output_to_input_indexing[fusion->operand(1)].begin();
+      output_to_input_indexing[fusion->operand(1)].begin()->map();
   std::optional<SymbolicTile> p1_symbolic_tile =
       SymbolicTile::FromIndexingMap(p1_indexing);
   ASSERT_TRUE(p1_symbolic_tile.has_value());

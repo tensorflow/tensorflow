@@ -1,5 +1,4 @@
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

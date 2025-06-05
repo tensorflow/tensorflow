@@ -436,6 +436,46 @@ PjRtCApiClient::LoadSerializedExecutable(absl::string_view serialized,
       std::make_unique<PjRtCApiLoadedExecutable>(this, c_exec));
 }
 
+absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+PjRtCApiClient::CreateUninitializedBuffer(const Shape& shape,
+                                          PjRtMemorySpace* memory_space) {
+  if (pjrt_c_api()->pjrt_api_version.major_version == 0 &&
+      pjrt_c_api()->pjrt_api_version.minor_version < 69) {
+    return absl::UnimplementedError(
+        "PJRT_Client_CreateUninitializedBuffer available in this version of "
+        "the PjRT plugin");
+  }
+
+  PJRT_Client_CreateUninitializedBuffer_Args args;
+  args.struct_size = PJRT_Client_CreateUninitializedBuffer_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.client = c_client_.get();
+
+  args.shape_dims = shape.dimensions().data();
+  args.shape_num_dims = shape.dimensions().size();
+  args.shape_element_type = pjrt::ConvertToPjRtBufferType(shape.element_type());
+
+  pjrt::BufferMemoryLayoutData c_layout_data;
+  if (shape.has_layout()) {
+    TF_ASSIGN_OR_RETURN(c_layout_data,
+                        pjrt::ConvertToBufferMemoryLayoutData(shape.layout()));
+    args.shape_layout = &c_layout_data.c_layout;
+  } else {
+    args.shape_layout = nullptr;
+  }
+
+  args.memory =
+      tensorflow::down_cast<PjRtCApiMemorySpace*>(memory_space)->c_memory();
+
+  RETURN_STATUS_IF_PJRT_ERROR(
+      c_api_->PJRT_Client_CreateUninitializedBuffer(&args), c_api_);
+
+  auto buffer = std::unique_ptr<PjRtBuffer>(
+      std::make_unique<PjRtCApiBuffer>(this, args.buffer));
+
+  return buffer;
+}
+
 absl::StatusOr<const PjRtTopologyDescription*>
 PjRtCApiClient::GetTopologyDescription() const {
   if (!topo_desc_.ok()) {

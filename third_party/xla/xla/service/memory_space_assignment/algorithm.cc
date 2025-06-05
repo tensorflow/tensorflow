@@ -2268,11 +2268,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
           if (operand->opcode() == HloOpcode::kConstant) {
             continue;
           }
-          for (HloInstruction* user : operand->users()) {
-            if (HloDataflowAnalysis::IsInPlaceOperation(user->opcode())) {
-              break;
-            }
-          }
+          // TODO(farzinh): Check whether `operand` has an in-place user.
         }
 
         TF_ASSIGN_OR_RETURN(PostAllocationTransformationUpdate changes,

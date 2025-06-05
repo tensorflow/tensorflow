@@ -34,6 +34,7 @@ TargetMachineFeatures = _extension.TargetMachineFeatures
 
 # Free functions.
 # go/keep-sorted start
+emit_fusion_kernel = _extension.emit_fusion_kernel
 lower_to_llvm = _extension.lower_to_llvm
 run_fusion_wrapper_pass = _extension.run_fusion_wrapper_pass
 # go/keep-sorted end

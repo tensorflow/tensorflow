@@ -2107,9 +2107,6 @@ class HloInstruction {
   // Delegates to HloReshapeInstruction::inferred_dimension.
   int64_t inferred_dimension() const;
 
-  // Returns whether this instruction does a rank-2 transposition.
-  bool IsRank2Transpose() const;
-
   // Delegates to HloSliceInstruction::slice_start.
   int64_t slice_starts(int64_t dimension) const;
   const std::vector<int64_t>& slice_starts() const;
@@ -2444,7 +2441,7 @@ class HloInstruction {
   };
 
   // Change instruction's name to have a given suffix.
-  void AddSuffixToInstructionName(const absl::string_view suffix);
+  void AddSuffixToInstructionName(absl::string_view suffix);
 
  private:
   friend class HloComputation;

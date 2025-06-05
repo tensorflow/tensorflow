@@ -415,9 +415,10 @@ FusionDecision ShouldProceedWithSymbolicTileDerivation(
     mlir::MLIRContext* ctx = indexing_map.GetMLIRContext();
 
     IndexingMap reshape_indexing_map =
-        *ComputeOutputToInputIndexing(hlo, /*output_id=*/0, ctx)
-             .indexing_maps[0]
-             .begin();
+        ComputeOutputToInputIndexing(hlo, /*output_id=*/0, ctx)
+            .indexing_maps[0]
+            .begin()
+            ->map();
 
     std::optional<SymbolicTile> reshape_symbolic_tile =
         SymbolicTile::FromIndexingMap(reshape_indexing_map);
@@ -1062,10 +1063,10 @@ IndexingMap InsertTilingParameterForContractingDimensions(
                                    operands_indexing.indexing_maps))) {
       auto [operand, operand_indexing_map_set] = operand_and_indexing_map_set;
       CHECK_EQ(operand_indexing_map_set.size(), 1);  // Crash OK
-
-      IndexingMap operand_indexing_map =
-          ComposeIndexingMaps(tiled_hlo_instruction->indexing_map(),
-                              *operand_indexing_map_set.begin());
+      const OperandIndexing& operand_indexing =
+          *operand_indexing_map_set.begin();
+      IndexingMap operand_indexing_map = ComposeIndexingMaps(
+          tiled_hlo_instruction->indexing_map(), operand_indexing.map());
       if (operand_indexing_map.IsUndefined()) {
         return FusionDecision::Forbid(
                    "Couldn't derive indexing map for instruction ")
