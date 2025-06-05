@@ -230,12 +230,17 @@ class RewriteDequantizeCompositeOp
 
       tfl_quantize_input = func_op.getBody().front().getArgument(arg_idx);
     } else {
-      auto producer_op = composite_op.getOperand(0).getDefiningOp();
+      // Using the last operand of the composite op as the input of the
+      // dequantize op in case it's a dynamic shaped model.
+      // TODO - b/422588785: Have proper support for dynamic shaped models.
+      int num_operands = composite_op.getNumOperands();
+      auto producer_op =
+          composite_op.getOperand(num_operands - 1).getDefiningOp();
       rewriter.startOpModification(producer_op);
       producer_op->getResults().front().setType(qtensor_type);
       rewriter.finalizeOpModification(producer_op);
 
-      tfl_quantize_input = composite_op.getOperand(0);
+      tfl_quantize_input = composite_op.getOperand(num_operands - 1);
     }
 
     TFL::DequantizeOp tfl_dequantize_op =
@@ -275,7 +280,12 @@ class RewriteFakeQuantCompositeOp
       return rewriter.notifyMatchFailure(op, "Failed to fill composite params");
     }
 
-    ShapedType input_shaped_type = cast<ShapedType>(op.getOperand(0).getType());
+    // Using the last operand of the composite op as the input of the
+    // dequantize op in case it's a dynamic shaped model.
+    // TODO - b/422588785: Have proper support for dynamic shaped models.
+    int num_operands = op.getNumOperands();
+    ShapedType input_shaped_type =
+        cast<ShapedType>(op.getOperand(num_operands - 1).getType());
     Type input_element_type = input_shaped_type.getElementType();
     Type quantized_element_type;
     if (scales.size() == 1) {
@@ -303,7 +313,7 @@ class RewriteFakeQuantCompositeOp
         input_shaped_type.getShape(), quantized_element_type);
     TFL::QuantizeOp tfl_quantize_op = rewriter.create<TFL::QuantizeOp>(
         op.getLoc(), intermediate_type,
-        /*input=*/op.getOperand(0),
+        /*input=*/op.getOperand(num_operands - 1),
         /*qtype=*/TypeAttr::get(intermediate_type));
 
     Type output_type = op.getType(0);
