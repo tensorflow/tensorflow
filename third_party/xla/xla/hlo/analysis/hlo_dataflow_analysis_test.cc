@@ -3236,6 +3236,57 @@ TEST_F(GetInPlaceInputOutputPairsTest, DUS) {
   EXPECT_EQ(in_place_pairs, expected_pairs);
 }
 
+TEST_F(GetInPlaceInputOutputPairsTest, Sort) {
+  const char* kModule = R"(
+    HloModule test
+    lt {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT res = pred[] compare(p0, p1), direction=LT
+    }
+
+    ENTRY test {
+      p0 = f32[10] parameter(0)
+      p1 = f32[5] parameter(1)
+      ROOT sort = f32[10] sort(p0), dimensions={0}, to_apply=lt
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  HloInstruction* sort = module->entry_computation()->root_instruction();
+
+  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(sort);
+  std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
+  expected_pairs.push_back({HloOperandIndex{0, {}}, {}});
+  EXPECT_EQ(in_place_pairs, expected_pairs);
+}
+
+TEST_F(GetInPlaceInputOutputPairsTest, KeyValueSort) {
+  const char* kModule = R"(
+    HloModule test
+    lt {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      p2 = s32[] parameter(2)
+      p3 = s32[] parameter(3)
+      ROOT res = pred[] compare(p0, p1), direction=LT
+    }
+
+    ENTRY test {
+      p0 = f32[10] parameter(0)
+      iota = s32[10] iota(), iota_dimension=0
+      ROOT sort = (f32[10], s32[10]) sort(p0, iota), dimensions={0}, to_apply=lt
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  HloInstruction* sort = module->entry_computation()->root_instruction();
+
+  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(sort);
+  std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
+  expected_pairs.push_back({HloOperandIndex{0, {}}, {0}});
+  expected_pairs.push_back({HloOperandIndex{1, {}}, {1}});
+  EXPECT_EQ(in_place_pairs, expected_pairs);
+}
+
 TEST_F(GetInPlaceInputOutputPairsTest, DUSFusion) {
   const char* kModule = R"(
     HloModule test
