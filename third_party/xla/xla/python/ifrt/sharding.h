@@ -320,15 +320,17 @@ class OpaqueSharding : public llvm::RTTIExtends<OpaqueSharding, Sharding> {
 class ConcreteSharding : public llvm::RTTIExtends<ConcreteSharding, Sharding> {
  public:
   // Creates a concrete sharding that may contain non-identical shard shapes.
-  // REQUIRES: `devices`.size() == `shard_shapes`.size()
+  // REQUIRES: devices->AddressableDeviceList()->size() == shard_shapes.size()
   // REQUIRES: !devices.empty()
   static std::unique_ptr<ConcreteSharding> Create(
       DeviceListRef devices, MemoryKind memory_kind, Shape shape,
-      std::vector<Shape> shard_shapes);
+      std::vector<Shape> shard_shapes,
+      std::optional<std::vector<xla::ifrt::IndexDomain>> index_domains =
+          std::nullopt);
 
   // Creates a concrete sharding that may contain non-identical shard dynamic
   // shapes.
-  // REQUIRES: `devices`.size() == `shard_dynamic_shapes`.size()
+  // REQUIRES: devices->AddressableDeviceList()->size() == shard_shapes.size()
   // REQUIRES: !devices.empty()
   static std::unique_ptr<ConcreteSharding> Create(
       DeviceListRef devices, MemoryKind memory_kind, DynamicShape dynamic_shape,
@@ -403,8 +405,10 @@ class ConcreteSharding : public llvm::RTTIExtends<ConcreteSharding, Sharding> {
   static char ID;  // NOLINT
 
  private:
-  ConcreteSharding(DeviceListRef devices, MemoryKind memory_kind, Shape shape,
-                   std::vector<Shape> shard_shapes);
+  ConcreteSharding(
+      DeviceListRef devices, MemoryKind memory_kind, Shape shape,
+      std::vector<Shape> shard_shapes,
+      std::optional<std::vector<xla::ifrt::IndexDomain>> index_domains);
 
   ConcreteSharding(DeviceListRef devices, MemoryKind memory_kind,
                    DynamicShape dynamic_shape,
@@ -415,6 +419,7 @@ class ConcreteSharding : public llvm::RTTIExtends<ConcreteSharding, Sharding> {
   std::variant<Shape, DynamicShape> shape_;
   std::variant<std::vector<Shape>, std::vector<DynamicShape>> shard_shapes_;
   std::optional<Shape> shard_shape_;
+  std::optional<std::vector<xla::ifrt::IndexDomain>> index_domains_;
 };
 
 // Opaque sharding that does not define a fixed semantics for conversion between
