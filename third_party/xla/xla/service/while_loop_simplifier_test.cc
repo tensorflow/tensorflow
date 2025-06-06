@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/while_loop_simplifier.h"
 
+#include <cstdint>
 #include <string>
 
 #include <gmock/gmock.h>
@@ -22,6 +23,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -164,6 +166,13 @@ TEST_F(WhileLoopSimplifierTest,
 
 TEST_F(WhileLoopSimplifierTest, LoopWithTwoIterationsNotSimplified) {
   auto m = MakeModuleWithSimpleLoop(/*num_iters=*/2);
+  EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).value());
+}
+
+TEST_F(WhileLoopSimplifierTest, LoopWithTwoIterationsAndDeadCodeNotSimplified) {
+  auto m = MakeModuleWithSimpleLoop(/*num_iters=*/2);
+  m->entry_computation()->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(50)));
   EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).value());
 }
 

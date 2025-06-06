@@ -45,6 +45,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/union_find.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -1613,9 +1615,10 @@ absl::StatusOr<bool> WhileLoopSimplifier::Run(
       continue;
     }
   }
-  HloDCE dce;
-  TF_ASSIGN_OR_RETURN(bool dce_changed, dce.Run(module));
-  changed |= dce_changed;
+  if (changed) {
+    HloDCE dce;
+    TF_RETURN_IF_ERROR(dce.Run(module).status());
+  }
   XLA_VLOG_LINES(3,
                  "WhileLoopSimplifier::Run(), after:\n" + module->ToString());
   return changed;
