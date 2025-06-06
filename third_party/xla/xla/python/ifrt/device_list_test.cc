@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -27,6 +28,8 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device.pb.h"
 #include "xla/python/ifrt/device_test_util.h"
+#include "xla/python/ifrt/serdes_test_util.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -38,15 +41,12 @@ namespace {
 
 using ::testing::ElementsAreArray;
 
-class DeviceListTest : public test_util::DeviceTest {};
-
-TEST_P(DeviceListTest, ToFromProto) {
-  auto device_list = GetDevices({0, 1});
-  DeviceListProto proto = device_list->ToProto();
-  TF_ASSERT_OK_AND_ASSIGN(auto device_list_copy,
-                          DeviceList::FromProto(client(), proto));
-  EXPECT_EQ(*device_list_copy, *device_list);
-}
+class DeviceListTest
+    : public testing::TestWithParam<test_util::DeviceTestParam>,
+      public test_util::DeviceTestMixin {
+ public:
+  DeviceListTest() : test_util::DeviceTestMixin(GetParam()) {}
+};
 
 TEST_P(DeviceListTest, AddressableDevices) {
   auto device_list = GetDevices({0, 1});
@@ -142,6 +142,37 @@ INSTANTIATE_TEST_SUITE_P(
                                                /*num_addressable_devices=*/1},
                     test_util::DeviceTestParam{/*num_devices=*/2,
                                                /*num_addressable_devices=*/2}));
+
+using DeviceListSerDesTestParam =
+    std::tuple</*version=*/int, test_util::DeviceTestParam>;
+
+class DeviceListSerDesTest
+    : public testing::TestWithParam<DeviceListSerDesTestParam>,
+      public test_util::SerDesVersionMixin,
+      public test_util::DeviceTestMixin {
+ public:
+  DeviceListSerDesTest()
+      : test_util::SerDesVersionMixin(std::get<0>(GetParam())),
+        test_util::DeviceTestMixin(std::get<1>(GetParam())) {}
+};
+
+TEST_P(DeviceListSerDesTest, ToFromProto) {
+  auto device_list = GetDevices({0, 1});
+  DeviceListProto proto = device_list->ToProto();
+  TF_ASSERT_OK_AND_ASSIGN(auto device_list_copy,
+                          DeviceList::FromProto(client(), proto));
+  EXPECT_EQ(*device_list_copy, *device_list);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    SerDesVersion_NumDevices, DeviceListSerDesTest,
+    testing::Combine(testing::Values(SerDesVersion::kV0Initial),
+                     testing::Values(test_util::DeviceTestParam{
+                                         /*num_devices=*/2,
+                                         /*num_addressable_devices=*/1},
+                                     test_util::DeviceTestParam{
+                                         /*num_devices=*/2,
+                                         /*num_addressable_devices=*/2})));
 
 }  // namespace
 }  // namespace ifrt

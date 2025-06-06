@@ -14,15 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <tuple>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes_test_util.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/tsl/platform/statusor.h"
@@ -33,7 +35,18 @@ namespace {
 
 using ::testing::ElementsAreArray;
 
-class XlaShardingSerDesTest : public test_util::DeviceTest {};
+using XlaShardingSerDesTestParam =
+    std::tuple</*version=*/int, test_util::DeviceTestParam>;
+
+class XlaShardingSerDesTest
+    : public testing::TestWithParam<XlaShardingSerDesTestParam>,
+      public test_util::SerDesVersionMixin,
+      public test_util::DeviceTestMixin {
+ public:
+  XlaShardingSerDesTest()
+      : test_util::SerDesVersionMixin(std::get<0>(GetParam())),
+        test_util::DeviceTestMixin(std::get<1>(GetParam())) {}
+};
 
 TEST_P(XlaShardingSerDesTest, HloShardingRoundTrip) {
   auto device_list = GetDevices({0, 1});
@@ -54,9 +67,11 @@ TEST_P(XlaShardingSerDesTest, HloShardingRoundTrip) {
   EXPECT_EQ(out_sharding->xla_hlo_sharding(), sharding->xla_hlo_sharding());
 }
 
-INSTANTIATE_TEST_SUITE_P(NumDevices, XlaShardingSerDesTest,
-                         testing::Values(test_util::DeviceTestParam{
-                             .num_devices = 2, .num_addressable_devices = 2}));
+INSTANTIATE_TEST_SUITE_P(
+    SerDesVersion_NumDevices, XlaShardingSerDesTest,
+    testing::Combine(testing::Values(SerDesVersion::kV0Initial),
+                     testing::Values(test_util::DeviceTestParam{
+                         /*num_devices=*/2, /*num_addressable_devices=*/2})));
 
 }  // namespace
 }  // namespace ifrt

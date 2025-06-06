@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "xla/python/ifrt/attribute_map.pb.h"
+#include "xla/python/ifrt/serdes_version.h"
 
 namespace xla {
 namespace ifrt {
@@ -88,7 +89,8 @@ class AttributeMap {
   static absl::StatusOr<AttributeMap> FromProto(const AttributeMapProto& proto);
 
   // Serializes `AttributeMap` into `AttributeMapProto`.
-  AttributeMapProto ToProto() const;
+  AttributeMapProto ToProto(
+      SerDesVersion version = SerDesVersion::current()) const;
 
   std::string DebugString(size_t max_string_length = 64,
                           size_t max_int64_list_size = 16) const;

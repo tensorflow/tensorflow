@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <numeric>
+#include <tuple>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -29,15 +30,15 @@ limitations under the License.
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
-#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.pb.h"
+#include "xla/python/ifrt/serdes_test_util.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
@@ -52,8 +53,17 @@ using ::testing::HasSubstr;
 using ::testing::SizeIs;
 using ::tsl::testing::StatusIs;
 
-class RemapPlanTest : public test_util::DeviceTest {
+using RemapPlanTestParam =
+    std::tuple</*version=*/int, test_util::DeviceTestParam>;
+
+class RemapPlanTest : public testing::TestWithParam<RemapPlanTestParam>,
+                      public test_util::SerDesVersionMixin,
+                      public test_util::DeviceTestMixin {
  public:
+  RemapPlanTest()
+      : test_util::SerDesVersionMixin(std::get<0>(GetParam())),
+        test_util::DeviceTestMixin(std::get<1>(GetParam())) {}
+
   ArraySpec GetDummySpec() {
     return ArraySpec{
         /*dtype=*/DType(DType::kS32),
@@ -627,10 +637,12 @@ TEST_P(RemapPlanTest, CheckMultipleInputsToOneOutput) {
       xla::ifrt::ArrayCopySemantics::kDonateInput));
 }
 
-INSTANTIATE_TEST_SUITE_P(NumDevices, RemapPlanTest,
-                         testing::Values(test_util::DeviceTestParam{
-                             /*num_devices=*/4,
-                             /*num_addressable_devices=*/4}));
+INSTANTIATE_TEST_SUITE_P(
+    SerDesVersion_NumDevices, RemapPlanTest,
+    testing::Combine(testing::Values(SerDesVersion::kV0Initial),
+                     testing::Values(test_util::DeviceTestParam{
+                         /*num_devices=*/4,
+                         /*num_addressable_devices=*/4})));
 
 }  // namespace
 }  // namespace ifrt

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/sharding_serdes.pb.h"
@@ -52,10 +54,16 @@ class SingleDeviceShardingSerDes
 
   absl::StatusOr<std::string> Serialize(
       const Serializable& serializable,
-      std::unique_ptr<SerializeOptions>) override {
+      std::unique_ptr<SerializeOptions> options) override {
+    const SerDesVersion version = GetRequestedSerDesVersion(options.get());
+    if (version < SerDesVersion::kV0Initial) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Unsupported version ", version));
+    }
     const SingleDeviceSharding& sharding =
         llvm::cast<SingleDeviceSharding>(serializable);
     SingleDeviceShardingProto proto;
+    proto.set_version(SerDesVersion::kV0Initial);
     proto.set_device_id(sharding.devices()->devices().front()->Id().value());
     if (sharding.memory_kind().memory_kind().has_value()) {
       proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
@@ -73,6 +81,10 @@ class SingleDeviceShardingSerDes
     if (!proto.ParseFromString(serialized)) {
       return absl::InvalidArgumentError(
           "Failed to parse serialized SimpleDeviceSharding");
+    }
+    if (proto.version() != SerDesVersion::kV0Initial) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Unsupported version ", proto.version()));
     }
     TF_ASSIGN_OR_RETURN(Device * device,
                         deserialize_sharding_options->client->LookupDevice(
@@ -97,10 +109,16 @@ class OpaqueShardingSerDes
 
   absl::StatusOr<std::string> Serialize(
       const Serializable& serializable,
-      std::unique_ptr<SerializeOptions>) override {
+      std::unique_ptr<SerializeOptions> options) override {
+    const SerDesVersion version = GetRequestedSerDesVersion(options.get());
+    if (version < SerDesVersion::kV0Initial) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Unsupported version ", version));
+    }
     const OpaqueSharding& sharding = llvm::cast<OpaqueSharding>(serializable);
     OpaqueShardingProto proto;
-    *proto.mutable_devices() = sharding.devices()->ToProto();
+    proto.set_version(SerDesVersion::kV0Initial);
+    *proto.mutable_devices() = sharding.devices()->ToProto(version);
     if (sharding.memory_kind().memory_kind().has_value()) {
       proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
     }
@@ -117,6 +135,10 @@ class OpaqueShardingSerDes
     if (!proto.ParseFromString(serialized)) {
       return absl::InvalidArgumentError(
           "Failed to parse serialized OpaqueSharding");
+    }
+    if (proto.version() != SerDesVersion::kV0Initial) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Unsupported version ", proto.version()));
     }
     TF_ASSIGN_OR_RETURN(auto devices, DeviceList::FromProto(
                                           deserialize_sharding_options->client,
@@ -141,24 +163,31 @@ class ConcreteShardingSerDes
 
   absl::StatusOr<std::string> Serialize(
       const Serializable& serializable,
-      std::unique_ptr<SerializeOptions>) override {
+      std::unique_ptr<SerializeOptions> options) override {
+    const SerDesVersion version = GetRequestedSerDesVersion(options.get());
+    if (version < SerDesVersion::kV0Initial) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Unsupported version ", version));
+    }
     const ConcreteSharding& sharding =
         llvm::cast<ConcreteSharding>(serializable);
     ConcreteShardingProto proto;
-    *proto.mutable_devices() = sharding.devices()->ToProto();
+    proto.set_version(SerDesVersion::kV0Initial);
+    *proto.mutable_devices() = sharding.devices()->ToProto(version);
     if (sharding.memory_kind().memory_kind().has_value()) {
       proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
     }
     if (sharding.has_static_shape()) {
-      *proto.mutable_shape() = sharding.shape().ToProto();
+      *proto.mutable_shape() = sharding.shape().ToProto(version);
       for (const Shape& shape : sharding.shard_shapes()) {
-        *proto.add_shard_shapes() = shape.ToProto();
+        *proto.add_shard_shapes() = shape.ToProto(version);
       }
     } else {
-      *proto.mutable_dynamic_shape() = sharding.dynamic_shape().ToProto();
+      *proto.mutable_dynamic_shape() =
+          sharding.dynamic_shape().ToProto(version);
       for (const DynamicShape& dynamic_shape :
            sharding.shard_dynamic_shapes()) {
-        *proto.add_shard_dynamic_shapes() = dynamic_shape.ToProto();
+        *proto.add_shard_dynamic_shapes() = dynamic_shape.ToProto(version);
       }
     }
     return proto.SerializeAsString();
@@ -174,6 +203,10 @@ class ConcreteShardingSerDes
     if (!proto.ParseFromString(serialized)) {
       return absl::InvalidArgumentError(
           "Failed to parse serialized ConcreteSharding");
+    }
+    if (proto.version() != SerDesVersion::kV0Initial) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Unsupported version ", proto.version()));
     }
     TF_ASSIGN_OR_RETURN(auto devices, DeviceList::FromProto(
                                           deserialize_sharding_options->client,
@@ -226,16 +259,22 @@ class ConcreteEvenShardingSerDes
 
   absl::StatusOr<std::string> Serialize(
       const Serializable& serializable,
-      std::unique_ptr<SerializeOptions>) override {
+      std::unique_ptr<SerializeOptions> options) override {
+    const SerDesVersion version = GetRequestedSerDesVersion(options.get());
+    if (version < SerDesVersion::kV0Initial) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Unsupported version ", version));
+    }
     const ConcreteEvenSharding& sharding =
         llvm::cast<ConcreteEvenSharding>(serializable);
     ConcreteEvenShardingProto proto;
-    *proto.mutable_devices() = sharding.devices()->ToProto();
+    proto.set_version(SerDesVersion::kV0Initial);
+    *proto.mutable_devices() = sharding.devices()->ToProto(version);
     if (sharding.memory_kind().memory_kind().has_value()) {
       proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
     }
-    *proto.mutable_shape() = sharding.shape().ToProto();
-    *proto.mutable_shard_shape() = sharding.shard_shape().ToProto();
+    *proto.mutable_shape() = sharding.shape().ToProto(version);
+    *proto.mutable_shard_shape() = sharding.shard_shape().ToProto(version);
     proto.set_is_fully_replicated(sharding.IsFullyReplicated());
     return proto.SerializeAsString();
   }
@@ -250,6 +289,10 @@ class ConcreteEvenShardingSerDes
     if (!proto.ParseFromString(serialized)) {
       return absl::InvalidArgumentError(
           "Failed to parse serialized ConcreteEvenSharding");
+    }
+    if (proto.version() != SerDesVersion::kV0Initial) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Unsupported version ", proto.version()));
     }
     TF_ASSIGN_OR_RETURN(auto devices, DeviceList::FromProto(
                                           deserialize_sharding_options->client,
@@ -278,16 +321,22 @@ class ShardingParamShardingSerDes
 
   absl::StatusOr<std::string> Serialize(
       const Serializable& serializable,
-      std::unique_ptr<SerializeOptions>) override {
+      std::unique_ptr<SerializeOptions> options) override {
+    const SerDesVersion version = GetRequestedSerDesVersion(options.get());
+    if (version < SerDesVersion::kV0Initial) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Unsupported version ", version));
+    }
     const ShardingParamSharding& sharding =
         llvm::cast<ShardingParamSharding>(serializable);
     ShardingParamShardingProto proto;
-    *proto.mutable_devices() = sharding.devices()->ToProto();
+    proto.set_version(SerDesVersion::kV0Initial);
+    *proto.mutable_devices() = sharding.devices()->ToProto(version);
     if (sharding.memory_kind().memory_kind().has_value()) {
       proto.set_memory_kind(std::string(*sharding.memory_kind().memory_kind()));
     }
     TF_ASSIGN_OR_RETURN(*proto.mutable_sharding_param(),
-                        sharding.sharding_param().ToProto());
+                        sharding.sharding_param().ToProto(version));
     return proto.SerializeAsString();
   }
 
@@ -300,6 +349,10 @@ class ShardingParamShardingSerDes
     if (!proto.ParseFromString(serialized)) {
       return absl::InvalidArgumentError(
           "Failed to parse serialized ShardingParamSharding");
+    }
+    if (proto.version() != SerDesVersion::kV0Initial) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Unsupported version ", proto.version()));
     }
     TF_ASSIGN_OR_RETURN(auto devices, DeviceList::FromProto(
                                           deserialize_sharding_options->client,

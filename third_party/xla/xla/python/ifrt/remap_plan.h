@@ -1,3 +1,4 @@
+#include "xla/python/ifrt/serdes_version.h"
 /* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -100,7 +101,8 @@ struct RemapPlan {
                                              const RemapPlanProto& proto);
 
   // Returns a `RemapPlanProto` representation.
-  absl::StatusOr<RemapPlanProto> ToProto() const;
+  absl::StatusOr<RemapPlanProto> ToProto(
+      SerDesVersion version = SerDesVersion::current()) const;
 
   std::string DebugString() const;
 

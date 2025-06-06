@@ -1,3 +1,4 @@
+#include "xla/python/ifrt/serdes_version.h"
 /* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -170,7 +171,8 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   // Serializes `Sharding` into `ShardingProto`.
   // Note that `Sharding` serialization uses `SerDes` to handle an open set of
   // `Sharding` subclasses. See `serdes.h`.
-  absl::StatusOr<ShardingProto> ToProto() const;
+  absl::StatusOr<ShardingProto> ToProto(
+      SerDesVersion version = SerDesVersion::current()) const;
 
   // TODO(hyeontaek): Remove this method in favor of AbslStringify.
   virtual std::string DebugString() const = 0;

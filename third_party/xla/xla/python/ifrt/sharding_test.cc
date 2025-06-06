@@ -46,11 +46,17 @@ using ::testing::SizeIs;
 using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
-class SingleDeviceShardingTest : public test_util::DeviceTest {};
-class OpaqueShardingTest : public test_util::DeviceTest {};
-class ConcreteShardingTest : public test_util::DeviceTest {};
-class ConcreteEvenShardingTest : public test_util::DeviceTest {};
-class ShardingParamShardingTest : public test_util::DeviceTest {};
+class ShardingTest : public testing::TestWithParam<test_util::DeviceTestParam>,
+                     public test_util::DeviceTestMixin {
+ public:
+  ShardingTest() : test_util::DeviceTestMixin(GetParam()) {}
+};
+
+class SingleDeviceShardingTest : public ShardingTest {};
+class OpaqueShardingTest : public ShardingTest {};
+class ConcreteShardingTest : public ShardingTest {};
+class ConcreteEvenShardingTest : public ShardingTest {};
+class ShardingParamShardingTest : public ShardingTest {};
 
 TEST_P(SingleDeviceShardingTest, CreateWithBadDevice) {
   EXPECT_DEATH(SingleDeviceSharding::Create(nullptr, MemoryKind()), "");

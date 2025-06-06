@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array_spec.pb.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 
@@ -77,7 +78,8 @@ struct ArraySpec {
                                              const ArraySpecProto& proto);
 
   // Returns a `ArraySpecProto` representation.
-  absl::StatusOr<ArraySpecProto> ToProto() const;
+  absl::StatusOr<ArraySpecProto> ToProto(
+      SerDesVersion version = SerDesVersion::current()) const;
 
   // TODO(hyeontaek): Remove this method in favor of AbslStringify.
   std::string DebugString() const;

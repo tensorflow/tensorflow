@@ -19,9 +19,12 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/python/ifrt/dtype.pb.h"
+#include "xla/python/ifrt/serdes_version.h"
 
 namespace xla {
 namespace ifrt {
@@ -119,6 +122,11 @@ std::optional<int> DType::bit_size() const {
 }
 
 absl::StatusOr<DType> DType::FromProto(const DTypeProto& dtype_proto) {
+  if (dtype_proto.version() != SerDesVersion::kV0Initial) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Unsupported version ", dtype_proto.version()));
+  }
+
   switch (dtype_proto.kind()) {
     case DTypeProto::KIND_PRED:
       return DType(DType::Kind::kPred);
@@ -162,8 +170,13 @@ absl::StatusOr<DType> DType::FromProto(const DTypeProto& dtype_proto) {
   }
 }
 
-DTypeProto DType::ToProto() const {
+DTypeProto DType::ToProto(SerDesVersion version) const {
   DTypeProto dtype_proto;
+
+  CHECK_GE(version.version(), SerDesVersion::kV0Initial)
+      << "Too old requested version " << version;
+  dtype_proto.set_version(SerDesVersion::kV0Initial);
+
   switch (kind()) {
     case DType::Kind::kPred:
       dtype_proto.set_kind(DTypeProto::KIND_PRED);

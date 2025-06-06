@@ -23,17 +23,24 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/python/ifrt/attribute_map.pb.h"
+#include "xla/python/ifrt/serdes_version.h"
 
 namespace xla {
 namespace ifrt {
 
 absl::StatusOr<AttributeMap> AttributeMap::FromProto(
     const AttributeMapProto& proto) {
+  if (proto.version() != SerDesVersion::kV0Initial) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Unsupported version ", proto.version()));
+  }
+
   AttributeMap::Map map;
   map.reserve(proto.attributes_size());
   for (const auto& [key, value] : proto.attributes()) {
@@ -63,8 +70,13 @@ absl::StatusOr<AttributeMap> AttributeMap::FromProto(
   return AttributeMap(std::move(map));
 }
 
-AttributeMapProto AttributeMap::ToProto() const {
+AttributeMapProto AttributeMap::ToProto(SerDesVersion version) const {
   AttributeMapProto proto;
+
+  CHECK_GE(version.version(), SerDesVersion::kV0Initial)
+      << "Too old requested version " << version;
+  proto.set_version(SerDesVersion::kV0Initial);
+
   for (const auto& [key, value] : map_) {
     AttributeMapProto::Value value_proto;
     std::visit(

@@ -13,15 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-syntax = "proto3";
+#ifndef XLA_PYTHON_IFRT_SERDES_ANY_VERSION_ACCESSOR_H_
+#define XLA_PYTHON_IFRT_SERDES_ANY_VERSION_ACCESSOR_H_
 
-package xla.ifrt;
+#include "xla/python/ifrt/serdes_version.h"
 
-import "xla/xla_data.proto";
+namespace xla {
+namespace ifrt {
 
-// Proto equivalent of C++ `PjRtLayout`.
-message PjRtLayoutProto {
-  int32 version = 2;
+// Accessor for `SerDesVersion` that allows getting any SerDes version. Used for
+// the layers that require full control over SerDes version selection.
+class SerDesAnyVersionAccessor {
+ public:
+  static SerDesVersion GetMinimum() { return SerDesVersion::minimum(); }
 
-  xla.LayoutProto xla_layout = 1;
-}
+  static SerDesVersion Get(int version) { return SerDesVersion(version); }
+};
+
+}  // namespace ifrt
+}  // namespace xla
+
+#endif  // XLA_PYTHON_IFRT_SERDES_ANY_VERSION_ACCESSOR_H_

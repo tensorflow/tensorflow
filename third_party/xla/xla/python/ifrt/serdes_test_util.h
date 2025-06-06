@@ -13,15 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-syntax = "proto3";
+#ifndef XLA_PYTHON_IFRT_SERDES_TEST_UTIL_H_
+#define XLA_PYTHON_IFRT_SERDES_TEST_UTIL_H_
 
-package xla.ifrt;
+#include "xla/python/ifrt/serdes_version.h"
 
-import "xla/xla_data.proto";
+namespace xla {
+namespace ifrt {
+namespace test_util {
 
-// Proto equivalent of C++ `PjRtLayout`.
-message PjRtLayoutProto {
-  int32 version = 2;
+// A mixin that provides access to the SerDes version for parameterized tests.
+class SerDesVersionMixin {
+ public:
+  explicit SerDesVersionMixin(int version) : version_(SerDesVersion(version)) {}
 
-  xla.LayoutProto xla_layout = 1;
-}
+  SerDesVersion version() const { return version_; }
+
+ private:
+  SerDesVersion version_;
+};
+
+}  // namespace test_util
+}  // namespace ifrt
+}  // namespace xla
+
+#endif  // XLA_PYTHON_IFRT_SERDES_TEST_UTIL_H_

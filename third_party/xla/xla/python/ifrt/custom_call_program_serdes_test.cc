@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <tuple>
 #include <utility>
 
 #include <gmock/gmock.h>
@@ -30,9 +31,10 @@ limitations under the License.
 #include "xla/python/ifrt/program_serdes.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
+#include "xla/python/ifrt/serdes_test_util.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
@@ -46,7 +48,18 @@ using ::testing::MatchesRegex;
 using ::testing::SizeIs;
 using ::tsl::testing::StatusIs;
 
-class CustomCallProgramSerDesTest : public test_util::DeviceTest {};
+using CustomCallProgramSerDesTestParam =
+    std::tuple</*version=*/int, test_util::DeviceTestParam>;
+
+class CustomCallProgramSerDesTest
+    : public testing::TestWithParam<CustomCallProgramSerDesTestParam>,
+      public test_util::SerDesVersionMixin,
+      public test_util::DeviceTestMixin {
+ public:
+  CustomCallProgramSerDesTest()
+      : test_util::SerDesVersionMixin(std::get<0>(GetParam())),
+        test_util::DeviceTestMixin(std::get<1>(GetParam())) {}
+};
 
 TEST_P(CustomCallProgramSerDesTest, RoundTrip) {
   Shape shape0({10, 20});
@@ -80,8 +93,10 @@ TEST_P(CustomCallProgramSerDesTest, RoundTrip) {
                     /*sharding=*/sharding1},
       });
 
+  auto serialize_options = std::make_unique<SerializeOptions>();
+  serialize_options->version = version();
   TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
-                          Serialize(orig, /*options=*/nullptr));
+                          Serialize(orig, std::move(serialize_options)));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CustomCallProgram> deserialized_program,
       Deserialize<CustomCallProgram>(
@@ -117,12 +132,22 @@ TEST_P(CustomCallProgramSerDesTest, RoundTrip) {
   EXPECT_EQ(deserialized_sharding1->shard_shape(), shard_shape1);
 }
 
-INSTANTIATE_TEST_SUITE_P(NumDevices, CustomCallProgramSerDesTest,
-                         testing::Values(test_util::DeviceTestParam{
-                             /*num_devices=*/2,
-                             /*num_addressable_devices=*/2}));
+INSTANTIATE_TEST_SUITE_P(
+    SerDesVersion_NumDevices, CustomCallProgramSerDesTest,
+    testing::Combine(testing::Values(SerDesVersion::kV0Initial),
+                     testing::Values(test_util::DeviceTestParam{
+                         /*num_devices=*/2,
+                         /*num_addressable_devices=*/2})));
 
-TEST(CustomCallCompileOptionsSerDesTest, RoundTrip) {
+class CustomCallCompileOptionsSerDesTest
+    : public testing::TestWithParam</*version=*/int>,
+      public test_util::SerDesVersionMixin {
+ public:
+  CustomCallCompileOptionsSerDesTest()
+      : test_util::SerDesVersionMixin(GetParam()) {}
+};
+
+TEST_P(CustomCallCompileOptionsSerDesTest, RoundTrip) {
   CustomCallCompileOptions orig;
   TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
                           Serialize(orig, /*options=*/nullptr));
@@ -131,16 +156,22 @@ TEST(CustomCallCompileOptionsSerDesTest, RoundTrip) {
           .status());
 }
 
-TEST(CustomCallCompileOptionsSerDesTest, InvalidSerialized) {
+TEST_P(CustomCallCompileOptionsSerDesTest, InvalidSerialized) {
   CustomCallCompileOptions orig;
+  auto serialize_options = std::make_unique<SerializeOptions>();
+  serialize_options->version = version();
   TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
-                          Serialize(orig, /*options=*/nullptr));
+                          Serialize(orig, std::move(serialize_options)));
   serialized.set_data("abc");
   EXPECT_THAT(
       Deserialize<CustomCallCompileOptions>(serialized, /*options=*/nullptr),
       StatusIs(absl::StatusCode::kInvalidArgument,
                MatchesRegex("Invalid serialized CustomCallCompileOptions.*")));
 }
+
+INSTANTIATE_TEST_SUITE_P(SerDesVersion_NumDevices,
+                         CustomCallCompileOptionsSerDesTest,
+                         testing::Values(SerDesVersion::kV0Initial));
 
 }  // namespace
 }  // namespace ifrt

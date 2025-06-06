@@ -14,16 +14,18 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <tuple>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
+#include "xla/python/ifrt/serdes_test_util.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/tsl/platform/statusor.h"
@@ -34,7 +36,18 @@ namespace {
 
 using ::testing::ElementsAreArray;
 
-class ShardingSerDesTest : public test_util::DeviceTest {};
+using ShardingSerDesTestParam =
+    std::tuple</*version=*/int, test_util::DeviceTestParam>;
+
+class ShardingSerDesTest
+    : public testing::TestWithParam<ShardingSerDesTestParam>,
+      public test_util::SerDesVersionMixin,
+      public test_util::DeviceTestMixin {
+ public:
+  ShardingSerDesTest()
+      : test_util::SerDesVersionMixin(std::get<0>(GetParam())),
+        test_util::DeviceTestMixin(std::get<1>(GetParam())) {}
+};
 
 TEST_P(ShardingSerDesTest, SingleDeviceShardingRoundTrip) {
   auto sharding = SingleDeviceSharding::Create(
@@ -158,10 +171,12 @@ TEST_P(ShardingSerDesTest, ShardingParamShardingRoundTrip) {
   EXPECT_THAT(out_sharding->sharding_param(), sharding->sharding_param());
 }
 
-INSTANTIATE_TEST_SUITE_P(NumDevices, ShardingSerDesTest,
-                         testing::Values(test_util::DeviceTestParam{
-                             /*num_devices=*/2,
-                             /*num_addressable_devices=*/2}));
+INSTANTIATE_TEST_SUITE_P(
+    SerDesVersion_NumDevices, ShardingSerDesTest,
+    testing::Combine(testing::Values(SerDesVersion::kV0Initial),
+                     testing::Values(test_util::DeviceTestParam{
+                         /*num_devices=*/2,
+                         /*num_addressable_devices=*/2})));
 
 }  // namespace
 }  // namespace ifrt

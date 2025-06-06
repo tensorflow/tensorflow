@@ -1,3 +1,4 @@
+#include "xla/python/ifrt/serdes_version.h"
 /* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -78,7 +79,8 @@ class Layout : public llvm::RTTIExtends<Layout, Serializable> {
   static absl::StatusOr<CustomLayoutRef> FromProto(const LayoutProto& proto);
 
   // Returns a `LayoutProto` representation.
-  absl::StatusOr<LayoutProto> ToProto() const;
+  absl::StatusOr<LayoutProto> ToProto(
+      SerDesVersion version = SerDesVersion::current()) const;
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const Layout& layout) {

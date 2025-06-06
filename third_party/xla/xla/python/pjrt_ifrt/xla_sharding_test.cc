@@ -49,7 +49,12 @@ using ::testing::SizeIs;
 using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
-class HloShardingTest : public test_util::DeviceTest {};
+class HloShardingTest
+    : public testing::TestWithParam<test_util::DeviceTestParam>,
+      public test_util::DeviceTestMixin {
+ public:
+  HloShardingTest() : test_util::DeviceTestMixin(GetParam()) {}
+};
 
 TEST_P(HloShardingTest, CreateWithBadDeviceList) {
   auto xla_hlo_sharding = xla::HloSharding::Replicate();

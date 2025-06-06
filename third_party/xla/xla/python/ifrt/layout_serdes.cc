@@ -18,12 +18,14 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/layout_serdes.pb.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes_version.h"
 
 namespace xla {
 namespace ifrt {
@@ -40,9 +42,16 @@ class CompactLayoutSerDes
   absl::StatusOr<std::string> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
+    const SerDesVersion version = GetRequestedSerDesVersion(options.get());
+    if (version < SerDesVersion::kV0Initial) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Unsupported version ", version));
+    }
+
     const auto* compact_layout = llvm::cast<CompactLayout>(&serializable);
     const auto& major_to_minor = compact_layout->major_to_minor();
     CompactLayoutProto proto;
+    proto.set_version(SerDesVersion::kV0Initial);
     proto.mutable_major_to_minor()->Reserve(major_to_minor.size());
     proto.mutable_major_to_minor()->Add(major_to_minor.begin(),
                                         major_to_minor.end());
@@ -56,6 +65,10 @@ class CompactLayoutSerDes
     if (!proto.ParseFromString(serialized)) {
       return absl::InvalidArgumentError(
           "Failed to parse serialized CompactLayout");
+    }
+    if (proto.version() != SerDesVersion::kV0Initial) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Unsupported version ", proto.version()));
     }
     return CompactLayout::Create(proto.major_to_minor());
   }

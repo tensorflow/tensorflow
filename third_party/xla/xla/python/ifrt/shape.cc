@@ -22,11 +22,13 @@ limitations under the License.
 #include <variant>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.pb.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -50,6 +52,11 @@ overloaded(Ts...) -> overloaded<Ts...>;
 }  // namespace
 
 absl::StatusOr<Shape> Shape::FromProto(const ShapeProto& proto) {
+  if (proto.version() != SerDesVersion::kV0Initial) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Unsupported version ", proto.version()));
+  }
+
   Shape::Dimensions dims;
   dims.reserve(proto.dims_size());
   for (int64_t dim : proto.dims()) {
@@ -62,8 +69,13 @@ absl::StatusOr<Shape> Shape::FromProto(const ShapeProto& proto) {
   return Shape(std::move(dims));
 }
 
-ShapeProto Shape::ToProto() const {
+ShapeProto Shape::ToProto(SerDesVersion version) const {
   ShapeProto proto;
+
+  CHECK_GE(version.version(), SerDesVersion::kV0Initial)
+      << "Too old requested version " << version;
+  proto.set_version(SerDesVersion::kV0Initial);
+
   proto.mutable_dims()->Reserve(dims().size());
   for (int64_t dim : dims()) {
     proto.mutable_dims()->AddAlreadyReserved(dim);
@@ -85,6 +97,11 @@ std::string Shape::DebugString() const {
 
 absl::StatusOr<BoundedDynamicShapeTag> BoundedDynamicShapeTag::FromProto(
     const BoundedDynamicShapeTagProto& proto) {
+  if (proto.version() != SerDesVersion::kV0Initial) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Unsupported version ", proto.version()));
+  }
+
   BoundedDynamicShapeTag::DynamicDimensions dynamic_dims;
   dynamic_dims.reserve(proto.is_dynamic_dims_size());
   for (bool dynamic_dim : proto.is_dynamic_dims()) {
@@ -93,8 +110,14 @@ absl::StatusOr<BoundedDynamicShapeTag> BoundedDynamicShapeTag::FromProto(
   return BoundedDynamicShapeTag(std::move(dynamic_dims));
 }
 
-BoundedDynamicShapeTagProto BoundedDynamicShapeTag::ToProto() const {
+BoundedDynamicShapeTagProto BoundedDynamicShapeTag::ToProto(
+    SerDesVersion version) const {
   BoundedDynamicShapeTagProto proto;
+
+  CHECK_GE(version.version(), SerDesVersion::kV0Initial)
+      << "Too old requested version " << version;
+  proto.set_version(SerDesVersion::kV0Initial);
+
   proto.mutable_is_dynamic_dims()->Reserve(dynamic_dims_.size());
   for (bool dynamic_dim : dynamic_dims_) {
     proto.mutable_is_dynamic_dims()->AddAlreadyReserved(dynamic_dim);
@@ -138,6 +161,11 @@ bool DynamicShape::IsDynamicDim(int dimension) const {
 
 absl::StatusOr<DynamicShape> DynamicShape::FromProto(
     const DynamicShapeProto& proto) {
+  if (proto.version() != SerDesVersion::kV0Initial) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Unsupported version ", proto.version()));
+  }
+
   TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto.shape()));
   if (proto.has_bounded_dynamic_shape_tag()) {
     TF_ASSIGN_OR_RETURN(
@@ -148,13 +176,18 @@ absl::StatusOr<DynamicShape> DynamicShape::FromProto(
   return InvalidArgument("Only support bounded dynamic shape.");
 }
 
-DynamicShapeProto DynamicShape::ToProto() const {
+DynamicShapeProto DynamicShape::ToProto(SerDesVersion version) const {
   DynamicShapeProto proto;
-  *proto.mutable_shape() = shape_.ToProto();
+
+  CHECK_GE(version.version(), SerDesVersion::kV0Initial)
+      << "Too old requested version " << version;
+  proto.set_version(SerDesVersion::kV0Initial);
+
+  *proto.mutable_shape() = shape_.ToProto(version);
   std::visit(
       overloaded{
-          [&proto](BoundedDynamicShapeTag tag) {
-            *proto.mutable_bounded_dynamic_shape_tag() = tag.ToProto();
+          [&proto, version](BoundedDynamicShapeTag tag) {
+            *proto.mutable_bounded_dynamic_shape_tag() = tag.ToProto(version);
           },
       },
       tag_);

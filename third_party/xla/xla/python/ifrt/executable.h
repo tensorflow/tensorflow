@@ -1,3 +1,4 @@
+#include "xla/python/ifrt/serdes_version.h"
 /* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -134,7 +135,8 @@ struct ExecuteOptions {
   // are responsible for ensuring version compatibility.
   std::optional<AttributeMap> custom_options;
 
-  absl::StatusOr<ExecuteOptionsProto> ToProto() const;
+  absl::StatusOr<ExecuteOptionsProto> ToProto(
+      SerDesVersion version = SerDesVersion::current()) const;
 
   static absl::StatusOr<ExecuteOptions> FromProto(
       const ExecuteOptionsProto& proto);

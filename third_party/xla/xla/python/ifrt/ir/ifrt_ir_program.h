@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_ir_compile_options.pb.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes_version.h"
 
 namespace xla {
 namespace ifrt {
@@ -72,6 +73,7 @@ struct SerializeIfrtIRProgramOptions
   static char ID;  // NOLINT
 
   // String of the form "major.minor.patch", representing the IFRT IR version.
+  // TODO(hyeontaek): Migrate `ifrt_version` to `SerializeOptions::version`.
   std::string ifrt_version;
   // String of the form "major.minor.patch", representing the atom program
   // version (currently VHLO version).
@@ -137,7 +139,8 @@ struct IfrtIRCompileOptions
       const IfrtIrCompileOptionsProto& proto);
 
   // Returns a `IfrtIrCompileOptionsProto` representation.
-  absl::StatusOr<IfrtIrCompileOptionsProto> ToProto() const;
+  absl::StatusOr<IfrtIrCompileOptionsProto> ToProto(
+      SerDesVersion version = SerDesVersion::current()) const;
 
   static char ID;  // NOLINT
 };

@@ -1,3 +1,4 @@
+#include "xla/python/ifrt/serdes_version.h"
 /* Copyright 2022 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -132,7 +133,7 @@ class DType {
   static absl::StatusOr<DType> FromProto(const DTypeProto& proto);
 
   // Returns a `DTypeProto` representation.
-  DTypeProto ToProto() const;
+  DTypeProto ToProto(SerDesVersion version = SerDesVersion::current()) const;
 
   // TODO(hyeontaek): Remove this method in favor of AbslStringify.
   std::string DebugString() const;
