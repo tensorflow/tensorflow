@@ -89,8 +89,8 @@ using ExhaustiveC64UnaryTest = ExhaustiveComplexUnaryTestBase<C64>;
 
 using ExhaustiveC128UnaryTest = ExhaustiveComplexUnaryTestBase<C128>;
 
-#define UNARY_TEST_COMPLEX_64(test_name, ...)   \
-  XLA_TEST_P(ExhaustiveC64UnaryTest, test_name) \
+#define UNARY_TEST_COMPLEX_64(test_name, ...) \
+  TEST_P(ExhaustiveC64UnaryTest, test_name)   \
   __VA_ARGS__
 
 UNARY_TEST_COMPLEX_64(Log, {
@@ -247,8 +247,8 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::ValuesIn(
             GetFpValuesForMagnitudeExtremeNormals<float>(40000, 4000))));
 
-#define UNARY_TEST_COMPLEX_128(test_name, ...)   \
-  XLA_TEST_P(ExhaustiveC128UnaryTest, test_name) \
+#define UNARY_TEST_COMPLEX_128(test_name, ...) \
+  TEST_P(ExhaustiveC128UnaryTest, test_name)   \
   __VA_ARGS__
 
 UNARY_TEST_COMPLEX_128(Log, {
