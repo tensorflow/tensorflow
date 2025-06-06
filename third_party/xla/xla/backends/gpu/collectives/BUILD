@@ -289,6 +289,7 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",

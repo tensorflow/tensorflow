@@ -445,7 +445,6 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
         auto reduce_function_root =
             reduce_window->to_apply()->root_instruction();
         if (reduce_function_root->shape().IsTuple()) {
-          TF_RET_CHECK(reduce_function_root->opcode() == HloOpcode::kTuple);
           // This corresponds to step 7: combining the inner scan with the outer
           // scan using a map function.
           auto* map_computation_root = reduce_function_root->operand(idx);
