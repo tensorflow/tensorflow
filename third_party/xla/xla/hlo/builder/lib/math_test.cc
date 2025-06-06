@@ -230,16 +230,16 @@ using TestTypes =
 
 TYPED_TEST_CASE(MathTypedTest, TestTypes);
 
-XLA_TYPED_TEST(MathTypedTest, LogEdgeCases) { this->TestLogEdgeCases(); }
-XLA_TYPED_TEST(MathTypedTest, Log1pEdgeCases) { this->TestLog1pEdgeCases(); }
-XLA_TYPED_TEST(MathTypedTest, IsInfOrNan) { this->TestIsInfOrNan(); }
-XLA_TYPED_TEST(MathTypedTest, IsNegZero) { this->TestIsNegZero(); }
+TYPED_TEST(MathTypedTest, LogEdgeCases) { this->TestLogEdgeCases(); }
+TYPED_TEST(MathTypedTest, Log1pEdgeCases) { this->TestLog1pEdgeCases(); }
+TYPED_TEST(MathTypedTest, IsInfOrNan) { this->TestIsInfOrNan(); }
+TYPED_TEST(MathTypedTest, IsNegZero) { this->TestIsNegZero(); }
 // Disabling on TPU since pow(-inf, 0.5) returns nan instead of +inf.
-XLA_TYPED_TEST(MathTypedTest, DISABLED_ON_TPU(SqrtPowInequivalence)) {
+TYPED_TEST(MathTypedTest, DISABLED_ON_TPU(SqrtPowInequivalence)) {
   this->TestSqrtPowInequivalence();
 }
-XLA_TYPED_TEST(MathTypedTest, ErfInvEdgeCases) { this->TestErfInvEdgeCases(); }
-XLA_TYPED_TEST(MathTypedTest, ErfEdgeCases) { this->TestErfEdgeCases(); }
+TYPED_TEST(MathTypedTest, ErfInvEdgeCases) { this->TestErfInvEdgeCases(); }
+TYPED_TEST(MathTypedTest, ErfEdgeCases) { this->TestErfEdgeCases(); }
 
 // Check that certain ops only support real, floating-point inputs.
 TEST_F(MathTest, RealFpOnlyOps) {

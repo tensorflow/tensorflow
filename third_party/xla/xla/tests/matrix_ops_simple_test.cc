@@ -56,7 +56,7 @@ class MatOpsSimpleTest_F16F32 : public MatOpsSimpleTest {};
 
 TYPED_TEST_CASE(MatOpsSimpleTest_F16F32, TypesF16F32);
 
-XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, ExpTwoByTwoValues) {
+TYPED_TEST(MatOpsSimpleTest_F16F32, ExpTwoByTwoValues) {
   using T = TypeParam;
   XlaBuilder builder("exp_2x2");
   auto data = ConstantR2FromArray2D<T>(&builder, {
@@ -72,7 +72,7 @@ XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, ExpTwoByTwoValues) {
   this->ComputeAndCompareLiteral(&builder, expected, {}, ErrorSpec(1e-5));
 }
 
-XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MapTwoByTwo) {
+TYPED_TEST(MatOpsSimpleTest_F16F32, MapTwoByTwo) {
   using T = TypeParam;
   XlaComputation add_half;
   {
@@ -100,7 +100,7 @@ XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MapTwoByTwo) {
   this->ComputeAndCompareLiteral(&builder, expected, {}, ErrorSpec(1e-5));
 }
 
-XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MaxTwoByTwoValues) {
+TYPED_TEST(MatOpsSimpleTest_F16F32, MaxTwoByTwoValues) {
   using T = TypeParam;
   XlaBuilder builder("max_2x2");
   auto lhs = ConstantR2FromArray2D<T>(&builder, {

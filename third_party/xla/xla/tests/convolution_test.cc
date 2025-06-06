@@ -125,7 +125,7 @@ class ForwardPassConvolution_3x3x256_256_OutputZ_Iota : public ConvolutionTest {
 };
 
 TYPED_TEST_CASE(ForwardPassConvolution_3x3x256_256_OutputZ_Iota, TestTypes);
-XLA_TYPED_TEST(ForwardPassConvolution_3x3x256_256_OutputZ_Iota, Types) {
+TYPED_TEST(ForwardPassConvolution_3x3x256_256_OutputZ_Iota, Types) {
   this->RunTest();
 }
 

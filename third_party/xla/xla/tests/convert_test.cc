@@ -734,7 +734,7 @@ XLA_TEST_F(ConvertTest, ConvertF32BF16) {
   }
 }
 
-XLA_TYPED_TEST(ConvertTestT, ConvertFPToPred) {
+TYPED_TEST(ConvertTestT, ConvertFPToPred) {
   XlaBuilder builder(this->TestName());
   using FP = TypeParam;
 
@@ -853,7 +853,7 @@ XLA_TEST_F(ConvertTest, ConvertF32F8e5m2Roundtrip) {
   ComputeAndCompareR1<float>(&builder, expected_roundtrip, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestT, ConvertF8e5m2RoundtripExhaustive) {
+TYPED_TEST(ConvertTestT, ConvertF8e5m2RoundtripExhaustive) {
   // Convert from FP8 to supported floating point type, then back to FP8.
   XlaBuilder builder(this->TestName());
 
@@ -870,7 +870,7 @@ XLA_TYPED_TEST(ConvertTestT, ConvertF8e5m2RoundtripExhaustive) {
   this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestT, ConvertF8e5m2RoundtripExhaustive2) {
+TYPED_TEST(ConvertTestT, ConvertF8e5m2RoundtripExhaustive2) {
   // Convert from supported floating point type to FP8.
   XlaBuilder builder(this->TestName());
   if constexpr (std::is_same_v<TypeParam, tsl::float8_e3m4>) {
@@ -889,7 +889,7 @@ XLA_TYPED_TEST(ConvertTestT, ConvertF8e5m2RoundtripExhaustive2) {
   }
 }
 
-XLA_TYPED_TEST(ConvertTestT, ConvertF8e5m2RoundtripExhaustive3) {
+TYPED_TEST(ConvertTestT, ConvertF8e5m2RoundtripExhaustive3) {
   // Convert from FP8 to supported floating point type.
   XlaBuilder builder(this->TestName());
 
@@ -904,7 +904,7 @@ XLA_TYPED_TEST(ConvertTestT, ConvertF8e5m2RoundtripExhaustive3) {
   this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestF16, ConvertF8e5m2F16RoundtripExhaustive4) {
+TYPED_TEST(ConvertTestF16, ConvertF8e5m2F16RoundtripExhaustive4) {
   // Convert from (B)F16 to FP8.
   XlaBuilder builder(this->TestName());
 
@@ -1034,7 +1034,7 @@ XLA_TEST_F(ConvertTest, ConvertF32F8e4m3Roundtrip) {
   ComputeAndCompareR1<float>(&builder, expected_roundtrip, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestT, ConvertF8e4m3RoundtripExhaustive) {
+TYPED_TEST(ConvertTestT, ConvertF8e4m3RoundtripExhaustive) {
   // Convert from FP8 to supported floating point type, then back to FP8.
   XlaBuilder builder(this->TestName());
 
@@ -1051,7 +1051,7 @@ XLA_TYPED_TEST(ConvertTestT, ConvertF8e4m3RoundtripExhaustive) {
   this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestT, ConvertF8e4m3RoundtripExhaustive2) {
+TYPED_TEST(ConvertTestT, ConvertF8e4m3RoundtripExhaustive2) {
   // Convert from supported floating point type to FP8.
   XlaBuilder builder(this->TestName());
 
@@ -1065,7 +1065,7 @@ XLA_TYPED_TEST(ConvertTestT, ConvertF8e4m3RoundtripExhaustive2) {
   this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestT, ConvertF8e4m3RoundtripExhaustive3) {
+TYPED_TEST(ConvertTestT, ConvertF8e4m3RoundtripExhaustive3) {
   // Convert from FP8 to supported floating point type.
   XlaBuilder builder(this->TestName());
 
@@ -1080,7 +1080,7 @@ XLA_TYPED_TEST(ConvertTestT, ConvertF8e4m3RoundtripExhaustive3) {
   this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestF16, ConvertF8e4m3F16RoundtripExhaustive4) {
+TYPED_TEST(ConvertTestF16, ConvertF8e4m3F16RoundtripExhaustive4) {
   // Convert from (B)F16 to FP8.
   XlaBuilder builder(this->TestName());
 
@@ -1200,7 +1200,7 @@ XLA_TEST_F(ConvertTest, ConvertF32F8e4m3fnRoundtrip) {
   ComputeAndCompareR1<float>(&builder, expected_roundtrip, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestT, ConvertF8e4m3fnRoundtripExhaustive) {
+TYPED_TEST(ConvertTestT, ConvertF8e4m3fnRoundtripExhaustive) {
   // Convert from FP8 to supported floating point type, then back to FP8.
   XlaBuilder builder(this->TestName());
 
@@ -1217,7 +1217,7 @@ XLA_TYPED_TEST(ConvertTestT, ConvertF8e4m3fnRoundtripExhaustive) {
   this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestT, ConvertF8e4m3fnRoundtripExhaustive2) {
+TYPED_TEST(ConvertTestT, ConvertF8e4m3fnRoundtripExhaustive2) {
   // Convert from supported floating point type to FP8.
   XlaBuilder builder(this->TestName());
 
@@ -1231,7 +1231,7 @@ XLA_TYPED_TEST(ConvertTestT, ConvertF8e4m3fnRoundtripExhaustive2) {
   this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestT, ConvertF8e4m3fnRoundtripExhaustive3) {
+TYPED_TEST(ConvertTestT, ConvertF8e4m3fnRoundtripExhaustive3) {
   // Convert from FP8 to supported floating point type.
   XlaBuilder builder(this->TestName());
 
@@ -1246,7 +1246,7 @@ XLA_TYPED_TEST(ConvertTestT, ConvertF8e4m3fnRoundtripExhaustive3) {
   this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestF16, ConvertF8e4m3fnF16RoundtripExhaustive4) {
+TYPED_TEST(ConvertTestF16, ConvertF8e4m3fnF16RoundtripExhaustive4) {
   // Convert from (B)F16 to FP8.
   XlaBuilder builder(this->TestName());
 
@@ -1367,7 +1367,7 @@ XLA_TEST_F(ConvertTest, ConvertF32F8e4m3b11fnuzRoundtrip) {
   ComputeAndCompareR1<float>(&builder, expected_roundtrip, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestT, ConvertF8e4m3b11fnuzRoundtripExhaustive) {
+TYPED_TEST(ConvertTestT, ConvertF8e4m3b11fnuzRoundtripExhaustive) {
   // Convert from FP8 to supported floating point type, then back to FP8.
   XlaBuilder builder(this->TestName());
 
@@ -1384,7 +1384,7 @@ XLA_TYPED_TEST(ConvertTestT, ConvertF8e4m3b11fnuzRoundtripExhaustive) {
   this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestT, ConvertF8e4m3b11fnuzRoundtripExhaustive2) {
+TYPED_TEST(ConvertTestT, ConvertF8e4m3b11fnuzRoundtripExhaustive2) {
   // Convert from supported floating point type to FP8.
   XlaBuilder builder(this->TestName());
 
@@ -1399,7 +1399,7 @@ XLA_TYPED_TEST(ConvertTestT, ConvertF8e4m3b11fnuzRoundtripExhaustive2) {
   this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestT, ConvertF8e4m3b11fnuzRoundtripExhaustive3) {
+TYPED_TEST(ConvertTestT, ConvertF8e4m3b11fnuzRoundtripExhaustive3) {
   // Convert from FP8 to supported floating point type.
   XlaBuilder builder(this->TestName());
 
@@ -1414,7 +1414,7 @@ XLA_TYPED_TEST(ConvertTestT, ConvertF8e4m3b11fnuzRoundtripExhaustive3) {
   this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestF16, ConvertF8e4m3b11fnuzF16RoundtripExhaustive4) {
+TYPED_TEST(ConvertTestF16, ConvertF8e4m3b11fnuzF16RoundtripExhaustive4) {
   // Convert from (B)F16 to FP8.
   XlaBuilder builder(this->TestName());
 
@@ -1532,7 +1532,7 @@ XLA_TEST_F(ConvertTest, ConvertF32F8e5m2fnuzRoundtrip) {
   ComputeAndCompareR1<float>(&builder, expected_roundtrip, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestT, ConvertF8e5m2fnuzRoundtripExhaustive) {
+TYPED_TEST(ConvertTestT, ConvertF8e5m2fnuzRoundtripExhaustive) {
   // Convert from FP8 to supported floating point type, then back to FP8.
   XlaBuilder builder(this->TestName());
 
@@ -1549,7 +1549,7 @@ XLA_TYPED_TEST(ConvertTestT, ConvertF8e5m2fnuzRoundtripExhaustive) {
   this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestT, ConvertF8e5m2fnuzRoundtripExhaustive2) {
+TYPED_TEST(ConvertTestT, ConvertF8e5m2fnuzRoundtripExhaustive2) {
   // Convert from supported floating point type to FP8.
   XlaBuilder builder(this->TestName());
 
@@ -1570,7 +1570,7 @@ XLA_TYPED_TEST(ConvertTestT, ConvertF8e5m2fnuzRoundtripExhaustive2) {
   }
 }
 
-XLA_TYPED_TEST(ConvertTestT, ConvertF8e5m2fnuzRoundtripExhaustive3) {
+TYPED_TEST(ConvertTestT, ConvertF8e5m2fnuzRoundtripExhaustive3) {
   // Convert from FP8 to supported floating point type.
   XlaBuilder builder(this->TestName());
 
@@ -1585,7 +1585,7 @@ XLA_TYPED_TEST(ConvertTestT, ConvertF8e5m2fnuzRoundtripExhaustive3) {
   this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestF16, ConvertF8e5m2fnuzF16RoundtripExhaustive4) {
+TYPED_TEST(ConvertTestF16, ConvertF8e5m2fnuzF16RoundtripExhaustive4) {
   // Convert from (B)F16 to FP8.
   XlaBuilder builder(this->TestName());
 
@@ -1701,7 +1701,7 @@ XLA_TEST_F(ConvertTest, ConvertF32F8e4m3fnuzRoundtrip) {
   ComputeAndCompareR1<float>(&builder, expected_roundtrip, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestT, ConvertF8e4m3fnuzRoundtripExhaustive) {
+TYPED_TEST(ConvertTestT, ConvertF8e4m3fnuzRoundtripExhaustive) {
   // Convert from FP8 to supported floating point type, then back to FP8.
   XlaBuilder builder(this->TestName());
 
@@ -1718,7 +1718,7 @@ XLA_TYPED_TEST(ConvertTestT, ConvertF8e4m3fnuzRoundtripExhaustive) {
   this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestT, ConvertF8e4m3fnuzRoundtripExhaustive2) {
+TYPED_TEST(ConvertTestT, ConvertF8e4m3fnuzRoundtripExhaustive2) {
   // Convert from supported floating point type to FP8.
   XlaBuilder builder(this->TestName());
 
@@ -1733,7 +1733,7 @@ XLA_TYPED_TEST(ConvertTestT, ConvertF8e4m3fnuzRoundtripExhaustive2) {
   this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestT, ConvertF8e4m3fnuzRoundtripExhaustive3) {
+TYPED_TEST(ConvertTestT, ConvertF8e4m3fnuzRoundtripExhaustive3) {
   // Convert from FP8 to supported floating point type.
   XlaBuilder builder(this->TestName());
 
@@ -1748,7 +1748,7 @@ XLA_TYPED_TEST(ConvertTestT, ConvertF8e4m3fnuzRoundtripExhaustive3) {
   this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestF16, ConvertF8e4m3fnuzF16RoundtripExhaustive4) {
+TYPED_TEST(ConvertTestF16, ConvertF8e4m3fnuzF16RoundtripExhaustive4) {
   // Convert from (B)F16 to FP8.
   XlaBuilder builder(this->TestName());
 
@@ -1877,7 +1877,7 @@ XLA_TEST_F(ConvertTest, ConvertF32F8e3m4Roundtrip) {
   ComputeAndCompareR1<float>(&builder, expected_roundtrip, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestT, ConvertF8e3m4RoundtripExhaustive) {
+TYPED_TEST(ConvertTestT, ConvertF8e3m4RoundtripExhaustive) {
   // Convert from FP8 to supported floating point type, then back to FP8.
   XlaBuilder builder(this->TestName());
 
@@ -1894,7 +1894,7 @@ XLA_TYPED_TEST(ConvertTestT, ConvertF8e3m4RoundtripExhaustive) {
   this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestT, ConvertF8e3m4RoundtripExhaustive2) {
+TYPED_TEST(ConvertTestT, ConvertF8e3m4RoundtripExhaustive2) {
   // Convert from supported floating point type to FP8.
   XlaBuilder builder(this->TestName());
 
@@ -1908,7 +1908,7 @@ XLA_TYPED_TEST(ConvertTestT, ConvertF8e3m4RoundtripExhaustive2) {
   this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestT, ConvertF8e3m4RoundtripExhaustive3) {
+TYPED_TEST(ConvertTestT, ConvertF8e3m4RoundtripExhaustive3) {
   // Convert from FP8 to supported floating point type.
   XlaBuilder builder(this->TestName());
 
@@ -1923,7 +1923,7 @@ XLA_TYPED_TEST(ConvertTestT, ConvertF8e3m4RoundtripExhaustive3) {
   this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestF16, ConvertF8e3m4F16RoundtripExhaustive4) {
+TYPED_TEST(ConvertTestF16, ConvertF8e3m4F16RoundtripExhaustive4) {
   // Convert from (B)F16 to FP8.
   XlaBuilder builder(this->TestName());
 
@@ -2039,8 +2039,7 @@ XLA_TEST_F(ConvertTest, DISABLED_ON_TPU(ConvertF32F4e2m1fnRoundtrip)) {
   ComputeAndCompareR1<float>(&builder, expected_roundtrip, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestT,
-               DISABLED_ON_TPU(ConvertF4e2m1fnRoundtripExhaustive)) {
+TYPED_TEST(ConvertTestT, DISABLED_ON_TPU(ConvertF4e2m1fnRoundtripExhaustive)) {
   // Convert from FP4 to supported floating point type, then back to FP4.
   XlaBuilder builder(this->TestName());
 
@@ -2057,8 +2056,7 @@ XLA_TYPED_TEST(ConvertTestT,
   this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestT,
-               DISABLED_ON_TPU(ConvertF4e2m1fnRoundtripExhaustive2)) {
+TYPED_TEST(ConvertTestT, DISABLED_ON_TPU(ConvertF4e2m1fnRoundtripExhaustive2)) {
   // Convert from supported floating point type to FP4.
   XlaBuilder builder(this->TestName());
 
@@ -2072,8 +2070,7 @@ XLA_TYPED_TEST(ConvertTestT,
   this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestT,
-               DISABLED_ON_TPU(ConvertF4e2m1fnRoundtripExhaustive3)) {
+TYPED_TEST(ConvertTestT, DISABLED_ON_TPU(ConvertF4e2m1fnRoundtripExhaustive3)) {
   // Convert from FP4 to supported floating point type.
   XlaBuilder builder(this->TestName());
 
@@ -2088,8 +2085,8 @@ XLA_TYPED_TEST(ConvertTestT,
   this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestF16,
-               DISABLED_ON_TPU(ConvertF4e2m1fnF16RoundtripExhaustive4)) {
+TYPED_TEST(ConvertTestF16,
+           DISABLED_ON_TPU(ConvertF4e2m1fnF16RoundtripExhaustive4)) {
   // Convert from (B)F16 to FP4.
   XlaBuilder builder(this->TestName());
 
@@ -2145,8 +2142,7 @@ XLA_TEST_F(ConvertTest, DISABLED_ON_TPU(ConvertF32F8e8m0fnuRoundtrip)) {
   ComputeAndCompareR1<float>(&builder, expected_roundtrip, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestT,
-               DISABLED_ON_TPU(ConvertF8e8m0fnuRoundtripExhaustive)) {
+TYPED_TEST(ConvertTestT, DISABLED_ON_TPU(ConvertF8e8m0fnuRoundtripExhaustive)) {
   // Convert from FP8 to supported floating point type, then back to FP8.
   XlaBuilder builder(this->TestName());
 
@@ -2163,8 +2159,8 @@ XLA_TYPED_TEST(ConvertTestT,
   this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestT,
-               DISABLED_ON_TPU(ConvertF8e8m0fnuRoundtripExhaustive2)) {
+TYPED_TEST(ConvertTestT,
+           DISABLED_ON_TPU(ConvertF8e8m0fnuRoundtripExhaustive2)) {
   if (this->test_runner().HasProperty(HloRunnerPropertyTag::kCpu)) {
     // This test is disabled on CPU, as converting 0x1p-127 from double to float
     // using CVTSD2SS on x64 results in an underflow (even though the result is
@@ -2187,8 +2183,8 @@ XLA_TYPED_TEST(ConvertTestT,
   this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestT,
-               DISABLED_ON_TPU(ConvertF8e8m0fnuRoundtripExhaustive3)) {
+TYPED_TEST(ConvertTestT,
+           DISABLED_ON_TPU(ConvertF8e8m0fnuRoundtripExhaustive3)) {
   // Convert from FP8 to supported floating point type.
   XlaBuilder builder(this->TestName());
 
@@ -2203,8 +2199,8 @@ XLA_TYPED_TEST(ConvertTestT,
   this->ComputeAndCompare(&builder, {}, ErrorSpec(0.));
 }
 
-XLA_TYPED_TEST(ConvertTestF16,
-               DISABLED_ON_TPU(ConvertF8e8m0fnuF16RoundtripExhaustive4)) {
+TYPED_TEST(ConvertTestF16,
+           DISABLED_ON_TPU(ConvertF8e8m0fnuF16RoundtripExhaustive4)) {
   // Convert from (B)F16 to FP8.
   XlaBuilder builder(this->TestName());
 
