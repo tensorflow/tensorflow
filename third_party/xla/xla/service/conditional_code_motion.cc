@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -1965,15 +1966,6 @@ absl::StatusOr<bool> ConditionalCodeMotion::Run(
     return false;
   }
   bool changed = false;
-  bool cleanup_changed = false;
-  {
-    HloPassPipeline subpipeline("before_conditional_code_motion");
-    subpipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/is_layout_sensitive_);
-    subpipeline.AddPass<HloDCE>();
-    TF_ASSIGN_OR_RETURN(auto cleanup_changed_now,
-                        subpipeline.Run(module, execution_threads));
-    cleanup_changed |= cleanup_changed_now;
-  }
   // Gather all the conditional ops in the module ahead of time, to avoid
   // potential complications of modifying the code that affecting traversal.
   std::vector<HloInstruction*> conditional_ops;
@@ -2241,11 +2233,10 @@ absl::StatusOr<bool> ConditionalCodeMotion::Run(
     subpipeline.AddPass<HloDCE>();
     subpipeline.AddPass<TupleSimplifier>();
     subpipeline.AddPass<HloDCE>();
-    TF_ASSIGN_OR_RETURN(auto cleanup_changed_now, subpipeline.Run(module));
-    cleanup_changed |= cleanup_changed_now;
-  }
-  if (cleanup_changed) {
-    VLOG(2) << "subpipeline cleanup have modified code\n";
+    TF_ASSIGN_OR_RETURN(bool cleanup_changed, subpipeline.Run(module));
+    if (cleanup_changed) {
+      VLOG(2) << "subpipeline cleanup have modified code\n";
+    }
   }
   return changed;
 }
