@@ -1,7 +1,7 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
+load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
@@ -58,7 +58,7 @@ cc_library(
     name = "gpu_collectives_plugin",
     deps = [
         ":gpu_collectives_stub",
-    ] + if_gpu_is_configured([
+    ] + if_cuda_or_rocm_is_configured([
         ":nccl_collectives",
     ]) + if_cuda_is_configured([
         ":nvshmem_collectives_if_supported",
@@ -233,7 +233,10 @@ cc_library(
         if_rocm_is_configured([
             "TENSORFLOW_USE_ROCM=1",
         ]),
-    tags = ["gpu"],
+    tags = [
+        "gpu",
+        "no-sycl",
+    ],
     visibility = ["//visibility:private"],
     deps = [
         "//xla:util",
@@ -258,7 +261,10 @@ cc_library(
         if_rocm_is_configured([
             "TENSORFLOW_USE_ROCM=1",
         ]),
-    tags = ["gpu"],
+    tags = [
+        "gpu",
+        "no-sycl",
+    ],
     visibility = ["//visibility:private"],
     deps = [
         ":gpu_clique_key",
@@ -321,7 +327,10 @@ cc_library(
     local_defines = if_rocm_is_configured([
         "TENSORFLOW_USE_ROCM=1",
     ]),
-    tags = ["gpu"],
+    tags = [
+        "gpu",
+        "no-sycl",
+    ],
     visibility = ["//visibility:private"],
     deps = [
         ":gpu_collectives",
@@ -442,6 +451,7 @@ xla_test(
         # go/chloroxylenol-faq#how-do-i-stop-chloroxylenol-from-running-my-test
         # go/cuda#memorysanitizer
         "nomsan",
+        "no-sycl",
     ],
     visibility = ["//visibility:private"],
     deps = [
