@@ -221,7 +221,7 @@ def _create_libcuda_symlinks(
 
 def _create_repository_symlinks(repository_ctx):
     for target, link_name in repository_ctx.attr.repository_symlinks.items():
-        repository_ctx.symlink(target, link_name)
+        repository_ctx.symlink(repository_ctx.path(target), link_name)
 
 def create_version_file(repository_ctx, major_lib_version):
     repository_ctx.file(

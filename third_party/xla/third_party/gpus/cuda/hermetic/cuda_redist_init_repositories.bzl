@@ -99,7 +99,7 @@ def cuda_redist_init_repositories(
             target_arch_env_var = "CUDA_REDIST_TARGET_PLATFORM",
             local_source_dirs = ["include", "lib", "bin", "nvvm"],
             repository_symlinks = {
-                Label("@cuda_cudart//:cuda_header"): "include/cuda.h",
-                Label("@cuda_nvdisasm//:nvdisasm"): "bin/nvdisasm",
+                Label("@cuda_cudart//:include/cuda.h"): "include/cuda.h",
+                Label("@cuda_nvdisasm//:bin/nvdisasm"): "bin/nvdisasm",
             } if repo_data["repo_name"] == "cuda_nvcc" else {},
         )
