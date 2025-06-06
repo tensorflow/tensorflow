@@ -3797,7 +3797,7 @@ std::vector<SignatureDefData> BuildSignaturedef(
   // Exported method name.
   auto exported_name =
       main_op->getAttrOfType<mlir::ArrayAttr>(kTfSavedModelExportedNamesAttr);
-  if (exported_name.empty()) {
+  if (!exported_name || exported_name.empty()) {
     main_op.emitError("Empty exported names for main Function.");
     return {};
   }
