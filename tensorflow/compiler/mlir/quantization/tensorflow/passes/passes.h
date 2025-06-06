@@ -32,8 +32,6 @@ limitations under the License.
 namespace mlir {
 namespace quant {
 
-using ::mlir::tf_quant::QuantizationSpecs;
-
 // Creates a main function if it doesn't exist in the module. This is a
 // workaround to make ConvertMlirToGraphdef work for multi-signatures graphs.
 // TODO(b/204265523): Removes this pass after the exporting MLIR to SavedModel
@@ -99,20 +97,20 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass();
 
 // Overloading of CreateQuantizePass which takes QuantizationSpecs.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
-    QuantizationSpecs quant_specs,
+    tf_quant::QuantizationSpecs quant_specs,
     tensorflow::quantization::OpSet target_opset);
 
 // Creates an instance of the PrepareQuantize pass, which will perform similar
 // transformations as TFL::PrepareQuantizePass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizePass(
-    const QuantizationSpecs& quant_specs,
+    const tf_quant::QuantizationSpecs& quant_specs,
     tensorflow::quantization::QuantizationMethod::PresetMethod
         quantization_method);
 
 // Creates an instance of the PrepareQuantizeDRQ pass, which will
 // perform similar transformations as TFL::PrepareQuantizeDynamicRangePass.
 std::unique_ptr<OperationPass<ModuleOp>> CreatePrepareQuantizeDRQPass(
-    const QuantizationSpecs& quant_specs,
+    const tf_quant::QuantizationSpecs& quant_specs,
     tensorflow::quantization::OpSet op_set);
 
 // Creates an instance of the PreprocessOp pass, which will perform op
