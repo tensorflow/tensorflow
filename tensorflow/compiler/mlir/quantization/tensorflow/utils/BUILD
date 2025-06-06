@@ -115,25 +115,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "tf_tf_to_xla_attribute_utils",
-    srcs = ["tf_tf_to_xla_attribute_utils.cc"],
-    hdrs = ["tf_tf_to_xla_attribute_utils.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//tensorflow/compiler/mlir/lite/core/c:tflite_common",
-        "//tensorflow/compiler/mlir/lite/kernels:padding",
-        "//tensorflow/compiler/mlir/quantization/common:tf_attrs_and_constraints",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:tf_constant_fold",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/strings:str_format",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-        "@local_xla//xla:xla_data_proto_cc",
-    ],
-)
-
-cc_library(
     name = "tf_to_xla_attribute_utils",
     srcs = ["tf_to_xla_attribute_utils.cc"],
     hdrs = ["tf_to_xla_attribute_utils.h"],
@@ -141,8 +122,8 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/lite/core/c:tflite_common",
         "//tensorflow/compiler/mlir/lite/kernels:padding",
-        "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:constant_fold",
+        "//tensorflow/compiler/mlir/quantization/common:tf_attrs_and_constraints",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:tf_constant_fold",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Support",
