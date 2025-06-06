@@ -957,13 +957,11 @@ cc_library(
     hdrs = ["tf_graph_optimization_pass.h"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tf2xla/api/v2:graph_to_tf_executor",
         "//tensorflow/compiler/mlir/tf2xla/api/v2:tf_executor_to_graph",
         "//tensorflow/compiler/tf2xla:functionalize_control_flow_pass_registration",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:flat_hash_set",
