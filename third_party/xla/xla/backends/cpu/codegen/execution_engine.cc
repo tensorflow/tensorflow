@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "xla/backends/cpu/codegen/contiguous_section_memory_manager.h"
 #include "xla/service/cpu/orc_jit_memory_mapper.h"
 
@@ -35,7 +36,7 @@ namespace xla::cpu {
 static std::unique_ptr<llvm::orc::RTDyldObjectLinkingLayer>
 CreateObjectLinkingLayer(llvm::orc::ExecutionSession& execution_session) {
   return std::make_unique<llvm::orc::RTDyldObjectLinkingLayer>(
-      execution_session, [] {
+      execution_session, [](const llvm::MemoryBuffer&) {
         return std::make_unique<ContiguousSectionMemoryManager>(
             orc_jit_memory_mapper::GetInstance());
       });
