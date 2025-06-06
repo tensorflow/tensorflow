@@ -104,6 +104,18 @@ typedef struct {
   // the weight cache will only be loaded from this if `weights_cache` is
   // undefined.
   int weight_cache_file_descriptor;
+  // Points to an existing instance of a weight cache provider.
+  //
+  // Warning: Ownership of the cache provider is **NOT** taken by the XNNPack
+  // delegate.
+  //
+  // Warning: This will override opening the file from `weight_cache_file_path`
+  // and `weight_cache_file_descriptor`.
+  //
+  // Note: To keep backwards compatibility with the previous caching mechanism,
+  // the weight cache will only be loaded from this if `weights_cache` is
+  // undefined.
+  void* weight_cache_provider;
 } TfLiteXNNPackDelegateOptions;
 
 // Returns true on systems that support running the in-memory weight cache

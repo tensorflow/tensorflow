@@ -345,6 +345,9 @@ BufferLocation WeightCacheBuilder::Append(PackIdentifier pack_id,
 }
 
 bool WeightCacheBuilder::StopBuildStep() {
+  if (!is_build_step_) {
+    return true;
+  }
   XNNPACK_RETURN_CHECK(fd_.IsValid(),
                        "cache file ('%s') is not open for writing: %s.",
                        file_path_.c_str(), strerror(errno));
