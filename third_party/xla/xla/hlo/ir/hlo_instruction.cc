@@ -3945,7 +3945,7 @@ void HloInstruction::PrintWithCanonicalNameMap(
   });
   PrintExtraAttributes(attr_printer, options);
 
-  if (options.print_original_value() && original_value_) {
+  if (options.print_original_value() && original_value()) {
     printer->Append(", origin={");
     printer->Append(original_value()->ToString());
     printer->Append("}");
@@ -4379,8 +4379,8 @@ HloInstructionProto HloInstruction::ToProto() const {
 
   *proto.mutable_statistics_viz() = statistics_viz();
 
-  if (original_value_) {
-    *proto.mutable_original_value() = original_value_->ToProto();
+  if (original_value()) {
+    *proto.mutable_original_value() = original_value()->ToProto();
   }
 
   if (has_result_accuracy()) {
@@ -5989,19 +5989,27 @@ void HloInstruction::set_output_to_operand_aliasing(
       std::move(aliasing));
 }
 
-std::shared_ptr<OriginalValue> HloInstruction::original_value() const {
-  return original_value_;
+OriginalValue* HloInstruction::original_value() const {
+  return original_value_.get();
+}
+
+std::unique_ptr<OriginalValue> HloInstruction::take_original_value() {
+  return std::move(original_value_);
 }
 
 void HloInstruction::set_original_value(
-    std::shared_ptr<OriginalValue> original_value) {
-  original_value_ = original_value;
+    std::unique_ptr<OriginalValue> original_value) {
+  original_value_ = std::move(original_value);
 }
 
-void HloInstruction::CopyOriginalValue(const HloInstruction* instruction,
-                                       bool clone) {
+void HloInstruction::MoveOriginalValue(HloInstruction* instruction) {
+  ::xla::MoveOriginalValue(/*src_instruction=*/instruction,
+                           /*dest_instruction=*/this);
+}
+
+void HloInstruction::CopyOriginalValue(const HloInstruction* instruction) {
   ::xla::CopyOriginalValue(/*src_instruction=*/instruction,
-                           /*dest_instruction=*/this, clone);
+                           /*dest_instruction=*/this);
 }
 
 }  // namespace xla

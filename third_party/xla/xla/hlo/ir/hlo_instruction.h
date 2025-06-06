@@ -2396,12 +2396,15 @@ class HloInstruction {
   HloInstruction(const HloInstruction&) = delete;
   HloInstruction& operator=(const HloInstruction&) = delete;
 
-  std::shared_ptr<OriginalValue> original_value() const;
-  void set_original_value(std::shared_ptr<OriginalValue> original_value);
+  OriginalValue* original_value() const;
+  std::unique_ptr<OriginalValue> take_original_value();
+  void set_original_value(std::unique_ptr<OriginalValue> original_value);
 
-  // Copy original value from the input instruction. This performs a deep copy
-  // if clone is set to true. Otherwise, it performs a shallow copy.
-  void CopyOriginalValue(const HloInstruction* instruction, bool clone);
+  // Moves original value from the input instruction.
+  void MoveOriginalValue(HloInstruction* instruction);
+
+  // Copys the content of the original value from the input instruction.
+  void CopyOriginalValue(const HloInstruction* instruction);
 
  protected:
   // Internal constructor for a given opcode/shape, other fields must be filled
@@ -2655,7 +2658,7 @@ class HloInstruction {
 
   // Original value this instruction corresponds to in the unoptimized HLO
   // graph.
-  std::shared_ptr<OriginalValue> original_value_ = nullptr;
+  std::unique_ptr<OriginalValue> original_value_ = nullptr;
 
   // Metadata for debugging.  Allocate it on heap, so that it does not increase
   // the memory footprint of HloInstruction.

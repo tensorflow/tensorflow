@@ -791,6 +791,9 @@ HloInstruction* InstructionFusion::AddFusionInstruction(
     // copy the value nontheless to simplify some use cases that involve
     // fusions.
     TF_CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
+    std::cout << "consumer: " << consumer->ToString() << "\n";
+    std::cout << "fusion_instruction: " << fusion_instruction->ToString()
+              << "\n";
   }
   fusion_instruction->set_called_computations_execution_thread(
       computation->execution_thread(),
