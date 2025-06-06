@@ -247,7 +247,7 @@ TEST_F(ComputeConstantTest, IntegerDivide) {
   }
 }
 
-XLA_TEST_F(ComputeConstantTest, Layout) {
+TEST_F(ComputeConstantTest, Layout) {
   for (ClientType client_type : client_types) {
     Client* client = ClientOrDie(platform_, client_type);
     XlaBuilder b(TestName());
