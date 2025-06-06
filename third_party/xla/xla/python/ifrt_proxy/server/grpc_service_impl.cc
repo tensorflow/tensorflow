@@ -114,6 +114,9 @@ namespace proxy {
   while (true) {
     auto request = std::make_unique<IfrtRequest>();
     if (!stream->Read(request.get())) {
+      LOG(ERROR) << "GrpcServiceImpl::IfrtSession (not an error, just "
+                 << "capturing an important event): stream->Read() returned "
+                 << "false for session " << session_id << ".";
       break;
     }
     if (!first_request_read) {
