@@ -15,15 +15,12 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/nest_gemm_fusion.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <memory>
-#include <sstream>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -42,6 +39,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -55,15 +53,10 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_indexing_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/model/symbolic_tile.h"
-#include "xla/service/gpu/model/symbolic_tile_analysis.h"
-#include "xla/service/gpu/model/symbolic_tiled_hlo_instruction.h"
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
-#include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tools/hlo_extractor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -852,104 +845,35 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
     HloDotInstruction* dot, const TritonGemmConfig& config,
     mlir::MLIRContext* ctx) {
   HloComputation* computation = dot->parent();
-  VLOG(3) << "FindOutputTileSizesForEpilogue of computation: "
-          << computation->ToString();
-  SymbolicTileAnalysisOrError analysis_or =
-      SymbolicTileAnalysis::AnalyzeComputation(*computation, ctx);
-  if (std::holds_alternative<FusionDecision>(analysis_or)) {
-    std::unique_ptr<HloModule> extracted_computation_module =
-        ExtractModule(computation->FusionInstruction());
-    return absl::InternalError(
-        absl::StrCat("Failed to analyze the computation (",
-                     std::get<FusionDecision>(analysis_or).Explain(),
-                     "): ", extracted_computation_module->ToString()));
+  auto fusion_adaptor = HloFusionAdaptor::ForComputation(computation);
+  HloInstructionAdaptor dot_adaptor(*dot, fusion_adaptor.get());
+  HloInstructionAdaptor root_adaptor(*computation->root_instruction(),
+                                     fusion_adaptor.get());
+  auto dot_to_root_indexing =
+      ComputeEpilogueInputToOutputIndexing(dot_adaptor, root_adaptor, ctx);
+  auto dot_tile_sizes = mlir::getAffineConstantExprs(
+      {0, config.block_m - 1, config.block_n - 1}, ctx);
+  auto root_tile_sizes = dot_to_root_indexing.Evaluate(dot_tile_sizes, {});
+  // Round up to the next power of 2.
+  for (auto& size : root_tile_sizes) {
+    int64_t i = 1;
+    while (i < size) {
+      i <<= 1;
+    }
+    size = i;
   }
 
-  auto& analysis = std::get<SymbolicTileAnalysis>(analysis_or);
-  const auto& tiled_instructions = analysis.GetSymbolicTiledHloComputation();
-  auto is_dot = [&](const auto& instr) { return instr->hlo() == dot; };
-  auto tiled_dot_it = absl::c_find_if(tiled_instructions, is_dot);
-  if (tiled_dot_it == tiled_instructions.end()) {
-    return absl::InternalError(absl::StrCat(
-        "Couldn't find a symbolic tiled instruction for ", dot->ToString()));
-  }
-  const SymbolicTiledHloInstruction& tiled_dot = **tiled_dot_it;
+  BlockLevelParameters params;
+  params.output_tile_sizes.emplace_back(root_tile_sizes.begin(),
+                                        root_tile_sizes.end());
+  params.num_warps = config.num_warps;
+  params.num_ctas = config.num_ctas;
+  params.num_stages = config.num_stages;
 
-  auto get_tile_sizes = [&](int64_t rank) {
-    QCHECK_GE(rank, 2) << "Expected at least rank 2 for the dot, got " << rank
-                       << " in computation " << computation->ToString();
-    // We always expect the shape to be [1, ..., block_m, block_n], by
-    // construction of GemmFusions.
-    llvm::SmallVector<int64_t> tile_sizes(rank - 2, 1);
-    tile_sizes.append({config.block_m, config.block_n});
-    return tile_sizes;
-  };
-
-  VLOG(3) << "FindOutputTileSizesForEpilogue: dot shape: "
-          << dot->shape().ToString();
-  auto expected_dot_tile_sizes =
-      get_tile_sizes(dot->shape().dimensions().size());
-  if (VLOG_IS_ON(2)) {
-    std::ostringstream oss;
-    for (const auto& size : expected_dot_tile_sizes) {
-      oss << size << " ";
-    }
-    LOG(INFO) << "FindOutputTileSizesForEpilogue: " << tiled_dot.ToString()
-              << "Constraints: "
-              << analysis.GetTilingSpecification().constraints().ToString()
-              << "Expected dot tile sizes: " << oss.str();
-  }
-
-  // Try all permutations of the dot tile sizes to see if any of them satisfy
-  // the constraints of the analysis and map to the given config of the dot.
-  int64_t out_rank =
-      computation->root_instruction()->shape().dimensions().size();
-  VLOG(3) << "FindOutputTileSizesForEpilogue: computation root shape: "
-          << computation->root_instruction()->shape().ToString();
-  auto output_tile_sizes = get_tile_sizes(out_rank);
-  std::sort(output_tile_sizes.begin(), output_tile_sizes.end());
-
-  const TilingSpecification& tiling_specification =
-      analysis.GetTilingSpecification();
-
-  do {
-    Tiling::TileMapping tile_mapping;
-    tile_mapping[dot] = {config.block_k};
-    // If the `dot` is a root, we need to assign both the hidden parameter and
-    // the output parameters to it.
-    if (dot->IsRoot()) {
-      tile_mapping[dot].insert(tile_mapping[dot].end(),
-                               output_tile_sizes.begin(),
-                               output_tile_sizes.end());
-    } else {
-      tile_mapping[dot->parent()->root_instruction()] = {
-          output_tile_sizes.begin(), output_tile_sizes.end()};
-    }
-
-    Tiling tiling(std::move(tile_mapping));
-    TF_ASSIGN_OR_RETURN(bool parameters_satisfy_constraints,
-                        analysis.ParametersSatisfyConstraints(tiling));
-    if (!parameters_satisfy_constraints) {
-      continue;
-    }
-    TF_ASSIGN_OR_RETURN(std::vector<int64_t> flat_tiling_parameters,
-                        tiling.Flatten(tiling_specification));
-    auto mapped_dot_tile_sizes =
-        EvaluateTileSizes(tiled_dot.symbolic_tile(), flat_tiling_parameters);
-    if (mapped_dot_tile_sizes == expected_dot_tile_sizes) {
-      BlockLevelParameters params;
-      params.output_tile_sizes = {std::vector<int64_t>(
-          output_tile_sizes.begin(), output_tile_sizes.end())};
-      params.num_warps = config.num_warps;
-      params.num_ctas = config.num_ctas;
-      params.num_stages = config.num_stages;
-      return params;
-    }
-  } while (std::next_permutation(output_tile_sizes.begin(),
-                                 output_tile_sizes.end()));
-
-  return absl::InternalError(absl::StrCat(
-      "Couldn't find output tile sizes that satisfy ", tiled_dot.ToString()));
+  LOG(INFO) << dot_to_root_indexing;
+  LOG(INFO) << "BlockLevelParameters: "
+            << params.ToBlockLevelFusionConfig().DebugString();
+  return params;
 }
 
 }  // namespace detail
