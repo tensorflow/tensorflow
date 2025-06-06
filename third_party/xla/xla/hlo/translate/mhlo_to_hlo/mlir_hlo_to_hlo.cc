@@ -100,9 +100,11 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/primitive_util.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -683,6 +685,23 @@ static xla::ComparisonDirection Convert_comparison_direction(
     llvm::StringRef comparison_direction_string) {
   return xla::StringToComparisonDirection(comparison_direction_string.str())
       .value();
+}
+
+std::string Format_source_target_pairs_string(
+    std::vector<std::pair<int64_t, int64_t>> source_target_pairs) {
+  std::string source_target_pairs_string =
+      "{" +
+      absl::StrJoin(source_target_pairs, ",",
+                    absl::PairFormatter(
+                        [](std::string* out, int64_t value) {
+                          absl::StrAppend(out, "{", value);
+                        },
+                        ",",
+                        [](std::string* out, int64_t value) {
+                          absl::StrAppend(out, value, "}");
+                        })) +
+      "}";
+  return source_target_pairs_string;
 }
 
 template <typename T>
@@ -1489,6 +1508,11 @@ LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
   xla::XlaOp token;
   if (failed(GetXlaOp(op.getToken(), value_map, &token, op))) return failure();
 
+  std::string source_target_pairs_string;
+  if (op.getSourceTargetPairs().size() > 0) {
+    source_target_pairs_string = Format_source_target_pairs_string(
+        Convert_source_target_pairs(op.getSourceTargetPairs()));
+  }
   // SendOp has 1 result, but HLO Send has 3 results. Convert the sharding to a
   // tuple sharding with 3 entries.
   if (ctx.builder->sharding().has_value()) {
@@ -1500,10 +1524,30 @@ LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
     tuple_shardings->Add(xla::OpSharding(single_sharding));
     tuple_shardings->Add(xla::OpSharding(single_sharding));
     xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, sharding);
+    xla::FrontendAttributes attributes;
+    for (const auto& attr : ctx.builder->frontend_attributes().map()) {
+      attributes.mutable_map()->insert({attr.first, attr.second});
+    }
+    if (!source_target_pairs_string.empty()) {
+      attributes.mutable_map()->insert(
+          {xla::kSendRecvSourceTargetPairsAttr, source_target_pairs_string});
+    }
+    xla::XlaScopedFrontendAttributesAssignment scoped_attributes(ctx.builder,
+                                                                 attributes);
     token = xla::internal::XlaBuilderFriend::BuildSend(
         ctx.builder, operand, token,
         Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
   } else {
+    xla::FrontendAttributes attributes;
+    for (const auto& attr : ctx.builder->frontend_attributes().map()) {
+      attributes.mutable_map()->insert({attr.first, attr.second});
+    }
+    if (!source_target_pairs_string.empty()) {
+      attributes.mutable_map()->insert(
+          {xla::kSendRecvSourceTargetPairsAttr, source_target_pairs_string});
+    }
+    xla::XlaScopedFrontendAttributesAssignment scoped_attributes(ctx.builder,
+                                                                 attributes);
     token = xla::internal::XlaBuilderFriend::BuildSend(
         ctx.builder, operand, token,
         Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
@@ -1519,6 +1563,11 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
 
   xla::XlaOp token;
   if (failed(GetXlaOp(op.getToken(), value_map, &token, op))) return failure();
+  std::string source_target_pairs_string;
+  if (op.getSourceTargetPairs().size() > 0) {
+    source_target_pairs_string = Format_source_target_pairs_string(
+        Convert_source_target_pairs(op.getSourceTargetPairs()));
+  }
 
   // stablehlo.recvOp produces multiple results. The shape argument expected by
   // the xla client API is a tuple type with two element-types: data_type : A
@@ -1561,10 +1610,30 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
       tuple_shardings->Add(xla::OpSharding(single_sharding));
     }
     xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, sharding);
+    xla::FrontendAttributes attributes;
+    for (const auto& attr : ctx.builder->frontend_attributes().map()) {
+      attributes.mutable_map()->insert({attr.first, attr.second});
+    }
+    if (!source_target_pairs_string.empty()) {
+      attributes.mutable_map()->insert(
+          {xla::kSendRecvSourceTargetPairsAttr, source_target_pairs_string});
+    }
+    xla::XlaScopedFrontendAttributesAssignment scoped_attributes(ctx.builder,
+                                                                 attributes);
     token = xla::internal::XlaBuilderFriend::BuildRecv(
         ctx.builder, token, data_shape,
         Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
   } else {
+    xla::FrontendAttributes attributes;
+    for (const auto& attr : ctx.builder->frontend_attributes().map()) {
+      attributes.mutable_map()->insert({attr.first, attr.second});
+    }
+    if (!source_target_pairs_string.empty()) {
+      attributes.mutable_map()->insert(
+          {xla::kSendRecvSourceTargetPairsAttr, source_target_pairs_string});
+    }
+    xla::XlaScopedFrontendAttributesAssignment scoped_attributes(ctx.builder,
+                                                                 attributes);
     token = xla::internal::XlaBuilderFriend::BuildRecv(
         ctx.builder, token, data_shape,
         Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
@@ -4456,6 +4525,11 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
     data_shape = subshapes[0];
   else
     data_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
+  std::string source_target_pairs_string;
+  if (op.getSourceTargetPairs().size() > 0) {
+    source_target_pairs_string = Format_source_target_pairs_string(
+        Convert_source_target_pairs(op.getSourceTargetPairs()));
+  }
 
   auto get_sharding = [](const xla::OpSharding& sharding) {
     xla::OpSharding ret;
@@ -4477,10 +4551,30 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
       tuple_shardings->Add(xla::OpSharding(single_sharding));
     }
     xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, sharding);
+    xla::FrontendAttributes attributes;
+    for (const auto& attr : ctx.builder->frontend_attributes().map()) {
+      attributes.mutable_map()->insert({attr.first, attr.second});
+    }
+    if (!source_target_pairs_string.empty()) {
+      attributes.mutable_map()->insert(
+          {xla::kSendRecvSourceTargetPairsAttr, source_target_pairs_string});
+    }
+    xla::XlaScopedFrontendAttributesAssignment scoped_attributes(ctx.builder,
+                                                                 attributes);
     token = xla::internal::XlaBuilderFriend::BuildRecv(
         ctx.builder, token, data_shape,
         Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
   } else {
+    xla::FrontendAttributes attributes;
+    for (const auto& attr : ctx.builder->frontend_attributes().map()) {
+      attributes.mutable_map()->insert({attr.first, attr.second});
+    }
+    if (!source_target_pairs_string.empty()) {
+      attributes.mutable_map()->insert(
+          {xla::kSendRecvSourceTargetPairsAttr, source_target_pairs_string});
+    }
+    xla::XlaScopedFrontendAttributesAssignment scoped_attributes(ctx.builder,
+                                                                 attributes);
     token = xla::internal::XlaBuilderFriend::BuildRecv(
         ctx.builder, token, data_shape,
         Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
@@ -4739,6 +4833,12 @@ LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
   xla::XlaOp token;
   if (failed(GetXlaOp(op.getToken(), value_map, &token, op))) return failure();
 
+  std::string source_target_pairs_string;
+  if (op.getSourceTargetPairs().size() > 0) {
+    source_target_pairs_string = Format_source_target_pairs_string(
+        Convert_source_target_pairs(op.getSourceTargetPairs()));
+  }
+
   // SendOp has 1 result, but HLO Send has 3 results. Convert the sharding to a
   // tuple sharding with 3 entries.
   if (ctx.builder->sharding().has_value()) {
@@ -4750,10 +4850,30 @@ LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
     tuple_shardings->Add(xla::OpSharding(single_sharding));
     tuple_shardings->Add(xla::OpSharding(single_sharding));
     xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, sharding);
+    xla::FrontendAttributes attributes;
+    for (const auto& attr : ctx.builder->frontend_attributes().map()) {
+      attributes.mutable_map()->insert({attr.first, attr.second});
+    }
+    if (!source_target_pairs_string.empty()) {
+      attributes.mutable_map()->insert(
+          {xla::kSendRecvSourceTargetPairsAttr, source_target_pairs_string});
+    }
+    xla::XlaScopedFrontendAttributesAssignment scoped_attributes(ctx.builder,
+                                                                 attributes);
     token = xla::internal::XlaBuilderFriend::BuildSend(
         ctx.builder, operand, token,
         Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
   } else {
+    xla::FrontendAttributes attributes;
+    for (const auto& attr : ctx.builder->frontend_attributes().map()) {
+      attributes.mutable_map()->insert({attr.first, attr.second});
+    }
+    if (!source_target_pairs_string.empty()) {
+      attributes.mutable_map()->insert(
+          {xla::kSendRecvSourceTargetPairsAttr, source_target_pairs_string});
+    }
+    xla::XlaScopedFrontendAttributesAssignment scoped_attributes(ctx.builder,
+                                                                 attributes);
     token = xla::internal::XlaBuilderFriend::BuildSend(
         ctx.builder, operand, token,
         Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
@@ -6155,6 +6275,7 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
   }
   if (auto frontend_attributes =
           module->getAttrOfType<DictionaryAttr>(kMhloFrontendAttributes)) {
+    LLVM_DEBUG(llvm::dbgs() << "about to create frontend attributes\n");
     CreateFrontendAttributes(frontend_attributes,
                              *hlo_module.mutable_frontend_attributes());
   }
