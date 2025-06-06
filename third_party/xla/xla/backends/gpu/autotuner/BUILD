@@ -4,6 +4,7 @@ load("//xla/tests:build_defs.bzl", "xla_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//xla/backends/autotuner:__subpackages__"],
     licenses = ["notice"],
 )
 
@@ -427,6 +428,17 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
+    name = "factory",
+    hdrs = ["factory.h"],
+    tags = ["gpu"],
+    deps = [
+        ":triton",
+        "//xla/backends/autotuner:codegen_backend",
+        "//xla/service:compiler",
     ],
 )
 
