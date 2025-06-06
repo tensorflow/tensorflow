@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -53,20 +54,6 @@ char XlaCompatibleSharding::ID = 0;  // NOLINT
 char HloSharding::ID = 0;            // NOLINT
 
 namespace {
-
-// Advances the specified set of indexes and returns true if we haven't
-// wrapped around (i.e. result isn't {0, 0, ...}).
-bool NextIndex(Index::Elements* index, absl::Span<const int64_t> limit) {
-  DCHECK_LE(index->size(), limit.size());
-  for (int64_t i = index->size() - 1; i >= 0; --i) {
-    ++(*index)[i];
-    if ((*index)[i] < limit[i]) {
-      return true;
-    }
-    (*index)[i] = 0;
-  }
-  return false;
-}
 
 // Generates IndexDomains for an HloSharding, using XLA HloSharding APIs.
 // Note that this is O(N^2) where N is the number of devices (shards).
@@ -350,56 +337,22 @@ absl::StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
                         shape.DebugString(), xla_hlo_sharding_.ToString()));
   }
 
-  // Get the tile shape. This shape represents the shape of all per-shard
-  // buffers.
   TF_ASSIGN_OR_RETURN(Shape tile_shape, GetShardShape(shape));
-  const absl::Span<const int64_t> tile_shape_dims = tile_shape.dims();
 
-  // At the high-level, tile_assignment_dims[i] describes the number of ways the
-  // shape is partitioned along i-th dimension. Note that
-  // tile_assignment_dims[i] with i >= shape.size() encodes other information
-  // such as subgroups to express partial replication/sharding and other
-  // semantics.  They do not participate in determining the tile origin and
-  // shape.
-  const absl::Span<const int64_t> tile_assignment_dims =
-      xla_hlo_sharding_.tile_assignment().dimensions();
-
-  const int64_t replication_dim = xla_hlo_sharding_.SubgroupReplicationDim();
-  int64_t num_replicas;
-  if (replication_dim == -1) {
-    num_replicas = 1;
-  } else {
-    num_replicas = tile_assignment_dims[replication_dim];
-  }
-
-  // Enumerate over all indices of tiles. For instance, if tile_assignment_dims
-  // is [3, 2], iterate over [[0, 0], [0, 1], [1, 0], [1, 1], [2, 0], [2, 1]].
-  // If tile_assignment_dims includes replication, we only enumerate over the
-  // sharding portion, and copy the same indices multiple times.
-  Index::Elements unique_tile_index(shape.dims().size());
-  std::vector<Index::Elements> origins(num_devices);
-  Index::Elements origin(shape.dims().size());
-  int64_t device_assignment_index = 0;
-  do {
-    for (int64_t i = 0; i < shape.dims().size(); ++i) {
-      origin[i] =
-          std::min(tile_shape_dims[i] * unique_tile_index[i], shape.dims()[i]);
-    }
-    for (int64_t i = 0; i < num_replicas; ++i) {
-      CHECK_LT(device_assignment_index, num_devices);
-      const int64_t device_id = xla_hlo_sharding_.tile_assignment()
-                                    .array()
-                                    .data()[device_assignment_index];
-      if (device_id < 0 || device_id >= num_devices) {
-        return absl::InvalidArgumentError(
-            absl::StrFormat("Out of range device id in device_assignment: %d; "
-                            "valid range: [0, %d)",
-                            device_id, num_devices));
-      }
-      origins[device_id] = origin;
-      ++device_assignment_index;
-    }
-  } while (NextIndex(&unique_tile_index, tile_assignment_dims));
+  const absl::Span<const int64_t> shape_dims = shape.dims();
+  std::vector<std::optional<IndexDomain>> all(num_devices);
+  TF_RETURN_IF_ERROR(xla_hlo_sharding_.EachTile(
+      shape_dims, [shape_dims, &all](int device_index,
+                                     absl::Span<const int64_t> tile_offset,
+                                     absl::Span<const int64_t> tile_limit) {
+        Shape::Dimensions tile_shape;
+        tile_shape.reserve(shape_dims.size());
+        for (int i = 0; i < shape_dims.size(); ++i) {
+          tile_shape.push_back(tile_limit[i] - tile_offset[i]);
+        }
+        all[device_index] =
+            IndexDomain(Index(tile_offset), Shape(std::move(tile_shape)));
+      }));
 
   if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards) {
     result.reserve(num_devices);
@@ -411,16 +364,10 @@ absl::StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
     if (single_device_shard_semantics ==
             SingleDeviceShardSemantics::kAllShards ||
         devices[device_idx]->IsAddressable()) {
-      Shape::Dimensions actual_tile_shape;
-      actual_tile_shape.reserve(tile_shape_dims.size());
-      for (int i = 0; i < tile_shape_dims.size(); ++i) {
-        actual_tile_shape.push_back(std::min(
-            tile_shape_dims[i], shape.dims()[i] - origins[device_idx][i]));
-      }
-      result.push_back(IndexDomain(Index(origins[device_idx]),
-                                   Shape(std::move(actual_tile_shape))));
+      result.push_back(*std::move(all[device_idx]));
     }
   }
+
   return result;
 }
 
