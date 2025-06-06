@@ -39,7 +39,7 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/temp_tf_op_quant_spec.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_tf_quantize_op.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_quantize_op.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
@@ -49,7 +49,6 @@ namespace mlir {
 namespace quant {
 namespace {
 
-using ::mlir::tf_quant::ApplyUniformQuantization;
 using ::mlir::tf_quant::GetWeightComponentSpec;
 using ::mlir::tf_quant::IsOpWithDataMovementTrait;
 using ::mlir::tf_quant::IsOpWithQuantizableTrait;
