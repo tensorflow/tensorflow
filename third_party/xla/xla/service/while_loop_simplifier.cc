@@ -247,16 +247,16 @@ static absl::StatusOr<HloInstruction*> RemoveDeadTupleIndices(
   std::unique_ptr<HloComputation> new_while_body =
       while_body->CloneWithReplacements(&while_body_replacements);
 
-  // Add a new while_init instruction that repackages the old while_init
-  // instruction's elements.  We rely on the AlgebraicSimplifier and DCE to
-  // clean this up in the common case where while_init is a tuple op.  (It's
-  // definitely tuple-shaped, but it's not necessarily a tuple op.)
   std::vector<HloInstruction*> new_while_init_elems;
   new_while_init_elems.reserve(new_to_old_tuple_idx.size());
   for (int64_t old_idx : new_to_old_tuple_idx) {
-    new_while_init_elems.push_back(
-        computation->AddInstruction(HloInstruction::CreateGetTupleElement(
-            while_init->shape().tuple_shapes(old_idx), while_init, old_idx)));
+    if (while_init->opcode() == HloOpcode::kTuple) {
+      new_while_init_elems.push_back(while_init->mutable_operand(old_idx));
+    } else {
+      new_while_init_elems.push_back(
+          computation->AddInstruction(HloInstruction::CreateGetTupleElement(
+              while_init->shape().tuple_shapes(old_idx), while_init, old_idx)));
+    }
   }
   auto* new_while_init = computation->AddInstruction(
       HloInstruction::CreateTuple(new_while_init_elems));

@@ -496,6 +496,9 @@ TEST_F(WhileLoopSimplifierTest, RemoveUnusedLoopOperands) {
   EXPECT_THAT(new_while_op->while_condition()->root_instruction(),
               op::Eq(op::Constant(),
                      op::GetTupleElement(op::Parameter(0), /*tuple_index=*/1)));
+
+  EXPECT_THAT(new_while_op->while_init(),
+              op::Tuple(op::Constant(), op::Parameter(1)));
 }
 
 // This while loop has three tuple elements.  Element 0 is unused and should be
