@@ -69,7 +69,7 @@ class TransferManagerTest : public LocalClientTestBase {
   std::function<int64_t(const Shape&)> shape_size_fn_;
 };
 
-XLA_TEST_F(TransferManagerTest, TransferR0U32) {
+TEST_F(TransferManagerTest, TransferR0U32) {
   Literal literal = LiteralUtil::CreateR0<uint32_t>(42);
   const Shape& shape = literal.shape();
   auto device_buffer = AllocateDeviceBuffer(shape);
@@ -84,7 +84,7 @@ XLA_TEST_F(TransferManagerTest, TransferR0U32) {
   LiteralTestUtil::ExpectR0Equal<uint32_t>(42, result);
 }
 
-XLA_TEST_F(TransferManagerTest, TransferR1F32) {
+TEST_F(TransferManagerTest, TransferR1F32) {
   Literal literal =
       LiteralUtil::CreateR1<float>({1.25f, 2.5f, -17.0f, -20.125f});
   const Shape& shape = literal.shape();
@@ -101,7 +101,7 @@ XLA_TEST_F(TransferManagerTest, TransferR1F32) {
                                         result);
 }
 
-XLA_TEST_F(TransferManagerTest, TransferR1F32AwkwardSizes) {
+TEST_F(TransferManagerTest, TransferR1F32AwkwardSizes) {
   // Test transferring R1s from 0 to kMaxR1Size. The goal is to find bugs
   // related to "awkwardly" sized R1s.
   constexpr int kMaxR1Size = (1 << 11);
@@ -123,7 +123,7 @@ XLA_TEST_F(TransferManagerTest, TransferR1F32AwkwardSizes) {
   }
 }
 
-XLA_TEST_F(TransferManagerTest, TransferR1LargeF32) {
+TEST_F(TransferManagerTest, TransferR1LargeF32) {
   std::vector<float> test_vector(1024 * 1024);
   std::iota(test_vector.begin(), test_vector.end(), 0);
   Literal literal = LiteralUtil::CreateR1<float>(test_vector);
@@ -140,7 +140,7 @@ XLA_TEST_F(TransferManagerTest, TransferR1LargeF32) {
   LiteralTestUtil::ExpectR1Equal<float>(test_vector, result);
 }
 
-XLA_TEST_F(TransferManagerTest, TransferR1LargeUnalignedF32) {
+TEST_F(TransferManagerTest, TransferR1LargeUnalignedF32) {
   std::vector<float> test_vector(1025);
   std::iota(test_vector.begin(), test_vector.end(), 0);
   Shape shape = ShapeUtil::MakeShape(F32, {1024});
@@ -160,7 +160,7 @@ XLA_TEST_F(TransferManagerTest, TransferR1LargeUnalignedF32) {
   LiteralTestUtil::ExpectR1Equal<float>(expected_output, result);
 }
 
-XLA_TEST_F(TransferManagerTest, TransferR1U8) {
+TEST_F(TransferManagerTest, TransferR1U8) {
   const char* test_string = "0123456789abcdef";
   Literal literal = LiteralUtil::CreateR1U8(test_string);
   const Shape& shape = literal.shape();
@@ -176,7 +176,7 @@ XLA_TEST_F(TransferManagerTest, TransferR1U8) {
   EXPECT_EQ(result.GetR1U8AsString(), test_string);
 }
 
-XLA_TEST_F(TransferManagerTest, TransferR2F32) {
+TEST_F(TransferManagerTest, TransferR2F32) {
   Literal literal =
       LiteralUtil::CreateR2<float>({{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}});
   const Shape& shape = literal.shape();
@@ -193,8 +193,7 @@ XLA_TEST_F(TransferManagerTest, TransferR2F32) {
       {{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}}, result);
 }
 
-XLA_TEST_F(TransferManagerTest,
-           TransferR2F32AndChangeLayoutTransferringToDevice) {
+TEST_F(TransferManagerTest, TransferR2F32AndChangeLayoutTransferringToDevice) {
   Literal literal = LiteralUtil::CreateR2WithLayout<float>(
       {{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}}, LayoutUtil::MakeLayout({0, 1}));
   const Shape ondevice_shape =
@@ -215,7 +214,7 @@ XLA_TEST_F(TransferManagerTest,
       {{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}}, result);
 }
 
-XLA_TEST_F(TransferManagerTest, TransferTuple) {
+TEST_F(TransferManagerTest, TransferTuple) {
   Literal literal = LiteralUtil::MakeTupleFromSlices(
       {LiteralUtil::CreateR0<float>(123.0f),
        LiteralUtil::CreateR2<float>({{1.0f, 2.0f}, {4.0f, 5.0f}}),
@@ -232,7 +231,7 @@ XLA_TEST_F(TransferManagerTest, TransferTuple) {
   EXPECT_TRUE(LiteralTestUtil::Equal(literal, result));
 }
 
-XLA_TEST_F(TransferManagerTest, TransferEmptyTuple) {
+TEST_F(TransferManagerTest, TransferEmptyTuple) {
   Literal literal = LiteralUtil::MakeTuple({});
   auto device_buffer = AllocateDeviceBuffer(literal.shape());
 
@@ -246,7 +245,7 @@ XLA_TEST_F(TransferManagerTest, TransferEmptyTuple) {
   EXPECT_TRUE(LiteralTestUtil::Equal(literal, result));
 }
 
-XLA_TEST_F(TransferManagerTest, TransferNestedTuple) {
+TEST_F(TransferManagerTest, TransferNestedTuple) {
   Literal literal = LiteralUtil::MakeTupleFromSlices(
       {LiteralUtil::CreateR0<float>(123.0f),
        LiteralUtil::MakeTupleFromSlices(
@@ -265,7 +264,7 @@ XLA_TEST_F(TransferManagerTest, TransferNestedTuple) {
   EXPECT_TRUE(LiteralTestUtil::Equal(literal, result));
 }
 
-XLA_TEST_F(TransferManagerTest, TransferComplexValue) {
+TEST_F(TransferManagerTest, TransferComplexValue) {
   Literal literal = LiteralUtil::CreateR1<complex64>(
       {complex64(1.0f, 2.0f), complex64(42.0f, -123.4f)});
   auto device_buffer = AllocateDeviceBuffer(literal.shape());
@@ -280,7 +279,7 @@ XLA_TEST_F(TransferManagerTest, TransferComplexValue) {
   EXPECT_TRUE(LiteralTestUtil::Equal(literal, result));
 }
 
-XLA_TEST_F(TransferManagerTest, TransferComplexValueInTuple) {
+TEST_F(TransferManagerTest, TransferComplexValueInTuple) {
   Literal literal = LiteralUtil::MakeTupleFromSlices(
       {LiteralUtil::CreateR1<complex64>(
            {complex64(1.0f, 2.0f), complex64(42.0f, -123.4f)}),
@@ -298,7 +297,7 @@ XLA_TEST_F(TransferManagerTest, TransferComplexValueInTuple) {
   EXPECT_TRUE(LiteralTestUtil::Equal(literal, result));
 }
 
-XLA_TEST_F(TransferManagerTest, TransferTokenFromDevice) {
+TEST_F(TransferManagerTest, TransferTokenFromDevice) {
   // "Copy" a token from the device. The token has no physical representation
   // so no copying is actually performed, but it shouldn't fail.
   // TODO(b/110532604): Add transferring the token to device when this is
@@ -310,7 +309,7 @@ XLA_TEST_F(TransferManagerTest, TransferTokenFromDevice) {
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateToken(), result));
 }
 
-XLA_TEST_F(TransferManagerTest, MultiStreamRoundTripSoak) {
+TEST_F(TransferManagerTest, MultiStreamRoundTripSoak) {
   if (test::HasModifiers({test::kGrm})) {
     GTEST_SKIP();
   }
@@ -357,7 +356,7 @@ XLA_TEST_F(TransferManagerTest, MultiStreamRoundTripSoak) {
 }
 
 // TODO(b/223222672): TPUs transfer literals using a different codepath.
-XLA_TEST_F(TransferManagerTest, DISABLED_ON_TPU(TransferDynamicShape)) {
+TEST_F(TransferManagerTest, DISABLED_ON_TPU(TransferDynamicShape)) {
   TF_ASSERT_OK_AND_ASSIGN(
       Shape s, ParseShape("(s64[], s32[<=1048576,3], f32[<=1048576,48])"));
 
