@@ -150,12 +150,12 @@ absl::Status HloSchedule::UpdateComputationSchedule(
   // computation, but not in schedule) which use X. If an instruction is not in
   // the map, then it has no users which are newly added instructions.
   absl::flat_hash_map<const HloInstruction*, std::vector<HloInstruction*>>
-      new_instruction_uses;
+      new_instruction_preds;
 
   // For each newly added instruction, this is the count of the instruction's
   // operands that have not yet been scheduled. When this value reaches zero,
   // then the instruction may be placed in the schedule.
-  absl::flat_hash_map<const HloInstruction*, int> unscheduled_operand_count;
+  absl::flat_hash_map<const HloInstruction*, int> unscheduled_pred_count;
 
   // Create a worklist of newly added instructions which are ready to be added
   // to the schedule. Initialize worklist with those that have zero operands.
@@ -164,13 +164,19 @@ absl::Status HloSchedule::UpdateComputationSchedule(
   for (HloInstruction* instruction : computation->instructions()) {
     if (!ids_in_schedule.contains(instruction->unique_id_64_bits())) {
       // This is a newly added instruction which is not in the schedule.
-      if (instruction->operands().empty()) {
+      if (instruction->operands().empty() &&
+          instruction->control_predecessors().empty()) {
         worklist.push(instruction);
       } else {
-        for (const HloInstruction* operand : instruction->operands()) {
-          new_instruction_uses[operand].push_back(instruction);
+        for (const HloInstruction* pred : instruction->operands()) {
+          new_instruction_preds[pred].push_back(instruction);
         }
-        unscheduled_operand_count[instruction] = instruction->operand_count();
+        for (const HloInstruction* pred : instruction->control_predecessors()) {
+          new_instruction_preds[pred].push_back(instruction);
+        }
+        unscheduled_pred_count[instruction] =
+            instruction->operand_count() +
+            instruction->control_predecessors().size();
       }
     }
   }
@@ -186,16 +192,16 @@ absl::Status HloSchedule::UpdateComputationSchedule(
       worklist.pop();
       new_sequence.push_back(instruction);
       std::vector<HloInstruction*>* new_users =
-          tsl::gtl::FindOrNull(new_instruction_uses, instruction);
+          tsl::gtl::FindOrNull(new_instruction_preds, instruction);
       if (new_users != nullptr) {
         // This just-scheduled instruction has users which are newly added to
         // the module. Update the number of unscheduled operands and push the
         // newly added instruction to the worklist if it is ready to
         // schedule.
         for (HloInstruction* new_user : *new_users) {
-          unscheduled_operand_count.at(new_user)--;
-          CHECK_GE(unscheduled_operand_count.at(new_user), 0);
-          if (unscheduled_operand_count.at(new_user) == 0) {
+          unscheduled_pred_count.at(new_user)--;
+          CHECK_GE(unscheduled_pred_count.at(new_user), 0);
+          if (unscheduled_pred_count.at(new_user) == 0) {
             worklist.push(new_user);
           }
         }
