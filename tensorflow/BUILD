@@ -506,10 +506,7 @@ config_setting(
 
 config_setting(
     name = "chromiumos",
-    constraint_values = if_google(
-        ["@platforms//os:chromiumos"],
-        [],
-    ),
+    constraint_values = ["@platforms//os:chromiumos"],
     values = if_oss(
         {"crosstool_top": "//external:android/chromiumos"},
         {},
