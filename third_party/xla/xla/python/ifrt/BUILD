@@ -1,3 +1,4 @@
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/python/ifrt:ifrt.bzl", "ifrt_package_groups")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
@@ -440,19 +441,6 @@ cc_library(
 )
 
 cc_library(
-    name = "no_impl_test_main",
-    testonly = True,
-    srcs = ["no_impl_test_main.cc"],
-    visibility = internal_visibility([
-        ":friends",
-        ":internal",
-    ]),
-    deps = [
-        "@com_google_googletest//:gtest_for_library",
-    ],
-)
-
-cc_library(
     name = "array_impl_test_lib",
     testonly = True,
     srcs = ["array_impl_test_lib.cc"],
@@ -482,13 +470,9 @@ cc_library(
     alwayslink = True,
 )
 
-xla_cc_test(
+build_test(
     name = "array_test_no_impl",
-    srcs = [],
-    deps = [
-        ":array_impl_test_lib",
-        ":no_impl_test_main",
-    ],
+    targets = [":array_impl_test_lib"],
 )
 
 tf_proto_library(
@@ -520,14 +504,9 @@ cc_library(
     alwayslink = True,
 )
 
-xla_cc_test(
+build_test(
     name = "client_test_no_impl",
-    srcs = [],
-    deps = [
-        ":client_impl_test_lib",
-        ":no_impl_test_main",
-        "@com_google_googletest//:gtest",
-    ],
+    targets = [":client_impl_test_lib"],
 )
 
 cc_library(
@@ -551,13 +530,9 @@ cc_library(
     alwayslink = True,
 )
 
-xla_cc_test(
+build_test(
     name = "tuple_test_no_impl",
-    srcs = [],
-    deps = [
-        ":no_impl_test_main",
-        ":tuple_impl_test_lib",
-    ],
+    targets = [":tuple_impl_test_lib"],
 )
 
 cc_library(

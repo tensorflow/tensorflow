@@ -1,3 +1,4 @@
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/python/pjrt_ifrt:pjrt_ifrt.bzl", "pjrt_ifrt_package_groups")
 load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
@@ -145,14 +146,9 @@ cc_library(
 )
 
 # TODO(hyeontaek): Move this target out of pjrt_ifrt.
-xla_cc_test(
+build_test(
     name = "xla_executable_test_no_impl",
-    srcs = [],
-    deps = [
-        ":xla_executable_impl_test_lib",
-        "//xla/python/ifrt:no_impl_test_main",
-        "@com_google_googletest//:gtest",
-    ],
+    targets = [":xla_executable_impl_test_lib"],
 )
 
 # TODO(hyeontaek): Move this target out of pjrt_ifrt.
