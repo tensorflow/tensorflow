@@ -321,7 +321,7 @@ class BroadcastR3ImplicitTest
     : public BroadcastSimpleTest,
       public ::testing::WithParamInterface<R3ImplicitBroadcastSpec> {};
 
-XLA_TEST_P(BroadcastR3ImplicitTest, Doit) {
+TEST_P(BroadcastR3ImplicitTest, Doit) {
   const R3ImplicitBroadcastSpec& spec = GetParam();
   XlaBuilder builder(TestName());
 
@@ -564,7 +564,7 @@ class BroadcastR2ImplicitTest
 // Test r2 op1 r2_implicit_1 op2 r2_implicit_2
 // where R2 is a rank-2 operand, and r2_implicit_2 are two
 // rank-2 operands with degenerate dimensions:
-XLA_TEST_P(BroadcastR2ImplicitTest, Doit) {
+TEST_P(BroadcastR2ImplicitTest, Doit) {
   const R2ImplicitBroadcastSpec& spec = GetParam();
 
   XlaBuilder builder(TestName());

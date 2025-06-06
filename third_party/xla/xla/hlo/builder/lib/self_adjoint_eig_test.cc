@@ -288,7 +288,7 @@ class RandomEighTest : public ClientLibraryTestRunnerMixin<
                            HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
                        public ::testing::WithParamInterface<EighTestCase> {};
 
-XLA_TEST_P(RandomEighTest, Random) {
+TEST_P(RandomEighTest, Random) {
   XlaBuilder builder(TestName());
   int64_t size = GetParam();
   Array2D<float> a_val = GenerateRandomSymmetricMatrix(size);

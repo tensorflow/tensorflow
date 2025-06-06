@@ -241,40 +241,40 @@ using ExhaustiveF32BinaryTest = Exhaustive32BitOrMoreBinaryTest<F32>;
 using ExhaustiveF64BinaryTest = Exhaustive32BitOrMoreBinaryTest<F64>;
 
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_F8E4M3FN)
-#define BINARY_TEST_F8E4M3FN(test_name, ...)          \
-  XLA_TEST_P(ExhaustiveF8E4M3FNBinaryTest, test_name) \
+#define BINARY_TEST_F8E4M3FN(test_name, ...)      \
+  TEST_P(ExhaustiveF8E4M3FNBinaryTest, test_name) \
   __VA_ARGS__
 #else
 #define BINARY_TEST_E4M3FN(test_name, ...)
 #endif
 
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_F8E5M2)
-#define BINARY_TEST_F8E5M2(test_name, ...)          \
-  XLA_TEST_P(ExhaustiveF8E5M2BinaryTest, test_name) \
+#define BINARY_TEST_F8E5M2(test_name, ...)      \
+  TEST_P(ExhaustiveF8E5M2BinaryTest, test_name) \
   __VA_ARGS__
 #else
 #define BINARY_TEST_E5M2(test_name, ...)
 #endif
 
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
-#define BINARY_TEST_F16(test_name, ...)          \
-  XLA_TEST_P(ExhaustiveF16BinaryTest, test_name) \
+#define BINARY_TEST_F16(test_name, ...)      \
+  TEST_P(ExhaustiveF16BinaryTest, test_name) \
   __VA_ARGS__
 #else
 #define BINARY_TEST_F16(test_name, ...)
 #endif
 
-#define BINARY_TEST_BF16(test_name, ...)          \
-  XLA_TEST_P(ExhaustiveBF16BinaryTest, test_name) \
+#define BINARY_TEST_BF16(test_name, ...)      \
+  TEST_P(ExhaustiveBF16BinaryTest, test_name) \
   __VA_ARGS__
 
-#define BINARY_TEST_F32(test_name, ...)          \
-  XLA_TEST_P(ExhaustiveF32BinaryTest, test_name) \
+#define BINARY_TEST_F32(test_name, ...)      \
+  TEST_P(ExhaustiveF32BinaryTest, test_name) \
   __VA_ARGS__
 
 #if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
-#define BINARY_TEST_F64(test_name, ...)          \
-  XLA_TEST_P(ExhaustiveF64BinaryTest, test_name) \
+#define BINARY_TEST_F64(test_name, ...)      \
+  TEST_P(ExhaustiveF64BinaryTest, test_name) \
   __VA_ARGS__
 #else
 #define BINARY_TEST_F64(test_name, ...)
