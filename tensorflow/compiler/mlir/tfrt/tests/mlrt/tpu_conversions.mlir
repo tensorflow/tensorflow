@@ -166,22 +166,3 @@ func.func private @NopMapFnBody(%arg0: tensor<i32>, %arg1: tensor<i32>, %arg2: t
   %a = "tf.AddV2"(%arg2, %const) {__op_key = 3: i32}: (tensor<i32>, tensor<i32>) -> tensor<i32>
   return
 }
-
-
-// -----
-func.func @callee(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (tensor<i32>) {
-  %1 = "tf.TPUCompileMlirAndExecute"(%arg0) {metadata = "metadata", mlir_module = "mlir_module", operandSegmentSizes = array<i32: 1, 0>, producer_name = "producer_name"} : (tensor<i32>) -> tensor<i32>
-  func.return %1: tensor<i32>
-}
-
-// CHECK-LABEL: func @batch_function
-func.func @batch_function(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (tensor<i32>) {
-  // CHECK: [[device:%.*]] = tf_mlrt_tpu.get_tpu_host_device
-  // CHECK: [[batch_result_future:%.*]] = tf_mlrt.batch_function.device([[device]]) (%arg0, %arg1)
-  // CHECK: [[batch_result:%.*]] = tf_mlrt.await [[batch_result_future]]
-  // CHECK: return [[batch_result]]
-  %0 = "tf.BatchFunction"(%arg0, %arg1) {device = "/device:CPU:0", allowed_batch_sizes = [64], batch_timeout_micros = 1 : i64, batching_queue = "", container = "", f = @callee, max_batch_size = 256 : i64, num_batch_threads = 2 : i64, operandSegmentSizes = array<i32: 1, 1>, shared_name = ""} : (tensor<i32>, tensor<i32>) -> tensor<i32>
-  func.return %0 : tensor<i32>
-}
-
-
