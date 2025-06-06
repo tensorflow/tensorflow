@@ -257,7 +257,7 @@ INSTANTIATE_TEST_CASE_P(
 
 using GroupedConvolutionTest = HloTestBase;
 
-XLA_TEST_F(GroupedConvolutionTest, BackwardInputConvolution) {
+TEST_F(GroupedConvolutionTest, BackwardInputConvolution) {
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule convolution_module
 

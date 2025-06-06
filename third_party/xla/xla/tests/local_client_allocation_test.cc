@@ -35,7 +35,7 @@ class LocalClientAllocationTest : public LocalClientTestBase {
   ErrorSpec error_spec_{0.0001};
 };
 
-XLA_TEST_F(LocalClientAllocationTest, AddVectors) {
+TEST_F(LocalClientAllocationTest, AddVectors) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(&builder, {0.0f, 1.0f, 2.0f});
   auto y = ConstantR1<float>(&builder, {2.0f, 3.0f, 4.0f});
@@ -68,7 +68,7 @@ XLA_TEST_F(LocalClientAllocationTest, AddVectors) {
   EXPECT_EQ(deallocation_count_before + 1, allocator_->deallocation_count());
 }
 
-XLA_TEST_F(LocalClientAllocationTest, RunOnDevices) {
+TEST_F(LocalClientAllocationTest, RunOnDevices) {
   // Run a computation on every device on the system. Verify that allocation
   // occurs on the proper device.
   XlaBuilder builder(TestName());
