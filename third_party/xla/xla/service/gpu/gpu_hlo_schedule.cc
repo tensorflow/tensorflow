@@ -86,6 +86,13 @@ using tensorflow::profiler::ProfiledInstructionsProto;
 
 namespace {
 
+bool IsUnifiedAnalyticalModelEnabled(const HloModule& module) {
+  return module.config()
+             .debug_options()
+             .xla_gpu_enable_analytical_sol_latency_estimator() ||
+         IsPassEnabledAtOptimizationEffort<LatencyHidingScheduler>(module);
+}
+
 bool ShouldScheduleAsEarlyAsPossible(const HloInstruction& instr) {
   switch (instr.opcode()) {
     case HloOpcode::kAllReduceStart:
@@ -491,7 +498,7 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
         ShapeSizeBytesFunction(pointer_size), module.entry_computation());
   }
 
-  if (options.xla_gpu_enable_analytical_sol_latency_estimator()) {
+  if (IsUnifiedAnalyticalModelEnabled(module)) {
     VLOG(1) << "Using Speed-of-Light (SoL) analytical latency estimator";
     auto cost_analysis =
         std::make_unique<GpuHloCostAnalysis>(GpuHloCostAnalysis::Options{
@@ -501,10 +508,17 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
             /*count_multiple_input_accesses=*/true,
         });
     CHECK_OK(module.entry_computation()->Accept(cost_analysis.get()));
-    return *SolLatencyEstimator::Create(
+    auto sol_latency_estimator = SolLatencyEstimator::Create(
         config, std::move(gpu_latency_estimator), gpu_device_info,
         ShapeSizeBytesFunction(pointer_size), module.entry_computation(),
         std::move(cost_analysis));
+    if (sol_latency_estimator.ok()) {
+      return std::move(*sol_latency_estimator);
+    }
+    LOG(WARNING) << "Cannot construct unified latency estimator, falling back "
+                    "to T-shirt sizes. Reason: "
+                 << sol_latency_estimator.status();
+    return std::make_unique<GpuLatencyEstimator>(pointer_size);
   }
   return gpu_latency_estimator;
 }
