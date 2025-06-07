@@ -89,6 +89,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/utility",
         "@local_tsl//tsl/platform:numbers",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
     ],
 )
 
