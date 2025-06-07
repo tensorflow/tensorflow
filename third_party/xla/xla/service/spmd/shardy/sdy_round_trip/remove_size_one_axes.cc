@@ -107,6 +107,10 @@ TensorShardingAttr removeSizeOneAxes(TensorShardingAttr sharding,
 
 void removeSizeOneManualAxes(ManualComputationOp manualComputationOp,
                              const SymbolTable& symbolTable) {
+  if (manualComputationOp.getInShardings().empty() &&
+      manualComputationOp.getOutShardings().empty()) {
+    return;
+  }
   MeshAttr mesh = mlir::sdy::getCommonMesh(
       manualComputationOp.getInShardings().getShardings(),
       manualComputationOp.getOutShardings().getShardings(), symbolTable);
