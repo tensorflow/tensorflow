@@ -54,7 +54,8 @@ absl::StatusOr<bool> AddOriginalValue::Run(
         }
       } else {
         for (auto& leaf : original_value->leaves()) {
-          leaf.second = {std::string(instruction->name()), leaf.first};
+          leaf.second = {std::string(instruction->name()), leaf.first,
+                         /*call_history=*/""};
         }
       }
       instruction->set_original_value(original_value);
