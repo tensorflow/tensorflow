@@ -491,7 +491,7 @@ void AppendFeatureValues(const ContainerType& container, Feature* feature) {
   // types that we want to convert (e.g. absl::string_view -> std::string).
   for (const auto& elt : container) {
     if constexpr (internal::is_string<FeatureType>::value) {
-      *values->Add() = std::string(elt);
+      *values->Add() = elt;
     } else {
       *values->Add() = elt;
     }
