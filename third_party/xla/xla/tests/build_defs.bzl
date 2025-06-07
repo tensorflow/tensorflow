@@ -524,13 +524,9 @@ def generate_backend_test_macros(backends = []):  # buildifier: disable=unnamed-
         native.cc_library(
             name = "test_macros_%s" % backend,
             testonly = True,
-            srcs = ["test_macros.cc"],
             hdrs = ["test_macros.h"],
             copts = [
                 "-DXLA_PLATFORM=\\\"%s\\\"" % backend.upper(),
                 "-DXLA_DISABLED_MANIFEST=\\\"%s\\\"" % manifest,
-            ],
-            deps = [
-                "@local_tsl//tsl/platform:logging",
             ],
         )

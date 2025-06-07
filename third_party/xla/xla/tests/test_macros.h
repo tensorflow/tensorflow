@@ -62,15 +62,6 @@ limitations under the License.
 
 // clang-format on
 
-namespace xla {
-
-inline const char** TestPlatform() {
-  static const char* test_platform = nullptr;
-  return &test_platform;
-}
-
-}  // namespace xla
-
 #define XLA_TEST_F(test_fixture, test_name) TEST_F(test_fixture, test_name)
 
 #define XLA_TEST_P(test_case_name, test_name) TEST_P(test_case_name, test_name)
