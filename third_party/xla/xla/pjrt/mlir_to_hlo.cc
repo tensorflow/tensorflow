@@ -21,15 +21,14 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "llvm/ADT/STLFunctionalExtras.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Bytecode/BytecodeWriter.h"
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
@@ -37,6 +36,8 @@ limitations under the License.
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MLProgram/IR/MLProgram.h"
+#include "mlir/Dialect/Shape/IR/Shape.h"
+#include "mlir/IR/AsmState.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -62,7 +63,8 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/dialect/Version.h"
 #include "stablehlo/transforms/Passes.h"
-#include "xla/debug_options_flags.h"
+#include "xla/client/executable_build_options.h"
+#include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/translate/stablehlo.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
@@ -72,8 +74,9 @@ limitations under the License.
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_export.h"
 #include "xla/service/spmd/shardy/utils.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -88,10 +91,50 @@ void RegisterAllHloDialects(mlir::DialectRegistry& registry) {
   mlir::stablehlo::registerAllDialects(registry);
 }
 
+// Returns true if the module has at least one GSPMD attribute or op, like an
+// `mhlo.sharding` attribute or `Sharding` custom call.
+// TODO(b/420837831): delete this once we don't fall back to GSPMD.
+bool HasGspmdAttrsOrOps(mlir::ModuleOp module) {
+  for (auto func : module.getOps<mlir::func::FuncOp>()) {
+    for (int64_t arg_index = 0; arg_index < func.getNumArguments();
+         ++arg_index) {
+      if (func.getArgAttr(arg_index, sdy::kXlaShardingAttr)) {
+        return true;
+      }
+    }
+    for (int64_t result_index = 0; result_index < func.getNumResults();
+         ++result_index) {
+      if (func.getResultAttr(result_index, sdy::kXlaShardingAttr)) {
+        return true;
+      }
+    }
+  }
+  // Check the module for a `Sharding` custom call.
+  bool has_gspmd = false;
+  module->walk([&has_gspmd](mlir::stablehlo::CustomCallOp custom_call) {
+    if (custom_call.getCallTargetName() == sdy::kShardingCustomCallTargetName &&
+        custom_call->hasAttr(sdy::kXlaShardingAttr)) {
+      has_gspmd = true;
+      return mlir::WalkResult::interrupt();
+    }
+    return mlir::WalkResult::advance();
+  });
+  return has_gspmd;
+}
+
+// Check if the module has any sort of Shardy mesh:
+// - `mesh`
+// - `maximal_mesh_{X}`
+// - `empty_mesh`
+// TODO(b/420837831): delete this once we don't fall back to GSPMD.
+bool HasShardyMesh(mlir::ModuleOp module) {
+  return !module.getOps<mlir::sdy::MeshOp>().empty();
+}
+
 absl::Status MlirToXlaComputation(mlir::ModuleOp module,
                                   XlaComputation& xla_computation,
                                   bool use_tuple_args, bool return_tuple,
-                                  bool use_shardy) {
+                                  ExecutableBuildOptions* exec_build_options) {
   mlir::MLIRContext* context = module->getContext();
   mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
   {
@@ -116,6 +159,20 @@ absl::Status MlirToXlaComputation(mlir::ModuleOp module,
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::stablehlo_ext::createSinkConstantsToControlFlowPass());
 
+    // TODO(b/420837831): Remove this once we don't need to fall back to GSPMD.
+    if (exec_build_options && exec_build_options->use_shardy_partitioner() &&
+        HasGspmdAttrsOrOps(module)) {
+      LOG(WARNING)
+          << "Module has GSPMD attrs or ops, but Shardy is enabled. Disabling "
+             "Shardy and falling back to using GSPMD propagation.";
+      exec_build_options->set_use_shardy_partitioner(false);
+      if (HasShardyMesh(module)) {
+        // Shardy is not enabled, but the module has shardy ops. Likely due to
+        // export loading a GSPMD checkpoint. Fall back to GSPMD.
+        TF_RETURN_IF_ERROR(ExportShardyForGSPMD(module));
+      }
+    }
+
     // Export an StableHLO + Shardy module into a pure StableHLO module, to
     // prepare for a round trip to HLO, such that the Shardy ops and attributes
     // are preserved when going back to MLIR for Shardy propagation. This is a
@@ -138,7 +195,7 @@ absl::Status MlirToXlaComputation(mlir::ModuleOp module,
 
   // TODO(b/345414638): Delete when we move Shardy as the first pass in the
   // XLA pipeline.
-  if (use_tuple_args && use_shardy) {
+  if (use_tuple_args && exec_build_options->use_shardy_partitioner()) {
     // Shardy can't handle tuple args when round-tripping. So delay using
     // tuples until after Shardy is run.
     sdy::setFrontendAttribute(module, sdy::kUseTupleArgs,
@@ -186,7 +243,8 @@ absl::Status ParseMlirModuleStringAndConvertToXlaComputation(
   TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                       xla::ParseMlirModuleString(mlir_module_str, context));
   return xla::MlirToXlaComputation(*module, xla_computation, use_tuple_args,
-                                   return_tuple, /*use_shardy=*/false);
+                                   return_tuple,
+                                   /*exec_build_options*/ nullptr);
 }
 
 absl::Status ExportShardyForHloRoundTrip(mlir::ModuleOp module) {
