@@ -71,7 +71,9 @@ struct LowerForall : mlir::OpRewritePattern<mlir::scf::ForallOp> {
     llvm::SmallVector<mlir::Value, 3> steps(
         num_dims, builder.create<mlir::arith::ConstantIndexOp>(1));
     llvm::SmallVector<mlir::Value, 3> ubs;
-    for (int64_t size : op.getStaticUpperBound()) {
+    // The induction variables x-y-z should be in minor-to-major order so we
+    // must reverse the order.
+    for (int64_t size : llvm::reverse(op.getStaticUpperBound())) {
       ubs.push_back(builder.create<mlir::arith::ConstantIndexOp>(size));
     }
 
@@ -82,8 +84,9 @@ struct LowerForall : mlir::OpRewritePattern<mlir::scf::ForallOp> {
                          mlir::ValueRange iter_args) {
           mlir::ImplicitLocOpBuilder nested_b(nested_loc, nested_builder);
           mlir::IRMapping mapping;
+          // Map the reversed IVs to the original arguments.
           for (const auto& [old_arg, iv] :
-               llvm::zip(old_block->getArguments(), ivs)) {
+               llvm::zip(old_block->getArguments(), llvm::reverse(ivs))) {
             mapping.map(old_arg, iv);
           }
           for (const auto& [region_arg, operand] :
