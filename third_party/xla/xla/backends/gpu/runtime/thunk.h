@@ -515,6 +515,9 @@ class Thunk {
       absl::AnyInvocable<absl::StatusOr<std::unique_ptr<Thunk>>(
           const ThunkProto&) const>;
 
+ protected:
+  absl::StatusOr<ThunkProto> GetBaseProto() const;
+
  private:
   Kind kind_;
   std::string profile_annotation_;
