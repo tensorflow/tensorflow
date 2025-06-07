@@ -75,6 +75,11 @@ class DeviceAssignment : public Array2D<int64_t> {
       const DeviceAssignmentProto& proto);
 
   std::string ToString() const;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const DeviceAssignment& assignment) {
+    return sink.Append(assignment.ToString());
+  }
 };
 
 // A generic implementation of the XLA computation placer, which assigns device
