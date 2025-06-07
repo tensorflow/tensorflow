@@ -28,7 +28,6 @@ limitations under the License.
 #ifndef XLA_TESTS_TEST_MACROS_H_
 #define XLA_TESTS_TEST_MACROS_H_
 
-#define DISABLED_ON_INTERPRETER_TSAN(X) X
 #define DISABLED_ON_DEBUG(X) X
 #define DISABLED_ON_TPU(X) X
 
@@ -40,15 +39,6 @@ limitations under the License.
 // We turn off clang-format so we can indent the macros for readability.
 // clang-format off
 
-
-#ifdef XLA_TEST_BACKEND_INTERPRETER
-
-#ifdef THREAD_SANITIZER
-# undef DISABLED_ON_INTERPRETER_TSAN
-# define DISABLED_ON_INTERPRETER_TSAN(X) XLA_TEST_PASTE(DISABLED_, X)
-#endif  // THREAD_SANITIZER
-
-#endif  // XLA_TEST_BACKEND_INTERPRETER
 
 #ifndef NDEBUG
 # undef DISABLED_ON_DEBUG
