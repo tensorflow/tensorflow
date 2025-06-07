@@ -1273,6 +1273,9 @@ class Operation(pywrap_tf_session.PyOperation):
 
     self._init_outputs()
     self._id_value = self.graph._add_op(self)  # pylint: disable=protected-access
+    # Store the creation stack trace in case the underlying TF_Operation is
+    # deallocated. The C++ API may return a dangling reference otherwise.
+    self._creation_traceback = pywrap_tf_session.TF_OperationGetStackTrace(self._c_op)
 
   def _control_flow_post_processing(self, input_tensors=None) -> None:
     """Add this op to its control flow context.
@@ -1527,9 +1530,9 @@ class Operation(pywrap_tf_session.PyOperation):
   @property
   def traceback(self):
     """Returns the call stack from when this operation was constructed."""
-    # FIXME(b/225423591): This object contains a dangling reference if _c_op
-    # goes out of scope.
-    return pywrap_tf_session.TF_OperationGetStackTrace(self._c_op)
+    # The C op may be deallocated, so return the captured traceback instead of
+    # querying it each time.
+    return self._creation_traceback
 
   @property
   def node_def(self) -> node_def_pb2.NodeDef:
