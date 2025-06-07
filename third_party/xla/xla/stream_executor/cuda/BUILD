@@ -14,14 +14,19 @@ load(
 load("//xla/tests:build_defs.bzl", "xla_test")
 load(
     "//xla/tsl:tsl.bzl",
-    # copybara:comment_begin
-    "if_cuda_tools",
-    # copybara:comment_end
     "if_google",
     "if_windows",
     "internal_visibility",
     "tsl_copts",
 )
+
+# copybara:comment_begin
+load(
+    "//xla/tsl:tsl.default.bzl",
+    "if_cuda_tools",
+)
+
+# copybara:comment_end
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load(
     "//xla/tsl/platform:build_config_root.bzl",

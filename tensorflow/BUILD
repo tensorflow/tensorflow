@@ -1091,6 +1091,7 @@ bzl_library(
         "@local_xla//third_party/llvm_openmp:openmp_bzl",
         "@local_xla//third_party/py/rules_pywrap:pywrap_bzl",
         "@local_xla//xla/tsl:tsl_bzl",
+        "@local_xla//xla/tsl:tsl_default_bzl",
         "@local_xla//xla/tsl/mkl:build_defs_bzl",
         "@rules_java//java:rules",
     ],
