@@ -836,6 +836,10 @@ std::string ToString(const IndexingMap& indexing_map,
                      absl::Span<const std::string> range_names,
                      absl::Span<const std::string> rt_names) {
   std::stringstream ss;
+  if (indexing_map.IsUndefined()) {
+    ss << "UNDEFINED\n";
+    return ss.str();
+  }
   if (indexing_map.IsKnownEmpty()) {
     ss << "KNOWN EMPTY\n";
     return ss.str();
