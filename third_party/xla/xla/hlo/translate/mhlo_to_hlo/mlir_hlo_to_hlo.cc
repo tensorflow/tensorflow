@@ -1349,7 +1349,7 @@ LogicalResult ExportXlaOp(mlir::stablehlo::ConvolutionOp op,
       xla::ConvertConvDimensionNumbers(op.getDimensionNumbers()),
       Convertuint64_t(op.getFeatureGroupCount()),
       Convertuint64_t(op.getBatchGroupCount()),
-      Unwrap(Convert_precision_config(op.getPrecisionConfig())),
+      Unwrap(Convert_precision_config_stablehlo(op.getPrecisionConfig())),
       preferred_element_type, op.getWindowReversal());
   value_map[op] = xla_result;
   return mlir::success();
@@ -2605,7 +2605,8 @@ LogicalResult ExportXlaOp(DotGeneralOp op, OpLoweringContext ctx) {
       xla::ConvertMlirTypeToPrimitiveType(getElementTypeOrSelf(op.getType()));
 
   // Precision Config / Algorithm
-  auto precision_config = Convert_precision_config(op.getPrecisionConfig());
+  auto precision_config =
+      Convert_precision_config_stablehlo(op.getPrecisionConfig());
   if (op.getAlgorithmAttr()) {
     absl::StatusOr<xla::PrecisionConfig::Algorithm> algorithm =
         xla::ConvertDotAlgorithm(op.getAlgorithmAttr());
@@ -2791,10 +2792,14 @@ LogicalResult ExportXlaOp(ReduceWindowOp op, OpLoweringContext ctx) {
     return failure();
   }
 
+  constexpr ArrayRef<int64_t> kEmptyArray = {};
+
   xla::XlaOp result = xla::ReduceWindowWithGeneralPadding(
       operands, init_values, body, op.getWindowDimensions(),
-      op.getWindowStrides().value(), op.getBaseDilations().value(),
-      op.getWindowDilations().value(), Convert_padding(op.getPadding()));
+      op.getWindowStrides().value_or(kEmptyArray),
+      op.getBaseDilations().value_or(kEmptyArray),
+      op.getWindowDilations().value_or(kEmptyArray),
+      Convert_padding(op.getPadding()));
 
   if (op.getNumResults() == 1) {
     value_map[op.getResult(0)] = result;
@@ -2885,10 +2890,12 @@ LogicalResult ExportXlaOp(SelectAndScatterOp op, OpLoweringContext ctx) {
   if (failed(GetXlaOp(op.getInitValue(), value_map, &init_value, op)))
     return failure();
 
+  constexpr ArrayRef<int64_t> kEmptyArray = {};
+
   value_map[op] = xla::SelectAndScatterWithGeneralPadding(
-      operand, select, op.getWindowDimensions().value(),
-      op.getWindowStrides().value(), Convert_padding(op.getPadding()), source,
-      init_value, scatter);
+      operand, select, op.getWindowDimensions().value_or(kEmptyArray),
+      op.getWindowStrides().value_or(kEmptyArray),
+      Convert_padding(op.getPadding()), source, init_value, scatter);
   return success();
 }
 
@@ -6034,7 +6041,6 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     return failure();
   }
   computation = computation_or.value();
-  // LLVM_DEBUG(llvm::dbgs() << "Created: " << result->name() << "\n");
   return success();
 }
 

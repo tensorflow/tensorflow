@@ -114,5 +114,6 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@stablehlo//:register",
         "@stablehlo//:stablehlo_passes",
+        "@stablehlo//:stablehlo_passes_optimization",
     ],
 )
