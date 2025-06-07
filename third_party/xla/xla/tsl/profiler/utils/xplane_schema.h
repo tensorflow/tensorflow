@@ -354,7 +354,8 @@ enum StatType {
   kCoreDetails,
   kAllReduceId,
   kAllReduceUniqueId,
-  kLastStatType = kAllReduceUniqueId,
+  kMlIRProgram,
+  kLastStatType = kMlIRProgram,
 };
 
 enum MegaScaleStatType : uint8_t {
