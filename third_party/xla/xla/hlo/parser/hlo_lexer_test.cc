@@ -147,6 +147,25 @@ TEST(HloLexerTest, NegativeButNoDigitsError) {
   HloLexer lexer("-,-1");
   EXPECT_EQ(lexer.Lex(), TokKind::kError);
 }
+// Regression test for b/423045948.
+TEST(HloLexerTest, NonNegativeNumberWithoutNullTerminatingCharacter) {
+  std::string input = "123";
+  input[3] = '4';  // Overwriting the NULL character with a digit intentionally.
+  HloLexer lexer(input);
+  ASSERT_EQ(lexer.Lex(), TokKind::kInt);
+  // Lexed value should not be 1234. Should not result in a crash.
+  EXPECT_EQ(lexer.GetInt64Val(), 123);
+}
+
+// Regression test for b/423045948.
+TEST(HloLexerTest, NegativeNumberWithoutNullTerminatingCharacter) {
+  std::string input = "-123";
+  input[4] = '4';  // Overwriting the NULL character with a digit intentionally.
+  HloLexer lexer(input);
+  ASSERT_EQ(lexer.Lex(), TokKind::kInt);
+  // Lexed value should not be -1234. Should not result in a crash.
+  EXPECT_EQ(lexer.GetInt64Val(), -123);
+}
 
 }  // namespace
 }  // namespace xla
