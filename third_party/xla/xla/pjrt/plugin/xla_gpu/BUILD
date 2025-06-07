@@ -45,7 +45,7 @@ cc_library(
 xla_test(
     name = "xla_gpu_pjrt_client_test",
     srcs = ["xla_gpu_pjrt_client_test.cc"],
-    backends = ["gpu_any"],
+    backends = ["nvgpu_any"],
     tags = [
         "gpu",
         "no_oss",

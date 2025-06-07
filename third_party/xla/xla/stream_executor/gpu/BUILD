@@ -435,7 +435,7 @@ cc_library(
 xla_test(
     name = "gpu_cudamallocasync_allocator_test",
     srcs = ["gpu_cudamallocasync_allocator_test.cc"],
-    backends = ["gpu_any"],
+    backends = ["nvgpu_any"],
     tags = ["cuda-only"],
     deps = [
         ":gpu_cudamallocasync_allocator",
