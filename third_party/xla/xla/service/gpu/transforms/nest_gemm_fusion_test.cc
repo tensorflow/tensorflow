@@ -898,6 +898,71 @@ CHECK-SAME: dimensions={0,2,1}
       IsOkAndHolds(true));
 }
 
+TEST_F(NestGemmFusionTest, BitcastsAreHoistedDownThroughTransposes) {
+  absl::string_view hlo = R"(
+triton_dot {
+  p0 = f32[2,3,7] parameter(0)
+  p1 = f32[2,5,7] parameter(1)
+  dot = f32[2,3,5] dot(p0, p1),
+    lhs_contracting_dims={2}, lhs_batch_dims={0},
+    rhs_contracting_dims={2}, rhs_batch_dims={0}
+  bitcast = f32[6,5] bitcast(dot)
+  ROOT transpose = f32[5,6] transpose(bitcast), dimensions={1,0}
+}
+
+ENTRY e {
+  p0 = f32[2,3,7] parameter(0)
+  p1 = f32[2,5,7] parameter(1)
+  ROOT result = f32[5,6] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":16,"block_n":16,"block_k":8,
+    "split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  EXPECT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
+              IsOkAndHolds(true));
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  EXPECT_THAT(
+      RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
+CHECK:      ROOT transpose
+CHECK-SAME: f32[5,2,3]{2,1,0} transpose
+CHECK-SAME: dimensions={2,0,1}
+)"),
+      IsOkAndHolds(true));
+}
+
+TEST_F(NestGemmFusionTest, BitcastsAreHoistedDownThroughBroadcasts) {
+  absl::string_view hlo = R"(
+triton_dot {
+  p0 = f32[3,7] parameter(0)
+  p1 = f32[5,7] parameter(1)
+  dot = f32[3,5] dot(p0, p1), 
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  bitcast = f32[15] bitcast(dot)
+  ROOT broadcast = f32[2,15,6] broadcast(bitcast), dimensions={1}
+}
+
+ENTRY e {
+  p0 = f32[3,7] parameter(0)
+  p1 = f32[5,7] parameter(1)
+  ROOT result = f32[2,15,6] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":16,"block_n":16,"block_k":8,
+    "split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  EXPECT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
+              IsOkAndHolds(true));
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  EXPECT_THAT(
+      RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
+CHECK:      ROOT broadcast
+CHECK-SAME: f32[2,3,5,6]{3,2,1,0} broadcast
+CHECK-SAME: dimensions={1,2}
+)"),
+      IsOkAndHolds(true));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
