@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "xla/service/conditional_code_motion.h"
 
+#include <cstdint>
 #include <optional>
 #include <sstream>
 #include <string>
-#include <utility>
 
 #include <gmock/gmock.h>
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -33,9 +36,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace conditional_opt {
@@ -1949,12 +1950,15 @@ HloModule xla_computation
 }
 
 ENTRY %xla_computation  {
-  %parameter.0 = f32[] parameter(0)
+  %parameter.0 = f32[5] parameter(0)
+  %offset = s32[] parameter(3)
+  %ds = f32[1] dynamic-slice(%parameter.0, %offset), dynamic_slice_sizes={1}
+  %r = f32[] reshape(%ds)
   %parameter.1 = ((f32[], f32[])) parameter(1)
   %parameter.2 = pred[] parameter(2)
   %constant.13862 = f32[] constant(0.00025)
   %constant.13863 = f32[] constant(0.97)
-  %floor.145 = f32[]{:T(256)} floor(f32[]{:T(256)} %parameter.0)
+  %floor.145 = f32[]{:T(256)} floor(f32[]{:T(256)} %r)
   %power.1 = f32[] power(f32[] %constant.13863, f32[]{:T(256)} %floor.145)
   %multiply.13463 = f32[] multiply(f32[] %constant.13862, f32[] %power.1)
   %tuple.87 = (f32[]) tuple(f32[] %multiply.13463)
@@ -1968,7 +1972,7 @@ ENTRY %xla_computation  {
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Conditional());
   EXPECT_EQ(root->branch_computation(0)->instruction_count(), 7);
-  EXPECT_EQ(root->branch_computation(1)->instruction_count(), 9);
+  EXPECT_EQ(root->branch_computation(1)->instruction_count(), 12);
   // Expect the power and multiply from ENTRY are moved to the false branch of
   // conditional.1.
   const HloInstruction* conditional_false =
@@ -1978,10 +1982,14 @@ ENTRY %xla_computation  {
       op::Tuple(
           op::Multiply(
               op::Constant(),
-              op::Power(op::Constant(), op::Floor(op::GetTupleElement()))),
+              op::Power(op::Constant(),
+                        op::Floor(op::Reshape(op::DynamicSlice(
+                            op::GetTupleElement(), op::GetTupleElement()))))),
           op::Reshape(op::Multiply(
               op::Constant(),
-              op::Power(op::Constant(), op::Floor(op::GetTupleElement()))))));
+              op::Power(op::Constant(), op::Floor(op::Reshape(op::DynamicSlice(
+                                            op::GetTupleElement(),
+                                            op::GetTupleElement()))))))));
 }
 // Move partially used operands inside empty conditional branches.
 TEST_F(ConditionalCodeMotionTest, MovePartialyUsedOperands3) {

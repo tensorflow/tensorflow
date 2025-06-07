@@ -374,8 +374,8 @@ XLA_ERROR_WITH_STRCAT_AND_BACKTRACE(Internal);
 // uniformly replaced with "indentation".
 std::string Reindent(absl::string_view original, absl::string_view indentation);
 
-template <typename Container>
-int64_t PositionInContainer(const Container& container, int64_t value) {
+template <typename Container, typename Value>
+int64_t PositionInContainer(const Container& container, const Value& value) {
   return std::distance(container.begin(), absl::c_find(container, value));
 }
 
@@ -840,8 +840,8 @@ bool IsInt32(T x) {
   return static_cast<int32_t>(x) == x;
 }
 
-template <typename T>
-absl::Status EraseElementFromVector(std::vector<T>* container, const T& value) {
+template <typename Container, typename T>
+absl::Status EraseElementFromVector(Container* container, const T& value) {
   // absl::c_find returns a const_iterator which does not seem to work on
   // gcc 4.8.4, and this breaks the ubuntu/xla_gpu build bot.
   auto it = std::find(container->begin(), container->end(), value);
