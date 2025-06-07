@@ -1,6 +1,7 @@
 ################################################################################
 ARG BASE_IMAGE=ubuntu:22.04@sha256:58b87898e82351c6cf9cf5b9f3c20257bb9e2dcf33af051e12ce532d7f94e3fe
 FROM $BASE_IMAGE AS devel
+RUN echo "BASE_IMAGE: $BASE_IMAGE"
 # See https://docs.docker.com/reference/dockerfile/#understand-how-arg-and-from-interact
 # on why we cannot reference BASE_IMAGE again unless we declare it again.
 ################################################################################
