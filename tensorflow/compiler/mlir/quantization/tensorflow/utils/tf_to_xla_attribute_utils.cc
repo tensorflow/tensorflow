@@ -24,13 +24,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/core/c/builtin_op_data.h"
 #include "tensorflow/compiler/mlir/lite/kernels/padding.h"
 #include "tensorflow/compiler/mlir/quantization/common/tf_attrs_and_constraints.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/tf_constant_fold.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/constant_fold.h"
 #include "xla/xla_data.pb.h"
 
 namespace mlir::quant {
 namespace {
 
-using ::mlir::tf_quant::ConstantFoldOpIfPossible;
 using ::mlir::tf_quant::Create1DConstValue;
 using ::mlir::tf_quant::CreateConstValue;
 using ::mlir::tf_quant::CreateScalarConstValue;

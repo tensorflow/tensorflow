@@ -153,12 +153,12 @@ cc_library(
 )
 
 cc_library(
-    name = "tf_constant_fold",
+    name = "constant_fold",
     srcs = [
-        "tf_constant_fold.cc",
+        "constant_fold.cc",
     ],
     hdrs = [
-        "tf_constant_fold.h",
+        "constant_fold.h",
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
@@ -174,53 +174,12 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "tf_constant_fold_test",
-    srcs = ["tf_constant_fold_test.cc"],
-    deps = [
-        ":tf_constant_fold",
-        "//tensorflow/compiler/mlir/quantization/common:tf_attrs_and_constraints",
-        "//tensorflow/compiler/mlir/quantization/common:tf_test_base",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/core:tensorflow",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-    ],
-)
-
-cc_library(
-    name = "constant_fold",
-    srcs = [
-        "constant_fold.cc",
-    ],
-    hdrs = [
-        "constant_fold.h",
-    ],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//tensorflow/compiler/mlir/quantization/common:lift_as_function_call",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:constant_fold_utils",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-    ],
-)
-
-tf_cc_test(
     name = "constant_fold_test",
     srcs = ["constant_fold_test.cc"],
     deps = [
         ":constant_fold",
-        "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
-        "//tensorflow/compiler/mlir/quantization/common:test_base",
+        "//tensorflow/compiler/mlir/quantization/common:tf_attrs_and_constraints",
+        "//tensorflow/compiler/mlir/quantization/common:tf_test_base",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
