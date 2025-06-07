@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -3278,7 +3279,7 @@ class AllReduceTest
   }
 
   static absl::StatusOr<InputsOutputs> BuildTestInputsOutputs(
-      const HloModule& module, int64_t num_replicas) {
+      const HloModule& module, int64_t num_replicas, int64_t num_iterations) {
     std::vector<Array<float>> inputs;
     std::vector<Literal> input_literals;
     const int64_t num_elements =
@@ -3288,7 +3289,8 @@ class AllReduceTest
       input.FillRandom(1.0f, 10.0f, /*seed=*/i);
       input_literals.push_back(LiteralUtil::CreateFromArray(input));
     }
-    std::vector<Array<float>> expected_outputs;
+    std::vector<Array<float>> expected_outputs(num_replicas,
+                                               Array<float>({num_elements}));
     std::vector<Literal> expected_output_literals;
     const HloInstruction* const instr =
         FindInstruction(&module, HloOpcode::kAllReduce);
@@ -3308,15 +3310,25 @@ class AllReduceTest
                                          replica_ids.end());
       }
     }
-    for (int i = 0; i < num_replicas; ++i) {
-      auto& expected_output =
-          expected_outputs.emplace_back(Array<float>({num_elements}));
-      // Sum inputs from each replica group.
-      expected_output.Each([&](absl::Span<const int64_t> indices, float* val) {
-        for (const int64_t replica : device_to_groups[i]) {
-          *val += inputs[replica](indices);
-        }
-      });
+    // Sum inputs from each replica group (num_iterations times).
+    for (int iter = 0; iter < num_iterations; ++iter) {
+      for (int i = 0; i < num_replicas; ++i) {
+        expected_outputs[i].Each(
+            [&](absl::Span<const int64_t> indices, float* val) {
+              *val = 0.0f;  // Start output with zero for each iteration.
+              for (const int64_t replica : device_to_groups[i]) {
+                *val += inputs[replica](indices);
+              }
+            });
+      }
+      // For the next iteration, the current output becomes the input.
+      for (int i = 0; i < num_replicas; ++i) {
+        inputs[i].Each([&](absl::Span<const int64_t> indices, float* val) {
+          *val = expected_outputs[i](indices);
+        });
+      }
+    }
+    for (auto& expected_output : expected_outputs) {
       expected_output_literals.push_back(
           LiteralUtil::CreateFromArray(expected_output));
     }
@@ -3521,8 +3533,9 @@ TEST_P(AllReduceTest, AsyncAllReduce_8GPUs_AllReplicasOneGroup) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
-  TF_ASSERT_OK_AND_ASSIGN(InputsOutputs test_io,
-                          BuildTestInputsOutputs(*module, kNumReplicas));
+  TF_ASSERT_OK_AND_ASSIGN(
+      InputsOutputs test_io,
+      BuildTestInputsOutputs(*module, kNumReplicas, /*num_iterations=*/1));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
@@ -3542,7 +3555,10 @@ TEST_P(AllReduceTest, AsyncAllReduce_8GPUs_AllReplicasOneGroup) {
 }
 
 TEST_P(AllReduceTest, AsyncAllReduce_8GPUs_2ReplicasPerGroup) {
-  const absl::string_view kModuleStr = R"(
+  const int64_t kNumElements = 128;
+  const int64_t kNumIterations = 3;
+  const auto kModuleStr = absl::StrFormat(
+      R"(
   HloModule test
 
   apply_op {
@@ -3550,13 +3566,34 @@ TEST_P(AllReduceTest, AsyncAllReduce_8GPUs_2ReplicasPerGroup) {
     y = f32[] parameter(1)
     ROOT apply_op = f32[] add(x, y)
   }
+  
+  while_condition {
+    limit = s32[] constant(%d)
+    params = (s32[], f32[%d]{0}) parameter(0)
+    loop_counter = get-tuple-element(params), index=0
+    ROOT result = pred[] compare(loop_counter, limit), direction=LT
+  }
+
+  while_body {
+    params = (s32[], f32[%d]{0}) parameter(0)
+    loop_counter = get-tuple-element(params), index=0
+    tensor = get-tuple-element(params), index=1
+    out0 = f32[%d] all-reduce(tensor), to_apply=apply_op,
+      replica_groups={{0,4},{1,5},{2,6},{3,7}}
+    new_loop_counter = s32[] add(loop_counter, s32[] constant(1))
+    ROOT result = (s32[], f32[%d]{0}) tuple(new_loop_counter, out0)
+  } 
 
   ENTRY test_computation {
-    param_0 = f32[65536] parameter(0)
-    ROOT all-reduce = f32[65536] all-reduce(param_0), to_apply=apply_op,
-      replica_groups={{0,4},{1,5},{2,6},{3,7}}
+    param_0 = f32[%d] parameter(0)
+    while_init = (s32[], f32[%d]{0}) tuple(s32[] constant(0), param_0)
+    while_result = (s32[], f32[%d]{0})
+      while(while_init), condition=while_condition, body=while_body
+    ROOT result = get-tuple-element(while_result), index=1
   }
-  )";
+  )",
+      kNumIterations, kNumElements, kNumElements, kNumElements, kNumElements,
+      kNumElements, kNumElements, kNumElements);
 
   const int64_t kNumReplicas = 8;
   if (test_runner().device_count() < kNumReplicas) {
@@ -3570,8 +3607,9 @@ TEST_P(AllReduceTest, AsyncAllReduce_8GPUs_2ReplicasPerGroup) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(InputsOutputs test_io,
-                          BuildTestInputsOutputs(*module, kNumReplicas));
+  TF_ASSERT_OK_AND_ASSIGN(
+      InputsOutputs test_io,
+      BuildTestInputsOutputs(*module, kNumReplicas, kNumIterations));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,

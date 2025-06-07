@@ -15,6 +15,8 @@ limitations under the License.*/
 #ifndef XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_KERNEL_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_KERNEL_THUNK_H_
 
+#include <array>
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -78,15 +80,23 @@ class CollectiveKernelThunk : public Thunk {
     int device_ordinal;
     RankId rank;
     // Buffers and signal flags allocated for the collective.
+    // Buffers are double buffered to allow for consecutive invocation
+    // of the kernel on different GPUs.
+    // - GPUs sync on Buffer 0 on first invocation.
+    // - GPUs sync on Buffer 1 on second invocation.
+    //   This implies that all GPUs must have finished the first invocation
+    //   before they can sync on the second invocation.
+    // - Alternate back to Buffer 0 on third invocation. And so on.
     se::DeviceMemoryHandle local_buffer;
     se::DeviceMemoryHandle signal_buffer;
     // These vectors are merely pointers into the buffer(s) above ordered
     // by RankId. They are initialized once at the end of Initialize() and never
     // changed.
-    absl::InlinedVector<se::DeviceMemoryBase, kMaxNumExecutors>
+    std::array<absl::InlinedVector<se::DeviceMemoryBase, kMaxNumExecutors>, 2>
         remote_buffer_ptrs{};
-    absl::InlinedVector<se::DeviceMemoryBase, kMaxNumExecutors>
+    std::array<absl::InlinedVector<se::DeviceMemoryBase, kMaxNumExecutors>, 2>
         signal_buffer_ptrs{};
+    uint32_t invocation_count = 0;
 
     // Constructor to make OSS builds happy.
     StreamState() = default;
