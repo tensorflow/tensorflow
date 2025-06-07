@@ -54,7 +54,7 @@ constexpr int kThreadIdHostOffloadOpStart = kThreadIdDerivedMin + 8;
 constexpr int kThreadIdHostOffloadOpEnd = kThreadIdDerivedMin + 48;
 // Space for derived lines for host XLA Ops
 constexpr int kThreadIdHostXlaRegionStart = kThreadIdDerivedMin + 49;
-constexpr int kThreadIdHostXlaRegionEnd = kThreadIdHostXlaRegionStart + 240;
+constexpr int kThreadIdHostXlaRegionEnd = kThreadIdHostXlaRegionStart + 240 + 5;
 constexpr int kThreadIdDerivedMax = kThreadIdHostXlaRegionEnd;
 
 static inline bool IsDerivedThreadId(int thread_id) {
