@@ -82,6 +82,11 @@ off_t FileDescriptor::MovePos(off_t offset) const {
 }
 
 FileDescriptor FileDescriptor::Open(const char* path, int flags, mode_t mode) {
+#if defined(_MSC_VER)
+  if (!(flags & O_TEXT)) {
+    flags |= O_BINARY;
+  }
+#endif
   return FileDescriptor(open(path, flags, mode));
 }
 
@@ -94,7 +99,7 @@ bool FileDescriptor::Read(void* dst, size_t count) const {
     if (bytes == -1) {
       return false;
     } else if (bytes == 0) {
-      break;
+      return false;
     }
     count -= bytes;
     dst_it += bytes;
