@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <optional>
 #include <utility>
+#include <variant>
 
-#include "absl/types/variant.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 
