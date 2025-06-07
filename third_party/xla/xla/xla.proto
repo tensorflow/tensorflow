@@ -1239,6 +1239,9 @@ message DebugOptions {
   // xla_allow_get_default_platform
   // xla_gpu_ensure_minor_dot_contraction_dims
   // xla_gpu_unsafe_pipelined_loop_annotator
+
+  string xla_compilation_selection = 501;
+
   reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194, 221, 242, 206, 320,
       325, 326, 332, 361, 270, 229, 271, 279, 218, 369, 371, 249, 309;
 }
