@@ -157,38 +157,38 @@ class classproperty(object):  # pylint: disable=invalid-name
 class _CachedClassProperty(object):
   """Cached class property decorator.
 
-  Transforms a class method into a property whose value is computed once
-  and then cached as a normal attribute for the life of the class. The cached
-  value can be cleared manually using `reset_cache` or automatically after a
-  specified `timeout` period (if provided). Example usage:
+    Transforms a class method into a property whose value is computed once
+    and cached as a class attribute. The cached value can be cleared manually
+    using `reset_cache` or automatically after a `timeout` (if provided).
 
-  >>> class MyClass(object):
-  ...   @cached_classproperty(timeout=60)  # Cache expires after 60 seconds
-  ...   def value(cls):
-  ...     print("Computing value")
-  ...     return '<property of %s>' % cls.__name__
-  >>> class MySubclass(MyClass):
-  ...   pass
-  >>> MyClass.value
-  Computing value
-  '<property of MyClass>'
-  >>> MyClass.value  # uses cached value
-  '<property of MyClass>'
-  >>> MyClass.value.reset_cache(MyClass)  # clear cache
-  >>> MyClass.value
-  Computing value
-  '<property of MyClass>'
-  >>> MySubclass.value
-  Computing value
-  '<property of MySubclass>'
+    Example usage:
+    >>> class MyClass:
+    ...   @cached_classproperty(timeout=60)  # Expires after 60s
+    ...   def value(cls):
+    ...     print("Computing value")
+    ...     return '<property of %s>' % cls.__name__
+    >>> MyClass.value
+    Computing value
+    '<property of MyClass>'
+    >>> MyClass.value  # Uses cached value
+    '<property of MyClass>'
+    >>> MyClass.value.reset_cache(MyClass)  # Clear cache
+    >>> MyClass.value
+    Computing value
+    '<property of MyClass>'
+    >>> class MySubclass(MyClass):
+    ...   pass
+    >>> MySubclass.value
+    Computing value
+    '<property of MySubclass>'
 
-  This decorator is similar to `functools.cached_property`, but it adds a
-  property to the class, not to individual instances.
+    This decorator is similar to `functools.cached_property`, but it adds a
+    property to the class, not to instances.
 
-  Args:
-    func: The function to be cached.
-    timeout: Optional float, specifying the cache expiration time in seconds.
-  """
+    Args:
+      func: The function to be cached.
+      timeout: Optional float, specifying the cache expiration time in seconds.
+    """
 
   def __init__(self, func, timeout=None):
     self._func = func
