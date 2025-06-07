@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/map_util.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
+#include "xla/service/host_offload_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -847,21 +848,6 @@ LiveRangeRegions CopyRemover::ComputeLiveRangeRegions(const ValueNode* head) {
   return live_range;
 }
 
-bool CopyRemover::IsCopyToFromHost(const HloInstruction* copy) {
-  if (copy->shape().has_layout() && copy->operand(0)->shape().has_layout()) {
-    if (copy->shape().layout().memory_space() == Layout::kHostMemorySpace &&
-        copy->operand(0)->shape().layout().memory_space() !=
-            Layout::kHostMemorySpace) {
-      return true;
-    }
-    if (copy->shape().layout().memory_space() != Layout::kHostMemorySpace &&
-        copy->operand(0)->shape().layout().memory_space() ==
-            Layout::kHostMemorySpace) {
-      return true;
-    }
-  }
-  return false;
-}
 // Try to elide the given copy. Elision of a copy is possible only if no
 // live range interference is introduced by the copy's elimination. If
 // elision is possible, then the internal state (value lists) are updated,
@@ -873,7 +859,7 @@ bool CopyRemover::TryElideCopy(
   CHECK_NE(region_analysis_limit, nullptr);
 
   // Don't elide copies to/from the host.
-  if (IsCopyToFromHost(copy)) {
+  if (host_offload_utils::IsSynchronousCopyFromOrToHost(copy)) {
     return false;
   }
 
@@ -902,11 +888,15 @@ bool CopyRemover::TryElideCopy(
   // Use the more accurate region-based live range interference analysis if
   // the live range size is within a given limit (or if no limit is given).
   // Also don't use the new analysis for copies of broadcasts as these copies
-  // are cheap and are later removed by replicating the broadcasts.
+  // are cheap and are later removed by replicating the broadcasts. And don't
+  // use the new analysis for host to host copies as they are very costly so
+  // it's worth doing more analysis.
   bool use_region_analysis =
       copy->operand(0)->opcode() != HloOpcode::kBroadcast &&
       (*region_analysis_limit < 0 ||
-       src_total_read_writes * dst_total_read_writes <= *region_analysis_limit);
+       src_total_read_writes * dst_total_read_writes <=
+           *region_analysis_limit ||
+       host_offload_utils::IsSynchronousHostToHostCopy(copy));
 
   *region_analysis_limit = 0;
   VLOG(3) << "Source buffer values: " << ValueListToString(copy_node.src);

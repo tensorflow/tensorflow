@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/memory_annotations.h"
 #include "xla/shape_util.h"
@@ -267,6 +268,23 @@ bool IsSynchronousCopyFromOrToHost(const HloInstruction* instruction) {
           operand_memory_space == Layout::kHostMemorySpace);
 }
 
+bool IsSynchronousHostToHostCopy(const HloInstruction* instruction) {
+  if (instruction->opcode() != HloOpcode::kCopy) {
+    return false;
+  }
+  if (!instruction->shape().has_layout() ||
+      !instruction->operand(0)->shape().has_layout()) {
+    // Host offloading copies do not exist without layouts.
+    return false;
+  }
+  const int64_t copy_memory_space =
+      instruction->shape().layout().memory_space();
+  const int64_t operand_memory_space =
+      instruction->operand(0)->shape().layout().memory_space();
+  return copy_memory_space == Layout::kHostMemorySpace &&
+         operand_memory_space == Layout::kHostMemorySpace;
+}
+
 bool ComputeTypeIsHost(const HloInstruction* hlo_instruction) {
   const auto& frontend_attributes_map =
       hlo_instruction->frontend_attributes().map();
@@ -282,6 +300,11 @@ void SetHostComputeFrontendAttribute(HloInstruction& host_instruction) {
   frontend_attributes.mutable_map()->insert(
       {kXlaComputeTypeAttr, kXlaComputeTypeHost});
   host_instruction.set_frontend_attributes(frontend_attributes);
+}
+
+bool HasHostMemorySpace(const Shape& shape) {
+  return shape.has_layout() &&
+         shape.layout().memory_space() == Layout::kHostMemorySpace;
 }
 
 }  // namespace host_offload_utils

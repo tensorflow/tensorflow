@@ -3582,7 +3582,7 @@ cc_library(
         ":hlo_buffer",
         ":hlo_graph_dumper",
         ":hlo_value",
-        ":hlo_verifier",
+        ":host_offload_utils",
         "//xla:frontend_attributes",
         "//xla:shape_tree",
         "//xla:shape_util",
