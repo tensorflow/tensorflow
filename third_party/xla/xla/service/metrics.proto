@@ -76,4 +76,6 @@ message CompilationLogEntry {
   repeated uint64 module_ids = 6;
   // Job information.
   JobInfo job_info = 7;
+  // HLO module name.
+  string hlo_module_name = 8;
 }
