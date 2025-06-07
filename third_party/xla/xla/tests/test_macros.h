@@ -29,7 +29,6 @@ limitations under the License.
 #define XLA_TESTS_TEST_MACROS_H_
 
 #define DISABLED_ON_INTERPRETER_TSAN(X) X
-#define DISABLED_ON_DEBUG(X) X
 #define DISABLED_ON_TPU(X) X
 
 // We need this macro instead of pasting directly to support nesting
@@ -49,11 +48,6 @@ limitations under the License.
 #endif  // THREAD_SANITIZER
 
 #endif  // XLA_TEST_BACKEND_INTERPRETER
-
-#ifndef NDEBUG
-# undef DISABLED_ON_DEBUG
-# define DISABLED_ON_DEBUG(X) XLA_TEST_PASTE(DISABLED_, X)
-#endif  // !NDEBUG
 
 #ifdef XLA_TEST_BACKEND_TPU
 # undef DISABLED_ON_TPU
