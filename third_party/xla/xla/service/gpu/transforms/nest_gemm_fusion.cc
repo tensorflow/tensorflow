@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -894,7 +895,8 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
       oss << size << " ";
     }
     LOG(INFO) << "FindOutputTileSizesForEpilogue: " << tiled_dot.ToString()
-              << "Constraints: " << analysis.GetConstraints().ToString()
+              << "Constraints: "
+              << analysis.GetTilingSpecification().constraints().ToString()
               << "Expected dot tile sizes: " << oss.str();
   }
 
@@ -906,15 +908,34 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
           << computation->root_instruction()->shape().ToString();
   auto output_tile_sizes = get_tile_sizes(out_rank);
   std::sort(output_tile_sizes.begin(), output_tile_sizes.end());
+
+  const TilingSpecification& tiling_specification =
+      analysis.GetTilingSpecification();
+
   do {
-    TF_ASSIGN_OR_RETURN(
-        bool parameters_satisfy_constraints,
-        analysis.ParametersSatisfyConstraints(output_tile_sizes));
+    Tiling::TileMapping tile_mapping;
+    tile_mapping[dot] = {config.block_k};
+    // If the `dot` is a root, we need to assign both the hidden parameter and
+    // the output parameters to it.
+    if (dot->IsRoot()) {
+      tile_mapping[dot].insert(tile_mapping[dot].end(),
+                               output_tile_sizes.begin(),
+                               output_tile_sizes.end());
+    } else {
+      tile_mapping[dot->parent()->root_instruction()] = {
+          output_tile_sizes.begin(), output_tile_sizes.end()};
+    }
+
+    Tiling tiling(std::move(tile_mapping));
+    TF_ASSIGN_OR_RETURN(bool parameters_satisfy_constraints,
+                        analysis.ParametersSatisfyConstraints(tiling));
     if (!parameters_satisfy_constraints) {
       continue;
     }
+    TF_ASSIGN_OR_RETURN(std::vector<int64_t> flat_tiling_parameters,
+                        tiling.Flatten(tiling_specification));
     auto mapped_dot_tile_sizes =
-        EvaluateTileSizes(tiled_dot.symbolic_tile(), output_tile_sizes);
+        EvaluateTileSizes(tiled_dot.symbolic_tile(), flat_tiling_parameters);
     if (mapped_dot_tile_sizes == expected_dot_tile_sizes) {
       BlockLevelParameters params;
       params.output_tile_sizes = {std::vector<int64_t>(

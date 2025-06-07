@@ -128,16 +128,17 @@ absl::StatusOr<const CommandBuffer::Command*>
 GpuCommandBuffer::CreateLaunchWithPackedArgs(
     const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
     const KernelArgsPackedArrayBase& packed_args,
-    absl::Span<const Command* const> dependencies) {
+    absl::Span<const Command* const> dependencies, StreamPriority priority) {
   TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
 
   CHECK_EQ(kernel.Arity() + (packed_args.number_of_shared_bytes() > 0),
            packed_args.number_of_arguments());
 
   // Adds a new kernel node to the graph under construction.
-  TF_ASSIGN_OR_RETURN(GraphNodeHandle handle,
-                      CreateKernelNode(ToGraphNodeDependencies(dependencies),
-                                       threads, blocks, kernel, packed_args));
+  TF_ASSIGN_OR_RETURN(
+      GraphNodeHandle handle,
+      CreateKernelNode(ToGraphNodeDependencies(dependencies), priority, threads,
+                       blocks, kernel, packed_args));
 
   return AppendCommand(GpuCommand{handle});
 }
@@ -153,13 +154,14 @@ absl::Status GpuCommandBuffer::UpdateLaunchWithPackedArgs(
 
 absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateLaunch(
     const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
-    const KernelArgs& args, absl::Span<const Command* const> dependencies) {
+    const KernelArgs& args, absl::Span<const Command* const> dependencies,
+    StreamPriority priority) {
   TF_RETURN_IF_ERROR(CheckInState(State::kCreate));
 
   // If arguments are already packed we can just launch the kernel.
   if (auto* packed = DynCast<KernelArgsPackedArrayBase>(&args)) {
     return CreateLaunchWithPackedArgs(threads, blocks, kernel, *packed,
-                                      dependencies);
+                                      dependencies, priority);
   }
 
   // For device memory array we rely on a custom kernel arguments packing.
@@ -173,7 +175,7 @@ absl::StatusOr<const CommandBuffer::Command*> GpuCommandBuffer::CreateLaunch(
 
     TF_ASSIGN_OR_RETURN(auto packed, pack(kernel, *device_mem));
     return CreateLaunchWithPackedArgs(threads, blocks, kernel, *packed,
-                                      dependencies);
+                                      dependencies, priority);
   }
 
   return absl::InternalError("Unsupported kernel arguments type");

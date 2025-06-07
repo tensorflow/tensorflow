@@ -27,21 +27,41 @@
   },
   "gemma3_1b_flax_call_x86_1h1d_postsubmit": { # config_id
     "CPU_TIME": {
-      "baseline_ms": 2500,
+      "baseline_ms": 10000,
       "threshold": 0.30 # Allow 30% regression max
     },
     "WALL_TIME": {
-      "baseline_ms": 800,
+      "baseline_ms": 3000,
       "threshold": 0.30 # Allow 30% regression max
     }
   },
-  "gemma3_1b_flax_call_b200_1h1d_postsubmit": {  # config_id
+  "gemma2_2b_keras_jax_b200_1h1d_postsubmit": {  # config_id
     "GPU_DEVICE_TIME": {
-      "baseline_ms": 10,
+      "baseline_ms": 100,
       "threshold": 0.30 # Allow 30% regression max
     },
     "GPU_DEVICE_MEMCPY_TIME": {
-      "baseline_ms": 0.1,
+      "baseline_ms": 0.085,
+      "threshold": 0.30 # Allow 30% regression max
+    }
+  },
+  "gemma2_2b_keras_jax_x86_1h1d_postsubmit": { # config_id
+    "CPU_TIME": {
+      "baseline_ms": 42000,
+      "threshold": 0.30 # Allow 30% regression max
+    },
+    "WALL_TIME": {
+      "baseline_ms": 14000,
+      "threshold": 0.30 # Allow 30% regression max
+    }
+  },
+  "gemma2_2b_keras_jax_l4_1h1d_postsubmit": {
+    "GPU_DEVICE_TIME": {
+      "baseline_ms": 1000,
+      "threshold": 0.30 # Allow 30% regression max
+    },
+    "GPU_DEVICE_MEMCPY_TIME": {
+      "baseline_ms": 0.05,
       "threshold": 0.30 # Allow 30% regression max
     }
   }

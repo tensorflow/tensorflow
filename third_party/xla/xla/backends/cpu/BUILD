@@ -103,11 +103,13 @@ cc_library(
     hdrs = ["xnn_fusion.h"],
     deps = [
         "//xla:shape_util",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/backends/cpu/runtime:dot_lib",
         "//xla/hlo/ir:hlo",
         "//xla/tsl/platform:statusor",
+        "@XNNPACK",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status:statusor",

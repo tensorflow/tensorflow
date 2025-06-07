@@ -352,6 +352,76 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   ASSERT_EQ(dst, std::vector<int32_t>(4, 42 + 42));
 }
 
+TEST(CommandBufferCmdTest, LaunchCmdWithPriority) {
+  se::StreamExecutor* stream_executor = GpuExecutor();
+
+  auto stream = stream_executor->CreateStream().value();
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  // Prepare arguments: a=42, b=0
+  se::DeviceMemory<int32_t> a =
+      stream_executor->AllocateArray<int32_t>(length, 0);
+  se::DeviceMemory<int32_t> b =
+      stream_executor->AllocateArray<int32_t>(length, 0);
+
+  TF_ASSERT_OK(stream->Memset32(&a, 42, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&b, byte_length));
+
+  // Prepare buffer allocations for recording command buffer.
+  BufferAllocation alloc_a(/*index=*/0, byte_length, /*color=*/0);
+  BufferAllocation alloc_b(/*index=*/1, byte_length, /*color=*/0);
+
+  BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
+  BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
+
+  auto args = {slice_a, slice_a, slice_b};  // b = a + a
+  auto args_access = {BufferUse::kRead, MemoryAccess::kRead, BufferUse::kWrite};
+
+  // Prepare commands sequence for constructing command buffer.
+  CommandBufferCmdSequence commands;
+  commands.Emplace<LaunchCmd>(s0, "AddI32", args, args_access,
+                              LaunchDimensions(1, 4),
+                              /*shmem_bytes=*/0);
+  commands.back()->set_priority(se::StreamPriority::Highest);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      CommandBufferCmdExecutor executor,
+      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+
+  // Initialize command commands and load device kernels.
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<uint8_t> fatbin,
+                          se::gpu::GetGpuTestKernelsFatbin());
+  Thunk::ExecutableSource source = {/*text=*/{},
+                                    /*binary=*/fatbin};
+
+  CommandBufferCmd::StateManager state;
+  TF_ASSERT_OK(executor.Initialize({stream_executor, source}, state));
+
+  ServiceExecutableRunOptions run_options;
+  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  BufferAllocations allocations({a, b}, 0, &allocator);
+
+  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
+      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+
+  CommandBufferCmd::RecordParams record_params = {state};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto command_buffer,
+      stream_executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
+  TF_ASSERT_OK(executor.Record(params, record_params, command_buffer.get()));
+
+  // Execute command buffer and verify that it copied the memory.
+  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
+
+  // Copy `b` data back to host.
+  std::vector<int32_t> dst(4, 0);
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), b, byte_length));
+
+  ASSERT_EQ(dst, std::vector<int32_t>(4, 42 + 42));
+}
+
 TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
   auto run_traced_test = [](int trace_cache_size) {
     se::StreamExecutor* executor = GpuExecutor();

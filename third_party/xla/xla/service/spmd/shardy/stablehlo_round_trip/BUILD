@@ -99,6 +99,7 @@ cc_library(
     hdrs = ["stablehlo_export.h"],
     deps = [
         ":export_callback_custom_calls",
+        ":export_manual_reduction_collectives_cc",
         ":export_ops",
         ":export_shardings",
         ":shard_map_export",

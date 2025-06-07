@@ -405,6 +405,7 @@ class XLAConfigOptions:
     elif self.backend == Backend.SYCL:
       build_and_test_tag_filters.append("-cuda-only")
       build_and_test_tag_filters.append("-rocm-only")
+      build_and_test_tag_filters.append("-no-sycl")
 
       rc.append("build --config sycl")
 

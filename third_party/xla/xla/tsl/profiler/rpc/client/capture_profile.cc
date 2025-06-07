@@ -223,8 +223,9 @@ absl::Status CaptureRemoteTrace(const std::string& logdir,
     } else {
       status = Profile(repository_root, session_id, opts);
     }
-    if (remaining_attempts <= 0 || status.ok() || !ShouldRetryTracing(status))
+    if (remaining_attempts <= 0 || status.ok() || !ShouldRetryTracing(status)) {
       break;
+    }
     std::cout << "No trace event is collected. Automatically retrying.\n"
               << std::endl;
   }

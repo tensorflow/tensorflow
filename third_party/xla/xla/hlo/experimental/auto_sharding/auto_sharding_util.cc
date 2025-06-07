@@ -1227,8 +1227,7 @@ absl::StatusOr<Shape> ComputeIntermediateShape(const HloSharding& src_sharding,
           << spmd::ToString(inter_shape_dims) << " " << src_sharding.ToString()
           << "\n"
           << dst_sharding.ToString();
-  return ShapeUtil::MakeValidatedShape(shape.element_type(), inter_shape_dims)
-      .value();
+  return ShapeUtil::MakeShape(shape.element_type(), inter_shape_dims);
 }
 
 HloInstruction* ReshardTensor(HloInstruction* tensor,

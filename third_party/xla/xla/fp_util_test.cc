@@ -396,5 +396,51 @@ TEST(FPDistanceTest, F64Distance) {
       2);
 }
 
+struct BFPackTestCase {
+  float input_low;
+  float input_high;
+  unsigned int expected_output;
+};
+
+class BF16PackTest : public testing::TestWithParam<BFPackTestCase> {};
+
+TEST_P(BF16PackTest, PackBF16FloatPair) {
+  BFPackTestCase test_case = GetParam();
+  unsigned int output = PackFloatPairAsBf16<unsigned int>(test_case.input_low,
+                                                          test_case.input_high);
+  EXPECT_EQ(output, test_case.expected_output);
+}
+
+INSTANTIATE_TEST_SUITE_P(BF16PackTestSuite, BF16PackTest,
+                         testing::ValuesIn<BFPackTestCase>({
+                             {-8.25f, 1.0f, 0x3f80c104},
+                             {-127.375f, 0.0f, 0x0000c2fe},
+                             {-20.125f, 4.5f, 0x4090c1a1},
+                             {16.0f, 12.25f, 0x41444180},
+                         }));
+
+struct BFPackUnpackTestCase {
+  unsigned int input;
+  float expected_low;
+  float expected_high;
+};
+
+class BF16UnpackTest : public testing::TestWithParam<BFPackUnpackTestCase> {};
+
+TEST_P(BF16UnpackTest, UnPackToBF16Pair) {
+  BFPackUnpackTestCase test_case = GetParam();
+  auto [low, high] = UnpackFloatPairAsBf16(test_case.input);
+  EXPECT_EQ(low, test_case.expected_low);
+  EXPECT_EQ(high, test_case.expected_high);
+}
+
+INSTANTIATE_TEST_SUITE_P(BF16UnpackTestSuite, BF16UnpackTest,
+                         testing::ValuesIn<BFPackUnpackTestCase>({
+                             {0x3f80c088, -4.25f, 1.0f},
+                             {0x0000c008, -2.125f, 0.0f},
+                             {0x4038c1c2, -24.25f, 2.875f},
+                             {0x42fe41f8, 31.0f, 127.0f},
+                         }));
+
 }  // namespace
 }  // namespace xla

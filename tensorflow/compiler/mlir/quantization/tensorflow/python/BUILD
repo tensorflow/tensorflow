@@ -49,10 +49,10 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:component",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:statistics",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_preprocess",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:tf_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:calibration_statistics_saver_op",  # Required for CalibrationStatisticsSaver op registration.
         "//tensorflow/compiler/mlir/quantization/tensorflow/calibrator:custom_aggregator_op",  # Required for CustomAggregator op registration.
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
@@ -181,7 +181,7 @@ cc_library(
     hdrs = ["unfreeze_constants.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/mlir/quantization/tensorflow:tf_passes",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:save_variables",
         "//tensorflow/core:lib",
@@ -202,6 +202,7 @@ tf_python_pybind_extension(
     pytype_srcs = ["pywrap_function_lib.pyi"],
     visibility = [
         "__subpackages__",
+        "//tensorflow/lite/python:__subpackages__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/tools/pip_package:__subpackages__",
     ],

@@ -975,8 +975,7 @@ ENTRY entry_computation {
                     block_level_parameters, &llvm_module, mlir_context),
       tsl::testing::StatusIs(
           absl::StatusCode::kInvalidArgument,
-          ::testing::HasSubstr(
-              "Tile parameters 1024, 1 do not satisfy constraints.")));
+          ::testing::HasSubstr("Tiling does not satisfy constraints.")));
 }
 
 // TODO(b/353484968): Tests that don't run RunAndCompareNoHloPasses should b

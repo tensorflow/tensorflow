@@ -303,7 +303,7 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
     for (const auto& indexing_map : indexing_maps) {
       VLOG(10) << indexing_map;
 
-      int64_t num_iters = GetIterationSpaceSize(indexing_map, instr);
+      int64_t num_iters = GetIterationSpaceSize(indexing_map.map(), instr);
 
       if (is_operand) {
         int64_t type_size = ShapeUtil::ByteSizeOfPrimitiveType(element_type);

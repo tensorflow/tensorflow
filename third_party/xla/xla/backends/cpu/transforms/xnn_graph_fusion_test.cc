@@ -43,13 +43,12 @@ TEST_F(XnnGraphFusionTest, BasicFusion) {
 HloModule FusionDemonstration
 
 ENTRY entry {
-   %param.0 = f32[2,2]{1,0} parameter(0)
-   %constant.0 = f32[2,2]{1,0} constant({ { 1, 2 }, { 3, 4 } })
-   %add.0 = f32[2,2]{1,0} add(f32[2,2]{1,0} %param.0, f32[2,2]{1,0} %constant.0)
-   %sub.0 = f32[2,2]{1,0} subtract(f32[2,2]{1,0} %param.0, f32[2,2]{1,0} %constant.0)
-   ROOT %result = f32[2,2]{1,0} multiply(f32[2,2]{1,0} %add.0, f32[2,2]{1,0} %sub.0)
+   %param.0 = f32[2,2] parameter(0)
+   %constant.0 = f32[2,2] constant({ { 1, 2 }, { 3, 4 } })
+   %add.0 = f32[2,2] add(f32[2,2] %param.0, f32[2,2]{1,0} %constant.0)
+   %sub.0 = f32[2,2] subtract(f32[2,2] %param.0, f32[2,2] %constant.0)
+   ROOT %result = f32[2,2] multiply(f32[2,2] %add.0, f32[2,2] %sub.0)
 }
-
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -65,6 +64,25 @@ ENTRY entry {
                           fusion->backend_config<BackendConfig>());
   ASSERT_TRUE(backend_config.has_fusion_config());
   EXPECT_EQ(backend_config.fusion_config().kind(), kXnnFusionKind);
+}
+
+TEST_F(XnnGraphFusionTest, BasicFusionUnsupportedType) {
+  std::string hlo_string = R"(
+HloModule FusionDemonstration
+
+ENTRY entry {
+   %param.0 = s2[2,2] parameter(0)
+   %constant.0 = s2[2,2] constant({ { 0, 1 }, { 1, 0 } })
+   %add.0 = s2[2,2] add(s2[2,2] %param.0, s2[2,2] %constant.0)
+   %sub.0 = s2[2,2] subtract(s2[2,2] %param.0, s2[2,2] %constant.0)
+   ROOT %result = s2[2,2] multiply(s2[2,2] %add.0, s2[2,2] %sub.0)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  ASSERT_FALSE(changed);
 }
 
 }  // namespace

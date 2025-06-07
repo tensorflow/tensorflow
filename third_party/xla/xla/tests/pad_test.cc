@@ -261,7 +261,7 @@ XLA_TEST_P(PadTestFloat, Pad4DFloatArrayMinorFirstNonTrivialMinorDimensions) {
   ComputeAndCompareR4<float>(&b, expected_array, {}, ErrorSpec(0.0001));
 }
 
-XLA_TEST_F(PadTest, Pad4DU8Array) {
+TEST_F(PadTest, Pad4DU8Array) {
   XlaBuilder b(TestName());
   auto input = std::make_unique<Array4D<uint8_t>>(1, 1, 3, 2);
   Array2D<uint8_t> input_xy({
@@ -285,7 +285,7 @@ XLA_TEST_F(PadTest, Pad4DU8Array) {
   ComputeAndCompareR4<uint8_t>(&b, *expected, {});
 }
 
-XLA_TEST_F(PadTest, Pad4DPredArray) {
+TEST_F(PadTest, Pad4DPredArray) {
   XlaBuilder b(TestName());
 
   // Since bool is currently not well supported, use Broadcast operation to

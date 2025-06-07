@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/elemental/elemental_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/emitters/cpu_scatter_emitter.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
+#include "xla/backends/cpu/codegen/fusion_emitter.h"
 #include "xla/backends/cpu/codegen/jit_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/testlib/kernel_runner.h"
@@ -42,14 +43,17 @@ limitations under the License.
 #include "xla/backends/cpu/testlib/mlir_kernel_emitter.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/codegen/llvm_kernel_definition.h"
 #include "xla/codegen/llvm_kernel_emitter.h"
 #include "xla/codegen/mlir_kernel_definition.h"
 #include "xla/codegen/mlir_kernel_emitter.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/codegen/testlib/kernel_runner.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/cpu/fusion_wrapper.h"
@@ -193,6 +197,19 @@ NB_MODULE(_extension, kernel_runner_module) {
             new (self) CpuScatterFusion(*bufffer_assignment, instruction);
           },
           nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>());
+
+  kernel_runner_module.def(
+      "emit_fusion_kernel",
+      [](mlir::MLIRContext& context, const HloFusionInstruction& fusion,
+         const BufferAssignment* buffer_assignment) {
+        absl::StatusOr<MlirKernelDefinition> kernel_definition =
+            EmitFusionKernel(context, fusion, buffer_assignment);
+        if (!kernel_definition.ok()) {
+          throw std::runtime_error(kernel_definition.status().ToString());
+        }
+        return std::move(kernel_definition).value();
+      },
+      nb::keep_alive<0, 1>(), nb::keep_alive<0, 2>(), nb::keep_alive<0, 3>());
 
   nb::class_<JitCompiler>(kernel_runner_module, "JitCompiler")
       .def(nb::new_([](const HloModuleConfig& config) {

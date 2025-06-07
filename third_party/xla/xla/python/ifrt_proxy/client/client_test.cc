@@ -240,6 +240,12 @@ class ClientTest : public ::testing::TestWithParam</*protocol_version=*/int> {
           )pb",
           &response));
     }
+
+    AttributeMap::Map client_attributes(
+        {{"test_key", AttributeMap::StringValue("test_value")}});
+    *response.mutable_client_attributes() =
+        AttributeMap(client_attributes).ToProto();
+
     TF_ASSERT_OK_AND_ASSIGN(client_, Client::Create(rpc_helper_, response));
     TF_ASSERT_OK_AND_ASSIGN(device_, client_->LookupDevice(DeviceId(0)));
   }
@@ -259,6 +265,9 @@ TEST_P(ClientTest, Init) {
   EXPECT_EQ(client_->platform_id(), 42);
   EXPECT_EQ(client_->process_index(), 1);
   EXPECT_EQ(client_->runtime_type(), "proxy/ifrt-service");
+  EXPECT_THAT(
+      client_->Attributes().map(),
+      ElementsAre(Pair("test_key", AttributeMap::StringValue("test_value"))));
 
   ASSERT_EQ(client_->device_count(), 2);
   ASSERT_EQ(client_->addressable_device_count(), 1);

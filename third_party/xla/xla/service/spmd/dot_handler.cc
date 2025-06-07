@@ -946,9 +946,7 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
                                          lhs_hlo->shape().dimensions().end());
       reshaped_dims.insert(reshaped_dims.begin() + lhs_concat_dim, 1);
       lhs_hlo = b->AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeValidatedShape(lhs_hlo->shape().element_type(),
-                                        reshaped_dims)
-              .value(),
+          ShapeUtil::MakeShape(lhs_hlo->shape().element_type(), reshaped_dims),
           lhs_hlo));
     }
     if (rhs_concat_dim != -1 && !windowed_op_is_lhs &&
@@ -957,9 +955,7 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
                                          rhs_hlo->shape().dimensions().end());
       reshaped_dims.insert(reshaped_dims.begin() + rhs_concat_dim, 1);
       rhs_hlo = b->AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeValidatedShape(rhs_hlo->shape().element_type(),
-                                        reshaped_dims)
-              .value(),
+          ShapeUtil::MakeShape(rhs_hlo->shape().element_type(), reshaped_dims),
           rhs_hlo));
     }
   }
@@ -1051,9 +1047,8 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
           original_dot_lhs->shape().dimensions().end());
       reshaped_dims.erase(reshaped_dims.begin() + lhs_concat_dim);
       original_dot_lhs = body_b.AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeValidatedShape(
-              original_dot_lhs->shape().element_type(), reshaped_dims)
-              .value(),
+          ShapeUtil::MakeShape(original_dot_lhs->shape().element_type(),
+                               reshaped_dims),
           original_dot_lhs));
     }
     if (rhs_concat_dim != -1 && !windowed_op_is_lhs) {
@@ -1062,9 +1057,8 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
           original_dot_rhs->shape().dimensions().end());
       reshaped_dims.erase(reshaped_dims.begin() + rhs_concat_dim);
       original_dot_rhs = body_b.AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeValidatedShape(
-              original_dot_rhs->shape().element_type(), reshaped_dims)
-              .value(),
+          ShapeUtil::MakeShape(original_dot_rhs->shape().element_type(),
+                               reshaped_dims),
           original_dot_rhs));
     }
 
@@ -1098,9 +1092,8 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
         }
         auto reshaped_slice_operand =
             body_b.AddInstruction(HloInstruction::CreateReshape(
-                ShapeUtil::MakeValidatedShape(
-                    slice_operand->shape().element_type(), new_dims)
-                    .value(),
+                ShapeUtil::MakeShape(slice_operand->shape().element_type(),
+                                     new_dims),
                 slice_operand));
         auto pad_value = body_b.AddInstruction(HloInstruction::CreateConstant(
             ShapeUtil::ElementIsFloating(reshaped_slice_operand->shape())
@@ -1176,9 +1169,8 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
         }
       }
       auto reshaped_slice = body_b.AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeValidatedShape(slice->shape().element_type(),
-                                        reshaped_slice_dims)
-              .value(),
+          ShapeUtil::MakeShape(slice->shape().element_type(),
+                               reshaped_slice_dims),
           slice));
 
       if (!windowed_op_is_lhs) {
@@ -1213,9 +1205,7 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
       reshaped_dims.erase(reshaped_dims.begin() + lhs_concat_dim);
       reshaped_dims[lhs_concat_dim] *= 2;
       original_dot_lhs = body_b.AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeValidatedShape(dot_lhs->shape().element_type(),
-                                        reshaped_dims)
-              .value(),
+          ShapeUtil::MakeShape(dot_lhs->shape().element_type(), reshaped_dims),
           dot_lhs));
 
       if (original_hlo->opcode() == HloOpcode::kDot) {
@@ -1235,9 +1225,7 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
       reshaped_dims.erase(reshaped_dims.begin() + rhs_concat_dim);
       reshaped_dims[rhs_concat_dim] *= 2;
       original_dot_rhs = body_b.AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeValidatedShape(dot_rhs->shape().element_type(),
-                                        reshaped_dims)
-              .value(),
+          ShapeUtil::MakeShape(dot_rhs->shape().element_type(), reshaped_dims),
           dot_rhs));
 
       if (original_hlo->opcode() == HloOpcode::kDot) {
@@ -1265,9 +1253,8 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
     } else if (original_hlo->opcode() != HloOpcode::kDot) {
       new_dims.push_back(1);
     }
-    new_dot_shape = ShapeUtil::MakeValidatedShape(
-                        original_hlo->shape().element_type(), new_dims)
-                        .value();
+    new_dot_shape =
+        ShapeUtil::MakeShape(original_hlo->shape().element_type(), new_dims);
 
     HloInstruction* dot;
     if (original_hlo->opcode() == HloOpcode::kDot) {
@@ -1281,9 +1268,7 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
                                         dot_rhs->shape().dimensions().end());
           new_dims.push_back(1);
           dot_rhs = body_b.AddInstruction(HloInstruction::CreateReshape(
-              ShapeUtil::MakeValidatedShape(dot_rhs->shape().element_type(),
-                                            new_dims)
-                  .value(),
+              ShapeUtil::MakeShape(dot_rhs->shape().element_type(), new_dims),
               dot_rhs));
         }
         if (rhs_concat_dim != -1) {
@@ -1291,9 +1276,7 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
                                         dot_lhs->shape().dimensions().end());
           new_dims.push_back(1);
           dot_lhs = body_b.AddInstruction(HloInstruction::CreateReshape(
-              ShapeUtil::MakeValidatedShape(dot_lhs->shape().element_type(),
-                                            new_dims)
-                  .value(),
+              ShapeUtil::MakeShape(dot_lhs->shape().element_type(), new_dims),
               dot_lhs));
         }
       }
@@ -1349,14 +1332,10 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
           original_sharded_dot_shape.dimensions().end());
       reshaped_dims[slice_dim] /= 2;
       ccw_dot = body_b.AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeValidatedShape(ccw_dot->shape().element_type(),
-                                        reshaped_dims)
-              .value(),
+          ShapeUtil::MakeShape(ccw_dot->shape().element_type(), reshaped_dims),
           ccw_dot));
       cw_dot = body_b.AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeValidatedShape(cw_dot->shape().element_type(),
-                                        reshaped_dims)
-              .value(),
+          ShapeUtil::MakeShape(cw_dot->shape().element_type(), reshaped_dims),
           cw_dot));
 
       if (operands_sharded_at_contracting_dims) {
@@ -1448,10 +1427,9 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
 
   auto param = body_b.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0,
-      ShapeUtil::MakeValidatedTupleShapeWithPtrs(
+      ShapeUtil::MakeTupleShapeWithPtrs(
           {&lhs_hlo->shape(), &rhs_hlo->shape(), &result_buffer->shape(),
-           &extra_buffer->shape(), &iteration->shape()})
-          .value(),
+           &extra_buffer->shape(), &iteration->shape()}),
       "param"));
   auto l = body_b.AddInstruction(
       HloInstruction::CreateGetTupleElement(lhs_hlo->shape(), param, 0));
@@ -1661,7 +1639,7 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
         body_b.AddInstruction(HloInstruction::CreateConstant(
             LiteralUtil::CreateR0<uint32_t>(1)))));
     auto has_more = body_b.AddInstruction(HloInstruction::CreateCompare(
-        ShapeUtil::MakeValidatedShape(PRED, {}).value(), i,
+        ShapeUtil::MakeShape(PRED, {}), i,
         body_b.AddInstruction(HloInstruction::CreateConstant(
             LiteralUtil::CreateR0<uint32_t>(num_partitions))),
         ComparisonDirection::kLt));
@@ -1726,10 +1704,9 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
   SpmdBuilder cond_b(cond_name, original_hlo);
   auto cond_param = cond_b.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0,
-      ShapeUtil::MakeValidatedTupleShapeWithPtrs(
+      ShapeUtil::MakeTupleShapeWithPtrs(
           {&lhs_hlo->shape(), &rhs_hlo->shape(), &result_buffer->shape(),
-           &extra_buffer->shape(), &iteration->shape()})
-          .value(),
+           &extra_buffer->shape(), &iteration->shape()}),
       "param"));
   auto cond_i = cond_b.AddInstruction(
       HloInstruction::CreateGetTupleElement(iteration->shape(), cond_param, 4));
@@ -1738,7 +1715,7 @@ absl::StatusOr<HloInstruction*> EmitWindowedDotGeneral(
           ? num_partitions / 2
           : num_partitions;
   cond_b.AddInstruction(HloInstruction::CreateCompare(
-      ShapeUtil::MakeValidatedShape(PRED, {}).value(), cond_i,
+      ShapeUtil::MakeShape(PRED, {}), cond_i,
       cond_b.AddInstruction(HloInstruction::CreateConstant(
           LiteralUtil::CreateR0<uint32_t>(adapted_num_partitions))),
       ComparisonDirection::kLt));

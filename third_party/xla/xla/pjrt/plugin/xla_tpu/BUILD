@@ -34,8 +34,7 @@ cc_library(
     srcs = ["tpu_static_registration.cc"],
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
-        "//xla/pjrt:pjrt_api",
-        "//xla/pjrt/c:pjrt_c_api_tpu_hdrs",
+        "//xla/pjrt/c:pjrt_c_api_tpu_internal",
         "//xla/pjrt/plugin:plugin_names",
         "//xla/pjrt/plugin:static_registration",
     ],

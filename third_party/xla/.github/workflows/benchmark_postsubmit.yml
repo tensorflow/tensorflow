@@ -43,7 +43,7 @@ jobs:
         job_info: [
           {
             pool: "linux-arm64-t2a-48",
-            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-arm64:latest",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-arm64:latest",
             pretty_name: "XLA Linux ARM64 CPU 48 vcpu Presubmit",
             bazel_arch_dir: "aarch64-opt",
             platform: "CPU",
@@ -61,7 +61,7 @@ jobs:
           },
           {
             pool: "linux-x86-g2-16-l4-1gpu",
-            container: "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build-cuda12.8-cudnn9.8:latest",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-cuda12.8-cudnn9.8:latest",
             pretty_name: "XLA Linux x86 GPU L4 16 vcpu Presubmit",
             bazel_arch_dir: "k8-opt",
             platform: "GPU",

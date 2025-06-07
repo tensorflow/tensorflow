@@ -59,6 +59,10 @@ bool LlvmKernelBackend::IsSupported(const HloInstruction& instr) {
 absl::StatusOr<std::vector<std::unique_ptr<xla::BackendConfig>>>
 LlvmKernelBackend::GetSupportedConfigs(const HloInstruction& instr) {
   std::vector<std::unique_ptr<xla::BackendConfig>> configs;
+  if (!IsSupported(instr)) {
+    return configs;
+  }
+
   constexpr std::array<bool, 2> boolean_options = {false, true};
   for (const auto& disable_loop_unrolling : boolean_options) {
     for (const auto& slp_vectorizer_disabled : boolean_options) {

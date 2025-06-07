@@ -262,16 +262,6 @@ absl::StatusOr<bool> IsAsyncCollective(const HloInstruction* instruction);
 // collective fusion) with channel_id.
 HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction);
 
-// Returns the cycle type and indices of the vertices that form cycles. For
-// example, GetCycleTypeAndIndices({{0,3},{1,0},{2,1},{3,2}}) returns
-// {kBackward, {0}}, since the communication pattern contains a backward cycle
-// with the cycle-inducing vertex at index 0 in the input source-target pairs
-// array. This function uses the assumption that, in practice, in forward
-// cycles, most edges will have the target replica ID greater than the source
-// replica ID except for the back edges that form cycles (similar logic applies
-// to backward cycles).
-std::pair<collective_permute_cycle::CycleType, std::set<int>>
-GetCycleTypeAndIndices(const std::vector<std::pair<int64_t, int64_t>>& pairs);
 
 // Key that identifies a particular Rendezvous object in our global hashtable.
 // This determines which calls to ExecuteOnStream communicate with each other.

@@ -102,24 +102,32 @@ OriginalValueProto OriginalValue::ToProto() {
   return original_value_proto;
 }
 
-void MoveOriginalValue(const HloInstruction* src_instruction,
-                       HloInstruction* dest_instruction) {
+void CopyOriginalValue(const HloInstruction* src_instruction,
+                       HloInstruction* dest_instruction, bool clone) {
+  // This is not expected to happen in practice.
+  if (!src_instruction || !dest_instruction ||
+      !ShapeUtil::Compatible(src_instruction->shape(),
+                             dest_instruction->shape())) {
+    VLOG(1) << "Expect the new instruction to have the same shape with the old "
+               "instruction when moving over original_value";
+    return;
+  }
+
   std::shared_ptr<OriginalValue> original_value =
       src_instruction->original_value();
   if (!original_value) {
     return;
   }
 
-  // This is not expected to happen in practice.
-  if (!ShapeUtil::Compatible(src_instruction->shape(),
-                             dest_instruction->shape())) {
-    LOG(WARNING)
-        << "Expect the new instruction to have the same shape with the old "
-           "instruction when moving over original_value";
+  if (!clone) {
+    dest_instruction->set_original_value(original_value);
     return;
   }
 
-  dest_instruction->set_original_value(original_value);
+  std::shared_ptr<OriginalValue> original_value_clone =
+      std::make_shared<OriginalValue>(original_value->shape());
+  original_value_clone->CopySubtreeFrom(*original_value, {}, {});
+  dest_instruction->set_original_value(original_value_clone);
 }
 
 }  // namespace xla

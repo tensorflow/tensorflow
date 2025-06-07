@@ -914,11 +914,9 @@ TfLiteStatus Relu6Eval(TfLiteContext* context, TfLiteNode* node) {
   ReluOpData* data = reinterpret_cast<ReluOpData*>(node->user_data);
   switch (input->type) {
     case kTfLiteFloat32: {
-      size_t elements = input->bytes / sizeof(float);
-      const float* in = GetTensorData<float>(input);
-      const float* in_end = in + elements;
-      float* out = GetTensorData<float>(output);
-      for (; in < in_end; in++, out++) *out = std::min(std::max(0.f, *in), 6.f);
+      reference_ops::Relu6(GetTensorShape(input), GetTensorData<float>(input),
+                           GetTensorShape(output),
+                           GetTensorData<float>(output));
       return kTfLiteOk;
     }
     case kTfLiteUInt8:

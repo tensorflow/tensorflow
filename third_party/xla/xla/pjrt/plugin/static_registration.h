@@ -16,10 +16,12 @@ limitations under the License.
 #ifndef XLA_PJRT_PLUGIN_STATIC_REGISTRATION_H_
 #define XLA_PJRT_PLUGIN_STATIC_REGISTRATION_H_
 
-#define REGISTER_PJRT_PLUGIN(plugin_name, get_plugin_api)        \
-  [[maybe_unused]] static bool already_registered = []() {       \
-    pjrt::SetPjrtApi(plugin_name, get_plugin_api).IgnoreError(); \
-    return true;                                                 \
-  }();
+#include "xla/pjrt/pjrt_api.h"  // IWYU pragma: keep
+
+#define REGISTER_PJRT_PLUGIN(plugin_name, get_plugin_api)                  \
+  [[maybe_unused]] static bool already_registered = [](auto plugin_name) { \
+    pjrt::SetPjrtApi(plugin_name, get_plugin_api).IgnoreError();           \
+    return true;                                                           \
+  }(plugin_name);
 
 #endif  // XLA_PJRT_PLUGIN_STATIC_REGISTRATION_H_

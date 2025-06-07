@@ -259,9 +259,10 @@ TEST_F(GenerateBenchmarkMatricesTest,
   EXPECT_THAT(entry0["config_id"],
               JsonStringEq("gemma_test_l4_1h1d_presubmit"));
   EXPECT_THAT(entry0["runner_label"], JsonStringEq("linux-x86-g2-16-l4-1gpu"));
-  EXPECT_THAT(entry0["container_image"],
-              JsonStringEq("us-central1-docker.pkg.dev/tensorflow-sigs/"
-                           "tensorflow/ml-build-cuda12.8-cudnn9.8:latest"));
+  EXPECT_THAT(
+      entry0["container_image"],
+      JsonStringEq("us-docker.pkg.dev/ml-oss-artifacts-published/"
+                   "ml-public-container/ml-build-cuda12.8-cudnn9.8:latest"));
   EXPECT_THAT(entry0["runtime_flags"],
               JsonArrayContainsString("--repeat_l4=5"));
   EXPECT_THAT(entry0["xla_compilation_flags"],
@@ -278,8 +279,8 @@ TEST_F(GenerateBenchmarkMatricesTest,
               JsonStringEq("gemma_test_x86_1h2d_presubmit"));
   EXPECT_THAT(entry1["runner_label"], JsonStringEq("linux-x86-n2-128"));
   EXPECT_THAT(entry1["container_image"],
-              JsonStringEq("us-central1-docker.pkg.dev/tensorflow-sigs/"
-                           "tensorflow/ml-build:latest"));
+              JsonStringEq("us-docker.pkg.dev/ml-oss-artifacts-published/"
+                           "ml-public-container/ml-build:latest"));
   EXPECT_THAT(entry1["runtime_flags"],
               JsonArrayContainsString("--repeat_cpu=3"));
   EXPECT_THAT(entry1["xla_compilation_flags"],

@@ -29,9 +29,8 @@ limitations under the License.
 #include "xla/util.h"
 
 namespace xla::gpu {
-namespace {
 
-int64_t GetDefaultValue(HloOpcode opcode) {
+static int64_t GetDefaultValue(HloOpcode opcode) {
   if (opcode == HloOpcode::kAllGather) {
     return kDefaultAllGatherCombineThreshold;
   } else if (opcode == HloOpcode::kAllReduce) {
@@ -43,8 +42,6 @@ int64_t GetDefaultValue(HloOpcode opcode) {
   }
   return -1;
 }
-
-}  // namespace
 
 int64_t MaxAvailableMemory(const HloModule& module,
                            const se::DeviceDescription& device_info) {

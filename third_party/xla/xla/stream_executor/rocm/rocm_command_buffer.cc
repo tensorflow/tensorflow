@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/scoped_update_mode.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_kernel.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
@@ -251,8 +252,8 @@ absl::Status RocmCommandBuffer::UpdateChildNode(GraphNodeHandle node_handle,
 }
 
 absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateKernelNode(
-    absl::Span<const GraphNodeHandle> dependencies, const ThreadDim& threads,
-    const BlockDim& blocks, const Kernel& kernel,
+    absl::Span<const GraphNodeHandle> dependencies, StreamPriority priority,
+    const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
     const KernelArgsPackedArrayBase& args) {
   const uint64_t shared_mem_bytes = args.number_of_shared_bytes();
 

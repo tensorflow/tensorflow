@@ -72,9 +72,6 @@ class LlvmKernelBackendTest : public HloHardwareIndependentTestBase {
                             LlvmKernelBackend::Create(compiler_.get()));
   }
 
-  LlvmKernelBackend* Backend() {
-    return tsl::down_cast<LlvmKernelBackend*>(backend_.get());
-  }
   std::unique_ptr<CodegenBackend> backend_;
   std::unique_ptr<Compiler> compiler_;
 };
@@ -89,16 +86,24 @@ TEST_F(LlvmKernelBackendTest, IsSupportedTest) {
         std::unique_ptr<HloModule> module,
         ParseAndReturnVerifiedModule(kLlvmKernelConcatenateHlo));
 
-    EXPECT_TRUE(Backend()->IsSupported(
-        *module->entry_computation()->root_instruction()));
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto configs,
+        backend_->GetSupportedConfigs(
+            *module->entry_computation()->root_instruction(), nullptr));
+
+    EXPECT_FALSE(configs.empty());
   }
 
   {
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                             ParseAndReturnVerifiedModule(kLlvmKernelHlo));
 
-    EXPECT_FALSE(Backend()->IsSupported(
-        *module->entry_computation()->root_instruction()));
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto configs,
+        backend_->GetSupportedConfigs(
+            *module->entry_computation()->root_instruction(), nullptr));
+
+    EXPECT_TRUE(configs.empty());
   }
 }
 

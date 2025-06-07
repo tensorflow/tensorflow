@@ -16,34 +16,53 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Traits.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/constant_fold.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/tf_constant_fold.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/utils/tf_to_xla_attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "xla/xla_data.pb.h"
 
 namespace mlir::quant {
 namespace {
+
+using ::mlir::tf_quant::ConstantFoldOpIfPossible;
+using ::mlir::tf_quant::Create1DConstValue;
+using ::mlir::tf_quant::CreateConstValue;
+using ::mlir::tf_quant::CreateScalarConstValue;
+using ::mlir::tf_quant::GetSplatValue;
+using ::mlir::tf_quant::HasStaticShape;
+using ::mlir::tf_quant::HasStaticShapeAtDims;
 
 constexpr StringRef kTfQuantCreatedEinsum = "__tf_quant_created_einsum";
 

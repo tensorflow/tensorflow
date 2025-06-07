@@ -61,6 +61,9 @@ struct AutoShardingSolverParams {
 
 AutoShardingSolverParams GetParams(const AutoShardingSolverRequest& request);
 
+absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromProblem(
+    const iopddl::Problem& problem, const AutoShardingSolverParams& params);
+
 absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
     const AutoShardingSolverRequest& request,
     const AutoShardingSolverParams& params);

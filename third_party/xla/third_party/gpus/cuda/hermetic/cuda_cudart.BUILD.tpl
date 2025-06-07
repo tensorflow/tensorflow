@@ -4,6 +4,10 @@ load(
     "cuda_rpath_flags",
 )
 
+exports_files([
+    "include/cuda.h",
+])
+
 filegroup(
     name = "static",
     srcs = ["lib/libcudart_static.a"],

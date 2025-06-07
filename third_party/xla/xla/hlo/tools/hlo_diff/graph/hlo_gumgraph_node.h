@@ -40,6 +40,7 @@ struct HloInstructionNodeProps {
   int64_t height = 0;
   uint64_t subgraph_fingerprint = 0;
   uint64_t fingerprint = 0;
+  uint64_t canonical_fingerprint = 0;
   ListPosition sibling_position;
   ListPosition pre_order_graph_position;
 };

@@ -95,7 +95,7 @@ class PjrtCApiGpuTest : public PjrtCApiTestBase {
 
 TEST_F(PjrtCApiGpuTest, CreateViewOfDeviceBuffer) {
   // Prepares a device memory ptr on GPU.
-  auto [buffer, buffer_future] = create_buffer();
+  auto [buffer, buffer_future] = create_iota_buffer();
   TF_CHECK_OK(buffer_future.Await());
   PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args device_buffer_ptr_args;
   device_buffer_ptr_args.struct_size =
@@ -190,18 +190,9 @@ class PjrtCApiGpuTransferManagerTest : public PjrtCApiGpuTest {
 
 class PjrtCApiGpuBufferTest : public PjrtCApiGpuTest {
  public:
-  PjrtCApiGpuBufferTest() : PjrtCApiGpuTest() {
-    auto buffer_and_event = create_buffer();
-    buffer_ = std::move(buffer_and_event.first);
-    event_ = buffer_and_event.second;
-  }
+  PjrtCApiGpuBufferTest() : PjrtCApiGpuTest() { buffer_ = create_buffer(); }
 
   ~PjrtCApiGpuBufferTest() override {
-    // event_ needs to complete before the client is destroyed; otherwise there
-    // is a data race between destroying the client and trying to access the
-    // host context in the client for the callback after host to device transfer
-    // is completed.
-    TF_EXPECT_OK(event_.Await());
     // buffer_ must be destroyed before the client is destroyed or else the
     // unique_ptr for buffer_ will go out of scope causing heap-use-after-free
     // error.
@@ -209,15 +200,17 @@ class PjrtCApiGpuBufferTest : public PjrtCApiGpuTest {
   }
 
   std::unique_ptr<PJRT_Buffer, PJRT_BufferDeleter> buffer_;
-  xla::PjRtFuture<> event_;
 };
 
 TEST_F(PjrtCApiGpuBufferTest, CopyRawToHost) {
+  auto [buffer, buffer_future] = create_iota_buffer();
+  TF_CHECK_OK(buffer_future.Await());
+
   size_t size = buffer_->buffer->GetOnDeviceSizeInBytes().value();
   PJRT_Buffer_CopyRawToHost_Args args;
   args.struct_size = PJRT_Buffer_CopyRawToHost_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
-  args.buffer = buffer_.get();
+  args.buffer = buffer.get();
   args.dst =
       tsl::port::AlignedMalloc(size, tsl::Allocator::kAllocatorAlignment);
   args.offset = 0;

@@ -58,9 +58,12 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/Triple.h"
+#include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/Instrumentation/DataFlowSanitizer.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/backends/cpu/codegen/polynomial_approximations.h"
+#include "xla/codegen/math/math_compiler_lib.h"
+#include "xla/codegen/math_lib.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -154,10 +157,14 @@ static llvm::PipelineTuningOptions GetPipelineTuningOptions(
     // have masked SIMD instructions, and control flow ends up vectorizing to a
     // lot of scalar loads and stores, which takes forever to codegen in machine
     // instruction selection). As a workaround, disable loop unrolling when
-    // AVX512 is not available. Revisit this decision once we migrate to new
-    // fusion emitters that do not rely on LLVM that much.
+    // AVX512 and AVX2 are not available. Revisit this decision once we migrate
+    // to new fusion emitters that do not rely on LLVM that much.
+    //
+    // This test cannot only check for AVX512, because it makes numerical tests
+    // flaky depending on what machine the test is run on.
     auto target_features = target_machine->getTargetFeatureString();
-    if (target_features.contains("+avx2") &&
+    if (target_features.contains("+avx") &&
+        !target_features.contains("+avx2") &&
         !target_features.contains("+avx512")) {
       pto.LoopUnrolling = false;
     }
@@ -334,6 +341,8 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
       std::make_unique<llvm::TargetLibraryInfoImpl>(target_triple);
   target_library_info_impl->addVectorizableFunctions(
       PolynomialApproximationsVectorization());
+  codegen::MathFunctionLib math_lib;
+  target_library_info_impl->addVectorizableFunctions(math_lib.Vectorizations());
 
   fam.registerPass(
       [&] { return llvm::TargetLibraryAnalysis(*target_library_info_impl); });
@@ -376,12 +385,17 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
     if (llvm::verifyModule(module, &error_stream)) {
       return llvm::make_error<llvm::StringError>(
           llvm::errc::invalid_argument,
-          absl::StrFormat("Invalid LLVM IR after optimizations:\n%s",
+          absl::StrFormat("Invalid LLVM IR after optimizations:\n%s\n",
                           error_stream.str()));
     }
   }
 
+  auto replaced_functions = math_lib.RewriteMathFunctions(module);
   RewriteToPolynomialApproximations(&module, options_.fast_math_flags);
+  if (!replaced_functions.empty()) {
+    codegen::math::RemoveFromCompilerUsed(module, replaced_functions);
+    codegen::math::RunInlineAndOptPasses(module);
+  }
 
   return llvm::Error::success();
 }

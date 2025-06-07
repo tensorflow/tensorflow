@@ -696,6 +696,15 @@ class PriorityFusionQueue {
       return fusion_decision;
     }
 
+    // Avoid cases where we'd create a fusion that hit limitations in ptxas
+    // regarding the maximum number of parameters that can be passed to a
+    // kernel.
+    if (auto fits_budget = FusionFitsInParameterLimit(
+            *consumer, *producer, /*is_consumer_producer_fusion=*/true);
+        !fits_budget) {
+      return fits_budget;
+    }
+
     TiledRunTimeDataOrError tiled_run_time_data_or_error =
         GetTiledRunTimeDataCached(producer, consumer, use_multi_output_fusion);
 

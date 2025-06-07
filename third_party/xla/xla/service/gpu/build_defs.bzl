@@ -3,6 +3,8 @@
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured", "rocm_copts", "rocm_library")
+load("@local_config_sycl//sycl:build_defs.bzl", "sycl_library")
+load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm_is_configured")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load("//xla/tests:build_defs.bzl", "prepare_gpu_backend_data")
@@ -59,9 +61,20 @@ def build_cub_sort_kernels(name, types, local_defines = [], **kwargs):
 
 register_extension_info(extension = build_cub_sort_kernels, label_regex_for_dep = "{extension_name}_.*")
 
-def gpu_kernel_library(name, copts = [], local_defines = [], tags = [], **kwargs):
+def gpu_kernel_library(name, copts = [], srcs = [], local_defines = [], tags = [], **kwargs):
+    """ [Deprecated] Create a build rule that is compiling a GPU kernel for all GPU platforms
+
+    Args:
+      name: The name of the library
+      copts: copts of the library
+      srcs: sources of the library
+      local_defines: local_defines of the library
+      tags: tags of the library
+      **kwargs: Takes anything a cc_library would take
+    """
     cuda_library(
         name = name + "_cuda",
+        srcs = srcs,
         local_defines = local_defines + if_cuda_is_configured(["GOOGLE_CUDA=1"]),
         copts = copts,
         tags = ["manual"] + tags,
@@ -69,14 +82,28 @@ def gpu_kernel_library(name, copts = [], local_defines = [], tags = [], **kwargs
     )
     rocm_library(
         name = name + "_rocm",
+        srcs = srcs,
         local_defines = local_defines + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
         copts = copts + rocm_copts(),
         tags = ["manual"] + tags,
         **kwargs
     )
+    sycl_library(
+        name = name + "_sycl",
+        srcs = [],
+        local_defines = local_defines,
+        copts = copts,
+        tags = ["manual"] + tags,
+        **kwargs
+    )
+    native.alias(
+        name = name + "_gpu",
+        actual = if_rocm_is_configured(":%s_rocm" % name, "%s_cuda" % name),
+        tags = ["gpu", "no-sycl"] + tags,
+    )
     native.alias(
         name = name,
-        actual = if_rocm_is_configured(":%s_rocm" % name, "%s_cuda" % name),
+        actual = if_cuda_or_rocm_is_configured("%s_gpu" % name, "%s_sycl" % name),
         tags = ["gpu"] + tags,
     )
 

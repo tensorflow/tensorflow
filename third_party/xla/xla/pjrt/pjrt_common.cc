@@ -23,6 +23,9 @@ limitations under the License.
 
 #include "xla/pjrt/proto/pjrt_value_type.pb.h"
 
+template<typename T>
+struct always_false : std::false_type {};
+
 namespace xla {
 
 xla::PjRtValueType PjRtValueTypeFromProto(
@@ -62,7 +65,12 @@ xla::PjRtValueTypeProto PjRtValueTypeToProto(const xla::PjRtValueType& value) {
           value_proto.mutable_int_vector()->mutable_values()->Add(v.begin(),
                                                                   v.end());
         } else {
-          static_assert(false, "Unhandled type in PjRtValueType variant");
+          // Note: code below should really be static_assert(false, ...), but
+          // that is unfortunately not possible, as some compilers consider it
+          // invalid code, see
+          // https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2022/p2593r0.html.
+          static_assert(always_false<T>::value,
+                        "Unhandled type in PjRtValueType variant");
         }
       },
       value);

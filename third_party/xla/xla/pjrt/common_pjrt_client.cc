@@ -145,8 +145,7 @@ CommonPjRtClient::BufferFromHostBuffer(
   TF_ASSIGN_OR_RETURN(
       Shape device_shape,
       MakeDefaultShapeForMemorySpace(
-          memory_space, ShapeUtil::MakeValidatedShape(type, dims).value(),
-          device_layout));
+          memory_space, ShapeUtil::MakeShape(type, dims), device_layout));
   if (host_buffer_semantics ==
           PjRtClient::HostBufferSemantics::kImmutableZeroCopy ||
       host_buffer_semantics ==

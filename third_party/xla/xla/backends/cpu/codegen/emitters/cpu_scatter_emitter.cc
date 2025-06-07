@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
@@ -313,7 +312,7 @@ absl::StatusOr<MlirKernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
     }
   }
 
-  KernelSpec kernel_spec(absl::StrCat(module_name, "_kernel"),
+  KernelSpec kernel_spec(module_name,
                          NumWorkGroups{static_cast<uint64_t>(num_threads_)},
                          std::move(argument_buffers), std::move(result_buffers),
                          std::move(invariant_arguments));

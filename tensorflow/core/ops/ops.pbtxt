@@ -67301,6 +67301,48 @@ op {
   is_stateful: true
 }
 op {
+  name: "XlaSparseActivationsUnstack"
+  input_arg {
+    name: "stacked_activations"
+    type_attr: "input_dtype"
+  }
+  output_arg {
+    name: "unstacked_activations"
+    type_attr: "dtype"
+    number_attr: "num_tables"
+  }
+  attr {
+    name: "num_tables"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "sample_counts"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "features"
+    type: "list(int)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "interleaved"
+    type: "bool"
+  }
+  attr {
+    name: "input_dtype"
+    type: "type"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+}
+op {
   name: "XlaSparseCoreAdagrad"
   input_arg {
     name: "indices"
@@ -69556,6 +69598,36 @@ op {
     default_value {
       i: -1
     }
+  }
+}
+op {
+  name: "XlaSparseGradientsStack"
+  input_arg {
+    name: "unstacked_gradients"
+    type_attr: "input_dtype"
+    number_attr: "num_tables"
+  }
+  output_arg {
+    name: "stacked_gradients"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "num_tables"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "interleaved"
+    type: "bool"
+  }
+  attr {
+    name: "input_dtype"
+    type: "type"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
   }
 }
 op {

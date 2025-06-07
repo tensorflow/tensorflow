@@ -13,7 +13,6 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        "//xla/backends/autotuner/backends/gpu:__subpackages__",
         "//xla/backends/gpu:__subpackages__",
         "//xla/hlo/tools/hlo_opt:__subpackages__",
         "//xla/service/gpu:__subpackages__",
@@ -659,8 +658,14 @@ cc_library(
 xla_test(
     name = "cudnn_fused_conv_rewriter_test",
     srcs = ["cudnn_fused_conv_rewriter_test.cc"],
+    backend_tags = {
+        "gpu_a100": [
+            "noasan",
+            "nomsan",
+        ],
+    },
     backends = [
-        "gpu_h100",
+        "gpu_a100",
         "gpu_amd_any",
     ] + if_oss(["gpu_any"]),
     shard_count = 10,
@@ -2202,6 +2207,7 @@ xla_cc_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
     ],

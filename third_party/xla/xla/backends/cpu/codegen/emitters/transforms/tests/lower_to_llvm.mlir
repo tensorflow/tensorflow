@@ -45,7 +45,7 @@ func.func private @wrap_entry(%arg0: tensor<2xi32>, %arg1: tensor<21x12xi32>)
       : tensor<2xi32>, tensor<21x12xi32>, index, index, index
 }
 
-// CHECK:  func.func @wrap_entry_kernel(%[[CALL_FRAME:.+]]: !llvm.ptr) -> !llvm.ptr attributes
+// CHECK:  func.func @wrap_entry(%[[CALL_FRAME:.+]]: !llvm.ptr) -> !llvm.ptr attributes
 // CHECK-SAME: frame_pointer = #llvm.framePointerKind<all>
 // CHECK-SAME: "prefer-vector-width", "128"
 // CHECK-SAME: uwtable_kind = #llvm.uwtableKind<async>
@@ -69,14 +69,14 @@ func.func private @wrap_entry(%arg0: tensor<2xi32>, %arg1: tensor<21x12xi32>)
 // CHECK-DAG:    %[[WORK_ID_2_GEP:.+]] = llvm.getelementptr inbounds %[[WORK_IDS_PTR]][0, 2]
 // CHECK-DAG:    %[[WORK_ID_2_PTR:.+]] = llvm.load %[[WORK_ID_2_GEP]]
 // CHECK-DAG:    %[[WORK_ID_2:.+]] = builtin.unrealized_conversion_cast %[[WORK_ID_2_PTR]]
-// CHECK-DAG:    call @wrap_entry(%[[TENSOR_0]],
+// CHECK-DAG:    call @wrap_entry_wrapped(%[[TENSOR_0]],
 // CHECK-DAG                              %[[TENSOR_1]],
 // CHECK-DAG                              %[[WORK_ID_0]],
 // CHECK-DAG                              %[[WORK_ID_1]],
 // CHECK-DAG                              %[[WORK_ID_2]])
 // CHECK-DAG:    return %[[RETURN_PTR]]
 // CHECK:      }
-// CHECK:      func.func private @wrap_entry(
+// CHECK:      func.func private @wrap_entry_wrapped(
 // CHECK:         %[[ARG_0:.+]]: tensor<2xi32>, %[[ARG_1:.+]]: tensor<21x12xi32>,
 // CHECK:         %[[ARG_2:.+]]: index, %[[ARG_3:.+]]: index, %[[ARG_4:.+]]: index)
 // CHECK:       return %[[ARG_0]], %[[ARG_1]], %[[ARG_3]], %[[ARG_2]], %[[ARG_4]]

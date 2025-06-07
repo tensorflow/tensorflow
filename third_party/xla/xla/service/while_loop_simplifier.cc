@@ -45,6 +45,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/union_find.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -245,16 +247,16 @@ static absl::StatusOr<HloInstruction*> RemoveDeadTupleIndices(
   std::unique_ptr<HloComputation> new_while_body =
       while_body->CloneWithReplacements(&while_body_replacements);
 
-  // Add a new while_init instruction that repackages the old while_init
-  // instruction's elements.  We rely on the AlgebraicSimplifier and DCE to
-  // clean this up in the common case where while_init is a tuple op.  (It's
-  // definitely tuple-shaped, but it's not necessarily a tuple op.)
   std::vector<HloInstruction*> new_while_init_elems;
   new_while_init_elems.reserve(new_to_old_tuple_idx.size());
   for (int64_t old_idx : new_to_old_tuple_idx) {
-    new_while_init_elems.push_back(
-        computation->AddInstruction(HloInstruction::CreateGetTupleElement(
-            while_init->shape().tuple_shapes(old_idx), while_init, old_idx)));
+    if (while_init->opcode() == HloOpcode::kTuple) {
+      new_while_init_elems.push_back(while_init->mutable_operand(old_idx));
+    } else {
+      new_while_init_elems.push_back(
+          computation->AddInstruction(HloInstruction::CreateGetTupleElement(
+              while_init->shape().tuple_shapes(old_idx), while_init, old_idx)));
+    }
   }
   auto* new_while_init = computation->AddInstruction(
       HloInstruction::CreateTuple(new_while_init_elems));
@@ -1613,9 +1615,10 @@ absl::StatusOr<bool> WhileLoopSimplifier::Run(
       continue;
     }
   }
-  HloDCE dce;
-  TF_ASSIGN_OR_RETURN(bool dce_changed, dce.Run(module));
-  changed |= dce_changed;
+  if (changed) {
+    HloDCE dce;
+    TF_RETURN_IF_ERROR(dce.Run(module).status());
+  }
   XLA_VLOG_LINES(3,
                  "WhileLoopSimplifier::Run(), after:\n" + module->ToString());
   return changed;

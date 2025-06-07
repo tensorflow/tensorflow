@@ -568,7 +568,56 @@ TEST_P(ConcreteShardingTest, DisassembleFailsForUnexpectedShape) {
                        HasSubstr("ConcreteSharding can only disassemble")));
 }
 
-TEST_P(ConcreteShardingTest, IndexDomainsFails) {
+TEST_P(ConcreteShardingTest, IndexDomainsFullyAddressable) {
+  auto device_list = GetDevices({0, 1});
+  std::vector<Shape> shard_shapes = {Shape({1}), Shape({2})};
+  std::vector<IndexDomain> index_domains{
+      IndexDomain(Index({0}), Shape({1})),
+      IndexDomain(Index({1}), Shape({2})),
+  };
+  ShardingRef sharding = ConcreteSharding::Create(
+      device_list, MemoryKind(), Shape({15}), shard_shapes, index_domains);
+
+  EXPECT_THAT(sharding->IndexDomains(Shape({15})),
+              IsOkAndHolds(ElementsAreArray(index_domains)));
+  EXPECT_THAT(sharding->IndexDomains(Shape({15}),
+                                     SingleDeviceShardSemantics::kAllShards),
+              IsOkAndHolds(ElementsAreArray(index_domains)));
+  EXPECT_THAT(sharding->IndexDomains(
+                  Shape({15}), SingleDeviceShardSemantics::kAddressableShards),
+              IsOkAndHolds(ElementsAreArray(index_domains)));
+}
+
+TEST_P(ConcreteShardingTest, IndexDomainsNonAddressable) {
+  auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
+  std::vector<Shape> shard_shapes = {
+      Shape({1}),
+      Shape({2}),
+      Shape({3}),
+      Shape({4}),
+  };
+  std::vector<IndexDomain> index_domains{
+      IndexDomain(Index({0}), Shape({1})),
+      IndexDomain(Index({1}), Shape({2})),
+      IndexDomain(Index({3}), Shape({3})),
+      IndexDomain(Index({6}), Shape({4})),
+  };
+  ShardingRef sharding = ConcreteSharding::Create(
+      device_list, MemoryKind(), Shape({15}), shard_shapes, index_domains);
+
+  EXPECT_THAT(
+      sharding->IndexDomains(Shape({15}),
+                             SingleDeviceShardSemantics::kAllShards),
+      StatusIs(tsl::error::INVALID_ARGUMENT,
+               HasSubstr("SingleDeviceShardSemantics::kAllShards was "
+                         "requested, but the ConcreteSharding contains index "
+                         "domains from non-addressable devices")));
+  EXPECT_THAT(sharding->IndexDomains(
+                  Shape({15}), SingleDeviceShardSemantics::kAddressableShards),
+              IsOkAndHolds(ElementsAreArray(index_domains)));
+}
+
+TEST_P(ConcreteShardingTest, IndexDomainsMissing) {
   auto device_list = GetDevices({0, 1});
   std::vector<Shape> shard_shapes;
   shard_shapes.reserve(2);
@@ -581,6 +630,20 @@ TEST_P(ConcreteShardingTest, IndexDomainsFails) {
               StatusIs(tsl::error::INVALID_ARGUMENT,
                        HasSubstr("ConcreteSharding does not have index "
                                  "domain information")));
+}
+
+TEST_P(ConcreteShardingTest, IndexDomainsFails) {
+  auto device_list = GetDevices({0, 1, 2, 3, 4});
+  std::vector<Shape> shard_shapes(5, Shape({1}));
+  std::vector<IndexDomain> index_domains(5,
+                                         IndexDomain(Index({0}), Shape({1})));
+  ShardingRef sharding = ConcreteSharding::Create(
+      device_list, MemoryKind(), Shape({30}), shard_shapes, index_domains);
+
+  EXPECT_THAT(sharding->IndexDomains(Shape({1})),
+              StatusIs(tsl::error::INVALID_ARGUMENT,
+                       HasSubstr("ConcreteSharding must have the same number "
+                                 "of index domains and addressable devices")));
 }
 
 TEST_P(ConcreteShardingTest, Hash) {

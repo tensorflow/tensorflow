@@ -92,7 +92,7 @@ TEST(KernelRunnerTest, Add) {
       KernelRunner::Create(std::move(kernel_definition), std::move(compiler)));
 
   std::minstd_rand0 engine;
-  Shape shape = ShapeUtil::MakeValidatedShape(S32, {kNumElements}).value();
+  Shape shape = ShapeUtil::MakeShape(S32, {kNumElements});
   TF_ASSERT_OK_AND_ASSIGN(
       Literal in_arg1,
       LiteralUtil::CreateRandomLiteral<S32>(shape, &engine, 10, 10));

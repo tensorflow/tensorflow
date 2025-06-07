@@ -134,4 +134,10 @@ std::optional<std::tuple<int64_t, int64_t, int64_t>> LlvmIrGemmTileSize(
                                                tile_size_n_in_vector_width);
 }
 
+bool UseExperimentalLoopFusion(const HloModuleConfig& config) {
+  const auto& extra_options_map =
+      config.debug_options().xla_backend_extra_options();
+  return extra_options_map.count(kUseExperimentalLoopFusion) > 0;
+}
+
 }  // namespace xla::cpu::options

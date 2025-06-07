@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -32,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"  // from @llvm-project
@@ -39,9 +41,10 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/ops/temp_tf_op_quant_spec.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -57,6 +60,9 @@ using QuantMethod =
     ::tensorflow::quantization::QuantizationMethod::PresetMethod;
 using QuantizationUnit = std::pair<Operation*, int>;
 using QuantizationUnits = llvm::SetVector<QuantizationUnit>;
+using ::mlir::tf_quant::GetTFOpQuantSpec;
+using ::mlir::tf_quant::kQuantTraitAttrName;
+using ::mlir::tf_quant::OpQuantSpec;
 using ::tensorflow::quantization::OpSet;
 
 // Preprocesses ops to allow multi-axis quantization, prior to quantization
@@ -65,7 +71,7 @@ class PreprocessOpPass
     : public PassWrapper<PreprocessOpPass, OperationPass<ModuleOp>> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TF::TensorFlowDialect, QuantDialect,
-                    quantfork::QuantizationForkDialect>();
+                    mlir::quant::ir::TFQuantDialect>();
   }
 
  public:

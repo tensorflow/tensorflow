@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/kernel.h"
@@ -52,16 +54,6 @@ namespace gpu {
 //===----------------------------------------------------------------------===//
 // KernelThunk
 //===----------------------------------------------------------------------===//
-
-namespace {
-Dim3DProto Dim3DToProto(const se::Dim3D& dim) {
-  Dim3DProto proto;
-  proto.set_x(dim.x);
-  proto.set_y(dim.y);
-  proto.set_z(dim.z);
-  return proto;
-}
-}  // namespace
 
 KernelThunk::KernelThunk(
     Thunk::ThunkInfo thunk_info, std::string kernel_name,
@@ -102,15 +94,44 @@ absl::StatusOr<ThunkProto> KernelThunk::ToProto() const {
     kernel_proto->add_written(written);
   }
   kernel_proto->set_kernel_name(kernel_name_);
-  *kernel_proto->mutable_launch_block_counts() =
-      Dim3DToProto(launch_dimensions_.block_counts());
-  *kernel_proto->mutable_launch_thread_counts_per_block() =
-      Dim3DToProto(launch_dimensions_.thread_counts_per_block());
+  *kernel_proto->mutable_launch_dimensions() = launch_dimensions_.ToProto();
   if (cluster_dim_) {
-    *kernel_proto->mutable_cluster_dim() = Dim3DToProto(*cluster_dim_);
+    *kernel_proto->mutable_cluster_dim() = cluster_dim_->ToProto();
   }
   kernel_proto->set_shmem_bytes(shmem_bytes_);
   return proto;
+}
+
+absl::StatusOr<std::unique_ptr<KernelThunk>> KernelThunk::FromProto(
+    ThunkInfo thunk_info, const KernelThunkProto& proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
+                      LaunchDimensions::FromProto(proto.launch_dimensions()));
+  std::optional<stream_executor::ClusterDim> cluster_dim;
+  if (proto.has_cluster_dim()) {
+    TF_ASSIGN_OR_RETURN(
+        cluster_dim.emplace(),
+        stream_executor::ClusterDim::FromProto(proto.cluster_dim()));
+  }
+
+  if (proto.written().size() != proto.args().size()) {
+    return absl::InvalidArgumentError(
+        "Proto fields `written` and `args` need to have the same cardinality.");
+  }
+
+  std::vector<emitters::KernelArgument> arguments;
+  arguments.reserve(proto.args().size());
+  for (int i = 0; i < proto.args().size(); ++i) {
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                        BufferAllocation::Slice::FromProto(proto.args().at(i),
+                                                           buffer_allocations));
+    bool written = proto.written().at(i);
+    arguments.push_back(emitters::KernelArgument{Shape{}, slice, written});
+  }
+
+  return std::make_unique<KernelThunk>(thunk_info, proto.kernel_name(),
+                                       arguments, launch_dimensions,
+                                       cluster_dim, proto.shmem_bytes());
 }
 
 absl::Status KernelThunk::Initialize(const InitializeParams& params) {

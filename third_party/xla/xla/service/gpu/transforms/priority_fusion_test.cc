@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/priority_fusion.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -23,6 +24,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -1260,6 +1262,24 @@ TEST_F(PriorityFusionWithTritonEnabledTest, DoNotFuseIntoRoot) {
     })");
 
   EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(PriorityFusionWithTritonEnabledTest, LimitNumberOfParameters) {
+  std::string module_text =
+      "HloModule m\n\nENTRY main {\nadd0 = f32[] parameter(0)\n";
+  for (int64_t i = 1; i <= MaxOperandsAndOutputsPerFusion(); ++i) {
+    module_text += absl::StrFormat("p%d = f32[] parameter(%d)\n", i, i);
+    module_text +=
+        absl::StrFormat("add%d = f32[] add(add%d, p%d)\n", i, i - 1, i);
+  }
+  module_text += "}";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(module_text));
+  EXPECT_THAT(priority_fusion_.Run(module.get()), IsOkAndHolds(true));
+  // Assert that there is not just a single fusion with all parameters as
+  // operands.
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_LE(root->operand_count(), MaxOperandsAndOutputsPerFusion());
 }
 
 TEST_F(PriorityFusionWithTritonEnabledTest,

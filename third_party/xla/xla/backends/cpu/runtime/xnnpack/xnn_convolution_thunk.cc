@@ -160,7 +160,7 @@ XnnConvolutionThunk::XnnConvolutionThunk(
                          &XnnConvolutionThunk::BuildConvolutionSubgraph, this,
                          std::placeholders::_1, std::placeholders::_2,
                          std::placeholders::_3)),
-                     /*captured_arguments=*/{1}),
+                     /*captured_arguments_ids=*/{1}),
       convolution_slices_(std::move(convolution_slices)),
       convolution_canonical_dims_(std::move(convolution_canonical_dims)),
       dnums_(std::move(dnums)),

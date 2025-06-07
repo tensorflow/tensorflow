@@ -1503,13 +1503,6 @@ HloTransposeInstruction::HloTransposeInstruction(
   AppendOperand(operand);
 }
 
-bool HloTransposeInstruction::IsRank2Transpose() const {
-  return dimensions() == std::vector<int64_t>({1, 0}) &&
-         shape().dimensions().size() == 2 &&
-         std::equal(shape().dimensions().begin(), shape().dimensions().end(),
-                    operand(0)->shape().dimensions().rbegin());
-}
-
 std::unique_ptr<HloInstruction>
 HloTransposeInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
@@ -2057,9 +2050,8 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
 
   if (clone != instruction_to_append) {
     // Copy over the original value to the clone of a fused instruction.
-    if (auto original_value = instruction_to_append->original_value()) {
-      clone->set_original_value(original_value);
-    }
+    clone->CopyOriginalValue(instruction_to_append,
+                             /*clone=*/false);
     VLOG(2) << "New clone:\n" << clone->ToString();
   }
 
@@ -2437,9 +2429,7 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
     // This is necessary as the clone will be cloned again when the clone is
     // fused in FuseInstructionIntoMultiOutput(). This can be skipped if we
     // improve the code to only clone once as stated in the preceding comment.
-    if (auto original_value = fused_instruction->original_value()) {
-      cloned_instruction->set_original_value(original_value);
-    }
+    cloned_instruction->CopyOriginalValue(fused_instruction, /*clone=*/true);
     unfused_instructions.push_back(cloned_instruction);
     InsertOrDie(&old_to_new, fused_instruction, cloned_instruction);
   }
@@ -2869,8 +2859,8 @@ bool HloInfeedInstruction::IdenticalSlowPath(
     const HloInstruction& other,
     absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
-  // Not yet supported.
-  return false;
+  return ShapeUtil::Equal(shape(), other.shape()) &&
+         infeed_config() == other.infeed_config();
 }
 
 std::unique_ptr<HloInstruction> HloInfeedInstruction::CloneWithNewOperandsImpl(
@@ -2916,8 +2906,8 @@ bool HloOutfeedInstruction::IdenticalSlowPath(
     const HloInstruction& other,
     absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
         eq_computations) const {
-  // Not yet supported.
-  return false;
+  return ShapeUtil::Equal(outfeed_shape(), other.outfeed_shape()) &&
+         outfeed_config() == other.outfeed_config();
 }
 
 std::unique_ptr<HloInstruction> HloOutfeedInstruction::CloneWithNewOperandsImpl(
@@ -3193,6 +3183,25 @@ HloCustomCallInstruction::HloCustomCallInstruction(
     absl::Span<const Shape> operand_shapes_with_layout,
     CustomCallApiVersion api_version)
     : HloCallableInstruction(HloOpcode::kCustomCall, shape, operands),
+      custom_call_target_(custom_call_target),
+      feature_group_count_(1),
+      batch_group_count_(1),
+      layout_constrained_(true),
+      padding_type_(PaddingType::PADDING_INVALID),
+      operand_shapes_with_layout_(operand_shapes_with_layout.begin(),
+                                  operand_shapes_with_layout.end()),
+      custom_call_has_side_effect_(false),
+      custom_call_schedule_(CustomCallSchedule::SCHEDULE_NONE),
+      api_version_(api_version) {
+  set_raw_backend_config_string(std::move(opaque));
+}
+
+HloCustomCallInstruction::HloCustomCallInstruction(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloComputation* to_apply, absl::string_view custom_call_target,
+    std::string opaque, absl::Span<const Shape> operand_shapes_with_layout,
+    CustomCallApiVersion api_version)
+    : HloCallableInstruction(HloOpcode::kCustomCall, shape, operands, to_apply),
       custom_call_target_(custom_call_target),
       feature_group_count_(1),
       batch_group_count_(1),

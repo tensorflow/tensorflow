@@ -39,7 +39,8 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -48,6 +49,9 @@ limitations under the License.
 namespace mlir {
 namespace quant {
 namespace {
+
+using ::mlir::tf_quant::Create1DConstValue;
+using ::mlir::tf_quant::CreateScalarConstValue;
 
 class ConvertTfXlaOpToTfOpPass
     : public PassWrapper<ConvertTfXlaOpToTfOpPass,

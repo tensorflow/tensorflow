@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/numeric/bits.h"
@@ -26,20 +27,51 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/collective_utils.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
 namespace {
-// Constants for NCCL SoL model
+
 constexpr double kHeaderOverhead = 0.025;
-constexpr absl::string_view kNcclOpLaunchUs = "nccl_op_launch_us";
-// it's GBytes/s, not Gbit/s (ex: 40Gb/s = 5GB/s)
-// GBytes per second = 10^9 bytes per second
-constexpr absl::string_view kNicSpeedGbps = "nic_speed_gbps";
-constexpr absl::string_view kChunkPrepUs = "chunk_prep_us";
-constexpr absl::string_view kRttUs = "rtt_us";
-constexpr absl::string_view kGpusPerNode = "gpus_per_node";
-constexpr absl::string_view kChunkSizeBytes = "chunk_size_bytes";
+
+constexpr char kUnknownKey[] = "<unknown>";
+
+static auto& device_to_cfg =
+    *(new absl::flat_hash_map<std::string, SolGPUCostModel::Config>({
+        {
+            "NVIDIA H100 80GB HBM3",
+            {
+                /*nccl_op_launch_time=*/absl::Microseconds(
+                    100.0f * kDefaultNcclCostModelCoeff),
+                /*nic_speed_gbps=*/
+                55.56f * kDefaultNcclCostModelCoeff,
+                /*chunk_prep_time=*/
+                absl::Microseconds(13.34f * kDefaultNcclCostModelCoeff),
+                /*rtt=*/
+                absl::Microseconds(68.89f * kDefaultNcclCostModelCoeff),
+                /*gpus_per_node=*/8,
+                /*chunk_size_bytes=*/kDefaultNcclCostModelChunkSizeBytes,
+            },
+        },
+        {
+            kUnknownKey,
+            {
+                /*nccl_op_launch_time=*/absl::Microseconds(
+                    100.0f * kDefaultNcclCostModelCoeff),
+                /*nic_speed_gbps=*/
+                55.56f * kDefaultNcclCostModelCoeff,
+                /*chunk_prep_time=*/
+                absl::Microseconds(13.34f * kDefaultNcclCostModelCoeff),
+                /*rtt=*/
+                absl::Microseconds(68.89f * kDefaultNcclCostModelCoeff),
+                /*gpus_per_node=*/8,
+                /*chunk_size_bytes=*/kDefaultNcclCostModelChunkSizeBytes,
+            },
+        },
+    }));
 
 // Returns the number of communicators in the mask.
 // For example, if the mask is 0x0, this function returns 1. If the mask is 0x7,
@@ -57,11 +89,20 @@ int NumRounds(const SolGPUCostModel::CollectiveType& coll_type) {
   return coll_type == SolGPUCostModel::CollectiveType::kAllReduce ? 2 : 1;
 }
 
+SolGPUCostModel::Config GetPlatformConfig(
+    const se::DeviceDescription& device_info) {
+  std::string key = device_info.name();
+  if (!device_to_cfg.contains(key)) {
+    return device_to_cfg[kUnknownKey];
+  }
+  return device_to_cfg[key];
+}
+
 }  // namespace
 
 /*static*/ SolGPUCostModel::Config SolGPUCostModel::GetConfig(
-    const HloModule* module) {
-  SolGPUCostModel::Config config;
+    const HloModule* module, const se::DeviceDescription& device_info) {
+  SolGPUCostModel::Config config = GetPlatformConfig(device_info);
   const auto& extra_options =
       module->config()
           .debug_options()
@@ -69,24 +110,24 @@ int NumRounds(const SolGPUCostModel::CollectiveType& coll_type) {
   for (const auto& [option_name, option_value] : extra_options) {
     int64_t value;
     double value_d;
-    VLOG(2) << "[SoL] option: " << option_name << " is " << option_value;
-    if (option_name == kNcclOpLaunchUs &&
-        absl::SimpleAtoi(option_value, &value)) {
+    VLOG(2) << "[SoL] extra option: " << option_name << " is " << option_value;
+    if (option_name == kSolNcclOpLaunchUs &&
+        absl::SimpleAtoi(option_value, &value) && value > 0) {
       config.nccl_op_launch_time = absl::Microseconds(value);
-    } else if (option_name == kNicSpeedGbps &&
-               absl::SimpleAtod(option_value, &value_d)) {
+    } else if (option_name == kSolNicSpeedGbps &&
+               absl::SimpleAtod(option_value, &value_d) && value_d > 0.0) {
       config.nic_speed_gbps = value_d;
-    } else if (option_name == kChunkPrepUs &&
-               absl::SimpleAtoi(option_value, &value)) {
+    } else if (option_name == kSolChunkPrepUs &&
+               absl::SimpleAtoi(option_value, &value) && value > 0) {
       config.chunk_prep_time = absl::Microseconds(value);
-    } else if (option_name == kRttUs &&
-               absl::SimpleAtoi(option_value, &value)) {
+    } else if (option_name == kSolRttUs &&
+               absl::SimpleAtoi(option_value, &value) && value > 0) {
       config.rtt = absl::Microseconds(value);
-    } else if (option_name == kGpusPerNode &&
-               absl::SimpleAtoi(option_value, &value)) {
+    } else if (option_name == kSolGpusPerNode &&
+               absl::SimpleAtoi(option_value, &value) && value > 0) {
       config.gpus_per_node = value;
-    } else if (option_name == kChunkSizeBytes &&
-               absl::SimpleAtoi(option_value, &value)) {
+    } else if (option_name == kSolChunkSizeBytes &&
+               absl::SimpleAtoi(option_value, &value) && value > 0) {
       config.chunk_size_bytes = value;
     }
   }

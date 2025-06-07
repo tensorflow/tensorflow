@@ -19,13 +19,10 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
-#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -41,8 +38,9 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/ops/temp_tf_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_quantize_op.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -50,6 +48,11 @@ limitations under the License.
 namespace mlir {
 namespace quant {
 namespace {
+
+using ::mlir::tf_quant::GetWeightComponentSpec;
+using ::mlir::tf_quant::IsOpWithDataMovementTrait;
+using ::mlir::tf_quant::IsOpWithQuantizableTrait;
+using ::mlir::tf_quant::IsValueWithQuantizablePrecision;
 
 class QuantizeWeightsPass
     : public mlir::PassWrapper<QuantizeWeightsPass, OperationPass<ModuleOp>> {

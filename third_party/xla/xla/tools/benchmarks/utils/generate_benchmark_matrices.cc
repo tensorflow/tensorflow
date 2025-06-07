@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/tools/benchmarks/utils/generate_benchmark_matrices.h"
 
-#include <algorithm>
-#include <cctype>
 #include <cstdlib>
 #include <string>
 #include <vector>
@@ -111,19 +109,19 @@ GetHardwareToContainerImage() {
   static const auto* kHardwareToContainerImage =
       new absl::flat_hash_map<std::string, std::string>{
           {"CPU_X86",
-           "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/"
+           "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
            "ml-build:latest"},
           {"CPU_ARM64",
-           "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/"
+           "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
            "ml-build-arm64:latest"},
           {"GPU_L4",
-           "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/"
+           "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
            "ml-build-cuda12.8-cudnn9.8:latest"},
           {"GPU_B200",
-           "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/"
+           "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
            "ml-build-cuda12.8-cudnn9.8:latest"},
           {"GPU_L4_1H_4D",
-           "us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/"
+           "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/"
            "ml-build-cuda12.8-cudnn9.8:latest"},
       };
   return *kHardwareToContainerImage;

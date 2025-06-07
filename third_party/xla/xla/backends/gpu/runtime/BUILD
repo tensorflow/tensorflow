@@ -96,6 +96,7 @@ cc_library(
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:memory_allocation",
+        "//xla/stream_executor:platform",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:trace_command_buffer_factory",
@@ -787,6 +788,7 @@ cc_library(
     hdrs = ["kernel_thunk.h"],
     deps = [
         ":thunk",
+        "//xla:shape_util",
         "//xla:types",
         "//xla/codegen/emitters:kernel_arguments",
         "//xla/hlo/ir:hlo",
@@ -1300,10 +1302,14 @@ cc_library(
     hdrs = ["replica_id_thunk.h"],
     deps = [
         ":thunk",
+        ":thunk_proto_cc",
         "//xla/service:buffer_assignment",
+        "//xla/service:computation_placer_hdr",
         "//xla/service:global_device_id",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -1438,6 +1444,7 @@ cc_library(
     deps = [
         ":make_batch_pointers",
         ":thunk",
+        ":thunk_proto_cc",
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -1445,8 +1452,43 @@ cc_library(
         "//xla/stream_executor:blas",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:stream",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "triangular_solve_thunk_test",
+    srcs = ["triangular_solve_thunk_test.cc"],
+    deps = [
+        ":thunk",
+        ":thunk_proto_cc",
+        ":triangular_solve_thunk",
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/log:check",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:protobuf",
+    ],
+)
+
+xla_cc_test(
+    name = "replica_id_thunk_test",
+    srcs = ["replica_id_thunk_test.cc"],
+    deps = [
+        ":replica_id_thunk",
+        ":thunk",
+        ":thunk_proto_cc",
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/log:check",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -1523,7 +1565,19 @@ cc_library(
         "//xla/stream_executor:stream",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "wait_for_streams_thunk_test",
+    srcs = ["wait_for_streams_thunk_test.cc"],
+    deps = [
+        ":thunk",
+        ":wait_for_streams_thunk",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1827,7 +1881,11 @@ tf_proto_library(
         "thunk.proto",
     ],
     protodeps = [
+        # keep sorted
+        "//xla:xla_data_proto",
         "//xla/service:buffer_assignment_proto",
+        "//xla/service/gpu:launch_dimensions_proto",
+        "//xla/stream_executor:launch_dim_proto",
         "//xla/stream_executor/gpu:gpu_blas_lt_proto",
     ],
 )
@@ -1840,9 +1898,13 @@ cc_library(
         ":conditional_thunk",
         ":copy_thunk",
         ":gemm_thunk",
+        ":kernel_thunk",
+        ":replica_id_thunk",
         ":sequential_thunk",
         ":thunk",
         ":thunk_proto_cc",
+        ":triangular_solve_thunk",
+        ":wait_for_streams_thunk",
         ":while_thunk",
         "//xla/service:buffer_assignment",
         "//xla/tsl/platform:statusor",
@@ -1862,6 +1924,7 @@ xla_cc_test(
         ":thunk",
         ":thunk_proto_cc",
         ":thunk_proto_deserialization",
+        ":wait_for_streams_thunk",
         ":while_thunk",
         "//xla/service:buffer_assignment",
         "//xla/tsl/platform:statusor",

@@ -1695,12 +1695,14 @@ pywrap_common_library(
     name = "pywrap_tensorflow_framework",
     dep = ":_pywrap_tensorflow",
     filter_name = "tensorflow_framework",
+    visibility = ["//visibility:public"],
 )
 
 pywrap_common_library(
     name = "pywrap_tensorflow_common",
     dep = ":_pywrap_tensorflow",
     filter_name = "_pywrap_tensorflow_common",
+    visibility = ["//visibility:public"],
 )
 
 alias(
@@ -1710,6 +1712,7 @@ alias(
         "//tensorflow:macos": ":pywrap_tensorflow_framework",
         "//tensorflow:windows": ":pywrap_tensorflow_common",
     }),
+    visibility = ["//visibility:public"],
 )
 
 pywrap_binaries(

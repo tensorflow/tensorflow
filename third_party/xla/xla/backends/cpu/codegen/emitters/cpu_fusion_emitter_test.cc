@@ -140,8 +140,8 @@ TEST_F(CpuFusionEmitterTest, ScatterMlir) {
 TEST_F(CpuFusionEmitterTest, ScatterLlvm) {
   constexpr absl::string_view kExpected = R"(
     CHECK-NOT:  @wrapped_scatter_entry(
-    CHECK-NOT:  @wrapped_scatter(
-    CHECK:      @wrapped_scatter_kernel(
+    CHECK-NOT:  @wrapped_scatter_kernel(
+    CHECK:      @wrapped_scatter(
     CHECK:      uwtable "frame-pointer"="all"
     CHECK-SAME: "prefer-vector-width"="512"
   )";

@@ -28,7 +28,7 @@ namespace {
 
 using ConvolutionHloTest = HloTestBase;
 
-XLA_TEST_F(ConvolutionHloTest, TestCudnnConvInt8x32) {
+TEST_F(ConvolutionHloTest, TestCudnnConvInt8x32) {
   // This convolution should be transformed to "cudnn-conv" and vectorized as
   // INT8x32_CONFIG on GPUs.
   constexpr char kHlo[] = R"(
@@ -42,7 +42,7 @@ ENTRY TestComputation {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(ConvolutionHloTest, TestCudnnConvInt8x32Bias) {
+TEST_F(ConvolutionHloTest, TestCudnnConvInt8x32Bias) {
   // cudnnConvolutionBiasActivationForward() for int8 is only supported on GPUs
   // with compute capability 6.1 or later.
   if (!backend()
@@ -77,7 +77,7 @@ ENTRY TestComputation {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(ConvolutionHloTest, TestCudnnConvInt8x32BiasNonConst) {
+TEST_F(ConvolutionHloTest, TestCudnnConvInt8x32BiasNonConst) {
   // Test two GPU compiled HLOs, first version with vectorization disabled,
   // second with vectorization enabled. The reference implementation
   // (Interpreter) does not support the fused conv-add-relu-clamp operation,
@@ -151,7 +151,7 @@ class HloCompareModulesTest : public HloTestBase {
   bool run_hlo_passes_;
 };
 
-XLA_TEST_F(ConvolutionHloTest, TestCudnnConvInt8x32Revectorize) {
+TEST_F(ConvolutionHloTest, TestCudnnConvInt8x32Revectorize) {
   // Compare re-vectorized custom call vs the default version.
   constexpr char kHlo[] = R"(
 HloModule TestModule
@@ -275,7 +275,7 @@ INSTANTIATE_TEST_SUITE_P(CudnnReorderSuite, ReorderFilterAndBiasHloTest,
                          /*bias_size=*/::testing::Values(32, 64, 96));
 
 // Regression test for algorithm 14.
-XLA_TEST_F(ConvolutionHloTest, TestCudnnConvBiasActivationForward) {
+TEST_F(ConvolutionHloTest, TestCudnnConvBiasActivationForward) {
   const std::string& filename = tsl::io::JoinPath(
       tsl::testing::XlaSrcRoot(), "tests", "data", "cudnn_reproducer.hlo");
   EXPECT_TRUE(RunAndCompareFromFile(filename, ErrorSpec{1e-3, 1e-3}));

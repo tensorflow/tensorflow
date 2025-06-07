@@ -65,8 +65,6 @@ ENTRY test (tuple: ((f32[], f32[]), f32[])) -> f32[] {
 
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string));
   RunAndFilecheckHloRewrite(hlo_string, AddOriginalValue());
 }
 
@@ -110,23 +108,6 @@ ENTRY test {
 )";
 
   RunAndFilecheckHloRewrite(hlo_string, AddOriginalValue());
-}
-
-TEST_F(AddOriginalValueTest, GetTupleElementNonSymbolic) {
-  constexpr absl::string_view hlo_string = R"(
-HloModule test, entry_computation_layout={((f32[], s32[]))->s32[]}
-
-ENTRY test {
-  p = (f32[], s32[]) parameter(0)
-  ROOT get-tuple-element = s32[] get-tuple-element(p), index=1
-}
-
-)";
-
-  RunAndFilecheckHloRewrite(hlo_string, AddOriginalValue(), R"(
-CHECK:  %[[PARAM:.*]] = (f32[], s32[]) parameter(0), origin={({"p" {0}{{[}]}}, {"p" {1}})}
-CHECK:  s32[] get-tuple-element(%[[PARAM]]), index=1, origin={{[{]}}{"[[PARAM]]" {1}
-  )");
 }
 
 }  // namespace

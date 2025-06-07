@@ -30,7 +30,7 @@ namespace {
 
 class TopkTest : public HloPjRtTestBase {};
 
-XLA_TEST_F(TopkTest, CustomCallTarget) {
+TEST_F(TopkTest, CustomCallTarget) {
   absl::string_view hlo_text_module = R"(
   HloModule topk
 

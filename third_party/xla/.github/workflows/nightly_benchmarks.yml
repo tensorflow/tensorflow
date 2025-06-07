@@ -1,0 +1,171 @@
+# Copyright 2025 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+# .github/workflows/nightly_benchmarks.yml
+name: Nightly Benchmarks
+permissions:
+  contents: read
+on:
+  workflow_dispatch:  # Allows manual triggering
+  schedule:
+    - cron: "0 0 * * *"  # Run at midnight every day
+
+jobs:
+  # =================================================================
+  # Job 1: Generate the matrix specifically for SCHEDULED benchmarks
+  # =================================================================
+  generate_matrix:
+    name: Generate Scheduled Matrix
+    uses: ./.github/workflows/generate_benchmark_matrix.yml
+    with:
+      workflow_type: 'SCHEDULED'
+      registry_file: 'xla/tools/benchmarks/registries/default_registry.yml'
+      checkout_ref: ${{ github.sha }} # On push/dispatch to main, github.sha is the commit SHA
+  run_benchmarks:
+    name: Run Benchmark (${{ matrix.benchmark_entry.config_id }}) # config_id will indicate the workflow type, e.g., '_scheduled'
+    needs: generate_matrix
+    # Also check if the generate_matrix job itself was skipped due to its `if` condition
+    if: success() && needs.generate_matrix.result != 'skipped' && needs.generate_matrix.outputs.matrix_include_json != '[]' && needs.generate_matrix.outputs.matrix_include_json != ''
+    strategy:
+      fail-fast: false # Continue running other benchmarks even if one fails
+      matrix:
+         benchmark_entry: ${{ fromJson(needs.generate_matrix.outputs.matrix_include_json || '[]') }}
+    runs-on: ${{ matrix.benchmark_entry.runner_label }}
+    container: ${{ matrix.benchmark_entry.container_image }}
+    defaults:
+      run:
+        shell: bash
+    timeout-minutes: 60
+    env:
+      # Variables from the matrix
+      BENCHMARK_NAME: ${{ matrix.benchmark_entry.benchmark_name }}
+      CONFIG_ID: ${{ matrix.benchmark_entry.config_id }}
+      RUNNER_LABEL: ${{ matrix.benchmark_entry.runner_label }}
+      CONTAINER_IMAGE: ${{ matrix.benchmark_entry.container_image }}
+      ARTIFACT_LOCATION: ${{ matrix.benchmark_entry.artifact_location }}
+      IS_GCS_ARTIFACT: ${{ matrix.benchmark_entry.is_gcs_artifact }}
+      INPUT_FORMAT: ${{ matrix.benchmark_entry.input_format }}
+      XLA_FLAGS_JSON: ${{ toJson(matrix.benchmark_entry.xla_compilation_flags) }}
+      RUNTIME_FLAGS_JSON: ${{ toJson(matrix.benchmark_entry.runtime_flags) }}
+      TARGET_METRICS_JSON: ${{ toJson(matrix.benchmark_entry.target_metrics) }}
+      TOPOLOGY_JSON: ${{ toJson(matrix.benchmark_entry.topology) }}
+      HARDWARE_CATEGORY: ${{ matrix.benchmark_entry.hardware_category }} # e.g., NVIDIA_GPU_B200
+      # Workflow context variables
+      CHECKOUT_REF: ${{ github.sha }}
+      COMMIT_SHA: ${{ github.sha }}
+      WORKFLOW_RUN_ID: ${{ github.run_id }}
+      # Paths and script locations
+      OUTPUT_DIR_NAME: benchmark_output_${{ matrix.benchmark_entry.config_id }} # config_id includes workflow type
+      SCRIPT_DIR_RELATIVE: .github/workflows/benchmarks
+      BASELINE_YAML_FILE_RELATIVE: xla/tools/benchmarks/baseline/nightly_baseline.yml
+      COMPARISON_SCRIPT_RELATIVE: .github/workflows/benchmarks/compare_with_baseline.py
+    steps:
+      - name: "Wait For Connection"
+        uses: google-ml-infra/actions/ci_connection@7f5ca0c263a81ed09ea276524c1b9192f1304e3c
+        with:
+          halt-dispatch-input: ${{ inputs.halt-for-connection }}
+      - name: Print Job Info & Set Full Paths in ENV
+        run: |
+          # Resolve full paths based on GITHUB_WORKSPACE and relative paths defined in env
+          FULL_OUTPUT_DIR_PATH="${GITHUB_WORKSPACE}/${OUTPUT_DIR_NAME}"
+          RESOLVED_SCRIPT_DIR_PATH="${GITHUB_WORKSPACE}/${SCRIPT_DIR_RELATIVE}"
+          RESOLVED_BASELINE_YAML_PATH="${GITHUB_WORKSPACE}/${BASELINE_YAML_FILE_RELATIVE}" # Will use nightly_baseline.yml
+          RESOLVED_COMPARISON_SCRIPT_PATH="${GITHUB_WORKSPACE}/${COMPARISON_SCRIPT_RELATIVE}"
+          RESOLVED_RUN_COMPARISON_SCRIPT_PATH="${GITHUB_WORKSPACE}/${SCRIPT_DIR_RELATIVE}/run_comparison.sh"
+          echo "--- Benchmark Job Info (Nightly) ---"
+          echo "Config ID (from matrix): $CONFIG_ID"
+          echo "Benchmark Name: $BENCHMARK_NAME"
+          echo "Runner Label: $RUNNER_LABEL"
+          echo "Hardware Category: $HARDWARE_CATEGORY"
+          echo "Output Directory Name (relative): $OUTPUT_DIR_NAME"
+          echo "Full Output Directory Path: $FULL_OUTPUT_DIR_PATH"
+          echo "Full Script Directory Path: $RESOLVED_SCRIPT_DIR_PATH"
+          echo "Full Baseline YAML Path: $RESOLVED_BASELINE_YAML_PATH" # This will point to nightly_baseline.yml
+          echo "Full Comparison Script Path: $RESOLVED_COMPARISON_SCRIPT_PATH"
+          echo "Full Run Comparison Script Path: $RESOLVED_RUN_COMPARISON_SCRIPT_PATH"
+          echo "GITHUB_WORKSPACE: ${GITHUB_WORKSPACE}"
+          echo "Current PWD: $(pwd)"
+          echo "---------------------------------------"
+          # Make resolved paths available to subsequent steps via GITHUB_ENV
+          echo "RESOLVED_OUTPUT_DIR=$FULL_OUTPUT_DIR_PATH" >> $GITHUB_ENV
+          echo "RESOLVED_SCRIPT_DIR=$RESOLVED_SCRIPT_DIR_PATH" >> $GITHUB_ENV
+          echo "RESOLVED_BASELINE_YAML=$RESOLVED_BASELINE_YAML_PATH" >> $GITHUB_ENV
+          echo "RESOLVED_COMPARISON_SCRIPT=$RESOLVED_COMPARISON_SCRIPT_PATH" >> $GITHUB_ENV
+          echo "RESOLVED_RUN_COMPARISON_SCRIPT=$RESOLVED_RUN_COMPARISON_SCRIPT_PATH" >> $GITHUB_ENV
+          # Create the output directory; scripts will assume it exists
+          mkdir -p "$FULL_OUTPUT_DIR_PATH"
+          if [ ! -d "$FULL_OUTPUT_DIR_PATH" ]; then
+            echo "::error::Failed to create output directory: $FULL_OUTPUT_DIR_PATH"
+            exit 1
+          fi
+      - name: Checkout OpenXLA Repository
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          ref: ${{ env.CHECKOUT_REF }}
+      - name: Build Binaries
+        id: build_binaries
+        run: |
+           bash "${RESOLVED_SCRIPT_DIR}/build_binaries.sh"
+        env:
+          OUTPUT_DIR: ${{ env.RESOLVED_OUTPUT_DIR }}
+      - name: Prepare Benchmark Artifact
+        id: prep_artifact
+        run: |
+           bash "${RESOLVED_SCRIPT_DIR}/prepare_artifact.sh"
+        env:
+          OUTPUT_DIR: ${{ env.RESOLVED_OUTPUT_DIR }}
+      - name: Run Benchmark and Generate Stats
+        id: run_hlo
+        env:
+           RUNNER_BINARY: "${{ steps.build_binaries.outputs.runner_binary }}"
+           STATS_BINARY: "${{ steps.build_binaries.outputs.stats_binary }}"
+           DEVICE_TYPE_FLAG: "${{ steps.build_binaries.outputs.device_type_flag }}"
+           LOCAL_ARTIFACT_PATH: "${{ steps.prep_artifact.outputs.artifact_local_path }}"
+           OUTPUT_DIR: ${{ env.RESOLVED_OUTPUT_DIR }}
+           # Other job-level env vars are automatically inherited
+        run: |
+           # The run_benchmark.sh script is expected to create $RESOLVED_OUTPUT_DIR/results.json
+           bash "${RESOLVED_SCRIPT_DIR}/run_benchmark.sh"
+           # Print the content of results.json for debugging purposes
+           RESULTS_JSON_FILE_PATH="${RESOLVED_OUTPUT_DIR}/results.json"
+           echo "--- Content of results.json (from workflow) ---"
+           if [ -f "$RESULTS_JSON_FILE_PATH" ]; then
+             if command -v jq &> /dev/null && jq '.' "$RESULTS_JSON_FILE_PATH" > /dev/null 2>&1; then
+               jq '.' "$RESULTS_JSON_FILE_PATH"
+             else
+               echo "results.json may not be valid JSON or jq failed, printing with cat:"
+               cat "$RESULTS_JSON_FILE_PATH"
+             fi
+           elif [ -f "${RESULTS_JSON_FILE_PATH}.txt" ]; then # Fallback for non-JSON or renamed output
+             echo "results.json not found, printing fallback .txt file:"
+             cat "${RESULTS_JSON_FILE_PATH}.txt"
+           else
+             echo "::warning::Neither results.json nor results.json.txt found at $RESULTS_JSON_FILE_PATH"
+           fi
+           echo "---------------------------------------------"
+      - name: Compare Results to Baseline
+        if: (steps.run_hlo.outcome == 'success' || (steps.run_hlo.outcome == 'failure' && (hashFiles(format('{0}/results.json', env.RESOLVED_OUTPUT_DIR)) != '' || hashFiles(format('{0}/results.json.txt', env.RESOLVED_OUTPUT_DIR)) != ''))) && env.skip_comparison_due_to_yaml_install_failure != 'true'
+        run: |
+          echo "Starting baseline comparison (against nightly baseline)..."
+          bash "$RESOLVED_RUN_COMPARISON_SCRIPT" # This script calls the Python comparison script
+          echo "Baseline comparison finished."
+          echo "---------------------------------------------"
+      - name: Upload Benchmark Artifacts
+        if: always()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: results-${{ env.CONFIG_ID }}
+          path: ${{ env.RESOLVED_OUTPUT_DIR }}
+          retention-days: 14
+          if-no-files-found: error

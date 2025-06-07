@@ -3493,6 +3493,43 @@ ENTRY entry_computation {
   EXPECT_EQ(dus9_alloc_slice, dus5_alloc_slice);
 }
 
+TEST_F(WhileBufferAssignmentTest, TupleSortSharesBuffers) {
+  const char* const kHloString = R"(
+HloModule test
+
+less_than {
+  p0 = s32[] parameter(0)
+  p1 = s32[] parameter(1)
+  p2 = s32[] parameter(2)
+  p3 = s32[] parameter(3)
+  ROOT res = pred[] compare(p0, p1), direction=LT
+}
+
+ENTRY main {
+  p0 = s32[] parameter(0)
+  broadcast = s32[128] broadcast(p0), dimensions={}
+  p1 = s32[128] parameter(1)
+  add = s32[128] add(broadcast, p1)
+  iota = s32[128] iota(), iota_dimension=0
+  ROOT sort = (s32[128], s32[128]) sort(add, iota), dimensions={0}, to_apply=less_than, is_stable=true
+}
+
+)";
+  auto module = ParseAndReturnVerifiedModule(kHloString).value();
+
+  RunCopyInsertion(module.get());
+  auto assignment = RunBufferAssignment(module.get());
+  auto sort = FindInstruction(module.get(), "sort");
+  auto sort_alloc_slice_0 = assignment->GetUniqueSlice(sort, {0}).value();
+  auto sort_alloc_slice_1 = assignment->GetUniqueSlice(sort, {1}).value();
+  auto add = FindInstruction(module.get(), "add");
+  auto add_alloc_slice = assignment->GetUniqueTopLevelSlice(add).value();
+  EXPECT_EQ(sort_alloc_slice_0, add_alloc_slice);
+  auto iota = FindInstruction(module.get(), "iota");
+  auto iota_alloc_slice = assignment->GetUniqueTopLevelSlice(iota).value();
+  EXPECT_EQ(sort_alloc_slice_1, iota_alloc_slice);
+}
+
 TEST(BufferAllocationSliceProtoTest, RoundTripProto) {
   BufferAllocation original_alloc =
       BufferAllocation(/*index=*/1, /*size=*/500, /*color=*/0);

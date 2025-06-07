@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace tridiagonal {
@@ -90,17 +91,13 @@ XLA_TEST_P(TridiagonalTest, TridiagonalMatMulWrongShape) {
   xla::XlaBuilder builder(TestName());
 
   XlaOp upper_diagonal_xla = Parameter(
-      &builder, 0, ShapeUtil::MakeValidatedShape(F32, {5, 3, 7}).value(),
-      "upper_diagonal");
+      &builder, 0, ShapeUtil::MakeShape(F32, {5, 3, 7}), "upper_diagonal");
   XlaOp main_diagonal_xla = Parameter(
-      &builder, 1, ShapeUtil::MakeValidatedShape(F32, {5, 3, 7}).value(),
-      "main_diagonal");
+      &builder, 1, ShapeUtil::MakeShape(F32, {5, 3, 7}), "main_diagonal");
   XlaOp lower_diagonal_xla = Parameter(
-      &builder, 2, ShapeUtil::MakeValidatedShape(F32, {5, 3, 7}).value(),
-      "lower_diagonal");
-  XlaOp rhs_xla = Parameter(
-      &builder, 3, ShapeUtil::MakeValidatedShape(F32, {5, 3, 7, 6}).value(),
-      "rhs");
+      &builder, 2, ShapeUtil::MakeShape(F32, {5, 3, 7}), "lower_diagonal");
+  XlaOp rhs_xla =
+      Parameter(&builder, 3, ShapeUtil::MakeShape(F32, {5, 3, 7, 6}), "rhs");
 
   auto result = TridiagonalMatMul(upper_diagonal_xla, main_diagonal_xla,
                                   lower_diagonal_xla, rhs_xla);

@@ -763,6 +763,9 @@ for pdt in [
     _NP_TO_TF[pdt] = next(
         _NP_TO_TF[dt] for dt in _NP_TO_TF if dt == pdt().dtype)  # pylint: disable=no-value-for-parameter
 
+if hasattr(np.dtypes, "StringDType"):
+  _NP_TO_TF[np.dtypes.StringDType()] = string
+
 TF_VALUE_DTYPES = set(_NP_TO_TF.values())
 
 _TF_TO_NP = {

@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.69
+
+* Implemented PjRtClient::CreateUninitializedBuffer
+
 ## 0.68
 
 * Changed the type of ``topology`` in

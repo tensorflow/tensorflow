@@ -354,7 +354,7 @@ class IndexingMap {
 
   // Removes unused symbols from the `affine_map_` and constraints.
   // Returns a bit vector of symbols that were removed. If none of the symbols
-  // were removed, returns {}.
+  // were removed, returns an empty bit vector.
   llvm::SmallBitVector RemoveUnusedSymbols();
 
   // Removes unused dimensions and symbols from the `affine_map_` and

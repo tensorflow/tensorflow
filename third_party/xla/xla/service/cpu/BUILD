@@ -940,6 +940,7 @@ cc_library(
     local_defines = if_graph_api(["XLA_ONEDNN_USE_GRAPH_API=1"]),
     deps = [
         ":backend_config_proto_cc",
+        ":cpu_options",
         ":dot_op_emitter",
         ":ir_emission_utils",
         ":ir_emitter2",
@@ -955,6 +956,7 @@ cc_library(
         "//xla/backends/cpu:xnn_fusion",
         "//xla/backends/cpu/codegen:computation_kernel_emitter",
         "//xla/backends/cpu/codegen:fusion_compiler",
+        "//xla/backends/cpu/codegen:fusion_emitter",
         "//xla/backends/cpu/codegen:ir_compiler",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/backends/cpu/codegen/dot:dot_kernel_emitter",
@@ -997,6 +999,7 @@ cc_library(
         "//xla/runtime:work_group",
         "//xla/service:buffer_assignment",
         "//xla/service:collective_ops_utils",
+        "//xla/service:dump",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_proto_cc",
         "//xla/service:pattern_matcher",
@@ -1011,6 +1014,9 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
         "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )

@@ -1515,6 +1515,15 @@ class XlaBuilder {
           output_operand_aliasing,
       const Literal* literal, CustomCallSchedule schedule,
       CustomCallApiVersion api_version);
+  friend XlaOp CustomCallWithComputationAndLayouts(
+      XlaBuilder* builder, const std::string& call_target_name,
+      absl::Span<const XlaOp> operands, XlaComputationId computation,
+      const Shape& shape, absl::Span<const Shape> operand_shapes_with_layout,
+      const std::string& opaque, bool has_side_effect,
+      absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+          output_operand_aliasing,
+      const Literal* literal, CustomCallSchedule schedule,
+      CustomCallApiVersion api_version);
   friend XlaOp CustomCallWithComputation(
       XlaBuilder* builder, const std::string& call_target_name,
       absl::Span<const XlaOp> operands, XlaComputationId computation,
@@ -2492,6 +2501,19 @@ XlaOp CompositeCall(XlaBuilder* builder, XlaComputationId computation,
 XlaOp CustomCall(
     XlaBuilder* builder, const std::string& call_target_name,
     absl::Span<const XlaOp> operands, const Shape& shape,
+    const std::string& opaque = "", bool has_side_effect = false,
+    absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+        output_operand_aliasing = {},
+    const Literal* literal = nullptr,
+    CustomCallSchedule schedule = CustomCallSchedule::SCHEDULE_NONE,
+    CustomCallApiVersion api_version = API_VERSION_ORIGINAL);
+
+// Overload which constructs a custom call that applies an Xla computation
+// and fixed layout.
+XlaOp CustomCallWithComputationAndLayouts(
+    XlaBuilder* builder, const std::string& call_target_name,
+    absl::Span<const XlaOp> operands, XlaComputationId computation,
+    const Shape& shape, absl::Span<const Shape> operand_shapes_with_layout,
     const std::string& opaque = "", bool has_side_effect = false,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
         output_operand_aliasing = {},

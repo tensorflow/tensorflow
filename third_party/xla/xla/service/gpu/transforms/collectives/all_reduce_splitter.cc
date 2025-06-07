@@ -45,9 +45,9 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 
 namespace xla {
-namespace {
 
 // Structure containing the newly calculated replica groups.
+namespace {
 struct ARReplicaGroups {
   // First AR's replica group.
   std::vector<ReplicaGroup> first_ar_replica_groups;
@@ -112,6 +112,7 @@ struct ReplicaGroups {
     return true;
   }
 };
+}  // namespace
 
 using ARReplicaGroupMap =
     absl::flat_hash_map<ReplicaGroups,
@@ -122,8 +123,8 @@ using RewriteDecision =
 
 // Returns a single dimension which is being split by `ds`. Returns
 // std::nullopt if there are more, or no dimension to be split.
-std::optional<int> GetSplitDim(const HloAllReduceInstruction& ar,
-                               const HloDynamicSliceInstruction& ds) {
+static std::optional<int> GetSplitDim(const HloAllReduceInstruction& ar,
+                                      const HloDynamicSliceInstruction& ds) {
   int split_dim = -1;
   int num_dims = 0;
   for (int64_t dim = 0; dim < ar.shape().dimensions().size(); ++dim) {
@@ -140,8 +141,8 @@ std::optional<int> GetSplitDim(const HloAllReduceInstruction& ar,
 }
 
 // For input collective instruction `ar` get the process group size (# shards).
-std::optional<int> GetProcessGroupSize(const HloAllReduceInstruction& ar,
-                                       const HloDynamicSliceInstruction& ds) {
+static std::optional<int> GetProcessGroupSize(
+    const HloAllReduceInstruction& ar, const HloDynamicSliceInstruction& ds) {
   CHECK(ds.operand(0) == &ar) << "Irrelevant AR + DS pair.";
   std::optional<int> split_dim = GetSplitDim(ar, ds);
   if (!split_dim.has_value()) {
@@ -152,7 +153,7 @@ std::optional<int> GetProcessGroupSize(const HloAllReduceInstruction& ar,
          ds.dynamic_slice_sizes()[*split_dim];
 }
 
-ARReplicaGroupMap GetReplicaGroupsMap(HloComputation& computation) {
+static ARReplicaGroupMap GetReplicaGroupsMap(HloComputation& computation) {
   ARReplicaGroupMap map;
   hlo_query::ForEachInstructionWithOpcode(
       computation, HloOpcode::kAllReduce,
@@ -165,7 +166,7 @@ ARReplicaGroupMap GetReplicaGroupsMap(HloComputation& computation) {
   return map;
 }
 
-ARReplicaGroups GetNewReplicaGroups(int group_size, int num_partitions) {
+static ARReplicaGroups GetNewReplicaGroups(int group_size, int num_partitions) {
   CHECK_EQ(num_partitions % group_size, 0);
 
   std::vector<ReplicaGroup> first_ar_rgs, second_ar_rgs;
@@ -196,9 +197,9 @@ ARReplicaGroups GetNewReplicaGroups(int group_size, int num_partitions) {
 
 // Returns true if `spec` can be transformed into a logical reduce scatter.
 // False otherwise.
-bool IsLogicalReduceScatter(const HloModule& module,
-                            const AllReduceRewriteSpec& spec,
-                            HloComputation& computation) {
+static bool IsLogicalReduceScatter(const HloModule& module,
+                                   const AllReduceRewriteSpec& spec,
+                                   HloComputation& computation) {
   HloAllReduceInstruction& ar = *spec.all_reduce;
   CHECK_EQ(ar.user_count(), 1);
   CHECK_EQ(module.config().replica_count(), 1);
@@ -231,8 +232,8 @@ bool IsLogicalReduceScatter(const HloModule& module,
 // split. Currently it employs a simple heuristic, and it checks whether there
 // exists at least one all reduce with same replica groups as any of the all
 // reduce's replica groups after the potential split.
-bool IsProfitableToSplit(const ARReplicaGroupMap& replica_map,
-                         const AllReduceRewriteSpec& spec) {
+static bool IsProfitableToSplit(const ARReplicaGroupMap& replica_map,
+                                const AllReduceRewriteSpec& spec) {
   auto new_rgs = spec.replica_groups;
   bool first_replica_exists =
       replica_map.contains(ReplicaGroups{new_rgs.first_ar_replica_groups});
@@ -241,10 +242,10 @@ bool IsProfitableToSplit(const ARReplicaGroupMap& replica_map,
   return first_replica_exists || second_replica_exists;
 }
 
-RewriteDecision CanRewrite(const HloModule& module,
-                           const ARReplicaGroupMap& replica_map,
-                           HloComputation& computation,
-                           HloInstruction& instruction) {
+static RewriteDecision CanRewrite(const HloModule& module,
+                                  const ARReplicaGroupMap& replica_map,
+                                  HloComputation& computation,
+                                  HloInstruction& instruction) {
   // We rely on SPMD partitioning enabled, thus asserting `replica_count` = 1.
   const HloModuleConfig& config = module.config();
   if (config.use_auto_spmd_partitioning() || !config.use_spmd_partitioning() ||
@@ -354,9 +355,9 @@ RewriteDecision CanRewrite(const HloModule& module,
   return spec;
 }
 
-absl::StatusOr<bool> SplitAllReduce(const HloModuleConfig& config,
-                                    AllReduceRewriteSpec spec,
-                                    HloComputation& computation) {
+static absl::StatusOr<bool> SplitAllReduce(const HloModuleConfig& config,
+                                           AllReduceRewriteSpec spec,
+                                           HloComputation& computation) {
   int64_t next_channel_id =
       hlo_query::NextChannelId(*spec.all_reduce->GetModule());
   VLOG(1) << "AR splitting spec: " << spec.ToString();
@@ -398,10 +399,10 @@ absl::StatusOr<bool> SplitAllReduce(const HloModuleConfig& config,
 
 // Splits `instruction` if it finds it is feasible and profitable to do so.
 // Return true if `instruction` has been rewritten, or false otherwise.
-absl::StatusOr<bool> SplitAllReduce(const HloModule& module,
-                                    const ARReplicaGroupMap& replica_map,
-                                    HloComputation& computation,
-                                    HloInstruction& instruction) {
+static absl::StatusOr<bool> SplitAllReduce(const HloModule& module,
+                                           const ARReplicaGroupMap& replica_map,
+                                           HloComputation& computation,
+                                           HloInstruction& instruction) {
   RewriteDecision spec =
       CanRewrite(module, replica_map, computation, instruction);
   if (std::holds_alternative<RewriteInfeasibleReason>(spec)) {
@@ -413,8 +414,6 @@ absl::StatusOr<bool> SplitAllReduce(const HloModule& module,
   return SplitAllReduce(module.config(), std::get<AllReduceRewriteSpec>(spec),
                         computation);  // changed
 }
-
-}  // namespace
 
 absl::StatusOr<bool> AllReduceSplitter::Run(
     HloModule* module,

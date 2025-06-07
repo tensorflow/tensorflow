@@ -2243,6 +2243,18 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
   // Run post allocation transformation and fix the allocation sequence if
   // needed.
   if (options_.post_allocation_transformation_fn) {
+    auto has_in_place_user = [](HloInstruction* instr) {
+      for (HloInstruction* user : instr->users()) {
+        auto alias_pairs =
+            HloDataflowAnalysis::GetInPlaceInputOutputPairs(user);
+        for (const auto& [operand_index, output_index] : alias_pairs) {
+          if (user->operand(operand_index.operand_number) == instr) {
+            return true;
+          }
+        }
+      }
+      return false;
+    };
     VLOG(3) << "Running post allocation transformation on module";
     for (HloComputation* comp : alias_analysis_.dataflow_analysis()
                                     .module()
@@ -2263,24 +2275,31 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
 
         // If any of the operands of the instruction has an in-place user, we
         // don't run the post-allocation transformation.
+        bool in_place_user = false;
         for (HloInstruction* operand : instr->operands()) {
           // We don't care about users of constants.
           if (operand->opcode() == HloOpcode::kConstant) {
             continue;
           }
-          for (HloInstruction* user : operand->users()) {
-            if (HloDataflowAnalysis::IsInPlaceOperation(user->opcode())) {
-              break;
-            }
+          if (has_in_place_user(operand)) {
+            in_place_user = true;
+            break;
           }
         }
+        if (in_place_user) {
+          continue;
+        }
 
+        VLOG(3) << "Running post allocation transformation on: \n"
+                << instr->ToString();
         TF_ASSIGN_OR_RETURN(PostAllocationTransformationUpdate changes,
                             options_.post_allocation_transformation_fn(instr));
-        VLOG(3) << "Post allocation transformation info: \n"
-                << changes.ToString();
-        FixAllocationSequenceAfterPostAllocationTransformation(allocations_,
-                                                               changes);
+        if (!changes.to_be_removed.empty()) {
+          VLOG(3) << "Post allocation transformation info: \n"
+                  << changes.ToString();
+          FixAllocationSequenceAfterPostAllocationTransformation(allocations_,
+                                                                 changes);
+        }
       }
     }
   }
@@ -5865,8 +5884,7 @@ AllocationResult MsaAlgorithm::WindowPrefetch(
 
     if (options_.window_prefetch_mode == WindowPrefetchMode::kWindowPrefetch) {
       // Window prefetch mode
-      const Shape shape =
-          ShapeUtil::MakeValidatedShape(U8, {window.size()}).value();
+      const Shape shape = ShapeUtil::MakeShape(U8, {window.size()});
       Prefetch(window_prefetch_request, prev_allocation_in_default_mem, &shape);
     } else {
       // Window exposure mode, we only need to find a chunk for the window

@@ -418,7 +418,7 @@ func.func @while_with_no_sharding_inside_manual_comp(
       %arg0: tensor<32x2xi32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x", "y"}, {}]>})
       -> (tensor<32x2xi32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x", "y"}, {}]>}) {
   // CHECK-NEXT: %[[COPY_0:.*]] = mhlo.copy %arg0 {mhlo.sharding = "{devices=[32,1]<=[32]}"}
-  // CHECK-NEXT: %[[FULL_TO_SHARD:.*]] = stablehlo.custom_call @SPMDFullToShardShape(%0)
+  // CHECK-NEXT: %[[FULL_TO_SHARD:.*]] = stablehlo.custom_call @SPMDFullToShardShape(%[[COPY_0]])
   // CHECK:      %[[C0:.*]] = stablehlo.constant {mhlo.sharding = "{manual}"} dense<0>
   // CHECK:      %[[WHILE:.*]]:2 = stablehlo.while(%iterArg = %[[FULL_TO_SHARD]], %iterArg_1 = %[[C0]])
   // CHECK-SAME:   attributes {mhlo.sharding = "{{[{][{]}}manual}, {manual}}"}
@@ -445,6 +445,31 @@ func.func @propagation_barrier(%arg0: tensor<8x16xf32>) -> (tensor<8x16xf32>) {
   // CHECK-NEXT: return %arg0 : tensor<8x16xf32>
   %r = sdy.propagation_barrier %arg0 allowed_direction=BACKWARD : tensor<8x16xf32>
   return %r : tensor<8x16xf32>
+}
+
+// CHECK-LABEL: func @all_reduce_input_no_unreduced_axes
+func.func @all_reduce_input_no_unreduced_axes(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_5, [{"j"}, {}]>}) -> tensor<8x8xf32> {
+  // CHECK-NEXT: return %arg0 : tensor<8x8xf32>
+  %0 = sdy.all_reduce {"i"} %arg0 out_sharding=<@mesh_5, [{"j"}, {}]> : tensor<8x8xf32>
+  return %0 : tensor<8x8xf32>
+}
+
+// CHECK-LABEL: func @all_reduce_input_with_unreduced_axes
+func.func @all_reduce_input_with_unreduced_axes(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_5, [{"j"}, {}], unreduced={"i"}>}) -> tensor<8x8xf32> {
+  // CHECK-NEXT: %[[COPY_0:.*]] = mhlo.copy %arg0 {mhlo.sharding = "{devices=[2,1,2]<=[2,2]T(1,0) last_tile_dim_replicate}"}
+  // CHECK-NEXT: %[[FULL_TO_SHARD:.*]] = stablehlo.custom_call @SPMDFullToShardShape(%[[COPY_0]]) {mhlo.sharding = "{manual}"}
+  // CHECK-NEXT: %[[ALL_REDUCE:.*]] = "stablehlo.all_reduce"(%1) <{
+  // CHECK-SAME:   channel_handle = #stablehlo.channel_handle<handle = 1, type = 1>,
+  // CHECK-SAME:   replica_groups = dense<{{\[}}[0, 2], [1, 3]]> : tensor<2x2xi64>, use_global_device_ids}> ({
+  // CHECK-NEXT: ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+  // CHECK-NEXT:   %[[ADD:.*]] = stablehlo.add %arg1, %arg2 {mhlo.sharding = "{manual}"}
+  // CHECK-NEXT:   stablehlo.return %[[ADD]]
+  // CHECK-NEXT: }) {mhlo.sharding = "{manual}"}
+  // CHECK-NEXT: %[[COPY_1:.*]] = mhlo.copy %[[ALL_REDUCE]] {mhlo.sharding = "{manual}"}
+  // CHECK-NEXT: %[[SHARD_TO_FULL:.*]] = stablehlo.custom_call @SPMDShardToFullShape(%3) {mhlo.sharding = "{devices=[2,1,2]<=[2,2]T(1,0) last_tile_dim_replicate}"}
+  // CHECK-NEXT: return %[[SHARD_TO_FULL]]
+  %0 = sdy.all_reduce {"i"} %arg0 out_sharding=<@mesh_5, [{"j"}, {}]> : tensor<8x8xf32>
+  return %0 : tensor<8x8xf32>
 }
 
 
