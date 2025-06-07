@@ -45,6 +45,7 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/log:check",
         "@local_xla//xla/tsl/lib/core:bits",
     ],
 )
