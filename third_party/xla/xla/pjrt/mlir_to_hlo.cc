@@ -244,7 +244,7 @@ absl::StatusOr<std::string> SerializeUsingNativeBytecode(
 
 absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
     mlir::ModuleOp mlir_module, absl::string_view requested_target,
-    bool inplace) {
+    bool inplace, std::optional<int64_t> plugin_version) {
   mlir::MLIRContext* context = mlir_module->getContext();
   mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
 
@@ -265,7 +265,15 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createStablehloComplexMathExpanderPass());
 
-  xla::sdy::addSdyRoundTripExportPipeline(pm);
+  // Determine whether we need to use the old version of Shardy export where we
+  // convert Shardy ops to StableHLO ops, and stringify the Shardy attributes.
+  // Latest version of the code has StableHLO support mixed serialization, so
+  // we don't need to do this for new versions.
+  const bool require_pure_stablehlo =
+      plugin_version.has_value() && plugin_version != 0 && *plugin_version < 70;
+  if (require_pure_stablehlo) {
+    xla::sdy::addSdyRoundTripExportPipeline(pm);
+  }
   pm.addPass(mlir::stablehlo_ext::createChloPreserveHighLevelOpsPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createChloLegalizeToStablehloPass());
@@ -296,7 +304,8 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
   std::string buffer;
   llvm::raw_string_ostream os(buffer);
   if (mlir::failed(mlir::stablehlo::serializePortableArtifact(
-          mlir_module, target.value(), os))) {
+          mlir_module, target.value(), os,
+          /*allowOtherDialects=*/!require_pure_stablehlo))) {
     const absl::Status status = diagnostic_handler.ConsumeStatus();
     return absl::InvalidArgumentError(absl::StrCat(
         "Failed to serialize StableHLO to plugin version ", target.value(),
@@ -329,6 +338,7 @@ std::string GetDefaultStablehloVersion(std::optional<int64_t> plugin_version) {
 }
 
 absl::StatusOr<std::string> Serialize(mlir::ModuleOp module,
+                                      std::optional<int64_t> plugin_version,
                                       absl::string_view target, bool inplace) {
   // Current PJRT users expect 12 weeks forward compat, VHLO provides this
   // compat.
@@ -347,7 +357,8 @@ absl::StatusOr<std::string> Serialize(mlir::ModuleOp module,
   if (!all_stablehlo_or_shardy) {
     return SerializeUsingNativeBytecode(module);
   }
-  return SerializeUsingVersionedStablehlo(module, target, inplace);
+  return SerializeUsingVersionedStablehlo(module, target, inplace,
+                                          plugin_version);
 }
 
 }  // namespace xla

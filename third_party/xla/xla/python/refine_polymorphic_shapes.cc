@@ -312,6 +312,7 @@ absl::Status RefinePolymorphicShapes(llvm::StringRef module_str,
   if (enable_shardy) {
     mlir::PassManager pm(module.get()->getName(),
                          mlir::OpPassManager::Nesting::Implicit);
+    // TODO(b/422690222): Remove `addSdyRoundTripImportPipeline` after 6 months.
     // NOTE: JAX shape refinement has `@shape_assertion` custom calls that
     // require constant folding. As such, we cannot import constants here just
     // yet. We have to delay it until after shape refinement.
