@@ -16,7 +16,6 @@
 #include <memory>
 #include <utility>
 
-#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/log/log_entry.h"
@@ -38,12 +37,20 @@
 #include "xla/python/ifrt_proxy/client/version.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
 namespace proxy {
+
+#define CONN_UPDATE_LOG(msg)                                              \
+  do {                                                                    \
+    LOG(INFO) << msg;                                                     \
+    if (options.on_connection_update) {                                   \
+      options.on_connection_update(absl::StrCat(absl::Now(), ": ", msg)); \
+    }                                                                     \
+  } while (false)
 
 namespace {
 
@@ -52,49 +59,44 @@ namespace {
 // once if this function returns successfully, and not invoked if this function
 // returns a non-OK status.
 absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
-    absl::string_view server_address,
-    std::function<void(absl::Status)> on_disconnect, int attempt_no,
-    absl::AnyInvocable<void(absl::string_view)> log_initial_connection,
-    AttributeMap initialization_data) {
+    absl::string_view server_address, int attempt_no,
+    const ClientConnectionOptions& options) {
   std::unique_ptr<RpcHelper> rpc_helper;
   auto init_response_promise =
       Future<std::shared_ptr<InitResponse>>::CreatePromise();
-
-  if (on_disconnect == nullptr) {
-    on_disconnect = [](absl::Status s) {
-      LOG(WARNING) << "IFRT proxy server disconnected: " << s;
-    };
-  }
 
   // TODO(b/266635130): Move gRPC stub creation to be outside of `Client` so
   // that we can pass mock `ClientSession` to the client.
   auto control_path_stub = CreateGrpcStub(server_address);
 
-  auto session_disconnect_cb = [init_response =
-                                    Future<std::shared_ptr<InitResponse>>(
-                                        init_response_promise),
-                                on_disconnect = std::move(on_disconnect),
-                                attempt_no](absl::Status s) mutable {
-    // If the `rpc_helper->Init().OnReady(cb)` statement below has returned,
-    // the callback cb in that statement (which sets `init_response`) is
-    // guaranteed by `GrpcClientSession::Create()` to be called before
-    // `session_disconnect_cb`.
-    // TODO(madthanu): The above statement is false (even if we wanted to,
-    // we cannot meaningfully enforce or document the guarantee of
-    // the returned Future's OnReady being called before another callback),
-    // although the exact way init_response_promise is set below makes it
-    // work most of the time.
-    if (init_response.IsReady() && init_response.Await().ok()) {
-      // If the init RPC has already completed successfully, we have
-      // already or will be returning OK from the `AttemptConnection` call.
-      // So, invoke `on_disconnect`.
-      on_disconnect(s);
-    } else {
-      // Otherwise, we are going to return an error from
-      // `AttemptConnection`. So do not invoke `on_disconnect`.
-      VLOG(0) << "GrpcClientSession attempt " << attempt_no << " failed: " << s;
-    }
-  };
+  auto session_disconnect_cb =
+      [init_response =
+           Future<std::shared_ptr<InitResponse>>(init_response_promise),
+       on_disconnect = options.on_disconnect,
+       attempt_no](absl::Status s) mutable {
+        // If the `rpc_helper->Init().OnReady(cb)` statement below has returned,
+        // the callback cb in that statement (which sets `init_response`) is
+        // guaranteed by `GrpcClientSession::Create()` to be called before
+        // `session_disconnect_cb`.
+        // TODO(madthanu): The above statement is false (even if we wanted to,
+        // we cannot meaningfully enforce or document the guarantee of
+        // the returned Future's OnReady being called before another callback),
+        // although the exact way init_response_promise is set below makes it
+        // work most of the time.
+        if (init_response.IsReady() && init_response.Await().ok()) {
+          // If the init RPC has already completed successfully, we have
+          // already or will be returning OK from the `AttemptConnection` call.
+          LOG(WARNING) << "IFRT proxy server disconnected: " << s;
+          if (on_disconnect != nullptr) {
+            on_disconnect(s);
+          }
+        } else {
+          // Otherwise, we are going to return an error from
+          // `AttemptConnection`. So do not invoke `on_disconnect`.
+          LOG(INFO) << "GrpcClientSession attempt " << attempt_no
+                    << " failed: " << s;
+        }
+      };
 
   GrpcIfrtSessionMetadata metadata;
   {
@@ -111,15 +113,16 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
     CHECK_LE(response.version().protocol_version(), kClientMaxVersion);
     *metadata.mutable_version() = response.version();
   }
-  *metadata.mutable_initialization_data() = initialization_data.ToProto();
+  *metadata.mutable_initialization_data() =
+      options.initialization_data.ToProto();
 
   auto session = GrpcClientSession::Create(control_path_stub, metadata,
                                            session_disconnect_cb);
   rpc_helper =
       std::make_unique<RpcHelper>(metadata.version(), std::move(session));
 
-  log_initial_connection(absl::StrCat("Sending InitRequest and waiting for ",
-                                      "response (attempt ", attempt_no, ")."));
+  CONN_UPDATE_LOG(absl::StrCat("Sending InitRequest and waiting for ",
+                               "response (attempt ", attempt_no, ")."));
 
   // TODO(b/282757875): Use a separate Request that will indicate quickly
   // whether the grpc_client<->grpc_server session has been established or
@@ -148,33 +151,21 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
 
 absl::StatusOr<std::unique_ptr<Client>> CreateGrpcClient(
     absl::string_view server_address, const ClientConnectionOptions& options) {
-  auto log_initial_connection =
-      [f = std::move(options.on_connection_update)](absl::string_view msg) {
-        VLOG(0) << msg;
-        if (f) {
-          f(absl::StrCat(absl::Now(), ": ", msg));
-        }
-      };
-
   absl::Time start_time = absl::Now();
   absl::Status last_status;
   for (int i = 0; absl::Now() - start_time < options.connection_timeout; ++i) {
-    log_initial_connection(absl::StrCat("Connecting to IFRT proxy server at ",
-                                        server_address, ", attempt #", i,
-                                        "..."));
+    CONN_UPDATE_LOG(absl::StrCat("Connecting to IFRT proxy server at ",
+                                 server_address, ", attempt #", i, "..."));
     absl::StatusOr<std::unique_ptr<Client>> result =
-        AttemptConnection(server_address, options.on_disconnect, i,
-                          log_initial_connection, options.initialization_data);
+        AttemptConnection(server_address, i, options);
     if (result.ok()) {
-      log_initial_connection(absl::StrCat("Connected to IFRT proxy server on ",
-                                          "attempt #", i, "."));
+      CONN_UPDATE_LOG(absl::StrCat("Connected to IFRT proxy server on ",
+                                   "attempt #", i, "."));
       return result;
-    } else {
-      last_status = result.status();
-      log_initial_connection(
-          absl::StrCat("Connection to IFRT proxy server attempt #", i,
-                       "failed: ", last_status.ToString()));
     }
+    last_status = result.status();
+    CONN_UPDATE_LOG(absl::StrCat("Connection to IFRT proxy server attempt #", i,
+                                 "failed: ", last_status.ToString()));
     absl::SleepFor(absl::Seconds(1));
   }
 
@@ -184,7 +175,7 @@ absl::StatusOr<std::unique_ptr<Client>> CreateGrpcClient(
       absl::StrCat("Unable to establish connection to ifrt_proxy server, ",
                    "please check provided address '", server_address,
                    "'; detailed error: ", last_status.message());
-  log_initial_connection(err_msg);
+  CONN_UPDATE_LOG(err_msg);
   return tsl::errors::CreateWithUpdatedMessage(last_status, err_msg);
 }
 
