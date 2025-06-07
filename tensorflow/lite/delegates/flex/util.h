@@ -66,6 +66,16 @@ std::string TfLiteResourceIdentifier(const TfLiteTensor* tensor);
 bool GetTfLiteResourceTensorFromResourceHandle(
     const tensorflow::ResourceHandle& resource_handle, TfLiteTensor* tensor);
 
+// We need a way to tell if we've stored a tensorflow::Tensor* in a resource
+// or if it's a standard kTfLiteResource tensor holding an integer. The proper
+// solution would be some way to set the TfLiteTensor::type field to something
+// unique for tensorflow::Tensor* resources. We don't want to do that, so we use
+// a hack instead: the `bytes` field of the tensor just needs to be big enough
+// to hold a pointer, but it can be larger. To disambiguate between a pointer on
+// a 32-bit machine and an int in a standard TFlite resource, we make the bytes
+// field a fixed constant big enough for a pointer on any platform.
+static constexpr int kTensorflowResourceTensorBytes = 8;
+
 }  // namespace flex
 }  // namespace tflite
 

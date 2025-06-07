@@ -292,7 +292,8 @@ class TfLiteSubgraphExecute : public OpKernel {
       // TODO(b/179094265): This is an experimental implementation, subject to
       // change. This can be re-implemented with life cycle management
       // mechanism like reference counting.
-      const size_t required_bytes = sizeof(tensorflow::Tensor**);
+      const size_t required_bytes =
+          tflite::flex::kTensorflowResourceTensorBytes;
       const tensorflow::Tensor** tf_tensor_ptr =
           reinterpret_cast<const tensorflow::Tensor**>(malloc(required_bytes));
       *tf_tensor_ptr = &tf_tensor;

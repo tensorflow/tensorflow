@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/flex/buffer_map.h"
 #include "tensorflow/lite/delegates/flex/kernel.h"
+#include "tensorflow/lite/delegates/flex/util.h"
 #include "tensorflow/lite/delegates/utils/simple_delegate.h"
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
@@ -147,7 +148,7 @@ TfLiteStatus FlexDelegate::CopyFromBufferHandle(
   // the TensorFlow world and the pointer will be freed when all the buffer
   // maps, who own it, are gone.
   if (IsResourceOrVariant(output)) {
-    const size_t required_bytes = sizeof(tensorflow::Tensor**);
+    const size_t required_bytes = tflite::flex::kTensorflowResourceTensorBytes;
     const tensorflow::Tensor** tf_tensor_ptr =
         reinterpret_cast<const tensorflow::Tensor**>(malloc(required_bytes));
     *tf_tensor_ptr = buffer_map->GetTensorPtr(buffer_handle);
