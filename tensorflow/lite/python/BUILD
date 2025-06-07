@@ -657,6 +657,7 @@ pywrap_library(
     },
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/lite/experimental/genai:pywrap_genai_ops",
         "//tensorflow/lite/python/analyzer_wrapper:_pywrap_analyzer_wrapper",
         "//tensorflow/lite/python/interpreter_wrapper:_pywrap_tensorflow_interpreter_wrapper",
         "//tensorflow/lite/python/metrics:_pywrap_tensorflow_lite_metrics_wrapper",
