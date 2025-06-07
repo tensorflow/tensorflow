@@ -568,6 +568,50 @@ cc_library(
 )
 
 cc_library(
+    name = "serdes_version",
+    hdrs = ["serdes_version.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+    ]),
+    deps = ["@com_google_absl//absl/strings"],
+)
+
+cc_library(
+    name = "serdes_any_version_accessor",
+    hdrs = ["serdes_any_version_accessor.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([":serdes_any_version_users"]),
+    deps = [":serdes_version"],
+)
+
+cc_library(
+    name = "serdes_week_4_old_version_accessor",
+    hdrs = ["serdes_week_4_old_version_accessor.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([":serdes_week_4_old_version_users"]),
+    deps = [":serdes_version"],
+)
+
+cc_library(
+    name = "serdes_test_util",
+    testonly = True,
+    srcs = ["serdes_test_util.cc"],
+    hdrs = ["serdes_test_util.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+        ":users",
+    ]),
+    deps = [
+        ":serdes_any_version_accessor",
+        ":serdes_version",
+    ],
+)
+
+cc_library(
     name = "serdes",
     srcs = ["serdes.cc"],
     hdrs = ["serdes.h"],
@@ -579,6 +623,7 @@ cc_library(
     ]),
     deps = [
         ":serdes_proto_cc",
+        ":serdes_version",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
