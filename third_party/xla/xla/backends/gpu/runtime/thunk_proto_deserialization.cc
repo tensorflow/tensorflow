@@ -64,6 +64,11 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
         std::move(thunk_info), thunk_proto.host_to_device_copy_thunk(),
         buffer_allocations);
   }
+  if (thunk_proto.has_device_to_device_copy_thunk()) {
+    return DeviceToDeviceCopyThunk::FromProto(
+        std::move(thunk_info), thunk_proto.device_to_device_copy_thunk(),
+        buffer_allocations);
+  }
   if (thunk_proto.has_while_thunk()) {
     return WhileThunk::FromProto(
         std::move(thunk_info), thunk_proto.while_thunk(), buffer_allocations,
