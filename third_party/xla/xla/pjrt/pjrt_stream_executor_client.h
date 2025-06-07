@@ -367,7 +367,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
     return should_stage_host_to_device_transfers_;
   }
 
-  gpu::GpuExecutableRunOptions* gpu_run_options() const {
+  virtual gpu::GpuExecutableRunOptions* gpu_run_options() {
     return gpu_run_options_.get();
   }
 

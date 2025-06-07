@@ -63,9 +63,9 @@ void CoordinationServiceRpcHandler::RegisterTaskAsync(
     return;
   }
   const CoordinatedTask& task = request->source_task();
-  const uint64_t incarnation = request->incarnation();
-  const uint64_t leader_incarnation = service_->GetServiceIncarnation();
-  response->set_leader_incarnation(leader_incarnation);
+  const IncarnationId incarnation(request->incarnation());
+  const IncarnationId leader_incarnation = service_->GetServiceIncarnation();
+  response->set_leader_incarnation(leader_incarnation.value());
   service_->RegisterTaskAsync(task, incarnation, done);
 }
 
@@ -79,14 +79,14 @@ void CoordinationServiceRpcHandler::HeartbeatAsync(
     return;
   }
   const CoordinatedTask& task = request->source_task();
-  const uint64_t incarnation = request->incarnation();
-  const uint64_t leader_incarnation = service_->GetServiceIncarnation();
+  const IncarnationId incarnation(request->incarnation());
+  const IncarnationId leader_incarnation = service_->GetServiceIncarnation();
   absl::Status s = service_->RecordHeartbeat(task, incarnation);
   if (!s.ok()) {
     done(s);
     return;
   }
-  response->set_leader_incarnation(leader_incarnation);
+  response->set_leader_incarnation(leader_incarnation.value());
   done(absl::OkStatus());
 }
 
@@ -339,11 +339,12 @@ void CoordinationServiceRpcHandler::GetAliveTasksAsync(
       [done = std::move(done), response](
           const absl::Status& status,
           const std::vector<tensorflow::CoordinatedTask>& alive_tasks,
-          const std::vector<uint64_t>& incarnations) {
+          const std::vector<IncarnationId>& incarnations) {
         *response->mutable_alive_tasks() = {alive_tasks.begin(),
                                             alive_tasks.end()};
-        *response->mutable_incarnations() = {incarnations.begin(),
-                                             incarnations.end()};
+        for (IncarnationId id : incarnations) {
+          response->add_incarnations(id.value());
+        }
         done(status);
       });
 }
