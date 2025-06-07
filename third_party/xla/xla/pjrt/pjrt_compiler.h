@@ -16,19 +16,27 @@ limitations under the License.
 #ifndef XLA_PJRT_PJRT_COMPILER_H_
 #define XLA_PJRT_PJRT_COMPILER_H_
 
+#include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/layout.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_partial_program.h"
 #include "tsl/platform/fingerprint.h"
 
 namespace xla {
@@ -160,12 +168,50 @@ class PjRtCompiler {
   // PjRtExecutable must be loaded by a compatible client before execution.
   virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, const XlaComputation& computation,
-      const PjRtTopologyDescription& topology, PjRtClient* client) = 0;
+      const PjRtTopologyDescription& topology, PjRtClient* client) {
+    return absl::UnimplementedError("Compile HloComputation is unsupported.");
+  }
 
   // Variant of `Compile` that accepts an MLIR module.
   virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, mlir::ModuleOp module,
-      const PjRtTopologyDescription& topology, PjRtClient* client) = 0;
+      const PjRtTopologyDescription& topology, PjRtClient* client) {
+    return absl::UnimplementedError("Compile mlir::ModuleOp is unsupported.");
+  }
+};
+
+typedef std::function<absl::StatusOr<std::vector<PjRtPartialProgram>>(
+    CompileOptions, const std::vector<PjRtPartialProgram>&)>
+    PhaseCompiler;
+typedef std::function<absl::Status(const std::vector<PjRtPartialProgram>&)>
+    PhaseValidator;
+
+class PjRtPhaseCompiler : public PjRtCompiler {
+ public:
+  virtual ~PjRtPhaseCompiler() = default;
+  virtual absl::Status RegisterPhase(const std::string& phase_name,
+                                     PhaseCompiler phase_compiler,
+                                     PhaseValidator phase_validator);
+  virtual absl::StatusOr<xla::PhaseCompiler> GetPhaseCompiler(
+      const std::string& phase_name);
+  virtual absl::StatusOr<xla::PhaseValidator> GetPhaseValidator(
+      const std::string& phase_name);
+  virtual absl::StatusOr<std::vector<std::string>> GetPhaseNames();
+
+  absl::StatusOr<std::vector<PjRtPartialProgram>> CompilePhase(
+      CompileOptions options,
+      const std::vector<PjRtPartialProgram>& input_programs,
+      const std::vector<std::string>& phases_to_run);
+
+ protected:
+  absl::Status ValidatePhase(
+      const std::vector<PjRtPartialProgram>& input_programs,
+      const std::string& phase_to_run);
+
+ private:
+  absl::flat_hash_map<std::string, PhaseCompiler> phase_compiler_map_;
+  absl::flat_hash_map<std::string, PhaseValidator> phase_validator_map_;
+  std::vector<std::string> phase_names_;
 };
 
 // Registers a compiler to compile programs for 'platform_name'.
@@ -192,6 +238,17 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, mlir::ModuleOp module,
     const PjRtTopologyDescription& topology, PjRtClient* client = nullptr);
+
+// Variant of `PjRtCompile` that accepts a vector of `PjRtPartialProgram` and
+// compiles them using the compiler registered for the platform using
+// PjRtRegisterCompiler for a given phase.
+absl::StatusOr<std::vector<PjRtPartialProgram>> PjRtPhaseCompile(
+    CompileOptions options,
+    const std::vector<PjRtPartialProgram>& input_programs,
+    const PjRtTopologyDescription& topology,
+    const std::vector<std::string>& phases_to_run);
+
+absl::StatusOr<std::vector<std::string>> PjRtGetPhaseNames();
 
 }  // namespace xla
 
