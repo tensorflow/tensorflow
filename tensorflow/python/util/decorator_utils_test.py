@@ -163,6 +163,7 @@ class CachedClassPropertyTest(test.TestCase):
       del MyClass().value
 
   def testCachedClassPropertyWithTimeout(self):
+    # pylint: disable=no-value-for-parameter
     log = []  # log all calls to `MyClass.value`.
 
     class MyClass(object):
