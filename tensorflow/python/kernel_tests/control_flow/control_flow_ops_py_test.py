@@ -1143,7 +1143,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           errors_impl.InvalidArgumentError,
           r"Connecting to invalid output 1 of source node cond which has 1 "
           r"outputs. Try using "
-          "tf.compat.v1.experimental.output_all_intermediates\(True\)."):
+          r"tf.compat.v1.experimental.output_all_intermediates(True)."):
         self.evaluate(grad)
 
   @test_util.run_deprecated_v1

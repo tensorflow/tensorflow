@@ -3864,14 +3864,14 @@ class MutableHashTableOpTest(test.TestCase):
 
     with self.assertRaisesRegex(
         (ValueError, errors_impl.InvalidArgumentError),
-        "Expected shape \[2\] or \[2,2,2\] for default value, got \[4,2]"):
+        r"Expected shape \[2\] or \[2,2,2\] for default value, got \[4,2]"):
       self.evaluate(table.lookup(input_string, invalid_default_val))
 
     invalid_default_val = constant_op.constant([[[-2, -3], [-4, -5]]],
                                                dtypes.int64)
     with self.assertRaisesRegex(
         (ValueError, errors_impl.InvalidArgumentError),
-        "Expected shape \[2\] or \[2,2,2\] for default value, got \[1,2,2\]"):
+        r"Expected shape \[2\] or \[2,2,2\] for default value, got \[1,2,2\]"):
       self.evaluate(table.lookup(input_string, invalid_default_val))
 
   def testMutableHashTableFindHighRankScalarWithDynamicDefaultValue(
