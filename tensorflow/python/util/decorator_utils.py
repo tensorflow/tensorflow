@@ -198,7 +198,8 @@ class _CachedClassProperty(object):
 
   def __get__(self, obj, objtype):
     if objtype not in self._cache or (
-        self._timeout and time.time() - self._last_updated.get(objtype, 0) > self._timeout
+        self._timeout and time.time() - self._last_updated.get(objtype, 0)
+        > self._timeout
     ):
       self._cache[objtype] = self._func(objtype)
       self._last_updated[objtype] = time.time()
