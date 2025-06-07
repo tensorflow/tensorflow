@@ -212,7 +212,7 @@ TEST_F(ConditionalOpTest, Parameters0) {
 }
 
 // Test branch computations that do not take any parameters.
-XLA_TEST_P(CaseOpTest, Parameters0) {
+TEST_P(CaseOpTest, Parameters0) {
   int num_branches = GetParam();
   for (int bi = -1; bi <= num_branches; ++bi) {
     SCOPED_TRACE(bi);
@@ -255,7 +255,7 @@ TEST_F(ConditionalOpTest, Parameters1) {
 }
 
 // Test branch computations that take in 1 parameter.
-XLA_TEST_P(CaseOpTest, Parameters1) {
+TEST_P(CaseOpTest, Parameters1) {
   int num_branches = GetParam();
   for (int bi = -1; bi <= num_branches; ++bi) {
     SCOPED_TRACE(bi);
@@ -428,7 +428,7 @@ TEST_F(ConditionalOpTest, Parameters2ArrayTrueBranch) {
 }
 
 // Test branch computations that take in 2 array parameters.
-XLA_TEST_P(CaseOpTest, Parameters2Array) {
+TEST_P(CaseOpTest, Parameters2Array) {
   int num_branches = GetParam();
   for (int bi = -1; bi <= num_branches; ++bi) {
     SCOPED_TRACE(bi);

@@ -107,7 +107,7 @@ using FloatTypes =
 
 TYPED_TEST_SUITE(ElementalIrEmitterExecutionTypedTest, FloatTypes);
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest, DotFusion) {
+TEST_F(ElementalIrEmitterExecutionTest, DotFusion) {
   const std::string hlo_text = R"(
 HloModule FusedDot
 
@@ -131,7 +131,7 @@ ENTRY main {
   RunTest(hlo_text, {&lhs, &rhs});
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest, EmitReducePrecisionIR_F16ToF8e5m2) {
+TEST_F(ElementalIrEmitterExecutionTest, EmitReducePrecisionIR_F16ToF8e5m2) {
   llvm::LLVMContext llvm_context;
   llvm::IRBuilder<> builder(llvm_context);
   llvm::IRBuilderBase* b = &builder;
@@ -178,7 +178,7 @@ XLA_TEST_F(ElementalIrEmitterExecutionTest, EmitReducePrecisionIR_F16ToF8e5m2) {
   }
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest, EmitReducePrecisionIR_F16ToF8e4m3) {
+TEST_F(ElementalIrEmitterExecutionTest, EmitReducePrecisionIR_F16ToF8e4m3) {
   llvm::LLVMContext llvm_context;
   llvm::IRBuilder<> builder(llvm_context);
   llvm::IRBuilderBase* b = &builder;
@@ -225,7 +225,7 @@ XLA_TEST_F(ElementalIrEmitterExecutionTest, EmitReducePrecisionIR_F16ToF8e4m3) {
   }
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest, EmitReducePrecisionIR_F16ToF8e3m4) {
+TEST_F(ElementalIrEmitterExecutionTest, EmitReducePrecisionIR_F16ToF8e3m4) {
   llvm::LLVMContext llvm_context;
   llvm::IRBuilder<> builder(llvm_context);
   llvm::IRBuilderBase* b = &builder;
@@ -272,8 +272,7 @@ XLA_TEST_F(ElementalIrEmitterExecutionTest, EmitReducePrecisionIR_F16ToF8e3m4) {
   }
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest,
-           EmitReducePrecisionIR_F16ToF8e4m3fn) {
+TEST_F(ElementalIrEmitterExecutionTest, EmitReducePrecisionIR_F16ToF8e4m3fn) {
   llvm::LLVMContext llvm_context;
   llvm::IRBuilder<> builder(llvm_context);
   llvm::IRBuilderBase* b = &builder;
@@ -317,7 +316,7 @@ XLA_TEST_F(ElementalIrEmitterExecutionTest,
   }
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest, ScalarDotFusion) {
+TEST_F(ElementalIrEmitterExecutionTest, ScalarDotFusion) {
   const char* hlo_text = R"(
 HloModule ScalarDotFusion
 
@@ -341,7 +340,7 @@ ENTRY main {
   RunTest(hlo_text, {&lhs, &rhs});
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest, BatchDot) {
+TEST_F(ElementalIrEmitterExecutionTest, BatchDot) {
   const char* hlo_text = R"(
 HloModule BatchDot
 
@@ -374,8 +373,8 @@ ENTRY resampler_Resampler.49 {
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{4e-3, 4e-3}));
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest,
-           DivideComplexNumbersWithInfiniteNormRhs) {
+TEST_F(ElementalIrEmitterExecutionTest,
+       DivideComplexNumbersWithInfiniteNormRhs) {
   constexpr char hlo_text[] = R"(
     HloModule DivideComplexNumbers
     ENTRY DivideComplexNumbers {
@@ -398,8 +397,7 @@ XLA_TEST_F(ElementalIrEmitterExecutionTest,
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{(0.)}));
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest,
-           DivideComplexNumbersWithFiniteNormRhs) {
+TEST_F(ElementalIrEmitterExecutionTest, DivideComplexNumbersWithFiniteNormRhs) {
   constexpr char hlo_text[] = R"(
     HloModule DivideComplexNumbers
     ENTRY DivideComplexNumbers {
@@ -421,8 +419,7 @@ XLA_TEST_F(ElementalIrEmitterExecutionTest,
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{(0.)}));
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest,
-           DivideComplexNumbersWithZeroNormRhs) {
+TEST_F(ElementalIrEmitterExecutionTest, DivideComplexNumbersWithZeroNormRhs) {
   constexpr char hlo_text[] = R"(
     HloModule DivideComplexNumbers
     ENTRY DivideComplexNumbers {
@@ -659,8 +656,8 @@ TYPED_TEST(ElementalIrEmitterExecutionTypedTest, BatchDotFloat) {
       HloTestBase::RunAndCompare(std::move(module), ErrorSpec{1e-3, 1e-3}));
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
-           MinimumHandlesNaNsOnTheLeft) {
+TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
+       MinimumHandlesNaNsOnTheLeft) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -674,8 +671,8 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
-           MinimumHandlesNaNsOnTheRight) {
+TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
+       MinimumHandlesNaNsOnTheRight) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -689,8 +686,8 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
-           MaximumHandlesNaNsOnTheLeft) {
+TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
+       MaximumHandlesNaNsOnTheLeft) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -704,8 +701,8 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
-           MaximumHandlesNaNsOnTheRight) {
+TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
+       MaximumHandlesNaNsOnTheRight) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -719,8 +716,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
-           MinimumReturnsLHS) {
+TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax, MinimumReturnsLHS) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -736,8 +732,7 @@ ENTRY e {
                                                 /*arel=*/1e-3}));
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
-           MinimumReturnsRHS) {
+TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax, MinimumReturnsRHS) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -753,8 +748,7 @@ ENTRY e {
                                                 /*arel=*/1e-3}));
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
-           MaximumReturnsLHS) {
+TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax, MaximumReturnsLHS) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -770,8 +764,7 @@ ENTRY e {
                                                 /*arel=*/1e-3}));
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax,
-           MaximumReturnsRHS) {
+TEST_F(ElementalIrEmitterExecutionTestWithoutFastMinMax, MaximumReturnsRHS) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
@@ -789,7 +782,7 @@ ENTRY e {
 
 class ElementalIrEmitterInternalTest : public HloTestBase {};
 
-XLA_TEST_F(ElementalIrEmitterInternalTest, SparseDotIsUnsupported) {
+TEST_F(ElementalIrEmitterInternalTest, SparseDotIsUnsupported) {
   constexpr absl::string_view kHloText = R"(
 HloModule test
 

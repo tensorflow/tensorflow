@@ -189,7 +189,7 @@ class ReorderFilterHloTest : public ::testing::TestWithParam<std::tuple<
                                  /*output_features=*/int64_t,
                                  /*spatial_size=*/int64_t>> {};
 
-XLA_TEST_P(ReorderFilterHloTest, TestCudnnReorderFilter) {
+TEST_P(ReorderFilterHloTest, TestCudnnReorderFilter) {
   // Test that the bitcast-transpose-bitcast with reverse-engineered reordering
   // works the same way as cudnnReorderFilterAndBias custom call. If at any
   // point in the future the black-box CUDA implementation changes, this test
@@ -234,7 +234,7 @@ INSTANTIATE_TEST_SUITE_P(CudnnReorderSuite, ReorderFilterHloTest,
 
 class ReorderFilterAndBiasHloTest : public ::testing::TestWithParam<int64_t> {};
 
-XLA_TEST_P(ReorderFilterAndBiasHloTest, TestCudnnReorderFilterAndBias) {
+TEST_P(ReorderFilterAndBiasHloTest, TestCudnnReorderFilterAndBias) {
   // This test verifies that the bias reordering works correctly; the filter
   // reordering is verified by the previous test.
   const int64_t bias_size = GetParam();
