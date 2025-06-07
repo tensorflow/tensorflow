@@ -151,6 +151,13 @@ LogicalResult exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
 
     if (ArrayRef<TensorShardingAttr> shardings = mlir::sdy::getShardings(op);
         !shardings.empty()) {
+      if (op->getNumResults() > 0) {
+        if (auto outSharding = mlir::sdy::getSharding(op->getResult(0));
+            outSharding && !outSharding.getUnreducedAxes().empty()) {
+          setFrontendAttribute(op, mlir::sdy::kHasUnreducedAxes,
+                               StringAttr::get(op->getContext(), "true"));
+        }
+      }
       setHloShardingAttr(op, shardings, getMeshAttr, manualAxes);
       op->removeAttr(kShardingAttr);
     } else if (addMissingShardingToControlFlow &&
