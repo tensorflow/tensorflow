@@ -91,7 +91,7 @@ ENTRY reduce.1 {
   }
 };
 
-XLA_TEST_P(ReduceWithLayoutTest, Reduce) {
+TEST_P(ReduceWithLayoutTest, Reduce) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, GetParsedModule());
   HloInstruction* reduce_instruction = module->entry_computation()
                                            ->root_instruction()

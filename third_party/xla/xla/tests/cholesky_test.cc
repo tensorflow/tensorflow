@@ -218,7 +218,7 @@ class RandomCholeskyTest
     : public ClientLibraryTestBase,
       public ::testing::WithParamInterface<CholeskyTestCase> {};
 
-XLA_TEST_P(RandomCholeskyTest, Real) {
+TEST_P(RandomCholeskyTest, Real) {
   XlaBuilder builder(TestName());
 
   auto test_params = GetParam();
@@ -255,7 +255,7 @@ XLA_TEST_P(RandomCholeskyTest, Real) {
                              ErrorSpec(1e-4, 1e-4));
 }
 
-XLA_TEST_P(RandomCholeskyTest, Complex) {
+TEST_P(RandomCholeskyTest, Complex) {
   XlaBuilder builder(TestName());
 
   auto test_params = GetParam();

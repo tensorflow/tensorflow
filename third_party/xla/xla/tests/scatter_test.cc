@@ -981,7 +981,7 @@ class ScatterEdgeCaseTestP
     : public ScatterTest,
       public ::testing::WithParamInterface<absl::string_view /*operator*/> {};
 
-XLA_TEST_P(ScatterEdgeCaseTestP, DoIt) {
+TEST_P(ScatterEdgeCaseTestP, DoIt) {
   using L = std::numeric_limits<float>;
   std::vector<float> edge_cases = {
       0.f,

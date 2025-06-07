@@ -54,7 +54,7 @@ struct UnaryOpTestParam {
 class UnaryOpTest : public HalfTestBase,
                     public ::testing::WithParamInterface<UnaryOpTestParam> {};
 
-XLA_TEST_P(UnaryOpTest, Ops) {
+TEST_P(UnaryOpTest, Ops) {
   std::vector<half> x({half(1.4), half(-2.3), half(3.2), half(-4.1), half(9.0),
                        half(42.0), half(-9.0), half(-100.0)});
   XlaBuilder builder(TestName());
@@ -114,7 +114,7 @@ class UnaryPredTest : public HalfTestBase,
                       public ::testing::WithParamInterface<UnaryPredTestParam> {
 };
 
-XLA_TEST_P(UnaryPredTest, Ops) {
+TEST_P(UnaryPredTest, Ops) {
   std::vector<half> x({half(1.4), half(-2.3), half(3.2), half(-4.1)});
   XlaBuilder builder(TestName());
   XlaOp x_opnd;
@@ -149,7 +149,7 @@ struct BinaryOpTestParam {
 class BinaryOpTest : public HalfTestBase,
                      public ::testing::WithParamInterface<BinaryOpTestParam> {};
 
-XLA_TEST_P(BinaryOpTest, Ops) {
+TEST_P(BinaryOpTest, Ops) {
   std::vector<half> x({half(1.0), half(2.0), half(3.0), half(-4.0)});
   std::vector<half> y({half(0.4), half(-0.3), half(0.2), half(0.1)});
   XlaBuilder builder(TestName());
@@ -204,7 +204,7 @@ class BinaryPredTest
     : public HalfTestBase,
       public ::testing::WithParamInterface<BinaryPredTestParam> {};
 
-XLA_TEST_P(BinaryPredTest, Ops) {
+TEST_P(BinaryPredTest, Ops) {
   std::vector<half> x({half(1.0), half(2.0), half(0.2), half(-4.0)});
   std::vector<half> y({half(0.4), half(-0.3), half(0.2), half(0.1)});
   XlaBuilder builder(TestName());

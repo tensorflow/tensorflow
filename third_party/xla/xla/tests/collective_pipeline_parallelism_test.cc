@@ -73,8 +73,8 @@ class CollectivePipelineParallelismTest
       xla_gpu_experimental_pipeline_parallelism_opt_level_;
 };
 
-XLA_TEST_P(CollectivePipelineParallelismTest,
-           CollectivePermute_CircularPipelinePreOptimization) {
+TEST_P(CollectivePipelineParallelismTest,
+       CollectivePermute_CircularPipelinePreOptimization) {
   const absl::string_view kModuleStr = R"(
   HloModule test
 
@@ -244,7 +244,7 @@ std::string GetModuleStrWithCommonComputations(
 //   - no collective pipelining
 //
 // Every stage of the pipeline is a single linear layer.
-XLA_TEST_P(CollectivePipelineParallelismTest, NaiveBFSMicrobatch4Replica4) {
+TEST_P(CollectivePipelineParallelismTest, NaiveBFSMicrobatch4Replica4) {
   constexpr char kMoreComputationsStr[] = R"(
   while_condition {
     tuple = (f32[16,16], f32[4,16], f32[4,16], f32[16], u32[]) parameter(0)
@@ -367,7 +367,7 @@ XLA_TEST_P(CollectivePipelineParallelismTest, NaiveBFSMicrobatch4Replica4) {
 //   - no collective pipelining
 //
 // Every stage of the pipeline is a single linear layer.
-XLA_TEST_P(CollectivePipelineParallelismTest, NaiveBFSMicrobatch5Replica4) {
+TEST_P(CollectivePipelineParallelismTest, NaiveBFSMicrobatch5Replica4) {
   constexpr char kMoreComputationsStr[] = R"(
   while_condition {
     tuple = (f32[16,16], f32[5,16], f32[5,16], f32[16], u32[]) parameter(0)
@@ -489,8 +489,8 @@ XLA_TEST_P(CollectivePipelineParallelismTest, NaiveBFSMicrobatch5Replica4) {
 //   - no collective pipelining
 //
 // Every stage of the pipeline is a single linear layer.
-XLA_TEST_P(CollectivePipelineParallelismTest,
-           NaiveBFSMicrobatch4CircularRepeat2Replica4) {
+TEST_P(CollectivePipelineParallelismTest,
+       NaiveBFSMicrobatch4CircularRepeat2Replica4) {
   constexpr char kMoreComputationsStr[] = R"(
   while_condition {
     tuple = (f32[16,16], f32[4,16], f32[4,16], f32[16], u32[]) parameter(0)
@@ -614,8 +614,8 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
 //   - no collective pipelining
 //
 // Every stage of the pipeline is a single linear layer.
-XLA_TEST_P(CollectivePipelineParallelismTest,
-           NaiveBFSMicrobatch5CircularRepeat2Replica4) {
+TEST_P(CollectivePipelineParallelismTest,
+       NaiveBFSMicrobatch5CircularRepeat2Replica4) {
   constexpr char kMoreComputationsStr[] = R"(
   while_condition {
     tuple = (f32[16,16], f32[5,16], f32[5,16], f32[5,16], f32[16], u32[])
@@ -757,8 +757,8 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
 //   - no collective pipelining
 //
 // Every stage of the pipeline is a single linear layer.
-XLA_TEST_P(CollectivePipelineParallelismTest,
-           NaiveWoDirectBufferDependencyBFSMicrobatch5CircularRepeat2Replica4) {
+TEST_P(CollectivePipelineParallelismTest,
+       NaiveWoDirectBufferDependencyBFSMicrobatch5CircularRepeat2Replica4) {
   constexpr char kMoreComputationsStr[] = R"(
   while_condition {
     tuple = (f32[16,16], f32[5,16], f32[5,16], f32[5,16], f32[16], u32[])
@@ -890,7 +890,7 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
                                            ErrorSpec{1e-5, 1e-5}));
 }
 
-XLA_TEST_P(CollectivePipelineParallelismTest, SendRecvLoop) {
+TEST_P(CollectivePipelineParallelismTest, SendRecvLoop) {
   const absl::string_view kModuleStr = R"(
     HloModule test, num_partitions=4
 
@@ -981,7 +981,7 @@ XLA_TEST_P(CollectivePipelineParallelismTest, SendRecvLoop) {
   LiteralTestUtil::ExpectR2Equal<float>({{1, 1}, {1, 1}}, results[3]);
 }
 
-XLA_TEST_P(CollectivePipelineParallelismTest, SendRecvLoop2Devices) {
+TEST_P(CollectivePipelineParallelismTest, SendRecvLoop2Devices) {
   const absl::string_view kModuleStr = R"(
     HloModule test, num_partitions=2
 
@@ -1069,8 +1069,7 @@ XLA_TEST_P(CollectivePipelineParallelismTest, SendRecvLoop2Devices) {
   LiteralTestUtil::ExpectR2Equal<float>({{1, 1}, {1, 1}}, results[1]);
 }
 
-XLA_TEST_P(CollectivePipelineParallelismTest,
-           PartiallyPipelinedAsyncSendRecvLoop) {
+TEST_P(CollectivePipelineParallelismTest, PartiallyPipelinedAsyncSendRecvLoop) {
   const absl::string_view kModuleStr = R"(
     HloModule test, num_partitions=4
 
@@ -1174,8 +1173,8 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
   LiteralTestUtil::ExpectR2Equal<float>({{1, 1}, {1, 1}}, results[3]);
 }
 
-XLA_TEST_P(CollectivePipelineParallelismTest,
-           PartiallyPipelinedAsyncSendRecvLoop2Devices) {
+TEST_P(CollectivePipelineParallelismTest,
+       PartiallyPipelinedAsyncSendRecvLoop2Devices) {
   const absl::string_view kModuleStr = R"(
     HloModule test, num_partitions=2
 
@@ -1277,8 +1276,8 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
 // This is the partially pipelined version of
 // NaiveBFSMicrobatch5CircularRepeat2Replica4 and should yield the same results.
 // TODO(b/383868854): replace this with GPU pipeliner implementation.
-XLA_TEST_P(CollectivePipelineParallelismTest,
-           NaiveBFSMb5Cr2Replica4SendRecvPartiallyPipelined) {
+TEST_P(CollectivePipelineParallelismTest,
+       NaiveBFSMb5Cr2Replica4SendRecvPartiallyPipelined) {
   constexpr char kMoreComputationsStr[] = R"(
   while_condition {
     tuple = (f32[16,16], f32[5,16], f32[5,16], f32[5,16], f32[16], u32[],
@@ -1511,8 +1510,8 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
 // This is the async-grouped version of
 // NaiveBFSMicrobatch5CircularRepeat2Replica4 and should yield the same results.
 // TODO(b/383868854): replace this with GPU pipeliner implementation.
-XLA_TEST_P(CollectivePipelineParallelismTest,
-           NaiveBFSMb5Cr2Replica4SendRecvAsyncGroup) {
+TEST_P(CollectivePipelineParallelismTest,
+       NaiveBFSMb5Cr2Replica4SendRecvAsyncGroup) {
   constexpr char kMoreComputationsStr[] = R"(
 
   wrapped_send_recv_1 {
@@ -1695,7 +1694,7 @@ XLA_TEST_P(CollectivePipelineParallelismTest,
       ErrorSpec{/*abs_error=*/1e-5, /*rel_error=*/1e-5}));
 }
 
-XLA_TEST_P(CollectivePipelineParallelismTest, JaxExampleWithDecomposedCycle) {
+TEST_P(CollectivePipelineParallelismTest, JaxExampleWithDecomposedCycle) {
   constexpr char kModuleStr[] = R"(
 HloModule jit_entry_computation, entry_computation_layout={
     (f32[4,4096,4096]{2,1,0}, f32[4,5,4096,8192]{3,2,1,0})->

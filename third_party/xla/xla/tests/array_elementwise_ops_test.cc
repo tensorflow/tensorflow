@@ -2102,7 +2102,7 @@ class ScalarF32MinMaxTest
     : public ArrayElementwiseOpTest,
       public ::testing::WithParamInterface<ScalarF32TestCase> {};
 
-XLA_TEST_P(ScalarF32MinMaxTest, Version_1) {
+TEST_P(ScalarF32MinMaxTest, Version_1) {
   auto test_params = GetParam();
   XlaBuilder builder(TestName());
   SetFastMathDisabled(true);
@@ -2127,7 +2127,7 @@ XLA_TEST_P(ScalarF32MinMaxTest, Version_1) {
   ComputeAndCompareTuple(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_P(ScalarF32MinMaxTest, Version_2) {
+TEST_P(ScalarF32MinMaxTest, Version_2) {
   auto test_params = GetParam();
   XlaBuilder builder(TestName());
   SetFastMathDisabled(true);
@@ -2152,7 +2152,7 @@ XLA_TEST_P(ScalarF32MinMaxTest, Version_2) {
   ComputeAndCompareTuple(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_P(ScalarF32MinMaxTest, Version_3) {
+TEST_P(ScalarF32MinMaxTest, Version_3) {
   auto test_params = GetParam();
   XlaBuilder builder(TestName());
   SetFastMathDisabled(true);
@@ -2177,7 +2177,7 @@ XLA_TEST_P(ScalarF32MinMaxTest, Version_3) {
   ComputeAndCompareTuple(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_P(ScalarF32MinMaxTest, Version_4) {
+TEST_P(ScalarF32MinMaxTest, Version_4) {
   auto test_params = GetParam();
   XlaBuilder builder(TestName());
   SetFastMathDisabled(true);
