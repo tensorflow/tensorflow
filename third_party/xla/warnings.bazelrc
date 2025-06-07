@@ -93,3 +93,5 @@ build:warnings --copt=-Wimplicit-fallthrough
 build:warnings --copt=-Wthread-safety-analysis
 build:warnings --copt=-Wno-builtin-macro-redefined
 build:warnings --copt=-Wno-macro-redefined
+build:warnings --copt=-Wno-deprecated-register
+build:warnings --copt=-Wno-register

@@ -33,10 +33,14 @@ PywrapFilters = provider(
     },
 )
 
+_SELECT_TYPE = type(select({"//conditions:default": []}))
+_LIST_TYPE = type([])
+
 def pywrap_library(
         name,
         deps,
         starlark_only_deps = [],
+        # Makes no sense for wrapped PyInit_ case, and should not be used
         pywrap_lib_filter = None,
         pywrap_lib_exclusion_filter = None,
         common_lib_filters = {},
@@ -51,6 +55,83 @@ def pywrap_library(
         visibility = None,
         testonly = None,
         compatible_with = None):
+    """A macro which does final linking of multiple C++ Python extensions tha share common parts.
+
+    A macro which builds a set of C++ Python extensions from all of the python_extension targets
+    found in deps. Note, the extensions do not have to be direct dependencies of this macro and may
+    be anywhere in the transitive closure of deps.
+
+    The python_extension macro does compilation of the C++ code of the extensions and preserves just
+    enough metadata necessary for the linking of the final artifacts (.so for Linux and Mac, and
+    .pyd for Windows) which is done by this macro.
+
+    Such separation of compilation and linking workflows allows constructing of multiple C++
+    extensions together in a controllable manner, making them immune to various forms of ODR
+    violations, unnecessary code duplication, artifact size bloating and allows maintaining uniform
+    bazel surface of the rules regardless of the underlying OS.
+
+    E.g., for the following pywrap_library target:
+
+    pywrap_library(
+        name = "my_pywrap",
+        deps = [
+            ":extension_a",
+            ":extension_b",
+        ],
+    )
+
+    This macro will build Python C++ extension binary artifacts and will create a single public
+    py_library target with the name matching this macro; the py_library target will have the
+    following binaries as its data dependencies:
+
+    - extension_a.so (extension_a.pyd on Windows)
+    - extension_b.so (extension_b.pyd on Windows)
+    - my_pywrap_common.so (my_pywrap_common.dylib on Mac, or my_pywrap_common.dll on Windows)
+
+    The common my_pywrap_common.so artifact will contain all the common parts among extension_*.so
+    artifacts, while each of them will depend on it.
+
+    To use the built extensions in a py_test or a py_binary simply add my_pywrap target as a
+    dependency.
+
+    Many of the arguments to this macro are for advanced use only and designed to allow fine-tuning
+    of the final common artifacts structure. Such fine-tuning is needed mainly to support backward
+    comptability with previous pybind_extension implementations, and should be strictly discouraged
+    in new code.
+
+    Args:
+        name: Name of the py_library target to be created, this is the only public target and the
+            one to depend on in downstream targets, such as py_test or py_binary.
+        deps: List of pybind_extension targets to be built by this macro together into a cohesive
+            set of binary artifacts.
+        starlark_only_deps: For advanced use only.
+        pywrap_lib_filter: For advanced use only.
+        pywrap_lib_exclusion_filter: For advanced use only.
+        common_lib_filters: For advanced use only.
+        common_lib_versions: For advanced use only.
+        common_lib_version_scripts: A map of versions scripts to control visibility of the symbols
+            exposed by common artifacts. The keys are the names of the common artifacts
+            (e.g.{name}_common), and the values are the labels of the version script files.
+        common_lib_def_files_or_filters: Similar to common_lib_version_scripts argument, but is
+            Windows-specific; accepts either direct .def files or .json symbol filter files (the
+            syntax of .json filter file mimics .lds format for version scripts on Linux); filtering
+            is necessary to deal with 2^16 exported symbols limit for a single .dll on Winodows
+            platform.
+        common_lib_linkopts: Linkopts for common artifacts. The Linkopts for each individual
+            extension must be provided directly to python_extension targets instead.
+        enable_common_lib_starlark_only_filter: For advanced use only.
+        pywrap_count: Number of python_extension artifacts in the transitive closure of deps; if
+            the number python_extensions found in deps does not match this number an error will be
+            thrown. This parameter is necesary for technical reasons. If not provided it will be
+            assumed to be equal to the size of deps, meaning deps contains each and every
+            python_extension target directly and nothing else.
+        starlark_only_pywrap_count: For advanced use only.
+        extra_deps: Extra dependencies to be added to the common library.
+        visibility: The visibility argument of the resultant py_library target.
+        testonly: The testonly argument of the resultant py_library target.
+        compatible_with: The compatible_with of the py_library target.
+    """
+
     # 0) If pywrap_count is not specified, assume we pass pybind_extension,
     # targets directly, so actual pywrap_count should just be equal to  number
     # of deps.
@@ -739,7 +820,7 @@ _generated_win_def_file = rule(
     implementation = _generated_win_def_file_impl,
 )
 
-def pybind_extension(
+def python_extension(
         name,
         deps,
         srcs = [],
@@ -749,23 +830,106 @@ def pybind_extension(
         testonly = None,
         compatible_with = None,
         additional_exported_symbols = [],
-        default_deps = ["@pybind11//:pybind11"],
+        default_deps = [],
         linkopts = [],
         starlark_only = False,
+        local_defines = [],
+        wrap_py_init = None,
         **kwargs):
+    """A macro responsible for creating each individual Python C++ extension
+
+    This macro consists of consists of two parts:a cc_library compiling the extension and a custom
+    rule which preserves enough information for pywrap_library to be able to do its job of linking
+    multiple extensions together.
+
+    Different python_extension tarets may depend on each other, depend on or be depended on by
+    any number of py_library targets. To use python_extension in py_test or py_binary, do not depend
+    on it directly, instead create a pywrap_library target, which should depend on all
+    python_extensions needed in your test or binary, and then depend on pywrap_library itself. This
+    is necessary because the actual construction of binary artifacts happens in pywrap_library.
+
+    Args:
+        name: The name of the extension, it must match the name of actual Python extension module;
+            the package of the module will correspond to the bazel package of the target.
+        deps: The C++ dependencies of the extension.
+        srcs: The C++ sources of the extension.
+        common_lib_packages: The list of packages for all the pywrap_library targets this
+            python_extension is supposed to be used in. This argument exists for technical reasons.
+            If you are getting NoModuleFoundError for this extension's module while running your
+            code that depends on a pywrap_library (which in its turn depends on this extension),
+            most likely you need to add the name of the problematic pywrap_library package in this
+            list.
+        visibility: The visibility of the extension target.
+        win_def_file: The win_def_file of the extension.
+        testonly: The testonly argument of the extension.
+        compatible_with: The compatible_with of the extension.
+        additional_exported_symbols: For advanced use only.
+        default_deps: The default dependencies of the extension.
+        linkopts: The linkopts of the extension.
+        starlark_only: For advanced use only.
+        local_defines: The local defines of the extension.
+        wrap_py_init: Whether to wrap the PyInit_* function, making the extension artifact
+            super-thin, containin only one PyInit_{name} function, with the rest of the logic being
+            linked in the common artifact. Use this if you want to expose as little symbols as
+            possible from common artifacts. It also may be very handy for Windows development, as
+            linking multiple dynamic libraries together is much harder on Windows.
+        **kwargs: Additional arguments to pass to the cc_library.
+    """
+
     # For backward compatibility that I don't want to mess with
     _ignore = [additional_exported_symbols]
-    cc_library_name = "_%s_cc_library" % name
+
+    if not srcs:
+        wrap_py_init = False
+
+    cc_library_deps = deps + default_deps
+    wrapped_cc_library_name = "_%s__wrapped__cc_library" % name
+
+    # If no wrapping is requested, this target will simply remain unused and
+    # never compiled
     native.cc_library(
-        name = cc_library_name,
-        deps = deps + default_deps,
+        name = wrapped_cc_library_name,
+        deps = cc_library_deps,
         srcs = srcs,
         linkstatic = True,
         alwayslink = True,
         visibility = visibility,
         testonly = testonly,
         compatible_with = compatible_with,
-        local_defines = ["PROTOBUF_USE_DLLS", "ABSL_CONSUME_DLL"],
+        linkopts = linkopts,
+        local_defines = local_defines + _if_wrapped_py_init(
+            wrap_py_init,
+            ["PyInit_{}=Wrapped_PyInit_{}".format(name, name)],
+        ),
+        **kwargs
+    )
+
+    cc_library_name = "_%s_cc_library" % name
+    native.cc_library(
+        name = cc_library_name,
+        deps = _if_wrapped_py_init(
+            wrap_py_init,
+            [":{}".format(wrapped_cc_library_name)],
+            cc_library_deps,
+            cc_library_name,
+            "deps",
+        ),
+        srcs = _if_wrapped_py_init(
+            wrap_py_init,
+            [Label(":wrapped_py_init.cc")],
+            srcs,
+            cc_library_name,
+            "srcs",
+        ),
+        linkstatic = True,
+        alwayslink = True,
+        visibility = visibility,
+        testonly = testonly,
+        compatible_with = compatible_with,
+        local_defines = local_defines + _if_wrapped_py_init(
+            wrap_py_init,
+            ["WRAPPED_PY_MODULE_NAME={}".format(name)],
+        ),
         linkopts = linkopts + select({
             "@bazel_tools//src/conditions:windows": [],
             "@bazel_tools//src/conditions:darwin": _construct_linkopt_rpaths(
@@ -801,6 +965,55 @@ def pybind_extension(
             compatible_with = compatible_with,
             visibility = visibility,
         )
+
+def _if_wrapped_py_init(wrap_py_init, if_true = [], if_false = [], dep_name = "", dep_type = ""):
+    if wrap_py_init == None:
+        return select({
+            Label(":config_wrap_py_init"): _wrap_cc_select(dep_name, dep_type, if_true),
+            "//conditions:default": _wrap_cc_select(dep_name, dep_type, if_false),
+        })
+
+    return if_true if wrap_py_init else if_false
+
+def _wrap_cc_select(name, dep_type, deps):
+    if type(deps) == _SELECT_TYPE:
+        wrapping_select_target = "_{}_{}".format(name, dep_type)
+        if dep_type == "deps":
+            native.cc_library(
+                name = wrapping_select_target,
+                deps = deps,
+            )
+        else:
+            native.filegroup(
+                name = wrapping_select_target,
+                srcs = deps,
+            )
+
+        return [":{}".format(wrapping_select_target)]
+    else:
+        return deps
+
+# For backward compatibility with the old name
+def pybind_extension(name, default_deps = None, **kwargs):
+    """Wrapper around pybind_extension that specifies default dependency on pybind11. 
+
+    Note that python_extension works with nanobind as well.
+
+    Args:
+        name: Same as in python_extension.
+        default_deps: The default dependencies of the extension, if not specified, the default
+            dependency on pybind11 will be added.
+        **kwargs: Additional arguments to pass to the python_extension.
+    """
+
+    actual_default_deps = ["@pybind11//:pybind11"]
+    if default_deps != None:
+        actual_default_deps = default_deps
+    python_extension(
+        name = name,
+        default_deps = actual_default_deps,
+        **kwargs
+    )
 
 def _pywrap_info_wrapper_impl(ctx):
     #the attribute is called deps not dep to match aspect's attr_aspects
@@ -847,7 +1060,7 @@ _pywrap_info_wrapper = rule(
         "common_lib_packages": attr.string_list(default = []),
         "py_stub_src": attr.label(
             allow_single_file = True,
-            default = Label("//third_party/py/rules_pywrap:pybind_extension.py.tpl"),
+            default = Label(":pybind_extension.py.tpl"),
         ),
         "starlark_only": attr.bool(mandatory = False, default = False),
     },
@@ -1064,6 +1277,11 @@ def _pywrap_binaries_impl(ctx):
         content = str(wheel_locations),
     )
 
+    original_to_final_binaries.append(
+        "^^^ Shared objects correspondence map^^^\n\n",
+    )
+    # print("\n".join(original_to_final_binaries))
+
     return [DefaultInfo(files = depset(direct = final_binaries))]
 
 def _construct_final_binary_location(final_binary, new_package):
@@ -1130,12 +1348,9 @@ def _get_common_lib_package_and_name(common_lib_full_name):
 
 def _construct_inverse_common_lib_filters(common_lib_filters):
     inverse_common_lib_filters = {}
-    select_type = type(select({"//conditions:default": []}))
-    list_type = type([])
-
     for common_lib_k, common_lib_v in common_lib_filters.items():
         new_common_lib_k = common_lib_v
-        if type(common_lib_v) == list_type or type(common_lib_v) == select_type:
+        if type(common_lib_v) == _LIST_TYPE or type(common_lib_v) == _SELECT_TYPE:
             new_common_lib_k = "_%s_common_lib_filter" % common_lib_k.rsplit("/", 1)[-1]
             native.cc_library(
                 name = new_common_lib_k,
