@@ -277,7 +277,7 @@ struct AllocationRequest {
   std::optional<int64_t> no_copy_chunk_inclusive_start_time;
   // Indicates if the AllocationRequest start time (definition time) has an
   // alternate memory color requirement.
-  bool require_start_colored_in_alternate_memmory = false;
+  bool require_start_colored_in_alternate_memory = false;
   // Indicates if the AllocationRequest end time (use time) has an alternate
   // memory color requirement.
   bool require_end_colored_in_alternate_memory = false;

@@ -322,9 +322,9 @@ void PinnedAllocation::MarkNeeded(
 
 ReservedAllocation::ReservedAllocation(HloPosition defining_position,
                                        HeapSimulator::Chunk chunk,
-                                       int64_t reservation_time)
+                                       int64_t start_time, int64_t end_time)
     : Allocation(std::move(defining_position), MemorySpace::kAlternate, chunk,
-                 /*start_time=*/reservation_time, /*end_time=*/reservation_time,
+                 /*start_time=*/start_time, /*end_time=*/end_time,
                  /*cross_program_prefetch_index=*/std::nullopt),
       reserved_(true) {}
 
@@ -355,8 +355,8 @@ std::string ReservedAllocation::ToString() const {
   }
   return absl::StrCat(
       "ReservedAllocationdefined in alternate memory defined at ",
-      original_defining_position().ToString(),
-      ", reservation_time:", start_time(), ", reserved: ", reserved_);
+      original_defining_position().ToString(), ", start_time: ", start_time(),
+      ", end_time: ", end_time(), " reserved: ", reserved_);
 }
 
 bool ReservedAllocation::operator==(const Allocation& other) const {
