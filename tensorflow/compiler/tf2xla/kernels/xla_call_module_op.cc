@@ -177,10 +177,15 @@ class XlaCallModuleOp : public XlaOpKernel {
       function_list_.clear();
     }
 
+    bool use_shardy_partitioner = false;
+    if (!ctx->GetAttr("use_shardy_partitioner", &use_shardy_partitioner).ok()) {
+      use_shardy_partitioner = false;
+    }
     if (VLOG_IS_ON(3)) {
       VLOG(3) << "Initializing XlaCallModuleOp (version = " << version
               << ", platforms = [" << absl::StrJoin(platforms, ", ")
               << "], has_token_input_output = " << main_has_token_input_output
+              << ", use_shardy_partitioner = " << use_shardy_partitioner
               << ", disabled_checks = [" << absl::StrJoin(disabled_checks, ", ")
               << "], "
               << "function_list = ["
@@ -216,7 +221,7 @@ class XlaCallModuleOp : public XlaOpKernel {
           &context_, version, module_str, std::move(disabled_checks),
           std::move(platforms),
           /*num_invocation_args=*/ctx->num_inputs(),
-          main_has_token_input_output);
+          main_has_token_input_output, use_shardy_partitioner);
       OP_REQUIRES_OK(ctx, loader.status());
       loader_ = *std::move(loader);
     }

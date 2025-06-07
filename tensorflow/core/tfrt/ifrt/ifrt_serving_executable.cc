@@ -36,12 +36,16 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "shardy/dialect/sdy/transforms/import/passes.h"  // from @shardy
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/extract_callback.h"
@@ -70,6 +74,8 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/dump.h"
+#include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
+#include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_import.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/framework/serving_device_selector.h"
@@ -419,6 +425,28 @@ IfrtServingExecutable::CreateExecutableSynchronously(
   if (VLOG_IS_ON(1)) {
     tensorflow::DumpMlirOpToFile("module_for_bridge_phase2", *module_copy);
   }
+
+  std::optional<bool> use_shardy_partitioner;
+  mlir::WalkResult result =
+      module_copy.get()->walk([&](mlir::TF::XlaCallModuleOp op) {
+        if (!use_shardy_partitioner.has_value()) {
+          use_shardy_partitioner = op.getUseShardyPartitioner();
+        } else if (*use_shardy_partitioner != op.getUseShardyPartitioner()) {
+          return mlir::WalkResult::interrupt();
+        }
+        return mlir::WalkResult::advance();
+      });
+  if (result.wasInterrupted()) {
+    return absl::FailedPreconditionError(
+        "use_shardy_partitioner is not consistent across XlaCallModuleOps");
+  }
+
+  if (!use_shardy_partitioner.has_value()) {
+    // If the module doesn't contain any XlaCallModuleOp, disable Shardy.
+    use_shardy_partitioner = false;
+  }
+  VLOG(2) << "use_shardy_partitioner: " << *use_shardy_partitioner;
+
   Tf2HloArg tf2hlo_arg{
       .module = module_copy.get(),
       .input_dtypes_and_shapes = std::vector<DtypeAndShape>(
@@ -441,8 +469,11 @@ IfrtServingExecutable::CreateExecutableSynchronously(
   TF_ASSIGN_OR_RETURN(Tf2HloResult tf2hlo_result,
                       persistent_compilation_cache_->LookupTf2HloResultOrCreate(
                           tf2hlo_arg, tf_to_hlo_compiler_));
-  xla::DumpHloModuleProtoIfEnabled(tf2hlo_result.hlo_module_proto,
-                                   "before_ifrt_serialization");
+  if (VLOG_IS_ON(1)) {
+    xla::DumpHloModuleProtoIfEnabled(tf2hlo_result.hlo_module_proto,
+                                     "before_ifrt_serialization");
+  }
+
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> mlir_hlo_module,
       ::xla::ConvertHloToStablehloWithOptions(
@@ -453,6 +484,27 @@ IfrtServingExecutable::CreateExecutableSynchronously(
     tensorflow::DumpMlirOpToFile("ifrt_after_bridge_phase2",
                                  mlir_hlo_module.get());
   }
+
+  if (use_shardy_partitioner.has_value() && *use_shardy_partitioner) {
+    mlir::PassManager sdy_roundtrip(mlir_hlo_module.get()->getContext());
+    // We first convert mhlo.sharding to sdy.sharding. Then, we call
+    // the SdyRoundTrip import pass to convert the
+    // `mhlo.frontend_attributes={xla.sdy.sharding...}` to sdy.sharding. After
+    // that we lift inlined meshes.
+    sdy_roundtrip.addPass(xla::sdy::createImportShardingsPass(false, false));
+    xla::sdy::addSdyRoundTripImportPipeline(sdy_roundtrip,
+                                            /*enableConstantImport=*/false);
+    sdy_roundtrip.addPass(mlir::sdy::createLiftInlinedMeshesPass());
+
+    if (failed(sdy_roundtrip.run(mlir_hlo_module.get()))) {
+      return absl::InvalidArgumentError("sdy roundtrip failed");
+    }
+    if (VLOG_IS_ON(1)) {
+      tensorflow::DumpMlirOpToFile("ifrt_after_bridge_phase2_sdy",
+                                   mlir_hlo_module.get());
+    }
+  }
+
   const int num_replicas = tf2hlo_result.compile_metadata.num_replicas();
   const int num_partitions =
       tf2hlo_result.compile_metadata.num_cores_per_replica();
@@ -482,6 +534,8 @@ IfrtServingExecutable::CreateExecutableSynchronously(
 
   xla_compile_options.executable_build_options.set_use_spmd_partitioning(
       original_compile_metadata_.use_spmd_for_xla_partitioning());
+  xla_compile_options.executable_build_options.set_use_shardy_partitioner(
+      *use_shardy_partitioner);
   xla_compile_options.parameter_is_tupled_arguments = false;
   // Use portable execution for single device + core selection.
   if (UsePortableExecution(compile_metadata)) {
