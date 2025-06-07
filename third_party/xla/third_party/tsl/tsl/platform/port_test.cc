@@ -13,8 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <condition_variable>
+#include <cstddef>
+#include <cstdint>
+#include <ctime>
 
+#include "absl/log/log.h"
 #include "xla/tsl/platform/env_time.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
