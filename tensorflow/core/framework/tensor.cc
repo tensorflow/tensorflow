@@ -1293,6 +1293,14 @@ uint16_t PrintOneElement(uint2 a, bool print_v2) {
   return static_cast<uint16_t>(a);
 }
 
+inline int16_t PrintOneElement(int2 a, bool print_v2) {
+  return static_cast<int16_t>(a);
+}
+
+inline uint16_t PrintOneElement(uint2 a, bool print_v2) {
+  return static_cast<uint16_t>(a);
+}
+
 // Print from left dim to right dim recursively.
 template <typename T>
 void PrintOneDim(int dim_index, const absl::InlinedVector<int64, 4UL>& shape,
