@@ -2,6 +2,7 @@ load("//xla:xla.default.bzl", "xla_cc_test")
 load(
     "//xla/tsl:tsl.bzl",
     "if_google",
+    "if_oss",
     "internal_visibility",
 )
 
@@ -135,6 +136,7 @@ cc_library(
     hdrs = [
         "amdgpu_backend.h",
     ],
+    local_defines = if_oss(["HAS_SUPPORT_FOR_LLD_AS_A_LIBRARY=1"]),
     deps = [
         ":llvm_gpu_backend",
         ":load_ir_module",
@@ -143,15 +145,19 @@ cc_library(
         "//xla/service/llvm_ir:llvm_command_line_options",
         "//xla/service/llvm_ir:llvm_type_conversion_util",
         "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:rocm_rocdl_path",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:statusor",
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@llvm-project//llvm:AMDGPUAsmParser",
+        "@llvm-project//llvm:AMDGPUAsmParser",  # buildcleaner: keep
         "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:BitReader",
         "@llvm-project//llvm:BitWriter",
@@ -165,15 +171,16 @@ cc_library(
         "@llvm-project//llvm:Scalar",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:random",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:traceme",
-    ],
+    ] + if_oss([
+        # keep sorted
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
+        "@llvm-project//lld:Common",
+        "@llvm-project//lld:ELF",  # buildcleaner: keep
+    ]),
 )
 
 cc_library(
