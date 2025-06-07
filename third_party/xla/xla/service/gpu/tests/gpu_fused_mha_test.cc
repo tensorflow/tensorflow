@@ -1446,69 +1446,69 @@ class FlashAttentionBMMScaleSoftmaxDropoutBMM
 };
 
 // BMM1 - Scale - CausalMask - Softmax - BMM2
-XLA_TEST_F(FlashAttentionBMMScaleCausalMaskSoftmaxBMM,
-           Flash_Attention_BMM1_CausalMask_Softmax_BMM2_BF16) {
+TEST_F(FlashAttentionBMMScaleCausalMaskSoftmaxBMM,
+       Flash_Attention_BMM1_CausalMask_Softmax_BMM2_BF16) {
   TestImpl_Flash_Attention_BMM1_CausalMask_Softmax_BMM2();
 }
 
-XLA_TEST_F(FlashAttentionBMMScaleCausalMaskSoftmaxBMM,
-           Flash_Attention_Training_BMM1_CausalMask_Softmax_BMM2_BF16) {
+TEST_F(FlashAttentionBMMScaleCausalMaskSoftmaxBMM,
+       Flash_Attention_Training_BMM1_CausalMask_Softmax_BMM2_BF16) {
   TestImpl_Flash_Attention_Training_BMM1_CausalMask_Softmax_BMM2();
 }
 
 // BMM1 - Scale - Bias - Softmax - BMM2
-XLA_TEST_F(FlashAttentionBMMScaleBiasSoftmaxBMM,
-           Flash_Attention_BMM1_Bias_Softmax_BMM2_BF16) {
+TEST_F(FlashAttentionBMMScaleBiasSoftmaxBMM,
+       Flash_Attention_BMM1_Bias_Softmax_BMM2_BF16) {
   TestImpl_Flash_Attention_BMM1_Bias_Softmax_BMM2();
 }
 
-XLA_TEST_F(FlashAttentionBMMScaleBiasSoftmaxBMM,
-           Flash_Attention_Training_BMM1_Bias_Softmax_BMM2_BF16) {
+TEST_F(FlashAttentionBMMScaleBiasSoftmaxBMM,
+       Flash_Attention_Training_BMM1_Bias_Softmax_BMM2_BF16) {
   TestImpl_Flash_Attention_Training_BMM1_Bias_Softmax_BMM2();
 }
 
-XLA_TEST_F(FlashAttentionBMMScaleBiasSoftmaxBMM,
-           Flash_Attention_BMM1_Bias_Softmax_BMM2_BF16_Cross_Attention) {
+TEST_F(FlashAttentionBMMScaleBiasSoftmaxBMM,
+       Flash_Attention_BMM1_Bias_Softmax_BMM2_BF16_Cross_Attention) {
   TestImpl_Flash_Attention_BMM1_Bias_Softmax_BMM2_Cross_Attention();
 }
 
-XLA_TEST_F(FlashAttentionBMMScaleBiasSoftmaxBMM,
-           Flash_Attention_BMM1_Bias_Softmax_BMM2_BF16_Dbias) {
+TEST_F(FlashAttentionBMMScaleBiasSoftmaxBMM,
+       Flash_Attention_BMM1_Bias_Softmax_BMM2_BF16_Dbias) {
   TestImpl_Flash_Attention_BMM1_Bias_Softmax_BMM2_Dbias();
 }
 
 // BMM1 - Scale - Softmax - BMM2
-XLA_TEST_F(FlashAttentionBMMScaleSoftmaxBMM,
-           Flash_Attention_Training_BMM1_Softmax_BMM2_BF16) {
+TEST_F(FlashAttentionBMMScaleSoftmaxBMM,
+       Flash_Attention_Training_BMM1_Softmax_BMM2_BF16) {
   TestImpl_Flash_Attention_Training_BMM1_Softmax_BMM2();
 }
 
-XLA_TEST_F(FlashAttentionBMMScaleSoftmaxBMM,
-           Flash_Attention_Training_BMM1_Softmax_BMM2_Deterministic_BF16) {
+TEST_F(FlashAttentionBMMScaleSoftmaxBMM,
+       Flash_Attention_Training_BMM1_Softmax_BMM2_Deterministic_BF16) {
   TestImpl_Flash_Attention_Training_BMM1_Softmax_BMM2_Deterministic();
 }
 
 // BMM1 - Scale - PaddingMask - Softmax - BMM2
-XLA_TEST_F(FlashAttentionBMMScalePaddingMaskSoftmaxBMM,
-           Flash_Attention_Training_BMM1_PaddingMask_Softmax_BMM2_BF16) {
+TEST_F(FlashAttentionBMMScalePaddingMaskSoftmaxBMM,
+       Flash_Attention_Training_BMM1_PaddingMask_Softmax_BMM2_BF16) {
   TestImpl_Flash_Attention_Training_BMM1_PaddingMask_Softmax_BMM2();
 }
 
 // BMM1 - Scale - SlidingWindowMask - Softmax - BMM2
-XLA_TEST_F(FlashAttentionBMMScaleSlidingWindowMaskSoftmaxBMM,
-           Flash_Attention_Training_BMM1_SlidingWindowMask_Softmax_BMM2_BF16) {
+TEST_F(FlashAttentionBMMScaleSlidingWindowMaskSoftmaxBMM,
+       Flash_Attention_Training_BMM1_SlidingWindowMask_Softmax_BMM2_BF16) {
   TestImpl_Flash_Attention_Training_BMM1_SlidingWindowMask_Softmax_BMM2();  // NOLINT
 }
 
 // BMM1 - Scale - SegmentMask - Softmax - BMM2
-XLA_TEST_F(FlashAttentionBMMScaleSegmentMaskSoftmaxBMM,
-           Flash_Attention_Training_BMM1_SegmentMask_Softmax_BMM2_BF16) {
+TEST_F(FlashAttentionBMMScaleSegmentMaskSoftmaxBMM,
+       Flash_Attention_Training_BMM1_SegmentMask_Softmax_BMM2_BF16) {
   TestImpl_Flash_Attention_Training_BMM1_SegmentMask_Softmax_BMM2<
       bfloat16>();  // NOLINT
 }
 
 // Paged Attention
-XLA_TEST_F(FlashAttentionPagedAttention, Flash_Attention_Paged_Attention_BF16) {
+TEST_F(FlashAttentionPagedAttention, Flash_Attention_Paged_Attention_BF16) {
   TestImpl_Flash_Attention_Paged_Attention<bfloat16>();
 }
 
@@ -1591,8 +1591,8 @@ absl::string_view GetModuleFlashAttentionBMMScaleSoftmaxBMMCommonF8() {
   return hlo_text;
 }
 // BMM1 - Scale - Softmax - BMM2 fp8
-XLA_TEST_F(FlashAttentionBMMScaleSoftmaxBMMF8,
-           Flash_Attention_Inference_BMM1_NoMask_Softmax_BMM2_BNTH_F8) {
+TEST_F(FlashAttentionBMMScaleSoftmaxBMMF8,
+       Flash_Attention_Inference_BMM1_NoMask_Softmax_BMM2_BNTH_F8) {
   if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   if (GetDnnVersionInfoOrDefault(backend().default_stream_executor()) <
       se::dnn::VersionInfo(9, 1, 0)) {
@@ -1768,8 +1768,8 @@ XLA_TEST_F(FlashAttentionBMMScaleSoftmaxBMMF8,
                                       ErrorSpec{5e-2, 5e-2}));
 }
 
-XLA_TEST_F(FlashAttentionBMMScaleSoftmaxBMMF8,
-           Flash_Attention_Inference_BMM1_NoMask_Softmax_BMM2_BTNH_F8) {
+TEST_F(FlashAttentionBMMScaleSoftmaxBMMF8,
+       Flash_Attention_Inference_BMM1_NoMask_Softmax_BMM2_BTNH_F8) {
   if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   if (GetDnnVersionInfoOrDefault(backend().default_stream_executor()) <
       se::dnn::VersionInfo(9, 1, 0)) {
@@ -1945,13 +1945,13 @@ XLA_TEST_F(FlashAttentionBMMScaleSoftmaxBMMF8,
 }
 
 // BMM1 - Scale - Softmax - BMM2 fp8
-XLA_TEST_F(FlashAttentionBMMScaleSoftmaxDropoutBMM,
-           Flash_Attention_Training_BMM1_Softmax_Dropout_BMM2) {
+TEST_F(FlashAttentionBMMScaleSoftmaxDropoutBMM,
+       Flash_Attention_Training_BMM1_Softmax_Dropout_BMM2) {
   TestImpl_Flash_Attention_Training_BMM1_Softmax_Dropout_BMM2();
 }
 
-XLA_TEST_F(FlashAttentionBMMScaleSoftmaxBMMF8,
-           Flash_Attention_Bwd_BMM1_NoMask_Softmax_BMM2_F8) {
+TEST_F(FlashAttentionBMMScaleSoftmaxBMMF8,
+       Flash_Attention_Bwd_BMM1_NoMask_Softmax_BMM2_F8) {
   if (skip_reason_) GTEST_SKIP() << *skip_reason_;
   if (GetDnnVersionInfoOrDefault(backend().default_stream_executor()) <
       se::dnn::VersionInfo(9, 1, 0)) {
