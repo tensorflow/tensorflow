@@ -75,6 +75,4 @@ inline const char** TestPlatform() {
 
 #define XLA_TEST_P(test_case_name, test_name) TEST_P(test_case_name, test_name)
 
-#define XLA_TYPED_TEST(CaseName, TestName) TYPED_TEST(CaseName, TestName)
-
 #endif  // XLA_TESTS_TEST_MACROS_H_
