@@ -336,12 +336,17 @@ DepthwiseConv3x3 CreateDepthwiseConv3x3(
     const DepthwiseConvolution2DAttributes& attr) {
   bool weights_are_buffer = !gpu_info.SupportsImages() ||
                             gpu_info.IsPowerVR() || gpu_info.IsMali() ||
-                            gpu_info.IsApple();
+                            gpu_info.IsApple() ||
+                            (gpu_info.IsIntel() && gpu_info.IsApiOpenCl() &&
+                             gpu_info.opencl_info.IsCLVK());
   bool local_mem_uploads =
       (weights_are_buffer && gpu_info.IsPowerVR() && gpu_info.IsApiOpenCl() &&
        gpu_info.opencl_info.dedicated_local_memory) ||
       (gpu_info.IsApple() &&
-       gpu_info.apple_info.IsLocalMemoryPreferredOverGlobal());
+       gpu_info.apple_info.IsLocalMemoryPreferredOverGlobal()) ||
+      (gpu_info.IsIntel() && gpu_info.IsApiOpenCl() &&
+        gpu_info.opencl_info.IsCLVK());
+
   DepthwiseConv3x3 result(definition, weights_are_buffer, local_mem_uploads,
                           gpu_info);
   result.UploadWeightsAndBiases(attr.weights, attr.bias, weights_are_buffer);
