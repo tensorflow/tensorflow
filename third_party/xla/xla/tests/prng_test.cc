@@ -95,7 +95,7 @@ class ScalarBF16Test
     : public PrngTest,
       public ::testing::WithParamInterface<ScalarBF16TestCase> {};
 
-XLA_TEST_P(ScalarBF16Test, DoIt) {
+TEST_P(ScalarBF16Test, DoIt) {
   if (test::DeviceIsOneOf({test::kCpu, test::kGpu, test::kInterpreter})) {
     GTEST_SKIP();
   }

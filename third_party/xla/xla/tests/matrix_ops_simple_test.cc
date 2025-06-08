@@ -56,7 +56,7 @@ class MatOpsSimpleTest_F16F32 : public MatOpsSimpleTest {};
 
 TYPED_TEST_CASE(MatOpsSimpleTest_F16F32, TypesF16F32);
 
-XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, ExpTwoByTwoValues) {
+TYPED_TEST(MatOpsSimpleTest_F16F32, ExpTwoByTwoValues) {
   using T = TypeParam;
   XlaBuilder builder("exp_2x2");
   auto data = ConstantR2FromArray2D<T>(&builder, {
@@ -72,7 +72,7 @@ XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, ExpTwoByTwoValues) {
   this->ComputeAndCompareLiteral(&builder, expected, {}, ErrorSpec(1e-5));
 }
 
-XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MapTwoByTwo) {
+TYPED_TEST(MatOpsSimpleTest_F16F32, MapTwoByTwo) {
   using T = TypeParam;
   XlaComputation add_half;
   {
@@ -100,7 +100,7 @@ XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MapTwoByTwo) {
   this->ComputeAndCompareLiteral(&builder, expected, {}, ErrorSpec(1e-5));
 }
 
-XLA_TYPED_TEST(MatOpsSimpleTest_F16F32, MaxTwoByTwoValues) {
+TYPED_TEST(MatOpsSimpleTest_F16F32, MaxTwoByTwoValues) {
   using T = TypeParam;
   XlaBuilder builder("max_2x2");
   auto lhs = ConstantR2FromArray2D<T>(&builder, {
@@ -164,9 +164,9 @@ std::string PrintTestLinspaceMaxParam(
 }
 
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
-XLA_TEST_P(TestLinspaceMaxParametric, TestF16) { TestImpl<Eigen::half>(); }
+TEST_P(TestLinspaceMaxParametric, TestF16) { TestImpl<Eigen::half>(); }
 #endif
-XLA_TEST_P(TestLinspaceMaxParametric, TestF32) { TestImpl<float>(); }
+TEST_P(TestLinspaceMaxParametric, TestF32) { TestImpl<float>(); }
 
 INSTANTIATE_TEST_CASE_P(
     TestLinspaceMax, TestLinspaceMaxParametric,
@@ -429,28 +429,28 @@ class MatOpsDotAddTest
   }
 };
 
-XLA_TEST_P(MatOpsDotAddTest, Dot_Add_2x2_2x2BF16) { TestImpl<bfloat16>(); }
+TEST_P(MatOpsDotAddTest, Dot_Add_2x2_2x2BF16) { TestImpl<bfloat16>(); }
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
-XLA_TEST_P(MatOpsDotAddTest, Dot_Add_2x2_2x2F16) { TestImpl<Eigen::half>(); }
-XLA_TEST_P(MatOpsDotAddTest, Dot_BiasAdd_2x2_2x2F16) {
+TEST_P(MatOpsDotAddTest, Dot_Add_2x2_2x2F16) { TestImpl<Eigen::half>(); }
+TEST_P(MatOpsDotAddTest, Dot_BiasAdd_2x2_2x2F16) {
   TestImplBiasAddEpilogueFusion<Eigen::half>();
 }
-XLA_TEST_P(MatOpsDotAddTest, Dot_ReluActivation_2x2_2x2F16) {
+TEST_P(MatOpsDotAddTest, Dot_ReluActivation_2x2_2x2F16) {
   TestImplReluActivationEpilogueFusion<Eigen::half>();
 }
-XLA_TEST_P(MatOpsDotAddTest, Dot_BiasAddReluActivation_2x2_2x2F16) {
+TEST_P(MatOpsDotAddTest, Dot_BiasAddReluActivation_2x2_2x2F16) {
   TestImplBiasAddReluActivationEpilogueFusion<Eigen::half>();
 }
 #endif
 
-XLA_TEST_P(MatOpsDotAddTest, Dot_Add_2x2_2x2F32) { TestImpl<float>(); }
-XLA_TEST_P(MatOpsDotAddTest, Dot_BiasAdd_2x2_2x2F32) {
+TEST_P(MatOpsDotAddTest, Dot_Add_2x2_2x2F32) { TestImpl<float>(); }
+TEST_P(MatOpsDotAddTest, Dot_BiasAdd_2x2_2x2F32) {
   TestImplBiasAddEpilogueFusion<float>();
 }
-XLA_TEST_P(MatOpsDotAddTest, Dot_ReluActivation_2x2_2x2F32) {
+TEST_P(MatOpsDotAddTest, Dot_ReluActivation_2x2_2x2F32) {
   TestImplReluActivationEpilogueFusion<float>();
 }
-XLA_TEST_P(MatOpsDotAddTest, Dot_BiasAddReluActivation_2x2_2x2F32) {
+TEST_P(MatOpsDotAddTest, Dot_BiasAddReluActivation_2x2_2x2F32) {
   TestImplBiasAddReluActivationEpilogueFusion<float>();
 }
 

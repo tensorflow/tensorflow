@@ -509,7 +509,7 @@ std::vector<BatchNormTestParam> BuildBatchNormTestParams() {
 INSTANTIATE_TEST_CASE_P(BatchNormTest_Instantiation, BatchNormTestManySizes,
                         ::testing::ValuesIn(BuildBatchNormTestParams()));
 
-XLA_TEST_P(BatchNormTestManySizes, RandomizedTrainingTests) {
+TEST_P(BatchNormTestManySizes, RandomizedTrainingTests) {
   float epsilon = 0.001;
   XlaBuilder builder(TestName());
   const std::vector<int64_t>& bounds = GetParam().bounds;
@@ -610,7 +610,7 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedTrainingTests) {
       ErrorSpec(0.01, 1));
 }
 
-XLA_TEST_P(BatchNormTestManySizes, RandomizedInferencingTests) {
+TEST_P(BatchNormTestManySizes, RandomizedInferencingTests) {
   float epsilon = 0.001;
   XlaBuilder builder(TestName());
   const std::vector<int64_t>& bounds = GetParam().bounds;
@@ -718,7 +718,7 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedInferencingTests) {
       ErrorSpec(0.01, 1));
 }
 
-XLA_TEST_P(BatchNormTestManySizes, RandomizedGradTests) {
+TEST_P(BatchNormTestManySizes, RandomizedGradTests) {
   float epsilon = 0.001;
   XlaBuilder builder(TestName());
   const std::vector<int64_t>& bounds = GetParam().bounds;
