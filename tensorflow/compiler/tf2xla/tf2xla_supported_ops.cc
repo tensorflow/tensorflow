@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <iostream>
-#include <string>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"

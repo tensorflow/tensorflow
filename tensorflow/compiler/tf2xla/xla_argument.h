@@ -16,13 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_ARGUMENT_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_ARGUMENT_H_
 
+#include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "absl/types/variant.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 
