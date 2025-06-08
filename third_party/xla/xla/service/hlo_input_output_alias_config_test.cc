@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include <gtest/gtest.h>
-#include "absl/algorithm/container.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
