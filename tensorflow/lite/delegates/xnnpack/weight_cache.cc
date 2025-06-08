@@ -166,11 +166,11 @@ bool MMapHandle::Map(const FileDescriptor& fd, const size_t offset,
                        "could not access file stats to get size ('%s'): %s.",
                        path, strerror(errno));
 
-  // This will reset data_ and size_ on return until is is deactivated.
+  // This will reset data_ and size_ on return until it is deactivated.
   ScopeGuard unmap_on_error([this] { UnMap(); });
   size_ = file_stats.st_size - offset;
   offset_ = offset;
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) || defined(XNNPACK_CACHE_NO_MMAP_FOR_TEST)
   // This allocation is freed in UnMap and in the desctructor.
   data_ = new uint8_t[size_];
   fd.SetPos(offset);
@@ -189,7 +189,8 @@ bool MMapHandle::Map(const FileDescriptor& fd, const size_t offset,
 }
 
 bool MMapHandle::Resize(size_t new_size) {
-#if defined(__linux__) || defined(__ANDROID__)
+#if (defined(__linux__) || defined(__ANDROID__)) && \
+    !defined(XNNPACK_CACHE_NO_MMAP_FOR_TEST)
   void* const remapped_data =
       mremap(data_, size_ + offset_page_adjustment_,
              new_size + offset_page_adjustment_, /*flags=*/0);
@@ -209,7 +210,7 @@ bool MMapHandle::Resize(size_t new_size) {
 
 void MMapHandle::UnMap() {
   if (data_) {
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) || defined(XNNPACK_CACHE_NO_MMAP_FOR_TEST)
     delete[] data_;
 #else
     munmap(data_, size_);
@@ -653,6 +654,15 @@ bool MMapWeightCacheProvider::StartBuildStep() {
 
 bool MMapWeightCacheProvider::StopBuildStep() {
   XNNPACK_RETURN_CHECK(builder_.StopBuildStep());
+#if defined(_MSC_VER) || defined(XNNPACK_CACHE_NO_MMAP_FOR_TEST)
+  if (!mmap_handles_.empty()) {
+    // Sync mmap_handles_.data() with the content updated by
+    // builder_.StopBuildStep().
+    XNNPACK_RETURN_CHECK(file_descriptor_.IsValid());
+    XNNPACK_RETURN_CHECK(mmap_handles_.front().Map(
+        file_descriptor_, /*offset=*/0, file_path_.c_str()));
+  }
+#endif
   is_build_step_ = false;
   return LoadLastBuildStep();
 }
