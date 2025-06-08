@@ -504,6 +504,9 @@ TokKind HloLexer::LexInt64Impl() {
     ++pos;
     // Lexing negative integer:
     while (true) {
+      if (!CanDereference(pos)) {
+        break;
+      }
       uint8_t c = static_cast<uint8_t>(*pos) - static_cast<uint8_t>('0');
       if (c > 9) {
         break;
@@ -523,6 +526,9 @@ TokKind HloLexer::LexInt64Impl() {
     uint64_t uint64_val = 0;
     // Lexing non-negative integer:
     while (true) {
+      if (!CanDereference(pos)) {
+        break;
+      }
       uint8_t c = static_cast<uint8_t>(*pos) - static_cast<uint8_t>('0');
       if (c > 9) {
         break;
