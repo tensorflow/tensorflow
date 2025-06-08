@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/TypeID.h"
+#include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
@@ -208,10 +209,19 @@ class StablehloExportManualReductionCollectivesPass
     ModuleOp moduleOp = getOperation();
     mlir::IRRewriter rewriter(moduleOp.getContext());
     int64_t nextChannelId = getNextChannelId(moduleOp);
-    moduleOp.walk([&](sdy::AllReduceOp allReduce) {
-      if (auto sharding = sdy::getSharding(allReduce.getTensor());
-          sharding && !sharding.getUnreducedAxes().empty()) {
-        convertAllReduce(allReduce, nextChannelId++, rewriter);
+    moduleOp.walk([&](mlir::Operation* op) {
+      if (op->getNumResults() > 0) {
+        if (auto sharding = sdy::getSharding(op->getResult(0));
+            sharding && !sharding.getUnreducedAxes().empty()) {
+          setFrontendAttribute(op, sdy::kHasUnreducedAxis,
+                               rewriter.getStringAttr("true"));
+        }
+      }
+      if (auto allReduce = mlir::dyn_cast<sdy::AllReduceOp>(op)) {
+        if (auto sharding = sdy::getSharding(allReduce.getTensor());
+            sharding && !sharding.getUnreducedAxes().empty()) {
+          convertAllReduce(allReduce, nextChannelId++, rewriter);
+        }
       }
     });
   }

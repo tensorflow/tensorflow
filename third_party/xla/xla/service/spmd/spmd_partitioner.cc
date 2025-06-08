@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "shardy/dialect/sdy/ir/constants.h"
 #include "xla/array.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/collective_device_list.h"
@@ -250,6 +251,10 @@ HloInstruction* SpmdBuilder::AddInstruction(
   if (visiting_hlo_) {
     std::shared_ptr<const HloSharding> prev_sharding = hlo->sharding_ptr();
     visiting_hlo_->SetupDerivedInstruction(hlo);
+    // Do not allow the unreduced attribute to propagate.
+    if (visiting_hlo_->opcode() != hlo->opcode()) {
+      hlo->erase_frontend_attribute(mlir::sdy::kHasUnreducedAxis.str());
+    }
     if (prev_sharding != nullptr) {
       hlo->set_sharding(*prev_sharding);
     } else {
@@ -5378,6 +5383,12 @@ HloInstruction* SpmdPartitioner::AllReduceAlongShardingDimsInternal(
     int64_t* next_channel_id, absl::Span<const int64_t> selected_dims,
     const SPMDCollectiveOpsCreator& collectives_creator,
     HloComputation* reduction, bool per_dim_ar) {
+  // Skip adding AR if the operand has unreduced axes in its sharding,
+  // represented by the frontend attribute.
+  const auto& attrs = operand->frontend_attributes().map();
+  if (attrs.contains(mlir::sdy::kHasUnreducedAxis)) {
+    return operand;
+  }
   if (!per_dim_ar) {
     // Attempt to generate partition groups in iota format. If infeasible,
     // fallback to list of lists representation.
