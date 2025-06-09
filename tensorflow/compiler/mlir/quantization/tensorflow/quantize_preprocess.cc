@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/stablehlo/transforms/fold_broadcast_pass.h"
 #include "tensorflow/compiler/mlir/stablehlo/transforms/legalize_tf_xla_call_module_to_stablehlo_pass.h"
-#include "tensorflow/compiler/mlir/stablehlo/transforms/mhlo_passes/tf_fuse_convolution_pass.h"
+#include "tensorflow/compiler/mlir/stablehlo/transforms/mhlo_passes/fuse_convolution_pass.h"
 #include "tensorflow/compiler/mlir/stablehlo/transforms/mhlo_passes/unfuse_batch_norm_pass.h"
 #include "tensorflow/compiler/mlir/stablehlo/transforms/rename_entrypoint_to_main.h"
 #include "tensorflow/compiler/mlir/stablehlo/transforms/tf_stablehlo_pass.h"
@@ -64,8 +64,7 @@ void AddUnfuseMhloOpsPasses(mlir::PassManager& pm) {
   // Unfuse mhlo BatchNorm to primitive ops.
   pm.addNestedPass<mlir::func::FuncOp>(mlir::odml::createUnfuseBatchNormPass());
   // Fuse Conv + Mul to Conv.
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::odml::tf_quant::createFuseConvolutionPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::odml::createFuseConvolutionPass());
   // Fold broadcast_in_dim + Mul.
   pm.addNestedPass<mlir::func::FuncOp>(mlir::odml::createFoldBroadcastPass());
   pm.addNestedPass<mlir::func::FuncOp>(
