@@ -1354,41 +1354,12 @@ class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
                    << " available)";
     }
 
-    HloModuleConfig config =
-        GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-    auto opts = GetDebugOptionsForTest();
-    opts.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
-    opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
-    opts.set_xla_gpu_experimental_enable_alltoall_windowed_einsum(
-        enable_a2a_rewrite);
-    opts.set_xla_gpu_graph_min_graph_size(200);
-    opts.set_xla_gpu_enable_triton_gemm(false);
-    if (disable_dot_merger) {
-      opts.add_xla_disable_hlo_passes("dot-merger");
-    }
-    config.set_debug_options(opts);
-    config.set_num_partitions(kNumPartitions);
-    TF_ASSERT_OK_AND_ASSIGN(auto module,
-                            ParseAndReturnVerifiedModule(hlo_text, config));
     DeviceAssignment assn(/*replica_count=*/kNumReplicas,
                           /*computation_count=*/kNumPartitions);
-    config.set_replica_count(kNumReplicas);
     for (int64_t i = 0; i < kNumPartitions; ++i) {
       assn(0, i) = i;
     }
 
-    auto fake_arguments = xla::MakeFakeArguments(module.get()).value();
-    std::vector<Literal*> fake_ptrs(fake_arguments.size());
-    for (int i = 0; i < fake_arguments.size(); i++) {
-      fake_ptrs[i] = &fake_arguments[i];
-    }
-
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::vector<Literal> results,
-        HloTestBase::ExecuteReplicated(
-            std::move(module), fake_ptrs, kNumPartitions, &assn,
-            true /*run_hlo_passes*/, true /*use-threads*/));
-    ASSERT_EQ(results.size(), kNumPartitions);
     HloModuleConfig ref_config =
         GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
     auto ref_opts = GetDebugOptionsForTest();
@@ -1412,6 +1383,39 @@ class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
         HloTestBase::ExecuteReplicated(
             std::move(ref_module), ref_fake_ptrs, kNumPartitions, &assn,
             true /*run_hlo_passes*/, true /*use-threads*/));
+
+    HloModuleConfig config =
+        GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+    auto opts = GetDebugOptionsForTest();
+    opts.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
+    opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
+    opts.set_xla_gpu_experimental_enable_alltoall_windowed_einsum(
+        enable_a2a_rewrite);
+    opts.set_xla_gpu_graph_min_graph_size(200);
+    opts.set_xla_gpu_enable_triton_gemm(false);
+    if (disable_dot_merger) {
+      opts.add_xla_disable_hlo_passes("dot-merger");
+    }
+    config.set_debug_options(opts);
+    config.set_num_partitions(kNumPartitions);
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(hlo_text, config));
+
+    config.set_replica_count(kNumReplicas);
+
+    auto fake_arguments = xla::MakeFakeArguments(module.get()).value();
+    std::vector<Literal*> fake_ptrs(fake_arguments.size());
+    for (int i = 0; i < fake_arguments.size(); i++) {
+      fake_ptrs[i] = &fake_arguments[i];
+    }
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::vector<Literal> results,
+        HloTestBase::ExecuteReplicated(
+            std::move(module), fake_ptrs, kNumPartitions, &assn,
+            true /*run_hlo_passes*/, true /*use-threads*/));
+    ASSERT_EQ(results.size(), kNumPartitions);
+
     ASSERT_EQ(ref_results.size(), kNumPartitions);
     ErrorSpec error_spec{1e-2, 1e-2};
     // Results should be the same between windowed einsum and non-windowed cases
@@ -1674,6 +1678,22 @@ ENTRY main.9_spmd {
   ROOT all-to-all.1 = bf16[1,4,1,1,32,64]{5,4,3,2,1,0} all-to-all(reshape.2219), channel_id=7, replica_groups={{0,1,2,3}}, dimensions={1}
 }
 )";
+
+  CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr,
+                                          /*disable_dot_merger=*/false,
+                                          /*enable_a2a_rewrite=*/true);
+}
+
+TEST_F(CollectiveOpsTestE2EWindowedNonWindowed, WindowedEinsumE2EPartial) {
+  absl::string_view kModuleReplicatedStr = R"(
+HloModule pjit__unnamed_wrapped_function_, entry_computation_layout={(f32[8,2048,3264]{2,1,0}, f32[3264,2176]{1,0})->f32[8,2048,2176]{2,1,0}}, num_partitions=4
+
+ENTRY entry {
+  p0 = f32[8,2048,3264]{2,1,0} parameter(0), sharding={devices=[2,2,1]<=[4]}
+  p1 = f32[3264,2176]{1,0} parameter(1), sharding={devices=[1,2,2]<=[2,2]T(1,0) last_tile_dim_replicate}
+  dot = f32[8,2048,2176]{2,1,0} dot(f32[8,2048,3264]{2,1,0} p0, f32[3264,2176]{1,0} p1), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  ROOT custom-call = f32[8,2048,2176]{2,1,0} custom-call(dot), custom_call_target="Sharding", sharding={devices=[2,1,2]<=[4]}
+})";
 
   CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr,
                                           /*disable_dot_merger=*/false,

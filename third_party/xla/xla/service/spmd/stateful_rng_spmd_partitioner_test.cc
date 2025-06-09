@@ -60,7 +60,8 @@ class StatefulRngSpmdPartitionerTest : public HloHardwareIndependentTestBase {
       DebugOptions debug_options,
       std::function<void(HloPassPipeline &pipeline)> add_passes = nullptr,
       bool skip_checking_windowed_einsum_users = false,
-      bool disable_ag_rewrite_for_multiple_consumers = false) {
+      bool disable_ag_rewrite_for_multiple_consumers = false,
+      bool enable_partial_windowed_einsums = false) {
     HloModuleConfig config = GetModuleConfigForTest(1, num_partitions);
     config.set_use_spmd_partitioning(true);
     config.set_debug_options(debug_options);
@@ -80,6 +81,7 @@ class StatefulRngSpmdPartitionerTest : public HloHardwareIndependentTestBase {
         debug_options.xla_gpu_multi_streamed_windowed_einsum(),
         skip_checking_windowed_einsum_users,
         disable_ag_rewrite_for_multiple_consumers,
+        enable_partial_windowed_einsums,
         debug_options.xla_gpu_operand_bytes_threshold_for_windowed_einsum());
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
                               /*allow_mixed_precision=*/false);
