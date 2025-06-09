@@ -972,6 +972,8 @@ class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr("combiner_weights_vjp_computation", &name_attr));
     combiner_weights_custom_vjp_computation_ = *name_attr;
+
+    GetAndSetSparseCoresPerLogicalDevice(ctx, num_sparsecores_per_device_);
   }
 
   virtual absl::Status HandleClipWeightRangeStatus() {
@@ -1232,17 +1234,15 @@ class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase
                 absl::InvalidArgumentError(absl::StrCat(
                     "activations input has non static or non-rank 2 shape: ",
                     activation_shape.ToString())));
-    OP_REQUIRES_VALUE(int64_t num_sparsecores_per_device, ctx,
-                      GetSparseCoresPerLogicalDevice());
     int64_t num_samples_per_chip = activation_shape.dimensions(0);
-    OP_REQUIRES(ctx, num_samples_per_chip % num_sparsecores_per_device == 0,
+    OP_REQUIRES(ctx, num_samples_per_chip % num_sparsecores_per_device_ == 0,
                 absl::InvalidArgumentError(absl::StrCat(
                     "num_samples_per_chip ", num_samples_per_chip,
                     " not divisible by the number of sparsecores per chip ",
-                    num_sparsecores_per_device)));
+                    num_sparsecores_per_device_)));
 
     int64_t per_sparse_core_batch_size =
-        num_samples_per_chip / num_sparsecores_per_device;
+        num_samples_per_chip / num_sparsecores_per_device_;
     int64_t max_ids_per_partition = 0;
     int64_t max_unique_ids_per_partition = 0;
 
@@ -1280,6 +1280,7 @@ class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase
   std::string table_name_;
   NameAttrList combiner_weights_custom_vjp_computation_;
   NameAttrList combiner_lookups_custom_vjp_computation_;
+  int64_t num_sparsecores_per_device_;
 
   absl::Status clip_weight_range_status_;
 
