@@ -33,7 +33,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/LogicalResult.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
@@ -47,7 +46,6 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
@@ -56,6 +54,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "shardy/dialect/sdy/ir/dialect.h"  // from @shardy
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/Serialization.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
@@ -386,6 +385,7 @@ absl::Status XlaCallModuleLoader::LoadModule(
   context_->loadDialect<mlir::stablehlo::StablehloDialect>();
   context_->loadDialect<mlir::chlo::ChloDialect>();
   context_->loadDialect<mlir::vhlo::VhloDialect>();
+  context_->loadDialect<mlir::sdy::SdyDialect>();
 
   if (version < kVersionMinimumSupported) {
     return absl::InvalidArgumentError(absl::StrCat(
@@ -469,10 +469,10 @@ absl::Status XlaCallModuleLoader::ValidateXlaCallModuleInvariants() {
 
   module_->walk([&](mlir::Operation *op) {
     // StableHLO programs created by jax2tf only contain operations
-    // from Builtin, Func and StableHLO dialects.
+    // from Builtin, Func, StableHLO, Shardy dialects.
     if (!llvm::isa<mlir::BuiltinDialect, mlir::chlo::ChloDialect,
-                   mlir::func::FuncDialect, mlir::stablehlo::StablehloDialect>(
-            op->getDialect())) {
+                   mlir::func::FuncDialect, mlir::stablehlo::StablehloDialect,
+                   mlir::sdy::SdyDialect>(op->getDialect())) {
       op->emitOpError() << "is an op from an unsupported dialect";
       moduleValidationFailed = true;
     }

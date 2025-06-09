@@ -50,6 +50,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
     ],
 )
 
@@ -656,6 +657,7 @@ cc_library(
         "@local_xla//xla:xla_proto_cc",
         "@local_xla//xla/hlo/builder:sharding_builder",
         "@local_xla//xla/mlir_hlo",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_portable_api",
@@ -734,6 +736,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
     ],
 )
 
@@ -802,6 +805,7 @@ cc_library(
         "@local_xla//xla/service:shape_inference",
         "@local_xla//xla/tsl/platform:errors",
         "@local_xla//xla/tsl/util:env_var",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:stablehlo_serialization",
         "@stablehlo//:version",
     ],
