@@ -4997,5 +4997,99 @@ ENTRY entry {
   XLA_VLOG_LINES(1, module->ToString());
 }
 
+TEST_F(CollectivePipelinerTest, TransformBackwardThenForward) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], bf16[3,8,128], bf16[3,1,2,128], bf16[3,8,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[3,8,128], bf16[3,1,2,128], bf16[3,8,128]) parameter(0)
+  after-all.36 = token[] after-all()
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = bf16[3,8,128] get-tuple-element(param), index=1
+  get-tuple-element.k = bf16[3,1,2,128] get-tuple-element(param), index=2
+  get-tuple-element.5 = bf16[3,8,128] get-tuple-element(param), index=3
+  constant.2561 = s32[] constant(0)
+  constant.2557 = s32[] constant(1)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.k = bf16[1,1,2,128] dynamic-slice(get-tuple-element.k, select.1348, constant.2561, constant.2561, constant.2561), dynamic_slice_sizes={1,1,2,128}
+  r = bf16[1,2,128] reshape(dynamic-slice.k)
+  a = bf16[1,2,128] add(r, r), control-predecessors={constant.2559}
+  ag = bf16[1,8,128] all-gather(a), dimensions={1}, replica_groups={}
+  dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.5, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
+  mul = bf16[1,8,128] multiply(dynamic-slice.99, ag)
+  ar.1 = bf16[1,8,128] all-reduce(mul), replica_groups={}, to_apply=add, channel_id=1
+  %send.121 = (s32[1,8,128]{2,1,0:T(1,128)}, u32[]{:S(2)}, token[]) send(%ag, %after-all.36), channel_id=954, is_host_transfer=true, frontend_attributes={_xla_host_transfer_handler_name="xla_megascale_runtime",_xla_host_transfer_rendezvous="all-reduce.1203_954",_xla_megascale_reduce_operation="SUM",_xla_megascale_target="{1,2}x{0:127}",_xla_megascale_transfer_type="ALL_REDUCE"}, backend_config={"flag_configs":[],"scoped_memory_configs":[],"aggregated_send_recv_config":{"status":"AGGREGATE_STATUS_ISSUE"}  ,"used_scoped_memory_configs":[]}
+  %send-done.121 = token[] send-done(%send.121), channel_id=954, is_host_transfer=true
+  dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, ar.1, select.1348, constant.2561, constant.2561)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,1,2,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.k, get-tuple-element.5), control-predecessors={a}
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[3,8,128] parameter(0)
+  p1 = bf16[3,1,2,128] parameter(1)
+  p2 = bf16[3,8,128] parameter(2)
+  tuple = (s32[], bf16[3,8,128], bf16[3,1,2,128], bf16[3,8,128]) tuple(c0, p0, p1, p2)
+  while = (s32[], bf16[3,8,128], bf16[3,1,2,128], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  EXPECT_TRUE(
+      RunOptimizer(module.get(), /*last_run=*/true, 0,
+                   /*pipeline_use_tree=*/false,
+                   /*process_different_sized_ops=*/false,
+                   collective_pipeliner_utils::PipeliningDirection::kBackward,
+                   IsAllGather)
+          .value());
+  XLA_VLOG_LINES(1, "After backward pipelining:");
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(RunOptimizer(
+                  module.get(), /*last_run=*/true, 0, false, true,
+                  collective_pipeliner_utils::PipeliningDirection::kForward,
+                  HloPredicateIsOp<HloOpcode::kAllReduce>,
+                  /*acceptable_formatting=*/
+                  [](const HloInstruction* i) { return true; },
+                  /*reuse_pipelined_op_buffer=*/
+                  [](const HloInstruction* i) { return false; })
+                  .value());
+  XLA_VLOG_LINES(1, "After forward pipelining:");
+  XLA_VLOG_LINES(1, module->ToString());
+  // Check that due to the two loop rotations, we end up with two send ops with
+  // the same identifier (xla_host_transfer_rendezvous) in the entry
+  // computation.
+  auto* entry = module->entry_computation();
+  auto* send1 = entry->GetInstructionWithName("send.1");
+  auto* send2 = entry->GetInstructionWithName("send.2");
+  EXPECT_NE(send1, nullptr);
+  EXPECT_NE(send2, nullptr);
+  EXPECT_EQ(
+      send1->frontend_attributes().map().at("_xla_host_transfer_rendezvous"),
+      "all-reduce.1203_954");
+  EXPECT_EQ(
+      send2->frontend_attributes().map().at("_xla_host_transfer_rendezvous"),
+      "all-reduce.1203_954");
+}
 }  // namespace
 }  // namespace xla
