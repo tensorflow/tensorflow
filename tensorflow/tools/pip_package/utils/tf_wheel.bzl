@@ -77,11 +77,18 @@ def _is_dest_file(basename, dest_files_suffixes):
 def _tf_wheel_impl(ctx):
     include_cuda_libs = ctx.attr.include_cuda_libs[BuildSettingInfo].value
     override_include_cuda_libs = ctx.attr.override_include_cuda_libs[BuildSettingInfo].value
+    include_nvshmem_libs = ctx.attr.include_nvshmem_libs[BuildSettingInfo].value
+    override_include_nvshmem_libs = ctx.attr.override_include_nvshmem_libs[BuildSettingInfo].value
     if include_cuda_libs and not override_include_cuda_libs:
         fail("TF wheel shouldn't be built with CUDA dependencies." +
              " Please provide `--config=cuda_wheel` for bazel build command." +
              " If you absolutely need to add CUDA dependencies, provide" +
              " `--@local_config_cuda//cuda:override_include_cuda_libs=true`.")
+    if include_nvshmem_libs and not override_include_nvshmem_libs:
+        fail("TF wheel shouldn't be built directly against the NVSHMEM libraries." +
+             " Please provide `--config=cuda_wheel` for bazel build command." +
+             " If you absolutely need to build links directly against the NVSHMEM libraries," +
+             " `provide --@local_config_nvshmem//:override_include_nvshmem_libs=true`.")
     executable = ctx.executable.wheel_binary
 
     full_wheel_version = (TF_VERSION + TF_WHEEL_VERSION_SUFFIX)
@@ -147,6 +154,8 @@ tf_wheel = rule(
         ),
         "include_cuda_libs": attr.label(default = Label("@local_config_cuda//cuda:include_cuda_libs")),
         "override_include_cuda_libs": attr.label(default = Label("@local_config_cuda//cuda:override_include_cuda_libs")),
+        "include_nvshmem_libs": attr.label(default = Label("@local_config_nvshmem//:include_nvshmem_libs")),
+        "override_include_nvshmem_libs": attr.label(default = Label("@local_config_nvshmem//:override_include_nvshmem_libs")),
         "platform_tag": attr.string(mandatory = True),
         "platform_name": attr.string(mandatory = True),
     },

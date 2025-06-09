@@ -162,9 +162,10 @@ build:mkl_aarch64 -c opt
 build:mkl_aarch64_threadpool --define=build_with_mkl_aarch64=true
 build:mkl_aarch64_threadpool -c opt
 
-# Default CUDA and CUDNN versions.
+# Default CUDA, CUDNN and NVSHMEM versions.
 build:cuda_version --repo_env=HERMETIC_CUDA_VERSION="12.6.3"
 build:cuda_version --repo_env=HERMETIC_CUDNN_VERSION="9.3.0"
+build:cuda_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
 
 # CUDA: This config refers to building CUDA op kernels with nvcc.
 build:cuda --repo_env TF_NEED_CUDA=1
@@ -176,6 +177,7 @@ build:cuda --@local_config_cuda//cuda:include_cuda_libs=true
 
 # This configuration is used for building the wheels.
 build:cuda_wheel --@local_config_cuda//cuda:include_cuda_libs=false
+build:cuda_wheel --@local_config_nvshmem//:include_nvshmem_libs=false
 
 # CUDA: This config refers to building CUDA op kernels with clang.
 build:cuda_clang --config=cuda
