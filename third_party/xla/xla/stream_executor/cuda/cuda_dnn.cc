@@ -6169,182 +6169,6 @@ CudnnSupport::GraphConvolveRunnerFromDesc(
       std::move(runner))};
 }
 
-class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
- public:
-  // Queries the workspace size and constructs a 'CudnnLegacyFusedConvRunner'.
-  static absl::StatusOr<CudnnLegacyFusedConvRunner> Create(
-      StreamExecutor* parent, Stream* stream, CudnnAccess* cudnn,
-      const dnn::AlgorithmDesc& algo, dnn::DataType input_type,
-      double conv_scale, double side_input_scale,
-      CudnnTensorDescriptor input_nd, CudnnTensorDescriptor output_nd,
-      CudnnFilterDescriptor filter, CudnnTensorDescriptor bias_nd,
-      CudnnConvolutionDescriptor conv,
-      CudnnActivationDescriptor activation_desc) {
-    size_t workspace_size;
-    if (algo.workspace_size()) {
-      workspace_size = *algo.workspace_size();
-    } else {
-      auto handle = cudnn->GetHandle(parent, stream);
-
-      RETURN_IF_CUDNN_ERROR(cudnnGetConvolutionForwardWorkspaceSize(
-          handle.handle(),
-          /*xDesc=*/input_nd.handle(),
-          /*wDesc=*/filter.handle(), /*convDesc=*/conv.handle(),
-          /*yDesc=*/output_nd.handle(),
-          /*algo=*/ToConvForwardAlgo(algo),
-          /*sizeInBytes=*/&workspace_size));
-    }
-
-    return {{parent, cudnn, algo.algo_id(), algo.tensor_ops_enabled(),
-             workspace_size, input_type, conv_scale, side_input_scale,
-             std::move(input_nd), std::move(output_nd), std::move(filter),
-             std::move(bias_nd), std::move(conv), std::move(activation_desc)}};
-  }
-
-  std::string ToString() const override {
-    return MakeAlgorithmDesc().ToString();
-  }
-
-  uint64_t GetWorkspaceSize() const override { return workspace_size_; }
-
-  absl::StatusOr<dnn::AlgorithmDesc> ToAlgorithmDesc() const override {
-    return MakeAlgorithmDesc();
-  }
-
-  absl::Status operator()(Stream* stream, dnn::ProfileResult* profile_result,
-                          DeviceMemoryBase scratch_memory,
-                          DeviceMemoryBase input_data,
-                          DeviceMemoryBase filter_data,
-                          DeviceMemoryBase side_input_data,
-                          DeviceMemoryBase bias_data,
-                          DeviceMemoryBase output_data) const override {
-    if (parent_ != stream->parent()) {
-      return tsl::errors::Internal(
-          "CudnnLegacyFusedConvRunner cached across multiple "
-          "StreamExecutors.");
-    }
-
-    auto algo = MakeAlgorithmDesc();
-    std::unique_ptr<EventBasedTimer> timer;
-
-    if (profile_result != nullptr) {
-      TF_ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
-                                     profile_result->warmup_run_executed()));
-    }
-    auto side_input_data_ptr = (side_input_scale_ == 0)
-                                   ? output_data.opaque()
-                                   : side_input_data.opaque();
-
-    auto cudnn = cudnn_->GetHandle(parent_, stream);
-
-    VLOG(2) << "\nconv_scale = " << conv_scale_
-            << "\nconv_input_nd.handle() = " << input_nd_.handle()
-            << "\nconv_input_data.opaque() = " << input_data.opaque()
-            << "\nfilter.handle() = " << filter_.handle()
-            << "\nfilter_data.opaque() = " << filter_data.opaque()
-            << "\nconv.handle() = " << conv_.handle() << "\nalgo = " << algo_id_
-            << ", tensor_ops_enabled=" << tensor_ops_enabled_
-            << "\nscratch.opaque() = " << scratch_memory.opaque()
-            << "\nscratch.size() = " << scratch_memory.size()
-            << "\nside_input_scale = " << side_input_scale_
-            << "\noutput_nd.handle() = " << output_nd_.handle()
-            << "\nside_input_data_ptr = " << side_input_data_ptr
-            << "\nbias_nd.handle() = " << bias_nd_.handle()
-            << "\nbiases.opaque() = " << bias_data.opaque()
-            << "\nactivation_desc.handle() = " << activation_desc_.handle()
-            << "\noutput_nd.handle() = " << output_nd_.handle()
-            << "\noutput_data.opaque() = " << output_data.opaque();
-
-    if (IsTensorMathOpSet(conv_) != tensor_ops_enabled_) {
-      return absl::FailedPreconditionError(
-          "Tensor op math type in dnn::AlgorithmDesc does not "
-          "match that of the CudnnConvolutionDescriptor");
-    }
-
-    // N.B. the scaling parameters alpha1 and alpha2 are pointers to
-    // temporaries; this API doesn't persist the pointers beyond its own stack
-    // frame.
-    auto status = cudnnConvolutionBiasActivationForward(
-        cudnn.handle(),
-        /*alpha1=*/ScalingParam(conv_scale_).ToVoidPointer(input_type_),
-        /*xDesc=*/input_nd_.handle(), /*x=*/input_data.opaque(),
-        /*wDesc=*/filter_.handle(), /*w=*/filter_data.opaque(),
-        /*convDesc=*/conv_.handle(), ToConvForwardAlgo(algo),
-        /*workSpace=*/scratch_memory.opaque(),
-        /*workSpaceSizeInBytes=*/scratch_memory.size(),
-        /*alpha2=*/ScalingParam(side_input_scale_).ToVoidPointer(input_type_),
-        /*zDesc=*/output_nd_.handle(), /*z=*/side_input_data_ptr,
-        /*biasDesc=*/bias_nd_.handle(), /*bias=*/bias_data.opaque(),
-        /*activationDesc=*/activation_desc_.handle(),
-        /*yDesc=*/output_nd_.handle(), /*y=*/output_data.opaque());
-    if (status != CUDNN_STATUS_SUCCESS || !profile_result) {
-      VLOG(4) << "conv with algorithm " << ToConvForwardAlgo(algo)
-              << ", workspace_size=" << scratch_memory.size() << " -> "
-              << CudnnStatusToString(status);
-    }
-    RETURN_IF_CUDNN_ERROR(status);
-
-    if (timer != nullptr) {
-      TF_RETURN_IF_ERROR(PopulateProfileFromTimer(
-          timer.get(), algo, profile_result, scratch_memory.size()));
-      VLOG(4) << "conv with algorithm " << ToConvForwardAlgo(algo)
-              << ", tensor_ops_enabled=" << tensor_ops_enabled_
-              << ", workspace_size=" << scratch_memory.size() << " -> "
-              << CudnnStatusToString(status) << " in "
-              << profile_result->elapsed_time_in_ms() << "ms";
-    }
-
-    return absl::OkStatus();
-  }
-
- private:
-  // Private to prevent passing in the wrong workspace_size.
-  CudnnLegacyFusedConvRunner(StreamExecutor* parent, CudnnAccess* cudnn,
-                             int64_t algo_id, bool tensor_ops_enabled,
-                             size_t workspace_size, dnn::DataType input_type,
-                             double conv_scale, double side_input_scale,
-                             CudnnTensorDescriptor input_nd,
-                             CudnnTensorDescriptor output_nd,
-                             CudnnFilterDescriptor filter,
-                             CudnnTensorDescriptor bias_nd,
-                             CudnnConvolutionDescriptor conv,
-                             CudnnActivationDescriptor activation_desc)
-      : parent_(parent),
-        cudnn_(cudnn),
-        algo_id_(algo_id),
-        tensor_ops_enabled_(tensor_ops_enabled),
-        workspace_size_(workspace_size),
-        input_type_(input_type),
-        conv_scale_(conv_scale),
-        side_input_scale_(side_input_scale),
-        input_nd_(std::move(input_nd)),
-        output_nd_(std::move(output_nd)),
-        filter_(std::move(filter)),
-        bias_nd_(std::move(bias_nd)),
-        conv_(std::move(conv)),
-        activation_desc_(std::move(activation_desc)) {}
-
-  // Internal form of ToAlgorithmDesc without the absl::StatusOr.
-  dnn::AlgorithmDesc MakeAlgorithmDesc() const {
-    return {algo_id_, tensor_ops_enabled_, workspace_size_};
-  }
-
-  StreamExecutor* parent_;
-  CudnnAccess* cudnn_;
-  int64_t algo_id_;
-  bool tensor_ops_enabled_;
-  size_t workspace_size_;
-  dnn::DataType input_type_;
-  double conv_scale_, side_input_scale_;
-
-  CudnnTensorDescriptor input_nd_;
-  CudnnTensorDescriptor output_nd_;
-  CudnnFilterDescriptor filter_;
-  CudnnTensorDescriptor bias_nd_;
-  CudnnConvolutionDescriptor conv_;
-  CudnnActivationDescriptor activation_desc_;
-};
-
 absl::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
 CudnnSupport::FusedConvolveRunnerFromDesc(
     Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
@@ -7143,21 +6967,6 @@ absl::Status CudnnSupport::DoFusedConvolve(
     ScratchAllocator* scratch_allocator,
     const dnn::AlgorithmConfig& algorithm_config,
     dnn::ProfileResult* output_profile_result) {
-  if (input_type == dnn::DataType::kInt8 &&
-      !stream->GetCudaComputeCapability().IsAtLeast(6, 1)) {
-    return tsl::errors::Unimplemented(
-        "cudnnConvolutionBiasActivationForward() for int8 is only "
-        "supported "
-        "on GPUs with compute capability 6.1 or later.");
-  }
-
-  if (activation_mode != dnn::ActivationMode::kRelu &&
-      activation_mode != dnn::ActivationMode::kNone) {
-    return absl::InvalidArgumentError(
-        "cudnnConvolutionBiasActivationForward() only supports "
-        "Relu or None activation.");
-  }
-
   CudnnTensorDescriptor conv_input_nd(
       conv_input_descriptor,
       ToCudnnDataType(input_type, conv_input_descriptor.layout()));
@@ -7167,7 +6976,6 @@ absl::Status CudnnSupport::DoFusedConvolve(
   CudnnFilterDescriptor filter(
       filter_descriptor,
       ToCudnnDataType(input_type, filter_descriptor.layout()));
-  CudnnTensorDescriptor bias_nd(bias_descriptor, ToCudnnDataType(bias_type));
 
   DeviceMemory<uint8_t> scratch;
   dnn::AlgorithmDesc algo_desc;
@@ -7180,28 +6988,17 @@ absl::Status CudnnSupport::DoFusedConvolve(
             convolution_descriptor, output_nd, scratch_allocator, &scratch));
   }  // Explicitly release cuDNN handle.
 
-  CudnnConvolutionDescriptor conv(
-      convolution_descriptor,
-      ToCudnnDataType(GetConvAccumulatorType(input_type)));
-  conv.set_use_tensor_op_math(algo_desc.tensor_ops_enabled());
-
-  // CUDNN v6 only supports CUDNN_NOT_PROPAGATE_NAN as the reluNanOpt for
-  // activation descriptor. Note that this will change the nan propagation
-  // behavior from separate conv, bias, and relu (which by default is
-  // CUDNN_PROPAGATE_NAN).
-  CudnnActivationDescriptor activation_desc(
-      activation_mode, CUDNN_NOT_PROPAGATE_NAN, output_descriptor.value_max());
-
   TF_ASSIGN_OR_RETURN(
-      auto runner,
-      CudnnLegacyFusedConvRunner::Create(
-          parent_, stream, cudnn_.get(), std::move(algo_desc), input_type,
-          conv_scale, side_input_scale, std::move(conv_input_nd),
-          std::move(output_nd), std::move(filter), std::move(bias_nd),
-          std::move(conv), std::move(activation_desc)));
+      std::unique_ptr<const dnn::FusedConvRunner> runner,
+      FusedConvolveRunnerFromDesc(
+          stream, algo_desc, dnn::ConvolutionKind::FORWARD, input_type,
+          bias_type, output_type, conv_scale, side_input_scale,
+          /*leakyrelu_alpha=*/0.0, conv_input_descriptor, filter_descriptor,
+          bias_descriptor, output_descriptor, convolution_descriptor,
+          activation_mode));
 
-  return runner(stream, output_profile_result, scratch, conv_input_data,
-                filter_data, side_input_data, biases, output_data);
+  return (*runner)(stream, output_profile_result, scratch, conv_input_data,
+                   filter_data, side_input_data, biases, output_data);
 }
 
 absl::Status CudnnSupport::CudnnReorderConvolutionFilterAndBias(
