@@ -194,9 +194,10 @@ void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter) {
     if (!dictAttr) {
       return;
     }
-    // `SendOp` and `RecvOp` can have a sharding when doing TPU callbacks
-    // through JAX.
-    if (mlir::isa<stablehlo::SendOp, stablehlo::RecvOp>(op)) {
+    // `SendOp`, `RecvOp`, and `AfterAllOp` can have a sharding when doing TPU
+    // callbacks through JAX.
+    if (mlir::isa<stablehlo::SendOp, stablehlo::RecvOp, stablehlo::AfterAllOp>(
+            op)) {
       if (auto sharding = parseStringAttr<TensorShardingPerValueAttr>(
               dictAttr, kShardingRoundTripAttr)) {
         op->setAttr(kShardingAttr, sharding);
