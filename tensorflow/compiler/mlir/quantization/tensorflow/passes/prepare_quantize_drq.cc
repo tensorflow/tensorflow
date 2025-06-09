@@ -45,7 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/common/tf_attrs_and_constraints.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/ops/temp_tf_op_quant_spec.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 
 //===----------------------------------------------------------------------===//
@@ -58,7 +58,6 @@ namespace {
 
 using QuantizationUnit = std::pair<Operation*, int>;
 using QuantizationUnits = llvm::SetVector<QuantizationUnit>;
-using ::mlir::tf_quant::GetTFOpQuantSpec;
 using ::mlir::tf_quant::GetUniformQuantizedPerAxisTypeForWeight;
 using ::mlir::tf_quant::GetUniformQuantizedTypeForWeight;
 using ::mlir::tf_quant::OpQuantSpec;

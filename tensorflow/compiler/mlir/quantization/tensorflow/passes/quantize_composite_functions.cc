@@ -62,10 +62,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/ops/temp_tf_op_quant_spec.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/utils/tf_tf_to_uniform_attribute_utils.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/utils/tf_to_uniform_attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -81,14 +81,6 @@ using QuantMethod = tensorflow::quantization::QuantizationMethod::PresetMethod;
 using ::mlir::quant::ir::DequantizeCastOp;
 using ::mlir::quant::ir::QuantizeCastOp;
 using ::mlir::quant::ir::StorageCastOp;
-using ::mlir::tf_quant::FillAttributesForUniformQuantizedAddOp;
-using ::mlir::tf_quant::FillAttributesForUniformQuantizedClipByValueOp;
-using ::mlir::tf_quant::FillAttributesForUniformQuantizedConvolutionOp;
-using ::mlir::tf_quant::FillAttributesForUniformQuantizedDotOp;
-using ::mlir::tf_quant::FillAttributesForUniformQuantizeOp;
-using ::mlir::tf_quant::FillAttributesForUniformRequantizeOp;
-using ::mlir::tf_quant::GetTFOpQuantSpec;
-using ::mlir::tf_quant::IsOpWithQuantizableTrait;
 using ::mlir::tf_quant::kQuantTraitAttrName;
 using ::mlir::tf_quant::OpQuantSpec;
 using ::mlir::tf_quant::QuantizationSpecs;

@@ -42,7 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/ops/temp_tf_op_quant_spec.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -59,7 +59,6 @@ using ::mlir::quant::ir::DequantizeCastOp;
 using ::mlir::quant::ir::QuantizeCastOp;
 using ::mlir::quant::ir::StorageCastOp;
 using ::mlir::tf_quant::CustomMap;
-using ::mlir::tf_quant::GetTfQuantScaleSpec;
 using ::mlir::tf_quant::kQuantTraitAttrName;
 using ::mlir::tf_quant::OpQuantScaleSpecGetter;
 using ::mlir::tf_quant::QuantizationPattern;
