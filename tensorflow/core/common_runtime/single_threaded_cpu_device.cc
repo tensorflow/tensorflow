@@ -17,6 +17,9 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
+
 #define EIGEN_USE_THREADS
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
