@@ -668,3 +668,17 @@ exports_files(
         "//tensorflow/core/platform:__pkg__",
     ]),
 )
+
+cc_library(
+    name = "recordphase",
+    srcs = ["recordphase.cc"],
+    hdrs = ["//xla/tsl/platform:recordphase.h"],
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+    deps = [
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
