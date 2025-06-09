@@ -143,6 +143,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/reduce_window_rewriter.h"
 #include "xla/hlo/transforms/simplifiers/reshape_mover.h"
 #include "xla/hlo/transforms/simplifiers/result_caster.h"
+#include "xla/hlo/transforms/simplifiers/simplify_fp_conversions.h"
 #include "xla/hlo/transforms/simplifiers/sort_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/sub_byte_normalization.h"
 #include "xla/hlo/transforms/simplifiers/tree_reduction_rewriter.h"
@@ -240,7 +241,6 @@ limitations under the License.
 #endif
 
 #if defined(INTEL_MKL)
-#include "xla/hlo/transforms/simplifiers/simplify_fp_conversions.h"
 #include "xla/service/cpu/onednn_contraction_rewriter.h"
 #include "xla/service/cpu/onednn_float_support.h"
 #include "xla/service/cpu/onednn_ops_rewriter.h"
@@ -690,6 +690,13 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<FloatNormalization>(&f4e2m1fn_support);
   FloatSupport f8e8m0fnu_support(F8E8M0FNU, F32);
   pipeline.AddPass<FloatNormalization>(&f8e8m0fnu_support);
+
+  // Float normalization can add a lot of `f32 -> bf16 -> f32` casts.
+  // Remove them if excess precision is allowed.
+  if (module->config().debug_options().xla_allow_excess_precision()) {
+    pipeline.AddPass<SimplifyFPConversions>();
+  }
+
   // After canonicalization, there may be more batch dots that can be
   // simplified.
   pipeline.AddPass<BatchDotSimplification>();
