@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
 
-#include <functional>
+#include <cstdint>
 #include <memory>
+#include <optional>
+#include <set>
+#include <utility>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"

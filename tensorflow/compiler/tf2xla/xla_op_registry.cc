@@ -15,9 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 
-#include <functional>
+#include <algorithm>
+#include <iterator>
 #include <memory>
+#include <set>
 #include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
