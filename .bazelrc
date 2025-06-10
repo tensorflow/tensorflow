@@ -625,6 +625,7 @@ common:rbe_linux_cpu_old --remote_instance_name=projects/tensorflow-testing/inst
 build:rbe_linux_cuda --config=cuda_clang_official
 build:rbe_linux_cuda --config=rbe_linux_cpu
 build:rbe_linux_cuda --repo_env=USE_CUDA_TAR_ARCHIVE_FILES=1
+build:rbe_linux_cuda --repo_env=USE_NVSHMEM_TAR_ARCHIVE_FILES=1
 # For Remote build execution -- GPU configuration
 build:rbe_linux_cuda --repo_env=REMOTE_GPU_TESTING=1
 
