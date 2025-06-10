@@ -1,119 +1,109 @@
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 8673305..509398d 100644
+index 509398d..6dc2c5b 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,99 +1 @@
+@@ -1 +1,89 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
----- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
--+++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
--@@ -9,7 +9,6 @@
-- load(
--     ":libc_build_rules.bzl",
--     "libc_function",
---    "libc_generated_header",
--     "libc_header_library",
--     "libc_math_function",
--     "libc_support_library",
--@@ -89,14 +88,6 @@
--     srcs = glob(["utils/hdrgen/hdrgen/**/*.py"]),
--     imports = ["utils/hdrgen"],
--     main = "utils/hdrgen/hdrgen/main.py",
---    deps = ["@pyyaml//:yaml"],
---)
---
---libc_generated_header(
---    name = "include_stdbit_h",
---    hdr = "include/stdbit.h",
---    other_srcs = ["include/stdbit.h.def"],
---    yaml_template = "include/stdbit.yaml",
-- )
-- 
-- # Library containing all headers that can be transitively included by generated llvm-libc
--diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/libc/libc_build_rules.bzl b/utils/bazel/llvm-project-overlay/libc/libc_build_rules.bzl
----- a/utils/bazel/llvm-project-overlay/libc/libc_build_rules.bzl
--+++ b/utils/bazel/llvm-project-overlay/libc/libc_build_rules.bzl
--@@ -248,29 +248,6 @@
--         **kwargs
--     )
-- 
---def libc_generated_header(name, hdr, yaml_template, other_srcs = []):
---    """Generates a libc header file from YAML template.
---
---    Args:
---      name: Name of the genrule target.
---      hdr: Path of the header file to generate.
---      yaml_template: Path of the YAML template file.
---      other_srcs: Other files required to generate the header, if any.
---    """
---    hdrgen = "//libc:hdrgen"
---    cmd = "$(location {hdrgen}) $(location {yaml}) -o $@".format(
---        hdrgen = hdrgen,
---        yaml = yaml_template,
---    )
---
---    native.genrule(
---        name = name,
---        outs = [hdr],
---        srcs = [yaml_template] + other_srcs,
---        cmd = cmd,
---        tools = [hdrgen],
---    )
---
-- def libc_math_function(
--         name,
--         additional_deps = None):
--diff -ruN --strip-trailing-cr a/utils/bazel/third_party_build/pyyaml.BUILD b/utils/bazel/third_party_build/pyyaml.BUILD
----- a/utils/bazel/third_party_build/pyyaml.BUILD
--+++ b/utils/bazel/third_party_build/pyyaml.BUILD
--@@ -1,16 +0,0 @@
---# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
---# See https://llvm.org/LICENSE.txt for license information.
---# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
---
---load("@rules_python//python:defs.bzl", "py_library")
---
---package(
---    default_visibility = ["//visibility:public"],
---    # BSD/MIT-like license (for PyYAML)
---    licenses = ["notice"],
---)
---
---py_library(
---    name = "yaml",
---    srcs = glob(["yaml/*.py"]),
---)
--diff -ruN --strip-trailing-cr a/utils/bazel/WORKSPACE b/utils/bazel/WORKSPACE
----- a/utils/bazel/WORKSPACE
--+++ b/utils/bazel/WORKSPACE
--@@ -182,15 +182,6 @@
--     url = "https://github.com/wjakob/nanobind/archive/refs/tags/v2.4.0.tar.gz",
-- )
-- 
---maybe(
---    http_archive,
---    name = "pyyaml",
---    build_file = "@llvm-raw//utils/bazel/third_party_build:pyyaml.BUILD",
---    sha256 = "f0a35d7f282a6d6b1a4f3f3965ef5c124e30ed27a0088efb97c0977268fd671f",
---    strip_prefix = "pyyaml-5.1/lib3",
---    url = "https://github.com/yaml/pyyaml/archive/refs/tags/5.1.zip",
---)
---
-- load("@rules_python//python:repositories.bzl", "py_repositories", "python_register_toolchains")
-- 
-- py_repositories()
++diff -ruN --strip-trailing-cr a/clang/tools/clang-format/ClangFormat.cpp b/clang/tools/clang-format/ClangFormat.cpp
++--- a/clang/tools/clang-format/ClangFormat.cpp
+++++ b/clang/tools/clang-format/ClangFormat.cpp
++@@ -244,17 +244,17 @@
++   DiagnosticsEngine Diagnostics(
++       IntrusiveRefCntPtr<DiagnosticIDs>(new DiagnosticIDs), DiagOpts);
++   SourceManager Sources(Diagnostics, Files);
++-  const auto ID = createInMemoryFile("<irrelevant>", *Code, Sources, Files,
++-                                     InMemoryFileSystem.get());
+++  FileID ID = createInMemoryFile("<irrelevant>", *Code, Sources, Files,
+++                                 InMemoryFileSystem.get());
++   if (!LineRanges.empty()) {
++     if (!Offsets.empty() || !Lengths.empty()) {
++       errs() << "error: cannot use -lines with -offset/-length\n";
++       return true;
++     }
++ 
++-    for (const auto &LineRange : LineRanges) {
+++    for (unsigned i = 0, e = LineRanges.size(); i < e; ++i) {
++       unsigned FromLine, ToLine;
++-      if (parseLineRange(LineRange, FromLine, ToLine)) {
+++      if (parseLineRange(LineRanges[i], FromLine, ToLine)) {
++         errs() << "error: invalid <start line>:<end line> pair\n";
++         return true;
++       }
++@@ -266,12 +266,12 @@
++         errs() << "error: start line should not exceed end line\n";
++         return true;
++       }
++-      const auto Start = Sources.translateLineCol(ID, FromLine, 1);
++-      const auto End = Sources.translateLineCol(ID, ToLine, UINT_MAX);
+++      SourceLocation Start = Sources.translateLineCol(ID, FromLine, 1);
+++      SourceLocation End = Sources.translateLineCol(ID, ToLine, UINT_MAX);
++       if (Start.isInvalid() || End.isInvalid())
++         return true;
++-      const auto Offset = Sources.getFileOffset(Start);
++-      const auto Length = Sources.getFileOffset(End) - Offset;
+++      unsigned Offset = Sources.getFileOffset(Start);
+++      unsigned Length = Sources.getFileOffset(End) - Offset;
++       Ranges.push_back(tooling::Range(Offset, Length));
++     }
++     return false;
++@@ -279,25 +279,32 @@
++ 
++   if (Offsets.empty())
++     Offsets.push_back(0);
++-  if (Offsets.size() == 1 && Lengths.empty()) {
++-    Lengths.push_back(Sources.getFileOffset(Sources.getLocForEndOfFile(ID)) -
++-                      Offsets[0]);
++-  } else if (Offsets.size() != Lengths.size()) {
+++  if (Offsets.size() != Lengths.size() &&
+++      !(Offsets.size() == 1 && Lengths.empty())) {
++     errs() << "error: number of -offset and -length arguments must match.\n";
++     return true;
++   }
++-  for (unsigned I = 0, E = Offsets.size(); I < E; ++I) {
++-    const auto Offset = Offsets[I];
++-    if (Offset >= Code->getBufferSize()) {
++-      errs() << "error: offset " << Offset << " is outside the file\n";
+++  for (unsigned i = 0, e = Offsets.size(); i != e; ++i) {
+++    if (Offsets[i] >= Code->getBufferSize()) {
+++      errs() << "error: offset " << Offsets[i] << " is outside the file\n";
++       return true;
++     }
++-    const auto Length = Lengths[I];
++-    if (Offset + Length > Code->getBufferSize()) {
++-      errs() << "error: invalid length " << Length << ", offset + length ("
++-             << Offset + Length << ") is outside the file.\n";
++-      return true;
+++    SourceLocation Start =
+++        Sources.getLocForStartOfFile(ID).getLocWithOffset(Offsets[i]);
+++    SourceLocation End;
+++    if (i < Lengths.size()) {
+++      if (Offsets[i] + Lengths[i] > Code->getBufferSize()) {
+++        errs() << "error: invalid length " << Lengths[i]
+++               << ", offset + length (" << Offsets[i] + Lengths[i]
+++               << ") is outside the file.\n";
+++        return true;
+++      }
+++      End = Start.getLocWithOffset(Lengths[i]);
+++    } else {
+++      End = Sources.getLocForEndOfFile(ID);
++     }
+++    unsigned Offset = Sources.getFileOffset(Start);
+++    unsigned Length = Sources.getFileOffset(End) - Offset;
++     Ranges.push_back(tooling::Range(Offset, Length));
++   }
++   return false;
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index da189f7..50fd796 100644
+index 50fd796..dfd8ff0 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "a6532bd154cb6761e1e286b2b0cc878b2a6d164b"
--    LLVM_SHA256 = "d68921e97857029f3753bb3cc67094132c33b9d23594e69e3553b59fef421433"
-+    LLVM_COMMIT = "56ebe64ce69adde8b10793de7aa571df00c75e08"
-+    LLVM_SHA256 = "2ef20f6c3bfc2a2e9479cda7b9f34e60dabc8012bd5b06dced883a1be2b0bff4"
+-    LLVM_COMMIT = "56ebe64ce69adde8b10793de7aa571df00c75e08"
+-    LLVM_SHA256 = "2ef20f6c3bfc2a2e9479cda7b9f34e60dabc8012bd5b06dced883a1be2b0bff4"
++    LLVM_COMMIT = "649020c680166af0ad822d5aa1518234d93828e4"
++    LLVM_SHA256 = "731825a67cbee9a934d60c55de17d081f757b77591cd18593a1207cb70e71c88"
  
      tf_http_archive(
          name = name,
