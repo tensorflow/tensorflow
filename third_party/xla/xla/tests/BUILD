@@ -1691,10 +1691,10 @@ xla_test(
     timeout = "long",
     srcs = ["convolution_cudnn_test.cc"],
     backends = [
-        "gpu_v100",
-        "gpu_a100",
-        "gpu_h100",
-        "gpu_b200",
+        "v100",
+        "a100",
+        "h100",
+        "b200",
     ],
     data = ["data/cudnn_reproducer.hlo"],
     deps = [

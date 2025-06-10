@@ -1918,9 +1918,9 @@ xla_test(
         "nvptx_compiler_test.cc",
     ],
     backends = [
-        "gpu_v100",
-        "gpu_a100",
-        "gpu_b200",
+        "v100",
+        "a100",
+        "b200",
     ],
     tags = [
         "cuda-only",
@@ -2529,9 +2529,9 @@ xla_test(
     name = "float_support_test",
     srcs = ["float_support_test.cc"],
     backends = [
-        "gpu_a100",
-        "gpu_h100",
-        "gpu_b200",
+        "a100",
+        "h100",
+        "b200",
     ],
     deps = [
         "//xla:error_spec",
@@ -2743,11 +2743,11 @@ xla_test(
     name = "dot_algorithm_support_test",
     srcs = ["dot_algorithm_support_test.cc"],
     backends = [
-        "gpu_v100",
-        "gpu_a100",
-        "gpu_h100",
-        "gpu_b200",
-        "gpu_amd_any",
+        "v100",
+        "a100",
+        "h100",
+        "b200",
+        "amdgpu_any",
     ],
     tags = [
         "no_mac",

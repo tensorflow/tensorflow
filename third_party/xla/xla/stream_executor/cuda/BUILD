@@ -517,7 +517,7 @@ cc_library(
 xla_test(
     name = "cuda_kernel_test",
     srcs = ["cuda_kernel_test.cc"],
-    backends = ["gpu_any"],
+    backends = ["nvgpu_any"],
     tags = ["cuda-only"],
     deps = [
         "//xla/stream_executor:launch_dim",

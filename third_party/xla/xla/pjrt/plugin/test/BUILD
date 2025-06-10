@@ -30,7 +30,7 @@ xla_cc_test(
 xla_test(
     name = "plugin_registration_test_gpu",
     srcs = ["plugin_registration_test.cc"],
-    backends = ["gpu_any"],
+    backends = ["nvgpu_any"],
     tags = [
         "gpu",
         "no_oss",

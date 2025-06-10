@@ -72,16 +72,16 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "broken": "Test will be marked with other tags to disable in `xla_test`.",
     "xla_interpreter": "Uses interpreter backend.",
     "xla_cpu": "Uses CPU backend.",
-    "xla_gpu_amd_any": "Uses ROCm backend.",
-    "xla_gpu_any": "Uses NVIDIA GPU backend.",
+    "xla_amdgpu_any": "Uses ROCm backend.",
+    "xla_nvgpu_any": "Uses NVIDIA GPU backend.",
     # Below tags are emitted alongside `requires-gpu-x` tags, which is what the
     # CI actually follows. So we may not execute on an A100, and instead use an
     # L4. These tags are taken literally internally.
-    "xla_gpu_p100": "Runs on a p100.",
-    "xla_gpu_v100": "Runs on a v100.",
-    "xla_gpu_a100": "Runs on an a100.",
-    "xla_gpu_h100": "Runs on an h100.",
-    "xla_gpu_b200": "Runs on a b200.",
+    "xla_p100": "Runs on a p100.",
+    "xla_v100": "Runs on a v100.",
+    "xla_a100": "Runs on an a100.",
+    "xla_h100": "Runs on an h100.",
+    "xla_b200": "Runs on a b200.",
     # Below tags are consumed by `xla_test`.
     "test_xla_cpu_no_thunks": (
         "Internally, `xla_test` sets `--xla_cpu_use_thunk_runtime` to false."

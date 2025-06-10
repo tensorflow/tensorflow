@@ -136,10 +136,10 @@ xla_test(
     name = "analytical_latency_estimator_test",
     srcs = ["analytical_latency_estimator_test.cc"],
     backends = [
-        "gpu_v100",
-        "gpu_a100",
-        "gpu_h100",
-        "gpu_b200",
+        "v100",
+        "a100",
+        "h100",
+        "b200",
     ],
     tags = [
         "notap",

@@ -117,12 +117,12 @@ exhaustive_xla_test(
     backend_tags = {
         gpu: ["notsan"]
         for gpu in GPU_BACKENDS
-        if gpu != "gpu_any" and gpu != "gpu_amd_any"
+        if gpu != "nvgpu_any" and gpu != "amdgpu_any"
     },
     backends = ["cpu"] + [
         gpu
         for gpu in GPU_BACKENDS
-        if gpu != "gpu_any" and gpu != "gpu_amd_any"
+        if gpu != "nvgpu_any" and gpu != "amdgpu_any"
     ],
     # Partition goal is to get under ~5 minute execution time without needlessly
     # reserving hardware for each shard.
@@ -173,12 +173,12 @@ xla_test(
     backend_tags = {
         gpu: ["notsan"]
         for gpu in GPU_BACKENDS
-        if gpu != "gpu_any" and gpu != "gpu_amd_any"
+        if gpu != "nvgpu_any" and gpu != "amdgpu_any"
     },
     backends = ["cpu"] + [
         gpu
         for gpu in GPU_BACKENDS
-        if gpu != "gpu_any" and gpu != "gpu_amd_any"
+        if gpu != "nvgpu_any" and gpu != "amdgpu_any"
     ],
     shard_count = 50,
     tags = [
@@ -224,12 +224,12 @@ exhaustive_xla_test(
     backend_tags = {
         gpu: ["notsan"]
         for gpu in GPU_BACKENDS
-        if gpu != "gpu_any" and gpu != "gpu_amd_any"
+        if gpu != "nvgpu_any" and gpu != "amdgpu_any"
     },
     backends = ["cpu"] + [
         gpu
         for gpu in GPU_BACKENDS
-        if gpu != "gpu_any" and gpu != "gpu_amd_any"
+        if gpu != "nvgpu_any" and gpu != "amdgpu_any"
     ],
     # Partition goal is to get under ~5 minute execution time without needlessly
     # reserving hardware for each shard.

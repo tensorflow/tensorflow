@@ -323,7 +323,7 @@ xla_cc_test(
 xla_test(
     name = "block_scaling_rewriter_cudnn_test",
     srcs = ["block_scaling_rewriter_cudnn_test.cc"],
-    backends = ["gpu_b200"],
+    backends = ["b200"],
     tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":block_scaling_rewriter",
@@ -665,9 +665,9 @@ xla_test(
         ],
     },
     backends = [
-        "gpu_a100",
-        "gpu_amd_any",
-    ] + if_oss(["gpu_any"]),
+        "a100",
+        "amdgpu_any",
+    ] + if_oss(["nvgpu_any"]),
     shard_count = 10,
     deps = [
         ":conv_rewriter",
@@ -1146,11 +1146,11 @@ xla_test(
     name = "dot_operand_converter_test",
     srcs = if_gpu_is_configured(["dot_operand_converter_test.cc"]),
     backends = [
-        "gpu_a100",
-        "gpu_p100",
-        "gpu_v100",
-        "gpu_b200",
-        "gpu_amd_any",
+        "a100",
+        "p100",
+        "v100",
+        "b200",
+        "amdgpu_any",
     ],
     deps = if_gpu_is_configured(
         [
@@ -3055,9 +3055,9 @@ xla_test(
     timeout = "short",
     srcs = ["triton_fusion_numerics_verifier_test.cc"],
     backends = [
-        "gpu_a100",
-        "gpu_h100",
-        "gpu_b200",
+        "a100",
+        "h100",
+        "b200",
     ],
     tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
