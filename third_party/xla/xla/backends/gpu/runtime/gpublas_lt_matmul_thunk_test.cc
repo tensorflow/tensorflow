@@ -272,7 +272,7 @@ ENTRY test {
   ROOT abc = f32[101,400] subtract(mul_ab, dot_c)
 })";
 
-XLA_TEST_F(GpuBlasLtMatmulThunkTest, SharedMatmulPlansUnit) {
+TEST_F(GpuBlasLtMatmulThunkTest, SharedMatmulPlansUnit) {
   auto* exec = default_exec();
   auto* blas_lt = exec->AsBlas()->GetBlasLt();
   EXPECT_NE(blas_lt, nullptr);
@@ -288,7 +288,7 @@ XLA_TEST_F(GpuBlasLtMatmulThunkTest, SharedMatmulPlansUnit) {
 }
 
 // Same as above but instead of creating thunks manually, we use XLA runtime
-XLA_TEST_F(GpuBlasLtMatmulThunkTest, SharedMatmulPlansFunctional) {
+TEST_F(GpuBlasLtMatmulThunkTest, SharedMatmulPlansFunctional) {
   auto* exec = default_exec();
   auto* blas_lt = exec->AsBlas()->GetBlasLt();
   EXPECT_NE(blas_lt, nullptr);
@@ -314,7 +314,7 @@ struct MockBlasLt : public se::gpu::BlasLt {
   ~MockBlasLt() override = default;
 };
 
-XLA_TEST_F(GpuBlasLtMatmulThunkTest, CacheUnitTest) {
+TEST_F(GpuBlasLtMatmulThunkTest, CacheUnitTest) {
   auto thread_func = [&](MockBlasLt* blas_lt, const std::string& key,
                          int sleep_ms) -> absl::Status {
     auto create_func = [&]() -> absl::StatusOr<se::gpu::BlasLt::MatmulPlanPtr> {

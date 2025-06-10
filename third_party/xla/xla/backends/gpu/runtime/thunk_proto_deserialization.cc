@@ -129,6 +129,11 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
                                      thunk_proto.replica_id_thunk(),
                                      buffer_allocations);
   }
+  if (thunk_proto.has_partition_id_thunk()) {
+    return PartitionIdThunk::FromProto(std::move(thunk_info),
+                                       thunk_proto.partition_id_thunk(),
+                                       buffer_allocations);
+  }
 
   std::optional<absl::string_view> unsupported_thunk_type =
       GetStoredThunkTypeName(thunk_proto);

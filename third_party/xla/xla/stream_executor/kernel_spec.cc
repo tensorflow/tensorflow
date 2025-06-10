@@ -25,7 +25,6 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 
@@ -58,15 +57,6 @@ CudaPtxInMemory::CudaPtxInMemory(
     ptx_by_compute_capability_[std::tuple<int, int>{major, minor}] = ptx.data();
   }
 }
-
-LlvmHostKernel::LlvmHostKernel(absl::string_view ir,
-                               absl::string_view entrypoint,
-                               absl::string_view kernel_name,
-                               absl::Span<std::string> options)
-    : KernelLoaderSpec(std::move(kernel_name)),
-      ir_(ir),
-      entrypoint_(entrypoint),
-      options_(options.cbegin(), options.cend()) {}
 
 const char *CudaPtxInMemory::default_text() const {
   if (ptx_by_compute_capability_.empty()) {
@@ -108,15 +98,6 @@ MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddCudaPtxInMemory(
     absl::string_view ptx, absl::string_view kernel_name) {
   CHECK(cuda_ptx_in_memory_ == nullptr);
   cuda_ptx_in_memory_.reset(new CudaPtxInMemory{ptx, kernel_name});
-  return this;
-}
-
-MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddLlvmHostKernel(
-    absl::string_view ir, absl::string_view entrypoint,
-    absl::string_view kernel_name, absl::Span<std::string> options) {
-  CHECK(llvm_host_kernel_ == nullptr);
-  llvm_host_kernel_ =
-      std::make_shared<LlvmHostKernel>(ir, entrypoint, kernel_name, options);
   return this;
 }
 
