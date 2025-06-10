@@ -686,6 +686,7 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcGradWithSgdAndCsrInput")
     .Attr("combiner_table_vjp_computation: func")
     .Attr("combiner_weights_vjp_computation: func")
     .Attr("table_name: string")
+    .Attr("num_sparsecores_per_device: int = -1")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       constexpr int kWeightsIndex = 5;
       constexpr int kPreservedValenciesIndex = 6;
@@ -727,6 +728,7 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradAndCsrInput")
     .Attr("combiner_table_vjp_computation: func")
     .Attr("combiner_weights_vjp_computation: func")
     .Attr("table_name: string")
+    .Attr("num_sparsecores_per_device: int = -1")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       constexpr int kWeightsIndex = 5;
       constexpr int kPreservedValenciesIndex = 6;
@@ -776,6 +778,7 @@ REGISTER_OP(
     .Attr("combiner_table_vjp_computation: func")
     .Attr("combiner_weights_vjp_computation: func")
     .Attr("table_name: string")
+    .Attr("num_sparsecores_per_device: int = -1")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       constexpr int kWeightsIndex = 5;
       constexpr int kPreservedValenciesIndex = 6;
@@ -823,6 +826,7 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdamAndCsrInput")
     .Attr("combiner_table_vjp_computation: func")
     .Attr("combiner_weights_vjp_computation: func")
     .Attr("table_name: string")
+    .Attr("num_sparsecores_per_device: int = -1")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       constexpr int kWeightsIndex = 5;
       constexpr int kPreservedValenciesIndex = 6;
@@ -871,6 +875,7 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcGradWithFtrlAndCsrInput")
     .Attr("combiner_table_vjp_computation: func")
     .Attr("combiner_weights_vjp_computation: func")
     .Attr("table_name: string")
+    .Attr("num_sparsecores_per_device: int = -1")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       constexpr int kWeightsIndex = 5;
       constexpr int kPreservedValenciesIndex = 6;
@@ -913,6 +918,7 @@ REGISTER_OP("XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInput")
     .Attr("combiner_weights_vjp_computation: func")
     .Attr("optimizer_custom_computation: func")
     .Attr("table_name: string")
+    .Attr("num_sparsecores_per_device: int = -1")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       constexpr int kWeightsIndex = 5;
       constexpr int kPreservedValenciesIndex = 6;
