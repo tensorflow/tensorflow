@@ -92,7 +92,7 @@ class MathFunctionLib {
 
  private:
   std::vector<std::unique_ptr<MathFunction>> math_functions_;
-  absl::flat_hash_map<std::string, absl::string_view> target_to_approx_;
+  absl::flat_hash_map<absl::string_view, absl::string_view> targets_;
 };
 
 }  // namespace xla::codegen
