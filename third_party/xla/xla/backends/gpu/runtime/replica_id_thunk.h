@@ -58,6 +58,12 @@ class ReplicaIdThunk : public ReplicaOrPartitionIdThunk {
 
 class PartitionIdThunk : public ReplicaOrPartitionIdThunk {
  public:
+  static absl::StatusOr<std::unique_ptr<PartitionIdThunk>> FromProto(
+      ThunkInfo thunk_info, const PartitionIdThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
   PartitionIdThunk(ThunkInfo thunk_info, const BufferAllocation::Slice& dest)
       : ReplicaOrPartitionIdThunk(Kind::kPartitionId, thunk_info, dest) {}
 };
