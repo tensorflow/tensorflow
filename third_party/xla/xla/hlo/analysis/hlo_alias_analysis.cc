@@ -176,7 +176,8 @@ void ComputeInPlaceOperationAliasedValues(const HloValue& value,
   for (const HloPosition& position : value.positions()) {
     HloInstruction* instruction = position.instruction;
     for (const auto& operand_and_output_index :
-         HloDataflowAnalysis::GetInPlaceInputOutputPairs(instruction)) {
+         HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+             instruction, dataflow.is_in_place_operation())) {
       if (position.index == operand_and_output_index.second) {
         const HloOperandIndex& operand_index = operand_and_output_index.first;
         const HloValue& operand_value = dataflow.GetUniqueValueAt(
@@ -190,7 +191,8 @@ void ComputeInPlaceOperationAliasedValues(const HloValue& value,
 
   for (const HloUse& use : value.GetUses()) {
     for (const auto& operand_and_output_index :
-         HloDataflowAnalysis::GetInPlaceInputOutputPairs(use.instruction)) {
+         HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+             use.instruction, dataflow.is_in_place_operation())) {
       const HloOperandIndex& operand_index = operand_and_output_index.first;
       if (use.operand_number == operand_index.operand_number &&
           use.operand_index == operand_index.operand_index) {
@@ -389,15 +391,17 @@ std::string HloAliasAnalysis::ToString() const {
 /* static */
 absl::StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
     const HloModule* module,
-    const HloDataflowAnalysis::CanShareBuffer& can_share_buffer) {
+    const HloDataflowAnalysis::CanShareBuffer& can_share_buffer,
+    const HloDataflowAnalysis::IsInPlaceOperation& is_in_place_operation) {
   VLOG(2) << "HloAliasAnalysis::Run on module " << module->name();
   XLA_VLOG_LINES(2, module->ToString());
 
   auto alias_analysis = absl::WrapUnique(new HloAliasAnalysis(module));
-  TF_ASSIGN_OR_RETURN(alias_analysis->dataflow_analysis_,
-                      HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
-                                               /*bitcast_defines_value=*/false,
-                                               can_share_buffer));
+  TF_ASSIGN_OR_RETURN(
+      alias_analysis->dataflow_analysis_,
+      HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
+                               /*bitcast_defines_value=*/false,
+                               can_share_buffer, is_in_place_operation));
 
   size_t num_values = alias_analysis->dataflow_analysis_->values().size();
   alias_analysis->buffers_ = CreateBuffers(alias_analysis->dataflow_analysis());

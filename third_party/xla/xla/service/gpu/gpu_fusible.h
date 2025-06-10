@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -179,7 +180,8 @@ FusionDecision CanEmitInputFusedScatter(const HloInstruction& producer,
 // That is, the root tuple of the multi-output fusion will contain the results
 // of both, the producer and consumer.
 FusionDecision IsProducerMultiOutputFusible(
-    const HloInstruction& producer, const se::DeviceDescription& device_info);
+    const HloInstruction& producer, const se::DeviceDescription& device_info,
+    const HloDataflowAnalysis::IsInPlaceOperation& is_in_place_operation);
 // Whether `instr` is a candidate for sibling fusion or as a consumer in
 // a producer-consumer multi-output fusion.
 bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr,

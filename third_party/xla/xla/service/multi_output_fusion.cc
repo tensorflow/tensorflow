@@ -288,11 +288,13 @@ bool MultiOutputFusion::LegalToFuseMainConstraints(HloInstruction* instr1,
   // If both nodes are in-place operations and they use a common in-place
   // operand, we can't fuse these two.
   for (const auto& operand_and_output_index1 :
-       HloDataflowAnalysis::GetInPlaceInputOutputPairs(instr1)) {
+       HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+           instr1, is_in_place_operation_)) {
     const HloInstruction* operand =
         instr1->operand(operand_and_output_index1.first.operand_number);
     for (const auto& operand_and_output_index2 :
-         HloDataflowAnalysis::GetInPlaceInputOutputPairs(instr2)) {
+         HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+             instr2, is_in_place_operation_)) {
       if (operand ==
           instr2->operand(operand_and_output_index2.first.operand_number)) {
         return false;

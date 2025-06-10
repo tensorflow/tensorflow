@@ -2511,6 +2511,7 @@ xla_cc_test(
     ],
     deps = [
         ":gpu_fusible",
+        "//xla/hlo/analysis:hlo_dataflow_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/service:hlo_runner",

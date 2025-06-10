@@ -2542,7 +2542,8 @@ CpuExecutableAotCompilationResult::LoadExecutable(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssignment::FromProto(proto_.buffer_assignment(), module.get(),
                                   compiler->BufferSizeBytesFunction(),
-                                  /*can_share_buffer=*/nullptr));
+                                  /*can_share_buffer=*/nullptr,
+                                  /*is_in_place_operation=*/nullptr));
 
   const DebugOptions& debug_options = module->config().debug_options();
   VlogMaxIsa(debug_options.xla_cpu_max_isa());

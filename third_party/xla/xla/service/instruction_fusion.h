@@ -30,19 +30,20 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
-#include "xla/service/hlo_module_config.h"
-#include "tsl/platform/macros.h"
 // The source_location.h is not available in open source.
 #if defined(PLATFORM_GOOGLE)
 #include "absl/types/source_location.h"
 #endif  // PLATFORM_GOOGLE
+#include "absl/types/span.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/fusion_queue.h"
+#include "xla/service/hlo_module_config.h"
+#include "tsl/platform/macros.h"
 
 namespace xla {
 
@@ -165,10 +166,13 @@ class InstructionFusion : public HloModulePass {
       std::function<bool(const HloInstruction& instruction)> is_expensive,
       bool may_duplicate = true,
       FusionConfigCollection config_collection_mode =
-          FusionConfigCollection::kOff)
+          FusionConfigCollection::kOff,
+      const HloDataflowAnalysis::IsInPlaceOperation& is_in_place_operation =
+          HloDataflowAnalysis::IsPotentialInPlaceOperation)
       : is_expensive_(is_expensive),
         may_duplicate_(may_duplicate),
-        config_collection_mode_(config_collection_mode) {}
+        config_collection_mode_(config_collection_mode),
+        is_in_place_operation_(is_in_place_operation) {}
   ~InstructionFusion() override = default;
   absl::string_view name() const override { return "fusion"; }
 
@@ -191,7 +195,8 @@ class InstructionFusion : public HloModulePass {
   // proven to be the same.
   static FusionDecision ShouldFuseInPlaceOp(
       const HloInstruction* producer, const HloInstruction* consumer,
-      std::optional<const InPlaceFusionOptions> in_place_fusion_options);
+      std::optional<const InPlaceFusionOptions> in_place_fusion_options,
+      const HloDataflowAnalysis::IsInPlaceOperation& is_in_place_operation);
 
  protected:
   // Returns a list of computations that are not fusion computations. These
@@ -226,8 +231,10 @@ class InstructionFusion : public HloModulePass {
   // updates an operand in place.
   virtual FusionDecision ShouldFuse(
       HloInstruction* consumer, int64_t operand_index,
-      std::function<FusionDecision(const HloInstruction*, const HloInstruction*,
-                                   std::optional<const InPlaceFusionOptions>)>
+      std::function<
+          FusionDecision(const HloInstruction*, const HloInstruction*,
+                         std::optional<const InPlaceFusionOptions>,
+                         const HloDataflowAnalysis::IsInPlaceOperation&)>
           inplace_op_fusion_decider);
 
   // Returns whether multi-output fusion can be applied to fuse `producer` into
@@ -304,6 +311,10 @@ class InstructionFusion : public HloModulePass {
       absl::Span<HloInstruction* const> post_order,
       const HloReachabilityMap& reachability);
 
+  const HloDataflowAnalysis::IsInPlaceOperation& is_in_place_operation() {
+    return is_in_place_operation_;
+  }
+
  private:
   // Returns the reused operands of `instruction` from reused_fusion_operands_,
   // computing them if they have not previously been computed for that
@@ -364,6 +375,8 @@ class InstructionFusion : public HloModulePass {
       const HloInstruction*,
       std::unique_ptr<absl::flat_hash_set<const HloInstruction*>>>
       reused_fusion_operands_;
+
+  HloDataflowAnalysis::IsInPlaceOperation is_in_place_operation_;
 
   InstructionFusion(const InstructionFusion&) = delete;
   InstructionFusion& operator=(const InstructionFusion&) = delete;

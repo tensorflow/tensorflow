@@ -66,7 +66,10 @@ namespace xla {
 // pass.
 class BFloat16Propagation : public HloModulePass {
  public:
-  explicit BFloat16Propagation(const FloatSupport* bfloat16_support);
+  explicit BFloat16Propagation(
+      const FloatSupport* bfloat16_support,
+      const HloDataflowAnalysis::IsInPlaceOperation& is_in_place_operation =
+          HloDataflowAnalysis::IsPotentialInPlaceOperation);
 
   ~BFloat16Propagation() override = default;
 
@@ -232,6 +235,8 @@ class BFloat16Propagation : public HloModulePass {
 
   // Whether the last processed HLO module has been changed by this pass.
   bool changed_ = false;
+
+  HloDataflowAnalysis::IsInPlaceOperation is_in_place_operation_;
 
   std::unique_ptr<HloDataflowAnalysis> dataflow_;
 

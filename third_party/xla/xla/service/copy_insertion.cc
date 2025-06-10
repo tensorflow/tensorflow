@@ -1178,7 +1178,8 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
                  // an async box.
                  instruction->opcode() == HloOpcode::kAsyncStart
                      ? instruction->async_wrapped_instruction()
-                     : instruction)) {
+                     : instruction,
+                 alias_analysis->dataflow_analysis().is_in_place_operation())) {
           const HloOperandIndex& operand_index = operand_and_output_index.first;
           if (copied_operands.contains(operand_index.operand_number)) {
             continue;

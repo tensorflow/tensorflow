@@ -449,7 +449,8 @@ FusionDecision CanEmitInputFusedScatter(const HloInstruction& producer,
 }
 
 FusionDecision IsProducerMultiOutputFusible(
-    const HloInstruction& producer, const se::DeviceDescription& device_info) {
+    const HloInstruction& producer, const se::DeviceDescription& device_info,
+    const HloDataflowAnalysis::IsInPlaceOperation& is_in_place_operation) {
   // Skip multiple output fusion. It's not yet supported.
   if (producer.IsMultiOutputFusion()) {
     return FusionDecision::Forbid("Producer is a multi-output fusion");
@@ -479,7 +480,9 @@ FusionDecision IsProducerMultiOutputFusible(
   // is in-place. (We can relax this restriction by establishing an explicit
   // contract that describes what multi-output fusion scenarios are supported by
   // codegen and then changing this check to allow exactly those fusions).
-  if (!HloDataflowAnalysis::GetInPlaceInputOutputPairs(&producer).empty()) {
+  if (!HloDataflowAnalysis::GetInPlaceInputOutputPairs(&producer,
+                                                       is_in_place_operation)
+           .empty()) {
     return FusionDecision::Forbid("In-place operations are present");
   }
 

@@ -210,8 +210,9 @@ std::vector<HloUse> FindCrossProgramPrefetchUses(
              use.instruction->opcode() == HloOpcode::kBitcast)) {
           return false;
         }
-        auto in_place_pairs =
-            HloDataflowAnalysis::GetInPlaceInputOutputPairs(use.instruction);
+        auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+            use.instruction,
+            alias_analysis.dataflow_analysis().is_in_place_operation());
         return absl::c_all_of(
             in_place_pairs,
             [&](const std::pair<HloOperandIndex, ShapeIndex>& in_place_pair) {
@@ -2338,10 +2339,10 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
   // Run post allocation transformation and fix the allocation sequence if
   // needed.
   if (options_.post_allocation_transformation_fn) {
-    auto has_in_place_user = [](HloInstruction* instr) {
+    auto has_in_place_user = [this](HloInstruction* instr) {
       for (HloInstruction* user : instr->users()) {
-        auto alias_pairs =
-            HloDataflowAnalysis::GetInPlaceInputOutputPairs(user);
+        auto alias_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+            user, alias_analysis_.dataflow_analysis().is_in_place_operation());
         for (const auto& [operand_index, output_index] : alias_pairs) {
           if (user->operand(operand_index.operand_number) == instr) {
             return true;

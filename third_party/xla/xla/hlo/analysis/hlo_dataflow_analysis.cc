@@ -103,7 +103,9 @@ using absl::StrCat;
 
 HloDataflowAnalysis::HloDataflowAnalysis(
     const HloModule& module, bool ssa_form, bool bitcast_defines_value,
-    const CanShareBuffer& can_share_buffer, const ForwardsValue& forwards_value,
+    const CanShareBuffer& can_share_buffer,
+    const IsInPlaceOperation& is_in_place_operation,
+    const ForwardsValue& forwards_value,
     absl::flat_hash_set<absl::string_view> execution_threads)
     : module_(module),
       execution_threads_(std::move(execution_threads)),
@@ -111,7 +113,12 @@ HloDataflowAnalysis::HloDataflowAnalysis(
       bitcast_defines_value_(bitcast_defines_value),
       call_graph_(CallGraph::Build(&module)),
       can_share_buffer_(can_share_buffer),
-      forwards_value_(forwards_value) {}
+      is_in_place_operation_(is_in_place_operation),
+      forwards_value_(forwards_value) {
+  if (!is_in_place_operation_) {
+    is_in_place_operation_ = IsPotentialInPlaceOperation;
+  }
+}
 
 bool HloDataflowAnalysis::AreTransitiveUsesElementwiseOrTuple(
     const HloInstruction* inst) {
@@ -1707,14 +1714,16 @@ void HloDataflowAnalysis::OptimizePhiValues() {
 /* static */
 absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
     const HloModule& module, bool ssa_form, bool bitcast_defines_value,
-    const CanShareBuffer& can_share_buffer, const ForwardsValue& forwards_value,
+    const CanShareBuffer& can_share_buffer,
+    const IsInPlaceOperation& is_in_place_operation,
+    const ForwardsValue& forwards_value,
     absl::flat_hash_set<absl::string_view> execution_threads) {
   VLOG(1) << "HloDataflowAnalysis::Run on module " << module.name();
   XLA_VLOG_LINES(2, module.ToString());
 
   auto dataflow_analysis = absl::WrapUnique(new HloDataflowAnalysis(
-      module, ssa_form, bitcast_defines_value, can_share_buffer, forwards_value,
-      execution_threads));
+      module, ssa_form, bitcast_defines_value, can_share_buffer,
+      is_in_place_operation, forwards_value, execution_threads));
 
   TF_RETURN_IF_ERROR(dataflow_analysis->InitializeInstructionValueSets());
   dataflow_analysis->Propagate();
@@ -1868,13 +1877,14 @@ bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
 }
 
 namespace {
-
 // Returns in-place input/output pairs for the given fusion instruction,
 // according to the aliasing rules for the corresponding fusion computation.
 //
 // `instruction` must be a fusion instruction.
 std::vector<std::pair<HloOperandIndex, ShapeIndex>>
-GetFusionInstructionInPlaceInputOutputPairs(const HloInstruction* instruction) {
+GetFusionInstructionInPlaceInputOutputPairs(
+    const HloInstruction* instruction,
+    const HloDataflowAnalysis::IsInPlaceOperation& is_in_place_operation) {
   std::vector<std::pair<HloOperandIndex, ShapeIndex>>
       in_place_input_output_pairs;
 
@@ -1902,7 +1912,7 @@ GetFusionInstructionInPlaceInputOutputPairs(const HloInstruction* instruction) {
         // fusion's inputs, and the output of this "in-place" pair to the fusion
         // output in question, then this fusion input and output must alias.
         auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(
-            output_source_instruction);
+            output_source_instruction, is_in_place_operation);
         ShapeIndex in_place_input_index;
         const HloInstruction* in_place_input_source = nullptr;
 
@@ -1926,7 +1936,7 @@ GetFusionInstructionInPlaceInputOutputPairs(const HloInstruction* instruction) {
               // through to their producer.
               auto nested_in_place_input_output_pairs =
                   HloDataflowAnalysis::GetInPlaceInputOutputPairs(
-                      in_place_input_source);
+                      in_place_input_source, is_in_place_operation);
               for (const auto& pair : nested_in_place_input_output_pairs) {
                 if (pair.second == in_place_input_index) {
                   // If the nested fusion has aliasing that matches the index of
@@ -1962,8 +1972,9 @@ GetFusionInstructionInPlaceInputOutputPairs(const HloInstruction* instruction) {
 
 /*static*/ std::vector<std::pair<HloOperandIndex, ShapeIndex>>
 HloDataflowAnalysis::GetInPlaceInputOutputPairs(
-    const HloInstruction* instruction) {
-  if (!IsPotentialInPlaceOperation(instruction)) {
+    const HloInstruction* instruction,
+    const IsInPlaceOperation& is_in_place_operation) {
+  if (!is_in_place_operation(instruction)) {
     return {};
   }
   int64_t num_in_place_operands = instruction->operand_count();
@@ -2027,8 +2038,8 @@ HloDataflowAnalysis::GetInPlaceInputOutputPairs(
     // those discovered by GetFusionInstructionInPlaceInputOutputPairs.
     // TODO (b/259460539): Make sure the annotated and discovered pairs do not
     // conflict (possibly through implementing a new pass)
-    auto in_place_pairs =
-        GetFusionInstructionInPlaceInputOutputPairs(instruction);
+    auto in_place_pairs = GetFusionInstructionInPlaceInputOutputPairs(
+        instruction, is_in_place_operation);
     if (!aliasing_pairs.empty()) {
       for (const auto& pair : aliasing_pairs) {
         ShapeIndex output_shape_index = pair.first;
@@ -2099,7 +2110,7 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     // Must-alias relationship returns true for in-place operations (DUS and DUS
     // fusions), regardless of the backend.
     for (const auto& operand_and_output_index :
-         GetInPlaceInputOutputPairs(user)) {
+         GetInPlaceInputOutputPairs(user, is_in_place_operation_)) {
       if (operand_and_output_index.second != user_index) {
         continue;
       }

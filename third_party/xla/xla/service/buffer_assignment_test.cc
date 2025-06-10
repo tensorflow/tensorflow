@@ -131,7 +131,8 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
     auto proto = buffers->ToProto();
     // Recreate buffer assignment from proto.
     return BufferAssignment::FromProto(proto, module, &BufferSizeBytes,
-                                       /*can_share_buffer=*/nullptr);
+                                       /*can_share_buffer=*/nullptr,
+                                       /*is_in_place_operation=*/nullptr);
   }
 
   std::unique_ptr<BufferAssignment> RunBufferAssignmentWithSequentialOrdering(
@@ -147,6 +148,7 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true, colorer,
                /*must_not_live_out=*/std::nullopt, /*can_share_buffer=*/nullptr,
+               /*is_in_place_operation=*/nullptr,
                /*preset_assignments=*/{}, private_stacks,
                /*heap_buffer_interval_compare=*/nullptr, isolation_options)
         .value();
@@ -214,7 +216,8 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
                /*allocate_buffers_for_constants=*/true,
                BufferAssigner::DefaultColorer(),
                /*must_not_live_out=*/std::nullopt,
-               /*can_share_buffer=*/nullptr, std::move(preset_assignments))
+               /*can_share_buffer=*/nullptr, /*is_in_place_operation=*/nullptr,
+               std::move(preset_assignments))
         .value();
   }
 
@@ -228,6 +231,7 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
                /*allocate_buffers_for_constants=*/true,
                BufferAssigner::DefaultColorer(),
                /*must_not_live_out=*/std::nullopt, /*can_share_buffer=*/nullptr,
+               /*is_in_place_operation=*/nullptr,
                /*preset_assignments=*/{}, /*private_stacks=*/{},
                /*heap_buffer_interval_compare=*/nullptr, isolation_options)
         .value();
