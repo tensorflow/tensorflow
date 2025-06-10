@@ -1,8 +1,8 @@
 build --action_env GCC_HOST_COMPILER_PATH=/usr/bin/gcc
 build --config cuda
-build:cuda --repo_env HERMETIC_CUDA_VERSION="12.6.3"
+build:cuda --repo_env HERMETIC_CUDA_VERSION="12.8.0"
 build:cuda --repo_env HERMETIC_CUDA_COMPUTE_CAPABILITIES=7.5
-build:cuda --repo_env HERMETIC_CUDNN_VERSION="9.3.0"
+build:cuda --repo_env HERMETIC_CUDNN_VERSION="9.8.0"
 build --config nonccl
 build --action_env LD_LIBRARY_PATH=/usr/local/nvidia/lib:/usr/local/nvidia/lib64
 build --define=xnn_enable_avxvnniint8=false
