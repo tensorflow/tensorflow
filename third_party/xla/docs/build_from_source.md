@@ -79,3 +79,69 @@ bazel build --test_output=all --spawn_strategy=sandboxed //xla/...
 
 For more details regarding
 [hermetic CUDA you can check out this document.](hermetic_cuda.md)
+
+### Build XLA with CUDA/cuDNN Support Using the JAX CI/Release Container
+
+XLA is a compiler used internally by JAX.
+JAX is distributed via PyPI wheels.
+The [JAX Continuous Integration documentation](https://github.com/jax-ml/jax/tree/main/ci#running-these-scripts-locally-on-your-machine)
+explains how to build JAX wheels using
+the [tensorflow/ml-build:latest](https://us-central1-docker.pkg.dev/tensorflow-sigs/tensorflow/ml-build) Docker container.
+
+We can extend these instructions to build XLA targets within the JAX container
+as well. This ensures that the XLA targets' build configuration is consistent
+with the JAX/XLA build configuration, which can be useful if we want to
+reproduce workload results using XLA tools that were originally created in JAX.
+
+#### Build XLA Targets in the JAX CI Container
+
+1. Clone the JAX repository and navigate to the 'jax' directory
+```bash
+git clone https://github.com/jax-ml/jax.git
+
+cd jax
+```
+
+2. Start JAX CI/Release Docker container by running:
+```bash
+./ci/utilities/run_docker_container.sh
+```
+This will start a Docker container named 'jax'.
+
+3. Build the jax-cuda-plugin target inside the container using:
+```bash
+docker exec jax ./ci/build_artifacts.sh jax-cuda-plugin
+```
+This will create the .jax_configure.bazelrc file with the required build
+configuration, including CUDA/cuDNN support
+
+4. Access an interactive shell inside the container:
+```bash
+docker exec -ti jax /bin/bash
+```
+You should now be in the `/jax` directory within the container
+
+5. Build the XLA target with the following command, e.g.:
+```bash
+/usr/local/bin/bazel build \
+  --config=cuda_libraries_from_stubs \
+  --verbose_failures=true \
+  @local_xla//xla/tools/multihost_hlo_runner:hlo_runner_main
+```
+
+Optionally, you can overwrite `HERMETIC` envs, e.g.:
+```
+--repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_90"
+```
+
+6. Copy the resulting artifacts to `/jax/dist` to access them from the host OS
+if needed
+```bash
+cp bazel-bin/external/xla/xla/tools/multihost_hlo_runner/hlo_runner_main \
+  ./dist/
+```
+
+7. Exit the interactive shell:
+```bash
+exit
+```
