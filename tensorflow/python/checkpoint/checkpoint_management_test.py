@@ -678,6 +678,34 @@ class CheckpointManagerTest(test.TestCase):
     self.assertTrue(checkpoint_management.checkpoint_exists(path))
 
   @test_util.run_in_graph_and_eager_modes
+  def testCheckpointIntervalWithLastCheckpointStep(self):
+    v = variables.Variable(1.0)
+    step_counter = variables.Variable(1)
+    self.evaluate([v.initializer, step_counter.initializer])
+    checkpoint = util.Checkpoint(v=v)
+    manager = checkpoint_management.CheckpointManager(
+        checkpoint,
+        self.get_temp_dir(),
+        max_to_keep=None,
+        step_counter=step_counter,
+        checkpoint_interval=2,
+        last_checkpoint_step=1)
+
+    # step_counter: 1, no checkpoint saved.
+    path = manager.save(check_interval=True)
+    self.assertIsNone(path)
+
+    # step_counter: 2, no checkpoint saved since the interval starts at 1.
+    self.evaluate(step_counter.assign_add(1))
+    path = manager.save(check_interval=True)
+    self.assertIsNone(path)
+
+    # step_counter: 3, checkpoint saved.
+    self.evaluate(step_counter.assign_add(1))
+    path = manager.save(check_interval=True)
+    self.assertTrue(checkpoint_management.checkpoint_exists(path))
+
+  @test_util.run_in_graph_and_eager_modes
   def testCheckpointIntervalWithRestore(self):
     directory = self.get_temp_dir()
     v = variables.Variable(1.0)
