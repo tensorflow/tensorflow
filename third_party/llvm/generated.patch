@@ -1,1 +1,89 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/clang/tools/clang-format/ClangFormat.cpp b/clang/tools/clang-format/ClangFormat.cpp
+--- a/clang/tools/clang-format/ClangFormat.cpp
++++ b/clang/tools/clang-format/ClangFormat.cpp
+@@ -244,17 +244,17 @@
+   DiagnosticsEngine Diagnostics(
+       IntrusiveRefCntPtr<DiagnosticIDs>(new DiagnosticIDs), DiagOpts);
+   SourceManager Sources(Diagnostics, Files);
+-  const auto ID = createInMemoryFile("<irrelevant>", *Code, Sources, Files,
+-                                     InMemoryFileSystem.get());
++  FileID ID = createInMemoryFile("<irrelevant>", *Code, Sources, Files,
++                                 InMemoryFileSystem.get());
+   if (!LineRanges.empty()) {
+     if (!Offsets.empty() || !Lengths.empty()) {
+       errs() << "error: cannot use -lines with -offset/-length\n";
+       return true;
+     }
+ 
+-    for (const auto &LineRange : LineRanges) {
++    for (unsigned i = 0, e = LineRanges.size(); i < e; ++i) {
+       unsigned FromLine, ToLine;
+-      if (parseLineRange(LineRange, FromLine, ToLine)) {
++      if (parseLineRange(LineRanges[i], FromLine, ToLine)) {
+         errs() << "error: invalid <start line>:<end line> pair\n";
+         return true;
+       }
+@@ -266,12 +266,12 @@
+         errs() << "error: start line should not exceed end line\n";
+         return true;
+       }
+-      const auto Start = Sources.translateLineCol(ID, FromLine, 1);
+-      const auto End = Sources.translateLineCol(ID, ToLine, UINT_MAX);
++      SourceLocation Start = Sources.translateLineCol(ID, FromLine, 1);
++      SourceLocation End = Sources.translateLineCol(ID, ToLine, UINT_MAX);
+       if (Start.isInvalid() || End.isInvalid())
+         return true;
+-      const auto Offset = Sources.getFileOffset(Start);
+-      const auto Length = Sources.getFileOffset(End) - Offset;
++      unsigned Offset = Sources.getFileOffset(Start);
++      unsigned Length = Sources.getFileOffset(End) - Offset;
+       Ranges.push_back(tooling::Range(Offset, Length));
+     }
+     return false;
+@@ -279,25 +279,32 @@
+ 
+   if (Offsets.empty())
+     Offsets.push_back(0);
+-  if (Offsets.size() == 1 && Lengths.empty()) {
+-    Lengths.push_back(Sources.getFileOffset(Sources.getLocForEndOfFile(ID)) -
+-                      Offsets[0]);
+-  } else if (Offsets.size() != Lengths.size()) {
++  if (Offsets.size() != Lengths.size() &&
++      !(Offsets.size() == 1 && Lengths.empty())) {
+     errs() << "error: number of -offset and -length arguments must match.\n";
+     return true;
+   }
+-  for (unsigned I = 0, E = Offsets.size(); I < E; ++I) {
+-    const auto Offset = Offsets[I];
+-    if (Offset >= Code->getBufferSize()) {
+-      errs() << "error: offset " << Offset << " is outside the file\n";
++  for (unsigned i = 0, e = Offsets.size(); i != e; ++i) {
++    if (Offsets[i] >= Code->getBufferSize()) {
++      errs() << "error: offset " << Offsets[i] << " is outside the file\n";
+       return true;
+     }
+-    const auto Length = Lengths[I];
+-    if (Offset + Length > Code->getBufferSize()) {
+-      errs() << "error: invalid length " << Length << ", offset + length ("
+-             << Offset + Length << ") is outside the file.\n";
+-      return true;
++    SourceLocation Start =
++        Sources.getLocForStartOfFile(ID).getLocWithOffset(Offsets[i]);
++    SourceLocation End;
++    if (i < Lengths.size()) {
++      if (Offsets[i] + Lengths[i] > Code->getBufferSize()) {
++        errs() << "error: invalid length " << Lengths[i]
++               << ", offset + length (" << Offsets[i] + Lengths[i]
++               << ") is outside the file.\n";
++        return true;
++      }
++      End = Start.getLocWithOffset(Lengths[i]);
++    } else {
++      End = Sources.getLocForEndOfFile(ID);
+     }
++    unsigned Offset = Sources.getFileOffset(Start);
++    unsigned Length = Sources.getFileOffset(End) - Offset;
+     Ranges.push_back(tooling::Range(Offset, Length));
+   }
+   return false;
