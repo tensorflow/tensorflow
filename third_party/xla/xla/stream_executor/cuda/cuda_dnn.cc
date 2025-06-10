@@ -7128,6 +7128,7 @@ absl::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
   return absl::OkStatus();
 }
 
+// DoFusedConvolve
 absl::Status CudnnSupport::DoFusedConvolve(
     Stream* stream, dnn::DataType input_type, dnn::DataType side_input_type,
     dnn::DataType bias_type, dnn::DataType output_type,
@@ -7169,7 +7170,7 @@ absl::Status CudnnSupport::DoFusedConvolve(
       ToCudnnDataType(input_type, filter_descriptor.layout()));
   CudnnTensorDescriptor bias_nd(bias_descriptor, ToCudnnDataType(bias_type));
 
-  DeviceMemory<uint8_t> scratch;
+  DeviceMemory<uint8_t> scratch_m;
   dnn::AlgorithmDesc algo_desc;
   {
     auto cudnn = cudnn_->GetHandle(parent_, stream);
@@ -7177,7 +7178,7 @@ absl::Status CudnnSupport::DoFusedConvolve(
         algo_desc,
         GetCudnnConvolutionForwardAlgorithm(
             stream, cudnn, algorithm_config, conv_input_nd, filter, input_type,
-            convolution_descriptor, output_nd, scratch_allocator, &scratch));
+            convolution_descriptor, output_nd, scratch_allocator, &scratch_m));
   }  // Explicitly release cuDNN handle.
 
   CudnnConvolutionDescriptor conv(
@@ -7200,7 +7201,7 @@ absl::Status CudnnSupport::DoFusedConvolve(
           std::move(output_nd), std::move(filter), std::move(bias_nd),
           std::move(conv), std::move(activation_desc)));
 
-  return runner(stream, output_profile_result, scratch, conv_input_data,
+  return runner(stream, output_profile_result, scratch_m, conv_input_data,
                 filter_data, side_input_data, biases, output_data);
 }
 
