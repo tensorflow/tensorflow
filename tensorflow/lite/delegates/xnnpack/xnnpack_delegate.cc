@@ -1252,8 +1252,6 @@ class Subgraph {
               context, "XNNPack delegate failed to reshape external value");
           return kTfLiteError;
         }
-        // signal that setup must be called.
-        externals_[inputs_[i]] = nullptr;
       }
       status = xnn_reshape_runtime(runtime_.get());
       if (status != xnn_status_success) {
@@ -1284,6 +1282,11 @@ class Subgraph {
               context, "XNNPack delegate failed to get resize output tensor");
           return kTfLiteError;
         }
+      }
+
+      // signal that setup must be called.
+      for (std::pair<const int, void*>& io_info : externals_) {
+        io_info.second = nullptr;
       }
     }
 
