@@ -8559,6 +8559,41 @@ absl::Status AlgebraicSimplifierVisitor::HandleReduceWindow(
              operand->operand(0)->opcode() == HloOpcode::kPad) {
     convert = operand;
     pad = operand->mutable_operand(0);
+
+    // TODO(b/214340779): This is a temporary hack to avoid folding pad into
+    // reduce-window. We need to get AssociativeScan to work first.
+    std::vector<int64_t> non_trivial_window_dimensions =
+        reduce_window->non_trivial_window_dimensions();
+
+    // If there is only one non-trivial dimension, we can check if the padding
+    // ratio is big enough to justify the optimization.
+    if (non_trivial_window_dimensions.size() == 1) {
+      int64_t non_trivial_window_dimension = non_trivial_window_dimensions[0];
+
+      // Getting the scan length.
+      const Shape& operand_shape = reduce_window->inputs().front()->shape();
+      int64_t scan_length =
+          operand_shape.dimensions(non_trivial_window_dimension);
+
+      // Padding size of the dimension in interest
+      PaddingConfig padding_config = pad->padding_config();
+      auto& padding_dim =
+          padding_config.dimensions(non_trivial_window_dimension);
+
+      // Calculate the ration of padding size to scan length to decide if the
+      // optimization is worth it. If the ratio is not significant enough it
+      // disturbs later optimizations (reduce-window-rewriter).
+      int64_t padding_size =
+          padding_dim.edge_padding_high() + padding_dim.edge_padding_low();
+      double padding_ratio = static_cast<double>(padding_size) / scan_length;
+
+      if (padding_ratio < 0.1) {
+        VLOG(10) << "Not folding pad into reduce-window as the padding ratio "
+                    "is not significant enough. padding_ratio: "
+                 << padding_ratio;
+        return absl::OkStatus();
+      }
+    }
   } else {
     VLOG(10) << "Not folding pad into reduce-window as there is no pad.";
     return absl::OkStatus();
