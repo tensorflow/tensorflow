@@ -25,7 +25,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_config.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 
@@ -97,20 +97,20 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass();
 
 // Overloading of CreateQuantizePass which takes QuantizationSpecs.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizePass(
-    QuantizationSpecs quant_specs,
+    tf_quant::QuantizationSpecs quant_specs,
     tensorflow::quantization::OpSet target_opset);
 
 // Creates an instance of the PrepareQuantize pass, which will perform similar
 // transformations as TFL::PrepareQuantizePass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizePass(
-    const QuantizationSpecs& quant_specs,
+    const tf_quant::QuantizationSpecs& quant_specs,
     tensorflow::quantization::QuantizationMethod::PresetMethod
         quantization_method);
 
 // Creates an instance of the PrepareQuantizeDRQ pass, which will
 // perform similar transformations as TFL::PrepareQuantizeDynamicRangePass.
 std::unique_ptr<OperationPass<ModuleOp>> CreatePrepareQuantizeDRQPass(
-    const QuantizationSpecs& quant_specs,
+    const tf_quant::QuantizationSpecs& quant_specs,
     tensorflow::quantization::OpSet op_set);
 
 // Creates an instance of the PreprocessOp pass, which will perform op

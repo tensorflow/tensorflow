@@ -75,18 +75,6 @@ func.func @sub_axes(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
   return %0 : tensor<8x8xf32>
 }
 
-// CHECK-LABEL: @manual_computation
-func.func @manual_computation(%arg0: tensor<32x32xf32>) -> tensor<32x32xf32> {
-  // CHECK-NEXT: sdy.manual_computation(%arg0)
-  // CHECK-SAME{LITERAL}: in_shardings=[<@meshB, [{"data"}, {?}]>]
-  // CHECK-SAME{LITERAL}: out_shardings=[<@meshB, [{"model":(1)2, ?}, {?}]>]
-  // CHECK-SAME{LITERAL}: manual_axes={} (%arg1: tensor<32x32xf32>) {
-  %0 = sdy.manual_computation(%arg0) in_shardings=[<@meshA, [{"a"}, {?}]>] out_shardings=[<@meshB, [{"model":(1)2, ?}, {?}]>] manual_axes={} (%arg1: tensor<32x32xf32>) {
-    sdy.return %arg1 : tensor<32x32xf32>
-  } : (tensor<32x32xf32>) -> tensor<32x32xf32>
-  func.return %0: tensor<32x32xf32>
-}
-
 // CHECK-LABEL: @inlined_mesh
 // CHECK-SAME:  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<mesh<["x"=2, "y"=2]>, [{"x"}, {}]>}
 func.func @inlined_mesh(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<mesh<["x"=2, "y"=2]>, [{"x"}, {}]>}) -> tensor<8x8xf32> {
@@ -157,4 +145,42 @@ func.func @full_axes_merge_sub_axes(
   // CHECK-SAME{LITERAL}: #sdy.sharding_per_value<[<@meshE, [{"b", ?}p1, {}], replicated={"a"}>]>
   %0 = stablehlo.add %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@meshF, [{"z", ?}p1, {}], replicated={"x", "y"}>]>} : tensor<8x8xf32>
   return %0 : tensor<8x8xf32>
+}
+
+// CHECK-LABEL: func @manual_computation
+func.func @manual_computation(%arg0: tensor<8x16xf32>, %arg1: tensor<16x32xf32>) -> tensor<8x32xf32> {
+  // CHECK-NEXT:          %[[MAN_COMP:.*]] = sdy.manual_computation(%arg0, %arg1)
+  // CHECK-SAME{LITERAL}:     in_shardings=[<@meshE, [{"a":(2)4}, {"a":(1)2}]>, <@meshE, [{"a":(1)2}, {}], replicated={"a":(2)4}>]
+  // CHECK-SAME{LITERAL}:     out_shardings=[<@meshE, [{"a":(2)4}, {}], replicated={"a":(1)2}>]
+  // CHECK-SAME{LITERAL}:     manual_axes={"a"}
+  // CHECK-SAME:              (%arg2: tensor<2x8xf32>, %arg3: tensor<8x32xf32>) {
+  // CHECK-NEXT:            stablehlo.add %arg2, %arg2 {sdy.sharding = #sdy.sharding_per_value<[<@meshE, [{?}, {"b", ?}]>]>}
+  // CHECK:               } : (tensor<8x16xf32>, tensor<16x32xf32>) -> tensor<8x32xf32>
+  // CHECK-NEXT:          return %[[MAN_COMP]]
+  %0 = sdy.manual_computation(%arg0, %arg1)
+      in_shardings=[<@meshF, [{"y"}, {"x"}]>, <@meshF, [{"x"}, {}], replicated={"y"}>]
+      out_shardings=[<@meshF, [{"y"}, {}], replicated={"x"}>]
+      manual_axes={"x", "y"} (%arg2: tensor<2x8xf32>, %arg3: tensor<8x32xf32>) {
+    %1 = stablehlo.add %arg2, %arg2 {sdy.sharding = #sdy.sharding_per_value<[<@meshE, [{?}, {"b", ?}]>]>} : tensor<2x8xf32>
+    %2 = stablehlo.dot %1, %arg3 : (tensor<2x8xf32>, tensor<8x32xf32>) -> tensor<2x32xf32>
+    sdy.return %2 : tensor<2x32xf32>
+  } : (tensor<8x16xf32>, tensor<16x32xf32>) -> tensor<8x32xf32>
+  return %0 : tensor<8x32xf32>
+}
+
+// CHECK-LABEL: func @manual_computation_inlined_meshes
+func.func @manual_computation_inlined_meshes(%arg0: tensor<8x16xf32>, %arg1: tensor<16x32xf32>) -> tensor<8x32xf32> {
+  // CHECK-NEXT:          sdy.manual_computation(%arg0, %arg1)
+  // CHECK-SAME{LITERAL}:     in_shardings=[<mesh<["x"=2, "y"=4, "z"=4]>, [{"y"}, {"x"}]>, <mesh<["x"=2, "y"=4, "z"=4]>, [{"x"}, {}], replicated={"y"}>]
+  // CHECK-SAME{LITERAL}:     out_shardings=[<mesh<["x"=2, "y"=4, "z"=4]>, [{"y"}, {}], replicated={"x"}>]
+  // CHECK-SAME{LITERAL}:     manual_axes={"x", "y"}
+  %0 = sdy.manual_computation(%arg0, %arg1)
+      in_shardings=[<mesh<["x"=2, "y"=4, "z"=4]>, [{"y"}, {"x"}]>, <mesh<["x"=2, "y"=4, "z"=4]>, [{"x"}, {}], replicated={"y"}>]
+      out_shardings=[<mesh<["x"=2, "y"=4, "z"=4]>, [{"y"}, {}], replicated={"x"}>]
+      manual_axes={"x", "y"} (%arg2: tensor<2x8xf32>, %arg3: tensor<8x32xf32>) {
+    %1 = stablehlo.add %arg2, %arg2 {sdy.sharding = #sdy.sharding_per_value<[<@meshE, [{?}, {"b", ?}]>]>} : tensor<2x8xf32>
+    %2 = stablehlo.dot %1, %arg3 : (tensor<2x8xf32>, tensor<8x32xf32>) -> tensor<2x32xf32>
+    sdy.return %2 : tensor<2x32xf32>
+  } : (tensor<8x16xf32>, tensor<16x32xf32>) -> tensor<8x32xf32>
+  return %0 : tensor<8x32xf32>
 }

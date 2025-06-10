@@ -27,6 +27,8 @@ limitations under the License.
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectRegistry.h"
@@ -51,6 +53,7 @@ using ::mlir::DenseMap;
 using ::mlir::DenseSet;
 using ::mlir::ModuleOp;
 using ::mlir::SmallVector;
+using ::mlir::StringAttr;
 using ::mlir::StringRef;
 using ::mlir::SymbolTable;
 using ::mlir::sdy::AxisRefAttr;
@@ -63,7 +66,7 @@ using ::mlir::sdy::TensorShardingAttr;
 
 namespace sdy = ::mlir::sdy;
 
-using AxisRefMap = SmallDenseMap<AxisRefAttr, AxisRefAttr>;
+using AxisMap = SmallDenseMap<StringRef, AxisRefAttr>;
 using TotalDeviceCountMapInfo = DenseMapInfo<int64_t>;
 using DeviceIdsMapInfo = DenseMapInfo<ArrayRef<int64_t>>;
 using AxisRefVector = SmallVector<AxisRefAttr>;
@@ -143,7 +146,7 @@ class AddAxisOrMergeInserter {
 // Try to map the axes of `targetMesh` to the (sub)axes of `mainMesh`. If
 // successful, `targetToMainAxisMap` will be populated.
 bool mapTargetAxesToMainAxes(MeshOp targetMesh, MeshOp mainMesh,
-                             AxisRefMap& targetToMainAxisMap,
+                             AxisMap& targetToMainAxisMap,
                              mlir::MLIRContext* context) {
   ArrayRef<MeshAxisAttr> mainAxes = mainMesh.getMesh().getAxes();
   ArrayRef<MeshAxisAttr> targetAxes = targetMesh.getMesh().getAxes();
@@ -168,15 +171,13 @@ bool mapTargetAxesToMainAxes(MeshOp targetMesh, MeshOp mainMesh,
     if (remainingMainAxisSize % targetAxis.getSize() != 0) {
       return false;
     }
-    const AxisRefAttr targetAxisRef =
-        AxisRefAttr::get(context, targetAxis.getName());
     // Set SubAxisInfoAttr to null when target axis maps to an entire main axis.
     const AxisRefAttr mainAxisRef = AxisRefAttr::get(
         context, mainAxis.getName(),
         mainAxis.getSize() == targetAxis.getSize()
             ? nullptr
             : SubAxisInfoAttr::get(context, preSize, targetAxis.getSize()));
-    targetToMainAxisMap[targetAxisRef] = mainAxisRef;
+    targetToMainAxisMap[targetAxis.getName()] = mainAxisRef;
     preSize *= targetAxis.getSize();
     targetAxisIndex++;
     remainingMainAxisSize /= targetAxis.getSize();
@@ -198,8 +199,7 @@ using MeshIdentifierToMainMeshesMap =
 
 // Maps a mesh name to the main mesh name that will be used to replace it, and a
 // map of old axes to the (sub)axes in the main mesh.
-using MeshToAxisMap =
-    SmallDenseMap<StringRef, std::pair<StringRef, AxisRefMap>>;
+using MeshToAxisMap = SmallDenseMap<StringRef, std::pair<StringRef, AxisMap>>;
 
 // Builds a map of meshes to the main mesh name that will be used (which has the
 // same total number of devices and device_ids) and a map of old axis name to
@@ -231,7 +231,7 @@ MeshToAxisMap buildDuplicateMeshesToAxisMap(ModuleOp moduleOp) {
     if (targetMesh == mainMesh) {
       continue;
     }
-    SmallDenseMap<AxisRefAttr, AxisRefAttr> targetToMainAxisMap;
+    SmallDenseMap<StringRef, AxisRefAttr> targetToMainAxisMap;
     if (mapTargetAxesToMainAxes(targetMesh, mainMesh, targetToMainAxisMap,
                                 moduleOp.getContext())) {
       duplicateMeshesToAxisMap.try_emplace(targetMesh.getSymName(),
@@ -242,81 +242,141 @@ MeshToAxisMap buildDuplicateMeshesToAxisMap(ModuleOp moduleOp) {
   return duplicateMeshesToAxisMap;
 }
 
-// Replaces the shardings attrs that refer to some mesh that isn't the main
-// mesh saved in the pair of `MeshToAxisMap` with the main mesh. All shardings
-// which before referred to different meshes with the same axis sizes will now
-// refer to one meshes. So there can still be multiple meshes, but they will all
-// all have different axis sizes.
-void dedupMeshes(ModuleOp moduleOp,
+// Replaces `oldSharding`, if it refers to some mesh that isn't the main
+// mesh saved in the pair of `MeshToAxisMap`, with the main mesh.
+TensorShardingAttr replaceAxesInSharding(
+    TensorShardingAttr oldSharding, const SymbolTable& symbolTable,
+    const MeshToAxisMap& duplicateMeshesToAxisMap) {
+  mlir::MLIRContext* context = oldSharding.getContext();
+  if (mlir::isa<MeshAttr>(oldSharding.getMeshOrRef())) {
+    // Skip shardings with inlined meshes.
+    return oldSharding;
+  }
+  auto meshNameAndAxisMap =
+      duplicateMeshesToAxisMap.find(oldSharding.getMeshName());
+  // Exit early since this is a sharding with the main mesh that will be
+  // used.
+  if (meshNameAndAxisMap == duplicateMeshesToAxisMap.end()) {
+    return oldSharding;
+  }
+  auto [mainMeshName, axisMap] = meshNameAndAxisMap->getSecond();
+  MeshAttr mainMesh = sdy::getMeshOp(symbolTable, mainMeshName).getMesh();
+  auto buildNewAxisRef = [&, &axisMap = axisMap](AxisRefAttr oldAxisRef) {
+    // If the old axis had a sub-axis info, we need to look up the
+    // corresponding main axis without sub-axis info, and build the new
+    // axis info.
+    AxisRefAttr mappedAxisRef = axisMap.at(oldAxisRef.getName());
+    if (oldAxisRef.getSubAxisInfo()) {
+      SubAxisInfoAttr newSubAxisInfo =
+          SubAxisInfoAttr::get(context,
+                               mappedAxisRef.getSubAxisPreSize() *
+                                   oldAxisRef.getSubAxisInfo().getPreSize(),
+                               oldAxisRef.getSubAxisInfo().getSize());
+      return AxisRefAttr::get(context, mappedAxisRef.getName(), newSubAxisInfo);
+    }
+    return mappedAxisRef;
+  };
+  SmallVector<DimensionShardingAttr> newDimShardings;
+  newDimShardings.reserve(oldSharding.getDimShardings().size());
+  for (DimensionShardingAttr oldDimSharding : oldSharding.getDimShardings()) {
+    AxisRefVector newAxisRefs;
+    newAxisRefs.reserve(oldDimSharding.getAxes().size());
+    llvm::transform(oldDimSharding.getAxes(),
+                    AddAxisOrMergeInserter(&newAxisRefs, &mainMesh),
+                    buildNewAxisRef);
+    newDimShardings.push_back(DimensionShardingAttr::get(
+        context, newAxisRefs, oldDimSharding.getIsClosed(),
+        oldDimSharding.getPriority()));
+  }
+  auto buildNewAxisRefList = [buildNewAxisRef,
+                              mainMesh](ArrayRef<AxisRefAttr> oldAxisRefs) {
+    AxisRefVector newAxisRefs;
+    newAxisRefs.reserve(oldAxisRefs.size());
+    llvm::transform(oldAxisRefs,
+                    AddAxisOrMergeInserter(&newAxisRefs, &mainMesh),
+                    buildNewAxisRef);
+    return newAxisRefs;
+  };
+  AxisRefVector newReplicatedAxes =
+      buildNewAxisRefList(oldSharding.getReplicatedAxes());
+  AxisRefVector newUnreducedAxes =
+      buildNewAxisRefList(oldSharding.getUnreducedAxes());
+  return TensorShardingAttr::get(context, mainMeshName, newDimShardings,
+                                 newReplicatedAxes, newUnreducedAxes);
+}
+
+// Replaces the manual axes in `manualComputation`, if it refers to some mesh
+// that isn't the main mesh saved in the pair of `MeshToAxisMap`, with the main
+// mesh.
+void replaceManualAxes(sdy::ManualComputationOp manualComputation,
+                       const SymbolTable& symbolTable,
+                       const MeshToAxisMap& duplicateMeshesToAxisMap) {
+  if (manualComputation.getInShardings().empty() &&
+      manualComputation.getOutShardings().empty()) {
+    return;
+  }
+  mlir::Attribute meshOrRef = getCommonMeshOrRef(
+      manualComputation.getInShardings().getShardings(),
+      manualComputation.getOutShardings().getShardings(), symbolTable);
+  CHECK(meshOrRef) << "no common mesh found for ManualComputationOp";
+  if (mlir::isa<MeshAttr>(meshOrRef)) {
+    // Skip manual computation with inlined meshes.
+    return;
+  }
+  auto meshNameAndAxisMap = duplicateMeshesToAxisMap.find(
+      mlir::cast<mlir::FlatSymbolRefAttr>(meshOrRef).getValue());
+  // Exit early since this is the main mesh that will be used.
+  if (meshNameAndAxisMap == duplicateMeshesToAxisMap.end()) {
+    return;
+  }
+  auto [mainMeshName, axisMap] = meshNameAndAxisMap->getSecond();
+  MeshAttr mainMesh = sdy::getMeshOp(symbolTable, mainMeshName).getMesh();
+  AxisRefVector newAxisRefs;
+  newAxisRefs.reserve(manualComputation.getManualAxes().size());
+  llvm::transform(manualComputation.getManualAxes(),
+                  AddAxisOrMergeInserter(&newAxisRefs, &mainMesh),
+                  [&axisMap = axisMap](StringAttr manualAxis) {
+                    return axisMap.at(manualAxis.getValue());
+                  });
+  SmallVector<StringAttr> newManualAxes;
+  newManualAxes.reserve(newAxisRefs.size());
+  llvm::transform(
+      newAxisRefs, std::back_inserter(newManualAxes), [](AxisRefAttr axisRef) {
+        CHECK(!axisRef.getSubAxisInfo())
+            << "Manual sub-axis isn't supported. Please "
+               "file a bug with a reproducer.";
+        return StringAttr::get(axisRef.getContext(), axisRef.getName());
+      });
+  manualComputation.setManualAxesAttr(
+      sdy::ManualAxesAttr::get(manualComputation.getContext(), newManualAxes));
+}
+
+// Maintains the following meshes and remove all the other meshes.
+// 1. For each unique combination of total size and device id order, keep one
+//    main mesh.
+// 2. inlined meshes.
+//
+// If a sharding or manual axes refer to a removed mesh, update them accordingly
+// to use the respective main mesh.
+void dedupMeshes(ModuleOp moduleOp, const SymbolTable& symbolTable,
                  const MeshToAxisMap& duplicateMeshesToAxisMap) {
-  mlir::MLIRContext* context = moduleOp.getContext();
   sdy::transformShardings(
-      moduleOp, [&](TensorShardingAttr oldSharding) -> TensorShardingAttr {
-        if (mlir::isa<MeshAttr>(oldSharding.getMeshOrRef())) {
-          // Skip shardings with inlined meshes.
-          return oldSharding;
+      moduleOp,
+      [&](TensorShardingAttr oldSharding) -> TensorShardingAttr {
+        return replaceAxesInSharding(oldSharding, symbolTable,
+                                     duplicateMeshesToAxisMap);
+      },
+      [&](mlir::Operation* op) {
+        if (auto manualComputation =
+                mlir::dyn_cast<sdy::ManualComputationOp>(op)) {
+          replaceManualAxes(manualComputation, symbolTable,
+                            duplicateMeshesToAxisMap);
         }
-        auto meshNameAndAxisMap =
-            duplicateMeshesToAxisMap.find(oldSharding.getMeshName());
-        // Exit early since this is a sharding with the main mesh that will be
-        // used.
-        if (meshNameAndAxisMap == duplicateMeshesToAxisMap.end()) {
-          return oldSharding;
-        }
-        auto [mainMeshName, axisMap] = meshNameAndAxisMap->getSecond();
-        MeshAttr newMesh =
-            sdy::getMeshOp(SymbolTable(moduleOp), mainMeshName).getMesh();
-        auto buildNewAxisRef = [&, &axisMap = axisMap](AxisRefAttr oldAxisRef) {
-          // If the old axis had a sub-axis info, we need to look up the
-          // corresponding main axis without sub-axis info, and build the new
-          // axis info.
-          if (oldAxisRef.getSubAxisInfo()) {
-            AxisRefAttr mappedAxisRef =
-                axisMap.at(AxisRefAttr::get(context, oldAxisRef.getName()));
-            SubAxisInfoAttr newSubAxisInfo = SubAxisInfoAttr::get(
-                context,
-                mappedAxisRef.getSubAxisPreSize() *
-                    oldAxisRef.getSubAxisInfo().getPreSize(),
-                oldAxisRef.getSubAxisInfo().getSize());
-            return AxisRefAttr::get(context, mappedAxisRef.getName(),
-                                    newSubAxisInfo);
-          }
-          return axisMap.at(oldAxisRef);
-        };
-        SmallVector<DimensionShardingAttr> newDimShardings;
-        newDimShardings.reserve(oldSharding.getDimShardings().size());
-        for (DimensionShardingAttr oldDimSharding :
-             oldSharding.getDimShardings()) {
-          AxisRefVector newAxisRefs;
-          newAxisRefs.reserve(oldDimSharding.getAxes().size());
-          llvm::transform(oldDimSharding.getAxes(),
-                          AddAxisOrMergeInserter(&newAxisRefs, &newMesh),
-                          buildNewAxisRef);
-          newDimShardings.push_back(DimensionShardingAttr::get(
-              context, newAxisRefs, oldDimSharding.getIsClosed(),
-              oldDimSharding.getPriority()));
-        }
-        auto buildNewAxisRefList =
-            [buildNewAxisRef, newMesh](ArrayRef<AxisRefAttr> oldAxisRefs) {
-              AxisRefVector newAxisRefs;
-              newAxisRefs.reserve(oldAxisRefs.size());
-              llvm::transform(oldAxisRefs,
-                              AddAxisOrMergeInserter(&newAxisRefs, &newMesh),
-                              buildNewAxisRef);
-              return newAxisRefs;
-            };
-        AxisRefVector newReplicatedAxes =
-            buildNewAxisRefList(oldSharding.getReplicatedAxes());
-        AxisRefVector newUnreducedAxes =
-            buildNewAxisRefList(oldSharding.getUnreducedAxes());
-        return TensorShardingAttr::get(context, mainMeshName, newDimShardings,
-                                       newReplicatedAxes, newUnreducedAxes);
       });
 }
 
-void eraseMeshes(ModuleOp moduleOp,
+void eraseMeshes(SymbolTable& symbolTable,
                  const MeshToAxisMap& duplicateMeshesToAxisMap) {
-  SymbolTable symbolTable(moduleOp);
   for (const auto& [meshName, _] : duplicateMeshesToAxisMap) {
     symbolTable.erase(symbolTable.lookup(meshName));
   }
@@ -330,6 +390,7 @@ class SdyRoundTripDedupMeshesPass
 
   void runOnOperation() final {
     ModuleOp moduleOp = getOperation();
+    SymbolTable symbolTable(moduleOp);
 
     // Exit early if there are no meshes or just one mesh.
     auto meshIter = moduleOp.getOps<MeshOp>();
@@ -344,8 +405,8 @@ class SdyRoundTripDedupMeshesPass
 
     MeshToAxisMap duplicateMeshesToAxisMap =
         buildDuplicateMeshesToAxisMap(moduleOp);
-    dedupMeshes(moduleOp, duplicateMeshesToAxisMap);
-    eraseMeshes(moduleOp, duplicateMeshesToAxisMap);
+    dedupMeshes(moduleOp, symbolTable, duplicateMeshesToAxisMap);
+    eraseMeshes(symbolTable, duplicateMeshesToAxisMap);
   }
 
   StringRef getArgument() const override {

@@ -40,7 +40,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
 namespace {
 
 struct CommunicationMetadata {
@@ -67,23 +66,40 @@ bool SameParticipantCounts(const absl::flat_hash_map<int64_t, size_t>& lhs,
 }
 
 absl::StatusOr<CommunicationMetadata> CommunicationContext(
-    const HloInstruction& instr, int num_devices_per_host) {
+    const HloChannelInstruction& instr, int num_devices_per_host) {
   absl::flat_hash_map<int64_t, size_t> node_to_participant_count;
-  const CollectiveDeviceList& device_list = instr.device_list();
-  for (const ReplicaGroup& replica_group : device_list.replica_groups()) {
-    absl::flat_hash_map<int64_t, size_t> buffer;
-    for (int64_t rank : replica_group.replica_ids()) {
-      int64_t node_id = rank / num_devices_per_host;
-      buffer[node_id]++;
+
+  if (auto* collective =
+          dynamic_cast<const HloCollectiveInstruction*>(&instr)) {
+    for (const ReplicaGroup& replica_group :
+         collective->device_list().replica_groups()) {
+      absl::flat_hash_map<int64_t, size_t> buffer;
+      for (int64_t rank : replica_group.replica_ids()) {
+        int64_t node_id = rank / num_devices_per_host;
+        buffer[node_id]++;
+      }
+      if (!node_to_participant_count.empty() &&
+          !SameParticipantCounts(buffer, node_to_participant_count)) {
+        return absl::FailedPreconditionError(
+            absl::StrCat("Non homogenous replica group: ",
+                         collective->device_list().ToString()));
+      }
+      if (node_to_participant_count.empty()) {
+        node_to_participant_count = buffer;
+      }
     }
-    if (!node_to_participant_count.empty() &&
-        !SameParticipantCounts(buffer, node_to_participant_count)) {
-      return absl::FailedPreconditionError(absl::StrCat(
-          "Non homogenous replica group: ", device_list.ToString()));
+  } else if (auto* permute =
+                 dynamic_cast<const HloCollectivePermuteInstruction*>(&instr)) {
+    for (const auto& [source, target] : permute->source_target_pairs()) {
+      int64_t source_node = source / num_devices_per_host;
+      int64_t target_node = target / num_devices_per_host;
+      node_to_participant_count[source_node]++;
+      node_to_participant_count[target_node]++;
     }
-    if (node_to_participant_count.empty()) {
-      node_to_participant_count = buffer;
-    }
+  } else {
+    return absl::FailedPreconditionError(
+        "Cannot determine communication context for non-collective channel "
+        "instruction");
   }
 
   return CommunicationMetadata{node_to_participant_count, num_devices_per_host,
@@ -125,7 +141,7 @@ bool IsGPUSyncCollective(const HloInstruction& instr) {
 }
 
 absl::StatusOr<GPUCommunicationType> CommunicationType(
-    int num_devices_per_host, const HloCollectiveInstruction& instr,
+    int num_devices_per_host, const HloChannelInstruction& instr,
     const se::GpuComputeCapability& gpu_version) {
   if (!std::holds_alternative<se::CudaComputeCapability>(gpu_version)) {
     return absl::FailedPreconditionError("Only CUDA is supported.");

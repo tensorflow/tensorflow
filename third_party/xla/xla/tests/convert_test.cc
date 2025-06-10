@@ -192,7 +192,7 @@ TEST_F(ConvertTest, ConvertR1PREDToR1F32) {
   ComputeAndCompareR1<float>(&builder, expected, {});
 }
 
-XLA_TEST_F(ConvertTest, ConvertR1S0S32ToR1S0F32) {
+TEST_F(ConvertTest, ConvertR1S0S32ToR1S0F32) {
   XlaBuilder builder(TestName());
   auto a = ConstantR1<int32_t>(&builder, {});
   ConvertElementType(a, F32);
@@ -210,7 +210,7 @@ TEST_F(ConvertTest, ConvertR1F32ToR1S32) {
   ComputeAndCompareR1<int32_t>(&builder, expected, {});
 }
 
-XLA_TEST_F(ConvertTest, ConvertR1S64ToR1F32) {
+TEST_F(ConvertTest, ConvertR1S64ToR1F32) {
   XlaBuilder builder(TestName());
   std::vector<int64_t> arg{
       -9223371216516022272,
@@ -261,7 +261,7 @@ XLA_TEST_F(ConvertTest, ConvertR1S64ToR1F32) {
   ComputeAndCompareR1<float>(&builder, expected, {&arg_literal});
 }
 
-XLA_TEST_F(ConvertTest, ConvertR1U32ToR1F32) {
+TEST_F(ConvertTest, ConvertR1U32ToR1F32) {
   XlaBuilder builder(TestName());
   std::vector<uint32_t> arg{0,          1,          0x1000,     0x7fffffff,
                             0x80000000, 0x80000001, 0x80000002, 0x80000003,
@@ -278,7 +278,7 @@ XLA_TEST_F(ConvertTest, ConvertR1U32ToR1F32) {
   ComputeAndCompareR1<float>(&builder, expected, {&arg_literal});
 }
 
-XLA_TEST_F(ConvertTest, ConvertR1F32ToR1U32) {
+TEST_F(ConvertTest, ConvertR1F32ToR1U32) {
   XlaBuilder builder(TestName());
   std::vector<float> arg{0.0f,        1.0f,          16777216.0f,
                          16777218.0f, 2147483647.0f, 4294967040.0f};
@@ -294,7 +294,7 @@ XLA_TEST_F(ConvertTest, ConvertR1F32ToR1U32) {
   ComputeAndCompareR1<uint32_t>(&builder, expected, {&arg_literal});
 }
 
-XLA_TEST_F(ConvertTest, ConvertR1U32ToR1S64) {
+TEST_F(ConvertTest, ConvertR1U32ToR1S64) {
   XlaBuilder builder(TestName());
   std::vector<uint32_t> arg{0, 1, 0x1000, 0x7fffffff, 0x80000082, 0xFFFFFFFF};
   Literal arg_literal = LiteralUtil::CreateR1<uint32_t>({arg});
@@ -309,7 +309,7 @@ XLA_TEST_F(ConvertTest, ConvertR1U32ToR1S64) {
   ComputeAndCompareR1<int64_t>(&builder, expected, {&arg_literal});
 }
 
-XLA_TEST_F(ConvertTest, ConvertR1S32ToR1S64) {
+TEST_F(ConvertTest, ConvertR1S32ToR1S64) {
   XlaBuilder builder(TestName());
   std::vector<int32_t> arg{0, 1, 0x1000, -1, -0x1000};
   Literal arg_literal = LiteralUtil::CreateR1<int32_t>({arg});
@@ -324,7 +324,7 @@ XLA_TEST_F(ConvertTest, ConvertR1S32ToR1S64) {
   ComputeAndCompareR1<int64_t>(&builder, expected, {&arg_literal});
 }
 
-XLA_TEST_F(ConvertTest, ConvertR1F32ToR1S64) {
+TEST_F(ConvertTest, ConvertR1F32ToR1S64) {
   XlaBuilder builder(TestName());
   // Test cases from compiler_rt library.
   std::vector<float> arg{0.0f,
@@ -359,7 +359,7 @@ XLA_TEST_F(ConvertTest, ConvertR1F32ToR1S64) {
   ComputeAndCompareR1<int64_t>(&builder, expected, {&arg_literal});
 }
 
-XLA_TEST_F(ConvertTest, ConvertR1U8ToR1F32) {
+TEST_F(ConvertTest, ConvertR1U8ToR1F32) {
   XlaBuilder builder(TestName());
   auto a = ConstantR1<uint8_t>(&builder, {32, 64});
   ConvertElementType(a, F32);
@@ -368,7 +368,7 @@ XLA_TEST_F(ConvertTest, ConvertR1U8ToR1F32) {
   ComputeAndCompareR1<float>(&builder, expected, {});
 }
 
-XLA_TEST_F(ConvertTest, ConvertR1U8ToR1S32) {
+TEST_F(ConvertTest, ConvertR1U8ToR1S32) {
   XlaBuilder builder(TestName());
   auto a = ConstantR1<uint8_t>(&builder, {32, 64});
   ConvertElementType(a, S32);
@@ -377,7 +377,7 @@ XLA_TEST_F(ConvertTest, ConvertR1U8ToR1S32) {
   ComputeAndCompareR1<int32_t>(&builder, expected, {});
 }
 
-XLA_TEST_F(ConvertTest, ConvertR1U8ToR1U32) {
+TEST_F(ConvertTest, ConvertR1U8ToR1U32) {
   XlaBuilder builder(TestName());
   auto a = ConstantR1<uint8_t>(&builder, {32, 64});
   ConvertElementType(a, U32);
@@ -386,7 +386,7 @@ XLA_TEST_F(ConvertTest, ConvertR1U8ToR1U32) {
   ComputeAndCompareR1<uint32_t>(&builder, expected, {});
 }
 
-XLA_TEST_F(ConvertTest, ConvertR1F32ToR1F64) {
+TEST_F(ConvertTest, ConvertR1F32ToR1F64) {
   XlaBuilder builder(TestName());
   auto a = ConstantR1<float>(&builder, {32.0f, 64.0f});
   ConvertElementType(a, F64);
@@ -395,7 +395,7 @@ XLA_TEST_F(ConvertTest, ConvertR1F32ToR1F64) {
   ComputeAndCompareR1<double>(&builder, expected, {});
 }
 
-XLA_TEST_F(ConvertTest, ConvertR1F64ToR1F32) {
+TEST_F(ConvertTest, ConvertR1F64ToR1F32) {
   XlaBuilder builder(TestName());
   auto a = ConstantR1<double>(&builder, {32.0, 64.0});
   ConvertElementType(a, F32);
@@ -471,7 +471,7 @@ std::vector<float> GetInterestingF16ConversionTestCases() {
   return test_cases;
 }
 
-XLA_TEST_F(ConvertTest, ConvertR1F16ToR1F32) {
+TEST_F(ConvertTest, ConvertR1F16ToR1F32) {
   std::vector<float> test_cases = GetInterestingF16ConversionTestCases();
   std::vector<half> input;
   absl::c_transform(test_cases, std::back_inserter(input),
@@ -492,7 +492,7 @@ XLA_TEST_F(ConvertTest, ConvertR1F16ToR1F32) {
   ComputeAndCompareR1<float>(&builder, expected_output, {&dot_lhs_literal});
 }
 
-XLA_TEST_F(ConvertTest, ConvertR1F32ToR1F16) {
+TEST_F(ConvertTest, ConvertR1F32ToR1F16) {
   std::vector<float> input = GetInterestingF16ConversionTestCases();
   std::vector<half> expected_output;
   absl::c_transform(input, std::back_inserter(expected_output),
@@ -510,28 +510,28 @@ XLA_TEST_F(ConvertTest, ConvertR1F32ToR1F16) {
   ComputeAndCompareR1<half>(&builder, expected_output, {&dot_lhs_literal});
 }
 
-XLA_TEST_F(ConvertTest, ConvertC64ToC64) {
+TEST_F(ConvertTest, ConvertC64ToC64) {
   XlaBuilder builder(TestName());
   std::vector<complex64> x = {{42.0f, 64.0f}};
   ConvertElementType(ConstantR1<complex64>(&builder, x), C64);
   ComputeAndCompareR1<complex64>(&builder, x, {}, ErrorSpec(0.0001));
 }
 
-XLA_TEST_F(ConvertTest, ConvertS64S64) {
+TEST_F(ConvertTest, ConvertS64S64) {
   XlaBuilder builder(TestName());
   std::vector<int64_t> x = {{-42, 64}};
   ConvertElementType(ConstantR1<int64_t>(&builder, x), S64);
   ComputeAndCompareR1<int64_t>(&builder, x, {});
 }
 
-XLA_TEST_F(ConvertTest, ConvertU64U64) {
+TEST_F(ConvertTest, ConvertU64U64) {
   XlaBuilder builder(TestName());
   std::vector<uint64_t> x = {{42, 64}};
   ConvertElementType(ConstantR1<uint64_t>(&builder, x), U64);
   ComputeAndCompareR1<uint64_t>(&builder, x, {});
 }
 
-XLA_TEST_F(ConvertTest, ConvertU64S64) {
+TEST_F(ConvertTest, ConvertU64S64) {
   XlaBuilder builder(TestName());
   std::vector<uint64_t> unsigned_x = {{42, UINT64_MAX}};
   ConvertElementType(ConstantR1<uint64_t>(&builder, unsigned_x), S64);
@@ -539,7 +539,7 @@ XLA_TEST_F(ConvertTest, ConvertU64S64) {
   ComputeAndCompareR1<int64_t>(&builder, signed_x, {});
 }
 
-XLA_TEST_F(ConvertTest, ConvertS64U64) {
+TEST_F(ConvertTest, ConvertS64U64) {
   XlaBuilder builder(TestName());
   std::vector<int64_t> signed_x = {{42, -1, INT64_MIN}};
   ConvertElementType(ConstantR1<int64_t>(&builder, signed_x), U64);
@@ -635,7 +635,7 @@ TEST_F(ConvertTest, ConvertR1S4ToR1F32) {
   ComputeAndCompareR1<float>(&builder, expected, {});
 }
 
-XLA_TEST_F(ConvertTest, ConvertBF16F32) {
+TEST_F(ConvertTest, ConvertBF16F32) {
   XlaBuilder builder(TestName());
 
   std::vector<bfloat16> all_bfloats(1 << 16);
@@ -676,7 +676,7 @@ XLA_TEST_F(ConvertTest, ConvertBF16F32) {
   }
 }
 
-XLA_TEST_F(ConvertTest, ConvertF32BF16) {
+TEST_F(ConvertTest, ConvertF32BF16) {
   XlaBuilder builder(TestName());
 
   std::vector<float> floats(100);
@@ -748,7 +748,7 @@ XLA_TYPED_TEST(ConvertTestT, ConvertFPToPred) {
 
 // ----- F8E5M2
 
-XLA_TEST_F(ConvertTest, ConvertF16F8e5m2Roundtrip) {
+TEST_F(ConvertTest, ConvertF16F8e5m2Roundtrip) {
   // Convert from FP16 to FP8, then back to FP16.
   XlaBuilder builder(TestName());
   float nan = std::numeric_limits<float>::quiet_NaN();
@@ -800,7 +800,7 @@ XLA_TEST_F(ConvertTest, ConvertF16F8e5m2Roundtrip) {
                                    ErrorSpec(0.));
 }
 
-XLA_TEST_F(ConvertTest, ConvertF32F8e5m2Roundtrip) {
+TEST_F(ConvertTest, ConvertF32F8e5m2Roundtrip) {
   if (test::DeviceIs(test::kCpu)) {
     GTEST_SKIP();
   }
@@ -921,7 +921,7 @@ XLA_TYPED_TEST(ConvertTestF16, ConvertF8e5m2F16RoundtripExhaustive4) {
 
 // ----- F8E4M3
 
-XLA_TEST_F(ConvertTest, ConvertF16F8e4m3Roundtrip) {
+TEST_F(ConvertTest, ConvertF16F8e4m3Roundtrip) {
   // Convert from FP16 to FP8, then back to FP16
   XlaBuilder builder(TestName());
   float nan = std::numeric_limits<float>::quiet_NaN();
@@ -977,7 +977,7 @@ XLA_TEST_F(ConvertTest, ConvertF16F8e4m3Roundtrip) {
                                    ErrorSpec(0.));
 }
 
-XLA_TEST_F(ConvertTest, ConvertF32F8e4m3Roundtrip) {
+TEST_F(ConvertTest, ConvertF32F8e4m3Roundtrip) {
   if (test::DeviceIs(test::kCpu)) {
     GTEST_SKIP();
   }
@@ -1097,7 +1097,7 @@ XLA_TYPED_TEST(ConvertTestF16, ConvertF8e4m3F16RoundtripExhaustive4) {
 
 // ----- F8E4M3FN
 
-XLA_TEST_F(ConvertTest, ConvertF16F8e4m3fnRoundtrip) {
+TEST_F(ConvertTest, ConvertF16F8e4m3fnRoundtrip) {
   // Convert from FP16 to FP8, then back to FP16.
   XlaBuilder builder(TestName());
   float nan = std::numeric_limits<float>::quiet_NaN();
@@ -1148,7 +1148,7 @@ XLA_TEST_F(ConvertTest, ConvertF16F8e4m3fnRoundtrip) {
                                    ErrorSpec(0.));
 }
 
-XLA_TEST_F(ConvertTest, ConvertF32F8e4m3fnRoundtrip) {
+TEST_F(ConvertTest, ConvertF32F8e4m3fnRoundtrip) {
   if (test::DeviceIs(test::kCpu)) {
     GTEST_SKIP();
   }
@@ -1263,7 +1263,7 @@ XLA_TYPED_TEST(ConvertTestF16, ConvertF8e4m3fnF16RoundtripExhaustive4) {
 
 // ----- F8E4M3B11FNUZ
 
-XLA_TEST_F(ConvertTest, ConvertF16F8e4m3b11fnuzRoundtrip) {
+TEST_F(ConvertTest, ConvertF16F8e4m3b11fnuzRoundtrip) {
   // Convert from FP16 to FP8, then back to FP16.
   XlaBuilder builder(TestName());
   float nan = std::numeric_limits<float>::quiet_NaN();
@@ -1314,7 +1314,7 @@ XLA_TEST_F(ConvertTest, ConvertF16F8e4m3b11fnuzRoundtrip) {
                                    ErrorSpec(0.));
 }
 
-XLA_TEST_F(ConvertTest, ConvertF32F8e4m3b11fnuzRoundtrip) {
+TEST_F(ConvertTest, ConvertF32F8e4m3b11fnuzRoundtrip) {
   if (test::DeviceIs(test::kCpu)) {
     GTEST_SKIP();
   }
@@ -1430,7 +1430,7 @@ XLA_TYPED_TEST(ConvertTestF16, ConvertF8e4m3b11fnuzF16RoundtripExhaustive4) {
 
 // ----- F8E5M2FNUZ
 
-XLA_TEST_F(ConvertTest, ConvertF16F8e5m2fnuzRoundtrip) {
+TEST_F(ConvertTest, ConvertF16F8e5m2fnuzRoundtrip) {
   // Convert from FP16 to FP8, then back to FP16.
   XlaBuilder builder(TestName());
   float nan = std::numeric_limits<float>::quiet_NaN();
@@ -1482,7 +1482,7 @@ XLA_TEST_F(ConvertTest, ConvertF16F8e5m2fnuzRoundtrip) {
                                    ErrorSpec(0.));
 }
 
-XLA_TEST_F(ConvertTest, ConvertF32F8e5m2fnuzRoundtrip) {
+TEST_F(ConvertTest, ConvertF32F8e5m2fnuzRoundtrip) {
   // Convert from FP32 to FP8, then back to FP32.
   XlaBuilder builder(TestName());
   float nan = std::numeric_limits<float>::quiet_NaN();
@@ -1601,7 +1601,7 @@ XLA_TYPED_TEST(ConvertTestF16, ConvertF8e5m2fnuzF16RoundtripExhaustive4) {
 
 // ----- F8E4M3FNUZ
 
-XLA_TEST_F(ConvertTest, ConvertF16F8e4m3fnuzRoundtrip) {
+TEST_F(ConvertTest, ConvertF16F8e4m3fnuzRoundtrip) {
   // Convert from FP16 to FP8, then back to FP16.
   XlaBuilder builder(TestName());
   float nan = std::numeric_limits<float>::quiet_NaN();
@@ -1652,7 +1652,7 @@ XLA_TEST_F(ConvertTest, ConvertF16F8e4m3fnuzRoundtrip) {
                                    ErrorSpec(0.));
 }
 
-XLA_TEST_F(ConvertTest, ConvertF32F8e4m3fnuzRoundtrip) {
+TEST_F(ConvertTest, ConvertF32F8e4m3fnuzRoundtrip) {
   // Convert from FP32 to FP8, then back to FP32.
   XlaBuilder builder(TestName());
   float nan = std::numeric_limits<float>::quiet_NaN();
@@ -1764,7 +1764,7 @@ XLA_TYPED_TEST(ConvertTestF16, ConvertF8e4m3fnuzF16RoundtripExhaustive4) {
 
 // ----- F8E3M4
 
-XLA_TEST_F(ConvertTest, ConvertF16F8e3m4Roundtrip) {
+TEST_F(ConvertTest, ConvertF16F8e3m4Roundtrip) {
   // Convert from FP16 to FP8, then back to FP16
   XlaBuilder builder(TestName());
   float nan = std::numeric_limits<float>::quiet_NaN();
@@ -1820,7 +1820,7 @@ XLA_TEST_F(ConvertTest, ConvertF16F8e3m4Roundtrip) {
                                    ErrorSpec(0.));
 }
 
-XLA_TEST_F(ConvertTest, ConvertF32F8e3m4Roundtrip) {
+TEST_F(ConvertTest, ConvertF32F8e3m4Roundtrip) {
   if (test::DeviceIs(test::kCpu)) {
     GTEST_SKIP();
   }
@@ -1940,7 +1940,7 @@ XLA_TYPED_TEST(ConvertTestF16, ConvertF8e3m4F16RoundtripExhaustive4) {
 
 // ----- F4E2M1FN
 
-XLA_TEST_F(ConvertTest, DISABLED_ON_TPU(ConvertF16F4e2m1fnRoundtrip)) {
+TEST_F(ConvertTest, DISABLED_ON_TPU(ConvertF16F4e2m1fnRoundtrip)) {
   // Convert from FP16 to FP4, then back to FP16.
   XlaBuilder builder(TestName());
   float inf = std::numeric_limits<float>::infinity();
@@ -1989,7 +1989,7 @@ XLA_TEST_F(ConvertTest, DISABLED_ON_TPU(ConvertF16F4e2m1fnRoundtrip)) {
                                    ErrorSpec(0.));
 }
 
-XLA_TEST_F(ConvertTest, DISABLED_ON_TPU(ConvertF32F4e2m1fnRoundtrip)) {
+TEST_F(ConvertTest, DISABLED_ON_TPU(ConvertF32F4e2m1fnRoundtrip)) {
   if (test::DeviceIs(test::kCpu)) {
     GTEST_SKIP();
   }
@@ -2105,7 +2105,7 @@ XLA_TYPED_TEST(ConvertTestF16,
 
 // ----- F8E8M0FNU
 
-XLA_TEST_F(ConvertTest, DISABLED_ON_TPU(ConvertF32F8e8m0fnuRoundtrip)) {
+TEST_F(ConvertTest, DISABLED_ON_TPU(ConvertF32F8e8m0fnuRoundtrip)) {
   // Convert from FP32 to FP8, then back to FP32.
   XlaBuilder builder(TestName());
   float nan = std::numeric_limits<float>::quiet_NaN();

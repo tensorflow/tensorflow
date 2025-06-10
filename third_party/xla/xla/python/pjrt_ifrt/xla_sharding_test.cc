@@ -829,6 +829,23 @@ TEST_P(HloShardingTest, DisassembleWithSubgroupMaximalSlowPath) {
   }
 }
 
+TEST_P(HloShardingTest, IndexDomainsWithTileTranspose) {
+  auto device_list = GetDevices({0, 1, 2, 3});
+  auto xla_hlo_sharding =
+      xla::HloSharding::IotaTile(/*tile_assignment_dims=*/{2, 2},
+                                 /*reshape_dims=*/{2, 2},
+                                 /*transpose_perm=*/{1, 0});
+  std::shared_ptr<const HloSharding> sharding =
+      HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
+  Shape shape({4, 4});
+  {
+    TF_ASSERT_OK_AND_ASSIGN(auto index_domains, sharding->IndexDomains(shape));
+    EXPECT_THAT(index_domains,
+                ElementsAreArray(TEST_HloShardingIndexDomainsSlowPath(
+                    *sharding, shape, SingleDeviceShardSemantics::kAllShards)));
+  }
+}
+
 TEST_P(HloShardingTest, IndexDomainsWithManual) {
   auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
   auto xla_hlo_sharding = xla::HloSharding::Manual();

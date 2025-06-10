@@ -458,7 +458,7 @@ xla_cc_test(
     name = "onednn_softmax_test",
     srcs = ["onednn_softmax_test.cc"],
     copts = tsl_copts(),
-    shard_count = 4,
+    shard_count = if_graph_api(4, 1),
     deps = [
         "//xla:literal",
         "//xla:shape_util",

@@ -78,6 +78,9 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
 absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
     const AutoShardingSolverRequest& request, const std::string& algorithm);
 
+absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
+    const iopddl::Problem& problem, const std::string& algorithm);
+
 enum AutoShardingViolationCode {
   kAliasViolationCode,     // Some node's strategy does not match its alias
   kFollowerViolationCode,  // Some node's strategy does not match its follower
@@ -139,6 +142,11 @@ AutoShardingEvaluation Evaluate(const iopddl::Problem& problem,
 double ComputeShardingCost(const AutoShardingSolverRequest& request,
                            const std::vector<NodeStrategyIdx>& node_strategies,
                            bool use_negative_violation_codes = true);
+
+iopddl::TotalCost ComputeShardingCost(
+    const iopddl::Problem& problem,
+    const std::vector<NodeStrategyIdx>& node_strategies,
+    bool use_negative_violation_codes = true);
 
 // Determines if strategy 'first' is dominated by strategy 'second' (i.e., its
 // costs are all equal or worse, and it has identical alias mappings).

@@ -268,35 +268,6 @@ cc_library(
         "-Ithird_party",
     ],
     deps = [
-        "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
-        "//tensorflow/compiler/mlir/utils:validators",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Dialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:ShapeDialect",
-        "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TransformUtils",
-        "@llvm-project//mlir:Transforms",
-        "@local_xla//xla/mlir_hlo",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "tf_fuse_convolution_pass",
-    srcs = [
-        "transforms/mhlo_passes/tf_fuse_convolution_pass.cc",
-    ],
-    hdrs = [
-        "transforms/mhlo_passes/tf_fuse_convolution_pass.h",
-    ],
-    compatible_with = get_compatible_with_portable(),
-    copts = [
-        "-Ithird_party",
-    ],
-    deps = [
         "//tensorflow/compiler/mlir/quantization/common:tf_attrs_and_constraints",
         "//tensorflow/compiler/mlir/utils:validators",
         "@llvm-project//llvm:Support",

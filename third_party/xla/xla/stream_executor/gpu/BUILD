@@ -521,7 +521,10 @@ gpu_kernel_library(
     srcs = ["gpu_test_kernels.cu.cc"],
     hdrs = ["gpu_test_kernels.h"],
     linkstatic = True,
-    tags = ["gpu"],
+    tags = [
+        "gpu",
+        "no-sycl",
+    ],
     deps = [
         "//xla/stream_executor:kernel_spec",
     ] + if_cuda_is_configured([

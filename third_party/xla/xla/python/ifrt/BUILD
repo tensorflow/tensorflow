@@ -1,3 +1,4 @@
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/python/ifrt:ifrt.bzl", "ifrt_package_groups")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
@@ -440,19 +441,6 @@ cc_library(
 )
 
 cc_library(
-    name = "no_impl_test_main",
-    testonly = True,
-    srcs = ["no_impl_test_main.cc"],
-    visibility = internal_visibility([
-        ":friends",
-        ":internal",
-    ]),
-    deps = [
-        "@com_google_googletest//:gtest_for_library",
-    ],
-)
-
-cc_library(
     name = "array_impl_test_lib",
     testonly = True,
     srcs = ["array_impl_test_lib.cc"],
@@ -482,13 +470,9 @@ cc_library(
     alwayslink = True,
 )
 
-xla_cc_test(
+build_test(
     name = "array_test_no_impl",
-    srcs = [],
-    deps = [
-        ":array_impl_test_lib",
-        ":no_impl_test_main",
-    ],
+    targets = [":array_impl_test_lib"],
 )
 
 tf_proto_library(
@@ -520,14 +504,9 @@ cc_library(
     alwayslink = True,
 )
 
-xla_cc_test(
+build_test(
     name = "client_test_no_impl",
-    srcs = [],
-    deps = [
-        ":client_impl_test_lib",
-        ":no_impl_test_main",
-        "@com_google_googletest//:gtest",
-    ],
+    targets = [":client_impl_test_lib"],
 )
 
 cc_library(
@@ -551,13 +530,9 @@ cc_library(
     alwayslink = True,
 )
 
-xla_cc_test(
+build_test(
     name = "tuple_test_no_impl",
-    srcs = [],
-    deps = [
-        ":no_impl_test_main",
-        ":tuple_impl_test_lib",
-    ],
+    targets = [":tuple_impl_test_lib"],
 )
 
 cc_library(
@@ -593,6 +568,50 @@ cc_library(
 )
 
 cc_library(
+    name = "serdes_version",
+    hdrs = ["serdes_version.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+    ]),
+    deps = ["@com_google_absl//absl/strings"],
+)
+
+cc_library(
+    name = "serdes_any_version_accessor",
+    hdrs = ["serdes_any_version_accessor.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([":serdes_any_version_users"]),
+    deps = [":serdes_version"],
+)
+
+cc_library(
+    name = "serdes_week_4_old_version_accessor",
+    hdrs = ["serdes_week_4_old_version_accessor.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([":serdes_week_4_old_version_users"]),
+    deps = [":serdes_version"],
+)
+
+cc_library(
+    name = "serdes_test_util",
+    testonly = True,
+    srcs = ["serdes_test_util.cc"],
+    hdrs = ["serdes_test_util.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+        ":users",
+    ]),
+    deps = [
+        ":serdes_any_version_accessor",
+        ":serdes_version",
+    ],
+)
+
+cc_library(
     name = "serdes",
     srcs = ["serdes.cc"],
     hdrs = ["serdes.h"],
@@ -604,6 +623,7 @@ cc_library(
     ]),
     deps = [
         ":serdes_proto_cc",
+        ":serdes_version",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",

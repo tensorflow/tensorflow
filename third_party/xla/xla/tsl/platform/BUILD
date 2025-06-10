@@ -46,6 +46,7 @@ exports_files(
         "env.cc",
         "ram_file_system.h",
         "grpc_credentials.h",
+        "recordphase.h",
         "resource.h",
         "rocm_rocdl_path.h",
         "resource_loader.h",
@@ -131,6 +132,7 @@ filegroup(
         "file_system_helper.h",
         "prefetch.h",
         "ram_file_system.h",
+        "recordphase.h",
         "resource.h",
         "stack_frame.h",
         "statusor.h",
@@ -839,4 +841,10 @@ tsl_cc_test(
         ":test",
         "@com_google_googletest//:gtest_main",
     ],
+)
+
+cc_library(
+    name = "recordphase",
+    textual_hdrs = ["recordphase.h"],
+    deps = tf_platform_deps("recordphase") + ["@com_google_absl//absl/strings:string_view"],
 )

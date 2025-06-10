@@ -182,15 +182,13 @@ class MultiOutputFusionTest : public HloTestBase {
   }
 };
 
-XLA_TEST_F(MultiOutputFusionTest, 2DNofusion) { RunTest2D(false, 5); }
-XLA_TEST_F(MultiOutputFusionTest, 2DFusion) { RunTest2D(true, 5); }
-XLA_TEST_F(MultiOutputFusionTest, 2DFusionSize129) { RunTest2D(true, 129); }
-XLA_TEST_F(MultiOutputFusionTest, DifferentTypesNoFusion) {
-  RunTest1D(false, 8);
-}
-XLA_TEST_F(MultiOutputFusionTest, DifferentTypesFusion) { RunTest1D(true, 8); }
+TEST_F(MultiOutputFusionTest, 2DNofusion) { RunTest2D(false, 5); }
+TEST_F(MultiOutputFusionTest, 2DFusion) { RunTest2D(true, 5); }
+TEST_F(MultiOutputFusionTest, 2DFusionSize129) { RunTest2D(true, 129); }
+TEST_F(MultiOutputFusionTest, DifferentTypesNoFusion) { RunTest1D(false, 8); }
+TEST_F(MultiOutputFusionTest, DifferentTypesFusion) { RunTest1D(true, 8); }
 
-XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFusion) {
+TEST_F(MultiOutputFusionTest, MultiOutputLoopFusion) {
   const char* testcase = R"(
     HloModule m, is_scheduled=true
 
@@ -215,8 +213,7 @@ XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFusion) {
   LiteralTestUtil::ExpectR1Equal<float>({0.0, 4.0, 9.0, 1.0}, result);
 }
 
-XLA_TEST_F(MultiOutputFusionTest,
-           MultiOutputLoopFusionBitcastCompatibleShapes) {
+TEST_F(MultiOutputFusionTest, MultiOutputLoopFusionBitcastCompatibleShapes) {
   const char* testcase = R"(
     HloModule m, is_scheduled=true
 
@@ -243,7 +240,7 @@ XLA_TEST_F(MultiOutputFusionTest,
   LiteralTestUtil::ExpectR1Equal<float>({0.0, 4.0, 9.0, 1.0}, result);
 }
 
-XLA_TEST_F(MultiOutputFusionTest, MultiOutputLoopFeedingMap) {
+TEST_F(MultiOutputFusionTest, MultiOutputLoopFeedingMap) {
 #ifdef XLA_TEST_BACKEND_GPU
   GTEST_SKIP() << "Nested fusions not supported on GPU with MLIR emitters.";
 #endif
@@ -292,7 +289,7 @@ const char* const kScalarOps = R"(
     }
 )";
 
-XLA_TEST_F(MultiOutputFusionTest, MultiOutputReduceFusionMinor) {
+TEST_F(MultiOutputFusionTest, MultiOutputReduceFusionMinor) {
   const std::string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[32,32,32]{2,1,0} parameter(0)
@@ -313,7 +310,7 @@ XLA_TEST_F(MultiOutputFusionTest, MultiOutputReduceFusionMinor) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
 }
 
-XLA_TEST_F(MultiOutputFusionTest, MultiOutputReduceFusionMajor) {
+TEST_F(MultiOutputFusionTest, MultiOutputReduceFusionMajor) {
   const std::string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[32,32,32]{2,1,0} parameter(0)
@@ -334,7 +331,7 @@ XLA_TEST_F(MultiOutputFusionTest, MultiOutputReduceFusionMajor) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
 }
 
-XLA_TEST_F(MultiOutputFusionTest, MultiOutputReduceFusionScalar) {
+TEST_F(MultiOutputFusionTest, MultiOutputReduceFusionScalar) {
   const std::string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[2,32,32]{2,1,0} parameter(0)
@@ -356,7 +353,7 @@ XLA_TEST_F(MultiOutputFusionTest, MultiOutputReduceFusionScalar) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
 }
 
-XLA_TEST_F(MultiOutputFusionTest, MultiOutputReduceFusionMinorWithExtraOutput) {
+TEST_F(MultiOutputFusionTest, MultiOutputReduceFusionMinorWithExtraOutput) {
   const std::string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[2,32,32]{2,1,0} parameter(0)
@@ -378,7 +375,7 @@ XLA_TEST_F(MultiOutputFusionTest, MultiOutputReduceFusionMinorWithExtraOutput) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
 }
 
-XLA_TEST_F(MultiOutputFusionTest, MultiOutputReduceFusionMajorWithExtraOutput) {
+TEST_F(MultiOutputFusionTest, MultiOutputReduceFusionMajorWithExtraOutput) {
   const std::string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[32,32,2]{2,1,0} parameter(0)
@@ -400,8 +397,7 @@ XLA_TEST_F(MultiOutputFusionTest, MultiOutputReduceFusionMajorWithExtraOutput) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
 }
 
-XLA_TEST_F(MultiOutputFusionTest,
-           MultiOutputReduceFusionScalarWithExtraOutput) {
+TEST_F(MultiOutputFusionTest, MultiOutputReduceFusionScalarWithExtraOutput) {
   const std::string testcase = R"(
     HloModule m, is_scheduled=true
 
@@ -431,7 +427,7 @@ XLA_TEST_F(MultiOutputFusionTest,
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
 }
 
-XLA_TEST_F(MultiOutputFusionTest, MultiOutputReduceFusionNonConstInit) {
+TEST_F(MultiOutputFusionTest, MultiOutputReduceFusionNonConstInit) {
   const std::string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce {
       p0 = f32[2,32,32]{2,1,0} parameter(0)
@@ -453,8 +449,7 @@ XLA_TEST_F(MultiOutputFusionTest, MultiOutputReduceFusionNonConstInit) {
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
 }
 
-XLA_TEST_F(MultiOutputFusionTest,
-           MultiOutputReduceFusionDifferentElementTypes) {
+TEST_F(MultiOutputFusionTest, MultiOutputReduceFusionDifferentElementTypes) {
   const std::string testcase = absl::StrCat(kScalarOps, R"(
     fused_reduce (p0: f16[2,32,32]) -> (f32[2,32], f32[2,32], f16[2,32,32]) {
       p0 = f16[2,32,32]{2,1,0} parameter(0)
@@ -477,7 +472,7 @@ XLA_TEST_F(MultiOutputFusionTest,
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
 }
 
-XLA_TEST_F(MultiOutputFusionTest, MultiOutputReduceCanonicalizationIsSame) {
+TEST_F(MultiOutputFusionTest, MultiOutputReduceCanonicalizationIsSame) {
   const std::string testcase = absl::StrCat(kScalarOps, R"(
 fused_computation {
   param_0 = f32[64,128]{1,0} parameter(0)
@@ -497,7 +492,7 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
 }
 
-XLA_TEST_F(MultiOutputFusionTest, MultiOutputReduceGeneralBitcastCompatible) {
+TEST_F(MultiOutputFusionTest, MultiOutputReduceGeneralBitcastCompatible) {
   const std::string testcase = absl::StrCat(kScalarOps, R"(
 fused_computation {
   param_0 = f32[64,128]{1,0} parameter(0)
@@ -517,7 +512,7 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
 }
 
-XLA_TEST_F(MultiOutputFusionTest, MultiOutputReduceWithEpilogue) {
+TEST_F(MultiOutputFusionTest, MultiOutputReduceWithEpilogue) {
   const std::string testcase = absl::StrCat(kScalarOps, R"(
 fused_computation {
   param_0 = f32[4,2]{1,0} parameter(0)
@@ -537,8 +532,8 @@ ENTRY main.7749 {
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
 }
 
-XLA_TEST_F(MultiOutputFusionTest,
-           MultiOutputReduceWithEpilogueHeroAlsoUsedAsNonHero) {
+TEST_F(MultiOutputFusionTest,
+       MultiOutputReduceWithEpilogueHeroAlsoUsedAsNonHero) {
   // reduce.8 is used by bitcast as reduce hero and by broadcast as non-hero.
   const std::string testcase = absl::StrCat(kScalarOps, R"(
 fused_computation {
@@ -561,8 +556,8 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
 }
 
-XLA_TEST_F(MultiOutputFusionTest,
-           MultiOutputTransposeFusionHeroWithMultipleRootUsers) {
+TEST_F(MultiOutputFusionTest,
+       MultiOutputTransposeFusionHeroWithMultipleRootUsers) {
   const std::string testcase = R"(
     HloModule test
     fused_transpose {

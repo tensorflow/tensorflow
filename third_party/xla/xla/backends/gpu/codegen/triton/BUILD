@@ -3,6 +3,7 @@ load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load(
     "//xla/stream_executor:build_defs.bzl",
+    "if_cuda_or_rocm_is_configured",
     "if_gpu_is_configured",
 )
 load("//xla/tests:build_defs.bzl", "xla_test")
@@ -178,7 +179,8 @@ cc_library(
 
 cc_library(
     name = "fusion_emitter",
-    srcs = if_gpu_is_configured(
+    # Using if_cuda_or_rocm_is_configured guard to prevent sycl target build / link errors.
+    srcs = if_cuda_or_rocm_is_configured(
         ["fusion_emitter.cc"],
         ["fusion_emitter_stub.cc"],
     ),

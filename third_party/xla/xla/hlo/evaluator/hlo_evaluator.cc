@@ -840,6 +840,45 @@ std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
   return std::nullopt;
 }
 
+/*static*/ bool HloEvaluator::IsOpcodeImplemented(HloOpcode opcode) {
+  switch (opcode) {
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllGatherDone:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kAllReduceDone:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllToAll:
+    case HloOpcode::kBatchNormGrad:
+    case HloOpcode::kBatchNormInference:
+    case HloOpcode::kBatchNormTraining:
+    case HloOpcode::kCholesky:
+    case HloOpcode::kCollectiveBroadcast:
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCollectivePermuteDone:
+    case HloOpcode::kCollectivePermuteStart:
+    case HloOpcode::kDomain:
+    case HloOpcode::kDynamicReshape:
+    case HloOpcode::kOptimizationBarrier:
+    case HloOpcode::kOutfeed:
+    case HloOpcode::kPartitionId:
+    case HloOpcode::kRaggedAllToAll:
+    case HloOpcode::kRaggedDot:
+    case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
+    case HloOpcode::kReduceScatter:
+    case HloOpcode::kReplicaId:
+    case HloOpcode::kRngBitGenerator:
+    case HloOpcode::kRngGetAndUpdateState:
+    case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
+    case HloOpcode::kTriangularSolve:
+      return false;
+    default:
+      return true;
+  }
+}
+
 // Note that unsupported types by the typed visitor does not necessarily imply
 // the non-typed HloEvaluator (parent evaluator) would not support them either
 // in the type-agnostic handler. For e.g., HandleGetTupleElement in the parent
@@ -1194,6 +1233,12 @@ absl::Status HloEvaluator::EvaluateInternal(
     const HloInstruction* instruction, PrecomputedAnalyses precomputed_analyses,
     const ShapeIndex& shape_index,
     bool recursively_evaluate_nonconstant_operands) {
+  // No need to evaluate the operand subtrees if the instruction opcode is not
+  // implemented.
+  if (!IsOpcodeImplemented(instruction->opcode())) {
+    return Unimplemented("HloEvaluator does not implement the %s opcode.",
+                         HloOpcodeString(instruction->opcode()));
+  }
   // Don't need to evaluate this instruction again if it has already been
   // evaluated.
   if (IsAlreadyEvaluated(instruction, shape_index)) {

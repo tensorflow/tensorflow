@@ -23,7 +23,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/run_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/save_variables.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/platform/env.h"
@@ -42,7 +42,7 @@ absl::Status UnfreezeConstantsAndSaveVariables(
   TF_RETURN_IF_ERROR(RunPasses(
       /*name=*/kTfQuantConstantUnfreezingStepName, /*add_passes_func=*/
       [](mlir::PassManager &pm) {
-        pm.addPass(mlir::tf_quant::CreateUnfreezeConstantsPass());
+        pm.addPass(mlir::quant::CreateUnfreezeConstantsPass());
       },
       ctx, module_op));
 
@@ -61,12 +61,12 @@ absl::Status UnfreezeConstantsAndSaveVariables(
       /*name=*/kTfQuantInsertRestoreOpStepName,
       /*add_passes_func=*/
       [](mlir::PassManager &pm) {
-        pm.addPass(mlir::tf_quant::CreateInsertRestoreOpPass());
-        pm.addPass(mlir::tf_quant::CreateInsertSaveOpPass());
+        pm.addPass(mlir::quant::CreateInsertRestoreOpPass());
+        pm.addPass(mlir::quant::CreateInsertSaveOpPass());
         // Initialization by `tf.ConstOp` is no longer required as there is
         // a `tf.RestoreV2Op` now.
         pm.addPass(
-            mlir::tf_quant::CreateRemoveVariableInitializationByConstPass());
+            mlir::quant::CreateRemoveVariableInitializationByConstPass());
       },
       ctx, module_op);
 }

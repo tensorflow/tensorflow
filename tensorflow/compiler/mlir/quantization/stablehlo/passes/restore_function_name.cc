@@ -24,7 +24,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
 
@@ -33,6 +33,8 @@ limitations under the License.
 //===----------------------------------------------------------------------===//
 
 namespace mlir::quant::stablehlo {
+
+using tf_quant::kOriginalStablehloEntryFunctionAttrName;
 
 #define GEN_PASS_DEF_RESTOREFUNCTIONNAMEPASS
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h.inc"

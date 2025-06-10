@@ -1,7 +1,7 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
-load("@local_xla//xla/tsl:tsl.bzl", "if_cuda_libs")
+load("@local_xla//xla/tsl:tsl.default.bzl", "if_cuda_libs")
 load(
     "//tensorflow:tensorflow.bzl",
     "clean_dep",

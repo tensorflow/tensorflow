@@ -32,9 +32,8 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
-#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
-#include "tensorflow/compiler/mlir/quantization/common/func.h"
-#include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
@@ -54,6 +53,14 @@ using ::stablehlo::quantization::Method;
 using ::stablehlo::quantization::QuantizationSpec;
 using ::stablehlo::quantization::QuantizationSpecs;
 using ::tsl::protobuf::TextFormat;
+
+using tf_quant::FunctionCallOpType;
+using tf_quant::GetSortedFunctions;
+using tf_quant::IsInLiftedFunc;
+using tf_quant::IsInStableHloOpRegion;
+using tf_quant::kAttrMapAttribute;
+using tf_quant::kNullAttributeValue;
+using tf_quant::kQuantizationMethodAttr;
 
 // TODO - b/303543789: Move the helper functions below to a separate util.
 // Fetches the default or null attribute, used for pattern matching.

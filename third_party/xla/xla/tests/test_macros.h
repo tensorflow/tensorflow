@@ -28,8 +28,6 @@ limitations under the License.
 #ifndef XLA_TESTS_TEST_MACROS_H_
 #define XLA_TESTS_TEST_MACROS_H_
 
-#define DISABLED_ON_INTERPRETER_TSAN(X) X
-#define DISABLED_ON_DEBUG(X) X
 #define DISABLED_ON_TPU(X) X
 
 // We need this macro instead of pasting directly to support nesting
@@ -41,35 +39,12 @@ limitations under the License.
 // clang-format off
 
 
-#ifdef XLA_TEST_BACKEND_INTERPRETER
-
-#ifdef THREAD_SANITIZER
-# undef DISABLED_ON_INTERPRETER_TSAN
-# define DISABLED_ON_INTERPRETER_TSAN(X) XLA_TEST_PASTE(DISABLED_, X)
-#endif  // THREAD_SANITIZER
-
-#endif  // XLA_TEST_BACKEND_INTERPRETER
-
-#ifndef NDEBUG
-# undef DISABLED_ON_DEBUG
-# define DISABLED_ON_DEBUG(X) XLA_TEST_PASTE(DISABLED_, X)
-#endif  // !NDEBUG
-
 #ifdef XLA_TEST_BACKEND_TPU
 # undef DISABLED_ON_TPU
 # define DISABLED_ON_TPU(X) XLA_TEST_PASTE(DISABLED_, X)
 #endif  // XLA_TEST_BACKEND_TPU
 
 // clang-format on
-
-namespace xla {
-
-inline const char** TestPlatform() {
-  static const char* test_platform = nullptr;
-  return &test_platform;
-}
-
-}  // namespace xla
 
 #define XLA_TEST_F(test_fixture, test_name) TEST_F(test_fixture, test_name)
 

@@ -196,6 +196,7 @@ void GrpcClientSession::Finish(const absl::Status& client_status) {
             << client_status;
 
   absl::call_once(finish_once_, [&] {
+    LOG(INFO) << "GrpcClientSession: Finish(): calling context_->TryCancel();";
     context_->TryCancel();
 
     LOG(INFO) << "GrpcClientSession: Waiting for reader thread to stop.";
@@ -234,9 +235,11 @@ void GrpcClientSession::Finish(const absl::Status& client_status) {
               << combined_status;
     stream_terminated_cb_(combined_status);
   });
+  LOG(INFO) << "GrpcClientSession: Finish() done.";
 }
 
 GrpcClientSession::~GrpcClientSession() {
+  LOG(INFO) << "GrpcClientSession::~GrpcClientSession() starting.";
   GrpcClientSession::Finish(absl::CancelledError("~GrpcClientSession called."));
   reader_thread_.reset();  // Wait until the reader thread exits.
   LOG(INFO) << "Deleting GrpcClientSession.user_futures_work_queue_ ...";

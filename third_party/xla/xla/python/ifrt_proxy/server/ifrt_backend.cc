@@ -364,8 +364,9 @@ class IfrtBackend::InOrderRequestsProcessor {
           "InOrderRequestsProcessor already stopped: ", *shutdown_msg_)));
       return result;
     }
+    absl::string_view req_name = GetRequestName(request.get());
     Entry entry{/*req=*/std::move(request), /*promise=*/std::move(promise),
-                XFlowHelper(GetRequestName(request.get()))};
+                XFlowHelper(req_name)};
     entry.xflow.InstantActivity<XFlowHelper::kSend>();
     entries_.push_back(std::move(entry));
     return result;

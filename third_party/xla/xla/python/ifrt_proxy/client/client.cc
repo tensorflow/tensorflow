@@ -27,6 +27,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -233,7 +234,11 @@ Client::Client(std::shared_ptr<RpcHelper> rpc_helper, uint64_t session_id,
       memories_(std::move(memories)),
       default_compiler_(this, rpc_helper) {}
 
-Client::~Client() { rpc_helper_->Disconnect(); }
+Client::~Client() {
+  LOG(INFO) << "Client::~Client() starting.";
+  rpc_helper_->Disconnect();
+  LOG(INFO) << "Client::~Client(): rpc_helper_->Disconnect() is done.";
+}
 
 absl::StatusOr<xla::ifrt::Device*> Client::LookupDevice(
     DeviceId device_id) const {

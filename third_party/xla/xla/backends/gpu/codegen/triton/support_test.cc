@@ -2146,7 +2146,7 @@ class DotPrecisionTest
           std::tuple<PrimitiveType, PrecisionConfig::Precision,
                      PrecisionConfig::Precision, se::GpuComputeCapability>> {};
 
-std::string DotPrecisionTestName(
+std::string OperandPrecisionTestName(
     const ::testing::TestParamInfo<
         std::tuple<PrimitiveType, PrecisionConfig::Precision,
                    PrecisionConfig::Precision, se::GpuComputeCapability>>&
@@ -2222,7 +2222,7 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::ValuesIn(kOperandPrecisions),
         ::testing::ValuesIn(kOperandPrecisions),
         ::testing::ValuesIn(AllDevicesToTest())),
-    DotPrecisionTestName);
+    OperandPrecisionTestName);
 
 class DotPrecisionAlgorithmTest
     : public DotTest,
@@ -3049,10 +3049,244 @@ INSTANTIATE_TEST_SUITE_P(
         ::testing::Bool()),  // largest?
     ParamToStringTopK);
 
+class ConvolutionTestFullParametrization
+    : public TritonSupportTest,
+      public ::testing::WithParamInterface<
+          std::tuple<PrimitiveType, PrecisionConfig::Precision,
+                     PrecisionConfig::Precision, se::GpuComputeCapability>> {};
+
+// Test a basic convolution (NHWC layout)
+TEST_P(ConvolutionTestFullParametrization, IsTritonSupportedConvNHWC) {
+  auto [data_type, input_precision, kernel_precision, cc] = GetParam();
+  const std::string kHloTestTemplate = absl::Substitute(
+      R"(
+ENTRY triton_computation {
+  input = $0[1,5,6,2] parameter(0)  // N=1, H=5, W=6, C_in=2
+  kernel = $0[3,3,2,3] parameter(1) // H=3, W=3, C_in=2, C_out=3
+  ROOT conv = $0[1,5,6,3] convolution(input, kernel),
+    window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f,
+    operand_precision={$1, $2}
+})",
+      primitive_util::LowercasePrimitiveTypeName(data_type),
+      PrecisionToString(input_precision), PrecisionToString(kernel_precision));
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
+                                                    kHloTestTemplate, data_type,
+                                                    HloOpcode::kConvolution));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 2, 2, 1}, cc);
+}
+
+// Test a convolution with NCHW layout
+TEST_P(ConvolutionTestFullParametrization, IsTritonSupportedConvNCHW) {
+  auto [data_type, input_precision, kernel_precision, cc] = GetParam();
+  const std::string kHloTestTemplate = absl::Substitute(
+      R"(
+ENTRY triton_computation {
+  input = $0[1,2,5,6] parameter(0)  // N=1, C_in=2, H=5, W=6
+  kernel = $0[3,2,3,3] parameter(1) // C_out=3, C_in=2, H=3, W=3
+  ROOT conv = $0[1,3,5,6] convolution(input, kernel),
+    window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_oi01->bf01,
+    operand_precision={$1, $2}
+  })",
+      primitive_util::LowercasePrimitiveTypeName(data_type),
+      PrecisionToString(input_precision), PrecisionToString(kernel_precision));
+  TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
+                                                    kHloTestTemplate, data_type,
+                                                    HloOpcode::kConvolution));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 1, 2, 2}, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ConvolutionTestSuiteFull, ConvolutionTestFullParametrization,
+    ::testing::Combine(
+        ::testing::ValuesIn(AllOpSupportedTypes(HloOpcode::kConvolution)),
+        ::testing::ValuesIn(kOperandPrecisions),
+        ::testing::ValuesIn(kOperandPrecisions),
+        ::testing::ValuesIn(AllDevicesToTest())),
+    OperandPrecisionTestName);
+
+using ConvolutionTestCcOnly = TritonSupportTestWithDeviceParam;
+
+// Test a convolution with stride > 1
+TEST_P(ConvolutionTestCcOnly, IsTritonSupportedConvStrided) {
+  auto cc = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  input = f16[1,5,6,2] parameter(0)  // N=1, H=5, W=6, C_in=2
+  kernel = f16[3,3,2,3] parameter(1) // H=3, W=3, C_in=2, C_out=3
+  ROOT conv = f16[1,2,2,3] convolution(input, kernel),
+    window={size=3x3 stride=2x2}, dim_labels=b01f_01io->b01f
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, PRIMITIVE_TYPE_INVALID,
+                                     HloOpcode::kConvolution));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 1, 1, 1}, cc);
+}
+
+// Test a convolution with kernel dilation > 1
+TEST_P(ConvolutionTestCcOnly, IsTritonSupportedConvDilated) {
+  auto cc = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  input = f16[1,5,6,2] parameter(0)  // N=1, H=5, W=6, C_in=2
+  kernel = f16[3,3,2,3] parameter(1) // H=3, W=3, C_in=2, C_out=3
+  ROOT conv = f16[1,1,2,3] convolution(input, kernel),
+    window={size=3x3 rhs_dilate=2x2}, dim_labels=b01f_01io->b01f
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, PRIMITIVE_TYPE_INVALID,
+                                     HloOpcode::kConvolution));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 1, 1, 1}, cc);
+}
+
+// Test a depthwise convolution
+TEST_P(ConvolutionTestCcOnly, IsTritonSupportedConvDepthwise) {
+  auto cc = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  input = f16[1,5,6,2] parameter(0)    // N=1, H=5, W=6, C_in=1
+  kernel = f16[3,3,1,2] parameter(1)   // H=3, W=3, C_in=1, C_out=2
+  ROOT conv = f16[1,5,6,2] convolution(input, kernel),
+    window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f,
+    feature_group_count=2
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, PRIMITIVE_TYPE_INVALID,
+                                     HloOpcode::kConvolution));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 2, 2, 1}, cc);
+}
+
+// Test a convolution with batch_group_count > 1
+TEST_P(ConvolutionTestCcOnly, IsTritonSupportedConvBatchGrouped) {
+  auto cc = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  input = f16[4,5,6,2] parameter(0)  // N=4, H=5, W=6, C_in=2
+  kernel = f16[3,3,2,6] parameter(1) // H=3, W=3, C_in=2, C_out=6
+  ROOT conv = f16[2,5,6,6] convolution(input, kernel),
+    window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f,
+    batch_group_count=2
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, PRIMITIVE_TYPE_INVALID,
+                                     HloOpcode::kConvolution));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 2, 2, 2}, cc);
+}
+
+// Test a convolution with lhs_dilation > 1
+TEST_P(ConvolutionTestCcOnly, IsTritonSupportedConvLhsDilation) {
+  auto cc = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  input = f16[1,5,6,2] parameter(0)  // N=1, H=5, W=6, C_in=2
+  kernel = f16[3,3,2,3] parameter(1) // H=3, W=3, C_in=2, C_out=3
+  ROOT conv = f16[1,7,9,3] convolution(input, kernel),
+    window={size=3x3 lhs_dilate=2x2}, dim_labels=b01f_01io->b01f
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, PRIMITIVE_TYPE_INVALID,
+                                     HloOpcode::kConvolution));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 2, 2, 1}, cc);
+}
+
+// Test a convolution with asymmetric padding
+TEST_P(ConvolutionTestCcOnly, IsTritonSupportedConvAsymmetricPadding) {
+  auto cc = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  input = f16[1,5,6,2] parameter(0)  // N=1, H=5, W=6, C_in=2
+  kernel = f16[3,3,2,3] parameter(1) // H=3, W=3, C_in=2, C_out=3
+  ROOT conv = f16[1,5,7,3] convolution(input, kernel),
+    window={size=3x3 pad=1_1x1_2}, dim_labels=b01f_01io->b01f
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, PRIMITIVE_TYPE_INVALID,
+                                     HloOpcode::kConvolution));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 2, 2, 1}, cc);
+}
+
+// Test a general grouped convolution (1 < feature_group_count < Cin)
+TEST_P(ConvolutionTestCcOnly, IsTritonSupportedConvGeneralGrouped) {
+  auto cc = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  input = f16[1,5,6,4] parameter(0)  // N=1, H=5, W=6, C_in=4
+  kernel = f16[3,3,2,6] parameter(1) // H=3, W=3, C_in_per_group=2, C_out_total=6
+  ROOT conv = f16[1,5,6,6] convolution(input, kernel),
+    window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f,
+    feature_group_count=2
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, PRIMITIVE_TYPE_INVALID,
+                                     HloOpcode::kConvolution));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 2, 2, 2}, cc);
+}
+
+// Test a convolution where kernel spatial dims are larger than input spatial
+// dims, requiring padding.
+TEST_P(ConvolutionTestCcOnly,
+       IsTritonSupportedConvKernelLargerThanInputPadded) {
+  auto cc = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  input = f16[1,2,2,2] parameter(0)  // N=1, H=2, W=2, C_in=2
+  kernel = f16[3,3,2,3] parameter(1) // H=3, W=3, C_in=2, C_out=3
+  ROOT conv = f16[1,2,2,3] convolution(input, kernel),
+    window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, PRIMITIVE_TYPE_INVALID,
+                                     HloOpcode::kConvolution));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 1, 1, 1}, cc);
+}
+
+TEST_P(ConvolutionTestCcOnly, IsTritonSupportedConvDifferentWindowPadding) {
+  auto cc = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  input = f16[1,5,6,2] parameter(0)  // N=1, H=5, W=6, C_in=2
+  kernel = f16[3,3,2,3] parameter(1) // H=3, W=3, C_in=2, C_out=3
+  ROOT conv = f16[1,5,6,3] convolution(input, kernel),
+    window={size=3x3 pad=2_0x0_2}, dim_labels=b01f_01io->b01f
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, PRIMITIVE_TYPE_INVALID,
+                                     HloOpcode::kConvolution));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 2, 2, 1}, cc);
+}
+
+TEST_P(ConvolutionTestCcOnly, IsTritonSupportedConvDifferentWindowSize) {
+  auto cc = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  input = f16[1,5,6,2] parameter(0)  // N=1, H=5, W=6, C_in=2
+  kernel = f16[2,2,2,3] parameter(1) // H=2, W=2, C_in=2, C_out=3
+  ROOT conv = f16[1,5,6,3] convolution(input, kernel),
+    window={size=2x2 pad=1_0x0_1}, dim_labels=b01f_01io->b01f
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, PRIMITIVE_TYPE_INVALID,
+                                     HloOpcode::kConvolution));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 2, 2, 1}, cc);
+}
+
+INSTANTIATE_TEST_SUITE_P(ConvolutionTestSuiteCcOnly, ConvolutionTestCcOnly,
+                         ::testing::ValuesIn(AllDevicesToTest()),
+                         TritonSupportTestDeviceToString);
+
 constexpr std::array kUnsupportedOps = {
     // clang-format off
     // go/keep-sorted start
-    HloOpcode::kConvolution,
     HloOpcode::kDynamicReshape,
     HloOpcode::kDynamicSlice,
     HloOpcode::kDynamicUpdateSlice,
@@ -3102,6 +3336,7 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.emplace(HloOpcode::kCholesky);
   ret.emplace(HloOpcode::kComplex);
   ret.emplace(HloOpcode::kConditional);
+  ret.emplace(HloOpcode::kConvolution);
   ret.emplace(HloOpcode::kCustomCall);
   ret.emplace(HloOpcode::kDomain);
   ret.emplace(HloOpcode::kDot);

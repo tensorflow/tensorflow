@@ -172,7 +172,7 @@ TEST_F(ExecutePhaseHloRunnerPjRtTest, CreateExecutableReadsFileCorrectly) {
   TF_ASSERT_OK(tsl::WriteStringToFile(
       tsl::Env::Default(),
       tsl::io::JoinPath(artifact_dir_, kModuleSerializedName), "hello world"));
-  tsl::Notification notification;
+  absl::Notification notification;
   std::optional<std::string> serialized_representation_read = std::nullopt;
   ExecutePhaseHloRunnerPjRt runner(
       std::make_unique<FakeClient>(

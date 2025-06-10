@@ -9,6 +9,7 @@ package(
 lit_test_suite(
     name = "ir_compiler_opt_tests",
     srcs = [
+        "exp_inlines.ll",
         "ir_compiler_basic_test.ll",
         "ir_compiler_vectorization_test.ll",
         "ldexp_inlines.ll",

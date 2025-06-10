@@ -33,9 +33,11 @@ limitations under the License.
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/hlo/ir/hlo_op_metadata.h"
@@ -118,6 +120,21 @@ bool GroupMinorIotaDimsSorted(absl::Span<const int64_t> dims,
   }
   std::stable_sort(new_perm.end() - grouped_dims, new_perm.end());
   return true;
+}
+
+// Advances the specified set of indexes and returns true if we haven't
+// wrapped around (i.e. result isn't {0, 0, ...}).
+bool NextIndex(absl::InlinedVector<int64_t, 6>* index,
+               absl::Span<const int64_t> limit) {
+  DCHECK_LE(index->size(), limit.size());
+  for (int64_t i = index->size() - 1; i >= 0; --i) {
+    ++(*index)[i];
+    if ((*index)[i] < limit[i]) {
+      return true;
+    }
+    (*index)[i] = 0;
+  }
+  return false;
 }
 
 }  // namespace
@@ -589,6 +606,76 @@ std::vector<int64_t> HloSharding::TileLimitForDevice(const Shape& shape,
         shape_dim);
   }
   return index;
+}
+
+absl::Status HloSharding::EachTile(
+    absl::Span<const int64_t> dims,
+    absl::FunctionRef<void(int64_t, absl::Span<const int64_t>,
+                           absl::Span<const int64_t>)>
+        f) const {
+  CHECK(!IsTuple());
+  CHECK(!IsManual());
+  CHECK(!IsUnknown());
+  CHECK(!maximal_);
+
+  // At the high-level, tile_assignment_dims[i] describes the number of ways the
+  // shape is partitioned along i-th dimension. Note that
+  // tile_assignment_dims[i] with i >= dims.size() encodes other information
+  // such as subgroups to express partial replication/sharding and other
+  // semantics.  They do not participate in determining the tile origin and
+  // shape.
+  const absl::Span<const int64_t> tile_assignment_dims =
+      tile_assignment().dimensions();
+  const int num_devices = tile_assignment().array().num_elements();
+
+  if (dims.size() != TiledDataRank()) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Shape rank is not same as tile rank: %d vs %d",
+                        dims.size(), TiledDataRank()));
+  }
+  absl::InlinedVector<int64_t, 6> tile_dims;
+  tile_dims.reserve(dims.size());
+  for (int64_t i = 0; i < dims.size(); ++i) {
+    tile_dims.push_back(CeilOfRatio(dims[i], tile_assignment_dims[i]));
+  }
+
+  const int64_t replication_dim = SubgroupReplicationDim();
+  int64_t num_replicas;
+  if (replication_dim == -1) {
+    num_replicas = 1;
+  } else {
+    num_replicas = tile_assignment_dims[replication_dim];
+  }
+
+  // Enumerate over all indices of tiles. For instance, if tile_assignment_dims
+  // is [3, 2], iterate over [[0, 0], [0, 1], [1, 0], [1, 1], [2, 0], [2, 1]].
+  // If tile_assignment_dims includes replication, we only enumerate over the
+  // sharding portion, and copy the same indices multiple times.
+  absl::InlinedVector<int64_t, 6> unique_tile_index(dims.size());
+  absl::InlinedVector<int64_t, 6> tile_offset(dims.size());
+  absl::InlinedVector<int64_t, 6> tile_limit(dims.size());
+  int64_t flat_tile_index = 0;
+  const int64_t* flat_tile_assignment = tile_assignment().array().data();
+  do {
+    for (int64_t i = 0; i < dims.size(); ++i) {
+      tile_offset[i] = std::min(tile_dims[i] * unique_tile_index[i], dims[i]);
+      tile_limit[i] =
+          std::min(tile_dims[i] * (unique_tile_index[i] + 1), dims[i]);
+    }
+    for (int64_t i = 0; i < num_replicas; ++i) {
+      CHECK_LT(flat_tile_index, num_devices);
+      const int64_t device_id = flat_tile_assignment[flat_tile_index];
+      if (device_id < 0 || device_id >= num_devices) {
+        return absl::InvalidArgumentError(
+            absl::StrFormat("Out of range device id in device_assignment: %d; "
+                            "valid range: [0, %d)",
+                            device_id, num_devices));
+      }
+      f(device_id, tile_offset, tile_limit);
+      ++flat_tile_index;
+    }
+  } while (NextIndex(&unique_tile_index, tile_assignment_dims));
+  return absl::OkStatus();
 }
 
 int64_t HloSharding::RequiredLeaves(const Shape& shape) {

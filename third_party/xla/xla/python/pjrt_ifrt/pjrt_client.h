@@ -123,6 +123,7 @@ class PjRtClient final
 
     absl::Duration get_local_topology_timeout = absl::Minutes(2);
     absl::Duration get_global_topology_timeout = absl::Minutes(5);
+    absl::Duration cross_host_transfer_timeout = absl::Minutes(1);
 
     // Device mapping to construct a global view consisting of both addressable
     // and non-addressable devices.
@@ -345,14 +346,13 @@ class PjRtClient final
   // Extracts receive descriptors from a key-value store and sends buffers to a
   // remote device.
   absl::Status CrossHostSendBuffers(PjRtBuffers buffers,
-                                    const std::vector<int64_t>& keys,
-                                    const std::string& key_prefix);
+                                    const std::vector<int64_t>& keys);
 
   // Populates a key-value store with receive descriptors and places buffers
   // from a cross-host send onto device.
   absl::StatusOr<PjRtBuffers> CrossHostReceiveBuffers(
       absl::Span<const xla::Shape> shapes, xla::PjRtDevice* device,
-      const std::vector<int64_t>& keys, const std::string& key_prefix);
+      const std::vector<int64_t>& keys);
 
   // Creates a unique identifier for each cross-host transfer. Every process
   // must call it, regardless of whether it participates in the cross-host
@@ -361,6 +361,9 @@ class PjRtClient final
 
   std::atomic<int64_t> next_transfer_key_ = 0;
   std::shared_ptr<xla::KeyValueStoreInterface> kv_store_;
+  absl::Duration cross_host_transfer_timeout_;
+
+  friend class PjRtClientPeer;
 };
 
 }  // namespace ifrt

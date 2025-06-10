@@ -84,7 +84,7 @@ using TypesF8 = ::testing::Types<tsl::float8_e4m3fnuz>;
 #endif
 
 // Check that we can safely pass an input tuple's elements to a dot operation.
-XLA_TEST_F(DotOperationTest, DotOfInputTupleElem) {
+TEST_F(DotOperationTest, DotOfInputTupleElem) {
   XlaBuilder builder(TestName());
 
   XlaOp param;
@@ -639,7 +639,7 @@ XLA_TYPED_TEST(NonsquareMatrixDot, TestFT) { this->TestImpl(false, true); }
 XLA_TYPED_TEST(NonsquareMatrixDot, TestTF) { this->TestImpl(true, false); }
 XLA_TYPED_TEST(NonsquareMatrixDot, TestTT) { this->TestImpl(true, true); }
 
-XLA_TEST_F(DotOperationTest, MatrixVectorC64) {
+TEST_F(DotOperationTest, MatrixVectorC64) {
   auto lhs_handle =
       client_
           ->TransferToServer(LiteralUtil::CreateR2WithLayout<complex64>(
@@ -1423,7 +1423,7 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64,
       this->error_spec_);
 }
 
-XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstRHSClassicMM) {
+TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstRHSClassicMM) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(new Array2D<float>(
       {{1.0, 2.0, 3.0, 4.0, 5.0, 6.0}, {6.0, 5.0, 4.0, 3.0, 2.0, 1.0}}));
   std::unique_ptr<Array2D<float>> constant_rhs_array(
@@ -1451,7 +1451,7 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstRHSClassicMM) {
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSClassicMM) {
+TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSClassicMM) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(new Array2D<float>(
       {{1.0, 2.0, 3.0, 4.0, 5.0, 6.0}, {6.0, 5.0, 4.0, 3.0, 2.0, 1.0}}));
   std::unique_ptr<Array2D<float>> constant_rhs_array(
@@ -1479,9 +1479,9 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSClassicMM) {
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(DotOperationTest,
+TEST_F(DotOperationTest,
 
-           DotOfGatherOptimizationWithConstRHSReverseMM) {
+       DotOfGatherOptimizationWithConstRHSReverseMM) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(
       new Array2D<float>({{1.0, 2.0, 3.0},
                           {4.0, 5.0, 6.0},
@@ -1509,7 +1509,7 @@ XLA_TEST_F(DotOperationTest,
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSReverseMM) {
+TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSReverseMM) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(
       new Array2D<float>({{1.0, 2.0, 3.0},
                           {4.0, 5.0, 6.0},
@@ -1537,7 +1537,7 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSReverseMM) {
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstRHSRows) {
+TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstRHSRows) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(
       new Array2D<float>({{1.0, 2.0},
                           {3.0, 4.0},
@@ -1570,7 +1570,7 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstRHSRows) {
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSRows) {
+TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSRows) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(
       new Array2D<float>({{1.0, 2.0},
                           {3.0, 4.0},
@@ -1603,7 +1603,7 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSRows) {
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstRHSCols) {
+TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstRHSCols) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(new Array2D<float>(
       {{1.0, 2.0, 3.0, 4.0, 5.0, 6.0}, {6.0, 5.0, 4.0, 3.0, 2.0, 1.0}}));
   std::unique_ptr<Array2D<float>> constant_rhs_array(
@@ -1628,7 +1628,7 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstRHSCols) {
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSCols) {
+TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSCols) {
   std::unique_ptr<Array2D<float>> constant_lhs_array(new Array2D<float>(
       {{1.0, 2.0, 3.0, 4.0, 5.0, 6.0}, {6.0, 5.0, 4.0, 3.0, 2.0, 1.0}}));
   std::unique_ptr<Array2D<float>> constant_rhs_array(
@@ -1653,7 +1653,7 @@ XLA_TEST_F(DotOperationTest, DotOfGatherOptimizationWithConstLHSCols) {
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(DotOperationTest, DotRank2AndRank2NonDefaultContractionDims) {
+TEST_F(DotOperationTest, DotRank2AndRank2NonDefaultContractionDims) {
   XlaBuilder builder(TestName());
 
   Array2D<float> lhs_array({{1.0f, 2.0f}, {3.0f, 4.0f}});
@@ -1806,7 +1806,7 @@ INSTANTIATE_TEST_SUITE_P(BatchDot, BatchDotTest,
 
 class DotOperationTextTest : public HloTestBase {};
 
-XLA_TEST_F(DotOperationTextTest, DotReorderedDotDims) {
+TEST_F(DotOperationTextTest, DotReorderedDotDims) {
   absl::string_view hlo_string =
       R"(
 HloModule ComplexDotMultipleNonContracting
@@ -1821,7 +1821,7 @@ ENTRY %test {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-3, 1e-3}));
 }
 
-XLA_TEST_F(DotOperationTextTest, DotReorderedDotDimsAndMultipleContracting) {
+TEST_F(DotOperationTextTest, DotReorderedDotDimsAndMultipleContracting) {
   absl::string_view hlo_string =
       R"(
 HloModule ComplexDotMultipleNonContracting
@@ -1836,7 +1836,7 @@ ENTRY %test {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-3, 1e-3}));
 }
 
-XLA_TEST_F(DotOperationTextTest, DotWithNoDnums) {
+TEST_F(DotOperationTextTest, DotWithNoDnums) {
   absl::string_view hlo_string =
       R"(
 HloModule DotWithNoDnums
@@ -1851,7 +1851,7 @@ ENTRY %test {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-3, 1e-3}));
 }
 
-XLA_TEST_F(DotOperationTextTest, Einsum) {
+TEST_F(DotOperationTextTest, Einsum) {
   absl::string_view hlo_string =
       R"(
 HloModule Einsum
@@ -1866,7 +1866,7 @@ ENTRY %test {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
-XLA_TEST_F(DotOperationTextTest, CpuTiledDotEmitterCachingBug_1) {
+TEST_F(DotOperationTextTest, CpuTiledDotEmitterCachingBug_1) {
   // Tests for a caching bug in the XLA CPU backend.
   absl::string_view hlo_string =
       R"(
@@ -1887,7 +1887,7 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
-XLA_TEST_F(DotOperationTextTest, CpuTiledDotEmitterCachingBug_2) {
+TEST_F(DotOperationTextTest, CpuTiledDotEmitterCachingBug_2) {
   // Tests for a caching bug in the XLA CPU backend.
   absl::string_view hlo_string =
       R"(
@@ -1912,7 +1912,7 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
-XLA_TEST_F(DotOperationTextTest, S32IotaDot) {
+TEST_F(DotOperationTextTest, S32IotaDot) {
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot
@@ -1927,7 +1927,7 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(DotOperationTextTest, S32IotaSquaredDot) {
+TEST_F(DotOperationTextTest, S32IotaSquaredDot) {
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot
@@ -1946,7 +1946,7 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(DotOperationTextTest, U16IotaDot) {
+TEST_F(DotOperationTextTest, U16IotaDot) {
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot
@@ -1962,7 +1962,7 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(DotOperationTextTest, U16IotaSquaredDot) {
+TEST_F(DotOperationTextTest, U16IotaSquaredDot) {
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot
@@ -1981,7 +1981,7 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(DotOperationTextTest, S16IotaDot) {
+TEST_F(DotOperationTextTest, S16IotaDot) {
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot
@@ -1996,7 +1996,7 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(DotOperationTextTest, S16IotaSquaredDot) {
+TEST_F(DotOperationTextTest, S16IotaSquaredDot) {
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot
@@ -2015,7 +2015,7 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(DotOperationTextTest, PREDDot) {
+TEST_F(DotOperationTextTest, PREDDot) {
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot
@@ -2030,7 +2030,7 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(DotOperationTextTest, S8Dot) {
+TEST_F(DotOperationTextTest, S8Dot) {
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot
@@ -2045,7 +2045,7 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(DotOperationTextTest, DISABLED_ON_TPU(S4Dot)) {
+TEST_F(DotOperationTextTest, DISABLED_ON_TPU(S4Dot)) {
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot
@@ -2060,7 +2060,7 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(DotOperationTextTest, S32Dot) {
+TEST_F(DotOperationTextTest, S32Dot) {
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot
@@ -2075,7 +2075,7 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(DotOperationTextTest, GpuTransposeOutput) {
+TEST_F(DotOperationTextTest, GpuTransposeOutput) {
   absl::string_view hlo_string =
       R"(
 HloModule TransposeOutput
@@ -2093,7 +2093,7 @@ ENTRY TransposeOutput {
 // There was a bug in the Dot Codegen, which is masked for floating-point since
 // Dot for FP opertions are converted to cuBLAS operations. This one tests
 // integer ones to make sure the Dot-Codegen is producing correct code.
-XLA_TEST_F(DotOperationTextTest, IntegerDotTest) {
+TEST_F(DotOperationTextTest, IntegerDotTest) {
   constexpr absl::string_view kHloString = R"(
   HloModule dot_int_test
   ENTRY main.4 {
@@ -2104,7 +2104,7 @@ XLA_TEST_F(DotOperationTextTest, IntegerDotTest) {
   EXPECT_TRUE(RunAndCompare(kHloString, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(DotOperationTextTest, FPDotTestNoGEMMRewriter) {
+TEST_F(DotOperationTextTest, FPDotTestNoGEMMRewriter) {
   constexpr absl::string_view kHloString = R"(
   HloModule dot_int_test
   ENTRY main.4 {
@@ -2121,7 +2121,7 @@ XLA_TEST_F(DotOperationTextTest, FPDotTestNoGEMMRewriter) {
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{4e-3, 4e-3}));
 }
 
-XLA_TEST_F(DotOperationTextTest, MatrixVectorComplex) {
+TEST_F(DotOperationTextTest, MatrixVectorComplex) {
   absl::string_view hlo_string =
       R"(
 HloModule MatrixVectorComplex
@@ -2140,7 +2140,7 @@ ENTRY MatrixVectorComplex {
   EXPECT_TRUE(RunAndCompare(std::move(hlo_module), ErrorSpec{4e-3, 4e-3}));
 }
 
-XLA_TEST_F(DotOperationTextTest, MatrixVectorBF16) {
+TEST_F(DotOperationTextTest, MatrixVectorBF16) {
   absl::string_view hlo_string =
       R"(
 HloModule MatrixVectorBF16
@@ -2160,7 +2160,7 @@ ENTRY MatrixVectorBF16 {
 // Regression test for b/138155357, where we were incorrectly creating a dot-add
 // fusion where the dot had a batch dimension.  This isn't supported on the CPU
 // backend.
-XLA_TEST_F(DotOperationTextTest, FusedBatchDotRegressionTest) {
+TEST_F(DotOperationTextTest, FusedBatchDotRegressionTest) {
   absl::string_view module_string = R"(
 HloModule jaxpr_computation__5.33
 
@@ -2205,7 +2205,7 @@ ENTRY jaxpr_computation__5.33 {
   EXPECT_TRUE(RunAndCompare(std::move(module), /*error=*/std::nullopt));
 }
 
-XLA_TEST_F(DotOperationTest, ReorderContractingDimsConstLHS_RL) {
+TEST_F(DotOperationTest, ReorderContractingDimsConstLHS_RL) {
   Array3D<float> input_arr(2, 3, 2);
   Array2D<float> const_arr(2, 6);
   input_arr.FillIota(0);
@@ -2222,7 +2222,7 @@ XLA_TEST_F(DotOperationTest, ReorderContractingDimsConstLHS_RL) {
   ComputeAndCompare(&builder, {}, error_spec_);
 }
 
-XLA_TEST_F(DotOperationTest, ReorderContractingDimsConstRHS_LR) {
+TEST_F(DotOperationTest, ReorderContractingDimsConstRHS_LR) {
   Array3D<float> input_arr(2, 3, 2);
   Array2D<float> const_arr(2, 6);
   input_arr.FillIota(0);
@@ -2243,7 +2243,7 @@ XLA_TEST_F(DotOperationTest, ReorderContractingDimsConstRHS_LR) {
   ComputeAndCompare(&builder, {}, error_spec_);
 }
 
-XLA_TEST_F(DotOperationTest, ReorderContractingDimsConstRHS_RL) {
+TEST_F(DotOperationTest, ReorderContractingDimsConstRHS_RL) {
   Array4D<float> input_arr(2, 2, 3, 4);
   Array2D<float> const_arr(24, 2);
   input_arr.FillIota(0);
@@ -2260,7 +2260,7 @@ XLA_TEST_F(DotOperationTest, ReorderContractingDimsConstRHS_RL) {
   ComputeAndCompare(&builder, {}, error_spec_);
 }
 
-XLA_TEST_F(DotOperationTest, ReorderContractingDimsConstRHS_MM) {
+TEST_F(DotOperationTest, ReorderContractingDimsConstRHS_MM) {
   Array3D<float> input_arr(2, 6, 2);
   Array3D<float> const_arr(2, 6, 3);
   input_arr.FillIota(0);
@@ -2284,7 +2284,7 @@ XLA_TEST_F(DotOperationTest, ReorderContractingDimsConstRHS_MM) {
   ComputeAndCompare(&builder, {}, error_spec_);
 }
 
-XLA_TEST_F(DotOperationTest, ReorderContractingDims_Multipass) {
+TEST_F(DotOperationTest, ReorderContractingDims_Multipass) {
   Array4D<float> input_arr(2, 2, 3, 5);
   Array2D<float> const_arr(2, 30);
   input_arr.FillIota(0);
@@ -2311,7 +2311,7 @@ XLA_TEST_F(DotOperationTest, ReorderContractingDims_Multipass) {
   ComputeAndCompare(&builder, {}, error_spec_);
 }
 
-XLA_TEST_F(DotOperationTextTest, WiderIntegralResultAccumulation) {
+TEST_F(DotOperationTextTest, WiderIntegralResultAccumulation) {
   absl::string_view hlo_string =
       R"(
 HloModule WiderIntegralAccumulation
@@ -2327,7 +2327,7 @@ ENTRY MatrixVectorComplex {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
-XLA_TEST_F(DotOperationTextTest, MixedPrecisionDotLowPrecisionOutput) {
+TEST_F(DotOperationTextTest, MixedPrecisionDotLowPrecisionOutput) {
   absl::string_view hlo_string =
       R"(
 HloModule MixedPrecisionDotLowPrecisionOutput

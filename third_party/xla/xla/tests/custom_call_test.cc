@@ -195,7 +195,7 @@ class CustomCallTest : public HloPjRtTestBase {
   Shape r2f32_ = ShapeUtil::MakeShape(F32, {2, 2});
 };
 
-XLA_TEST_F(CustomCallTest, CustomCallR0F32Add2) {
+TEST_F(CustomCallTest, CustomCallR0F32Add2) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -211,7 +211,7 @@ XLA_TEST_F(CustomCallTest, CustomCallR0F32Add2) {
   LiteralTestUtil::ExpectR0Near<float>(44.0f, result, kDefaultErrorSpec);
 }
 
-XLA_TEST_F(CustomCallTest, CustomCallR0F32Add2Aliased) {
+TEST_F(CustomCallTest, CustomCallR0F32Add2Aliased) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -230,7 +230,7 @@ XLA_TEST_F(CustomCallTest, CustomCallR0F32Add2Aliased) {
   LiteralTestUtil::ExpectR0Near<float>(44.0f, result, kDefaultErrorSpec);
 }
 
-XLA_TEST_F(CustomCallTest, CustomCallR2F32Reduce) {
+TEST_F(CustomCallTest, CustomCallR2F32Reduce) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -252,7 +252,7 @@ XLA_TEST_F(CustomCallTest, CustomCallR2F32Reduce) {
   LiteralTestUtil::ExpectR0Near<float>(10.0f, result, kDefaultErrorSpec);
 }
 
-XLA_TEST_F(CustomCallTest, ReportsSuccess) {
+TEST_F(CustomCallTest, ReportsSuccess) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -268,7 +268,7 @@ XLA_TEST_F(CustomCallTest, ReportsSuccess) {
   LiteralTestUtil::ExpectR0Near<float>(44.0f, result, kDefaultErrorSpec);
 }
 
-XLA_TEST_F(CustomCallTest, ReportsFailure) {
+TEST_F(CustomCallTest, ReportsFailure) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -285,7 +285,7 @@ XLA_TEST_F(CustomCallTest, ReportsFailure) {
   EXPECT_THAT(status.message(), ::testing::HasSubstr("Failed: 42.0"));
 }
 
-XLA_TEST_F(CustomCallTest, ReportsFirstFailure) {
+TEST_F(CustomCallTest, ReportsFirstFailure) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -307,7 +307,7 @@ XLA_TEST_F(CustomCallTest, ReportsFirstFailure) {
   EXPECT_THAT(status.message(), ::testing::HasSubstr("Failed: 1.0"));
 }
 
-XLA_TEST_F(CustomCallTest, TransitiveCustomCallReportsFirstFailure) {
+TEST_F(CustomCallTest, TransitiveCustomCallReportsFirstFailure) {
   const char* const kModuleStr = R"(
     HloModule m
     sub {
@@ -329,7 +329,7 @@ XLA_TEST_F(CustomCallTest, TransitiveCustomCallReportsFirstFailure) {
   EXPECT_THAT(status.message(), HasSubstr("Failed: 1.0"));
 }
 
-XLA_TEST_F(CustomCallTest, FillStatusMsgWithBackendConfigStr) {
+TEST_F(CustomCallTest, FillStatusMsgWithBackendConfigStr) {
   const char* const kModuleStr = R"(
     HloModule m
     ENTRY test {
@@ -355,7 +355,7 @@ class CustomCallClientAPITest
 
 // When using the client API, CustomCall targets can't begin with '$' -- these
 // are reserved for internal use.
-XLA_TEST_F(CustomCallClientAPITest, IllegalCustomCallTarget) {
+TEST_F(CustomCallClientAPITest, IllegalCustomCallTarget) {
   XlaBuilder builder(TestName());
   CustomCall(&builder, "$illegal", /*operands=*/{},
              ShapeUtil::MakeShape(F32, {1}));
@@ -838,7 +838,7 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$Concat3Vectors",
 
 using FfiCustomCallTest = CustomCallTest;
 
-XLA_TEST_F(FfiCustomCallTest, FfiReportsSuccess) {
+TEST_F(FfiCustomCallTest, FfiReportsSuccess) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -852,7 +852,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiReportsSuccess) {
   EXPECT_EQ(status, absl::OkStatus());
 }
 
-XLA_TEST_F(FfiCustomCallTest, Tokens) {
+TEST_F(FfiCustomCallTest, Tokens) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -869,7 +869,7 @@ XLA_TEST_F(FfiCustomCallTest, Tokens) {
   TF_EXPECT_OK(Execute(std::move(module), {}).status());
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiUnknownTarget) {
+TEST_F(FfiCustomCallTest, FfiUnknownTarget) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -883,7 +883,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiUnknownTarget) {
   EXPECT_THAT(status.message(), HasSubstr("No FFI handler registered for"));
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiReportsFailure) {
+TEST_F(FfiCustomCallTest, FfiReportsFailure) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -899,7 +899,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiReportsFailure) {
   EXPECT_THAT(status.message(), ::testing::HasSubstr("Failed: 42"));
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiReportsOneOfFailures) {
+TEST_F(FfiCustomCallTest, FfiReportsOneOfFailures) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -924,7 +924,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiReportsOneOfFailures) {
   EXPECT_THAT(status.message(), HasSubstr("Failed:"));
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiTransitiveCustomCallReportsOneOfFailures) {
+TEST_F(FfiCustomCallTest, FfiTransitiveCustomCallReportsOneOfFailures) {
   const char* const kModuleStr = R"(
     HloModule m
     sub_2 {
@@ -950,7 +950,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiTransitiveCustomCallReportsOneOfFailures) {
   EXPECT_THAT(status.message(), HasSubstr("Failed:"));
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiWrongNumberOfArguments) {
+TEST_F(FfiCustomCallTest, FfiWrongNumberOfArguments) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -965,7 +965,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiWrongNumberOfArguments) {
   EXPECT_THAT(status.message(), HasSubstr("Wrong number of arguments"));
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiWrongRankOfArgument) {
+TEST_F(FfiCustomCallTest, FfiWrongRankOfArgument) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -988,7 +988,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiWrongRankOfArgument) {
   EXPECT_THAT(status.message(), HasSubstr("Wrong buffer rank"));
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiWrongDTypeOfArgument) {
+TEST_F(FfiCustomCallTest, FfiWrongDTypeOfArgument) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -1005,7 +1005,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiWrongDTypeOfArgument) {
   EXPECT_THAT(status.message(), HasSubstr("Wrong buffer dtype"));
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiHandleTypedBuffers) {
+TEST_F(FfiCustomCallTest, FfiHandleTypedBuffers) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -1021,7 +1021,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiHandleTypedBuffers) {
   LiteralTestUtil::ExpectR0Near<float>(44.0f, result, kDefaultErrorSpec);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiHandleInputAsParameters) {
+TEST_F(FfiCustomCallTest, FfiHandleInputAsParameters) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -1039,7 +1039,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiHandleInputAsParameters) {
   LiteralTestUtil::ExpectR0Near<float>(44.0f, result, kDefaultErrorSpec);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiHandleBufferBaseFloat) {
+TEST_F(FfiCustomCallTest, FfiHandleBufferBaseFloat) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -1055,7 +1055,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiHandleBufferBaseFloat) {
   LiteralTestUtil::ExpectR0Near<float>(44.0f, result, kDefaultErrorSpec);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiHandleBufferBaseDouble) {
+TEST_F(FfiCustomCallTest, FfiHandleBufferBaseDouble) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -1072,7 +1072,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiHandleBufferBaseDouble) {
   LiteralTestUtil::ExpectR0Near<double>(44.0f, result, kDefaultErrorSpec);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiHandleAttr) {
+TEST_F(FfiCustomCallTest, FfiHandleAttr) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -1089,7 +1089,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiHandleAttr) {
   LiteralTestUtil::ExpectR0Near<float>(45.0f, result, kDefaultErrorSpec);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiHandleAttrPointer) {
+TEST_F(FfiCustomCallTest, FfiHandleAttrPointer) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -1108,7 +1108,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiHandleAttrPointer) {
   LiteralTestUtil::ExpectR0Near<float>(46.0f, result, kDefaultErrorSpec);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiHandleR2Vector) {
+TEST_F(FfiCustomCallTest, FfiHandleR2Vector) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -1131,7 +1131,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiHandleR2Vector) {
   LiteralTestUtil::ExpectR0Near<float>(10.0f, result, kDefaultErrorSpec);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiWrongEnumType) {
+TEST_F(FfiCustomCallTest, FfiWrongEnumType) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -1212,7 +1212,7 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Combine(::testing::Values(BinaryOp::kAdd, BinaryOp::kMul),
                        ::testing::Values(InitMethod::kZero, InitMethod::kOne)));
 
-XLA_TEST_F(FfiCustomCallTest, FfiUsedInOtherComputations) {
+TEST_F(FfiCustomCallTest, FfiUsedInOtherComputations) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -1243,7 +1243,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiUsedInOtherComputations) {
       Array3D<float>{{{2, 3}, {4, 5}}, {{3, 4}, {5, 6}}}, result);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiInputAndOutputLayoutDiffer) {
+TEST_F(FfiCustomCallTest, FfiInputAndOutputLayoutDiffer) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -1267,7 +1267,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiInputAndOutputLayoutDiffer) {
   LiteralTestUtil::ExpectR2Equal<float>({{2.f, 4.f}, {3.f, 5.f}}, result);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiLayoutConstrained) {
+TEST_F(FfiCustomCallTest, FfiLayoutConstrained) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -1297,7 +1297,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiLayoutConstrained) {
   LiteralTestUtil::ExpectR2Equal<float>({{3.f, 4.f}, {5.f, 6.f}}, result);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiTupleOutput) {
+TEST_F(FfiCustomCallTest, FfiTupleOutput) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -1321,7 +1321,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiTupleOutput) {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiNestedTupleOutput) {
+TEST_F(FfiCustomCallTest, FfiNestedTupleOutput) {
   const char* const kModuleStr = R"(
     HloModule m
 
@@ -1353,7 +1353,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiNestedTupleOutput) {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiTupleInput) {
+TEST_F(FfiCustomCallTest, FfiTupleInput) {
   const char* const kModuleStr = R"(
     HloModule m
 
@@ -1373,7 +1373,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiTupleInput) {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiNestedTupleInput) {
+TEST_F(FfiCustomCallTest, FfiNestedTupleInput) {
   const char* const kModuleStr = R"(
     HloModule m
 
@@ -1395,7 +1395,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiNestedTupleInput) {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(FfiCustomCallTest, SwapTupleAnyBuffersToS16U32) {
+TEST_F(FfiCustomCallTest, SwapTupleAnyBuffersToS16U32) {
   const char* const kModuleStr = R"(
     HloModule m
 
@@ -1416,7 +1416,7 @@ XLA_TEST_F(FfiCustomCallTest, SwapTupleAnyBuffersToS16U32) {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(FfiCustomCallTest, IgnoresEmptyTupleParameter) {
+TEST_F(FfiCustomCallTest, IgnoresEmptyTupleParameter) {
   const char* const kModuleStr = R"(
     HloModule m
 
@@ -1441,7 +1441,7 @@ XLA_TEST_F(FfiCustomCallTest, IgnoresEmptyTupleParameter) {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(FfiCustomCallTest, SwapTupleU32S16ToS16U32) {
+TEST_F(FfiCustomCallTest, SwapTupleU32S16ToS16U32) {
   const char* const kModuleStr = R"(
     HloModule m
 
@@ -1462,7 +1462,7 @@ XLA_TEST_F(FfiCustomCallTest, SwapTupleU32S16ToS16U32) {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(FfiCustomCallTest, HandleR2Tuple) {
+TEST_F(FfiCustomCallTest, HandleR2Tuple) {
   const char* const kModuleStr = R"(
     HloModule m
 
@@ -1487,7 +1487,7 @@ XLA_TEST_F(FfiCustomCallTest, HandleR2Tuple) {
                                         result);
 }
 
-XLA_TEST_F(FfiCustomCallTest, HandleTupleDifferentRanks) {
+TEST_F(FfiCustomCallTest, HandleTupleDifferentRanks) {
   const char* const kModuleStr = R"(
     HloModule m
 
@@ -1531,7 +1531,7 @@ XLA_TEST_F(FfiCustomCallTest, HandleTupleDifferentRanks) {
   EXPECT_EQ(result, expected_tuple);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiNestedTupleInputAndOutput) {
+TEST_F(FfiCustomCallTest, FfiNestedTupleInputAndOutput) {
   const char* const kModuleStr = R"(
     HloModule m
 
@@ -1559,7 +1559,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiNestedTupleInputAndOutput) {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(FfiCustomCallTest, IntraOpThreadPool) {
+TEST_F(FfiCustomCallTest, IntraOpThreadPool) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 

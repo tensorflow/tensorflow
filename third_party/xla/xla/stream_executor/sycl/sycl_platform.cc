@@ -55,19 +55,16 @@ const std::string& SyclPlatform::Name() const { return name_; }
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 SyclPlatform::DescriptionForDevice(int ordinal) const {
-  return GpuExecutor::CreateDeviceDescription(ordinal);
+  return absl::UnimplementedError("Unimplemented");
 }
 
 absl::StatusOr<StreamExecutor*> SyclPlatform::ExecutorForDevice(int ordinal) {
-  return executor_cache_.GetOrCreate(
-      ordinal, [this, ordinal]() { return GetUncachedExecutor(ordinal); });
+  return absl::UnimplementedError("Unimplemented");
 }
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
-SyclPlatform::GetUncachedExecutor(int ordinal {
-  auto executor = std::make_unique<GpuExecutor>(this, ordinal);
-  TF_RETURN_IF_ERROR(executor->Init());
-  return std::move(executor);
+SyclPlatform::GetUncachedExecutor(int ordinal) {
+  return absl::UnimplementedError("Unimplemented");
 }
 
 }  // namespace gpu
