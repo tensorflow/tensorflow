@@ -202,6 +202,26 @@ jobs:
           echo "Baseline comparison finished."
           echo "---------------------------------------------"
 
+      - name: Upload results.json directly to GCS
+        run: |
+          GCS_BUCKET="gs://openxla-postsubmit-transient"
+          RESULTS_JSON_FILE_PATH="${{ env.RESOLVED_OUTPUT_DIR }}/results.json"
+
+          # Check if the results file exists
+          if [ ! -f "$RESULTS_JSON_FILE_PATH" ]; then
+            echo "::error::results.json not found at $RESULTS_JSON_FILE_PATH"
+            exit 1
+          fi
+
+          # Construct a GCS object name
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          DATE_FOLDER=$(date +%Y%m%d)
+          COMMIT_SHA_SHORT=$(echo "${{ github.sha }}" | cut -c1-8)
+          GCS_OBJECT_NAME="${BENCHMARK_NAME}/${DATE_FOLDER}/${TIMESTAMP}_run_${WORKFLOW_RUN_ID}_commit_${COMMIT_SHA_SHORT}.json"
+
+          echo "Uploading $RESULTS_JSON_FILE_PATH to $GCS_BUCKET/$GCS_OBJECT_NAME"
+          gsutil cp "$RESULTS_JSON_FILE_PATH" "$GCS_BUCKET/$GCS_OBJECT_NAME"
+
       - name: Upload Benchmark Artifacts
         if: always()
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
