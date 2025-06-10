@@ -35,15 +35,13 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/Version.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/quantization/common/func.h"
-#include "tensorflow/compiler/mlir/quantization/common/tf_lift_as_function_call.h"
+#include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/utils/stablehlo_type_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
 #include "tensorflow/core/ir/types/dialect.h"
 
 namespace mlir::quant::stablehlo {
-
-using tf_quant::kFusedFunctionAttr;
 
 #define GEN_PASS_DEF_REPLACESTABLEHLOOPSINMAINFUNCTIONWITHXLACALLMODULEOPSPASS
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h.inc"

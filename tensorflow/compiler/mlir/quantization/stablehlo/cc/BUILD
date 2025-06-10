@@ -325,7 +325,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":io",
-        "//tensorflow/compiler/mlir/quantization/common:tf_lift_as_function_call",
+        "//tensorflow/compiler/mlir/quantization/common:lift_as_function_call",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow",
         "@com_google_absl//absl/status",

@@ -47,8 +47,8 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/quantization/common/tf_attrs_and_constraints.h"
-#include "tensorflow/compiler/mlir/quantization/common/tf_lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
@@ -73,12 +73,8 @@ using ::mlir::stablehlo::ReshapeOp;
 using ::mlir::stablehlo::UniformQuantizeOp;
 using ::mlir::tf_quant::FindUserOfType;
 using ::mlir::tf_quant::GetDotGeneralQuantizationDim;
-using ::mlir::tf_quant::GetQuantizationMethodOrDefault;
-using ::mlir::tf_quant::HasWeightOnlyPtqMethod;
 using ::mlir::tf_quant::IsHybridQuantizedOp;
-using ::mlir::tf_quant::kCompositeFuncPrefix;
 using ::mlir::tf_quant::kQuantizationMethodAttr;
-using ::mlir::tf_quant::kQuantizedFuncPrefix;
 using ::mlir::tf_quant::kQuantTraitAttrName;
 using ::mlir::tf_quant::TryCast;
 using ::stablehlo::quantization::Method;

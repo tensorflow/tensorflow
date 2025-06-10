@@ -26,9 +26,9 @@ td_library(
 )
 
 cc_library(
-    name = "tf_lift_as_function_call",
-    srcs = ["tf_lift_as_function_call.cc"],
-    hdrs = ["tf_lift_as_function_call.h"],
+    name = "lift_as_function_call",
+    srcs = ["lift_as_function_call.cc"],
+    hdrs = ["lift_as_function_call.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":tf_attrs_and_constraints",
@@ -53,38 +53,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@stablehlo//:version",
-    ],
-)
-
-cc_library(
-    name = "lift_as_function_call",
-    srcs = ["lift_as_function_call.cc"],
-    hdrs = ["lift_as_function_call.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":attrs_and_constraints",
-        "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:stablehlo_type_utils",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:quantization_unit_loc",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
-        "//tensorflow/compiler/mlir/tensorflow:xla_call_module_attrs",
-        "//tensorflow/core:framework_lite",
-        "//tensorflow/core/ir/types:Dialect",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:nullability",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:BytecodeOpInterface",
-        "@llvm-project//mlir:Dialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
     ],
 )
 

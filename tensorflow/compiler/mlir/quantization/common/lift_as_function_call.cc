@@ -50,8 +50,9 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
+#include "stablehlo/dialect/Version.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/quantization/common/tf_attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/utils/stablehlo_type_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/quantization_unit_loc.h"
@@ -64,6 +65,13 @@ limitations under the License.
 namespace mlir::quant {
 
 using ::stablehlo::quantization::Method;
+using tf_quant::ContainsConvOrDot;
+using tf_quant::GetEntryFunctionName;
+using tf_quant::kAttrMapAttribute;
+using tf_quant::kQuantizationMethodAttr;
+using tf_quant::kQuantTraitAttrName;
+using tf_quant::QuantizationTrait;
+using tf_quant::QuantTraitValues;
 using ::tsl::protobuf::TextFormat;
 
 // Default version number for native serialization.
@@ -85,7 +93,7 @@ bool IsInLiftedFunc(Operation* op) {
 bool IsInStableHloOpRegion(Operation* op) {
   if (op == nullptr) return false;
   auto parent_op = op->getParentOp();
-  return parent_op != nullptr && stablehlo::IsStablehloOp(parent_op);
+  return parent_op != nullptr && quant::stablehlo::IsStablehloOp(parent_op);
 }
 
 // Inserts the function to the symbol table of the module thread-safely.
@@ -297,7 +305,7 @@ LogicalResult SetAttributeMap(MLIRContext& context,
     for (const auto& [attr, val] : attr_to_op_map) {
       if (attr.getName() == attribute.getName()) owner_op = val;
     }
-    if (stablehlo::IsStablehloOp(owner_op)) {
+    if (quant::stablehlo::IsStablehloOp(owner_op)) {
       owner_op->setAttr(StringRef(attribute.getName()), attribute.getValue());
     } else {
       owner_op = attr_to_op_map[attribute];
@@ -366,10 +374,11 @@ SmallVector<Value, 4> LiftAsFunctionCall(
   // Set the location of call op to QuantizationUnitLoc if found.
   Location call_op_loc = location;
   for (Operation* op : cloning_ops) {
-    std::optional<QuantizationUnitLoc::QuantizationUnit> unit =
-        FindQuantizationUnitFromLoc(op->getLoc());
+    std::optional<quant::QuantizationUnitLoc::QuantizationUnit> unit =
+        quant::FindQuantizationUnitFromLoc(op->getLoc());
     if (unit.has_value()) {
-      call_op_loc = QuantizationUnitLoc(builder.getContext(), unit.value());
+      call_op_loc =
+          quant::QuantizationUnitLoc(builder.getContext(), unit.value());
     }
   }
 

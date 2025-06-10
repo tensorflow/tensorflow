@@ -16,10 +16,14 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/common/tf_lift_as_function_call.h"
+#include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/constant_fold_utils.h"
 
@@ -96,7 +100,7 @@ absl::flat_hash_set<int> GetQuantizableOperands(Operation* op) {
   } else if (isa<TF::GatherOp>(op)) {
     quantizable_operands.insert(0);
   } else if (auto einsum_op = dyn_cast<TF::EinsumOp>(op)) {
-    if (tf_quant::IsEinsumSupportedByXlaDotV2(einsum_op.getEquationAttr())) {
+    if (IsEinsumSupportedByXlaDotV2(einsum_op.getEquationAttr())) {
       quantizable_operands.insert(1);
     }
   }

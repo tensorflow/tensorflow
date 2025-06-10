@@ -30,7 +30,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/common/tf_lift_as_function_call.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
@@ -44,8 +44,6 @@ namespace {
 
 using QuantMethod =
     ::tensorflow::quantization::QuantizationMethod::PresetMethod;
-using ::mlir::tf_quant::FunctionCallOpType;
-using ::mlir::tf_quant::IsInLiftedFunc;
 using ::mlir::tf_quant::kQuantTraitAttrName;
 using ::mlir::tf_quant::OpQuantSpec;
 using ::tensorflow::quantization::OpSet;
