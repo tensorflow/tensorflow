@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/shape.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -41,6 +42,13 @@ PjRtFuture<> CommonPjRtRawBuffer::CopyRawHostToDevice(const void* src,
     return PjRtFuture<>(event.status());
   }
   return (*event)->GetReadyFuture();
+}
+
+absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
+CommonPjRtRawBuffer::RemoveDynamicShapeMetadataIfPresent(
+    const xla::Shape& logical_shape) {
+  return absl::InvalidArgumentError(absl::StrCat(
+      "Dynamic shapes are not supported for ", memory_space()->DebugString()));
 }
 
 absl::StatusOr<tsl::RCReference<PjRtRawBuffer>>

@@ -1212,6 +1212,7 @@ cc_library(
         ":device_event",
         ":pjrt_client",
         ":pjrt_future",
+        "//xla:shape_util",
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

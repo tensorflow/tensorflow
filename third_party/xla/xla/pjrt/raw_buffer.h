@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/shape.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -92,6 +93,10 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
   // Creates an event which signals when the allocation is complete.
   virtual absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
   MakeAllocationReadyEvent() = 0;
+
+  // Slices out any dynamic shape information (if present).
+  virtual absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
+  RemoveDynamicShapeMetadataIfPresent(const xla::Shape& logical_shape);
 };
 
 class RegisterRawBufferFactory {
