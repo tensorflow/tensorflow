@@ -1,9 +1,10 @@
 # Automatic sharding annotation
 
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("//xla:py_strict.bzl", "py_strict_test")
 load("//xla:xla.default.bzl", "xla_cc_binary", "xla_cc_test", "xla_internal")
 load("//xla/tsl:tsl.bzl", "if_google")
-load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable", "tsl_pybind_extension")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 
 package(
@@ -497,5 +498,26 @@ cc_library(
         "//xla/hlo/experimental/auto_sharding:auto_sharding_proto_cc",
         "//xla/hlo/experimental/auto_sharding:auto_sharding_strategy",
         "@com_google_absl//absl/log:check",
+    ],
+)
+
+tsl_pybind_extension(
+    name = "auto_sharding_python_extension",
+    srcs = ["auto_sharding_python_extension.cc"],
+    deps = [
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@nanobind",
+        "@shardy//shardy/dialect/sdy/transforms/propagation:auto_partitioner_registry",
+    ],
+)
+
+py_strict_test(
+    name = "auto_sharding_python_extension_test",
+    size = "small",
+    srcs = ["auto_sharding_python_extension_test.py"],
+    deps = [
+        ":auto_sharding_python_extension",
+        "@absl_py//absl/testing:absltest",
     ],
 )
