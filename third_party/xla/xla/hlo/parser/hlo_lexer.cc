@@ -498,12 +498,13 @@ TokKind HloLexer::LexNumberOrPattern(uint64_t skip_mask) {
 TokKind HloLexer::LexInt64Impl() {
   // This effectively matches the RE2 pattern R"([-]?\d+)".
   const char* pos = token_state_.token_start;
+  const char* end = buf_.data() + buf_.size();
   bool has_digits = false;
   int64_t int64_val = 0;
   if (*pos == '-') {
     ++pos;
     // Lexing negative integer:
-    while (true) {
+    while (pos < end) {
       uint8_t c = static_cast<uint8_t>(*pos) - static_cast<uint8_t>('0');
       if (c > 9) {
         break;
@@ -522,7 +523,7 @@ TokKind HloLexer::LexInt64Impl() {
   } else {
     uint64_t uint64_val = 0;
     // Lexing non-negative integer:
-    while (true) {
+    while (pos < end) {
       uint8_t c = static_cast<uint8_t>(*pos) - static_cast<uint8_t>('0');
       if (c > 9) {
         break;
