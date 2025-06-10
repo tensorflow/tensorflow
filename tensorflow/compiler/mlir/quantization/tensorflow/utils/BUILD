@@ -12,22 +12,8 @@ package(
 cc_library(
     name = "fake_quant_utils",
     srcs = ["fake_quant_utils.cc"],
-    hdrs = ["fake_quant_utils.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
-        "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-    ],
-)
-
-cc_library(
-    name = "temp_fake_quant_utils",
-    srcs = ["temp_fake_quant_utils.cc"],
     hdrs = [
-        "temp_fake_quant_utils.h",
+        "fake_quant_utils.h",
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
