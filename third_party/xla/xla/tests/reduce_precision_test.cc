@@ -458,29 +458,28 @@ class ReducedPrecisionAccuracyTest
             int operation_index);
 };
 
-XLA_TEST_P(ReducedPrecisionAccuracyTest, ReducePrecisionHalf) {
+TEST_P(ReducedPrecisionAccuracyTest, ReducePrecisionHalf) {
   int operation_index = GetParam();
   DoIt<Eigen::half, uint16_t>(f16_exponent_sizes[operation_index],
                               f16_mantissa_sizes[operation_index],
                               f16_test_values, operation_index);
 }
 
-XLA_TEST_P(ReducedPrecisionAccuracyTest, ReducePrecisionBfloat16) {
+TEST_P(ReducedPrecisionAccuracyTest, ReducePrecisionBfloat16) {
   int operation_index = GetParam();
   DoIt<bfloat16, uint16_t>(bf16_exponent_sizes[operation_index],
                            bf16_mantissa_sizes[operation_index],
                            bf16_test_values, operation_index);
 }
 
-XLA_TEST_P(ReducedPrecisionAccuracyTest, ReducePrecisionFloat) {
+TEST_P(ReducedPrecisionAccuracyTest, ReducePrecisionFloat) {
   int operation_index = GetParam();
   DoIt<float, uint32_t>(f32_exponent_sizes[operation_index],
                         f32_mantissa_sizes[operation_index], f32_test_values,
                         operation_index);
 }
 
-XLA_TEST_P(ReducedPrecisionAccuracyTest,
-           DISABLED_ON_TPU(ReducePrecisionDouble)) {
+TEST_P(ReducedPrecisionAccuracyTest, DISABLED_ON_TPU(ReducePrecisionDouble)) {
   int operation_index = GetParam();
   DoIt<double, uint64_t>(f64_exponent_sizes[operation_index],
                          f64_mantissa_sizes[operation_index], f64_test_values,

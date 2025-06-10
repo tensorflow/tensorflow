@@ -227,7 +227,7 @@ std::string BuildHloTextGroupedConvolution2D(
   }
 }
 
-XLA_TEST_P(GroupedConvolution2DTest, DoIt) {
+TEST_P(GroupedConvolution2DTest, DoIt) {
   const GroupedConvolution2DSpec& spec = ::testing::get<0>(GetParam());
   bool use_bfloat16 = ::testing::get<1>(GetParam());
 

@@ -503,25 +503,25 @@ std::vector<DotTestParam> CreateDotTestParameters() {
 }
 
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
-XLA_TEST_P(ParametricDotTest, TestF16) { TestImpl<Eigen::half>(); }
+TEST_P(ParametricDotTest, TestF16) { TestImpl<Eigen::half>(); }
 #endif
-XLA_TEST_P(ParametricDotTest, TestF32) { TestImpl<float>(); }
-XLA_TEST_P(ParametricDotTest, TestF64) {
+TEST_P(ParametricDotTest, TestF32) { TestImpl<float>(); }
+TEST_P(ParametricDotTest, TestF64) {
   if (test::HasModifiers({test::kGrm})) {
     // Oversize.
     GTEST_SKIP();
   }
   TestImpl<double>();
 }
-XLA_TEST_P(ParametricDotTest, TestC64) { TestImpl<std::complex<float>>(); }
+TEST_P(ParametricDotTest, TestC64) { TestImpl<std::complex<float>>(); }
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_COMPLEX128
-XLA_TEST_P(ParametricDotTest, TestC128) { TestImpl<std::complex<double>>(); }
+TEST_P(ParametricDotTest, TestC128) { TestImpl<std::complex<double>>(); }
 #endif
-XLA_TEST_P(ParametricDotTest, TestS32) { TestImpl<int32_t>(); }
-XLA_TEST_P(ParametricDotTest, TestF8E5M2) { TestImpl<tsl::float8_e5m2>(); }
-XLA_TEST_P(ParametricDotTest, TestF8E4M3FN) { TestImpl<tsl::float8_e4m3fn>(); }
+TEST_P(ParametricDotTest, TestS32) { TestImpl<int32_t>(); }
+TEST_P(ParametricDotTest, TestF8E5M2) { TestImpl<tsl::float8_e5m2>(); }
+TEST_P(ParametricDotTest, TestF8E4M3FN) { TestImpl<tsl::float8_e4m3fn>(); }
 
-XLA_TEST_P(ParametricDotTest, TestU8) { TestImpl<uint8_t>(); }
+TEST_P(ParametricDotTest, TestU8) { TestImpl<uint8_t>(); }
 
 INSTANTIATE_TEST_CASE_P(DotTests, ParametricDotTest,
                         ::testing::ValuesIn(CreateDotTestParameters()),
@@ -585,15 +585,13 @@ std::vector<DotTestParam> CreateNoLayoutAssignmentDotTestParameters() {
 }
 
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
-XLA_TEST_P(ParametricDotTestWithoutLayoutAssignment, TestF16) {
+TEST_P(ParametricDotTestWithoutLayoutAssignment, TestF16) {
   TestImpl<Eigen::half>();
 }
 #endif
-XLA_TEST_P(ParametricDotTestWithoutLayoutAssignment, TestF32) {
-  TestImpl<float>();
-}
+TEST_P(ParametricDotTestWithoutLayoutAssignment, TestF32) { TestImpl<float>(); }
 // TODO(b/147505663): Disabled for now.
-XLA_TEST_P(ParametricDotTestWithoutLayoutAssignment, DISABLED_TestF64) {
+TEST_P(ParametricDotTestWithoutLayoutAssignment, DISABLED_TestF64) {
   TestImpl<double>();
 }
 
@@ -1680,7 +1678,7 @@ using EinsumParamType =
     std::tuple<std::vector<int64_t>, std::vector<int64_t>, std::string>;
 class EinsumTest : public DotOperationTest,
                    public ::testing::WithParamInterface<EinsumParamType> {};
-XLA_TEST_P(EinsumTest, SimpleEinsumTest) {
+TEST_P(EinsumTest, SimpleEinsumTest) {
   XlaBuilder builder(TestName());
   auto x = AddParam(
       MakeFakeLiteral(ShapeUtil::MakeShape(F32, std::get<0>(GetParam())))
@@ -1769,7 +1767,7 @@ using BatchDotParamType = std::tuple<std::vector<int64_t>, std::vector<int64_t>,
                                      std::vector<int64_t>>;
 class BatchDotTest : public DotOperationTest,
                      public ::testing::WithParamInterface<BatchDotParamType> {};
-XLA_TEST_P(BatchDotTest, BroadcastingBatchDotTest) {
+TEST_P(BatchDotTest, BroadcastingBatchDotTest) {
   XlaBuilder builder(TestName());
   auto x = AddParam(
       MakeFakeLiteral(ShapeUtil::MakeShape(F32, std::get<0>(GetParam())))

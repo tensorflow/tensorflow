@@ -256,63 +256,63 @@ std::string SliceR1TestDataToString(
                          spec.slice_limit, spec.slice_stride);
 }
 
-XLA_TEST_P(SliceR1Test, DoIt_F32) { Run<float>(GetParam()); }
+TEST_P(SliceR1Test, DoIt_F32) { Run<float>(GetParam()); }
 
-XLA_TEST_P(SliceR1Test, DoIt_F64) { Run<double>(GetParam()); }
+TEST_P(SliceR1Test, DoIt_F64) { Run<double>(GetParam()); }
 
-XLA_TEST_P(SliceR1Test, DoIt_U32) { Run<uint32_t>(GetParam()); }
+TEST_P(SliceR1Test, DoIt_U32) { Run<uint32_t>(GetParam()); }
 
-XLA_TEST_P(SliceR1Test, DoIt_S32) { Run<int32_t>(GetParam()); }
+TEST_P(SliceR1Test, DoIt_S32) { Run<int32_t>(GetParam()); }
 
-XLA_TEST_P(SliceR1Test, DoIt_U64) { Run<uint64_t>(GetParam()); }
+TEST_P(SliceR1Test, DoIt_U64) { Run<uint64_t>(GetParam()); }
 
-XLA_TEST_P(SliceR1Test, DoIt_S64) { Run<int64_t>(GetParam()); }
+TEST_P(SliceR1Test, DoIt_S64) { Run<int64_t>(GetParam()); }
 
 // TODO(b/69425338): The following tests are disable on GPU because they use
 // too much GPU memory.
-XLA_TEST_P(SliceR1LargeTest, DoIt_F32) {
+TEST_P(SliceR1LargeTest, DoIt_F32) {
   if (test::DeviceIs(test::kGpu)) {
     GTEST_SKIP();
   }
   Run<float>(GetParam());
 }
 
-XLA_TEST_P(SliceR1LargeTest, DoIt_F64) {
+TEST_P(SliceR1LargeTest, DoIt_F64) {
   if (test::DeviceIs(test::kGpu)) {
     GTEST_SKIP();
   }
   Run<double>(GetParam());
 }
 
-XLA_TEST_P(SliceR1LargeTest, DoIt_U32) {
+TEST_P(SliceR1LargeTest, DoIt_U32) {
   if (test::DeviceIs(test::kGpu)) {
     GTEST_SKIP();
   }
   Run<uint32_t>(GetParam());
 }
 
-XLA_TEST_P(SliceR1LargeTest, DoIt_S32) {
+TEST_P(SliceR1LargeTest, DoIt_S32) {
   if (test::DeviceIs(test::kGpu)) {
     GTEST_SKIP();
   }
   Run<int32_t>(GetParam());
 }
 
-XLA_TEST_P(SliceR1LargeTest, DoIt_U64) {
+TEST_P(SliceR1LargeTest, DoIt_U64) {
   if (test::DeviceIs(test::kGpu)) {
     GTEST_SKIP();
   }
   Run<uint64_t>(GetParam());
 }
 
-XLA_TEST_P(SliceR1LargeTest, DoIt_S64) {
+TEST_P(SliceR1LargeTest, DoIt_S64) {
   if (test::DeviceIs(test::kGpu)) {
     GTEST_SKIP();
   }
   Run<int64_t>(GetParam());
 }
 
-XLA_TEST_P(SliceR1Test, DoIt_PRED) { Run<bool>(GetParam()); }
+TEST_P(SliceR1Test, DoIt_PRED) { Run<bool>(GetParam()); }
 
 // Tests for R1 slice ops.
 // The format for each testcase is {input size, start, limit, stride}.
@@ -427,7 +427,7 @@ struct R2Spec {
 class SliceR2Test : public ClientLibraryTestRunnerMixin<HloTestBase>,
                     public ::testing::WithParamInterface<R2Spec> {};
 
-XLA_TEST_P(SliceR2Test, DoIt) {
+TEST_P(SliceR2Test, DoIt) {
   const R2Spec& spec = GetParam();
   Array2D<int32_t> input(spec.input_dim0, spec.input_dim1);
   input.FillUnique();
@@ -531,7 +531,7 @@ class SliceR4Test : public ClientLibraryTestRunnerMixin<HloTestBase>,
   }
 };
 
-XLA_TEST_P(SliceR4Test, DoIt) { Run(GetParam()); }
+TEST_P(SliceR4Test, DoIt) { Run(GetParam()); }
 
 const R4Spec kR4SpecValues[] = {
     R4Spec{{{2, 2, 2, 2}},

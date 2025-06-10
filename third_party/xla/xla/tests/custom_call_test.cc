@@ -1165,7 +1165,7 @@ class FfiCustomCallEnumTest
     : public FfiCustomCallTest,
       public ::testing::WithParamInterface<std::tuple<BinaryOp, InitMethod>> {};
 
-XLA_TEST_P(FfiCustomCallEnumTest, FfiHandleEnumAttr) {
+TEST_P(FfiCustomCallEnumTest, FfiHandleEnumAttr) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
