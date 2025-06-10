@@ -1626,7 +1626,7 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
 TfLiteStatus Subgraph::RemoveUnusedInputs() {
   std::vector<int> input_tensors_count = GetInputTensorsCount();
   // Mark unused inputs as kTfLiteOptionalTensor.
-  for (int& tensor_idx : inputs()) {
+  for (int& tensor_idx : inputs_) {
     if (tensor_idx == kTfLiteOptionalTensor) continue;
     if (input_tensors_count[tensor_idx] == 0) {
       tensor(tensor_idx)->bytes = 0;  // To make it clearer for memory analysis.

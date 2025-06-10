@@ -192,19 +192,10 @@ class Subgraph {
   }
 
   // Read only access to list of inputs.
-  std::vector<int>& inputs() { return inputs_; }
-
-  // Read only access to list of inputs.
   const std::vector<int>& inputs() const { return inputs_; }
 
   // Read only access to list of outputs.
-  std::vector<int>& outputs() { return outputs_; }
-
-  // Read only access to list of outputs.
   const std::vector<int>& outputs() const { return outputs_; }
-
-  // Read only access to list of variable tensors.
-  std::vector<int>& variables() { return variables_; }
 
   // Read only access to list of variable tensors.
   const std::vector<int>& variables() const { return variables_; }
@@ -229,9 +220,6 @@ class Subgraph {
 
   // Return the number of ops in the model.
   size_t nodes_size() const { return nodes_and_registration_.size(); }
-
-  // Return vector of node indices in the order of execution.
-  std::vector<int>& execution_plan() { return execution_plan_; }
 
   // Return read-only vector of node indices in the order of execution.
   const std::vector<int>& execution_plan() const { return execution_plan_; }
