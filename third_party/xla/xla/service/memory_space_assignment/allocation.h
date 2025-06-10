@@ -252,7 +252,7 @@ class PinnedAllocation final : public Allocation {
 class ReservedAllocation final : public Allocation {
  public:
   ReservedAllocation(HloPosition defining_position, HeapSimulator::Chunk chunk,
-                     int64_t reservation_time);
+                     int64_t start_time, int64_t end_time);
 
   // Overridden methods
   //

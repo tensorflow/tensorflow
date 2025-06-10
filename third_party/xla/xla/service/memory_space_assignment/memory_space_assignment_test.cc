@@ -14340,6 +14340,141 @@ ENTRY main {
                                 /*expect_bitcasted_io=*/true));
 }
 
+TEST_F(MemorySpaceAssignmentTest, TestAsyncCopyCustomKernel) {
+  absl::string_view hlo_string = R"(
+HloModule jit_f, is_scheduled=true, entry_computation_layout={(f32[8,128]{1,0:T(8,128)})->(f32[8,128]{1,0:T(8,128)}, f32[8,128]{1,0:T(8,128)})}, allow_spmd_sharding_propagation_to_parameters={true}, allow_spmd_sharding_propagation_to_output={true,true}
+
+ENTRY %main.13 (Arg_0.1: f32[8,128]) -> (f32[8,128], f32[8,128]) {
+  %Arg_0.1 = f32[8,128]{1,0:T(8,128)} parameter(0), metadata={op_name="x"}
+  %copy.9 = f32[8,128]{1,0:T(8,128)} copy(%Arg_0.1)
+  %copy.6 = f32[8,128]{1,0:T(8,128)} copy(%copy.9)
+  %copy_start.2 = (f32[8,128]{1,0:T(8,128)}, f32[8,128]{1,0:T(8,128)}, s32[]{:T(128)S(2)}) custom-call(%copy.9), custom_call_target="tpu_custom_call", operand_layout_constraints={f32[8,128]{1,0}}, output_to_operand_aliasing={{0}: (0, {})}, control-predecessors={%copy.6}
+  %get-tuple-element.5 = s32[]{:T(128)S(2)} get-tuple-element(%copy_start.2), index=2
+  %get-tuple-element.4 = f32[8,128]{1,0:T(8,128)} get-tuple-element(%copy_start.2), index=1
+  %get-tuple-element.3 = f32[8,128]{1,0:T(8,128)} get-tuple-element(%copy_start.2), index=0
+  %copy_done.2 = f32[8,128]{1,0:T(8,128)} custom-call(%get-tuple-element.3, %get-tuple-element.4, %get-tuple-element.5), custom_call_target="tpu_custom_call", operand_layout_constraints={f32[8,128]{1,0}, f32[8,128]{1,0}, s32[]}, output_to_operand_aliasing={{}: (1, {})}, control-predecessors={%copy.6}
+  %copy_start.3 = (f32[8,128]{1,0:T(8,128)}, f32[8,128]{1,0:T(8,128)}, s32[]{:T(128)S(2)}) custom-call(%copy.6), custom_call_target="tpu_custom_call", operand_layout_constraints={f32[8,128]{1,0}}, output_to_operand_aliasing={{0}: (0, {})}
+  %get-tuple-element.9 = s32[]{:T(128)S(2)} get-tuple-element(%copy_start.3), index=2
+  %get-tuple-element.8 = f32[8,128]{1,0:T(8,128)} get-tuple-element(%copy_start.3), index=1
+  %get-tuple-element.7 = f32[8,128]{1,0:T(8,128)} get-tuple-element(%copy_start.3), index=0
+  %copy_done.3 = f32[8,128]{1,0:T(8,128)} custom-call(%get-tuple-element.7, %get-tuple-element.8, %get-tuple-element.9), custom_call_target="tpu_custom_call", operand_layout_constraints={f32[8,128]{1,0}, f32[8,128]{1,0}, s32[]}, output_to_operand_aliasing={{}: (1, {})}
+  ROOT %tuple.12 = (f32[8,128]{1,0:T(8,128)}, f32[8,128]{1,0:T(8,128)}) tuple(%copy_done.2, %copy_done.3)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  Options memory_space_options = DefaultMemorySpaceOptions();
+
+  HloInstruction* copy_start_2 = FindInstruction(module.get(), "copy_start.2");
+  HloPosition copy_start_2_position{copy_start_2, {1}};
+  HloUse copy_start_2_use{copy_start_2, 0, {}};
+  HloInstruction* copy_start_3 = FindInstruction(module.get(), "copy_start.3");
+  HloPosition copy_start_3_position{copy_start_3, {1}};
+  HloUse copy_start_3_use{copy_start_3, 0, {}};
+  HloInstruction* copy_done_2 = FindInstruction(module.get(), "copy_done.2");
+  HloUse copy_done_2_use{copy_done_2, 1, {}};
+  HloInstruction* copy_done_3 = FindInstruction(module.get(), "copy_done.3");
+  HloUse copy_done_3_use{copy_done_3, 1, {}};
+
+  memory_space_options.buffer_colorings = {
+      {copy_start_2_position, kAlternateMemorySpace},
+      {copy_start_3_position, kAlternateMemorySpace},
+      {copy_done_2_use, kAlternateMemorySpace},
+      {copy_done_3_use, kAlternateMemorySpace},
+      {copy_start_2_use, kDefaultMemorySpace},
+      {copy_start_3_use, kDefaultMemorySpace}};
+
+  memory_space_options.alternate_memory_space = 1;
+  memory_space_options.max_size_in_bytes = 50266112;
+  memory_space_options.alignment_in_bytes = 4096;
+  memory_space_options.replicated_split_dimension = -1;
+  memory_space_options.any_split_dimension = -2;
+  memory_space_options.reduce_scoped_memory_limit = false;
+  memory_space_options.allocate_reserved_scoped_memory_at_same_offset = true;
+  memory_space_options.max_outstanding_prefetches = 40;
+  memory_space_options.max_outstanding_evictions = 40;
+  memory_space_options.while_use_extra_outstanding_prefetch_limit = 4;
+  memory_space_options.max_retries = 2;
+  memory_space_options.max_repacks = 0;
+  memory_space_options.repack_after_every_allocation = false;
+  memory_space_options.verify = false;
+  memory_space_options.enable_cross_program_prefetch = true;
+  memory_space_options.default_cross_program_prefetch_heuristic = false;
+  memory_space_options.enable_cross_program_prefetch_freeing = true;
+  memory_space_options.max_cross_program_prefetches = 1;
+  memory_space_options.cross_program_prefetch_permissive_mode = false;
+  memory_space_options.enable_while_redundant_eviction_elimination = true;
+  memory_space_options.use_repeated_instance_for_preferred_prefetch_time =
+      false;
+  memory_space_options.enforce_prefetch_fifo_order = false;
+  memory_space_options.enable_sync_copy_replacement = true;
+  memory_space_options.enable_sync_slice_replacement = true;
+  memory_space_options.extend_async_copies_limit_for_sync_mem_op_conversion = 0;
+  memory_space_options.inefficient_use_to_copy_ratio = 0.5;
+  memory_space_options.always_spill_to_default_memory = false;
+  memory_space_options.enable_window_prefetch = false;
+  memory_space_options.window_prefetch_mode =
+      WindowPrefetchMode::kWindowExposure;
+  memory_space_options.expanded_scoped_alternate_memory_mode =
+      ExpandedScopedAlternateMemoryMode::DISABLED;
+  memory_space_options.post_module_scoped_alternate_memory_size_in_bytes = 0;
+  memory_space_options.position_requires_contiguous_allocation_fn =
+      [](const HloPosition& position) {
+        return position.instruction->name() == "copy_start.2" ||
+               position.instruction->name() == "copy_start.3";
+      };
+  memory_space_options.is_allowed_in_alternate_mem_fn =
+      [&](const HloValue& value) {
+        // Check if the value belongs in the entry computation.
+        HloInstruction* instruction = value.instruction();
+        HloComputation* computation = instruction->parent();
+        if ((instruction->name() == "copy_start.2" ||
+             instruction->name() == "copy_start.3") &&
+            value.index() == ShapeIndex({1})) {
+          return true;
+        }
+        bool in_entry_computation =
+            (computation == computation->parent()->entry_computation());
+        if (in_entry_computation &&
+            instruction->opcode() == HloOpcode::kParameter) {
+          return value.shape().has_layout() &&
+                 value.shape().layout().memory_space() != kDefaultMemorySpace;
+        }
+        return true;
+      };
+
+  XLA_VLOG_LINES(3, "Before MSA: \n" + module->ToString());
+  AssignMemorySpaceUsingCostAnalysis(module.get(), memory_space_options);
+  XLA_VLOG_LINES(3, "After MSA: \n" + module->ToString());
+
+  EXPECT_EQ(FindInstruction(module.get(), "copy_done.2")
+                ->operand(1)
+                ->shape()
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+
+  EXPECT_EQ(FindInstruction(module.get(), "copy_done.3")
+                ->operand(1)
+                ->shape()
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+
+  EXPECT_EQ(FindInstruction(module.get(), "copy_done.2")
+                ->shape()
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+
+  EXPECT_EQ(FindInstruction(module.get(), "copy_done.3")
+                ->shape()
+                .layout()
+                .memory_space(),
+            kAlternateMemorySpace);
+}
+
 }  // namespace
 }  // namespace memory_space_assignment
 }  // namespace xla
