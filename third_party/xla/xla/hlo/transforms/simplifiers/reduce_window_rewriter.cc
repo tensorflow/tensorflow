@@ -161,22 +161,12 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
   // except for one.
   int64_t rank = operand_shape.dimensions().size();
   const Window& window = reduce_window->window();
-  int64_t scan_dim_num = -1;
-  for (int i = 0; i < rank; ++i) {
-    const WindowDimension& window_dim = window.dimensions(i);
-    if (window_util::IsTrivialWindowDimension(window_dim)) {
-      continue;
-    }
-    if (scan_dim_num != -1) {
-      // At least two non-trivial dimensions exist, so, no cigar.
-      return false;
-    }
-    scan_dim_num = i;
-  }
-
-  if (scan_dim_num == -1) {
+  std::vector<int64_t> non_trivial_window_dimensions =
+      reduce_window->non_trivial_window_dimensions();
+  if (non_trivial_window_dimensions.size() != 1) {
     return false;
   }
+  const int64_t scan_dim_num = non_trivial_window_dimensions.front();
 
   const int64_t scan_length = operand_shape.dimensions(scan_dim_num);
   absl::Span<HloInstruction* const> init_values = reduce_window->init_values();
