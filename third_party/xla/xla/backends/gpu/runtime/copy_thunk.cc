@@ -59,7 +59,7 @@ absl::Status DeviceToDeviceCopyThunk::ExecuteOnStream(
 }
 
 absl::StatusOr<ThunkProto> DeviceToDeviceCopyThunk::ToProto() const {
-  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
+  TF_ASSIGN_OR_RETURN(ThunkProto proto, GetBaseProto());
   DeviceToDeviceCopyThunkProto* d2d_copy_thunk_proto =
       proto.mutable_device_to_device_copy_thunk();
   CopyThunkProto* copy_thunk_proto = d2d_copy_thunk_proto->mutable_copy_thunk();
@@ -138,7 +138,7 @@ absl::StatusOr<std::unique_ptr<se::Event>> CopyThunk::AsyncEvents::Extract(
 }
 
 absl::StatusOr<ThunkProto> CopyThunk::ToProto() const {
-  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
+  TF_ASSIGN_OR_RETURN(ThunkProto proto, GetBaseProto());
   CopyThunkProto* copy_thunk_proto = proto.mutable_copy_thunk();
   TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_source_buffer(),
                       source().ToProto());
@@ -201,7 +201,7 @@ absl::Status DeviceToHostCopyThunk::ExecuteOnStream(
 }
 
 absl::StatusOr<ThunkProto> DeviceToHostCopyThunk::ToProto() const {
-  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
+  TF_ASSIGN_OR_RETURN(ThunkProto proto, GetBaseProto());
   DeviceToHostCopyThunkProto* d2h_copy_thunk_proto =
       proto.mutable_device_to_host_copy_thunk();
   CopyThunkProto* copy_thunk_proto = d2h_copy_thunk_proto->mutable_copy_thunk();
@@ -271,7 +271,7 @@ absl::Status HostToDeviceCopyThunk::ExecuteOnStream(
 }
 
 absl::StatusOr<ThunkProto> HostToDeviceCopyThunk::ToProto() const {
-  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
+  TF_ASSIGN_OR_RETURN(ThunkProto proto, GetBaseProto());
   HostToDeviceCopyThunkProto* h2d_copy_thunk_proto =
       proto.mutable_host_to_device_copy_thunk();
   CopyThunkProto* copy_thunk_proto = h2d_copy_thunk_proto->mutable_copy_thunk();

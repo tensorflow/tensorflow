@@ -45,7 +45,7 @@ absl::Status ReplicaOrPartitionIdThunk::ExecuteOnStream(
 }
 
 absl::StatusOr<ThunkProto> ReplicaIdThunk::ToProto() const {
-  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
+  TF_ASSIGN_OR_RETURN(ThunkProto proto, GetBaseProto());
   auto* replica_id_thunk_proto = proto.mutable_replica_id_thunk();
   TF_ASSIGN_OR_RETURN(*replica_id_thunk_proto->mutable_dest_buffer(),
                       dest().ToProto());
