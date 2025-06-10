@@ -141,9 +141,12 @@ xla_test(
         "h100",
         "b200",
     ],
-    tags = [
-        "notap",
-    ],
+    tags =
+        if_google([
+            # TODO(b/414617899): Reenable once NVML works
+            "manual",
+            "notap",
+        ]),
     deps = [
         ":analytical_latency_estimator",
         "//xla:shape_util",

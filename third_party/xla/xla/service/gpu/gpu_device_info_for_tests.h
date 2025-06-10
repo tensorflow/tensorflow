@@ -31,6 +31,7 @@ class TestGpuDeviceInfo {
       stream_executor::GpuComputeCapability cc =
           stream_executor::CudaComputeCapability(9, 0));
   static stream_executor::DeviceDescription AMDMI210DeviceInfo();
+  static stream_executor::DeviceDescription AMDRX7900DeviceInfo();
   // Returns deafult RTXA6000 or AMDMI210 device info
   static stream_executor::DeviceDescription CudaOrRocmDeviceInfo();
 };

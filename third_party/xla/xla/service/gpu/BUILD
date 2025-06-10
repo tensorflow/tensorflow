@@ -2899,6 +2899,7 @@ cc_library(
         "//xla/service:latency_hiding_scheduler",
         "//xla/service:profile_guided_latency_estimator",
         "//xla/service/gpu/transforms/collectives:collective_ops_utils",
+        "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",

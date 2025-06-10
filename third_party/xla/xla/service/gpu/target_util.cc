@@ -472,7 +472,7 @@ void AnnotateFunctionAsGpuKernel(llvm::Module* module, llvm::Function* func,
   } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
     // Attach information so AMDGPU can recognize function as a AMDGPU kernel.
     func->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
-    func->addFnAttr("amdgpu-flat-work-group-size", "1, 1024");
+    func->addFnAttr("uniform-work-group-size", "true");
   } else if (target_triple.isSPIR()) {
     // Attach information so that it can be recognized as a SPIR kernel.
     func->setCallingConv(llvm::CallingConv::SPIR_KERNEL);
