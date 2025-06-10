@@ -59,8 +59,7 @@ TritonBackend::GetSupportedConfigs(
     const HloInstruction& instr,
     stream_executor::StreamExecutor* stream_executor) {
   if (!IsSupported(instr)) {
-    return absl::InvalidArgumentError(
-        "TritonBackend does not support this instruction.");
+    return std::vector<std::unique_ptr<BackendConfig>>();
   }
   const HloDotInstruction* dot =
       Cast<HloDotInstruction>(hlo_query::GetFirstInstructionWithOpcode(
