@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "tsl/platform/protobuf.h"
@@ -386,6 +388,18 @@ TEST(ThunkProtoDeserializationTest, WaitForStreamsThunk) {
 
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
+}
+
+TEST(ThunkProtoDeserializationTest, EmptyThunkImplReturnsAnError) {
+  ThunkProto proto;
+  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        thunk_info { execution_stream_id: 7 }
+      )pb",
+      &proto));
+
+  EXPECT_THAT(DeserializeThunkProto(proto, /*buffer_allocations=*/{}),
+              tsl::testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace
