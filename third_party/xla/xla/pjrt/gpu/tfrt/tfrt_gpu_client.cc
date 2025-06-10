@@ -3412,15 +3412,6 @@ TfrtGpuExecutable::TfrtGpuExecutable(
 absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
     const ExecuteOptions& options, bool fill_future, TfrtGpuDevice* device) {
-  tsl::profiler::TraceMeProducer activity(
-      [&] {
-        return tsl::profiler::TraceMeEncode("TfrtGpuExecutable::ExecuteHelper",
-                                            {{"launch_id", options.launch_id},
-                                             {"device_id", device->id()},
-                                             {"name", name()}});
-      },
-      tsl::profiler::ContextType::kPjRt, options.launch_id);
-
   std::shared_ptr<DeviceAssignment> device_assignment;
   if (device == nullptr) {
     CHECK(device_assignment_ != nullptr);
@@ -3439,6 +3430,15 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     (*device_assignment)(0, 0) = device->id();
   }
   CHECK_EQ(device->process_index(), client_->process_index());
+
+  tsl::profiler::TraceMeProducer activity(
+      [&] {
+        return tsl::profiler::TraceMeEncode("TfrtGpuExecutable::ExecuteHelper",
+                                            {{"launch_id", options.launch_id},
+                                             {"device_id", device->id()},
+                                             {"name", name()}});
+      },
+      tsl::profiler::ContextType::kPjRt, options.launch_id);
 
   VLOG(1) << "ExecuteHelper " << name() << ": " << options.launch_id
           << "; replica: " << replica << "; partition: " << partition
