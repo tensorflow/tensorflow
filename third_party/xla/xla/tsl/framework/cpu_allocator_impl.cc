@@ -166,7 +166,9 @@ class CPUAllocator : public Allocator {
   }
 
   bool ClearStats() override {
-    if (!cpu_allocator_collect_stats) return false;
+    if (!cpu_allocator_collect_stats) {
+      return false;
+    }
     absl::MutexLock l(&mu_);
     stats_.num_allocs = 0;
     stats_.peak_bytes_in_use = stats_.bytes_in_use;

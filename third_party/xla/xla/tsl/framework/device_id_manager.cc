@@ -71,9 +71,13 @@ class TfToPlatformDeviceIdMap {
     // to avoid writing to a shared cache line in the tf_shared_lock.
     absl::ReaderMutexLock lock(&mu_);
     auto type_id_map_iter = id_map_.find(type.type_string());
-    if (type_id_map_iter == id_map_.end()) return false;
+    if (type_id_map_iter == id_map_.end()) {
+      return false;
+    }
     auto id_map_iter = type_id_map_iter->second.find(tf_device_id.value());
-    if (id_map_iter == type_id_map_iter->second.end()) return false;
+    if (id_map_iter == type_id_map_iter->second.end()) {
+      return false;
+    }
     *platform_device_id = id_map_iter->second;
     return true;
   }

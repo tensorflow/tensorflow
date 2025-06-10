@@ -22,7 +22,7 @@ namespace tsl {
 namespace metrics {
 
 // Updates the metrics stored about time BFC allocator spents during delay.
-void UpdateBfcAllocatorDelayTime(const uint64_t delay_usecs);
+void UpdateBfcAllocatorDelayTime(uint64_t delay_usecs);
 
 }  // namespace metrics
 }  // namespace tsl

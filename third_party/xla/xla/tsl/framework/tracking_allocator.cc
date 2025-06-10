@@ -124,9 +124,8 @@ size_t TrackingAllocator::RequestedSize(const void* ptr) const {
       return (*it).second.requested_size;
     }
     return 0;
-  } else {
-    return allocator_->RequestedSize(ptr);
   }
+  return allocator_->RequestedSize(ptr);
 }
 
 size_t TrackingAllocator::AllocatedSize(const void* ptr) const {
@@ -137,9 +136,8 @@ size_t TrackingAllocator::AllocatedSize(const void* ptr) const {
       return (*it).second.allocated_size;
     }
     return 0;
-  } else {
-    return allocator_->AllocatedSize(ptr);
   }
+  return allocator_->AllocatedSize(ptr);
 }
 
 int64_t TrackingAllocator::AllocationId(const void* ptr) const {
@@ -150,9 +148,8 @@ int64_t TrackingAllocator::AllocationId(const void* ptr) const {
       return (*it).second.allocation_id;
     }
     return 0;
-  } else {
-    return allocator_->AllocationId(ptr);
   }
+  return allocator_->AllocationId(ptr);
 }
 
 std::optional<AllocatorStats> TrackingAllocator::GetStats() {

@@ -60,7 +60,7 @@ struct scalar_product_traits<QInt32, double> {
 struct QInt8 {
   QInt8() : value(0) {}
   QInt8(const int8_t v) : value(v) {}
-  QInt8(const QInt32 v);
+  QInt8(QInt32 v);
 
   operator int() const { return static_cast<int>(value); }
 
@@ -70,7 +70,7 @@ struct QInt8 {
 struct QUInt8 {
   QUInt8() : value(0) {}
   QUInt8(const uint8_t v) : value(v) {}
-  QUInt8(const QInt32 v);
+  QUInt8(QInt32 v);
 
   operator int() const { return static_cast<int>(value); }
 
@@ -80,7 +80,7 @@ struct QUInt8 {
 struct QInt16 {
   QInt16() : value(0) {}
   QInt16(const int16_t v) : value(v) {}
-  QInt16(const QInt32 v);
+  QInt16(QInt32 v);
   operator int() const { return static_cast<int>(value); }
 
   int16_t value;
@@ -89,7 +89,7 @@ struct QInt16 {
 struct QUInt16 {
   QUInt16() : value(0) {}
   QUInt16(const uint16_t v) : value(v) {}
-  QUInt16(const QInt32 v);
+  QUInt16(QInt32 v);
   operator int() const { return static_cast<int>(value); }
 
   uint16_t value;

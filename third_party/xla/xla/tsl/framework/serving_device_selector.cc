@@ -36,7 +36,9 @@ DeviceReservation::DeviceReservation(int device_index,
 DeviceReservation::~DeviceReservation() { reset(); }
 
 void DeviceReservation::reset() {
-  if (device_selector_) device_selector_->FreeDeviceReservation(*this);
+  if (device_selector_) {
+    device_selector_->FreeDeviceReservation(*this);
+  }
   device_selector_ = nullptr;
 }
 
@@ -46,9 +48,13 @@ DeviceReservation::DeviceReservation(DeviceReservation&& r)
 }
 
 DeviceReservation& DeviceReservation::operator=(DeviceReservation&& r) {
-  if (this == &r) return *this;
+  if (this == &r) {
+    return *this;
+  }
 
-  if (device_selector_) device_selector_->FreeDeviceReservation(*this);
+  if (device_selector_) {
+    device_selector_->FreeDeviceReservation(*this);
+  }
 
   device_index_ = r.device_index_;
   device_selector_ = r.device_selector_;
