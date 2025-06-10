@@ -49,18 +49,6 @@ def get_cub_sort_kernel_types(name = ""):
         "f32_b64",
     ]
 
-def build_cub_sort_kernels(name, types, local_defines = [], **kwargs):
-    """ Create build rules for all CUB sort kernels.
-    """
-    for suffix in types:
-        gpu_kernel_library(
-            name = name + "_" + suffix,
-            local_defines = local_defines + ["CUB_TYPE_" + suffix.upper()],
-            **kwargs
-        )
-
-register_extension_info(extension = build_cub_sort_kernels, label_regex_for_dep = "{extension_name}_.*")
-
 def gpu_kernel_library(name, copts = [], srcs = [], local_defines = [], tags = [], **kwargs):
     """ [Deprecated] Create a build rule that is compiling a GPU kernel for all GPU platforms
 
