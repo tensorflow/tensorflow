@@ -74,4 +74,5 @@ tf_native_cc_binary(
         ":object_tracking_lib",
         "@com_google_googletest//:gtest_main",
     ],
+    testonly = True,
 )
