@@ -145,6 +145,9 @@ struct Costs {
   // roofline time.
   Duration hbm_read_time;
   Duration hbm_write_time;
+  // Total HBM bytes accessed.
+  uint64_t hbm_read_bytes;
+  uint64_t hbm_write_bytes;
 
   // HBM read and write cost of running the graph without HBM bw derating. These
   // are the theoretical roofline HBM time if the peak HBM bw is achieved.
@@ -217,6 +220,8 @@ Costs::Costs() {
   temporary_memory = kMemoryUnknown;
   max_per_op_buffers = kMemoryUnknown;
   max_per_op_streaming = kMemoryUnknown;
+  hbm_read_bytes = kZeroMemory;
+  hbm_write_bytes = kZeroMemory;
 }
 
 Costs Costs::ZeroCosts(bool inaccurate) {
@@ -232,6 +237,8 @@ Costs Costs::ZeroCosts(bool inaccurate) {
   costs.max_per_op_buffers = kZeroMemory;
   costs.max_per_op_streaming = kZeroMemory;
   costs.inaccurate = inaccurate;
+  costs.hbm_read_bytes = kZeroMemory;
+  costs.hbm_write_bytes = kZeroMemory;
   return costs;
 }
 

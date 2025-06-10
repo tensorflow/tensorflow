@@ -40,6 +40,8 @@ TEST(CostEstimatorTest, CombineCosts) {
   c.num_ops_total = 1;
   c.inaccurate = false;
   c.num_ops_with_unknown_shapes = 0;
+  c.hbm_read_bytes = 11;
+  c.hbm_write_bytes = 12;
 
   Costs sum = CombineCosts(c, c);
 
@@ -59,6 +61,8 @@ TEST(CostEstimatorTest, CombineCosts) {
   EXPECT_EQ(sum.num_ops_total, 2);
   EXPECT_FALSE(sum.inaccurate);
   EXPECT_EQ(sum.num_ops_with_unknown_shapes, 0);
+  EXPECT_EQ(sum.hbm_read_bytes, 11);
+  EXPECT_EQ(sum.hbm_write_bytes, 12);
 }
 
 TEST(CostEstimatorTest, MultiplyCosts) {
@@ -77,6 +81,8 @@ TEST(CostEstimatorTest, MultiplyCosts) {
   c.num_ops_total = 1;
   c.inaccurate = false;
   c.num_ops_with_unknown_shapes = 0;
+  c.hbm_read_bytes = 11;
+  c.hbm_write_bytes = 12;
 
   Costs product = MultiplyCosts(c, 10);
 
@@ -94,6 +100,8 @@ TEST(CostEstimatorTest, MultiplyCosts) {
   EXPECT_EQ(product.num_ops_total, 1);
   EXPECT_FALSE(product.inaccurate);
   EXPECT_EQ(product.num_ops_with_unknown_shapes, 0);
+  EXPECT_EQ(product.hbm_read_bytes, 11);
+  EXPECT_EQ(product.hbm_write_bytes, 12);
 }
 
 }  // namespace
