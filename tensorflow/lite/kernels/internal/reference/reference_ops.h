@@ -73,6 +73,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/requantize.h"
 #include "tensorflow/lite/kernels/internal/reference/resize_bilinear.h"
 #include "tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h"
+#include "tensorflow/lite/kernels/internal/reference/reverse.h"
 #include "tensorflow/lite/kernels/internal/reference/round.h"
 #include "tensorflow/lite/kernels/internal/reference/select.h"
 #include "tensorflow/lite/kernels/internal/reference/slice.h"
@@ -880,55 +881,6 @@ inline void BroadcastPow4DSlow(const RuntimeShape& unextended_input1_shape,
           auto in2_val = input2_data[in2_idx];
           output_data[out_idx] = std::pow(in1_val, in2_val);
         }
-      }
-    }
-  }
-}
-
-template <typename Scalar>
-void Reverse(std::array<int32_t, 8>& axes, int num_axes,
-             const RuntimeShape& input_shape, const Scalar* input_data,
-             Scalar* output_data) {
-  ruy::profiler::ScopeLabel label("Reverse");
-  bool is_upper = (axes[num_axes - 1] == input_shape.DimensionsCount() - 1);
-  bool is_lower = (axes[0] == 0);
-  int rank = input_shape.DimensionsCount();
-  if (is_upper && is_lower) {
-    std::reverse_copy(input_data, input_data + input_shape.FlatSize(),
-                      output_data);
-    return;
-  } else {
-    int32_t min_dim = axes[0];
-    int32_t max_dim = axes[num_axes - 1];
-    int upper_size = 1;
-    for (int i = 0; i < min_dim; ++i) {
-      upper_size *= input_shape.Dims(i);
-    }
-    int lower_size = 1;
-    for (int i = max_dim + 1; i < rank; ++i) {
-      lower_size *= input_shape.Dims(i);
-    }
-    int middle_size = 1;
-    for (int i = min_dim; i <= max_dim; ++i) {
-      middle_size *= input_shape.Dims(i);
-    }
-
-    if (lower_size > 1) {
-      for (int i = 0; i < upper_size; ++i) {
-        for (int j = 0; j < middle_size; ++j) {
-          Scalar* src =
-              (Scalar*)input_data + (i * (middle_size) + j) * lower_size;
-          Scalar* dst =
-              (Scalar*)output_data +
-              (i * (middle_size) + (middle_size - j - 1)) * lower_size;
-          memcpy(dst, src, lower_size * sizeof(Scalar));
-        }
-      }
-    } else {
-      for (int i = 0; i < upper_size; ++i) {
-        std::reverse_copy(input_data + i * (middle_size),
-                          input_data + i * middle_size + middle_size,
-                          output_data + i * (middle_size));
       }
     }
   }

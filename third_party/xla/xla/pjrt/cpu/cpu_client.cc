@@ -1085,8 +1085,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuBuffer::CopyToMemorySpace(
 
   return std::unique_ptr<PjRtBuffer>(std::make_unique<PjRtCpuBuffer>(
       on_device_shape_, std::move(tracked_device_buffer), client(),
-      tsl::down_cast<PjRtCpuDevice*>(dst_device),
-      *dst_device->default_memory_space()));
+      tsl::down_cast<PjRtCpuDevice*>(dst_device), dst_memory_space));
 }
 
 PjRtCpuExecutable::PjRtCpuExecutable(

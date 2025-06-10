@@ -2049,6 +2049,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_use_memcpy_local_p2p),
       debug_options->xla_gpu_use_memcpy_local_p2p(),
       "Whether to use memcpy for local p2p communication."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_use_inprocess_lld",
+                bool_setter_for(&DebugOptions::set_xla_gpu_use_inprocess_lld),
+                debug_options->xla_gpu_use_inprocess_lld(),
+                "Whether to use lld as a library for the linking."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_dump_autotune_logs_to",
       string_setter_for(&DebugOptions::set_xla_gpu_dump_autotune_logs_to),

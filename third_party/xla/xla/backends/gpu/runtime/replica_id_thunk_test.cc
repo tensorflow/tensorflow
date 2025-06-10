@@ -63,5 +63,35 @@ TEST(ReplicaIdThunkTest, ProtoRoundTrip) {
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
+TEST(PartitionIdThunkTest, ProtoRoundTrip) {
+  ThunkProto proto;
+  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        thunk_info {
+          profile_annotation: "partition_id_profile_annotation"
+          execution_stream_id: 2
+        }
+        partition_id_thunk {
+          dest_buffer { offset: 0 size: 4 buffer_allocation_index: 0 }
+        }
+      )pb",
+      &proto));
+  std::vector<BufferAllocation> buffer_allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0)};
+
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.profile_annotation = proto.thunk_info().profile_annotation();
+  thunk_info.execution_stream_id = xla::gpu::ExecutionStreamId{
+      static_cast<xla::gpu::ExecutionStreamId::ValueType>(
+          proto.thunk_info().execution_stream_id())};
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PartitionIdThunk> thunk,
+      PartitionIdThunk::FromProto(thunk_info, proto.partition_id_thunk(),
+                                  buffer_allocations));
+
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
+  EXPECT_THAT(round_trip_proto, EqualsProto(proto));
+}
+
 }  // namespace
 }  // namespace xla::gpu

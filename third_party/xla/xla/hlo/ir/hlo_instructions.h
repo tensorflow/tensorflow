@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/status.h"
+#include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -2010,6 +2011,20 @@ class HloReduceWindowInstruction : public HloInstruction {
       }
     }
     return shapes;
+  }
+  // Returns the indices of the non-trivial dimensions in the window.
+  std::vector<int64_t> non_trivial_window_dimensions() const {
+    std::vector<int64_t> non_trivial_dimensions;
+    const Shape& operand_shape = inputs().front()->shape();
+
+    int64_t rank = operand_shape.dimensions().size();
+    for (int dimension_index = 0; dimension_index < rank; ++dimension_index) {
+      const WindowDimension& window_dim = window_.dimensions(dimension_index);
+      if (!window_util::IsTrivialWindowDimension(window_dim)) {
+        non_trivial_dimensions.push_back(dimension_index);
+      }
+    }
+    return non_trivial_dimensions;
   }
 
   static bool ClassOf(const HloInstruction* hlo) {
