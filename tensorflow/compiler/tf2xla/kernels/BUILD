@@ -373,6 +373,7 @@ cc_library(
         "@local_xla//xla/service:hlo_proto_cc",
         "@local_xla//xla/tsl/platform:errors",
         "@local_xla//xla/tsl/platform:statusor",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_passes",

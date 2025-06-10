@@ -64,7 +64,7 @@ class DenseElementsTransposer {
                           const ArrayRef<int64_t> permutation)
       : rank_(original_shape.size()),
         original_shape_(original_shape),
-        target_shape_(Permute<int64_t>(original_shape, permutation)),
+        target_shape_(quant::Permute<int64_t>(original_shape, permutation)),
         permutation_(permutation) {}
 
   // Transposes `values` with the permutation. Returns the transposed values.
@@ -92,7 +92,7 @@ class DenseElementsTransposer {
           GetContiguousOffset(current_indices, original_shape_);
 
       const SmallVector<int64_t> target_indices =
-          Permute<int64_t>(current_indices, permutation_);
+          quant::Permute<int64_t>(current_indices, permutation_);
       const int64_t target_index =
           GetContiguousOffset(target_indices, target_shape_);
 

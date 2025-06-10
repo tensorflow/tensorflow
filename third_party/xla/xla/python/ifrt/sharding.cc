@@ -405,11 +405,12 @@ void OpaqueSharding::Hash(absl::HashState state) const {
 
 std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
     DeviceListRef devices, MemoryKind memory_kind, Shape shape,
-    std::vector<Shape> shard_shapes) {
+    std::vector<Shape> shard_shapes,
+    std::optional<std::vector<xla::ifrt::IndexDomain>> index_domains) {
   memory_kind = CanonicalizeMemoryKindWithDevices(memory_kind, devices);
   return std::unique_ptr<ConcreteSharding>(
       new ConcreteSharding(std::move(devices), memory_kind, std::move(shape),
-                           std::move(shard_shapes)));
+                           std::move(shard_shapes), std::move(index_domains)));
 }
 
 std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
@@ -421,13 +422,15 @@ std::unique_ptr<ConcreteSharding> ConcreteSharding::Create(
       std::move(shard_dynamic_shapes)));
 }
 
-ConcreteSharding::ConcreteSharding(DeviceListRef devices,
-                                   MemoryKind memory_kind, Shape shape,
-                                   std::vector<Shape> shard_shapes)
+ConcreteSharding::ConcreteSharding(
+    DeviceListRef devices, MemoryKind memory_kind, Shape shape,
+    std::vector<Shape> shard_shapes,
+    std::optional<std::vector<xla::ifrt::IndexDomain>> index_domains)
     : llvm::RTTIExtends<ConcreteSharding, Sharding>(
           std::move(devices), memory_kind, /*is_fully_replicated=*/false),
       shape_(std::move(shape)),
-      shard_shapes_(std::move(shard_shapes)) {
+      shard_shapes_(std::move(shard_shapes)),
+      index_domains_(std::move(index_domains)) {
   // If all per-shard shapes are the same, cache this shape for
   // `GetShardShape()`. Ideally, users should have used `ConcreteEvenSharding`
   // for such a case, but there are existing use cases that instantiate
@@ -616,8 +619,31 @@ absl::StatusOr<std::vector<IndexDomain>> ConcreteSharding::IndexDomains(
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) const {
   DCHECK(this);
-  return InvalidArgument(
-      "ConcreteSharding does not have index domain information");
+  if (!index_domains_.has_value()) {
+    return InvalidArgument(
+        "ConcreteSharding does not have index domain information");
+  }
+
+  if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards &&
+      devices_->size() != index_domains_->size()) {
+    return InvalidArgument(
+        "SingleDeviceShardSemantics::kAllShards was requested, but the "
+        "ConcreteSharding contains index domains from non-addressable devices. "
+        "Saw %d devices, with %d addressable devices.",
+        devices_->size(), index_domains_->size());
+  }
+
+  const absl::Span<Device* const> addressable_devices =
+      devices_->AddressableDeviceList()->devices();
+  if (index_domains_->size() != addressable_devices.size()) {
+    return InvalidArgument(
+        "ConcreteSharding must have the same number of "
+        "index domains and addressable devices. Saw %d index domains, with %d "
+        "addressable devices.",
+        index_domains_->size(), addressable_devices.size());
+  }
+
+  return *index_domains_;
 }
 
 std::string ConcreteSharding::DebugString() const {

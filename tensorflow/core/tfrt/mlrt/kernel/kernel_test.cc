@@ -2151,7 +2151,11 @@ TEST(KernelTest, PromiseReturn) {
 
   mlrt::LoadedExecutable loaded_executable(executable, registry);
 
+  auto work_queue = tfrt::CreateMultiThreadedWorkQueue(
+      /*num_threads=*/1, /*num_blocking_threads=*/1);
+
   mlrt::ExecutionContext consumer_context(&loaded_executable);
+  consumer_context.set_work_queue(work_queue.get());
 
   absl::Notification notification;
   consumer_context.set_exit_handler(
@@ -2185,7 +2189,7 @@ TEST(KernelTest, PromiseReturn) {
     mlrt::Execute(producer_context);
   }
 
-  ASSERT_TRUE(notification.HasBeenNotified());
+  notification.WaitForNotification();
   tensorflow::test::ExpectEqual(
       output.Get<tfrt_stub::FallbackTensor>().tensor(), expected);
 }

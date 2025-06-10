@@ -34,31 +34,40 @@ cc_library(
 
 cc_library(
     name = "sycl_platform",
-    srcs = if_sycl_is_configured(["sycl_platform.cc"]),
-    hdrs = if_sycl_is_configured(["sycl_platform.h"]),
+    srcs = ["sycl_platform.cc"],
+    hdrs = ["sycl_platform.h"],
     visibility = ["//visibility:public"],
-    deps = if_sycl_is_configured([
+    deps = [
         ":sycl_platform_id",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/memory",
+        "//xla/stream_executor:device_description",
         "//xla/stream_executor:executor_cache",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/platform:initialize",
-        "//xla/stream_executor/gpu:gpu_types_header",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:errors",
-    ]),
+        "@local_tsl//tsl/platform:status",
+    ],
     alwayslink = True,  # Registers itself with the PlatformManager.
 )
 
 xla_cc_test(
     name = "sycl_platform_test",
-    srcs = if_sycl_is_configured(["sycl_platform_test.cc"]),
+    srcs = ["sycl_platform_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=If not building with SYCL, we don't have any tests linked.
-    deps = if_sycl_is_configured([
+    deps = [
         ":sycl_platform",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-    ]) + [
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -84,4 +93,26 @@ cc_library(
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:scratch_allocator",
     ] + if_static([":all_runtime"]),
+)
+
+cc_library(
+    name = "sycl_solver_context",
+    srcs = ["sycl_solver_context.cc"],
+    hdrs = ["sycl_solver_context.h"],
+    tags = [
+        "gpu",
+        "manual",
+        "sycl-only",
+    ],
+    deps = [
+        ":sycl_platform_id",
+        "//xla:xla_data_proto_cc",
+        "//xla/stream_executor:gpu_solver_context",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor/platform:platform_object_registry",
+        "//xla/tsl/platform:logging",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+    alwayslink = 1,
 )

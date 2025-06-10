@@ -40,8 +40,6 @@ class LlvmKernelBackend : public CpuCodegenBackend {
 
   using Config = LlvmKernelOptions;
 
-  bool IsSupported(const HloInstruction& instr);
-
   absl::StatusOr<std::vector<std::unique_ptr<xla::BackendConfig>>>
   GetSupportedConfigs(const HloInstruction& instr) final;
 
@@ -52,6 +50,8 @@ class LlvmKernelBackend : public CpuCodegenBackend {
                            const xla::BackendConfig& config) final;
 
  protected:
+  bool IsSupported(const HloInstruction& instr);
+
   explicit LlvmKernelBackend(Compiler* compiler)
       : CpuCodegenBackend(compiler, kLlvmKernelBackendName) {}
 };

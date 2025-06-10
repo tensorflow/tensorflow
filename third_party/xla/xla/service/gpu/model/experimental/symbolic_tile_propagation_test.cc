@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/gpu/model/experimental/symbolic_tile.h"
 
@@ -48,7 +49,7 @@ MATCHER_P(MatchString, symbolic_tile_string, "") {
       result_listener);
 }
 
-class SymbolicAnalysisTest : public HloHardwareIndependentTestBase {
+class SymbolicTilePropagationTest : public HloHardwareIndependentTestBase {
  public:
   HloInstruction* ParseAndGetRoot(absl::string_view hlo_string) {
     auto module_or = ParseAndReturnVerifiedModule(hlo_string);
@@ -82,7 +83,7 @@ ExperimentalSymbolicTile GetTestSymbolicTile(int64_t rank,
       AffineMap::get(rank, rank, results, mlir_context), {}};
 }
 
-TEST_F(SymbolicAnalysisTest, ElementwiseOp) {
+TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfElementwiseOp) {
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -100,6 +101,45 @@ TEST_F(SymbolicAnalysisTest, ElementwiseOp) {
     1) (tid_0, tid_1)[ts_0, ts_1]
       -> [tid_0 * ts_0, tid_1 * ts_1] [ts_0, ts_1] [1, 2]
   )")));
+}
+
+TEST_F(SymbolicTilePropagationTest,
+       CanPropagateToInputsOfPadOpWithEdgePadding) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[4,4] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT pad = f32[12,13] pad(p0, p1), padding=1_7x0_9
+    }
+  )");
+  MLIRContext mlir_context;
+  std::optional<TiledOperands> tiled_operands =
+      PropagateTileToInput(*root, GetTestSymbolicTile(2, &mlir_context),
+                           /*result_index=*/0);
+  EXPECT_THAT(tiled_operands, Optional(MatchString(R"(
+    0) (tid_0, tid_1)[ts_0, ts_1]
+      -> [tid_0 * ts_0 - 1, tid_1 * ts_1] [ts_0, ts_1] [1, 2]
+    1) (tid_0, tid_1)[ts_0, ts_1]
+      -> [] [] []
+  )")));
+}
+
+TEST_F(SymbolicTilePropagationTest,
+       CanNotPropagateToInputsOfPadOpWithInteriorPadding) {
+  auto root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[4,4] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT pad = f32[30,13] pad(p0, p1), padding=1_4_7x0_9
+    }
+  )");
+  MLIRContext mlir_context;
+  std::optional<TiledOperands> tiled_operands =
+      PropagateTileToInput(*root, GetTestSymbolicTile(2, &mlir_context),
+                           /*result_index=*/0);
+  EXPECT_EQ(tiled_operands, std::nullopt);
 }
 
 }  // namespace

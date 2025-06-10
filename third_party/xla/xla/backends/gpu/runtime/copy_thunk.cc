@@ -58,6 +58,36 @@ absl::Status DeviceToDeviceCopyThunk::ExecuteOnStream(
   return params.stream->Memcpy(&destination_data, source_data, mem_size_);
 }
 
+absl::StatusOr<ThunkProto> DeviceToDeviceCopyThunk::ToProto() const {
+  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
+  DeviceToDeviceCopyThunkProto* d2d_copy_thunk_proto =
+      proto.mutable_device_to_device_copy_thunk();
+  CopyThunkProto* copy_thunk_proto = d2d_copy_thunk_proto->mutable_copy_thunk();
+  TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_source_buffer(),
+                      source().ToProto());
+  TF_ASSIGN_OR_RETURN(*copy_thunk_proto->mutable_destination_buffer(),
+                      destination().ToProto());
+  copy_thunk_proto->set_mem_size(size_bytes());
+  return proto;
+}
+
+absl::StatusOr<std::unique_ptr<DeviceToDeviceCopyThunk>>
+DeviceToDeviceCopyThunk::FromProto(
+    ThunkInfo thunk_info, const DeviceToDeviceCopyThunkProto& thunk_proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice src_slice,
+      BufferAllocation::Slice::FromProto(
+          thunk_proto.copy_thunk().source_buffer(), buffer_allocations));
+  TF_ASSIGN_OR_RETURN(
+      BufferAllocation::Slice dst_slice,
+      BufferAllocation::Slice::FromProto(
+          thunk_proto.copy_thunk().destination_buffer(), buffer_allocations));
+  return std::make_unique<DeviceToDeviceCopyThunk>(
+      std::move(thunk_info), src_slice, dst_slice,
+      thunk_proto.copy_thunk().mem_size());
+}
+
 //===----------------------------------------------------------------------===//
 // CopyThunk
 //===----------------------------------------------------------------------===//

@@ -1875,6 +1875,9 @@ absl::Status DefaultSchedulerCore::ScheduleAnnotation(
       VLOG(2) << "Non ready instr: " << node->GetInstr().name();
       ++non_ready_instr;
       node->ClearAnnotation();
+      if (config_.aggressive_flexible_annotation_scheduling) {
+        node->SetForceDelay(true);
+      }
       sched_state->nodes_holding_annotations.insert(node);
       continue;
     }
@@ -2147,6 +2150,9 @@ absl::StatusOr<HloGraphNode::TimeCost> DefaultSchedulerCore::ScheduleNode(
       sched_state->selective_resource_releasers.push_back(&edge.Target());
     }
   }
+  async_tracker_->UpdateTargetDefinedStates(n->GetInstr(),
+                                            &sched_state->sched_graph,
+                                            latency_estimator_, current_time);
   ++sched_state->scheduled_count;
   for (auto& resource : n->GetResources()) {
     if (resource.second == ResourceUsageType::kResourceRelease) {
@@ -3106,7 +3112,10 @@ absl::StatusOr<bool> LatencyHidingScheduler::Run(
   for (HloComputation* computation : computations_to_schedule_) {
     TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
                         scheduler_core_->ScheduleComputation(computation));
+    // Update target specific states that may include altering the computation.
+    async_tracker_->UpdateTargetDefinedStates(computation);
     saved_schedules[computation] = std::move(new_schedule);
+    async_tracker_->ResetTargetDefinedStates();
   }
   uint64_t initial_memory_limit = scheduler_core_->GetMemoryLimit();
   for (int64_t iter = 0;
@@ -3124,7 +3133,9 @@ absl::StatusOr<bool> LatencyHidingScheduler::Run(
     for (HloComputation* computation : computations_to_schedule_) {
       TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
                           scheduler_core_->ScheduleComputation(computation));
+      async_tracker_->UpdateTargetDefinedStates(computation);
       saved_schedules[computation] = std::move(new_schedule);
+      async_tracker_->ResetTargetDefinedStates();
     }
   }
   LOG(INFO) << "[" << name() << "]"

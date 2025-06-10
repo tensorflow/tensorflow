@@ -11,7 +11,7 @@ load(
     "if_cuda_is_configured",
 )
 load(
-    "//xla/tsl:tsl.bzl",
+    "//xla/tsl:tsl.default.bzl",
     "if_cuda_libs",
 )
 load("//xla/tsl/cuda:stub.bzl", "cuda_stub")

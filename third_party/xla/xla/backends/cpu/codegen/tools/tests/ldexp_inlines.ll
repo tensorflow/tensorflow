@@ -18,7 +18,6 @@ define dso_local void @func(double* %0, double* %1, i32 %2) local_unnamed_addr #
   %9 = phi i64 [ 0, %5 ], [ %15, %8 ]
   %10 = getelementptr inbounds nuw double, ptr %1, i64 %9
   %11 = load double, ptr %10, align 8
-  %12 = trunc nuw nsw i64 %9 to i32
   %13 = tail call double @local_xla.ldexp.f64.i32(double %11, i32 noundef 3) #1
   %14 = getelementptr inbounds nuw double, ptr %0, i64 %9
   store double %13, ptr %14, align 8
@@ -32,9 +31,9 @@ define dso_local void @func(double* %0, double* %1, i32 %2) local_unnamed_addr #
 ; The following line is a result of inlining ldexp(x, 3) + constant folding + vectorization.
 ; CHECK: fmul <{{[0-9]+}} x double> %wide.load{{[0-9]?}}, splat (double 8.0
 
-; Check that the loop epilogue still calls original uninlined function.
+; Check that the loop epilogue still does unvectorized fmul
 ; CHECK: scalar.ph:
-; CHECK: tail call double @local_xla.ldexp.f64.i32
+; CHECK: fmul double {{.*}}8.0
 
 declare double @local_xla.ldexp.f64.i32(double, i32) #1
 

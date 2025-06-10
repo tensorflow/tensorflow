@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/tpu_conversion_patterns.h"
 
-#include "llvm/Support/Casting.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/mlrt_dialect.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/tf_mlrt_ops.h"
@@ -92,18 +90,8 @@ class TPUCompileMlirAndExecuteOpPreParallelizationConversion
           }
         }
       }
-      if (replaced_ops.empty()) {
-        auto caller_batch_ops = FindCallerBatchFunctionOps(op);
-        for (auto* batch_op : caller_batch_ops) {
-          mlir::ConversionPatternRewriter::InsertionGuard guard(rewriter);
-          rewriter.setInsertionPoint(batch_op);
-          mlir::Operation* batch_op_with_device = rewriter.clone(*batch_op);
-          batch_op_with_device->setAttr(kTfMlrtCustomDevice,
-                                        rewriter.getStringAttr(kTpuHostDevice));
-          rewriter.replaceOp(batch_op, batch_op_with_device->getResults());
-        }
-      }
     }
+
     auto compile_and_execute_op =
         rewriter.create<tf_mlrt::TFTPUCompileAndExecuteOp>(
             op.getLoc(), op.getResultTypes(), operands,
@@ -120,22 +108,6 @@ class TPUCompileMlirAndExecuteOpPreParallelizationConversion
 
  private:
   bool use_tpu_host_allocator_for_inputs_ = false;
-
-  llvm::SmallVector<mlir::Operation*, 4> FindCallerBatchFunctionOps(
-      mlir::Operation* op) const {
-    llvm::SmallVector<mlir::Operation*, 4> result;
-    if (auto func = llvm::dyn_cast<mlir::func::FuncOp>(op->getParentOp())) {
-      if (auto uses = func.getSymbolUses(func->getParentOp())) {
-        for (auto& use : uses.value()) {
-          auto* user = use.getUser();
-          if (auto batch_op = llvm::dyn_cast<mlir::TF::BatchFunctionOp>(user)) {
-            result.push_back(batch_op);
-          }
-        }
-      }
-    }
-    return result;
-  }
 };
 
 class TPUCompileMlirAndExecuteOpConversion

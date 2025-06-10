@@ -85,7 +85,7 @@ TEST_F(SliceTest, Slice3x3x3_To_1x3x3_F32) {
   ComputeAndCompareR3<float>(&builder, expected, {}, ErrorSpec(0.000001));
 }
 
-XLA_TEST_F(SliceTest, Slice0x0to0x0F32) {
+TEST_F(SliceTest, Slice0x0to0x0F32) {
   XlaBuilder builder(TestName());
   auto original = ConstantR2FromArray2D<float>(&builder, Array2D<float>(0, 0));
   Slice(original, {0, 0}, {0, 0}, {1, 1});
@@ -93,7 +93,7 @@ XLA_TEST_F(SliceTest, Slice0x0to0x0F32) {
   ComputeAndCompareR2<float>(&builder, Array2D<float>(0, 0), {});
 }
 
-XLA_TEST_F(SliceTest, Slice0x20to0x5F32) {
+TEST_F(SliceTest, Slice0x20to0x5F32) {
   XlaBuilder builder(TestName());
   auto original = ConstantR2FromArray2D<float>(&builder, Array2D<float>(0, 20));
   Slice(original, {0, 15}, {0, 20}, {1, 1});
@@ -101,7 +101,7 @@ XLA_TEST_F(SliceTest, Slice0x20to0x5F32) {
   ComputeAndCompareR2<float>(&builder, Array2D<float>(0, 5), {});
 }
 
-XLA_TEST_F(SliceTest, Slice3x0to2x0F32) {
+TEST_F(SliceTest, Slice3x0to2x0F32) {
   XlaBuilder builder(TestName());
   auto original = ConstantR2FromArray2D<float>(&builder, Array2D<float>(3, 0));
   Slice(original, {1, 0}, {3, 0}, {1, 1});
@@ -109,7 +109,7 @@ XLA_TEST_F(SliceTest, Slice3x0to2x0F32) {
   ComputeAndCompareR2<float>(&builder, Array2D<float>(2, 0), {});
 }
 
-XLA_TEST_F(SliceTest, SliceQuadrantOf256x256) {
+TEST_F(SliceTest, SliceQuadrantOf256x256) {
   Array2D<float> values(256, 256);
   for (int row = 0; row < 256; ++row) {
     for (int col = 0; col < 256; ++col) {
@@ -194,7 +194,7 @@ TEST_F(SliceTest, SliceOfCollapsingReshape) {
   ComputeAndCompare(&builder, {});
 }
 
-XLA_TEST_F(SliceTest, StridedSliceR4WithOutputLayout) {
+TEST_F(SliceTest, StridedSliceR4WithOutputLayout) {
   Array4D<float> values(2, 4, 6, 8);
   values.FillRandom(3.14f);
   auto expected = ReferenceUtil::Slice4D(values, {{0, 0, 0, 0}}, {{2, 4, 6, 8}},

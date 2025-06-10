@@ -31,4 +31,3 @@ def RemoveUnneededCastOps : Pat<
       $input, $truncate_0), $truncate_1),
   (replaceWithValue $input),
   [(AreTheSameElementType $input, $output)]>;
-

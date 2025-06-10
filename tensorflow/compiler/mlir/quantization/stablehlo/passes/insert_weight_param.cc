@@ -43,15 +43,21 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
-#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
-#include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
-#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_lift_as_function_call.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir::quant::stablehlo {
+
+using mlir::tf_quant::GetEntryFunctionName;
+using mlir::tf_quant::GetQuantizationMethodOrDefault;
+using mlir::tf_quant::GetUniformQuantizedPerAxisTypeForWeight;
+using mlir::tf_quant::GetUniformQuantizedTypeForWeight;
+using mlir::tf_quant::IsWeightOnlyQuantizableOp;
 
 #define GEN_PASS_DEF_INSERTWEIGHTPARAMPASS
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h.inc"
@@ -108,14 +114,14 @@ class InsertWeightParamPattern
 
     Type weight_type;
     if (IsPerTensor(weight_only_ptq)) {
-      weight_type = dyn_cast<quant::QuantizedType>(
-          quant::GetUniformQuantizedTypeForWeight(
+      weight_type =
+          dyn_cast<quant::QuantizedType>(GetUniformQuantizedTypeForWeight(
               attr, /*symmetric=*/true, /*num_bits=*/8, /*is_signed=*/true,
               /*narrow_range=*/true, /*legacy_float_scale=*/false));
     } else {
       int quantization_dimension = GetQuantizationDimension(
           weight_only_ptq, cast<TF::XlaCallModuleOp>(quantizable_op));
-      weight_type = quant::GetUniformQuantizedPerAxisTypeForWeight(
+      weight_type = GetUniformQuantizedPerAxisTypeForWeight(
           attr, quantization_dimension, /*symmetric=*/true, /*num_bits=*/8,
           /*is_signed=*/true,
           /*narrow_range=*/true, /*legacy_float_scale=*/false);
@@ -134,10 +140,10 @@ class InsertWeightParamPattern
         quant_type.castFromExpressedType(expressed_type);
 
     rewriter.setInsertionPointAfter(op);
-    auto q = rewriter.create<quantfork::QuantizeCastOp>(
+    auto q = rewriter.create<mlir::quant::ir::QuantizeCastOp>(
         op->getLoc(), quantized_type, op->getResult(0));
-    auto dq = rewriter.create<quantfork::DequantizeCastOp>(op->getLoc(),
-                                                           expressed_type, q);
+    auto dq = rewriter.create<mlir::quant::ir::DequantizeCastOp>(
+        op->getLoc(), expressed_type, q);
     quantizable_op->setOperand(1, dq.getResult());
     return success();
   }
@@ -219,7 +225,7 @@ class InsertWeightParamPattern
           dimension_numbers.getRhsContractingDimensions();
       ArrayRef<int64_t> rhs_batching_dims =
           dimension_numbers.getRhsBatchingDimensions();
-      int64_t rank = mlir::cast<TensorType>(dot.getRhs().getType()).getRank();
+      int64_t rank = cast<TensorType>(dot.getRhs().getType()).getRank();
       for (int i = 0; i < rank; ++i) {
         // Return the first non-contracting, non-batching dimension of rhs.
         if (llvm::find(rhs_contracting_dims, i) == rhs_contracting_dims.end() &&
@@ -228,7 +234,7 @@ class InsertWeightParamPattern
         }
       }
     }
-    return mlir::cast<TensorType>(op.getOperand(1).getType()).getRank() - 1;
+    return cast<TensorType>(op.getOperand(1).getType()).getRank() - 1;
   }
 };
 

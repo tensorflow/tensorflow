@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
@@ -174,7 +175,8 @@ NcclCollectives::CreateCommunicators(const CliqueKey& clique_key,
 
   // Create all communicators. Each communicator is created on its own thread.
   std::vector<std::unique_ptr<Communicator>> comms(ranks.size());
-  std::vector<absl::Status> statuses(ranks.size());
+  absl::Status status;
+  absl::once_flag once;
   {
     tsl::thread::ThreadPool pool(tsl::Env::Default(), "CreateCommunicators",
                                  ranks.size());
@@ -184,16 +186,14 @@ NcclCollectives::CreateCommunicators(const CliqueKey& clique_key,
             NcclCommunicator::Create(std::bind(make_comm, i),
                                      gpu_config->async_execution);
         if (!comm.ok()) {
-          statuses[i] = comm.status();
+          absl::call_once(once, [&] { status = comm.status(); });
           return;
         }
         comms[i] = *std::move(comm);
       });
     }
   }  // pool's destructor blocks until all scheduled work is done.
-  for (const absl::Status& s : statuses) {
-    TF_RETURN_IF_ERROR(s);
-  }
+  TF_RETURN_IF_ERROR(status);
   return comms;
 }
 

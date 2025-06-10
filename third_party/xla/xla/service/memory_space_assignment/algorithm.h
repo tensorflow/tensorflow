@@ -23,12 +23,10 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <optional>
-#include <ostream>
 #include <set>
 #include <string>
 #include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 // TODO(b/210891274): Use btree_map after build issue in Windows is resolved.
@@ -1123,6 +1121,26 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   void UpdateRequestWithDefaultMemoryColoringRequirements(
       AllocationRequest& request);
 
+  // Whether an hlo position is colored in alternate memory.
+  bool IsPositionColoredInAlternateMemory(const HloPosition& position) const;
+
+  // Whether an hlo use is colored in alternate memory.
+  bool IsUseColoredInAlternateMemory(const HloUse& use) const;
+
+  // Whether an hlo position is colored in default memory.
+  bool IsPositionColoredInDefaultMemory(const HloPosition& position) const;
+
+  // Whether an hlo use is colored in default memory.
+  bool IsUseColoredInDefaultMemory(const HloUse& use) const;
+
+  // Whether an hlo position is colored in alternate memory at the given time.
+  bool IsPositionColoredInAlternateMemoryAtTime(const HloPosition& position,
+                                                int64_t time) const;
+
+  // Whether an hlo position is colored in default memory at the given time.
+  bool IsPositionColoredInDefaultMemoryAtTime(const HloPosition& position,
+                                              int64_t time) const;
+
   HloModule* module_ = nullptr;
   AllocationSequence* allocations_;
   const Options& options_;
@@ -1212,13 +1230,13 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   std::string allocation_info_str_;
   std::string instruction_schedule_str_;
 
-  // Maps an HloPosition to the chunk intervals that are reserved for it in
-  // alternate memory, in order to satisfy buffer coloring requirements.
+  // Maps defining HloPositions to the chunk intervals that are reserved for it
+  // in alternate memory, in order to satisfy buffer coloring requirements.
   absl::flat_hash_map<HloPosition,
                       std::vector<std::unique_ptr<ReservedAllocation>>>
       reserved_allocations_for_alt_mem_colorings_;
 
-  // Maps an HloPosition to the list of times it is required to be in
+  // Maps defining HloPositions to the list of times it is required to be in
   // default memory, to meet buffer coloring requirements.
   absl::flat_hash_map<HloPosition, std::vector<int64_t>>
       default_memory_coloring_requirements_;

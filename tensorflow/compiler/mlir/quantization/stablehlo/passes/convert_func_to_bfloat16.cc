@@ -43,7 +43,9 @@ class BFloat16TypeConverter : public TypeConverter {
  public:
   BFloat16TypeConverter() {
     addConversion([](const Type type) -> Type {
-      return IsLargeFloatType(type) ? ToBfloat16Type(type) : type;
+      return quant::stablehlo::IsLargeFloatType(type)
+                 ? quant::stablehlo::ToBfloat16Type(type)
+                 : type;
     });
   }
 };

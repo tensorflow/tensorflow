@@ -226,7 +226,7 @@ module @multiple_func_result_shardings attributes {mhlo.frontend_attributes = {x
     // CHECK:               %[[MAN_COMP:.*]] = sdy.manual_computation(%arg0, %arg1)
     // CHECK-SAME{LITERAL}:     in_shardings=[<@mesh2, [{}, {"b"}]>, <@mesh2, [{}, {"b"}]>]
     // CHECK-SAME{LITERAL}:     out_shardings=[<@mesh2, [{}, {"b"}]>]
-    // CHECK-SAME{LITERAL}:     manual_axes={"b"}
+    // CHECK-SAME{LITERAL}:     manual_axes={"a", "b"}
     // CHECK-SAME:              (%arg2: tensor<16x8xf32>, %arg3: tensor<16x8xf32>) {
     // CHECK-NEXT:            %[[ADD:.*]] = stablehlo.add %arg2, %arg3
     // CHECK-NEXT:            sdy.return %[[ADD]]
