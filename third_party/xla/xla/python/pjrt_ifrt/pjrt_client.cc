@@ -824,6 +824,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> PjRtClient::Create(
   }
 
   client->kv_store_ = std::move(options.kv_store);
+  client->cross_host_transfer_timeout_ = options.cross_host_transfer_timeout;
 
   LogDeviceSummary(client.get());
   return client;
@@ -1351,9 +1352,8 @@ absl::Status PjRtClient::CrossHostSendBuffers(
     auto promise = PjRtFuture<std::string>::CreatePromise();
     PjRtFuture<std::string> descriptor_future(promise);
     std::string key = absl::StrCat(kKeyPrefix, keys[i]);
-    // TODO(emilyaf): Make this timeout configurable.
     TF_ASSIGN_OR_RETURN(std::string descriptor,
-                        kv_store_->Get(key, absl::Seconds(10)));
+                        kv_store_->Get(key, cross_host_transfer_timeout_));
     promise.Set(std::move(descriptor));
     auto on_done = [](absl::Status status, bool sends_were_enqueued) {
       CHECK_OK(status);

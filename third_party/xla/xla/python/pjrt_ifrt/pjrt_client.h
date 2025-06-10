@@ -123,6 +123,7 @@ class PjRtClient final
 
     absl::Duration get_local_topology_timeout = absl::Minutes(2);
     absl::Duration get_global_topology_timeout = absl::Minutes(5);
+    absl::Duration cross_host_transfer_timeout = absl::Minutes(1);
 
     // Device mapping to construct a global view consisting of both addressable
     // and non-addressable devices.
@@ -360,6 +361,7 @@ class PjRtClient final
 
   std::atomic<int64_t> next_transfer_key_ = 0;
   std::shared_ptr<xla::KeyValueStoreInterface> kv_store_;
+  absl::Duration cross_host_transfer_timeout_;
 
   friend class PjRtClientPeer;
 };
