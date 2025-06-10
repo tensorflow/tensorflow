@@ -167,6 +167,40 @@ TEST(ThunkProtoDeserializationTest, HostToDeviceCopyThunk) {
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
+TEST(ThunkProtoDeserializationTest, DeviceToDeviceCopyThunk) {
+  ThunkProto proto;
+  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        thunk_info {
+          profile_annotation: "profile_annotation"
+          execution_stream_id: 123
+        }
+        device_to_device_copy_thunk {
+          copy_thunk {
+            source_buffer { offset: 128 size: 384 buffer_allocation_index: 0 }
+            destination_buffer {
+              offset: 0
+              size: 256
+              buffer_allocation_index: 1
+            }
+            mem_size: 256
+          }
+        }
+      )pb",
+      &proto));
+
+  std::vector<BufferAllocation> buffer_allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
+      BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Thunk> thunk,
+                          DeserializeThunkProto(proto, buffer_allocations));
+  auto* copy_thunk = dynamic_cast<DeviceToDeviceCopyThunk*>(thunk.get());
+  ASSERT_NE(copy_thunk, nullptr);  // Check the cast succeeded
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, copy_thunk->ToProto());
+  EXPECT_THAT(round_trip_proto, EqualsProto(proto));
+}
+
 TEST(ThunkProtoDeserializationTest, WhileThunk) {
   ThunkProto proto;
   CHECK(tsl::protobuf::TextFormat::ParseFromString(
