@@ -101,7 +101,7 @@ class AsyncCollectiveAnnotatorTest
     : public HloHardwareIndependentTestBase,
       public ::testing::WithParamInterface<TestCase> {};
 
-XLA_TEST_P(AsyncCollectiveAnnotatorTest, Test) {
+TEST_P(AsyncCollectiveAnnotatorTest, Test) {
   const TestCase& test_case = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
