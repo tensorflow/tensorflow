@@ -64,6 +64,7 @@ cc_library(
 # Definition of the test for the object tracking library
 tf_native_cc_binary(
     name = "object_tracking_test",
+    testonly = True,
     srcs = [
         "object_tracking_test.cc",
     ],
@@ -74,5 +75,4 @@ tf_native_cc_binary(
         ":object_tracking_lib",
         "@com_google_googletest//:gtest_main",
     ],
-    testonly = True,
 )
