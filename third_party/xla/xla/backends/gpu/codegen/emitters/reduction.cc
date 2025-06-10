@@ -600,9 +600,9 @@ ColumnReductionFusion::ColumnReductionFusion(const HloFusionAnalysis& analysis)
                   reduction_dimensions_.dimensions[1],
                   reduction_dimensions_.dimensions[2]};
   vector_size_ = GetVectorSizeForMlir(
-      analysis, /*minor_dim=*/input_shape_.back(), WarpSize());
-  int64_t num_warps_per_column = WarpSize();
-  num_threads_ = {num_warps_per_column, WarpSize()};
+      analysis, /*minor_dim=*/input_shape_.back(), kTileSize);
+  int64_t num_warps_per_column = kTileSize;
+  num_threads_ = {num_warps_per_column, kTileSize};
   int64_t num_col_elements_per_thread =
       CeilOfRatio(reduction_dimensions_
                       .dimensions[ReductionDimensions::kColReducedDimension],
@@ -616,7 +616,7 @@ ColumnReductionFusion::ColumnReductionFusion(const HloFusionAnalysis& analysis)
       reduction_dimensions_
           .dimensions[ReductionDimensions::kColMinorKeptDimension];
   int64_t num_blocks_per_row =
-      CeilOfRatio(minor_kept_dim, WarpSize() * vector_size_);
+      CeilOfRatio(minor_kept_dim, kTileSize * vector_size_);
   num_blocks_ = {major_kept_dim, num_blocks_per_row};
 }
 
@@ -629,7 +629,7 @@ IndexingMap ColumnReductionFusion::ComputeReductionOutputIndexing(
   auto vector_index = getAffineSymbolExpr(0, ctx);
   SmallVector<AffineExpr, 2> results{
       block_id[0],
-      (block_id[1] * WarpSize() + thread_id[0]) * vector_size_ + vector_index};
+      (block_id[1] * kTileSize + thread_id[0]) * vector_size_ + vector_index};
   IndexingMap projected_index =
       GetIndexingMap(results, /*symbol_sizes=*/{vector_size_});
   projected_index.AddConstraint(thread_id[1], {0, 0});
@@ -647,7 +647,7 @@ IndexingMap ColumnReductionFusion::ComputeReductionInputIndexing(
 
   SmallVector<AffineExpr, 3> results{
       block_id[0], thread_id[0] + element_index * num_threads_[1],
-      (block_id[1] * WarpSize() + thread_id[1]) * vector_size_ + vector_index};
+      (block_id[1] * kTileSize + thread_id[1]) * vector_size_ + vector_index};
   IndexingMap map = GetIndexingMap(results, tile_sizes_per_thread_);
   for (auto [result, dim_size] :
        llvm::zip(results, reduction_dimensions_.dimensions)) {
@@ -695,20 +695,20 @@ SmallColumnReductionFusion::SmallColumnReductionFusion(
   // We emit a single loop over the dimensions 1 and 2, so we use their total
   // size when computing the vector size.
   vector_size_ = GetVectorSizeForMlir(
-      analysis, /*minor_dim=*/input_shape_[1] * input_shape_[2], WarpSize());
+      analysis, /*minor_dim=*/input_shape_[1] * input_shape_[2], kTileSize);
   num_threads_ = {128};
   shared_rows_ = vector_size_ * num_threads_[0] / input_shape_[kColMinorKept];
 
   // If we have more than 32 shared rows, we'd have to go through shared
   // memory one extra time. We don't currently support that, and it's not been
   // tried, so we have to reduce the vector size/number of threads.
-  while (shared_rows_ > WarpSize() && vector_size_ > 1) {
+  while (shared_rows_ > kTileSize && vector_size_ > 1) {
     vector_size_ /= 2;
     shared_rows_ /= 2;
   }
-  if (shared_rows_ > WarpSize()) {
-    num_threads_[0] /= (shared_rows_ / WarpSize());
-    shared_rows_ = WarpSize();
+  if (shared_rows_ > kTileSize) {
+    num_threads_[0] /= (shared_rows_ / kTileSize);
+    shared_rows_ = kTileSize;
   }
 
   num_blocks_ = {input_shape_[kColMajorKept]};
