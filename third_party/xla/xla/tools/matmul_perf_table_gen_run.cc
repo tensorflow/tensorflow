@@ -64,7 +64,7 @@ int RunPerfTableCollection(int argc, char** argv) {
   };
 
   {
-    HloRunner runner(PlatformUtil::GetPlatform("cuda").value());
+    HloRunner runner(PlatformUtil::GetPlatform("gpu").value());
     const se::DeviceDescription& device_info =
         runner.backend().stream_executors()[0]->GetDeviceDescription();
     cfg.output = FilepathOutput(HloOpProfiles::GetProfileName(device_info));
