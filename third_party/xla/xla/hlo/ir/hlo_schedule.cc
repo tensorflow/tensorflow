@@ -147,15 +147,17 @@ absl::Status HloSchedule::UpdateComputationSchedule(
   }
 
   // Map from HloInstruction X to newly added instructions (instruction is in
-  // computation, but not in schedule) which use X. If an instruction is not in
-  // the map, then it has no users which are newly added instructions.
+  // computation, but not in schedule) which depend on X. If an instruction is
+  // not in the map, then it has no users or control successors which are newly
+  // added instructions.
   absl::flat_hash_map<const HloInstruction*, std::vector<HloInstruction*>>
-      new_instruction_uses;
+      new_instruction_successors;
 
   // For each newly added instruction, this is the count of the instruction's
-  // operands that have not yet been scheduled. When this value reaches zero,
-  // then the instruction may be placed in the schedule.
-  absl::flat_hash_map<const HloInstruction*, int> unscheduled_operand_count;
+  // operands and control predecessors that have not yet been scheduled. When
+  // this value reaches zero, then the instruction may be placed in the
+  // schedule.
+  absl::flat_hash_map<const HloInstruction*, int> unscheduled_predecessor_count;
 
   // Create a worklist of newly added instructions which are ready to be added
   // to the schedule. Initialize worklist with those that have zero operands.
@@ -163,14 +165,32 @@ absl::Status HloSchedule::UpdateComputationSchedule(
 
   for (HloInstruction* instruction : computation->instructions()) {
     if (!ids_in_schedule.contains(instruction->unique_id_64_bits())) {
-      // This is a newly added instruction which is not in the schedule.
-      if (instruction->operands().empty()) {
+      // `instruction` is a newly added instruction which is not in the
+      // schedule.
+      if (instruction->operands().empty() &&
+          instruction->control_predecessors().empty()) {
+        // `instruction` has no operands or control dependencies. It may be
+        // added to the schedule immediately (once the worklist is processed).
         worklist.push(instruction);
       } else {
+        absl::flat_hash_set<const HloInstruction*> predecessors;
+        auto add_predecessor = [&](const HloInstruction* predecessor) {
+          std::vector<HloInstruction*>& successors =
+              new_instruction_successors[predecessor];
+          if (!absl::c_linear_search(successors, instruction)) {
+            // Only add an instruction once.
+            successors.push_back(instruction);
+          }
+          predecessors.insert(predecessor);
+        };
         for (const HloInstruction* operand : instruction->operands()) {
-          new_instruction_uses[operand].push_back(instruction);
+          add_predecessor(operand);
         }
-        unscheduled_operand_count[instruction] = instruction->operand_count();
+        for (const HloInstruction* control_predecessor :
+             instruction->control_predecessors()) {
+          add_predecessor(control_predecessor);
+        }
+        unscheduled_predecessor_count[instruction] = predecessors.size();
       }
     }
   }
@@ -185,18 +205,18 @@ absl::Status HloSchedule::UpdateComputationSchedule(
       HloInstruction* instruction = worklist.front();
       worklist.pop();
       new_sequence.push_back(instruction);
-      std::vector<HloInstruction*>* new_users =
-          tsl::gtl::FindOrNull(new_instruction_uses, instruction);
-      if (new_users != nullptr) {
+      std::vector<HloInstruction*>* new_successors =
+          tsl::gtl::FindOrNull(new_instruction_successors, instruction);
+      if (new_successors != nullptr) {
         // This just-scheduled instruction has users which are newly added to
         // the module. Update the number of unscheduled operands and push the
         // newly added instruction to the worklist if it is ready to
         // schedule.
-        for (HloInstruction* new_user : *new_users) {
-          unscheduled_operand_count.at(new_user)--;
-          CHECK_GE(unscheduled_operand_count.at(new_user), 0);
-          if (unscheduled_operand_count.at(new_user) == 0) {
-            worklist.push(new_user);
+        for (HloInstruction* new_successor : *new_successors) {
+          unscheduled_predecessor_count.at(new_successor)--;
+          CHECK_GE(unscheduled_predecessor_count.at(new_successor), 0);
+          if (unscheduled_predecessor_count.at(new_successor) == 0) {
+            worklist.push(new_successor);
           }
         }
       }
