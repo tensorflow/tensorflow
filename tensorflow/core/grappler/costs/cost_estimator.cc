@@ -35,7 +35,6 @@ Costs CombineCosts(const Costs& left, const Costs& right) {
   result.hbm_write_time += right.hbm_write_time;
   result.hbm_read_time_noderate += right.hbm_read_time_noderate;
   result.hbm_write_time_noderate += right.hbm_write_time_noderate;
-
   if (right.max_per_op_buffers != kMemoryUnknown) {
     result.max_per_op_buffers =
         std::max(left.max_per_op_buffers, right.max_per_op_buffers);
