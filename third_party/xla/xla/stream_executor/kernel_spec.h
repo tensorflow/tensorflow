@@ -53,7 +53,6 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <utility>
-#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
@@ -177,25 +176,6 @@ class CudaCubinInMemory : public KernelLoaderSpec {
   void operator=(const CudaCubinInMemory &) = delete;
 };
 
-class LlvmHostKernel : public KernelLoaderSpec {
- public:
-  LlvmHostKernel(absl::string_view ir, absl::string_view entrypoint,
-                 absl::string_view kernel_name,
-                 absl::Span<std::string> options);
-
-  absl::string_view ir() const { return ir_; }
-  absl::string_view entrypoint() const { return entrypoint_; }
-  absl::Span<const std::string> options() const { return options_; }
-
- private:
-  std::string ir_;
-  std::string entrypoint_;
-  std::vector<std::string> options_;
-
-  LlvmHostKernel(const LlvmHostKernel &) = delete;
-  void operator=(const LlvmHostKernel &) = delete;
-};
-
 // Describes how to load a kernel on any subset of a number of target platforms.
 class MultiKernelLoaderSpec {
  public:
@@ -220,7 +200,6 @@ class MultiKernelLoaderSpec {
     return cuda_cubin_in_memory_ != nullptr;
   }
   bool has_cuda_ptx_in_memory() const { return cuda_ptx_in_memory_ != nullptr; }
-  bool has_llvm_host_kernel() const { return llvm_host_kernel_ != nullptr; }
 
   // Accessors for platform variant kernel load specifications.
   // Precondition: corresponding has_* is true.
@@ -236,10 +215,6 @@ class MultiKernelLoaderSpec {
     CHECK(has_cuda_ptx_in_memory());
     return *cuda_ptx_in_memory_;
   }
-  const LlvmHostKernel &llvm_host_kernel() const {
-    CHECK(has_llvm_host_kernel());
-    return *llvm_host_kernel_;
-  }
   // Builder-pattern-like methods for use in initializing a
   // MultiKernelLoaderSpec. Each of these should be used at most once for a
   // single MultiKernelLoaderSpec object. See file comment for example usage.
@@ -253,10 +228,6 @@ class MultiKernelLoaderSpec {
       absl::Span<const uint8_t> cubin_bytes, absl::string_view kernel_name);
   MultiKernelLoaderSpec *AddCudaPtxInMemory(absl::string_view ptx,
                                             absl::string_view kernel_name);
-  MultiKernelLoaderSpec *AddLlvmHostKernel(absl::string_view ir,
-                                           absl::string_view entrypoint,
-                                           absl::string_view kernel_name,
-                                           absl::Span<std::string> options);
 
   void set_kernel_args_packing(KernelArgsPacking kernel_args_packing) {
     kernel_args_packing_ = std::move(kernel_args_packing);
@@ -273,8 +244,6 @@ class MultiKernelLoaderSpec {
       cuda_cubin_in_memory_;  // Binary CUDA program in memory.
   std::shared_ptr<CudaPtxInMemory>
       cuda_ptx_in_memory_;  // PTX text that resides in memory.
-  std::shared_ptr<LlvmHostKernel>
-      llvm_host_kernel_;  // LLVM kernel for host execution.
 
   // Number of parameters that the kernel takes. (This is nicer to have in a
   // constexpr than having to determine it from the types via template
