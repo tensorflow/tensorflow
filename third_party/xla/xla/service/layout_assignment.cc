@@ -657,20 +657,6 @@ absl::Status PropagateParameterLayoutToUsers(const HloInstruction* instruction,
   return absl::OkStatus();
 }
 
-absl::Status ResetMemorySpaceInLayout(ShapeLayout& mutable_shape_layout) {
-  Shape shape = mutable_shape_layout.shape();
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachMutableSubshapeWithStatus(
-      &shape, [](Shape* subshape, const ShapeIndex& shape_index) {
-        if (subshape->has_layout() && subshape->IsArray()) {
-          subshape->mutable_layout()->set_memory_space(
-              Layout::kDefaultMemorySpace);
-        }
-        return absl::OkStatus();
-      }));
-  TF_RETURN_IF_ERROR(mutable_shape_layout.CopyLayoutFromShape(shape));
-  return absl::OkStatus();
-}
-
 }  // namespace
 
 absl::Status LayoutAssignment::AddMandatoryConstraints(
@@ -713,9 +699,6 @@ absl::Status LayoutAssignment::AddMandatoryConstraints(
         // Allow some parameter/result layouts to be unset in the entry
         // computation.
         if (parameter_layout.AnyLayoutIsSet()) {
-          // Clear out memory space in layout. Host offloader will do the
-          // analysis later.
-          TF_RETURN_IF_ERROR(ResetMemorySpaceInLayout(parameter_layout));
           // Parameter layouts must match the respective layout in
           // ComputationLayout, if there is one.
           Shape param_shape = parameter_layout.shape();
@@ -2013,12 +1996,6 @@ absl::Status LayoutAssignment::PropagateResultConstraint(
     LayoutConstraints* constraints) {
   ShapeLayout result_layout =
       layout_constraint.computation_layout().result_layout();
-  // Clear out memory space in layout for entry computation root. Host offloader
-  // will do the analysis later and add back the memory space for host outputs.
-  if (constraints->computation()->IsEntryComputation()) {
-    TF_RETURN_IF_ERROR(ResetMemorySpaceInLayout(result_layout));
-  }
-
   // Propagate the use constraint of the root instruction up to the logical
   // buffers which make up the result.
   return PropagateUseConstraintToDefs(
@@ -2207,9 +2184,6 @@ absl::Status LayoutAssignment::AssignLayouts(LayoutConstraints& constraints) {
   if (constraints.ResultLayout() != nullptr &&
       constraints.ResultLayout()->LayoutIsSet()) {
     ShapeLayout result_layout = *constraints.ResultLayout();
-    // Clear out memory space in layout. Host offloader will do the
-    // analysis later.
-    TF_RETURN_IF_ERROR(ResetMemorySpaceInLayout(result_layout));
     // Layout assignment at this point only does minor-to-major assignment so
     // tiling info should be ignored here for comparison.
     VLOG(5) << "Computation result layout needs root copying\n";
