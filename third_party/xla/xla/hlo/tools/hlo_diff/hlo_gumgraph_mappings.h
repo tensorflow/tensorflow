@@ -37,6 +37,7 @@ enum class MatcherType : std::uint8_t {
   kGreedyLimitedCandidatesBottomUpMatcher,
   kStrictGreedyTopDownMatcher,
   kGreedyTopDownMatcher,
+  kBipartiteTopDownMatcher,
 };
 
 // Computations with matching input parameters and output result are classified

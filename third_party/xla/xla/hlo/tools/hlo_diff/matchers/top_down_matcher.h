@@ -43,6 +43,20 @@ class GreedyTopDownMatcher : public HloGumgraphMatcher {
   const bool require_same_children_;
 };
 
+// Matcher that matches nodes top down by same type sequence along the path.
+class BipartiteTopDownMatcher : public HloGumgraphMatcher {
+ public:
+  BipartiteTopDownMatcher(const HloGumgraph* left, const HloGumgraph* right)
+      : HloGumgraphMatcher(MatcherType::kBipartiteTopDownMatcher),
+        left_(*ABSL_DIE_IF_NULL(left)),
+        right_(*ABSL_DIE_IF_NULL(right)) {}
+  void Match(HloGumgraphMappings& mappings) const override;
+
+ private:
+  const HloGumgraph& left_;
+  const HloGumgraph& right_;
+};
+
 }  // namespace xla::hlo_diff
 
 #endif  // XLA_HLO_TOOLS_HLO_DIFF_MATCHERS_TOP_DOWN_MATCHER_H_

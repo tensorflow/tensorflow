@@ -177,6 +177,7 @@ cc_library(
     srcs = ["top_down_matcher.cc"],
     hdrs = ["top_down_matcher.h"],
     deps = [
+        ":bipartite_matching",
         ":gumgraph_matcher",
         "//xla/hlo/tools/hlo_diff:hlo_gumgraph_mappings",
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph",
@@ -196,8 +197,10 @@ xla_cc_test(
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/hlo/tools/hlo_diff:hlo_gumgraph_mappings",
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph",
+        "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph_node",
         "//xla/hlo/tools/hlo_diff/utils:test_util",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
     ],
 )
