@@ -54,6 +54,10 @@ _TAGS_TO_DOCUMENTATION_MAP = {
         "Meaningless in OSS as all GPU tests are built with `--config=cuda`"
     ),
     # GPU tags
+    "requires-gpu": (
+        "Test requires GPU to execute. Fallback if neither CUDA nor ROCm is"
+        " specified."
+    ),
     "requires-gpu-amd": "Test requires AMD GPU to execute",
     "requires-gpu-nvidia": "Test requires NVIDIA GPU to execute",
     "requires-gpu-nvidia:2": "Test needs 2 NVIDIA GPUs to run",
