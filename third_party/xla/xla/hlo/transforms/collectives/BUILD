@@ -529,6 +529,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/transforms/expanders:op_expander_pass",
+        "//xla/service:collective_ops_utils",
         "//xla/service:hlo_creation_utils",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
