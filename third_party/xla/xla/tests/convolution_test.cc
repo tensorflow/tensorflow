@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
@@ -125,7 +126,7 @@ class ForwardPassConvolution_3x3x256_256_OutputZ_Iota : public ConvolutionTest {
 };
 
 TYPED_TEST_CASE(ForwardPassConvolution_3x3x256_256_OutputZ_Iota, TestTypes);
-XLA_TYPED_TEST(ForwardPassConvolution_3x3x256_256_OutputZ_Iota, Types) {
+TYPED_TEST(ForwardPassConvolution_3x3x256_256_OutputZ_Iota, Types) {
   this->RunTest();
 }
 
@@ -1667,7 +1668,10 @@ class ConvolutionHloTest
   }
 };
 
-TEST_F(ConvolutionHloTest, DISABLED_ON_TPU(ConvolveF64Forward)) {
+TEST_F(ConvolutionHloTest, ConvolveF64Forward) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   if (IsRocm()) {
     GTEST_SKIP() << "double datatype is not yet supported in ROCm";
   }
@@ -1713,7 +1717,10 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
 }
 
-TEST_F(ConvolutionHloTest, DISABLED_ON_TPU(ConvolveF64BackwardFilter)) {
+TEST_F(ConvolutionHloTest, ConvolveF64BackwardFilter) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   if (IsRocm()) {
     GTEST_SKIP() << "double datatype is not yet supported in ROCm";
   }
@@ -1728,7 +1735,10 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
 }
 
-TEST_F(ConvolutionHloTest, DISABLED_ON_TPU(ConvolveF64BackwardInput)) {
+TEST_F(ConvolutionHloTest, ConvolveF64BackwardInput) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   if (IsRocm()) {
     GTEST_SKIP() << "double datatype is not yet supported in ROCm";
   }
