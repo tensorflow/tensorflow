@@ -1697,8 +1697,9 @@ ENTRY e {
   }
   EXPECT_THAT(
       instr,
-      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())
-                     .WithFusionKind(HloInstruction::FusionKind::kCustom)));
+      GmockMatch(
+          m::Fusion(m::Parameter(), m::Parameter(), m::Bitcast(m::Parameter()))
+              .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/2e-2, /*arel=*/2e-2}));
 }
