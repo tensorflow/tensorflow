@@ -366,7 +366,8 @@ std::vector<int64_t> ElemwiseProduct(absl::Span<const int64_t> a,
 
 absl::InlinedVector<std::pair<int64_t, int64_t>, 8> CommonFactors(
     absl::Span<const int64_t> a, absl::Span<const int64_t> b) {
-  CHECK_EQ(Product(a), Product(b));
+  CHECK_EQ(Product(a), Product(b)) << "a=[" << absl::StrJoin(a, ",") << "], b=["
+                                   << absl::StrJoin(b, ",") << "]";
   absl::InlinedVector<std::pair<int64_t, int64_t>, 8> bounds;
   if (absl::c_equal(a, b)) {
     bounds.reserve(a.size() + 1);
