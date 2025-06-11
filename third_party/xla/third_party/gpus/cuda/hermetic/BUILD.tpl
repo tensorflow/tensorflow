@@ -323,3 +323,8 @@ alias(
     name = "runtime_ptxas",
     actual = "@cuda_nvcc//:ptxas",
 )
+
+alias(
+    name = "runtime_nvdisasm",
+    actual = "@cuda_nvdisasm//:nvdisasm",
+)

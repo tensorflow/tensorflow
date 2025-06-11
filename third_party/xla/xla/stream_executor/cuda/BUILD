@@ -1349,6 +1349,10 @@ cc_library(
         ),
     ),
     local_defines = if_windows(["PLATFORM_WINDOWS"]),
+    visibility = internal_visibility([
+        "//third_party/py/jax:__subpackages__",
+        ":friends",
+    ]),
     deps = [
         ":cubin_or_ptx_image",
         ":ptx_compiler_helpers",
@@ -1766,6 +1770,10 @@ cc_library(
     name = "compilation_provider_options",
     srcs = ["compilation_provider_options.cc"],
     hdrs = ["compilation_provider_options.h"],
+    visibility = internal_visibility([
+        "//third_party/py/jax:__subpackages__",
+        ":friends",
+    ]),
     deps = [
         "//xla:xla_proto_cc",
         "@com_google_absl//absl/strings:str_format",
