@@ -95,6 +95,23 @@ using ::mlir::sdy::MeshOp;
 using ::mlir::sdy::SdyDialect;
 using ::mlir::sdy::TensorShardingAttr;
 
+// Check if all shardings in an array are unreduced. Hard fail if at least one
+// but not all are unreduced.
+bool allShardingsUnreduced(ArrayRef<TensorShardingAttr> shardings) {
+  bool hasUnreduced = false;
+  bool hasNonUnreduced = false;
+  for (TensorShardingAttr sharding : shardings) {
+    if (sharding.getUnreducedAxes().empty()) {
+      hasNonUnreduced = true;
+    } else {
+      hasUnreduced = true;
+    }
+  }
+  CHECK(!hasUnreduced || !hasNonUnreduced)
+      << "Shardings have a mix of unreduced and non-unreduced.";
+  return hasUnreduced;
+}
+
 // Convert the shardings from kShardingAttr into kXlaShardingAttr.
 LogicalResult exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
                          OpBuilder& builder,
@@ -151,6 +168,10 @@ LogicalResult exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
 
     if (ArrayRef<TensorShardingAttr> shardings = mlir::sdy::getShardings(op);
         !shardings.empty()) {
+      if (allShardingsUnreduced(shardings)) {
+        setFrontendAttribute(op, kHasUnreducedAxes,
+                             builder.getStringAttr("true"));
+      }
       setHloShardingAttr(op, shardings, getMeshAttr, manualAxes);
       op->removeAttr(kShardingAttr);
     } else if (addMissingShardingToControlFlow &&
