@@ -159,19 +159,33 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
 
   // Try to find the scan axis. We expect all window dimensions to be trivial,
   // except for one.
-  int64_t rank = operand_shape.dimensions().size();
+  const int64_t rank = operand_shape.dimensions().size();
   const Window& window = reduce_window->window();
   std::vector<int64_t> non_trivial_window_dimensions =
       reduce_window->non_trivial_window_dimensions();
+
+  // If there are multiple non-trivial window dimensions or no non-trivial
+  // window dimensions, we cannot optimize.
   if (non_trivial_window_dimensions.size() != 1) {
+    VLOG(2) << "ReduceWindowRewriter: Cannot optimize the reduce window "
+               "because of the number of non-trivial window dimensions: "
+            << reduce_window->ToString();
     return false;
   }
   const int64_t scan_dim_num = non_trivial_window_dimensions.front();
-
   const int64_t scan_length = operand_shape.dimensions(scan_dim_num);
-  absl::Span<HloInstruction* const> init_values = reduce_window->init_values();
-  const WindowDimension& scan_window_dim = window.dimensions(scan_dim_num);
 
+  // Early checks to avoid unnecessary work.
+  if (scan_length <= base_length_) {
+    return false;
+  }
+  if (reduce_window->to_apply()->root_instruction()->shape().IsTuple() &&
+      reduce_window->to_apply()->root_instruction()->opcode() !=
+          HloOpcode::kTuple) {
+    return false;
+  }
+
+  const WindowDimension& scan_window_dim = window.dimensions(scan_dim_num);
   bool forward_scan = (scan_window_dim.padding_low() == scan_length - 1 ||
                        scan_window_dim.padding_low() == scan_length) &&
                       scan_window_dim.padding_high() == 0;
@@ -189,16 +203,6 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
   bool is_exclusive = forward_scan
                           ? (scan_window_dim.padding_low() == scan_length)
                           : (scan_window_dim.padding_high() == scan_length);
-
-  if (scan_length <= base_length_) {
-    return false;
-  }
-
-  if (reduce_window->to_apply()->root_instruction()->shape().IsTuple() &&
-      reduce_window->to_apply()->root_instruction()->opcode() !=
-          HloOpcode::kTuple) {
-    return false;
-  }
 
   VLOG(2) << "Rewriting Scan: " << reduce_window->ToString();
   HloComputation* parent = reduce_window->parent();
@@ -274,6 +278,7 @@ absl::StatusOr<bool> ReduceWindowRewriter::TryOptimizeCumSumOrProd(
   // exclusive reverse scan of the first columnt at (5).
 
   // Pad.
+  absl::Span<HloInstruction* const> init_values = reduce_window->init_values();
   const int64_t padded_length = RoundUpTo(scan_length, base_length_);
   if (scan_length != padded_length) {
     for (size_t i = 0; i < sources.size(); ++i) {
