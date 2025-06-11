@@ -26,8 +26,9 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/c/tf_status_helper.h"
+#include "third_party/cloud_cpp/google/cloud/common_options.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/stacktrace_handler.h"
 #include "tensorflow/core/platform/test.h"
@@ -663,6 +664,31 @@ TEST_F(GCSFilesystemTest, NewRandomAccessFile_Buffered_CachedOutOfRange) {
   ASSERT_EQ(TF_GetCode(status_), TF_OUT_OF_RANGE) << TF_Message(status_);
   result.resize(read);
   ASSERT_EQ(result, "5678") << "Result: " << result << "\n";
+}
+
+TEST_F(GCSFilesystemTest, TestGetStorageClientOptions) {
+  tf_gcs_filesystem::InitTest(filesystem_, false, 10, 0, 0, 0, 0, status_);
+  ASSERT_TF_OK(status_) << "Could not initialize filesystem. "
+                        << TF_Message(status_);
+  auto gcs_file =
+      static_cast<tf_gcs_filesystem::GCSFile*>(filesystem_->plugin_filesystem);
+  // Get the raw connection
+  auto connection = gcs_file->gcs_client.raw_client();
+  // Get the options from the connection
+  auto options = connection->options();
+
+  // Access the UserAgentProductsOptions which contain information about
+  // the UserAgent
+  auto user_agent_products =
+      options.get<google::cloud::UserAgentProductsOption>();
+  bool found_x_goog_api_client = false;
+  for (const auto& product : user_agent_products) {
+    if (absl::StrContains(product, "TensorFlow-C-API")) {
+      found_x_goog_api_client = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(found_x_goog_api_client);
 }
 
 }  // namespace
