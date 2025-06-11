@@ -783,7 +783,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
         /*min_alignment=*/cpu_function_runtime::MinAlign());
   }
 
-  if (options::UseExperimentalLoopFusion(hlo_module_config_) &&
+  if (hlo_module_config_.debug_options().xla_cpu_use_fusion_emitters() &&
+      options::UseExperimentalLoopFusion(hlo_module_config_) &&
       fusion->fusion_kind() == HloFusionInstruction::FusionKind::kLoop) {
     std::unique_ptr<mlir::MLIRContext> context =
         FusionCompiler::CreateContext();

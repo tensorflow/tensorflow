@@ -1473,6 +1473,7 @@ xla_cc_test(
     tags = ["not_run:arm"],
     deps = [
         ":cpu_instruction_fusion",
+        ":cpu_options",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
@@ -1513,9 +1514,12 @@ cc_library(
     srcs = ["cpu_instruction_fusion.cc"],
     hdrs = ["cpu_instruction_fusion.h"],
     deps = [
+        ":cpu_options",
         "//xla:shape_util",
+        "//xla/codegen/emitters:elemental_hlo_to_mlir",
         "//xla/hlo/ir:hlo",
         "//xla/service:fusion_node_indexing_evaluation",
+        "//xla/service:hlo_module_config",
         "//xla/service:instruction_fusion",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
