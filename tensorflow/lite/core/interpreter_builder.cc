@@ -448,6 +448,15 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
   }
 
   const size_t num_scales = src_quantization->scale()->size();
+  const size_t num_zero_points = src_quantization->zero_point()->size();
+  // If all of the zero points are the same, only store one to avoid large,
+  // redundant allocations.
+  bool all_zero_points_same = true;
+  int32_t zero_point = src_quantization->zero_point()->data()[0];
+  for (int i = 1; i < num_zero_points && all_zero_points_same; ++i) {
+    all_zero_points_same &=
+        (src_quantization->zero_point()->data()[i] == zero_point);
+  }
 
   // Ensure that the quantization dimension is valid.
   if (src_quantization->quantized_dimension() < 0 ||
@@ -478,11 +487,18 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
   auto* affine_quantization = reinterpret_cast<TfLiteAffineQuantization*>(
       malloc(sizeof(TfLiteAffineQuantization)));
   affine_quantization->scale = TfLiteFloatArrayCreate(num_scales);
-  affine_quantization->zero_point = TfLiteIntArrayCreate(num_scales);
   for (size_t i = 0; i < num_scales; ++i) {
     affine_quantization->scale->data[i] = src_quantization->scale()->Get(i);
-    affine_quantization->zero_point->data[i] =
-        src_quantization->zero_point()->Get(i);
+  }
+  if (all_zero_points_same) {
+    affine_quantization->zero_point = TfLiteIntArrayCreate(1);
+    affine_quantization->zero_point->data[0] = zero_point;
+  } else {
+    affine_quantization->zero_point = TfLiteIntArrayCreate(num_scales);
+    for (size_t i = 0; i < num_scales; ++i) {
+      affine_quantization->zero_point->data[i] =
+          src_quantization->zero_point()->Get(i);
+    }
   }
   affine_quantization->quantized_dimension =
       src_quantization->quantized_dimension();
