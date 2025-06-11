@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.71
+
+* Implemented phase compilation support.
+
 ## 0.69
 
 * Implemented PjRtClient::CreateUninitializedBuffer

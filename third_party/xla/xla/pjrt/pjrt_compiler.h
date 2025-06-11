@@ -16,19 +16,26 @@ limitations under the License.
 #ifndef XLA_PJRT_PJRT_COMPILER_H_
 #define XLA_PJRT_PJRT_COMPILER_H_
 
+#include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/layout.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/proto/pjrt_partial_program.pb.h"
 #include "tsl/platform/fingerprint.h"
 
 namespace xla {
@@ -192,6 +199,88 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, mlir::ModuleOp module,
     const PjRtTopologyDescription& topology, PjRtClient* client = nullptr);
+
+// Represents a function signature for a compilation phase.
+typedef std::function<absl::StatusOr<std::vector<PjRtPartialProgramProto>>(
+    CompileOptions, const std::vector<PjRtPartialProgramProto>&,
+    const PjRtTopologyDescription&)>
+    PhaseCompiler;
+
+// Represents a function signature for validating the inputs to a compilation
+// phase.
+typedef std::function<absl::Status(const std::vector<PjRtPartialProgramProto>&)>
+    PhaseValidator;
+
+// PjRtPhaseCompiler is a specialized PjRtCompiler that supports multi-stage,
+// "phased" compilation. It allows plugins to register individual compilation
+// phases (PhaseCompiler and PhaseValidator functions) and manages their
+// execution.
+class PjRtPhaseCompiler : public PjRtCompiler {
+ public:
+  ~PjRtPhaseCompiler() override = default;
+
+  // Registers a new compilation phase with its corresponding compiler and
+  // validator functions. The `phase_name` must be unique. The `phase_compiler`
+  // and `phase_validator` functions must not be null. The order of registered
+  // phase names is maintained.
+  virtual absl::Status RegisterPhase(const std::string& phase_name,
+                                     PhaseCompiler phase_compiler,
+                                     PhaseValidator phase_validator);
+
+  // Returns a vector of strings containing the names of all registered phases
+  // in the order they were registered.
+  virtual absl::StatusOr<std::vector<std::string>> GetPhaseNames();
+
+  // Compiles a set of input programs by running them through a specified
+  // sequence of compilation phases. This function internally calls
+  // `ValidatePhase` to trigger plugin-specific validation of input
+  // compatibility before invoking the appropriate phase compilers. The output
+  // of one phase is passed as input to the next. Returns the vector of
+  // `PjRtPartialProgramProto` objects resulting from the last executed phase,
+  // or an error status if any validation or compilation step fails.
+  absl::StatusOr<std::vector<PjRtPartialProgramProto>> CompilePhase(
+      CompileOptions options,
+      const std::vector<PjRtPartialProgramProto>& input_programs,
+      const PjRtTopologyDescription& topology,
+      const std::vector<std::string>& phases_to_run);
+
+  // `PjRtPhaseCompiler` implementations must override the following `Compile`
+  // methods. These methods are expected to internally invoke `CompilePhase` to
+  // execute the registered compilation phases obtained from `GetPhaseNames`.
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      CompileOptions options, const XlaComputation& computation,
+      const PjRtTopologyDescription& topology, PjRtClient* client) override = 0;
+
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      CompileOptions options, mlir::ModuleOp module,
+      const PjRtTopologyDescription& topology, PjRtClient* client) override = 0;
+
+ private:
+  // Maps phase names to their corresponding compiler and validator functions.
+  absl::flat_hash_map<std::string, std::pair<PhaseCompiler, PhaseValidator>>
+      phase_map_;
+
+  // The names of all registered phases in the order they were registered.
+  std::vector<std::string> phase_names_;
+};
+
+// Variant of `PjRtCompile` that accepts a vector of `PjRtPartialProgramProto`
+// and compiles them using the `PjRtPhaseCompiler` registered for the
+// "partial_compile" platform. This function orchestrates the execution of
+// multiple compilation phases as defined by `phases_to_run`. It is the primary
+// API for callers to interact with the phased compilation capabilities of the
+// PJRT infrastructure.
+absl::StatusOr<std::vector<PjRtPartialProgramProto>> PjRtPhaseCompile(
+    CompileOptions options,
+    const std::vector<PjRtPartialProgramProto>& input_programs,
+    const PjRtTopologyDescription& topology,
+    const std::vector<std::string>& phases_to_run);
+
+// Returns a vector of strings containing the names of all registered
+// compilation phases. This allows callers to query the available phases
+// and their intended execution order from the `PjRtPhaseCompiler`.
+absl::StatusOr<std::vector<std::string>> PjRtGetPhaseNames(
+    const std::string& platform_name);
 
 }  // namespace xla
 
