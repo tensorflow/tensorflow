@@ -437,5 +437,27 @@ TEST_F(ReshapeMoverTest, ShardingConsistencyPreservation) {
   EXPECT_FALSE(elementwise_op->has_sharding());
 }
 
+TEST_F(ReshapeMoverTest, ChainOfCandidates) {
+  const std::string hlo_string = R"(
+    HloModule test
+    ENTRY test {
+      param0 = f32[1,8,1,7] parameter(0)
+      param1 = f32[1,8,1,7] parameter(1)
+      param2 = f32[1,8,1,7] parameter(2)
+      reshape0 = f32[8,7] reshape(param0)
+      reshape1 = f32[8,7] reshape(param1)
+      add0 = f32[8,7] add(reshape0, reshape1)
+      reshape2 = f32[8,7] reshape(param2)
+      ROOT add1 = f32[8,7] add(add0, reshape2)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK(RunPass(m.get(), /*change_expected=*/true));
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Reshape(m::Add(
+                  m::Add(m::Parameter(0), m::Parameter(1)), m::Parameter(2)))));
+}
+
 }  // namespace
 }  // namespace xla

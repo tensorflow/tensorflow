@@ -52,15 +52,16 @@ ENTRY test_case {
 // CHECK-LABEL: ENTRY %test_case
 // CHECK-NEXT:  %[[constant:[^ ]+]] = f32[] constant(1)
 // CHECK-NEXT:  %[[broadcast:[^ ]+]] = f32[8,7]{1,0} broadcast(%[[constant]]), dimensions={}
+// CHECK-NEXT:  %[[reshape_4:[^ ]+]] = f32[1,8,1,7]{3,2,1,0} reshape(%[[broadcast]])
+// CHECK-NEXT:  %[[reshape_2:[^ ]+]] = f32[1,8,1,7]{3,2,1,0} reshape(%[[broadcast]])
 // CHECK-NEXT:  %[[parameter_anon:[^ ]+]] = f32[1,8,1,7]{3,2,1,0} parameter(0)
 // CHECK-NEXT:  %[[negate_1:[^ ]+]] = f32[1,8,1,7]{3,2,1,0} negate(%[[parameter_anon]])
-// CHECK-NEXT:  %[[reshape:[^ ]+]] = f32[8,7]{1,0} reshape(%[[negate_1]])
-// CHECK-NEXT:  %[[exponential:[^ ]+]] = f32[8,7]{1,0} exponential(%[[reshape]])
-// CHECK-NEXT:  %[[add_1:[^ ]+]] = f32[8,7]{1,0} add(%[[broadcast]], %[[exponential]])
-// CHECK-NEXT:  %[[divide:[^ ]+]] = f32[8,7]{1,0} divide(%[[broadcast]], %[[add_1]])
+// CHECK-NEXT:  %[[exponential_1:[^ ]+]] = f32[1,8,1,7]{3,2,1,0} exponential(%[[negate_1]])
+// CHECK-NEXT:  %[[add_2:[^ ]+]] = f32[1,8,1,7]{3,2,1,0} add(%[[reshape_2]], %[[exponential_1]])
+// CHECK-NEXT:  %[[divide_1:[^ ]+]] = f32[1,8,1,7]{3,2,1,0} divide(%[[reshape_4]], %[[add_2]])
 // CHECK-NEXT:  %[[parameter_anon_1:[^ ]+]] = f32[1,8,1,7]{3,2,1,0} parameter(1)
-// CHECK-NEXT:  %[[reshape1:[^ ]+]] = f32[8,7]{1,0} reshape(%[[parameter_anon_1]])
-// CHECK-NEXT:  ROOT %[[add:[^ ]+]] = f32[8,7]{1,0} add(%[[divide]], %[[reshape1]])
+// CHECK-NEXT:  %[[add_3:[^ ]+]] = f32[1,8,1,7]{3,2,1,0} add(%[[divide_1]], %[[parameter_anon_1]])
+// CHECK-NEXT:  ROOT %[[reshape_6:[^ ]+]] = f32[8,7]{1,0} reshape(%[[add_3]])
 
 HloModule TestWithRelevantOptimizationPasses
 
