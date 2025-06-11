@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
@@ -4369,47 +4368,6 @@ ENTRY main.5_spmd {
   HloInstruction* dynamic_update_slice =
       FindInstruction(module.get(), "dynamic-update-slice");
   EXPECT_TRUE(host_offload_utils::ComputeTypeIsHost(dynamic_update_slice));
-}
-
-// Test that incorrectly introduced host memory space before offloader should be
-// cleared by the offloader.
-TEST_F(HostOffloaderTest, IncorrectHostMemorySpaceBeforeOffloader) {
-  const absl::string_view hlo_string = R"(
-HloModule jit__identity_fn, entry_computation_layout={(bf16[4,512,1,128]{3,1,2,0:T(8,128)(2,1)})->bf16[4,512,1,128]{3,2,1,0:T(1)L(1024)S(5)}}, allow_spmd_sharding_propagation_to_parameters={true}, num_partitions=8
-
-ENTRY %main.5_spmd (param: bf16[4,512,1,128]) -> bf16[4,512,1,128] {
-  %param = bf16[4,512,1,128]{3,1,2,0:T(8,128)(2,1)} parameter(0), sharding={devices=[1,4,2,1]<=[8]}, metadata={op_name="x"}
-  %bitcast = bf16[262144]{0:T(1024)(128)(2,1)} bitcast(%param)
-  %reshape.1 = bf16[1024,256]{1,0:T(8,128)(2,1)} reshape(%bitcast)
-  %bitcast-convert = u16[1024,256]{1,0:T(8,128)(2,1)} bitcast-convert(%reshape.1)
-  %iota = u32[256,256]{1,0:T(8,128)} iota(), iota_dimension=1
-  %iota.1 = u32[256,256]{1,0:T(8,128)} iota(), iota_dimension=0
-  %constant.2 = u32[]{:T(256)} constant(1)
-  %broadcast.2 = u32[256,256]{1,0:T(8,128)} broadcast(%constant.2), dimensions={}
-  %and = u32[256,256]{1,0:T(8,128)} and(%iota.1, %broadcast.2)
-  %constant = u32[] constant(128)
-  %broadcast = u32[256,256]{1,0:T(8,128)} broadcast(%constant), dimensions={}
-  %multiply = u32[256,256]{1,0:T(8,128)} multiply(%and, %broadcast)
-  %constant.3 = u32[] constant(1)
-  %broadcast.3 = u32[256,256]{1,0:T(8,128)} broadcast(%constant.3), dimensions={}
-  %shift-right-logical = u32[256,256]{1,0:T(8,128)} shift-right-logical(%iota.1, %broadcast.3)
-  %add = u32[256,256]{1,0:T(8,128)} add(%multiply, %shift-right-logical)
-  %compare = pred[256,256]{1,0:T(8,128)(4,1)} compare(%iota, %add), direction=EQ
-  %convolution = u16[1024,256]{1,0:T(8,128)(2,1)} convolution(%bitcast-convert, %compare), dim_labels=bf_io->bf
-  %bitcast-convert.1 = bf16[1024,256]{1,0:T(8,128)(2,1)} bitcast-convert(%convolution)
-  %reshape.2 = bf16[262144]{0:T(1024)(128)(2,1)} reshape(%bitcast-convert.1)
-  %bitcast.2 = bf16[4,512,1,128]{3,2,1,0:T(1)L(1024)S(5)} bitcast(%reshape.2)
-  ROOT %custom-call.1 = bf16[4,512,1,128]{3,2,1,0:T(1)L(1024)S(5)} custom-call(%bitcast.2), custom_call_target="MoveToHost"
-}
-)";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
-  EXPECT_TRUE(changed);
-  VLOG(1) << module->ToString();
-  HloInstruction* bitcast = FindInstruction(module.get(), "bitcast.2");
-  EXPECT_NE(bitcast->shape().layout().memory_space(), Layout::kHostMemorySpace);
 }
 
 }  // namespace

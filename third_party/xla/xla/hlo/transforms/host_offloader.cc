@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/layout.h"
 #include "xla/literal_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_buffer.h"
@@ -1187,20 +1186,6 @@ absl::StatusOr<bool> HostOffloader::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-
-  // Set the memory space for all instructions to default memory space. Host
-  // memory space will be propagated on top of it.
-  for (HloComputation* computation : module->computations()) {
-    for (HloInstruction* instruction : computation->instructions()) {
-      ShapeUtil::ForEachMutableLeafShape(
-          instruction->mutable_shape(),
-          [&](Shape* subshape, const ShapeIndex& output_shape_index) {
-            if (subshape->has_layout()) {
-              SetMemorySpace(subshape, Layout::kDefaultMemorySpace);
-            }
-          });
-    }
-  }
 
   // Remove redundant copies to and from host (conservatively) starting
   // from the outputs of the host offloaded computations. Iterate over all
