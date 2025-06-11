@@ -841,13 +841,15 @@ bool IsInt32(T x) {
 }
 
 template <typename Container, typename T>
-absl::Status EraseElementFromVector(Container* container, const T& value) {
+bool EraseElementFromVector(Container* container, const T& value) {
   // absl::c_find returns a const_iterator which does not seem to work on
   // gcc 4.8.4, and this breaks the ubuntu/xla_gpu build bot.
   auto it = std::find(container->begin(), container->end(), value);
-  TF_RET_CHECK(it != container->end());
+  if (it == container->end()) {
+    return false;
+  }
   container->erase(it);
-  return absl::OkStatus();
+  return true;
 }
 
 // Takes a sequence of unpacked kBitsPerElement-bit values (kBitsPerElement must

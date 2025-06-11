@@ -1767,7 +1767,7 @@ class GroupConnectedBoundaries {
                 << " because all of its dependents have been visited: "
                 << next_boundary_count << "\n";
         visited_count_.erase(next_boundary[0]);
-        EraseElementFromVector(&new_boundaries_, next_boundary).IgnoreError();
+        EraseElementFromVector(&new_boundaries_, next_boundary);
         return true;
       }
     }
