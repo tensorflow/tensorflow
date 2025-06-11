@@ -57,6 +57,10 @@ using BinaryMap = absl::flat_hash_map<std::string, std::string>;
 // If a dimensions is smaller than this, untiled transposition may be more
 // efficient.
 inline constexpr int64_t kMinDimensionToTransposeTiled = 4;
+// When the last two dimensions are transposed, ideally we should use
+// PackedTransposeEmitter that can work good even with small dimensions. If that
+// is not possible, we should use the default emitter.
+inline constexpr int64_t kMinDimensionToLastTwoDimensionsTransposeTiled = 8;
 // If the product of the dimensions to be swapped is larger than
 // 'kMinTotalDimensionsToTransposeTiled', tiled transposition may be more
 // efficient. See go/xla-transpose-emitter-performance-analysis.

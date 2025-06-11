@@ -442,6 +442,15 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
       return std::nullopt;
     }
     transposed_dims = {operand_most_minor_dim, dimensions.back()};
+    // TODO(b/415741994): TransposeEmitter is slow when we are transposing the
+    // last two dimensions and one of the transposed is small because ends up
+    // using a very small amount of threads per warp.
+    if (std::min(transposed_dims.first, transposed_dims.second) <
+            kMinDimensionToLastTwoDimensionsTransposeTiled &&
+        permutation.back() == permutation.size() - 2 &&
+        permutation[permutation.size() - 2] == permutation.size() - 1) {
+      return std::nullopt;
+    }
   }
   if ((std::min(transposed_dims.first, transposed_dims.second) >=
        kMinDimensionToTransposeTiled) &&

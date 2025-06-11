@@ -147,6 +147,26 @@ ENTRY entry {
   EXPECT_FALSE(result.has_value());
 }
 
+TEST_F(IrEmissionUtilsTest, FindTiledLogicalTransposeLastTwoDimensionsSmall) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = f16[1024,4]{1,0} parameter(0)
+  ROOT t = f16[4,1024]{1,0} transpose(p), dimensions={1,0}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  HloInstruction* tr = module->entry_computation()->root_instruction();
+
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr);
+
+  // Transposed dimensions should be at least 8 when we are transposing the last
+  // two dimensions. See b/415741994 for more details.
+  EXPECT_FALSE(result.has_value());
+}
+
 TEST_F(IrEmissionUtilsTest, FindTiledLogicalTranspose2103ProductTooSmall) {
   const char* hlo = R"(
 HloModule module
