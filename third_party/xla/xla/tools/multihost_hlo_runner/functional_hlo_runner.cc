@@ -1571,45 +1571,4 @@ void AddShardingAnnotationsToSpmdPartitionedModule(HloModule* hlo_module) {
   set_manual_sharding(entry_root);
 }
 
-namespace {
-const FixedOptionSetFlagParser<InputFormat>& GetInputFormatParser() {
-  static const auto& parser = GetFixedOptionSetFlagParser<InputFormat>(
-      {{"text", InputFormat::kText},
-       {"proto_text", InputFormat::kProtoText},
-       {"proto_binary", InputFormat::kProtoBinary},
-       {"snapshot_proto_binary", InputFormat::kSnapshotProtoBinary},
-       {"unoptimized_snapshot_proto_binary",
-        InputFormat::kUnoptimizedSnapshotProtoBinary},
-       {"unoptimized_snapshot_proto_text",
-        InputFormat::kUnoptimizedSnapshotProtoText}});
-  return parser;
-}
-
-const FixedOptionSetFlagParser<OutputFormat>& GetOutputFormatParser() {
-  static const auto& parser = GetFixedOptionSetFlagParser<OutputFormat>(
-      {{"text", OutputFormat::kText},
-       {"proto_binary", OutputFormat::kProtoBinary},
-       {"proto_text", OutputFormat::kProtoText}});
-  return parser;
-}
-}  // namespace
-
-bool AbslParseFlag(absl::string_view text, InputFormat* input_format,
-                   std::string* error) {
-  return GetInputFormatParser().Parse(text, input_format, error);
-}
-
-std::string AbslUnparseFlag(InputFormat input_format) {
-  return GetInputFormatParser().Unparse(input_format);
-}
-
-bool AbslParseFlag(absl::string_view text, OutputFormat* output_format,
-                   std::string* error) {
-  return GetOutputFormatParser().Parse(text, output_format, error);
-}
-
-std::string AbslUnparseFlag(OutputFormat output_format) {
-  return GetOutputFormatParser().Unparse(output_format);
-}
-
 }  // namespace xla
