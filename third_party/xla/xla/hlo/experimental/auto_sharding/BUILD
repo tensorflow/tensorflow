@@ -501,6 +501,45 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "stablehlo_utils",
+    srcs = ["stablehlo_utils.cc"],
+    hdrs = ["stablehlo_utils.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/translate:stablehlo",
+        "//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_export",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "stablehlo_utils_test",
+    srcs = ["stablehlo_utils_test.cc"],
+    deps = [
+        ":stablehlo_utils",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/mlir_hlo",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
 tsl_pybind_extension(
     name = "auto_sharding_python_extension",
     srcs = ["auto_sharding_python_extension.cc"],
