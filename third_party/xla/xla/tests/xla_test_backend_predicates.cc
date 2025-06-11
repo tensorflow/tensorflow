@@ -28,6 +28,9 @@ namespace xla::test {
 namespace {
 
 absl::string_view GetXlaTestDevice() { return GetEnvOrDie("XLA_TEST_DEVICE"); }
+absl::string_view GetXlaTestDeviceType() {
+  return GetEnvOrDie("XLA_TEST_DEVICE_TYPE");
+}
 
 std::vector<absl::string_view> GetXlaTestModifiers() {
   return absl::StrSplit(GetEnvOrDie("XLA_TEST_MODIFIERS"), ',');
@@ -52,6 +55,10 @@ bool DeviceIsOneOf(absl::Span<const absl::string_view> devices) {
     }
   }
   return false;
+}
+
+bool DeviceTypeIs(absl::string_view device) {
+  return device == GetXlaTestDeviceType();
 }
 
 bool HasModifiers(absl::Span<const absl::string_view> modifiers) {
