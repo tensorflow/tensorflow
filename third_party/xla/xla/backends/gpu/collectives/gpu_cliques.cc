@@ -236,7 +236,10 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
   // Start GPU clique heart beat monitor when create a first clique.
   StartGpuCliqueHeartBeatMonitor();
 
-  using RendezvousArg = std::pair<DeviceRank, /*synchronized=*/bool>;
+  struct RendezvousArg {
+    DeviceRank device_rank;
+    bool synchronized;
+  };
 
   // Check how many roots are needed to initialize the GpuClique
   static const int64_t nccl_init_rank_per_root_ratio =
@@ -266,17 +269,19 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
     // Check that all ranks successfully synchronized device activity before
     // trying to instantiate GPU communicators.
     for (const RendezvousArg* arg : args) {
-      if (auto& [device_rank, synchronized] = *arg; !synchronized) {
+      if (!arg->synchronized) {
         return Internal(
             "Failed to synchronize device activity on rank %d. Do not attempt "
             "to initialize GPU clique.",
-            device_rank.rank.value());
+            arg->device_rank.rank.value());
       }
     }
 
     std::vector<DeviceRank> ranks;
     ranks.reserve(args.size());
-    for (auto* arg : args) ranks.emplace_back(arg->first);
+    for (const RendezvousArg* arg : args) {
+      ranks.emplace_back(arg->device_rank);
+    }
 
     // Sort device ranks, mainly to get more readable logs below.
     absl::c_sort(ranks, [](auto& a, auto& b) { return a.rank < b.rank; });
@@ -346,7 +351,7 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
   // Unfortunately we can't share synchronization result across different
   // processes, so we still might end up in a deadlock situation when some
   // processes are not able to synchronize device activity.
-  RendezvousArg rendezvous_arg = std::make_pair(device_rank, synchronized);
+  RendezvousArg rendezvous_arg = {device_rank, synchronized};
 
   return Rendezvous<LockableGpuClique::Lock>(
       initialization_rendezvous_name, rendezvous_key, rendezvous_arg,
