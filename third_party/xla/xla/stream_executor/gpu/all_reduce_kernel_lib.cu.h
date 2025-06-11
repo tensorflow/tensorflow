@@ -130,12 +130,17 @@ __device__ __forceinline__ void SyncRemoteBlocks(
 }
 
 template <typename T, xla::ReductionKind ReductionKindT>
-__global__ void AllReduceKernelImpl(
-    std::array<T* __restrict__, kMaxNumAllReduceInputPtrs> remote_input_ptrs,
-    T* __restrict__ local_input_ptr, T* __restrict__ output_ptr, int64_t rank,
-    int64_t num_ranks, int64_t num_elements,
-    std::array<uint32_t* __restrict__, kMaxNumAllReduceInputPtrs>
-        signal_flags_ptrs) {
+__global__ void AllReduceKernelImpl(                               //
+    std::array<T* __restrict__, kMaxNumAllReduceInputPtrs>         //
+        remote_input_ptrs,                                         //
+    T* __restrict__ local_input_ptr,                               //
+    T* __restrict__ output_ptr,                                    //
+    int64_t rank,                                                  //
+    int64_t num_ranks,                                             //
+    int64_t num_elements,                                          //
+    std::array<uint32_t* __restrict__, kMaxNumAllReduceInputPtrs>  //
+        signal_flags_ptrs                                          //
+) {
   int64_t offset =
       kNumElementsPerThread * (blockIdx.x * blockDim.x + threadIdx.x);
   int64_t stride = kNumElementsPerThread * blockDim.x * gridDim.x;
@@ -162,9 +167,6 @@ __global__ void AllReduceKernelImpl(
 
     VecStore(output_ptr + i, acc);
   }
-
-  __syncthreads();
-  SyncRemoteBlocks(signal_flags_ptrs, rank, num_ranks);
 }
 
 }  // namespace stream_executor::gpu

@@ -98,17 +98,33 @@ absl::Status CollectiveKernelThunk::RendezvousAfterInit(
           /*name=*/start_rendezvous_key, /*key=*/clique_key,
           /*value=*/state,
           /*num_threads=*/num_ranks, completion_fn));
-  TF_RET_CHECK(state.remote_buffer_ptrs.empty())
-      << "Remote buffer ptrs was expected to be empty. Was: "
-      << state.remote_buffer_ptrs.size();
-  TF_RET_CHECK(state.signal_buffer_ptrs.empty())
-      << "Signal buffer ptrs was expected to be empty. Was: "
-      << state.signal_buffer_ptrs.size();
+
+  // Sanity check to ensure that Rendezvous() was called only once.
+  for (int i = 0; i < state.remote_buffer_ptrs.size(); ++i) {
+    TF_RET_CHECK(state.remote_buffer_ptrs[i].empty())
+        << "Remote buffer ptrs was expected to be empty. Was: "
+        << state.remote_buffer_ptrs[i].size();
+    TF_RET_CHECK(state.signal_buffer_ptrs[i].empty())
+        << "Signal buffer ptrs was expected to be empty. Was: "
+        << state.signal_buffer_ptrs[i].size();
+  }
   for (auto* rendezvous_state : *rendezvous_values) {
-    state.remote_buffer_ptrs.emplace_back(
-        rendezvous_state->local_buffer.memory());
-    state.signal_buffer_ptrs.emplace_back(
-        rendezvous_state->signal_buffer.memory());
+    // NB: This is a double buffer allocation. So size of a single buffer is
+    // half of the total allocation.
+    const int64_t buffer_size =
+        rendezvous_state->local_buffer.memory().size() / kNumBuffers;
+    const int64_t signal_buffer_size =
+        rendezvous_state->signal_buffer.memory().size() / kNumBuffers;
+    for (int i = 0; i < state.remote_buffer_ptrs.size(); ++i) {
+      state.remote_buffer_ptrs[i].emplace_back(
+          rendezvous_state->local_buffer.memory().GetByteSlice(
+              /*offset_bytes=*/i * buffer_size,
+              /*size_bytes=*/buffer_size));
+      state.signal_buffer_ptrs[i].emplace_back(
+          rendezvous_state->signal_buffer.memory().GetByteSlice(
+              /*offset_bytes=*/i * signal_buffer_size,
+              /*size_bytes=*/signal_buffer_size));
+    }
   }
   return absl::OkStatus();
 }
@@ -129,7 +145,8 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
       // Step1: Allocate local buffer
       TF_ASSIGN_OR_RETURN(
           se::DeviceMemoryHandle local_buffer_alloc,
-          AllocateMemory(params.executor, buffer_.source_buffer.size(),
+          AllocateMemory(params.executor,
+                         buffer_.source_buffer.size() * kNumBuffers,
                          "LocalBuffer"));
 
       // Step2: Allocate signal buffer
@@ -138,7 +155,8 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
           clique_key.num_local_participants() * kLaunchBlockCountX;
       TF_ASSIGN_OR_RETURN(
           se::DeviceMemoryHandle signal_flags_alloc,
-          AllocateMemory(params.executor, kNumSignalFlags * sizeof(int32_t),
+          AllocateMemory(params.executor,
+                         kNumSignalFlags * sizeof(int32_t) * kNumBuffers,
                          "SignalBuffer"));
       // One-shot kernel expects that the signal flags buffer is zeroed out.
       // Initial state of device memory is undefined, so we need to zero out
@@ -202,6 +220,8 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
         << "Stream not found in per_stream_state_";
     state = it->second.get();
   }
+  const uint32_t buffer_index = state->invocation_count % kNumBuffers;
+  state->invocation_count++;
   VLOG(3) << "Performing one-shot all-reduce from device ordinal: "
           << device_ordinal << " for clique " << clique_key.ToString();
   // TODO(b/407736956): Change this to emitted kernel.
@@ -210,13 +230,13 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
       /*launch_dimensions=*/kLaunchDimensions,
       /*element_type=*/element_type,
       /*reduction_kind=*/reduction_kind_,
-      /*remote_input_buffers=*/state->remote_buffer_ptrs,
+      /*remote_input_buffers=*/state->remote_buffer_ptrs[buffer_index],
       /*local_input_buffer=*/source_buffer,
       /*output_buffer=*/destination_buffer,
       /*rank=*/rank.value(),
       /*num_ranks=*/kNumRanks,
       /*num_elements=*/buffer_.element_count,
-      /*signal_flags_buffers=*/state->signal_buffer_ptrs);
+      /*signal_flags_buffers=*/state->signal_buffer_ptrs[buffer_index]);
 }
 
 }  // namespace xla::gpu
