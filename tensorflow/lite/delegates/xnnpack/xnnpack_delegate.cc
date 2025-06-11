@@ -5842,22 +5842,6 @@ class Subgraph {
       } else {
         ends[i] = end_data[i];
       }
-
-      // Some models contain illegal crop info that will result in failure
-      // inside our kernels; check here and punt those to the default
-      // delegate implementation for it to decide how to handle them.
-      const int64_t extent = input_tensor.dims->data[i];
-      const int64_t offset = begins[i] < 0 ? begins[i] + extent : begins[i];
-      const int64_t size =
-          ends[i] <= 0 ? ends[i] + extent - offset : ends[i] - offset;
-      if (offset + size > extent) {
-        TF_LITE_MAYBE_KERNEL_LOG(logging_context,
-                                 "offset %" PRId64 " + size %" PRId64
-                                 " exceeds extent %" PRId64
-                                 " in STRIDED_SLICE node #%d for dimension %zu",
-                                 offset, size, extent, node_index, i);
-        return kTfLiteError;
-      }
     }
 
     if (subgraph != nullptr) {
