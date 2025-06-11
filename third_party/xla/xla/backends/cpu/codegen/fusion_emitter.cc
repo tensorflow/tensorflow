@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/fusion_emitter.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -38,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/utils/hlo_traversal.h"
+#include "xla/layout_util.h"
 #include "xla/runtime/work_cluster.h"
 #include "xla/runtime/work_dimensions.h"
 #include "xla/runtime/work_group.h"
@@ -59,17 +59,49 @@ static emitters::KernelArguments::BufferAlignment GetDefaultBufferAlignment() {
   return buffer_alignment;
 }
 
-static constexpr uint64_t kMaxWorkItems = 1024;
-static constexpr uint64_t kUnrollFactor = 8;
+static constexpr uint64_t kUnrollFactor = 1;
 
-static WorkDimensions GetDefaultWorkDimensions(uint64_t group_count,
-                                               uint64_t total_item_count) {
-  NumWorkGroups num_work_groups{group_count};
-  NumWorkItems num_work_items{std::min<uint64_t>(
-      kMaxWorkItems,
-      CeilOfRatio(total_item_count, group_count * kUnrollFactor))};
+int64_t GetWorkGroupCount(const HloFusionInstruction& fusion) {
+  auto backend_config_or = fusion.backend_config<BackendConfig>();
+  if (!backend_config_or.ok()) {
+    return 1;
+  }
+  absl::Span<const int64_t> outer_dimension_partitions =
+      backend_config_or->outer_dimension_partitions();
 
-  return WorkDimensions{NumWorkClusters(), num_work_groups, num_work_items};
+  if (outer_dimension_partitions.empty()) {
+    return 1;
+  }
+
+  return absl::c_accumulate(outer_dimension_partitions, 1,
+                            std::multiplies<int64_t>());
+}
+
+WorkDimensions GetWorkDimensions(const Shape& shape, int64_t work_group_count) {
+  auto minor_to_major = LayoutUtil::MinorToMajor(shape.layout());
+
+  NumWorkGroups num_work_groups{static_cast<uint64_t>(work_group_count)};
+
+  NumWorkItems num_work_items;
+  if (minor_to_major.size() > 2) {
+    for (int64_t dim : minor_to_major.subspan(2)) {
+      num_work_items.z =
+          CeilOfRatio(ShapeUtil::GetDimension(shape, dim), work_group_count);
+      work_group_count = 1;
+    }
+  }
+  if (minor_to_major.size() > 1) {
+    num_work_items.y = CeilOfRatio(
+        ShapeUtil::GetDimension(shape, minor_to_major[1]), work_group_count);
+    work_group_count = 1;
+  }
+  if (!minor_to_major.empty()) {
+    num_work_items.x = CeilOfRatio(
+        ShapeUtil::GetDimension(shape, minor_to_major[0]), work_group_count);
+    work_group_count = 1;
+  }
+
+  return WorkDimensions{NumWorkClusters{}, num_work_groups, num_work_items};
 }
 
 // Get the work dimensions for the given fusion.
@@ -78,23 +110,8 @@ static WorkDimensions GetLoopEmitterWorkDims(const HloFusionInstruction& fusion,
                                              const HloFusionSpec& fusion_spec) {
   Shape indexing_shape =
       emitters::LoopFusionKernelEmitter::GetIndexingShape(fusion_spec);
-  auto total_item_count = ShapeUtil::ElementsIn(indexing_shape);
 
-  auto backend_config_or = fusion.backend_config<BackendConfig>();
-  if (!backend_config_or.ok()) {
-    return GetDefaultWorkDimensions(1, total_item_count);
-  }
-  absl::Span<const int64_t> outer_dimension_partitions =
-      backend_config_or->outer_dimension_partitions();
-
-  if (outer_dimension_partitions.empty()) {
-    return GetDefaultWorkDimensions(1, total_item_count);
-  }
-
-  int64_t num_groups = absl::c_accumulate(outer_dimension_partitions, 1,
-                                          std::multiplies<int64_t>());
-
-  return GetDefaultWorkDimensions(num_groups, total_item_count);
+  return GetWorkDimensions(indexing_shape, GetWorkGroupCount(fusion));
 }
 
 static HloFusionSpec GetLoopFusionSpec(const HloFusionInstruction& fusion) {
@@ -121,8 +138,7 @@ absl::StatusOr<MlirKernelDefinition> EmitFusionKernel(
   if (fusion.fusion_kind() == HloFusionInstruction::FusionKind::kLoop) {
     VLOG(2) << "Emitting loop fusion kernel: " << fusion.name();
     HloFusionSpec fusion_spec = GetLoopFusionSpec(fusion);
-    WorkDimensions work_dimensions =
-        GetLoopEmitterWorkDims(fusion, fusion_spec);
+    auto work_dimensions = GetLoopEmitterWorkDims(fusion, fusion_spec);
     return emitters::LoopFusionKernelEmitter(
                context, fusion, std::move(fusion_spec), buffer_assignment,
                GetDefaultBufferAlignment(), work_dimensions, kUnrollFactor,
