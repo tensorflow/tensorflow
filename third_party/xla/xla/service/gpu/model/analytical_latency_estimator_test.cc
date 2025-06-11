@@ -19,7 +19,9 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <typeinfo>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/status/statusor.h"
@@ -90,19 +92,28 @@ class AnalyticalLatencyHidingSchedulerTest : public GpuCodegenTest {
       absl::string_view hlo_string) {
     return ParseAndReturnVerifiedModule(hlo_string, GetModuleConfigForTest());
   }
-  se::CudaComputeCapability GetCudaComputeCapability() {
+  se::GpuComputeCapability GetGpuComputeCapability() {
     return backend()
         .default_stream_executor()
         ->GetDeviceDescription()
-        .cuda_compute_capability();
+        .gpu_compute_capability();
   }
 };
 
 TEST_F(AnalyticalLatencyHidingSchedulerTest, TestAnalyticalLatencyEstimator) {
-  if (!GetCudaComputeCapability().IsAtLeast(
-          se::CudaComputeCapability::kPascal)) {
-    GTEST_SKIP() << "This test is for Pascal+ GPUs.";
-  }
+  auto gpu_compute_capability = GetGpuComputeCapability();
+  auto visitor = [](const auto& c) {
+    using cc = std::remove_const_t<std::remove_reference_t<decltype(c)>>;
+    if constexpr (std::is_same_v<stream_executor::CudaComputeCapability, cc>) {
+      if (!c.IsAtLeast(se::CudaComputeCapability::kPascal)) {
+        GTEST_SKIP() << "This test is for Pascal+ GPUs.";
+      }
+    } else if (!std::is_same_v<stream_executor::RocmComputeCapability, cc>) {
+      GTEST_SKIP() << "This test is for Pascal+ GPUs.";
+    }
+  };
+
+  std::visit(visitor, gpu_compute_capability);
   const se::DeviceDescription dev_info =
       backend().default_stream_executor()->GetDeviceDescription();
 

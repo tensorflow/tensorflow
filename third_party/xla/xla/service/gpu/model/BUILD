@@ -140,6 +140,7 @@ xla_test(
         "a100",
         "h100",
         "b200",
+        "gpu_amd_any",
     ],
     tags = [
         "notap",
