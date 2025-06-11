@@ -413,7 +413,7 @@ std::unique_ptr<llvm::MemoryBuffer> IrCompiler::EmitMachineCode(
   codegen_passes.run(module);
 
   return std::make_unique<llvm::SmallVectorMemoryBuffer>(
-      std::move(mc_stream_buffer));
+      std::move(mc_stream_buffer), module.getName());
 }
 
 llvm::CodeGenOptLevel IrCompiler::GetCodeGenOptLevel(
