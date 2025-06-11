@@ -23,6 +23,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Object/Archive.h"
 #include "llvm/Object/ELFObjectFile.h"
@@ -101,23 +103,24 @@ absl::StatusOr<std::vector<uint8_t>> GetFatbinFromArchive(
 
 }  // namespace
 
-absl::StatusOr<std::vector<uint8_t>> GetGpuTestKernelsFatbin() {
-  const std::string platform_name = GpuPlatformName();
+absl::StatusOr<std::vector<uint8_t>> GetGpuTestKernelsFatbin(
+    absl::string_view platform_name) {
   std::string archive_filename;
   std::string fatbin_prefix;
 
   if (platform_name == "CUDA") {
-    archive_filename = "libgpu_test_kernels_cuda.a";
+    archive_filename = tsl::io::JoinPath("cuda", "libgpu_test_kernels_cuda.lo");
     fatbin_prefix = ".nv_fatbin";
   } else if (platform_name == "ROCM") {
-    archive_filename = "libgpu_test_kernels_rocm.a";
+    archive_filename = tsl::io::JoinPath("rocm", "libgpu_test_kernels_rocm.lo");
     fatbin_prefix = ".hip_fatbin";
   } else {
-    return absl::InternalError("Unsupported GPU platform: " + platform_name);
+    return absl::InternalError(
+        absl::StrCat("Unsupported GPU platform: ", platform_name));
   }
 
   std::string file_path = tsl::io::JoinPath(
-      tsl::testing::XlaSrcRoot(), "stream_executor", "gpu", archive_filename);
+      tsl::testing::XlaSrcRoot(), "stream_executor", archive_filename);
 
   return GetFatbinFromArchive(file_path, fatbin_prefix);
 }

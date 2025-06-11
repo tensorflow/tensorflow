@@ -101,80 +101,22 @@ TEST_F(GpuKernelTest, LoadAndRunKernelFromPtx) {
 
 TEST_F(GpuKernelTest, LoadAndRunKernelFromCubin) {
   MultiKernelLoaderSpec spec(/*arity=*/3);
-  TF_ASSERT_OK_AND_ASSIGN(auto binary, GetGpuTestKernelsFatbin());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto binary, GetGpuTestKernelsFatbin(executor_->GetPlatform()->Name()));
   spec.AddCudaCubinInMemory(binary, "AddI32");
   RunAddI32Kernel(spec);
 }
 
 TEST_F(GpuKernelTest, LoadAndRunKernelFromSymbol) {
-  RunAddI32Kernel(GetAddI32KernelSpec());
+  TF_ASSERT_OK_AND_ASSIGN(
+      MultiKernelLoaderSpec spec,
+      GetAddI32TestKernelSpec(executor_->GetPlatform()->id()));
+  RunAddI32Kernel(spec);
 }
 
 TEST_F(GpuKernelTest, ArrayArgByValue) {
-  constexpr absl::string_view copy_kernel = R"(
-    .version 8.0
-    .target sm_60
-    .address_size 64
-
-    .visible .entry copy_kernel(
-        .param .u64 foo_param_0,
-        .param .align 1 .b8 foo_param_1[16]
-)
-{
-        .reg .b16       %rs<17>;
-        .reg .b64       %rd<3>;
-        .loc    1 5 0
-
-        ld.param.u64    %rd1, [foo_param_0];
-        cvta.to.global.u64      %rd2, %rd1;
-        ld.param.u8     %rs1, [foo_param_1+15];
-        ld.param.u8     %rs2, [foo_param_1+14];
-        ld.param.u8     %rs3, [foo_param_1+13];
-        ld.param.u8     %rs4, [foo_param_1+12];
-        ld.param.u8     %rs5, [foo_param_1+11];
-        ld.param.u8     %rs6, [foo_param_1+10];
-        ld.param.u8     %rs7, [foo_param_1+9];
-        ld.param.u8     %rs8, [foo_param_1+8];
-        ld.param.u8     %rs9, [foo_param_1+7];
-        ld.param.u8     %rs10, [foo_param_1+6];
-        ld.param.u8     %rs11, [foo_param_1+5];
-        ld.param.u8     %rs12, [foo_param_1+4];
-        ld.param.u8     %rs13, [foo_param_1+3];
-        ld.param.u8     %rs14, [foo_param_1+2];
-        ld.param.u8     %rs15, [foo_param_1+1];
-        ld.param.u8     %rs16, [foo_param_1];
-        .loc    1 6 5
-        st.global.u8    [%rd2], %rs16;
-        st.global.u8    [%rd2+1], %rs15;
-        st.global.u8    [%rd2+2], %rs14;
-        st.global.u8    [%rd2+3], %rs13;
-        st.global.u8    [%rd2+4], %rs12;
-        st.global.u8    [%rd2+5], %rs11;
-        st.global.u8    [%rd2+6], %rs10;
-        st.global.u8    [%rd2+7], %rs9;
-        st.global.u8    [%rd2+8], %rs8;
-        st.global.u8    [%rd2+9], %rs7;
-        st.global.u8    [%rd2+10], %rs6;
-        st.global.u8    [%rd2+11], %rs5;
-        st.global.u8    [%rd2+12], %rs4;
-        st.global.u8    [%rd2+13], %rs3;
-        st.global.u8    [%rd2+14], %rs2;
-        st.global.u8    [%rd2+15], %rs1;
-        .loc    1 7 1
-        ret;
-    }
-    )";
-
-  MultiKernelLoaderSpec spec(/*arity=*/2);
-  if (executor_->GetPlatform()->id() ==
-      stream_executor::rocm::kROCmPlatformId) {
-    spec.AddInProcessSymbol(internal::GetCopyKernel(), "copy_kernel");
-  } else {
-    spec.AddCudaPtxInMemory(copy_kernel, "copy_kernel");
-  }
-
   TF_ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
-  TF_ASSERT_OK_AND_ASSIGN(auto kernel, executor_->LoadKernel(spec));
+  TF_ASSERT_OK_AND_ASSIGN(auto kernel, LoadCopyTestKernel(executor_));
 
   constexpr int64_t kLength = 16;
 

@@ -2,12 +2,7 @@
 #   GPU-platform specific StreamExecutor support code.
 
 load(
-    "@local_config_cuda//cuda:build_defs.bzl",
-    "if_cuda",
-)
-load(
     "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm",
     "if_rocm_is_configured",
 )
 load(
@@ -15,10 +10,6 @@ load(
     "if_sycl_is_configured",
 )
 load("//xla:xla.default.bzl", "xla_cc_test")
-load(
-    "//xla/service/gpu:build_defs.bzl",
-    "gpu_kernel_library",
-)
 load(
     "//xla/stream_executor:build_defs.bzl",
     "stream_executor_gpu_friends",
@@ -515,10 +506,19 @@ xla_cc_test(
     ],
 )
 
-gpu_kernel_library(
+cc_library(
+    name = "gpu_test_kernel_traits",
+    hdrs = ["gpu_test_kernel_traits.h"],
+    deps = [
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
+    ],
+)
+
+cc_library(
     name = "gpu_test_kernels",
     testonly = 1,
-    srcs = ["gpu_test_kernels.cu.cc"],
+    srcs = ["gpu_test_kernels.cc"],
     hdrs = ["gpu_test_kernels.h"],
     linkstatic = True,
     tags = [
@@ -526,12 +526,16 @@ gpu_kernel_library(
         "no-sycl",
     ],
     deps = [
+        ":gpu_kernel_registry",
+        ":gpu_test_kernel_traits",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_spec",
-    ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-    ]) + if_rocm_is_configured([
-        "@local_config_rocm//rocm:rocm_headers",
-    ]),
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
 )
 
 cc_library(
@@ -539,9 +543,11 @@ cc_library(
     testonly = True,
     srcs = ["gpu_test_kernels_fatbin.cc"],
     hdrs = ["gpu_test_kernels_fatbin.h"],
-    data = [
-        ":gpu_test_kernels",
-    ],
+    data = if_cuda_is_configured([
+        "//xla/stream_executor/cuda:gpu_test_kernels_cuda",
+    ]) + if_rocm_is_configured([
+        "//xla/stream_executor/rocm:gpu_test_kernels_rocm",
+    ]),
     tags = ["gpu"],
     deps = [
         ":gpu_init_impl",
@@ -566,9 +572,11 @@ xla_cc_test(
     tags = ["gpu"],
     deps = [
         ":gpu_test_kernels_fatbin",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -638,11 +646,7 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
-    ] + if_cuda([
-        "//xla/stream_executor/cuda:cuda_platform",
-    ]) + if_rocm([
-        "//xla/stream_executor/rocm:rocm_platform",
-    ]),
+    ],
 )
 
 xla_test(
@@ -659,11 +663,7 @@ xla_test(
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-    ] + if_cuda([
-        "//xla/stream_executor/cuda:cuda_platform",
-    ]) + if_rocm([
-        "//xla/stream_executor/rocm:rocm_platform",
-    ]),
+    ],
 )
 
 xla_test(
@@ -682,11 +682,7 @@ xla_test(
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-    ] + if_cuda([
-        "//xla/stream_executor/cuda:cuda_platform",
-    ]) + if_rocm([
-        "//xla/stream_executor/rocm:rocm_platform",
-    ]),
+    ],
 )
 
 xla_test(
@@ -709,11 +705,7 @@ xla_test(
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-    ] + if_cuda([
-        "//xla/stream_executor/cuda:cuda_platform",
-    ]) + if_rocm([
-        "//xla/stream_executor/rocm:rocm_platform",
-    ]),
+    ],
 )
 
 xla_test(
@@ -833,6 +825,7 @@ exports_files([
     "ragged_all_to_all_kernel_lib.cu.h",
     "repeat_buffer_kernel.cu.h",
     "redzone_allocator_kernel_lib.cu.h",
+    "gpu_test_kernels_lib.cu.h",
 ])
 
 cc_library(

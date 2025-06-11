@@ -19,17 +19,33 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "absl/status/statusor.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_manager.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
 namespace {
 
 TEST(GpuTestKernelsFatbinTest, GetGpuTestKernelsFatbin) {
-  std::vector<uint8_t> fatbin;
+  bool found_at_least_one_platform = false;
+  for (const auto& platform_name : {"CUDA", "ROCM"}) {
+    absl::StatusOr<Platform*> platform =
+        PlatformManager::PlatformWithName(platform_name);
+    if (platform.ok()) {
+      found_at_least_one_platform = true;
+      TF_ASSERT_OK_AND_ASSIGN(
+          std::vector<uint8_t> fatbin,
+          GetGpuTestKernelsFatbin(platform.value()->Name()));
+      EXPECT_FALSE(fatbin.empty());
+    }
+  }
 
-  TF_ASSERT_OK_AND_ASSIGN(fatbin, GetGpuTestKernelsFatbin());
-  EXPECT_FALSE(fatbin.empty());
+  if (!found_at_least_one_platform) {
+    // This case is not necessarily a test error, therefore we mark the test
+    // as skipped.
+    GTEST_SKIP() << "No GPU platform was linked into this test binary.";
+  }
 }
 
 }  // namespace

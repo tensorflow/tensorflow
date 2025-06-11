@@ -13,19 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/gpu/gpu_test_kernels.h"
+#ifndef XLA_STREAM_EXECUTOR_GPU_GPU_TEST_KERNELS_LIB_CU_H_
+#define XLA_STREAM_EXECUTOR_GPU_GPU_TEST_KERNELS_LIB_CU_H_
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
 
-#include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/gpu/gpu_test_kernel_traits.h"
 
 namespace stream_executor::gpu {
-namespace internal {
-
-// We want to be able to load those kernels by symbol name, so let's make them
-// C functions.
+// When loading these kernels from a fatbin we find these kernels by symbol
+// name, therefore we switch off name mangling
 extern "C" {
 
 __global__ void AddI32(int32_t* a, int32_t* b, int32_t* c) {
@@ -57,28 +56,6 @@ __global__ void CopyKernel(std::byte* dst, std::array<std::byte, 16> byval) {
   }
 }
 }
-
-void* GetAddI32Kernel() { return reinterpret_cast<void*>(&AddI32); }
-
-void* GetMulI32Kernel() { return reinterpret_cast<void*>(&MulI32); }
-
-void* GetIncAndCmpKernel() { return reinterpret_cast<void*>(&IncAndCmp); }
-
-void* GetAddI32Ptrs3Kernel() { return reinterpret_cast<void*>(&AddI32Ptrs3); }
-
-void* GetCopyKernel() { return reinterpret_cast<void*>(&CopyKernel); }
-
-}  // namespace internal
-
-MultiKernelLoaderSpec GetAddI32KernelSpec() {
-  MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
-  return spec;
-}
-
-MultiKernelLoaderSpec GetAddI32PtxKernelSpec() {
-  MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddCudaPtxInMemory(internal::kAddI32KernelPtx, "AddI32");
-  return spec;
-}
 }  // namespace stream_executor::gpu
+
+#endif  // XLA_STREAM_EXECUTOR_GPU_GPU_TEST_KERNELS_LIB_CU_H_

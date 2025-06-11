@@ -95,8 +95,9 @@ struct OwningExecutableSource {
 };
 
 absl::StatusOr<OwningExecutableSource> ExecutableSource() {
-  TF_ASSIGN_OR_RETURN(std::vector<uint8_t> fatbin,
-                      se::gpu::GetGpuTestKernelsFatbin());
+  TF_ASSIGN_OR_RETURN(
+      std::vector<uint8_t> fatbin,
+      se::gpu::GetGpuTestKernelsFatbin(GpuExecutor()->GetPlatform()->Name()));
   return OwningExecutableSource{/*text=*/{},
                                 /*binary=*/fatbin};
 }
@@ -552,8 +553,9 @@ TEST(CommandBufferThunkTest, CustomAddKernelLaunchCmd) {
 
   auto packing = CreateDefaultArgsPacking();
 
-  se::MultiKernelLoaderSpec spec(/*arity=*/3, std::move(packing));
-  spec.AddInProcessSymbol(se::gpu::internal::GetAddI32Kernel(), "add");
+  TF_ASSERT_OK_AND_ASSIGN(stream_executor::MultiKernelLoaderSpec spec,
+                          stream_executor::gpu::GetAddI32TestKernelSpec(
+                              stream_executor->GetPlatform()->id()));
 
   auto custom_kernel =
       CustomKernel("AddI32", std::move(spec), se::BlockDim(),
