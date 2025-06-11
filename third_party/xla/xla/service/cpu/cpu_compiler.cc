@@ -1102,10 +1102,15 @@ static void DumpModuleToFile(const llvm::Module& llvm_module,
 // Dumps machine code if dumping is enabled for the module.
 static std::function<void(const llvm::Module&, const llvm::object::ObjectFile&)>
 CreateOrcJITPostCompilationHook(const HloModule* hlo_module,
-                                std::vector<std::string>* obj_files) {
+                                std::vector<ObjFileProto>* obj_files) {
   return [=](const llvm::Module& llvm_module,
              const llvm::object::ObjectFile& obj_file) {
-    if (obj_files) obj_files->push_back(obj_file.getData().str());
+    if (obj_files) {
+      ObjFileProto obj_file_proto;
+      obj_file_proto.set_name(obj_file.getFileName().str());
+      obj_file_proto.set_contents(obj_file.getData().str());
+      obj_files->push_back(obj_file_proto);
+    }
 
     if (DumpingEnabledForHloModule(*hlo_module)) {
       DumpModuleToFile(llvm_module, obj_file, *hlo_module);
@@ -1387,7 +1392,7 @@ CpuCompiler::CompileCpuExecutable(std::unique_ptr<HloModule> module) {
 
   // We collect compiled object files (machine code) so we can export
   // CpuExecutable to an AOT compilation result.
-  std::vector<std::string> obj_files;
+  std::vector<ObjFileProto> obj_files;
 
   // We split LLVM module and distribute it across separate DyLibs to enable
   // parallel compilation at run time.
@@ -2247,10 +2252,14 @@ CpuCompiler::CompileAheadOfTimeThunks(
       GetIRModuleHooks(*module, user_pre_optimization_hook_,
                        user_post_optimization_hook_);
 
-  std::vector<std::string> obj_files;
+  std::vector<ObjFileProto> obj_files;
   auto post_codegen_hook = [&](const llvm::Module& llvm_module,
                                const llvm::object::ObjectFile& obj_file) {
-    obj_files.push_back(obj_file.getData().str());
+    ObjFileProto obj_file_proto;
+    obj_file_proto.set_name(obj_file.getFileName().str());
+    obj_file_proto.set_contents(obj_file.getData().str());
+    obj_files.push_back(std::move(obj_file_proto));
+
     if (!DumpingEnabledForHloModule(*module)) {
       return;
     }
@@ -2441,7 +2450,7 @@ class CpuExecutableAotCompilationResult : public AotCompilationResult {
  public:
   static absl::StatusOr<std::unique_ptr<CpuExecutableAotCompilationResult>>
   Create(const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
-         absl::string_view function_name, std::vector<std::string> obj_files,
+         absl::string_view function_name, std::vector<ObjFileProto> obj_files,
          std::vector<SymbolProto> symbols, const ThunkSequence* thunks,
          CompilationResultProto::ObjFileKind obj_file_kind) {
     std::optional<ThunkSequenceProto> thunk_proto;
@@ -2490,7 +2499,7 @@ class CpuExecutableAotCompilationResult : public AotCompilationResult {
  private:
   CpuExecutableAotCompilationResult(
       const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
-      absl::string_view function_name, std::vector<std::string> obj_files,
+      absl::string_view function_name, std::vector<ObjFileProto> obj_files,
       std::vector<SymbolProto> symbols,
       const std::optional<ThunkSequenceProto>& thunks,
       CompilationResultProto::ObjFileKind obj_file_kind) {
@@ -2499,8 +2508,8 @@ class CpuExecutableAotCompilationResult : public AotCompilationResult {
         hlo_module->config().ToProto();
     *proto_.mutable_buffer_assignment() = buffer_assignment->ToProto();
     proto_.set_entry_function_name(std::string(function_name));
-    for (std::string& obj_file : obj_files) {
-      proto_.add_obj_files(std::move(obj_file));
+    for (auto& obj_file : obj_files) {
+      *proto_.add_object_files() = std::move(obj_file);
     }
 
     for (const auto& symbol : symbols) {
@@ -2574,17 +2583,15 @@ CpuExecutableAotCompilationResult::LoadExecutable(
 
   // We might have an XLA:CPU executable that has only runtime thunks and
   // doesn't have any corresponding object files, and it's absolutely fine.
-  VLOG(2) << "Load XLA:CPU executable from " << proto_.obj_files_size()
+  VLOG(2) << "Load XLA:CPU executable from " << proto_.object_files_size()
           << " object files; entry_function_name="
           << proto_.entry_function_name();
 
-  size_t obj_file_index = 0;
-  for (auto& obj_file : proto_.obj_files()) {
-    llvm::StringRef data(obj_file.data(), obj_file.size());
-    TF_RETURN_IF_ERROR(
-        object_loader.AddObjFile(llvm::MemoryBuffer::getMemBuffer(
-            data, absl::StrCat(proto_.entry_function_name(), "_",
-                               obj_file_index++))));
+  for (auto& obj_file : proto_.object_files()) {
+    llvm::StringRef data(obj_file.contents().data(),
+                         obj_file.contents().size());
+    TF_RETURN_IF_ERROR(object_loader.AddObjFile(
+        llvm::MemoryBuffer::getMemBuffer(data, obj_file.name())));
   }
 
   std::unique_ptr<CpuExecutable> cpu_executable;
@@ -2670,9 +2677,9 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>> CpuCompiler::Export(
     return Internal("Could not downcast Executable to CpuExecutable");
 
   // Export object files for all dylibs.
-  std::vector<std::string> obj_files;
+  std::vector<ObjFileProto> obj_files;
   for (const auto& obj_file : cpu_executable->obj_files()) {
-    obj_files.push_back(std::string(obj_file));
+    obj_files.push_back(obj_file);
   }
 
   auto kind = cpu_executable->has_thunks() ? CompilationResultProto::KERNELS

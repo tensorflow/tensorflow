@@ -160,7 +160,7 @@ class CpuAotCompilationResultThunks : public CpuAotCompilationResult {
  public:
   static absl::StatusOr<std::unique_ptr<CpuAotCompilationResultThunks>> Create(
       const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
-      absl::string_view function_name, std::vector<std::string> obj_files,
+      absl::string_view function_name, std::vector<ObjFileProto> obj_files,
       std::vector<SymbolProto> symbols, const ThunkSequence& thunks,
       FunctionLibrary* function_library,
       std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data);
@@ -185,7 +185,15 @@ class CpuAotCompilationResultThunks : public CpuAotCompilationResult {
 
   std::vector<absl::string_view> obj_files() const {
     std::vector<absl::string_view> obj_files;
-    for (const auto& obj_file : proto_.obj_files()) {
+    for (const auto& obj_file : proto_.object_files()) {
+      obj_files.push_back(obj_file.contents());
+    }
+    return obj_files;
+  }
+
+  std::vector<ObjFileProto> obj_files_protos() const {
+    std::vector<ObjFileProto> obj_files;
+    for (const auto& obj_file : proto_.object_files()) {
       obj_files.push_back(obj_file);
     }
     return obj_files;
@@ -224,7 +232,7 @@ class CpuAotCompilationResultThunks : public CpuAotCompilationResult {
  private:
   CpuAotCompilationResultThunks(
       const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
-      absl::string_view function_name, std::vector<std::string> obj_files,
+      absl::string_view function_name, std::vector<ObjFileProto> obj_files,
       std::vector<SymbolProto> symbols, const ThunkSequenceProto& thunks,
       std::optional<size_t> temp_allocation_index,
       std::vector<cpu_function_runtime::BufferInfo> buffer_infos,

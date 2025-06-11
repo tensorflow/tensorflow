@@ -95,7 +95,7 @@ CpuAotCompilationResultLegacy::consume_optimized_module() {
 /*static*/ absl::StatusOr<std::unique_ptr<CpuAotCompilationResultThunks>>
 CpuAotCompilationResultThunks::Create(
     const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
-    absl::string_view function_name, std::vector<std::string> obj_files,
+    absl::string_view function_name, std::vector<ObjFileProto> obj_files,
     std::vector<SymbolProto> symbols, const ThunkSequence& thunks,
     FunctionLibrary* function_library,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data) {
@@ -132,7 +132,7 @@ CpuAotCompilationResultThunks::Create(
 
 CpuAotCompilationResultThunks::CpuAotCompilationResultThunks(
     const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
-    absl::string_view function_name, std::vector<std::string> obj_files,
+    absl::string_view function_name, std::vector<ObjFileProto> obj_files,
     std::vector<SymbolProto> symbols, const ThunkSequenceProto& thunks,
     std::optional<size_t> temp_allocation_index,
     std::vector<cpu_function_runtime::BufferInfo> buffer_infos,
@@ -147,8 +147,8 @@ CpuAotCompilationResultThunks::CpuAotCompilationResultThunks(
       hlo_module->config().ToProto();
   *proto_.mutable_buffer_assignment() = buffer_assignment->ToProto();
   proto_.set_entry_function_name(std::string(function_name));
-  for (std::string& obj_file : obj_files) {
-    proto_.add_obj_files(std::move(obj_file));
+  for (ObjFileProto& obj_file : obj_files) {
+    *proto_.add_object_files() = std::move(obj_file);
   }
 
   for (const auto& symbol : symbols) {
