@@ -163,6 +163,10 @@ ENTRY main {
 }
 
 TEST_F(GpuCompilerTest, RecordsStreamzStackTrace) {
+  if (tsl::kIsOpenSource) {
+    GTEST_SKIP() << "Streamz is not supported in OSS.";
+  }
+
   const char* hlo_text = R"(
 HloModule test
 
