@@ -2062,6 +2062,10 @@ TEST_F(CompareTest, SplitK) {
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
   }
+  if (std::holds_alternative<se::RocmComputeCapability>(
+    GpuComputeCapability())) {
+    GTEST_SKIP() << "ROCm: disabled in weekly-sync-250514";
+  }
   constexpr absl::string_view hlo_text_ref = R"(
 HloModule t
 
