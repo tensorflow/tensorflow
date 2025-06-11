@@ -37,6 +37,7 @@ limitations under the License.
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicsAMDGPU.h"
 #include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/Support/Casting.h"
@@ -137,26 +138,32 @@ void AddRanges(llvm::Function* func, const LaunchDimensions& launch_dims,
         if (auto* callee = call->getCalledFunction()) {
           switch (callee->getIntrinsicID()) {
             case llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x:
+            case llvm::Intrinsic::amdgcn_workitem_id_x:
               llvm_ir::AddRangeMetadata(
                   0, launch_dims.thread_counts_per_block().x, call, module);
               break;
             case llvm::Intrinsic::nvvm_read_ptx_sreg_tid_y:
+            case llvm::Intrinsic::amdgcn_workitem_id_y:
               llvm_ir::AddRangeMetadata(
                   0, launch_dims.thread_counts_per_block().y, call, module);
               break;
             case llvm::Intrinsic::nvvm_read_ptx_sreg_tid_z:
+            case llvm::Intrinsic::amdgcn_workitem_id_z:
               llvm_ir::AddRangeMetadata(
                   0, launch_dims.thread_counts_per_block().z, call, module);
               break;
             case llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_x:
+            case llvm::Intrinsic::amdgcn_workgroup_id_x:
               llvm_ir::AddRangeMetadata(0, launch_dims.block_counts().x, call,
                                         module);
               break;
             case llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_y:
+            case llvm::Intrinsic::amdgcn_workgroup_id_y:
               llvm_ir::AddRangeMetadata(0, launch_dims.block_counts().y, call,
                                         module);
               break;
             case llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_z:
+            case llvm::Intrinsic::amdgcn_workgroup_id_z:
               llvm_ir::AddRangeMetadata(0, launch_dims.block_counts().z, call,
                                         module);
               break;

@@ -97,6 +97,13 @@ stream_executor::DeviceDescription TestGpuDeviceInfo::AMDMI210DeviceInfo() {
   return b;
 }
 
+stream_executor::DeviceDescription TestGpuDeviceInfo::AMDRX7900DeviceInfo() {
+  stream_executor::DeviceDescription b;
+  b.set_gpu_compute_capability(
+      stream_executor::RocmComputeCapability("gfx1100"));
+  return b;
+}
+
 stream_executor::DeviceDescription TestGpuDeviceInfo::CudaOrRocmDeviceInfo() {
 #if defined(TENSORFLOW_USE_ROCM)
   return AMDMI210DeviceInfo();

@@ -205,6 +205,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/dot_dimension_sorter.h"
 #include "xla/service/gpu/transforms/dot_normalizer.h"
 #include "xla/service/gpu/transforms/dot_operand_converter.h"
+#include "xla/service/gpu/transforms/dot_precision_eliminator.h"
 #include "xla/service/gpu/transforms/double_buffer_loop_unrolling.h"
 #include "xla/service/gpu/transforms/dynamic_slice_fusion_rewriter.h"
 #include "xla/service/gpu/transforms/explicit_collectives_group_async_wrapper.h"
@@ -704,6 +705,7 @@ absl::Status RunOptimizationPasses(
   pipeline.AddPass<TopkDecomposer>();
 
   pipeline.AddPass<SplitkRewriter>(gpu_target_config.device_description);
+  pipeline.AddPass<DotPrecisionEliminator>();
   pipeline.AddPass<DotDimensionSorter>();
   pipeline.AddPass<DotDecomposer>();
 

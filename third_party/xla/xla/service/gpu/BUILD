@@ -1563,6 +1563,7 @@ cc_library(
         "//xla/service/gpu/transforms:dot_dimension_sorter",
         "//xla/service/gpu/transforms:dot_normalizer",
         "//xla/service/gpu/transforms:dot_operand_converter",
+        "//xla/service/gpu/transforms:dot_precision_eliminator",
         "//xla/service/gpu/transforms:double_buffer_loop_unrolling",
         "//xla/service/gpu/transforms:dynamic_slice_fusion_rewriter",
         "//xla/service/gpu/transforms:explicit_collectives_group_async_wrapper",
