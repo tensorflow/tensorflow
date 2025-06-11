@@ -812,10 +812,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
       return absl::InternalError("Compute capability not set");
     }
 
-    const char* ptx = spec.cuda_ptx_in_memory().text(cc_major_, cc_minor_);
-    if (ptx == nullptr) {
-      ptx = spec.cuda_ptx_in_memory().default_text();
-    }
+    const char* ptx = spec.cuda_ptx_in_memory().ptx();
     if (ptx == nullptr) {
       LOG(FATAL) << "Loader spec has no ptx for kernel " << *kernel_name;
     }

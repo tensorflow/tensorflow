@@ -109,56 +109,11 @@ class InProcessSymbol : public KernelLoaderSpec {
 // Kernel loader specification for PTX text that resides in memory.
 class CudaPtxInMemory : public KernelLoaderSpec {
  public:
-  // Components: compute capability major number, compute capability minor
-  // number, and PTX source.
-  typedef std::tuple<int, int, absl::string_view> PtxSpec;
-
-  // Single-PTX constructor. Adds the provided PTX version with an unknown
-  // compute capability. Since the CC is unknown, the PTX is assumed to be very
-  // generally usable - in other words, PTX specified in this manner is VERY
-  // likely to be used as the default! Note that the PTX can be compressed,
-  // which is indicated by the argument ptx_compressed.
-  //
-  // Warning: the string backing the provided absl::string_view ptx must outlive
-  // this instance.
   CudaPtxInMemory(absl::string_view ptx, absl::string_view kernel_name);
-
-  // Multiple-PTX-version constructor. Adds each item in spec_list to this
-  // object. Note that the PTX can be compressed, which is indicated by the
-  // argument ptx_compressed.
-  CudaPtxInMemory(const std::initializer_list<PtxSpec> &spec_list,
-                  absl::string_view kernel_name);
-
-  // Add the PTX implementation described by ptx_spec to this object. On
-  // collision (i.e., if a version with the same compute_capability already
-  // exists), the existing implementation will be overwritten.
-  void AddSpec(PtxSpec ptx_spec);
-
-  // Returns pointer to the ptx of available implementation with the
-  // lowest-valued compute capability. For example, if PTX written to CC2.0,
-  // 3.0, and 3.5 are all available, the version for CC2.0 will be set. Returns
-  // nullptr on failed lookup (if any version is not available).
-  const char *default_text() const;
-
-  // Returns pointer to the ptx for the requested compute capability.
-  // Returns nullptr on failed lookup (if the requested version is not
-  // available).
-  const char *text(int compute_capability_major,
-                   int compute_capability_minor) const;
+  const char *ptx() const { return ptx_.data(); }
 
  private:
-  // PTX translation unit text contents in memory. The key is of as a tuple
-  // "<cc_major>,<cc_minor>", i.e., "2,0", "3,0", "3,5". Because CC's
-  // represented in this way have a clear sorting order, map::begin() will give
-  // the lowest-numbered version available, i.e. the default.
-  std::map<std::tuple<int, int>, const char *> ptx_by_compute_capability_;
-
-  // Defines the minimum compute capability possible. Used when PTX has no
-  // compute capability specified (in the single-PTX constructor).
-  static const std::tuple<int, int> kMinimumCapability;
-
-  CudaPtxInMemory(const CudaPtxInMemory &) = delete;
-  void operator=(const CudaPtxInMemory &) = delete;
+  absl::string_view ptx_;
 };
 
 // Kernel loader specification for a CUBIN blob that resides in memory.
