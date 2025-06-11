@@ -16,6 +16,7 @@ limitations under the License.
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <vector>
 
@@ -57,8 +58,10 @@ void FWHT(float* data, int n) {
     }
     h *= 2;
   }
+  // Calculate the inverse square root once.
+  const float norm_factor = 1.0f / std::sqrt(static_cast<float>(n));
   for (int k = 0; k < n; ++k) {
-    data[k] /= std::sqrt(n);
+    data[k] *= norm_factor;
   }
 }
 
@@ -80,14 +83,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     const size_t length = node->custom_initial_data_size;
     auto flexbuffer_map = flexbuffers::GetRoot(buffer, length).AsMap();
     int32_t hadamard_size = flexbuffer_map["hadamard_size"].AsInt32();
-    std::vector<int> vec;
-    const auto& vector = flexbuffer_map["random_binary_vector"].AsVector();
-    vec.reserve(vector.size());
-    for (size_t i = 0; i < vector.size(); i++) {
-      vec.push_back(vector[i].AsInt8());
-    }
     op_data->hadamard_size = hadamard_size;
-    op_data->random_binary_vector = vec;
     op_data->is_initialized = true;
   }
 
@@ -124,20 +120,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     input_features = input_tensor->dims->data[1];
     input_feature_size = input_tensor->dims->data[2];
   }
+
+  memcpy(output->data.f, input_tensor->data.f, input_tensor->bytes);
+
   int num_hadamards_per_feature = input_feature_size / hadamard_size;
-  for (int batch = 0; batch < input_batch; ++batch) {
-    int chunk_start = batch * input_features * num_hadamards_per_feature;
-    for (int chunk = 0; chunk < input_features * num_hadamards_per_feature;
-         ++chunk) {
-      for (int i = 0; i < hadamard_size; ++i) {
-        output->data.f[chunk_start + i] =
-            input_tensor->data.f[chunk_start + i] *
-            op_data->random_binary_vector[i];
-      }
-      // Update output->data.f in place.
-      FWHT(&output->data.f[chunk_start], hadamard_size);
-      chunk_start += hadamard_size;
-    }
+  const int total_transforms =
+      input_batch * input_features * num_hadamards_per_feature;
+  for (int i = 0; i < total_transforms; ++i) {
+    int chunk_start = i * hadamard_size;
+    FWHT(&output->data.f[chunk_start], hadamard_size);
   }
 
   return kTfLiteOk;
