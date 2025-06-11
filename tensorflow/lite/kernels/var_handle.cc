@@ -63,6 +63,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensorRealloc(kBytesRequired, output);
   output->bytes = kBytesRequired;
 
+  if (!output->dims) {
+    output->dims = TfLiteIntArrayCreate(0);
+  } else {
+    output->dims->size = 0;
+  }
+
   return kTfLiteOk;
 }
 

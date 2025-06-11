@@ -852,8 +852,8 @@ class Delegate {
       var_handles_;
 };
 
-// Prepare/invoke for VarHandle that also returns the resource_id. We can't use
-// the tensorflow/lite/kernels/var_handle.cc implementation because there's a
+// Prepare/invoke for VarHandle. We can't use the
+// tensorflow/lite/kernels/var_handle.cc implementation because there's a
 // circular dependency if we try to depend on "builtin_op_kernels".
 TfLiteStatus PrepareVarHandle(TfLiteContext* context, const TfLiteNode* node) {
   TfLiteTensor* output;
@@ -863,6 +863,12 @@ TfLiteStatus PrepareVarHandle(TfLiteContext* context, const TfLiteNode* node) {
   const int kBytesRequired = sizeof(int32_t);
   TfLiteTensorRealloc(kBytesRequired, output);
   output->bytes = kBytesRequired;
+
+  if (!output->dims) {
+    output->dims = TfLiteIntArrayCreate(0);
+  } else {
+    output->dims->size = 0;
+  }
 
   return kTfLiteOk;
 }
