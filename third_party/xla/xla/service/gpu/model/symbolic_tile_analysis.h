@@ -335,7 +335,6 @@ class SymbolicTileAnalysis {
     return root_indexing_.real_root_indexing;
   }
 
-
   // Returns the symbolic tiled HLO instructions in def-before-use order.
   const std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&
   GetSymbolicTiledHloComputation() const {
@@ -421,7 +420,8 @@ class SymbolicTileAnalysis {
       const TilingSpecification::ParameterMapping& parameter_mapping,
       mlir::MLIRContext* ctx, const RootIndexing& root_indexing,
       IndexingMap::SimplifyPointDimensions simplification_mode,
-      EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder);
+      EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder,
+      std::vector<SymbolicTiledHloInstruction*> root_runtime_variables);
 
   // Helper for `AnalyzeFusion` to handle nested fusions.
   static SymbolicTileAnalysisOrError AnalyzeNestedFusion(
@@ -429,7 +429,8 @@ class SymbolicTileAnalysis {
       const TilingSpecification::ParameterMapping& parameter_mapping,
       mlir::MLIRContext* ctx, const IndexingMap& indexing_map,
       IndexingMap::SimplifyPointDimensions simplification_mode,
-      EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder);
+      EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder,
+      std::vector<SymbolicTiledHloInstruction*> root_runtime_variables);
 
   // The tiled HLO instructions in def-before-use order.
   std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>

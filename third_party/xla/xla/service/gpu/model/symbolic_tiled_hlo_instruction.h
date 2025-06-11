@@ -35,9 +35,14 @@ namespace gpu {
 // with different tiling parameters.
 class SymbolicTiledHloInstruction {
  public:
-  SymbolicTiledHloInstruction(const HloInstruction* hlo,
-                              IndexingMap indexing_map)
-      : hlo_(hlo), indexing_map_(std::move(indexing_map)) {}
+  SymbolicTiledHloInstruction(
+      const HloInstruction* hlo, IndexingMap indexing_map,
+      std::vector<SymbolicTiledHloInstruction*> runtime_variables = {})
+      : hlo_(hlo),
+        indexing_map_(std::move(indexing_map)),
+        runtime_variables_(std::move(runtime_variables)) {
+    CHECK_EQ(indexing_map_.GetRTVars().size(), runtime_variables_.size());
+  }
 
   virtual ~SymbolicTiledHloInstruction() = default;
 
@@ -59,6 +64,11 @@ class SymbolicTiledHloInstruction {
   }
   const std::vector<SymbolicTiledHloInstruction*>& operands() const {
     return operands_;
+  }
+
+  // Tiling of runtime variables of the indexing map of the instruction.
+  const std::vector<SymbolicTiledHloInstruction*>& runtime_variables() const {
+    return runtime_variables_;
   }
 
   // Appends an operand to the end of the operand list.
@@ -84,11 +94,16 @@ class SymbolicTiledHloInstruction {
 
   // Operands of the instruction in the tiled computation graph.
   std::vector<SymbolicTiledHloInstruction*> operands_;
+
+  // Tiling of runtime variables of `indexing_map_`.
+  std::vector<SymbolicTiledHloInstruction*> runtime_variables_;
 };
 
 inline bool operator==(const SymbolicTiledHloInstruction& lhs,
                        const SymbolicTiledHloInstruction& rhs) {
-  return lhs.hlo() == rhs.hlo() && lhs.indexing_map() == rhs.indexing_map();
+  return lhs.hlo() == rhs.hlo() && lhs.indexing_map() == rhs.indexing_map() &&
+         lhs.runtime_variables() == rhs.runtime_variables() &&
+         lhs.operands() == rhs.operands();
 }
 
 inline bool operator!=(const SymbolicTiledHloInstruction& lhs,
@@ -98,8 +113,16 @@ inline bool operator!=(const SymbolicTiledHloInstruction& lhs,
 
 template <typename H>
 H AbslHashValue(H h, const SymbolicTiledHloInstruction& tiled_hlo_instruction) {
-  return H::combine(std::move(h), tiled_hlo_instruction.hlo(),
-                    tiled_hlo_instruction.indexing_map());
+  h = H::combine(std::move(h), tiled_hlo_instruction.hlo(),
+                 tiled_hlo_instruction.indexing_map());
+  for (const auto& runtime_variable :
+       tiled_hlo_instruction.runtime_variables()) {
+    h = H::combine(std::move(h), runtime_variable);
+  }
+  for (const auto& operand : tiled_hlo_instruction.operands()) {
+    h = H::combine(std::move(h), operand);
+  }
+  return h;
 }
 
 }  // namespace gpu

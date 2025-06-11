@@ -26,6 +26,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_join.h"
@@ -138,7 +139,37 @@ class SymbolicTileAnalysisTest : public HloHardwareIndependentTestBase {
             &mlir_context_, emitter_specific_constraints_builder);
 
     if (std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error)) {
-      return std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
+      SymbolicTileAnalysis analysis =
+          std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
+      auto fusion = HloFusionAdaptor::ForComputation(
+          module->entry_computation()
+              ->root_instruction()
+              ->fused_instructions_computation());
+
+      // Basic validation of instruction content and order.
+      absl::flat_hash_set<const HloInstruction*> visited;
+      for (const auto& instr : analysis.GetSymbolicTiledHloComputation()) {
+        visited.insert(instr->hlo());
+        if (!fusion->ContainsInstruction(instr->hlo())) {
+          continue;  // Don't analyze instructions that are not in the fusion.
+        }
+        if (instr->hlo()->opcode() == HloOpcode::kFusion) {
+          continue;  // Don't analyze parameter operands of nested fusions.
+        }
+        EXPECT_EQ(instr->hlo()->operands().size(), instr->operands().size())
+            << "tiled instruction " << instr->hlo()->ToString()
+            << " operand count does not match hlo operand "
+               "count";
+        for (const auto& op : instr->operands()) {
+          EXPECT_TRUE(visited.contains(op->hlo()))
+              << "operand " << op->ToString() << " is not visited yet";
+        }
+        for (const auto& op : instr->runtime_variables()) {
+          EXPECT_TRUE(visited.contains(op->hlo()))
+              << "runtime variable" << op->ToString() << " is not visited yet";
+        }
+      }
+      return std::move(analysis);
     }
     VLOG(1) << "Cannot analyze module: "
             << std::get<FusionDecision>(analysis_or_error).Explain();
@@ -1320,6 +1351,242 @@ ENTRY main {
     pid_0 in [0, 1],
     rt0 in [0, 1],
     rt1 in [0, 226]
+  )"));
+  EXPECT_EQ(param_0_tile->runtime_variables().size(), 2);
+  EXPECT_EQ(param_0_tile->runtime_variables()[0]->hlo()->name(), "param_1.1");
+  EXPECT_EQ(param_0_tile->runtime_variables()[1]->hlo()->name(), "param_3");
+}
+
+TEST_F(SymbolicTileAnalysisTest, AssignRuntimeVariablesToDynamicSlice) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+f {
+  p0 = f32[64] parameter(0)
+  c0 = s32[64] convert(p0)
+  slice1 = s32[1] slice(c0), slice={[0:1]}
+  off = s32[] reshape(slice1)
+  d1 = s32[20] dynamic-slice(c0, off), dynamic_slice_sizes={20}
+  slice2 = s32[1] slice(d1), slice={[1:2]}
+  off2 = s32[] reshape(slice2)
+  ROOT d2 = s32[10] dynamic-slice(d1, off2), dynamic_slice_sizes={10}
+}
+
+ENTRY entry_computation {
+  p0 = f32[64] parameter(0)
+  ROOT fusion = s32[10] fusion(p0), kind=kCustom, calls=f,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{
+      "output_tiles":[{"sizes":["32"]}],
+        "num_warps":1,"num_ctas":1,"num_stages":1}}}
+})"));
+
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      TiledHloComputation tiled_hlo_computation,
+      analysis->ComputeTiledHloInstructions(
+          /*output_tile_sizes=*/{1}, /*constraints_are_known_satisfied=*/false,
+          /*compute_all_tile_offset_indexing_maps=*/true));
+  const TiledHloInstruction* d2 = tiled_hlo_computation.GetRoots()[0];
+  const TiledHloInstruction* d1 = d2->operand(0);
+  const TiledHloInstruction* convert = d1->operand(0);
+  const TiledHloInstruction* off = d1->operand(1);
+  EXPECT_EQ(convert->hlo()->opcode(), HloOpcode::kConvert);
+  EXPECT_EQ(off->hlo()->opcode(), HloOpcode::kReshape);
+  EXPECT_THAT(*d1, MatchTiledHloInstruction(
+                       /*tile_sizes=*/{1},
+                       /*tile_strides=*/{1},
+                       /*tile_offsets_indexing=*/R"(
+    (pid_0){rt0} -> (pid_0 + rt0), domain: pid_0 in [0, 9], rt0 in [0, 10]
+  )"));
+  EXPECT_EQ(d1->runtime_variables().size(), 1);
+  const TiledHloInstruction* d1_rt0 = d1->runtime_variables()[0];
+  EXPECT_EQ(d1_rt0->hlo()->name(), "off2");
+  EXPECT_THAT(*d1_rt0, MatchTiledHloInstruction(
+                           /*tile_sizes=*/{},
+                           /*tile_strides=*/{},
+                           /*tile_offsets_indexing=*/R"(
+    (pid_0) -> (), domain: pid_0 in [0, 9]
+  )"));
+
+  EXPECT_THAT(*convert, MatchTiledHloInstruction(
+                            /*tile_sizes=*/{1},
+                            /*tile_strides=*/{1},
+                            /*tile_offsets_indexing=*/R"(
+    (pid_0){rt0, rt1} -> (pid_0 + rt0 + rt1),
+    domain:
+    pid_0 in [0, 9],
+    rt0 in [0, 44],
+    rt1 in [0, 10]
+  )"));
+  EXPECT_EQ(convert->runtime_variables().size(), 2);
+  const TiledHloInstruction* convert_rt0 = convert->runtime_variables()[0];
+  EXPECT_EQ(convert_rt0->hlo()->name(), "off2");
+  EXPECT_THAT(*convert_rt0, MatchTiledHloInstruction(
+                                /*tile_sizes=*/{},
+                                /*tile_strides=*/{},
+                                /*tile_offsets_indexing=*/R"(
+    (pid_0) -> (), domain: pid_0 in [0, 9]
+  )"));
+  EXPECT_EQ(convert->runtime_variables()[1]->hlo()->name(), "off");
+
+  EXPECT_THAT(*off, MatchTiledHloInstruction(
+                        /*tile_sizes=*/{},
+                        /*tile_strides=*/{},
+                        /*tile_offsets_indexing=*/R"(
+  (pid_0) -> (), domain: pid_0 in [0, 9]
+)"));
+  EXPECT_EQ(off->runtime_variables().size(), 0);
+}
+
+TEST_F(SymbolicTileAnalysisTest, AssignRuntimeVariablesInNestedFusions) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+dot_lhs {
+  ROOT p0 = f32[2,4]{1,0} parameter(0)
+}
+
+dot_rhs {
+  p0 = f32[4,5,2]{2,1,0} parameter(0)
+  p1 = s32[] parameter(1)
+  p2 = s32[] parameter(2)
+  p3 = s32[] parameter(3)
+  dynamic_slice = f32[1,5,2]{2,1,0} dynamic-slice(p0, p1, p2, p3), dynamic_slice_sizes={1,5,2}
+  ROOT bitcast = f32[5,2]{1,0} bitcast(dynamic_slice)
+}
+
+triton_gemm {
+  dot_lhs_param = f32[2,4]{1,0} parameter(0)
+  lhs = f32[2,4]{1,0} fusion(dot_lhs_param), kind=kCustom, calls=dot_lhs
+  dynamic_slice_input = f32[4,5,2]{2,1,0} parameter(1)
+  start_index0 = s32[] parameter(2)
+  start_index1 = s32[] parameter(3)
+  start_index2 = s32[] parameter(4)
+  rhs = f32[5,2]{1,0} fusion(dynamic_slice_input, start_index0, start_index1, start_index2), kind=kCustom, calls=dot_rhs
+  ROOT dot = f32[4,5]{1,0} dot(lhs, rhs), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = f32[2,4]{1,0} parameter(0)
+  p1 = f32[4,5,2]{2,1,0} parameter(1)
+  p2 = s32[] parameter(2)
+  c0 = s32[] constant(0)
+  c1 = s32[] constant(0)
+  ROOT fusion = f32[4,5]{1,0} fusion(p0, p1, p2, c0, c1), kind=kCustom, calls=triton_gemm
+})"));
+
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+
+  TF_ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
+                          analysis->ComputeTiledHloInstructions(
+                              /*output_tile_sizes=*/{2, 4, 8},
+                              /*constraints_are_known_satisfied=*/false,
+                              /*compute_all_tile_offset_indexing_maps=*/true));
+  const TiledHloInstruction* dot = tiled_hlo_computation.GetRoots()[0];
+  const TiledHloInstruction* rhs = dot->operand(1);
+  EXPECT_THAT(*rhs, MatchTiledHloInstruction(
+                        /*tile_sizes=*/{8, 2},
+                        /*tile_strides=*/{1, 1},
+                        /*tile_offsets_indexing=*/R"(
+    (pid_0) -> (0, 0), domain: pid_0 in [0, 0]
+  )"));
+  const TiledHloComputation* rhs_nested_computation =
+      static_cast<const TiledHloFusionInstruction*>(rhs)->called_computation();
+  const TiledHloInstruction* dynamic_slice =
+      rhs_nested_computation->GetRoots()[0]->operand(0);
+  EXPECT_EQ(dynamic_slice->hlo()->opcode(), HloOpcode::kDynamicSlice);
+  const TiledHloInstruction* p0 = dynamic_slice->operand(0);
+  EXPECT_THAT(*p0, MatchTiledHloInstruction(
+                       /*tile_sizes=*/{1, 8, 2},
+                       /*tile_strides=*/{0, 1, 1},
+                       /*tile_offsets_indexing=*/R"(
+    (pid_0){rt0} -> (rt0, 0, 0), domain: pid_0 in [0, 0], rt0 in [0, 3]
+  )"));
+  const TiledHloInstruction* p2 = dynamic_slice->operand(1);
+  EXPECT_THAT(*p2, MatchTiledHloInstruction(
+                       /*tile_sizes=*/{},
+                       /*tile_strides=*/{},
+                       /*tile_offsets_indexing=*/R"(
+    (pid_0) -> (), domain: pid_0 in [0, 0]
+  )"));
+}
+
+TEST_F(SymbolicTileAnalysisTest, AnalyseNestedFusionWithRuntimeVariables) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+dot_lhs {
+  ROOT p0 = f32[2,4] parameter(0)
+}
+
+dot_rhs {
+  p0 = f32[5,2] parameter(0)
+  ROOT result = abs(p0)
+}
+
+triton_gemm {
+  dot_lhs_param = f32[2,4] parameter(0)
+  lhs = f32[2,4] fusion(dot_lhs_param), kind=kCustom, calls=dot_lhs
+  rhs_param = f32[5,2] parameter(1)
+  rhs = f32[5,2] fusion(rhs_param), kind=kCustom, calls=dot_rhs
+  gemm = f32[4,5] dot(lhs, rhs), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+
+  off0 = s32[] parameter(2)
+  off1 = s32[] parameter(3)
+  ROOT result = f32[2,3] dynamic-slice(gemm, off0, off1), dynamic_slice_sizes={2,3}
+}
+
+ENTRY e {
+  p0 = f32[2,4] parameter(0)
+  p1 = f32[5,2] parameter(1)
+  p2 = s32[] parameter(2)
+  c0 = s32[] constant(0)
+  ROOT fusion = f32[2,3] fusion(p0, p1, p2, c0), kind=kCustom, calls=triton_gemm
+})"));
+
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+
+  const HloInstruction* ds_hlo =
+      module->entry_computation()->root_instruction()->fused_expression_root();
+
+  Tiling tiling(
+      Tiling::TileMapping{{ds_hlo, {2, 4}}, {ds_hlo->operand(0), {8}}});
+  TF_ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
+                          analysis->ComputeTiledHloInstructions(
+                              tiling,
+                              /*constraints_are_known_satisfied=*/false,
+                              /*compute_all_tile_offset_indexing_maps=*/true));
+  const TiledHloInstruction* dynamic_slice =
+      tiled_hlo_computation.GetRoots()[0];
+  EXPECT_EQ(dynamic_slice->hlo()->opcode(), HloOpcode::kDynamicSlice);
+  const TiledHloInstruction* dot = dynamic_slice->operand(0);
+  EXPECT_EQ(dot->hlo()->opcode(), HloOpcode::kDot);
+  EXPECT_THAT(*dot, MatchTiledHloInstruction(
+                        /*tile_sizes=*/{2, 4},
+                        /*tile_strides=*/{1, 1},
+                        /*tile_offsets_indexing=*/R"(
+    (pid_0){rt0, rt1} -> (rt0, rt1),
+      domain: pid_0 in [0, 0], rt0 in [0, 2], rt1 in [0, 2]
+  )"));
+  const TiledHloInstruction* rhs = dot->operand(1);
+  EXPECT_THAT(*rhs, MatchTiledHloInstruction(
+                        /*tile_sizes=*/{4, 8},
+                        /*tile_strides=*/{1, 1},
+                        /*tile_offsets_indexing=*/R"(
+    (pid_0){rt0} -> (rt0, 0), domain: pid_0 in [0, 0], rt0 in [0, 2]
+  )"));
+  const TiledHloComputation* rhs_nested_computation =
+      static_cast<const TiledHloFusionInstruction*>(rhs)->called_computation();
+  const TiledHloInstruction* abs = rhs_nested_computation->GetRoots()[0];
+  EXPECT_EQ(abs->hlo()->opcode(), HloOpcode::kAbs);
+  const TiledHloInstruction* p0 = abs->operand(0);
+  EXPECT_THAT(*p0, MatchTiledHloInstruction(
+                       /*tile_sizes=*/{4, 8},
+                       /*tile_strides=*/{1, 1},
+                       /*tile_offsets_indexing=*/R"(
+    (pid_0){rt0} -> (rt0, 0), domain: pid_0 in [0, 0], rt0 in [0, 2]
   )"));
 }
 

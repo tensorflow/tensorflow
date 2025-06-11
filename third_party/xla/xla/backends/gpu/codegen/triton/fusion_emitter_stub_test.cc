@@ -59,7 +59,9 @@ TEST(TritonStub, CallStubApi) {
   EXPECT_EQ(GetLibdevicePath({}, {}), "");
 
   HloConstantInstruction constant(LiteralUtil::CreateR1<int>({1, 1}));
-  auto tiled_hlo = TiledHloInstruction::Create(&constant, {}, {1}, {1}, {});
+  auto tiled_hlo = TiledHloInstruction::Create(
+      &constant, /*operands=*/{}, /*runtime_variables=*/{}, /*tile_sizes=*/{1},
+      /*tile_strides=*/{1}, /*tile_offsets_indexing=*/{});
   EXPECT_TRUE(tiled_hlo.ok());
 }
 
