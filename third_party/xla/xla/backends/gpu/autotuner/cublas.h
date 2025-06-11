@@ -65,7 +65,8 @@ class CublasBackend : public GpuCodegenBackend {
   absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> hlo_module,
       const Compiler::CompileOptions& options) override {
-    return absl::UnimplementedError("Not implemented.");
+    // No additional passes needed for cublas.
+    return hlo_module;
   }
 };
 
