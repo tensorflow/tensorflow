@@ -16,18 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_WARMUP_H_
 #define TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_WARMUP_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/hash/hash.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tsl/platform/logging.h"
 
 namespace tensorflow {
 namespace serving {
@@ -125,6 +127,8 @@ WarmupStateRegistry& GetGlobalWarmupStateRegistry();
 // Utility function that returns whether or not to warmup all batch sizes,
 // based on the state of WarmupStateRegistry.
 bool ShouldWarmupAllBatchSizes(const OpKernelContext* c);
+bool ShouldWarmupAllBatchSizes(absl::string_view model_name,
+                               int64_t model_version);
 
 }  // namespace serving
 }  // namespace tensorflow

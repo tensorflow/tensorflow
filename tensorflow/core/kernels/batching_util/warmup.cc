@@ -14,15 +14,20 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/batching_util/warmup.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tsl/platform/logging.h"
 
 namespace tensorflow {
 namespace serving {
@@ -69,12 +74,18 @@ WarmupStateRegistry& GetGlobalWarmupStateRegistry() {
 }
 
 bool ShouldWarmupAllBatchSizes(const OpKernelContext* c) {
-  auto metadata = c->session_metadata();
-  if (metadata == nullptr || metadata->name().empty()) {
-    return false;
-  }
-  serving::WarmupStateRegistry::Key key(metadata->name(), metadata->version());
-  auto per_model_data = serving::GetGlobalWarmupStateRegistry().Lookup(key);
+  const auto* metadata = c->session_metadata();
+  if (metadata == nullptr) return false;
+  return ShouldWarmupAllBatchSizes(metadata->name(), metadata->version());
+}
+
+bool ShouldWarmupAllBatchSizes(absl::string_view model_name,
+                               int64_t model_version) {
+  if (model_name.empty()) return false;
+  const serving::WarmupStateRegistry::Key key{std::string(model_name),
+                                              model_version};
+  const auto* per_model_data =
+      serving::GetGlobalWarmupStateRegistry().Lookup(key);
   return per_model_data && per_model_data->warmup_all_batch_sizes;
 }
 
