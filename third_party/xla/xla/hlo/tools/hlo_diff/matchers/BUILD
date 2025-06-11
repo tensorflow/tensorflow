@@ -177,6 +177,7 @@ cc_library(
     srcs = ["top_down_matcher.cc"],
     hdrs = ["top_down_matcher.h"],
     deps = [
+        ":bipartite_matching",
         ":gumgraph_matcher",
         "//xla/hlo/tools/hlo_diff:hlo_gumgraph_mappings",
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph",
