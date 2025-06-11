@@ -272,12 +272,27 @@ bool RawBufferEntry::Handle(tsl::RCReference<ConnectionState> state,
   for (uint64_t bid : req.buffer_ids()) {
     auto req_id = base_req_id;
     ++base_req_id;
+    if (bid >= arrs_.size()) {
+      state->SendError(
+          req_id, 0, 0, true,
+          absl::InternalError(absl::StrFormat("Buffer id: %d out of range %d",
+                                              bid, arrs_.size())));
+      continue;
+    }
     arrs_[bid].ready_future.OnReady(
         [state, copier_state = state_, xfer_size = xfer_size_,
          buf_size = arrs_[bid].buf_size, req_id, bid,
          buffer = std::move(arrs_[bid].buffer)](absl::Status s) {
           if (!s.ok()) {
             state->SendError(req_id, 0, buf_size, true, s);
+            return;
+          }
+          if (!buffer) {
+            state->SendError(
+                req_id, 0, buf_size, true,
+                absl::InternalError(absl::StrFormat(
+                    "Buffer id: %d has already been fetched", bid)));
+
             return;
           }
           for (size_t i = 0; i * xfer_size < buf_size; ++i) {
@@ -297,11 +312,11 @@ bool RawBufferEntry::Handle(tsl::RCReference<ConnectionState> state,
                     PremappedCopierState* copier_state_ptr,
                     absl::StatusOr<void*> buf, const DmaCopyChunk& chunk) {
                   if (!buf.ok()) {
-                    CHECK_OK(buf.status());
                     state->SendError(req_id, chunk.offset, chunk.size,
                                      is_largest, buf.status());
                     return;
                   }
+                  CHECK_OK(buf.status());
                   state->Send(req_id, buf.value(), chunk.offset, chunk.size,
                               is_largest, [copier_state, buf = buf.value()]() {
                                 copier_state->ReturnBuffer(buf);
@@ -331,12 +346,27 @@ bool PjRtBufferEntry::Handle(tsl::RCReference<ConnectionState> state,
   for (uint64_t bid : req.buffer_ids()) {
     auto req_id = base_req_id;
     ++base_req_id;
+    if (bid >= arrs_.size()) {
+      state->SendError(
+          req_id, 0, 0, true,
+          absl::InternalError(absl::StrFormat("Buffer id: %d out of range %d",
+                                              bid, arrs_.size())));
+      continue;
+    }
     arrs_[bid].ready_future.OnReady(
         [state, copier_state = state_, xfer_size = xfer_size_,
          buf_size = arrs_[bid].buf_size, req_id, bid,
          buffer = std::move(arrs_[bid].buffer)](absl::Status s) {
           if (!s.ok()) {
             state->SendError(req_id, 0, buf_size, true, s);
+            return;
+          }
+          if (!buffer) {
+            state->SendError(
+                req_id, 0, buf_size, true,
+                absl::InternalError(absl::StrFormat(
+                    "Buffer id: %d has already been fetched", bid)));
+
             return;
           }
           for (size_t i = 0; i * xfer_size < buf_size; ++i) {
