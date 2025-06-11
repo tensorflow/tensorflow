@@ -3326,8 +3326,9 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.insert(kTestedOpsRecv.begin(), kTestedOpsRecv.end());
   ret.insert(kTestedOpsSend.begin(), kTestedOpsSend.end());
 
-  ret.emplace(HloOpcode::kAfterAll);
+  // go/keep-sorted start
   ret.emplace(HloOpcode::kAddDependency);
+  ret.emplace(HloOpcode::kAfterAll);
   ret.emplace(HloOpcode::kBatchNormGrad);
   ret.emplace(HloOpcode::kBatchNormInference);
   ret.emplace(HloOpcode::kBatchNormTraining);
@@ -3341,20 +3342,21 @@ absl::flat_hash_set<HloOpcode> AllTestedOpcodes() {
   ret.emplace(HloOpcode::kDomain);
   ret.emplace(HloOpcode::kDot);
   ret.emplace(HloOpcode::kFft);
+  ret.emplace(HloOpcode::kFusion);
   ret.emplace(HloOpcode::kGetDimensionSize);
   ret.emplace(HloOpcode::kGetTupleElement);
+  ret.emplace(HloOpcode::kInfeed);
   ret.emplace(HloOpcode::kMap);
+  ret.emplace(HloOpcode::kOutfeed);
   ret.emplace(HloOpcode::kReverse);
   ret.emplace(HloOpcode::kRngBitGenerator);
   ret.emplace(HloOpcode::kRngGetAndUpdateState);
-  ret.emplace(HloOpcode::kTuple);
-  ret.emplace(HloOpcode::kWhile);
-  ret.emplace(HloOpcode::kFusion);
-  ret.emplace(HloOpcode::kInfeed);
-  ret.emplace(HloOpcode::kOutfeed);
   ret.emplace(HloOpcode::kStochasticConvert);
   ret.emplace(HloOpcode::kTopK);
   ret.emplace(HloOpcode::kTriangularSolve);
+  ret.emplace(HloOpcode::kTuple);
+  ret.emplace(HloOpcode::kWhile);
+  // go/keep-sorted end
   ret.insert(kUnsupportedOps.begin(), kUnsupportedOps.end());
 
   return ret;
