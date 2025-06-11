@@ -339,7 +339,8 @@ absl::Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module,
   auto& kernelPm = pm.nest<::mlir::gpu::GPUModuleOp>();
   kernelPm.addPass(::mlir::createSCFToControlFlowPass());
 #if TENSORFLOW_USE_ROCM
-  kernelPm.addPass(mlir::createGpuKernelToRocdlPass(architecture));
+  const std::string& gfx_version = architecture.substr(0, architecture.find(':'));
+  kernelPm.addPass(mlir::createGpuKernelToRocdlPass(gfx_version));
   kernelPm.addPass(mlir::createReconcileUnrealizedCastsPass());
 #elif GOOGLE_CUDA
   kernelPm.addPass(mlir::createGpuKernelToNvvmPass());
