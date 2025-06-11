@@ -43,7 +43,7 @@ class KernelDefinition final : public KernelDefinitionBase {
       : storage_{std::move(spec), std::move(source)} {}
 
   KernelDefinition(KernelDefinition&&) = default;
-  KernelDefinition& operator=(KernelDefinition&&) = default;
+  KernelDefinition& operator=(KernelDefinition&&) noexcept = default;
 
   const KernelSpec& spec() const override { return storage_.spec; }
   const KernelSourceType& source() const override { return storage_.source; }

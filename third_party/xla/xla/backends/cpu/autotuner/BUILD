@@ -165,3 +165,50 @@ xla_cc_test(
         "@local_tsl//tsl/platform:casts",
     ],
 )
+
+cc_library(
+    name = "llvm_kernel_autotuner",
+    srcs = ["llvm_kernel_autotuner.cc"],
+    hdrs = ["llvm_kernel_autotuner.h"],
+    deps = [
+        ":cpu_codegen_backend",
+        ":cpu_profiler",
+        ":llvm_kernel_backend",
+        "//xla:executable_run_options",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/autotuner",
+        "//xla/backends/autotuner:codegen_backend",
+        "//xla/backends/autotuner:profiler",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service:executable",
+        "//xla/service/cpu:backend_config_proto_cc",
+        "//xla/service/cpu:cpu_executable",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform:casts",
+    ],
+)
+
+xla_cc_test(
+    name = "llvm_kernel_autotuner_test",
+    srcs = ["llvm_kernel_autotuner_test.cc"],
+    deps = [
+        ":llvm_kernel_autotuner",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service/cpu:cpu_compiler",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
