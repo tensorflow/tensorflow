@@ -368,6 +368,7 @@ xla_cc_test(
     deps = [
         ":pjrt_layout",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
         "//xla/python/ifrt:mock",

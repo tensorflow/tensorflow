@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 
-#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <memory>
