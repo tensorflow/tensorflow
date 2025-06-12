@@ -23,6 +23,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -61,6 +62,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -1550,13 +1552,14 @@ INSTANTIATE_TEST_SUITE_P(
     AlgorithmTestParamToString);
 
 template <typename T>
-void PrintHistogram(absl::Span<T> values, absl::Span<T> expected_values) {
+void PrintHistogram(absl::string_view name, absl::Span<T> values,
+                    absl::Span<T> expected_values) {
   // Build the histogram of the relative differences.
   std::vector<double> rel_errors;
   rel_errors.reserve(values.size());
   for (int i = 0; i < values.size(); ++i) {
-    double rel_difference =
-        (values[i] - expected_values[i]) / std::abs(expected_values[i]);
+    double rel_difference = ((double)values[i] - (double)expected_values[i]) /
+                            std::abs((double)expected_values[i]);
     rel_errors.push_back(rel_difference);
   }
   double max_rel_error =
@@ -1567,7 +1570,9 @@ void PrintHistogram(absl::Span<T> values, absl::Span<T> expected_values) {
   constexpr int kNumBins = 40;
   double bin_width = rel_error_range / kNumBins;
   std::vector<int> histogram(kNumBins, 0);
+  double rel_error_sum = 0.0;
   for (int i = 0; i < rel_errors.size(); ++i) {
+    rel_error_sum += rel_errors[i];
     int bin = static_cast<int>((rel_errors[i] - min_rel_error) / bin_width);
     if (bin >= kNumBins) {
       bin = kNumBins - 1;
@@ -1576,23 +1581,81 @@ void PrintHistogram(absl::Span<T> values, absl::Span<T> expected_values) {
   }
   int samples_count = values.size();
   int bar_width = 200;
+  int64_t samples = 0;
+  double mean_rel_error = rel_error_sum / values.size();
+  bool median_found = false;
+  std::tuple<int, double, double> median_bin;
   for (int i = 0; i < kNumBins; ++i) {
+    samples += histogram[i];
+    double bin_start = min_rel_error + i * bin_width;
+    double bin_end = min_rel_error + (i + 1) * bin_width;
     std::string bar =
         std::string(histogram[i] * bar_width / samples_count, '*');
-    std::string line = absl::StrFormat(
-        "%2d: [% 1.3e, % 1.3e) %7d %s\n", i, min_rel_error + i * bin_width,
-        min_rel_error + (i + 1) * bin_width, histogram[i], bar.c_str());
-    std::cerr << line;
+    if (!median_found && samples >= samples_count / 2) {
+      median_bin = std::make_tuple(i, bin_start, bin_end);
+      median_found = true;
+      bar += " <--- median";
+    }
+    if (mean_rel_error >= bin_start && mean_rel_error < bin_end) {
+      bar += " <--- mean";
+    }
+    std::string line =
+        absl::StrFormat("%2d: [% 1.3e, % 1.3e) %7d %s\n", i, bin_start, bin_end,
+                        histogram[i], bar.c_str());
+    std::cerr << "hist: " << line;
+  }
+  std::cerr << "stats: " << name << " "
+            << absl::StrFormat("min rel error, %1.3e\n", min_rel_error);
+  std::cerr << "stats: " << name << " "
+            << absl::StrFormat("max rel error, %1.3e\n", max_rel_error);
+  std::cerr << "stats: " << name << " "
+            << absl::StrFormat(
+                   "max abs rel error, %1.3e\n",
+                   std::max(std::abs(min_rel_error), std::abs(max_rel_error)));
+  std::cerr << "stats: " << name << " "
+            << absl::StrFormat("rel error range, %1.3e\n",
+                               max_rel_error - min_rel_error);
+  std::cerr << "stats: " << name << " "
+            << absl::StrFormat("median bin, %d [%1.3e - %1.3e)\n",
+                               std::get<0>(median_bin), std::get<1>(median_bin),
+                               std::get<2>(median_bin));
+  std::cerr << "stats: " << name << " "
+            << absl::StrFormat("mean rel error, %1.3e\n", mean_rel_error);
+  std::cerr << "stats: \n";
+}
+
+enum class Backend { kTriton, kBlas };
+
+std::string BackendToString(Backend backend) {
+  switch (backend) {
+    case Backend::kTriton:
+      return "triton";
+    case Backend::kBlas:
+      return "blas";
+    default:
+      CHECK(false) << "Uncovered backend. Please fix.";
   }
 }
 
-class PrecisionTestsForTriton : public TritonAlgorithmTest,
-                                public NumericTestsArguments,
-                                public WithParamInterface<PC::Algorithm> {
+class PrecisionTests
+    : public AlgorithmTest,
+      public NumericTestsArguments,
+      public WithParamInterface<::testing::tuple<PC::Algorithm, Backend>> {
+ public:
  protected:
+  absl::Status CheckGemmPattern(const HloModule& module,
+                                absl::string_view pattern) {
+    TF_ASSIGN_OR_RETURN(bool ok, RunFileCheck(module.ToString(), pattern));
+    if (!ok) {
+      return absl::InternalError(
+          absl::StrCat("The module does not contain the pattern: ", pattern));
+    }
+    return absl::OkStatus();
+  }
+
   absl::StatusOr<std::unique_ptr<HloModule>> GetSimpleDotModule(
       int lhs_outer_dim, int rhs_outer_dim, int contracting_dim,
-      PC::Algorithm algorithm) {
+      PC::Algorithm algorithm, Backend backend) {
     std::string hlo_text = absl::StrReplaceAll(
         kHloTextPattern, {{"${test_name}", HloModuleTestName()},
                           {"${m}", absl::StrCat(lhs_outer_dim)},
@@ -1600,12 +1663,25 @@ class PrecisionTestsForTriton : public TritonAlgorithmTest,
                           {"${k}", absl::StrCat(contracting_dim)},
                           {"${algorithm}", AlgorithmToString(algorithm)}});
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                        GetOptimizedModule(hlo_text));
-    TF_ASSIGN_OR_RETURN(
-        bool ok, RunFileCheck(module->ToString(), "CHECK: __triton_gemm"));
-    if (!ok) {
-      return absl::InternalError(
-          "The module does not contain the pattern __triton_gemm.");
+                        ParseAndReturnVerifiedModule(hlo_text));
+    auto debug_options = module->config().debug_options();
+    if (backend == Backend::kTriton) {
+      debug_options.set_xla_gpu_enable_triton_gemm(true);
+      debug_options.set_xla_gpu_cublas_fallback(false);
+    } else if (backend == Backend::kBlas) {
+      debug_options.set_xla_gpu_enable_triton_gemm(false);
+      debug_options.set_xla_gpu_cublas_fallback(true);
+    } else {
+      return absl::InvalidArgumentError("Invalid backend");
+    }
+    module->mutable_config().set_debug_options(debug_options);
+    TF_ASSIGN_OR_RETURN(module, GetOptimizedModule(std::move(module)));
+    if (backend == Backend::kTriton) {
+      TF_RETURN_IF_ERROR(CheckGemmPattern(*module, "CHECK: __triton_gemm"));
+    } else if (backend == Backend::kBlas) {
+      TF_RETURN_IF_ERROR(CheckGemmPattern(*module, "CHECK: __cublas$gemm"));
+    } else {
+      return absl::InvalidArgumentError("Invalid backend");
     }
     return module;
   }
@@ -1625,6 +1701,17 @@ class PrecisionTestsForTriton : public TritonAlgorithmTest,
   )";
 };
 
+using ::testing::Combine;
+using ::testing::Values;
+
+std::string AlgorithmAndBackendTestParamToString(
+    const TestParamInfo<::testing::tuple<PC::Algorithm, Backend>>& info) {
+  PC::Algorithm algorithm = std::get<0>(info.param);
+  Backend backend = std::get<1>(info.param);
+  return absl::StrCat(BackendToString(backend), "_",
+                      AlgorithmToString(algorithm));
+}
+
 MATCHER_P(RelativeDifferenceIsWithin, max_rel_difference, "") {
   double got = std::get<0>(arg);
   double expected = std::get<1>(arg);
@@ -1635,24 +1722,26 @@ MATCHER_P(RelativeDifferenceIsWithin, max_rel_difference, "") {
   return rel_difference <= max_rel_difference;
 }
 
-TEST_P(PrecisionTestsForTriton, PrecisionCheck) {
+TEST_P(PrecisionTests, PrecisionCheck) {
   if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
     GTEST_SKIP() << "Precision tests is unknown for ROCM.";
   }
 
-  PC::Algorithm algorithm = GetParam();
+  PC::Algorithm algorithm = std::get<0>(GetParam());
+  Backend backend = std::get<1>(GetParam());
   // Use small contracting dimensions to avoid false-negatives due to changing
   // contracting dimension tiling factors.
   constexpr int kLhsOuterDim = 1024;
   constexpr int kRhsOuterDim = 1024;
   constexpr int kContractingDim = 8;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> test_module,
-                          GetSimpleDotModule(kLhsOuterDim, kRhsOuterDim,
-                                             kContractingDim, algorithm));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> test_module,
+      GetSimpleDotModule(kLhsOuterDim, kRhsOuterDim, kContractingDim, algorithm,
+                         backend));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> ref_module,
       GetSimpleDotModule(kLhsOuterDim, kRhsOuterDim, kContractingDim,
-                         PC::ALG_DOT_F32_F32_F32));
+                         PC::ALG_DOT_F32_F32_F32, backend));
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> fake_arguments,
       MakeFakeArguments(test_module.get(), /*pseudo_random=*/true,
@@ -1677,17 +1766,18 @@ TEST_P(PrecisionTestsForTriton, PrecisionCheck) {
   EXPECT_THAT(llvm::zip(test_result.data<float>(), ref_result.data<float>()),
               ::testing::Each(RelativeDifferenceIsWithin(
                   GetMaxRelErrorForSmallContractingDim(algorithm))));
-  PrintHistogram(test_result.data<float>(), ref_result.data<float>());
+  auto name =
+      absl::StrCat(BackendToString(backend), "_", AlgorithmToString(algorithm));
+  PrintHistogram(name, test_result.data<float>(), ref_result.data<float>());
 }
 
-INSTANTIATE_TEST_SUITE_P(PrecisionTestsForTriton, PrecisionTestsForTriton,
-                         ::testing::ValuesIn({PC::ALG_DOT_TF32_TF32_F32,
-                                              PC::ALG_DOT_TF32_TF32_F32_X3,
-                                              PC::ALG_DOT_BF16_BF16_F32,
-                                              PC::ALG_DOT_BF16_BF16_F32_X3,
-                                              PC::ALG_DOT_BF16_BF16_F32_X6,
-                                              PC::ALG_DOT_BF16_BF16_F32_X9}),
-                         AlgorithmTestParamToString);
+INSTANTIATE_TEST_SUITE_P(
+    PrecisionTests, PrecisionTests,
+    Combine(Values(PC::ALG_DOT_TF32_TF32_F32, PC::ALG_DOT_TF32_TF32_F32_X3,
+                   PC::ALG_DOT_BF16_BF16_F32, PC::ALG_DOT_BF16_BF16_F32_X3,
+                   PC::ALG_DOT_BF16_BF16_F32_X6, PC::ALG_DOT_BF16_BF16_F32_X9),
+            Values(Backend::kTriton, Backend::kBlas)),
+    AlgorithmAndBackendTestParamToString);
 
 }  // namespace
 }  // namespace gpu
