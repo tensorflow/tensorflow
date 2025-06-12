@@ -83,6 +83,46 @@ ENTRY main {
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::Tuple(op::Convert(), op::GetTupleElement())));
 }
+TEST_F(ConditionalCodeMotionTest, DoNotMoveLargeIntoOutfeed) {
+  absl::string_view hlo_string =
+      R"(
+HloModule RemoveDotOpOut
+
+on_true {
+  arg_tuple.1 = (f32[93184,4]{1,0}) parameter(0)
+  get-tuple-element.1 = f32[93184,4]{1,0} get-tuple-element(arg_tuple.1), index=0
+  reshape.8493 = f32[2,512,364]{2,1,0} reshape(f32[93184,4]{1,0} %get-tuple-element.1)
+  token0 = token[] after-all()
+  outfeed = token[] outfeed(reshape.8493, token0), outfeed_shape=f32[2,512,364]{2,1,0}
+  %convert.2894 = bf16[2,512,364]{2,1,0} convert(f32[2,512,364]{2,1,0} %reshape.8493)
+  ROOT %tuple.1 = ( bf16[2,512,364]{2,1,0}, f32[2,512,364]{2,1,0}) tuple(%convert.2894, %reshape.8493)
+}
+
+on_false {
+  %arg_tuple.2 = (f32[93184,4]{1,0}) parameter(0)
+  %get-tuple-element.3 = f32[93184,4]{1,0} get-tuple-element(%arg_tuple.2), index=0
+  %reshape.9717 = f32[2,512,364]{2,1,0} reshape(f32[93184,4]{1,0} %get-tuple-element.3)
+  %add = f32[2,512,364]{2,1,0} add(f32[2,512,364]{2,1,0} %reshape.9717, f32[2,512,364]{2,1,0} %reshape.9717)
+  %convert.3604 = bf16[2,512,364]{2,1,0} convert(f32[2,512,364]{2,1,0} %reshape.9717), metadata={op_type="Cast" op_name="gradients/Cast_125_grad/Cast"}
+  ROOT %tuple.2 = (bf16[2,512,364]{2,1,0}, f32[2,512,364]{2,1,0}) tuple(%convert.3604, %add)
+}
+
+ENTRY main {
+  p0 = f32[93184,512]{1,0} parameter(0)
+  p1 = f32[93184,512]{1,0} parameter(1)
+  x = f32[93184,4]{1,0} slice(p0), slice={[0:93184], [200:204]}
+  y = f32[93184,4]{1,0} slice(p1), slice={[0:93184], [200:204]}
+  arg_tuple.11 = (f32[93184,4]{1,0}) tuple(x)
+  arg_tuple.22 = (f32[93184,4]{1,0}) tuple(y)
+  pred.1 = pred[] parameter(2)
+  ROOT conditional = (bf16[2,512,364]{2,1,0}, f32[2,512,364]{2,1,0}) conditional(pred.1, arg_tuple.11, arg_tuple.22), true_computation=on_true, false_computation=on_false
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  // not modifying large conditionals with outfeeds takes effect.
+  ConditionalCodeMotion pass(true, /*allow_memory_increase=*/false);
+  ASSERT_FALSE(pass.Run(&*module).value());
+}
 
 TEST_F(ConditionalCodeMotionTest, VerifyConditionalAnalysisWithWhileTuple) {
   absl::string_view hlo_string =

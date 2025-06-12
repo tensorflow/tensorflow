@@ -1297,6 +1297,7 @@ class GroupConnectedBoundaries {
   HloInstruction* conditional_;
   HloComputation* conditional_parent_;
   bool is_layout_sensitive_;
+  bool has_outfeed_;
   // Instructions that have been visited but are not going to be moved.
   absl::flat_hash_map<HloInstruction*, int>& visited_count_;
   // The following four lines are configurations of the cost model, which will
@@ -1386,6 +1387,12 @@ class GroupConnectedBoundaries {
       : conditional_(conditional),
         conditional_parent_(conditional->parent()),
         is_layout_sensitive_(is_layout_sensitive),
+        has_outfeed_(absl::c_any_of(
+            conditional->called_computations(),
+            [](HloComputation* computation) {
+              return absl::c_any_of(computation->instructions(),
+                                    HloPredicateIsOp<HloOpcode::kOutfeed>);
+            })),
         visited_count_(visited_count),
         move_config_(*move_config),
         reuse_config_(*reuse_config),
@@ -1778,7 +1785,7 @@ class GroupConnectedBoundaries {
 
   int64_t CalculateMemorySize(const HloInstruction* hlo) {
     if (hlo->shape().IsTuple() ||
-        (hlo->opcode() != HloOpcode::kReduce &&
+        (!has_outfeed_ && hlo->opcode() != HloOpcode::kReduce &&
          absl::c_none_of(hlo->users(), HloPredicateIsOp<HloOpcode::kReduce>))) {
       return 0;
     }
