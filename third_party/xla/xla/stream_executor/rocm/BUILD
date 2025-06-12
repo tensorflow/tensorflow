@@ -146,7 +146,6 @@ cc_library(
     deps = [
         ":rocm_command_buffer",
         ":rocm_context",
-        ":rocm_diagnostics",
         ":rocm_driver_wrapper",
         ":rocm_event",
         ":rocm_kernel",
@@ -1100,7 +1099,6 @@ rocm_library(
         "//xla/stream_executor/gpu:buffer_comparator_kernel",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/platform:initialize",
-        "@local_config_rocm//rocm:rocm_headers",
     ],
     alwayslink = 1,
 )
@@ -1118,11 +1116,7 @@ rocm_library(
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:make_batch_pointers_kernel",
-        "//xla/stream_executor/platform:initialize",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@local_config_rocm//rocm:rocm_headers",
     ],
     alwayslink = 1,
 )
@@ -1140,10 +1134,8 @@ rocm_library(
     ],
     deps = [
         ":rocm_platform_id",
-        "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:ragged_all_to_all_kernel",
-        "@local_config_rocm//rocm:rocm_headers",
     ],
     alwayslink = 1,
 )
@@ -1188,7 +1180,6 @@ rocm_library(
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:topk_kernel",
         "//xla/tsl/lib/math:math_util",
-        "@local_config_rocm//rocm:rocm_headers",
     ],
     alwayslink = 1,
 )
@@ -1209,7 +1200,6 @@ rocm_library(
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:repeat_buffer_kernel",
-        "@local_config_rocm//rocm:rocm_headers",
     ],
     alwayslink = 1,
 )
@@ -1230,7 +1220,6 @@ rocm_library(
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:redzone_allocator_kernel",
-        "@local_config_rocm//rocm:rocm_headers",
     ],
     alwayslink = 1,
 )
