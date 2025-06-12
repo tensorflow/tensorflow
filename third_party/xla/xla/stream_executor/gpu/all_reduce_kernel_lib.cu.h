@@ -27,6 +27,9 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 
+template <typename T>
+using RestrictedPtr = T* __restrict__;
+
 constexpr int64_t kNumElementsPerThread = 4;
 
 template <typename T>
@@ -90,56 +93,47 @@ __device__ __forceinline__ void VecOp(Vec<T>& res, const Vec<T>& vec) {
   res.data[3] = ApplyBinaryOp<T, ReductionKindT>(res.data[3], vec.data[3]);
 }
 
-__device__ __forceinline__ bool CompareExchange(
-    uint32_t* addr, uint32_t compare, uint32_t val,
-    ::cuda::memory_order memory_order_success) {
-#if __CUDA_ARCH__ >= 600
+__device__ __forceinline__ void PutSignalFlag(uint32_t* addr, uint32_t val) {
   ::cuda::atomic_ref<uint32_t, ::cuda::thread_scope_system> ref(*addr);
-  return ref.compare_exchange_strong(compare, val, memory_order_success,
-                                     ::cuda::memory_order_relaxed);
-#else
-  assert(false);
-  return true;
-#endif
-}
-
-__device__ __forceinline__ void PutSignalFlag(uint32_t* addr) {
   // During signaling release semantics are used to ensure that writes
   // by the current thread are visible to the waiting thread.
-  while (!CompareExchange(addr, 0, 1, ::cuda::memory_order_release)) {
-  }
+  ref.store(val, ::cuda::memory_order_release);
 }
 
-__device__ __forceinline__ void WaitSignalFlag(uint32_t* addr) {
+__device__ __forceinline__ void WaitSignalFlag(uint32_t* addr,
+                                               uint32_t expected) {
+  ::cuda::atomic_ref<uint32_t, ::cuda::thread_scope_system> ref(*addr);
   // During waiting we use acquire semantics to ensure all memory writes by the
   // remote thread are visible to the current thread.
-  while (!CompareExchange(addr, 1, 0, ::cuda::memory_order_acquire)) {
+  while (ref.load(::cuda::memory_order_acquire) != expected) {
   }
 }
 
 __device__ __forceinline__ void SyncRemoteBlocks(
-    std::array<uint32_t* __restrict__, kMaxNumAllReduceInputPtrs>
+    std::array<RestrictedPtr<uint32_t>, kMaxNumAllReduceInputPtrs>
         signal_pad_ptrs,
-    int64_t rank, int64_t num_ranks) {
+    int64_t rank, int64_t num_ranks, uint32_t signal_value) {
   if (threadIdx.x < num_ranks) {
     auto target_rank = threadIdx.x;
-    PutSignalFlag(signal_pad_ptrs[target_rank] + blockIdx.x * num_ranks + rank);
-    WaitSignalFlag(signal_pad_ptrs[rank] + blockIdx.x * num_ranks +
-                   target_rank);
+    PutSignalFlag(signal_pad_ptrs[target_rank] + blockIdx.x * num_ranks + rank,
+                  signal_value);
+    WaitSignalFlag(signal_pad_ptrs[rank] + blockIdx.x * num_ranks + target_rank,
+                   signal_value);
   }
 }
 
 template <typename T, xla::ReductionKind ReductionKindT>
-__global__ void AllReduceKernelImpl(                               //
-    std::array<T* __restrict__, kMaxNumAllReduceInputPtrs>         //
-        remote_input_ptrs,                                         //
-    T* __restrict__ local_input_ptr,                               //
-    T* __restrict__ output_ptr,                                    //
-    int64_t rank,                                                  //
-    int64_t num_ranks,                                             //
-    int64_t num_elements,                                          //
-    std::array<uint32_t* __restrict__, kMaxNumAllReduceInputPtrs>  //
-        signal_flags_ptrs                                          //
+__global__ void AllReduceKernelImpl(                                //
+    std::array<RestrictedPtr<T>, kMaxNumAllReduceInputPtrs>         //
+        remote_input_ptrs,                                          //
+    RestrictedPtr<T> local_input_ptr,                               //
+    RestrictedPtr<T> output_ptr,                                    //
+    int64_t rank,                                                   //
+    int64_t num_ranks,                                              //
+    int64_t num_elements,                                           //
+    std::array<RestrictedPtr<uint32_t>, kMaxNumAllReduceInputPtrs>  //
+        signal_flags_ptrs,                                          //
+    uint32_t signal_value                                           //
 ) {
   int64_t offset =
       kNumElementsPerThread * (blockIdx.x * blockDim.x + threadIdx.x);
@@ -150,7 +144,7 @@ __global__ void AllReduceKernelImpl(                               //
     VecStore(remote_input_ptrs[rank] + i, VecLoad(local_input_ptr + i));
   }
 
-  SyncRemoteBlocks(signal_flags_ptrs, rank, num_ranks);
+  SyncRemoteBlocks(signal_flags_ptrs, rank, num_ranks, signal_value);
   __syncthreads();
 
   for (int i = offset; i < num_elements; i += stride) {

@@ -236,7 +236,8 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
       /*rank=*/rank.value(),
       /*num_ranks=*/kNumRanks,
       /*num_elements=*/buffer_.element_count,
-      /*signal_flags_buffers=*/state->signal_buffer_ptrs[buffer_index]);
+      /*signal_flags_buffers=*/state->signal_buffer_ptrs[buffer_index],
+      /*signal_value=*/state->invocation_count);
 }
 
 }  // namespace xla::gpu

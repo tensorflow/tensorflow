@@ -62,6 +62,9 @@ bool IsAllReduceKernelSupported(int64_t num_inputs, int64_t num_elements,
 //  - signal_flags_buffers: A list of buffers with signal flags that are used to
 //    synchronize blocks on different devices. The size of each signal buffer
 //    should be equal to the `num_ranks * num_blocks`.
+//  - signal_value: The value that is written to the signal flags. Should be
+//    different for different invocations of the kernel with the same signal
+//    buffer.
 absl::Status RunAllReduceKernel(
     se::Stream* stream,                                           //
     const LaunchDimensions& launch_dimensions,                    //
@@ -73,7 +76,9 @@ absl::Status RunAllReduceKernel(
     RankId rank,                                                  //
     int64_t num_ranks,                                            //
     int64_t num_elements,                                         //
-    absl::Span<const se::DeviceMemoryBase> signal_flags_buffers);
+    absl::Span<const se::DeviceMemoryBase> signal_flags_buffers,  //
+    uint32_t signal_value                                         //
+);
 
 }  // namespace xla::gpu
 

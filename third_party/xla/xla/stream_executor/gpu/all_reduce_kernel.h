@@ -36,9 +36,12 @@ struct AllReduceKernel {
   using KernelType = stream_executor::TypedKernel<
       /*remove_input_ptrs=*/std::array<ElementT*, kMaxNumAllReduceInputPtrs>,
       /*local_input_ptr=*/stream_executor::DeviceMemoryBase,
-      /*output_ptr=*/stream_executor::DeviceMemoryBase, /*rank=*/int64_t,
-      /*num_ranks=*/int64_t, /*num_elements=*/int64_t,
-      /*signal_flags_ptrs=*/std::array<uint32_t*, kMaxNumAllReduceInputPtrs>>;
+      /*output_ptr=*/stream_executor::DeviceMemoryBase,
+      /*rank=*/int64_t,
+      /*num_ranks=*/int64_t,
+      /*num_elements=*/int64_t,
+      /*signal_flags_ptrs=*/std::array<uint32_t*, kMaxNumAllReduceInputPtrs>,
+      /*signal_value=*/uint32_t>;
 };
 
 }  // namespace stream_executor::gpu
