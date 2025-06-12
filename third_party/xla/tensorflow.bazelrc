@@ -260,10 +260,18 @@ build:rocm_ci_hermetic --repo_env="OS=ubuntu_22.04"
 build:rocm_ci_hermetic --repo_env="ROCM_VERSION=6.2.0"
 build:rocm_ci_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 
+# SYCL Configuration (non-hermetic)
 build:sycl --crosstool_top=@local_config_sycl//crosstool:toolchain
 build:sycl --define=using_sycl=true
 build:sycl --define=tensorflow_mkldnn_contraction_kernel=0
-build:sycl --repo_env TF_NEED_SYCL=1
+build:sycl --repo_env=TF_NEED_SYCL=1
+build:sycl --repo_env=SYCL_BUILD_HERMETIC=0
+
+# Hermetic SYCL Configuration
+build:sycl_hermetic --config=sycl
+build:sycl_hermetic --repo_env=SYCL_BUILD_HERMETIC=1
+build:sycl_hermetic --repo_env=ONEAPI_VERSION=2025.1
+build:sycl_hermetic --repo_env=OS=ubuntu_24.10
 
 # Options to disable default on features
 build:nonccl --define=no_nccl_support=true
