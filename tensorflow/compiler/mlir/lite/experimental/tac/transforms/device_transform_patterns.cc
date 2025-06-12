@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/experimental/tac/transforms/device_transform_patterns.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <limits>
-#include <memory>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
