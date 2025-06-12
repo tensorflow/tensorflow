@@ -40,8 +40,8 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_config.h"
-#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -58,12 +58,6 @@ namespace {
 using ::mlir::quant::ir::DequantizeCastOp;
 using ::mlir::quant::ir::QuantizeCastOp;
 using ::mlir::quant::ir::StorageCastOp;
-using ::mlir::tf_quant::CustomMap;
-using ::mlir::tf_quant::kQuantTraitAttrName;
-using ::mlir::tf_quant::OpQuantScaleSpecGetter;
-using ::mlir::tf_quant::QuantizationPattern;
-using ::mlir::tf_quant::QuantizationSpecs;
-using ::mlir::tf_quant::QuantPassSpec;
 using ::tensorflow::quantization::OpSet;
 
 enum QuantizationTrait { kFullQuantization, kDynamicRangeQuantization };

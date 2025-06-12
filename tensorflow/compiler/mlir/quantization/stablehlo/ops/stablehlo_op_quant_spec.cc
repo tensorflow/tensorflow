@@ -32,8 +32,8 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/tf_attrs_and_constraints.h"
-#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -49,10 +49,6 @@ using ::mlir::stablehlo::DotGeneralOp;
 using ::stablehlo::quantization::Method;
 using ::stablehlo::quantization::StaticRangePtq;
 using tf_quant::GetDotGeneralQuantizationDim;
-using tf_quant::GetUniformQuantizedTypeForBias;
-using tf_quant::kQuantTraitAttrName;
-using tf_quant::QuantizationTrait;
-using tf_quant::QuantTraitValues;
 
 // Whether it represents a lifted function (i.e. `op` is the corresponding
 // `XlaCallModuleOp`) that is explicitly marked `NoQuantization`.

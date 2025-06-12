@@ -33,7 +33,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
@@ -233,9 +233,11 @@ StringRef GetEntryFunctionName(TF::XlaCallModuleOp op);
 
 // Checks whether the given op contains QuantizationTrait::FullyQuantizable.
 inline bool HasQuantizableTrait(Operation* op) {
-  return op->hasAttrOfType<StringAttr>(kQuantTraitAttrName) &&
-         op->getAttrOfType<StringAttr>(kQuantTraitAttrName).getValue().str() ==
-             QuantTraitValues[QuantizationTrait::FullyQuantizable];
+  return op->hasAttrOfType<StringAttr>(quant::kQuantTraitAttrName) &&
+         op->getAttrOfType<StringAttr>(quant::kQuantTraitAttrName)
+                 .getValue()
+                 .str() == quant::QuantTraitValues
+                               [quant::QuantizationTrait::FullyQuantizable];
 }
 
 // Returns true if `op` has two operands and one result and only second operand

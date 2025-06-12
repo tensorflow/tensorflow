@@ -16,7 +16,7 @@ limitations under the License.
 // third_party/tensorflow/lite/kernels/internal/reference/portable_tensor_utils.cc
 // as part of the effort to decouple TFLite from MLIR.
 
-#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/portable_tensor_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/portable_tensor_utils.h"
 
 #include <algorithm>
 #include <cmath>

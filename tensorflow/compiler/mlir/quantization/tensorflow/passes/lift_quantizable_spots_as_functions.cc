@@ -43,8 +43,8 @@ limitations under the License.
 #include "re2/re2.h"
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/tf_attrs_and_constraints.h"
-#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/quantization_unit_loc.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
@@ -59,8 +59,6 @@ using QuantizationUnit =
     ::tensorflow::quantization::UnitWiseQuantizationSpec::QuantizationUnit;
 using ::mlir::tf_quant::HasStaticShapeAtDims;
 using ::mlir::tf_quant::kAttrMapAttribute;
-using ::mlir::tf_quant::kQuantTraitAttrName;
-using ::mlir::tf_quant::OpQuantSpec;
 using ::tensorflow::quantization::OpSet;
 using ::tensorflow::quantization::QuantizationComponentSpec;
 using ::tensorflow::quantization::QuantizationMethod;

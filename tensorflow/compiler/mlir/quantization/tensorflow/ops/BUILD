@@ -17,7 +17,7 @@ cc_library(
     hdrs = ["tf_op_quant_spec.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/mlir/quantization/common/tf_quantization_lib",
+        "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -45,7 +45,7 @@ cc_library(
     hdrs = ["tf_quantize_op.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/mlir/quantization/common/tf_quantization_lib",
+        "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:tf_quantize_op_utils",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -84,7 +84,7 @@ cc_library(
     hdrs = ["uniform_op_quant_spec.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/mlir/quantization/common/tf_quantization_lib",
+        "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",

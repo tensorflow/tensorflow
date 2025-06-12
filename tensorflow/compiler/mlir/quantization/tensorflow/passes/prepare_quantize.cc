@@ -38,9 +38,9 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_config.h"
-#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_driver.h"
-#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_config.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_driver.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"  // IWYU pragma: keep
@@ -55,11 +55,6 @@ namespace {
 
 using ::mlir::quant::ir::DequantizeCastOp;
 using ::mlir::quant::ir::QuantizeCastOp;
-using ::mlir::tf_quant::ConvertStatsToQDQs;
-using ::mlir::tf_quant::ConvertUnsignedToSigned;
-using ::mlir::tf_quant::GetQuantizedTypeAttr;
-using ::mlir::tf_quant::kVolatileOpAttrName;
-using ::mlir::tf_quant::QuantizationSpecs;
 
 using QuantMethod = tensorflow::quantization::QuantizationMethod::PresetMethod;
 

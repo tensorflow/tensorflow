@@ -31,7 +31,7 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"  // IWYU pragma: keep
-#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/tf_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
@@ -44,8 +44,6 @@ namespace {
 
 using QuantMethod =
     ::tensorflow::quantization::QuantizationMethod::PresetMethod;
-using ::mlir::tf_quant::kQuantTraitAttrName;
-using ::mlir::tf_quant::OpQuantSpec;
 using ::tensorflow::quantization::OpSet;
 
 class LiftQuantizableSpotsAsFunctionsDRQPass

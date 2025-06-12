@@ -35,7 +35,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/uniform_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -251,7 +251,7 @@ LogicalResult FillAttributesForUniformQuantizedDotOp(
                                           rewriter.getI64IntegerAttr(-1)));
   }
 
-  std::unique_ptr<tf_quant::OpQuantSpec> spec = GetUniformOpQuantSpec(op);
+  std::unique_ptr<OpQuantSpec> spec = GetUniformOpQuantSpec(op);
   absl::flat_hash_set<int> operands = spec->quantizable_operands;
   int quant_dim = -1;
   if (enable_per_channel_quantization && operands.size() == 1) {
@@ -335,7 +335,7 @@ LogicalResult FillAttributesForUniformQuantizedConvolutionOp(
                                           rewriter.getI64IntegerAttr(-1)));
   }
 
-  std::unique_ptr<tf_quant::OpQuantSpec> spec = GetUniformOpQuantSpec(op);
+  std::unique_ptr<OpQuantSpec> spec = GetUniformOpQuantSpec(op);
   absl::flat_hash_set<int> operands = spec->quantizable_operands;
   int quant_dim = -1;
   if (enable_per_channel_quantization && operands.size() == 1) {

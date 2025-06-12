@@ -48,8 +48,8 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/tf_attrs_and_constraints.h"
-#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
@@ -75,7 +75,6 @@ using ::mlir::tf_quant::FindUserOfType;
 using ::mlir::tf_quant::GetDotGeneralQuantizationDim;
 using ::mlir::tf_quant::IsHybridQuantizedOp;
 using ::mlir::tf_quant::kQuantizationMethodAttr;
-using ::mlir::tf_quant::kQuantTraitAttrName;
 using ::mlir::tf_quant::TryCast;
 using ::stablehlo::quantization::Method;
 using ::stablehlo::quantization::QuantizedDimension;

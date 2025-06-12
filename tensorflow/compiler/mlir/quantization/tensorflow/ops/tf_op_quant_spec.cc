@@ -25,7 +25,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -78,8 +78,8 @@ GetWeightComponentSpec(
 
 // TODO(b/228928859): Improve the getter function to match attributes rather
 // than function name.
-std::unique_ptr<tf_quant::OpQuantSpec> GetTFOpQuantSpec(Operation* op) {
-  auto spec = std::make_unique<tf_quant::OpQuantSpec>();
+std::unique_ptr<OpQuantSpec> GetTFOpQuantSpec(Operation* op) {
+  auto spec = std::make_unique<OpQuantSpec>();
   if (auto call_op = dyn_cast<TF::PartitionedCallOp>(op)) {
     StringRef function_name =
         mlir::cast<FlatSymbolRefAttr>(call_op.getFAttr()).getValue();
@@ -89,39 +89,33 @@ std::unique_ptr<tf_quant::OpQuantSpec> GetTFOpQuantSpec(Operation* op) {
     if (function_name.contains("depthwise_conv2d")) {
       spec->coeff_op_quant_dim[1] = 3;
       if (function_name.contains("with_bias")) {
-        spec->biases_params[2] = {{0, 1},
-                                  tf_quant::GetUniformQuantizedTypeForBias};
+        spec->biases_params[2] = {{0, 1}, GetUniformQuantizedTypeForBias};
       }
     } else if (function_name.contains("conv2d")) {
       spec->coeff_op_quant_dim[1] = 3;
       if (function_name.contains("with_bias")) {
-        spec->biases_params[2] = {{0, 1},
-                                  tf_quant::GetUniformQuantizedTypeForBias};
+        spec->biases_params[2] = {{0, 1}, GetUniformQuantizedTypeForBias};
       }
     } else if (function_name.contains("matmul")) {
       spec->coeff_op_quant_dim[1] = -1;
       if (function_name.contains("with_bias") ||
           function_name.contains("and_bias")) {
-        spec->biases_params[2] = {{0, 1},
-                                  tf_quant::GetUniformQuantizedTypeForBias};
+        spec->biases_params[2] = {{0, 1}, GetUniformQuantizedTypeForBias};
       }
     } else if (function_name.contains("einsum")) {
       spec->coeff_op_quant_dim[1] = -1;
       if (function_name.contains("with_bias")) {
-        spec->biases_params[2] = {{0, 1},
-                                  tf_quant::GetUniformQuantizedTypeForBias};
+        spec->biases_params[2] = {{0, 1}, GetUniformQuantizedTypeForBias};
       }
     } else if (function_name.contains("conv3d")) {
       spec->coeff_op_quant_dim[1] = 4;
       if (function_name.contains("with_bias")) {
-        spec->biases_params[2] = {{0, 1},
-                                  tf_quant::GetUniformQuantizedTypeForBias};
+        spec->biases_params[2] = {{0, 1}, GetUniformQuantizedTypeForBias};
       }
     } else if (function_name.contains("batch_matmul")) {
       spec->coeff_op_quant_dim[1] = -1;
       if (function_name.contains("with_bias")) {
-        spec->biases_params[2] = {{0, 1},
-                                  tf_quant::GetUniformQuantizedTypeForBias};
+        spec->biases_params[2] = {{0, 1}, GetUniformQuantizedTypeForBias};
       }
     } else if (function_name.contains("gather")) {
       // Note that gather has axis attribute that specifies channel axis.
@@ -134,8 +128,8 @@ std::unique_ptr<tf_quant::OpQuantSpec> GetTFOpQuantSpec(Operation* op) {
   return spec;
 }
 
-std::unique_ptr<tf_quant::OpQuantScaleSpec> GetTfQuantScaleSpec(Operation* op) {
-  auto scale_spec = std::make_unique<tf_quant::OpQuantScaleSpec>();
+std::unique_ptr<OpQuantScaleSpec> GetTfQuantScaleSpec(Operation* op) {
+  auto scale_spec = std::make_unique<OpQuantScaleSpec>();
   if (llvm::isa<
           // clang-format off
           // go/keep-sorted start
