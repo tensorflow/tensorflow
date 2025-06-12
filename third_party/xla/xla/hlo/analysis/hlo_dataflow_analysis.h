@@ -83,7 +83,7 @@ class HloDataflowAnalysis {
   // may-alias table. If an empty optional is returned, default rules are used.
   //
   // Must-alias rules (as defined by GetInPlaceInputOutputPairs) cannot be
-  // overriden using backend-specific overrides.
+  // overridden using backend-specific overrides.
   //
   // The first parameter of the function should be the instruction, the
   // second parameter should be an operand of the instruction. The third
@@ -91,19 +91,6 @@ class HloDataflowAnalysis {
   using CanShareBuffer = std::function<std::optional<bool>(
       const HloInstruction* instr, const HloInstruction* operand,
       const ShapeIndex& user_index)>;
-
-  // Infrastructure for overriding whether an instruction defines a new value.
-  //
-  // The first parameter is the instruction and the second parameter is the
-  // output index. If an empty optional is used, default rules are used. If a
-  // ForwardedOperand object is returned, the value at the corresponding
-  // operand's index is used for the output, overriding all default logic.
-  struct ForwardedOperand {
-    int64_t operand_number;
-    ShapeIndex operand_index;
-  };
-  using ForwardsValue = std::function<std::optional<ForwardedOperand>(
-      const HloInstruction* instr, const ShapeIndex& index)>;
 
   // Runs dataflow analysis on the given module. Parameters:
   //
@@ -127,7 +114,6 @@ class HloDataflowAnalysis {
       const HloModule& module, bool ssa_form = false,
       bool bitcast_defines_value = false,
       const CanShareBuffer& can_share_buffer = nullptr,
-      const ForwardsValue& forwards_value = nullptr,
       absl::flat_hash_set<absl::string_view> execution_threads = {});
 
   // Returns true if 'instruction' defines an HLO value at the given shape index
@@ -248,7 +234,6 @@ class HloDataflowAnalysis {
   HloDataflowAnalysis(const HloModule& module, bool ssa_form,
                       bool bitcast_defines_value,
                       const CanShareBuffer& can_share_buffer,
-                      const ForwardsValue& forwards_value,
                       absl::flat_hash_set<absl::string_view> execution_threads);
 
   // 1. During value propagation (Propagate function), always create phi
@@ -378,8 +363,6 @@ class HloDataflowAnalysis {
   // Backend specific function that decides whether an instruction can share
   // a buffer with its operand.
   CanShareBuffer can_share_buffer_ = nullptr;
-
-  ForwardsValue forwards_value_ = nullptr;
 };
 
 // Removes layers of tuple indirection introduced via 'tuple' and
