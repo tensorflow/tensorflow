@@ -55,35 +55,45 @@ namespace stream_executor {
 // kernel during application initialization.
 class PlatformObjectRegistry {
  public:
+  // Instead of storing a `std::any` directly we store this container to work
+  // around an issue that's present in GCC 8's libstdc++
+  // (https://cplusplus.github.io/LWG/issue3041).
+  // Once this expression compiles in all our builds we can get rid of this
+  // extra `Container` type:
+  // `std::is_copy_constructible<std::reference_wrapper<const std::any>>::value`
+  struct Container {
+    std::any element;
+  };
+
   // Returns a reference to the process-wide instance of the registry.
   static PlatformObjectRegistry& GetGlobalRegistry();
 
   // Registers an object `obj` in the registry. This function is thread-safe.
   template <typename Trait, typename Other>
   absl::Status RegisterObject(Platform::Id platform_id, Other&& obj) {
-    return RegisterObject(
-        typeid(Trait), platform_id,
-        std::make_any<typename Trait::Type>(std::forward<Other>(obj)));
+    return RegisterObject(typeid(Trait), platform_id,
+                          Container{std::make_any<typename Trait::Type>(
+                              std::forward<Other>(obj))});
   }
 
   template <typename Trait>
   absl::StatusOr<std::reference_wrapper<const typename Trait::Type>> FindObject(
       Platform::Id platform_id) {
-    TF_ASSIGN_OR_RETURN(const std::any& obj,
+    TF_ASSIGN_OR_RETURN(const Container& obj,
                         FindObject(typeid(Trait), platform_id));
-    return std::any_cast<const typename Trait::Type&>(obj);
+    return std::any_cast<const typename Trait::Type&>(obj.element);
   }
 
  private:
   absl::Status RegisterObject(const std::type_info& type,
-                              Platform::Id platform_id, std::any object);
+                              Platform::Id platform_id, Container object);
 
-  absl::StatusOr<std::reference_wrapper<const std::any>> FindObject(
+  absl::StatusOr<std::reference_wrapper<const Container>> FindObject(
       const std::type_info& type, Platform::Id platform_id) const;
 
   mutable absl::Mutex mutex_;
   using RegistryKey = std::tuple<std::type_index, Platform::Id>;
-  absl::flat_hash_map<RegistryKey, std::any> objects_ ABSL_GUARDED_BY(mutex_);
+  absl::flat_hash_map<RegistryKey, Container> objects_ ABSL_GUARDED_BY(mutex_);
 };
 
 #define STREAM_EXECUTOR_REGISTER_OBJECT_STATICALLY(identifier, Trait,   \

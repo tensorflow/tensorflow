@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/stream_executor/platform/platform_object_registry.h"
 
-#include <any>
 #include <functional>
 #include <string>
 #include <tuple>
@@ -45,7 +44,7 @@ PlatformObjectRegistry& PlatformObjectRegistry::GetGlobalRegistry() {
   return *registry;
 }
 
-absl::StatusOr<std::reference_wrapper<const std::any>>
+absl::StatusOr<std::reference_wrapper<const PlatformObjectRegistry::Container>>
 PlatformObjectRegistry::FindObject(const std::type_info& type,
                                    Platform::Id platform_id) const {
   absl::MutexLock lock(&mutex_);
@@ -66,7 +65,7 @@ PlatformObjectRegistry::FindObject(const std::type_info& type,
 
 absl::Status PlatformObjectRegistry::RegisterObject(const std::type_info& type,
                                                     Platform::Id platform_id,
-                                                    std::any object) {
+                                                    Container object) {
   absl::MutexLock lock(&mutex_);
   const auto [it, inserted] = objects_.insert(std::make_pair(
       std::make_tuple(std::type_index(type), platform_id), std::move(object)));
