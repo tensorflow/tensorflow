@@ -46,11 +46,12 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
-#include "tensorflow/compiler/mlir/quantization/common/tf_attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/ops/stablehlo_op_quant_spec.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -71,11 +72,6 @@ using ::mlir::stablehlo::GatherOp;
 using ::mlir::stablehlo::GetDimensionSizeOp;
 using ::mlir::stablehlo::ReshapeOp;
 using ::mlir::stablehlo::UniformQuantizeOp;
-using ::mlir::tf_quant::FindUserOfType;
-using ::mlir::tf_quant::GetDotGeneralQuantizationDim;
-using ::mlir::tf_quant::IsHybridQuantizedOp;
-using ::mlir::tf_quant::kQuantizationMethodAttr;
-using ::mlir::tf_quant::TryCast;
 using ::stablehlo::quantization::Method;
 using ::stablehlo::quantization::QuantizedDimension;
 using ::stablehlo::quantization::QuantizedType;

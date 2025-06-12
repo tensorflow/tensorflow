@@ -25,16 +25,11 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/quantization/common/tf_attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/permutation.h"
 
 namespace mlir::quant::stablehlo {
-
-using tf_quant::HasRankOf;
-using tf_quant::kNchwToNhwcPermutation;
-using tf_quant::kNhwcToNchwPermutation;
-using tf_quant::kOihwToHwioPermutation;
 
 #define GEN_PASS_DEF_NCHWCONVOLUTIONTONHWCPASS
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h.inc"

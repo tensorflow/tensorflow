@@ -30,7 +30,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
-#include "tensorflow/compiler/mlir/quantization/common/tf_attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/permutation.h"
 
 namespace mlir::quant::stablehlo {
@@ -44,10 +44,6 @@ using ::mlir::stablehlo::AddOp;
 using ::mlir::stablehlo::BroadcastInDimOp;
 using ::mlir::stablehlo::MaxOp;
 using ::mlir::stablehlo::TransposeOp;
-
-using mlir::tf_quant::HasRankOf;
-using mlir::tf_quant::kNchwToNhwcPermutation;
-using mlir::tf_quant::kNhwcToNchwPermutation;
 
 // Returns `success()` if `op` is a `TransposeOp` with permutation attribute
 // equivalent to `permuation`.

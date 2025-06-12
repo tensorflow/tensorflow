@@ -23,13 +23,11 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/common/tf_attrs_and_constraints.h"  // IWYU pragma: keep - required to use `IsSplatValueEqual`.
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"  // IWYU pragma: keep - required to use `IsSplatValueEqual`.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 
 namespace mlir::quant {
 namespace {
-
-using ::mlir::tf_quant::IsSplatValueEqual;
 
 // Applies optimization after quantization.
 class OptimizePass
