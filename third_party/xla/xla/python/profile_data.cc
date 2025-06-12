@@ -17,20 +17,20 @@ limitations under the License.
 #include <string>
 
 #include "nanobind/make_iterator.h"  // IWYU pragma: keep
+#include "nanobind/nanobind.h"
 #include "nanobind/stl/string.h"  // IWYU pragma: keep
 #include "xla/python/profiler/profile_data_lib.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
-namespace {
+namespace xla {
 
 namespace nb = nanobind;
 // NOLINTBEGIN(build/namespaces)
-using namespace nb::literals;
 using namespace tensorflow::profiler::python;
 // NOLINTEND(build/namespaces)
 
-NB_MODULE(profile_data, m) {
+NB_MODULE(_profile_data, m) {
   nb::class_<ProfileEvent>(m, "ProfileEvent")
       .def_prop_ro("start_ns", &ProfileEvent::start_ns)
       .def_prop_ro("duration_ns", &ProfileEvent::duration_ns)
@@ -105,4 +105,4 @@ NB_MODULE(profile_data, m) {
           nb::keep_alive<0, 1>());
 }
 
-}  // namespace
+}  // namespace xla

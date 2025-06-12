@@ -13,10 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PYTHON_PROFILER_PROFILE_DATA_H_
-#define XLA_PYTHON_PROFILER_PROFILE_DATA_H_
-
-#include <nanobind/nanobind.h>
+#ifndef XLA_PYTHON_PROFILER_PROFILE_DATA_LIB_H_
+#define XLA_PYTHON_PROFILER_PROFILE_DATA_LIB_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -26,6 +24,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/log/check.h"
+#include "nanobind/nanobind.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/protobuf.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -190,4 +189,4 @@ ProfileData from_file(const std::string& proto_file_path);
 
 }  // namespace tensorflow::profiler::python
 
-#endif  // XLA_PYTHON_PROFILER_PROFILE_DATA_H_
+#endif  // XLA_PYTHON_PROFILER_PROFILE_DATA_LIB_H_
