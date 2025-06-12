@@ -280,7 +280,8 @@ TEST(RetryingFileSystemTest, NewRandomAccessFile_AllRetriesFailed) {
   // Use it and check the results.
   absl::string_view result;
   char scratch[10];
-  const auto& status = random_access_file->Read(0, 10, &result, scratch);
+  const auto& status =
+      random_access_file->Read(0, result, absl::MakeSpan(scratch, 10));
   EXPECT_TRUE(absl::StrContains(status.message(), "Retriable error #10"))
       << status;
 }
