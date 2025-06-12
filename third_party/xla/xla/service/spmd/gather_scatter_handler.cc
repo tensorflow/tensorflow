@@ -37,7 +37,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
 #include "xla/shape.h"
@@ -1047,26 +1049,6 @@ Shape MaybeGetTuplePerGroupBaseShape(const GroupedSharding& grouped_sharding,
   return ShapeUtil::MakeTupleShape(element_shapes);
 }
 
-// Returns the opcode if `reduction_comp` represents a simple binary elementwise
-// computation on the two operands.
-std::optional<HloOpcode> ParseReductionComputation(
-    const HloComputation* reduction_comp) {
-  if (reduction_comp->num_parameters() != 2) {
-    return std::nullopt;
-  }
-  auto root = reduction_comp->root_instruction();
-  if (!HloOpcodeIsBinaryCommutative(root->opcode())) {
-    return std::nullopt;
-  }
-  if (!absl::c_linear_search(root->operands(),
-                             reduction_comp->parameter_instruction(0)) ||
-      !absl::c_linear_search(root->operands(),
-                             reduction_comp->parameter_instruction(1))) {
-    return std::nullopt;
-  }
-  return root->opcode();
-}
-
 // Priority for operand dimensions in scatter from lowest to highest, in case of
 // needing to replicate a dimension, start from the lowest first.
 std::vector<int64_t> ScatterOperandDimsByPriority(
@@ -1496,36 +1478,21 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
   PartitionedHlo per_group_operand =
       PerGroupPartitionedHlo(operands[0], operand_grouped, b, clean_ups);
 
-  auto reduction_opcode = ParseReductionComputation(scatter->to_apply());
-  if (!reduction_opcode.has_value() || *reduction_opcode == HloOpcode::kXor) {
+  std::optional<ReductionKind> reduction_kind =
+      MatchReductionComputation(scatter->to_apply());
+  if (!reduction_kind) {
     // XOR is not supported for now, as it will need to keep the operand
     // around in buffer after local scatter to XOR with the final all-reduced
     // results.
     return nullptr;
   }
-  HloInstruction* identity;
-  switch (*reduction_opcode) {
-    case HloOpcode::kAdd:
-    case HloOpcode::kOr:
-      identity = CreateZero(per_group_operand.hlo()->shape(), b);
-      break;
-    case HloOpcode::kMultiply:
-    case HloOpcode::kAnd:
-      identity = CreateOne(per_group_operand.hlo()->shape(), b);
-      break;
-    case HloOpcode::kMinimum:
-      identity = CreateConstant(
-          per_group_operand.hlo()->shape(),
-          LiteralUtil::MaxValue(scatter->shape().element_type()), b);
-      break;
-    case HloOpcode::kMaximum:
-      identity = CreateConstant(
-          per_group_operand.hlo()->shape(),
-          LiteralUtil::MinValue(scatter->shape().element_type()), b);
-      break;
-    default:
-      return nullptr;
+  std::optional<Literal> identity_literal =
+      GetReductionIdentity(*reduction_kind, scatter->shape().element_type());
+  if (!identity_literal) {
+    return nullptr;
   }
+  HloInstruction* identity = CreateConstant(per_group_operand.hlo()->shape(),
+                                            std::move(*identity_literal), b);
   // Update partition_id for partial replicate.
   auto partition_id = indices.state().partition_id;
   if (indices.sharding().ReplicateOnLastTileDim()) {
