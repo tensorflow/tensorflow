@@ -586,15 +586,19 @@ absl::Status RunLatencyHidingSchedulerPasses(
   }
 
   auto async_tracker = std::make_unique<GpuAsyncTracker>(config);
+
+  std::shared_ptr<const SchedulingContext> scheduling_context =
+      std::make_shared<const SchedulingContext>(module, std::move(estimator),
+                                                std::move(async_tracker),
+                                                shape_size_in_bytes);
   auto scheduler_core = std::make_unique<DefaultSchedulerCore>(
-      shape_size_in_bytes, async_tracker.get(), estimator.get(), config,
+      scheduling_context, config,
       /*target_scheduling_rule=*/nullptr,
       /*early_target_scheduling_rule=*/nullptr,
       /*post_processing_fn=*/nullptr);
 
-  pipeline.AddPass<LatencyHidingScheduler>(
-      std::move(estimator), std::move(async_tracker), std::move(scheduler_core),
-      shape_size_in_bytes);
+  pipeline.AddPass<LatencyHidingScheduler>(scheduling_context,
+                                           std::move(scheduler_core));
   pipeline.AddPass<SchedulingInstructionAnnotator>();
 
   return pipeline.Run(module).status();
