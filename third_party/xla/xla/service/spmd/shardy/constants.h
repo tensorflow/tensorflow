@@ -128,6 +128,10 @@ inline constexpr llvm::StringRef kOutShardings = "xla.sdy.out_shardings";
 // Attribute name for the manual axes of a `ManualComputationOp`.
 inline constexpr llvm::StringRef kManualAxes = "xla.sdy.manual_axes";
 
+// Attribute name for indicating whether a value has unreduced axes. Is either
+// `true` or not set.
+inline constexpr char kHasUnreducedAxes[] = "xla.sdy.has_unreduced_axes";
+
 // The function name of the of the body of a `ManualComputationOp` during Shardy
 // round tripping. Used
 inline constexpr llvm::StringRef kManualComputationBodyFuncName =

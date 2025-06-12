@@ -72,7 +72,7 @@ cc_library(
         "//xla/service:pattern_matcher",
         "//xla/service:shape_inference",
         "//xla/service:sharding_propagation",
-        "//xla/service/spmd/shardy/stablehlo_round_trip:export_shardings",
+        "//xla/service/spmd/shardy:constants",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",

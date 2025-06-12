@@ -58,11 +58,6 @@ std::unique_ptr<mlir::Pass> createExportStablehloShardingsPass(
 // Register the xla-sdy-stablehlo-export-shardings pass.
 void registerStablehloExportShardingsPass();
 
-// TODO(b/424198190): Remove once shardy is bumped by llvm integrate.
-// Attribute name for indicating whether a value has unreduced axes. Is either
-// `true` or not set.
-inline constexpr llvm::StringRef kHasUnreducedAxes = "sdy.has_unreduced_axes";
-
 }  // namespace sdy
 }  // namespace xla
 

@@ -15947,8 +15947,8 @@ HloModule module
 ENTRY entry {
   a = f32[8,1024]{1,0} parameter(0), sharding={devices=[1,2]0,1}
   b = f32[1024,256]{1,0} parameter(1), sharding={devices=[2,1]0,1}
-  dot = f32[8,256]{1,0} dot(a, b), lhs_contracting_dims={1}, rhs_contracting_dims={0}, frontend_attributes={sdy.has_unreduced_axes="true"}
-  ROOT copy = f32[8,256]{1,0} copy(dot), sharding={replicated}, frontend_attributes={sdy.has_unreduced_axes="true"}
+  dot = f32[8,256]{1,0} dot(a, b), lhs_contracting_dims={1}, rhs_contracting_dims={0}, frontend_attributes={xla.sdy.has_unreduced_axes="true"}
+  ROOT copy = f32[8,256]{1,0} copy(dot), sharding={replicated}, frontend_attributes={xla.sdy.has_unreduced_axes="true"}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
@@ -15965,8 +15965,8 @@ HloModule module
 ENTRY entry {
   constant = s32[2,4]{1,0} constant({{1,1,1,1},{1,1,1,1}}), sharding={maximal device=0}
   a = s32[2,4]{1,0} parameter(0), sharding={devices=[1,2]0,1}
-  add = s32[2,4]{1,0} add(constant, a), frontend_attributes={sdy.has_unreduced_axes="true"}
-  ROOT %copy = s32[2,4]{1,0} copy(%add), sharding={replicated}, frontend_attributes={sdy.has_unreduced_axes="true"}
+  add = s32[2,4]{1,0} add(constant, a), frontend_attributes={xla.sdy.has_unreduced_axes="true"}
+  ROOT %copy = s32[2,4]{1,0} copy(%add), sharding={replicated}, frontend_attributes={xla.sdy.has_unreduced_axes="true"}
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));

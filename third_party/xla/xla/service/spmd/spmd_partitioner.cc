@@ -67,7 +67,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/shape_inference.h"
 #include "xla/service/spmd/custom_call_handler.h"
-#include "xla/service/spmd/shardy/stablehlo_round_trip/export_shardings.h"
+#include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -256,7 +256,7 @@ HloInstruction* SpmdBuilder::AddInstruction(
     // This is similar to how backend_config is handled and allows cloned
     // instructions to have the attribute.
     if (visiting_hlo_->opcode() != hlo->opcode()) {
-      hlo->erase_frontend_attribute(sdy::kHasUnreducedAxes.str());
+      hlo->erase_frontend_attribute(sdy::kHasUnreducedAxes);
     }
     if (prev_sharding != nullptr) {
       hlo->set_sharding(*prev_sharding);
