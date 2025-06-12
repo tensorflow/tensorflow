@@ -1780,7 +1780,10 @@ ENTRY %reduce-window (parameter.0: s64[81,8], parameter.1: s64[]) -> s64[82,8] {
   EXPECT_TRUE(RunAndCompare(hlo_string, std::nullopt));
 }
 
-TEST_F(HloTestBase, DISABLED_ON_TPU(ReduceWindowS4)) {
+TEST_F(HloTestBase, ReduceWindowS4) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   const std::string hlo_string = R"(
 HloModule reduce-window
 

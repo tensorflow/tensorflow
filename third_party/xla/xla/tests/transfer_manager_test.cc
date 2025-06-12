@@ -356,7 +356,10 @@ TEST_F(TransferManagerTest, MultiStreamRoundTripSoak) {
 }
 
 // TODO(b/223222672): TPUs transfer literals using a different codepath.
-TEST_F(TransferManagerTest, DISABLED_ON_TPU(TransferDynamicShape)) {
+TEST_F(TransferManagerTest, TransferDynamicShape) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   TF_ASSERT_OK_AND_ASSIGN(
       Shape s, ParseShape("(s64[], s32[<=1048576,3], f32[<=1048576,48])"));
 

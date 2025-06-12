@@ -63,9 +63,9 @@ TEST_F(SetDimensionSizeTest, CorrectComputation) {
   EXPECT_EQ(result, expected);
 }
 
-TEST_F(SetDimensionSizeTest,
-       DISABLED_ON_TPU(ReturnsErrorWhenHloPassesDisabled)) {
-  if (test::DeviceIsOneOf({test::kGpu, test::kInterpreter})) {
+TEST_F(SetDimensionSizeTest, ReturnsErrorWhenHloPassesDisabled) {
+  if (test::DeviceIsOneOf({test::kGpu, test::kInterpreter}) ||
+      test::DeviceTypeIs(test::kTpu)) {
     GTEST_SKIP();
   }
   TF_ASSERT_OK_AND_ASSIGN(auto module,

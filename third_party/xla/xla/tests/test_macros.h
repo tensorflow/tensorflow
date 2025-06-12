@@ -28,22 +28,4 @@ limitations under the License.
 #ifndef XLA_TESTS_TEST_MACROS_H_
 #define XLA_TESTS_TEST_MACROS_H_
 
-#define DISABLED_ON_TPU(X) X
-
-// We need this macro instead of pasting directly to support nesting
-// the DISABLED_ON_FOO macros, as in the definition of DISABLED_ON_CPU.
-// Otherwise the pasting is applied before macro expansion completes.
-#define XLA_TEST_PASTE(A, B) A##B
-
-// We turn off clang-format so we can indent the macros for readability.
-// clang-format off
-
-
-#ifdef XLA_TEST_BACKEND_TPU
-# undef DISABLED_ON_TPU
-# define DISABLED_ON_TPU(X) XLA_TEST_PASTE(DISABLED_, X)
-#endif  // XLA_TEST_BACKEND_TPU
-
-// clang-format on
-
 #endif  // XLA_TESTS_TEST_MACROS_H_

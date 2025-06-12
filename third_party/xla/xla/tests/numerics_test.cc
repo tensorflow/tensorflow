@@ -94,8 +94,8 @@ ENTRY entry {
 // CPU thunks backend (due to incorrect LLVM IR generated).
 // This is an HLO module optimized for CPU backend, it may be invalid for other
 // backends.
-TEST_F(NumericsTest, DISABLED_ON_TPU(MultiplySubtractConcatTest)) {
-  if (test::DeviceIs(test::kGpu)) {
+TEST_F(NumericsTest, MultiplySubtractConcatTest) {
+  if (test::DeviceIs(test::kGpu) || test::DeviceTypeIs(test::kTpu)) {
     GTEST_SKIP();
   }
   const char* test_hlo = R"(

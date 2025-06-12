@@ -79,9 +79,9 @@ TEST_F(BatchNormTrainingTest, CorrectComputation) {
   }
 }
 
-TEST_F(BatchNormTrainingTest,
-       DISABLED_ON_TPU(ReturnsErrorWhenHloPassesDisabled)) {
-  if (test::DeviceIsOneOf({test::kGpu, test::kInterpreter})) {
+TEST_F(BatchNormTrainingTest, ReturnsErrorWhenHloPassesDisabled) {
+  if (test::DeviceIsOneOf({test::kGpu, test::kInterpreter}) ||
+      test::DeviceTypeIs(test::kTpu)) {
     GTEST_SKIP();
   }
   TF_ASSERT_OK_AND_ASSIGN(auto module,

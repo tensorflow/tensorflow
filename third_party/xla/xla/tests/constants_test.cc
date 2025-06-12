@@ -261,8 +261,8 @@ TEST_F(ConstantsTest, FullLikeScalar) {
 using ConstantsHloTest = HloPjRtTestBase;
 
 // TODO(b/121147351): Fails on GPU. Not clear if this is expected behavior.
-TEST_F(ConstantsHloTest, DISABLED_ON_TPU(BitcastOfConstant)) {
-  if (test::DeviceIs(test::kGpu)) {
+TEST_F(ConstantsHloTest, BitcastOfConstant) {
+  if (test::DeviceIs(test::kGpu) || test::DeviceTypeIs(test::kTpu)) {
     GTEST_SKIP();
   }
   const char* testcase = R"(

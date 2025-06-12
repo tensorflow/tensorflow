@@ -999,6 +999,7 @@ xla_test(
         "//xla:types",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/testlib:test",
+        "//xla/tests:xla_test_backend_predicates",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings:str_format",

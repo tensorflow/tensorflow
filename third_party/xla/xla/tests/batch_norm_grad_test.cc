@@ -66,7 +66,10 @@ TEST_F(BatchNormGradTest, CorrectComputation) {
                                     &expected_mean_grad}));
 }
 
-TEST_F(BatchNormGradTest, DISABLED_ON_TPU(ReturnsErrorWhenHloPassesDisabled)) {
+TEST_F(BatchNormGradTest, ReturnsErrorWhenHloPassesDisabled) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   if (test::DeviceIsOneOf({test::kGpu, test::kInterpreter})) {
     GTEST_SKIP();
   }

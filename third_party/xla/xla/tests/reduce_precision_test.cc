@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/base/casts.h"
 #include "absl/strings/str_format.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -479,7 +480,10 @@ TEST_P(ReducedPrecisionAccuracyTest, ReducePrecisionFloat) {
                         operation_index);
 }
 
-TEST_P(ReducedPrecisionAccuracyTest, DISABLED_ON_TPU(ReducePrecisionDouble)) {
+TEST_P(ReducedPrecisionAccuracyTest, ReducePrecisionDouble) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   int operation_index = GetParam();
   DoIt<double, uint64_t>(f64_exponent_sizes[operation_index],
                          f64_mantissa_sizes[operation_index], f64_test_values,
