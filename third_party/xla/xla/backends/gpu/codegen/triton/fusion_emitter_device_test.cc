@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -61,6 +62,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/path.h"
 
 namespace xla {
 namespace gpu {
@@ -3128,6 +3130,79 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Combine(::testing::ValuesIn(AllXlaDataTypes()),
                        ::testing::ValuesIn(AllXlaDataTypes())),
     DotUnsetAlgorithmEmitterTest::ParamToString);
+
+TEST_F(TritonEmitterTest, CheckRocmWarpSize) {
+  if (std::get_if<se::CudaComputeCapability>(&GpuComputeCapability())) {
+    GTEST_SKIP() << "Warp size is always 32 on CUDA";
+  }
+
+  constexpr absl::string_view kHloText = R"(
+  %gemm_fusion___computation.clone {
+    %parameter_0 = f16[30,30]{1,0} parameter(0)
+    %parameter_1 = s8[30,30]{1,0} parameter(1)
+    %cp1.1 = f16[30,30]{1,0} convert(%parameter_1)
+    ROOT %_.1 = f16[30,30]{1,0} dot(%parameter_0, %cp1.1), lhs_contracting_dims={0}, rhs_contracting_dims={1}
+  }
+
+  ENTRY %entry_computation {
+    %p1 = s8[30,30]{1,0} parameter(1)
+    %p0 = f16[30,30]{1,0} parameter(0)
+    ROOT %gemm_fusion__ = f16[30,30]{1,0} fusion(%p0, %p1), kind=kCustom, calls=%gemm_fusion___computation.clone, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"16","block_n":"16","block_k":"256","split_k":"1","num_stages":"1","num_warps":"4","num_ctas":"1"}},"force_earliest_schedule":false,"reification_cost":[]}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> verified_module,
+                          ParseAndReturnVerifiedModule(kHloText));
+
+  std::string output_directory;
+  if (!tsl::io::GetTestUndeclaredOutputsDir(&output_directory)) {
+    output_directory = tsl::testing::TmpDir();
+  }
+  DebugOptions debug_options = verified_module->config().debug_options();
+  debug_options.set_xla_dump_to(output_directory);
+  debug_options.set_xla_dump_hlo_pass_re("triton-fusion-emitter");
+  verified_module->mutable_config().set_debug_options(debug_options);
+
+  const HloFusionInstruction* triton_fusion = Cast<HloFusionInstruction>(
+      verified_module->entry_computation()->root_instruction());
+
+  llvm::LLVMContext llvm_ctx;
+  llvm::Module llvm_module("module", llvm_ctx);
+  mlir::MLIRContext mlir_context;
+  std::vector<std::string> paths;
+  std::string triton_passes_log;
+
+  // For MI210 warp_size should be 64
+  const se::DeviceDescription dev_info =
+      TestGpuDeviceInfo::AMDMI210DeviceInfo();
+  TF_ASSERT_OK(TritonWrapper(
+      "test_fn", triton_fusion, se::RocmComputeCapability("gfx942"), dev_info,
+      BlockLevelParameters(), &llvm_module, mlir_context));
+  TF_EXPECT_OK(tsl::Env::Default()->GetMatchingPaths(
+      tsl::io::JoinPath(output_directory, "*.triton-passes.log"), &paths));
+  EXPECT_EQ(paths.size(), 1);
+  TF_ASSERT_OK(
+      tsl::ReadFileToString(tsl::Env::Default(), paths[0], &triton_passes_log));
+  constexpr absl::string_view kPattern = R"(
+      // CHECK: "ttg.threads-per-warp" = 64
+    )";
+  EXPECT_THAT(RunFileCheck(triton_passes_log, kPattern), true);
+
+  // For RX7900 warp_size should be 32
+  const se::DeviceDescription dev_info_n =
+      TestGpuDeviceInfo::AMDRX7900DeviceInfo();
+  TF_ASSERT_OK(TritonWrapper(
+      "test_fn", triton_fusion, se::RocmComputeCapability("gfx1100"),
+      dev_info_n, BlockLevelParameters(), &llvm_module, mlir_context));
+  TF_EXPECT_OK(tsl::Env::Default()->GetMatchingPaths(
+      tsl::io::JoinPath(output_directory, "*.triton-passes.log"), &paths));
+  EXPECT_EQ(paths.size(), 1);
+  TF_ASSERT_OK(
+      tsl::ReadFileToString(tsl::Env::Default(), paths[0], &triton_passes_log));
+  constexpr absl::string_view kPattern_n = R"(
+      // CHECK: "ttg.threads-per-warp" = 32
+    )";
+  EXPECT_THAT(RunFileCheck(triton_passes_log, kPattern_n), true);
+}
 
 }  // namespace
 }  // namespace gpu
