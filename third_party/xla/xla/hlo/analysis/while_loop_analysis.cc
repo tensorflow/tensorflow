@@ -550,6 +550,14 @@ optional<int64_t> CheckedSubtract(int64_t a, int64_t b) {
   return result;
 }
 
+absl::StatusOr<Literal> EvaluateIndvarInit(const HloInstruction* while_op,
+                                           int64_t indvar_tuple_idx) {
+  HloEvaluator evaluator(/*max_loop_iterations=*/0);
+  auto* while_init = while_op->operand(0);
+  auto* indvar_init = while_init->operand(indvar_tuple_idx);
+  return evaluator.Evaluate(TraceThroughCopyAndGteTupleChain(indvar_init));
+}
+
 optional<Range> MatchTrivialLoopRange(const HloInstruction* while_op) {
   std::optional<int64_t> indvar_tuple_idx =
       GetLoopInductionVarTupleIdx(while_op);
@@ -562,14 +570,16 @@ optional<Range> MatchTrivialLoopRange(const HloInstruction* while_op) {
 optional<Range> MatchLoopRangeWithKnownValues(
     const HloInstruction* while_op, const int64_t induction_var_idx,
     const absl::flat_hash_map<const HloInstruction*, Range>& known_values) {
-  const HloInstruction* indvar_init_instr =
-      while_op->operand(0)->operand(induction_var_idx);
-  if (!indvar_init_instr->IsConstant()) {
-    return std::nullopt;
+  absl::StatusOr<Literal> indvar_init_result =
+      EvaluateIndvarInit(while_op, induction_var_idx);
+  if (!indvar_init_result.ok()) {
+    VLOG(2) << "Unable to evaluate induction variable init: "
+            << indvar_init_result.status()
+            << " for while op: " << while_op->ToString();
+    return nullopt;
   }
 
-  // First, find the scalar constant init that `i` is initialized to.
-  const Literal& indvar_init = indvar_init_instr->literal();
+  const Literal indvar_init = std::move(indvar_init_result).value();
   optional<int64_t> indvar_init_val =
       LiteralUtil::LiteralAsScalarInt64(indvar_init);
   if (!indvar_init_val) {
@@ -908,15 +918,13 @@ optional<int64_t> ComputeWhileLoopTripCount(const HloInstruction* while_op,
   // Now that we know the index of the induction variable, we can we can try to
   // compute how many times the loop executes.  Start by computing the induction
   // variable's initial value.
-  HloEvaluator evaluator(/*max_loop_iterations=*/0);
-  auto* while_init = while_op->operand(0);
-  auto* indvar_init = while_init->operand(*indvar_tuple_idx);
   absl::StatusOr<Literal> indvar_init_result =
-      evaluator.Evaluate(TraceThroughCopyAndGteTupleChain(indvar_init));
+      EvaluateIndvarInit(while_op, *indvar_tuple_idx);
   VLOG(2) << "indvar_init_result: " << indvar_init_result.status();
   if (!indvar_init_result.ok()) {
     VLOG(2) << "Couldn't evaluate induction variable init, "
-            << indvar_init_result.status() << ", " << indvar_init->ToString();
+            << indvar_init_result.status() << ", "
+            << while_op->operand(0)->operand(*indvar_tuple_idx)->ToString();
     return nullopt;
   }
   Literal indvar_iter_val = std::move(indvar_init_result).value();
@@ -949,6 +957,7 @@ optional<int64_t> ComputeWhileLoopTripCount(const HloInstruction* while_op,
     return std::nullopt;
   }
 
+  HloEvaluator evaluator(/*max_loop_iterations=*/0);
   for (int64_t trip_count = 0; trip_count != max_brute_force_iters + 1;
        ++trip_count) {
     absl::StatusOr<Literal> result = evaluator.Evaluate(
