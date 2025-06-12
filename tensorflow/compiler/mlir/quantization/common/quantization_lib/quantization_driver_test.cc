@@ -59,12 +59,34 @@ constexpr absl::string_view kModuleTFLite = R"mlir(
       return %1 : tensor<1x4x4x3xf32>
     }
     func.func private @composite_fn_1(%arg0: tensor<1x4x4x3xf32>, %arg1: tensor<3x1x1x3xf32>, %arg2: tensor<3xf32>) -> tensor<1x4x4x3xf32> attributes {tf_quant.composite_function} {
-      %0 = "tfl.conv_2d"(%arg0, %arg1, %arg2) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "RELU", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x4x4x3xf32>, tensor<3x1x1x3xf32>, tensor<3xf32>) -> tensor<1x4x4x3xf32>
-      return %0 : tensor<1x4x4x3xf32>
+      %perm = "tf.Const"() { value = dense<[1, 2, 3, 0]> : tensor<4xi32> } : () -> tensor<4xi32>
+      %filter_hwio = "tf.Transpose"(%arg1, %perm) : (tensor<3x1x1x3xf32>, tensor<4xi32>) -> tensor<1x1x3x3xf32>
+      %0 = "tf.Conv2D"(%arg0, %filter_hwio) {
+        dilations = [1, 1, 1, 1],
+        strides = [1, 1, 1, 1],
+        padding = "VALID",
+        data_format = "NHWC"
+      } : (tensor<1x4x4x3xf32>, tensor<1x1x3x3xf32>) -> tensor<1x4x4x3xf32>
+      %1 = "tf.BiasAdd"(%0, %arg2) {
+        data_format = "NHWC"
+      } : (tensor<1x4x4x3xf32>, tensor<3xf32>) -> tensor<1x4x4x3xf32>
+      %2 = "tf.Relu"(%1) : (tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32>
+      return %2 : tensor<1x4x4x3xf32>
     }
     func.func private @composite_fn_2(%arg0: tensor<1x4x4x3xf32>, %arg1: tensor<3x1x1x3xf32>, %arg2: tensor<3xf32>) -> tensor<1x4x4x3xf32> attributes {tf_quant.composite_function} {
-      %0 = "tfl.conv_2d"(%arg0, %arg1, %arg2) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "RELU", padding = "VALID", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x4x4x3xf32>, tensor<3x1x1x3xf32>, tensor<3xf32>) -> tensor<1x4x4x3xf32>
-      return %0 : tensor<1x4x4x3xf32>
+      %perm = "tf.Const"() { value = dense<[1, 2, 3, 0]> : tensor<4xi32> } : () -> tensor<4xi32>
+      %filter_hwio = "tf.Transpose"(%arg1, %perm) : (tensor<3x1x1x3xf32>, tensor<4xi32>) -> tensor<1x1x3x3xf32>
+      %0 = "tf.Conv2D"(%arg0, %filter_hwio) {
+        dilations = [1, 1, 1, 1],
+        strides = [1, 1, 1, 1],
+        padding = "VALID",
+        data_format = "NHWC"
+      } : (tensor<1x4x4x3xf32>, tensor<1x1x3x3xf32>) -> tensor<1x4x4x3xf32>
+      %1 = "tf.BiasAdd"(%0, %arg2) {
+        data_format = "NHWC"
+      } : (tensor<1x4x4x3xf32>, tensor<3xf32>) -> tensor<1x4x4x3xf32>
+      %2 = "tf.Relu"(%1) : (tensor<1x4x4x3xf32>) -> tensor<1x4x4x3xf32>
+      return %2 : tensor<1x4x4x3xf32>
     }
   }
 )mlir";
@@ -127,14 +149,14 @@ TEST_F(ApplyQuantizationParamsPropagationTest,
 
   for (const auto& arg : quantization_driver.GetArgs()) {
     const QuantState& state = quantization_driver.GetArgQuantState(arg);
-    EXPECT_TRUE(isa<quant::QuantizedType>(state.params));
+    EXPECT_TRUE(isa<QuantizedType>(state.params));
   }
   for (const auto& result : quantization_driver.GetResultStates()) {
     Operation* op = result.first.first;
     const int res_index = result.first.second;
     const QuantState state =
         quantization_driver.GetResultQuantState(op, res_index);
-    EXPECT_TRUE(isa<quant::QuantizedType>(state.params));
+    EXPECT_TRUE(isa<QuantizedType>(state.params));
   }
 }
 
@@ -159,7 +181,7 @@ TEST_F(ApplyQuantizationParamsPropagationTest, FinalizeInsertsQDQOps) {
   ASSERT_NE(filter_qcast_op, nullptr);
   EXPECT_TRUE(isa<mlir::quant::ir::QuantizeCastOp>(filter_qcast_op));
   EXPECT_TRUE(isa<mlir::quant::ir::DequantizeCastOp>(filter_dcast_op));
-  EXPECT_TRUE(isa<quant::UniformQuantizedPerAxisType>(
+  EXPECT_TRUE(isa<UniformQuantizedPerAxisType>(
       mlir::cast<TensorType>(filter_qcast_op->getResult(0).getType())
           .getElementType()));
 }

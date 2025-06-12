@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_TF_TEST_BASE_H_
-#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_TF_TEST_BASE_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_COMMON_TEST_BASE_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_COMMON_TEST_BASE_H_
 
 #include <memory>
 
@@ -30,6 +30,8 @@ limitations under the License.
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/func.h"
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/context.h"
@@ -38,21 +40,21 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/core/platform/test.h"
 
-namespace mlir::tf_quant {
+namespace mlir::quant {
 
 using ::testing::Test;
 
 class QuantizationTestBase : public Test {
  protected:
   QuantizationTestBase()
-      : ctx_(quant::stablehlo::CreateMlirContextForQuantization()),
+      : ctx_(stablehlo::CreateMlirContextForQuantization()),
         builder_(ctx_.get()) {
-    ctx_->loadDialect<arith::ArithDialect, mlir::stablehlo::StablehloDialect,
-                      func::FuncDialect, TF::TensorFlowDialect,
-                      tf_saved_model::TensorFlowSavedModelDialect,
-                      tf_executor::TensorFlowExecutorDialect,
-                      quant::QuantDialect, mlir::quant::ir::TFQuantDialect,
-                      quant::ir::TFQuantDialect>();
+    ctx_->loadDialect<
+        arith::ArithDialect, mlir::stablehlo::StablehloDialect,
+        func::FuncDialect, TF::TensorFlowDialect, TFL::TensorFlowLiteDialect,
+        tf_saved_model::TensorFlowSavedModelDialect,
+        tf_executor::TensorFlowExecutorDialect, quant::QuantDialect,
+        quantfork::QuantizationForkDialect, ir::TFQuantDialect>();
   }
 
   // Parses `module_op_str` to create a `ModuleOp`.
@@ -68,7 +70,7 @@ class QuantizationTestBase : public Test {
   // `@main`.
   template <typename OpT>
   FailureOr<OpT> FindFirstOpFromMainFunc(ModuleOp module_op) {
-    func::FuncOp main_func_op = quant::FindMainFuncOp(module_op);
+    func::FuncOp main_func_op = FindMainFuncOp(module_op);
     if (main_func_op == nullptr) return failure();
 
     auto ops = main_func_op.getOps<OpT>();
@@ -81,6 +83,6 @@ class QuantizationTestBase : public Test {
   OpBuilder builder_;
 };
 
-}  // namespace mlir::tf_quant
+}  // namespace mlir::quant
 
-#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_COMMON_TF_TEST_BASE_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_COMMON_TEST_BASE_H_
