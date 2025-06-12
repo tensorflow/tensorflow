@@ -1485,16 +1485,15 @@ CoordinationService::CoordinatedTaskSet CoordinationService::AliveTasks(
   return alive_tasks;
 }
 
-std::vector<uint64_t> CoordinationService::CoordinationIds(
-    const CoordinatedTaskSet& tasks) const {
+std::vector<uint64_t> CoordinationService::IncarnationIds(
+    absl::Span<const CoordinatedTask> tasks) const {
   std::vector<uint64_t> incarnations;
   for (const CoordinatedTask& task : tasks) {
     auto it = cluster_state_.find(GetTaskName(task));
-    if (it != cluster_state_.end()) {
-      incarnations.push_back(it->second->GetTaskIncarnation());
-    }
+    CHECK(it != cluster_state_.end())
+        << "Task " << GetTaskName(task) << " not found";
+    incarnations.push_back(it->second->GetTaskIncarnation());
   }
-  std::sort(incarnations.begin(), incarnations.end());
   return incarnations;
 }
 
@@ -1507,8 +1506,10 @@ void CoordinationService::RefreshAliveness() {
       // Every alive task is in the barrier, so the barrier is satisfied. Return
       // the same set of alive tasks (alive_tasks) to every task in the barrier.
       std::vector<CoordinatedTask> v{alive_tasks.begin(), alive_tasks.end()};
+      std::vector<uint64_t> incarnation_ids = IncarnationIds(v);
+      absl::c_sort(incarnation_ids);
       for (const GetAliveTasksCallback& done : it->dones) {
-        done(absl::OkStatus(), v, CoordinationIds(alive_tasks));
+        done(absl::OkStatus(), v, incarnation_ids);
       }
 
       // Remove the pending GetAliveTasks call because it is no longer pending.
@@ -1557,8 +1558,10 @@ void CoordinationService::GetAliveTasksAsync(
   CoordinatedTaskSet alive_tasks = AliveTasks(task_set);
   if (TaskSetSubset(alive_tasks, it->in_barrier)) {
     std::vector<CoordinatedTask> v{alive_tasks.begin(), alive_tasks.end()};
+    std::vector<uint64_t> incarnation_ids = IncarnationIds(v);
+    absl::c_sort(incarnation_ids);
     for (const GetAliveTasksCallback& done : it->dones) {
-      done(absl::OkStatus(), v, CoordinationIds(alive_tasks));
+      done(absl::OkStatus(), v, incarnation_ids);
     }
     aliveness_states_.erase(it);
   }

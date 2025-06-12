@@ -119,6 +119,7 @@ cc_library(
         "//xla/tsl/framework:device_id",
         "//xla/tsl/framework:device_id_impl",
         "//xla/tsl/lib/strings:proto_serialization",
+        "//xla/tsl/platform:statusor",
         "//xla/tsl/protobuf:coordination_service_proto_cc",
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/algorithm:container",

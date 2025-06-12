@@ -112,6 +112,8 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
     return kv_store_;
   }
 
+  gpu::GpuExecutableRunOptions* gpu_run_options() override;
+
   absl::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
@@ -162,6 +164,9 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       ExecutableRunOptions run_options) override;
 
  private:
+  absl::StatusOr<absl::flat_hash_map<GlobalDeviceId, uint64_t>>
+  GetLatestIncarnations();
+
   xla::StreamExecutorGpuTopologyDescription topology_;
   std::shared_ptr<KeyValueStoreInterface> kv_store_;
   std::shared_ptr<DistributedRuntimeClient> distributed_client_;

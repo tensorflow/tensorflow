@@ -36,12 +36,14 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
@@ -1090,17 +1092,28 @@ CoordinationServiceAgent::GetAliveTasks(
   }
   {
     absl::MutexLock lock(&incarnations_mu_);
-    incarnations_ = std::vector<uint64_t>(response->incarnations().begin(),
-                                          response->incarnations().end());
+    for (int i = 0; i < response->alive_tasks_size(); ++i) {
+      incarnations_[response->alive_tasks(i).task_id()] =
+          response->incarnations(i);
+    }
   }
   return std::vector<tensorflow::CoordinatedTask>(
       response->alive_tasks().begin(), response->alive_tasks().end());
 }
 
-std::vector<uint64_t> CoordinationServiceAgent::Incarnations() const {
+absl::StatusOr<std::vector<uint64_t>> CoordinationServiceAgent::Incarnations(
+    absl::Span<const int> tasks) const {
   absl::MutexLock lock(&incarnations_mu_);
-  // Return a copy of incarnations.
-  return incarnations_;
+  std::vector<uint64_t> incarnations;
+  for (const auto& task_id : tasks) {
+    auto it = incarnations_.find(task_id);
+    if (it == incarnations_.end()) {
+      return absl::FailedPreconditionError(
+          absl::StrFormat("Task %d not found", task_id));
+    }
+    incarnations.push_back(it->second);
+  }
+  return incarnations;
 }
 
 void CoordinationServiceAgent::AddJobStateCallback(JobStateCallback callback) {
