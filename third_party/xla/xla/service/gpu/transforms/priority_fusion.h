@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -41,13 +42,16 @@ namespace gpu {
 
 class PriorityFusion : public HloModulePass {
  public:
-  PriorityFusion(tsl::thread::ThreadPool* thread_pool,
-                 const se::DeviceDescription& device,
-                 GpuHloCostAnalysis::Options cost_analysis_options)
+  PriorityFusion(
+      tsl::thread::ThreadPool* thread_pool, const se::DeviceDescription& device,
+      GpuHloCostAnalysis::Options cost_analysis_options,
+      const HloDataflowAnalysis::IsInPlaceOperation& is_in_place_operation =
+          HloDataflowAnalysis::IsPotentialInPlaceOperation)
       : thread_pool_(thread_pool),
         device_info_(device),
         cost_analysis_options_(std::move(cost_analysis_options)),
-        fusion_analysis_cache_(device_info_) {}
+        fusion_analysis_cache_(device_info_),
+        is_in_place_operation_(is_in_place_operation) {}
 
   absl::string_view name() const override { return "priority-fusion"; }
 
@@ -83,6 +87,8 @@ class PriorityFusion : public HloModulePass {
   std::unique_ptr<FusionProcessDumpProto> fusion_process_dump_;
 
   HloFusionAnalysisCache fusion_analysis_cache_;
+
+  HloDataflowAnalysis::IsInPlaceOperation is_in_place_operation_;
 
   mlir::MLIRContext mlir_context_;
 };

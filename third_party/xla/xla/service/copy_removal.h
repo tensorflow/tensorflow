@@ -288,8 +288,10 @@ class Relation {
 class ComputeRelativeLocation {
  public:
   typedef LiveRangeRegions::InstructionEntry InstructionEntry;
-  explicit ComputeRelativeLocation(HloOrdering* ordering)
-      : ordering_(ordering) {
+  ComputeRelativeLocation(
+      HloOrdering* ordering,
+      const HloDataflowAnalysis::IsInPlaceOperation& is_in_place_operation)
+      : ordering_(ordering), is_in_place_operation_(is_in_place_operation) {
     VLOG(3) << "New analysis";
   }
 
@@ -351,6 +353,7 @@ class ComputeRelativeLocation {
                                                 HloInstruction* instr2);
 
   HloOrdering* ordering_;
+  HloDataflowAnalysis::IsInPlaceOperation is_in_place_operation_;
   absl::flat_hash_map<
       HloInstruction*,
       absl::flat_hash_map<HloInstruction*, Relation::RuntimeOrder>>

@@ -275,6 +275,7 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
           /*colorer=*/colorer,
           /*must_not_live_out=*/{},
           /*can_share_buffer*/ can_share_buffer_function,
+          /*is_in_place_operation=*/nullptr,
           /*preset_assignments*/ {},
           /*private_stack*/ {}, /*heap_buffer_interval_compare*/ nullptr,
           /*isolation_options*/ std::nullopt, color));

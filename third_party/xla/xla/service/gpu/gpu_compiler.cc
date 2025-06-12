@@ -424,7 +424,8 @@ GpuThunkAotCompilationResult::buffer_assignment() const {
   // Recreate BufferAssignment from proto.
   return BufferAssignment::FromProto(proto_.buffer_assignment(), module_.get(),
                                      buffer_size_bytes_function,
-                                     /*can_share_buffer=*/nullptr);
+                                     /*can_share_buffer=*/nullptr,
+                                     /*is_in_place_operation=*/nullptr);
 }
 
 absl::StatusOr<std::unique_ptr<Executable>>
@@ -441,7 +442,8 @@ GpuThunkAotCompilationResult::LoadExecutable(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssignment::FromProto(proto_.buffer_assignment(), hlo_module.get(),
                                   compiler->BufferSizeBytesFunction(),
-                                  /*can_share_buffer=*/nullptr));
+                                  /*can_share_buffer=*/nullptr,
+                                  /*is_in_place_operation=*/nullptr));
 
   ExecutionStreamAssignment execution_stream_assignment(hlo_module.get());
 

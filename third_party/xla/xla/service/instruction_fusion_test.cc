@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -788,8 +789,9 @@ TEST_F(InstructionFusionTest, DontFuseProducerIfInplaceConflict) {
                     .value();
   HloInstruction* root = module->entry_computation()->root_instruction();
   HloInstruction* add = root->mutable_operand(1);
-  FusionDecision fusion_decision =
-      InstructionFusion::ShouldFuseInPlaceOp(add, root, std::nullopt);
+  FusionDecision fusion_decision = InstructionFusion::ShouldFuseInPlaceOp(
+      add, root, std::nullopt,
+      HloDataflowAnalysis::IsPotentialInPlaceOperation);
   EXPECT_FALSE(fusion_decision.CanFuse());
 }
 

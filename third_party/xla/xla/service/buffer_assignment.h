@@ -524,7 +524,8 @@ class BufferAssignment {
   static absl::StatusOr<std::unique_ptr<BufferAssignment>> FromProto(
       const BufferAssignmentProto& proto, const HloModule* module,
       BufferValue::SizeFunction buffer_size,
-      HloDataflowAnalysis::CanShareBuffer can_share_buffer);
+      HloDataflowAnalysis::CanShareBuffer can_share_buffer,
+      const HloDataflowAnalysis::IsInPlaceOperation& is_in_place_operation);
 
   // Returns string representation of buffer assignment statistics. Also
   // calculates and returns the total fragmentation if
@@ -693,6 +694,8 @@ class BufferAssigner {
       Colorer colorer = DefaultColorer(),
       std::optional<MustNotLiveOut> must_not_live_out = std::nullopt,
       HloDataflowAnalysis::CanShareBuffer can_share_buffer = nullptr,
+      const HloDataflowAnalysis::IsInPlaceOperation& is_in_place_operation =
+          nullptr,
       std::unique_ptr<memory_space_assignment::PresetAssignments>
           preset_assignments = {},
       const PrivateStacks& private_stacks = {},
@@ -719,6 +722,7 @@ class BufferAssigner {
       BufferValue::SizeFunction buffer_size,
       LogicalBuffer::AlignmentFunction color_alignment,
       HloDataflowAnalysis::CanShareBuffer can_share_buffer,
+      const HloDataflowAnalysis::IsInPlaceOperation& is_in_place_operation,
       const PrivateStacks& private_stacks,
       GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
           heap_buffer_interval_compare,

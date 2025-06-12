@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -60,8 +61,9 @@ class GpuFusibleTest : public HloRunnerAgnosticTestBase {
 
   FusionDecision IsProducerMultiOutputFusible(
       const HloInstruction& producer) const {
-    return ::xla::gpu::IsProducerMultiOutputFusible(producer,
-                                                    device_description_);
+    return ::xla::gpu::IsProducerMultiOutputFusible(
+        producer, device_description_,
+        HloDataflowAnalysis::IsPotentialInPlaceOperation);
   }
 
   bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr) const {

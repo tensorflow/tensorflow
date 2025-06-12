@@ -1225,10 +1225,12 @@ BufferAssignmentProto BufferAssignment::ToProto() const {
 absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
     const BufferAssignmentProto& proto, const HloModule* module,
     BufferValue::SizeFunction buffer_size,
-    HloDataflowAnalysis::CanShareBuffer can_share_buffer) {
+    HloDataflowAnalysis::CanShareBuffer can_share_buffer,
+    const HloDataflowAnalysis::IsInPlaceOperation& is_in_place_operation) {
   // Create alias and dataflow analysis.
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module, can_share_buffer));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloAliasAnalysis> alias_analysis,
+      HloAliasAnalysis::Run(module, can_share_buffer, is_in_place_operation));
 
   // Build a map from a unique_id to corresponding HloInstruction in the module.
   auto id_to_hlo_instruction = BuildIdToHloInstructionMap(module);
@@ -1309,6 +1311,7 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     bool allocate_buffers_for_constants, BufferAssigner::Colorer colorer,
     std::optional<BufferAssigner::MustNotLiveOut> must_not_live_out,
     HloDataflowAnalysis::CanShareBuffer can_share_buffer,
+    const HloDataflowAnalysis::IsInPlaceOperation& is_in_place_operation,
     std::unique_ptr<PresetAssignments> preset_assignments,
     const PrivateStacks& private_stacks,
     GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
@@ -1319,8 +1322,9 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
                           must_not_live_out, std::move(preset_assignments));
   return assigner.CreateAssignment(
       module, std::move(hlo_ordering), std::move(buffer_size),
-      std::move(color_alignment), std::move(can_share_buffer), private_stacks,
-      heap_buffer_interval_compare, isolation_options, temp_buffer_color);
+      std::move(color_alignment), std::move(can_share_buffer),
+      is_in_place_operation, private_stacks, heap_buffer_interval_compare,
+      isolation_options, temp_buffer_color);
 }
 
 bool BufferAssigner::LiveRangeInterferes(const HloValue* buffer1,
@@ -2222,13 +2226,15 @@ BufferAssigner::CreateAssignment(
     BufferValue::SizeFunction buffer_size,
     LogicalBuffer::AlignmentFunction color_alignment,
     HloDataflowAnalysis::CanShareBuffer can_share_buffer,
+    const HloDataflowAnalysis::IsInPlaceOperation& is_in_place_operation,
     const PrivateStacks& private_stacks,
     GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
         heap_buffer_interval_compare,
     std::optional<BufferAssignment::BufferIsolationOptions> isolation_options,
     std::optional<BufferValue::Color> temp_buffer_color) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module, can_share_buffer));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloAliasAnalysis> alias_analysis,
+      HloAliasAnalysis::Run(module, can_share_buffer, is_in_place_operation));
 
   // Set up a schedule for each computation.
   HloSchedule schedule(module);

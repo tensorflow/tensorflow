@@ -195,6 +195,15 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "alias_hints",
+    hdrs = ["alias_hints.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+    ],
+)
+
+cc_library(
     name = "hlo_dataflow_analysis",
     srcs = ["hlo_dataflow_analysis.cc"],
     hdrs = ["hlo_dataflow_analysis.h"],

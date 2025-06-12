@@ -43,6 +43,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_dfs_reachability.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -144,15 +145,16 @@ class PriorityFusionQueue {
   using Priority = absl::Duration;
 
  public:
-  PriorityFusionQueue(HloComputation* computation,
-                      const GpuHloCostAnalysis::Options& cost_analysis_options,
-                      const se::DeviceDescription* device_info,
-                      FusionProcessDumpProto* fusion_process_dump,
-                      tsl::thread::ThreadPool* thread_pool,
-                      mlir::MLIRContext* mlir_context,
-                      HloFusionAnalysisCache& fusion_analysis_cache,
-                      FusionDeduplicationCache& fusion_deduplication_cache,
-                      bool triton_heroless_fusion_enabled)
+  PriorityFusionQueue(
+      HloComputation* computation,
+      const GpuHloCostAnalysis::Options& cost_analysis_options,
+      const se::DeviceDescription* device_info,
+      FusionProcessDumpProto* fusion_process_dump,
+      tsl::thread::ThreadPool* thread_pool, mlir::MLIRContext* mlir_context,
+      HloFusionAnalysisCache& fusion_analysis_cache,
+      FusionDeduplicationCache& fusion_deduplication_cache,
+      bool triton_heroless_fusion_enabled,
+      const HloDataflowAnalysis::IsInPlaceOperation& is_in_place_operation)
       : computation_(computation),
         device_info_(device_info),
         cost_analysis_(cost_analysis_options, *device_info),
@@ -167,7 +169,8 @@ class PriorityFusionQueue {
         fusion_deduplication_cache_(fusion_deduplication_cache),
         fusion_info_cache_(*device_info_),
         reachability_(HloDfsReachability::Build(computation)),
-        triton_heroless_fusion_enabled_(triton_heroless_fusion_enabled) {
+        triton_heroless_fusion_enabled_(triton_heroless_fusion_enabled),
+        is_in_place_operation_(is_in_place_operation) {
     VLOG(2) << "Running full HLO cost analysis for " << computation_->name();
     TF_CHECK_OK(computation_->Accept(&cost_analysis_));
 
@@ -836,8 +839,8 @@ class PriorityFusionQueue {
           "the fusion would result in an overly large code duplication");
     }
 
-    return InstructionFusion::ShouldFuseInPlaceOp(producer, consumer,
-                                                  std::nullopt);
+    return InstructionFusion::ShouldFuseInPlaceOp(
+        producer, consumer, std::nullopt, is_in_place_operation_);
   }
 
   FusionDecision CanFuseCached(HloInstruction* producer,
@@ -1044,6 +1047,8 @@ class PriorityFusionQueue {
   // If true, redirect all fusion decisions to Triton fusion.
   bool triton_heroless_fusion_enabled_;
 
+  HloDataflowAnalysis::IsInPlaceOperation is_in_place_operation_;
+
   bool dump_fusion_visualization_;
 };
 
@@ -1136,7 +1141,7 @@ absl::StatusOr<bool> PriorityFusion::Run(
         computation, cost_analysis_options_, &device_info_,
         fusion_process_dump_.get(), thread_pool_, &mlir_context_,
         fusion_analysis_cache_, fusion_deduplication_cache,
-        triton_heroless_fusion_enabled);
+        triton_heroless_fusion_enabled, is_in_place_operation_);
 
     while (fusion_queue->DequeueNextProducer()) {
       auto producer = fusion_queue->current_producer();

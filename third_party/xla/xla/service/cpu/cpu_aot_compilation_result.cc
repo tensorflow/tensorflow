@@ -191,7 +191,8 @@ CpuAotCompilationResultThunks::LoadExecutable(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssignment::FromProto(proto_.buffer_assignment(), module.get(),
                                   buffer_size_bytes_function_getter,
-                                  /*can_share_buffer=*/nullptr));
+                                  /*can_share_buffer=*/nullptr,
+                                  /*is_in_place_operation=*/nullptr));
 
   std::unique_ptr<CpuExecutable> cpu_executable;
 

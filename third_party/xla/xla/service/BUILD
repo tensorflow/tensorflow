@@ -1963,6 +1963,7 @@ xla_cc_test(
         ":instruction_fusion",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/analysis:hlo_dataflow_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",

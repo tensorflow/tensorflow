@@ -49,8 +49,11 @@ limitations under the License.
 
 namespace xla {
 
-BFloat16Propagation::BFloat16Propagation(const FloatSupport* bfloat16_support)
-    : bfloat16_support_(bfloat16_support) {
+BFloat16Propagation::BFloat16Propagation(
+    const FloatSupport* bfloat16_support,
+    const HloDataflowAnalysis::IsInPlaceOperation& is_in_place_operation)
+    : bfloat16_support_(bfloat16_support),
+      is_in_place_operation_(is_in_place_operation) {
   DCHECK_EQ(bfloat16_support->LowPrecisionType(), BF16);
 }
 
@@ -738,7 +741,8 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
         // HloAliasAnalysis (e.g., their computation graphs may not have been
         // flattened yet).
         for (const auto& operand_and_output_index :
-             HloDataflowAnalysis::GetInPlaceInputOutputPairs(hlo)) {
+             HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+                 hlo, is_in_place_operation_)) {
           if (operand_and_output_index.second == index) {
             const HloOperandIndex& operand_index =
                 operand_and_output_index.first;
@@ -1016,7 +1020,11 @@ absl::StatusOr<bool> BFloat16Propagation::Run(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(dataflow_, HloDataflowAnalysis::Run(*module));
+  TF_ASSIGN_OR_RETURN(dataflow_,
+                      HloDataflowAnalysis::Run(*module, /*ssa_form=*/false,
+                                               /*bitcast_defines_value=*/false,
+                                               /*can_share_buffer=*/nullptr,
+                                               is_in_place_operation_));
 
   // The first step is a forward pass (parameters to root), where we determine
   // the potential candidate instructions to use bfloat16 in the outputs that

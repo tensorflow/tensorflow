@@ -82,15 +82,15 @@ class HloDataflowAnalysis {
   // Infrastructure for passing may-alias hints: HLO passes can populate the
   // may-alias table. If an empty optional is returned, default rules are used.
   //
-  // Must-alias rules (as defined by GetInPlaceInputOutputPairs) cannot be
-  // overriden using backend-specific overrides.
-  //
   // The first parameter of the function should be the instruction, the
   // second parameter should be an operand of the instruction. The third
   // parameter should be the output index of the instruction.
   using CanShareBuffer = std::function<std::optional<bool>(
       const HloInstruction* instr, const HloInstruction* operand,
       const ShapeIndex& user_index)>;
+
+  // Infrastructure for passing must-alias hints.
+  using IsInPlaceOperation = std::function<bool(const HloInstruction* hlo)>;
 
   // Infrastructure for overriding whether an instruction defines a new value.
   //
@@ -127,6 +127,7 @@ class HloDataflowAnalysis {
       const HloModule& module, bool ssa_form = false,
       bool bitcast_defines_value = false,
       const CanShareBuffer& can_share_buffer = nullptr,
+      const IsInPlaceOperation& is_in_place_operation = nullptr,
       const ForwardsValue& forwards_value = nullptr,
       absl::flat_hash_set<absl::string_view> execution_threads = {});
 
@@ -214,6 +215,12 @@ class HloDataflowAnalysis {
   // aliasing pairs if this method returns true.
   static bool IsPotentialInPlaceOperation(const HloInstruction* hlo);
 
+  // Returns the underlying `is_in_place_operation` method. By default, this is
+  // the IsPotentialInPlaceOperation() from above.
+  const IsInPlaceOperation& is_in_place_operation() const {
+    return is_in_place_operation_;
+  }
+
   // Returns true if the operation is the start/done of an asynchronous
   // operation, where the buffer used/produced by the op needs to stay alive
   // until the asynchronous operation completes.
@@ -237,7 +244,8 @@ class HloDataflowAnalysis {
   // ... the results can include any of the 3 * 3 = 9 possible pairs of
   // input and output arrays.
   static std::vector<std::pair<HloOperandIndex, ShapeIndex>>
-  GetInPlaceInputOutputPairs(const HloInstruction* instruction);
+  GetInPlaceInputOutputPairs(const HloInstruction* instruction,
+                             const IsInPlaceOperation& is_in_place_operation);
 
   // Verifies various invariants of the dataflow analysis.
   absl::Status Verify() const;
@@ -248,6 +256,7 @@ class HloDataflowAnalysis {
   HloDataflowAnalysis(const HloModule& module, bool ssa_form,
                       bool bitcast_defines_value,
                       const CanShareBuffer& can_share_buffer,
+                      const IsInPlaceOperation& is_in_place_operation,
                       const ForwardsValue& forwards_value,
                       absl::flat_hash_set<absl::string_view> execution_threads);
 
@@ -378,6 +387,10 @@ class HloDataflowAnalysis {
   // Backend specific function that decides whether an instruction can share
   // a buffer with its operand.
   CanShareBuffer can_share_buffer_ = nullptr;
+
+  // Backend specific function that decides whether a operation should share a
+  // buffer with its operand (must alias).
+  IsInPlaceOperation is_in_place_operation_ = nullptr;
 
   ForwardsValue forwards_value_ = nullptr;
 };

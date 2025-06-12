@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -53,7 +54,10 @@ namespace xla {
 //  instruction fusion.
 class MultiOutputFusion : public HloModulePass {
  public:
-  MultiOutputFusion() = default;
+  explicit MultiOutputFusion(
+      const HloDataflowAnalysis::IsInPlaceOperation& is_in_place_operation =
+          HloDataflowAnalysis::IsPotentialInPlaceOperation)
+      : is_in_place_operation_(is_in_place_operation) {}
 
   absl::string_view name() const override { return "multi_output_fusion"; }
 
@@ -164,6 +168,10 @@ class MultiOutputFusion : public HloModulePass {
   // computation.
   virtual void CreateFusionWorkListForCurrentComputation();
 
+  const HloDataflowAnalysis::IsInPlaceOperation& is_in_place_operation() const {
+    return is_in_place_operation_;
+  }
+
  private:
   // The pair of candidates to be fused and the profit score.
   struct ToBeFused {
@@ -222,6 +230,8 @@ class MultiOutputFusion : public HloModulePass {
   void set_is_fused(HloInstruction* instr) {
     candidates_[get_candidate_id(instr)].hlo = nullptr;
   }
+
+  HloDataflowAnalysis::IsInPlaceOperation is_in_place_operation_;
 
   std::vector<FusionCandidate> candidates_;
   WorkList worklist_;

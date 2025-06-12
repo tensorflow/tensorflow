@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/errors.h"
 // The source_location.h is not available in open source.
 #if defined(PLATFORM_GOOGLE)
 #include "absl/types/source_location.h"
@@ -50,6 +49,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -923,7 +923,8 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
 
 /*static*/ FusionDecision InstructionFusion::ShouldFuseInPlaceOp(
     const HloInstruction* producer, const HloInstruction* consumer,
-    std::optional<const InPlaceFusionOptions> in_place_fusion_options) {
+    std::optional<const InPlaceFusionOptions> in_place_fusion_options,
+    const HloDataflowAnalysis::IsInPlaceOperation& is_in_place_operation) {
   // Don't fuse if the producer is a non-elementwise op that has the same
   // operand as an in-place operand of the consumer. The consumer will modify
   // the buffer in-place, which will cause producer's operand to change if we
@@ -931,7 +932,7 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
   std::vector<std::pair<HloOperandIndex, ShapeIndex>>
       in_place_input_output_pairs =
           HloDataflowAnalysis::GetInPlaceInputOutputPairs(
-              const_cast<HloInstruction*>(consumer));
+              const_cast<HloInstruction*>(consumer), is_in_place_operation);
   for (auto& pair : in_place_input_output_pairs) {
     int operand_number = pair.first.operand_number;
     VLOG(4) << "in/out pair: " << operand_number << " "
@@ -1100,8 +1101,10 @@ FusionDecision InstructionFusion::ShouldFuse(HloInstruction* consumer,
 
 FusionDecision InstructionFusion::ShouldFuse(
     HloInstruction* consumer, int64_t operand_index,
-    std::function<FusionDecision(const HloInstruction*, const HloInstruction*,
-                                 std::optional<const InPlaceFusionOptions>)>
+    std::function<
+        FusionDecision(const HloInstruction*, const HloInstruction*,
+                       std::optional<const InPlaceFusionOptions>,
+                       const HloDataflowAnalysis::IsInPlaceOperation&)>
         inplace_op_fusion_decider) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
 
@@ -1119,7 +1122,8 @@ FusionDecision InstructionFusion::ShouldFuse(
                                       ? "expensive producer would be duplicated"
                                       : "fusion pass cannot duplicate");
   }
-  return inplace_op_fusion_decider(producer, consumer, std::nullopt);
+  return inplace_op_fusion_decider(producer, consumer, std::nullopt,
+                                   is_in_place_operation_);
 }
 
 HloInstruction::FusionKind InstructionFusion::ChooseKind(

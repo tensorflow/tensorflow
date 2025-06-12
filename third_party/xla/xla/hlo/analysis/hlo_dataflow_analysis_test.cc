@@ -3230,7 +3230,8 @@ TEST_F(GetInPlaceInputOutputPairsTest, DUS) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
   HloInstruction* dus = module->entry_computation()->root_instruction();
 
-  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(dus);
+  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+      dus, HloDataflowAnalysis::IsPotentialInPlaceOperation);
   std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
   expected_pairs.push_back({HloOperandIndex{0, {}}, {}});
   EXPECT_EQ(in_place_pairs, expected_pairs);
@@ -3257,7 +3258,8 @@ TEST_F(GetInPlaceInputOutputPairsTest, DUSFusion) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
 
-  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(fusion);
+  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+      fusion, HloDataflowAnalysis::IsPotentialInPlaceOperation);
   std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
   expected_pairs.push_back({HloOperandIndex{0, {}}, {}});
   EXPECT_EQ(in_place_pairs, expected_pairs);
@@ -3285,7 +3287,8 @@ TEST_F(GetInPlaceInputOutputPairsTest, DUSFusionWithOutputOperandAliasing) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
 
-  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(fusion);
+  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+      fusion, HloDataflowAnalysis::IsPotentialInPlaceOperation);
   std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
   expected_pairs.push_back({HloOperandIndex{0, {}}, {1}});  // discovered
   expected_pairs.push_back({HloOperandIndex{1, {}}, {0}});  // annotated
@@ -3311,7 +3314,8 @@ TEST_F(GetInPlaceInputOutputPairsTest, NonDUSFusion) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
 
-  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(fusion);
+  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+      fusion, HloDataflowAnalysis::IsPotentialInPlaceOperation);
   EXPECT_THAT(in_place_pairs, IsEmpty());
 }
 
@@ -3333,7 +3337,8 @@ TEST_F(GetInPlaceInputOutputPairsTest, NonDUSFusionWithOutputOperandAliasing) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(fusion);
+  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+      fusion, HloDataflowAnalysis::IsPotentialInPlaceOperation);
 
   std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
   expected_pairs.push_back({HloOperandIndex{0, {}}, {}});
@@ -3368,7 +3373,8 @@ TEST_F(GetInPlaceInputOutputPairsTest, NestedDUSFusion) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
 
-  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(fusion);
+  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+      fusion, HloDataflowAnalysis::IsPotentialInPlaceOperation);
   std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
   expected_pairs.push_back({HloOperandIndex{0, {}}, {}});
   EXPECT_EQ(in_place_pairs, expected_pairs);
@@ -3411,13 +3417,14 @@ TEST_F(GetInPlaceInputOutputPairsTest, NestedMultiOutputDUSFusion) {
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   HloInstruction* inner_fusion = FindInstruction(module.get(), "inner_fusion");
 
-  auto inner_in_place_pairs =
-      HloDataflowAnalysis::GetInPlaceInputOutputPairs(inner_fusion);
+  auto inner_in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+      inner_fusion, HloDataflowAnalysis::IsPotentialInPlaceOperation);
   std::vector<std::pair<HloOperandIndex, ShapeIndex>> inner_expected_pairs;
   inner_expected_pairs.push_back({HloOperandIndex{1, {1}}, {1}});
   EXPECT_EQ(inner_in_place_pairs, inner_expected_pairs);
 
-  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(fusion);
+  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+      fusion, HloDataflowAnalysis::IsPotentialInPlaceOperation);
   std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
   expected_pairs.push_back({HloOperandIndex{1, {0}}, {2}});
   EXPECT_EQ(in_place_pairs, expected_pairs);
@@ -3454,7 +3461,8 @@ TEST_F(GetInPlaceInputOutputPairsTest, NestedLoopWithAliasingInDUSFusion) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
 
-  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(fusion);
+  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+      fusion, HloDataflowAnalysis::IsPotentialInPlaceOperation);
   std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
   expected_pairs.push_back({HloOperandIndex{0, {0}}, {}});
   EXPECT_EQ(in_place_pairs, expected_pairs);
@@ -3507,7 +3515,8 @@ TEST_F(GetInPlaceInputOutputPairsTest, DUSLoopFusionWithCollective) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(fusion);
+  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+      fusion, HloDataflowAnalysis::IsPotentialInPlaceOperation);
   std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
   expected_pairs.push_back({HloOperandIndex{0, {}}, {1}});
   EXPECT_EQ(in_place_pairs, expected_pairs);
@@ -3558,7 +3567,8 @@ TEST_F(GetInPlaceInputOutputPairsTest, DUSOutputFusionWithCollective) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(fusion);
+  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+      fusion, HloDataflowAnalysis::IsPotentialInPlaceOperation);
   std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
   expected_pairs.push_back({HloOperandIndex{0, {}}, {1}});
   EXPECT_EQ(in_place_pairs, expected_pairs);
@@ -3591,7 +3601,8 @@ TEST_F(GetInPlaceInputOutputPairsTest, DUSLoopFusionWithBitcast) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
-  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(fusion);
+  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+      fusion, HloDataflowAnalysis::IsPotentialInPlaceOperation);
   std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
   // p1 should be aliased with fusion1
   expected_pairs.push_back({HloOperandIndex{1, {}}, {}});
@@ -3619,8 +3630,8 @@ ENTRY AllToAll {
   HloInstruction* ragged_all_to_all =
       module->entry_computation()->root_instruction();
 
-  auto in_place_pairs =
-      HloDataflowAnalysis::GetInPlaceInputOutputPairs(ragged_all_to_all);
+  auto in_place_pairs = HloDataflowAnalysis::GetInPlaceInputOutputPairs(
+      ragged_all_to_all, HloDataflowAnalysis::IsPotentialInPlaceOperation);
   std::vector<std::pair<HloOperandIndex, ShapeIndex>> expected_pairs;
   expected_pairs.push_back({HloOperandIndex{1, {}}, {}});
   EXPECT_EQ(in_place_pairs, expected_pairs);

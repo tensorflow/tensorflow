@@ -2766,6 +2766,7 @@ absl::Status DynamicDimensionInference::AnalyzeDynamicDimensions() {
       HloDataflowAnalysis::Run(*module_, /*ssa_form=*/false,
                                /*bitcast_defines_value=*/true,
                                /*can_share_buffer=*/nullptr,
+                               /*is_in_place_operation=*/nullptr,
                                /*forwards_value=*/nullptr, execution_threads_));
   for (HloComputation* computation : module_->MakeComputationPostOrder()) {
     if (!HloInstruction::IsThreadIncluded(computation->execution_thread(),
