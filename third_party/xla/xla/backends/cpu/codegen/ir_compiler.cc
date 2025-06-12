@@ -152,23 +152,6 @@ static llvm::PipelineTuningOptions GetPipelineTuningOptions(
     // TODO(b/411125413): Re-enable SLPVectorization once the LLVM bug is fixed.
     pto.SLPVectorization = false;
 
-    // TODO(b/419635451): Without AVX512 loop unrolling leads to LLVM generating
-    // enormous IR that later times out during code generation (AVX2 doesn't
-    // have masked SIMD instructions, and control flow ends up vectorizing to a
-    // lot of scalar loads and stores, which takes forever to codegen in machine
-    // instruction selection). As a workaround, disable loop unrolling when
-    // AVX512 and AVX2 are not available. Revisit this decision once we migrate
-    // to new fusion emitters that do not rely on LLVM that much.
-    //
-    // This test cannot only check for AVX512, because it makes numerical tests
-    // flaky depending on what machine the test is run on.
-    auto target_features = target_machine->getTargetFeatureString();
-    if (target_features.contains("+avx") &&
-        !target_features.contains("+avx2") &&
-        !target_features.contains("+avx512")) {
-      pto.LoopUnrolling = false;
-    }
-
     return pto;
   };
 

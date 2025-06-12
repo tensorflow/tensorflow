@@ -215,6 +215,26 @@ FusionDecision CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
 
   RETURN_IF_NOT_FUSIBLE(InstructionFusion::ShouldFuse(consumer, operand_index));
 
+  // Fusing too many reductions together can lead to a giant LLVM modules after
+  // loop unrolling. We prefer to split such fusions into multiple kernels to
+  // avoid excessive compilation times. X86TargetLowering::PerformDAGCombine
+  // spends tens of minutes trying to combine load operations.
+  //
+  // TODO(b/419635451): Remove this once we have a better way to control the
+  // size of the generated LLVM IR.
+  static constexpr int64_t kMaxReductionsInFusion = 5;
+  if (consumer->opcode() == HloOpcode::kFusion &&
+      producer->opcode() == HloOpcode::kReduce) {
+    int64_t num_fused_reductions = absl::c_count_if(
+        consumer->fused_instructions(), [](const HloInstruction* instr) {
+          return instr->opcode() == HloOpcode::kReduce;
+        });
+    if (num_fused_reductions > kMaxReductionsInFusion) {
+      return FusionDecision::Forbid(
+          "Too many reductions inside single fusion.");
+    }
+  }
+
   // Fuse constants in general but avoid creating 2-instruction fusions with
   // just a constant and another node.
   if (producer->opcode() == HloOpcode::kConstant &&
