@@ -20,9 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/match.h"
+#include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/array3d.h"
 #include "xla/array4d.h"
@@ -48,6 +46,7 @@ limitations under the License.
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
 #include "xla/types.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
