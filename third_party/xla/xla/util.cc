@@ -105,7 +105,8 @@ ScopedLoggingTimer::ScopedLoggingTimer(absl::string_view label, bool enabled,
 void ScopedLoggingTimer::StopAndLog() {
   if (enabled_) {
     uint64_t end_micros = tsl::Env::Default()->NowMicros();
-    double secs = (end_micros - start_micros_) / 1000000.0;
+    uint64_t elapsed_micros = end_micros - start_micros_;
+    double secs = elapsed_micros / 1000000.0;
 
     TimerStats& stats = *timer_stats_;
     absl::MutexLock lock(&stats.stats_mutex);
@@ -117,6 +118,7 @@ void ScopedLoggingTimer::StopAndLog() {
 
     LOG(INFO).AtLocation(file_, line_)
         << label_ << " time: " << tsl::strings::HumanReadableElapsedTime(secs)
+        << " (" << elapsed_micros << " us)"
         << " (cumulative: "
         << tsl::strings::HumanReadableElapsedTime(stats.cumulative_secs)
         << ", max: " << tsl::strings::HumanReadableElapsedTime(stats.max_secs)
