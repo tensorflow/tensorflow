@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/backend.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
@@ -177,12 +178,7 @@ HloRunner::TransferLiteralsToDevice(
 
 absl::StatusOr<std::vector<ScopedShapedBuffer>>
 HloRunner::TransferLiteralsToDevice(absl::Span<const Literal> literals) {
-  std::vector<const Literal*> literal_pointers;
-  literal_pointers.reserve(literals.size());
-  for (const auto& literal : literals) {
-    literal_pointers.push_back(&literal);
-  }
-  return TransferLiteralsToDevice(literal_pointers, nullptr);
+  return TransferLiteralsToDevice(LiteralUtil::MakePointers(literals), nullptr);
 }
 
 absl::StatusOr<Literal> HloRunner::TransferLiteralFromDevice(
