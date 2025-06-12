@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <initializer_list>
+#include <iostream>
 #include <iterator>
 #include <limits>
 #include <memory>
@@ -1548,6 +1549,43 @@ INSTANTIATE_TEST_SUITE_P(
          PC::ALG_DOT_TF32_TF32_F32_X3, PC::ALG_DOT_F64_F64_F64, PC::ALG_UNSET}),
     AlgorithmTestParamToString);
 
+template <typename T>
+void PrintHistogram(absl::Span<T> values, absl::Span<T> expected_values) {
+  // Build the histogram of the relative differences.
+  std::vector<double> rel_errors;
+  rel_errors.reserve(values.size());
+  for (int i = 0; i < values.size(); ++i) {
+    double rel_difference =
+        (values[i] - expected_values[i]) / std::abs(expected_values[i]);
+    rel_errors.push_back(rel_difference);
+  }
+  double max_rel_error =
+      *std::max_element(rel_errors.begin(), rel_errors.end());
+  double min_rel_error =
+      *std::min_element(rel_errors.begin(), rel_errors.end());
+  double rel_error_range = max_rel_error - min_rel_error;
+  constexpr int kNumBins = 40;
+  double bin_width = rel_error_range / kNumBins;
+  std::vector<int> histogram(kNumBins, 0);
+  for (int i = 0; i < rel_errors.size(); ++i) {
+    int bin = static_cast<int>((rel_errors[i] - min_rel_error) / bin_width);
+    if (bin >= kNumBins) {
+      bin = kNumBins - 1;
+    }
+    histogram[bin]++;
+  }
+  int samples_count = values.size();
+  int bar_width = 200;
+  for (int i = 0; i < kNumBins; ++i) {
+    std::string bar =
+        std::string(histogram[i] * bar_width / samples_count, '*');
+    std::string line = absl::StrFormat(
+        "%2d: [% 1.3e, % 1.3e) %7d %s\n", i, min_rel_error + i * bin_width,
+        min_rel_error + (i + 1) * bin_width, histogram[i], bar.c_str());
+    std::cerr << line;
+  }
+}
+
 class PrecisionTestsForTriton : public TritonAlgorithmTest,
                                 public NumericTestsArguments,
                                 public WithParamInterface<PC::Algorithm> {
@@ -1639,6 +1677,7 @@ TEST_P(PrecisionTestsForTriton, PrecisionCheck) {
   EXPECT_THAT(llvm::zip(test_result.data<float>(), ref_result.data<float>()),
               ::testing::Each(RelativeDifferenceIsWithin(
                   GetMaxRelErrorForSmallContractingDim(algorithm))));
+  PrintHistogram(test_result.data<float>(), ref_result.data<float>());
 }
 
 INSTANTIATE_TEST_SUITE_P(PrecisionTestsForTriton, PrecisionTestsForTriton,
