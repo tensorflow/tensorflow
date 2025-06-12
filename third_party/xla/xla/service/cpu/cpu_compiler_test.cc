@@ -20,6 +20,7 @@ limitations under the License.
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/monitoring/collected_metrics.h"
 #include "xla/tsl/lib/monitoring/collection_registry.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -33,6 +34,10 @@ constexpr absl::string_view kCpuCompilerStacktraceMetricName =
     "/xla/service/cpu/compiler_stacktrace_count";
 
 TEST_F(CpuCompilerTest, RecordsStreamzStackTrace) {
+  if (tsl::kIsOpenSource) {
+    GTEST_SKIP() << "Streamz is not supported in OSS.";
+  }
+
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
     HloModule test
