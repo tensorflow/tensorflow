@@ -4475,28 +4475,23 @@ std::optional<Value> convertScatterNdOp(PatternRewriter& rewriter,
     return std::nullopt;
   }
 
-  // Don't support variable indices yet since we cannot check uniqueness
-  // of indices in this case
-  Operation* indices_op = indices_value.getDefiningOp();
-  if (!indices_op || !llvm::isa<tosa::ConstOp>(indices_op)) {
-    (void)rewriter.notifyMatchFailure(op, "indices must be a constant tensor");
-    return std::nullopt;
-  }
-
   Type indices_elmt_type = indices_type.getElementType();
   if (!indices_elmt_type.isInteger(32)) {
     (void)rewriter.notifyMatchFailure(op, "indices expected to be int32");
     return std::nullopt;
   }
 
-  // The tosa scatter operation only supports unique indices, so if there
-  // are duplicates, we cannot legalize
-  tosa::ConstOp const_indices = cast<tosa::ConstOp>(indices_op);
-  ElementsAttr const_data = const_indices.getValues();
-  if (!checkUniqueConstantScatterIndices(indices_type, result_type,
-                                         const_data)) {
-    (void)rewriter.notifyMatchFailure(op, "index values must be unique");
-    return std::nullopt;
+  Operation* indices_op = indices_value.getDefiningOp();
+  if (indices_op && llvm::isa<tosa::ConstOp>(indices_op)) {
+    // The tosa scatter operation only supports unique indices, so if there
+    // are duplicates in constant indices, we cannot legalize
+    tosa::ConstOp const_indices = cast<tosa::ConstOp>(indices_op);
+    ElementsAttr const_data = const_indices.getValues();
+    if (!checkUniqueConstantScatterIndices(indices_type, result_type,
+                                           const_data)) {
+      (void)rewriter.notifyMatchFailure(op, "index values must be unique");
+      return std::nullopt;
+    }
   }
 
   // N: number of batches
@@ -4578,6 +4573,14 @@ std::optional<Value> convertScatterNdOp(PatternRewriter& rewriter,
   const unsigned int C = std::accumulate(result_shape_begin + ND,
                                          result_shape_begin + input_output_rank,
                                          1, accumulate_func);
+
+  if (W > K) {
+    (void)rewriter.notifyMatchFailure(
+        op, llvm::formatv(
+                "requires K >= W to avoid duplicate indices, got K={} and W={}",
+                K, W));
+    return std::nullopt;
+  }
 
   SmallVector<int64_t, 2> tosa_indices_shape({N, W});
   SmallVector<int64_t, 2> indices_matrix_shape({W, ND});
