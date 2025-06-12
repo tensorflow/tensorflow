@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/maybe_owning_device_memory.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 
