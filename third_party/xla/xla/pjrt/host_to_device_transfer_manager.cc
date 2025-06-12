@@ -149,7 +149,7 @@ class CommonAsyncHostToDeviceTransferManager
       TF_ASSIGN_OR_RETURN(
           auto raw_buffer,
           client->AllocateRawBuffer(memory_space, on_device_bytes_count,
-                                    allocation_event));
+                                    /*retry_on_oom=*/true, allocation_event));
       TF_ASSIGN_OR_RETURN(auto buffer,
                           client->DefineBuffer(device_shape, raw_buffer,
                                                {std::move(definition_event)},

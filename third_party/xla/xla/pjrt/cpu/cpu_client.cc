@@ -1007,6 +1007,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuClient::DefineBuffer(
 absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
 PjRtCpuClient::AllocateRawBuffer(PjRtMemorySpace* memory_space,
                                  size_t on_device_bytes_count,
+                                 bool retry_on_oom,
                                  tsl::AsyncValueRef<bool> allocate_after) {
   CHECK(allocate_after == nullptr) << "allocate_after is not supported for "
                                       "PjRtCpuClient.";

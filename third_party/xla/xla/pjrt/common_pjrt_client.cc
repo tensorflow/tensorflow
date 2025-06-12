@@ -73,6 +73,7 @@ CommonPjRtClient::BufferFromHostLiteral(const LiteralSlice& literal,
                       GetOnDeviceBytesCount(memory_space, device_shape));
   TF_ASSIGN_OR_RETURN(auto raw_buffer,
                       AllocateRawBuffer(memory_space, on_device_bytes_count,
+                                        /*retry_on_oom=*/true,
                                         /*allocate_after=*/{}));
   TF_ASSIGN_OR_RETURN(auto output_buffer,
                       DefineBuffer(device_shape, raw_buffer,
@@ -125,6 +126,7 @@ CommonPjRtClient::CreateUninitializedBuffer(const Shape& shape,
                       GetOnDeviceBytesCount(memory_space, device_shape));
   TF_ASSIGN_OR_RETURN(auto raw_buffer,
                       AllocateRawBuffer(memory_space, on_device_bytes_count,
+                                        /*retry_on_oom=*/true,
                                         /*allocate_after=*/{}));
   TF_ASSIGN_OR_RETURN(auto definition_event,
                       raw_buffer->MakeAllocationReadyEvent());
@@ -176,6 +178,7 @@ CommonPjRtClient::BufferFromHostBuffer(
                       GetOnDeviceBytesCount(memory_space, device_shape));
   TF_ASSIGN_OR_RETURN(auto raw_buffer,
                       AllocateRawBuffer(memory_space, on_device_bytes_count,
+                                        /*retry_on_oom=*/true,
                                         /*allocate_after=*/{}));
   TF_ASSIGN_OR_RETURN(
       auto definition_event,

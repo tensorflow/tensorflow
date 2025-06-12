@@ -47,9 +47,11 @@ class CommonPjRtClient : public PjRtClient {
   }
 
   // Allocates a raw buffer of a particular size after an optional
-  // allocate_after.
+  // allocate_after. Backends may support retrying allocation on oom which
+  // can be controlled via retry_on_oom.
   virtual absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
   AllocateRawBuffer(PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
+                    bool retry_on_oom,
                     tsl::AsyncValueRef<bool> allocate_after) {
     return absl::UnimplementedError("AllocateRawBuffer is not supported");
   }
