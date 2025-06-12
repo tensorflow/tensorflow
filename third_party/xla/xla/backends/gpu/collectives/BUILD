@@ -29,8 +29,6 @@ bool_flag(
 config_setting(
     name = "nvshmem_supported",
     constraint_values = [
-        # TODO(b/409709288): Fix nvshmem ARM issues and remove this condition.
-        "@platforms//cpu:x86_64",
         "@platforms//os:linux",
     ],
     flag_values = {
