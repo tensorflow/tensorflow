@@ -205,6 +205,7 @@ def xla_test(
         backend_kwargs = {},
         linkstatic = None,
         fail_if_no_test_linked = True,
+        fail_if_no_test_selected = True,
         **kwargs):
     """Generates strict_cc_test targets for the given XLA backends.
 
@@ -281,6 +282,7 @@ def xla_test(
       linkstatic: Whether to link the test statically. Can be set to None to use
         the default value decided by strict_cc_test.
       fail_if_no_test_linked: Whether to fail if no test case is linked into the test.
+      fail_if_no_test_selected: Whether to fail if no test case is executed.
       **kwargs: Additional keyword arguments to pass to strict_cc_test.
     """
 
@@ -389,6 +391,7 @@ def xla_test(
             },
             linkstatic = linkstatic,
             fail_if_no_test_linked = fail_if_no_test_linked,
+            fail_if_no_test_selected = fail_if_no_test_selected,
             **this_backend_kwargs
         )
         if ((backend in NVIDIA_GPU_BACKENDS and is_cuda_configured()) or
@@ -426,8 +429,9 @@ def xla_test(
             # This test is deliberately empty. Its only purpose is to avoid
             # creating an empty test suite, which would be a problem for
             # --build_tag_filters (see above). Therefore we don't want to fail
-            # if no test case is linked in.
+            # if no test case is linked in or runs.
             fail_if_no_test_linked = False,
+            fail_if_no_test_selected = False,
         )
 
 def xla_test_library(

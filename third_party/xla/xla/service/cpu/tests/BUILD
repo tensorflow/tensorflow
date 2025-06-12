@@ -427,6 +427,7 @@ xla_cc_test(
     srcs = ["onednn_memory_util_test.cc"],
     copts = tsl_copts(),
     fail_if_no_test_linked = False,  # NOLINT=There are only tests for Intel MKL.
+    fail_if_no_test_selected = False,  # NOLINT=There are only tests for Intel MKL.
     deps = [
         "//xla:shape_util",
         "//xla/hlo/testlib:filecheck",

@@ -61,6 +61,7 @@ xla_cc_test(
     name = "sycl_platform_test",
     srcs = ["sycl_platform_test.cc"],
     fail_if_no_test_linked = False,  # NOLINT=If not building with SYCL, we don't have any tests linked.
+    fail_if_no_test_selected = False,  # NOLINT=If not building with SYCL, we don't have any tests linked.
     deps = [
         ":sycl_platform",
         "//xla/stream_executor:platform",
