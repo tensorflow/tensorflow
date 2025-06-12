@@ -1,3 +1,15 @@
+diff --ruN a/stablehlo/stablehlo/dialect/Version.h b/stablehlo/stablehlo/dialect/Version.h
+--- stablehlo/stablehlo/dialect/Version.h
++++ stablehlo/stablehlo/dialect/Version.h
+@@ -38,7 +38,7 @@
+   static FailureOr<Version> fromString(llvm::StringRef versionRef);
+ 
+   /// Return a Version representing the current VHLO dialect version.
+-  static Version getCurrentVersion() { return Version(1, 10, 10); }
++  static Version getCurrentVersion() { return Version(1, 11, 0); }
+ 
+   /// Return a Version representing the minimum supported VHLO dialect version.
+   static Version getMinimumVersion() { return Version(0, 9, 0); }
 diff --ruN a/stablehlo/stablehlo/dialect/VhloAttrs.td b/stablehlo/stablehlo/dialect/VhloAttrs.td
 --- stablehlo/stablehlo/dialect/VhloAttrs.td
 +++ stablehlo/stablehlo/dialect/VhloAttrs.td
@@ -29,6 +41,17 @@ diff --ruN a/stablehlo/stablehlo/dialect/VhloAttrs.td b/stablehlo/stablehlo/dial
        return success();
      }
    }];
+diff --ruN a/stablehlo/stablehlo/dialect/VhloDialect.td b/stablehlo/stablehlo/dialect/VhloDialect.td
+--- stablehlo/stablehlo/dialect/VhloDialect.td
++++ stablehlo/stablehlo/dialect/VhloDialect.td
+@@ -49,6 +49,7 @@
+       1.8.0: Introduce `f4E2M1FN`, `f6E2M3FN`, `f6E3M2FN` and `f8E8M0FNU` types.
+       1.9.0: Add `ResultAccuracy` attribute to `exp` op.
+       1.10.0: Add `ResultAccuracy` attribute to `cbrt`, `cosine`, `exponential`, `exponential_minus_one`, `log`, `log_plus_one`, `logistic`, `rsqrt`, `sine`, `sqrt`, `tan` and `tanh` ops.
++      1.11.0: Allow (de)serializing VHLO programs mixed with potentially unstable dialects.
+   }];
+ 
+   let useDefaultAttributePrinterParser = 0;
 diff --ruN a/stablehlo/stablehlo/dialect/VhloTypes.h b/stablehlo/stablehlo/dialect/VhloTypes.h
 --- stablehlo/stablehlo/dialect/VhloTypes.h
 +++ stablehlo/stablehlo/dialect/VhloTypes.h
