@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_hints.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -83,7 +84,7 @@ class HloDataflowAnalysis {
   // may-alias table. If an empty optional is returned, default rules are used.
   //
   // Must-alias rules (as defined by GetInPlaceInputOutputPairs) cannot be
-  // overriden using backend-specific overrides.
+  // overridden using backend-specific overrides.
   //
   // The first parameter of the function should be the instruction, the
   // second parameter should be an operand of the instruction. The third
@@ -98,6 +99,7 @@ class HloDataflowAnalysis {
   // output index. If an empty optional is used, default rules are used. If a
   // ForwardedOperand object is returned, the value at the corresponding
   // operand's index is used for the output, overriding all default logic.
+  // TODO(b/424109294): Remove this, it is not used anymore.
   struct ForwardedOperand {
     int64_t operand_number;
     ShapeIndex operand_index;
@@ -123,11 +125,19 @@ class HloDataflowAnalysis {
   //   bitcast_defines_value : If true then the Bitcast HLO instruction defines
   //     a new HLO value in the analysis. If false then Bitcast forwards the
   //     value of its operand.
+  // TODO(b/424109294): Replace users of this function with the one below.
   static absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> Run(
       const HloModule& module, bool ssa_form = false,
       bool bitcast_defines_value = false,
       const CanShareBuffer& can_share_buffer = nullptr,
       const ForwardsValue& forwards_value = nullptr,
+      absl::flat_hash_set<absl::string_view> execution_threads = {});
+
+  // Same as above, but with bundled `alias_hints` instead of separate
+  // `can_share_buffer` and `forwards_value` hooks.
+  static absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> Run(
+      const HloModule& module, const AliasHints* alias_hints,
+      bool ssa_form = false, bool bitcast_defines_value = false,
       absl::flat_hash_set<absl::string_view> execution_threads = {});
 
   // Returns true if 'instruction' defines an HLO value at the given shape index
@@ -236,6 +246,7 @@ class HloDataflowAnalysis {
   //
   // ... the results can include any of the 3 * 3 = 9 possible pairs of
   // input and output arrays.
+  // TODO(b/424109294): Move this to AliasHints class.
   static std::vector<std::pair<HloOperandIndex, ShapeIndex>>
   GetInPlaceInputOutputPairs(const HloInstruction* instruction);
 
@@ -250,6 +261,13 @@ class HloDataflowAnalysis {
                       const CanShareBuffer& can_share_buffer,
                       const ForwardsValue& forwards_value,
                       absl::flat_hash_set<absl::string_view> execution_threads);
+
+  HloDataflowAnalysis(const HloModule& module, const AliasHints* alias_hints,
+                      bool ssa_form, bool bitcast_defines_value,
+                      absl::flat_hash_set<absl::string_view> execution_threads);
+
+  // Runs dataflow analysis on the module attached to this HloDataflowAnalysis.
+  absl::Status RunImpl();
 
   // 1. During value propagation (Propagate function), always create phi
   // values once it see multiple inputs merging at the same point. It then
@@ -377,9 +395,14 @@ class HloDataflowAnalysis {
 
   // Backend specific function that decides whether an instruction can share
   // a buffer with its operand.
+  // TODO(b/424109294): Remove this.
   CanShareBuffer can_share_buffer_ = nullptr;
 
+  // TODO(b/424109294): Remove this.
   ForwardsValue forwards_value_ = nullptr;
+
+  // Backend specific aliasing hints.
+  const AliasHints* alias_hints_ = nullptr;
 };
 
 // Removes layers of tuple indirection introduced via 'tuple' and

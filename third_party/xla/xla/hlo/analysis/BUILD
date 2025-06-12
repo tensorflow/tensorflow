@@ -195,10 +195,21 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "alias_hints",
+    srcs = ["alias_hints.cc"],
+    hdrs = ["alias_hints.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+    ],
+)
+
+cc_library(
     name = "hlo_dataflow_analysis",
     srcs = ["hlo_dataflow_analysis.cc"],
     hdrs = ["hlo_dataflow_analysis.h"],
     deps = [
+        ":alias_hints",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
@@ -230,6 +241,7 @@ xla_cc_test(
     name = "hlo_dataflow_analysis_test",
     srcs = ["hlo_dataflow_analysis_test.cc"],
     deps = [
+        ":alias_hints",
         ":hlo_dataflow_analysis",
         ":hlo_ordering",
         "//xla:comparison_util",
