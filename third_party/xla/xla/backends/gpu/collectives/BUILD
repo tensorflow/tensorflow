@@ -429,6 +429,7 @@ cc_library(
         "@local_config_cuda//cuda:cuda_headers",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:numbers",
+        "@nvshmem//:nvshmem_hdrs",
         "@nvshmem//:nvshmem_lib",
     ],
     alwayslink = True,

@@ -127,6 +127,32 @@ class NcclCommunicator : public GpuCommunicator {
                                  PrimitiveType dtype, size_t count, RankId peer,
                                  const Executor& executor) final;
 
+  tsl::AsyncValueRef<Event> Send(se::DeviceMemoryBase recv_buffer,
+                                 se::DeviceMemoryBase send_buffer,
+                                 PrimitiveType dtype, size_t count, RankId peer,
+                                 const Executor& executor) final {
+    return absl::UnimplementedError("Not implemented.");
+  }
+
+  tsl::AsyncValueRef<Event> Recv(se::DeviceMemoryBase recv_buffer,
+                                 se::DeviceMemoryBase send_buffer,
+                                 PrimitiveType dtype, size_t count, RankId peer,
+                                 const Executor& executor) final {
+    return absl::UnimplementedError("Not implemented.");
+  }
+
+  absl::Status RegisterBuffer(void* addr, size_t length) final {
+    return absl::UnimplementedError("Not implemented.");
+  }
+
+  absl::Status Quiet(const Executor& executor) final {
+    return absl::UnimplementedError("Not implemented.");
+  }
+
+  absl::Status Fence() final {
+    return absl::UnimplementedError("Not implemented.");
+  }
+
   std::string ToString() const final;
 
   ncclComm_t comm() const { return comm_; }

@@ -88,6 +88,20 @@ class GlooCommunicator : public Communicator {
     return Unimplemented("Recv is not implemented");
   }
 
+  tsl::AsyncValueRef<Event> Send(se::DeviceMemoryBase recv_buffer,
+                                 se::DeviceMemoryBase send_buffer,
+                                 PrimitiveType dtype, size_t count, RankId peer,
+                                 const Executor& executor) override {
+    return absl::UnimplementedError("Send is not implemented");
+  }
+
+  tsl::AsyncValueRef<Event> Recv(se::DeviceMemoryBase recv_buffer,
+                                 se::DeviceMemoryBase send_buffer,
+                                 PrimitiveType dtype, size_t count, RankId peer,
+                                 const Executor& executor) override {
+    return absl::UnimplementedError("Recv is not implemented");
+  }
+
   absl::StatusOr<size_t> NumRanks() const override { return num_ranks_; }
 
   std::string ToString() const override {

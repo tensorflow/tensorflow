@@ -275,6 +275,9 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kMemset32BitValue);
     CASE(kMemzero);
     CASE(kNorm);
+    CASE(kNvshmemCollectivePermute);
+    CASE(kNvshmemCollectivePermuteDone);
+    CASE(kNvshmemCollectivePermuteStart);
     CASE(kOutfeed);
     CASE(kPartitionId);
     CASE(kRaggedAllToAll);

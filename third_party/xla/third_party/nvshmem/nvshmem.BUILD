@@ -84,6 +84,21 @@ cc_library(
     ],
 )
 
+# Target containing only NVSHMEM headers.
+cc_library(
+    name = "nvshmem_hdrs",
+    hdrs = glob([
+        "src/include/**",
+    ]) + [
+        ":nvshmem_build_options_h",
+        ":nvshmem_version_h",
+    ],
+    include_prefix = "third_party/nvshmem",
+    includes = ["src/include"],
+    strip_include_prefix = "src/include",
+    visibility = ["//visibility:public"],
+)
+
 # This additional header allows us to determine the configured NVSHMEM version
 # without including the rest of NVSHMEM.
 write_file(
