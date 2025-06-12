@@ -13,6 +13,7 @@ load(
 load(
     "//xla/tsl:tsl.default.bzl",
     "if_cuda_libs",
+    "if_nvshmem_libs",
 )
 load("//xla/tsl/cuda:stub.bzl", "cuda_stub")
 
@@ -356,7 +357,7 @@ cc_library(
 )
 
 alias(
-    name = "nccl_stub",  # buildifier: disable=duplicated-name
+    name = "nccl_stub",
     actual = if_cuda_libs("@cuda_nccl//:nccl", ":nccl"),
     visibility = ["//visibility:public"],
 )
@@ -367,7 +368,7 @@ cuda_stub(
 )
 
 cc_library(
-    name = "nvshmem_stub",
+    name = "nvshmem",  # buildifier: disable=duplicated-name
     srcs = if_cuda_is_configured([
         "nvshmem_stub.cc",
         "nvshmem.tramp.S",
@@ -384,4 +385,10 @@ cc_library(
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:load_library",
     ]),
+)
+
+alias(
+    name = "nvshmem_stub",
+    actual = if_nvshmem_libs("@nvidia_nvshmem//:nvshmem", ":nvshmem"),
+    visibility = ["//visibility:public"],
 )
