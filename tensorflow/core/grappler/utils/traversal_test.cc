@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/utils/traversal.h"
 
+#include <vector>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
