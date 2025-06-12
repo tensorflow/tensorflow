@@ -912,5 +912,51 @@ ENTRY main {
             GetIndexByName(main_instructions, "all-reduce-done"));
 }
 
+TEST_F(GpuLatencyHidingSchedulerBaseTest, ScheduleDynamicSliceIfMemcpy) {
+  absl::string_view kHloModule = R"(
+HloModule test, num_partitions=4
+
+%wrapped_dynamic-slice_computation (param_0.45: f32[2,2,2], param_1.42: s32[], param_2.30: s32[], param_3.21: s32[]) -> f32[1,2,2] {
+  %param_0.45 = f32[2,2,2]{2,1,0:S(5)} parameter(0)
+  %param_1.42 = s32[] parameter(1)
+  %param_2.30 = s32[] parameter(2)
+  %param_3.21 = s32[] parameter(3)
+  ROOT %dynamic-slice.12.1 = f32[1,2,2]{2,1,0} dynamic-slice(%param_0.45, %param_1.42, %param_2.30, %param_3.21), dynamic_slice_sizes={1,2,2}
+}
+
+%async_computation (param_0: f32[2,2,2], param_1: s32[], param_2: s32[], param_3: s32[]) -> f32[1,2,2] {
+  %param_0 = f32[2,2,2]{2,1,0:S(5)} parameter(0)
+  %param_1 = s32[] parameter(1)
+  %param_2 = s32[] parameter(2)
+  %param_3 = s32[] parameter(3)
+  ROOT %wrapped_dynamic-slice = f32[1,2,2]{2,1,0} fusion(%param_0, %param_1, %param_2, %param_3), kind=kLoop, calls=%wrapped_dynamic-slice_computation
+}
+
+ENTRY main {
+ p0 = f32[1,2,2]{2,1,0} parameter(0)
+ %host_buf = f32[2,2,2]{2,1,0:S(5)} custom-call(), custom_call_target="AllocateBuffer"
+ %c0 = s32[] constant(0)
+ %dynamic-slice-start = ((f32[2,2,2]{2,1,0:S(5)}, s32[], s32[], s32[]), f32[1,2,2]{2,1,0}, u32[]) async-start(
+      %host_buf, %c0, %c0, %c0), calls=%async_computation
+ %dynamic-slice-done = f32[1,2,2]{2,1,0} async-done(%dynamic-slice-start)
+ %add = f32[1,2,2]{2,1,0} add(p0, p0)
+ ROOT tuple = (f32[1,2,2]{2,1,0}, f32[1,2,2]{2,1,0}) tuple(%dynamic-slice-done, %add)
+})";
+
+  absl::string_view kFdoProfile = "";
+  auto config = GetModuleConfig(kFdoProfile);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloModule, config));
+
+  TF_EXPECT_OK(ScheduleModule(module.get(), /*num_parallel_resources=*/2));
+  auto schedule = module->schedule();
+  std::vector<HloInstruction*> instruction_sequence =
+      schedule.sequence(module->entry_computation()).instructions();
+  EXPECT_TRUE(GetIndexByName(instruction_sequence, "dynamic-slice-start") <
+                  GetIndexByName(instruction_sequence, "add") ||
+              GetIndexByName(instruction_sequence, "add") <
+                  GetIndexByName(instruction_sequence, "dynamic-slice-done"));
+}
+
 }  // namespace
 }  // namespace xla::gpu
