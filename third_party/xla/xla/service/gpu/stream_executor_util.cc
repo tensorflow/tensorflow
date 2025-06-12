@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/proto/proto_utils.h"
 #include "xla/util.h"
@@ -371,14 +372,25 @@ absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec) {
 
 absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
     absl::string_view kernel_name, uint64_t num_args, absl::string_view ptx,
-    absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec,
-    uint32_t shared_mem_bytes) {
+    se::StreamExecutor* stream_exec, uint32_t shared_mem_bytes) {
   se::MultiKernelLoaderSpec loader_spec(num_args);
   loader_spec.AddCudaPtxInMemory(ptx, kernel_name);
 
-  if (!cubin_data.empty()) {
-    loader_spec.AddCudaCubinInMemory(cubin_data, kernel_name);
-  }
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
+                      stream_exec->LoadKernel(loader_spec));
+
+  se::KernelMetadata m;
+  m.set_shared_memory_bytes(shared_mem_bytes);
+  kernel->set_metadata(m);
+  return kernel;
+}
+
+absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
+    absl::string_view kernel_name, uint64_t num_args,
+    absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec,
+    uint32_t shared_mem_bytes) {
+  se::MultiKernelLoaderSpec loader_spec(num_args);
+  loader_spec.AddCudaCubinInMemory(cubin_data, kernel_name);
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
                       stream_exec->LoadKernel(loader_spec));
