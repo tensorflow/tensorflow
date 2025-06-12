@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/transforms/collectives/gpu_collective_combiner_utils.h"
 
 #include <cstdint>
+#include <optional>
 
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
@@ -58,14 +59,14 @@ TEST_F(CollectiveCombinerUtilsTest,
   stream_executor::DeviceDescription device_info;
   device_info.set_device_memory_size(20000);
 
-  int64_t suggested_threshold = ComputeSuggestedCombinerThreshold(
-      *module, device_info, HloOpcode::kAllReduce, pointer_size);
+  std::optional<int64_t> suggested_threshold =
+      ComputeSuggestedCombinerThreshold(*module, device_info, pointer_size);
 
   // device size = 20000 bytes
   // slop factor = 0.95
   // peak memory = parameters + output = (2*32*32 + 32*32) * 4 bytes = 12288
   // suggested thresholds = device size * slop factor - peak memory
-  EXPECT_EQ(suggested_threshold, 6712);
+  EXPECT_EQ(*suggested_threshold, 6712);
 }
 
 TEST_F(CollectiveCombinerUtilsTest,
@@ -88,8 +89,8 @@ TEST_F(CollectiveCombinerUtilsTest,
   int pointer_size = 4;
   stream_executor::DeviceDescription device_info;
 
-  int64_t suggested_threshold = ComputeSuggestedCombinerThreshold(
-      *module, device_info, HloOpcode::kAllReduce, pointer_size);
+  std::optional<int64_t> suggested_threshold =
+      ComputeSuggestedCombinerThreshold(*module, device_info, pointer_size);
 
   // device size = 20000 bytes
   // slop factor = 0.95

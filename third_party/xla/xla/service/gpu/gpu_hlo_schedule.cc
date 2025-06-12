@@ -620,6 +620,19 @@ bool IsLHSEnabled(const HloModule& module, absl::string_view fingerprint) {
   return enable_lhs;
 }
 
+static BufferValue::SizeFunction ScheduleSizeFn(int pointer_size) {
+  BufferValue::SizeFunction size_func =
+      [pointer_size](const BufferValue& buffer) -> int64_t {
+    const Shape& shape = buffer.shape();
+    if (shape.has_layout() &&
+        shape.layout().memory_space() == Layout::kHostMemorySpace) {
+      return static_cast<int64_t>(0);
+    }
+    return ShapeUtil::ByteSizeOf(shape, pointer_size);
+  };
+  return size_func;
+}
+
 }  // end namespace
 
 absl::Status RunAsyncCollectivesConversionPasses(HloModule* module) {
@@ -725,18 +738,18 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
 
 absl::StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
     const HloModule* module, int64_t pointer_size, int64_t* peak_memory_bytes) {
-  BufferValue::SizeFunction size_func =
-      [pointer_size](const BufferValue& buffer) -> int64_t {
-    const Shape& shape = buffer.shape();
-    if (shape.has_layout() &&
-        shape.layout().memory_space() == Layout::kHostMemorySpace) {
-      return static_cast<int64_t>(0);
-    }
-    return ShapeUtil::ByteSizeOf(shape, pointer_size);
-  };
-  return ScheduleModule(module,
-                        DefaultMemoryScheduler(size_func, PostProcessSchedule),
-                        /*execution_threads=*/{}, peak_memory_bytes);
+  return ScheduleModule(
+      module,
+      DefaultMemoryScheduler(ScheduleSizeFn(pointer_size), PostProcessSchedule),
+      /*execution_threads=*/{}, peak_memory_bytes);
+}
+
+absl::StatusOr<HloSchedule> ScheduleGpuModuleWithListMemoryScheduler(
+    const HloModule* module, int64_t pointer_size, int64_t* peak_memory_bytes) {
+  return ScheduleModule(
+      module,
+      ListMemoryScheduler(ScheduleSizeFn(pointer_size), PostProcessSchedule),
+      /*execution_threads=*/{}, peak_memory_bytes);
 }
 
 HloInstructionSequence PostProcessSchedule(

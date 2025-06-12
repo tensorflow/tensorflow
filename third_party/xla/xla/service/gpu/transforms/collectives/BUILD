@@ -139,8 +139,10 @@ cc_library(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_hlo_schedule",
         "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -195,6 +197,7 @@ xla_cc_test(
     srcs = ["all_gather_combiner_test.cc"],
     deps = [
         ":gpu_all_gather_combiner",
+        ":gpu_collective_combiner_utils",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -234,6 +237,7 @@ xla_cc_test(
     name = "reduce_scatter_combiner_test",
     srcs = ["reduce_scatter_combiner_test.cc"],
     deps = [
+        ":gpu_collective_combiner_utils",
         ":gpu_reduce_scatter_combiner",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
@@ -275,6 +279,7 @@ xla_cc_test(
     srcs = ["all_reduce_combiner_test.cc"],
     deps = [
         ":gpu_all_reduce_combiner",
+        ":gpu_collective_combiner_utils",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -683,5 +688,54 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "collective_pipelining_analyzer",
+    srcs = ["collective_pipelining_analyzer.cc"],
+    hdrs = ["collective_pipelining_analyzer.h"],
+    deps = [
+        ":gpu_collective_combiner_utils",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service:call_graph",
+        "//xla/service:collective_opt_utils",
+        "//xla/service:collective_utils",
+        "//xla/service:hlo_module_config",
+        "//xla/service/gpu:dynamic_slicing_utils",
+        "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "collective_pipelining_analyzer_test",
+    srcs = ["collective_pipelining_analyzer_test.cc"],
+    deps = [
+        ":collective_pipelining_analyzer",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/service:collective_utils",
+        "//xla/service:hlo_module_config",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/stream_executor:device_description",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )

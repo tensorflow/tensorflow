@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/collectives/all_gather_combiner.h"
 
+#include <cstdint>
+#include <optional>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
@@ -24,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/collective_utils.h"
+#include "xla/service/gpu/transforms/collectives/gpu_collective_combiner_utils.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
@@ -37,7 +41,14 @@ using ::tsl::testing::IsOkAndHolds;
 
 namespace op = xla::testing::opcode_matchers;
 
-using GpuAllGatherCombinerTest = HloHardwareIndependentTestBase;
+class GpuAllGatherCombinerTest : public HloHardwareIndependentTestBase {
+ protected:
+  std::optional<int64_t> SuggestedMemoryThreshold(
+      const HloModule& module, const se::DeviceDescription& device_info,
+      int64_t pointer_size) {
+    return ComputeSuggestedCombinerThreshold(module, device_info, pointer_size);
+  }
+};
 
 TEST_F(GpuAllGatherCombinerTest,
        CombinesPipelinedCollectivesUpToSuggestedThreshold) {
@@ -111,13 +122,19 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloString, config));
+  std::optional<int64_t> estimated_available_mem =
+      SuggestedMemoryThreshold(*module, device_info, pointer_size);
+  ASSERT_TRUE(estimated_available_mem.has_value());
+  SetAvailableMemPostSchedulingIfDoesNotExist(*module,
+                                              *estimated_available_mem);
+
   EXPECT_THAT(
       GpuAllGatherCombiner(device_info, /*default_combine_threshold_in_bytes=*/
                            threshold_bytes,
                            /*combine_threshold_in_bytes=*/threshold_bytes,
                            /*combine_threshold_count=*/256,
                            /*combine_by_dim=*/false,
-                           /*combine_different_dtypes=*/true, pointer_size)
+                           /*combine_different_dtypes=*/true)
           .Run(module.get()),
       IsOkAndHolds(true));
 
@@ -211,14 +228,19 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloString, config));
+  std::optional<int64_t> estimated_available_mem =
+      SuggestedMemoryThreshold(*module, device_info, pointer_size);
+  ASSERT_TRUE(estimated_available_mem.has_value());
+  SetAvailableMemPostSchedulingIfDoesNotExist(*module,
+                                              *estimated_available_mem);
+
   EXPECT_THAT(
       GpuAllGatherCombiner(
           device_info, /*default_combine_threshold_in_bytes=*/
           kDefaultAllGatherCombineThreshold,
           /*combine_threshold_in_bytes=*/kDefaultAllGatherCombineThreshold,
           /*combine_threshold_count=*/256,
-          /*combine_by_dim=*/false,
-          /*combine_different_dtypes=*/true, pointer_size)
+          /*combine_by_dim=*/false, /*combine_different_dtypes=*/true)
           .Run(module.get()),
       IsOkAndHolds(true));
 
@@ -312,13 +334,19 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kHloString, config));
+  std::optional<int64_t> estimated_available_mem =
+      SuggestedMemoryThreshold(*module, device_info, pointer_size);
+  ASSERT_TRUE(estimated_available_mem.has_value());
+  SetAvailableMemPostSchedulingIfDoesNotExist(*module,
+                                              *estimated_available_mem);
+
   EXPECT_THAT(
       GpuAllGatherCombiner(device_info, /*default_combine_threshold_in_bytes=*/
                            kDefaultAllGatherCombineThreshold,
                            /*combine_threshold_in_bytes=*/threshold_bytes,
                            /*combine_threshold_count=*/256,
                            /*combine_by_dim=*/false,
-                           /*combine_different_dtypes=*/true, pointer_size)
+                           /*combine_different_dtypes=*/true)
           .Run(module.get()),
       IsOkAndHolds(true));
 
@@ -363,15 +391,22 @@ TEST_F(GpuAllGatherCombinerTest, CombinesSynchronousCollectivesMaximally) {
   )";
   DeviceDescription device_info;
   device_info.set_device_memory_size(10000000000);  // 10GB
+  int64_t pointer_size = 4;
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  std::optional<int64_t> estimated_available_mem =
+      SuggestedMemoryThreshold(*module, device_info, pointer_size);
+  ASSERT_TRUE(estimated_available_mem.has_value());
+  SetAvailableMemPostSchedulingIfDoesNotExist(*module,
+                                              *estimated_available_mem);
+
   GpuAllGatherCombiner combiner(
       device_info, /*default_combine_threshold_in_bytes=*/
       kDefaultAllGatherCombineThreshold,
       /*combine_threshold_in_bytes=*/kDefaultAllGatherCombineThreshold,
       /*combine_threshold_count=*/256,
       /*combine_by_dim=*/false,
-      /*combine_different_dtypes=*/true, /*pointer_size=*/4);
+      /*combine_different_dtypes=*/true);
 
   EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(true));
   Matcher<const HloInstruction*> combined_all_gather =
@@ -401,15 +436,22 @@ TEST_F(GpuAllGatherCombinerTest,
   )";
   DeviceDescription device_info;
   device_info.set_device_memory_size(10000000000);  // 10GB
+  int64_t pointer_size = 4;
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  std::optional<int64_t> estimated_available_mem =
+      SuggestedMemoryThreshold(*module, device_info, pointer_size);
+  ASSERT_TRUE(estimated_available_mem.has_value());
+  SetAvailableMemPostSchedulingIfDoesNotExist(*module,
+                                              *estimated_available_mem);
+
   GpuAllGatherCombiner combiner(
       device_info, /*default_combine_threshold_in_bytes=*/
       kDefaultAllGatherCombineThreshold,
       /*combine_threshold_in_bytes=*/kDefaultAllGatherCombineThreshold,
       /*combine_threshold_count=*/256,
       /*combine_by_dim=*/false,
-      /*combine_different_dtypes=*/true, /*pointer_size=*/4);
+      /*combine_different_dtypes=*/true);
 
   EXPECT_THAT(combiner.Run(module.get()), IsOkAndHolds(false));
 }

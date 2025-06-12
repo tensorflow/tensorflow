@@ -14,34 +14,25 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <optional>
+#include <string>
+#include <utility>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/numbers.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/collective_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla::gpu {
-
-static int64_t GetDefaultValue(HloOpcode opcode) {
-  if (opcode == HloOpcode::kAllGather) {
-    return kDefaultAllGatherCombineThreshold;
-  } else if (opcode == HloOpcode::kAllReduce) {
-    return kDefaultAllReduceCombineThreshold;
-  } else if (opcode == HloOpcode::kReduceScatter) {
-    return kDefaultReduceScatterCombineThreshold;
-  } else {
-    LOG(FATAL) << "Expected collective op. Got: " << opcode;
-  }
-  return -1;
-}
 
 int64_t MaxAvailableMemory(const HloModule& module,
                            const se::DeviceDescription& device_info) {
@@ -53,16 +44,15 @@ int64_t MaxAvailableMemory(const HloModule& module,
   return base_limit * slop_factor / 100;
 }
 
-int64_t ComputeSuggestedCombinerThreshold(
+std::optional<int64_t> ComputeSuggestedCombinerThreshold(
     const HloModule& module, const se::DeviceDescription& device_info,
-    HloOpcode collective_opcode, int64_t pointer_size) {
+    int64_t pointer_size) {
   int64_t peak_memory_bytes = -1;
-  auto mem_schedule = ScheduleGpuModuleWithMemoryScheduler(
+  auto mem_schedule = ScheduleGpuModuleWithListMemoryScheduler(
       &module, pointer_size, &peak_memory_bytes);
 
   if (!mem_schedule.ok() || peak_memory_bytes == -1) {
-    VLOG(1) << "Cannot schedule module: " << mem_schedule.status().message();
-    return GetDefaultValue(collective_opcode);
+    return std::nullopt;
   }
 
   return MaxAvailableMemory(module, device_info) - peak_memory_bytes;
@@ -97,6 +87,31 @@ bool ContainsPipelinedInstruction(const HloModule& module) {
     }
   }
   return false;
+}
+
+std::optional<int64_t> GetAvailableMemPostScheduling(const HloModule& module) {
+  if (!module.frontend_attributes().map().contains(
+          kAvailableMemoryPostScheduling)) {
+    return std::nullopt;
+  }
+  std::string value =
+      module.frontend_attributes().map().at(kAvailableMemoryPostScheduling);
+  int64_t memory_value;
+  if (!absl::SimpleAtoi(value, &memory_value)) {
+    return std::nullopt;
+  }
+  return memory_value;
+}
+
+void SetAvailableMemPostSchedulingIfDoesNotExist(HloModule& module,
+                                                 int64_t mem) {
+  if (module.frontend_attributes().map().contains(
+          kAvailableMemoryPostScheduling)) {
+    return;
+  }
+  FrontendAttributes attr;
+  (*attr.mutable_map())[kAvailableMemoryPostScheduling] = std::to_string(mem);
+  module.add_frontend_attributes(std::move(attr));
 }
 
 }  // namespace xla::gpu

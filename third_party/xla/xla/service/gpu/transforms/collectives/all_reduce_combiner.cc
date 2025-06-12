@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/collectives/all_reduce_combiner.h"
 
+#include <cstdint>
 #include <optional>
 
 #include "absl/container/flat_hash_set.h"
@@ -23,7 +24,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/transforms/collectives/all_reduce_combiner.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/transforms/collectives/collective_combiner_annotator.h"
@@ -86,8 +86,10 @@ absl::StatusOr<bool> GpuAllReduceCombiner::Run(
   // do not kick in anyway.
   if (ContainsPipelinedInstruction(*module)) {
     // Combine as much as possible for pipelined collectives.
-    combine_threshold_in_bytes_ = ComputeSuggestedCombinerThreshold(
-        *module, device_info_, HloOpcode::kAllReduce, pointer_size_);
+    std::optional<int64_t> available_memory =
+        GetAvailableMemPostScheduling(*module);
+    combine_threshold_in_bytes_ =
+        available_memory.value_or(default_combine_threshold_in_bytes_);
     TF_ASSIGN_OR_RETURN(
         bool combined,
         RunWithKeyCombiner(module, execution_threads, PipelinedCombinerKey));
