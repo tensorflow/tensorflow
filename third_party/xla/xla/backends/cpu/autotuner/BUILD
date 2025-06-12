@@ -44,6 +44,7 @@ cc_library(
         "//xla:executable_run_options",
         "//xla:literal",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/backends/autotuner:profiler",
         "//xla/service:buffer_assignment",
         "//xla/service:executable",
