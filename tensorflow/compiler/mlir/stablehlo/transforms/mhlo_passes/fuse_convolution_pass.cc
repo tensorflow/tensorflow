@@ -38,7 +38,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/common/tf_attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/utils/validators.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
@@ -114,8 +114,8 @@ class FuseMhloMulAndConvolutionPattern : public OpRewritePattern<mhlo::MulOp> {
     if (is_dynamic_broadcast) {
       auto conv_uses = (*conv_op.getODSResults(0).begin()).getUses();
       if (std::distance(conv_uses.begin(), conv_uses.end()) != 2 ||
-          tf_quant::FindUserOfType<shape::ShapeOfOp>(conv_op) == nullptr ||
-          tf_quant::FindUserOfType<mhlo::MulOp>(conv_op) == nullptr) {
+          quant::FindUserOfType<shape::ShapeOfOp>(conv_op) == nullptr ||
+          quant::FindUserOfType<mhlo::MulOp>(conv_op) == nullptr) {
         return rewriter.notifyMatchFailure(mul_op, [&](::mlir::Diagnostic
                                                            &diag) {
           diag << "entities 'conv' failed to satisfy constraint: has two uses "

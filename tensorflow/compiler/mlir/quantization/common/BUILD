@@ -31,7 +31,7 @@ cc_library(
     hdrs = ["lift_as_function_call.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":tf_attrs_and_constraints",
+        ":attrs_and_constraints",
         "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/stablehlo:stablehlo_type_utils",
@@ -136,12 +136,12 @@ cc_library(
 )
 
 cc_library(
-    name = "tf_attrs_and_constraints",
+    name = "attrs_and_constraints",
     srcs = [
-        "tf_attrs_and_constraints.cc",
+        "attrs_and_constraints.cc",
     ],
     hdrs = [
-        "tf_attrs_and_constraints.h",
+        "attrs_and_constraints.h",
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
@@ -154,36 +154,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:DerivedAttributeOpInterface",
-        "@llvm-project//mlir:Dialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-        "@stablehlo//:stablehlo_ops",
-    ],
-)
-
-cc_library(
-    name = "attrs_and_constraints",
-    srcs = [
-        "attrs_and_constraints.cc",
-    ],
-    hdrs = [
-        "attrs_and_constraints.h",
-    ],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":uniform_quantized_types",
-        "//tensorflow/compiler/mlir/quantization/common/quantization_lib",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:xla_call_module_attrs",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:DerivedAttributeOpInterface",
-        "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",

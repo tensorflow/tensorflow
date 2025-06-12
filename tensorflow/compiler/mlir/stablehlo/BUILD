@@ -268,7 +268,7 @@ cc_library(
         "-Ithird_party",
     ],
     deps = [
-        "//tensorflow/compiler/mlir/quantization/common:tf_attrs_and_constraints",
+        "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
         "//tensorflow/compiler/mlir/utils:validators",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Dialect",

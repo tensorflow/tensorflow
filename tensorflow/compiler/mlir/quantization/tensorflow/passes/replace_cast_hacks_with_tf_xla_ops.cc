@@ -46,7 +46,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/common/tf_attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/cc/constant_fold.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/utils/tf_to_xla_attribute_utils.h"
@@ -55,13 +55,6 @@ limitations under the License.
 
 namespace mlir::quant {
 namespace {
-
-using ::mlir::tf_quant::Create1DConstValue;
-using ::mlir::tf_quant::CreateConstValue;
-using ::mlir::tf_quant::CreateScalarConstValue;
-using ::mlir::tf_quant::GetSplatValue;
-using ::mlir::tf_quant::HasStaticShape;
-using ::mlir::tf_quant::HasStaticShapeAtDims;
 
 constexpr StringRef kTfQuantCreatedEinsum = "__tf_quant_created_einsum";
 
