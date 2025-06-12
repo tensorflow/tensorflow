@@ -2864,11 +2864,9 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteral(MutableLiteralBase* literal) {
 
     HostMemoryAllocator::OwnedPtr staging_buffer;
     void* buffer_ptr;
-    if (should_unpack || transpose != nullptr) {
+    if (on_device_shape.IsArray()) {
       staging_buffer = client->host_memory_allocator()->Allocate(byte_size);
       buffer_ptr = staging_buffer.get();
-    } else if (on_device_shape.IsArray()) {
-      buffer_ptr = literal->untyped_data();
     } else {
       CHECK_EQ(byte_size, 0);
       buffer_ptr = nullptr;
@@ -2928,6 +2926,9 @@ PjRtFuture<> TfrtGpuBuffer::ToLiteral(MutableLiteralBase* literal) {
       if (should_unpack) {
         tsl::port::AlignedFree(buffer);
       }
+    }
+    if (on_device_shape.IsArray() && !should_unpack && transpose == nullptr) {
+      std::memcpy(literal->untyped_data(), buffer, byte_size);
     }
     promise.Set(absl::OkStatus());
   };
