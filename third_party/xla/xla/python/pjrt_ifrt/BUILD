@@ -114,7 +114,6 @@ xla_cc_test(
         "//xla/python/ifrt:serdes",
         "//xla/python/ifrt:sharding_serdes",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],

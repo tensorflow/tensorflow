@@ -18,7 +18,9 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/types/span.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
@@ -34,7 +36,21 @@ namespace {
 
 using ::testing::ElementsAreArray;
 
-class ShardingSerDesTest : public test_util::DeviceTest {};
+using ShardingSerDesTestParam = test_util::DeviceTestParam;
+
+class ShardingSerDesTest
+    : public testing::TestWithParam<ShardingSerDesTestParam> {
+ public:
+  ShardingSerDesTest() : fixture_(GetParam()) {}
+
+  Client* client() { return fixture_.client(); }
+  DeviceListRef GetDevices(absl::Span<const int> device_indices) {
+    return fixture_.GetDevices(device_indices);
+  }
+
+ private:
+  test_util::DeviceTestFixture fixture_;
+};
 
 TEST_P(ShardingSerDesTest, SingleDeviceShardingRoundTrip) {
   auto sharding = SingleDeviceSharding::Create(

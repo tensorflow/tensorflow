@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
@@ -33,7 +34,21 @@ namespace {
 
 using ::testing::ElementsAreArray;
 
-class XlaShardingSerDesTest : public test_util::DeviceTest {};
+using XlaShardingSerDesTestParam = test_util::DeviceTestParam;
+
+class XlaShardingSerDesTest
+    : public testing::TestWithParam<XlaShardingSerDesTestParam> {
+ public:
+  XlaShardingSerDesTest() : fixture_(GetParam()) {}
+
+  Client* client() { return fixture_.client(); }
+  DeviceListRef GetDevices(absl::Span<const int> device_indices) {
+    return fixture_.GetDevices(device_indices);
+  }
+
+ private:
+  test_util::DeviceTestFixture fixture_;
+};
 
 TEST_P(XlaShardingSerDesTest, HloShardingRoundTrip) {
   auto device_list = GetDevices({0, 1});
@@ -56,7 +71,8 @@ TEST_P(XlaShardingSerDesTest, HloShardingRoundTrip) {
 
 INSTANTIATE_TEST_SUITE_P(NumDevices, XlaShardingSerDesTest,
                          testing::Values(test_util::DeviceTestParam{
-                             .num_devices = 2, .num_addressable_devices = 2}));
+                             /*num_devices=*/2,
+                             /*num_addressable_devices=*/2}));
 
 }  // namespace
 }  // namespace ifrt

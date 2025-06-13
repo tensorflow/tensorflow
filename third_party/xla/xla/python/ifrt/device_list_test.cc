@@ -38,15 +38,18 @@ namespace {
 
 using ::testing::ElementsAreArray;
 
-class DeviceListTest : public test_util::DeviceTest {};
+class DeviceListTest
+    : public testing::TestWithParam<test_util::DeviceTestParam> {
+ public:
+  DeviceListTest() : fixture_(GetParam()) {}
 
-TEST_P(DeviceListTest, ToFromProto) {
-  auto device_list = GetDevices({0, 1});
-  DeviceListProto proto = device_list->ToProto();
-  TF_ASSERT_OK_AND_ASSIGN(auto device_list_copy,
-                          DeviceList::FromProto(client(), proto));
-  EXPECT_EQ(*device_list_copy, *device_list);
-}
+  DeviceListRef GetDevices(absl::Span<const int> device_indices) {
+    return fixture_.GetDevices(device_indices);
+  }
+
+ private:
+  test_util::DeviceTestFixture fixture_;
+};
 
 TEST_P(DeviceListTest, AddressableDevices) {
   auto device_list = GetDevices({0, 1});
@@ -138,6 +141,37 @@ TEST_P(DeviceListTest, EqualityTest) {
 
 INSTANTIATE_TEST_SUITE_P(
     NumDevices, DeviceListTest,
+    testing::Values(test_util::DeviceTestParam{/*num_devices=*/2,
+                                               /*num_addressable_devices=*/1},
+                    test_util::DeviceTestParam{/*num_devices=*/2,
+                                               /*num_addressable_devices=*/2}));
+
+using DeviceListSerDesTestParam = test_util::DeviceTestParam;
+
+class DeviceListSerDesTest
+    : public testing::TestWithParam<DeviceListSerDesTestParam> {
+ public:
+  DeviceListSerDesTest() : fixture_(GetParam()) {}
+
+  Client* client() { return fixture_.client(); }
+  DeviceListRef GetDevices(absl::Span<const int> device_indices) {
+    return fixture_.GetDevices(device_indices);
+  }
+
+ private:
+  test_util::DeviceTestFixture fixture_;
+};
+
+TEST_P(DeviceListSerDesTest, ToFromProto) {
+  auto device_list = GetDevices({0, 1});
+  DeviceListProto proto = device_list->ToProto();
+  TF_ASSERT_OK_AND_ASSIGN(auto device_list_copy,
+                          DeviceList::FromProto(client(), proto));
+  EXPECT_EQ(*device_list_copy, *device_list);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    SerDesVersion_NumDevices, DeviceListSerDesTest,
     testing::Values(test_util::DeviceTestParam{/*num_devices=*/2,
                                                /*num_addressable_devices=*/1},
                     test_util::DeviceTestParam{/*num_devices=*/2,

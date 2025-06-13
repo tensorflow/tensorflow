@@ -20,6 +20,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
+#include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/custom_call_program.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
@@ -46,7 +46,21 @@ using ::testing::MatchesRegex;
 using ::testing::SizeIs;
 using ::tsl::testing::StatusIs;
 
-class CustomCallProgramSerDesTest : public test_util::DeviceTest {};
+using CustomCallProgramSerDesTestParam = test_util::DeviceTestParam;
+
+class CustomCallProgramSerDesTest
+    : public testing::TestWithParam<CustomCallProgramSerDesTestParam> {
+ public:
+  CustomCallProgramSerDesTest() : fixture_(GetParam()) {}
+
+  Client* client() { return fixture_.client(); }
+  DeviceListRef GetDevices(absl::Span<const int> device_indices) {
+    return fixture_.GetDevices(device_indices);
+  }
+
+ private:
+  test_util::DeviceTestFixture fixture_;
+};
 
 TEST_P(CustomCallProgramSerDesTest, RoundTrip) {
   Shape shape0({10, 20});

@@ -19,10 +19,12 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
+#include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array_spec.pb.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/device_test_util.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
@@ -34,7 +36,20 @@ namespace xla {
 namespace ifrt {
 namespace {
 
-class ArraySpecTest : public test_util::DeviceTest {};
+using ArraySpecTestParam = test_util::DeviceTestParam;
+
+class ArraySpecTest : public testing::TestWithParam<ArraySpecTestParam> {
+ public:
+  ArraySpecTest() : fixture_(GetParam()) {}
+
+  Client* client() { return fixture_.client(); }
+  DeviceListRef GetDevices(absl::Span<const int> device_indices) {
+    return fixture_.GetDevices(device_indices);
+  }
+
+ private:
+  test_util::DeviceTestFixture fixture_;
+};
 
 TEST_P(ArraySpecTest, SupportsAbslHash) {
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
