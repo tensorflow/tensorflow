@@ -41,6 +41,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/autotuning.pb.h"
@@ -1553,13 +1555,13 @@ INSTANTIATE_TEST_SUITE_P(
 
 template <typename T>
 void PrintHistogram(absl::string_view name, absl::Span<T> values,
-                    absl::Span<T> expected_values) {
+                    const std::vector<double>& expected_values) {
   // Build the histogram of the relative differences.
   std::vector<double> rel_errors;
   rel_errors.reserve(values.size());
   for (int i = 0; i < values.size(); ++i) {
-    double rel_difference = ((double)values[i] - (double)expected_values[i]) /
-                            std::abs((double)expected_values[i]);
+    double rel_difference =
+        ((double)values[i] - expected_values[i]) / std::abs(expected_values[i]);
     rel_errors.push_back(rel_difference);
   }
   double max_rel_error =
@@ -1598,6 +1600,9 @@ void PrintHistogram(absl::string_view name, absl::Span<T> values,
     }
     if (mean_rel_error >= bin_start && mean_rel_error < bin_end) {
       bar += " <--- mean";
+    }
+    if (bin_start <= 0.0 && bin_end >= 0.0) {
+      bar += " <--- zero";
     }
     std::string line =
         absl::StrFormat("%2d: [% 1.3e, % 1.3e) %7d %s\n", i, bin_start, bin_end,
@@ -1643,6 +1648,28 @@ class PrecisionTests
       public WithParamInterface<::testing::tuple<PC::Algorithm, Backend>> {
  public:
  protected:
+  std::vector<double> RunReferenceDot(
+      const std::vector<const Literal*>& fake_argument_ptrs, int m_size,
+      int n_size, int k_size) {
+    absl::Time start = absl::Now();
+    std::vector<double> ref_result(m_size * n_size, 0.0);
+    auto lhs = fake_argument_ptrs[0]->data<float>();
+    auto rhs = fake_argument_ptrs[1]->data<float>();
+    for (int m = 0; m < m_size; ++m) {
+      for (int n = 0; n < n_size; ++n) {
+        for (int k = 0; k < k_size; ++k) {
+          double lhs_val = lhs[m * k_size + k];
+          double rhs_val = rhs[n * k_size + k];
+          ref_result[m * n_size + n] += lhs_val * rhs_val;
+        }
+      }
+    }
+    auto duration = absl::Now() - start;
+    std::cerr << "Reference dot took " << duration << " for " << m_size << "x"
+              << n_size << "x" << k_size << "\n";
+    return ref_result;
+  }
+
   absl::Status CheckGemmPattern(const HloModule& module,
                                 absl::string_view pattern) {
     TF_ASSIGN_OR_RETURN(bool ok, RunFileCheck(module.ToString(), pattern));
@@ -1692,10 +1719,10 @@ class PrecisionTests
 
     ENTRY main {
       p0 = f32[${m},${k}]{1,0} parameter(0)
-      p1 = f32[${k},${n}]{1,0} parameter(1)
+      p1 = f32[${n},${k}]{1,0} parameter(1)
       ROOT %dot = f32[${m},${n}]{1,0} dot(p0, p1),
         lhs_contracting_dims={1},
-        rhs_contracting_dims={0},
+        rhs_contracting_dims={1},
         algorithm=${algorithm}
     }
   )";
@@ -1739,10 +1766,6 @@ TEST_P(PrecisionTests, PrecisionCheck) {
       GetSimpleDotModule(kLhsOuterDim, kRhsOuterDim, kContractingDim, algorithm,
                          backend));
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> ref_module,
-      GetSimpleDotModule(kLhsOuterDim, kRhsOuterDim, kContractingDim,
-                         PC::ALG_DOT_F32_F32_F32, backend));
-  TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> fake_arguments,
       MakeFakeArguments(test_module.get(), /*pseudo_random=*/true,
                         /*use_large_range=*/false,
@@ -1753,22 +1776,19 @@ TEST_P(PrecisionTests, PrecisionCheck) {
   MakeNonNegative(fake_arguments);
   std::vector<const Literal*> fake_argument_ptrs =
       GetLiteralPointers(fake_arguments);
-  TF_ASSERT_OK_AND_ASSIGN(
-      Literal ref_result,
-      test_runner().Execute(std::move(ref_module), fake_argument_ptrs,
-                            /*run_hlo_passes=*/false));
-
+  std::vector<double> ref_result = RunReferenceDot(
+      fake_argument_ptrs, kLhsOuterDim, kRhsOuterDim, kContractingDim);
   TF_ASSERT_OK_AND_ASSIGN(
       Literal test_result,
       test_runner().Execute(std::move(test_module), fake_argument_ptrs,
                             /*run_hlo_passes=*/false));
-
-  EXPECT_THAT(llvm::zip(test_result.data<float>(), ref_result.data<float>()),
+  std::cerr << "\n";
+  EXPECT_THAT(llvm::zip(test_result.data<float>(), ref_result),
               ::testing::Each(RelativeDifferenceIsWithin(
                   GetMaxRelErrorForSmallContractingDim(algorithm))));
   auto name =
       absl::StrCat(BackendToString(backend), "_", AlgorithmToString(algorithm));
-  PrintHistogram(name, test_result.data<float>(), ref_result.data<float>());
+  PrintHistogram(name, test_result.data<float>(), ref_result);
 }
 
 INSTANTIATE_TEST_SUITE_P(
