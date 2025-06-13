@@ -19,14 +19,10 @@ load(
     "internal_visibility",
     "tsl_copts",
 )
-
-# copybara:comment_begin
 load(
     "//xla/tsl:tsl.default.bzl",
     "if_cuda_tools",
 )
-
-# copybara:comment_end
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
@@ -1339,20 +1335,20 @@ cc_library(
     name = "subprocess_compilation",
     srcs = ["subprocess_compilation.cc"],
     hdrs = ["subprocess_compilation.h"],
-    # copybara:uncomment_begin
-    # data = [
-    # "@local_config_cuda//cuda:runtime_fatbinary",
-    # "@local_config_cuda//cuda:runtime_nvlink",
-    # "@local_config_cuda//cuda:runtime_ptxas",
-    # ],
-    # copybara:uncomment_end
-    # copybara:comment_begin
-    data = if_cuda_tools([
-        "@cuda_nvcc//:fatbinary",
-        "@cuda_nvcc//:nvlink",
-        "@cuda_nvcc//:ptxas",
-    ]),
-    # copybara:comment_end
+    data = if_google(
+        google_value = [
+            "@local_config_cuda//cuda:runtime_fatbinary",
+            "@local_config_cuda//cuda:runtime_nvlink",
+            "@local_config_cuda//cuda:runtime_ptxas",
+        ],
+        oss_value = if_cuda_tools(
+            [
+                "@local_config_cuda//cuda:runtime_fatbinary",
+                "@local_config_cuda//cuda:runtime_nvlink",
+                "@local_config_cuda//cuda:runtime_ptxas",
+            ],
+        ),
+    ),
     local_defines = if_windows(["PLATFORM_WINDOWS"]),
     deps = [
         ":cubin_or_ptx_image",
