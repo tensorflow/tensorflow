@@ -708,8 +708,8 @@ gpu::GpuExecutableRunOptions* StreamExecutorGpuClient::gpu_run_options() {
   absl::StatusOr<absl::flat_hash_map<GlobalDeviceId, uint64_t>> incarnations =
       GetLatestIncarnations();
   if (!incarnations.ok()) {
-    LOG(WARNING) << "Unable to set incarnations in GpuExecutableRunOptions: "
-                 << incarnations.status();
+    VLOG(1) << "Unable to set incarnations in GpuExecutableRunOptions: "
+            << incarnations.status();
   } else {
     gpu_run_options_->set_incarnations(*std::move(incarnations));
   }
