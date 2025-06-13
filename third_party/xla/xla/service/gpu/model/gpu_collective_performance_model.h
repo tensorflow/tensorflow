@@ -62,62 +62,9 @@ namespace gpu {
 
 class GpuPerformanceWithCollectiveModel : public GpuPerformanceModelBase {
  public:
-  // Different algorithms that can be used to perform the collective.
-  enum CollectiveAlgo {
-    RING = 0,
-    TREE,
-  };
-
-  // Table for max system bandwidths GB/s for using NCCL's low latency
-  // algorithm. This is used for intra-node estimate.
-  static constexpr std::array<double, 5> kLowLatencyMaxBandwidths = {
-      39.0 /* Volta */,      87.7 /* Ampere */,    141.0 /* Hopper */,
-      141.0 /* Blackwell */, 141.0 /* next-gen */,
-  };
-
-  // Max bandwidth in GB/s for ring low latency 128 algorithm per channel on a
-  // single-node
-  static constexpr std::array<double, 5> kPerChannelMaxRingLL128Bandwidths = {
-      20.0 /* Volta */,     20.0 /* Ampere */,   36.7 /* Hopper */,
-      36.7 /* Blackwell */, 36.7 /* next-gen */,
-  };
-
-  // Nvlink unidirectional bandwidth for different compute cap. Note this is per
-  // lane bandwidth.
-  static constexpr double kSm60NvlinkBandwidth = 18.0;
-  static constexpr double kSm70NvlinkBandwidth = 20.0;
-  static constexpr double kSm80NvlinkBandwidth = 20.0;
-  static constexpr double kSm90NvlinkBandwidth = 20.0;
-
-  // PCIE bandwidth for PCI Gen3 x16
-  static constexpr double kPciBandwidth = 12.0;
-
-  // Discount factor for ring algorithm
-  static constexpr double kRingAlgorithmDiscountFactor = 0.92;
-
-  // Different tiers for intra-node bandwidth.
-  static constexpr std::array<double, 13> kIntraNodeSpeeds = {
-      40.0, 30.0, 20.0, 18.0, 15.0, 12.0, 10.0, 9.0, 7.0, 6.0, 5.0, 4.0, 3.0};
-  // SM90 has different bandwidths.
-  static constexpr std::array<double, 9> kIntraNodeSpeedsSm90 = {
-      60.0, 40.0, 30.0, 24.0, 20.0, 15.0, 12.0, 6.0, 3.0};
-
-  // Maximum number of channels allowed by NCCL
-  static constexpr int64_t kMaxNumChannelsRing = 16;
-
-  // ll128 is by default enabled for Volta, Ampere and Hopper, ll128 by default
-  // launches 640 threads.
-  static constexpr int64_t kLL128NumThreads = 640;
-
-  static constexpr absl::Duration kNcclKernelLaunchOverhead =
-      absl::Microseconds(5);
-
   static absl::Duration ComputeCollectiveTime(
       const HloInstruction& instr, const GpuHloCostAnalysis* cost_analysis,
       const se::DeviceDescription& gpu_device_info);
-
-  // Returns NVLink bw in GB/s
-  static float GetNvlinkBw(se::CudaComputeCapability compute_capability);
 
   // Initialize nvml library.
   static bool InitNvml();

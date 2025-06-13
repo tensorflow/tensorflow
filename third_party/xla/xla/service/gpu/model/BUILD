@@ -140,6 +140,7 @@ xla_test(
         "a100",
         "h100",
         "b200",
+        "amdgpu_any",
     ],
     tags =
         if_google([
