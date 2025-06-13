@@ -252,7 +252,10 @@ config_setting(
 # Config setting for determining if we are building for Android.
 config_setting(
     name = "android",
-    constraint_values = ["@platforms//os:android"],
+    constraint_values = if_google(
+        ["@platforms//os:android"],
+        [],
+    ),
     values = if_oss(
         {"crosstool_top": "//external:android/crosstool"},
         {},
@@ -336,7 +339,10 @@ config_setting(
 
 config_setting(
     name = "emscripten",
-    constraint_values = ["@platforms//os:emscripten"],
+    constraint_values = if_google(
+        ["@platforms//os:emscripten"],
+        [],
+    ),
     values = if_oss(
         {"crosstool_top": "//external:android/emscripten"},
         {},
@@ -454,7 +460,10 @@ selects.config_setting_group(
 
 config_setting(
     name = "ios",
-    constraint_values = ["@platforms//os:ios"],
+    constraint_values = if_google(
+        ["@platforms//os:ios"],
+        [],
+    ),
     values = if_oss(
         {"apple_platform_type": "ios"},
         {},
@@ -497,7 +506,10 @@ config_setting(
 
 config_setting(
     name = "chromiumos",
-    constraint_values = ["@platforms//os:chromiumos"],
+    constraint_values = if_google(
+        ["@platforms//os:chromiumos"],
+        [],
+    ),
     values = if_oss(
         {"crosstool_top": "//external:android/chromiumos"},
         {},
