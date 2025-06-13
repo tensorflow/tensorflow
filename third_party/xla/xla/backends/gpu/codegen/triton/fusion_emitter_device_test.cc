@@ -17,7 +17,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -28,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "Eigen/Core"
@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status_matchers.h"
@@ -297,6 +298,273 @@ ENTRY entry_computation {
           "num_warps":"2",
           "num_ctas":"1",
           "num_stages":"1"}}}
+})";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
+class TritonEmitterTestWithOffsetParam
+    : public TritonEmitterTest,
+      public ::testing::WithParamInterface<int32_t> {};
+
+using EmitDynamicSliceTest = TritonEmitterTestWithOffsetParam;
+
+INSTANTIATE_TEST_SUITE_P(DynamicSliceSuite, EmitDynamicSliceTest,
+                         ::testing::Values(0, 1, 10, 100),
+                         [](const ::testing::TestParamInfo<int32_t>& info) {
+                           return absl::StrCat("offset_", info.param);
+                         });
+
+TEST_P(EmitDynamicSliceTest, LowerDynamicSliceWithSingleDimension) {
+  int32_t offset = GetParam();
+  constexpr absl::string_view kHloText = R"(
+f {
+  p0 = f32[64] parameter(0)
+  c0 = s32[] parameter(1)
+  ROOT r = f32[10] dynamic-slice(p0, c0), dynamic_slice_sizes={10}
+}
+
+ENTRY entry_computation {
+  p0 = f32[64] parameter(0)
+  p1 = s32[] parameter(1)
+  ROOT fusion = f32[10] fusion(p0, p1), kind=kCustom, calls=f,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{
+      "output_tiles":[{"sizes":["32"]}],
+        "num_warps":1,"num_ctas":1,"num_stages":1}}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> parameters,
+                          MakeFakeArguments(module.get()));
+  parameters[1].Set<int32_t>({}, offset);
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), LiteralUtil::MakePointers(parameters), kExactMatch));
+}
+
+TEST_P(EmitDynamicSliceTest, LowerDynamicSliceOfWithDimensions) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+f {
+  p0 = s32[64, 32] parameter(0)
+  off0 = s32[] parameter(1)
+  off1 = s32[] parameter(2)
+  ROOT r = s32[10, 5] dynamic-slice(p0, off0, off1), dynamic_slice_sizes={10, 5}
+}
+
+ENTRY entry_computation {
+  p0 = s32[64, 32] parameter(0)
+  p1 = s32[] parameter(1)
+  p2 = s32[] parameter(2)
+  ROOT fusion = s32[10, 5] fusion(p0, p1, p2), kind=kCustom, calls=f,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{
+      "output_tiles":[{"sizes":["32", "8"]}],
+        "num_warps":1,"num_ctas":1,"num_stages":1}}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> parameters,
+                          MakeFakeArguments(module.get()));
+  int32_t offset = GetParam();
+  parameters[1].Set<int32_t>({}, offset);
+  parameters[2].Set<int32_t>({}, offset);
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), LiteralUtil::MakePointers(parameters), kExactMatch));
+}
+
+TEST_P(EmitDynamicSliceTest, LowerDynamicSliceCoveringWholeInput) {
+  constexpr absl::string_view kHloText = R"(
+f {
+  p0 = s32[64, 32] parameter(0)
+  c0 = s32[] parameter(1)
+  c1 = s32[] parameter(2)
+  ROOT r = s32[10, 32] dynamic-slice(p0, c0, c1), dynamic_slice_sizes={10, 32}
+}
+
+ENTRY entry_computation {
+  p0 = s32[64, 32] parameter(0)
+  p1 = s32[] parameter(1)
+  p2 = s32[] parameter(2)
+  ROOT fusion = s32[10, 32] fusion(p0, p1, p2), kind=kCustom, calls=f,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{
+      "output_tiles":[{"sizes":["32", "8"]}],
+        "num_warps":1,"num_ctas":1,"num_stages":1}}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> parameters,
+                          MakeFakeArguments(module.get()));
+  int32_t offset = GetParam();
+  parameters[1].Set<int32_t>({}, offset);
+  parameters[2].Set<int32_t>({}, offset);
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), LiteralUtil::MakePointers(parameters), kExactMatch));
+}
+
+TEST_P(EmitDynamicSliceTest, LowerDynamicSliceWithConstantOffset) {
+  int32_t offset = GetParam();
+  std::string kHloText =
+      absl::StrReplaceAll(R"(
+f {
+  p0 = s32[64, 32, 16] parameter(0)
+  c50 = s32[] constant(50)
+  p1 = s32[] parameter(1)
+  c0 = s32[] constant(_offset_)
+  ROOT r = s32[10, 10, 8] dynamic-slice(p0, c50, p1, c0), dynamic_slice_sizes={10, 10, 8}
+}
+
+ENTRY entry_computation {
+  p0 = s32[64, 32, 16] parameter(0)
+  p1 = s32[] parameter(1)
+  ROOT fusion = s32[10, 10, 8] fusion(p0, p1), kind=kCustom, calls=f,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{
+      "output_tiles":[{"sizes":["32", "8", "8"]}],
+        "num_warps":1,"num_ctas":1,"num_stages":1}}}
+})",
+                          {{"_offset_", absl::StrCat(offset)}});
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
+TEST_P(EmitDynamicSliceTest, LowerDynamicSliceOfDot) {
+  const std::string kHloText = R"(
+lhs {
+  ROOT p0 = f32[64,32] parameter(0)
+}
+
+rhs {
+  ROOT p0 = f32[64,512] parameter(0)
+}
+
+fdot {
+  p0 = f32[64,32] parameter(0)
+  p1 = f32[64,512] parameter(1)
+  p2 = s32[] parameter(2)
+  lhs = f32[64,32] fusion(p0), kind=kCustom, calls=lhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["32", "16"]}]
+      }
+    }
+  }
+  rhs = f32[64,512] fusion(p1), kind=kCustom, calls=rhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["32", "64"]}]
+      }
+    }
+  }
+  gemm = f32[32,512] dot(lhs, rhs),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0},
+    algorithm=dot_f32_f32_f32
+  c0 = s32[] constant(0)
+  ROOT d = f32[8,16] dynamic-slice(gemm, c0, p2), dynamic_slice_sizes={8,16}
+}
+
+ENTRY entry {
+  p0 = pred[64,32] parameter(0)
+  p1 = pred[64,512] parameter(1)
+  p2 = s32[] parameter(2)
+  p0_f32 = f32[64,32] convert(p0)
+  p1_f32 = f32[64,512] convert(p1)
+  ROOT fusion = f32[8,16] fusion(p0_f32, p1_f32, p2),
+    kind=kCustom, calls=fdot, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16", "64"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> parameters,
+                          MakeFakeArguments(module.get()));
+  int32_t offset = GetParam();
+  parameters[2].Set<int32_t>({}, offset);
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), LiteralUtil::MakePointers(parameters), kExactMatch));
+}
+
+TEST_F(TritonEmitterTest, LowerDynamicSliceOfAdd) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+f {
+  p0 = s32[64] parameter(0)
+  p1 = s32[] parameter(1)
+  c7 = s32[] constant(7)
+  add = s32[] add(c7, p1)
+  ROOT r = s32[10] dynamic-slice(p0, add), dynamic_slice_sizes={10}
+}
+
+ENTRY entry_computation {
+  p0 = s32[64] parameter(0)
+  p1 = s32[] parameter(1)
+  ROOT fusion = s32[10] fusion(p0, p1), kind=kCustom, calls=f,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{
+      "output_tiles":[{"sizes":["32"]}],
+        "num_warps":1,"num_ctas":1,"num_stages":1}}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> parameters,
+                          MakeFakeArguments(module.get()));
+  parameters[1].Set<int32_t>({}, 13);
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), LiteralUtil::MakePointers(parameters), kExactMatch));
+}
+
+TEST_F(TritonEmitterTest, LowerDynamicSliceWithOffsetAndDataFromTheSameInput) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+f {
+  p0 = f32[64] parameter(0)
+  c0 = s32[64] convert(p0)
+  slice1 = s32[1] slice(c0), slice={[0:1]}
+  off = s32[] reshape(slice1)
+  ROOT r = s32[10] dynamic-slice(c0, off), dynamic_slice_sizes={10}
+}
+
+ENTRY entry_computation {
+  p0 = f32[64] parameter(0)
+  ROOT fusion = s32[10] fusion(p0), kind=kCustom, calls=f,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{
+      "output_tiles":[{"sizes":["32"]}],
+        "num_warps":1,"num_ctas":1,"num_stages":1}}}
+})";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+}
+
+TEST_F(TritonEmitterTest, LowerDynamicSliceOfDynamicSlice) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+f {
+  p0 = f32[64] parameter(0)
+  c0 = s32[64] convert(p0)
+  slice1 = s32[1] slice(c0), slice={[0:1]}
+  off = s32[] reshape(slice1)
+  d1 = s32[20] dynamic-slice(c0, off), dynamic_slice_sizes={20}
+  slice2 = s32[1] slice(d1), slice={[1:2]}
+  off2 = s32[] reshape(slice2)
+  ROOT d2 = s32[10] dynamic-slice(d1, off2), dynamic_slice_sizes={10}
+}
+
+ENTRY entry_computation {
+  p0 = f32[64] parameter(0)
+  ROOT fusion = s32[10] fusion(p0), kind=kCustom, calls=f,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{
+      "output_tiles":[{"sizes":["32"]}],
+        "num_warps":1,"num_ctas":1,"num_stages":1}}}
 })";
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }

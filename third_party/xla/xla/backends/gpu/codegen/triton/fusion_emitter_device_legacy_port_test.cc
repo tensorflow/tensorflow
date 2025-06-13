@@ -294,9 +294,11 @@ CHECK: tt.dot {{.*}} : tensor<16x32xf32> * tensor<32x64xf32> -> tensor<16x64xf32
 )"));
 }
 
-// TODO(b/393299275): this requires adding support for dynamic-slice in the
-// generic Triton emitter.
+// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
 TEST_F(TritonTest, DISABLED_CodegenDynamicSliceWithCorrectOffsets) {
+  // TODO(b/417172838): we now should support non-majormost dimensions, port
+  // this test to fusion_emitter_device_test with that support.
+
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
   // because we don't support dynamic slice on those dimensions.
   constexpr absl::string_view kHloText = R"(
@@ -325,27 +327,27 @@ ENTRY e {
          "fusion_backend_config":{
            "kind":"__triton_gemm","triton_gemm_config":{
              "block_m":"32","block_n":"32","block_k":"32","split_k":"1",
-             "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
+             "num_stages":"1","num_warps":"1","num_ctas":"1"}}}
 })";
-
-  ASSERT_THAT(
-      CreateTritonIrAndFileCheckForDot(this, kHloText, "triton_gemm", R"(
-CHECK:     tt.func @triton_fn({{[^,]*}}, %[[DYNAMIC_SLICE_INPUT:[^:]*]]: !tt.ptr<f32> {{[^,]*}}, %[[START_INDEX0_PTR:[^:]*]]: !tt.ptr<i32>
-CHECK-DAG:   %[[C0_i32:.*]] = arith.constant 0 : i32
-CHECK-DAG:   %[[C1_i64:.*]] = arith.constant 1 : i64
-CHECK-DAG:   %[[C2_i64:.*]] = arith.constant 2 : i64
-CHECK-DAG:   %[[C3_i32:.*]] = arith.constant 3 : i32
-CHECK-DAG:   %[[C5_i32:.*]] = arith.constant 5 : i32
-CHECK-DAG:   %[[C5_i64:.*]] = arith.constant 5 : i64
-CHECK-DAG:   %[[START_INDEX0:.*]] = tt.load %[[START_INDEX0_PTR]] : !tt.ptr<i32>
-CHECK-DAG:   %[[SEMI_CLAMPED_START_INDEX0:.*]] = arith.maxsi %[[START_INDEX0]], %[[C0_i32]] : i32
-CHECK-DAG:   %[[CLAMPED_START_INDEX0:.*]] = arith.minsi %[[SEMI_CLAMPED_START_INDEX0]], %[[C3_i32]] : i32
-CHECK-DAG:   %[[ROW_OFFSET:.*]] = arith.muli %[[CLAMPED_START_INDEX0]], %[[C5_i32]] : i32
-CHECK-DAG:   %[[ROW_OFFSET_i64:.*]] = arith.extsi %[[ROW_OFFSET]] : i32 to i64
-CHECK-DAG:   %[[ROW_LIMIT:.*]] = arith.addi %[[ROW_OFFSET_i64]], %[[C5_i64]] : i64
-CHECK-DAG:   tt.make_tensor_ptr %[[DYNAMIC_SLICE_INPUT]], [%[[C2_i64]], %[[ROW_LIMIT]]], [%[[C1_i64]], %[[C2_i64]]], [%[[C0_i32]], %[[ROW_OFFSET]]]
-)"),
-      tsl::testing::IsOk());
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(kHloText));
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
+                               ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+  TF_EXPECT_OK(
+      CreateTritonIrAndFileCheck(*module_and_metadata.computation,
+                                 module_and_metadata.block_level_parameters, R"(
+    CHECK: func.func @triton_fn(%[[ARG0:.*]]: tensor<2x4xf32>, %[[ARG1:.*]]: tensor<4x5x2xf32>, %[[ARG2:.*]]: tensor<i32>, %[[ARG3:.*]]: tensor<i32>, %[[ARG4:.*]]: tensor<i32>, %[[ARG5:.*]]: tensor<4x5xf32>) -> tensor<4x5xf32> {
+    CHECK-DAG: %[[c3:.*]] = arith.constant 3 : i32
+    CHECK-DAG: %[[c0:.*]] = arith.constant 0 : i32
+    CHECK-DAG: triton_xla.extract %[[ARG0]][0, 0] [32, 32] [1, 1]
+    CHECK: %[[V2:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
+    CHECK: %[[CLAMP0:.*]] = arith.maxsi %[[V2]], %[[c0]] : i32
+    CHECK: %[[CLAMP1:.*]] = arith.minsi %[[CLAMP0]], %[[c3]] : i32
+    CHECK: %[[OFFSET:.*]] = arith.index_castui %[[CLAMP1]] : i32 to index
+    CHECK: triton_xla.extract %[[ARG1]][%[[OFFSET]], 0, 0] [1, 32, 32] [0, 1, 1]
+    CHECK: tt.dot
+  )"));
 }
 
 TEST_F(TritonGemmTest, DoNotUseTensorCoresWithNonDefaultPrecision) {
@@ -928,8 +930,7 @@ e {
                                ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-// TODO(b/393299275): this requires adding support for dynamic-slice in the
-// generic Triton emitter.
+// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
 TEST_F(TritonGemmTest, DISABLED_DynamicSliceIsSupportedInLhsEndToEnd) {
   // The select is used to restrict the start index to values that make sense.
   // If it was constant, then the dynamic-slice would be optimized to slice. It
@@ -964,8 +965,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
-// TODO(b/393299275): this requires adding support for dynamic-slice in the
-// generic Triton emitter.
+// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
 TEST_F(TritonGemmTest, DISABLED_DynamicSliceIsSupportedInRhs) {
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
   // because we don't support dynamic slice on those dimensions.
@@ -996,21 +996,24 @@ ENTRY e {
              "block_m":"32","block_n":"32","block_k":"32","split_k":"1",
              "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
 })";
-
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(kHloText));
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
+                               ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
 class TritonGemmDynamicSliceClampingTest
     : public TritonTest,
       public ::testing::WithParamInterface<int> {};
 
-// TODO(b/393299275): this requires adding support for dynamic-slice in the
-// generic Triton emitter.
+// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
 TEST_P(TritonGemmDynamicSliceClampingTest,
        DISABLED_DynamicSliceIsSupportedWhenTheStartIndexNeedsClamping) {
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
   // because we don't support dynamic slice on those dimensions.
+  // TODO(b/417172838): we now should support non-majormost dimensions, port
+  // this test to fusion_emitter_device_test with that support.
 
   const std::string hlo_text = absl::Substitute(R"(
 HloModule m
@@ -1040,9 +1043,11 @@ ENTRY e {
              "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
 })",
                                                 GetParam());
-
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      hlo_text, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(hlo_text));
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
+                               ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
 std::string OffsetParamToString(const ::testing::TestParamInfo<int>& data) {
@@ -1053,8 +1058,7 @@ std::string OffsetParamToString(const ::testing::TestParamInfo<int>& data) {
 INSTANTIATE_TEST_SUITE_P(All, TritonGemmDynamicSliceClampingTest,
                          ::testing::Values(-100, 3, 999), OffsetParamToString);
 
-// TODO(b/393299275): this requires adding support for dynamic-slice in the
-// generic Triton emitter.
+// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
 TEST_F(TritonGemmTest,
        DISABLED_DynamicSliceOfMajormostContractingDimIsSupported) {
   // Tests that dynamic-slice works on the majormost dimension even if that
@@ -1088,18 +1092,21 @@ ENTRY e {
              "block_m":"32","block_n":"32","block_k":"32","split_k":"1",
              "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
 })";
-
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(kHloText));
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
+                               ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
-// TODO(b/393299275): this requires adding support for dynamic-slice in the
-// generic Triton emitter.
+// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
 TEST_F(TritonGemmTest, DISABLED_DynamicSliceOfMajormostBatchDimIsSupported) {
   // Tests that dynamic-slice works on the majormost dimension even if that
   // dimension is a batch.
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
   // because we don't support dynamic slice on those dimensions.
+  // TODO(b/417172838): we now should support non-majormost dimensions, port
+  // this test to fusion_emitter_device_test with that support.
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -1130,12 +1137,14 @@ ENTRY e {
              "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
 })";
 
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(kHloText));
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
+                               ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
-// TODO(b/393299275): this requires adding support for dynamic-slice in the
-// generic Triton emitter.
+// TODO(b/417172838): enable after enabling dynamic slice in support.cc.
 TEST_F(TritonGemmTest,
        DISABLED_DynamicSliceSingleDimensionIntoReshapeIsSupported) {
   // This directly tests the targeted use case (b/307922364) of iterating over
@@ -1172,9 +1181,11 @@ ENTRY e {
              "block_m":"32","block_n":"32","block_k":"32","split_k":"1",
              "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
 })";
-
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(kHloText));
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
+                               ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be

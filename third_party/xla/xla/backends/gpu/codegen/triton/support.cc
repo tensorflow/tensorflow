@@ -610,6 +610,11 @@ CodegenDecision IsTritonSupportedInstructionImpl(
     }
     case HloOpcode::kParameter:
       return CodegenDecision::Allow();
+    case HloOpcode::kDynamicSlice:
+      // TODO(b/417172838): enable this once we confirm that no benchmarks were
+      // regressed.
+      return CodegenDecision::Forbid(
+          "dynamic slice is supported but not enabled yet");
     case HloOpcode::kBitcast:
     case HloOpcode::kBroadcast:
     case HloOpcode::kReshape:
@@ -650,7 +655,6 @@ namespace internal {
 bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
   switch (opcode) {
     case HloOpcode::kDynamicReshape:
-    case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kGather:
     case HloOpcode::kPad:
