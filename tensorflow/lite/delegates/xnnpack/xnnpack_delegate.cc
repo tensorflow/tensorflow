@@ -1053,8 +1053,8 @@ class Subgraph {
     for (int t : tensors) {
       const TfLiteTensor* tensor = &context->tensors[t];
 
+      const void* data = nullptr;
       uint32_t flags = 0;
-      bool is_external = false;
       if (tensor->type == kTfLiteResource) {
         // We should never see a resource tensor if we are not handling variable
         // ops.
@@ -1075,25 +1075,8 @@ class Subgraph {
         flags = resource->GetValueFlags();
         if (flags == 0) continue;
         tensor = &context->tensors[resource->GetProxyValue()];
-        is_external = true;
         externals.insert(t);
-        if (flags & XNN_VALUE_FLAG_EXTERNAL_OUTPUT) {
-          // Treat this as an output so it gets reshaped?
-          external_outputs.push_back(t);
-        }
-      }
-
-      const xnn_datatype datatype = GetXNNPackDatatype(context, *tensor, t);
-      if (datatype == xnn_datatype_invalid) {
-        TF_LITE_KERNEL_LOG(
-            context,
-            "unsupported datatype (%s) of tensor %d in XNNPACK delegate",
-            TfLiteTypeGetName(tensor->type), t);
-        return nullptr;
-      }
-
-      const void* data = nullptr;
-      if (!is_external) {
+      } else {
         if (tensor->allocation_type == kTfLiteMmapRo) {
           data = tensor->data.raw_const;
         } else {
@@ -1103,19 +1086,18 @@ class Subgraph {
             data = it->second.data();
           }
         }
-      }
-      if (inputs.count(t) != 0) {
-        flags |= XNN_VALUE_FLAG_EXTERNAL_INPUT;
-        if (data == nullptr) {
-          externals.insert(t);
-          external_inputs.push_back(t);
+        if (inputs.count(t) != 0) {
+          flags |= XNN_VALUE_FLAG_EXTERNAL_INPUT;
+          if (data == nullptr) {
+            externals.insert(t);
+            external_inputs.push_back(t);
+          }
+        }
+        if (outputs.count(t) != 0) {
+          flags |= XNN_VALUE_FLAG_EXTERNAL_OUTPUT;
+          external_outputs.push_back(t);
         }
       }
-      if (outputs.count(t) != 0) {
-        flags |= XNN_VALUE_FLAG_EXTERNAL_OUTPUT;
-        external_outputs.push_back(t);
-      }
-
       uint32_t xnnpack_id = XNN_INVALID_VALUE_ID;
       if (DefineXNNPACKValue(context, subgraph.get(), *tensor, t, data, flags,
                              &xnnpack_id) != kTfLiteOk) {
