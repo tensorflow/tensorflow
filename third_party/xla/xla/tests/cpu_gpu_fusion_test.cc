@@ -24,6 +24,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "xla/xla.pb.h"
+
 #define EIGEN_USE_THREADS
 
 #include "xla/tests/xla_test_backend_predicates.h"

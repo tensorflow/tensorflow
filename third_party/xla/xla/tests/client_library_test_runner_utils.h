@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/array2d.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/tests/test_utils.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 // Create scalar operations for use in reductions.

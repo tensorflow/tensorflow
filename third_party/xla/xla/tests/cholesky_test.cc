@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <limits>
 #include <memory>
-#include <numeric>
+#include <tuple>
 #include <vector>
 
-#include "absl/status/statusor.h"
 #include "xla/array2d.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/lib/matrix.h"
@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/tests/test_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {

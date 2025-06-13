@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <string>
 #include <tuple>
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "absl/strings/substitute.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_macros.h"
