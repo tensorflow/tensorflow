@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/hlo_operand_index.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -46,35 +47,6 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
-
-// Identifies one array input of an HloInstruction.
-struct HloOperandIndex {
-  using MyTuple = std::tuple<int64_t, const ShapeIndex&>;
-
-  template <typename H>
-  friend H AbslHashValue(H h, const HloOperandIndex& hlo_operand_index) {
-    return H::combine(std::move(h), hlo_operand_index.ToTuple());
-  }
-
-  friend bool operator==(const HloOperandIndex& lhs,
-                         const HloOperandIndex& rhs) {
-    return lhs.ToTuple() == rhs.ToTuple();
-  }
-
-  bool operator!=(const HloOperandIndex& other) const {
-    return !(*this == other);
-  }
-
-  MyTuple ToTuple() const {
-    return std::make_tuple(operand_number, std::cref(operand_index));
-  }
-
-  // The operand number in which the array value appears.
-  int64_t operand_number;
-
-  // The shape index within the operand in which the array value appears.
-  ShapeIndex operand_index;
-};
 
 // Analysis which identifies all HLO values and their uses in an HLO module.
 class HloDataflowAnalysis {

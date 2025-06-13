@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/frontend_attributes.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
+#include "xla/hlo/analysis/hlo_operand_index.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -1041,9 +1042,9 @@ absl::Status AddCopiesForNonCopyableTransitionsRotatedCase(
 // Adds the needed copies for transitioning into and out of non-copyable values,
 // to prevent overlapping live times of buffers. This is needed when the unique
 // user of the non-copyable op is rotated (also called pipelined) in a
-// while-loop. In particlar, if a non-copyable op has an input aliasing with its
-// output, such as async Send, we make a copy of its input to transition from
-// copyable to non-copyable. If a non-copyable op's unique user produces an
+// while-loop. In particular, if a non-copyable op has an input aliasing with
+// its output, such as async Send, we make a copy of its input to transition
+// from copyable to non-copyable. If a non-copyable op's unique user produces an
 // output aliasing with its input, such as async Recv, we make a copy of the
 // output produced by the unique user, to transition out of non-copyable to
 // copyable. We also add control-flow edges between the copies and the

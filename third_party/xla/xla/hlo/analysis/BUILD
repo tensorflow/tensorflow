@@ -195,10 +195,19 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "hlo_operand_index",
+    hdrs = ["hlo_operand_index.h"],
+    deps = [
+        "//xla:shape_util",
+    ],
+)
+
+cc_library(
     name = "hlo_dataflow_analysis",
     srcs = ["hlo_dataflow_analysis.cc"],
     hdrs = ["hlo_dataflow_analysis.h"],
     deps = [
+        ":hlo_operand_index",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
@@ -231,6 +240,7 @@ xla_cc_test(
     srcs = ["hlo_dataflow_analysis_test.cc"],
     deps = [
         ":hlo_dataflow_analysis",
+        ":hlo_operand_index",
         ":hlo_ordering",
         "//xla:comparison_util",
         "//xla:literal_util",
@@ -385,6 +395,7 @@ cc_library(
     hdrs = ["hlo_alias_analysis.h"],
     deps = [
         ":hlo_dataflow_analysis",
+        ":hlo_operand_index",
         ":hlo_ordering",
         "//xla:comparison_util",
         "//xla:shape_util",
