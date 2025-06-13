@@ -1494,12 +1494,26 @@ std::vector<const Literal*> GetLiteralPointers(
   return fake_argument_ptrs;
 }
 
+enum class Backend { kTriton, kBlas };
+
+std::string BackendToString(Backend backend) {
+  switch (backend) {
+    case Backend::kTriton:
+      return "triton";
+    case Backend::kBlas:
+      return "blas";
+    default:
+      CHECK(false) << "Uncovered backend. Please fix.";
+  }
+}
+
 // Returns the maximum relative error for the algorithm, assuming that the
 // majority of the error comes from rounding to narrower type, and not error
 // due to floating point arithmetic calculation. I.e., we assume that:
 //    <contracting dimension> << <narrowing error> / <fp arithmetic error>
 // E.g., for BF16xBF16 -> F32, this would mean k << 2^-7 / 2^-23 = 64k
-double GetMaxRelErrorForSmallContractingDim(PC::Algorithm algorithm) {
+double GetMaxRelErrorForSmallContractingDim(Backend backend,
+                                            PC::Algorithm algorithm) {
   // With `ulp` denoting the "unit in the last place", and proper floating point
   // implementation, the test does k multiplications and then k-1 additions per
   // output element. However, we also get an initial error per element due to
@@ -1528,7 +1542,7 @@ double GetMaxRelErrorForSmallContractingDim(PC::Algorithm algorithm) {
   //
   // Thus, they do not actually depend on k, since f32 has much higher precision
   // than the rounding mode.
-  const absl::flat_hash_map<PC::Algorithm, double> kMaxMeanRelError = {
+  const absl::flat_hash_map<PC::Algorithm, double> kMaxMeanRelErrorTriton = {
       {PC::ALG_DOT_BF16_BF16_F32, 1.6e-2},
       {PC::ALG_DOT_TF32_TF32_F32, 2.0e-3},
       // TODO: b/407744579 - Understand what the expected error is with various
@@ -1538,9 +1552,27 @@ double GetMaxRelErrorForSmallContractingDim(PC::Algorithm algorithm) {
       {PC::ALG_DOT_BF16_BF16_F32_X6, 4e-7},
       {PC::ALG_DOT_BF16_BF16_F32_X9, 4e-7},
       {PC::ALG_DOT_TF32_TF32_F32_X3, 5e-7}};
-  auto max_rel_error_it = kMaxMeanRelError.find(algorithm);
-  CHECK(max_rel_error_it != kMaxMeanRelError.end());
-  return max_rel_error_it->second;
+
+  const absl::flat_hash_map<PC::Algorithm, double> kMaxMeanRelErrorBlas = {
+      {PC::ALG_DOT_BF16_BF16_F32, 3.3e-3},
+      {PC::ALG_DOT_TF32_TF32_F32, 4.1e-4},
+      {PC::ALG_DOT_BF16_BF16_F32_X3, 2.4e-5},
+      {PC::ALG_DOT_TF32_TF32_F32_X3, 5e-7},
+      {PC::ALG_DOT_BF16_BF16_F32_X6, 1.6e-7},
+      {PC::ALG_DOT_BF16_BF16_F32_X9, 6e-8}};
+  if (backend == Backend::kTriton) {
+    auto max_rel_error_it = kMaxMeanRelErrorTriton.find(algorithm);
+    CHECK(max_rel_error_it != kMaxMeanRelErrorTriton.end());
+    return max_rel_error_it->second;
+  }
+
+  if (backend == Backend::kBlas) {
+    auto max_rel_error_it = kMaxMeanRelErrorBlas.find(algorithm);
+    CHECK(max_rel_error_it != kMaxMeanRelErrorBlas.end());
+    return max_rel_error_it->second;
+  }
+
+  CHECK(false) << "Uncovered backend. Please fix.";
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -1627,19 +1659,6 @@ void PrintHistogram(absl::string_view name, absl::Span<T> values,
   std::cerr << "stats: " << name << " "
             << absl::StrFormat("mean rel error, %1.3e\n", mean_rel_error);
   std::cerr << "stats: \n";
-}
-
-enum class Backend { kTriton, kBlas };
-
-std::string BackendToString(Backend backend) {
-  switch (backend) {
-    case Backend::kTriton:
-      return "triton";
-    case Backend::kBlas:
-      return "blas";
-    default:
-      CHECK(false) << "Uncovered backend. Please fix.";
-  }
 }
 
 class PrecisionTests
@@ -1785,7 +1804,7 @@ TEST_P(PrecisionTests, PrecisionCheck) {
   std::cerr << "\n";
   EXPECT_THAT(llvm::zip(test_result.data<float>(), ref_result),
               ::testing::Each(RelativeDifferenceIsWithin(
-                  GetMaxRelErrorForSmallContractingDim(algorithm))));
+                  GetMaxRelErrorForSmallContractingDim(backend, algorithm))));
   auto name =
       absl::StrCat(BackendToString(backend), "_", AlgorithmToString(algorithm));
   PrintHistogram(name, test_result.data<float>(), ref_result);
