@@ -159,8 +159,9 @@ absl::Status BlasLt::Init() {
       m.leading_dim_stride));
   // Wrap hipblas handle immediately, so it is cleaned up if an error occurs.
   BlasLt::MatrixLayout layout(hip_layout, hipblas_data_type_);
-  if (m.order != gpu::MatrixLayout::Order::kColumnMajor)
+  if (m.order != gpu::MatrixLayout::Order::kColumnMajor) {
     return absl::InternalError("HipblasLT does not support row-major matrices");
+  }
   TF_RETURN_IF_ERROR(SetAttr(hip_layout, HIPBLASLT_MATRIX_LAYOUT_BATCH_COUNT,
                              static_cast<int32_t>(m.batch_size)));
 

@@ -84,10 +84,10 @@ hipDataType AsHipblasDataType(blas::DataType type) {
 
 hipblasComputeType_t AsHipblasComputeType(blas::ComputationType type) {
   if (type == blas::ComputationType::kF32 ||
-      type == blas::ComputationType::kTF32AsF32)
+      type == blas::ComputationType::kTF32AsF32) {
     return HIPBLAS_COMPUTE_32F;
-  else
-    LOG(FATAL) << "unsupported hipblaslt computation type";
+  }
+  LOG(FATAL) << "unsupported hipblaslt computation type";
 }
 
 hipblasOperation_t AsHipblasOperation(blas::Transpose trans) {

@@ -60,9 +60,8 @@ class ROCMFftPlan : public fft::Plan {
   hipfftHandle GetPlan() const {
     if (IsInitialized()) {
       return plan_;
-    } else {
-      LOG(FATAL) << "Try to get hipfftHandle value before initialization.";
     }
+    LOG(FATAL) << "Try to get hipfftHandle value before initialization.";
   }
 
   // Initialize function for batched plan

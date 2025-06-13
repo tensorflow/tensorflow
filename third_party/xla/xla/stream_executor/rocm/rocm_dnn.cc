@@ -579,10 +579,12 @@ uint64_t GetHashValue(miopenTensorDescriptor_t tensor_desc) {
   wrap::miopenGetTensorDescriptor(tensor_desc, &datatype, dims, strides);
 
   uint64_t hash_value = tsl::hash<int>()(datatype);
-  for (int dim : dims)
+  for (int dim : dims) {
     hash_value = tsl::Hash64Combine(hash_value, tsl::hash<int>()(dim));
-  for (int stride : strides)
+  }
+  for (int stride : strides) {
     hash_value = tsl::Hash64Combine(hash_value, tsl::hash<int>()(stride));
+  }
 
   return hash_value;
 }
@@ -804,7 +806,9 @@ MIOpenSupport::MIOpenSupport(StreamExecutor* parent) : parent_(parent) {
   bool enable_pooling_cache = false;
   TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_ROCM_BW_POOL_CACHE", false,
                                       &enable_pooling_cache));
-  if (enable_pooling_cache) m_pooling_cache_allowed = true;
+  if (enable_pooling_cache) {
+    m_pooling_cache_allowed = true;
+  }
 }
 
 absl::Status MIOpenSupport::Init() {
@@ -876,7 +880,9 @@ struct ScopedDescriptor {
   }
 
   ~ScopedDescriptor() {
-    if (handle_ == nullptr) return;
+    if (handle_ == nullptr) {
+      return;
+    }
 
     auto status = miDestroyObject(
         handle_);  // wrap::miopenDestroyTensorDescriptor(handle_);
@@ -1184,55 +1190,54 @@ struct ScopedActivationDescriptor
       return absl::InternalError(
           "call to miopenCreateActivationDescriptor failed: " +
           ToString(status));
-    } else {
-      switch (activation_mode) {
-        case dnn::ActivationMode::kNone:
-          obj.miopen_activation_mode_ = miopenActivationPASTHRU;
-          break;
-
-        case dnn::ActivationMode::kSigmoid:
-          obj.miopen_activation_mode_ = miopenActivationLOGISTIC;
-          break;
-
-        case dnn::ActivationMode::kRelu:
-        case dnn::ActivationMode::kReluX:
-          obj.miopen_activation_mode_ = miopenActivationRELU;
-          break;
-
-        case dnn::ActivationMode::kRelu6:
-          obj.miopen_activation_mode_ = miopenActivationRELU;
-          obj.alpha_ = 6.0;
-          break;
-
-        case dnn::ActivationMode::kTanh:
-          obj.miopen_activation_mode_ = miopenActivationTANH;
-          break;
-
-        case dnn::ActivationMode::kElu:
-          obj.miopen_activation_mode_ = miopenActivationELU;
-          break;
-
-        case dnn::ActivationMode::kLeakyRelu:
-          obj.miopen_activation_mode_ = miopenActivationLEAKYRELU;
-          break;
-          // Check with MIOpen re: support: kBandPass, kGeluExact
-
-        default:
-          VLOG(1) << "Activation mode ("
-                  << dnn::ActivationModeString(activation_mode)
-                  << ") not yet implemented";
-          return absl::InternalError("Activation not implemented");
-      }
-
-      status = wrap::miopenSetActivationDescriptor(
-          obj.handle_, obj.miopen_activation_mode_, obj.alpha_, obj.beta_,
-          obj.gamma_);
-      if (status != miopenStatusSuccess) {
-        return absl::InternalError(
-            "call to miopenSetActivationDescriptor failed: " +
-            ToString(status));
-      }
     }
+    switch (activation_mode) {
+      case dnn::ActivationMode::kNone:
+        obj.miopen_activation_mode_ = miopenActivationPASTHRU;
+        break;
+
+      case dnn::ActivationMode::kSigmoid:
+        obj.miopen_activation_mode_ = miopenActivationLOGISTIC;
+        break;
+
+      case dnn::ActivationMode::kRelu:
+      case dnn::ActivationMode::kReluX:
+        obj.miopen_activation_mode_ = miopenActivationRELU;
+        break;
+
+      case dnn::ActivationMode::kRelu6:
+        obj.miopen_activation_mode_ = miopenActivationRELU;
+        obj.alpha_ = 6.0;
+        break;
+
+      case dnn::ActivationMode::kTanh:
+        obj.miopen_activation_mode_ = miopenActivationTANH;
+        break;
+
+      case dnn::ActivationMode::kElu:
+        obj.miopen_activation_mode_ = miopenActivationELU;
+        break;
+
+      case dnn::ActivationMode::kLeakyRelu:
+        obj.miopen_activation_mode_ = miopenActivationLEAKYRELU;
+        break;
+        // Check with MIOpen re: support: kBandPass, kGeluExact
+
+      default:
+        VLOG(1) << "Activation mode ("
+                << dnn::ActivationModeString(activation_mode)
+                << ") not yet implemented";
+        return absl::InternalError("Activation not implemented");
+    }
+
+    status = wrap::miopenSetActivationDescriptor(
+        obj.handle_, obj.miopen_activation_mode_, obj.alpha_, obj.beta_,
+        obj.gamma_);
+    if (status != miopenStatusSuccess) {
+      return absl::InternalError(
+          "call to miopenSetActivationDescriptor failed: " + ToString(status));
+    }
+
     return obj;
   }
   ScopedActivationDescriptor(ScopedActivationDescriptor&& other)
@@ -1287,7 +1292,9 @@ class ScopedFusionPlanBase {
   }
 
   virtual ~ScopedFusionPlanBase() {
-    if (fusion_args_ == nullptr) return;
+    if (fusion_args_ == nullptr) {
+      return;
+    }
     auto status = wrap::miopenDestroyOperatorArgs(fusion_args_);
     if (status != miopenStatusSuccess) {
       LOG(FATAL) << "call to miopenDestroyoperatorArgs failed: "
@@ -1513,27 +1520,32 @@ class ScopedFusionPlanConvolutionBiasActivation : public ScopedFusionPlanBase {
 
     bool is_compiled = CachedFusionPlans::FindOrCreate(
         hash, &obj.fusion_plan_, miopenVerticalFusion, input_descriptor);
-    if (is_compiled) VLOG(2) << "Cache hit";
+    if (is_compiled) {
+      VLOG(2) << "Cache hit";
+    }
     if (!is_compiled) {
       auto status = wrap::miopenCreateOpConvForward(
           obj.fusion_plan_, &obj.conv_op, conv_descriptor, filter_descriptor);
-      if (status != miopenStatusSuccess)
+      if (status != miopenStatusSuccess) {
         return absl::InternalError("miopenCreateOpConvForward failed: " +
                                    ToString(status));
+      }
 
       status = wrap::miopenCreateOpBiasForward(obj.fusion_plan_, &obj.bias_op,
                                                bias_descriptor);
-      if (status != miopenStatusSuccess)
+      if (status != miopenStatusSuccess) {
         return absl::InternalError("miopenCreateOpBiasForward failed: " +
                                    ToString(status));
+      }
 
       if (act_descriptor.miopen_activation_mode_ != miopenActivationPASTHRU) {
         status = wrap::miopenCreateOpActivationForward(
             obj.fusion_plan_, &obj.actv_op,
             act_descriptor.miopen_activation_mode_);
-        if (status != miopenStatusSuccess)
+        if (status != miopenStatusSuccess) {
           return absl::InternalError(
               "miopenCreateOpActivationForward failed: " + ToString(status));
+        }
       }
 
       status = wrap::miopenCompileFusionPlan(miopen_handle, obj.fusion_plan_);
@@ -1950,7 +1962,9 @@ miopenDataType_t ToMIOpenDataType(
     case dnn::DataType::kHalf:
       return miopenHalf;
     case dnn::DataType::kInt8:
-      if (data_layout == dnn::DataLayout::kBatchDepthYX) return miopenInt8;
+      if (data_layout == dnn::DataLayout::kBatchDepthYX) {
+        return miopenInt8;
+      }
       LOG(FATAL)
           << "The kInt8 data type only supports the kBatchDepthYX data layout!";
       break;
@@ -2039,16 +2053,22 @@ class MIOpenRnnParamsDescriptor : public MIOpenDescriptorCommon<void> {
     RETURN_IF_MIOPEN_ERROR(status, "Failed to destroy RNN tensor descriptor");
   }
   miopenTensorDescriptor_t handle() const {
-    if (!ok()) return nullptr;
+    if (!ok()) {
+      return nullptr;
+    }
     return handle_;
   }
   int64_t params_size_in_bytes() const { return params_size_in_bytes_; }
   ParamsRegions params_weights() const {
-    if (!ok()) return ParamsRegions();
+    if (!ok()) {
+      return ParamsRegions();
+    }
     return weights_;
   }
   ParamsRegions params_biases() const {
-    if (!ok()) return ParamsRegions();
+    if (!ok()) {
+      return ParamsRegions();
+    }
     return biases_;
   }
 
@@ -2174,7 +2194,9 @@ class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
     }
   }
   miopenRNNDescriptor_t handle() const {
-    if (!ok()) return nullptr;
+    if (!ok()) {
+      return nullptr;
+    }
     return rnn_desc_;
   }
   int num_layers() const { return num_layers_; }
@@ -2191,15 +2213,21 @@ class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
     return miopen_params_desc_->params_size_in_bytes();
   }
   miopenTensorDescriptor_t params_handle() const {
-    if (!miopen_params_desc_) return nullptr;
+    if (!miopen_params_desc_) {
+      return nullptr;
+    }
     return miopen_params_desc_->handle();
   }
   ParamsRegions ParamsWeightRegions() const override {
-    if (!ok()) return ParamsRegions();
+    if (!ok()) {
+      return ParamsRegions();
+    }
     return miopen_params_desc_->params_weights();
   }
   ParamsRegions ParamsBiasRegions() const override {
-    if (!ok()) return ParamsRegions();
+    if (!ok()) {
+      return ParamsRegions();
+    }
     return miopen_params_desc_->params_biases();
   }
 
@@ -2273,7 +2301,9 @@ class MIOpenRnnSequenceTensorDescriptor
   }
 
   const miopenTensorDescriptor_t* handles() const {
-    if (!ok()) return nullptr;
+    if (!ok()) {
+      return nullptr;
+    }
     CHECK(!handles_.empty()) << "handles cannot be empty";
     return handles_.data();
   }
@@ -2321,7 +2351,9 @@ class MIOpenRnnStateTensorDescriptor
   }
 
   miopenTensorDescriptor_t handle() const {
-    if (!ok()) return nullptr;
+    if (!ok()) {
+      return nullptr;
+    }
     return handle_;
   }
   int num_layers() const { return num_layers_; }
@@ -2653,21 +2685,24 @@ absl::Status MIOpenSupport::DoRnnBackwardImpl(
   auto type_size = std::is_same<T, Eigen::half>::value ? 2 : sizeof(T);
   auto size_data = input_desc.seq_length() * input_desc.batch_size() *
                    input_desc.data_size();
-  if ((size_data > 0) && (input_backprop_data->opaque() != nullptr))
+  if ((size_data > 0) && (input_backprop_data->opaque() != nullptr)) {
     TF_RETURN_IF_ERROR(
         stream->MemZero(input_backprop_data, size_data * type_size));
+  }
 
   size_data = input_h_desc.num_layers() * input_h_desc.batch_size() *
               input_h_desc.data_size();
-  if ((size_data > 0) && (input_h_backprop_data->opaque() != nullptr))
+  if ((size_data > 0) && (input_h_backprop_data->opaque() != nullptr)) {
     TF_RETURN_IF_ERROR(
         stream->MemZero(input_h_backprop_data, size_data * type_size));
+  }
 
   size_data = input_c_desc.num_layers() * input_c_desc.batch_size() *
               input_c_desc.data_size();
-  if ((size_data > 0) && (input_c_backprop_data->opaque() != nullptr))
+  if ((size_data > 0) && (input_c_backprop_data->opaque() != nullptr)) {
     TF_RETURN_IF_ERROR(
         stream->MemZero(input_c_backprop_data, size_data * type_size));
+  }
 
   const bool is_profiling = output_profile_result != nullptr;
   std::unique_ptr<EventBasedTimer> timer;
@@ -3260,9 +3295,8 @@ void* MIOpenAllocatorCallback(void* ctx, size_t size_in_bytes) {
   if (allocated.ok()) {
     scratch = allocated.value();
     return scratch.opaque();
-  } else {
-    return nullptr;
   }
+  return nullptr;
 }
 
 void MIOpenDeallocatorCallback(void* ctx, void* mem) {
@@ -3518,8 +3552,9 @@ absl::Status MIOpenSupport::GetConvolveRunners(
   if (!GetMIOpenConvolveAlgorithms(
           kind, input_type, output_type, stream, input_descriptor, input_data,
           filter_descriptor, filter_data, output_descriptor, output_data,
-          convolution_descriptor, scratch_allocator, &profile_results))
+          convolution_descriptor, scratch_allocator, &profile_results)) {
     return absl::InternalError("GetMIOpenConvolveAlgorithms failure");
+  }
 
   for (const auto& profile_result : profile_results) {
     TF_ASSIGN_OR_RETURN(
@@ -4326,25 +4361,29 @@ absl::Status ROCmFusedMatmulRunner::operator()(
     DeviceMemoryBase a_data, DeviceMemoryBase b_data,
     DeviceMemoryBase bias_data, DeviceMemoryBase c_data) const {
   absl::Status status;
-  if (_input_type == dnn::DataType::kFloat)
+  if (_input_type == dnn::DataType::kFloat) {
     status = gemm<float>(stream, a_data, b_data, c_data);
-  else if (_input_type == dnn::DataType::kHalf)
+  } else if (_input_type == dnn::DataType::kHalf) {
     status = gemm<Eigen::half>(stream, a_data, b_data, c_data);
-  else if (_input_type == dnn::DataType::kBF16)
+  } else if (_input_type == dnn::DataType::kBF16) {
     status = gemm<Eigen::bfloat16>(stream, a_data, b_data, c_data);
-  else if (_input_type == dnn::DataType::kDouble)
+  } else if (_input_type == dnn::DataType::kDouble) {
     status = gemm<double>(stream, a_data, b_data, c_data);
-  else
+  } else {
     return absl::InvalidArgumentError("Unsupported input type");
+  }
 
-  if (!status.ok()) return status;
+  if (!status.ok()) {
+    return status;
+  }
 
   DeviceMemory<uint8_t> side_input;
-  if (_input_type == dnn::DataType::kFloat)
+  if (_input_type == dnn::DataType::kFloat) {
     return InplaceBiasActivation<float>(stream, c_data, bias_data, side_input,
                                         0.0f, _activation_mode, 1, _m, _n, _ldc,
                                         0.0f);
-  else if (_input_type == dnn::DataType::kHalf)
+  }
+  if (_input_type == dnn::DataType::kHalf)
     return InplaceBiasActivation<Eigen::half>(
         stream, c_data, bias_data, side_input, 0.0f, _activation_mode, 1, _m,
         _n, _ldc, 0.0f);
@@ -4547,25 +4586,33 @@ void PoolingWorkspaceCache::insert(
 }
 
 void PoolingWorkspaceCache::trim(hipStream_t hip_stream) {
-  if (memory_used < memory_budget && cache.size() < trim_size) return;
+  if (memory_used < memory_budget && cache.size() < trim_size) {
+    return;
+  }
   bool must_sync = true;
   while (true) {
     int new_size = cache.size() - (cache.size() >> 2);
     std::vector<const void*> old_entries;
-    for (auto& x : cache)
-      if (x.second.timestamp + new_size < timestamp)
+    for (auto& x : cache) {
+      if (x.second.timestamp + new_size < timestamp) {
         old_entries.push_back(x.first);
-    if (old_entries.empty()) break;
-    if (must_sync)
-      CHECK_EQ(hipStreamSynchronize(hip_stream), hipSuccess)
-          << "Failed to sync hipStream";
-    must_sync = true;
-    for (auto x : old_entries) {
-      memory_used -= cache[x].workspace_size;
-      cache.erase(x);
+      }
+      if (old_entries.empty()) {
+        break;
+      }
+      if (must_sync) {
+        CHECK_EQ(hipStreamSynchronize(hip_stream), hipSuccess)
+            << "Failed to sync hipStream";
+      }
+      must_sync = true;
+      for (auto x : old_entries) {
+        memory_used -= cache[x].workspace_size;
+        cache.erase(x);
+      }
+      if (memory_used < memory_budget || cache.size() < 10) {
+        break;
+      }
     }
-    if (memory_used < memory_budget || cache.size() < 10) break;
-  }
 }
 
 absl::Status MIOpenSupport::DoPoolBackward(
@@ -4581,7 +4628,9 @@ absl::Status MIOpenSupport::DoPoolBackward(
   }
 
   auto miopen = miopen_->GetHandle(parent_, stream);
-  if (m_pooling_cache_allowed) m_pooling_cache_enabled = true;
+  if (m_pooling_cache_allowed) {
+    m_pooling_cache_enabled = true;
+  }
   // Alpha is the scaling factor for input.
   float alpha = 1.0;
   // Beta is the scaling factor for output.
@@ -4639,7 +4688,9 @@ absl::Status MIOpenSupport::DoPoolBackward(
       dest2_size = (element_type == dnn::DataType::kFloat)
                        ? sizeof(float)
                        : sizeof(Eigen::half);
-      for (auto& x : dims64) dest2_size *= x;
+      for (auto& x : dims64) {
+        dest2_size *= x;
+      }
 
       if (dest2_size > 0) {
         assert(workspace_allocator);
@@ -4887,16 +4938,18 @@ class RocmFusedConvRunner : public dnn::FusedConvRunner {
     bool do_unfused =
         (side_input_scale_ != 0.0) || !fusion_plan_.CompilationSucceeded();
 
-    if (do_unfused)
+    if (do_unfused) {
       return execute_unfused(stream, profile_result, scratch_memory, input_data,
                              filter_data, side_input_data, bias_data,
                              output_data);
+    }
     auto algo = MakeAlgorithmDesc();
     auto miopen = miopen_->GetHandle(parent_, stream);
     fusion_plan_.SetConvolutionArgs(filter_data.opaque());
     fusion_plan_.SetBiasArgs(bias_data.opaque());
-    if (activation_desc_.miopen_activation_mode_ != miopenActivationPASTHRU)
+    if (activation_desc_.miopen_activation_mode_ != miopenActivationPASTHRU) {
       fusion_plan_.SetActivationForwardArgs(activation_desc_);
+    }
 
     std::unique_ptr<EventBasedTimer> timer;
     if (profile_result) {
@@ -4984,7 +5037,9 @@ class RocmFusedConvRunner : public dnn::FusedConvRunner {
 
     VLOG(2) << solutionCount << " solutions";
 
-    if (solutionCount == 0) return absl::InternalError("No algorithms found");
+    if (solutionCount == 0) {
+      return absl::InternalError("No algorithms found");
+    }
 
     size_t workspace_size_1 = solutions[0].workspace_size;
     size_t true_workspace_size = 0;
@@ -5068,18 +5123,23 @@ class RocmFusedConvRunner : public dnn::FusedConvRunner {
     std::vector<int64_t> dims_output =
         dnn_output_nd_.full_dims(dnn_output_nd_.layout());
     int rank = dims_output.size();
-    if (rank != 4 && rank != 5)
+    if (rank != 4 && rank != 5) {
       return absl::InternalError(
           "RocmFusedConvRunner expects 4d or 5d descriptors");
+    }
     int d1 = 1, d2 = 1;
     bool bNCHW = (dnn_output_nd_.layout() != dnn::DataLayout::kBatchYXDepth);
     batch = dims_output[0];
     if (bNCHW) {
       d1 = dims_output[1];
-      for (int i = 2; i < rank; i++) d2 *= dims_output[i];
+      for (int i = 2; i < rank; i++) {
+        d2 *= dims_output[i];
+      }
     } else {
       d2 = dims_output[rank - 1];
-      for (int i = 1; i < rank - 1; i++) d1 *= dims_output[i];
+      for (int i = 1; i < rank - 1; i++) {
+        d1 *= dims_output[i];
+      }
     }
 
     float param = activation_desc_.alpha_;
@@ -5092,27 +5152,28 @@ class RocmFusedConvRunner : public dnn::FusedConvRunner {
 
     absl::Status biasActStatus;
     if (input_type_ == dnn::DataType::kFloat &&
-        bias_type_ == dnn::DataType::kFloat)
+        bias_type_ == dnn::DataType::kFloat) {
       biasActStatus = inplace_call(DeviceMemory<float>(output_data),
                                    DeviceMemory<float>(bias_data));
-    else if (input_type_ == dnn::DataType::kHalf &&
-             bias_type_ == dnn::DataType::kFloat)
+    } else if (input_type_ == dnn::DataType::kHalf &&
+               bias_type_ == dnn::DataType::kFloat) {
       biasActStatus = inplace_call(DeviceMemory<Eigen::half>(output_data),
                                    DeviceMemory<float>(bias_data));
-    else if (input_type_ == dnn::DataType::kHalf &&
-             bias_type_ == dnn::DataType::kHalf)
+    } else if (input_type_ == dnn::DataType::kHalf &&
+               bias_type_ == dnn::DataType::kHalf) {
       biasActStatus = inplace_call(DeviceMemory<Eigen::half>(output_data),
                                    DeviceMemory<Eigen::half>(bias_data));
-    else if (input_type_ == dnn::DataType::kBF16 &&
-             bias_type_ == dnn::DataType::kFloat)
+    } else if (input_type_ == dnn::DataType::kBF16 &&
+               bias_type_ == dnn::DataType::kFloat) {
       biasActStatus = inplace_call(DeviceMemory<Eigen::bfloat16>(output_data),
                                    DeviceMemory<float>(bias_data));
-    else if (input_type_ == dnn::DataType::kBF16 &&
-             bias_type_ == dnn::DataType::kBF16)
+    } else if (input_type_ == dnn::DataType::kBF16 &&
+               bias_type_ == dnn::DataType::kBF16) {
       biasActStatus = inplace_call(DeviceMemory<Eigen::bfloat16>(output_data),
                                    DeviceMemory<Eigen::bfloat16>(bias_data));
-    else
+    } else {
       return absl::InternalError("Unsupported data type");
+    }
 
     return absl::OkStatus();
   }
@@ -5204,7 +5265,9 @@ absl::Status MIOpenSupport::GetFusedConvolveRunners(
         side_input_scale, leakyrelu_alpha, input_descriptor, filter_descriptor,
         bias_descriptor, output_descriptor, convolution_descriptor,
         activation_mode);
-    if (!runner_or.ok()) continue;
+    if (!runner_or.ok()) {
+      continue;
+    }
     out_exec_plans->push_back(std::move(runner_or).value());
   }
 

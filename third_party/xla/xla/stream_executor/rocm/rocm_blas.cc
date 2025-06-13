@@ -493,8 +493,9 @@ absl::Status ROCMBlas::DoBlasGemm(
   uint32_t gemm_ex_flags = rocblas_gemm_flags_none;
   bool is_backprop = (context == blas::CallContext::kBackpropInput1) ||
                      (context == blas::CallContext::kBackpropInput2);
-  if (is_backprop && use_hgemm_alt_impl_)
+  if (is_backprop && use_hgemm_alt_impl_) {
     gemm_ex_flags = rocblas_gemm_flags_fp16_alt_impl;
+  }
 
   Eigen::half alpha_half, beta_half;
 
@@ -536,10 +537,11 @@ absl::Status ROCMBlas::DoBlasGemm(
 
   switch (dtype) {
     case blas::DataType::kHalf:
-      if (has_mfma_)
+      if (has_mfma_) {
         return call_gemm_ex(rocblas_datatype_f16_r);
-      else
+      } else {
         return call_gemm(wrap::rocblas_hgemm, rocblas_half());
+      }
     case blas::DataType::kBF16:
       return call_gemm_ex(rocblas_datatype_bf16_r);
     case blas::DataType::kFloat:
@@ -798,9 +800,9 @@ bool MemCopyOpsFold(MemoryCopyOp &y, const MemoryCopyOp &x) {
     }
     y.count++;
     return true;
-  } else if (x.src_ptr == y.src_ptr + y.size &&
-             x.dst_ptr == y.dst_ptr + y.size && y.count == 1 &&
-             y.src_count == 1) {
+  }
+  if (x.src_ptr == y.src_ptr + y.size && x.dst_ptr == y.dst_ptr + y.size &&
+      y.count == 1 && y.src_count == 1) {
     y.size += x.size;
     return true;
   }
@@ -1029,7 +1031,9 @@ class rocblas_hgemm_strided_batched_mfma {
     float alpha32 = static_cast<float>(*(const __half *)alpha);
     float beta32 = static_cast<float>(*(const __half *)beta);
     uint32_t flags = rocblas_gemm_flags_none;
-    if (ALT_) flags = rocblas_gemm_flags_fp16_alt_impl;
+    if (ALT_) {
+      flags = rocblas_gemm_flags_fp16_alt_impl;
+    }
     return wrap::rocblas_gemm_strided_batched_ex(
         handle, transA, transB, m, n, k, &alpha32, A, rocblas_datatype_f16_r,
         lda, stride_a, B, rocblas_datatype_f16_r, ldb, stride_b, &beta32, C,
@@ -1231,9 +1235,8 @@ IMPL_DoBlasGemmBatched(float, wrap::rocblas_sgemm_strided_batched)
         return call_gemm(rocblas_hgemm_strided_batched_mfma(
                              is_backprop && use_hgemm_alt_impl_),
                          rocblas_half());
-      } else {
-        return call_gemm(wrap::rocblas_hgemm_strided_batched, rocblas_half());
       }
+      return call_gemm(wrap::rocblas_hgemm_strided_batched, rocblas_half());
     }
     case blas::DataType::kBF16: {
       Eigen::bfloat16 alpha_bf16, beta_bf16;

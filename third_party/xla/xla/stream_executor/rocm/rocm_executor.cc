@@ -329,7 +329,9 @@ absl::StatusOr<hipDevice_t> DeviceFromContext(Context* context) {
   ScopedActivateContext activated(context);
   hipDevice_t device = -1;
   hipError_t result = wrap::hipCtxGetDevice(&device);
-  if (result == hipSuccess) return device;
+  if (result == hipSuccess) {
+    return device;
+  }
 
   return absl::InternalError(
       absl::StrCat("failed to get device for context: ", ToString(result)));
@@ -348,7 +350,9 @@ bool CanEnablePeerAccess(hipDevice_t from, hipDevice_t to) {
 
 bool CanEnablePeerAccess(Context* from, Context* to) {
   // A context can always access its own memory.
-  if (from == to) return true;
+  if (from == to) {
+    return true;
+  }
 
   auto from_device = DeviceFromContext(from);
   if (!from_device.ok()) {
@@ -504,7 +508,8 @@ absl::StatusOr<DeviceMemoryBase> RocmExecutor::GetMemoryRange(
       &device_pointer, &size, const_cast<void*>(location.opaque()));
   if (result == hipSuccess) {
     return DeviceMemoryBase(device_pointer, size);
-  } else if (result == hipErrorNotFound) {
+  }
+  if (result == hipErrorNotFound) {
     // We differentiate between "this pointer is unknown" (return here) and
     // "there was an internal error while performing this operation" (return
     // below).
@@ -593,9 +598,13 @@ bool RocmExecutor::UnloadGpuBinary(ModuleHandle module_handle) {
     gpu_binary_to_module_.erase(module_it);
     ModuleHandle mem_it{};
     for (auto x : in_memory_modules_) {
-      if (x.second == module) mem_it = x.first;
+      if (x.second == module) {
+        mem_it = x.first;
+      }
     }
-    if (mem_it != ModuleHandle{}) in_memory_modules_.erase(mem_it);
+    if (mem_it != ModuleHandle{}) {
+      in_memory_modules_.erase(mem_it);
+    }
   }
   return true;
 }
@@ -704,9 +713,8 @@ absl::StatusOr<ModuleHandle> RocmExecutor::LoadModule(
     absl::MutexLock lock{&in_memory_modules_mu_};
     return LoadModuleFromHsaco(
         reinterpret_cast<const char*>(spec.cuda_cubin_in_memory().data()));
-  } else {
-    return absl::InternalError("No HASCO binary found");
   }
+  return absl::InternalError("No HASCO binary found");
 }
 
 absl::StatusOr<ModuleHandle> RocmExecutor::LoadModuleFromHsaco(
