@@ -32,9 +32,9 @@ cc_library(
         "cublas_stub.cc",
         "cublas.tramp.S",
     ]),
-    linkopts = if_cuda_is_configured(cuda_rpath_flags(
+    linkopts = cuda_rpath_flags(
         "nvidia/cublas/lib",
-    )),
+    ),
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
@@ -124,10 +124,7 @@ cc_library(
         ],
         "//conditions:default": [],
     }),
-    linkopts = select({
-        "@local_xla//xla/tsl:is_cuda_enabled_and_oss": cuda_rpath_flags("nvidia/cuda_runtime/lib"),
-        "//conditions:default": [],
-    }),
+    linkopts = cuda_rpath_flags("nvidia/cuda_runtime/lib"),
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
@@ -163,7 +160,7 @@ cc_library(
         "cudnn_stub.cc",
         "cudnn.tramp.S",
     ]),
-    linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/cudnn/lib")),
+    linkopts = cuda_rpath_flags("nvidia/cudnn/lib"),
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
@@ -186,7 +183,7 @@ alias(
 
 cc_library(
     name = "nccl_rpath_flags",
-    linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/nccl/lib")),
+    linkopts = cuda_rpath_flags("nvidia/nccl/lib"),
     visibility = ["//visibility:public"],
 )
 
@@ -198,7 +195,7 @@ alias(
 
 cc_library(
     name = "tensorrt_rpath",
-    linkopts = if_cuda_is_configured(cuda_rpath_flags("tensorrt")),
+    linkopts = cuda_rpath_flags("tensorrt"),
     visibility = ["//visibility:public"],
 )
 
@@ -213,7 +210,7 @@ cc_library(
         "cufft_stub.cc",
         "cufft.tramp.S",
     ]),
-    linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/cufft/lib")),
+    linkopts = cuda_rpath_flags("nvidia/cufft/lib"),
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
@@ -245,7 +242,7 @@ cc_library(
         "cupti.tramp.S",
     ]),
     data = if_cuda_is_configured(["@local_config_cuda//cuda:cupti_dsos"]),
-    linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/cuda_cupti/lib")),
+    linkopts = cuda_rpath_flags("nvidia/cuda_cupti/lib"),
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
@@ -277,7 +274,7 @@ cc_library(
         "cusolver_stub.cc",
         "cusolver.tramp.S",
     ]),
-    linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/cusolver/lib")),
+    linkopts = cuda_rpath_flags("nvidia/cusolver/lib"),
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
@@ -308,7 +305,7 @@ cc_library(
         "cusparse_stub.cc",
         "cusparse.tramp.S",
     ]),
-    linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/cusparse/lib")),
+    linkopts = cuda_rpath_flags("nvidia/cusparse/lib"),
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
@@ -340,7 +337,7 @@ cc_library(
         "nccl_stub.cc",
         "nccl.tramp.S",
     ]),
-    linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/nccl/lib")),
+    linkopts = cuda_rpath_flags("nvidia/nccl/lib"),
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
@@ -374,7 +371,7 @@ cc_library(
         "nvshmem.tramp.S",
     ]),
     # TODO: standalone pip wheel rpath
-    linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/nvshmem/lib")),
+    linkopts = cuda_rpath_flags("nvidia/nvshmem/lib"),
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],

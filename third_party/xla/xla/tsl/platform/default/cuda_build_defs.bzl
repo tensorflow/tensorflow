@@ -31,10 +31,13 @@ def is_cuda_configured():
 # both the root of the TensorFlow installation directory as well as from
 # various pywrap libs within the 'python' subdir.
 def cuda_rpath_flags(relpath):
-    return [
-        "-Wl,-rpath='$$ORIGIN/../../" + relpath + "'",
-        "-Wl,-rpath='$$ORIGIN/../" + relpath + "'",
-    ]
+    return select({
+        ":enable_cuda_rpath": [
+            "-Wl,-rpath='$$ORIGIN/../../" + relpath + "'",
+            "-Wl,-rpath='$$ORIGIN/../" + relpath + "'",
+        ],
+        "//conditions:default": [],
+    })
 
 def if_cuda_newer_than(wanted_ver, if_true, if_false = []):
     return _if_cuda_newer_than(wanted_ver, if_true, if_false)

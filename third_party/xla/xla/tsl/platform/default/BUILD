@@ -1,5 +1,6 @@
 # Tensorflow default + linux implementations of tensorflow/core/platform libraries.
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load(
     "//xla/tsl:tsl.bzl",
@@ -685,4 +686,21 @@ cc_library(
     deps = [
         "@com_google_absl//absl/strings:string_view",
     ],
+)
+
+# If enabled, adds rpath flags to CUDA stubs and cc_imports.
+bool_flag(
+    name = "cuda_rpath",
+    build_setting_default = True,
+)
+
+config_setting(
+    name = "enable_cuda_rpath",
+    flag_values = if_oss(
+        {
+            ":cuda_rpath": "True",
+            "//xla/tsl:is_cuda_enabled": "True",
+        },
+        google_value = {},
+    ),
 )
