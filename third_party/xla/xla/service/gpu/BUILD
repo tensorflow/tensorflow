@@ -2563,7 +2563,6 @@ xla_test(
         "//xla/service/gpu/tests:gpu_codegen_test",  # fixdeps: keep
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
-        "//xla/tests:test_macros_header",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
     ],

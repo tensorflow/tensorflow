@@ -530,7 +530,6 @@ xla_test(
         ":client_library_test_base",
         ":conv_depthwise_common",
         ":hlo_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:execution_options_util",
         "//xla:status_macros",
@@ -550,7 +549,6 @@ xla_test(
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:execution_options_util",
         "//xla:status_macros",
@@ -574,7 +572,6 @@ xla_test(
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
-        ":test_macros_header",
         ":test_utils",
         ":xla_internal_test_main",
         "//xla:execution_options_util",
@@ -635,7 +632,6 @@ xla_test(
         ":client_library_test_base",
         ":hlo_test_base",
         ":literal_test_util",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:literal",
         "//xla:shape_util",
@@ -688,7 +684,6 @@ xla_test(
     deps = [
         ":client_library_test_runner_mixin",
         ":hlo_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:array2d",
         "//xla:array3d",
@@ -723,7 +718,6 @@ xla_test(
     deps = [
         ":client_library_test_runner_mixin",
         ":hlo_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:array2d",
         "//xla:error_spec",
@@ -771,7 +765,6 @@ xla_test(
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:error_spec",
         "//xla:literal",
@@ -790,7 +783,6 @@ xla_test(
     deps = [
         ":client_library_test_runner_mixin",
         ":hlo_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:array2d",
         "//xla:error_spec",
@@ -872,7 +864,6 @@ xla_test(
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
         ":literal_test_util",
-        ":test_macros_header",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:error_spec",
         "//xla:literal",
@@ -895,7 +886,6 @@ xla_test(
     tags = ["test_xla_cpu_no_thunks"],
     deps = [
         ":client_library_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla/client:local_client",
         "//xla/hlo/builder:xla_builder",
@@ -913,7 +903,6 @@ xla_test(
     tags = ["test_xla_cpu_no_thunks"],
     deps = [
         ":client_library_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:literal",
         "//xla:shape_util",
@@ -941,7 +930,6 @@ xla_test(
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:array2d",
         "//xla:array3d",
@@ -992,7 +980,6 @@ xla_test(
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:literal",
         "//xla:literal_util",
@@ -1012,7 +999,6 @@ xla_test(
     tags = ["test_xla_cpu_no_thunks"],
     deps = [
         ":hlo_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:error_spec",
         "@com_google_absl//absl/strings",
@@ -1036,7 +1022,6 @@ xla_test(
     ],
     deps = [
         ":hlo_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:error_spec",
         "@com_google_absl//absl/strings",
@@ -1056,7 +1041,6 @@ xla_test(
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:array2d",
         "//xla:array3d",
@@ -1117,7 +1101,6 @@ xla_test(
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:array2d",
         "//xla:array3d",
@@ -1168,7 +1151,6 @@ xla_test(
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:array2d",
         "//xla:array3d",
@@ -1208,7 +1190,6 @@ xla_test(
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
         ":literal_test_util",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:array",
         "//xla:error_spec",
@@ -1262,7 +1243,6 @@ xla_test(
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
         ":literal_test_util",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:array2d",
         "//xla:error_spec",
@@ -1298,7 +1278,6 @@ xla_test(
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:array2d",
         "//xla:array3d",
@@ -1337,7 +1316,6 @@ xla_test(
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:array2d",
         "//xla:array3d",
@@ -1364,7 +1342,6 @@ xla_test(
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
         ":literal_test_util",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:array2d",
         "//xla:array3d",
@@ -1399,7 +1376,6 @@ xla_test(
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:array2d",
         "//xla:array4d",
@@ -1444,7 +1420,6 @@ xla_test(
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:array3d",
         "//xla:error_spec",
@@ -1478,7 +1453,6 @@ xla_test(
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:array3d",
         "//xla:error_spec",
@@ -1512,7 +1486,6 @@ xla_test(
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:array2d",
         "//xla:array4d",
@@ -1551,7 +1524,6 @@ xla_test(
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:array3d",
         "//xla:error_spec",
@@ -1578,7 +1550,6 @@ xla_test(
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:array2d",
         "//xla:array4d",
@@ -1616,7 +1587,6 @@ xla_test(
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:array3d",
         "//xla:error_spec",
@@ -1726,7 +1696,6 @@ xla_test(
         ":client_library_test_base",
         ":hlo_test_base",
         ":literal_test_util",
-        ":test_macros_header",
         ":test_utils",
         ":xla_internal_test_main",
         "//xla:array2d",
@@ -1765,7 +1734,6 @@ xla_test(
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:array4d",
         "//xla:error_spec",
@@ -1812,7 +1780,6 @@ xla_test(
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:error_spec",
         "//xla:types",
@@ -1855,7 +1822,6 @@ xla_test(
     deps = [
         ":client_library_test_runner_mixin",
         ":hlo_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:array2d",
         "//xla:array3d",
@@ -1975,7 +1941,6 @@ xla_test(
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:array2d",
         "//xla:array3d",
@@ -1999,7 +1964,6 @@ xla_test(
         ":client_library_test_base",
         ":hlo_test_base",
         ":literal_test_util",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:array2d",
         "//xla:array4d",
@@ -2033,7 +1997,6 @@ xla_test(
     tags = ["test_xla_cpu_no_thunks"],
     deps = [
         ":hlo_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:error_spec",
         "//xla:xla_data_proto_cc",
@@ -2051,7 +2014,6 @@ xla_test_library(
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
-        ":test_macros_header",
         "//xla:array2d",
         "//xla:array3d",
         "//xla:array4d",
@@ -2089,7 +2051,6 @@ xla_test(
     ],
     xla_test_library_deps = [":reduce_window_test_library"],
     deps = [
-        ":test_macros_header",
         ":xla_internal_test_main",
     ],
 )
@@ -2110,7 +2071,6 @@ xla_test(
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:array",
         "//xla:array2d",
@@ -2139,7 +2099,6 @@ xla_test(
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
         ":literal_test_util",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:array3d",
         "//xla:array4d",
@@ -2169,7 +2128,6 @@ xla_test(
     tags = ["test_xla_cpu_no_thunks"],
     deps = [
         ":hlo_test_base",
-        ":test_macros_header",
         ":test_utils",
         ":xla_internal_test_main",
         "//xla:error_spec",
@@ -2233,7 +2191,6 @@ xla_test(
     deps = [
         ":hlo_pjrt_test_base",
         ":literal_test_util",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:literal",
         "//xla:literal_util",
@@ -2250,7 +2207,6 @@ xla_test(
     deps = [
         ":hlo_test_base",
         ":literal_test_util",
-        ":test_macros_header",
         ":test_utils",
         ":xla_internal_test_main",
         "//xla:literal",
@@ -2298,7 +2254,6 @@ xla_test(
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
         ":literal_test_util",
-        ":test_macros_header",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:array2d",
         "//xla:array3d",
@@ -2364,7 +2319,6 @@ xla_test(
     deps = [
         ":client_library_test_runner_mixin",
         ":hlo_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:array2d",
         "//xla:array3d",
@@ -2388,7 +2342,6 @@ xla_test(
     tags = ["test_xla_cpu_no_thunks"],
     deps = [
         ":client_library_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:array2d",
         "//xla:array3d",
@@ -2453,7 +2406,6 @@ xla_test(
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
-        ":test_macros_header",
         ":test_utils",
         ":xla_internal_test_main",
         "//xla:array2d",
@@ -2489,7 +2441,6 @@ xla_test(
     ],
     deps = [
         ":client_library_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:literal",
         "//xla:shape_util",
@@ -2667,7 +2618,6 @@ xla_test(
         ":client_library_test_runner_utils",
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:array2d",
         "//xla:array3d",
@@ -2694,7 +2644,6 @@ xla_test(
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:error_spec",
         "//xla:literal",
@@ -2727,7 +2676,6 @@ xla_test(
     ],
     deps = [
         ":hlo_pjrt_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:literal_util",
         "//xla/hlo/testlib:test",
@@ -2754,7 +2702,6 @@ xla_test(
     deps = [
         ":hlo_test_base",
         ":literal_test_util",
-        ":test_macros_header",
         ":test_utils",
         ":xla_internal_test_main",
         "//xla:literal",
@@ -2793,7 +2740,6 @@ xla_test(
     deps = [
         ":hlo_test_base",
         ":literal_test_util",
-        ":test_macros_header",
         ":test_utils",
         ":xla_internal_test_main",
         "//xla:error_spec",
@@ -2852,7 +2798,6 @@ xla_test(
         ":hlo_runner_agnostic_test_base",
         ":hlo_test_base",
         ":literal_test_util",
-        ":test_macros_header",
         ":test_utils",
         ":xla_internal_test_main",
         "//xla:array",
@@ -2973,7 +2918,6 @@ xla_test(
     ],
     deps = [
         ":hlo_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:literal",
         "//xla:shape_util",
@@ -3035,7 +2979,6 @@ xla_test(
     tags = ["test_xla_cpu_no_thunks"],
     deps = [
         ":literal_test_util",
-        ":test_macros_header",
         ":test_utils",
         ":xla_internal_test_main",
         "//xla:literal",
@@ -3066,7 +3009,6 @@ xla_test(
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:literal",
         "//xla:literal_util",
@@ -3091,7 +3033,6 @@ xla_test(
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:literal",
         "//xla:shape_util",
@@ -3116,7 +3057,6 @@ xla_test(
     deps = [
         ":hlo_pjrt_test_base",
         ":literal_test_util",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:array3d",
         "//xla:array4d",
@@ -3162,7 +3102,6 @@ xla_test(
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:literal",
         "//xla:packed_literal_reader",
@@ -3190,7 +3129,6 @@ xla_test(
         ":client_library_test_runner_mixin",
         ":hlo_test_base",
         ":literal_test_util",
-        ":test_macros_header",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:array2d",
         "//xla:comparison_util",
@@ -3228,7 +3166,6 @@ xla_test(
         ":client_library_test_base",
         ":hlo_test_base",
         ":literal_test_util",
-        ":test_macros_header",
         ":test_utils",
         ":xla_internal_test_main",
         "//xla:literal",
@@ -3253,7 +3190,6 @@ xla_test(
     deps = [
         ":literal_test_util",
         ":local_client_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:literal",
         "//xla/client:local_client",
@@ -3278,7 +3214,6 @@ xla_test(
     deps = [
         ":literal_test_util",
         ":local_client_test_base",
-        ":test_macros_header",
         ":test_utils",
         ":xla_internal_test_main",
         "//xla:literal",
@@ -3316,7 +3251,6 @@ xla_test(
     tags = ["test_xla_cpu_no_thunks"],
     deps = [
         ":local_client_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:literal",
         "//xla:literal_util",
@@ -3355,7 +3289,6 @@ xla_test(
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:array4d",
         "//xla:literal",
@@ -3372,7 +3305,6 @@ xla_test(
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:array2d",
         "//xla:array4d",
@@ -3425,7 +3357,6 @@ xla_test(
     deps = [
         ":literal_test_util",
         ":local_client_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:literal",
         "//xla:shape_util",
@@ -3491,7 +3422,6 @@ xla_test(
     tags = ["test_xla_cpu_no_thunks"],
     deps = [
         ":local_client_test_base",
-        ":test_macros_header",
         ":test_utils",
         ":xla_internal_test_main",
         "//xla:shape_util",
@@ -3519,7 +3449,6 @@ xla_test(
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",  # fixdeps: keep
         "//xla:error_spec",
         "//xla:shape_util",
@@ -3661,7 +3590,6 @@ xla_test(
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:array2d",
         "//xla:literal",
@@ -3713,7 +3641,6 @@ xla_test(
     deps = [
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",
-        ":test_macros_header",
         ":xla_internal_test_main",
         "//xla:error_spec",
         "//xla:literal_util",

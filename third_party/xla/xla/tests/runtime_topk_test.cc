@@ -22,7 +22,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::cpu {

@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/platform/statusor.h"
 

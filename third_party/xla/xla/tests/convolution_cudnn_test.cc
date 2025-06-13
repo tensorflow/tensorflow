@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "absl/strings/substitute.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/test.h"
 

@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/local_client_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"

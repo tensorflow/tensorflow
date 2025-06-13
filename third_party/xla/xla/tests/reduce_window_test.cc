@@ -49,7 +49,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"

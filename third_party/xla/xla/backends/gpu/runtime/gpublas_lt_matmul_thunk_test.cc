@@ -51,7 +51,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"

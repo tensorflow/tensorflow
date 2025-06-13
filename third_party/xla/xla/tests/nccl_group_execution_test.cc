@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"

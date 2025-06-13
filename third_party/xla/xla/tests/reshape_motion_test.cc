@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
