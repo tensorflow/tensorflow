@@ -479,6 +479,7 @@ build:rbe_linux --host_linkopt=-lm
 
 build:rbe_linux_cpu --config=rbe_linux
 # Linux cpu and cuda builds share the same toolchain now.
+build:rbe_linux_cpu --repo_env=QWERTY="UIOP"
 build:rbe_linux_cpu --extra_execution_platforms="@ml_build_config_platform//:platform"
 build:rbe_linux_cpu --host_platform="@ml_build_config_platform//:platform"
 build:rbe_linux_cpu --platforms="@ml_build_config_platform//:platform"
