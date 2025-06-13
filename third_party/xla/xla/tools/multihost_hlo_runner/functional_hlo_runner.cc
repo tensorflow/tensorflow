@@ -581,32 +581,36 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
   for (int repeat = 0; repeat < running_options.num_repeats; ++repeat) {
     VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices started (repeat = "
             << repeat << ").";
-    if (repeat == 0 || running_options.recreate_buffers_between_repeats) {
-      VLOG(1) << "Creating argument buffers. repeat = " << repeat;
-      device_buffers.clear();
-      argument_ptrs.clear();
-      TF_ASSIGN_OR_RETURN(device_buffers,
-                          create_argument_buffers_on_device(flatten_arguments));
-      argument_ptrs = CreateArgumentPointersFromDeviceBuffers(device_buffers);
-    }
-    if (repeat == running_options.num_repeats - 1) {
-      execute_options.untuple_result = default_untuple_result;
-      if (running_options.profiler != nullptr) {
-        running_options.profiler->CreateSession();
+    {
+      XLA_SCOPED_LOGGING_TIMER("FunctionalHloRunner::ExecuteOnDevices");
+
+      if (repeat == 0 || running_options.recreate_buffers_between_repeats) {
+        VLOG(1) << "Creating argument buffers. repeat = " << repeat;
+        device_buffers.clear();
+        argument_ptrs.clear();
+        TF_ASSIGN_OR_RETURN(device_buffers, create_argument_buffers_on_device(
+                                                flatten_arguments));
+        argument_ptrs = CreateArgumentPointersFromDeviceBuffers(device_buffers);
       }
-    }
-    execute_options.launch_id = repeat + 1;
-    if (running_options.execution_profiles != nullptr) {
-      execute_options.execution_profile =
-          &running_options.execution_profiles->emplace_back();
-      execute_options.execution_profile->set_warmup_run_executed(repeat > 0);
-    }
-    futures->clear();
-    TF_ASSIGN_OR_RETURN(
-        output_buffers,
-        executable->Execute(argument_ptrs, execute_options, futures));
-    for (auto& future : *futures) {
-      TF_RETURN_IF_ERROR(future.Await());
+      if (repeat == running_options.num_repeats - 1) {
+        execute_options.untuple_result = default_untuple_result;
+        if (running_options.profiler != nullptr) {
+          running_options.profiler->CreateSession();
+        }
+      }
+      execute_options.launch_id = repeat + 1;
+      if (running_options.execution_profiles != nullptr) {
+        execute_options.execution_profile =
+            &running_options.execution_profiles->emplace_back();
+        execute_options.execution_profile->set_warmup_run_executed(repeat > 0);
+      }
+      futures->clear();
+      TF_ASSIGN_OR_RETURN(
+          output_buffers,
+          executable->Execute(argument_ptrs, execute_options, futures));
+      for (auto& future : *futures) {
+        TF_RETURN_IF_ERROR(future.Await());
+      }
     }
     VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices succeeded (repeat = "
             << repeat << ")";
