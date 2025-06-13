@@ -725,6 +725,9 @@ def _create_local_rocm_repository(repository_ctx):
             "%{crosstool_verbose}": _crosstool_verbose(repository_ctx),
             "%{gcc_host_compiler_path}": str(cc),
             "%{crosstool_clang}": "1" if _is_clang_enabled(repository_ctx) else "0",
+            "%{rocm_amdgpu_targets}": ",".join(
+                ["\"%s\"" % c for c in rocm_config.amdgpu_targets],
+            ),
         },
     )
 
