@@ -175,6 +175,8 @@ def main():
                     (" + ".join(PYTHON_TARGETS), missing_dependency))
       affected_tests = subprocess.check_output(
           ["bazel", "cquery", "--experimental_cc_shared_library", rdep_query])
+      if isinstance(affected_tests, bytes):
+        affected_tests = affected_tests.decode("utf-8")
       affected_tests_list = affected_tests.split("\n")[:-2]
       print("\n".join(affected_tests_list))
 
