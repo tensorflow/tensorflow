@@ -428,6 +428,27 @@ absl::Status XlaCallModuleLoader::LoadModule(
           << absl::StrJoin(loading_disabled_checks_, ", ") << "]), module = "
           << DumpMlirOpToFile("xla_call_module.parsed", *module_);
 
+  if (use_shardy_partitioner) {
+    // We need to inline `sdy.mesh` symbols because otherwise they are going
+    // to be discarded or their names might collide with `sdy.mesh` symbols in
+    // another XlaCallModuleOp.
+    mlir::StatusScopedDiagnosticHandler diag_handler(context_);
+    mlir::PassManager pm(module_->getContext());
+    // TODO(b/422690222): Remove `addSdyRoundTripImportPipeline` 6 months
+    // after mixed serialization will be supported by Shardy+StableHLO in JAX
+    xla::sdy::addSdyRoundTripImportPipeline(pm,
+                                            /*enableConstantImport=*/false);
+    pm.addPass(mlir::sdy::createInlineMeshesPass());
+    // We need to export shardings because the lowering path go directly to
+    // HLO but not the MLIR to HLO path that invokes SdyRoundTripExport.
+    xla::sdy::addSdyRoundTripExportPipeline(pm);
+    if (failed(pm.run(*module_))) {
+      return absl::InternalError(
+          absl::StrCat("Shardy inline meshes pass failed: ",
+                       diag_handler.ConsumeStatus().ToString()));
+    }
+  }
+
   {
     mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
     if (mlir::failed(mlir::verify(*module_))) {
@@ -516,15 +537,6 @@ absl::Status XlaCallModuleLoader::PrepareStablehloForLowering() {
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
-  if (use_shardy_partitioner_) {
-    // TODO(b/422690222): Remove `addSdyRoundTripImportPipeline` 6 months
-    // after mixed serialization will be supported by Shardy+StableHLO in JAX
-    xla::sdy::addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/false);
-    pm.addPass(mlir::sdy::createInlineMeshesPass());
-    // We need to export shardings because the lowering path go directly to HLO
-    // but not the MLIR to HLO path that invokes SdyRoundTripExport.
-    xla::sdy::addSdyRoundTripExportPipeline(pm);
-  }
 
   if (failed(pm.run(*module_))) {
     return absl::InternalError(
