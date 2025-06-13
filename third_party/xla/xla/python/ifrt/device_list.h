@@ -57,6 +57,11 @@ class DeviceList : public tsl::ReferenceCounted<DeviceList>,
   // subclass to lazily materialize devices for `devices()`.
   int size() const { return devices().size(); }
 
+  // Returns if the device list is empty.
+  // TODO(hyeontaek): Make this a virtual method and make it possible for a
+  // subclass to lazily materialize devices for `devices()`.
+  bool empty() const { return devices().empty(); }
+
   // Returns a list of `Devices*` represented by this `DeviceList`.
   virtual absl::Span<Device* const> devices() const = 0;
 
