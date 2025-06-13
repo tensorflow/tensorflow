@@ -67,7 +67,7 @@ class MatmulPerfTableGen {
   };
 
   explicit MatmulPerfTableGen(Config config)
-      : runner_(PlatformUtil::GetPlatform("cuda").value()),
+      : runner_(PlatformUtil::GetPlatform("gpu").value()),
         config_(std::move(config)) {};
 
   // Computes a performance table for a given `config`.

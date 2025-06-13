@@ -772,6 +772,7 @@ xla_test(
         "a100",
         "h100",
         "b200",
+        "amdgpu_any",
     ],
     shard_count = 2,
     deps = [

@@ -3063,6 +3063,7 @@ xla_test(
         "a100",
         "h100",
         "b200",
+        "amdgpu_any",
     ],
     tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [

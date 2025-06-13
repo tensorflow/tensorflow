@@ -856,6 +856,7 @@ xla_test(
     backends = [
         "h100",
         "b200",
+        "amdgpu_any",
     ],
     tags = [
         "gpu",
