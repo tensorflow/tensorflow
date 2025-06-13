@@ -51,6 +51,15 @@ CommonPjRtRawBuffer::RemoveDynamicShapeMetadataIfPresent(
       "Dynamic shapes are not supported for ", memory_space()->DebugString()));
 }
 
+PjRtFuture<> CommonPjRtRawBuffer::CopyRawDeviceToHost(void* dst, int64_t offset,
+                                                      int64_t transfer_size) {
+  auto event = CopyRawDeviceToHostAndReturnEvent(dst, offset, transfer_size);
+  if (!event.ok()) {
+    return PjRtFuture<>(event.status());
+  }
+  return (*event)->GetReadyFuture();
+}
+
 absl::StatusOr<tsl::RCReference<PjRtRawBuffer>>
 PjRtRawBuffer::CreateRawAliasOfBuffer(PjRtBuffer* buffer) {
   for (auto* func : GetFactoryFuncs()) {

@@ -152,15 +152,14 @@ CpuRawBuffer::CopyRawHostToDeviceAndReturnEvent(const void* src, int64_t offset,
       tsl::MakeAvailableAsyncValueRef<CpuEvent>());
 }
 
-PjRtFuture<> CpuRawBuffer::CopyRawDeviceToHost(void* dst, int64_t offset,
-                                               int64_t transfer_size) {
-  auto s = ValidateSlice(offset, transfer_size);
-  if (!s.ok()) {
-    return PjRtFuture<>(s);
-  }
+absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
+CpuRawBuffer::CopyRawDeviceToHostAndReturnEvent(void* dst, int64_t offset,
+                                                int64_t transfer_size) {
+  TF_RETURN_IF_ERROR(ValidateSlice(offset, transfer_size));
   std::memcpy(dst, static_cast<uint8_t*>(GetHostPointer()) + offset,
               transfer_size);
-  return PjRtFuture<>(absl::OkStatus());
+  return tsl::MakeRef<CpuTrackedDeviceEvent>(
+      tsl::MakeAvailableAsyncValueRef<CpuEvent>());
 }
 
 absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> CpuRawBuffer::CopyFromLiteral(

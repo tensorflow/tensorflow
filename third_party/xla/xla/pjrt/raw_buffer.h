@@ -90,6 +90,21 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
   PjRtFuture<> CopyRawHostToDevice(const void* src, int64_t offset,
                                    int64_t transfer_size) override;
 
+  // Transfers a sub-range of the on-device representation of the buffer.
+  // offset+transfer_size must be less than GetOnDeviceSizeInBytes. The
+  // returned future transitions to ready on error, or after the transfer has
+  // completed.
+  //
+  // Note that the underlying driver may have requirements
+  // on the alignment of `dst` and `offset` as well. Look at implementations of
+  // this method for specific alignment requirements.
+  virtual absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
+  CopyRawDeviceToHostAndReturnEvent(void* dst, int64_t offset,
+                                    int64_t transfer_size) = 0;
+
+  PjRtFuture<> CopyRawDeviceToHost(void* dst, int64_t offset,
+                                   int64_t transfer_size) override;
+
   // Creates an event which signals when the allocation is complete.
   virtual absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
   MakeAllocationReadyEvent() = 0;
