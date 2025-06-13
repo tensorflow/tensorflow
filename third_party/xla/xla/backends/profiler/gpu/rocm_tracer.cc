@@ -44,7 +44,7 @@ constexpr uint32_t RocmTracerEvent::kInvalidDeviceId;
     if (status != ROCTRACER_STATUS_SUCCESS) {                               \
       const char* errstr = se::wrap::roctracer_error_string();              \
       LOG(ERROR) << "function " << #expr << "failed with error " << errstr; \
-      return tsl::errors::Internal(                                         \
+      return absl::InternalError(                                           \
           absl::StrCat("roctracer call error", errstr));                    \
     }                                                                       \
   } while (false)

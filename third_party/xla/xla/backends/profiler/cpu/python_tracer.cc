@@ -19,7 +19,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "xla/python/profiler/internal/python_hooks.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -55,7 +54,7 @@ PythonTracer::~PythonTracer() { Stop().IgnoreError(); }  // NOLINT
 
 absl::Status PythonTracer::Start() {  // TENSORFLOW_STATUS_OK
   if (recording_) {
-    return tsl::errors::Internal("PythonTracer already started");
+    return absl::InternalError("PythonTracer already started");
   }
   VLOG(1) << __FUNCTION__;
   recording_ = true;
@@ -65,7 +64,7 @@ absl::Status PythonTracer::Start() {  // TENSORFLOW_STATUS_OK
 
 absl::Status PythonTracer::Stop() {  // TENSORFLOW_STATUS_OK
   if (!recording_) {
-    return tsl::errors::Internal("PythonTracer not started");
+    return absl::InternalError("PythonTracer not started");
   }
   VLOG(1) << __FUNCTION__;
   context_ = PythonHooks::GetSingleton()->Stop();

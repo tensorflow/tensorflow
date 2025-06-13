@@ -234,7 +234,8 @@ absl::Status GpuTracer::CollectData(XSpace* space) {
       return absl::OkStatus();
     }
   }
-  return tsl::errors::Internal("Invalid profiling state: ", profiling_state_);
+  return absl::InternalError(
+      absl::StrCat("Invalid profiling state: ", profiling_state_));
 }
 
 // Not in anonymous namespace for testing purposes.

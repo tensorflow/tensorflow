@@ -96,7 +96,8 @@ inline void LogIfError(const absl::Status &status) {
       if (status == CUPTI_ERROR_INSUFFICIENT_PRIVILEGES) {                  \
         return tsl::errors::PermissionDenied("CUPTI need root access!");    \
       } else {                                                              \
-        return tsl::errors::Internal("CUPTI call error", errstr);           \
+        return absl::InternalError(                                         \
+            absl::StrCat("CUPTI call error: ", errstr));                    \
       }                                                                     \
     }                                                                       \
   } while (false)
@@ -1271,7 +1272,7 @@ absl::Status CuptiTracer::HandleDriverApiCallback(
     // API callback is called before any CUDA context is created.
     // This is expected to be rare, and we ignore this case.
     VLOG(3) << "API callback received before creation of CUDA context\n";
-    return tsl::errors::Internal("cutpi callback without context");
+    return absl::InternalError("cutpi callback without context");
   }
 
   // Grab a correct device ID.
@@ -1279,7 +1280,7 @@ absl::Status CuptiTracer::HandleDriverApiCallback(
   RETURN_IF_CUPTI_ERROR(
       cupti_interface_->GetDeviceId(cbdata->context, &device_id));
   if (device_id >= num_gpus_) {
-    return tsl::errors::Internal("Invalid device id:", device_id);
+    return absl::InternalError(absl::StrCat("Invalid device id:", device_id));
   }
 
   if (cbdata->callbackSite == CUPTI_API_ENTER) {
@@ -1378,7 +1379,7 @@ absl::Status CuptiTracer::ProcessActivityBuffer(CUcontext context,
     LOG(WARNING) << "CUPTI activity buffer is reclaimed after flush.";
     return absl::OkStatus();
   }
-  if (cupti_interface_->Disabled()) return tsl::errors::Internal("Disabled.");
+  if (cupti_interface_->Disabled()) return absl::InternalError("Disabled.");
 
   // Report dropped records.
   size_t dropped = 0;
