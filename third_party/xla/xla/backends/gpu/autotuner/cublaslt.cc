@@ -86,8 +86,7 @@ CublasLtBackend::GetSupportedConfigs(
     const HloInstruction& instr,
     stream_executor::StreamExecutor* stream_executor) {
   if (!IsSupported(instr)) {
-    return absl::InvalidArgumentError(
-        "Not a CublasLt custom call instruction.");
+    return std::vector<std::unique_ptr<BackendConfig>>();
   }
 
   GpuBackendConfig gpu_config =

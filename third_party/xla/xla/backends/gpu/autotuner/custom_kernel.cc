@@ -96,8 +96,7 @@ CustomKernelBackend::GetSupportedConfigs(
     const HloInstruction& instr,
     stream_executor::StreamExecutor* stream_executor) {
   if (!IsSupported(instr)) {
-    return absl::InvalidArgumentError(
-        "CustomKernelBackend does not support this instruction.");
+    return std::vector<std::unique_ptr<BackendConfig>>();
   }
   TF_ASSIGN_OR_RETURN(
       std::vector<CustomKernel> kernels,

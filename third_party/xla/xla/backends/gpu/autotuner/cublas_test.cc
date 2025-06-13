@@ -50,26 +50,46 @@ using ::tsl::testing::IsOk;
 using ::tsl::testing::IsOkAndHolds;
 
 const char kCublasCustomCallHlo[] = R"(
-    HloModule module, entry_computation_layout={(f32[100,100]{1,0}, f32[100,100]{1,0})->f32[100,100]{1,0}}
+  HloModule module, entry_computation_layout={(f32[100,100]{1,0}, f32[100,100]{1,0})->f32[100,100]{1,0}}
 
-    ENTRY %main (arg0: f32[100,100], arg1: f32[100,100]) -> f32[100,100] {
-      %arg0 = f32[100,100]{1,0} parameter(0)
-      %arg1 = f32[100,100]{1,0} parameter(1)
-      %custom-call.1 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%arg0, %arg1), 
-      custom_call_target="__cublas$gemm", 
-      backend_config={
-        "gemm_backend_config":{
-          "dot_dimension_numbers":
-            {
-              "lhs_contracting_dimensions":["1"],
-              "rhs_contracting_dimensions":["0"],
-              "lhs_batch_dimensions":[],
-              "rhs_batch_dimensions":[]
-          }
+  ENTRY %main (arg0: f32[100,100], arg1: f32[100,100]) -> f32[100,100] {
+    %arg0 = f32[100,100]{1,0} parameter(0)
+    %arg1 = f32[100,100]{1,0} parameter(1)
+    %custom-call.1 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%arg0, %arg1), 
+    custom_call_target="__cublas$gemm", 
+    backend_config={
+      "gemm_backend_config":{
+        "dot_dimension_numbers":
+          {
+            "lhs_contracting_dimensions":["1"],
+            "rhs_contracting_dimensions":["0"],
+            "lhs_batch_dimensions":[],
+            "rhs_batch_dimensions":[]
         }
       }
-      ROOT %get-tuple-element = f32[100,100]{1,0} get-tuple-element(%custom-call.1), index=0
-    })";
+    }
+    ROOT %get-tuple-element = f32[100,100]{1,0} get-tuple-element(%custom-call.1), index=0
+  })";
+
+const char kUnsupportedHlo[] = R"(
+  HloModule module
+
+  computation {
+    p0 = bf16[1024,1024]{1,0} parameter(0)
+    convert0 = f32[1024,1024]{1,0} convert(p0)
+    p1 = s8[1024,1024]{1,0} parameter(1)
+    convert1 = f32[1024,1024]{1,0} convert(p1)
+    ROOT dot = f32[1024,1024]{1,0} dot(convert0, convert1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  }
+
+  ENTRY main {
+    p0 = bf16[1024,1024]{1,0} parameter(0)
+    p1 = s8[1024,1024]{1,0} parameter(1)
+    ROOT fusion = f32[1024,1024]{1,0} fusion(p0, p1),
+      kind=kCustom, calls=computation,
+      backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+  })";
 
 class CublasBackendTest : public HloHardwareIndependentTestBase {
  protected:
@@ -109,6 +129,19 @@ TEST_F(CublasBackendTest, GetSupportedConfigsFromCublasCustomCall) {
           stream_executor);
   EXPECT_THAT(configs, IsOk());
   EXPECT_GT(configs.value().size(), 0);
+}
+
+TEST_F(CublasBackendTest,
+       GetSupportedConfigsReturnsEmptyVectorNonCublasCustomCall) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kUnsupportedHlo));
+  se::StreamExecutor* stream_executor =
+      PlatformUtil::GetDefaultPlatform().value()->ExecutorForDevice(0).value();
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
+      backend_.GetSupportedConfigs(
+          (*hlo_module->entry_computation()->root_instruction()),
+          stream_executor);
+  EXPECT_THAT(configs, IsOkAndHolds(testing::SizeIs(0)));
 }
 
 TEST_F(CublasBackendTest, GetDefaultConfigFromCublasCustomCall) {

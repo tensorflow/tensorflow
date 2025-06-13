@@ -89,6 +89,26 @@ const char kCudnnCustomCallHlo[] = R"(
     ROOT %get-tuple-element = f32[54,54,16,64]{1,0,3,2} get-tuple-element(%cudnn-conv), index=0
   })";
 
+const char kUnsupportedHlo[] = R"(
+  HloModule module
+
+  computation {
+    p0 = bf16[1024,1024]{1,0} parameter(0)
+    convert0 = f32[1024,1024]{1,0} convert(p0)
+    p1 = s8[1024,1024]{1,0} parameter(1)
+    convert1 = f32[1024,1024]{1,0} convert(p1)
+    ROOT dot = f32[1024,1024]{1,0} dot(convert0, convert1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  }
+
+  ENTRY main {
+    p0 = bf16[1024,1024]{1,0} parameter(0)
+    p1 = s8[1024,1024]{1,0} parameter(1)
+    ROOT fusion = f32[1024,1024]{1,0} fusion(p0, p1),
+      kind=kCustom, calls=computation,
+      backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+  })";
+
 class CudnnBackendTest : public HloHardwareIndependentTestBase {
  protected:
   DebugOptions debug_options_;
@@ -137,6 +157,19 @@ TEST_F(CudnnBackendTest, GetSupportedConfigsFromCudnnCustomCall) {
           (*hlo_module->entry_computation()->root_instruction()->operand(0)),
           stream_executor);
   EXPECT_THAT(configs, IsOkAndHolds(SizeIs(Gt(0))));
+}
+
+TEST_F(CudnnBackendTest,
+       GetSupportedConfigsFromNonCudnnFusionReturnsEmptyVector) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kUnsupportedHlo));
+  se::StreamExecutor* stream_executor =
+      PlatformUtil::GetDefaultPlatform().value()->ExecutorForDevice(0).value();
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
+      backend_.GetSupportedConfigs(
+          (*hlo_module->entry_computation()->root_instruction()),
+          stream_executor);
+  EXPECT_THAT(configs, IsOkAndHolds(SizeIs(0)));
 }
 
 TEST_F(CudnnBackendTest, GetDefaultConfigFromCudnnFusionFails) {
