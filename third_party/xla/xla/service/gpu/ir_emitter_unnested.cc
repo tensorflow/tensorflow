@@ -100,6 +100,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/infeed_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/norm_thunk.h"
+#include "xla/backends/gpu/runtime/nvshmem_collective_permute_thunk.h"
 #include "xla/backends/gpu/runtime/outfeed_thunk.h"
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
@@ -1864,6 +1865,16 @@ absl::Status IrEmitterUnnested::EmitReplicaOrPartitionId(
   return absl::OkStatus();
 }
 
+bool IsNvshmemCollective(const HloInstruction* instr) {
+  if (instr->has_backend_config()) {
+    auto gpu_config = instr->backend_config<GpuBackendConfig>();
+    const CollectiveBackendConfig& backend_config =
+        gpu_config.value().collective_backend_config();
+    return backend_config.backend() == CollectiveBackendConfig::NVSHMEM;
+  }
+  return false;
+}
+
 absl::Status IrEmitterUnnested::EmitCollectivePermute(
     const HloCollectivePermuteInstruction* instr) {
   // First output is aliased.
@@ -1918,13 +1929,26 @@ absl::Status IrEmitterUnnested::EmitCollectivePermute(
   }
   if (!CollectivePermuteStartThunk::IsDegenerate(instr, replica_count,
                                                  partition_count)) {
-    auto thunk = std::make_unique<CollectivePermuteStartThunk>(
-        Thunk::ThunkInfo::WithProfileAnnotation(instr), instr, replica_count,
-        partition_count, buffers,
-        ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p(),
-        GetStreamKindForP2P(instr));
-    GetCollectivesAsyncEvents().try_emplace(instr, thunk->async_events());
-    AddThunkToThunkSequence(std::move(thunk));
+    if (IsNvshmemCollective(instr)) {
+      // Note: xla_gpu_use_memcpy_local_p2p flag won't be used for now since the
+      // NVSHMEM collective permute thunk doesn't perform any memcpy operations
+      // at the moment.
+      auto thunk = std::make_unique<NvshmemCollectivePermuteStartThunk>(
+          Thunk::ThunkInfo::WithProfileAnnotation(instr), instr, replica_count,
+          partition_count, buffers,
+          ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p(),
+          GetStreamKindForP2P(instr));
+      GetCollectivesAsyncEvents().try_emplace(instr, thunk->async_events());
+      AddThunkToThunkSequence(std::move(thunk));
+    } else {
+      auto thunk = std::make_unique<CollectivePermuteStartThunk>(
+          Thunk::ThunkInfo::WithProfileAnnotation(instr), instr, replica_count,
+          partition_count, buffers,
+          ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p(),
+          GetStreamKindForP2P(instr));
+      GetCollectivesAsyncEvents().try_emplace(instr, thunk->async_events());
+      AddThunkToThunkSequence(std::move(thunk));
+    }
   }
   return absl::OkStatus();
 }
@@ -2233,9 +2257,17 @@ absl::Status IrEmitterUnnested::EmitCollectiveAsyncDone(
   if (is_send_recv) {
     stream_kind = GetStreamKindForP2P(start);
   }
-  AddThunkToThunkSequence(std::make_unique<CollectiveDoneThunk>(
-      kind, Thunk::ThunkInfo::WithProfileAnnotation(inst),
-      async_events_it->second, stream_kind));
+
+  if (IsNvshmemCollective(inst)) {
+    CHECK(kind == Thunk::Kind::kNvshmemCollectivePermuteDone);
+    AddThunkToThunkSequence(std::make_unique<NvshmemCollectivePermuteDoneThunk>(
+        Thunk::ThunkInfo::WithProfileAnnotation(inst), async_events_it->second,
+        stream_kind));
+  } else {
+    AddThunkToThunkSequence(std::make_unique<CollectiveDoneThunk>(
+        kind, Thunk::ThunkInfo::WithProfileAnnotation(inst),
+        async_events_it->second, stream_kind));
+  }
   return absl::OkStatus();
 }
 
@@ -2526,7 +2558,6 @@ absl::Status IrEmitterUnnested::EmitSendDoneThunk(
   AddThunkToThunkSequence(std::make_unique<HostSendDoneThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(instr), *instr->channel_id(),
       send_recv_events_, DeviceConstraint(instr)));
-
   return absl::OkStatus();
 }
 
