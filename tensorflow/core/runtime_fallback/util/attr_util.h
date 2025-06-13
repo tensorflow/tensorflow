@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
 #include "tensorflow/core/framework/node_def_util.h"
