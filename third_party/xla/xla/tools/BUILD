@@ -854,8 +854,8 @@ xla_test(
     # TODO(b/372714955): Fix the memory leak.
     args = if_google(["--heap_check="]),
     backends = [
-        "h100",
-        "b200",
+        "gpu_h100",
+        "gpu_b200",
     ],
     tags = [
         "gpu",

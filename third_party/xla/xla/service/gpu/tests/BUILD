@@ -347,11 +347,11 @@ xla_test(
     name = "gpu_triton_custom_call_test",
     srcs = ["gpu_triton_custom_call_test.cc"],
     backends = [
-        "a100",
-        "h100",
-        "v100",
-        "b200",
-        "amdgpu_any",
+        "gpu_a100",
+        "gpu_h100",
+        "gpu_v100",
+        "gpu_b200",
+        "gpu_amd_any",
     ],
     deps = [
         ":gpu_codegen_test",
@@ -424,9 +424,9 @@ xla_test(
     name = "gpu_kernel_tiling_test",
     srcs = ["gpu_kernel_tiling_test.cc"],
     backends = [
-        "p100",
-        "amdgpu_any",
-    ] + if_oss(["nvgpu_any"]),
+        "gpu_p100",
+        "gpu_amd_any",
+    ] + if_oss(["gpu_any"]),
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -728,11 +728,11 @@ xla_test(
     name = "tensor_float_32_global_var_test",
     srcs = ["tensor_float_32_global_var_test.cc"],
     backends = [
-        "a100",
-        "b200",
-        "amdgpu_any",
+        "gpu_a100",
+        "gpu_b200",
+        "gpu_amd_any",
     ] + if_oss([
-        "nvgpu_any",
+        "gpu_any",
     ]),
     tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
@@ -769,9 +769,9 @@ xla_test(
     name = "gpu_fused_mha_test",
     srcs = ["gpu_fused_mha_test.cc"],
     backends = [
-        "a100",
-        "h100",
-        "b200",
+        "gpu_a100",
+        "gpu_h100",
+        "gpu_b200",
     ],
     shard_count = 2,
     deps = [
