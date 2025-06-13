@@ -140,6 +140,15 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       tsl::RCReference<RawSEDeviceMemory> device_buffer, void* dst,
       int64_t offset, int64_t transfer_size) override;
 
+  void CopyToRemoteDevice(PjRtBuffer* buffer,
+                          absl::string_view serialized_descriptor,
+                          PjRtBuffer::RemoteSendCallback on_done) override;
+
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
+                              PjRtDevice* device,
+                              PjRtCrossHostRecvNotifier notifier) override;
+
   absl::StatusOr<const xla::PjRtTopologyDescription*> GetTopologyDescription()
       const override {
     return &topology_;
