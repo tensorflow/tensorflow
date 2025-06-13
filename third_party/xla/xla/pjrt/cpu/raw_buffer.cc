@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/cpu_function_runtime.h"
@@ -312,6 +313,32 @@ absl::StatusOr<xla::Shape> MakeDefaultCpuBufferShape(
     }
   }
   return shape;
+}
+
+void CpuRawBuffer::ReadDynamicShape(tsl::AsyncValueRef<xla::Shape> output_shape,
+                                    xla::Shape shape) {
+  size_t offset = xla::ShapeUtil::ByteSizeOf(shape, sizeof(void*));
+  // Each dynamic dimension size is represented as a S32.
+  int64_t metadata_size = sizeof(int32_t) * shape.dimensions().size();
+  auto metadata_buffer = reinterpret_cast<const int32_t*>(
+      reinterpret_cast<const uint8_t*>(buffer_->untyped_data()) + offset);
+  if (buffer_->size_bytes() != metadata_size + offset) {
+    output_shape.SetError(absl::InvalidArgumentError(absl::StrFormat(
+        "Raw buffer size (%d) incompatible with original shape (%s)",
+        buffer_->size_bytes(), shape.ToString(true))));
+    return;
+  }
+  output_shape->clear_dynamic_dimensions();
+  for (size_t i = 0; i < shape.dimensions().size(); ++i) {
+    output_shape->set_dimensions(i, metadata_buffer[i]);
+  }
+  if (!ShapeUtil::DynamicShapeIsCompatible(output_shape.get(), shape)) {
+    output_shape.SetError(absl::InvalidArgumentError(absl::StrFormat(
+        "Output dynamic shape (%s) incompatible with original shape (%s)",
+        output_shape->ToString(true), shape.ToString(true))));
+    return;
+  }
+  output_shape.SetStateConcrete();
 }
 
 absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
