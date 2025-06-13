@@ -101,6 +101,7 @@ xla_cc_test(
         ":sharding_format_picker",
         ":spmd_partitioner",
         ":spmd_prepare",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
