@@ -62,13 +62,21 @@ class DistributedRuntimeClient {
     // expires, then shutdown() reports an error and returns control.
     absl::Duration shutdown_timeout = absl::Minutes(5);
 
+    // The duration after which the service concludes a client has vanished if
+    // it hasn't received any heartbeats from the client.
+    absl::Duration heartbeat_timeout = absl::Seconds(100);
+
     // Interval at which the client should send heartbeat RPCs to the
     // coordinator.
+    //
+    // TODO(mwhittaker): Deprecate this; use heartbeat_timeout instead.
     absl::Duration heartbeat_interval = absl::Seconds(10);
 
     // How many failed heartbeat RPCs may fail due to a possibly-ephemeral
     // reason before we decide the coordinator has vanished and that we should
     // shut down.
+    //
+    // TODO(mwhittaker): Deprecate this; use heartbeat_timeout instead.
     int max_missing_heartbeats = 10;
 
     // Callback invoked by the client when notification of a missing heartbeat
