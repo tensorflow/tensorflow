@@ -1135,6 +1135,48 @@ ENTRY main {
             2);
 }
 
+TEST_F(PriorityFusionTest, FuseTritonFusionBothEndsUsingMultiOutputFusion) {
+  // Here, we fuse `fusion` first into `exp` and `sqrt`. When we try to fuse
+  // `log` into the two fusions resulting from the previous step using
+  // multi-output fusion, we currently don't allow that, as we would need to
+  // select with which fusion to fuse first.
+  // TODO(b/390559452): Improve the logic to select the best consumer candidate
+  // for multi-output fusion.
+  const std::string kHloText = R"(
+HloModule t
+
+consumer_computation {
+  parameter_0 = f32[1024,512] parameter(0)
+  ROOT log = f32[1024,512] negate(parameter_0)
+}
+
+ENTRY main {
+  param_0 = f32[1024,512] parameter(0)
+  log = f32[1024,512] log(param_0)
+  fusion = f32[1024,512] fusion(log), kind=kCustom, calls=consumer_computation, backend_config={"fusion_backend_config": {"kind":"__triton","block_level_fusion_config":{"output_tiles":[{"sizes":["1","128"]}],"num_warps":"4"}}}
+  exponential = f32[1024,512] exponential(fusion)
+  sqrt = f32[1024,512] sqrt(fusion)
+  ROOT tuple = (f32[1024,512],f32[1024,512],f32[1024,512]) tuple(exponential, sqrt, log)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_unsupported_enable_triton_multi_output_fusion(true);
+  EXPECT_TRUE(priority_fusion_.Run(module.get()).value());
+  EXPECT_TRUE(verifier().Run(module.get()).status().ok());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  HloInstruction *fusion1, *fusion2;
+  EXPECT_THAT(root,
+              GmockMatch(m::Tuple(m::Fusion(&fusion1, m::Log()),
+                                  m::Fusion(&fusion2, m::Log()), m::Log())));
+  EXPECT_NE(fusion1, fusion2);
+  EXPECT_TRUE(IsGenericTritonFusion(*fusion1));
+  EXPECT_TRUE(IsGenericTritonFusion(*fusion2));
+}
+
 TEST_F(PriorityFusionTest, TritonProducerNotSupported_DoNotFuse) {
   const std::string kHloText = R"(
 HloModule t
