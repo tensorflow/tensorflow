@@ -249,21 +249,48 @@ class UnicodeDecodeTest(test_util.TensorFlowTestCase,
                     [ord('='), ord('='), ord('='), ord('=')],
                     [ord('w'), ord('o'), ord('r'), ord('l'), ord('d')]]),
       dict(
-          input=[b"\x00", b"hello", b"==\x01==", b"world"],
+          input=[b"\x00", b"hello", b"==\x01==", b"world",
+                 # C1 control characters are not replaced.
+                 u"\x80\x9f".encode()],
           input_encoding="UTF-8",
           replace_control_characters=True,
           expected=[[0xFFFD],
                     [ord('h'), ord('e'), ord('l'), ord('l'), ord('o')],
                     [61, 61, 65533, 61, 61],
-                    [ord('w'), ord('o'), ord('r'), ord('l'), ord('d')]]),
+                    [ord('w'), ord('o'), ord('r'), ord('l'), ord('d')],
+                    [0x80, 0x9F]]),
       dict(
-          input=[b"\x00", b"hello", b"==\x01==", b"world"],
+          input=[b"\x00", b"hello", b"==\x01==", b"world",
+                 u"\x80\x9f".encode()],
           input_encoding="UTF-8",
           replace_control_characters=True,
           replacement_char=0,
           expected=[[0], [ord('h'), ord('e'), ord('l'), ord('l'), ord('o')],
                     [ord('='), ord('='), 0, ord('='), ord('=')],
-                    [ord('w'), ord('o'), ord('r'), ord('l'), ord('d')]]),
+                    [ord('w'), ord('o'), ord('r'), ord('l'), ord('d')],
+                    [0x80, 0x9F]]),
+      dict(
+          input=[b"\xed\xa0\xbd",  # single high surrogate
+                 b"\xed\xb8\x80",  # single low surrogate
+                 b"\xed\xa0\xbd\xed\xb8\x80"],  # surrogate pair
+          input_encoding="UTF-8",
+          expected=[[0xFFFD, 0xFFFD, 0xFFFD],
+                    [0xFFFD, 0xFFFD, 0xFFFD],
+                    [0xFFFD, 0xFFFD, 0xFFFD, 0xFFFD, 0xFFFD, 0xFFFD]]),
+      dict(
+          # Note that these characters are not considered valid by
+          # `unicode_encode()`, which is inconsistent.
+          input=["\ufdd0".encode(),  # invalid, non-character
+                 "\ufffe\uffff".encode(),  # invalid, last two in BMP
+                 "\U0010ffff".encode(),  # invalid, last in plane 16
+                 b"\xf1\x84\x80\x80"],  # too large
+          input_encoding="UTF-8",
+          expected=[[0xFDD0],
+                    [0xFFFE, 0xFFFF],
+                    [0x10FFFF],
+                    # This is very strange and bad.  The result has been
+                    # shifted right two bits.
+                    [0x110000 >> 2]]),
   ])  # pyformat: disable
   def testErrorModes(self, expected=None, **args):
     result = ragged_string_ops.unicode_decode(**args)
