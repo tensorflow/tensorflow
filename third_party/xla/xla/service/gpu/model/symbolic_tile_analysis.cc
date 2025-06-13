@@ -83,18 +83,30 @@ namespace {
 using ::mlir::AffineExpr;
 using ::mlir::MLIRContext;
 
+// Tiling of the output of a fusion (computation).
+// For top level fusions that is a mapping from the tile multi index to the
+// index of the output tensor. In case of multi-output fusions that will be the
+// tiling of the "real root" (see symbolic_tile_analysis.h).
+//
+// Tiling might also include and runtime variables.
+//
+// `ComputeOutputTilingInfo` creates a new instance of this struct.
 struct OutputTilingInfo {
-  // The number of output tiles for each dimension of the root indexing.
-  // E.g. if dimensions are [29, 16] and tile size is [4, 8] then
-  // `num_output_tiles_per_dim` will be [8, 2].
+  // The number of output tiles for each dimension and range variable of the
+  // root indexing. E.g. if dimensions are [29, 16] and tile size is [4, 8] then
+  // `num_output_tiles_per_dim` will be [8, 2] = [29 ceildiv 4, 16 ceildiv 8].
   llvm::SmallVector<int64_t> num_output_tiles_per_dim;
 
-  // An indexing map from an output tile multi-index to tile offsets.
+  // An indexing map to compute tile offsets from the root index, symbols and
+  // runtime variables. The map only contains dimensions and runtime variables,
+  // range variables are converted to dimensions.
   //
   // The dimensions of the indexing map correspond to the dimensions passed
   // to `ComputeOutputTilingInfo` and the number of dimensions is equal to the
   // size of `num_output_tiles_per_dim`. For example above it would look like:
   //   `(pid_0, pid_1) -> (<tile 0 offset>, <tile 1 offset>)`.
+  // For nested fusions range variables are converted to dimensions:
+  //   `(pid_0, pid_1, s0){rt0} -> (<tile 0 offset>, <tile 1 offset>)`.
   IndexingMap output_tile_offset_indexing;
 
   // The subset of tiling parameters that are active for this tiling, in
@@ -108,7 +120,21 @@ struct OutputTilingInfo {
   //   `(pid) -> (<tile 0 offset>, <tile 1 offset>)`.
   // with tile offset expressions where pid_0 is replaced by (pid floordiv 2),
   // and pid_1 is replaced by (pid mod 2).
+  // Note that for nested fusions the dimension will also include the range
+  // variable; in the example indexing
+  //   `(d0){rt0} -> (<tile 0 offset>, <tile 1 offset>)`
+  // d0 will be a combination of pid_0, pid_1 and s0.
   IndexingMap linear_output_tile_offset_indexing;
+
+  std::string ToString(const absl::string_view field_separator = "\n") {
+    return absl::StrCat(
+        "num_output_tiles_per_dim: ", num_output_tiles_per_dim.size(),
+        field_separator, absl::StrJoin(num_output_tiles_per_dim, ", "),
+        field_separator, "output_tile_offset_indexing: ",
+        xla::ToString(output_tile_offset_indexing), field_separator,
+        "linear_output_tile_offset_indexing: ",
+        xla::ToString(linear_output_tile_offset_indexing));
+  }
 };
 
 llvm::SmallVector<int64_t> GetNumberOfTilesPerDimension(
@@ -172,6 +198,8 @@ IndexingMap LinearizeTileOffsets(
   return linearized_tile_offsets_indexing;
 }
 
+// Creates the concrete tiling of an output of the computation from the
+// indexing map of the computation's root and the tile sizes.
 absl::StatusOr<OutputTilingInfo> ComputeOutputTilingInfo(
     const IndexingMap& root_indexing, absl::Span<const int64_t> tile_sizes,
     absl::Span<const int64_t> major_to_minor_active_tiling_parameters,
@@ -231,6 +259,8 @@ absl::StatusOr<OutputTilingInfo> ComputeOutputTilingInfo(
     }
     outer_loop_bounds[dim_id] = upper_bound;
 
+    // TODO(b/393299275): naming is not correct as that might also be a range
+    // variable.
     dim_vars[dim_id] = {0, upper_bound - 1, absl::StrCat("pid_", dim_id)};
     tiled_dims[dim_id] =
         tile_size * mlir::getAffineDimExpr(dim_id, mlir_context);
@@ -539,7 +569,7 @@ void SortTiledHloInstructionsInPostOrder(
                          [](std::string* out,
                             const std::unique_ptr<SymbolicTiledHloInstruction>&
                                 instruction) {
-                           absl::StrAppend(out, instruction->ToString());
+                           absl::StrAppend(out, instruction->ToString("; "));
                          });
   }
 }
@@ -1530,6 +1560,8 @@ std::vector<int64_t> ExtractDimensionIds(AffineExpr expr) {
 }
 
 // TODO(b/406244630): this function is too long. We should chunk it up.
+// Creates a concrete tiling of HLO computation with provided
+// `flat_tiling_parameters` sizes based on the given symbolic tiling `analysis`.
 absl::StatusOr<TiledHloComputation> ComputeTiledHloInstructionsImpl(
     const SymbolicTileAnalysis& analysis,
     const std::vector<int64_t>& flat_tiling_parameters,
@@ -1621,6 +1653,8 @@ absl::StatusOr<TiledHloComputation> ComputeTiledHloInstructionsImpl(
       ComputeOutputTilingInfo(real_root_indexing, flat_tiling_parameters,
                               major_to_minor_active_tiling_parameters, context,
                               parent_output_tile_dim_bounds));
+
+  VLOG(3) << "output_tiling_info: " << output_tiling_info.ToString("; ");
 
   OrderedUniquePtrValueHashSet<TiledHloInstruction> tiled_hlo_instructions_set;
   // The actual number of `TiledHloInstruction`s can be smaller than the number
