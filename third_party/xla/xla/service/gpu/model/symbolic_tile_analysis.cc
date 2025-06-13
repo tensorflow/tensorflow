@@ -411,7 +411,8 @@ FusionDecision ShouldProceedWithSymbolicTileDerivation(
   // Relaxing this restriction will require making sure that the cost model
   // works well with concatenates, and that we always construct nested fusions
   // for concatenates.
-  if (hlo->opcode() == HloOpcode::kConcatenate &&
+  if ((hlo->opcode() == HloOpcode::kConcatenate ||
+       hlo->opcode() == HloOpcode::kPad) &&
       !IsWithinNestedGemmFusion(hlo)) {
     return FusionDecision::Forbid("Bailing out on ") << hlo->ToString();
   }
@@ -443,7 +444,6 @@ FusionDecision ShouldProceedWithSymbolicTileDerivation(
              << ToString(reshape_indexing_map);
     }
   }
-
   return FusionDecision::Allow();
 }
 
@@ -1177,6 +1177,29 @@ ComposeIndexingResult ComposeInstructionIndexing(
                                std::move(new_instructions)};
 }
 
+std::vector<OperandIndexingSet> GetOperandIndexingMaps(
+    const HloInstruction* hlo, MLIRContext* ctx) {
+  std::vector<OperandIndexingSet> indexing_maps;
+  HloInstructionIndexing operands_indexing =
+      ComputeOutputToInputIndexing(hlo, /*output_id=*/0, ctx);
+  if (hlo->opcode() == HloOpcode::kPad) {
+    OperandIndexing pad_indexing_map =
+        *operands_indexing.indexing_maps[0].begin();
+    indexing_maps.push_back({OperandIndexing{
+        IndexingMap{pad_indexing_map.map().GetAffineMap(),
+                    DimVarsFromTensorSizes(hlo->shape().dimensions()),
+                    pad_indexing_map.map().GetRangeVars(),
+                    pad_indexing_map.map().GetRTVars()}}});
+    indexing_maps.push_back({*operands_indexing.indexing_maps[1].begin()});
+  } else {
+    for (const auto& map_set : operands_indexing.indexing_maps) {
+      CHECK_EQ(map_set.size(), 1);  // Crash OK
+      indexing_maps.push_back(map_set);
+    }
+  }
+  return indexing_maps;
+}
+
 }  // namespace
 
 /*static*/ SymbolicTileAnalysisOrError SymbolicTileAnalysis::AnalyzeFusionImpl(
@@ -1216,19 +1239,16 @@ ComposeIndexingResult ComposeInstructionIndexing(
       continue;  // Don't analyze parameter operands of nested fusions.
     }
 
-    HloInstructionIndexing operands_indexing =
-        ComputeOutputToInputIndexing(hlo, /*output_id=*/0, ctx);
+    auto operands_indexing =
+        GetOperandIndexingMaps(tiled_hlo_instruction->hlo(), ctx);
 
     HloInstructionAdaptor instruction_adaptor(*hlo, &fusion);
-    for (auto [operand_pos, operand_and_indexing_map_set] :
-         llvm::enumerate(llvm::zip(instruction_adaptor.GetOperands(),
-                                   operands_indexing.indexing_maps))) {
-      auto [operand, operand_indexing_map_set] = operand_and_indexing_map_set;
-      const OperandIndexing& operand_indexing =
-          *operand_indexing_map_set.begin();
+    for (auto [operand_pos, operand_and_indexing_map_set] : llvm::enumerate(
+             llvm::zip(instruction_adaptor.GetOperands(), operands_indexing))) {
+      auto& [operand, operand_indexing] = operand_and_indexing_map_set;
 
       ComposeIndexingResult composed_indexing = ComposeInstructionIndexing(
-          tiled_hlo_instruction, operand_indexing, simplification_mode,
+          tiled_hlo_instruction, *operand_indexing.begin(), simplification_mode,
           tiled_hlo_instructions_set, operand, instruction_adaptor, operand_pos,
           parameter_mapping);
 
