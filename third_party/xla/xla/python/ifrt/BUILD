@@ -575,7 +575,10 @@ cc_library(
         ":friends",
         ":internal",
     ]),
-    deps = ["@com_google_absl//absl/strings"],
+    deps = [
+        "//xla/tsl/lib/gtl:int_type",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(

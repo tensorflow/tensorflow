@@ -27,7 +27,9 @@ class SerDesAnyVersionAccessor {
  public:
   static SerDesVersion GetMinimum() { return SerDesVersion::minimum(); }
 
-  static SerDesVersion Get(int version) { return SerDesVersion(version); }
+  static SerDesVersion Get(SerDesVersionNumber version_number) {
+    return SerDesVersion(version_number);
+  }
 };
 
 }  // namespace ifrt
