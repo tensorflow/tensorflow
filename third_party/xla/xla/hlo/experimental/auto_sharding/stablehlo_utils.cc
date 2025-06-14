@@ -21,11 +21,13 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "mlir/IR/Verifier.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/translate/stablehlo.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_export.h"
+#include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_import.h"
 
 namespace xla::spmd {
 
@@ -41,9 +43,27 @@ absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertShardyToHlo(
   if (mlir::failed(pm.run(shardy_stablehlo_module_copy.get()))) {
     return absl::InternalError("Failed to export to StableHLO.");
   }
-  // TODO(hanruobing): Explore reinserting the original mesh and calling
-  // xla::sdy::createDedupMeshesPass
   return xla::ConvertStablehloToHlo(shardy_stablehlo_module_copy.get());
 }
 
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToShardyStablehlo(
+    const xla::HloModule& hlo_module, mlir::MLIRContext* context) {
+  auto stablehlo_module =
+      xla::ConvertHloToStablehlo(*context, &hlo_module).value();
+
+  if (mlir::failed(mlir::verify(stablehlo_module.get()))) {
+    return absl::InternalError(
+        "Failed to verify transformed StableHLO module.");
+  }
+  mlir::PassManager pm(context);
+  xla::sdy::addStablehloImportPipeline(pm,
+                                       /*allowPropagationToArgs=*/false,
+                                       /*allowPropagationToResults=*/false);
+  // TODO(hanruobing): Explore reinserting the original mesh and calling
+  // xla::sdy::createDedupMeshesPass
+  if (mlir::failed(pm.run(stablehlo_module.get()))) {
+    return absl::InternalError("Failed to convert Shardy dialect module.");
+  }
+  return stablehlo_module;
+}
 }  // namespace xla::spmd
