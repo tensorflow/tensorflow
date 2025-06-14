@@ -36,6 +36,20 @@ CastFunctorType GetCpuCastFromFloat8e4m3fn(DataType dst_dtype) {
   return nullptr;
 }
 
+CastFunctorType GetCpuCastFromFloat8e5m2fnuz(DataType dst_dtype) {
+  CURRY_TYPES3(CAST_CASE, CPUDevice, float8_e5m2fnuz);
+  CAST_CASE(CPUDevice, float8_e5m2fnuz, float8_e5m2fnuz);
+  CAST_CASE(CPUDevice, float8_e5m2fnuz, float8_e4m3fnuz);
+  return nullptr;
+}
+
+CastFunctorType GetCpuCastFromFloat8e4m3fnuz(DataType dst_dtype) {
+  CURRY_TYPES3(CAST_CASE, CPUDevice, float8_e4m3fn);
+  CAST_CASE(CPUDevice, float8_e4m3fnuz, float8_e5m2fnuz);
+  CAST_CASE(CPUDevice, float8_e4m3fnuz, float8_e4m3fnuz);
+  return nullptr;
+}
+
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 CastFunctorType GetGpuCastFromFloat8e5m2(DataType dst_dtype) {
@@ -53,6 +67,24 @@ CastFunctorType GetGpuCastFromFloat8e4m3fn(DataType dst_dtype) {
   CAST_CASE(GPUDevice, float8_e4m3fn, Eigen::half);
   CAST_CASE(GPUDevice, float8_e4m3fn, float8_e5m2);
   CAST_CASE(GPUDevice, float8_e4m3fn, float8_e4m3fn);
+  return nullptr;
+}
+
+CastFunctorType GetGpuCastFromFloat8e5m2fnuz(DataType dst_dtype) {
+  CAST_CASE(GPUDevice, float8_e5m2fnuz, float);
+  CAST_CASE(GPUDevice, float8_e5m2fnuz, bfloat16);
+  CAST_CASE(GPUDevice, float8_e5m2fnuz, Eigen::half);
+  CAST_CASE(GPUDevice, float8_e5m2fnuz, float8_e5m2fnuz);
+  CAST_CASE(GPUDevice, float8_e5m2fnuz, float8_e4m3fnuz);
+  return nullptr;
+}
+
+CastFunctorType GetGpuCastFromFloat8e4m3fnuz(DataType dst_dtype) {
+  CAST_CASE(GPUDevice, float8_e4m3fnuz, float);
+  CAST_CASE(GPUDevice, float8_e4m3fnuz, bfloat16);
+  CAST_CASE(GPUDevice, float8_e4m3fnuz, Eigen::half);
+  CAST_CASE(GPUDevice, float8_e4m3fnuz, float8_e5m2fnuz);
+  CAST_CASE(GPUDevice, float8_e4m3fnuz, float8_e4m3fnuz);
   return nullptr;
 }
 
