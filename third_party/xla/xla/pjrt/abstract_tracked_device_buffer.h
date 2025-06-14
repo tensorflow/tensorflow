@@ -174,6 +174,10 @@ class CommonPjRtBuffer : public PjRtBuffer {
   // Blocks in mu_.Await until there are no more usage holds.
   void WaitForOutstandingUsageHolds() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  // Blocks in mu_.Await until there are no more external reference holds.
+  void WaitForOutstandingExternalReferenceHolds()
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
   // Blocks in mu_.Await until there is no donation hold.
   void WaitForOutstandingDonationHold() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 

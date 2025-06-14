@@ -36,6 +36,11 @@ CommonPjRtBuffer::CommonPjRtBuffer(
 }
 
 CommonPjRtBuffer::~CommonPjRtBuffer() {
+  {
+    tsl::profiler::TraceMe t("Wait for external reference holds");
+    absl::MutexLock lock(&mu_);
+    WaitForOutstandingExternalReferenceHolds();
+  }
   for (int i = 0; i < ScopedHold::Type::kMaxValue; ++i) {
     CHECK_EQ(holds_[i], 0) << "Non-zero type " << i << " hold on destruction.";
   }
@@ -46,6 +51,14 @@ void CommonPjRtBuffer::WaitForOutstandingUsageHolds() {
     return holds_[ScopedHold::kUsage] == 0;
   };
   mu_.Await(absl::Condition(&not_in_usage_hold));
+}
+
+void CommonPjRtBuffer::WaitForOutstandingExternalReferenceHolds() {
+  auto not_in_external_reference_hold =
+      [&]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        return holds_[ScopedHold::kExternalReference] == 0;
+      };
+  mu_.Await(absl::Condition(&not_in_external_reference_hold));
 }
 
 void CommonPjRtBuffer::WaitForOutstandingDonationHold() {
