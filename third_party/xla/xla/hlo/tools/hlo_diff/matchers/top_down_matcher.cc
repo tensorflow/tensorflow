@@ -18,6 +18,7 @@
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph_node.h"
 #include "xla/hlo/tools/hlo_diff/graph/utils/hlo_gumgraph_dfs.h"
 #include "xla/hlo/tools/hlo_diff/hlo_gumgraph_mappings.h"
+#include "xla/hlo/tools/hlo_diff/matchers/bipartite_matching.h"
 
 namespace xla::hlo_diff {
 
@@ -79,6 +80,27 @@ void GreedyTopDownMatcher::Match(HloGumgraphMappings& mappings) const {
   LOG(INFO) << "Finished GreedyTopDownMatcher. Total left to right mappings: "
             << mappings.left_to_right_instruction_map.size() -
                    current_mapping_count;
+}
+
+void BipartiteTopDownMatcher::Match(HloGumgraphMappings& mappings) const {
+  LOG(INFO) << "Running BipartiteTopDownMatcher: matching umatched nodes";
+  int current_mapping_count = mappings.left_to_right_instruction_map.size();
+  HloGumgraphDfs(
+      left_.GetRoot(),
+      [&](const HloInstructionNode& left_node) {
+        auto it = mappings.left_to_right_instruction_map.left.find(&left_node);
+        if (it == mappings.left_to_right_instruction_map.left.end()) {
+          return;
+        }
+
+        MatchLeafInstructions(left_, right_, left_node.children,
+                              it->second->children, mappings, type_,
+                              /*map_by_position=*/true);
+      },
+      DfsTraversalOrder::kPreOrder, left_.GetNodeCount());
+  LOG(INFO)
+      << "Finished BipartiteTopDownMatcher. Total left to right mappings: "
+      << mappings.left_to_right_instruction_map.size() - current_mapping_count;
 }
 
 }  // namespace xla::hlo_diff
