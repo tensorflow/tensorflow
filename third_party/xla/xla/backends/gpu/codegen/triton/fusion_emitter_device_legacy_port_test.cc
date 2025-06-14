@@ -507,7 +507,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module2_and_metadata,
                           GetModuleAndNestedFusionMetadata(absl::Substitute(
-                              kHloTextTemplate, 64, 128, 128, 1)));
+                              kHloTextTemplate, 64, 128, 64, 1)));
 
   const HloFusionInstruction* fusion2 = Cast<HloFusionInstruction>(
       module2_and_metadata.computation->FusionInstruction());
@@ -3176,7 +3176,7 @@ ENTRY e {
   CompileAndOptionallyVerifyPtx(std::move(module_and_metadata.module), R"(
                                 R"(
 CHECK: $L__BB0_1:
-CHECK-NEXT: // begin inline asm
+CHECK:      // begin inline asm
 CHECK-NEXT: .pragma "nounroll";
 CHECK: wgmma
 )",
