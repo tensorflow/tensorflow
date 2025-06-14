@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
+#include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
@@ -103,9 +104,9 @@ int main(int argc, char **argv) {
     // back to do it properly in the future
     mlir::DialectRegistry registry;
     RegisterAllTensorFlowDialects(registry);
-    registry
-        .insert<mlir::func::FuncDialect, mlir::stablehlo::StablehloDialect,
-                mlir::TFL::TensorFlowLiteDialect, mlir::mhlo::MhloDialect>();
+    registry.insert<mlir::func::FuncDialect, mlir::stablehlo::StablehloDialect,
+                    mlir::TFL::TensorFlowLiteDialect, mlir::mhlo::MhloDialect,
+                    mlir::chlo::ChloDialect>();
     context->appendDialectRegistry(registry);
   }
 
