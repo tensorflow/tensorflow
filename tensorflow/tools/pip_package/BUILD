@@ -232,6 +232,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/util:pywrap_xla_ops",
     "//tensorflow:tensorflow_py",
     "//tensorflow/tools/compatibility:tf_upgrade_v2",
+    "@pypi_absl_py//:pkg",
 ] + if_with_tpu_support([
     "//tensorflow/python/tools:grpc_tpu_worker",
     "//tensorflow/python/tools:grpc_tpu_worker_service",
