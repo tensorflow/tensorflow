@@ -940,6 +940,23 @@ PjRtFuture<> StreamExecutorGpuClient::CopyRawHostToDevice(
       });
 }
 
+absl::Status StreamExecutorGpuClient::UpdateCompileOptionsInternal(
+    CompileOptions* options, ExecutableExtras* returned_extras,
+    bool lookup_addressable_devices) {
+  TF_RETURN_IF_ERROR(PjRtStreamExecutorClient::UpdateCompileOptionsInternal(
+      options, returned_extras, lookup_addressable_devices));
+  TF_ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology_description,
+                      GetTopologyDescription());
+  const auto& gpu_topology =
+      tensorflow::down_cast<const xla::StreamExecutorGpuTopologyDescription&>(
+          *topology_description);
+  if (gpu_topology.gpu_topology_ptr() != nullptr) {
+    options->executable_build_options.set_global_device_id_to_slice_id(
+        gpu_topology.gpu_topology().global_device_id_to_slice_id());
+  }
+  return absl::OkStatus();
+}
+
 PjRtFuture<> StreamExecutorGpuClient::CopyRawDeviceToHost(
     LocalDeviceState* local_device,
     tsl::RCReference<RawSEDeviceMemory> device_buffer, void* dst,
