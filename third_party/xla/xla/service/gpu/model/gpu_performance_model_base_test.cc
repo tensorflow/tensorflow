@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 
+#include <algorithm>
 #include <memory>
 
 #include <gtest/gtest.h>
@@ -139,6 +140,11 @@ ENTRY entry_computation {
   ASSERT_IS_OK(computation->Accept(analysis_.get()));
 
   auto root = computation->root_instruction();
+  auto param_1 = std::find_if(computation->instructions().begin(),
+                              computation->instructions().end(),
+                              [&](const HloInstruction* instr) {
+                                return (instr->name() == "param_1");
+                              });
 
   // Cost Model estimates that input element we be re-read in reduce. Each
   // element of reduce output needs only one input element. Bytes accessed
@@ -146,6 +152,9 @@ ENTRY entry_computation {
   EXPECT_EQ(GpuPerformanceModelBase::GetOperandBytesAccessed(
                 analysis_.get(), root, root->operand(0)),
             /*4*128*256=*/131072);
+  EXPECT_EQ(GpuPerformanceModelBase::GetOperandBytesAccessed(analysis_.get(),
+                                                             root, *param_1),
+            0);
 }
 
 // This test documents current behaviour. See comments below how the correct
