@@ -27,6 +27,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
@@ -57,7 +58,11 @@ void StridedSliceTester::Test(Interpreter* default_interpreter,
   const T* delegate_output_data =
       delegate_interpreter->typed_output_tensor<T>(0);
 
-  for (size_t i = 0; i < ComputeSize(OutputShape()); i++) {
+  int default_output_size = NumElements(default_interpreter->output_tensor(0));
+  int delegate_output_size =
+      NumElements(delegate_interpreter->output_tensor(0));
+  ASSERT_EQ(default_output_size, delegate_output_size);
+  for (size_t i = 0; i < default_output_size; i++) {
     EXPECT_EQ(default_output_data[i], delegate_output_data[i]);
   }
 }
@@ -71,7 +76,6 @@ void StridedSliceTester::Test(TensorType tensor_type,
     ASSERT_GT(InputShape()[i], 0);
     ASSERT_LT(Begin(i), InputShape()[i]);
     ASSERT_LE(End(i), InputShape()[i]);
-    ASSERT_EQ(End(i) - Begin(i), OutputShape()[i]);
     ASSERT_EQ(Strides()[i], 1);
   }
 
@@ -102,20 +106,20 @@ void StridedSliceTester::Test(TensorType tensor_type,
   ASSERT_EQ(delegate_interpreter->outputs().size(), 1);
   ASSERT_EQ(default_interpreter->outputs().size(), 1);
 
-  ASSERT_EQ(delegate_interpreter->AllocateTensors(), kTfLiteOk);
   ASSERT_EQ(default_interpreter->AllocateTensors(), kTfLiteOk);
 
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
+  ASSERT_EQ(delegate_interpreter->AllocateTensors(), kTfLiteOk);
 
   switch (tensor_type) {
     case TensorType_FLOAT32:
-      Test<float>(delegate_interpreter.get(), default_interpreter.get());
+      Test<float>(default_interpreter.get(), delegate_interpreter.get());
       break;
     case TensorType_INT8:
-      Test<int8_t>(delegate_interpreter.get(), default_interpreter.get());
+      Test<int8_t>(default_interpreter.get(), delegate_interpreter.get());
       break;
     case TensorType_UINT8:
-      Test<uint8_t>(delegate_interpreter.get(), default_interpreter.get());
+      Test<uint8_t>(default_interpreter.get(), delegate_interpreter.get());
       break;
     default:
       GTEST_FAIL();
@@ -161,10 +165,8 @@ std::vector<char> StridedSliceTester::CreateTfLiteModel(
                    TensorType_INT32, /*buffer=*/2),
       CreateTensor(builder, builder.CreateVector<int32_t>({num_dims}),
                    TensorType_INT32, /*buffer=*/3),
-      CreateTensor(builder,
-                   builder.CreateVector<int32_t>(OutputShape().data(),
-                                                 OutputShape().size()),
-                   tensor_type, /*buffer=*/0, /*name=*/0, quantization_params),
+      CreateTensor(builder, builder.CreateVector<int32_t>({}), tensor_type,
+                   /*buffer=*/0, /*name=*/0, quantization_params),
   }};
 
   const flatbuffers::Offset<Operator> op = CreateOperator(
