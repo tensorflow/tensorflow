@@ -66,8 +66,8 @@ class GpuExecutableRunOptions {
 
   // The incarnation of every device.
   GpuExecutableRunOptions& set_incarnations(
-      absl::flat_hash_map<GlobalDeviceId, uint64_t> incarnations);
-  const std::optional<absl::flat_hash_map<GlobalDeviceId, uint64_t>>&
+      absl::flat_hash_map<GlobalDeviceId, IncarnationId> incarnations);
+  const std::optional<absl::flat_hash_map<GlobalDeviceId, IncarnationId>>&
   incarnations() const;
 
   // Whether the run requires an exclusive lock on the GPU.
@@ -95,7 +95,8 @@ class GpuExecutableRunOptions {
   std::optional<std::map<int, GlobalDeviceId>> gpu_global_device_ids_;
   CliqueIdCallback clique_id_callback_;
   GpuCollectives* collectives_;
-  std::optional<absl::flat_hash_map<GlobalDeviceId, uint64_t>> incarnations_;
+  std::optional<absl::flat_hash_map<GlobalDeviceId, IncarnationId>>
+      incarnations_;
 };
 
 }  // namespace xla::gpu

@@ -5194,6 +5194,7 @@ cc_library(
     hdrs = ["global_device_id.h"],
     deps = [
         "//xla/runtime:device_id",
+        "//xla/tsl/distributed_runtime/coordination:coordination_service",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
