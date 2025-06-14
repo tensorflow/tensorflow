@@ -165,6 +165,12 @@ class HostOffloader : public HloModulePass {
       const host_offload_utils::InstructionAndShapeIndex&
           after_instruction_and_index);
 
+  // Rewrite some host (xpose) copies:
+  // host_copy + dus => copy_to_device + xpose copy + dus + copy_to_host
+  absl::StatusOr<bool> RewriteHostCopies(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
+
   // This is a fix for scheduling. Add copies to inputs of dynamic-update-slice
   // if the inserted value is directly a parameter of a computation. This is to
   // avoid cases in while loop where parameter/output aliasing can stop
