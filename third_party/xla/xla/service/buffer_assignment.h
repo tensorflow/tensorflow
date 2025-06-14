@@ -737,6 +737,10 @@ class BufferAssigner {
           buffers_to_assign_sequentially,
       BufferAssignment* assignment);
 
+  bool LiveRangeWithSameEndPoints(const HloValue* buffer1,
+                                  const HloValue* buffer2,
+                                  BufferAssignment* assignment);
+
   // Returns true if buffer's live range interferences with buffer2's.
   bool LiveRangeInterferes(const HloValue* buffer1, const HloValue* buffer2,
                            BufferAssignment* assignment);
@@ -791,7 +795,8 @@ class BufferAssigner {
   // Tries to assign the given instruction to the given buffer. Returns if the
   // assignment was successful.
   bool MaybeAssignBuffer(BufferAllocation* allocation, const HloBuffer& buffer,
-                         BufferAssignment* assignment);
+                         BufferAssignment* assignment,
+                         bool prefer_same_endpoints = false);
 
   // Split a set of buffers into several sets, each of which contains buffers
   // colored with the same color.
