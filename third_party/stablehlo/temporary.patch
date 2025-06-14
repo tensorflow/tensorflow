@@ -1,3 +1,34 @@
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgRandom.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgRandom.cpp
+--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgRandom.cpp
++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgRandom.cpp
+@@ -313,26 +313,7 @@
+ 
+ Value reshapeToTarget(OpBuilder &builder, Location loc, ShapedType destTy,
+                       Value src) {
+-  auto srcTy = cast<ShapedType>(src.getType());
+-  // Expand out to the target shape.
+-
+-  auto reassociationIndices =
+-      getReassociationIndicesForCollapse(destTy.getShape(), srcTy.getShape());
+-  if (reassociationIndices.has_value()) {
+-    src = builder.create<tensor::ExpandShapeOp>(loc, destTy, src,
+-                                                reassociationIndices.value());
+-  }
+-
+-  // It is also possible our target is Rank-0, then we would
+-  // need to collapse.
+-  reassociationIndices =
+-      getReassociationIndicesForCollapse(srcTy.getShape(), destTy.getShape());
+-  if (reassociationIndices.has_value()) {
+-    src = builder.create<tensor::CollapseShapeOp>(loc, destTy, src,
+-                                                  reassociationIndices.value());
+-  }
+-
+-  return src;
++  return builder.create<stablehlo::ReshapeOp>(loc, destTy, src);
+ }
+ 
+ // Compute the shape for computing three fry.
 diff --ruN a/stablehlo/stablehlo/dialect/Version.h b/stablehlo/stablehlo/dialect/Version.h
 --- stablehlo/stablehlo/dialect/Version.h
 +++ stablehlo/stablehlo/dialect/Version.h
