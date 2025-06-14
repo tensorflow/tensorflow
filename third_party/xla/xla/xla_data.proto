@@ -1199,6 +1199,7 @@ message OriginalTensorProto {
   repeated int64 leaf_shape_index = 1;
   string instruction_name = 2;
   repeated int64 shape_index = 3;
+  string call_history = 4;
 }
 
 message OriginalValueProto {
