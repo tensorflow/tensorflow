@@ -260,6 +260,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
       stream_executor::IsLibNvPtxCompilerSupported());
   opts.set_xla_gpu_libnvjitlink_mode(DebugOptions::LIB_NV_JIT_LINK_MODE_AUTO);
 
+  opts.set_xla_gpu_nccl_async_execution(false);
+  opts.set_xla_gpu_nccl_blocking_communicators(true);
   opts.set_xla_gpu_nccl_collective_max_nchannels(0);
   opts.set_xla_gpu_nccl_p2p_max_nchannels(0);
   opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
@@ -2016,6 +2018,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       stream_executor::IsLibNvJitLinkSupported(),
       "Use libnvjitlink for PTX-to-GPU-assembly compilation instead of "
       "calling ptxas."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_nccl_async_execution",
+      bool_setter_for(&DebugOptions::set_xla_gpu_nccl_async_execution),
+      debug_options->xla_gpu_nccl_async_execution(),
+      "Whether to use asynchronous execution for NCCL communicators"));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_nccl_blocking_communicators",
+      bool_setter_for(&DebugOptions::set_xla_gpu_nccl_blocking_communicators),
+      debug_options->xla_gpu_nccl_blocking_communicators(),
+      "Whether to use non-blocking NCCL communicators"));
   flag_list->push_back(
       tsl::Flag("xla_gpu_nccl_collective_max_nchannels",
                 int64_setter_for(
