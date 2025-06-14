@@ -26,12 +26,28 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/raw_buffer.h"
 
 namespace xla {
 
 class AbstractTrackedDeviceBuffer {
  public:
   virtual ~AbstractTrackedDeviceBuffer() = default;
+
+  // Construct (or return) a vector of tsl::AsyncValue events which
+  // will become ready when this buffer is ready.
+  virtual std::vector<tsl::RCReference<tsl::AsyncValue>>
+  GetAsyncValueDefinitionEvents() = 0;
+
+  // Construct (or return) a raw buffer which aliases the same
+  // underlying memory as this AbstractTrackedDeviceBuffer.
+  virtual tsl::RCReference<CommonPjRtRawBuffer> GetRawBuffer(
+      PjRtMemorySpace* memory_space) = 0;
+
+  // Only to be called via the result of
+  // CommonPjRtBuffer::ScopedHold::ConvertUsageHold with an optional device
+  // event to add to the usage events.
+  virtual void AddUsageEvent(tsl::RCReference<PjRtDeviceEvent> event) = 0;
 
   // Only to be called by ScopedHold to mark a successful donation.
   virtual void ConfirmDonation() = 0;
@@ -125,6 +141,10 @@ class CommonPjRtBuffer : public PjRtBuffer {
     // invalid.
     void ConfirmDonation();
 
+    // Converts the hold into a usage event. Only valid for holds of type
+    // kUsage.
+    void ConvertUsageHold(tsl::RCReference<PjRtDeviceEvent> event);
+
    protected:
     ScopedHold(CommonPjRtBuffer* parent, Type type)
         : parent_(parent), type_(type), state_(kUninitialized) {}
@@ -166,9 +186,17 @@ class CommonPjRtBuffer : public PjRtBuffer {
 
   bool IsDeleted() override;
 
+  absl::Status AcquireScopedRawBuffer(
+      absl::AnyInvocable<absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>(
+                             tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
+                             std::vector<tsl::RCReference<tsl::AsyncValue>>
+                                 definition_events) &&>
+          scoped_acquire,
+      const char* caller_name = "AcquireScopedRawBuffer");
+
  protected:
-  explicit CommonPjRtBuffer(
-      std::unique_ptr<AbstractTrackedDeviceBuffer> device_buffer);
+  CommonPjRtBuffer(std::unique_ptr<AbstractTrackedDeviceBuffer> device_buffer,
+                   PjRtMemorySpace* memory_space);
   ~CommonPjRtBuffer() override;
 
   // Blocks in mu_.Await until there are no more usage holds.
@@ -229,6 +257,7 @@ class CommonPjRtBuffer : public PjRtBuffer {
 
   mutable absl::Mutex mu_;
   PjRtFuture<>::Promise definition_promise_ ABSL_GUARDED_BY(mu_);
+  PjRtMemorySpace* const memory_space_;
 
  private:
   std::unique_ptr<AbstractTrackedDeviceBuffer> device_buffer_

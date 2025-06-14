@@ -672,7 +672,6 @@ class PjRtStreamExecutorBuffer : public CommonPjRtBuffer {
   PjRtStreamExecutorClient* const client_;
   const Shape on_device_shape_;
   PjRtStreamExecutorDevice* const device_;
-  PjRtMemorySpace* const memory_space_;
 };
 
 // Allocates the device buffers for a buffer that will be used as the

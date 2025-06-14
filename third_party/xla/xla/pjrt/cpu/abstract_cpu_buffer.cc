@@ -121,8 +121,9 @@ ShapedBuffer AsShapedBuffer(int device_ordinal, const Shape& on_device_shape,
 
 AbstractCpuBuffer::AbstractCpuBuffer(
     Shape on_device_shape,
-    std::unique_ptr<TrackedCpuDeviceBuffer> tracked_device_buffer)
-    : CommonPjRtBuffer(std::move(tracked_device_buffer)),
+    std::unique_ptr<TrackedCpuDeviceBuffer> tracked_device_buffer,
+    PjRtMemorySpace* memory_space)
+    : CommonPjRtBuffer(std::move(tracked_device_buffer), memory_space),
       on_device_shape_(std::move(on_device_shape)) {}
 
 AbstractCpuBuffer::~AbstractCpuBuffer() { AbstractCpuBuffer::Delete(); }
