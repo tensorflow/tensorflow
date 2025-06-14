@@ -121,7 +121,7 @@ class MMapHandle {
   //
   // The debug_path is printed along the error messages.
   [[nodiscard /*Mapping a file can fail.*/]]
-  bool Map(const FileDescriptor& fd, size_t offset = 0,
+  bool Map(const FileDescriptorView& fd, size_t offset = 0,
            const char* debug_path = "unspecified");
 
   // Tries to resize the current mapping.
@@ -184,7 +184,7 @@ class WeightCacheBuilder {
   WeightCacheBuilder& operator=(WeightCacheBuilder&&);
 
   [[nodiscard /*Starting the builder may fail.*/]]
-  bool Start(const char* path, FileDescriptor fd);
+  bool Start(const char* path, const FileDescriptor& fd);
 
   [[nodiscard]]
   bool IsStarted() const {
@@ -238,7 +238,7 @@ class WeightCacheBuilder {
   }
 
   // Returns the file descriptor.
-  const FileDescriptor& GetFileDescriptor() const { return fd_; }
+  FileDescriptorView GetFileDescriptor() const { return fd_; }
 
   // Returns the capacity of the underlying reserved buffer.
   //
@@ -266,8 +266,8 @@ class WeightCacheBuilder {
   // cache. To ensure a smooth reloading, we need to ensure that the file header
   // is correct. This flag lets us know if that has happened.
   bool first_write_done_ = false;
-  // Temporary file descriptor to write the weights to disk immediately.
-  FileDescriptor fd_;
+  // File descriptor view.
+  FileDescriptorView fd_;
   std::string file_path_;
 
   bool is_build_step_ = false;
