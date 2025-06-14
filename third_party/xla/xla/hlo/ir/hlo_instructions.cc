@@ -1967,6 +1967,13 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     }
 
     clone = called_computation_root();
+    // Creates a clone of the original value so it gets moved to the fusion
+    // instruction when the root gets replaced later. A fussion instruction
+    // does not require an original value, which should have the same value as
+    // the root of the fused computation. However, we copy the value
+    // nontheless to simplify some use cases that involve fusions.
+    clone->CopyOriginalValue(instruction_to_append);
+    VLOG(2) << "called_computation_root: " << clone->ToString() << "\n";
   } else {
     // When add_output is false, instruction_to_append is necessarily an
     // operand of the callable instruction. After appending this will no
@@ -1983,6 +1990,8 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
     } else {
       clone = called_computation()->AddInstruction(
           instruction_to_append->Clone(/*suffix=*/""));
+      // Moves the original value to the clone of a fused instruction.
+      clone->MoveOriginalValue(instruction_to_append);
     }
     const auto& called_computation_parameters =
         called_computation()->parameter_instructions();
@@ -2049,9 +2058,6 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
   }
 
   if (clone != instruction_to_append) {
-    // Copy over the original value to the clone of a fused instruction.
-    clone->CopyOriginalValue(instruction_to_append,
-                             /*clone=*/false);
     VLOG(2) << "New clone:\n" << clone->ToString();
   }
 
@@ -2425,11 +2431,11 @@ void HloFusionInstruction::MergeFusionInstructionIntoMultiOutput(
     auto cloned_instruction =
         parent()->AddInstruction(fused_instruction->CloneWithNewOperands(
             fused_instruction->shape(), new_operands, /*suffix=*/"clone"));
-    // Copy over the original value to the clone of a fused instruction.
-    // This is necessary as the clone will be cloned again when the clone is
-    // fused in FuseInstructionIntoMultiOutput(). This can be skipped if we
-    // improve the code to only clone once as stated in the preceding comment.
-    cloned_instruction->CopyOriginalValue(fused_instruction, /*clone=*/true);
+    // Moves the original value to the clone of a fused instruction. This is
+    // necessary as the clone will be cloned again when the clone is fused in
+    // FuseInstructionIntoMultiOutput(). This can be skipped if we could improve
+    // the code to only clone once as stated in the preceding comment.
+    cloned_instruction->MoveOriginalValue(fused_instruction);
     unfused_instructions.push_back(cloned_instruction);
     InsertOrDie(&old_to_new, fused_instruction, cloned_instruction);
   }

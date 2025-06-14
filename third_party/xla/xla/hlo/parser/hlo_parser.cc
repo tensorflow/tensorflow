@@ -584,7 +584,7 @@ class HloParserImpl : public HloParser {
   bool ParseToken(TokKind kind, const std::string& msg,
                   uint64_t lexer_skip_mask = kNoneMask);
   bool ParseUnsignedIntegerType(PrimitiveType* primitive_type);
-  bool ParseOriginalValue(std::shared_ptr<OriginalValue>& original_value);
+  bool ParseOriginalValue(std::unique_ptr<OriginalValue>& original_value);
 
   using AliasingData =
       absl::flat_hash_map<ShapeIndex, HloInputOutputAliasConfig::Alias>;
@@ -1412,7 +1412,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
   attrs["control-predecessors"] = {/*required=*/false, AttrTy::kInstructionList,
                                    &predecessors};
 
-  optional<std::shared_ptr<OriginalValue>> original_value;
+  optional<std::unique_ptr<OriginalValue>> original_value;
   attrs["origin"] = {/*required=*/false, AttrTy::kOriginalValue,
                      &original_value};
 
@@ -1488,10 +1488,18 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     }
   }
   if (original_value) {
-    instruction->set_original_value(*original_value);
     if (instruction->IsAsynchronous()) {
+      // Creates a clone for the root instruction of an asynchronous
+      // computation.
+      auto original_value_clone =
+          std::make_unique<OriginalValue>((*original_value)->shape());
+      original_value_clone->CopySubtreeFrom(**original_value, {}, {});
+
+      instruction->set_original_value(std::move(*original_value));
       instruction->async_wrapped_instruction()->set_original_value(
-          *original_value);
+          std::move(original_value_clone));
+    } else {
+      instruction->set_original_value(std::move(*original_value));
     }
   }
   if (backend_config) {
@@ -4867,6 +4875,7 @@ bool HloParserImpl::ParseAttributes(
 
   // Check that all required attrs were seen.
   for (const auto& attr_it : attrs) {
+    // std::cerr << "attr: " << attr_it.first << "\n";
     if (attr_it.second.required &&
         seen_attrs.find(attr_it.first) == seen_attrs.end()) {
       return Error(loc, StrFormat("attribute %s is expected but not seen",
@@ -5166,12 +5175,11 @@ bool HloParserImpl::ParseAttributeHelper(
         if (!shape) {
           return TokenError("expects instruction shape");
         }
-        std::shared_ptr<OriginalValue> result =
-            std::make_shared<OriginalValue>(*shape);
+        auto result = std::make_unique<OriginalValue>(*shape);
         if (!ParseOriginalValue(result)) {
           return false;
         }
-        static_cast<optional<std::shared_ptr<OriginalValue>>*>(attr_out_ptr)
+        static_cast<optional<std::unique_ptr<OriginalValue>>*>(attr_out_ptr)
             ->emplace(std::move(result));
         return true;
       }
@@ -6517,7 +6525,7 @@ bool HloParserImpl::ParsePaddingConfig(PaddingConfig* padding) {
 // original_tensor ::= '{' instruction_name [shape_index] '}'
 // original_value ::= '{' '('* original_tensor [','] ')'* | original_value '}'
 bool HloParserImpl::ParseOriginalValue(
-    std::shared_ptr<OriginalValue>& original_value) {
+    std::unique_ptr<OriginalValue>& original_value) {
   VLOG(kDebugLevel) << "ParseOriginalValue";
 
   if (!ParseToken(TokKind::kLbrace, "Expects '{'")) {
