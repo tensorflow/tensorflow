@@ -163,8 +163,8 @@ build:mkl_aarch64_threadpool --define=build_with_mkl_aarch64=true
 build:mkl_aarch64_threadpool -c opt
 
 # Default CUDA, CUDNN and NVSHMEM versions.
-build:cuda_version --repo_env=HERMETIC_CUDA_VERSION="12.6.3"
-build:cuda_version --repo_env=HERMETIC_CUDNN_VERSION="9.3.0"
+build:cuda_version --repo_env=HERMETIC_CUDA_VERSION="12.8.0"
+build:cuda_version --repo_env=HERMETIC_CUDNN_VERSION="9.8.0"
 build:cuda_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
 
 # CUDA: This config refers to building CUDA op kernels with nvcc.
@@ -462,7 +462,8 @@ build:rbe_linux_cpu --host_crosstool_top="@local_config_cuda//crosstool:toolchai
 build:rbe_linux_cpu --crosstool_top="@local_config_cuda//crosstool:toolchain"
 build:rbe_linux_cpu --extra_toolchains="@local_config_cuda//crosstool:toolchain-linux-x86_64"
 build:rbe_linux_cpu --repo_env=CC="/usr/lib/llvm-18/bin/clang"
-build:rbe_linux_cpu --repo_env=TF_SYSROOT="/dt9"
+# dt9 is based on glibc 2.17, which is outdated and incompatible with CUDA 12.8.0
+# build:rbe_linux_cpu --repo_env=TF_SYSROOT="/dt9"
 build:rbe_linux_cpu --extra_execution_platforms="@ml_build_config_platform//:platform"
 build:rbe_linux_cpu --host_platform="@ml_build_config_platform//:platform"
 build:rbe_linux_cpu --platforms="@ml_build_config_platform//:platform"
