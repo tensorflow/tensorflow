@@ -54,6 +54,7 @@ const absl::string_view kStepLineName = "Steps";
 const absl::string_view kSparseCoreStepLineName = "Sparse Core Steps";
 const absl::string_view kSparseCoreModuleLineName = "Sparse Core Modules";
 const absl::string_view kSparseCoreOpLineName = "Sparse Core Ops";
+const absl::string_view kStreamLineName = "Stream";
 const absl::string_view kTensorFlowNameScopeLineName = "Framework Name Scope";
 const absl::string_view kTensorFlowOpLineName = "Framework Ops";
 const absl::string_view kXlaModuleLineName = "XLA Modules";
