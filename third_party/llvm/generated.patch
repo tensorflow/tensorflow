@@ -1,1 +1,29 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl b/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl
+--- a/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl
++++ b/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl
+@@ -525,7 +525,7 @@
+         td_file = td_file,
+         test = test,
+         deps = deps,
+-        **kwargs,
++        **kwargs
+     )
+     all_files = [hdr_out, src_out]
+     for i in range(0, shard_count):
+@@ -537,13 +537,13 @@
+             out = out_file,
+             sharder = sharder,
+             src_file = src_file,
+-            **kwargs,
++            **kwargs
+         )
+         all_files.append(out_file)
+     native.filegroup(
+         name = name,
+         srcs = all_files,
+-        **kwargs,
++        **kwargs
+     )
+ 
+ def gentbl_sharded_op_defs(name, source_file, shard_count):
