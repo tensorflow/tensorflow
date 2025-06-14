@@ -48,7 +48,6 @@ class LegacyCublasGemmRewriteTest : public GemmRewriteTestBase {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GemmRewriteTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_enable_triton_gemm(false);
     debug_options.set_xla_gpu_enable_cublaslt(false);
     return debug_options;
   }
@@ -806,7 +805,6 @@ class CublasLtGemmRewriteTest : public GemmRewriteTestBase {
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = GemmRewriteTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cublaslt(true);
-    debug_options.set_xla_gpu_enable_triton_gemm(false);
     return debug_options;
   }
 
