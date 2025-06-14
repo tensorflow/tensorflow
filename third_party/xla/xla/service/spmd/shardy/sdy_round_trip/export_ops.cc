@@ -96,8 +96,9 @@ class ShardingConstraintPattern
 
     auto customCallOp = rewriter.replaceOpWithNewOp<stablehlo::CustomCallOp>(
         op, op.getType(), adaptor.getInput());
-
     customCallOp.setCallTargetName(kShardingCustomCallTargetName);
+    customCallOp.setHasSideEffect(true);
+
     // Copy over any existing attrs other than the sharding.
     for (mlir::NamedAttribute attr : op->getDiscardableAttrs()) {
       customCallOp->setAttr(attr.getName(), attr.getValue());
