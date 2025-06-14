@@ -75,6 +75,25 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_c_api_phase_compile_extension_hdrs",
+    hdrs = ["pjrt_c_api_phase_compile_extension.h"],
+    visibility = ["//visibility:public"],
+    deps = [":pjrt_c_api_hdrs"],
+)
+
+cc_library(
+    name = "pjrt_c_api_phase_compile_internal",
+    srcs = ["pjrt_c_api_phase_compile_internal.cc"],
+    hdrs = ["pjrt_c_api_phase_compile_internal.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_phase_compile_extension_hdrs",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
     name = "pjrt_c_api_triton_extension_hdrs",
     hdrs = ["pjrt_c_api_triton_extension.h"],
     visibility = ["//visibility:public"],
@@ -443,6 +462,62 @@ xla_cc_binary(
     ]) + if_rocm_is_configured([
         "//xla/stream_executor:rocm_platform",
     ]),
+)
+
+cc_library(
+    name = "pjrt_c_api_phase_compile_plugin_internal",
+    srcs = ["pjrt_c_api_phase_compile_plugin_internal.cc"],
+    hdrs = ["pjrt_c_api_phase_compile_plugin_internal.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_helpers",
+        ":pjrt_c_api_phase_compile_extension_hdrs",
+        ":pjrt_c_api_phase_compile_internal",
+        ":pjrt_c_api_wrapper_impl",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt/plugin/xla_cpu:cpu_topology",
+        "//xla/pjrt/plugin/xla_cpu:cpu_topology_description",
+        "//xla/pjrt/proto:pjrt_partial_program_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+        "@stablehlo//:stablehlo_passes_optimization",
+        "@stablehlo//:stablehlo_portable_api",
+        "@stablehlo//:stablehlo_serialization",
+    ],
+)
+
+cc_library(
+    name = "pjrt_c_api_phase_compile_plugin",
+    srcs = ["pjrt_c_api_phase_compile_plugin.cc"],
+    hdrs = ["pjrt_c_api_phase_compile_plugin.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_phase_compile_plugin_internal",
+    ],
+)
+
+xla_cc_test(
+    name = "pjrt_c_api_phase_compile_plugin_test",
+    srcs = ["pjrt_c_api_phase_compile_plugin_test.cc"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_helpers",
+        ":pjrt_c_api_phase_compile_extension_hdrs",
+        ":pjrt_c_api_phase_compile_internal",
+        ":pjrt_c_api_phase_compile_plugin",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_library(
