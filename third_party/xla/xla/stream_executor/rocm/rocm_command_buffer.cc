@@ -338,6 +338,11 @@ absl::Status RocmCommandBuffer::UpdateKernelNode(
                   "Failed to set HIP graph kernel node params");
 }
 
+absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateEmptyNode(
+    absl::Span<const GraphNodeHandle> dependencies) {
+  return absl::UnimplementedError("Empty nodes are not supported on ROCM.");
+}
+
 absl::Status RocmCommandBuffer::Trace(
     Stream* stream, absl::AnyInvocable<absl::Status()> function) {
   TF_RETURN_IF_ERROR(CheckNotFinalized());
