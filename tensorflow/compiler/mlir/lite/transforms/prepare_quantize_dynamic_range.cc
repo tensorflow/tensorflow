@@ -14,9 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
-#include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Quant/IR/Quant.h"  // from @llvm-project
