@@ -2247,4 +2247,11 @@ int64_t ShapeUtil::ForEachState::CalculateNumSteps() const {
   return flattened;
 }
 
+/*static*/ Shape ShapeUtil::ToFlatTupleShape(const Shape& shape) {
+  if (IsNestedTuple(shape)) {
+    return MakeTupleShapeWithPtrs(FlattenTupleShape(shape));
+  }
+  return shape;
+}
+
 }  // namespace xla
