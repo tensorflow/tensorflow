@@ -124,6 +124,11 @@ class GpuCompiler : public LLVMCompiler {
     return false;
   }
 
+  virtual absl::Status RunFusionPasses(
+      HloModule* hlo_module, const Compiler::TargetConfig& gpu_target_config,
+      tsl::thread::ThreadPool* thread_pool,
+      HloCostAnalysis::ShapeSizeFunction shape_size_fn);
+
   static AlgebraicSimplifierOptions GetAlgebraicSimplifierOptions(
       const HloModuleConfig& config);
 
