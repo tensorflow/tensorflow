@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/literal.h"
 #include "xla/pjrt/cpu/cpu_async_execution_tracker.h"
+#include "xla/pjrt/cpu/execution_stream_event_map.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_future.h"
@@ -96,6 +97,10 @@ class PjRtCpuDevice final : public PjRtDevice {
     return async_execution_tracker_.get();
   }
 
+  ExecutionStreamEventMap* stream_event_map() const {
+    return stream_event_map_.get();
+  }
+
  private:
   PjRtClient* client_ = nullptr;
   CpuDeviceDescription description_;
@@ -108,6 +113,8 @@ class PjRtCpuDevice final : public PjRtDevice {
   Semaphore max_inflight_computations_semaphore_;
 
   std::unique_ptr<CpuAsyncExecutionTracker> async_execution_tracker_;
+
+  std::unique_ptr<ExecutionStreamEventMap> stream_event_map_;
 };
 
 }  // namespace xla
