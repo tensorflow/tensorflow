@@ -552,6 +552,11 @@ TEST_F(HloLiveRangeTest, ToString) {
     multiply{}: 16 bytes (cumulative: 16 bytes)
     paramA{}: 16 bytes (cumulative: 32 bytes)
     paramX{}: 16 bytes (cumulative: 48 bytes)
+  Stack trace breakdown for peak usage: 48 bytes
+    ToString (100.0%, 48 bytes)
+      ├── multiply (33.3%, 16 bytes)
+      ├── paramA (33.3%, 16 bytes)
+      └── paramX (33.3%, 16 bytes)
 )";
   EXPECT_EQ(hlo_live_range_->ToString(), expected_string);
 }
@@ -596,6 +601,10 @@ TEST_F(HloLiveRangeTest, ToStringTuple) {
     constant{1}: 16 bytes (cumulative: 32 bytes)
     paramA{}: 16 bytes (cumulative: 48 bytes)
     constant{0}: 4 bytes (cumulative: 52 bytes)
+  Stack trace breakdown for peak usage: 52 bytes
+    ToStringTuple (100.0%, 52 bytes)
+      ├── constant (69.2%, 36 bytes)
+      └── paramA (30.8%, 16 bytes)
 )";
   EXPECT_EQ(hlo_live_range_->ToString(), expected_string);
 }
