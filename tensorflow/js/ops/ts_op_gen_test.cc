@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/js/ops/ts_op_gen.h"
 
+#include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
+#include "third_party/protobuf/text_format.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
