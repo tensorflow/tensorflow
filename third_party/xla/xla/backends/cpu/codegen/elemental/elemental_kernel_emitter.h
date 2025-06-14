@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_CODEGEN_ELEMENTAL_ELEMENTAL_KERNEL_EMITTER_H_
 #define XLA_BACKENDS_CPU_CODEGEN_ELEMENTAL_ELEMENTAL_KERNEL_EMITTER_H_
 
+#include <string>
+
 #include "absl/status/statusor.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
@@ -39,6 +41,8 @@ class ElementalKernelEmitter final : public LlvmKernelEmitter {
                          const TargetMachineFeatures* target_machine);
 
   absl::StatusOr<LlvmKernelDefinition> EmitKernelDefinition() override;
+
+  std::string name() const final { return "elemental_kernel_emitter"; }
 
  private:
   // Emits LLVM IR using elemental loop emitter and the given element generator.

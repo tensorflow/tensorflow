@@ -52,6 +52,8 @@ class LlvmTestKernelEmitter : public LlvmKernelEmitter {
 
   absl::StatusOr<LlvmKernelDefinition> EmitKernelDefinition() final;
 
+  std::string name() const override { return "llvm_test_kernel_emitter"; }
+
  private:
   std::string llvm_ir_;
   std::string kernel_name_;

@@ -316,6 +316,7 @@ absl::StatusOr<MlirKernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
                          NumWorkGroups{static_cast<uint64_t>(num_threads_)},
                          std::move(argument_buffers), std::move(result_buffers),
                          std::move(invariant_arguments));
+
   return MlirKernelDefinition(
       std::move(kernel_spec),
       MlirKernelSource(std::move(context), std::move(mlir_module)));

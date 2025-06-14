@@ -167,7 +167,8 @@ ComputationKernelEmitter::EmitKernelDefinition() {
                           std::vector<KernelApiIrBuilder::KernelParameter>(
                               arguments.begin(), arguments.end()),
                           std::vector<KernelApiIrBuilder::KernelParameter>(
-                              results.begin(), results.end())));
+                              results.begin(), results.end()),
+                          BuildModuleMemoryRegionName(name(), instr_)));
 
   llvm::IRBuilder<> ir_builder(*ctx);
   ir_builder.SetInsertPoint(
