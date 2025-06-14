@@ -1925,9 +1925,13 @@ cuda_library(
         "//xla:shape_util",
         "//xla:types",
         "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor:platform",
         "//xla/stream_executor/gpu:buffer_comparator_kernel",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/platform:initialize",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
     ],
     alwayslink = 1,
@@ -1964,11 +1968,9 @@ cuda_library(
     ],
     deps = [
         ":cuda_platform_id",
-        "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:ragged_all_to_all_kernel",
         "@com_google_absl//absl/base",
-        "@local_config_cuda//cuda:cuda_headers",
     ],
     alwayslink = 1,
 )
@@ -2083,6 +2085,7 @@ cuda_library(
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:repeat_buffer_kernel",
+        "@com_google_absl//absl/base",
     ],
     alwayslink = 1,
 )
@@ -2103,6 +2106,7 @@ cuda_library(
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:redzone_allocator_kernel",
+        "@com_google_absl//absl/base",
     ],
     alwayslink = 1,
 )

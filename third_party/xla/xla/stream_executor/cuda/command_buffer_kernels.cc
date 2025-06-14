@@ -491,22 +491,18 @@ inline constexpr absl::string_view kNoOpKernel = R"(
 }  // namespace
 
 absl::StatusOr<MultiKernelLoaderSpec> GetSetCaseConditionKernelLoaderSpec() {
-  MultiKernelLoaderSpec spec(/*arity=*/13);
-  spec.AddCudaPtxInMemory(cuda::kSetCaseConditionKernel, "set_case_condition");
-  return spec;
+  return MultiKernelLoaderSpec::CreateCudaPtxInMemorySpec(
+      cuda::kSetCaseConditionKernel, "set_case_condition", 13);
 }
 
 absl::StatusOr<MultiKernelLoaderSpec> GetSetWhileConditionKernelLoaderSpec() {
-  MultiKernelLoaderSpec spec(/*arity=*/2);
-  spec.AddCudaPtxInMemory(cuda::kSetWhileConditionKernel,
-                          "set_while_condition");
-  return spec;
+  return MultiKernelLoaderSpec::CreateCudaPtxInMemorySpec(
+      cuda::kSetWhileConditionKernel, "set_while_condition", 2);
 }
 
 absl::StatusOr<MultiKernelLoaderSpec> GetNoOpKernelLoaderSpec() {
-  MultiKernelLoaderSpec spec(/*arity=*/0);
-  spec.AddCudaPtxInMemory(cuda::kNoOpKernel, "noop");
-  return spec;
+  return MultiKernelLoaderSpec::CreateCudaPtxInMemorySpec(cuda::kNoOpKernel,
+                                                          "noop", 0);
 }
 
 }  // namespace stream_executor::cuda

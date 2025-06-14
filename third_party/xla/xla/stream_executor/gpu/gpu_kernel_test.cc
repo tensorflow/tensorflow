@@ -100,10 +100,10 @@ TEST_F(GpuKernelTest, LoadAndRunKernelFromPtx) {
 }
 
 TEST_F(GpuKernelTest, LoadAndRunKernelFromCubin) {
-  MultiKernelLoaderSpec spec(/*arity=*/3);
   TF_ASSERT_OK_AND_ASSIGN(
       auto binary, GetGpuTestKernelsFatbin(executor_->GetPlatform()->Name()));
-  spec.AddCudaCubinInMemory(binary, "AddI32");
+  MultiKernelLoaderSpec spec =
+      MultiKernelLoaderSpec::CreateCudaCubinInMemorySpec(binary, "AddI32", 3);
   RunAddI32Kernel(spec);
 }
 
