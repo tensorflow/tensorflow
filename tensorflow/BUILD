@@ -460,10 +460,7 @@ selects.config_setting_group(
 
 config_setting(
     name = "ios",
-    constraint_values = if_google(
-        ["@platforms//os:ios"],
-        [],
-    ),
+    constraint_values = ["@platforms//os:ios"],
     values = if_oss(
         {"apple_platform_type": "ios"},
         {},
