@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -27,6 +28,8 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device.pb.h"
 #include "xla/python/ifrt/device_test_util.h"
+#include "xla/python/ifrt/serdes_test_util.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -146,12 +149,16 @@ INSTANTIATE_TEST_SUITE_P(
                     test_util::DeviceTestParam{/*num_devices=*/2,
                                                /*num_addressable_devices=*/2}));
 
-using DeviceListSerDesTestParam = test_util::DeviceTestParam;
+using DeviceListSerDesTestParam =
+    std::tuple<SerDesVersion, test_util::DeviceTestParam>;
 
 class DeviceListSerDesTest
     : public testing::TestWithParam<DeviceListSerDesTestParam> {
  public:
-  DeviceListSerDesTest() : fixture_(GetParam()) {}
+  DeviceListSerDesTest()
+      : version_(std::get<0>(GetParam())), fixture_(std::get<1>(GetParam())) {}
+
+  SerDesVersion version() const { return version_; }
 
   Client* client() { return fixture_.client(); }
   DeviceListRef GetDevices(absl::Span<const int> device_indices) {
@@ -159,12 +166,13 @@ class DeviceListSerDesTest
   }
 
  private:
+  SerDesVersion version_;
   test_util::DeviceTestFixture fixture_;
 };
 
 TEST_P(DeviceListSerDesTest, ToFromProto) {
   auto device_list = GetDevices({0, 1});
-  DeviceListProto proto = device_list->ToProto();
+  DeviceListProto proto = device_list->ToProto(version());
   TF_ASSERT_OK_AND_ASSIGN(auto device_list_copy,
                           DeviceList::FromProto(client(), proto));
   EXPECT_EQ(*device_list_copy, *device_list);
@@ -172,10 +180,13 @@ TEST_P(DeviceListSerDesTest, ToFromProto) {
 
 INSTANTIATE_TEST_SUITE_P(
     SerDesVersion_NumDevices, DeviceListSerDesTest,
-    testing::Values(test_util::DeviceTestParam{/*num_devices=*/2,
-                                               /*num_addressable_devices=*/1},
-                    test_util::DeviceTestParam{/*num_devices=*/2,
-                                               /*num_addressable_devices=*/2}));
+    testing::Combine(testing::ValuesIn(test_util::AllSupportedSerDesVersions()),
+                     testing::Values(test_util::DeviceTestParam{
+                                         /*num_devices=*/2,
+                                         /*num_addressable_devices=*/1},
+                                     test_util::DeviceTestParam{
+                                         /*num_devices=*/2,
+                                         /*num_addressable_devices=*/2})));
 
 }  // namespace
 }  // namespace ifrt

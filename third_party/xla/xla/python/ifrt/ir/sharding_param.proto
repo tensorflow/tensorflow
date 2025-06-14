@@ -19,6 +19,8 @@ package xla.ifrt;
 
 // Proto equivalent of C++ `ShardingParam`.
 message ShardingParamProto {
+  int32 version_number = 4;
+
   repeated int64 dim_shards = 1;
   repeated int32 permutation = 2;
   repeated int32 axis_sizes = 3;

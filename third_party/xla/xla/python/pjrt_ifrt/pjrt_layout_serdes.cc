@@ -19,12 +19,14 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout_serdes.pb.h"
 #include "xla/tsl/platform/statusor.h"
@@ -44,8 +46,15 @@ class PjRtLayoutSerDes : public llvm::RTTIExtends<PjRtLayoutSerDes, SerDes> {
   absl::StatusOr<std::string> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
+    const SerDesVersion version = GetRequestedSerDesVersion(options.get());
+    if (version.version_number() < SerDesVersionNumber(0)) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Unsupported ", version.version_number(),
+                       " for PjRtLayout serialization"));
+    }
     const auto* pjrt_layout = llvm::cast<PjRtLayout>(&serializable);
     PjRtLayoutProto proto;
+    proto.set_version_number(SerDesVersionNumber(0).value());
     // Use `xla::Layout` proto serialization, which is currently faster than
     // `xla::PjRtLayout` human-readable serialization, and reasonably stable for
     // the features used via `xla::PjRtLayout`.
@@ -61,6 +70,11 @@ class PjRtLayoutSerDes : public llvm::RTTIExtends<PjRtLayoutSerDes, SerDes> {
     if (!proto.ParseFromString(serialized)) {
       return absl::InvalidArgumentError(
           "Failed to parse serialized PjRtLayout");
+    }
+    const SerDesVersionNumber version_number(proto.version_number());
+    if (version_number != SerDesVersionNumber(0)) {
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Unsupported ", version_number, " for PjRtLayout deserialization"));
     }
     TF_ASSIGN_OR_RETURN(auto xla_layout,
                         xla::Layout::FromProto(proto.xla_layout()));

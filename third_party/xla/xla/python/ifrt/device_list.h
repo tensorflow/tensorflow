@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device.pb.h"
 #include "xla/python/ifrt/ref_wrapper.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -50,7 +51,8 @@ class DeviceList : public tsl::ReferenceCounted<DeviceList>,
       xla::ifrt::Client* client, const DeviceListProto& proto);
 
   // Returns a `DeviceListProto` representation.
-  DeviceListProto ToProto() const;
+  DeviceListProto ToProto(
+      SerDesVersion version = SerDesVersion::current()) const;
 
   // Returns the number of devices.
   // TODO(hyeontaek): Make this a virtual method and make it possible for a

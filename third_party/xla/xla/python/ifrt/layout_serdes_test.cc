@@ -14,22 +14,37 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <utility>
 
 #include <gtest/gtest.h>
 #include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes_test_util.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
 namespace {
 
-TEST(LayoutSerDesTest, CompactLayoutRoundTrip) {
+class LayoutSerDesTest : public testing::TestWithParam<SerDesVersion> {
+ public:
+  LayoutSerDesTest() : version_(GetParam()) {}
+
+  SerDesVersion version() const { return version_; }
+
+ private:
+  SerDesVersion version_;
+};
+
+TEST_P(LayoutSerDesTest, CompactLayoutRoundTrip) {
   TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({1, 0}));
 
+  auto options = std::make_unique<SerializeOptions>();
+  options->version = version();
   TF_ASSERT_OK_AND_ASSIGN(auto serialized,
-                          Serialize(*layout, /*options=*/nullptr));
+                          Serialize(*layout, std::move(options)));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto deserialized,
@@ -39,6 +54,10 @@ TEST(LayoutSerDesTest, CompactLayoutRoundTrip) {
   ASSERT_NE(out_layout, nullptr);
   EXPECT_EQ(out_layout->major_to_minor(), layout->major_to_minor());
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    SerDesVersion, LayoutSerDesTest,
+    testing::ValuesIn(test_util::AllSupportedSerDesVersions()));
 
 }  // namespace
 }  // namespace ifrt

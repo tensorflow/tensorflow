@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <numeric>
+#include <tuple>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -34,6 +35,8 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.pb.h"
+#include "xla/python/ifrt/serdes_test_util.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -579,12 +582,16 @@ INSTANTIATE_TEST_SUITE_P(NumDevices, RemapPlanTest,
                              /*num_devices=*/4,
                              /*num_addressable_devices=*/4}));
 
-using RemapPlanSerDesTestParam = test_util::DeviceTestParam;
+using RemapPlanSerDesTestParam =
+    std::tuple<SerDesVersion, test_util::DeviceTestParam>;
 
 class RemapPlanSerDesTest
     : public testing::TestWithParam<RemapPlanSerDesTestParam> {
  public:
-  RemapPlanSerDesTest() : fixture_(GetParam()) {}
+  RemapPlanSerDesTest()
+      : version_(std::get<0>(GetParam())), fixture_(std::get<1>(GetParam())) {}
+
+  SerDesVersion version() const { return version_; }
 
   Client* client() { return fixture_.client(); }
   DeviceListRef GetDevices(absl::Span<const int> device_indices) {
@@ -592,6 +599,7 @@ class RemapPlanSerDesTest
   }
 
  private:
+  SerDesVersion version_;
   test_util::DeviceTestFixture fixture_;
 };
 
@@ -628,7 +636,7 @@ TEST_P(RemapPlanSerDesTest, ToFromProto) {
       /*from=*/{RemapPlan::Interval{0, 4, 2}, RemapPlan::Interval{1, 4, 2}},
       /*to=*/{RemapPlan::Interval{0, 2, 1}, RemapPlan::Interval{2, 4, 1}}});
 
-  TF_ASSERT_OK_AND_ASSIGN(RemapPlanProto plan_proto, plan.ToProto());
+  TF_ASSERT_OK_AND_ASSIGN(RemapPlanProto plan_proto, plan.ToProto(version()));
   TF_ASSERT_OK_AND_ASSIGN(RemapPlan plan_copy,
                           RemapPlan::FromProto(client(), plan_proto));
 
@@ -657,10 +665,12 @@ TEST_P(RemapPlanSerDesTest, ToFromProto) {
   }
 }
 
-INSTANTIATE_TEST_SUITE_P(NumDevices, RemapPlanSerDesTest,
-                         testing::Values(test_util::DeviceTestParam{
-                             /*num_devices=*/4,
-                             /*num_addressable_devices=*/4}));
+INSTANTIATE_TEST_SUITE_P(
+    SerDesVersion_NumDevices, RemapPlanSerDesTest,
+    testing::Combine(testing::ValuesIn(test_util::AllSupportedSerDesVersions()),
+                     testing::Values(test_util::DeviceTestParam{
+                         /*num_devices=*/4,
+                         /*num_addressable_devices=*/4})));
 
 }  // namespace
 }  // namespace ifrt

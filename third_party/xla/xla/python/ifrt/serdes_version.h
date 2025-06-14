@@ -27,6 +27,11 @@ namespace ifrt {
 // APIs are expected to use `SerDesVersion` only.
 TSL_LIB_GTL_DEFINE_INT_TYPE(SerDesVersionNumber, int);
 
+template <typename Sink>
+void AbslStringify(Sink& sink, SerDesVersionNumber version_number) {
+  sink.Append(absl::StrCat("IFRT SerDes version ", version_number.value()));
+}
+
 // Represents a version of the IFRT serialization format.
 class SerDesVersion {
  public:
@@ -44,10 +49,11 @@ class SerDesVersion {
 
   SerDesVersionNumber version_number() const { return version_number_; }
 
-  template <typename Sink>
-  friend void AbslStringify(Sink& sink, const SerDesVersion& version) {
-    sink.Append(
-        absl::StrCat("IFRT SerDes version ", version.version_number().value()));
+  bool operator==(const SerDesVersion& other) const {
+    return version_number_ == other.version_number_;
+  }
+  bool operator!=(const SerDesVersion& other) const {
+    return version_number_ != other.version_number_;
   }
 
  private:

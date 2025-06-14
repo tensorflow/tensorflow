@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.pb.h"
 #include "xla/tsl/platform/statusor.h"
@@ -189,10 +190,17 @@ absl::StatusOr<ShardingRef> Sharding::FromProto(
       std::make_unique<DeserializeShardingOptions>(client));
 }
 
-absl::StatusOr<ShardingProto> Sharding::ToProto() const {
+absl::StatusOr<ShardingProto> Sharding::ToProto(SerDesVersion version) const {
   ShardingProto sharding_proto;
+  // `ShardingProto` does not store its own version. It delegates the details to
+  // SerDes of the `Sharding` subclasses.
+  std::unique_ptr<SerializeOptions> options;
+  if (version != SerDesVersion::current()) {
+    options = std::make_unique<SerializeOptions>();
+    options->version = version;
+  }
   TF_ASSIGN_OR_RETURN(*sharding_proto.mutable_serialized_sharding(),
-                      Serialize(*this, /*options=*/nullptr));
+                      Serialize(*this, std::move(options)));
   return sharding_proto;
 }
 

@@ -39,6 +39,8 @@ limitations under the License.
 #include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/version.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes_version.h"
+#include "xla/python/ifrt/serdes_week_4_old_version_accessor.h"
 #include "xla/python/ifrt/support/module_parsing.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/statusor.h"
@@ -65,6 +67,16 @@ class IfrtIRProgramSerDes
   absl::StatusOr<std::string> Serialize(
       const Serializable& serializable,
       std::unique_ptr<SerializeOptions> options) override {
+    // All serialization of `IfrtIRProgram` is pinned to a at-least-4-week-old
+    // version. An acceptable IFRT SerDes version is [4-week-old, current].
+    const SerDesVersion version = GetRequestedSerDesVersion(options.get());
+    if (version.version_number() <
+        SerDesWeek4OldVersionAccessor::Get().version_number()) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Unsupported ", version.version_number(),
+                       " for IfrtIRProgram serialization"));
+    }
+
     const auto& program = llvm::cast<IfrtIRProgram>(serializable);
     if (program.mlir_module == nullptr) {
       return absl::InvalidArgumentError("Unable to serialize null MLIR module");
@@ -211,11 +223,13 @@ class IfrtIRCompileOptionsSerDes
 
   absl::StatusOr<std::string> Serialize(
       const Serializable& serializable,
-      std::unique_ptr<SerializeOptions>) override {
-    const auto& options = llvm::cast<IfrtIRCompileOptions>(serializable);
-    TF_ASSIGN_OR_RETURN(IfrtIrCompileOptionsProto options_proto,
-                        options.ToProto());
-    return options_proto.SerializeAsString();
+      std::unique_ptr<SerializeOptions> options) override {
+    const SerDesVersion version = GetRequestedSerDesVersion(options.get());
+    const auto& compile_options =
+        llvm::cast<IfrtIRCompileOptions>(serializable);
+    TF_ASSIGN_OR_RETURN(IfrtIrCompileOptionsProto compile_options_proto,
+                        compile_options.ToProto(version));
+    return compile_options_proto.SerializeAsString();
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(

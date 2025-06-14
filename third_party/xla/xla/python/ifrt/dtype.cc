@@ -19,9 +19,12 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/python/ifrt/dtype.pb.h"
+#include "xla/python/ifrt/serdes_version.h"
 
 namespace xla {
 namespace ifrt {
@@ -119,6 +122,12 @@ std::optional<int> DType::bit_size() const {
 }
 
 absl::StatusOr<DType> DType::FromProto(const DTypeProto& dtype_proto) {
+  const SerDesVersionNumber version_number(dtype_proto.version_number());
+  if (version_number != SerDesVersionNumber(0)) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "Unsupported ", version_number, " for DType deserialization"));
+  }
+
   switch (dtype_proto.kind()) {
     case DTypeProto::KIND_PRED:
       return DType(DType::Kind::kPred);
@@ -162,8 +171,16 @@ absl::StatusOr<DType> DType::FromProto(const DTypeProto& dtype_proto) {
   }
 }
 
-DTypeProto DType::ToProto() const {
+DTypeProto DType::ToProto(SerDesVersion version) const {
+  // TODO(b/423702568): Change the return type to `absl::StatusOr<...>` for
+  // graceful error handling.
+  CHECK_GE(version.version_number(), SerDesVersionNumber(0))
+      << "Unsupported " << version.version_number()
+      << " for DType serialization";
+
   DTypeProto dtype_proto;
+  dtype_proto.set_version_number(SerDesVersionNumber(0).value());
+
   switch (kind()) {
     case DType::Kind::kPred:
       dtype_proto.set_kind(DTypeProto::KIND_PRED);

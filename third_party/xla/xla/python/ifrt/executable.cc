@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "xla/python/ifrt/executable.h"
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/execute_options.pb.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -26,8 +30,16 @@ namespace ifrt {
 char Executable::ID = 0;
 char LoadedExecutable::ID = 0;
 
-absl::StatusOr<ExecuteOptionsProto> ExecuteOptions::ToProto() const {
+absl::StatusOr<ExecuteOptionsProto> ExecuteOptions::ToProto(
+    SerDesVersion version) const {
+  if (version.version_number() < SerDesVersionNumber(0)) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Unsupported ", version.version_number(),
+                     " for ExecuteOptions serialization"));
+  }
+
   ExecuteOptionsProto proto;
+  proto.set_version_number(SerDesVersionNumber(0).value());
 
   proto.set_launch_id(launch_id);
   proto.mutable_non_donatable_input_indices()->Add(
@@ -35,7 +47,7 @@ absl::StatusOr<ExecuteOptionsProto> ExecuteOptions::ToProto() const {
   proto.set_fill_status(fill_status);
   proto.set_execution_stream_id(execution_stream_id);
   if (custom_options.has_value()) {
-    *proto.mutable_custom_options() = custom_options->ToProto();
+    *proto.mutable_custom_options() = custom_options->ToProto(version);
   }
 
   return proto;
@@ -43,8 +55,13 @@ absl::StatusOr<ExecuteOptionsProto> ExecuteOptions::ToProto() const {
 
 absl::StatusOr<ExecuteOptions> ExecuteOptions::FromProto(
     const ExecuteOptionsProto& proto) {
-  ExecuteOptions options;
+  const SerDesVersionNumber version_number(proto.version_number());
+  if (version_number != SerDesVersionNumber(0)) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "Unsupported ", version_number, " for ExecuteOptions deserialization"));
+  }
 
+  ExecuteOptions options;
   options.launch_id = proto.launch_id();
   options.non_donatable_input_indices.insert(
       proto.non_donatable_input_indices().begin(),

@@ -23,6 +23,8 @@ import "xla/python/ifrt/shape.proto";
 
 // Proto equivalent of C++ `SingleDeviceSharding`.
 message SingleDeviceShardingProto {
+  int32 version_number = 3;
+
   // Serialization and deserialization are expected to ensure that device ids
   // are stable across proto construction and consumption.
   int32 device_id = 1;
@@ -31,12 +33,16 @@ message SingleDeviceShardingProto {
 
 // Proto equivalent of C++ `OpaqueSharding`.
 message OpaqueShardingProto {
+  int32 version_number = 3;
+
   DeviceListProto devices = 1;
   optional string memory_kind = 2;
 }
 
 // Proto equivalent of C++ `ConcreteSharding`.
 message ConcreteShardingProto {
+  int32 version_number = 7;
+
   DeviceListProto devices = 1;
   optional string memory_kind = 4;
   oneof shape_or_dynamic_shape {
@@ -49,6 +55,8 @@ message ConcreteShardingProto {
 
 // Proto equivalent of C++ `ConcreteEvenSharding`.
 message ConcreteEvenShardingProto {
+  int32 version_number = 6;
+
   DeviceListProto devices = 1;
   optional string memory_kind = 4;
   ShapeProto shape = 2;
@@ -58,6 +66,8 @@ message ConcreteEvenShardingProto {
 
 // Proto equivalent of C++ `ShardingParamSharding`.
 message ShardingParamShardingProto {
+  int32 version_number = 4;
+
   ShardingParamProto sharding_param = 1;
   DeviceListProto devices = 2;
   optional string memory_kind = 3;
