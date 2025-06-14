@@ -1228,6 +1228,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
     }
     module->buffer_donor_config() = buffer_donor_config;
   }
+  DeduplicateOriginalValues(module);
 
   return true;
 }
