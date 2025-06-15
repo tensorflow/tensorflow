@@ -369,7 +369,14 @@ const StatTypeMap& GetStatTypeMap() {
        {"scope_range_id", kScopeRangeId},
        {"core_details", kCoreDetails},
        // IFRT Stats
-       {"mlir_program", kMlIRProgram}});
+       {"mlir_program", kMlIRProgram},
+       {"cuda_graph_node_id", kCudaGraphNodeId},
+       {"cuda_orig_graph_id", kCudaOrigGraphId},
+       {"cuda_graph_orig_node_id", kCudaGraphOrigNodeId},
+       {"cuda_graph_map_id", kCudaGraphMapId},
+       {"cuda_graph_map_value_id", kCudaGraphMapValueId},
+       {"cuda_graph_node_map_id", kCudaGraphNodeMapId},
+       {"graph_metadata_line_id", kGraphMetadataLineId}});
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
 }
