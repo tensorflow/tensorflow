@@ -507,6 +507,7 @@ xla_test(
         ":xla_internal_test_main",
         "//xla:literal",
         "//xla:status_macros",
+        "//xla:xla_data_proto_cc",
         "//xla/client:client_library",
         "//xla/client:local_client",
         "//xla/hlo/ir:hlo",
@@ -515,6 +516,13 @@ xla_test(
         "//xla/service:executable",
         "//xla/stream_executor:stream_executor_memory_allocator",
         "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
