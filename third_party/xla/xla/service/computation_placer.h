@@ -22,13 +22,14 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/array2d.h"
 #include "xla/service/global_device_id.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 
@@ -38,7 +39,7 @@ namespace xla {
 // by assignment(replica, computation).
 class DeviceAssignment : public Array2D<int64_t> {
  public:
-  DeviceAssignment() {}
+  DeviceAssignment() = default;
   DeviceAssignment(int replica_count, int computation_count)
       : Array2D<int64_t>(replica_count, computation_count, -1) {
     CHECK_GT(replica_count, 0);
@@ -80,13 +81,16 @@ class DeviceAssignment : public Array2D<int64_t> {
   friend void AbslStringify(Sink& sink, const DeviceAssignment& assignment) {
     return sink.Append(assignment.ToString());
   }
+
+  // Assures unique device ids.
+  absl::Status Validate() const;
 };
 
 // A generic implementation of the XLA computation placer, which assigns device
 // ids to a set of replicated computations.
 class ComputationPlacer {
  public:
-  ComputationPlacer() {}
+  ComputationPlacer() = default;
   virtual ~ComputationPlacer() {}
 
   // Returns the device id assigned to the given replica and computation

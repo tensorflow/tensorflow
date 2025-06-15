@@ -18,13 +18,14 @@ limitations under the License.
 #include <cstdint>
 #include <map>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/base/const_init.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
@@ -43,26 +45,31 @@ using absl::StrAppend;
 
 namespace xla {
 
-absl::StatusOr<DeviceAssignment::LogicalID>
-DeviceAssignment::LogicalIdForDevice(GlobalDeviceId device_id) const {
-  std::optional<DeviceAssignment::LogicalID> logical_id;
+absl::Status DeviceAssignment::Validate() const {
+  absl::flat_hash_set<int64_t> set;
   for (int r = 0; r < replica_count(); ++r) {
     for (int c = 0; c < computation_count(); ++c) {
-      if ((*this)(r, c) == device_id.value()) {
-        if (logical_id.has_value()) {
-          return Internal("Device %d appears twice in DeviceAssignment: %s",
-                          device_id.value(), ToString());
-        }
-        logical_id.emplace(DeviceAssignment::LogicalID{r, c});
+      int64_t id = operator()(r, c);
+      if (set.contains(id)) {
+        return Internal("Device %d appears twice in %v", id, *this);
+      }
+      set.insert(id);
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::StatusOr<DeviceAssignment::LogicalID>
+DeviceAssignment::LogicalIdForDevice(GlobalDeviceId device_id) const {
+  int64_t id = device_id.value();
+  for (int r = 0; r < replica_count(); ++r) {
+    for (int c = 0; c < computation_count(); ++c) {
+      if (operator()(r, c) == id) {
+        return DeviceAssignment::LogicalID{r, c};
       }
     }
   }
-  if (logical_id.has_value()) {
-    return *logical_id;
-  } else {
-    return Internal("Device %d doesn't appear in DeviceAssignment: %s",
-                    device_id.value(), ToString());
-  }
+  return Internal("Device %d doesn't appear in %v", id, *this);
 }
 
 absl::StatusOr<int> DeviceAssignment::ReplicaIdForDevice(
@@ -107,25 +114,20 @@ void DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
 /* static */ absl::StatusOr<std::unique_ptr<DeviceAssignment>>
 DeviceAssignment::Deserialize(const DeviceAssignmentProto& proto) {
   TF_RET_CHECK(proto.computation_devices_size() == proto.computation_count());
-  if (proto.replica_count() <= 0 || proto.computation_count() <= 0) {
-    return InvalidArgument(
-        "Invalid device assignment topology: replica_count=%d, "
-        "computation_count=%d",
-        proto.replica_count(), proto.computation_count());
-  }
+  TF_RET_CHECK(proto.replica_count() > 0);
+  TF_RET_CHECK(proto.computation_count() > 0);
   auto assignment = std::make_unique<DeviceAssignment>(
       proto.replica_count(), proto.computation_count());
-  for (int computation = 0; computation < proto.computation_count();
-       ++computation) {
-    const auto& computation_device = proto.computation_devices(computation);
-    int64_t replica_count = proto.replica_count();
-    int64_t ids = computation_device.replica_device_ids_size();
-    TF_RET_CHECK(ids == replica_count);
+  for (int comp = 0; comp < proto.computation_count(); ++comp) {
+    const auto& computation_device = proto.computation_devices(comp);
+    TF_RET_CHECK(computation_device.replica_device_ids_size() ==
+                 proto.replica_count());
     for (int replica = 0; replica < proto.replica_count(); ++replica) {
-      (*assignment)(replica, computation) =
+      (*assignment)(replica, comp) =
           computation_device.replica_device_ids(replica);
     }
   }
+  TF_RETURN_IF_ERROR(assignment->Validate());
   return std::move(assignment);
 }
 
@@ -153,7 +155,6 @@ absl::StatusOr<int> ComputationPlacer::DeviceId(int replica, int computation,
                                                 int computation_count) {
   TF_RET_CHECK(replica < replica_count);
   TF_RET_CHECK(computation < computation_count);
-
   return computation * replica_count + replica;
 }
 
@@ -168,7 +169,7 @@ absl::StatusOr<DeviceAssignment> ComputationPlacer::AssignDevices(
       assignment(replica, computation) = device_id;
     }
   }
-  return std::move(assignment);
+  return assignment;
 }
 
 /* static */ void ComputationPlacer::RegisterComputationPlacer(
