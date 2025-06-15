@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/service/gpu/autotuning/redzone_buffers.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
