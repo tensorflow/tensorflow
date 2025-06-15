@@ -227,6 +227,11 @@ struct PJRT_Layouts_SerializedLayout {
   std::string serialized;
 };
 
+// This struct is used to pass a un-owned PjRtPhaseCompiler through the C API.
+struct PJRT_PhaseCompiler {
+  xla::PjRtPhaseCompiler* compiler;  // Not owned.
+};
+
 namespace pjrt {
 // C API definitions
 

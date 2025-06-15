@@ -45,3 +45,9 @@ tf_proto_library(
     srcs = ["pjrt_value_type.proto"],
     visibility = ["//visibility:public"],
 )
+
+tf_proto_library(
+    name = "pjrt_partial_program_proto",
+    srcs = ["pjrt_partial_program.proto"],
+    visibility = ["//visibility:public"],
+)

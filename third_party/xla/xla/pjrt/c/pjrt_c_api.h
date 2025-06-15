@@ -47,7 +47,8 @@ typedef enum {
   PJRT_Extension_Type_FFI,
   PJRT_Extension_Type_MemoryDescriptions,
   PJRT_Extension_Type_Triton,
-  PJRT_Extension_Type_RawBuffer,  // Experimental.
+  PJRT_Extension_Type_RawBuffer,     // Experimental.
+  PJRT_Extension_Type_PhaseCompile,  // Experimental.
 } PJRT_Extension_Type;
 
 // PJRT_Extension_Base contains a type and a pointer to next
@@ -318,6 +319,7 @@ typedef struct PJRT_LoadedExecutable PJRT_LoadedExecutable;
 typedef struct PJRT_Buffer PJRT_Buffer;
 typedef struct PJRT_AsyncHostToDeviceTransferManager
     PJRT_AsyncHostToDeviceTransferManager;
+typedef struct PJRT_PhaseCompiler PJRT_PhaseCompiler;
 
 // The caller of PJRT_Client_Create can optionally provide a key-value store
 // accessible across nodes and/or processes. KV store access may be necessary to
