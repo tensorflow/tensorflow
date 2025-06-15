@@ -732,7 +732,7 @@ absl::Status LayoutAssignment::AddMandatoryConstraints(
       for (int64_t i = 0; i < instruction->operand_count(); ++i) {
         CHECK(instruction->shape().IsArray() ||
               instruction->shape().IsTuple() &&
-                  instruction->shape().tuple_shapes_size() > i);
+                  instruction->shape().tuple_shapes().size() > i);
         const Shape& shape = instruction->shape().IsTuple()
                                  ? instruction->shape().tuple_shapes(i)
                                  : instruction->shape();
