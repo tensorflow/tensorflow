@@ -787,7 +787,7 @@ void DatasetBase::Initialize(const Metadata& metadata) {
 absl::Status DatasetBase::ComputeNumSources() {
   std::vector<const DatasetBase*> inputs;
   absl::Status s = InputDatasets(&inputs);
-  if (errors::IsUnimplemented(s)) {
+  if (absl::IsUnimplemented(s)) {
     return s;
   }
   if (num_sources_ >= 0) {
@@ -855,7 +855,7 @@ absl::StatusOr<DatasetBase*> DatasetBase::Finalize(
 absl::Status DatasetBase::MergeOptionsFromInputs() {
   std::vector<const DatasetBase*> inputs;
   absl::Status s = InputDatasets(&inputs);
-  if (errors::IsUnimplemented(s)) {
+  if (absl::IsUnimplemented(s)) {
     return s;
   }
   if (inputs.empty()) {
@@ -906,7 +906,7 @@ absl::Status DatasetBase::MakeSplitProviders(
     std::vector<std::unique_ptr<SplitProvider>>* split_providers) const {
   std::vector<const DatasetBase*> inputs;
   absl::Status s = InputDatasets(&inputs);
-  if (errors::IsUnimplemented(s)) {
+  if (absl::IsUnimplemented(s)) {
     return errors::Unimplemented(
         "Cannot create split providers for dataset of type ", type_string(),
         ", because the dataset implements neither `InputDatasets` nor "
@@ -980,7 +980,7 @@ absl::Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
       // Record cardinality in an unregistered attributes so that rewrites have
       // this information.
       (*output)->AddAttr(kCardinalityAttrForRewrite, dataset->Cardinality());
-    } else if (errors::IsUnimplemented(status)) {
+    } else if (absl::IsUnimplemented(status)) {
       Tensor t(DT_VARIANT, TensorShape({}));
       // `StoreDatasetInVariantTensor` will transfer ownership of `dataset`. We
       // increment the refcount of `dataset` here to retain ownership.
@@ -1018,7 +1018,7 @@ absl::Status DatasetBase::DatasetGraphDefBuilder::AddDatasetOrTensor(
   }
   if (t.dtype() == DT_RESOURCE && !ctx->is_graph_rewrite()) {
     absl::Status s = AddResourceHelper(ctx, t, output);
-    if (!errors::IsUnimplemented(s)) {
+    if (!absl::IsUnimplemented(s)) {
       // Fall through to AddTensor if AsGraphDef is not implemented for this
       // resource.
       return s;
@@ -1180,7 +1180,7 @@ absl::Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
       node_->output()->record_start(now_nanos);
     }
   }
-  if (TF_PREDICT_FALSE(errors::IsOutOfRange(s))) {
+  if (TF_PREDICT_FALSE(absl::IsOutOfRange(s))) {
     s = errors::Internal("Iterator \"", params_.prefix,
                          "\" returned `OutOfRange`. This indicates an "
                          "implementation error as `OutOfRange` errors are not "
@@ -1218,7 +1218,7 @@ absl::Status DatasetBaseIterator::Skip(IteratorContext* ctx, int num_to_skip,
       output->record_start(now_nanos);
     }
   }
-  if (TF_PREDICT_FALSE(errors::IsOutOfRange(s))) {
+  if (TF_PREDICT_FALSE(absl::IsOutOfRange(s))) {
     s = errors::Internal("Iterator \"", params_.prefix,
                          "\" returned `OutOfRange`. This indicates an "
                          "implementation error as `OutOfRange` errors are not "
