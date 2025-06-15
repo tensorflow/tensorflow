@@ -24,6 +24,7 @@ cc_library(
         ":onednn_matcher",
         ":xnn_matcher",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
