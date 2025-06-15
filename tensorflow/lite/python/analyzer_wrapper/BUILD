@@ -11,6 +11,10 @@ pybind_extension(
     srcs = [
         "analyzer_wrapper.cc",
     ],
+    common_lib_packages = [
+        "litert/python",
+        "third_party/tensorflow/lite/python",
+    ],
     enable_stub_generation = True,
     pytype_srcs = [
         "_pywrap_analyzer_wrapper.pyi",
