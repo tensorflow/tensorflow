@@ -114,10 +114,10 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_google_ortools",
-        sha256 = "bc4b07dc9c23f0cca43b1f5c889f08a59c8f2515836b03d4cc7e0f8f2c879234",
-        strip_prefix = "or-tools-9.6",
+        sha256 = "f6a0bd5b9f3058aa1a814b798db5d393c31ec9cbb6103486728997b49ab127bc",
+        strip_prefix = "or-tools-9.11",
         patch_file = ["//third_party/ortools:ortools.patch"],
-        urls = tf_mirror_urls("https://github.com/google/or-tools/archive/v9.6.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/google/or-tools/archive/v9.11.tar.gz"),
         repo_mapping = {
             "@com_google_protobuf_cc": "@com_google_protobuf",
             "@eigen": "@eigen_archive",
@@ -136,11 +136,11 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "scip",
-        sha256 = "fe7636f8165a8c9298ff55ed3220d084d4ea31ba9b69d2733beec53e0e4335d6",
-        strip_prefix = "scip-803",
-        build_file = "//third_party/ortools:scip.BUILD",
-        patch_file = ["//third_party/ortools:scip.patch"],
-        urls = tf_mirror_urls("https://github.com/scipopt/scip/archive/refs/tags/v803.tar.gz"),
+        sha256 = "ee221bd13a6b24738f2e74321e2efdebd6d7c603574ca6f6cb9d4472ead2c22f",
+        strip_prefix = "scip-900",
+        build_file = "@com_google_ortools//bazel:scip.BUILD.bazel",
+        patch_file = ["@com_google_ortools//bazel:scip-v900.patch"],
+        urls = tf_mirror_urls("https://github.com/scipopt/scip/archive/refs/tags/v900.tar.gz"),
     )
 
     tf_http_archive(
@@ -153,9 +153,9 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "pybind11_protobuf",
-        urls = tf_mirror_urls("https://github.com/pybind/pybind11_protobuf/archive/80f3440cd8fee124e077e2e47a8a17b78b451363.zip"),
-        sha256 = "c7ab64b1ccf9a678694a89035a8c865a693e4e872803778f91f0965c2f281d78",
-        strip_prefix = "pybind11_protobuf-80f3440cd8fee124e077e2e47a8a17b78b451363",
+        urls = tf_mirror_urls("https://github.com/pybind/pybind11_protobuf/archive/f02a2b7653bc50eb5119d125842a3870db95d251.zip"),
+        sha256 = "3cf7bf0f23954c5ce6c37f0a215f506efa3035ca06e3b390d67f4cbe684dce23",
+        strip_prefix = "pybind11_protobuf-f02a2b7653bc50eb5119d125842a3870db95d251",
     )
 
     tf_http_archive(
