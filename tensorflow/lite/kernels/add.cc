@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "Eigen/Core"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -166,7 +167,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   data->pot_scale_int16 = !general_scale_int16;
 
-  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
+  if (output->type == kTfLiteUInt8 || (output->type == kTfLiteInt8 && 
+      output->quantization.type != kTfLiteNoQuantization) ||
       general_scale_int16) {
     // 8bit -> 8bit general quantized path, with general rescalings
     // as well as, 16bit -> 16bit with general rescalings
@@ -293,16 +295,68 @@ void EvalAdd(TfLiteContext* context, TfLiteNode* node, TfLiteAddParams* params,
         TF_LITE_ADD(optimized_ops, Add, float);
       }
     }
+  } else if (output->type == kTfLiteFloat16) {
+    if (kernel_type == kReference) {
+      if (need_broadcast) {
+        TF_LITE_ADD(reference_ops, BroadcastAdd6DSlow, Eigen::half);
+      } else {
+        TF_LITE_ADD(reference_ops, Add, Eigen::half);
+      }
+    } else {
+      if (need_broadcast) {
+        TF_LITE_ADD(optimized_ops, BroadcastAddDispatch, Eigen::half);
+      } else {
+        TF_LITE_ADD(optimized_ops, Add, Eigen::half);
+      }
+    }
+  } else if (output->type == kTfLiteBFloat16) {
+    if (kernel_type == kReference) {
+      if (need_broadcast) {
+        TF_LITE_ADD(reference_ops, BroadcastAdd6DSlow, Eigen::bfloat16);
+      } else {
+        TF_LITE_ADD(reference_ops, Add, Eigen::bfloat16);
+      }
+    } else {
+      if (need_broadcast) {
+        TF_LITE_ADD(optimized_ops, BroadcastAddDispatch, Eigen::bfloat16);
+      } else {
+        TF_LITE_ADD(optimized_ops, Add, Eigen::bfloat16);
+      }
+    }
   } else if (output->type == kTfLiteInt16) {
     int16_t output_activation_min, output_activation_max;
     CalculateActivationRange(params->activation, &output_activation_min,
                              &output_activation_max);
     SetActivationParams(output_activation_min, output_activation_max,
                         &op_params);
-    reference_ops::BroadcastAdd6DSlow<int16_t, true>(
-        op_params, GetTensorShape(input1), GetTensorData<int16_t>(input1),
-        GetTensorShape(input2), GetTensorData<int16_t>(input2),
-        GetTensorShape(output), GetTensorData<int16_t>(output));
+    if (need_broadcast) {
+      reference_ops::BroadcastAdd6DSlow<int16_t, true>(
+          op_params, GetTensorShape(input1), GetTensorData<int16_t>(input1),
+          GetTensorShape(input2), GetTensorData<int16_t>(input2),
+          GetTensorShape(output), GetTensorData<int16_t>(output));
+    } else {
+      reference_ops::Add<int16_t>(
+          op_params, GetTensorShape(input1), GetTensorData<int16_t>(input1),
+          GetTensorShape(input2), GetTensorData<int16_t>(input2),
+          GetTensorShape(output), GetTensorData<int16_t>(output));
+    }
+  } else if (output->type == kTfLiteInt8) {
+    int8_t output_activation_min, output_activation_max;
+    CalculateActivationRange(params->activation, &output_activation_min,
+                             &output_activation_max);
+    SetActivationParams(output_activation_min, output_activation_max,
+                        &op_params);
+    if (need_broadcast) {
+      reference_ops::BroadcastAdd6DSlow<int8_t, true>(
+          op_params, GetTensorShape(input1), GetTensorData<int8_t>(input1),
+          GetTensorShape(input2), GetTensorData<int8_t>(input2),
+          GetTensorShape(output), GetTensorData<int8_t>(output));
+    } else {
+      reference_ops::Add<int8_t>(
+          op_params, GetTensorShape(input1), GetTensorData<int8_t>(input1),
+          GetTensorShape(input2), GetTensorData<int8_t>(input2),
+          GetTensorShape(output), GetTensorData<int8_t>(output));
+    }
   }
 #undef TF_LITE_ADD
 }
@@ -417,10 +471,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
-  if (output->type == kTfLiteFloat32 || output->type == kTfLiteInt32 ||
+  if (output->type == kTfLiteFloat32 || output->type == kTfLiteFloat16 ||
+      output->type == kTfLiteBFloat16 || output->type == kTfLiteInt32 ||
       output->type == kTfLiteInt64 ||
       (output->quantization.type == kTfLiteNoQuantization &&
-       output->type == kTfLiteInt16)) {
+       (output->type == kTfLiteInt16 || output->type == kTfLiteInt8))) {
     EvalAdd<kernel_type>(context, node, params, data, input1, input2, output);
   } else if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
              output->type == kTfLiteInt16) {
