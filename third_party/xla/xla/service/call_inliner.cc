@@ -77,15 +77,13 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
         outer_->AddInstruction(std::move(new_hlo));
     TF_RETURN_IF_ERROR(NoteMapping(hlo, new_hlo_pointer));
 
-    new_hlo_pointer->CopyOriginalValue(hlo, /*clone=*/true);
-    if (std::shared_ptr<OriginalValue> original_value =
-            new_hlo_pointer->original_value()) {
+    new_hlo_pointer->CopyOriginalValue(hlo);
+    if (OriginalValue* original_value = new_hlo_pointer->original_value()) {
       for (auto& leaf : original_value->leaves()) {
         std::optional<OriginalTensor>& original_tensor = leaf.second;
         if (original_tensor.has_value()) {
           std::string call_instruction_name;
-          if (std::shared_ptr<OriginalValue> call_original_value =
-                  call_->original_value()) {
+          if (OriginalValue* call_original_value = call_->original_value()) {
             call_instruction_name =
                 call_original_value->leaf_begin()->second->instruction_name;
           }
@@ -128,7 +126,8 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
     TF_ASSIGN_OR_RETURN(HloInstruction * new_root, Resolve(root));
     VLOG(1) << "Replacing all uses of " << call_->ToString()
             << " with new root " << new_root->ToString();
-    auto original_value = new_root->original_value();
+    std::unique_ptr<OriginalValue> original_value =
+        new_root->take_original_value();
     // We must relay the control dependencies from this call instruction to the
     // successors too after inlining. The will now depend on the newly inlined
     // root.
@@ -141,7 +140,7 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
             .status();
     // Restores the original value of the new root, which gets overwritten when
     // it's used to replace the call instruction.
-    new_root->set_original_value(original_value);
+    new_root->set_original_value(std::move(original_value));
     return result;
   }
 
