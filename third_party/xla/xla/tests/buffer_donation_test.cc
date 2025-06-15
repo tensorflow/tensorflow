@@ -14,9 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -31,6 +39,7 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
