@@ -445,7 +445,7 @@ BundleWriter::BundleWriter(Env* env, absl::string_view prefix,
   }
 
   status_ = env_->CreateDir(string(io::Dirname(prefix_)));
-  if (!status_.ok() && !errors::IsAlreadyExists(status_)) {
+  if (!status_.ok() && !absl::IsAlreadyExists(status_)) {
     return;
   }
 
@@ -719,7 +719,7 @@ absl::Status MergeBundles(Env* env, absl::Span<const tstring> prefixes,
   // TODO(zhifengc): KeyValue sorter if it becomes too big.
   MergeState merge;
   absl::Status status = env->CreateDir(string(io::Dirname(merged_prefix)));
-  if (!status.ok() && !errors::IsAlreadyExists(status)) return status;
+  if (!status.ok() && !absl::IsAlreadyExists(status)) return status;
   bool atleast_one_file_exists = false;
   for (auto& prefix : prefixes) {
     if (!env->FileExists(MetaFilename(prefix)).ok()) {
