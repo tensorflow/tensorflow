@@ -30,9 +30,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/const_init.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/scanner.h"
 #include "tsl/platform/str_util.h"
 #include "tsl/platform/strcat.h"
@@ -259,9 +260,9 @@ string CreateURI(absl::string_view scheme, absl::string_view host,
 
 // Returns a unique number every time it is called.
 int64_t UniqueId() {
-  static mutex mu(LINKER_INITIALIZED);
+  static absl::Mutex mu(absl::kConstInit);
   static int64_t id = 0;
-  mutex_lock l(mu);
+  absl::MutexLock l(&mu);
   return ++id;
 }
 
