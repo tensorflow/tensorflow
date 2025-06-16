@@ -309,6 +309,12 @@ def _create_cuda_ptx_copts_list(repository_ctx, cuda_version):
 
     return copts
 
+def _create_cuda_extra_copts(repository_ctx):
+    copts = get_host_environ(repository_ctx, "CUDA_EXTRA_COPTS")
+    if copts:
+        return [copts]
+    return []
+
 def _get_cuda_config(repository_ctx):
     """Detects and returns information about the CUDA installation on the system.
 
@@ -609,7 +615,8 @@ def _create_local_cuda_repository(repository_ctx):
             "%{cuda_is_configured}": "True",
             "%{cuda_extra_copts}": str(
                 _create_cuda_ptx_copts_list(repository_ctx, cuda_config.cuda_version) +
-                _create_cuda_copts_list(cuda_config.compute_capabilities),
+                _create_cuda_copts_list(cuda_config.compute_capabilities) +
+                _create_cuda_extra_copts(repository_ctx),
             ),
             "%{cuda_gpu_architectures}": str(cuda_config.compute_capabilities),
             "%{cuda_version}": cuda_config.cuda_version,
