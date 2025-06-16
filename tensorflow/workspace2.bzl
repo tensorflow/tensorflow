@@ -625,10 +625,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "cython",
         build_file = "@local_xla//third_party:cython.BUILD",
-        sha256 = "0c2eae8a4ceab7955be1e11a4ddc5dcc3aa06ce22ad594262f1555b9d10667f0",
-        strip_prefix = "cython-3.0.3",
+        sha256 = "da72f94262c8948e04784c3e6b2d14417643703af6b7bd27d6c96ae7f02835f1",
+        strip_prefix = "cython-3.1.2",
         system_build_file = "//third_party/systemlibs:cython.BUILD",
-        urls = tf_mirror_urls("https://github.com/cython/cython/archive/3.0.3.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/cython/cython/archive/3.1.2.tar.gz"),
     )
 
     # LINT.IfChange
@@ -877,16 +877,16 @@ def _tf_repositories():
     # third_party/py/riegeli) that are used in TF.
     tf_http_archive(
         name = "riegeli",
-        sha256 = "eb56368777297b23686ffdb1edbe96af85f88c74cba74a7557518fe3bb7a4aeb",
-        strip_prefix = "riegeli-dc364cecf108d151f52b0a810657e43451be0ebf",
-        urls = tf_mirror_urls("https://github.com/google/riegeli/archive/dc364cecf108d151f52b0a810657e43451be0ebf.zip"),
+        sha256 = "590ec559107fc7082e1a7d70e9c9bfb8624c79dabca0a05fe1bcba1d7a591ec8",
+        strip_prefix = "riegeli-a37c3dbdd5d2a15113d363c7a7c41c30453e482f",
+        urls = tf_mirror_urls("https://github.com/google/riegeli/archive/a37c3dbdd5d2a15113d363c7a7c41c30453e482f.zip"),
     )
 
     tf_http_archive(
         name = "riegeli_py",
-        sha256 = "eb56368777297b23686ffdb1edbe96af85f88c74cba74a7557518fe3bb7a4aeb",
-        strip_prefix = "riegeli-dc364cecf108d151f52b0a810657e43451be0ebf",
-        urls = tf_mirror_urls("https://github.com/google/riegeli/archive/dc364cecf108d151f52b0a810657e43451be0ebf.zip"),
+        sha256 = "590ec559107fc7082e1a7d70e9c9bfb8624c79dabca0a05fe1bcba1d7a591ec8",
+        strip_prefix = "riegeli-a37c3dbdd5d2a15113d363c7a7c41c30453e482f",
+        urls = tf_mirror_urls("https://github.com/google/riegeli/archive/a37c3dbdd5d2a15113d363c7a7c41c30453e482f.zip"),
     )
 
     # Required by riegeli.
