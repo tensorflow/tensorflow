@@ -1260,3 +1260,35 @@ cc_library(
         "@com_google_absl//absl/types:span",
     ],
 )
+
+cc_library(
+    name = "pjrt_phase_compile_sample_plugin",
+    srcs = ["pjrt_phase_compile_sample_plugin.cc"],
+    hdrs = ["pjrt_phase_compile_sample_plugin.h"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//xla/pjrt/c:pjrt_c_api_phase_compile_extension_hdrs",
+        "//xla/pjrt/c:pjrt_c_api_phase_compile_internal",
+    ],
+)
+
+xla_cc_test(
+    name = "pjrt_phase_compile_sample_plugin_test",
+    srcs = ["pjrt_phase_compile_sample_plugin_test.cc"],
+    deps = [
+        ":pjrt_compiler",
+        ":pjrt_executable",
+        ":pjrt_phase_compile_sample_plugin",
+        "//xla/pjrt/c:pjrt_c_api_hdrs",
+        "//xla/pjrt/c:pjrt_c_api_phase_compile_extension_hdrs",
+        "//xla/pjrt/c:pjrt_c_api_phase_compile_internal",
+        "//xla/pjrt/c:pjrt_c_api_wrapper_impl",
+        "//xla/pjrt/plugin/xla_cpu:cpu_topology",
+        "//xla/pjrt/plugin/xla_cpu:cpu_topology_description",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+        "@stablehlo//:reference_api",
+    ],
+)
