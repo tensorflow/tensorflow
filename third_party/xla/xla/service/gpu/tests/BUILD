@@ -16,7 +16,7 @@ load("//xla/tsl:tsl.bzl", "if_google", "if_oss")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
-    "tf_cuda_tests_tags",
+    "tf_gpu_tests_tags",
 )
 load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
@@ -50,7 +50,7 @@ cc_library(
     testonly = True,
     srcs = ["gpu_codegen_test.cc"],
     hdrs = ["gpu_codegen_test.h"],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_gpu_tests_tags(),
     deps = [
         "//xla:debug_options_flags",
         "//xla:shape_util",
@@ -163,7 +163,7 @@ xla_test(
 xla_cc_test(
     name = "async_command_buffer_test",
     srcs = ["async_command_buffer_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_gpu_tests_tags(),
     deps = [
         "//xla:debug_options_flags",
         "//xla:literal",
@@ -613,7 +613,7 @@ lit_test_suite(
         "//xla/tools/hlo_opt:gpu_specs/p100.txtpb",
         "//xla/tools/hlo_opt:gpu_specs/v100.txtpb",
     ],
-    default_tags = tf_cuda_tests_tags(),
+    default_tags = tf_gpu_tests_tags(),
     hermetic_cuda_data_dir = "%S/../../../../../cuda_nvcc",
     tags = ["no-sycl"],
     tags_override = {
@@ -813,7 +813,7 @@ cc_library(
     name = "simple_optimization_test",
     testonly = True,
     srcs = ["simple_optimization_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_gpu_tests_tags(),
     deps = [
         "//xla/tests:hlo_test_base",
         "//xla/tsl/lib/core:status_test_util",
