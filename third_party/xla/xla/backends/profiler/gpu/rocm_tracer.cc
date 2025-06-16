@@ -397,11 +397,11 @@ absl::Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
         break;
       default:
         //
-        LOG(WARNING) << "API call "
-                     << se::wrap::roctracer_op_string(ACTIVITY_DOMAIN_HIP_API,
-                                                      cbid, 0)
-                     << ", corr. id=" << data->correlation_id
-                     << " dropped. No capturing function was found!";
+        VLOG(1) << "API call "
+                << se::wrap::roctracer_op_string(ACTIVITY_DOMAIN_HIP_API, cbid,
+                                                 0)
+                << ", corr. id=" << data->correlation_id
+                << " dropped. No capturing function was found!";
         // AddGenericEventUponApiExit(cbid, data);
         break;
     }
@@ -1560,8 +1560,8 @@ absl::Status RocmTracer::DisableActivityTracing() {
   size_t threshold = 1;
   for (int i = 0; i < 6; i++, duration_ms *= 2, threshold *= 2) {
     if (GetPendingActivityRecordsCount() < threshold) break;
-    VLOG(3) << "Wait for pending activity records :" << " Pending count = "
-            << GetPendingActivityRecordsCount()
+    VLOG(3) << "Wait for pending activity records :"
+            << " Pending count = " << GetPendingActivityRecordsCount()
             << ", Threshold = " << threshold;
     VLOG(3) << "Wait for pending activity records : sleep for " << duration_ms
             << " ms";
