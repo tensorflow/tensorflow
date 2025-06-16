@@ -86,10 +86,8 @@ void AddServiceAddresses(absl::string_view service_addresses,
 }
 
 }  // namespace
-// Takes profiler options in absl::flat_hash_map and returns a
-// RemoteProfilerSessionManagerOptions.
-RemoteProfilerSessionManagerOptions
-GetRemoteSessionManagerOptionsLockedWithBoolOpts(
+
+RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
     absl::string_view logdir,
     const absl::flat_hash_map<std::string,
                               std::variant<bool, int, std::string>>& opts) {
@@ -146,15 +144,14 @@ GetRemoteSessionManagerOptionsLockedWithBoolOpts(
   return options;
 }
 
-RemoteProfilerSessionManagerOptions
-GetRemoteSessionManagerOptionsLockedWithBoolOpts(
+RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
     absl::string_view service_addresses, absl::string_view logdir,
     absl::string_view worker_list, bool include_dataset_ops,
     int32_t duration_ms,
     const absl::flat_hash_map<std::string,
                               std::variant<bool, int, std::string>>& opts,
     bool* is_cloud_tpu_session) {
-  auto options = GetRemoteSessionManagerOptionsLockedWithBoolOpts(logdir, opts);
+  auto options = GetRemoteSessionManagerOptionsLocked(logdir, opts);
 
   // Remote profiling does not support any use cases where the following options
   // are set by `opts`. e.g. `opts['service_addrs']` will not happen.
@@ -188,40 +185,6 @@ GetRemoteSessionManagerOptionsLockedWithBoolOpts(
   VLOG(1) << "duration_ms set to " << duration_ms;
 
   return options;
-}
-
-RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
-    absl::string_view logdir,
-    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
-        opts) {
-  absl::flat_hash_map<std::string, std::variant<bool, int, std::string>>
-      converted_opts;
-  for (const auto& [key, value] : opts) {
-    converted_opts[key] = std::visit(
-        [](auto&& arg) -> std::variant<bool, int, std::string> { return arg; },
-        value);
-  }
-  return GetRemoteSessionManagerOptionsLockedWithBoolOpts(logdir,
-                                                          converted_opts);
-}
-
-RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
-    absl::string_view service_addresses, absl::string_view logdir,
-    absl::string_view worker_list, bool include_dataset_ops,
-    int32_t duration_ms,
-    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
-        options,
-    bool* is_cloud_tpu_session) {
-  absl::flat_hash_map<std::string, std::variant<bool, int, std::string>>
-      converted_options;
-  for (const auto& [key, value] : options) {
-    converted_options[key] = std::visit(
-        [](auto&& arg) -> std::variant<bool, int, std::string> { return arg; },
-        value);
-  }
-  return GetRemoteSessionManagerOptionsLockedWithBoolOpts(
-      service_addresses, logdir, worker_list, include_dataset_ops, duration_ms,
-      converted_options, is_cloud_tpu_session);
 }
 
 absl::Status ValidateRemoteProfilerSessionManagerOptions(
