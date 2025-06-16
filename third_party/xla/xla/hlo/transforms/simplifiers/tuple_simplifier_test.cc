@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/utils/hlo_matchers.h"
@@ -383,6 +384,183 @@ TEST_F(TupleSimplifierTest, NestedTuple) {
   auto* gte3 = FindInstruction(module.get(), "gte3");
   EXPECT_EQ(module->entry_computation()->root_instruction()->operand(0), p1);
   EXPECT_EQ(module->entry_computation()->root_instruction()->operand(1), gte3);
+}
+
+TEST_F(TupleSimplifierTest, AsyncCallFlatResultTuple) {
+  constexpr absl::string_view kModuleStr = R"(
+HloModule test
+%called_computation {
+  %p0 = f32[1024] parameter(0)
+  %p1 = f32[1024] parameter(1)
+  %out = f32[8,8,1024] broadcast(%p0), dimensions={2}
+  %add = f32[1024] add(%p0, %p1)
+  ROOT %tuple = (f32[1024], f32[8,8,1024]) tuple(%add, %out)
+}
+%async_computation {
+  %p0 = f32[1024] parameter(0)
+  %p1 = f32[1024] parameter(1)
+  ROOT %tuple = (f32[1024], f32[8,8,1024]) call(%p0, %p1), to_apply=%called_computation
+}
+ENTRY main {
+  %p0 = f32[1024] parameter(0)
+  %p1 = f32[1024] parameter(1)
+  %async_start = ((f32[1024], f32[1024]), (f32[1024], f32[8,8,1024]), u32[])
+                 async-start(%p0, %p1), calls=%async_computation
+  ROOT %async_done = (f32[1024], f32[8,8,1024]) async-done(%async_start)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  // Expect no change because the async call already has a flat result tuple.
+  Run(module.get(), /*change_expected=*/false);
+}
+
+TEST_F(TupleSimplifierTest, AsyncCallNestedTuple) {
+  constexpr absl::string_view kModuleStr = R"(
+HloModule test
+%called_computation {
+  %p0 = s32[1024] parameter(0)
+  %p1 = f32[1024] parameter(1)
+  %out = f32[8,8,1024] broadcast(%p1), dimensions={2}
+  %out_tuple = (f32[8,8,1024], f32[1024]) tuple(%out, %p1)
+  ROOT %tuple = (s32[1024], (f32[8,8,1024], f32[1024])) tuple(%p0, %out_tuple)
+}
+%async_computation {
+  %p0 = s32[1024] parameter(0)
+  %p1 = f32[1024] parameter(1)
+  ROOT %tuple = (s32[1024], (f32[8,8,1024], f32[1024])) call(%p0, %p1), to_apply=%called_computation
+}
+ENTRY main {
+  %p0 = s32[1024] parameter(0)
+  %p1 = f32[1024] parameter(1)
+  %async_start = ((s32[1024], f32[1024]), (s32[1024], (f32[8,8,1024], f32[1024])), u32[])
+                 async-start(%p0, %p1), calls=%async_computation
+  %async_done = (s32[1024], (f32[8,8,1024], f32[1024])) async-done(%async_start)
+  %tuple = (f32[8,8,1024], f32[1024]) get-tuple-element(%async_done), index=1
+  ROOT %out = f32[1024] get-tuple-element(%tuple), index=1
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  Run(module.get(), /*change_expected=*/true);
+  const Shape& done_shape =
+      FindInstruction(module.get(), "async_done")->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(done_shape.tuple_shapes(0),
+                               ShapeUtil::MakeShape(S32, {1024})));
+  EXPECT_TRUE(ShapeUtil::Equal(done_shape.tuple_shapes(1),
+                               ShapeUtil::MakeShape(F32, {8, 8, 1024})));
+  EXPECT_TRUE(ShapeUtil::Equal(done_shape.tuple_shapes(2),
+                               ShapeUtil::MakeShape(F32, {1024})));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::GetTupleElement(op::AsyncDone(), 2));
+}
+
+TEST_F(TupleSimplifierTest, AsyncStartUpdateDoneNestedTuple) {
+  constexpr absl::string_view kModuleStr = R"(
+HloModule test
+%called_computation {
+  %p0 = s32[1024] parameter(0)
+  %p1 = f32[1024] parameter(1)
+  %out = f32[8,8,1024] broadcast(%p1), dimensions={2}
+  %out_tuple = (f32[8,8,1024], f32[1024]) tuple(%out, %p1)
+  ROOT %tuple = (s32[1024], (f32[8,8,1024], f32[1024])) tuple(%p0, %out_tuple)
+}
+%async_computation {
+  %p0 = s32[1024] parameter(0)
+  %p1 = f32[1024] parameter(1)
+  ROOT %tuple = (s32[1024], (f32[8,8,1024], f32[1024])) call(%p0, %p1), to_apply=%called_computation
+}
+ENTRY main {
+  %p0 = s32[1024] parameter(0)
+  %p1 = f32[1024] parameter(1)
+  %async_start = ((s32[1024], f32[1024]), (s32[1024], (f32[8,8,1024], f32[1024])), u32[])
+                 async-start(%p0, %p1), calls=%async_computation
+  %async_update_0 = ((s32[1024], f32[1024]), (s32[1024], (f32[8,8,1024], f32[1024])), u32[])
+                    async-update(%async_start)
+  %async_update_1 = ((s32[1024], f32[1024]), (s32[1024], (f32[8,8,1024], f32[1024])), u32[])
+                    async-update(%async_update_0)
+  %async_done = (s32[1024], (f32[8,8,1024], f32[1024])) async-done(%async_update_1)
+  %tuple = (f32[8,8,1024], f32[1024]) get-tuple-element(%async_done), index=1
+  ROOT %out = f32[1024] get-tuple-element(%tuple), index=1
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  Run(module.get(), /*change_expected=*/true);
+  const Shape& done_shape =
+      FindInstruction(module.get(), "async_done")->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(done_shape.tuple_shapes(0),
+                               ShapeUtil::MakeShape(S32, {1024})));
+  EXPECT_TRUE(ShapeUtil::Equal(done_shape.tuple_shapes(1),
+                               ShapeUtil::MakeShape(F32, {8, 8, 1024})));
+  EXPECT_TRUE(ShapeUtil::Equal(done_shape.tuple_shapes(2),
+                               ShapeUtil::MakeShape(F32, {1024})));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::GetTupleElement(op::AsyncDone(), 2));
+}
+
+TEST_F(TupleSimplifierTest, AsyncSparseCoreCustomCombinerForward) {
+  constexpr absl::string_view kModuleStr = R"(
+HloModule test
+%called_computation.1 {
+  %param_0.2 = s32[32]{0} parameter(0)
+  %param_1.2 = s32[512]{0} parameter(1)
+  %param_2.1 = s32[512]{0} parameter(2)
+  %param_3.1 = s32[512]{0} parameter(3)
+  %param_4.1 = f32[512]{0} parameter(4)
+  %param_5.1 = f32[16384,128]{1,0:T(8)L(1024)} parameter(5)
+  %custom-call.1 = (s32[32]{0}, f32[32,16,128]{2,1,0}, f32[32,16]{1,0})
+                   custom-call(%param_0.2, %param_1.2, %param_2.1, %param_3.1, %param_4.1, /*index=5*/%param_5.1),
+                   custom_call_target="SparseDenseMatmulCustomCombinerTcCombinerMegachipOp"
+  %get-tuple-element.7 = s32[32]{0} get-tuple-element(%custom-call.1), index=0
+  ROOT %tuple.6 = (s32[32]{0}, (s32[32]{0}, f32[32,16,128]{2,1,0}, f32[32,16]{1,0})) tuple(%get-tuple-element.7, %custom-call.1)
+}, execution_thread="sparsecore"
+
+%async_computation.1 {
+  %param_0.4 = s32[32]{0} parameter(0)
+  %param_1.4 = s32[512]{0} parameter(1)
+  %param_2.3 = s32[512]{0} parameter(2)
+  %param_3.3 = s32[512]{0} parameter(3)
+  %param_4.3 = f32[512]{0} parameter(4)
+  %param_5.3 = f32[16384,128]{1,0:T(8)L(1024)} parameter(5)
+  ROOT %sparse-core-call.1.cloned.1 = (s32[32]{0}, (s32[32]{0}, f32[32,16,128]{2,1,0}, f32[32,16]{1,0})) call(%param_0.4, %param_1.4, %param_2.3, %param_3.3, %param_4.3, /*index=5*/%param_5.3), to_apply=%called_computation.1
+}, execution_thread="sparsecore"
+
+ENTRY main {
+  %constant.6 = s32[32]{0} parameter(0)
+  %constant.8 = s32[512]{0} parameter(1)
+  %constant.7 = s32[512]{0} parameter(2)
+  %constant.9 = s32[512]{0} parameter(3)
+  %constant.4 = f32[] constant(1)
+  %broadcast.5 = f32[512]{0} broadcast(%constant.4), dimensions={}
+  %arg0.1 = f32[16384,128]{1,0:T(8)L(1024)} parameter(4)
+  %call-start = ((s32[32]{0}, s32[512]{0}, s32[512]{0}, s32[512]{0}, f32[512]{0}, /*index=5*/f32[16384,128]{1,0:T(8)L(1024)}), (s32[32]{0}, (s32[32]{0}, f32[32,16,128]{2,1,0}, f32[32,16]{1,0})), u32[])
+                 async-start(%constant.6, %constant.8, %constant.7, %constant.9, %broadcast.5, /*index=5*/%arg0.1),
+                 async_execution_thread="sparsecore", calls=%async_computation.1
+  %call-done = (s32[32]{0}, (s32[32]{0}, f32[32,16,128]{2,1,0}, f32[32,16]{1,0})) async-done(%call-start)
+  %tuple = (s32[32]{0}, f32[32,16,128]{2,1,0}, f32[32,16]{1,0}) get-tuple-element(%call-done), index=1
+  ROOT %out = f32[32,16] get-tuple-element(%tuple), index=2
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  Run(module.get(), /*change_expected=*/true);
+  const Shape& call_done_shape =
+      FindInstruction(module.get(), "call-done")->shape();
+  EXPECT_TRUE(ShapeUtil::Equal(call_done_shape.tuple_shapes(0),
+                               ShapeUtil::MakeShape(S32, {32})));
+  EXPECT_TRUE(ShapeUtil::Equal(call_done_shape.tuple_shapes(1),
+                               ShapeUtil::MakeShape(S32, {32})));
+  EXPECT_TRUE(ShapeUtil::Equal(call_done_shape.tuple_shapes(2),
+                               ShapeUtil::MakeShape(F32, {32, 16, 128})));
+  EXPECT_TRUE(ShapeUtil::Equal(call_done_shape.tuple_shapes(3),
+                               ShapeUtil::MakeShape(F32, {32, 16})));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::GetTupleElement(op::AsyncDone(), 3));
 }
 
 }  // namespace

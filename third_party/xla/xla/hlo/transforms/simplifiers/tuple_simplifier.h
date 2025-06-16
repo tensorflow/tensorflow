@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_HLO_TRANSFORMS_SIMPLIFIERS_TUPLE_SIMPLIFIER_H_
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -62,6 +63,12 @@ class TupleSimplifier : public HloModulePass {
   //       Tuple
   //
   absl::StatusOr<bool> RemoveWholeTuple(HloInstruction* tuple);
+
+  // If the root instruction has a nested tuple shape, flatten it.
+  absl::StatusOr<bool> FlattenRootTuple(HloComputation* computation);
+
+  // Flatten the caller whose called computation's root has been flattened.
+  absl::Status FlattenCaller(HloInstruction* caller);
 };
 
 }  // namespace xla

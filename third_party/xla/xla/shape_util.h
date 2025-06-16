@@ -1145,6 +1145,10 @@ class ShapeUtil {
                                 std::vector<const Shape*>& flattened);
   static std::vector<const Shape*> FlattenTupleShape(const Shape& shape);
 
+  // Returns the flattened tuple shape. If the given shape is not a nested tuple
+  // shape, return as is.
+  static Shape ToFlatTupleShape(const Shape& shape);
+
  private:
   // Helper for ForEachSubshape which visits the subshapes of the given shape in
   // DFS pre-order starting with the index.
