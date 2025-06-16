@@ -80,7 +80,7 @@ int64_t GetWorkGroupCount(const HloFusionInstruction& fusion) {
 WorkDimensions GetWorkDimensions(const Shape& shape, int64_t work_group_count) {
   auto minor_to_major = LayoutUtil::MinorToMajor(shape.layout());
 
-  NumWorkGroups num_work_groups{static_cast<uint64_t>(work_group_count)};
+  NumWorkGroups num_work_groups{1, 1, static_cast<uint64_t>(work_group_count)};
 
   NumWorkItems num_work_items;
   if (minor_to_major.size() > 2) {
