@@ -1092,9 +1092,9 @@ TEST_F(
   // succeed.
   constexpr absl::string_view rewritable_transpose_string = R"(
 ENTRY main {
-  p0 = f32[1024,2048]{1,0} parameter(0)
-  reshape = f32[1024,1024,2]{2,1,0} reshape(p0)
-  ROOT transpose = f32[2,1024,1024]{2,1,0} transpose(reshape), dimensions={2,1,0}
+  p0 = f32[1024,4096]{1,0} parameter(0)
+  reshape = f32[1024,1024,4]{2,1,0} reshape(p0)
+  ROOT transpose = f32[4,1024,1024]{2,1,0} transpose(reshape), dimensions={2,1,0}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(
