@@ -41,7 +41,7 @@ class LibjpegHandle {
   // `status`.
   static std::unique_ptr<LibjpegHandle> Create(Status& status);
   // Closes the dynamic library loaded in libjpeg_.
-  ~LibjpegHandle();
+  ~LibjpegHandle() = default;
   LibjpegHandle(LibjpegHandle const&) = delete;
   LibjpegHandle& operator=(const LibjpegHandle&) = delete;
   LibjpegHandle(LibjpegHandle&& LibjpegHandle) = delete;
