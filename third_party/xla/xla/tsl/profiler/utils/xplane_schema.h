@@ -69,6 +69,7 @@ TF_CONST_INIT extern const absl::string_view kScopeRangeIdTreePlaneName;
 
 // Names of XLines that contain ML-level events.
 TF_CONST_INIT extern const absl::string_view kStepLineName;
+TF_CONST_INIT extern const absl::string_view kStreamLineName;
 TF_CONST_INIT extern const absl::string_view kTensorFlowNameScopeLineName;
 TF_CONST_INIT extern const absl::string_view kTensorFlowOpLineName;
 TF_CONST_INIT extern const absl::string_view kXlaModuleLineName;
