@@ -58,7 +58,7 @@ class CpuTopology {
   const std::vector<std::string> machine_attributes_;
 };
 
-static const int kMaxCpuDevicesPerProcess = 1 << 17;
+static const int kMaxCpuDevicesPerProcess = 1 << 11;
 
 inline PjRtGlobalDeviceId PackCpuDeviceId(int process_index, int device_id) {
   return PjRtGlobalDeviceId(kMaxCpuDevicesPerProcess * process_index +
