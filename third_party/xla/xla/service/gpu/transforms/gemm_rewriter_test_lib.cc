@@ -81,6 +81,10 @@ DebugOptions GemmRewriteTestBase::GetDebugOptionsForTest() const {
   // cuBLAS for them.
   debug_options.set_xla_gpu_enable_triton_gemm(false);
   debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
+  // The tests are supposed to test the GEMM rewriter, yet they run the entire
+  // pipeline. Disable the pass that would alter the dot instructions before
+  // it reaches the gemm-rewriter.
+  debug_options.add_xla_disable_hlo_passes("dot-precision-eliminator");
   return debug_options;
 }
 

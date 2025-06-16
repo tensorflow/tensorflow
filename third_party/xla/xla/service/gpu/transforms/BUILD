@@ -1265,6 +1265,36 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "dot_precision_eliminator",
+    srcs = ["dot_precision_eliminator.cc"],
+    hdrs = ["dot_precision_eliminator.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "dot_precision_eliminator_test",
+    srcs = ["dot_precision_eliminator_test.cc"],
+    deps = [
+        ":dot_precision_eliminator",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "dynamic_slice_fusion_rewriter",
     srcs = ["dynamic_slice_fusion_rewriter.cc"],
     hdrs = ["dynamic_slice_fusion_rewriter.h"],
