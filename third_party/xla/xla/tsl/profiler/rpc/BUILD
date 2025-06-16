@@ -71,6 +71,7 @@ cc_library(
         "//xla/tsl/profiler:internal",
         "//xla/tsl/profiler/rpc/client:__pkg__",
         "//third_party/xprof/pywrap:__pkg__",
+        "//third_party/py/jax:__subpackages__",
     ]),
     deps = [
         ":profiler_service_impl",
