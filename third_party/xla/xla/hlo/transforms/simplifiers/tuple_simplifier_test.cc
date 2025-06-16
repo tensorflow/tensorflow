@@ -385,5 +385,25 @@ TEST_F(TupleSimplifierTest, NestedTuple) {
   EXPECT_EQ(module->entry_computation()->root_instruction()->operand(1), gte3);
 }
 
+TEST_F(TupleSimplifierTest, SimplifyWithControlPredecessors) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule m, is_scheduled=true
+
+    ENTRY test {
+       %arg_tuple.1 = (f32[]{:T(256)}, f32[]{:T(256)}) parameter(0)
+       %get-tuple-element.8514 = f32[]{:T(256)} get-tuple-element(%arg_tuple.1), index=0
+       %get-tuple-element.8515 = f32[]{:T(256)} get-tuple-element(%arg_tuple.1), index=1
+       %copy.1 = f32[]{:T(256)} copy(%get-tuple-element.8515)
+       %tuple.954 = (f32[]{:T(256)}, f32[]{:T(256)}) tuple(%get-tuple-element.8514, %copy.1)
+       %get-tuple-element.8507 = f32[]{:T(256)} get-tuple-element(%tuple.954), index=1, control-predecessors={%arg_tuple.1}
+       %get-tuple-element.8508 = f32[]{:T(256)} get-tuple-element(%tuple.954), index=0, control-predecessors={%get-tuple-element.8507}
+       %added = f32[]{:T(256)} add(%get-tuple-element.8507, %get-tuple-element.8508)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  Run(module.get(), /*change_expected=*/true);
+}
+
 }  // namespace
 }  // namespace xla
