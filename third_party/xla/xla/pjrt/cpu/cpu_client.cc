@@ -1030,10 +1030,9 @@ PjRtCpuBuffer::PjRtCpuBuffer(
     std::unique_ptr<TrackedCpuDeviceBuffer> tracked_device_buffer,
     PjRtCpuClient* client, PjRtCpuDevice* device, PjRtMemorySpace* memory_space)
     : AbstractCpuBuffer(std::move(on_device_shape),
-                        std::move(tracked_device_buffer)),
+                        std::move(tracked_device_buffer), memory_space),
       client_(client),
-      device_(device),
-      memory_space_(memory_space) {}
+      device_(device) {}
 
 static std::vector<tsl::RCReference<tsl::AsyncValue>> CopyAsyncValues(
     absl::Span<const tsl::RCReference<tsl::AsyncValue>> events) {

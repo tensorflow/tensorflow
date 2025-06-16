@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <utility>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
@@ -25,8 +26,15 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/pjrt/cpu/cpu_event.h"
+#include "xla/pjrt/cpu/raw_buffer.h"
+#include "xla/pjrt/device_event.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/raw_buffer.h"
+#include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/util.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/mem.h"
 
 namespace xla {
@@ -194,6 +202,30 @@ void TrackedCpuDeviceBuffer::ReleaseDeviceMemory() {
   buffer_ = tsl::AsyncValueRef<CpuDeviceMemory>();
   definition_event_.reset();
   usage_events_.clear();
+}
+
+std::vector<tsl::RCReference<tsl::AsyncValue>>
+TrackedCpuDeviceBuffer::GetAsyncValueDefinitionEvents() {
+  std::vector<tsl::RCReference<tsl::AsyncValue>> result;
+  result.push_back(definition_event_.CopyRCRef());
+  return result;
+}
+
+tsl::RCReference<CommonPjRtRawBuffer> TrackedCpuDeviceBuffer::GetRawBuffer(
+    PjRtMemorySpace* memory_space) {
+  if (!buffer_) {
+    return tsl::RCReference<CommonPjRtRawBuffer>();
+  }
+  return tsl::MakeRef<CpuRawBuffer>(memory_space, buffer_);
+}
+
+void TrackedCpuDeviceBuffer::AddUsageEvent(
+    tsl::RCReference<PjRtDeviceEvent> event) {
+  if (event) {
+    auto cpu_event =
+        tensorflow::down_cast<CpuTrackedDeviceEvent*>(event.get())->event();
+    AddUsageEvents({&cpu_event, 1});
+  }
 }
 
 }  // namespace xla
