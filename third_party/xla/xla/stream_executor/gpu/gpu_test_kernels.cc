@@ -108,8 +108,7 @@ MultiKernelLoaderSpec GetAddI32PtxKernelSpec() {
 
 })";
 
-  MultiKernelLoaderSpec spec(/*arity=*/3);
-  spec.AddCudaPtxInMemory(kAddI32KernelPtx, "AddI32");
-  return spec;
+  return MultiKernelLoaderSpec::CreateCudaPtxInMemorySpec(kAddI32KernelPtx,
+                                                          "AddI32", 3);
 }
 }  // namespace stream_executor::gpu

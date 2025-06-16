@@ -46,7 +46,6 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
-#include "absl/base/attributes.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -81,10 +80,6 @@ class MultiKernelLoaderSpec {
   using KernelArgsPacking =
       std::function<absl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>>(
           const Kernel &kernel, const KernelArgs &args)>;
-
-  ABSL_DEPRECATED("Use the Create* factory functions instead")
-  explicit MultiKernelLoaderSpec(
-      size_t arity, KernelArgsPacking kernel_args_packing = nullptr);
 
   // Returns the number of arguments that this kernel accepts.
   size_t arity() const { return arity_; }
@@ -137,19 +132,6 @@ class MultiKernelLoaderSpec {
   static MultiKernelLoaderSpec CreateCudaPtxInMemorySpec(
       absl::string_view ptx, std::string kernel_name, size_t arity,
       KernelArgsPacking kernel_args_packing = nullptr);
-
-  // Note that the kernel_name parameter must be consistent with the kernel in
-  // the PTX being loaded. Also be aware that in CUDA C++ the kernel name may be
-  // mangled by the compiler if it is not declared in an extern "C" scope.
-  ABSL_DEPRECATED("Use CreateInProcessSymbolSpec instead")
-  MultiKernelLoaderSpec *AddInProcessSymbol(void *symbol,
-                                            absl::string_view kernel_name);
-  ABSL_DEPRECATED("Use CreateCudaCubinInMemorySpec instead")
-  MultiKernelLoaderSpec *AddCudaCubinInMemory(
-      absl::Span<const uint8_t> cubin_bytes, absl::string_view kernel_name);
-  ABSL_DEPRECATED("Use CreateCudaPtxInMemorySpec instead")
-  MultiKernelLoaderSpec *AddCudaPtxInMemory(absl::string_view ptx,
-                                            absl::string_view kernel_name);
 
   void set_kernel_args_packing(KernelArgsPacking kernel_args_packing) {
     kernel_args_packing_ = std::move(kernel_args_packing);

@@ -26,42 +26,38 @@ limitations under the License.
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
     AddI32KernelRocm, stream_executor::gpu::internal::AddI32Kernel,
     stream_executor::rocm::kROCmPlatformId, ([](size_t arity) {
-      stream_executor::MultiKernelLoaderSpec spec(arity);
-      spec.AddInProcessSymbol(
+      return stream_executor::MultiKernelLoaderSpec::CreateInProcessSymbolSpec(
           absl::bit_cast<void*>(&stream_executor::gpu::AddI32),
 
-          "AddI32");
-      return spec;
+          "AddI32", arity);
     }));
 
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
     MulI32KernelRocm, stream_executor::gpu::internal::MulI32Kernel,
     stream_executor::rocm::kROCmPlatformId, ([](size_t arity) {
-      stream_executor::MultiKernelLoaderSpec spec(arity);
-      spec.AddInProcessSymbol(
+      return stream_executor::MultiKernelLoaderSpec::CreateInProcessSymbolSpec(
           absl::bit_cast<void*>(&stream_executor::gpu::MulI32),
 
-          "MulI32");
-      return spec;
+          "MulI32", arity);
     }));
 
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
     IncAndCmpKernelRocm, stream_executor::gpu::internal::IncAndCmpKernel,
     stream_executor::rocm::kROCmPlatformId, ([](size_t arity) {
-      stream_executor::MultiKernelLoaderSpec spec(arity);
-      spec.AddInProcessSymbol(
+      return stream_executor::MultiKernelLoaderSpec::CreateInProcessSymbolSpec(
           absl::bit_cast<void*>(&stream_executor::gpu::IncAndCmp),
 
-          "IncAndCmp");
-      return spec;
+          "IncAndCmp", arity);
     }));
 
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
     AddI32Ptrs3KernelRocm, stream_executor::gpu::internal::AddI32Ptrs3Kernel,
     stream_executor::rocm::kROCmPlatformId, ([](size_t arity) {
-      stream_executor::MultiKernelLoaderSpec spec(
-          arity, [&](const stream_executor::Kernel& kernel,
-                     const stream_executor::KernelArgs& args) {
+      return stream_executor::MultiKernelLoaderSpec::CreateInProcessSymbolSpec(
+          absl::bit_cast<void*>(&stream_executor::gpu::AddI32Ptrs3),
+          "AddI32Ptrs3", arity,
+          [&](const stream_executor::Kernel& kernel,
+              const stream_executor::KernelArgs& args) {
             auto bufs = stream_executor::Cast<
                             stream_executor::KernelArgsDeviceMemoryArray>(&args)
                             ->device_memory_args();
@@ -75,19 +71,13 @@ GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
                                        cast(bufs[2]),
                                    });
           });
-      spec.AddInProcessSymbol(
-          absl::bit_cast<void*>(&stream_executor::gpu::AddI32Ptrs3),
-          "AddI32Ptrs3");
-      return spec;
     }));
 
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
     CopyKernelRocm, stream_executor::gpu::internal::CopyKernel,
     stream_executor::rocm::kROCmPlatformId, ([](size_t arity) {
-      stream_executor::MultiKernelLoaderSpec spec(arity);
-      spec.AddInProcessSymbol(
+      return stream_executor::MultiKernelLoaderSpec::CreateInProcessSymbolSpec(
           absl::bit_cast<void*>(&stream_executor::gpu::CopyKernel),
 
-          "CopyKernel");
-      return spec;
+          "CopyKernel", arity);
     }));

@@ -47,28 +47,4 @@ MultiKernelLoaderSpec MultiKernelLoaderSpec::CreateCudaPtxInMemorySpec(
                                arity, kernel_args_packing};
 }
 
-MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddInProcessSymbol(
-    void *symbol, absl::string_view kernel_name) {
-  payload_ = InProcessSymbol{symbol};
-  kernel_name_ = std::string{kernel_name};
-  return this;
-}
-
-MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddCudaCubinInMemory(
-    absl::Span<const uint8_t> cubin_bytes, absl::string_view kernel_name) {
-  payload_ = CudaCubinInMemory{cubin_bytes};
-  kernel_name_ = std::string{kernel_name};
-  return this;
-}
-
-MultiKernelLoaderSpec *MultiKernelLoaderSpec::AddCudaPtxInMemory(
-    absl::string_view ptx, absl::string_view kernel_name) {
-  payload_ = CudaPtxInMemory{ptx};
-  kernel_name_ = std::string{kernel_name};
-  return this;
-}
-
-MultiKernelLoaderSpec::MultiKernelLoaderSpec(
-    size_t arity, KernelArgsPacking kernel_args_packing)
-    : arity_(arity), kernel_args_packing_(std::move(kernel_args_packing)) {}
 }  // namespace stream_executor

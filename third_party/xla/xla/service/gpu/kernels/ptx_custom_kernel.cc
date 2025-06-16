@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -48,8 +49,9 @@ absl::StatusOr<CustomKernel> GetPtxCustomKernel(std::string kernel_name,
                                                 se::BlockDim block_dim,
                                                 se::ThreadDim thread_dim,
                                                 size_t shared_memory_bytes) {
-  se::MultiKernelLoaderSpec kernel_spec(/*arity=*/num_args, KernelArgsPacking);
-  kernel_spec.AddCudaPtxInMemory(ptx, kernel_name);
+  se::MultiKernelLoaderSpec kernel_spec =
+      se::MultiKernelLoaderSpec::CreateCudaPtxInMemorySpec(
+          ptx, std::move(kernel_name), /*arity=*/num_args, KernelArgsPacking);
   return CustomKernel(kernel_name, kernel_spec, block_dim, thread_dim,
                       /*shared_memory_bytes=*/shared_memory_bytes);
 };

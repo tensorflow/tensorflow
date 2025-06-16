@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
@@ -21,17 +22,16 @@ limitations under the License.
 #include "xla/stream_executor/gpu/ragged_all_to_all_kernel_lib.cu.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 
-#define REGISTER_RAGGED_ALL_TO_ALL_KERNEL(TYPE, BITS)                   \
-  GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(                       \
-      RaggedAllToAllKernelRocmUInt##BITS,                               \
-      stream_executor::gpu::RaggedAllToAllKernel<TYPE>,                 \
-      stream_executor::rocm::kROCmPlatformId, ([](size_t arity) {       \
-        stream_executor::MultiKernelLoaderSpec spec(arity);             \
-        spec.AddInProcessSymbol(                                        \
-            absl::bit_cast<void*>(                                      \
-                &stream_executor::gpu::RaggedAllToAllKernelImpl<TYPE>), \
-            "ragged_all_to_all_kernel_uint" #BITS);                     \
-        return spec;                                                    \
+#define REGISTER_RAGGED_ALL_TO_ALL_KERNEL(TYPE, BITS)                       \
+  GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(                           \
+      RaggedAllToAllKernelRocmUInt##BITS,                                   \
+      stream_executor::gpu::RaggedAllToAllKernel<TYPE>,                     \
+      stream_executor::rocm::kROCmPlatformId, ([](size_t arity) {           \
+        return stream_executor::MultiKernelLoaderSpec::                     \
+            CreateInProcessSymbolSpec(                                      \
+                absl::bit_cast<void*>(                                      \
+                    &stream_executor::gpu::RaggedAllToAllKernelImpl<TYPE>), \
+                "ragged_all_to_all_kernel_uint" #BITS, arity);              \
       }));
 
 // Register the kernel for different integer types using the macro

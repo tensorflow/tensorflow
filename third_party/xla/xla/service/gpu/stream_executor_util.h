@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <tuple>
 
 #include "absl/status/status.h"
@@ -34,7 +35,6 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -99,7 +99,7 @@ absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec);
 //
 // The canonical storage for ptx should outlive the lifetime of the kernel.
 absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
-    absl::string_view kernel_name, uint64_t num_args, absl::string_view ptx,
+    std::string kernel_name, uint64_t num_args, absl::string_view ptx,
     se::StreamExecutor* stream_exec, uint32_t shared_mem_bytes = 0);
 
 // Creates a kernel with a provided name, based from provided CUBIN in
@@ -107,7 +107,7 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
 //
 // The canonical storage cubin_data should outlive the lifetime of the kernel.
 absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
-    absl::string_view kernel_name, uint64_t num_args,
+    std::string kernel_name, uint64_t num_args,
     absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec,
     uint32_t shared_mem_bytes = 0);
 

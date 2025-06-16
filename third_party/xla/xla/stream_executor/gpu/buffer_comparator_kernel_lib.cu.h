@@ -21,11 +21,16 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <string>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "xla/primitive_util.h"
 #include "xla/stream_executor/gpu/buffer_comparator_kernel.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/types.h"
 
 namespace stream_executor::gpu {
@@ -125,8 +130,9 @@ void RegisterBufferComparatorKernelParametrized(Platform::Id platform_id) {
   std::string kernel_name = absl::StrCat(
       xla::primitive_util::LowercasePrimitiveTypeName(p_type), "_comparison");
 
-  stream_executor::MultiKernelLoaderSpec spec(5);
-  spec.AddInProcessSymbol(kernel_symbol, kernel_name);
+  stream_executor::MultiKernelLoaderSpec spec =
+      stream_executor::MultiKernelLoaderSpec::CreateInProcessSymbolSpec(
+          kernel_symbol, kernel_name, 5);
 
   absl::Status result =
       stream_executor::gpu::GpuKernelRegistry::GetGlobalRegistry()
