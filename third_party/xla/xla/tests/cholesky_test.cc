@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"
 
@@ -218,7 +217,7 @@ class RandomCholeskyTest
     : public ClientLibraryTestBase,
       public ::testing::WithParamInterface<CholeskyTestCase> {};
 
-XLA_TEST_P(RandomCholeskyTest, Real) {
+TEST_P(RandomCholeskyTest, Real) {
   XlaBuilder builder(TestName());
 
   auto test_params = GetParam();
@@ -255,7 +254,7 @@ XLA_TEST_P(RandomCholeskyTest, Real) {
                              ErrorSpec(1e-4, 1e-4));
 }
 
-XLA_TEST_P(RandomCholeskyTest, Complex) {
+TEST_P(RandomCholeskyTest, Complex) {
   XlaBuilder builder(TestName());
 
   auto test_params = GetParam();

@@ -4,6 +4,7 @@
   * `GCC_HOST_COMPILER_PATH`: The GCC host compiler path
 """
 
+load("//third_party/gpus/sycl:sycl_dl_essential.bzl", "sycl_redist")
 load(
     "//third_party/remote_config:common.bzl",
     "err_out",
@@ -371,6 +372,33 @@ def _create_dummy_repository(repository_ctx):
         },
     )
 
+def _extract_file_name_from_url(url):
+    """Extract the file name from a URL by finding the last slash '/'."""
+    return url[url.rfind("/") + 1:]
+
+def _download_and_extract_archive(repository_ctx, archive_info, distribution_path):
+    """Downloads and extracts a tar.gz ONEAPI redistributable (cached by Bazel)."""
+
+    archive_url = archive_info.get("url")
+    archive_sha256 = archive_info.get("sha256")
+    if not archive_url or not archive_sha256:
+        fail("Missing required archive metadata: 'url' or 'sha256'")
+
+    repository_ctx.report_progress("Installing oneAPI Basekit to: %s" % distribution_path)
+
+    archive_override = repository_ctx.getenv("oneAPI_ARCHIVE_OVERRIDE")
+    if archive_override:
+        repository_ctx.report_progress("Using overridden archive: %s" % archive_override)
+        repository_ctx.extract(archive_override, distribution_path)
+    else:
+        repository_ctx.download_and_extract(
+            url = archive_url,
+            sha256 = archive_sha256,
+            output = distribution_path,
+        )
+
+    repository_ctx.report_progress("oneAPI Basekit archive extracted and installed.")
+
 def _create_local_sycl_repository(repository_ctx):
     tpl_paths = {labelname: _tpl_path(repository_ctx, labelname) for labelname in [
         "sycl:build_defs.bzl",
@@ -381,7 +409,33 @@ def _create_local_sycl_repository(repository_ctx):
     ]}
 
     bash_bin = get_bash_bin(repository_ctx)
-    sycl_config = _get_sycl_config(repository_ctx, bash_bin)
+
+    hermetic = repository_ctx.getenv("SYCL_BUILD_HERMETIC") == "1"
+    if hermetic:
+        oneapi_version = repository_ctx.getenv("ONEAPI_VERSION", "")
+        os_id = repository_ctx.getenv("OS", "")
+        if not oneapi_version or not os_id:
+            fail("ONEAPI_VERSION and OS must be set via --repo_env for hermetic build.")
+        redist_info = sycl_redist.get(os_id, {}).get(oneapi_version, {}).get("sycl_dl_essential")
+        if not redist_info:
+            fail("Missing redistributable definition for %s on %s" % (oneapi_version, os_id))
+        archive_info = redist_info["archives"][0]
+        install_path = str(repository_ctx.path(redist_info["root"]))
+        _download_and_extract_archive(repository_ctx, archive_info, install_path)
+
+        sycl_config = struct(
+            sycl_basekit_path = install_path + "/oneapi/",
+            sycl_toolkit_path = install_path + "/oneapi/compiler/" + oneapi_version,
+            # TODO(Intel)
+            # hard coded for this oneAPI version 2025.1,
+            # change to auto-detect the sycl_version_number
+            sycl_version_number = "80000",
+            sycl_basekit_version_number = oneapi_version,
+        )
+    else:
+        install_path = repository_ctx.getenv("SYCL_TOOLKIT_PATH") or "/opt/intel/oneapi/compiler/2025.1"
+        repository_ctx.report_progress("Falling back to default SYCL path: %s" % install_path)
+        sycl_config = _get_sycl_config(repository_ctx, bash_bin)
 
     # Copy header and library files to execroot.
     copy_rules = [

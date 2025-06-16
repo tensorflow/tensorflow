@@ -594,19 +594,17 @@ CHECK: {{.*}} = f32[264]{0} bitcast([[entry_p0]])
       IsOkAndHolds(true));
 }
 
-TEST_F(NestGemmFusionTest, BitcastOfOperandAndBroadcastDimsIsNotHoisted) {
+TEST_F(NestGemmFusionTest, BitcastOfOperandAndBroadcastDimsIsNotHoistedUp) {
   absl::string_view hlo = R"(
 HloModule t
 
 triton_dot {
   p0 = f32[3,4] parameter(0)
-  p0_broadcast = f32[3,4,16] broadcast(p0), dimensions={0,1}
-  p0_cos = f32[3,4,16] cosine(p0_broadcast)
-  // Bitcast mixes operand and broadcasted dimensions and cannot be hoisted.
-  p0_reshape = f32[3,64] bitcast(p0_cos)
-
   p1 = f32[64,7]{1,0} parameter(1)
-  ROOT result = f32[3,7]{1,0} dot(p0_reshape, p1),
+  broadcast = f32[3,4,16] broadcast(p0), dimensions={0,1}
+  // Bitcast mixes operand and broadcasted dimensions and cannot be hoisted.
+  reshape = f32[3,64] bitcast(broadcast)
+  ROOT dot = f32[3,7]{1,0} dot(reshape, p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 
@@ -625,7 +623,43 @@ ENTRY e {
   // Cos should not be rewritten as we cannot hoist bitcast.
   EXPECT_THAT(
       RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
-CHECK: f32[3,4,16]{2,1,0} cosine
+CHECK:      f32[3,4,16]{2,1,0} broadcast
+CHECK-NEXT: f32[3,64]{1,0} bitcast
+)"),
+      IsOkAndHolds(true));
+}
+
+TEST_F(NestGemmFusionTest, BitcastOfOperandAndBroadcastDimsIsNotHoistedDown) {
+  absl::string_view hlo = R"(
+HloModule t
+
+triton_dot {
+  p0 = f32[6,7] parameter(0)
+  p1 = f32[5,7]{1,0} parameter(1)
+  dot = f32[6,5]{1,0} dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  // Bitcast mixes operand and broadcasted dimensions and cannot be hoisted.
+  reshape = f32[2,3,5] bitcast(dot)
+  ROOT broadcast = f32[2,4,3,5] broadcast(reshape), dimensions={0,2,3}
+}
+
+ENTRY e {
+  p0 = f32[6,7] parameter(0)
+  p1 = f32[5,7] parameter(1)
+  ROOT result = f32[2,4,3,5] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":32,"block_n":16,"block_k":8,
+    "split_k":1,"num_stages":1,"num_warps":4,"num_ctas":1}}}}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  // We can nest the fusion including the broadcast.
+  EXPECT_TRUE(NestGemmFusion(compute_capability_).Run(module.get()).ok());
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  // Cos should not be rewritten as we cannot hoist bitcast.
+  EXPECT_THAT(
+      RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
+CHECK:      f32[2,3,5]{2,1,0} bitcast
+CHECK-NEXT: f32[2,4,3,5]{3,2,1,0} broadcast
 )"),
       IsOkAndHolds(true));
 }
@@ -834,17 +868,16 @@ TEST_F(NestGemmFusionTest,
 triton_dot {
   p0 = f32[2,3,7] parameter(0)
   transpose = f32[3,2,7] transpose(p0), dimensions={1,0,2}
-  bitcast = f32[1,6,7] bitcast(transpose)
-  p1 = f32[1,5,7] parameter(1)
-  ROOT result = f32[1,6,5] dot(bitcast, p1),
-    lhs_contracting_dims={2}, lhs_batch_dims={0},
-    rhs_contracting_dims={2}, rhs_batch_dims={0}
+  bitcast = f32[6,7] bitcast(transpose)
+  p1 = f32[5,7] parameter(1)
+  ROOT dot = f32[6,5] dot(bitcast, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
 }
 
 ENTRY e {
   p0 = f32[2,3,7] parameter(0)
-  p1 = f32[1,5,7] parameter(1)
-  ROOT result = f32[1,6,5] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+  p1 = f32[5,7] parameter(1)
+  ROOT result = f32[6,5] fusion(p0, p1), kind=kCustom, calls=triton_dot,
     backend_config={"fusion_backend_config": {kind: "__triton_gemm",
     triton_gemm_config: {"block_m":16,"block_n":16,"block_k":8,
     "split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}}
@@ -858,6 +891,38 @@ ENTRY e {
 CHECK:      transpose
 CHECK-SAME: f32[3,2,7]{2,1,0} transpose
 CHECK-SAME: dimensions={1,0,2}
+)"),
+      IsOkAndHolds(true));
+}
+
+TEST_F(NestGemmFusionTest,
+       RankReducingBitcastsAreNotHoistedDownThroughTransposes) {
+  absl::string_view hlo = R"(
+triton_dot {
+  p0 = f32[6,7] parameter(0)
+  p1 = f32[5,7] parameter(1)
+  dot = f32[6,5] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  bitcast = f32[2,3,5] bitcast(dot)
+  ROOT transpose = f32[3,2,5] transpose(bitcast), dimensions={1,0,2}
+}
+
+ENTRY e {
+  p0 = f32[6,7] parameter(0)
+  p1 = f32[5,7] parameter(1)
+  ROOT result = f32[3,2,5] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":16,"block_n":16,"block_k":8,
+    "split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  EXPECT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
+              IsOkAndHolds(true));
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  EXPECT_THAT(
+      RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
+CHECK:      f32[2,3,5]{2,1,0} bitcast
+CHECK-NEXT: f32[3,2,5]{2,1,0} transpose
 )"),
       IsOkAndHolds(true));
 }
@@ -894,6 +959,132 @@ ENTRY e {
 CHECK:      transpose
 CHECK-SAME: f16[3,1152,122]{2,1,0} transpose
 CHECK-SAME: dimensions={0,2,1}
+)"),
+      IsOkAndHolds(true));
+}
+
+TEST_F(NestGemmFusionTest, BitcastsAreHoistedDownThroughTransposes) {
+  absl::string_view hlo = R"(
+triton_dot {
+  p0 = f32[2,3,7] parameter(0)
+  p1 = f32[2,5,7] parameter(1)
+  dot = f32[2,3,5] dot(p0, p1),
+    lhs_contracting_dims={2}, lhs_batch_dims={0},
+    rhs_contracting_dims={2}, rhs_batch_dims={0}
+  bitcast = f32[6,5] bitcast(dot)
+  ROOT transpose = f32[5,6] transpose(bitcast), dimensions={1,0}
+}
+
+ENTRY e {
+  p0 = f32[2,3,7] parameter(0)
+  p1 = f32[2,5,7] parameter(1)
+  ROOT result = f32[5,6] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":16,"block_n":16,"block_k":8,
+    "split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  EXPECT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
+              IsOkAndHolds(true));
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  EXPECT_THAT(
+      RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
+CHECK:      ROOT transpose
+CHECK-SAME: f32[5,2,3]{2,1,0} transpose
+CHECK-SAME: dimensions={2,0,1}
+)"),
+      IsOkAndHolds(true));
+}
+
+TEST_F(NestGemmFusionTest, BitcastsAreHoistedDownThroughBroadcasts) {
+  absl::string_view hlo = R"(
+triton_dot {
+  p0 = f32[3,7] parameter(0)
+  p1 = f32[5,7] parameter(1)
+  dot = f32[3,5] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  bitcast = f32[15] bitcast(dot)
+  ROOT broadcast = f32[2,15,6] broadcast(bitcast), dimensions={1}
+}
+
+ENTRY e {
+  p0 = f32[3,7] parameter(0)
+  p1 = f32[5,7] parameter(1)
+  ROOT result = f32[2,15,6] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":16,"block_n":16,"block_k":8,
+    "split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  EXPECT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
+              IsOkAndHolds(true));
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  EXPECT_THAT(
+      RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
+CHECK:      ROOT broadcast
+CHECK-SAME: f32[2,3,5,6]{3,2,1,0} broadcast
+CHECK-SAME: dimensions={1,2}
+)"),
+      IsOkAndHolds(true));
+}
+
+TEST_F(NestGemmFusionTest,
+       BitcastsAreNotHoistedDownThroughBroadcastsWithNonDefaultLayout) {
+  absl::string_view hlo = R"(
+triton_dot {
+  p0 = f32[6,7] parameter(0)
+  p1 = f32[5,7] parameter(1)
+  dot = f32[6,5] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  bitcast = f32[2,3,5]{2,1,0} bitcast(dot)
+  ROOT broadcast = f32[2,3,5]{2,0,1} broadcast(bitcast), dimensions={0,1,2}
+}
+
+ENTRY e {
+  p0 = f32[6,7] parameter(0)
+  p1 = f32[5,7] parameter(1)
+  ROOT result = f32[2,3,5]{2,0,1} fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":16,"block_n":16,"block_k":8,
+    "split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  EXPECT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
+              IsOkAndHolds(true));
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  EXPECT_THAT(
+      RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
+CHECK:      f32[2,3,5]{2,1,0} bitcast(dot)
+CHECK-NEXT: f32[2,3,5]{2,0,1} broadcast
+)"),
+      IsOkAndHolds(true));
+}
+
+TEST_F(NestGemmFusionTest, BitcastRootsAreHoistedDown) {
+  absl::string_view hlo = R"(
+triton_dot {
+  p0 = f32[3,7] parameter(0)
+  p1 = f32[5,7] parameter(1)
+  dot = f32[3,5] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  ROOT bitcast = f32[15] bitcast(dot)
+}
+
+ENTRY e {
+  p0 = f32[3,7] parameter(0)
+  p1 = f32[5,7] parameter(1)
+  ROOT result = f32[15] fusion(p0, p1), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":16,"block_n":16,"block_k":8,
+    "split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  EXPECT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
+              IsOkAndHolds(true));
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  EXPECT_THAT(
+      RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
+CHECK: ROOT dot
 )"),
       IsOkAndHolds(true));
 }

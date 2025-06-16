@@ -56,6 +56,10 @@ class SocketServer {
     void Pull(uint64_t uuid, int buffer_id,
               tsl::RCReference<ChunkDestination> dest);
 
+    // Fetch a list of buffers from a remote server.
+    void Pull(uint64_t uuid, absl::Span<const int> buffer_ids,
+              std::vector<tsl::RCReference<ChunkDestination>> dests);
+
     void InjectFailure();
 
    private:

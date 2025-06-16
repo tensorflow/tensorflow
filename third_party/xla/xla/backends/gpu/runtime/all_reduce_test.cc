@@ -122,7 +122,8 @@ class AllReduceKernelTest : public ::testing::Test {
           /*output_buffer=*/local_input_buffers[i].memory(),
           /*rank=*/RankId(i), /*num_ranks=*/num_ranks,
           /*num_elements=*/num_elements,
-          /*signal_flags_buffers=*/signal_flags_buffers_span));
+          /*signal_flags_buffers=*/signal_flags_buffers_span,
+          /*signal_value=*/1));
     }
 
     for (int i = 0; i < num_ranks; ++i) {

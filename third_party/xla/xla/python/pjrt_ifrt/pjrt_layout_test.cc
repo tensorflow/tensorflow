@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <tuple>
@@ -34,6 +33,7 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {

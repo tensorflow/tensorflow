@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/cpu/cpu_event.h"
+#include "xla/pjrt/cpu/raw_buffer.h"
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_future.h"
@@ -146,14 +147,15 @@ absl::StatusOr<Shape> AbstractCpuBuffer::logical_on_device_shape() {
     return Internal("Error Execute: %s", error->message());
   }
 
-  // Safe to call `AsShapedBuffer` because the definition event is ready.
-  ShapedBuffer shaped_buffer =
-      AsShapedBuffer(device()->local_hardware_id().value(), on_device_shape_,
-                     device_buffer->buffer());
-  Shape ret_shape = on_device_shape_;
-  TF_RETURN_IF_ERROR(ReadDynamicShapesOnCpu(
-      &shaped_buffer, &ret_shape, cpu::CpuExecutable::ShapeSizeBytes));
-  return ret_shape;
+  auto output_shape =
+      tsl::MakeConstructedAsyncValueRef<Shape>(on_device_shape_);
+  tsl::MakeRef<CpuRawBuffer>(memory_space(), device_buffer->buffer())
+      ->ReadDynamicShape(output_shape, on_device_shape_);
+  tsl::BlockUntilReady(output_shape);
+  if (auto* error = output_shape.GetErrorIfPresent()) {
+    return Internal("logical_on_device_shape failed: %s", error->message());
+  }
+  return output_shape.get();
 }
 
 absl::StatusOr<size_t> AbstractCpuBuffer::GetOnDeviceSizeInBytes() const {

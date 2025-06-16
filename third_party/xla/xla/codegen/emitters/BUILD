@@ -282,6 +282,16 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "implicit_arith_op_builder",
+    srcs = ["implicit_arith_op_builder.cc"],
+    hdrs = ["implicit_arith_op_builder.h"],
+    deps = [
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
 xla_cc_test(
     name = "type_util_test",
     srcs = ["type_util_test.cc"],

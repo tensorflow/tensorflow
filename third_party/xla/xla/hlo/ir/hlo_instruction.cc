@@ -97,19 +97,6 @@ using absl::StrJoin;
 const HloInstruction::Rare* const HloInstruction::kEmptyRare =
     new HloInstruction::Rare;
 
-namespace {
-// Specialization for erasing from PtrVec<T>.
-template <typename T>
-absl::Status EraseElementFromVector(PtrVec<T>* container, T value) {
-  // absl::c_find returns a const_iterator which does not seem to work on
-  // gcc 4.8.4, and this breaks the ubuntu/xla_gpu build bot.
-  auto it = std::find(container->begin(), container->end(), value);
-  TF_RET_CHECK(it != container->end());
-  container->erase(it);
-  return absl::OkStatus();
-}
-}  // namespace
-
 HloInstruction::Users::~Users() = default;
 
 void HloInstruction::Users::Clear() {
@@ -2970,12 +2957,11 @@ absl::Status HloInstruction::RemoveControlDependencyTo(
     HloInstruction* instruction) {
   TF_RET_CHECK(instruction->parent() == parent());
   if (has_rare()) {
-    TF_RETURN_IF_ERROR(EraseElementFromVector(
-        &mutable_rare()->control_successors, instruction));
+    EraseElementFromVector(&mutable_rare()->control_successors, instruction);
   }
   if (instruction->has_rare()) {
-    TF_RETURN_IF_ERROR(EraseElementFromVector(
-        &instruction->mutable_rare()->control_predecessors, this));
+    EraseElementFromVector(&instruction->mutable_rare()->control_predecessors,
+                           this);
   }
   return absl::OkStatus();
 }
@@ -2983,12 +2969,12 @@ absl::Status HloInstruction::RemoveControlDependencyTo(
 absl::Status HloInstruction::DropAllControlDeps() {
   if (has_rare()) {
     for (auto* ctrl_succ : rare()->control_successors) {
-      TF_RETURN_IF_ERROR(EraseElementFromVector(
-          &ctrl_succ->mutable_rare()->control_predecessors, this));
+      EraseElementFromVector(&ctrl_succ->mutable_rare()->control_predecessors,
+                             this);
     }
     for (auto* ctrl_pred : rare()->control_predecessors) {
-      TF_RETURN_IF_ERROR(EraseElementFromVector(
-          &ctrl_pred->mutable_rare()->control_successors, this));
+      EraseElementFromVector(&ctrl_pred->mutable_rare()->control_successors,
+                             this);
     }
     Rare* r = mutable_rare();
     r->control_successors.clear();

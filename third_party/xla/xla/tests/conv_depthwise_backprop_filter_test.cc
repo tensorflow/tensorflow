@@ -23,7 +23,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
 
 namespace xla {
 namespace {
@@ -167,7 +166,7 @@ std::string BuildHloTextBatchGroupedConvolution2D(
       spec.window_dilation, spec.window_dilation, spec.output_batch);
 }
 
-XLA_TEST_P(BatchGroupedConvolution2DTest, DoIt) {
+TEST_P(BatchGroupedConvolution2DTest, DoIt) {
   const BatchGroupedConvolution2DSpec& spec = ::testing::get<0>(GetParam());
   bool use_bfloat16 = ::testing::get<1>(GetParam());
 

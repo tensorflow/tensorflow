@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <queue>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/btree_map.h"
@@ -396,18 +397,26 @@ absl::Status LegalizeSchedulingAnnotations::Verify(HloModule* module) {
         }
         bool b_is_reachable_from_a = false;
         bool a_is_reachable_from_b = false;
+        std::pair<HloInstruction*, HloInstruction*> a_b_pair;
+        std::pair<HloInstruction*, HloInstruction*> b_a_pair;
         for (int64_t i = 0; i < instrs_a.size(); ++i) {
           for (int64_t j = 0; j < instrs_b.size(); ++j) {
             auto* a = instrs_a[i];
             auto* b = instrs_b[j];
             if (reachability_map->IsReachable(a, b)) {
               b_is_reachable_from_a = true;
+              a_b_pair = std::make_pair(a, b);
             }
             if (reachability_map->IsReachable(b, a)) {
               a_is_reachable_from_b = true;
+              b_a_pair = std::make_pair(b, a);
             }
           }
           if (a_is_reachable_from_b && b_is_reachable_from_a) {
+            VLOG(1) << "a_b_pair: " << a_b_pair.first->name() << " "
+                    << a_b_pair.second->name();
+            VLOG(1) << "b_a_pair: " << b_a_pair.first->name() << " "
+                    << b_a_pair.second->name();
             return absl::InternalError(
                 absl::StrCat("ERROR: Detected scheduling group annotation "
                              "cycle between scheduling_group_id: ",

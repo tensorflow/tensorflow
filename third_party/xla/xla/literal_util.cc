@@ -814,4 +814,13 @@ absl::StatusOr<Literal> MakeFakeLiteral(
   return std::move(literal);
 }
 
+/*static*/ std::vector<const Literal*> LiteralUtil::MakePointers(
+    absl::Span<const Literal> literals) {
+  std::vector<const Literal*> pointers(literals.size());
+  for (int i = 0; i < literals.size(); i++) {
+    pointers[i] = &literals[i];
+  }
+  return pointers;
+}
+
 }  // namespace xla

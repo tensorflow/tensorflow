@@ -20,17 +20,20 @@ package xla.ifrt;
 // Proto equivalent of C++ `Shape`. Currently support static shapes with all
 // dimension sizes greater than or equal to 0.
 message ShapeProto {
+  int32 version_number = 2;
   repeated int64 dims = 1;
 }
 
 // Proto equivalent of C++ `BoundedDynamicShapeTag`.
 message BoundedDynamicShapeTagProto {
+  int32 version_number = 2;
   repeated bool is_dynamic_dims = 1;
 }
 
 // Proto equivalent of C++ `DynamicShape`. Currently only support bounded
 // dynamic shape.
 message DynamicShapeProto {
+  int32 version_number = 3;
   ShapeProto shape = 1;
   oneof tag {
     BoundedDynamicShapeTagProto bounded_dynamic_shape_tag = 2;

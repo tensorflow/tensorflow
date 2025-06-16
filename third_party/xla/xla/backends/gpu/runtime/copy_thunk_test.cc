@@ -250,5 +250,78 @@ TEST(HostToDeviceCopyThunkProtoTest, FromProto) {
                 /*instr=*/nullptr));
 }
 
+TEST(DeviceToDeviceCopyThunkProtoTest, ToProto) {
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.profile_annotation = "profile_annotation";
+  thunk_info.execution_stream_id = 123;
+
+  BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
+  BufferAllocation alloc1(/*index=*/1, /*size=*/1024, /*color=*/0);
+  auto src_slice =
+      BufferAllocation::Slice(&alloc0, /*offset=*/128, /*size=*/384);
+  auto dst_slice = BufferAllocation::Slice(&alloc1, /*offset=*/0, /*size=*/256);
+
+  DeviceToDeviceCopyThunk thunk(thunk_info, src_slice, dst_slice,
+                                /*mem_size=*/256);
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
+  EXPECT_THAT(proto, EqualsProto(R"pb(
+                thunk_info {
+                  profile_annotation: "profile_annotation"
+                  execution_stream_id: 123
+                }
+                device_to_device_copy_thunk {
+                  copy_thunk {
+                    source_buffer { offset: 128 size: 384 }
+                    destination_buffer { size: 256 buffer_allocation_index: 1 }
+                    mem_size: 256
+                  }
+                }
+              )pb"));
+}
+
+TEST(DeviceToDeviceCopyThunkProtoTest, FromProto) {
+  ThunkProto proto;
+  CHECK(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        thunk_info {
+          profile_annotation: "profile_annotation"
+          execution_stream_id: 123
+        }
+        device_to_device_copy_thunk {
+          copy_thunk {
+            source_buffer { offset: 128 size: 384 buffer_allocation_index: 0 }
+            destination_buffer {
+              offset: 0
+              size: 256
+              buffer_allocation_index: 1
+            }
+            mem_size: 256
+          }
+        }
+      )pb",
+      &proto));
+
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.profile_annotation = "profile_annotation";
+  thunk_info.execution_stream_id = 123;
+  std::vector<BufferAllocation> buffer_allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
+      BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<DeviceToDeviceCopyThunk> thunk,
+      DeviceToDeviceCopyThunk::FromProto(
+          thunk_info, proto.device_to_device_copy_thunk(), buffer_allocations));
+
+  EXPECT_EQ(*thunk.get(),
+            DeviceToDeviceCopyThunk(
+                thunk_info,
+                BufferAllocation::Slice(&buffer_allocations[0],
+                                        /*offset=*/128, /*size=*/384),
+                BufferAllocation::Slice(&buffer_allocations[1], /*offset=*/0,
+                                        /*size=*/256),
+                /*mem_size=*/256));
+}
+
 }  // namespace
 }  // namespace xla::gpu

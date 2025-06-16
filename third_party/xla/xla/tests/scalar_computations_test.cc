@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
@@ -285,7 +284,7 @@ class DivS32Test : public ClientLibraryTestRunnerMixin<
                        HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
                    public ::testing::WithParamInterface<DivS32Params> {};
 
-XLA_TEST_P(DivS32Test, DivideTwoScalarsS32) {
+TEST_P(DivS32Test, DivideTwoScalarsS32) {
   DivS32Params p = GetParam();
   XlaBuilder builder(TestName());
   Div(ConstantR0<int32_t>(&builder, p.dividend),
@@ -294,7 +293,7 @@ XLA_TEST_P(DivS32Test, DivideTwoScalarsS32) {
   ComputeAndCompareR0<int32_t>(&builder, p.quotient, {});
 }
 
-XLA_TEST_P(DivS32Test, RemainderTwoScalarsS32) {
+TEST_P(DivS32Test, RemainderTwoScalarsS32) {
   DivS32Params p = GetParam();
   XlaBuilder builder(TestName());
   Rem(ConstantR0<int32_t>(&builder, p.dividend),
@@ -303,7 +302,7 @@ XLA_TEST_P(DivS32Test, RemainderTwoScalarsS32) {
   ComputeAndCompareR0<int32_t>(&builder, p.remainder, {});
 }
 
-XLA_TEST_P(DivS32Test, DivideTwoScalarsNonConstS32) {
+TEST_P(DivS32Test, DivideTwoScalarsNonConstS32) {
   DivS32Params p = GetParam();
   XlaBuilder builder(TestName());
   XlaOp dividend;
@@ -317,7 +316,7 @@ XLA_TEST_P(DivS32Test, DivideTwoScalarsNonConstS32) {
   ComputeAndCompareR0<int32_t>(&builder, p.quotient, {&dividendd, &divisord});
 }
 
-XLA_TEST_P(DivS32Test, RemainderTwoScalarsNonConstDivisorS32) {
+TEST_P(DivS32Test, RemainderTwoScalarsNonConstDivisorS32) {
   DivS32Params p = GetParam();
   XlaBuilder builder(TestName());
   XlaOp dividend;

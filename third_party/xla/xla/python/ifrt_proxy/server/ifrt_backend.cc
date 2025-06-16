@@ -1234,7 +1234,7 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleCopyArraysRequest(
       TF_ASSIGN_OR_RETURN(ds.emplace_back(),
                           client_->LookupDevice(DeviceId(device_id)));
     }
-    devices.emplace(BasicDeviceList::Create(std::move(ds)));
+    devices.emplace(client_->MakeDeviceList(std::move(ds)));
   }
   std::optional<MemoryKind> memory_kind;
   if (copy_arrays_request.has_memory_kind()) {
@@ -1606,7 +1606,7 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
       TF_ASSIGN_OR_RETURN(d.emplace_back(),
                           client_->LookupDevice(DeviceId(device_id)));
     }
-    devices = BasicDeviceList::Create(std::move(d));
+    devices = client_->MakeDeviceList(std::move(d));
   }
 
   TF_ASSIGN_OR_RETURN(xla::ifrt::LoadedExecutable::ExecuteResult result,

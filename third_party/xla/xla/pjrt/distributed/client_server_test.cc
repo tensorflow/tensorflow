@@ -63,6 +63,7 @@ using ::testing::UnorderedElementsAre;
 using ::tsl::proto_testing::EqualsProto;
 using tsl::testing::StatusIs;
 
+constexpr absl::Duration kHeartbeatTimeout = absl::Milliseconds(2500);
 constexpr absl::Duration kHeartbeatInterval = absl::Milliseconds(500);
 constexpr int kMaxMissingHeartbeats = 5;
 constexpr absl::Duration kBarrierTimeout = absl::Milliseconds(200);
@@ -74,6 +75,7 @@ class ClientServerTest : public testing::Test {
       std::shared_ptr<::grpc::Channel> channel = nullptr) {
     client_options.node_id = node_id;
     // Set a small heartbeat interval for quicker tests.
+    client_options.heartbeat_timeout = kHeartbeatTimeout;
     client_options.heartbeat_interval = kHeartbeatInterval;
     client_options.max_missing_heartbeats = kMaxMissingHeartbeats;
     if (channel == nullptr) {
@@ -90,6 +92,7 @@ class ClientServerTest : public testing::Test {
 
     service_options.num_nodes = num_nodes;
     // Set a small heartbeat interval for quicker tests.
+    service_options.heartbeat_timeout = kHeartbeatTimeout;
     service_options.heartbeat_interval = kHeartbeatInterval;
     service_options.max_missing_heartbeats = kMaxMissingHeartbeats;
 

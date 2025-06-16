@@ -50,7 +50,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/llvm_irgen_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/util.h"
@@ -773,7 +772,7 @@ class ExecutionTest : public HloTestBase {
   }
 };
 
-XLA_TEST_F(ExecutionTest, ScatterUpdate) {
+TEST_F(ExecutionTest, ScatterUpdate) {
   // Test that scattering on indices=[2] is same as scattering on indices=[4]
   // and dynamic dimension = 2
   const std::string hlo_text = R"(
@@ -833,7 +832,7 @@ ENTRY main {
   EXPECT_EQ(padded, not_padded);
 }
 
-XLA_TEST_F(ExecutionTest, ScatterUpdateWindowDim) {
+TEST_F(ExecutionTest, ScatterUpdateWindowDim) {
   const std::string hlo_text = R"(
 HloModule ScatterUpdateWindowDim
 
@@ -876,7 +875,7 @@ ENTRY main {
   EXPECT_EQ(padded, expected);
 }
 
-XLA_TEST_F(ExecutionTest, ScatterUpdateF32) {
+TEST_F(ExecutionTest, ScatterUpdateF32) {
   // Test that scattering on indices=[2] is same as scattering on indices=[4]
   // and dynamic dimension = 2
   const std::string hlo_text = R"(
@@ -928,7 +927,7 @@ ENTRY main {
             not_padded);
 }
 
-XLA_TEST_F(ExecutionTest, WholeDimensionGather) {
+TEST_F(ExecutionTest, WholeDimensionGather) {
   // Second dimension (size 2) is dynamic, assuming real size is 1 and padded to
   // 2:
   //
@@ -982,7 +981,7 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, TwoDimensionReduce) {
+TEST_F(ExecutionTest, TwoDimensionReduce) {
   // Test that reducing on operand=[2,2] is same as reducing on operand=[4,4]
   // and dynamic dimension = 2
   const std::string hlo_text = R"(
@@ -1031,7 +1030,7 @@ ENTRY main {
   EXPECT_EQ(padded, not_padded);
 }
 
-XLA_TEST_F(ExecutionTest, DynamicDimensionClamp) {
+TEST_F(ExecutionTest, DynamicDimensionClamp) {
   const std::string hlo_text = R"(
 HloModule TensorFlowTenaryV1
 
@@ -1066,7 +1065,7 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, DynamicConcat) {
+TEST_F(ExecutionTest, DynamicConcat) {
   // Concatting a list of {dynamic_operand, static_operand, dynamic_operand}.
   const std::string hlo_text = R"(
 HloModule DynamicConcat
@@ -1103,7 +1102,7 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, DynamicReverseSingleDim) {
+TEST_F(ExecutionTest, DynamicReverseSingleDim) {
   const std::string hlo_text = R"(
 HloModule DynamicConcat
 
@@ -1130,7 +1129,7 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, DynamicReverseMultiDims) {
+TEST_F(ExecutionTest, DynamicReverseMultiDims) {
   const std::string hlo_text = R"(
 HloModule DynamicConcat
 
@@ -1160,7 +1159,7 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, DynamicDimensionReduce) {
+TEST_F(ExecutionTest, DynamicDimensionReduce) {
   const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
@@ -1194,7 +1193,7 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, InputMinorDimensionReshape) {
+TEST_F(ExecutionTest, InputMinorDimensionReshape) {
   const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
@@ -1230,7 +1229,7 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, SliceSingleElement) {
+TEST_F(ExecutionTest, SliceSingleElement) {
   // Slicing out a single element is supported.
   const std::string hlo_text = R"(
 HloModule Slicing
@@ -1255,7 +1254,7 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, OutputMinorDimensionReshape) {
+TEST_F(ExecutionTest, OutputMinorDimensionReshape) {
   const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
@@ -1303,7 +1302,7 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, OutputMinorDimensionReshapeWithUnchangedDimMajor) {
+TEST_F(ExecutionTest, OutputMinorDimensionReshapeWithUnchangedDimMajor) {
   const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
@@ -1349,7 +1348,7 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, OutputMinorDimensionReshapeWithUnchangedDimMinor) {
+TEST_F(ExecutionTest, OutputMinorDimensionReshapeWithUnchangedDimMinor) {
   const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
@@ -1397,7 +1396,7 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, DynamicInputFeature) {
+TEST_F(ExecutionTest, DynamicInputFeature) {
   const std::string hlo_text = R"(
 HloModule DynamicInputFeature
 
@@ -1426,7 +1425,7 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(LlvmIrGenTestBase, LargeDynamicInput) {
+TEST_F(LlvmIrGenTestBase, LargeDynamicInput) {
 #ifndef XLA_TEST_BACKEND_GPU
   GTEST_SKIP();
 #endif
@@ -1452,7 +1451,7 @@ CHECK: ret void
                      /*match_optimized_ir=*/true);
 }
 
-XLA_TEST_F(ExecutionTest, DynamicDimensionReshapeUnchanged) {
+TEST_F(ExecutionTest, DynamicDimensionReshapeUnchanged) {
   const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
@@ -1487,7 +1486,7 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, DegeneratedDimension) {
+TEST_F(ExecutionTest, DegeneratedDimension) {
   const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
@@ -1524,7 +1523,7 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, ReshapeSplitCombineSameTime) {
+TEST_F(ExecutionTest, ReshapeSplitCombineSameTime) {
   // [<=4, 2, <=2]
   //       |
   //    Reshape
@@ -1584,7 +1583,7 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, DynamicDimensionReduceInCall) {
+TEST_F(ExecutionTest, DynamicDimensionReduceInCall) {
   const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
@@ -1628,7 +1627,7 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, ReshapeComplicated) {
+TEST_F(ExecutionTest, ReshapeComplicated) {
   // [2, <=4, 4]
   //       |
   //    Reshape
@@ -1683,7 +1682,7 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, WhileLoopStack) {
+TEST_F(ExecutionTest, WhileLoopStack) {
   // Push into a dynamic sized stack with iteration number:
   // init:
   // [[P, P],
@@ -1767,7 +1766,7 @@ ENTRY entry {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, DynamicAddWithImplicitBroadcast) {
+TEST_F(ExecutionTest, DynamicAddWithImplicitBroadcast) {
   const std::string hlo_text = R"(
 HloModule module
 
@@ -1810,7 +1809,7 @@ ENTRY entry {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, DynamicAddWithImplicitSlice) {
+TEST_F(ExecutionTest, DynamicAddWithImplicitSlice) {
   const std::string hlo_text = R"(
 HloModule module
 
@@ -1851,7 +1850,7 @@ ENTRY entry {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, DynamicStackPop) {
+TEST_F(ExecutionTest, DynamicStackPop) {
   // This tests the case where a static sized stack is popped by a dynamic
   // number of times.
 
@@ -1921,7 +1920,7 @@ ENTRY entry {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, DoubleDynamicDimension) {
+TEST_F(ExecutionTest, DoubleDynamicDimension) {
   const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
@@ -1973,7 +1972,7 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, DynamicReshapeDoubleDynamicDimensions) {
+TEST_F(ExecutionTest, DynamicReshapeDoubleDynamicDimensions) {
   const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
@@ -2013,7 +2012,7 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, DynamicReshapeOutputDoubleDynamicDimensions) {
+TEST_F(ExecutionTest, DynamicReshapeOutputDoubleDynamicDimensions) {
   const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
@@ -2052,7 +2051,7 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, DynamicReshapeComplicated) {
+TEST_F(ExecutionTest, DynamicReshapeComplicated) {
   const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
@@ -2089,7 +2088,7 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, SetGetDimensionSize) {
+TEST_F(ExecutionTest, SetGetDimensionSize) {
   const std::string hlo_text = R"(
 HloModule TensorFlowScatterV1
 
@@ -2116,7 +2115,7 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, DynamicSort) {
+TEST_F(ExecutionTest, DynamicSort) {
   const std::string hlo_text = R"(
 HloModule TEST
 
@@ -2153,7 +2152,7 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, DynamicPad) {
+TEST_F(ExecutionTest, DynamicPad) {
   const std::string hlo_text = R"(
 HloModule TEST
 
@@ -2193,7 +2192,7 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, DynamicPadInteriorPadding) {
+TEST_F(ExecutionTest, DynamicPadInteriorPadding) {
   const std::string hlo_text = R"(
 HloModule TEST
 
@@ -2233,7 +2232,7 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, DynamicConditionalDimension) {
+TEST_F(ExecutionTest, DynamicConditionalDimension) {
   const std::string hlo_text = R"(
 HloModule module
 
@@ -2284,7 +2283,7 @@ ENTRY entry {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(ExecutionTest, DynamicTupleSort) {
+TEST_F(ExecutionTest, DynamicTupleSort) {
   const std::string hlo_text = R"(
 HloModule TEST
 

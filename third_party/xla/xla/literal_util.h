@@ -315,6 +315,10 @@ class LiteralUtil {
   // Fails if the literal is not an integral type or if the value it contains
   // cannot be represented as an int64_t.
   static std::optional<int64_t> LiteralAsScalarInt64(const Literal& l);
+
+  // Creates a vector of pointers to the given literals.
+  static std::vector<const Literal*> MakePointers(
+      absl::Span<const Literal> literals);
 };
 
 std::ostream& operator<<(std::ostream& out, const Literal& literal);

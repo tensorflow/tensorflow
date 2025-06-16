@@ -1725,5 +1725,9 @@ SmallVector<Value, 2> InlineBlock(OpBuilder& builder, Block& src_block,
   return mapped_results;
 }
 
+bool IsSupportedElementalOp(HloOpcode opcode) {
+  return !kUnsupportedOps.contains(opcode);
+}
+
 }  // namespace emitters
 }  // namespace xla

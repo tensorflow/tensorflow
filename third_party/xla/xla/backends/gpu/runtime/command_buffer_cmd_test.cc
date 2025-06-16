@@ -320,8 +320,9 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
       CommandBufferCmdExecutor::Create(std::move(commands), serialize));
 
   // Initialize command commands and load device kernels.
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<uint8_t> fatbin,
-                          se::gpu::GetGpuTestKernelsFatbin());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<uint8_t> fatbin,
+      se::gpu::GetGpuTestKernelsFatbin(stream_executor->GetPlatform()->Name()));
   Thunk::ExecutableSource source = {/*text=*/{},
                                     /*binary=*/fatbin};
 
@@ -390,8 +391,9 @@ TEST(CommandBufferCmdTest, LaunchCmdWithPriority) {
       CommandBufferCmdExecutor::Create(std::move(commands), serialize));
 
   // Initialize command commands and load device kernels.
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<uint8_t> fatbin,
-                          se::gpu::GetGpuTestKernelsFatbin());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<uint8_t> fatbin,
+      se::gpu::GetGpuTestKernelsFatbin(stream_executor->GetPlatform()->Name()));
   Thunk::ExecutableSource source = {/*text=*/{},
                                     /*binary=*/fatbin};
 

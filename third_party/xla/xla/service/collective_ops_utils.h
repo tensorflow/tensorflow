@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/service/collective_permute_cycle.h"
 #include "xla/service/computation_placer.h"
@@ -71,6 +72,13 @@ std::optional<ReductionKind> MatchReductionInstruction(
 // Attempts to match computation to one of the possible cases in ReductionKind.
 std::optional<ReductionKind> MatchReductionComputation(
     const HloComputation* computation);
+
+// Creates a computation that performs a reduction operation.
+std::unique_ptr<HloComputation> MakeReductionComputation(
+    ReductionKind reduction_kind, PrimitiveType element_type);
+
+// Returns the HloOpcode corresponding to the given ReductionKind.
+std::optional<HloOpcode> ReductionKindToOpcode(ReductionKind reduction_kind);
 
 // Returns the reduction identity value for a certain ReductionKind and
 // PrimitiveType.

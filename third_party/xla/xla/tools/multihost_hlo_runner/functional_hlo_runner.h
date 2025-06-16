@@ -36,45 +36,13 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/shape.h"
+#include "xla/tools/multihost_hlo_runner/hlo_input_output_format.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
-
-// Supported input formats for the input HLO module.
-enum class InputFormat {
-  kText,                 // Text format returned by HloModule::ToString().
-  kProtoText,            // Protobuf text format of an xla::HloProto message.
-  kProtoBinary,          // Protobuf binary format of an xla::HloProto message.
-  kSnapshotProtoBinary,  // HloSnapshot protobuf binary format. Can be dumped by
-                         // TensorFlow by setting the environment variable
-                         // xla_dump_hlo_snapshots.
-  kUnoptimizedSnapshotProtoBinary,  // HloUnoptimizedSnapshot protobuf binary
-                                    // format. Can be dumped by
-                                    // setting the flag
-                                    // xla_dump_hlo_snapshots in conjunction
-                                    // with xla_dump_as_text.
-  kUnoptimizedSnapshotProtoText,    // HloUnoptimizedSnapshot protobuf text
-                                    // format. Can be dumped by TensorFlow by
-                                    // setting the flag xla_dump_hlo_snapshots
-                                    // in conjunction with xla_dump_as_text.
-};
-
-bool AbslParseFlag(absl::string_view text, InputFormat* input_format,
-                   std::string* error);
-std::string AbslUnparseFlag(InputFormat input_format);
-
-enum class OutputFormat : std::uint8_t {
-  kText,         // Text format returned by Literal::ToString().
-  kProtoBinary,  // Protobuf binary format of an xla::LiteralProto message.
-  kProtoText,    // Protobuf text format of an xla::LiteralProto message.
-};
-
-bool AbslParseFlag(absl::string_view text, OutputFormat* output_format,
-                   std::string* error);
-std::string AbslUnparseFlag(OutputFormat output_format);
 
 // Interface for profiler plugins. If being set in RunningOptions, profiling
 // session will be created for the last run of the HLO module.
@@ -139,14 +107,6 @@ class HLORunnerProfiler : public XSpaceProfilerInterface {
   // The XSpace proto to be returned by GetXSpace().
   std::unique_ptr<tensorflow::profiler::XSpace> xspace_;
 };
-
-bool AbslParseFlag(absl::string_view text, InputFormat* input_format,
-                   std::string* error);
-std::string AbslUnparseFlag(InputFormat input_format);
-
-bool AbslParseFlag(absl::string_view text, OutputFormat* output_format,
-                   std::string* error);
-std::string AbslUnparseFlag(OutputFormat output_format);
 
 // FunctionalHloRunner takes an HLO module as input and runs the HLO module
 // on a single or multiple hosts with various options (e.g. SPMD). The HLO

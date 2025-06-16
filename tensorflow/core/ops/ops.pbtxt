@@ -67758,6 +67758,13 @@ op {
     name: "table_name"
     type: "string"
   }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
 }
 op {
   name: "XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradMomentumAndCsrInput"
@@ -67893,6 +67900,13 @@ op {
     name: "table_name"
     type: "string"
   }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
 }
 op {
   name: "XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdamAndCsrInput"
@@ -68024,6 +68038,13 @@ op {
     name: "table_name"
     type: "string"
   }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
 }
 op {
   name: "XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInput"
@@ -68127,6 +68148,13 @@ op {
   attr {
     name: "table_name"
     type: "string"
+  }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
   }
 }
 op {
@@ -68263,6 +68291,13 @@ op {
     name: "table_name"
     type: "string"
   }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
 }
 op {
   name: "XlaSparseDenseMatmulCustomCombinerOnTcGradWithSgdAndCsrInput"
@@ -68361,6 +68396,13 @@ op {
   attr {
     name: "table_name"
     type: "string"
+  }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
   }
 }
 op {

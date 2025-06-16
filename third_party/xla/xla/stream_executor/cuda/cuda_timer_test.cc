@@ -23,20 +23,16 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/time/time.h"
-#include "xla/stream_executor/cuda/cuda_executor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/typed_kernel_factory.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor::gpu {
 namespace {
@@ -46,13 +42,7 @@ using ::tsl::testing::IsOk;
 class CudaTimerTest : public ::testing::TestWithParam<CudaTimer::TimerType> {
  public:
   void LaunchSomeKernel(StreamExecutor* executor, Stream* stream) {
-    using AddI32Kernel =
-        TypedKernelFactory<DeviceMemory<int32_t>, DeviceMemory<int32_t>,
-                           DeviceMemory<int32_t>>;
-
-    MultiKernelLoaderSpec spec(/*arity=*/3);
-    spec.AddInProcessSymbol(internal::GetAddI32Kernel(), "AddI32");
-    TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor, spec));
+    TF_ASSERT_OK_AND_ASSIGN(auto add, LoadAddI32TestKernel(executor));
 
     int64_t length = 4;
     int64_t byte_length = sizeof(int32_t) * length;

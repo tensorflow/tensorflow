@@ -800,7 +800,8 @@ std::string GetRepeatedValueAsString(
       return std::string(
           reflection->GetRepeatedEnum(debug_options, field, index)->name());
     case tsl::protobuf::FieldDescriptor::TYPE_STRING:
-      return reflection->GetRepeatedString(debug_options, field, index);
+      return "\"" + reflection->GetRepeatedString(debug_options, field, index) +
+             "\"";
     case tsl::protobuf::FieldDescriptor::TYPE_MESSAGE: {
       tsl::protobuf::TextFormat::Printer tsl_printer;
       tsl_printer.SetInitialIndentLevel(1);

@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
@@ -2102,7 +2101,7 @@ class ScalarF32MinMaxTest
     : public ArrayElementwiseOpTest,
       public ::testing::WithParamInterface<ScalarF32TestCase> {};
 
-XLA_TEST_P(ScalarF32MinMaxTest, Version_1) {
+TEST_P(ScalarF32MinMaxTest, Version_1) {
   auto test_params = GetParam();
   XlaBuilder builder(TestName());
   SetFastMathDisabled(true);
@@ -2127,7 +2126,7 @@ XLA_TEST_P(ScalarF32MinMaxTest, Version_1) {
   ComputeAndCompareTuple(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_P(ScalarF32MinMaxTest, Version_2) {
+TEST_P(ScalarF32MinMaxTest, Version_2) {
   auto test_params = GetParam();
   XlaBuilder builder(TestName());
   SetFastMathDisabled(true);
@@ -2152,7 +2151,7 @@ XLA_TEST_P(ScalarF32MinMaxTest, Version_2) {
   ComputeAndCompareTuple(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_P(ScalarF32MinMaxTest, Version_3) {
+TEST_P(ScalarF32MinMaxTest, Version_3) {
   auto test_params = GetParam();
   XlaBuilder builder(TestName());
   SetFastMathDisabled(true);
@@ -2177,7 +2176,7 @@ XLA_TEST_P(ScalarF32MinMaxTest, Version_3) {
   ComputeAndCompareTuple(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_P(ScalarF32MinMaxTest, Version_4) {
+TEST_P(ScalarF32MinMaxTest, Version_4) {
   auto test_params = GetParam();
   XlaBuilder builder(TestName());
   SetFastMathDisabled(true);

@@ -28,6 +28,11 @@ namespace test_util {
 // test parameters for parameterized tests.
 std::vector<SerDesVersion> AllSupportedSerDesVersions();
 
+// Returns all supported SerDes versions that are no more than 4 weeks old.
+// Expected to be used to construct the test parameters for parameterized tests
+// where serialization only supports up to 4 weeks old formats.
+std::vector<SerDesVersion> Week4OldOrLaterSerDesVersions();
+
 }  // namespace test_util
 }  // namespace ifrt
 }  // namespace xla

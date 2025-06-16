@@ -38,6 +38,16 @@ void MatchSameTypeInstructions(
     HloGumgraphMappings& mappings, const MatcherType& matcher_type,
     bool map_by_position = false);
 
+// Find optimal matches between the left and right instruction set.
+// Sort the instructions by opcode and call MatchSameTypeInstructions for each
+// opcode.
+void MatchLeafInstructions(
+    const HloGumgraph& left_graph, const HloGumgraph& right_graph,
+    const std::vector<HloInstructionNode*>& left_instructions,
+    const std::vector<HloInstructionNode*>& right_instructions,
+    HloGumgraphMappings& mappings, const MatcherType& matcher_type,
+    bool map_by_position = false);
+
 }  // namespace hlo_diff
 }  // namespace xla
 

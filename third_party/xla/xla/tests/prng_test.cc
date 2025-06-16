@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
@@ -95,7 +94,7 @@ class ScalarBF16Test
     : public PrngTest,
       public ::testing::WithParamInterface<ScalarBF16TestCase> {};
 
-XLA_TEST_P(ScalarBF16Test, DoIt) {
+TEST_P(ScalarBF16Test, DoIt) {
   if (test::DeviceIsOneOf({test::kCpu, test::kGpu, test::kInterpreter})) {
     GTEST_SKIP();
   }

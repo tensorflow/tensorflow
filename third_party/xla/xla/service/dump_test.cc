@@ -478,5 +478,16 @@ TEST(DumpTest, GetNonDefaultDebugOptions) {
   EXPECT_THAT(real_contents, testing::Eq(non_default_options));
 }
 
+TEST(DumpTest, DumpRepeatedStringTest) {
+  DebugOptions options = DefaultDebugOptionsIgnoringFlags();
+  options.add_legacy_command_buffer_custom_call_targets("__gpu.gpu.triton");
+
+  std::string non_default_options = GetNonDefaultDebugOptions(options);
+  EXPECT_THAT(
+      non_default_options,
+      testing::HasSubstr(
+          "legacy_command_buffer_custom_call_targets: \"__gpu.gpu.triton\""));
+}
+
 }  // namespace
 }  // namespace xla

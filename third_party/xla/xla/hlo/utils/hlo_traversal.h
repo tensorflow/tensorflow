@@ -90,7 +90,8 @@ class HloFusionAdaptor {
   absl::InlinedVector<const HloInstruction*, 2> GetParameters() const;
   absl::InlinedVector<HloInstructionAdaptor, 2> MakeInstructionPostOrder()
       const;
-
+  // Returns an adaptor for the given instruction in the fusion.
+  HloInstructionAdaptor GetInstruction(const HloInstruction* instruction) const;
   // Calls `fn` for each instruction in the fusion.
   void ForEach(const std::function<void(HloInstructionAdaptor)>& fn) const;
 

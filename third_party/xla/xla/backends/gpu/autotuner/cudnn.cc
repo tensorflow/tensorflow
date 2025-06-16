@@ -233,7 +233,7 @@ CudnnBackend::GetSupportedConfigs(
     const HloInstruction& instr,
     stream_executor::StreamExecutor* stream_executor) {
   if (!IsSupportedByCudnn(instr, stream_executor, debug_options())) {
-    return absl::InvalidArgumentError("Cudnn backend is not supported.");
+    return std::vector<std::unique_ptr<BackendConfig>>();
   }
   if (instr.opcode() == HloOpcode::kFusion) {
     return GetCudnnFusionConfigs(instr, stream_executor);

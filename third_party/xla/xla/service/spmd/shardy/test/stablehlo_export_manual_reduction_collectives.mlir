@@ -2,6 +2,7 @@
 
 sdy.mesh @mesh_x_2_y_2 = <["x"=2, "y"=2]>
 sdy.mesh @mesh_x_2_y_4_z_2 = <["x"=2, "y"=4, "z"=2]>
+sdy.mesh @mesh_x_4_y_2_z_2 = <["x"=4, "y"=2, "z"=2]>
 sdy.mesh @mesh_x_4_y_6 = <["x"=4, "y"=6]>
 sdy.mesh @mesh_x_2_y_2_non_iota = <["x"=2, "y"=2], device_ids=[3, 2, 1, 0]>
 
@@ -21,13 +22,13 @@ func.func @all_reduce_f32(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@
   // CHECK-SAME:              manual_axes={"x", "y"} (%arg1: tensor<4x8xf32>) {
   // CHECK-NEXT:            %[[ALL_REDUCE:.*]] = "stablehlo.all_reduce"(%arg1) <{
   // CHECK-SAME:              channel_handle = #stablehlo.channel_handle<handle = 1, type = 1>,
-  // CHECK-SAME{LITERAL}:     replica_groups = dense<[[0, 2], [1, 3]]> : tensor<2x2xi64>
+  // CHECK-SAME{LITERAL}:     replica_groups = dense<[[0, 2], [1, 3]]> : tensor<2x2xi64>,
   // CHECK-SAME:              use_global_device_ids}> ({
   // CHECK-NEXT:            ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
   // CHECK-NEXT:              %[[ADD:.*]] = stablehlo.add %arg2, %arg3 : tensor<f32>
   // CHECK-NEXT:              stablehlo.return %[[ADD]] : tensor<f32>
   // CHECK-NEXT:            }) : (tensor<4x8xf32>) -> tensor<4x8xf32>
-  // CHECK-NEXT:          sdy.return %[[ALL_REDUCE]] : tensor<4x8xf32>
+  // CHECK-NEXT:            sdy.return %[[ALL_REDUCE]] : tensor<4x8xf32>
   // CHECK-NEXT:          } : (tensor<8x8xf32>) -> tensor<8x8xf32>
   // CHECK-NEXT:          return %[[MANUAL_COMP]] : tensor<8x8xf32>
   %0 = sdy.all_reduce {"x"} %arg0 out_sharding=<@mesh_x_2_y_2, [{"y"}, {}]> : tensor<8x8xf32>
@@ -42,13 +43,13 @@ func.func @all_reduce_i64(%arg0: tensor<8x8xi64> {sdy.sharding = #sdy.sharding<@
   // CHECK-SAME:              manual_axes={"x", "y"} (%arg1: tensor<8x4xi64>) {
   // CHECK-NEXT:            %[[ALL_REDUCE:.*]] = "stablehlo.all_reduce"(%arg1) <{
   // CHECK-SAME:              channel_handle = #stablehlo.channel_handle<handle = 2, type = 1>,
-  // CHECK-SAME{LITERAL}:     replica_groups = dense<[[0, 1], [2, 3]]> : tensor<2x2xi64>
+  // CHECK-SAME{LITERAL}:     replica_groups = dense<[[0, 1], [2, 3]]> : tensor<2x2xi64>,
   // CHECK-SAME:              use_global_device_ids}> ({
   // CHECK-NEXT:            ^bb0(%arg2: tensor<i64>, %arg3: tensor<i64>):
   // CHECK-NEXT:              %[[ADD:.*]] = stablehlo.add %arg2, %arg3 : tensor<i64>
   // CHECK-NEXT:              stablehlo.return %[[ADD]] : tensor<i64>
   // CHECK-NEXT:            }) : (tensor<8x4xi64>) -> tensor<8x4xi64>
-  // CHECK-NEXT:          sdy.return %[[ALL_REDUCE]] : tensor<8x4xi64>
+  // CHECK-NEXT:            sdy.return %[[ALL_REDUCE]] : tensor<8x4xi64>
   // CHECK-NEXT:          } : (tensor<8x8xi64>) -> tensor<8x8xi64>
   // CHECK-NEXT:          return %[[MANUAL_COMP]] : tensor<8x8xi64>
   %0 = sdy.all_reduce {"y"} %arg0 out_sharding=<@mesh_x_2_y_2, [{}, {"x"}]> : tensor<8x8xi64>
@@ -63,13 +64,13 @@ func.func @all_reduce_to_fully_replicated(%arg0: tensor<8x8xf32> {sdy.sharding =
   // CHECK-SAME:              manual_axes={"x", "y"} (%arg1: tensor<8x8xf32>) {
   // CHECK-NEXT:            %[[ALL_REDUCE:.*]] = "stablehlo.all_reduce"(%arg1) <{
   // CHECK-SAME:              channel_handle = #stablehlo.channel_handle<handle = 3, type = 1>,
-  // CHECK-SAME{LITERAL}:     replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
+  // CHECK-SAME{LITERAL}:     replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>,
   // CHECK-SAME:              use_global_device_ids}> ({
   // CHECK-NEXT:            ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
   // CHECK-NEXT:              %[[ADD:.*]] = stablehlo.add %arg2, %arg3 : tensor<f32>
   // CHECK-NEXT:              stablehlo.return %[[ADD]] : tensor<f32>
   // CHECK-NEXT:            }) : (tensor<8x8xf32>) -> tensor<8x8xf32>
-  // CHECK-NEXT:          sdy.return %[[ALL_REDUCE]] : tensor<8x8xf32>
+  // CHECK-NEXT:            sdy.return %[[ALL_REDUCE]] : tensor<8x8xf32>
   // CHECK-NEXT:          } : (tensor<8x8xf32>) -> tensor<8x8xf32>
   // CHECK-NEXT:          return %[[MANUAL_COMP]] : tensor<8x8xf32>
   %0 = sdy.all_reduce {"x", "y"} %arg0 out_sharding=<@mesh_x_2_y_2, [{}, {}]> : tensor<8x8xf32>
@@ -134,7 +135,7 @@ func.func @partial_all_reduce(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.shardi
   // CHECK-SAME:              manual_axes={"x", "y"} (%arg1: tensor<8x8xf32>) {
   // CHECK-NEXT:            %[[ALL_REDUCE_X:.*]] = "stablehlo.all_reduce"(%arg1) <{
   // CHECK-SAME:              channel_handle = #stablehlo.channel_handle<handle = 11, type = 1>,
-  // CHECK-SAME{LITERAL}:     replica_groups = dense<[[0, 2], [1, 3]]>
+  // CHECK-SAME{LITERAL}:     replica_groups = dense<[[0, 2], [1, 3]]> : tensor<2x2xi64>,
   // CHECK-SAME:              use_global_device_ids}>
   // CHECK:                 sdy.return %[[ALL_REDUCE_X]]
   // CHECK-NEXT:          } : (tensor<8x8xf32>) -> tensor<8x8xf32>
@@ -146,7 +147,7 @@ func.func @partial_all_reduce(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.shardi
   // CHECK-SAME:              manual_axes={"x", "y"} (%arg1: tensor<8x8xf32>) {
   // CHECK-NEXT:            %[[ALL_REDUCE_Y:.*]] = "stablehlo.all_reduce"(%arg1) <{
   // CHECK-SAME:              channel_handle = #stablehlo.channel_handle<handle = 12, type = 1>,
-  // CHECK-SAME{LITERAL}:     replica_groups = dense<[[0, 1], [2, 3]]>
+  // CHECK-SAME{LITERAL}:     replica_groups = dense<[[0, 1], [2, 3]]> : tensor<2x2xi64>,
   // CHECK-SAME:              use_global_device_ids}>
   // CHECK:                 sdy.return %[[ALL_REDUCE_X]]
   // CHECK-NEXT:          } : (tensor<8x8xf32>) -> tensor<8x8xf32>
@@ -155,6 +156,72 @@ func.func @partial_all_reduce(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.shardi
   %1 = stablehlo.add %0, %0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_x_2_y_2, [{}, {}], unreduced={"y"}>]>} : tensor<8x8xf32>
   %2 = sdy.all_reduce {"y"} %1 out_sharding=<@mesh_x_2_y_2, [{}, {}]> : tensor<8x8xf32>
   return %2 : tensor<8x8xf32>
+}
+
+// CHECK-LABEL: func @reduce_scatter_single_dim
+func.func @reduce_scatter_single_dim(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_x_2_y_2, [{"y"}, {}], unreduced={"x"}>}) -> tensor<8x8xf32> {
+  // CHECK-NEXT:          %[[MANUAL_COMP:.*]] = sdy.manual_computation(%arg0)
+  // CHECK-SAME:              in_shardings=[<@mesh_x_2_y_2, [{"y"}, {}], unreduced={"x"}>]
+  // CHECK-SAME:              out_shardings=[<@mesh_x_2_y_2, [{"y"}, {"x"}]>]
+  // CHECK-SAME:              manual_axes={"x", "y"} (%arg1: tensor<4x8xf32>) {
+  // CHECK-NEXT:            %[[REDUCE_SCATTER:.*]] = "stablehlo.reduce_scatter"(%arg1) <{
+  // CHECK-SAME:              channel_handle = #stablehlo.channel_handle<handle = 13, type = 1>,
+  // CHECK-SAME{LITERAL}:     replica_groups = dense<[[0, 2], [1, 3]]> : tensor<2x2xi64>,
+  // CHECK-SAME:              scatter_dimension = 1 : i64,
+  // CHECK-SAME:              use_global_device_ids}> ({
+  // CHECK-NEXT:            ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+  // CHECK-NEXT:              %[[ADD:.*]] = stablehlo.add %arg2, %arg3 : tensor<f32>
+  // CHECK-NEXT:              stablehlo.return %[[ADD]] : tensor<f32>
+  // CHECK-NEXT:            }) : (tensor<4x8xf32>) -> tensor<4x4xf32>
+  // CHECK-NEXT:            sdy.return %[[REDUCE_SCATTER]] : tensor<4x4xf32>
+  // CHECK-NEXT:          } : (tensor<8x8xf32>) -> tensor<8x8xf32>
+  // CHECK-NEXT:          return %[[MANUAL_COMP]] : tensor<8x8xf32>
+  %0 = sdy.reduce_scatter [{}, {"x"}] %arg0 out_sharding=<@mesh_x_2_y_2, [{"y"}, {"x"}]> : tensor<8x8xf32>
+  return %0 : tensor<8x8xf32>
+}
+
+// CHECK-LABEL: func @reduce_scatter_multiple_dims
+func.func @reduce_scatter_multiple_dims(%arg0: tensor<8x8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_x_4_y_2_z_2, [{}, {}, {}], unreduced={"x", "y", "z"}>}) -> tensor<8x8x8xf32> {
+  // CHECK-NEXT:          %[[MANUAL_COMP:.*]] = sdy.manual_computation(%arg0)
+  // CHECK-SAME:              in_shardings=[<@mesh_x_4_y_2_z_2, [{}, {}, {}], unreduced={"x", "y", "z"}>]
+  // CHECK-SAME:              out_shardings=[<@mesh_x_4_y_2_z_2, [{"z", "x"}, {}, {"y"}]>]
+  // CHECK-SAME:              manual_axes={"x", "y", "z"} (%arg1: tensor<8x8x8xf32>) {
+  // CHECK-NEXT:            %[[REDUCE_SCATTER_1:.*]] = "stablehlo.reduce_scatter"(%arg1) <{
+  // CHECK-SAME:              channel_handle = #stablehlo.channel_handle<handle = 14, type = 1>,
+  // CHECK-SAME{LITERAL}:     replica_groups = dense<[[0, 4, 8, 12, 1, 5, 9, 13], [2, 6, 10, 14, 3, 7, 11, 15]]> : tensor<2x8xi64>,
+  // CHECK-SAME:              scatter_dimension = 0 : i64,
+  // CHECK-SAME:              use_global_device_ids}> ({
+  // CHECK:                 }) : (tensor<8x8x8xf32>) -> tensor<1x8x8xf32>
+  // CHECK-NEXT:            %[[REDUCE_SCATTER_2:.*]] = "stablehlo.reduce_scatter"(%[[REDUCE_SCATTER_1]]) <{
+  // CHECK-SAME:              channel_handle = #stablehlo.channel_handle<handle = 15, type = 1>,
+  // CHECK-SAME{LITERAL}:     replica_groups = dense<[[0, 2], [1, 3], [4, 6], [5, 7], [8, 10], [9, 11], [12, 14], [13, 15]]> : tensor<8x2xi64>,
+  // CHECK-SAME:              scatter_dimension = 2 : i64,
+  // CHECK-SAME:              use_global_device_ids}> ({
+  // CHECK:                 }) : (tensor<1x8x8xf32>) -> tensor<1x8x4xf32>
+  // CHECK-NEXT:            sdy.return %[[REDUCE_SCATTER_2]] : tensor<1x8x4xf32>
+  // CHECK-NEXT:          } : (tensor<8x8x8xf32>) -> tensor<8x8x8xf32>
+  // CHECK-NEXT:          return %[[MANUAL_COMP]] : tensor<8x8x8xf32>
+  %0 = sdy.reduce_scatter [{"z", "x"}, {}, {"y"}] %arg0 out_sharding=<@mesh_x_4_y_2_z_2, [{"z", "x"}, {}, {"y"}]> : tensor<8x8x8xf32>
+  return %0 : tensor<8x8x8xf32>
+}
+
+// CHECK-LABEL: func @reduce_scatter_further_shard_single_dim
+func.func @reduce_scatter_further_shard_single_dim(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_x_2_y_2, [{"y"}, {}], unreduced={"x"}>}) -> tensor<8x8xf32> {
+  // CHECK-NEXT:          %[[MANUAL_COMP:.*]] = sdy.manual_computation(%arg0)
+  // CHECK-SAME:              in_shardings=[<@mesh_x_2_y_2, [{"y"}, {}], unreduced={"x"}>]
+  // CHECK-SAME:              out_shardings=[<@mesh_x_2_y_2, [{"y", "x"}, {}]>]
+  // CHECK-SAME:              manual_axes={"x", "y"} (%arg1: tensor<4x8xf32>) {
+  // CHECK-NEXT:            %[[REDUCE_SCATTER:.*]] = "stablehlo.reduce_scatter"(%arg1) <{
+  // CHECK-SAME:              channel_handle = #stablehlo.channel_handle<handle = 16, type = 1>,
+  // CHECK-SAME{LITERAL}:     replica_groups = dense<[[0, 2], [1, 3]]> : tensor<2x2xi64>,
+  // CHECK-SAME:              scatter_dimension = 0 : i64,
+  // CHECK-SAME:              use_global_device_ids}> ({
+  // CHECK:                 }) : (tensor<4x8xf32>) -> tensor<2x8xf32>
+  // CHECK-NEXT:            sdy.return %[[REDUCE_SCATTER]] : tensor<2x8xf32>
+  // CHECK-NEXT:          } : (tensor<8x8xf32>) -> tensor<8x8xf32>
+  // CHECK-NEXT:          return %[[MANUAL_COMP]] : tensor<8x8xf32>
+  %0 = sdy.reduce_scatter [{"x"}, {}] %arg0 out_sharding=<@mesh_x_2_y_2, [{"y", "x"}, {}]> : tensor<8x8xf32>
+  return %0 : tensor<8x8xf32>
 }
 
 // -----

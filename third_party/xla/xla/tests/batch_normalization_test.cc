@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/types.h"
@@ -509,7 +508,7 @@ std::vector<BatchNormTestParam> BuildBatchNormTestParams() {
 INSTANTIATE_TEST_CASE_P(BatchNormTest_Instantiation, BatchNormTestManySizes,
                         ::testing::ValuesIn(BuildBatchNormTestParams()));
 
-XLA_TEST_P(BatchNormTestManySizes, RandomizedTrainingTests) {
+TEST_P(BatchNormTestManySizes, RandomizedTrainingTests) {
   float epsilon = 0.001;
   XlaBuilder builder(TestName());
   const std::vector<int64_t>& bounds = GetParam().bounds;
@@ -610,7 +609,7 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedTrainingTests) {
       ErrorSpec(0.01, 1));
 }
 
-XLA_TEST_P(BatchNormTestManySizes, RandomizedInferencingTests) {
+TEST_P(BatchNormTestManySizes, RandomizedInferencingTests) {
   float epsilon = 0.001;
   XlaBuilder builder(TestName());
   const std::vector<int64_t>& bounds = GetParam().bounds;
@@ -718,7 +717,7 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedInferencingTests) {
       ErrorSpec(0.01, 1));
 }
 
-XLA_TEST_P(BatchNormTestManySizes, RandomizedGradTests) {
+TEST_P(BatchNormTestManySizes, RandomizedGradTests) {
   float epsilon = 0.001;
   XlaBuilder builder(TestName());
   const std::vector<int64_t>& bounds = GetParam().bounds;

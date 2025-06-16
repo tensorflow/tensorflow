@@ -160,18 +160,18 @@ def _tf_repositories():
     # LINT.IfChange(xnnpack)
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "8665f9876227fc1f5aaea9ca46bd24dac65d85053a510a6e71857ee32055e126",
-        strip_prefix = "XNNPACK-0a3103ab29306b25a6d1293a746945754a556b9c",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/0a3103ab29306b25a6d1293a746945754a556b9c.zip"),
+        sha256 = "1c532db6db8a3511a812f509643cee0193e8434bfd1a0c83143f3329395688ca",
+        strip_prefix = "XNNPACK-8b3d5687eb8e4a266731ad8a288de6c813c2959b",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/8b3d5687eb8e4a266731ad8a288de6c813c2959b.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
     # XNNPack dependency.
     tf_http_archive(
         name = "KleidiAI",
-        sha256 = "cb6af19d3ef21a0c683bd0c7c5b455c386dee0b7d0d4bc2cc0e14503019ff1e8",
-        strip_prefix = "kleidiai-1.4.0",
-        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/refs/tags/v1.4.0.zip"),
+        sha256 = "ad04cc186b12810ecde9d75911c76a0113d3c055773c700377de302eef6c4419",
+        strip_prefix = "kleidiai-247088200c679f30b1b4a680bd12fee18457a100",
+        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/247088200c679f30b1b4a680bd12fee18457a100.zip"),
     )
 
     tf_http_archive(
@@ -416,10 +416,10 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_google_googletest",
-        # Use the commit on 2025/3/21:
-        # https://github.com/google/googletest/commit/2ae29b52fdff88c52fef655fa0d245fc514ca35b
-        sha256 = "21a3a4021fd5e3127c90547234e2126d24f23571fedefa0d9370bf706a870fba",
-        strip_prefix = "googletest-2ae29b52fdff88c52fef655fa0d245fc514ca35b",
+        # Use the commit on 2025/6/09:
+        # https://github.com/google/googletest/commit/28e9d1f26771c6517c3b4be10254887673c94018
+        sha256 = "f253ca1a07262f8efde8328e4b2c68979e40ddfcfc001f70d1d5f612c7de2974",
+        strip_prefix = "googletest-28e9d1f26771c6517c3b4be10254887673c94018",
         # Patch googletest to:
         #   - avoid dependencies on @fuchsia_sdk,
         #   - refer to re2 as @com_googlesource_code_re2,
@@ -431,13 +431,13 @@ def _tf_repositories():
         # $ cd github
         # $ git clone https://github.com/google/googletest.git
         # $ cd googletest
-        # $ git checkout 2ae29b52fdff88c52fef655fa0d245fc514ca35b
+        # $ git checkout 28e9d1f26771c6517c3b4be10254887673c94018
         # ... make local changes to googletest ...
         # $ git diff > <client-root>/third_party/tensorflow/third_party/googletest/googletest.patch
         #
         # The patch path is relative to third_party/tensorflow.
         patch_file = ["@local_xla//third_party/googletest:googletest.patch"],
-        urls = tf_mirror_urls("https://github.com/google/googletest/archive/2ae29b52fdff88c52fef655fa0d245fc514ca35b.zip"),
+        urls = tf_mirror_urls("https://github.com/google/googletest/archive/28e9d1f26771c6517c3b4be10254887673c940189.zip"),
     )
 
     tf_http_archive(
@@ -941,9 +941,9 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "org_xprof",
-        sha256 = "476245ba94e179feab17115a1e357ed25cb37f4f547c0993fae8afccd622131f",
-        strip_prefix = "xprof-558a197a27c040ec0e8958e979d429d86196f73c",
-        urls = tf_mirror_urls("https://github.com/openxla/xprof/archive/558a197a27c040ec0e8958e979d429d86196f73c.zip"),
+        sha256 = "d27bcd502a0843e463fc4eb7d3532d0d720ddd6af6e39942846f1aa769352625",
+        strip_prefix = "xprof-c695e43eba127a74a67263775ab611bded7fba34",
+        urls = tf_mirror_urls("https://github.com/openxla/xprof/archive/c695e43eba127a74a67263775ab611bded7fba34.zip"),
         repo_mapping = {
             "@xla": "@local_xla",
             "@tsl": "@local_tsl",

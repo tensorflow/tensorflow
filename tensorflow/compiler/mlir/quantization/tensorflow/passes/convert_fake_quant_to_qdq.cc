@@ -27,14 +27,12 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project  // IWYU pragma: keep, for applyPatternsGreedily
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/utils/temp_fake_quant_utils.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/utils/fake_quant_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 
 namespace mlir {
 namespace quant {
 namespace {
-
-using ::mlir::tf_quant::ConvertFakeQuantOps;
 
 class ConvertFakeQuantToQdqPass
     : public PassWrapper<ConvertFakeQuantToQdqPass,

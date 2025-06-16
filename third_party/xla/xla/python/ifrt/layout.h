@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/layout.pb.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 
@@ -78,7 +79,8 @@ class Layout : public llvm::RTTIExtends<Layout, Serializable> {
   static absl::StatusOr<CustomLayoutRef> FromProto(const LayoutProto& proto);
 
   // Returns a `LayoutProto` representation.
-  absl::StatusOr<LayoutProto> ToProto() const;
+  absl::StatusOr<LayoutProto> ToProto(
+      SerDesVersion version = SerDesVersion::current()) const;
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const Layout& layout) {

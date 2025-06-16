@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstddef>
 
+#include "absl/base/casts.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/repeat_buffer_kernel.cu.h"
@@ -24,10 +25,8 @@ limitations under the License.
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
     RepeatBufferKernelCuda, stream_executor::gpu::RepeatBufferKernel,
     stream_executor::cuda::kCudaPlatformId, ([](size_t arity) {
-      stream_executor::MultiKernelLoaderSpec spec(arity);
-      spec.AddInProcessSymbol(
+      return stream_executor::MultiKernelLoaderSpec::CreateInProcessSymbolSpec(
           absl::bit_cast<void*>(&stream_executor::gpu::RepeatBufferKernelImpl),
 
-          "repeat_buffer_kernel");
-      return spec;
+          "repeat_buffer_kernel", arity);
     }));

@@ -32,7 +32,7 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/common/ir/QuantOps.h"
-#include "tensorflow/compiler/mlir/quantization/common/tf_quantization_lib/tf_quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/common/quantization_lib/quantization_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"  // IWYU pragma: keep
 
 //===----------------------------------------------------------------------===//
@@ -41,9 +41,6 @@ limitations under the License.
 namespace mlir {
 namespace quant {
 namespace {
-
-using ::mlir::tf_quant::FoldTrivalRequantizeOp;
-using ::mlir::tf_quant::kVolatileOpAttrName;
 
 // Applies all the clean up steps after quantization.
 class PostQuantizePass

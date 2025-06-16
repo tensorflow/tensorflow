@@ -23,6 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
+#include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/device_test_util.h"
@@ -46,11 +47,23 @@ using ::testing::SizeIs;
 using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
 
-class SingleDeviceShardingTest : public test_util::DeviceTest {};
-class OpaqueShardingTest : public test_util::DeviceTest {};
-class ConcreteShardingTest : public test_util::DeviceTest {};
-class ConcreteEvenShardingTest : public test_util::DeviceTest {};
-class ShardingParamShardingTest : public test_util::DeviceTest {};
+class ShardingTest : public testing::TestWithParam<test_util::DeviceTestParam> {
+ public:
+  ShardingTest() : fixture_(GetParam()) {}
+
+  DeviceListRef GetDevices(absl::Span<const int> device_indices) {
+    return fixture_.GetDevices(device_indices);
+  }
+
+ private:
+  test_util::DeviceTestFixture fixture_;
+};
+
+class SingleDeviceShardingTest : public ShardingTest {};
+class OpaqueShardingTest : public ShardingTest {};
+class ConcreteShardingTest : public ShardingTest {};
+class ConcreteEvenShardingTest : public ShardingTest {};
+class ShardingParamShardingTest : public ShardingTest {};
 
 TEST_P(SingleDeviceShardingTest, CreateWithBadDevice) {
   EXPECT_DEATH(SingleDeviceSharding::Create(nullptr, MemoryKind()), "");

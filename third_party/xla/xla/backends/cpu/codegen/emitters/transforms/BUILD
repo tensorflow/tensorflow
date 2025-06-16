@@ -31,6 +31,7 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "expand_float_ops.cc",
         "lower_to_llvm.cc",
         "lower_xla_shared.cc",
     ],
@@ -39,6 +40,7 @@ cc_library(
         ":passes_inc_gen",
         ":xla_cpu_rewrite_patterns",
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
+        "//xla/codegen/emitters:implicit_arith_op_builder",
         "//xla/codegen/emitters/ir:xla",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",

@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -30,8 +31,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/reduction_utils.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {
@@ -104,7 +104,8 @@ absl::StatusOr<bool> CopyFusion::DoCopyFusion(HloComputation* computation) {
       if (HloPredicateIsOp<HloOpcode::kCopy>(copy_user) &&
           copy_user->shape() == copy_user->operand(0)->shape() &&
           !copy_user->shape().IsTuple() &&
-          !copy_user->HasControlDependencies()) {
+          !copy_user->HasControlDependencies() &&
+          FusionFitsInBudget(*hlo, *copy_user, device_description_)) {
         copies.push_back(copy_user);
       } else {
         other_users.push_back(user);
@@ -122,11 +123,21 @@ absl::StatusOr<bool> CopyFusion::DoCopyFusion(HloComputation* computation) {
          dynamic_update_slices.size() == root->shape().tuple_shapes().size())) {
       continue;
     }
+
+    int64_t num_outputs =
+        hlo->IsMultiOutputFusion() ? root->operand_count() : int64_t{1};
+    int64_t total_outputs = num_outputs + copies.size();
+
+    if (total_outputs > MaxOperandsAndOutputsPerFusion()) {
+      VLOG(1) << "Skipping fusion as it would exceed "
+                 "MaxOperandsAndOutputsPerFusion(): "
+              << total_outputs << " > " << MaxOperandsAndOutputsPerFusion();
+      continue;
+    }
+
     changed = true;
 
     HloInstruction::InstructionVector tuple_elements;
-    int64_t num_outputs =
-        hlo->IsMultiOutputFusion() ? root->operand_count() : int64_t{1};
     tuple_elements.reserve(copies.size() + num_outputs);
     if (hlo->IsMultiOutputFusion()) {
       for (HloInstruction* operand : root->operands()) {

@@ -68,7 +68,6 @@ limitations under the License.
 #include "stablehlo/dialect/Base.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/transforms/Passes.h"
-#include "xla/array.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/builder/lib/approx_topk.h"
@@ -93,13 +92,11 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
-#include "xla/literal_util.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mlir/utils/type_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
-#include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
@@ -6130,7 +6127,7 @@ absl::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
       !options.direct_stablehlo_to_hlo;
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass(shlo_pass_opts));
   if (failed(pm.run(module))) {
-    return tsl::errors::Internal("Unable to convert StableHLO to MHLO");
+    return absl::InternalError("Unable to convert StableHLO to MHLO");
   }
 
   TF_RETURN_IF_ERROR(PrepareForExport(module));
@@ -6250,9 +6247,9 @@ absl::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
   // xla_params should only include non-constant parameters the block arguments
   // correspond to.
   if (xla_params.size() != block.getArguments().size())
-    return tsl::errors::Internal("xla_params size (", xla_params.size(),
-                                 ") != block arguments size (",
-                                 block.getArguments().size(), ")");
+    return absl::InternalError(absl::StrCat(
+        "xla_params size (", xla_params.size(), ") != block arguments size (",
+        block.getArguments().size(), ")"));
   for (BlockArgument& arg : block.getArguments()) {
     auto num = arg.getArgNumber();
     lowering[arg] = xla_params[num];

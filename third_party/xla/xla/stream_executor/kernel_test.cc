@@ -120,14 +120,6 @@ TEST(KernelTest, PackTupleArguments) {
   ASSERT_EQ(f64, 3.0);
 }
 
-TEST(KernelTest, FailToCreateTypedKernelFromEmptySpec) {
-  MultiKernelLoaderSpec empty_spec(/*arity=*/0);
-
-  auto executor = NewStreamExecutor();
-  auto kernel = TypedKernelFactory<>::Create(executor, empty_spec);
-  EXPECT_FALSE(kernel.ok());
-}
-
 //===----------------------------------------------------------------------===//
 // Performance benchmarks below
 //===----------------------------------------------------------------------===//

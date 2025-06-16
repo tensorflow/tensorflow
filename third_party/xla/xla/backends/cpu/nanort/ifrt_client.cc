@@ -1005,7 +1005,7 @@ class NanoExecutable final
       const ProgramShape& program_shape, const XlaComputation& computation) {
     const auto& result_shape = program_shape.result();
 
-    int output_id = computation.proto().computations(0).root_id();
+    int64_t output_id = computation.proto().computations(0).root_id();
 
     std::vector<OpSharding> shardings(
         (result_shape.IsTuple() ? result_shape.tuple_shapes().size() : 1));

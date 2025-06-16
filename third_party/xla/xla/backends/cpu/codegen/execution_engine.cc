@@ -36,9 +36,9 @@ namespace xla::cpu {
 static std::unique_ptr<llvm::orc::RTDyldObjectLinkingLayer>
 CreateObjectLinkingLayer(llvm::orc::ExecutionSession& execution_session) {
   return std::make_unique<llvm::orc::RTDyldObjectLinkingLayer>(
-      execution_session, [](const llvm::MemoryBuffer&) {
+      execution_session, [](const llvm::MemoryBuffer& obj) {
         return std::make_unique<ContiguousSectionMemoryManager>(
-            orc_jit_memory_mapper::GetInstance());
+            orc_jit_memory_mapper::GetInstance(obj.getBufferIdentifier()));
       });
 }
 

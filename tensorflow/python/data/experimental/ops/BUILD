@@ -169,6 +169,7 @@ py_strict_library(
     srcs = [
         "global_shuffle_op.py",
     ],
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",

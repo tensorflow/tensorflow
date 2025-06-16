@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -100,6 +102,33 @@ std::optional<ReductionKind> MatchReductionComputation(
     kind = std::nullopt;
   }
   return kind;
+}
+
+std::unique_ptr<HloComputation> MakeReductionComputation(
+    ReductionKind reduction_kind, PrimitiveType element_type) {
+  auto builder = HloComputation::Builder("make_reduction_computation");
+  auto lhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(element_type, {}), "lhs"));
+  auto rhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(element_type, {}), "rhs"));
+  builder.AddInstruction(HloInstruction::CreateBinary(
+      lhs->shape(), *ReductionKindToOpcode(reduction_kind), lhs, rhs));
+  return builder.Build();
+}
+
+std::optional<HloOpcode> ReductionKindToOpcode(ReductionKind reduction_kind) {
+  switch (reduction_kind) {
+    case ReductionKind::SUM:
+      return HloOpcode::kAdd;
+    case ReductionKind::PRODUCT:
+      return HloOpcode::kMultiply;
+    case ReductionKind::MIN:
+      return HloOpcode::kMinimum;
+    case ReductionKind::MAX:
+      return HloOpcode::kMaximum;
+    default:
+      return std::nullopt;
+  }
 }
 
 std::optional<Literal> GetReductionIdentity(ReductionKind kind,

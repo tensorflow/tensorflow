@@ -581,32 +581,36 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
   for (int repeat = 0; repeat < running_options.num_repeats; ++repeat) {
     VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices started (repeat = "
             << repeat << ").";
-    if (repeat == 0 || running_options.recreate_buffers_between_repeats) {
-      VLOG(1) << "Creating argument buffers. repeat = " << repeat;
-      device_buffers.clear();
-      argument_ptrs.clear();
-      TF_ASSIGN_OR_RETURN(device_buffers,
-                          create_argument_buffers_on_device(flatten_arguments));
-      argument_ptrs = CreateArgumentPointersFromDeviceBuffers(device_buffers);
-    }
-    if (repeat == running_options.num_repeats - 1) {
-      execute_options.untuple_result = default_untuple_result;
-      if (running_options.profiler != nullptr) {
-        running_options.profiler->CreateSession();
+    {
+      XLA_SCOPED_LOGGING_TIMER("FunctionalHloRunner::ExecuteOnDevices");
+
+      if (repeat == 0 || running_options.recreate_buffers_between_repeats) {
+        VLOG(1) << "Creating argument buffers. repeat = " << repeat;
+        device_buffers.clear();
+        argument_ptrs.clear();
+        TF_ASSIGN_OR_RETURN(device_buffers, create_argument_buffers_on_device(
+                                                flatten_arguments));
+        argument_ptrs = CreateArgumentPointersFromDeviceBuffers(device_buffers);
       }
-    }
-    execute_options.launch_id = repeat + 1;
-    if (running_options.execution_profiles != nullptr) {
-      execute_options.execution_profile =
-          &running_options.execution_profiles->emplace_back();
-      execute_options.execution_profile->set_warmup_run_executed(repeat > 0);
-    }
-    futures->clear();
-    TF_ASSIGN_OR_RETURN(
-        output_buffers,
-        executable->Execute(argument_ptrs, execute_options, futures));
-    for (auto& future : *futures) {
-      TF_RETURN_IF_ERROR(future.Await());
+      if (repeat == running_options.num_repeats - 1) {
+        execute_options.untuple_result = default_untuple_result;
+        if (running_options.profiler != nullptr) {
+          running_options.profiler->CreateSession();
+        }
+      }
+      execute_options.launch_id = repeat + 1;
+      if (running_options.execution_profiles != nullptr) {
+        execute_options.execution_profile =
+            &running_options.execution_profiles->emplace_back();
+        execute_options.execution_profile->set_warmup_run_executed(repeat > 0);
+      }
+      futures->clear();
+      TF_ASSIGN_OR_RETURN(
+          output_buffers,
+          executable->Execute(argument_ptrs, execute_options, futures));
+      for (auto& future : *futures) {
+        TF_RETURN_IF_ERROR(future.Await());
+      }
     }
     VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices succeeded (repeat = "
             << repeat << ")";
@@ -1044,8 +1048,7 @@ absl::StatusOr<CompileOptions> CreateCompileOptions(
   build_options.set_process_index(task_id);
   build_options.set_process_count(num_nodes);
   build_options.set_key_value_store(kv_store);
-  if (replicas_and_partitions.partitions > 1 ||
-      raw_options.spmd_mode == SpmdMode::kUseSpmdPartitioning ||
+  if (raw_options.spmd_mode == SpmdMode::kUseSpmdPartitioning ||
       raw_options.spmd_mode == SpmdMode::kUseShardyPartitioning) {
     build_options.set_use_spmd_partitioning(true);
     if (raw_options.spmd_mode == SpmdMode::kUseShardyPartitioning) {
@@ -1570,47 +1573,6 @@ void AddShardingAnnotationsToSpmdPartitionedModule(HloModule* hlo_module) {
   HloInstruction* entry_root =
       hlo_module->entry_computation()->root_instruction();
   set_manual_sharding(entry_root);
-}
-
-namespace {
-const FixedOptionSetFlagParser<InputFormat>& GetInputFormatParser() {
-  static const auto& parser = GetFixedOptionSetFlagParser<InputFormat>(
-      {{"text", InputFormat::kText},
-       {"proto_text", InputFormat::kProtoText},
-       {"proto_binary", InputFormat::kProtoBinary},
-       {"snapshot_proto_binary", InputFormat::kSnapshotProtoBinary},
-       {"unoptimized_snapshot_proto_binary",
-        InputFormat::kUnoptimizedSnapshotProtoBinary},
-       {"unoptimized_snapshot_proto_text",
-        InputFormat::kUnoptimizedSnapshotProtoText}});
-  return parser;
-}
-
-const FixedOptionSetFlagParser<OutputFormat>& GetOutputFormatParser() {
-  static const auto& parser = GetFixedOptionSetFlagParser<OutputFormat>(
-      {{"text", OutputFormat::kText},
-       {"proto_binary", OutputFormat::kProtoBinary},
-       {"proto_text", OutputFormat::kProtoText}});
-  return parser;
-}
-}  // namespace
-
-bool AbslParseFlag(absl::string_view text, InputFormat* input_format,
-                   std::string* error) {
-  return GetInputFormatParser().Parse(text, input_format, error);
-}
-
-std::string AbslUnparseFlag(InputFormat input_format) {
-  return GetInputFormatParser().Unparse(input_format);
-}
-
-bool AbslParseFlag(absl::string_view text, OutputFormat* output_format,
-                   std::string* error) {
-  return GetOutputFormatParser().Parse(text, output_format, error);
-}
-
-std::string AbslUnparseFlag(OutputFormat output_format) {
-  return GetOutputFormatParser().Unparse(output_format);
 }
 
 }  // namespace xla

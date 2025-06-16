@@ -16,9 +16,10 @@ func.func @forall_op(%input: tensor<1024x32x2xf32>) -> (tensor<1024x32x2xf32>) {
 }
 // CHECK-DAG: [[CONST_0:%.*]] = arith.constant 0 : index
 // CHECK-DAG: [[CONST_1:%.*]] = arith.constant 1 : index
-// CHECK-DAG: [[CONST_1024:%.*]] = arith.constant 1024 : index
-// CHECK-DAG: [[CONST_32:%.*]] = arith.constant 32 : index
 // CHECK-DAG: [[CONST_2:%.*]] = arith.constant 2 : index
-// CHECK: [[FOR_ALL_0:%.*]] = scf.for {{.*}} = [[CONST_0]] to [[CONST_1024]] step [[CONST_1]]
-// CHECK: [[FOR_ALL_1:%.*]] = scf.for {{.*}} = [[CONST_0]] to [[CONST_32]] step [[CONST_1]]
-// CHECK: [[FOR_ALL_2:%.*]] = scf.for {{.*}} = [[CONST_0]] to [[CONST_2]] step [[CONST_1]]
+// CHECK-DAG: [[CONST_32:%.*]] = arith.constant 32 : index
+// CHECK-DAG: [[CONST_1024:%.*]] = arith.constant 1024 : index
+// CHECK: [[FOR_ALL_0:%.*]] = scf.for [[IV_0:%.*]] = [[CONST_0]] to [[CONST_2]] step [[CONST_1]]
+// CHECK: [[FOR_ALL_1:%.*]] = scf.for [[IV_1:%.*]] = [[CONST_0]] to [[CONST_32]] step [[CONST_1]]
+// CHECK: [[FOR_ALL_2:%.*]] = scf.for [[IV_2:%.*]] = [[CONST_0]] to [[CONST_1024]] step [[CONST_1]]
+// CHECK: tensor.extract {{%.*\[}}[[IV_2]], [[IV_1]], [[IV_0]]{{\]}}

@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.pb.h"
 
@@ -170,7 +171,8 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   // Serializes `Sharding` into `ShardingProto`.
   // Note that `Sharding` serialization uses `SerDes` to handle an open set of
   // `Sharding` subclasses. See `serdes.h`.
-  absl::StatusOr<ShardingProto> ToProto() const;
+  absl::StatusOr<ShardingProto> ToProto(
+      SerDesVersion version = SerDesVersion::current()) const;
 
   // TODO(hyeontaek): Remove this method in favor of AbslStringify.
   virtual std::string DebugString() const = 0;

@@ -20,11 +20,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "tsl/platform/fingerprint.h"
+
+using InstructionFilterFn = absl::FunctionRef<bool(const xla::HloInstruction&)>;
 
 namespace xla {
 
@@ -39,7 +45,7 @@ struct AutotuneConfig {
 
 class Autotuner {
  public:
-  static std::unique_ptr<Autotuner> Create(
+  static absl::StatusOr<std::unique_ptr<Autotuner>> Create(
       std::vector<std::unique_ptr<CodegenBackend>> codegen_backends,
       stream_executor::StreamExecutor* stream_executor,
       std::unique_ptr<Profiler> profiler, AutotuneConfig autotune_config);
@@ -48,7 +54,17 @@ class Autotuner {
   // given HLO instruction and apply the best one.
   absl::Status Autotune(HloInstruction* instr);
 
+  // Autotune all instructions in the module for which the filter function
+  // returns true. The instructions inside fusion computations will be
+  // ignored.
+  absl::Status Autotune(HloModule* module,
+                        const InstructionFilterFn& should_autotune);
+
  private:
+  using InstructionsByFingerprint =
+      absl::flat_hash_map<tsl::Fprint128, std::vector<HloInstruction*>,
+                          tsl::Fprint128Hasher>;
+
   Autotuner(std::vector<std::unique_ptr<CodegenBackend>> codegen_backends,
             stream_executor::StreamExecutor* stream_executor,
             std::unique_ptr<Profiler> profiler, AutotuneConfig autotune_config)
@@ -56,6 +72,12 @@ class Autotuner {
         stream_executor_(stream_executor),
         profiler_(std::move(profiler)),
         autotune_config_(autotune_config) {}
+
+  absl::StatusOr<std::pair<CodegenBackend*, std::unique_ptr<BackendConfig>>>
+  GetBestConfig(HloInstruction* instr);
+
+  InstructionsByFingerprint GetAutotuningCandidates(
+      const HloModule* module, const InstructionFilterFn& should_autotune);
 
   std::vector<std::unique_ptr<CodegenBackend>> codegen_backends_;
   se::StreamExecutor* stream_executor_;

@@ -198,6 +198,7 @@ cc_library(
     visibility = internal_visibility([
         "//xla/backends/profiler/gpu:__pkg__",
         "//xla/tsl/profiler:internal",
+        "//third_party/CoMMA:__pkg__",
     ]),
     deps = [
         "//xla/tsl/platform:types",
@@ -473,6 +474,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/profiler/lib:profiler_session",
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc",

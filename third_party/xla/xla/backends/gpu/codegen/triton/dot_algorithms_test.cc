@@ -18,10 +18,12 @@ limitations under the License.
 #include <cstdint>
 #include <cstdlib>
 #include <initializer_list>
+#include <iostream>
 #include <iterator>
 #include <limits>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -39,6 +41,8 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "xla/autotuning.pb.h"
@@ -60,6 +64,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -447,13 +452,22 @@ TEST_F(Triton6xBF16GemmTest, Emit6xBF16GemmWhenBothInputsAreF32) {
   TF_ASSERT_OK(
       CreateTritonIrAndFileCheckForDot(this, kHloText, "triton_dot", R"(
 CHECK:          %[[INFINITY:.*]] = arith.constant dense<0x7F800000> : tensor<32x32xf32>
-CHECK:          %[[C_MASK:.*]] = arith.constant dense<-65536> : tensor<32x32xi32>
 CHECK:          %[[C0:.*]] = arith.constant dense<0.000000e+00> : tensor<32x32xf32>
-CHECK:          %[[CAST_I32:.*]] = tt.bitcast %{{.*}} : tensor<32x32xf32> -> tensor<32x32xi32>
-CHECK:          %[[EXTRACT_HI:.*]] = arith.andi %[[CAST_I32]], %[[C_MASK]] : tensor<32x32xi32>
-CHECK:          %[[CAST_HI:.*]] = tt.bitcast %[[EXTRACT_HI]] : tensor<32x32xi32> -> tensor<32x32xf32>
-CHECK:          %[[TRUNC_TO_BF16:.*]] = arith.truncf %[[CAST_HI]] : tensor<32x32xf32> to tensor<32x32xbf16>
-CHECK-COUNT-5:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x32xf32>
+CHECK:          %[[LHS_HI_BF16:.*]] = arith.truncf %[[LHS_INPUT:.*]] : tensor<32x32xf32> to tensor<32x32xbf16>
+CHECK:          %[[LHS_HI_F32:.*]] = arith.extf %[[LHS_HI_BF16]] : tensor<32x32xbf16> to tensor<32x32xf32>
+CHECK:          %[[LHS_MED_INPUT_F32:.*]] = arith.subf %[[LHS_INPUT]], %[[LHS_HI_F32]] : tensor<32x32xf32>
+CHECK:          %[[LHS_MED_BF16:.*]] = arith.truncf %[[LHS_MED_INPUT_F32]] : tensor<32x32xf32> to tensor<32x32xbf16>
+CHECK:          %[[LHS_MED_F32:.*]] = arith.extf %[[LHS_MED_BF16]] : tensor<32x32xbf16> to tensor<32x32xf32>
+CHECK:          %[[LHS_LOW_INPUT_F32:.*]] = arith.subf %[[LHS_MED_INPUT_F32]], %[[LHS_MED_F32]] : tensor<32x32xf32>
+CHECK:          %[[LHS_LOW_BF16:.*]] = arith.truncf %[[LHS_LOW_INPUT_F32]] : tensor<32x32xf32> to tensor<32x32xbf16>
+CHECK:          %[[RHS_HI_BF16:.*]] = arith.truncf %[[RHS_INPUT:.*]] : tensor<32x32xf32> to tensor<32x32xbf16>
+CHECK:          %[[RHS_HI_F32:.*]] = arith.extf %[[RHS_HI_BF16]] : tensor<32x32xbf16> to tensor<32x32xf32>
+CHECK:          %[[RHS_MED_INPUT_F32:.*]] = arith.subf %[[RHS_INPUT]], %[[RHS_HI_F32]] : tensor<32x32xf32>
+CHECK:          %[[RHS_MED_BF16:.*]] = arith.truncf %[[RHS_MED_INPUT_F32]] : tensor<32x32xf32> to tensor<32x32xbf16>
+CHECK:          %[[RHS_MED_F32:.*]] = arith.extf %[[RHS_MED_BF16]] : tensor<32x32xbf16> to tensor<32x32xf32>
+CHECK:          %[[RHS_LOW_INPUT_F32:.*]] = arith.subf %[[RHS_MED_INPUT_F32]], %[[RHS_MED_F32]] : tensor<32x32xf32>
+CHECK:          %[[RHS_LOW_BF16:.*]] = arith.truncf %[[RHS_LOW_INPUT_F32]] : tensor<32x32xf32> to tensor<32x32xbf16>
+CHECK-COUNT-5:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x
 CHECK:          %[[ABS:.*]] = math.absf
 CHECK:          %[[CMP:.*]] = arith.cmpf ogt, %[[INFINITY]], %[[ABS]] : tensor<32x32xf32>
 CHECK:          %[[SELECT:.*]] = arith.select %[[CMP]], %{{.*}}, %[[C0]] : tensor<32x32xi1>, tensor<32x32xf32>
@@ -548,12 +562,15 @@ TEST_F(Triton3xBF16GemmTest, Emit3xBF16GemmWhenBothInputsAreF32) {
   TF_ASSERT_OK(
       CreateTritonIrAndFileCheckForDot(this, kHloText, "triton_dot", R"(
 CHECK:          %[[INFINITY:.*]] = arith.constant dense<0x7F800000> : tensor<32x32xf32>
-CHECK:          %[[C_MASK:.*]] = arith.constant dense<-65536> : tensor<32x32xi32>
 CHECK:          %[[C0:.*]] = arith.constant dense<0.000000e+00> : tensor<32x32xf32>
-CHECK:          %[[CAST_I32:.*]] = tt.bitcast %{{.*}} : tensor<32x32xf32> -> tensor<32x32xi32>
-CHECK:          %[[EXTRACT_HI:.*]] = arith.andi %[[CAST_I32]], %[[C_MASK]] : tensor<32x32xi32>
-CHECK:          %[[CAST_HI:.*]] = tt.bitcast %[[EXTRACT_HI]] : tensor<32x32xi32> -> tensor<32x32xf32>
-CHECK:          %[[TRUNC_TO_BF16:.*]] = arith.truncf %[[CAST_HI]] : tensor<32x32xf32> to tensor<32x32xbf16>
+CHECK:          %[[LHS_HI_BF16:.*]] = arith.truncf %[[LHS_INPUT:.*]] : tensor<32x32xf32> to tensor<32x32xbf16>
+CHECK:          %[[LHS_HI_F32:.*]] = arith.extf %[[LHS_HI_BF16]] : tensor<32x32xbf16> to tensor<32x32xf32>
+CHECK:          %[[LHS_LOW_INPUT_F32:.*]] = arith.subf %[[LHS_INPUT]], %[[LHS_HI_F32]] : tensor<32x32xf32>
+CHECK:          %[[LHS_LOW_BF16:.*]] = arith.truncf %[[LHS_LOW_INPUT_F32]] : tensor<32x32xf32> to tensor<32x32xbf16>
+CHECK:          %[[RHS_HI_BF16:.*]] = arith.truncf %[[RHS_INPUT:.*]] : tensor<32x32xf32> to tensor<32x32xbf16>
+CHECK:          %[[RHS_HI_F32:.*]] = arith.extf %[[RHS_HI_BF16]] : tensor<32x32xbf16> to tensor<32x32xf32>
+CHECK:          %[[RHS_LOW_INPUT_F32:.*]] = arith.subf %[[RHS_INPUT]], %[[RHS_HI_F32]] : tensor<32x32xf32>
+CHECK:          %[[RHS_LOW_BF16:.*]] = arith.truncf %[[RHS_LOW_INPUT_F32]] : tensor<32x32xf32> to tensor<32x32xbf16>
 CHECK-COUNT-2:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x32xf32>
 CHECK:          %[[ABS:.*]] = math.absf
 CHECK:          %[[CMP:.*]] = arith.cmpf ogt, %[[INFINITY]], %[[ABS]] : tensor<32x32xf32>
@@ -1489,12 +1506,26 @@ std::vector<const Literal*> GetLiteralPointers(
   return fake_argument_ptrs;
 }
 
+enum class Backend { kTriton, kBlas };
+
+std::string BackendToString(Backend backend) {
+  switch (backend) {
+    case Backend::kTriton:
+      return "triton";
+    case Backend::kBlas:
+      return "blas";
+    default:
+      CHECK(false) << "Uncovered backend. Please fix.";
+  }
+}
+
 // Returns the maximum relative error for the algorithm, assuming that the
 // majority of the error comes from rounding to narrower type, and not error
 // due to floating point arithmetic calculation. I.e., we assume that:
 //    <contracting dimension> << <narrowing error> / <fp arithmetic error>
 // E.g., for BF16xBF16 -> F32, this would mean k << 2^-7 / 2^-23 = 64k
-double GetMaxRelErrorForSmallContractingDim(PC::Algorithm algorithm) {
+double GetMaxRelErrorForSmallContractingDim(Backend backend,
+                                            PC::Algorithm algorithm) {
   // With `ulp` denoting the "unit in the last place", and proper floating point
   // implementation, the test does k multiplications and then k-1 additions per
   // output element. However, we also get an initial error per element due to
@@ -1523,19 +1554,37 @@ double GetMaxRelErrorForSmallContractingDim(PC::Algorithm algorithm) {
   //
   // Thus, they do not actually depend on k, since f32 has much higher precision
   // than the rounding mode.
-  const absl::flat_hash_map<PC::Algorithm, double> kMaxMeanRelError = {
+  const absl::flat_hash_map<PC::Algorithm, double> kMaxMeanRelErrorTriton = {
       {PC::ALG_DOT_BF16_BF16_F32, 1.6e-2},
       {PC::ALG_DOT_TF32_TF32_F32, 2.0e-3},
       // TODO: b/407744579 - Understand what the expected error is with various
       // precision-recovering algorithms. For now we just use the errors that
       // we got assuming that the implementation is correct.
-      {PC::ALG_DOT_BF16_BF16_F32_X3, 3e-5},
-      {PC::ALG_DOT_BF16_BF16_F32_X6, 4e-7},
-      {PC::ALG_DOT_BF16_BF16_F32_X9, 4e-7},
+      {PC::ALG_DOT_BF16_BF16_F32_X3, 7.9e-6},
+      {PC::ALG_DOT_BF16_BF16_F32_X6, 1.3e-7},
+      {PC::ALG_DOT_BF16_BF16_F32_X9, 1.2e-7},
       {PC::ALG_DOT_TF32_TF32_F32_X3, 5e-7}};
-  auto max_rel_error_it = kMaxMeanRelError.find(algorithm);
-  CHECK(max_rel_error_it != kMaxMeanRelError.end());
-  return max_rel_error_it->second;
+
+  const absl::flat_hash_map<PC::Algorithm, double> kMaxMeanRelErrorBlas = {
+      {PC::ALG_DOT_BF16_BF16_F32, 3.3e-3},
+      {PC::ALG_DOT_TF32_TF32_F32, 4.1e-4},
+      {PC::ALG_DOT_BF16_BF16_F32_X3, 2.4e-5},
+      {PC::ALG_DOT_TF32_TF32_F32_X3, 5e-7},
+      {PC::ALG_DOT_BF16_BF16_F32_X6, 1.6e-7},
+      {PC::ALG_DOT_BF16_BF16_F32_X9, 6e-8}};
+  if (backend == Backend::kTriton) {
+    auto max_rel_error_it = kMaxMeanRelErrorTriton.find(algorithm);
+    CHECK(max_rel_error_it != kMaxMeanRelErrorTriton.end());
+    return max_rel_error_it->second;
+  }
+
+  if (backend == Backend::kBlas) {
+    auto max_rel_error_it = kMaxMeanRelErrorBlas.find(algorithm);
+    CHECK(max_rel_error_it != kMaxMeanRelErrorBlas.end());
+    return max_rel_error_it->second;
+  }
+
+  CHECK(false) << "Uncovered backend. Please fix.";
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -1548,13 +1597,122 @@ INSTANTIATE_TEST_SUITE_P(
          PC::ALG_DOT_TF32_TF32_F32_X3, PC::ALG_DOT_F64_F64_F64, PC::ALG_UNSET}),
     AlgorithmTestParamToString);
 
-class PrecisionTestsForTriton : public TritonAlgorithmTest,
-                                public NumericTestsArguments,
-                                public WithParamInterface<PC::Algorithm> {
+template <typename T>
+void PrintHistogram(absl::string_view name, absl::Span<T> values,
+                    const std::vector<double>& expected_values) {
+  // Build the histogram of the relative differences.
+  std::vector<double> rel_errors;
+  rel_errors.reserve(values.size());
+  for (int i = 0; i < values.size(); ++i) {
+    double rel_difference =
+        ((double)values[i] - expected_values[i]) / std::abs(expected_values[i]);
+    rel_errors.push_back(rel_difference);
+  }
+  double max_rel_error =
+      *std::max_element(rel_errors.begin(), rel_errors.end());
+  double min_rel_error =
+      *std::min_element(rel_errors.begin(), rel_errors.end());
+  double rel_error_range = max_rel_error - min_rel_error;
+  constexpr int kNumBins = 40;
+  double bin_width = rel_error_range / kNumBins;
+  std::vector<int> histogram(kNumBins, 0);
+  double rel_error_sum = 0.0;
+  for (int i = 0; i < rel_errors.size(); ++i) {
+    rel_error_sum += rel_errors[i];
+    int bin = static_cast<int>((rel_errors[i] - min_rel_error) / bin_width);
+    if (bin >= kNumBins) {
+      bin = kNumBins - 1;
+    }
+    histogram[bin]++;
+  }
+  int samples_count = values.size();
+  int bar_width = 200;
+  int64_t samples = 0;
+  double mean_rel_error = rel_error_sum / values.size();
+  bool median_found = false;
+  std::tuple<int, double, double> median_bin;
+  for (int i = 0; i < kNumBins; ++i) {
+    samples += histogram[i];
+    double bin_start = min_rel_error + i * bin_width;
+    double bin_end = min_rel_error + (i + 1) * bin_width;
+    std::string bar =
+        std::string(histogram[i] * bar_width / samples_count, '*');
+    if (!median_found && samples >= samples_count / 2) {
+      median_bin = std::make_tuple(i, bin_start, bin_end);
+      median_found = true;
+      bar += " <--- median";
+    }
+    if (mean_rel_error >= bin_start && mean_rel_error < bin_end) {
+      bar += " <--- mean";
+    }
+    if (bin_start <= 0.0 && bin_end >= 0.0) {
+      bar += " <--- zero";
+    }
+    std::string line =
+        absl::StrFormat("%2d: [% 1.3e, % 1.3e) %7d %s\n", i, bin_start, bin_end,
+                        histogram[i], bar.c_str());
+    std::cerr << "hist: " << line;
+  }
+  std::cerr << "stats: " << name << " "
+            << absl::StrFormat("min rel error, %1.3e\n", min_rel_error);
+  std::cerr << "stats: " << name << " "
+            << absl::StrFormat("max rel error, %1.3e\n", max_rel_error);
+  std::cerr << "stats: " << name << " "
+            << absl::StrFormat(
+                   "max abs rel error, %1.3e\n",
+                   std::max(std::abs(min_rel_error), std::abs(max_rel_error)));
+  std::cerr << "stats: " << name << " "
+            << absl::StrFormat("rel error range, %1.3e\n",
+                               max_rel_error - min_rel_error);
+  std::cerr << "stats: " << name << " "
+            << absl::StrFormat("median bin, %d [%1.3e - %1.3e)\n",
+                               std::get<0>(median_bin), std::get<1>(median_bin),
+                               std::get<2>(median_bin));
+  std::cerr << "stats: " << name << " "
+            << absl::StrFormat("mean rel error, %1.3e\n", mean_rel_error);
+}
+
+class PrecisionTests
+    : public AlgorithmTest,
+      public NumericTestsArguments,
+      public WithParamInterface<::testing::tuple<PC::Algorithm, Backend>> {
+ public:
  protected:
+  std::vector<double> RunReferenceDot(
+      const std::vector<const Literal*>& fake_argument_ptrs, int m_size,
+      int n_size, int k_size) {
+    absl::Time start = absl::Now();
+    std::vector<double> ref_result(m_size * n_size, 0.0);
+    auto lhs = fake_argument_ptrs[0]->data<float>();
+    auto rhs = fake_argument_ptrs[1]->data<float>();
+    for (int m = 0; m < m_size; ++m) {
+      for (int n = 0; n < n_size; ++n) {
+        for (int k = 0; k < k_size; ++k) {
+          double lhs_val = lhs[m * k_size + k];
+          double rhs_val = rhs[n * k_size + k];
+          ref_result[m * n_size + n] += lhs_val * rhs_val;
+        }
+      }
+    }
+    auto duration = absl::Now() - start;
+    std::cerr << "Reference dot took " << duration << " for " << m_size << "x"
+              << n_size << "x" << k_size << "\n";
+    return ref_result;
+  }
+
+  absl::Status CheckGemmPattern(const HloModule& module,
+                                absl::string_view pattern) {
+    TF_ASSIGN_OR_RETURN(bool ok, RunFileCheck(module.ToString(), pattern));
+    if (!ok) {
+      return absl::InternalError(
+          absl::StrCat("The module does not contain the pattern: ", pattern));
+    }
+    return absl::OkStatus();
+  }
+
   absl::StatusOr<std::unique_ptr<HloModule>> GetSimpleDotModule(
       int lhs_outer_dim, int rhs_outer_dim, int contracting_dim,
-      PC::Algorithm algorithm) {
+      PC::Algorithm algorithm, Backend backend) {
     std::string hlo_text = absl::StrReplaceAll(
         kHloTextPattern, {{"${test_name}", HloModuleTestName()},
                           {"${m}", absl::StrCat(lhs_outer_dim)},
@@ -1562,12 +1720,25 @@ class PrecisionTestsForTriton : public TritonAlgorithmTest,
                           {"${k}", absl::StrCat(contracting_dim)},
                           {"${algorithm}", AlgorithmToString(algorithm)}});
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                        GetOptimizedModule(hlo_text));
-    TF_ASSIGN_OR_RETURN(
-        bool ok, RunFileCheck(module->ToString(), "CHECK: __triton_gemm"));
-    if (!ok) {
-      return absl::InternalError(
-          "The module does not contain the pattern __triton_gemm.");
+                        ParseAndReturnVerifiedModule(hlo_text));
+    auto debug_options = module->config().debug_options();
+    if (backend == Backend::kTriton) {
+      debug_options.set_xla_gpu_enable_triton_gemm(true);
+      debug_options.set_xla_gpu_cublas_fallback(false);
+    } else if (backend == Backend::kBlas) {
+      debug_options.set_xla_gpu_enable_triton_gemm(false);
+      debug_options.set_xla_gpu_cublas_fallback(true);
+    } else {
+      return absl::InvalidArgumentError("Invalid backend");
+    }
+    module->mutable_config().set_debug_options(debug_options);
+    TF_ASSIGN_OR_RETURN(module, GetOptimizedModule(std::move(module)));
+    if (backend == Backend::kTriton) {
+      TF_RETURN_IF_ERROR(CheckGemmPattern(*module, "CHECK: __triton_gemm"));
+    } else if (backend == Backend::kBlas) {
+      TF_RETURN_IF_ERROR(CheckGemmPattern(*module, "CHECK: __cublas$gemm"));
+    } else {
+      return absl::InvalidArgumentError("Invalid backend");
     }
     return module;
   }
@@ -1578,14 +1749,25 @@ class PrecisionTestsForTriton : public TritonAlgorithmTest,
 
     ENTRY main {
       p0 = f32[${m},${k}]{1,0} parameter(0)
-      p1 = f32[${k},${n}]{1,0} parameter(1)
+      p1 = f32[${n},${k}]{1,0} parameter(1)
       ROOT %dot = f32[${m},${n}]{1,0} dot(p0, p1),
         lhs_contracting_dims={1},
-        rhs_contracting_dims={0},
+        rhs_contracting_dims={1},
         algorithm=${algorithm}
     }
   )";
 };
+
+using ::testing::Combine;
+using ::testing::Values;
+
+std::string AlgorithmAndBackendTestParamToString(
+    const TestParamInfo<::testing::tuple<PC::Algorithm, Backend>>& info) {
+  PC::Algorithm algorithm = std::get<0>(info.param);
+  Backend backend = std::get<1>(info.param);
+  return absl::StrCat(BackendToString(backend), "_",
+                      AlgorithmToString(algorithm));
+}
 
 MATCHER_P(RelativeDifferenceIsWithin, max_rel_difference, "") {
   double got = std::get<0>(arg);
@@ -1597,24 +1779,22 @@ MATCHER_P(RelativeDifferenceIsWithin, max_rel_difference, "") {
   return rel_difference <= max_rel_difference;
 }
 
-TEST_P(PrecisionTestsForTriton, PrecisionCheck) {
+TEST_P(PrecisionTests, PrecisionCheck) {
   if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
     GTEST_SKIP() << "Precision tests is unknown for ROCM.";
   }
 
-  PC::Algorithm algorithm = GetParam();
+  PC::Algorithm algorithm = std::get<0>(GetParam());
+  Backend backend = std::get<1>(GetParam());
   // Use small contracting dimensions to avoid false-negatives due to changing
   // contracting dimension tiling factors.
   constexpr int kLhsOuterDim = 1024;
   constexpr int kRhsOuterDim = 1024;
   constexpr int kContractingDim = 8;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> test_module,
-                          GetSimpleDotModule(kLhsOuterDim, kRhsOuterDim,
-                                             kContractingDim, algorithm));
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> ref_module,
-      GetSimpleDotModule(kLhsOuterDim, kRhsOuterDim, kContractingDim,
-                         PC::ALG_DOT_F32_F32_F32));
+      std::unique_ptr<HloModule> test_module,
+      GetSimpleDotModule(kLhsOuterDim, kRhsOuterDim, kContractingDim, algorithm,
+                         backend));
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> fake_arguments,
       MakeFakeArguments(test_module.get(), /*pseudo_random=*/true,
@@ -1626,29 +1806,42 @@ TEST_P(PrecisionTestsForTriton, PrecisionCheck) {
   MakeNonNegative(fake_arguments);
   std::vector<const Literal*> fake_argument_ptrs =
       GetLiteralPointers(fake_arguments);
-  TF_ASSERT_OK_AND_ASSIGN(
-      Literal ref_result,
-      test_runner().Execute(std::move(ref_module), fake_argument_ptrs,
-                            /*run_hlo_passes=*/false));
-
+  std::vector<double> ref_result = RunReferenceDot(
+      fake_argument_ptrs, kLhsOuterDim, kRhsOuterDim, kContractingDim);
+  TF_ASSERT_OK_AND_ASSIGN(auto executable, test_runner().CreateExecutable(
+                                               std::move(test_module), false));
   TF_ASSERT_OK_AND_ASSIGN(
       Literal test_result,
-      test_runner().Execute(std::move(test_module), fake_argument_ptrs,
-                            /*run_hlo_passes=*/false));
-
-  EXPECT_THAT(llvm::zip(test_result.data<float>(), ref_result.data<float>()),
+      test_runner().ExecuteWithExecutable(executable.get(), fake_arguments));
+  ExecutionProfile profile;
+  std::vector<uint64_t> profile_times;
+  profile_times.reserve(100);
+  for (int i = 0; i < 100; ++i) {
+    TF_ASSERT_OK_AND_ASSIGN(Literal test_result,
+                            test_runner().ExecuteWithExecutable(
+                                executable.get(), fake_arguments, &profile));
+    profile_times.push_back(profile.compute_time_ns());
+  }
+  auto min_time = *std::min_element(profile_times.begin(), profile_times.end());
+  std::cerr << "\n";
+  auto name =
+      absl::StrCat(BackendToString(backend), "_", AlgorithmToString(algorithm));
+  PrintHistogram(name, test_result.data<float>(), ref_result);
+  std::cerr << "stats: " << name << " min execution time, " << min_time
+            << "ns\n";
+  std::cerr << "stats: \n";
+  EXPECT_THAT(llvm::zip(test_result.data<float>(), ref_result),
               ::testing::Each(RelativeDifferenceIsWithin(
-                  GetMaxRelErrorForSmallContractingDim(algorithm))));
+                  GetMaxRelErrorForSmallContractingDim(backend, algorithm))));
 }
 
-INSTANTIATE_TEST_SUITE_P(PrecisionTestsForTriton, PrecisionTestsForTriton,
-                         ::testing::ValuesIn({PC::ALG_DOT_TF32_TF32_F32,
-                                              PC::ALG_DOT_TF32_TF32_F32_X3,
-                                              PC::ALG_DOT_BF16_BF16_F32,
-                                              PC::ALG_DOT_BF16_BF16_F32_X3,
-                                              PC::ALG_DOT_BF16_BF16_F32_X6,
-                                              PC::ALG_DOT_BF16_BF16_F32_X9}),
-                         AlgorithmTestParamToString);
+INSTANTIATE_TEST_SUITE_P(
+    PrecisionTests, PrecisionTests,
+    Combine(Values(PC::ALG_DOT_TF32_TF32_F32, PC::ALG_DOT_TF32_TF32_F32_X3,
+                   PC::ALG_DOT_BF16_BF16_F32, PC::ALG_DOT_BF16_BF16_F32_X3,
+                   PC::ALG_DOT_BF16_BF16_F32_X6, PC::ALG_DOT_BF16_BF16_F32_X9),
+            Values(Backend::kTriton, Backend::kBlas)),
+    AlgorithmAndBackendTestParamToString);
 
 }  // namespace
 }  // namespace gpu

@@ -27,7 +27,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/common/tf_lift_as_function_call.h"
+#include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/cc/io.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_config.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -36,10 +36,6 @@ limitations under the License.
 namespace mlir::quant::stablehlo {
 namespace {
 
-using ::mlir::tf_quant::GetQuantizationMethod;
-using ::mlir::tf_quant::kCompositeFuncPrefix;
-using ::mlir::tf_quant::kOriginalStablehloEntryFunctionAttrName;
-using ::mlir::tf_quant::kQuantizedFuncPrefix;
 using ::stablehlo::quantization::Method;
 using ::stablehlo::quantization::QuantizationResult;
 using ::stablehlo::quantization::QuantizationResults;

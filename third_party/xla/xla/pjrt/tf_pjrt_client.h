@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
@@ -49,7 +50,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/errors.h"
 
 namespace xla {
 
@@ -216,7 +216,7 @@ class TfPjRtClient : public PjRtClient {
   absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
       PjRtLocalDeviceId local_device_id) const override {
     if (wrapped_ == nullptr) {
-      return tsl::errors::Internal(
+      return absl::InternalError(
           "Wrapped PJRT client in TfPjRtClient is already destroyed.");
     }
     return wrapped_->LookupAddressableDevice(local_device_id);

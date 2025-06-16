@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/emitters/emitter_base.h"

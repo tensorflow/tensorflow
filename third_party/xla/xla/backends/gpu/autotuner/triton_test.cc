@@ -104,7 +104,8 @@ TEST_F(TritonBackendTest, GetSupportedConfigsForUnsupportedInstruction) {
                                           ->root_instruction();
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(*unsupported_instr, nullptr);
-  EXPECT_THAT(configs, StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(configs, IsOk());
+  EXPECT_THAT(configs.value(), testing::IsEmpty());
 }
 
 TEST_F(TritonBackendTest, GetDefaultConfig) {

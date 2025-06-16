@@ -153,8 +153,7 @@ TEST(SharedMemoryUseTest, ArrayReversalWorks) {
   VLOG(1) << "Using " << buffer_size_bytes << " bytes of shared memory";
 
   std::unique_ptr<stream_executor::Kernel> kernel =
-      CreateKernel("dyn_shmem_kernel", /*num_args=*/3, kPTX,
-                   /*cubin_data=*/{}, executor,
+      CreateKernel("dyn_shmem_kernel", /*num_args=*/3, kPTX, executor,
                    /*shared_mem_bytes=*/buffer_size_bytes)
           .value();
 

@@ -304,30 +304,35 @@ void HloLivenessAnalysis::RunAnalysis() {
     worklist.pop_front();
     workset.erase(workset.find(instruction));
     VLOG(1) << "VISIT instruction: " << instruction->name();
-
-    if (instruction->opcode() == HloOpcode::kTuple) {
-      PropagateLivenessThroughTuple(instruction, &live_index_map_, &worklist,
+    switch (instruction->opcode()) {
+      case HloOpcode::kTuple:
+        PropagateLivenessThroughTuple(instruction, &live_index_map_, &worklist,
+                                      &workset);
+        break;
+      case HloOpcode::kGetTupleElement:
+        PropagateLivenessThroughGTE(instruction, &live_index_map_, &worklist,
                                     &workset);
-    } else if (instruction->opcode() == HloOpcode::kGetTupleElement) {
-      PropagateLivenessThroughGTE(instruction, &live_index_map_, &worklist,
-                                  &workset);
-    } else if (instruction->opcode() == HloOpcode::kWhile) {
-      PropagateLivenessThroughWhile(instruction, &live_index_map_, &worklist,
-                                    &workset);
-    } else if (instruction->opcode() == HloOpcode::kParameter) {
-      PropagateLivenessToParameterCallers(instruction, &live_index_map_,
-                                          &worklist, &workset,
-                                          call_graph_.get());
-    } else {
-      // Propagate liveness to called computations.
-      for (auto* called_computation : instruction->called_computations()) {
-        MarkLiveAtAllIndices(called_computation->root_instruction(),
-                             &live_index_map_, &worklist, &workset);
-      }
-      // Propagate liveness to operands.
-      for (HloInstruction* operand : instruction->operands()) {
-        MarkLiveAtAllIndices(operand, &live_index_map_, &worklist, &workset);
-      }
+        break;
+      case HloOpcode::kWhile:
+        PropagateLivenessThroughWhile(instruction, &live_index_map_, &worklist,
+                                      &workset);
+        break;
+      case HloOpcode::kParameter:
+        PropagateLivenessToParameterCallers(instruction, &live_index_map_,
+                                            &worklist, &workset,
+                                            call_graph_.get());
+        break;
+      default:
+        // Propagate liveness to called computations.
+        for (auto* called_computation : instruction->called_computations()) {
+          MarkLiveAtAllIndices(called_computation->root_instruction(),
+                               &live_index_map_, &worklist, &workset);
+        }
+        // Propagate liveness to operands.
+        for (HloInstruction* operand : instruction->operands()) {
+          MarkLiveAtAllIndices(operand, &live_index_map_, &worklist, &workset);
+        }
+        break;
     }
     PropagateLivenessThroughControlFlow(instruction, &live_index_map_,
                                         &worklist, &workset, call_graph_.get());

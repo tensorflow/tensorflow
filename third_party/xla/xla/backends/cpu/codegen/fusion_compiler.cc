@@ -151,6 +151,7 @@ static void AddLoweringPasses(mlir::OpPassManager& pm, int32_t vector_width) {
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::createCSEPass());
 
+  pm.addNestedPass<mlir::func::FuncOp>(cpu::CreateExpandFloatOpsPass());
   pm.addPass(emitters::CreateExpandFloatOpsPass());
   pm.addPass(emitters::CreateEraseDeadFunctionsPass());
   pm.addPass(mlir::createLowerAffinePass());

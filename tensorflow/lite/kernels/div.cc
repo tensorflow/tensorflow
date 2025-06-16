@@ -250,15 +250,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     // activation min/max value if any or std::numeric_limits<float>::min/max.
     EvalDiv<kernel_type>(context, node, params, data, input1, input2, output);
   } else if (output->type == kTfLiteInt32) {
-    CheckNonZero<int32_t>(context, input2);
+    TF_LITE_ENSURE_OK(context, CheckNonZero<int32_t>(context, input2));
     EvalDiv<kernel_type>(context, node, params, data, input1, input2, output);
   } else if (output->type == kTfLiteUInt8) {
-    CheckNonZero<uint8_t>(context, input2);
+    TF_LITE_ENSURE_OK(context, CheckNonZero<uint8_t>(context, input2));
     TF_LITE_ENSURE_OK(
         context, EvalQuantized<kernel_type>(context, node, params, data, input1,
                                             input2, output));
   } else if (output->type == kTfLiteInt8) {
-    CheckNonZero<int8_t>(context, input2);
+    TF_LITE_ENSURE_OK(context, CheckNonZero<int8_t>(context, input2));
     TF_LITE_ENSURE_OK(
         context, EvalQuantized<kernel_type>(context, node, params, data, input1,
                                             input2, output));

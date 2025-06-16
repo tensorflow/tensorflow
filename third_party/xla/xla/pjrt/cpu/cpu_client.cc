@@ -1007,6 +1007,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuClient::DefineBuffer(
 absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
 PjRtCpuClient::AllocateRawBuffer(PjRtMemorySpace* memory_space,
                                  size_t on_device_bytes_count,
+                                 bool retry_on_oom,
                                  tsl::AsyncValueRef<bool> allocate_after) {
   CHECK(allocate_after == nullptr) << "allocate_after is not supported for "
                                       "PjRtCpuClient.";
@@ -1085,8 +1086,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuBuffer::CopyToMemorySpace(
 
   return std::unique_ptr<PjRtBuffer>(std::make_unique<PjRtCpuBuffer>(
       on_device_shape_, std::move(tracked_device_buffer), client(),
-      tsl::down_cast<PjRtCpuDevice*>(dst_device),
-      *dst_device->default_memory_space()));
+      tsl::down_cast<PjRtCpuDevice*>(dst_device), dst_memory_space));
 }
 
 PjRtCpuExecutable::PjRtCpuExecutable(

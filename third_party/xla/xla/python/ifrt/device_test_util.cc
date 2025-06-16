@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/test_util.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
 
@@ -142,16 +141,17 @@ std::shared_ptr<MockClient> MakeDeviceTestClient(int num_devices,
 
 }  // namespace
 
-void DeviceTest::SetUp() {
-  const auto [num_devices, num_addressable_devices] = GetParam();
+DeviceTestFixture::DeviceTestFixture(const DeviceTestParam& param) {
+  const auto& [num_devices, num_addressable_devices] = param;
   client_ = MakeDeviceTestClient(num_devices, num_addressable_devices);
 }
 
-DeviceListRef DeviceTest::GetDevices(absl::Span<const int> device_indices) {
+DeviceListRef DeviceTestFixture::GetDevices(
+    absl::Span<const int> device_indices) {
   return test_util::GetDevices(client_.get(), device_indices).value();
 }
 
-DeviceListRef DeviceTest::GetAddressableDevices(
+DeviceListRef DeviceTestFixture::GetAddressableDevices(
     absl::Span<const int> device_indices) {
   return test_util::GetAddressableDevices(client_.get(), device_indices)
       .value();

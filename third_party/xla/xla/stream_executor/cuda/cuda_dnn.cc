@@ -47,17 +47,20 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "third_party/cudnn_frontend/include/cudnn_frontend/graph_interface.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend/graph_properties.h"
 #include "Eigen/Core"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
+#include "third_party/gpus/cudnn/cudnn_graph.h"
 #include "xla/stream_executor/activate_context.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/cudnn_frontend_helpers.h"
 #include "xla/stream_executor/data_type.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/numeric_options.h"
@@ -66,13 +69,11 @@ limitations under the License.
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/env_var.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/tensor_float_32_utils.h"
 
 // clang-format off
@@ -1960,7 +1961,7 @@ absl::Status CreateRnnTempSpace(
         /*reserveSpaceSize=*/&reserve_space_size_in_bytes));
   } else {
 #if CUDNN_VERSION >= 90000
-    return tsl::errors::Internal(
+    return absl::InternalError(
         "Sequence lengths for RNN are required from CUDNN 9.0+");
 #else
     RETURN_IF_CUDNN_ERROR(cudnnGetRNNWorkspaceSize(
@@ -2125,7 +2126,7 @@ absl::Status CudnnSupport::DoRnnForwardImpl(
         /*reserveSpace=*/reserve_space.opaque()));
   } else {
 #if CUDNN_VERSION >= 90000
-    return tsl::errors::Internal(
+    return absl::InternalError(
         "Sequence lengths for RNN are required from CUDNN 9.0+");
 #else
     if (!is_training) {
@@ -2264,7 +2265,7 @@ absl::Status CudnnSupport::DoRnnBackwardImpl(
     }
   } else {
 #if CUDNN_VERSION >= 90000
-    return tsl::errors::Internal(
+    return absl::InternalError(
         "Sequence lengths for RNN are required from CUDNN 9.0+");
 #else
     RETURN_IF_CUDNN_ERROR(cudnnRNNBackwardData(
@@ -3567,7 +3568,7 @@ absl::StatusOr<dnn::DataType> PrimitiveTypeStringToDnnType(
   } else if (data_type_string == "f32") {
     return dnn::DataType::kFloat;
   } else {
-    return tsl::errors::Internal("Unsupported primitive type.");
+    return absl::InternalError("Unsupported primitive type.");
   }
 }
 
@@ -3602,7 +3603,7 @@ OpNameStringToOperandKindAndMode(std::string opstring) {
                                 CUDNN_REDUCE_TENSOR_AMAX)
 #undef KINDS_AND_MODE_FROM_OP_STRING
 
-  return tsl::errors::Internal("Unknown op.");
+  return absl::InternalError("Unknown op.");
 }
 
 // Struct describing the convolution, pointwise and reduction ops in the
@@ -3636,7 +3637,7 @@ class OpGraph {
           ops_.begin(), ops_.end(),
           [operand_uid](OpDescriptor op) { return op.uid == operand_uid; });
       if (it == ops_.end()) {
-        return tsl::errors::Internal("Unknown ID.");
+        return absl::InternalError("Unknown ID.");
       }
       it->is_virtual = true;
     }
@@ -3647,14 +3648,14 @@ class OpGraph {
     auto it = std::find_if(ops_.begin(), ops_.end(),
                            [uid](OpDescriptor op) { return op.uid == uid; });
     if (it == ops_.end()) {
-      return tsl::errors::Internal("Unknown ID.");
+      return absl::InternalError("Unknown ID.");
     }
     return *it;
   }
 
   absl::StatusOr<OpDescriptor> OpDescriptorAt(int index) const {
     if (index >= Size()) {
-      return tsl::errors::Internal("Index exceeds bounds.");
+      return absl::InternalError("Index exceeds bounds.");
     }
     return ops_[index];
   }
@@ -3663,7 +3664,7 @@ class OpGraph {
     auto it = std::find_if(ops_.begin(), ops_.end(),
                            [uid](OpDescriptor op) { return op.uid == uid; });
     if (it == ops_.end()) {
-      return tsl::errors::Internal("Unknown ID.");
+      return absl::InternalError("Unknown ID.");
     }
     it->sequence_index = index;
     return absl::OkStatus();
@@ -3725,7 +3726,7 @@ GetGenericCudnnOperationGraph(
       }
 
       if (serialized_graph[l + 1] != ';') {
-        return tsl::errors::Internal(
+        return absl::InternalError(
             "Unexpected character in graph serialization.");
       }
       pos = l + 2;
@@ -3735,11 +3736,11 @@ GetGenericCudnnOperationGraph(
       TensorKind binary_operand_kind, output_kind;
       if (op_string == "conv") {
         if (!op_graph.Empty()) {
-          return tsl::errors::Internal(
+          return absl::InternalError(
               "The graph must not contain more than one convolution op.");
         }
         if (!operands.empty()) {
-          return tsl::errors::Internal(
+          return absl::InternalError(
               "Convolution op must not have operands in the graph.");
         }
         binary_operand_kind = TensorKind::kNone;
@@ -3749,11 +3750,11 @@ GetGenericCudnnOperationGraph(
                    : CUDNN_CROSS_CORRELATION;
       } else {
         if (op_graph.Empty()) {
-          return tsl::errors::Internal(
+          return absl::InternalError(
               "The first op in the graph must be a convolution.");
         }
         if (operands.empty()) {
-          return tsl::errors::Internal(
+          return absl::InternalError(
               "Non-convolution op must have one or more operands in the "
               "graph.");
         }
@@ -3768,7 +3769,7 @@ GetGenericCudnnOperationGraph(
 
   TF_ASSIGN_OR_RETURN(OpGraph op_graph, deserialize_cudnn_graph());
   if (op_graph.Empty()) {
-    return tsl::errors::Internal("No supported ops in convolution graph.");
+    return absl::InternalError("No supported ops in convolution graph.");
   }
 
   std::vector<int64_t> virtual_uids, operand_uids, output_uids;
@@ -4294,8 +4295,9 @@ GetCudnnFusedOperationGraph(
       RETURN_MSG_IF_CUDNN_ERROR(*act_desc);
       break;
     default:
-      return tsl::errors::Internal("Unimplemented activation mode ",
-                                   dnn::ActivationModeString(activation_mode));
+      return absl::InternalError(
+          absl::StrCat("Unimplemented activation mode ",
+                       dnn::ActivationModeString(activation_mode)));
   }
 
   std::optional<cudnn_frontend::Operation_v8> act_op;
@@ -4441,8 +4443,9 @@ GetCudnnFusedMatmulGraph(dnn::DataType input_type, dnn::DataType bias_type,
       cudnn_activation_mode = CUDNN_POINTWISE_SIGMOID_FWD;
       break;
     default:
-      return tsl::errors::Internal("Unimplemented activation mode ",
-                                   dnn::ActivationModeString(activation_mode));
+      return absl::InternalError(
+          absl::StrCat("Unimplemented activation mode ",
+                       dnn::ActivationModeString(activation_mode)));
   }
 
   auto act_desc = cudnn_frontend::PointWiseDescBuilder()
@@ -5569,8 +5572,8 @@ absl::Status CudnnSupport::DoPrepareForConvolution(
       break;
     }
     default:
-      return tsl::errors::Internal("Unexpected convolution kind ",
-                                   static_cast<int>(kind));
+      return absl::InternalError(
+          absl::StrCat("Unexpected convolution kind ", static_cast<int>(kind)));
   }
 
   return absl::OkStatus();
@@ -5717,7 +5720,7 @@ absl::StatusOr<dnn::AlgorithmDesc> ExecutionPlanToAlgorithmDesc(
                              CUDNN_ATTR_EXECUTION_PLAN_ENGINE_CONFIG,
                              CUDNN_BACKEND_ENGINECFG_DESCRIPTOR));
   if (engine_cfgs.size() != 1) {
-    return tsl::errors::Internal(
+    return absl::InternalError(
         "CUDNN_ATTR_EXECUTION_PLAN_ENGINE_CONFIG had more than one element.");
   }
 
@@ -5726,7 +5729,7 @@ absl::StatusOr<dnn::AlgorithmDesc> ExecutionPlanToAlgorithmDesc(
       GetDescriptorAttribute(engine_cfgs[0].get(), CUDNN_ATTR_ENGINECFG_ENGINE,
                              CUDNN_BACKEND_ENGINE_DESCRIPTOR));
   if (engines.size() != 1) {
-    return tsl::errors::Internal(
+    return absl::InternalError(
         "CUDNN_ATTR_ENGINECFG_ENGINE had more than one element.");
   }
 
@@ -5766,21 +5769,21 @@ absl::StatusOr<dnn::AlgorithmDesc> ExecutionPlanToAlgorithmDesc(
         cudnnBackendGetAttribute(knob.get(), CUDNN_ATTR_KNOB_CHOICE_KNOB_TYPE,
                                  CUDNN_TYPE_KNOB_TYPE, 1, &n, &knob_type));
     if (n != 1) {
-      return tsl::errors::Internal(
-          "Knob should have exactly one KNOB_TYPE; had ", n);
+      return absl::InternalError(
+          absl::StrCat("Knob should have exactly one KNOB_TYPE; had ", n));
     }
 
     RETURN_IF_CUDNN_ERROR(
         cudnnBackendGetAttribute(knob.get(), CUDNN_ATTR_KNOB_CHOICE_KNOB_VALUE,
                                  CUDNN_TYPE_INT64, 1, &n, &knob_value));
     if (n != 1) {
-      return tsl::errors::Internal(
-          "Knob should have exactly one KNOB_VALUE; had ", n);
+      return absl::InternalError(
+          absl::StrCat("Knob should have exactly one KNOB_VALUE; had ", n));
     }
 
     auto emplaced = tuning_knobs.try_emplace(knob_type, knob_value).second;
     if (!emplaced) {
-      return tsl::errors::Internal(absl::StrFormat(
+      return absl::InternalError(absl::StrFormat(
           "cuDNN gave multiple knob values for the same knob type.\n"
           "  KNOB_TYPE: %d\n"
           "  new KNOB_VALUE: %d\n"
@@ -5818,7 +5821,7 @@ class CudnnExecutionPlanRunner<void(Args...)>
                           DeviceMemoryBase scratch_memory,
                           Args... inputs) const override {
     if (parent_ != stream->parent()) {
-      return tsl::errors::Internal(
+      return absl::InternalError(
           "CudnnExecutionPlanRunner cached across multiple StreamExecutors.");
     }
 
@@ -6168,182 +6171,6 @@ CudnnSupport::GraphConvolveRunnerFromDesc(
   return {std::make_unique<CudnnExecutionPlanRunner<dnn::GraphConvSignature>>(
       std::move(runner))};
 }
-
-class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
- public:
-  // Queries the workspace size and constructs a 'CudnnLegacyFusedConvRunner'.
-  static absl::StatusOr<CudnnLegacyFusedConvRunner> Create(
-      StreamExecutor* parent, Stream* stream, CudnnAccess* cudnn,
-      const dnn::AlgorithmDesc& algo, dnn::DataType input_type,
-      double conv_scale, double side_input_scale,
-      CudnnTensorDescriptor input_nd, CudnnTensorDescriptor output_nd,
-      CudnnFilterDescriptor filter, CudnnTensorDescriptor bias_nd,
-      CudnnConvolutionDescriptor conv,
-      CudnnActivationDescriptor activation_desc) {
-    size_t workspace_size;
-    if (algo.workspace_size()) {
-      workspace_size = *algo.workspace_size();
-    } else {
-      auto handle = cudnn->GetHandle(parent, stream);
-
-      RETURN_IF_CUDNN_ERROR(cudnnGetConvolutionForwardWorkspaceSize(
-          handle.handle(),
-          /*xDesc=*/input_nd.handle(),
-          /*wDesc=*/filter.handle(), /*convDesc=*/conv.handle(),
-          /*yDesc=*/output_nd.handle(),
-          /*algo=*/ToConvForwardAlgo(algo),
-          /*sizeInBytes=*/&workspace_size));
-    }
-
-    return {{parent, cudnn, algo.algo_id(), algo.tensor_ops_enabled(),
-             workspace_size, input_type, conv_scale, side_input_scale,
-             std::move(input_nd), std::move(output_nd), std::move(filter),
-             std::move(bias_nd), std::move(conv), std::move(activation_desc)}};
-  }
-
-  std::string ToString() const override {
-    return MakeAlgorithmDesc().ToString();
-  }
-
-  uint64_t GetWorkspaceSize() const override { return workspace_size_; }
-
-  absl::StatusOr<dnn::AlgorithmDesc> ToAlgorithmDesc() const override {
-    return MakeAlgorithmDesc();
-  }
-
-  absl::Status operator()(Stream* stream, dnn::ProfileResult* profile_result,
-                          DeviceMemoryBase scratch_memory,
-                          DeviceMemoryBase input_data,
-                          DeviceMemoryBase filter_data,
-                          DeviceMemoryBase side_input_data,
-                          DeviceMemoryBase bias_data,
-                          DeviceMemoryBase output_data) const override {
-    if (parent_ != stream->parent()) {
-      return tsl::errors::Internal(
-          "CudnnLegacyFusedConvRunner cached across multiple "
-          "StreamExecutors.");
-    }
-
-    auto algo = MakeAlgorithmDesc();
-    std::unique_ptr<EventBasedTimer> timer;
-
-    if (profile_result != nullptr) {
-      TF_ASSIGN_OR_RETURN(timer, stream->CreateEventBasedTimer(
-                                     profile_result->warmup_run_executed()));
-    }
-    auto side_input_data_ptr = (side_input_scale_ == 0)
-                                   ? output_data.opaque()
-                                   : side_input_data.opaque();
-
-    auto cudnn = cudnn_->GetHandle(parent_, stream);
-
-    VLOG(2) << "\nconv_scale = " << conv_scale_
-            << "\nconv_input_nd.handle() = " << input_nd_.handle()
-            << "\nconv_input_data.opaque() = " << input_data.opaque()
-            << "\nfilter.handle() = " << filter_.handle()
-            << "\nfilter_data.opaque() = " << filter_data.opaque()
-            << "\nconv.handle() = " << conv_.handle() << "\nalgo = " << algo_id_
-            << ", tensor_ops_enabled=" << tensor_ops_enabled_
-            << "\nscratch.opaque() = " << scratch_memory.opaque()
-            << "\nscratch.size() = " << scratch_memory.size()
-            << "\nside_input_scale = " << side_input_scale_
-            << "\noutput_nd.handle() = " << output_nd_.handle()
-            << "\nside_input_data_ptr = " << side_input_data_ptr
-            << "\nbias_nd.handle() = " << bias_nd_.handle()
-            << "\nbiases.opaque() = " << bias_data.opaque()
-            << "\nactivation_desc.handle() = " << activation_desc_.handle()
-            << "\noutput_nd.handle() = " << output_nd_.handle()
-            << "\noutput_data.opaque() = " << output_data.opaque();
-
-    if (IsTensorMathOpSet(conv_) != tensor_ops_enabled_) {
-      return absl::FailedPreconditionError(
-          "Tensor op math type in dnn::AlgorithmDesc does not "
-          "match that of the CudnnConvolutionDescriptor");
-    }
-
-    // N.B. the scaling parameters alpha1 and alpha2 are pointers to
-    // temporaries; this API doesn't persist the pointers beyond its own stack
-    // frame.
-    auto status = cudnnConvolutionBiasActivationForward(
-        cudnn.handle(),
-        /*alpha1=*/ScalingParam(conv_scale_).ToVoidPointer(input_type_),
-        /*xDesc=*/input_nd_.handle(), /*x=*/input_data.opaque(),
-        /*wDesc=*/filter_.handle(), /*w=*/filter_data.opaque(),
-        /*convDesc=*/conv_.handle(), ToConvForwardAlgo(algo),
-        /*workSpace=*/scratch_memory.opaque(),
-        /*workSpaceSizeInBytes=*/scratch_memory.size(),
-        /*alpha2=*/ScalingParam(side_input_scale_).ToVoidPointer(input_type_),
-        /*zDesc=*/output_nd_.handle(), /*z=*/side_input_data_ptr,
-        /*biasDesc=*/bias_nd_.handle(), /*bias=*/bias_data.opaque(),
-        /*activationDesc=*/activation_desc_.handle(),
-        /*yDesc=*/output_nd_.handle(), /*y=*/output_data.opaque());
-    if (status != CUDNN_STATUS_SUCCESS || !profile_result) {
-      VLOG(4) << "conv with algorithm " << ToConvForwardAlgo(algo)
-              << ", workspace_size=" << scratch_memory.size() << " -> "
-              << CudnnStatusToString(status);
-    }
-    RETURN_IF_CUDNN_ERROR(status);
-
-    if (timer != nullptr) {
-      TF_RETURN_IF_ERROR(PopulateProfileFromTimer(
-          timer.get(), algo, profile_result, scratch_memory.size()));
-      VLOG(4) << "conv with algorithm " << ToConvForwardAlgo(algo)
-              << ", tensor_ops_enabled=" << tensor_ops_enabled_
-              << ", workspace_size=" << scratch_memory.size() << " -> "
-              << CudnnStatusToString(status) << " in "
-              << profile_result->elapsed_time_in_ms() << "ms";
-    }
-
-    return absl::OkStatus();
-  }
-
- private:
-  // Private to prevent passing in the wrong workspace_size.
-  CudnnLegacyFusedConvRunner(StreamExecutor* parent, CudnnAccess* cudnn,
-                             int64_t algo_id, bool tensor_ops_enabled,
-                             size_t workspace_size, dnn::DataType input_type,
-                             double conv_scale, double side_input_scale,
-                             CudnnTensorDescriptor input_nd,
-                             CudnnTensorDescriptor output_nd,
-                             CudnnFilterDescriptor filter,
-                             CudnnTensorDescriptor bias_nd,
-                             CudnnConvolutionDescriptor conv,
-                             CudnnActivationDescriptor activation_desc)
-      : parent_(parent),
-        cudnn_(cudnn),
-        algo_id_(algo_id),
-        tensor_ops_enabled_(tensor_ops_enabled),
-        workspace_size_(workspace_size),
-        input_type_(input_type),
-        conv_scale_(conv_scale),
-        side_input_scale_(side_input_scale),
-        input_nd_(std::move(input_nd)),
-        output_nd_(std::move(output_nd)),
-        filter_(std::move(filter)),
-        bias_nd_(std::move(bias_nd)),
-        conv_(std::move(conv)),
-        activation_desc_(std::move(activation_desc)) {}
-
-  // Internal form of ToAlgorithmDesc without the absl::StatusOr.
-  dnn::AlgorithmDesc MakeAlgorithmDesc() const {
-    return {algo_id_, tensor_ops_enabled_, workspace_size_};
-  }
-
-  StreamExecutor* parent_;
-  CudnnAccess* cudnn_;
-  int64_t algo_id_;
-  bool tensor_ops_enabled_;
-  size_t workspace_size_;
-  dnn::DataType input_type_;
-  double conv_scale_, side_input_scale_;
-
-  CudnnTensorDescriptor input_nd_;
-  CudnnTensorDescriptor output_nd_;
-  CudnnFilterDescriptor filter_;
-  CudnnTensorDescriptor bias_nd_;
-  CudnnConvolutionDescriptor conv_;
-  CudnnActivationDescriptor activation_desc_;
-};
 
 absl::StatusOr<std::unique_ptr<const dnn::FusedConvRunner>>
 CudnnSupport::FusedConvolveRunnerFromDesc(
@@ -7107,9 +6934,9 @@ absl::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
   auto check_no_side_input_or_activation = [&]() -> absl::Status {
     if (activation_mode != dnn::ActivationMode::kNone ||
         !side_input_backprop->is_null()) {
-      return tsl::errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "Side input and activation are not supported by cuDNN version: ",
-          CUDNN_VERSION);
+          CUDNN_VERSION));
     } else {
       return absl::OkStatus();
     }
@@ -7143,21 +6970,6 @@ absl::Status CudnnSupport::DoFusedConvolve(
     ScratchAllocator* scratch_allocator,
     const dnn::AlgorithmConfig& algorithm_config,
     dnn::ProfileResult* output_profile_result) {
-  if (input_type == dnn::DataType::kInt8 &&
-      !stream->GetCudaComputeCapability().IsAtLeast(6, 1)) {
-    return tsl::errors::Unimplemented(
-        "cudnnConvolutionBiasActivationForward() for int8 is only "
-        "supported "
-        "on GPUs with compute capability 6.1 or later.");
-  }
-
-  if (activation_mode != dnn::ActivationMode::kRelu &&
-      activation_mode != dnn::ActivationMode::kNone) {
-    return absl::InvalidArgumentError(
-        "cudnnConvolutionBiasActivationForward() only supports "
-        "Relu or None activation.");
-  }
-
   CudnnTensorDescriptor conv_input_nd(
       conv_input_descriptor,
       ToCudnnDataType(input_type, conv_input_descriptor.layout()));
@@ -7167,7 +6979,6 @@ absl::Status CudnnSupport::DoFusedConvolve(
   CudnnFilterDescriptor filter(
       filter_descriptor,
       ToCudnnDataType(input_type, filter_descriptor.layout()));
-  CudnnTensorDescriptor bias_nd(bias_descriptor, ToCudnnDataType(bias_type));
 
   DeviceMemory<uint8_t> scratch;
   dnn::AlgorithmDesc algo_desc;
@@ -7180,28 +6991,17 @@ absl::Status CudnnSupport::DoFusedConvolve(
             convolution_descriptor, output_nd, scratch_allocator, &scratch));
   }  // Explicitly release cuDNN handle.
 
-  CudnnConvolutionDescriptor conv(
-      convolution_descriptor,
-      ToCudnnDataType(GetConvAccumulatorType(input_type)));
-  conv.set_use_tensor_op_math(algo_desc.tensor_ops_enabled());
-
-  // CUDNN v6 only supports CUDNN_NOT_PROPAGATE_NAN as the reluNanOpt for
-  // activation descriptor. Note that this will change the nan propagation
-  // behavior from separate conv, bias, and relu (which by default is
-  // CUDNN_PROPAGATE_NAN).
-  CudnnActivationDescriptor activation_desc(
-      activation_mode, CUDNN_NOT_PROPAGATE_NAN, output_descriptor.value_max());
-
   TF_ASSIGN_OR_RETURN(
-      auto runner,
-      CudnnLegacyFusedConvRunner::Create(
-          parent_, stream, cudnn_.get(), std::move(algo_desc), input_type,
-          conv_scale, side_input_scale, std::move(conv_input_nd),
-          std::move(output_nd), std::move(filter), std::move(bias_nd),
-          std::move(conv), std::move(activation_desc)));
+      std::unique_ptr<const dnn::FusedConvRunner> runner,
+      FusedConvolveRunnerFromDesc(
+          stream, algo_desc, dnn::ConvolutionKind::FORWARD, input_type,
+          bias_type, output_type, conv_scale, side_input_scale,
+          /*leakyrelu_alpha=*/0.0, conv_input_descriptor, filter_descriptor,
+          bias_descriptor, output_descriptor, convolution_descriptor,
+          activation_mode));
 
-  return runner(stream, output_profile_result, scratch, conv_input_data,
-                filter_data, side_input_data, biases, output_data);
+  return (*runner)(stream, output_profile_result, scratch, conv_input_data,
+                   filter_data, side_input_data, biases, output_data);
 }
 
 absl::Status CudnnSupport::CudnnReorderConvolutionFilterAndBias(
@@ -7290,7 +7090,7 @@ absl::Status CudnnSupport::DoPrepareForCtcLoss(
     *scratch_memory = scratch_or.value();
     return absl::OkStatus();
   }
-  return tsl::errors::Internal(
+  return absl::InternalError(
       "Failed to allocate scratch memory for the CuDNN CTC Loss");
 }
 

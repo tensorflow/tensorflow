@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "xla/tests/xla_test_backend_predicates.h"
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/types.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -125,7 +125,7 @@ class ForwardPassConvolution_3x3x256_256_OutputZ_Iota : public ConvolutionTest {
 };
 
 TYPED_TEST_CASE(ForwardPassConvolution_3x3x256_256_OutputZ_Iota, TestTypes);
-XLA_TYPED_TEST(ForwardPassConvolution_3x3x256_256_OutputZ_Iota, Types) {
+TYPED_TEST(ForwardPassConvolution_3x3x256_256_OutputZ_Iota, Types) {
   this->RunTest();
 }
 
@@ -1535,7 +1535,7 @@ class ConvolveWithAndWithoutCanonicalization
     : public ConvolutionTest,
       public ::testing::WithParamInterface<bool> {};
 
-XLA_TEST_P(ConvolveWithAndWithoutCanonicalization, Convolve2D_NoSpatialDims) {
+TEST_P(ConvolveWithAndWithoutCanonicalization, Convolve2D_NoSpatialDims) {
   if (GetParam()) {
     mutable_debug_options()->add_xla_disable_hlo_passes(
         "convolution-canonicalization");
@@ -1667,7 +1667,10 @@ class ConvolutionHloTest
   }
 };
 
-TEST_F(ConvolutionHloTest, DISABLED_ON_TPU(ConvolveF64Forward)) {
+TEST_F(ConvolutionHloTest, ConvolveF64Forward) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   if (IsRocm()) {
     GTEST_SKIP() << "double datatype is not yet supported in ROCm";
   }
@@ -1713,7 +1716,10 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
 }
 
-TEST_F(ConvolutionHloTest, DISABLED_ON_TPU(ConvolveF64BackwardFilter)) {
+TEST_F(ConvolutionHloTest, ConvolveF64BackwardFilter) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   if (IsRocm()) {
     GTEST_SKIP() << "double datatype is not yet supported in ROCm";
   }
@@ -1728,7 +1734,10 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
 }
 
-TEST_F(ConvolutionHloTest, DISABLED_ON_TPU(ConvolveF64BackwardInput)) {
+TEST_F(ConvolutionHloTest, ConvolveF64BackwardInput) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   if (IsRocm()) {
     GTEST_SKIP() << "double datatype is not yet supported in ROCm";
   }
@@ -1995,7 +2004,7 @@ class Transposed2DConvHloTest
   int lhs_dilation_y_;
 };
 
-XLA_TEST_P(Transposed2DConvHloTest, Simple) {
+TEST_P(Transposed2DConvHloTest, Simple) {
   const auto input_shape =
       ShapeUtil::MakeShape(F32, {batch_, input_channels_, input_x_, input_y_});
   const auto kernel_shape = ShapeUtil::MakeShape(

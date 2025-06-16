@@ -29,8 +29,6 @@ bool_flag(
 config_setting(
     name = "nvshmem_supported",
     constraint_values = [
-        # TODO(b/409709288): Fix nvshmem ARM issues and remove this condition.
-        "@platforms//cpu:x86_64",
         "@platforms//os:linux",
     ],
     flag_values = {
@@ -145,6 +143,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",

@@ -180,6 +180,24 @@ cc_library(
     ],
 )
 
+# Used by jax_rocm_plugin to minimally link to hip runtime.
+cc_library(
+    name = "hip_runtime",
+    visibility = ["//visibility:public"],
+    hdrs = glob(["%{rocm_root}/include/hip/**"]),
+    srcs = glob(["%{rocm_root}/lib/libamdhip*.so"]),
+    include_prefix = "rocm",
+    includes = [
+        "%{rocm_root}/include",
+    ],
+    strip_include_prefix = "%{rocm_root}",
+    deps = [
+        ":rocm_config",
+        ":rocprofiler_register",
+        ":system_libs",
+    ],
+)
+
 cc_library(
     name = "rocblas",
     hdrs = glob(["%{rocm_root}/include/rocblas/**"]),

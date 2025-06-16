@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/gpu/model/interpolator.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 

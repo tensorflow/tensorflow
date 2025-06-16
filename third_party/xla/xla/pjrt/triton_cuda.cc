@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
@@ -35,8 +36,6 @@ limitations under the License.
 #include "llvm/Linker/Linker.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/CodeGen.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Path.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
@@ -61,9 +60,12 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Export.h"
 #include "xla/backends/gpu/codegen/triton/compilation_pipeline.h"
 #include "xla/pjrt/triton.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
+#include "tsl/platform/cuda_root_path.h"
+#include "tsl/platform/path.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
@@ -114,24 +116,23 @@ absl::StatusOr<std::unique_ptr<llvm::TargetMachine>> CreateTargetMachine(
       llvm::Reloc::PIC_, std::nullopt, llvm::CodeGenOptLevel::Aggressive));
 }
 
+absl::StatusOr<std::string> GetLibdeviceDir() {
+  auto nvvm_cuda_root = mlir::NVVM::getCUDAToolkitPath().str();
+  for (const std::string& cuda_root : tsl::CandidateCudaRoots(nvvm_cuda_root)) {
+    auto libdevice_dir = tsl::io::JoinPath(cuda_root, "nvvm", "libdevice");
+    if (tsl::Env::Default()->IsDirectory(libdevice_dir).ok()) {
+      return libdevice_dir;
+    }
+  }
+  return absl::InternalError(absl::StrCat(
+      "Cannot find libdevice.10.bc in any of the CUDA roots. "
+      "Searched for CUDA in the following directories:\n  ",
+      absl::StrJoin(tsl::CandidateCudaRoots(nvvm_cuda_root), "\n  ")));
+}
+
 absl::Status LinkLibdevice(llvm::Module* module) {
-  // NOTE: We cannot use std::filesystem until XLA migrates to C++20.
-  namespace fs = llvm::sys::fs;
-
-  auto cuda_path = mlir::NVVM::getCUDAToolkitPath();
-  if (cuda_path.empty() || !fs::is_directory(cuda_path)) {
-    return absl::InternalError(absl::StrFormat(
-        "CUDA path %s does not exist or is not a directory", cuda_path));
-  }
-  auto sep = llvm::sys::path::get_separator().str();
-  std::string libdevice_path;
-  absl::StrAppend(&libdevice_path, cuda_path.str(), sep, "nvvm", sep,
-                  "libdevice", sep, "libdevice.10.bc");
-
-  if (!fs::is_regular_file(libdevice_path)) {
-    return absl::InternalError(
-        absl::StrFormat("%s is not a regular file", libdevice_path));
-  }
+  TF_ASSIGN_OR_RETURN(auto libdevice_dir, GetLibdeviceDir());
+  auto libdevice_path = tsl::io::JoinPath(libdevice_dir, "libdevice.10.bc");
 
   llvm::LLVMContext& ctx = module->getContext();
   llvm::SMDiagnostic err;

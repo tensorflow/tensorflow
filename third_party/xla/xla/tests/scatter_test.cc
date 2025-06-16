@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 
@@ -981,7 +980,7 @@ class ScatterEdgeCaseTestP
     : public ScatterTest,
       public ::testing::WithParamInterface<absl::string_view /*operator*/> {};
 
-XLA_TEST_P(ScatterEdgeCaseTestP, DoIt) {
+TEST_P(ScatterEdgeCaseTestP, DoIt) {
   using L = std::numeric_limits<float>;
   std::vector<float> edge_cases = {
       0.f,

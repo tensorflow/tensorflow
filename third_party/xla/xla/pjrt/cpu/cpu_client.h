@@ -206,7 +206,7 @@ class PjRtCpuClient final : public CommonPjRtClient {
 
   absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>> AllocateRawBuffer(
       PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
-      tsl::AsyncValueRef<bool> allocate_after) override;
+      bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after) override;
 
   absl::StatusOr<std::pair<tsl::RCReference<PjRtDeviceEventPromise>,
                            tsl::RCReference<PjRtDeviceEvent>>>

@@ -584,6 +584,25 @@ CodegenDecision IsTritonSupportedInstructionImpl(
     return IsTritonSupportedConcatenate(instr);
   }
 
+  // Special handling for the kPad instruction. Right now we only support "high"
+  // padding. "Interior" and "low" padding are not supported.
+  if (instr.opcode() == HloOpcode::kPad) {
+    auto pad = Cast<HloPadInstruction>(&instr);
+    bool no_op = true;
+    for (const auto& dim_config : pad->padding_config().dimensions()) {
+      if (dim_config.edge_padding_low() != 0 ||
+          dim_config.interior_padding() != 0) {
+        return CodegenDecision::Forbid("Only high padding is supported.");
+      }
+      no_op = no_op && dim_config.edge_padding_high() == 0;
+    }
+    if (no_op) {
+      return CodegenDecision::Forbid("No-op pad ops are not allowed.");
+    }
+    return CodegenDecision(pad->shape().element_type() != S4,
+                           "S4 is not supported.");
+  }
+
   // Const is technically an elementwise op, so this check must be before the
   // elementwise check.
   if (instr.opcode() == HloOpcode::kConstant) {
@@ -601,6 +620,21 @@ CodegenDecision IsTritonSupportedInstructionImpl(
             element_type != PrimitiveType::F8E5M2 &&
             element_type != PrimitiveType::S4,
         "F8E4M3FN, F8E5M2 and S4 are not supported for iota.");
+  }
+
+  if (instr.opcode() == HloOpcode::kDynamicSlice) {
+    auto dynamic_slice = Cast<HloDynamicSliceInstruction>(&instr);
+    if (type == PrimitiveType::S4) {
+      return CodegenDecision::Forbid("S4 is not supported.");
+    }
+
+    if (absl::c_any_of(dynamic_slice->index_shapes(),
+                       [](const Shape& index_shape) {
+                         return index_shape.element_type() == PrimitiveType::S4;
+                       })) {
+      return CodegenDecision::Forbid("S4 indexes are not supported.");
+    }
+    return CodegenDecision::Allow();
   }
 
   switch (instr.opcode()) {
@@ -650,10 +684,8 @@ namespace internal {
 bool IsTritonUnsupportedOpcode(HloOpcode opcode) {
   switch (opcode) {
     case HloOpcode::kDynamicReshape:
-    case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kGather:
-    case HloOpcode::kPad:
     case HloOpcode::kRaggedDot:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kScatter:

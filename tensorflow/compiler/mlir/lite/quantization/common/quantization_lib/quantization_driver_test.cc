@@ -35,10 +35,10 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_utils.h"
+#include "tensorflow/compiler/mlir/lite/quantization/common/test_base.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/quantization/common/func.h"
-#include "tensorflow/compiler/mlir/quantization/common/test_base.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir::TFL {

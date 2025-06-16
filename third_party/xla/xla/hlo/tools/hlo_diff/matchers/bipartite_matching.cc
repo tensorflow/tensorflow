@@ -222,5 +222,32 @@ void MatchSameTypeInstructions(
   }
 }
 
+// Find optimal matches between the left and right instruction set.
+// The goal is to establish a mapping between corresponding instructions from
+// the 'left_instructions' and 'right_instructions' sets. These sets are derived
+// from the two computations being mapped, or two parents being mapped.
+void MatchLeafInstructions(
+    const HloGumgraph& left_graph, const HloGumgraph& right_graph,
+    const std::vector<HloInstructionNode*>& left_instructions,
+    const std::vector<HloInstructionNode*>& right_instructions,
+    HloGumgraphMappings& mappings, const MatcherType& matcher_type,
+    bool map_by_position) {
+  absl::flat_hash_map<const HloOpcode,
+                      std::pair<std::vector<const HloInstructionNode*>,
+                                std::vector<const HloInstructionNode*>>>
+      instructions_by_opcode;
+  for (const HloInstructionNode* l : left_instructions) {
+    instructions_by_opcode[l->instruction->opcode()].first.push_back(l);
+  }
+  for (const HloInstructionNode* r : right_instructions) {
+    instructions_by_opcode[r->instruction->opcode()].second.push_back(r);
+  }
+  for (const auto& [opcode, instructions] : instructions_by_opcode) {
+    MatchSameTypeInstructions(left_graph, right_graph, instructions.first,
+                              instructions.second, mappings, matcher_type,
+                              map_by_position);
+  }
+}
+
 }  // namespace hlo_diff
 }  // namespace xla

@@ -769,10 +769,17 @@ absl::Status LaunchCmd::Initialize(const Thunk::InitializeParams& params,
     }
   }
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<se::Kernel> kernel,
-      CreateKernel(kernel_name_, args_.size(), params.src.text,
-                   params.src.binary, params.executor, shmem_bytes_));
+  std::unique_ptr<se::Kernel> kernel;
+  if (!params.src.binary.empty()) {
+    TF_ASSIGN_OR_RETURN(
+        kernel, CreateKernel(kernel_name_, args_.size(), params.src.binary,
+                             params.executor, shmem_bytes_));
+
+  } else {
+    TF_ASSIGN_OR_RETURN(
+        kernel, CreateKernel(kernel_name_, args_.size(), params.src.text,
+                             params.executor, shmem_bytes_));
+  }
 
   absl::MutexLock lock(&mutex_);
   kernels_.emplace(params.executor, std::move(kernel));

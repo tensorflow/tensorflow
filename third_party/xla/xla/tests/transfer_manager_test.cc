@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/local_client_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
@@ -356,7 +355,10 @@ TEST_F(TransferManagerTest, MultiStreamRoundTripSoak) {
 }
 
 // TODO(b/223222672): TPUs transfer literals using a different codepath.
-TEST_F(TransferManagerTest, DISABLED_ON_TPU(TransferDynamicShape)) {
+TEST_F(TransferManagerTest, TransferDynamicShape) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   TF_ASSERT_OK_AND_ASSIGN(
       Shape s, ParseShape("(s64[], s32[<=1048576,3], f32[<=1048576,48])"));
 

@@ -87,7 +87,10 @@ cc_library(
         "//xla/core/collectives:clique_id",
         "//xla/core/collectives:clique_key",
         "//xla/service:global_device_id",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -386,6 +389,9 @@ cc_library(
         "//xla/backends/gpu/runtime:infeed_thunk",
         "//xla/backends/gpu/runtime:kernel_thunk",
         "//xla/backends/gpu/runtime:norm_thunk",
+        "//xla/backends/gpu/runtime:nvshmem_collective_permute_thunk",
+        "//xla/backends/gpu/runtime:nvshmem_collective_thunk",
+        "//xla/backends/gpu/runtime:nvshmem_p2p_thunk_common",
         "//xla/backends/gpu/runtime:outfeed_thunk",
         "//xla/backends/gpu/runtime:p2p_thunk_common",
         "//xla/backends/gpu/runtime:ragged_all_to_all_thunk",
@@ -1918,9 +1924,9 @@ xla_test(
         "nvptx_compiler_test.cc",
     ],
     backends = [
-        "gpu_v100",
-        "gpu_a100",
-        "gpu_b200",
+        "v100",
+        "a100",
+        "b200",
     ],
     tags = [
         "cuda-only",
@@ -2350,6 +2356,7 @@ cc_library(
         "//xla/stream_executor:typed_kernel_factory",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:repeat_buffer_kernel",
+        "//xla/tsl/platform:statusor",
         "//xla/tsl/protobuf:dnn_proto_cc",
         "//xla/tsl/util/proto:proto_utils",
         "@com_google_absl//absl/algorithm:container",
@@ -2529,9 +2536,10 @@ xla_test(
     name = "float_support_test",
     srcs = ["float_support_test.cc"],
     backends = [
-        "gpu_a100",
-        "gpu_h100",
-        "gpu_b200",
+        "a100",
+        "h100",
+        "b200",
+        "amdgpu_any",
     ],
     deps = [
         "//xla:error_spec",
@@ -2555,7 +2563,6 @@ xla_test(
         "//xla/service/gpu/tests:gpu_codegen_test",  # fixdeps: keep
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
-        "//xla/tests:test_macros_header",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:test",
     ],
@@ -2634,6 +2641,7 @@ cc_library(
         "//xla/tsl/lib/monitoring:sampler",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:stacktrace",
     ],
 )
@@ -2641,6 +2649,10 @@ cc_library(
 xla_cc_test(
     name = "metrics_test",
     srcs = ["metrics_test.cc"],
+    tags = [
+        # Streamz recording doesn't work in OSS.
+        "no_oss",
+    ],
     deps = [
         ":metrics",
         "//xla/tests:xla_internal_test_main",
@@ -2743,11 +2755,11 @@ xla_test(
     name = "dot_algorithm_support_test",
     srcs = ["dot_algorithm_support_test.cc"],
     backends = [
-        "gpu_v100",
-        "gpu_a100",
-        "gpu_h100",
-        "gpu_b200",
-        "gpu_amd_any",
+        "v100",
+        "a100",
+        "h100",
+        "b200",
+        "amdgpu_any",
     ],
     tags = [
         "no_mac",
@@ -2894,6 +2906,7 @@ cc_library(
         "//xla/service:latency_hiding_scheduler",
         "//xla/service:profile_guided_latency_estimator",
         "//xla/service/gpu/transforms/collectives:collective_ops_utils",
+        "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",

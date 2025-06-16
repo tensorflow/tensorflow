@@ -21,6 +21,8 @@ import "xla/pjrt/proto/compile_options.proto";
 
 // Proto equivalent of C++ `IfrtIRCompileOptions`.
 message IfrtIrCompileOptionsProto {
+  int32 version_number = 4;
+
   repeated int32 device_ids = 1;
   map<string, xla.CompileOptionsProto> compile_option_overrides = 2;
   bool propagate_shardings = 3;

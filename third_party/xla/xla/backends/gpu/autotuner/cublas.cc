@@ -57,8 +57,7 @@ CublasBackend::GetSupportedConfigs(
     const HloInstruction& instr,
     stream_executor::StreamExecutor* stream_executor) {
   if (!IsLegacyCublasMatmul(instr)) {
-    return absl::InvalidArgumentError(
-        "CublasBackend does not support this instruction.");
+    return std::vector<std::unique_ptr<BackendConfig>>();
   }
 
   std::unique_ptr<se::DeviceMemoryAllocator> allocator =

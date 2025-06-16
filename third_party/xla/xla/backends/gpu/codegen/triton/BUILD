@@ -477,16 +477,16 @@ xla_test(
     # TODO(b/372714955): Fix the memory leak!
     backend_args = if_google(
         {
-            "gpu_h100": ["--heap_check="],
-            "gpu_a100": ["--heap_check="],
+            "h100": ["--heap_check="],
+            "a100": ["--heap_check="],
         },
         {},
     ),
     backends = [
-        "gpu_a100",
-        "gpu_h100",
-        "gpu_b200",
-        "gpu_amd_any",
+        "a100",
+        "h100",
+        "b200",
+        "amdgpu_any",
     ],
     shard_count = 20,
     tags = [
@@ -531,10 +531,10 @@ xla_test(
     name = "fusion_emitter_device_legacy_port_test",
     srcs = if_gpu_is_configured(["fusion_emitter_device_legacy_port_test.cc"]),
     backends = [
-        "gpu_a100",
-        "gpu_h100",
-        "gpu_b200",
-        "gpu_amd_any",
+        "a100",
+        "h100",
+        "b200",
+        "amdgpu_any",
     ],
     tags = [
         "no_mac",
@@ -582,10 +582,10 @@ xla_test(
     size = "large",
     srcs = if_gpu_is_configured(["fusion_emitter_int4_device_test.cc"]),
     backends = [
-        "gpu_a100",
-        "gpu_h100",
-        "gpu_b200",
-        "gpu_amd_any",
+        "a100",
+        "h100",
+        "b200",
+        "amdgpu_any",
     ],
     shard_count = 10,
     tags = [
@@ -617,10 +617,10 @@ xla_test(
     size = "large",
     srcs = if_gpu_is_configured(["fusion_emitter_legacy_int4_device_test.cc"]),
     backends = [
-        "gpu_a100",
-        "gpu_h100",
-        "gpu_b200",
-        "gpu_amd_any",
+        "a100",
+        "h100",
+        "b200",
+        "amdgpu_any",
     ],
     shard_count = 10,
     tags = [
@@ -650,16 +650,16 @@ xla_test(
     srcs = if_gpu_is_configured(["dot_algorithms_test.cc"]),
     backend_args = if_google(
         {
-            "gpu_h100": ["--heap_check="],
-            "gpu_a100": ["--heap_check="],
+            "h100": ["--heap_check="],
+            "a100": ["--heap_check="],
         },
         {},
     ),
     backends = [
-        "gpu_a100",
-        "gpu_h100",
-        "gpu_b200",
-        "gpu_amd_any",
+        "a100",
+        "h100",
+        "b200",
+        "amdgpu_any",
     ],
     shard_count = 30,
     tags = [
@@ -686,6 +686,7 @@ xla_test(
         "//xla/tests:test_utils",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -695,6 +696,7 @@ xla_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Support",
@@ -706,10 +708,10 @@ xla_test(
     name = "fusion_emitter_device_test",
     srcs = if_gpu_is_configured(["fusion_emitter_device_test.cc"]),
     backends = [
-        "gpu_a100",
-        "gpu_h100",
-        "gpu_b200",
-        "gpu_amd_any",
+        "a100",
+        "h100",
+        "b200",
+        "amdgpu_any",
     ],
     shard_count = 5,
     tags = [
@@ -729,6 +731,7 @@ xla_test(
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service:algorithm_util",
         "//xla/service/gpu:backend_configs_cc",
@@ -737,11 +740,13 @@ xla_test(
         "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/tests:test_utils",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -835,10 +840,10 @@ xla_test(
     size = "large",
     srcs = if_gpu_is_configured(["fusion_emitter_large_test.cc"]),
     backends = [
-        "gpu_a100",
-        "gpu_h100",
-        "gpu_b200",
-        "gpu_amd_any",
+        "a100",
+        "h100",
+        "b200",
+        "amdgpu_any",
     ],
     tags = [
         "large",
@@ -864,10 +869,10 @@ xla_test(
     name = "fusion_emitter_parametrized_test",
     srcs = if_gpu_is_configured(["fusion_emitter_parametrized_test.cc"]),
     backends = [
-        "gpu_a100",
-        "gpu_h100",
-        "gpu_b200",
-        "gpu_amd_any",
+        "a100",
+        "h100",
+        "b200",
+        "amdgpu_any",
     ],
     tags = ["no_mac"],
     deps = [
@@ -892,10 +897,10 @@ xla_test(
     name = "fusion_emitter_parametrized_legacy_test",
     srcs = if_gpu_is_configured(["fusion_emitter_parametrized_legacy_test.cc"]),
     backends = [
-        "gpu_a100",
-        "gpu_h100",
-        "gpu_b200",
-        "gpu_amd_any",
+        "a100",
+        "h100",
+        "b200",
+        "amdgpu_any",
     ],
     shard_count = 10,
     tags = ["no_mac"],
@@ -988,10 +993,10 @@ xla_test(
     name = "support_legacy_test",
     srcs = if_gpu_is_configured(["support_legacy_test.cc"]),
     backends = [
-        "gpu_a100",
-        "gpu_h100",
-        "gpu_b200",
-        "gpu_amd_any",
+        "a100",
+        "h100",
+        "b200",
+        "amdgpu_any",
     ],
     tags = ["no_mac"],
     deps = [

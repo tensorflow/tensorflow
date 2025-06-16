@@ -20,23 +20,23 @@ visibility(DEFAULT_LOAD_VISIBILITY)
 
 # Possible backend values for the GPU family.
 NVIDIA_GPU_BACKENDS = [
-    "gpu_any",
-    "gpu_p100",
-    "gpu_v100",
-    "gpu_a100",
-    "gpu_h100",
-    "gpu_b200",
+    "nvgpu_any",
+    "p100",
+    "v100",
+    "a100",
+    "h100",
+    "b200",
 ]
 
 # The generic "gpu" backend includes the actual backends in this list.
 NVIDIA_GPU_DEFAULT_BACKENDS = [
-    "gpu_any",
-    "gpu_a100",
-    "gpu_h100",
-    "gpu_b200",
+    "nvgpu_any",
+    "a100",
+    "h100",
+    "b200",
 ]
 
-AMD_GPU_DEFAULT_BACKENDS = ["gpu_amd_any"]
+AMD_GPU_DEFAULT_BACKENDS = ["amdgpu_any"]
 
 _DEFAULT_BACKENDS = ["cpu"] + NVIDIA_GPU_DEFAULT_BACKENDS + AMD_GPU_DEFAULT_BACKENDS
 
@@ -71,12 +71,12 @@ def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, b
 
     # Disable backends that don't meet the device requirements.
     sm_requirements = {
-        "gpu_any": (0, 0),
-        "gpu_p100": (6, 0),
-        "gpu_v100": (7, 0),
-        "gpu_a100": (8, 0),
-        "gpu_h100": (9, 0),
-        "gpu_b200": (10, 0),
+        "nvgpu_any": (0, 0),
+        "p100": (6, 0),
+        "v100": (7, 0),
+        "a100": (8, 0),
+        "h100": (9, 0),
+        "b200": (10, 0),
     }
     for gpu_backend in NVIDIA_GPU_BACKENDS:
         all_tags = new_backend_tags[gpu_backend]
@@ -205,6 +205,7 @@ def xla_test(
         backend_kwargs = {},
         linkstatic = None,
         fail_if_no_test_linked = True,
+        fail_if_no_test_selected = True,
         **kwargs):
     """Generates strict_cc_test targets for the given XLA backends.
 
@@ -281,6 +282,7 @@ def xla_test(
       linkstatic: Whether to link the test statically. Can be set to None to use
         the default value decided by strict_cc_test.
       fail_if_no_test_linked: Whether to fail if no test case is linked into the test.
+      fail_if_no_test_selected: Whether to fail if no test case is executed.
       **kwargs: Additional keyword arguments to pass to strict_cc_test.
     """
 
@@ -307,6 +309,7 @@ def xla_test(
         this_backend_data = []
         backend_deps = []
         if backend == "cpu":
+            device_type_for_env = "cpu"
             backend_deps += [
                 "//xla/service:cpu_plugin",
                 "//xla/tests:test_macros_cpu",
@@ -316,6 +319,7 @@ def xla_test(
             if "test_migrated_to_hlo_runner_pjrt" in this_backend_tags:
                 backend_deps.append("//xla/tests:pjrt_cpu_client_registry")
         elif backend in NVIDIA_GPU_BACKENDS + AMD_GPU_DEFAULT_BACKENDS:
+            device_type_for_env = "gpu"
             backend_deps += [
                 "//xla/service:gpu_plugin",
                 "//xla/tests:test_macros_%s" % backend,
@@ -324,12 +328,14 @@ def xla_test(
                 this_backend_tags += tf_gpu_tests_tags()
                 backend_deps += [
                     "//xla/stream_executor/cuda:all_runtime",
+                    "//xla/stream_executor/cuda:gpu_test_kernels_cuda",
                     "//xla/stream_executor/cuda:stream_executor_cuda",
                 ]
             if backend in AMD_GPU_DEFAULT_BACKENDS:
                 this_backend_tags.append("gpu")
                 backend_deps += [
                     "//xla/stream_executor/rocm:all_runtime",
+                    "//xla/stream_executor/rocm:gpu_test_kernels_rocm",
                     "//xla/stream_executor/rocm:stream_executor_rocm",
                 ]
             this_backend_copts.append("-DXLA_TEST_BACKEND_GPU=1")
@@ -338,6 +344,7 @@ def xla_test(
             if "test_migrated_to_hlo_runner_pjrt" in this_backend_tags:
                 backend_deps.append("//xla/tests:pjrt_gpu_client_registry")
         elif backend == "interpreter":
+            device_type_for_env = "interpreter"
             backend_deps += [
                 "//xla/service:interpreter_plugin",
                 "//xla/tests:test_macros_interpreter",
@@ -347,6 +354,7 @@ def xla_test(
             if "test_migrated_to_hlo_runner_pjrt" in this_backend_tags:
                 backend_deps.append("//xla/tests:pjrt_interpreter_client_registry")
         elif backend in plugins:
+            device_type_for_env = "plugin"
             backend_deps += plugins[backend]["deps"]
             this_backend_copts += plugins[backend]["copts"]
             this_backend_tags += plugins[backend]["tags"]
@@ -359,9 +367,13 @@ def xla_test(
             for lib_dep in xla_test_library_deps:
                 backend_deps += ["%s_%s" % (lib_dep, backend)]  # buildifier: disable=list-append
 
-        device_and_modifiers = backend.split("_")
-        device = device_and_modifiers[0]
-        modifiers = device_and_modifiers[1:]
+        if backend in GPU_BACKENDS:
+            # TODO(b/414877419): Remove special case, update backend_predicates
+            device = "gpu"
+            modifiers = backend.split("_")
+        else:
+            modifiers = backend.split("_")
+            device = modifiers.pop(0)
 
         xla_cc_test(
             name = test_name,
@@ -374,10 +386,12 @@ def xla_test(
             data = data + this_backend_data,
             env = env | {
                 "XLA_TEST_DEVICE": device,
+                "XLA_TEST_DEVICE_TYPE": device_type_for_env,
                 "XLA_TEST_MODIFIERS": ",".join(modifiers),
             },
             linkstatic = linkstatic,
             fail_if_no_test_linked = fail_if_no_test_linked,
+            fail_if_no_test_selected = fail_if_no_test_selected,
             **this_backend_kwargs
         )
         if ((backend in NVIDIA_GPU_BACKENDS and is_cuda_configured()) or
@@ -415,8 +429,9 @@ def xla_test(
             # This test is deliberately empty. Its only purpose is to avoid
             # creating an empty test suite, which would be a problem for
             # --build_tag_filters (see above). Therefore we don't want to fail
-            # if no test case is linked in.
+            # if no test case is linked in or runs.
             fail_if_no_test_linked = False,
+            fail_if_no_test_selected = False,
         )
 
 def xla_test_library(
@@ -524,13 +539,9 @@ def generate_backend_test_macros(backends = []):  # buildifier: disable=unnamed-
         native.cc_library(
             name = "test_macros_%s" % backend,
             testonly = True,
-            srcs = ["test_macros.cc"],
             hdrs = ["test_macros.h"],
             copts = [
                 "-DXLA_PLATFORM=\\\"%s\\\"" % backend.upper(),
                 "-DXLA_DISABLED_MANIFEST=\\\"%s\\\"" % manifest,
-            ],
-            deps = [
-                "@local_tsl//tsl/platform:logging",
             ],
         )

@@ -27,12 +27,10 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/quantization/common/tf_attrs_and_constraints.h"
+#include "tensorflow/compiler/mlir/quantization/common/attrs_and_constraints.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir::quant::stablehlo {
-
-using tf_quant::GetEntryFunctionName;
 
 #define GEN_PASS_DEF_XLACALLMODULETOCALLPASS
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h.inc"

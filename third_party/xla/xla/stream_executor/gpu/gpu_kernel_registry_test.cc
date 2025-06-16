@@ -46,8 +46,12 @@ using tsl::testing::StatusIs;
 TEST(GpuKernelRegistryTest, RegisterKernel) {
   PlatformObjectRegistry object_registry;
   GpuKernelRegistry registry{&object_registry};
-  MultiKernelLoaderSpec cuda_spec(1);
-  MultiKernelLoaderSpec rocm_spec(42);
+  MultiKernelLoaderSpec cuda_spec =
+      MultiKernelLoaderSpec::CreateInProcessSymbolSpec(nullptr, "kernel_name",
+                                                       1);
+  MultiKernelLoaderSpec rocm_spec =
+      MultiKernelLoaderSpec::CreateInProcessSymbolSpec(nullptr, "kernel_name",
+                                                       42);
 
   // Can register a simple kernel
   EXPECT_THAT(registry.RegisterKernel<TestKernelTrait>(
@@ -81,7 +85,9 @@ TEST(GpuKernelRegistryTest, RegisterKernelConcurrently) {
   tsl::thread::ThreadPool pool(tsl::Env::Default(), "test_pool", 2);
 
   pool.Schedule([&] {
-    MultiKernelLoaderSpec cuda_spec(1);
+    MultiKernelLoaderSpec cuda_spec =
+        MultiKernelLoaderSpec::CreateInProcessSymbolSpec(nullptr, "kernel_name",
+                                                         1);
     // Can register a simple kernel
     EXPECT_THAT(registry.RegisterKernel<TestKernelTrait>(
                     stream_executor::cuda::kCudaPlatformId, cuda_spec),
@@ -89,7 +95,9 @@ TEST(GpuKernelRegistryTest, RegisterKernelConcurrently) {
   });
 
   pool.Schedule([&] {
-    MultiKernelLoaderSpec rocm_spec(42);
+    MultiKernelLoaderSpec rocm_spec =
+        MultiKernelLoaderSpec::CreateInProcessSymbolSpec(nullptr, "kernel_name",
+                                                         42);
     // Can register a different kernel under the same trait for a different
     // platform.
     EXPECT_THAT(registry.RegisterKernel<TestKernelTrait>(
@@ -101,7 +109,8 @@ TEST(GpuKernelRegistryTest, RegisterKernelConcurrently) {
 TEST(GpuKernelRegistryTest, FindKernel) {
   PlatformObjectRegistry object_registry;
   GpuKernelRegistry registry{&object_registry};
-  MultiKernelLoaderSpec spec(333);
+  MultiKernelLoaderSpec spec = MultiKernelLoaderSpec::CreateInProcessSymbolSpec(
+      nullptr, "kernel_name", 333);
 
   ASSERT_THAT(registry.RegisterKernel<TestKernelTrait>(
                   stream_executor::cuda::kCudaPlatformId, spec),
@@ -128,7 +137,8 @@ TEST(GpuKernelRegistryTest, FindKernelConcurrently) {
 
   PlatformObjectRegistry object_registry;
   GpuKernelRegistry registry{&object_registry};
-  MultiKernelLoaderSpec spec(333);
+  MultiKernelLoaderSpec spec = MultiKernelLoaderSpec::CreateInProcessSymbolSpec(
+      nullptr, "kernel_name", 333);
 
   ASSERT_THAT(registry.RegisterKernel<TestKernelTrait>(
                   stream_executor::cuda::kCudaPlatformId, spec),

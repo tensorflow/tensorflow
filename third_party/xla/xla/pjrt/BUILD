@@ -992,6 +992,7 @@ xla_cc_test(
         "//xla/hlo/parser:hlo_parser",
         "//xla/pjrt/c:pjrt_c_api_cpu_internal",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
+        "//xla/service:computation_placer_hdr",
         "//xla/tests:literal_test_util",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
@@ -1035,8 +1036,8 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:casts",
-        "@local_tsl//tsl/platform:errors",
     ],
 )
 
@@ -1138,10 +1139,13 @@ cc_library(
     hdrs = ["triton.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:TargetParser",
+        "@local_tsl//tsl/platform:cuda_root_path",
+        "@local_tsl//tsl/platform:path",
     ] + if_cuda_is_configured(
         [
             "@com_google_absl//absl/base",
@@ -1212,6 +1216,7 @@ cc_library(
         ":device_event",
         ":pjrt_client",
         ":pjrt_future",
+        "//xla:shape_util",
         "//xla/tsl/concurrency:ref_count",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

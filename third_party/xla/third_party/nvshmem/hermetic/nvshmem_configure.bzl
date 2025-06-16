@@ -26,7 +26,15 @@ load(
 )
 
 NVSHMEM_ENABLED_BUILD_CONTENT = """
+package(default_visibility = ["//visibility:public"])
+
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
+
+# This set of flags and config_settings is needed to enable NVSHMEM dependencies
+# separately from CUDA dependencies. The reason is that NVSHMEM libraries
+# require GLIBC 2.28 and above, which we don't have on RBE runners yet.
+# TODO(ybaturina): Remove this once GLIBC 2.28 is available on RBE.
 bool_flag(
     name = "include_nvshmem_libs",
     build_setting_default = False,
@@ -37,25 +45,52 @@ config_setting(
     flag_values = {":include_nvshmem_libs": "True"},
 )
 
-bool_setting(
-    name = "true_setting",
-    visibility = ["//visibility:private"],
-    build_setting_default = True,
+bool_flag(
+    name = "override_include_nvshmem_libs",
+    build_setting_default = False,
 )
 
 config_setting(
+    name = "overrided_nvshmem_libs",
+    flag_values = {":override_include_nvshmem_libs": "True"},
+)
+
+alias(
     name = "nvshmem_tools",
-    flag_values = {":true_setting": "True"},
+    actual = "@local_config_cuda//:is_cuda_enabled",
+)
+
+selects.config_setting_group(
+    name = "any_nvshmem_libs",
+    match_any = [
+        ":nvshmem_libs",
+        ":overrided_nvshmem_libs",
+    ],
+)
+
+selects.config_setting_group(
+    name = "nvshmem_tools_and_libs",
+    match_all = [
+        ":any_nvshmem_libs",
+        ":nvshmem_tools",
+    ],
 )
 """
 
 NVSHMEM_DISABLED_BUILD_CONTENT = """
+package(default_visibility = ["//visibility:public"])
+
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
 
 bool_setting(
     name = "true_setting",
-    visibility = ["//visibility:private"],
     build_setting_default = True,
+)
+
+bool_flag(
+    name = "include_nvshmem_libs",
+    build_setting_default = False,
 )
 
 config_setting(
@@ -66,6 +101,32 @@ config_setting(
 config_setting(
     name = "nvshmem_libs",
     flag_values = {":true_setting": "False"},
+)
+
+bool_flag(
+    name = "override_include_nvshmem_libs",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "overrided_nvshmem_libs",
+    flag_values = {":true_setting": "False"},
+)
+
+selects.config_setting_group(
+    name = "any_nvshmem_libs",
+    match_any = [
+        ":nvshmem_libs",
+        ":overrided_nvshmem_libs"
+    ],
+)
+
+selects.config_setting_group(
+    name = "nvshmem_tools_and_libs",
+    match_all = [
+        ":any_nvshmem_libs",
+        ":nvshmem_tools"
+    ],
 )
 """
 

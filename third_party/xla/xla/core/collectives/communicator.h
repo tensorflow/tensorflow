@@ -73,6 +73,13 @@ class Communicator {
     return Unimplemented("User-managed buffer registration is not supported");
   }
 
+  // Register `buffer` for efficient collective operations (i.e. on NVSHMEM
+  // backend it registers the buffer for unregistered nvshmem buffers).
+  virtual absl::Status RegisterBuffer(void* addr, size_t length) {
+    return absl::UnimplementedError(
+        "User-managed buffer registration is not supported");
+  }
+
   // Abort any uncompleted operations and destroys the underlying communicator
   // object. It is undefined behavior to use the communicator after calling
   // this method.
@@ -148,6 +155,24 @@ class Communicator {
                                          RankId peer,
                                          const Executor& executor) = 0;
 
+  // Send data from `send_buff` to rank `recv_buff` (one-way send).
+  virtual tsl::AsyncValueRef<Event> Send(se::DeviceMemoryBase recv_buffer,
+                                         se::DeviceMemoryBase send_buffer,
+                                         PrimitiveType dtype, size_t count,
+                                         RankId peer,
+                                         const Executor& executor) {
+    return Unimplemented("One-way send is not implemented");
+  }
+
+  // Receive data from rank `peer` into `recv_buff` (one-way recv).
+  virtual tsl::AsyncValueRef<Event> Recv(se::DeviceMemoryBase recv_buffer,
+                                         se::DeviceMemoryBase send_buffer,
+                                         PrimitiveType dtype, size_t count,
+                                         RankId peer,
+                                         const Executor& executor) {
+    return Unimplemented("One-way recv is not implemented");
+  }
+
   // Returns the number of ranks in the communicator.
   virtual absl::StatusOr<size_t> NumRanks() const = 0;
 
@@ -158,6 +183,18 @@ class Communicator {
 
   // Returns a human-readable description of the communicator.
   virtual std::string ToString() const = 0;
+
+  // Guarantees completion of all operations on symmetric data objects which
+  // makes the updates visible to all other PEs.
+  virtual absl::Status Quiet(const Executor& executor) {
+    return Unimplemented("Quiet is not implemented");
+  }
+
+  // Guarantees ordering of delivery of all previous operations on symmetric
+  // data objects.
+  virtual absl::Status Fence() {
+    return Unimplemented("Fence is not implemented");
+  }
 
  protected:
   // Returns an `Event` that is always available.

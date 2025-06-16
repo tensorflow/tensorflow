@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/local_client_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tests/test_utils.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
@@ -740,7 +739,10 @@ TEST_F(LocalClientExecuteTest, CompileExecutable) {
       {2.0f, 4.0f, 6.0f}, ShapedBufferToLiteral(result), error_spec_);
 }
 
-TEST_F(LocalClientExecuteTest, DISABLED_ON_TPU(CompilePartitionedExecutable)) {
+TEST_F(LocalClientExecuteTest, CompilePartitionedExecutable) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   if (local_client_->device_count() < 2) {
     GTEST_SKIP_("requires two devices");
   }

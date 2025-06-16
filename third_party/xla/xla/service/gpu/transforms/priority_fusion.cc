@@ -531,6 +531,12 @@ class PriorityFusionQueue {
   // Returns the priority of the producer based on its current operands and
   // users.
   Priority CalculateProducerPriority(HloInstruction* producer) {
+    // First cleanup any potentially remaining preferred consumer. We will
+    // recompute it here.
+    {
+      absl::MutexLock lock(&preferred_consumer_mutex_);
+      preferred_consumer_.erase(producer);
+    }
     // Bitcasts should always be fused first, since they are no-ops.
     if (HloPredicateIsOp<HloOpcode::kBitcast>(producer)) {
       return absl::InfiniteDuration();

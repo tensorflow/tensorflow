@@ -19,18 +19,40 @@ limitations under the License.
 
 #include "xla/python/ifrt/serdes_any_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
+#include "xla/python/ifrt/serdes_week_4_old_version_accessor.h"
 
 namespace xla {
 namespace ifrt {
 namespace test_util {
 
 std::vector<SerDesVersion> AllSupportedSerDesVersions() {
+  const int min_version_number =
+      SerDesAnyVersionAccessor::GetMinimum().version_number().value();
+  const int cur_version_number =
+      SerDesVersion::current().version_number().value();
+
   std::vector<SerDesVersion> versions;
-  versions.reserve(SerDesVersion::current().version() -
-                   SerDesAnyVersionAccessor::GetMinimum().version() + 1);
-  for (int version = SerDesAnyVersionAccessor::GetMinimum().version();
-       version <= SerDesVersion::current().version(); ++version) {
-    versions.push_back(SerDesAnyVersionAccessor::Get(version));
+  versions.reserve(cur_version_number - min_version_number + 1);
+  for (int version_number = min_version_number;
+       version_number <= cur_version_number; ++version_number) {
+    versions.push_back(
+        SerDesAnyVersionAccessor::Get(SerDesVersionNumber(version_number)));
+  }
+  return versions;
+};
+
+std::vector<SerDesVersion> Week4OldOrLaterSerDesVersions() {
+  const int min_version_number =
+      SerDesWeek4OldVersionAccessor::Get().version_number().value();
+  const int cur_version_number =
+      SerDesVersion::current().version_number().value();
+
+  std::vector<SerDesVersion> versions;
+  versions.reserve(cur_version_number - min_version_number + 1);
+  for (int version_number = min_version_number;
+       version_number <= cur_version_number; ++version_number) {
+    versions.push_back(
+        SerDesAnyVersionAccessor::Get(SerDesVersionNumber(version_number)));
   }
   return versions;
 };

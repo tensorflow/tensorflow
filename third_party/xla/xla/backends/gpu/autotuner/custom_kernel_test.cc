@@ -134,12 +134,11 @@ TEST_F(CustomKernelBackendTest, GetSupportedConfigsFromCustomKernelFusion) {
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
           (*module->entry_computation()->root_instruction()), stream_executor);
-  EXPECT_THAT(configs, IsOk());
-  EXPECT_FALSE(configs.value().empty());
+  EXPECT_THAT(configs, IsOkAndHolds(testing::SizeIs(testing::Gt(0))));
 }
 
 TEST_F(CustomKernelBackendTest,
-       GetSupportedConfigsFailsForNonCustomFusionInstruction) {
+       GetSupportedConfigsReturnsEmptyVectorForNonCustomKernelFusion) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kTritonFusionHlo));
   se::StreamExecutor* stream_executor =
@@ -147,7 +146,7 @@ TEST_F(CustomKernelBackendTest,
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
           (*module->entry_computation()->root_instruction()), stream_executor);
-  EXPECT_THAT(configs, StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(configs, IsOkAndHolds(testing::SizeIs(0)));
 }
 
 TEST_F(CustomKernelBackendTest, ReturnsDefaultConfig) {
