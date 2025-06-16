@@ -55,7 +55,9 @@ cc_library(
         "//xla/tsl/platform:threadpool_interface",
         "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform",
@@ -64,7 +66,6 @@ cc_library(
         "@local_tsl//tsl/platform:cord",
         "@local_tsl//tsl/platform:denormal",
         "@local_tsl//tsl/platform:load_library",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:protobuf",
@@ -74,6 +75,7 @@ cc_library(
         "@local_tsl//tsl/platform:strcat",
         "@local_tsl//tsl/platform:stringpiece",
         "@local_tsl//tsl/platform:stringprintf",
+        "@local_tsl//tsl/platform:thread_annotations",
         "@local_tsl//tsl/platform:tracing",
     ],
 )
@@ -209,7 +211,10 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    deps = ["@local_tsl//tsl/platform:mutex"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
+    ],
 )
 
 cc_library(
@@ -223,7 +228,8 @@ cc_library(
     ],
     deps = [
         "//xla/tsl/platform:types",
-        "@local_tsl//tsl/platform:mutex",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:stacktrace",
     ],
 )
@@ -242,9 +248,10 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:types",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:strcat",
+        "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
 
