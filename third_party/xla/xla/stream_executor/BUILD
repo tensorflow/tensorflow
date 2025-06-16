@@ -531,6 +531,8 @@ cc_library(
     srcs = ["kernel_spec.cc"],
     hdrs = ["kernel_spec.h"],
     deps = [
+        ":kernel",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -544,7 +546,6 @@ cc_library(
     hdrs = ["kernel.h"],
     deps = [
         ":device_memory",
-        ":kernel_spec",
         ":launch_dim",
         ":stream",
         "@com_google_absl//absl/container:inlined_vector",
@@ -553,7 +554,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
