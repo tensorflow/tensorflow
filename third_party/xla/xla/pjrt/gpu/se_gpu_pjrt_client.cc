@@ -561,7 +561,7 @@ absl::Status AbortOnFailure(
         update.previous_state.size(), update.current_state.size());
   }
 
-  bool task_failed = false;
+  std::vector<uint64_t> failed_incarnations;
   for (int i = 0; i < update.previous_state.size(); ++i) {
     const tensorflow::CoordinatedTaskStateInfo& previous =
         update.previous_state[i];
@@ -581,13 +581,14 @@ absl::Status AbortOnFailure(
             tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED ||
         previous.incarnation() != current.incarnation()) {
       // The task is either failed, or restarted with a different incarnation.
-      VLOG(1) << "Task " << previous.task().task_id() << " failed";
-      task_failed = true;
+      VLOG(1) << "Task " << previous.task().task_id() << " (incarnation "
+              << previous.incarnation() << ") failed";
+      failed_incarnations.push_back(previous.incarnation());
     }
   }
 
-  if (task_failed) {
-    return xla::gpu::AbortAllCliques();
+  if (!failed_incarnations.empty()) {
+    return xla::gpu::AbortCliquesWithIncarnations(failed_incarnations);
   }
   return absl::OkStatus();
 }

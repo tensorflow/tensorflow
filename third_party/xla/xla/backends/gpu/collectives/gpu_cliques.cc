@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/btree_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
@@ -601,20 +602,39 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
                              config);
 }
 
-absl::Status AbortAllCliques() {
-  VLOG(1) << "Aborting all GPU cliques";
+// Returns true if key contains any of the provided incarnations.
+bool CliqueKeyContainsIncarnation(
+    const GpuCliqueKey& key,
+    const absl::flat_hash_set<uint64_t>& incarnations) {
+  return absl::c_any_of(key.incarnations(),
+                        [&incarnations](uint64_t incarnation) {
+                          return incarnations.contains(incarnation);
+                        });
+}
+
+absl::Status AbortCliquesWithIncarnations(
+    absl::Span<const uint64_t> incarnations) {
+  VLOG(1) << "Aborting GPU cliques for incarnations "
+          << absl::StrJoin(incarnations, ", ");
+  const absl::flat_hash_set<uint64_t> incarnation_set(incarnations.begin(),
+                                                      incarnations.end());
   ProcessGpuCliques& cliques = GetProcessGpuCliques();
   absl::MutexLock lock(&cliques.mu);
   absl::Status result;
-  for (auto& [clique_key, lockable_clique] : cliques.map) {
-    VLOG(1) << "Aborting GPU clique " << clique_key.ToString();
+  for (auto it = cliques.map.begin(); it != cliques.map.end();) {
+    auto copy = it++;
+    auto& [key, lockable_clique] = *copy;
+    if (!CliqueKeyContainsIncarnation(key, incarnation_set)) {
+      VLOG(1) << "Not aborting GPU clique " << key.ToString();
+      continue;
+    }
+    VLOG(1) << "Aborting GPU clique " << key.ToString();
     if (absl::Status s = lockable_clique.Abort(); !s.ok()) {
-      LOG(ERROR) << "Error aborting GPU clique " << clique_key.ToString()
-                 << ": " << s;
+      LOG(ERROR) << "Error aborting GPU clique " << key.ToString() << ": " << s;
       result = std::move(s);
     }
+    cliques.map.erase(copy);
   }
-  cliques.map.clear();
   return result;
 }
 
