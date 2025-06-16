@@ -14,7 +14,6 @@
 
 #include "xla/hlo/tools/hlo_diff/hlo_diff_result.h"
 
-#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
