@@ -1760,21 +1760,6 @@ bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
   return true;
 }
 
-/*static*/ bool HloDataflowAnalysis::IsPotentialInPlaceOperation(
-    const HloInstruction* hlo) {
-  HloOpcode opcode = hlo->opcode();
-  return opcode == HloOpcode::kDynamicUpdateSlice ||
-         opcode == HloOpcode::kScatter ||
-         (opcode == HloOpcode::kCollectivePermute &&
-          hlo->operands().size() == 4) ||
-         (opcode == HloOpcode::kCollectivePermuteStart &&
-          hlo->operands().size() == 4) ||
-         opcode == HloOpcode::kCustomCall ||
-         opcode == HloOpcode::kAllReduceStart || opcode == HloOpcode::kFusion ||
-         opcode == HloOpcode::kSetDimensionSize ||
-         opcode == HloOpcode::kRaggedAllToAll;
-}
-
 /*static*/ bool HloDataflowAnalysis::IsAsynchronousOperationStart(
     HloOpcode opcode) {
   return opcode == HloOpcode::kSend || opcode == HloOpcode::kRecv ||
@@ -1886,21 +1871,37 @@ GetFusionInstructionInPlaceInputOutputPairs(const HloInstruction* instruction) {
   return in_place_input_output_pairs;
 }
 
+bool IsDefaultInPlaceOperation(const HloInstruction* hlo) {
+  HloOpcode opcode = hlo->opcode();
+  return opcode == HloOpcode::kDynamicUpdateSlice ||
+         opcode == HloOpcode::kScatter || opcode == HloOpcode::kAllReduceStart;
+}
+
 }  // namespace
 
 /*static*/ std::vector<std::pair<HloOperandIndex, ShapeIndex>>
 HloDataflowAnalysis::GetInPlaceInputOutputPairs(
     const HloInstruction* instruction) {
-  if (!IsPotentialInPlaceOperation(instruction)) {
-    return {};
-  }
-  int64_t num_in_place_operands = instruction->operand_count();
-  const HloScatterInstruction* scatter =
-      DynCast<HloScatterInstruction>(instruction);
-  if (scatter) {
-    num_in_place_operands = scatter->scatter_operand_count();
-  } else if (instruction->opcode() == HloOpcode::kDynamicUpdateSlice) {
-    num_in_place_operands = 1;
+  if (IsDefaultInPlaceOperation(instruction)) {
+    int64_t num_in_place_operands = instruction->operand_count();
+    const HloScatterInstruction* scatter =
+        DynCast<HloScatterInstruction>(instruction);
+    if (scatter) {
+      num_in_place_operands = scatter->scatter_operand_count();
+    } else if (instruction->opcode() == HloOpcode::kDynamicUpdateSlice) {
+      num_in_place_operands = 1;
+    }
+    // Default handling: one operand shares buffer with single output.
+    if (num_in_place_operands == 1) {
+      return {{HloOperandIndex{0, {}}, {}}};
+    }
+    // Default handling: operand i shares buffer with output i.
+    std::vector<std::pair<HloOperandIndex, ShapeIndex>> in_place_pairs;
+    in_place_pairs.reserve(num_in_place_operands);
+    for (int i = 0; i < num_in_place_operands; i++) {
+      in_place_pairs.push_back({HloOperandIndex{i, {}}, {i}});
+    }
+    return in_place_pairs;
   }
 
   // Ops that require special handling.
@@ -1981,18 +1982,7 @@ HloDataflowAnalysis::GetInPlaceInputOutputPairs(
   if (instruction->opcode() == HloOpcode::kRaggedAllToAll) {
     return {{HloOperandIndex{1, {}}, {}}};
   }
-
-  // Default handling: one operand shares buffer with single output.
-  if (num_in_place_operands == 1) {
-    return {{HloOperandIndex{0, {}}, {}}};
-  }
-  // Default handling: operand i shares buffer with output i.
-  std::vector<std::pair<HloOperandIndex, ShapeIndex>> in_place_pairs;
-  in_place_pairs.reserve(num_in_place_operands);
-  for (int i = 0; i < num_in_place_operands; i++) {
-    in_place_pairs.push_back({HloOperandIndex{i, {}}, {i}});
-  }
-  return in_place_pairs;
+  return {};
 }
 
 bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
