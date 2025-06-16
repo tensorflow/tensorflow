@@ -2345,4 +2345,56 @@ BufferAssigner::CreateAssignment(
   return std::move(assignment);
 }
 
+absl::StatusOr<int> ComputePeakMemory(const BufferAssignmentProto& proto) {
+  struct Buffer {
+    int64_t size;
+    int ref_count;
+    struct Buffer* shared_with;
+    explicit Buffer(int64_t size)
+        : size(size), ref_count(0), shared_with(nullptr) {}
+  };
+  absl::flat_hash_map<int64_t, Buffer*> id_to_buffer;
+  std::vector<Buffer> buffers;
+  buffers.reserve(proto.logical_buffers_size());
+  for (const LogicalBufferProto& b : proto.logical_buffers()) {
+    buffers.push_back(Buffer(b.size()));
+    id_to_buffer[b.id()] = &buffers[buffers.size() - 1];
+  }
+  int64_t memory = 0;
+  int64_t peak_memory = 0;
+  for (const HeapSimulatorTrace& trace : proto.heap_simulator_traces()) {
+    for (const HeapSimulatorTrace::Event& event : trace.events()) {
+      Buffer* buffer = id_to_buffer[event.buffer_id()];
+      switch (event.kind()) {
+        case HeapSimulatorTrace::Event::ALLOC:
+          memory += buffer->size;
+          buffer->ref_count++;
+          break;
+        case HeapSimulatorTrace::Event::FREE: {
+          Buffer* root = buffer;
+          while (root->shared_with) {
+            root = root->shared_with;
+          }
+          if (--root->ref_count == 0) {
+            memory -= root->size;
+          }
+          break;
+        }
+        case HeapSimulatorTrace::Event::SHARE_WITH: {
+          Buffer* other = id_to_buffer[event.share_with_canonical_id()];
+          buffer->shared_with = other;
+          if (++other->ref_count == 1) {
+            memory += buffer->size;
+          }
+          break;
+        }
+        default:
+          break;
+      }
+      peak_memory = std::max(peak_memory, memory);
+    }
+  }
+  return peak_memory;
+}
+
 }  // namespace xla

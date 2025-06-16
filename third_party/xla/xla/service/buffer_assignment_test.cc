@@ -74,6 +74,7 @@ namespace {
 using memory_space_assignment::PresetAssignments;
 using ::testing::HasSubstr;
 using ::testing::UnorderedElementsAre;
+using ::testing::status::IsOkAndHolds;
 using ::tsl::proto_testing::EqualsProto;
 using tsl::testing::StatusIs;
 
@@ -113,7 +114,7 @@ int64_t BufferSizeBytes(const BufferValue& buffer) {
 
 class BufferAssignmentTest : public HloHardwareIndependentTestBase {
  protected:
-  ~BufferAssignmentTest() override {}
+  ~BufferAssignmentTest() override = default;
 
   std::unique_ptr<BufferAssignment> RunBufferAssignment(HloModule* module,
                                                         int64_t alignment = 1) {
@@ -3662,6 +3663,94 @@ TEST(BufferAllocationTest, ToAndFromProto) {
                 new_allocation.param_shape_index());
     }
   });
+}
+
+TEST(ComputePeakMemoryTest, SimpleAllocation) {
+  BufferAssignmentProto proto;
+  HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
+  LogicalBufferProto* buffer = proto.add_logical_buffers();
+  buffer->set_id(0);
+  buffer->set_size(10);
+  HeapSimulatorTrace::Event* event1 = trace->add_events();
+  event1->set_buffer_id(0);
+  event1->set_kind(HeapSimulatorTrace::Event::ALLOC);
+  HeapSimulatorTrace::Event* event2 = trace->add_events();
+  event2->set_buffer_id(0);
+  event2->set_kind(HeapSimulatorTrace::Event::FREE);
+
+  EXPECT_THAT(ComputePeakMemory(proto), IsOkAndHolds(10));
+}
+
+TEST(ComputePeakMemoryTest, MultipleBuffers) {
+  BufferAssignmentProto proto;
+  HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
+
+  // Buffer 0
+  LogicalBufferProto* buffer0 = proto.add_logical_buffers();
+  buffer0->set_id(0);
+  buffer0->set_size(10);
+  HeapSimulatorTrace::Event* event1 = trace->add_events();
+  event1->set_buffer_id(0);
+  event1->set_kind(HeapSimulatorTrace::Event::ALLOC);
+
+  // Buffer 1
+  LogicalBufferProto* buffer1 = proto.add_logical_buffers();
+  buffer1->set_id(1);
+  buffer1->set_size(20);
+  HeapSimulatorTrace::Event* event2 = trace->add_events();
+  event2->set_buffer_id(1);
+  event2->set_kind(HeapSimulatorTrace::Event::ALLOC);
+
+  // Free buffer 0
+  HeapSimulatorTrace::Event* event3 = trace->add_events();
+  event3->set_buffer_id(0);
+  event3->set_kind(HeapSimulatorTrace::Event::FREE);
+
+  // Free buffer 1
+  HeapSimulatorTrace::Event* event4 = trace->add_events();
+  event4->set_buffer_id(1);
+  event4->set_kind(HeapSimulatorTrace::Event::FREE);
+
+  EXPECT_THAT(ComputePeakMemory(proto), IsOkAndHolds(30));
+}
+
+TEST(ComputePeakMemoryTest, SharedBuffers) {
+  BufferAssignmentProto proto;
+  HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
+
+  // Buffer 0
+  LogicalBufferProto* buffer0 = proto.add_logical_buffers();
+  buffer0->set_id(0);
+  buffer0->set_size(10);
+  HeapSimulatorTrace::Event* event1 = trace->add_events();
+  event1->set_buffer_id(0);
+  event1->set_kind(HeapSimulatorTrace::Event::ALLOC);
+
+  // Buffer 1 shared with 0
+  LogicalBufferProto* buffer1 = proto.add_logical_buffers();
+  buffer1->set_id(1);
+  buffer1->set_size(10);
+  HeapSimulatorTrace::Event* event2 = trace->add_events();
+  event2->set_buffer_id(1);
+  event2->set_kind(HeapSimulatorTrace::Event::SHARE_WITH);
+  event2->set_share_with_canonical_id(0);
+
+  // Free buffer 1
+  HeapSimulatorTrace::Event* event3 = trace->add_events();
+  event3->set_buffer_id(1);
+  event3->set_kind(HeapSimulatorTrace::Event::FREE);
+
+  // Free buffer 0
+  HeapSimulatorTrace::Event* event4 = trace->add_events();
+  event4->set_buffer_id(0);
+  event4->set_kind(HeapSimulatorTrace::Event::FREE);
+
+  EXPECT_THAT(ComputePeakMemory(proto), IsOkAndHolds(10));
+}
+
+TEST(ComputePeakMemoryTest, EmptyProto) {
+  BufferAssignmentProto proto;
+  EXPECT_THAT(ComputePeakMemory(proto), IsOkAndHolds(0));
 }
 
 }  // namespace
