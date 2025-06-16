@@ -80,12 +80,30 @@ ImplicitArithOpBuilder ImplicitArithOpBuilder::operator^(
   return Binop<mlir::arith::XOrIOp>(rhs);
 }
 
+ImplicitArithOpBuilder ImplicitArithOpBuilder::operator<<(
+    mlir::Value rhs) const {
+  return Binop<mlir::arith::ShLIOp>(rhs);
+}
+
+ImplicitArithOpBuilder ImplicitArithOpBuilder::operator<<(int64_t rhs) const {
+  return Binop<mlir::arith::ShLIOp>(rhs);
+}
+
 ImplicitArithOpBuilder ImplicitArithOpBuilder::shl(mlir::Value rhs) const {
   return Binop<mlir::arith::ShLIOp>(rhs);
 }
 
 ImplicitArithOpBuilder ImplicitArithOpBuilder::shl(int64_t rhs) const {
   return Binop<mlir::arith::ShLIOp>(rhs);
+}
+
+ImplicitArithOpBuilder ImplicitArithOpBuilder::operator>>(
+    mlir::Value rhs) const {
+  return Binop<mlir::arith::ShRUIOp>(rhs);
+}
+
+ImplicitArithOpBuilder ImplicitArithOpBuilder::operator>>(int64_t rhs) const {
+  return Binop<mlir::arith::ShRUIOp>(rhs);
 }
 
 ImplicitArithOpBuilder ImplicitArithOpBuilder::shrui(mlir::Value rhs) const {

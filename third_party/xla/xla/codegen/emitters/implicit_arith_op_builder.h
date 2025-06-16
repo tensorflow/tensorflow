@@ -53,9 +53,13 @@ class ImplicitArithOpBuilder {
   // Bitwise xor.
   ImplicitArithOpBuilder operator^(mlir::Value rhs) const;
   // Logical shift left.
+  ImplicitArithOpBuilder operator<<(mlir::Value rhs) const;
+  ImplicitArithOpBuilder operator<<(int64_t rhs) const;
   ImplicitArithOpBuilder shl(mlir::Value rhs) const;
   ImplicitArithOpBuilder shl(int64_t rhs) const;
   // Logical shift right.
+  ImplicitArithOpBuilder operator>>(mlir::Value rhs) const;
+  ImplicitArithOpBuilder operator>>(int64_t rhs) const;
   ImplicitArithOpBuilder shrui(mlir::Value rhs) const;
   ImplicitArithOpBuilder shrui(int64_t rhs) const;
 
