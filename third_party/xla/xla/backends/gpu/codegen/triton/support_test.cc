@@ -145,6 +145,13 @@ std::vector<xla::PrimitiveType> AllOpSupportedTypes(HloOpcode opcode) {
   return result;
 }
 
+template <typename Predicate>
+std::vector<xla::PrimitiveType> XlaDataTypesMatching(Predicate predicate) {
+  std::vector<xla::PrimitiveType> result;
+  absl::c_copy_if(AllXlaDataTypes(), std::back_inserter(result), predicate);
+  return result;
+}
+
 std::vector<PrecisionConfig::Algorithm> AllPrecisionAlgorithms() {
   std::vector<PrecisionConfig::Algorithm> algorithms;
   const tsl::protobuf::EnumDescriptor* algorithm_descriptor =
@@ -432,6 +439,57 @@ ENTRY triton_computation {
           data_type, opcode));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32}, cc);
 }
+
+class DynamicSliceTest : public TritonSupportTest,
+                         public ::testing::WithParamInterface<PrimitiveType> {};
+
+TEST_P(DynamicSliceTest, IsTritonSupportedDynamicSliceBufferType) {
+  auto data_type = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  p0 = $0[64,128] parameter(0)
+  off0 = s32[] parameter(1)
+  off1 = s32[] parameter(2)
+  ROOT r = $0[8, 16] dynamic-slice(p0, off0, off1), dynamic_slice_sizes={8, 16}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
+                                     HloOpcode::kDynamicSlice,
+                                     /*use_nested_gemm_fusions=*/true));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{4, 8},
+                 se::CudaComputeCapability::Ampere());
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    DynamicSliceTestSuite, DynamicSliceTest,
+    ::testing::ValuesIn(AllOpSupportedTypes(HloOpcode::kDynamicSlice)),
+    TritonSupportTestTypeToString);
+
+using DynamicSliceOffsetsTest = DynamicSliceTest;
+
+TEST_P(DynamicSliceOffsetsTest, IsTritonSupportedDynamicSliceOffsetType) {
+  auto data_type = GetParam();
+  const std::string kHloTestTemplate = R"(
+ENTRY triton_computation {
+  p0 = f32[64,128] parameter(0)
+  off0 = $0[] parameter(1)
+  off1 = $0[] parameter(2)
+  ROOT r = f32[8, 16] dynamic-slice(p0, off0, off1), dynamic_slice_sizes={8, 16}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(
+      TestedInstruction ti,
+      ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
+                                     HloOpcode::kDynamicSlice,
+                                     /*use_nested_gemm_fusions=*/true));
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{4, 8},
+                 se::CudaComputeCapability::Ampere());
+}
+
+INSTANTIATE_TEST_SUITE_P(DynamicSliceOffsetTestSuite, DynamicSliceOffsetsTest,
+                         ::testing::ValuesIn(XlaDataTypesMatching(
+                             ::xla::primitive_util::IsIntegralType)),
+                         TritonSupportTestTypeToString);
 
 constexpr std::array kTestedOpsUnaryElementwise = {
     // clang-format off
