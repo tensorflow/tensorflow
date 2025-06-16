@@ -17,14 +17,21 @@ limitations under the License.
 #define XLA_BACKENDS_AUTOTUNER_AUTOTUNER_H_
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/stream_executor/stream_executor.h"
+
+using InstructionFilterFn =
+    absl::AnyInvocable<bool(const xla::HloInstruction&) const>;
 
 namespace xla {
 
@@ -48,6 +55,12 @@ class Autotuner {
   // given HLO instruction and apply the best one.
   absl::Status Autotune(HloInstruction* instr);
 
+  // Autotune all instructions in the module that matches the filter function.
+  // If ignore_fusion_computations is true, the filter will ignore the
+  // instructions that are inside fusion computations.
+  absl::Status Autotune(HloModule* module, InstructionFilterFn should_autotune,
+                        bool ignore_fusion_computations = false);
+
  private:
   Autotuner(std::vector<std::unique_ptr<CodegenBackend>> codegen_backends,
             stream_executor::StreamExecutor* stream_executor,
@@ -56,6 +69,14 @@ class Autotuner {
         stream_executor_(stream_executor),
         profiler_(std::move(profiler)),
         autotune_config_(autotune_config) {}
+
+  absl::StatusOr<std::pair<CodegenBackend*, std::unique_ptr<BackendConfig>>>
+  GetBestConfig(HloInstruction* instr);
+
+  absl::flat_hash_map<std::string, std::vector<HloInstruction*>>
+  GetAutotuningCandidates(const HloModule* module,
+                          InstructionFilterFn should_autotune,
+                          bool ignore_fusion_computations);
 
   std::vector<std::unique_ptr<CodegenBackend>> codegen_backends_;
   se::StreamExecutor* stream_executor_;

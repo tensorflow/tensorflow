@@ -26,14 +26,18 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal_util.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -45,6 +49,8 @@ MATCHER_P(ConfigMatcher, name, "") {
   const TestConfig& test_config = static_cast<const TestConfig&>(arg);
   return test_config.name() == name;
 }
+
+MATCHER_P(InstructionMatcher, opcode, "") { return arg.opcode() == opcode; }
 
 std::unique_ptr<TestConfig> GetTestConfig(std::string name) {
   TestConfig config;
@@ -83,13 +89,63 @@ using ::testing::Return;
 using tsl::testing::IsOk;
 using tsl::testing::StatusIs;
 
-TEST(AutotunerTest, NoCodegenBackend) {
+std::unique_ptr<Autotuner> SetupAutotunerWithExpectations(
+    HloOpcode instr_to_autotune,
+    std::pair<HloOpcode, int> instr_to_apply_config_and_count) {
+  std::vector<std::unique_ptr<BackendConfig>> configs;
+  configs.push_back(GetTestConfig("test_config_1"));
+  configs.push_back(GetTestConfig("test_config_2"));
+
+  auto backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*backend,
+              GetSupportedConfigs(InstructionMatcher(instr_to_autotune), _))
+      .WillOnce(Return(std::move(configs)));
+  EXPECT_CALL(*backend, Compile(_, _))
+      .WillOnce(Return(std::unique_ptr<Executable>()))
+      .WillOnce(Return(std::unique_ptr<Executable>()));
+  HloOpcode instr_to_apply_config = instr_to_apply_config_and_count.first;
+  int count = instr_to_apply_config_and_count.second;
+  EXPECT_CALL(*backend,
+              ApplyConfig(InstructionMatcher(instr_to_apply_config), _))
+      .Times(count);
+
+  auto profiler = std::make_unique<MockProfiler>();
+  std::vector<ProfileResult> profile_results = {{absl::Seconds(1)},
+                                                {absl::Seconds(1)}};
+  EXPECT_CALL(*profiler, ProfileWithSharedBuffers)
+      .WillOnce(Return(profile_results));
+
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend));
+  return xla::Autotuner::Create(std::move(backends), nullptr,
+                                std::move(profiler), xla::AutotuneConfig());
+}
+
+constexpr absl::string_view kHlo = R"(
+  HloModule test_module
+  
+  fusion {
+    param.0 = f32[] parameter(0)
+    ROOT add.0 = f32[] add(param.0, param.0)
+  }
+  
+  ENTRY main {
+    p0 = f32[] parameter(0)
+    fusion = f32[] fusion(p0), kind=kLoop, calls=fusion
+    add = f32[] add(p0, p0)
+    ROOT copy = f32[] copy(fusion)
+  }
+  )";
+
+class AutotunerTest : public HloHardwareIndependentTestBase {};
+
+TEST_F(AutotunerTest, NoCodegenBackend) {
   auto autotuner =
       xla::Autotuner::Create({}, nullptr, nullptr, xla::AutotuneConfig());
   EXPECT_EQ(autotuner, nullptr);
 }
 
-TEST(AutotunerTest, AutotuneWithNoValidConfigs) {
+TEST_F(AutotunerTest, AutotuneWithNoValidConfigs) {
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.push_back(GetTestConfig("test_config"));
 
@@ -113,7 +169,7 @@ TEST(AutotunerTest, AutotuneWithNoValidConfigs) {
               StatusIs(absl::StatusCode::kInternal));
 }
 
-TEST(AutotunerTest, AutotuneAppliesBestConfig) {
+TEST_F(AutotunerTest, AutotuneAppliesBestConfig) {
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.push_back(GetTestConfig("test_config_1"));
   configs.push_back(GetTestConfig("test_config_2"));
@@ -139,6 +195,66 @@ TEST(AutotunerTest, AutotuneAppliesBestConfig) {
       std::move(backends), nullptr, std::move(profiler), xla::AutotuneConfig());
   auto dummy_instr = HloInstruction::CreateConstant(LiteralUtil::CreateR0(1));
   EXPECT_THAT(autotuner->Autotune(dummy_instr.get()), IsOk());
+}
+
+TEST_F(AutotunerTest, AutotuneModuleFindsNoInstructionsToAutotune) {
+  auto backend = std::make_unique<MockCodegenBackend>();
+  EXPECT_CALL(*backend, GetSupportedConfigs).Times(0);
+  std::vector<std::unique_ptr<CodegenBackend>> backends;
+  backends.push_back(std::move(backend));
+  std::unique_ptr<Autotuner> autotuner = xla::Autotuner::Create(
+      std::move(backends), nullptr, nullptr, xla::AutotuneConfig());
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_THAT(autotuner->Autotune(
+                  module.get(), [](const HloInstruction& _) { return false; }),
+              IsOk());
+}
+
+TEST_F(AutotunerTest, AutotuneModuleForNonFusionInstructions) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+
+  auto should_autotune = [](const HloInstruction& instruction) {
+    return instruction.opcode() == HloOpcode::kCopy;
+  };
+  std::unique_ptr<Autotuner> autotuner = SetupAutotunerWithExpectations(
+      /*instr_to_autotune=*/HloOpcode::kCopy,
+      /*instr_to_apply_config_and_count=*/{HloOpcode::kCopy, 1});
+
+  EXPECT_THAT(autotuner->Autotune(module.get(), should_autotune), IsOk());
+}
+
+TEST_F(AutotunerTest, AutotuneModuleForDuplicateInstructions) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+
+  auto should_autotune = [](const HloInstruction& instruction) {
+    return instruction.opcode() == HloOpcode::kAdd;
+  };
+  std::unique_ptr<Autotuner> autotuner = SetupAutotunerWithExpectations(
+      /*instr_to_autotune=*/HloOpcode::kAdd,
+      /*instr_to_apply_config_and_count=*/{HloOpcode::kAdd, 2});
+
+  EXPECT_THAT(autotuner->Autotune(module.get(), should_autotune), IsOk());
+}
+
+TEST_F(AutotunerTest, AutotuneModuleForFusionInstructions) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+
+  auto should_autotune = [](const HloInstruction& instruction) {
+    return instruction.opcode() == HloOpcode::kFusion;
+  };
+
+  std::unique_ptr<Autotuner> autotuner = SetupAutotunerWithExpectations(
+      /*instr_to_autotune=*/HloOpcode::kFusion,
+      /*instr_to_apply_config_and_count=*/{HloOpcode::kFusion, 1});
+
+  EXPECT_THAT(autotuner->Autotune(module.get(), should_autotune,
+                                  /*ignore_fusion_computations=*/true),
+              IsOk());
 }
 
 }  // namespace
