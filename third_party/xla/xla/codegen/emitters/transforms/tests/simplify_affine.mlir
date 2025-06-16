@@ -26,10 +26,10 @@ func.func @op_and_for_ranges(%arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: !llvm.pt
 // CHECK-DAG: %[[TID_X:.*]] = gpu.thread_id x
 // CHECK-DAG: %[[BID_X:.*]] = gpu.block_id x
 // CHECK:     scf.for %[[I:.*]] =
-// CHECK:       %[[BLOCK_OFFSET:.*]] = arith.muli %[[BID_X]], %[[C512]]
-// CHECK:       %[[THREAD_OFFSET:.*]] = arith.muli %[[TID_X]], %[[C4]]
-// CHECK:       %[[OFFSET:.*]] = arith.addi %[[BLOCK_OFFSET]], %[[THREAD_OFFSET]]
-// CHECK:       arith.addi %[[OFFSET]], %[[I]]
+// CHECK:       %[[BLOCK_OFFSET:.*]] = arith.muli %[[BID_X]], %[[C512]] overflow<nuw>
+// CHECK:       %[[THREAD_OFFSET:.*]] = arith.muli %[[TID_X]], %[[C4]] overflow<nuw>
+// CHECK:       %[[OFFSET:.*]] = arith.addi %[[BLOCK_OFFSET]], %[[THREAD_OFFSET]] overflow<nuw>
+// CHECK:       arith.addi %[[OFFSET]], %[[I]] overflow<nuw>
 
 // -----
 
@@ -84,10 +84,10 @@ func.func @op_and_for_ranges(%arg0: !llvm.ptr, %arg1: !llvm.ptr, %arg2: !llvm.pt
 // CHECK-DAG: %[[TID_X:.*]] = gpu.thread_id x
 // CHECK-DAG: %[[BID_X:.*]] = gpu.block_id x
 // CHECK:     scf.for %[[I:.*]] =
-// CHECK:       %[[BLOCK_OFFSET:.*]] = arith.muli %[[BID_X]], %[[C512]]
-// CHECK:       %[[THREAD_OFFSET:.*]] = arith.muli %[[TID_X]], %[[C4]]
-// CHECK:       %[[OFFSET:.*]] = arith.addi %[[BLOCK_OFFSET]], %[[THREAD_OFFSET]]
-// CHECK:       arith.addi %[[OFFSET]], %[[I]]
+// CHECK:       %[[BLOCK_OFFSET:.*]] = arith.muli %[[BID_X]], %[[C512]] overflow<nuw>
+// CHECK:       %[[THREAD_OFFSET:.*]] = arith.muli %[[TID_X]], %[[C4]] overflow<nuw>
+// CHECK:       %[[OFFSET:.*]] = arith.addi %[[BLOCK_OFFSET]], %[[THREAD_OFFSET]] overflow<nuw>
+// CHECK:       arith.addi %[[OFFSET]], %[[I]] overflow<nuw>
 
 // -----
 
@@ -146,4 +146,4 @@ func.func @order_summands(%arg1: index) {
 // CHECK: arith.divui
 // CHECK: arith.addi
 // CHECK: arith.muli %[[ARG3]]
-// CHECK: arith.addi %5, %6 : index
+// CHECK: arith.addi %5, %6 overflow<nuw> : index
