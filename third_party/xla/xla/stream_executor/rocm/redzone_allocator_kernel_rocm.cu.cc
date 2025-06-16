@@ -24,11 +24,9 @@ limitations under the License.
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
     RedzoneAllocatorKernelRocm, stream_executor::gpu::RedzoneAllocatorKernel,
     stream_executor::rocm::kROCmPlatformId, ([](size_t arity) {
-      stream_executor::MultiKernelLoaderSpec spec(arity);
-      spec.AddInProcessSymbol(
+      return stream_executor::MultiKernelLoaderSpec::CreateInProcessSymbolSpec(
           absl::bit_cast<void*>(
               &stream_executor::gpu::RedzoneAllocatorKernelImpl),
 
-          "repeat_buffer_kernel");
-      return spec;
+          "repeat_buffer_kernel", arity);
     }));

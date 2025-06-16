@@ -24,6 +24,7 @@ limitations under the License.
 #include <optional>
 #include <random>
 #include <sstream>
+#include <string>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -60,15 +61,12 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/typed_kernel_factory.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/proto/proto_utils.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -371,10 +369,11 @@ absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec) {
 }
 
 absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
-    absl::string_view kernel_name, uint64_t num_args, absl::string_view ptx,
+    std::string kernel_name, uint64_t num_args, absl::string_view ptx,
     se::StreamExecutor* stream_exec, uint32_t shared_mem_bytes) {
-  se::MultiKernelLoaderSpec loader_spec(num_args);
-  loader_spec.AddCudaPtxInMemory(ptx, kernel_name);
+  se::MultiKernelLoaderSpec loader_spec =
+      se::MultiKernelLoaderSpec::CreateCudaPtxInMemorySpec(
+          ptx, std::move(kernel_name), num_args);
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
                       stream_exec->LoadKernel(loader_spec));
@@ -386,11 +385,12 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
 }
 
 absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
-    absl::string_view kernel_name, uint64_t num_args,
+    std::string kernel_name, uint64_t num_args,
     absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec,
     uint32_t shared_mem_bytes) {
-  se::MultiKernelLoaderSpec loader_spec(num_args);
-  loader_spec.AddCudaCubinInMemory(cubin_data, kernel_name);
+  se::MultiKernelLoaderSpec loader_spec =
+      se::MultiKernelLoaderSpec::CreateCudaCubinInMemorySpec(
+          cubin_data, std::move(kernel_name), num_args);
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
                       stream_exec->LoadKernel(loader_spec));

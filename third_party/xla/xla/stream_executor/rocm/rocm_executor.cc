@@ -634,13 +634,11 @@ absl::Status RocmExecutor::Init() {
 absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
     const MultiKernelLoaderSpec& spec) {
   auto rocm_kernel = std::make_unique<RocmKernel>(this);
-  const std::string* kernel_name;
+  const std::string& kernel_name = spec.kernel_name();
 
   if (spec.has_cuda_cubin_in_memory()) {
-    kernel_name = &spec.cuda_cubin_in_memory().kernel_name();
-
     const char* hsaco = reinterpret_cast<const char*>(
-        spec.cuda_cubin_in_memory().cubin_bytes().data());
+        spec.cuda_cubin_in_memory()->cubin_bytes.data());
     absl::MutexLock lock{&in_memory_modules_mu_};
     ModuleHandle module_handle{hsaco};
     hipModule_t& module = in_memory_modules_[module_handle];
@@ -650,22 +648,21 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
     }
     kernel_to_gpu_binary_[rocm_kernel.get()] = module_handle;
 
-    VLOG(2) << "getting function " << *kernel_name << " from module " << module;
+    VLOG(2) << "getting function " << kernel_name << " from module " << module;
     TF_ASSIGN_OR_RETURN(
         hipFunction_t function,
-        GetModuleFunction(rocm_context_, module, kernel_name->c_str()));
+        GetModuleFunction(rocm_context_, module, kernel_name.c_str()));
     rocm_kernel->set_gpu_function(function);
   } else if (spec.has_in_process_symbol()) {
-    kernel_name = &spec.in_process_symbol().kernel_name();
-    void* symbol = spec.in_process_symbol().symbol();
+    void* symbol = spec.in_process_symbol()->symbol;
 
-    VLOG(1) << "Resolve ROCM kernel " << *kernel_name
+    VLOG(1) << "Resolve ROCM kernel " << kernel_name
             << " from symbol pointer: " << symbol;
 
 #if TF_ROCM_VERSION >= 60200
     hipFunction_t func;
     TF_RETURN_IF_ERROR(ToStatus(
-        wrap::hipGetFuncBySymbol(&func, spec.in_process_symbol().symbol()),
+        wrap::hipGetFuncBySymbol(&func, spec.in_process_symbol()->symbol),
         "Failed call to hipGetFuncBySymbol"));
     rocm_kernel->set_gpu_function(func);
 #else
@@ -690,7 +687,7 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
                         rocm_kernel->GetKernelMetadata());
     rocm_kernel->set_metadata(kernel_metadata);
   }
-  rocm_kernel->set_name(*kernel_name);
+  rocm_kernel->set_name(kernel_name);
   rocm_kernel->set_args_packing(spec.kernel_args_packing());
   return std::move(rocm_kernel);
 }
