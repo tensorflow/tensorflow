@@ -703,12 +703,7 @@ class Delegate {
   }
 
   bool enable_subgraph_reshaping() const {
-#ifdef XNNPACK_DELEGATE_ENABLE_SUBGRAPH_RESHAPING
     return true;
-#else
-    return (options_.flags &
-            TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SUBGRAPH_RESHAPING) != 0;
-#endif
   }
 
   bool enable_slinky() const {
