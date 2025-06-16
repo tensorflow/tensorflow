@@ -258,7 +258,8 @@ bool WorthHoisting(HloOpcode op, HloOpcode child_op) {
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kGather:
-    case HloOpcode::kScatter:
+      // TODO: b/423941718 - Remove this once the bug is fixed.
+      // case HloOpcode::kScatter:
       return true;
     default:
       if (HloInstruction::IsOpElementwise(op)) {
