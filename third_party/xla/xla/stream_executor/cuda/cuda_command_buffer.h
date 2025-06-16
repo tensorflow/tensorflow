@@ -149,6 +149,9 @@ class CudaCommandBuffer final : public GpuCommandBuffer {
                                 const BlockDim& blocks, const Kernel& kernel,
                                 const KernelArgsPackedArrayBase& args) override;
 
+  absl::StatusOr<GraphNodeHandle> CreateEmptyNode(
+      absl::Span<const GraphNodeHandle> dependencies) override;
+
   absl::Status Trace(Stream* stream,
                      absl::AnyInvocable<absl::Status()> function) override;
 

@@ -112,6 +112,10 @@ class GpuCommandBuffer : public CommandBuffer {
   using CommandBuffer::CreateLaunch;
   using CommandBuffer::UpdateLaunch;
 
+  absl::StatusOr<const Command*> CreateEmptyCmd(
+      absl::Span<const Command* const> dependencies,
+      StreamPriority priority = StreamPriority::Default) override;
+
   absl::StatusOr<const Command*> CreateLaunch(
       const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
       const KernelArgs& args, absl::Span<const Command* const> dependencies,
@@ -288,6 +292,10 @@ class GpuCommandBuffer : public CommandBuffer {
   //===--------------------------------------------------------------------===//
   // APIs for creating and updating underlying GPU graph nodes.
   //===--------------------------------------------------------------------===//
+
+  // Adds a new empty node to the underlying graph.
+  virtual absl::StatusOr<GraphNodeHandle> CreateEmptyNode(
+      absl::Span<const GraphNodeHandle> dependencies) = 0;
 
   // Adds a new conditional node to the graph and creates a corresponding nested
   // command buffer.
