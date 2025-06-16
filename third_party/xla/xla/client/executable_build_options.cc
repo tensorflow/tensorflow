@@ -202,6 +202,9 @@ absl::StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto()
   output.set_use_shardy_partitioner(use_shardy_partitioner());
   output.set_process_index(process_index());
   output.set_process_count(process_count());
+  for (int slice_id : global_device_id_to_slice_id()) {
+    output.mutable_global_device_id_to_slice_id()->Add(slice_id);
+  }
   return output;
 }
 
@@ -258,6 +261,9 @@ absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
   output.set_use_shardy_partitioner(input.use_shardy_partitioner());
   output.set_process_index(input.process_index());
   output.set_process_count(input.process_count());
+  output.set_global_device_id_to_slice_id(
+      std::vector<int>{input.global_device_id_to_slice_id().begin(),
+                       input.global_device_id_to_slice_id().end()});
   return output;
 }
 
