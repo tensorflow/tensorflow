@@ -1,30 +1,159 @@
-diff --git a/shardy/dialect/sdy/ir/constants.h b/shardy/dialect/sdy/ir/constants.h
-index 329b342..91eb85f 100644
---- a/shardy/dialect/sdy/ir/constants.h
-+++ b/shardy/dialect/sdy/ir/constants.h
-@@ -65,10 +65,6 @@ inline constexpr StringRef kResultPropagationEdgesAttr =
- // `sdy.sharding_constraint`, or `sdy.ManualComputationOp` input/output.
- inline constexpr StringRef kShardingOriginNameAttr = "sdy.sharding_origin_name";
- 
--// Attribute name for indicating whether a value has unreduced axes. Is either
--// `true` or not set.
--inline constexpr StringRef kHasUnreducedAxes = "sdy.has_unreduced_axes";
--
- // Default priority for a `DimensionShardingAttr` that doesn't have a
- // user-defined priority.
- inline constexpr int64_t kDefaultPriority = 0;
+diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
+index 509398d..4f730fb 100644
+--- a/third_party/llvm/generated.patch
++++ b/third_party/llvm/generated.patch
+@@ -1 +1,29 @@
+ Auto generated patch. Do not edit or delete it, even if empty.
++diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl b/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl
++--- a/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl
+++++ b/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl
++@@ -525,7 +525,7 @@
++         td_file = td_file,
++         test = test,
++         deps = deps,
++-        **kwargs,
+++        **kwargs
++     )
++     all_files = [hdr_out, src_out]
++     for i in range(0, shard_count):
++@@ -537,13 +537,13 @@
++             out = out_file,
++             sharder = sharder,
++             src_file = src_file,
++-            **kwargs,
+++            **kwargs
++         )
++         all_files.append(out_file)
++     native.filegroup(
++         name = name,
++         srcs = all_files,
++-        **kwargs,
+++        **kwargs
++     )
++ 
++ def gentbl_sharded_op_defs(name, source_file, shard_count):
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 7739f8f..ae0c1b5 100644
+index ae0c1b5..9827f05 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "a082f665f85b1002ab22af263eeafceca5288657"
--    LLVM_SHA256 = "f8d06115707eb1a450bff52fae3cb98334c6e853a2dd1574ecb679d3559ffdbd"
-+    LLVM_COMMIT = "842377882a3f52e345668751fa6d46ba4f7268d2"
-+    LLVM_SHA256 = "84a3195d2b046cec382c86a2838be597f92dfd69f825b10072c2e6aff9b77e5d"
+-    LLVM_COMMIT = "842377882a3f52e345668751fa6d46ba4f7268d2"
+-    LLVM_SHA256 = "84a3195d2b046cec382c86a2838be597f92dfd69f825b10072c2e6aff9b77e5d"
++    LLVM_COMMIT = "2c440232e261746970cdf6f74d6588464eecd48b"
++    LLVM_SHA256 = "f0d11be8e0aecbc8fd1eeb64c446dbbdba6d854e51dc12cce37646821f4f3347"
  
      tf_http_archive(
          name = name,
+diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
+index 258b664..ced11c3 100755
+--- a/third_party/stablehlo/temporary.patch
++++ b/third_party/stablehlo/temporary.patch
+@@ -1,3 +1,105 @@
++diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir b/stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
++--- stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
+++++ stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
++@@ -1051,9 +1051,9 @@
++   %0 = "stablehlo.reshape"(%arg0) : (tensor<1x?xi32>) -> tensor<1xi32>
++   func.return %0 : tensor<1xi32>
++ }
++-// CHECK: %[[CAST:.*]] = tensor.cast %{{.*}} : tensor<1x?xi32> to tensor<1x1xi32>
++-// CHECK: %[[COLLAPSE:.*]] = tensor.collapse_shape %[[CAST]] {{\[}}[0, 1]] : tensor<1x1xi32> into tensor<1xi32>
++-// CHECK: return %[[COLLAPSE:.*]] : tensor<1xi32>
+++// CHECK: %[[COLLAPSE:.*]] = tensor.collapse_shape %arg0 {{\[}}[0, 1]] : tensor<1x?xi32> into tensor<?xi32>
+++// CHECK: %[[CAST:.*]] = tensor.cast %[[COLLAPSE]] : tensor<?xi32> to tensor<1xi32>
+++// CHECK: return %[[CAST]] : tensor<1xi32>
++ 
++ // -----
++ 
++@@ -1084,9 +1084,10 @@
++   %0 = "stablehlo.reshape"(%arg0) : (tensor<16x1x?xi32>) -> tensor<16xi32>
++   func.return %0 : tensor<16xi32>
++ }
++-// CHECK: %[[CAST:.*]] = tensor.cast %{{.*}} : tensor<16x1x?xi32> to tensor<16x1x1xi32>
++-// CHECK: %[[COLLAPSE:.*]] = tensor.collapse_shape %[[CAST]] {{\[}}[0, 1, 2]] : tensor<16x1x1xi32> into tensor<16xi32>
++-// CHECK: return %[[COLLAPSE:.*]] : tensor<16xi32>
+++
+++// CHECK: %[[COLLAPSE:.*]] = tensor.collapse_shape %arg0 {{\[}}[0, 1, 2]] : tensor<16x1x?xi32> into tensor<?xi32>
+++// CHECK: %[[CAST:.*]] = tensor.cast %[[COLLAPSE]] : tensor<?xi32> to tensor<16xi32>
+++// CHECK: return %[[CAST]] : tensor<16xi32>
++ 
++ // -----
++ 
++diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
++--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
+++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
++@@ -71,6 +71,9 @@
++ #include "stablehlo/conversions/linalg/transforms/Rewriters.h"
++ #include "stablehlo/conversions/linalg/transforms/TypeConversion.h"
++ #include "stablehlo/dialect/StablehloOps.h"
+++#include "third_party/llvm/llvm-project/llvm/include/llvm/Support/Debug.h"
+++
+++#define DEBUG_TYPE "stablehlo-legalize-to-linalg"
++ 
++ namespace mlir::stablehlo {
++ 
++@@ -1127,6 +1130,10 @@
++     // collapse_shape.
++     if (std::optional<SmallVector<ReassociationIndices>> reassociationMap =
++             getReassociationIndicesForReshape(operandType, resultType)) {
+++      LLVM_DEBUG(llvm::dbgs() << "ReshapeOp: " << operandType << " -> "
+++                              << resultType << " \n"
+++                              << "  using reassociation map: "
+++                              << reassociationMap.value().size() << "\n");
++       if (resultType.getRank() < operandType.getRank()) {
++         // We have found a working reassociation map. If the operand is dynamic,
++         // we first need to cast all unknown dimensions in the input that get
++@@ -1134,9 +1141,10 @@
++         SmallVector<int64_t> shape(operandType.getShape().begin(),
++                                    operandType.getShape().end());
++         for (auto [idx, dims] : llvm::enumerate(*reassociationMap)) {
++-          // If the result dim is dynamic, we do not mind dynamic entries in the
++-          // source.
++-          if (resultType.isDynamicDim(idx)) continue;
+++          // If the result dim is dynamic or scalar, we do not mind dynamic
+++          // entries in the source.
+++          if (resultType.getRank() == 0 || resultType.isDynamicDim(idx))
+++            continue;
++           for (auto targetDim : dims) {
++             if (shape[targetDim] == ShapedType::kDynamic) shape[targetDim] = 1;
++           }
++@@ -1149,10 +1157,14 @@
++                                                     newOperandType, operand);
++         }
++         // Generate collapse operation.
+++        // For scalar collapses must pass an empty reassociation map.
+++        if (resultType.getRank() == 0) reassociationMap->clear();
++         rewriter.replaceOpWithNewOp<tensor::CollapseShapeOp>(
++             reshapeOp, resultType, operand, *reassociationMap);
++       } else {
++         // Generate expand operation.
+++          // For scalar expands must pass an empty reassociation map.
+++        if (operandType.getRank() == 0) reassociationMap->clear();
++         rewriter.replaceOpWithNewOp<tensor::ExpandShapeOp>(
++             reshapeOp, resultType, operand, *reassociationMap);
++       }
++diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgRandom.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgRandom.cpp
++--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgRandom.cpp
+++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgRandom.cpp
++@@ -319,6 +319,7 @@
++   auto reassociationIndices =
++       getReassociationIndicesForCollapse(destTy.getShape(), srcTy.getShape());
++   if (reassociationIndices.has_value()) {
+++    if (srcTy.getRank() == 0) reassociationIndices->clear();
++     src = builder.create<tensor::ExpandShapeOp>(loc, destTy, src,
++                                                 reassociationIndices.value());
++   }
++@@ -328,6 +329,7 @@
++   reassociationIndices =
++       getReassociationIndicesForCollapse(srcTy.getShape(), destTy.getShape());
++   if (reassociationIndices.has_value()) {
+++    if (destTy.getRank() == 0) reassociationIndices->clear();
++     src = builder.create<tensor::CollapseShapeOp>(loc, destTy, src,
++                                                   reassociationIndices.value());
++   }
+ diff --ruN a/stablehlo/stablehlo/dialect/Version.h b/stablehlo/stablehlo/dialect/Version.h
+ --- stablehlo/stablehlo/dialect/Version.h
+ +++ stablehlo/stablehlo/dialect/Version.h
