@@ -1640,7 +1640,8 @@ class HloInstruction {
   // Returns the sharding applied to this operator.
   // REQUIRES: has_sharding() is true.
   const HloSharding& sharding() const {
-    CHECK(has_sharding());
+    CHECK(has_sharding()) << "Sharding instruction expected for: "
+                          << ToString();
     return *sharding_;
   }
   std::shared_ptr<const HloSharding> sharding_ptr() const { return sharding_; }

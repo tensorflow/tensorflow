@@ -1469,7 +1469,8 @@ absl::StatusOr<bool> ProcessShardingInstruction(
       HloInstruction* instruction = *it;
       if (instruction->IsCustomCall("Sharding")) {
         TF_RET_CHECK(instruction->has_sharding())
-            << "Sharding instruction must have a sharding attribute";
+            << "Sharding instruction must have a sharding attribute: "
+            << instruction->ToString();
         VLOG(3) << "ProcessShardingInstruction: " << instruction->ToString();
         HloSharding original_sharding = instruction->sharding();
 
@@ -2003,7 +2004,9 @@ bool AggressiveConcatOperandShardingCanPassThrough(
 bool InferDynamicUpdateSliceShardingFromOperand1(
     HloInstruction* instruction, bool may_combine_partial_sharding) {
   CHECK(instruction->opcode() == HloOpcode::kDynamicSlice ||
-        instruction->opcode() == HloOpcode::kDynamicUpdateSlice);
+        instruction->opcode() == HloOpcode::kDynamicUpdateSlice)
+      << "Expecting kDynamicSlice or kDynamicUpdateSlice for: "
+      << instruction->ToString();
   const HloInstruction* operand =
       instruction->opcode() == HloOpcode::kDynamicSlice
           ? instruction->operand(0)
@@ -2011,7 +2014,8 @@ bool InferDynamicUpdateSliceShardingFromOperand1(
   if (!hlo_sharding_util::IsSpatiallyPartitioned(operand)) {
     return false;
   }
-  CHECK(!operand->sharding().IsManual());
+  CHECK(!operand->sharding().IsManual())
+      << "Unexpected manual sharding found for: " << instruction->ToString();
 
   std::vector<int64_t> slice_dims;
   for (int64_t i = 0; i < instruction->shape().dimensions().size(); ++i) {
