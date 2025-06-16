@@ -43,6 +43,14 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// "Real root"
+
+// SymbolicTileAnalysis supports multi-output fusions where the root is of the
+// form tuple(A, B, C, foo(A, B, C)), i.e. one of the root is a (transitive)
+// consumer of all the other roots (here foo(A, B, C)). In such cases, the
+// consumer root is the only root that requires defining tiling parameters, and
+// we call it the "real root" of the computation.
+
 class SymbolicTileAnalysis;
 using SymbolicTileAnalysisOrError =
     std::variant<SymbolicTileAnalysis, FusionDecision>;
@@ -249,14 +257,17 @@ using EmitterSpecificConstraintsBuilder =
         const HloFusionAdaptor&)>;
 
 // Constructs and holds symbolic tiles for all the instructions within a
-// computation. We may hold several different symbolic tiles for the same
-// instruction if the instruction is indexed in several different ways in order
-// to produce a single chunk of the output. In order to handle this properly,
-// we store a symbolic tile for each possible path starting from the root
-// instruction of the computation to the relevant instruction.
+// computation. The analysis may hold several different symbolic tiles for the
+// same instruction if the instruction is indexed in several different ways in
+// order to produce a single chunk of the output. In order to handle this
+// properly, we store a symbolic tile for each possible path starting from the
+// root instruction of the computation to the relevant instruction.
+//
 // We support a simple form of multi-output fusion, where the computation has a
 // single "real" root, and the other roots appear in the chain of producers of
 // the real root.
+//
+// Use `AnalyzeComputation` or `AnalyzeFusion` to construct a new analysis.
 class SymbolicTileAnalysis {
  public:
   // A tile size for each dimension.
@@ -289,10 +300,11 @@ class SymbolicTileAnalysis {
   // constraints are satisfied by the chosen tiling parameters. Setting
   // `constraints_are_known_satisfied` to true bypasses this check.
   //
-  // If `compute_all_tile_offset_indexing_maps == true`, all
-  // `TiledHloInstruction`s will have tile offset indexing maps set. Otherwise,
-  // the indexing maps will be set only for instructions that have equal hash to
-  // deduplicate them.
+  // TiledHloInstruction will have tile offset indexing map set if either:
+  // - compute_all_tile_offset_indexing_maps == true, or
+  // - there are at least two TiledHloInstruction with the same hash. In that
+  //   case we need tile offset indexing map to decide if we can deduplicate
+  //   those instruction.
   absl::StatusOr<TiledHloComputation> ComputeTiledHloInstructions(
       const ::xla::gpu::Tiling& tiling,
       bool constraints_are_known_satisfied = false,
