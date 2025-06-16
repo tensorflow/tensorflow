@@ -485,6 +485,7 @@ cc_library(
     hdrs = ["gpu_profiler.h"],
     deps = [
         "//xla:executable_run_options",
+        "//xla:xla_data_proto_cc",
         "//xla/backends/autotuner:profiler",
         "//xla/hlo/ir:hlo",
         "//xla/service:executable",
