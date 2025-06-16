@@ -452,13 +452,22 @@ TEST_F(Triton6xBF16GemmTest, Emit6xBF16GemmWhenBothInputsAreF32) {
   TF_ASSERT_OK(
       CreateTritonIrAndFileCheckForDot(this, kHloText, "triton_dot", R"(
 CHECK:          %[[INFINITY:.*]] = arith.constant dense<0x7F800000> : tensor<32x32xf32>
-CHECK:          %[[C_MASK:.*]] = arith.constant dense<-65536> : tensor<32x32xi32>
 CHECK:          %[[C0:.*]] = arith.constant dense<0.000000e+00> : tensor<32x32xf32>
-CHECK:          %[[CAST_I32:.*]] = tt.bitcast %{{.*}} : tensor<32x32xf32> -> tensor<32x32xi32>
-CHECK:          %[[EXTRACT_HI:.*]] = arith.andi %[[CAST_I32]], %[[C_MASK]] : tensor<32x32xi32>
-CHECK:          %[[CAST_HI:.*]] = tt.bitcast %[[EXTRACT_HI]] : tensor<32x32xi32> -> tensor<32x32xf32>
-CHECK:          %[[TRUNC_TO_BF16:.*]] = arith.truncf %[[CAST_HI]] : tensor<32x32xf32> to tensor<32x32xbf16>
-CHECK-COUNT-5:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x32xf32>
+CHECK:          %[[LHS_HI_BF16:.*]] = arith.truncf %[[LHS_INPUT:.*]] : tensor<32x32xf32> to tensor<32x32xbf16>
+CHECK:          %[[LHS_HI_F32:.*]] = arith.extf %[[LHS_HI_BF16]] : tensor<32x32xbf16> to tensor<32x32xf32>
+CHECK:          %[[LHS_MED_INPUT_F32:.*]] = arith.subf %[[LHS_INPUT]], %[[LHS_HI_F32]] : tensor<32x32xf32>
+CHECK:          %[[LHS_MED_BF16:.*]] = arith.truncf %[[LHS_MED_INPUT_F32]] : tensor<32x32xf32> to tensor<32x32xbf16>
+CHECK:          %[[LHS_MED_F32:.*]] = arith.extf %[[LHS_MED_BF16]] : tensor<32x32xbf16> to tensor<32x32xf32>
+CHECK:          %[[LHS_LOW_INPUT_F32:.*]] = arith.subf %[[LHS_MED_INPUT_F32]], %[[LHS_MED_F32]] : tensor<32x32xf32>
+CHECK:          %[[LHS_LOW_BF16:.*]] = arith.truncf %[[LHS_LOW_INPUT_F32]] : tensor<32x32xf32> to tensor<32x32xbf16>
+CHECK:          %[[RHS_HI_BF16:.*]] = arith.truncf %[[RHS_INPUT:.*]] : tensor<32x32xf32> to tensor<32x32xbf16>
+CHECK:          %[[RHS_HI_F32:.*]] = arith.extf %[[RHS_HI_BF16]] : tensor<32x32xbf16> to tensor<32x32xf32>
+CHECK:          %[[RHS_MED_INPUT_F32:.*]] = arith.subf %[[RHS_INPUT]], %[[RHS_HI_F32]] : tensor<32x32xf32>
+CHECK:          %[[RHS_MED_BF16:.*]] = arith.truncf %[[RHS_MED_INPUT_F32]] : tensor<32x32xf32> to tensor<32x32xbf16>
+CHECK:          %[[RHS_MED_F32:.*]] = arith.extf %[[RHS_MED_BF16]] : tensor<32x32xbf16> to tensor<32x32xf32>
+CHECK:          %[[RHS_LOW_INPUT_F32:.*]] = arith.subf %[[RHS_MED_INPUT_F32]], %[[RHS_MED_F32]] : tensor<32x32xf32>
+CHECK:          %[[RHS_LOW_BF16:.*]] = arith.truncf %[[RHS_LOW_INPUT_F32]] : tensor<32x32xf32> to tensor<32x32xbf16>
+CHECK-COUNT-5:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x
 CHECK:          %[[ABS:.*]] = math.absf
 CHECK:          %[[CMP:.*]] = arith.cmpf ogt, %[[INFINITY]], %[[ABS]] : tensor<32x32xf32>
 CHECK:          %[[SELECT:.*]] = arith.select %[[CMP]], %{{.*}}, %[[C0]] : tensor<32x32xi1>, tensor<32x32xf32>
@@ -553,12 +562,15 @@ TEST_F(Triton3xBF16GemmTest, Emit3xBF16GemmWhenBothInputsAreF32) {
   TF_ASSERT_OK(
       CreateTritonIrAndFileCheckForDot(this, kHloText, "triton_dot", R"(
 CHECK:          %[[INFINITY:.*]] = arith.constant dense<0x7F800000> : tensor<32x32xf32>
-CHECK:          %[[C_MASK:.*]] = arith.constant dense<-65536> : tensor<32x32xi32>
 CHECK:          %[[C0:.*]] = arith.constant dense<0.000000e+00> : tensor<32x32xf32>
-CHECK:          %[[CAST_I32:.*]] = tt.bitcast %{{.*}} : tensor<32x32xf32> -> tensor<32x32xi32>
-CHECK:          %[[EXTRACT_HI:.*]] = arith.andi %[[CAST_I32]], %[[C_MASK]] : tensor<32x32xi32>
-CHECK:          %[[CAST_HI:.*]] = tt.bitcast %[[EXTRACT_HI]] : tensor<32x32xi32> -> tensor<32x32xf32>
-CHECK:          %[[TRUNC_TO_BF16:.*]] = arith.truncf %[[CAST_HI]] : tensor<32x32xf32> to tensor<32x32xbf16>
+CHECK:          %[[LHS_HI_BF16:.*]] = arith.truncf %[[LHS_INPUT:.*]] : tensor<32x32xf32> to tensor<32x32xbf16>
+CHECK:          %[[LHS_HI_F32:.*]] = arith.extf %[[LHS_HI_BF16]] : tensor<32x32xbf16> to tensor<32x32xf32>
+CHECK:          %[[LHS_LOW_INPUT_F32:.*]] = arith.subf %[[LHS_INPUT]], %[[LHS_HI_F32]] : tensor<32x32xf32>
+CHECK:          %[[LHS_LOW_BF16:.*]] = arith.truncf %[[LHS_LOW_INPUT_F32]] : tensor<32x32xf32> to tensor<32x32xbf16>
+CHECK:          %[[RHS_HI_BF16:.*]] = arith.truncf %[[RHS_INPUT:.*]] : tensor<32x32xf32> to tensor<32x32xbf16>
+CHECK:          %[[RHS_HI_F32:.*]] = arith.extf %[[RHS_HI_BF16]] : tensor<32x32xbf16> to tensor<32x32xf32>
+CHECK:          %[[RHS_LOW_INPUT_F32:.*]] = arith.subf %[[RHS_INPUT]], %[[RHS_HI_F32]] : tensor<32x32xf32>
+CHECK:          %[[RHS_LOW_BF16:.*]] = arith.truncf %[[RHS_LOW_INPUT_F32]] : tensor<32x32xf32> to tensor<32x32xbf16>
 CHECK-COUNT-2:  %{{.*}} = tt.dot %{{.*}}, %{{.*}}, %{{.*}} : tensor<32x32xbf16> * tensor<32x32xbf16> -> tensor<32x32xf32>
 CHECK:          %[[ABS:.*]] = math.absf
 CHECK:          %[[CMP:.*]] = arith.cmpf ogt, %[[INFINITY]], %[[ABS]] : tensor<32x32xf32>
@@ -1548,9 +1560,9 @@ double GetMaxRelErrorForSmallContractingDim(Backend backend,
       // TODO: b/407744579 - Understand what the expected error is with various
       // precision-recovering algorithms. For now we just use the errors that
       // we got assuming that the implementation is correct.
-      {PC::ALG_DOT_BF16_BF16_F32_X3, 3e-5},
-      {PC::ALG_DOT_BF16_BF16_F32_X6, 4e-7},
-      {PC::ALG_DOT_BF16_BF16_F32_X9, 4e-7},
+      {PC::ALG_DOT_BF16_BF16_F32_X3, 7.9e-6},
+      {PC::ALG_DOT_BF16_BF16_F32_X6, 1.3e-7},
+      {PC::ALG_DOT_BF16_BF16_F32_X9, 1.2e-7},
       {PC::ALG_DOT_TF32_TF32_F32_X3, 5e-7}};
 
   const absl::flat_hash_map<PC::Algorithm, double> kMaxMeanRelErrorBlas = {
