@@ -19,6 +19,7 @@
 #include "absl/strings/str_join.h"
 
 int main(int argc, char** argv) {
+  const std::string dash = "-";
   const std::string disabled[] = {
       // PjRtCpuBuffer::ToLiteral() currently does not respect the layout of the
       // destination literal.
@@ -30,7 +31,7 @@ int main(int argc, char** argv) {
       "ArrayImplTest.AssembleAndDisassembleArray",
   };
 
-  const std::string filter = absl::StrCat("-", absl::StrJoin(disabled, ":"));
+  const std::string filter = absl::StrCat(dash, absl::StrJoin(disabled, ":"));
 #ifdef GTEST_FLAG_SET
   GTEST_FLAG_SET(filter, filter.c_str());
 #else
