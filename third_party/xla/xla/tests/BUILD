@@ -8,7 +8,7 @@ load(
 )
 load("//xla:package_groups.bzl", "xla_test_friend_package_group")
 load("//xla:xla.default.bzl", "tests_build_defs_bzl_deps", "xla_cc_test", "xla_internal")
-load("//xla/tests:build_defs.bzl", "generate_backend_suites", "generate_backend_test_macros", "xla_test", "xla_test_library")
+load("//xla/tests:build_defs.bzl", "generate_backend_suites", "xla_test", "xla_test_library")
 load("//xla/tsl:tsl.bzl", "if_google", "if_oss", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
@@ -49,15 +49,6 @@ cc_library(
     ],
     alwayslink = True,
 )
-
-cc_library(
-    name = "test_macros_header",
-    testonly = True,
-    hdrs = ["test_macros.h"],
-)
-
-# Generate a test_macros_${BACKEND} library per backend with the proper copts.
-generate_backend_test_macros()
 
 cc_library(
     name = "test_utils",
