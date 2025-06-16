@@ -252,14 +252,11 @@ config_setting(
 # Config setting for determining if we are building for Android.
 config_setting(
     name = "android",
-    constraint_values = if_google(
-        ["@platforms//os:android"],
-        [],
-    ),
-    values = if_oss(
-        {"crosstool_top": "//external:android/crosstool"},
-        {},
-    ),
+    constraint_values = ["@platforms//os:android"],
+    # values = if_oss(
+    #     {"crosstool_top": "//external:android/crosstool"},
+    #     {},
+    # ),
     visibility = ["//visibility:public"],
 )
 
