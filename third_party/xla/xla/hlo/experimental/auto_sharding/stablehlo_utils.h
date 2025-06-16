@@ -20,12 +20,18 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "xla/hlo/ir/hlo_module.h"
 
 namespace xla::spmd {
 // Converts StableHLO module (with Shardy dialect) to XLA HLO.
 absl::StatusOr<std::unique_ptr<xla::HloModule>> ConvertShardyToHlo(
     mlir::ModuleOp shardy_stablehlo_module);
+
+// Converts XLA HLO to StableHLO module (with Shardy dialect).
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToShardyStablehlo(
+    const xla::HloModule& hlo_module, mlir::MLIRContext* context);
 
 }  // namespace xla::spmd
 
