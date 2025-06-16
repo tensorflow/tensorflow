@@ -1658,7 +1658,6 @@ void PrintHistogram(absl::string_view name, absl::Span<T> values,
                                std::get<2>(median_bin));
   std::cerr << "stats: " << name << " "
             << absl::StrFormat("mean rel error, %1.3e\n", mean_rel_error);
-  std::cerr << "stats: \n";
 }
 
 class PrecisionTests
@@ -1797,17 +1796,31 @@ TEST_P(PrecisionTests, PrecisionCheck) {
       GetLiteralPointers(fake_arguments);
   std::vector<double> ref_result = RunReferenceDot(
       fake_argument_ptrs, kLhsOuterDim, kRhsOuterDim, kContractingDim);
+  TF_ASSERT_OK_AND_ASSIGN(auto executable, test_runner().CreateExecutable(
+                                               std::move(test_module), false));
   TF_ASSERT_OK_AND_ASSIGN(
       Literal test_result,
-      test_runner().Execute(std::move(test_module), fake_argument_ptrs,
-                            /*run_hlo_passes=*/false));
+      test_runner().ExecuteWithExecutable(executable.get(), fake_arguments));
+  ExecutionProfile profile;
+  std::vector<uint64_t> profile_times;
+  profile_times.reserve(100);
+  for (int i = 0; i < 100; ++i) {
+    TF_ASSERT_OK_AND_ASSIGN(Literal test_result,
+                            test_runner().ExecuteWithExecutable(
+                                executable.get(), fake_arguments, &profile));
+    profile_times.push_back(profile.compute_time_ns());
+  }
+  auto min_time = *std::min_element(profile_times.begin(), profile_times.end());
   std::cerr << "\n";
-  EXPECT_THAT(llvm::zip(test_result.data<float>(), ref_result),
-              ::testing::Each(RelativeDifferenceIsWithin(
-                  GetMaxRelErrorForSmallContractingDim(backend, algorithm))));
   auto name =
       absl::StrCat(BackendToString(backend), "_", AlgorithmToString(algorithm));
   PrintHistogram(name, test_result.data<float>(), ref_result);
+  std::cerr << "stats: " << name << " min execution time, " << min_time
+            << "ns\n";
+  std::cerr << "stats: \n";
+  EXPECT_THAT(llvm::zip(test_result.data<float>(), ref_result),
+              ::testing::Each(RelativeDifferenceIsWithin(
+                  GetMaxRelErrorForSmallContractingDim(backend, algorithm))));
 }
 
 INSTANTIATE_TEST_SUITE_P(

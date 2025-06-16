@@ -452,7 +452,8 @@ void AddHloVerifier(HloPassPipeline* pipeline, HloVerifierOpts&& opts = {},
 }
 
 std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
-    absl::string_view name, HloModule* module, bool is_fusion_emitters) {
+    absl::string_view name, HloModule* module, bool is_fusion_emitters,
+    bool is_onednn_compatible) {
   // Run the following passes to a fixed point.
   auto pipeline =
       std::make_unique<HloPassFix<HloPassPipeline>>(std::string(name));
@@ -466,6 +467,7 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
       !module->config().debug_options().xla_cpu_enable_fast_min_max());
   options.set_supports_non_canonical_dots(false);
   options.set_executing_on_cpu(true);
+  options.set_enable_onednn_support(is_onednn_compatible);
   pipeline->AddPass<AlgebraicSimplifier>(options);
   pipeline->AddPass<SortSimplifier>();
   pipeline->AddPass<HloDCE>();
@@ -513,6 +515,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       is_thunk_runtime &&
       module->config().debug_options().xla_cpu_use_fusion_emitters();
   bool use_shardy_partitioner = module->config().use_shardy_partitioner();
+  bool is_onednn_compatible = false;
   if (num_partitions > 1) {
     if (!module->config().use_spmd_partitioning()) {
       return InvalidArgument(
@@ -639,7 +642,8 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // Rewrite to custom calls with target as oneDNN library calls.
 #if defined(INTEL_MKL)
   // AOT compiled code runs in single thread.
-  if (!is_aot_compile && !is_thunk_runtime) {
+  is_onednn_compatible = !is_aot_compile && !is_thunk_runtime;
+  if (is_onednn_compatible) {
     // Placing OneDnnOpsRewriter here to match the flax patterns
     // TODO: Decide where would be the appropriate place for this pass to make
     // it more generic
@@ -660,7 +664,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
                                target_machine_features);
 #if defined(INTEL_MKL)
   OneDnnFloatSupport onednn_bf16_support(BF16);
-  if (!is_aot_compile && !is_thunk_runtime) {
+  if (is_onednn_compatible) {
     pipeline.AddPass<FloatNormalization>(&onednn_bf16_support);
   } else {
     pipeline.AddPass<FloatNormalization>(&bf16_support);
@@ -755,8 +759,8 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
         F16, F32, HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kConvolution>);
   }
 
-  pipeline.AddPass(CreateSimplificationPipeline("simplification", module,
-                                                is_fusion_emitters));
+  pipeline.AddPass(CreateSimplificationPipeline(
+      "simplification", module, is_fusion_emitters, is_onednn_compatible));
 
   // Scatter expander is sandwiched between two simplification pipelines to
   // enable constant folding with the original scatter instructions (which is
@@ -773,7 +777,8 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   }
 
   pipeline.AddPass(CreateSimplificationPipeline(
-      "post_scatter_expansion_simplification", module, is_fusion_emitters));
+      "post_scatter_expansion_simplification", module, is_fusion_emitters,
+      is_onednn_compatible));
 
   pipeline.AddPass<BitcastDtypesExpander>();
 
@@ -827,6 +832,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   const bool is_thunk_runtime = debug_options.xla_cpu_use_thunk_runtime();
   const bool is_fusion_emitters =
       is_thunk_runtime && debug_options.xla_cpu_use_fusion_emitters();
+  bool is_onednn_compatible = false;
   HloPassPipeline pipeline("HLO passes after layout assignment");
 
   {
@@ -851,7 +857,8 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
 
 #if defined(INTEL_MKL)
   // AOT compiled code runs in single thread.
-  if (!is_aot_compile && !is_thunk_runtime) {
+  is_onednn_compatible = !is_aot_compile && !is_thunk_runtime;
+  if (is_onednn_compatible) {
     // Run SimplifyFPConversions pass to simplify the BF16 pattern and make it
     // easier to match.
     // Remove `f32 -> bf16 -> f32` casts inserted by bf16 normalization.
@@ -868,9 +875,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   }
 #endif  // INTEL_MKL
 
-  if (module->config()
-          .debug_options()
-          .xla_cpu_experimental_xnn_graph_fusion_mode() !=
+  if (debug_options.xla_cpu_experimental_xnn_graph_fusion_mode() !=
       DebugOptions::XNN_GRAPH_FUSION_MODE_DISABLED) {
     pipeline.AddPass<XnnGraphFusion>();
   }
@@ -886,7 +891,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   // Run this to a fixed point.
   [&pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
        "simplification after layout assignment"),
-   &module] {
+   &module, is_onednn_compatible] {
     AddHloVerifier(
         &pipeline,
         HloVerifierOpts{}.MakeLayoutSensitive().WithInstructionCanChangeLayout(
@@ -900,6 +905,8 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     options.set_minmax_propagate_nan(
         !module->config().debug_options().xla_cpu_enable_fast_min_max());
     options.set_executing_on_cpu(true);
+    // oneDNN support is currently enabled only when thunk runtime is turned off
+    options.set_enable_onednn_support(is_onednn_compatible);
     pipeline.AddPass<AlgebraicSimplifier>(options);
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);

@@ -1740,7 +1740,7 @@ struct PJRT_Executable_OutputDimensions_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
   PJRT_Executable* executable;
-  size_t num_outputs;
+  size_t num_outputs;  // out - Number of output shapes
   // Has length: sum of all elements in the list `dim_sizes`.
   const int64_t* dims;  // out
   // Has length `num_outputs`.
