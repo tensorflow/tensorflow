@@ -51,10 +51,10 @@ absl::StatusOr<bool> LlvmKernelAutotuner::Run(
   std::vector<std::unique_ptr<CodegenBackend>> codegen_backends;
   codegen_backends.push_back(std::move(backend));
 
-  std::unique_ptr<Autotuner> autotuner =
-      Autotuner::Create(std::move(codegen_backends),
-                        /*stream_executor=*/nullptr,
-                        /*profiler=*/std::move(profiler), AutotuneConfig());
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Autotuner> autotuner,
+                      Autotuner::Create(std::move(codegen_backends),
+                                        /*stream_executor=*/nullptr,
+                                        std::move(profiler), AutotuneConfig()));
 
   bool hlo_changed = false;
   for (HloComputation* computation : module->computations()) {
