@@ -544,6 +544,7 @@ xla_cc_test(
     srcs = ["while_loop_all_reduce_code_motion_setup_test.cc"],
     deps = [
         ":while_loop_all_reduce_code_motion_setup",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_matchers",
