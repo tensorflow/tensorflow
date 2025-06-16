@@ -293,6 +293,14 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
   }
 }
 
+std::optional<PjRtPluginAttributes>
+PjRtStreamExecutorClient::plugin_attributes() const {
+  PjRtPluginAttributes attributes =
+      PjRtClient::plugin_attributes().value_or(PjRtPluginAttributes());
+  attributes.attributes["mixed_mlir_dialects"] = true;
+  return attributes;
+}
+
 absl::StatusOr<DeviceAssignment>
 PjRtStreamExecutorClient::GetDefaultDeviceAssignment(int num_replicas,
                                                      int num_partitions) const {

@@ -69,6 +69,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/cpu/abstract_cpu_buffer.h"
 #include "xla/pjrt/cpu/cpu_async_execution_tracker.h"
 #include "xla/pjrt/cpu/cpu_device.h"
@@ -359,6 +360,13 @@ absl::StatusOr<PjRtDevice*> PjRtCpuClient::LookupAddressableDevice(
 
 absl::Span<PjRtMemorySpace* const> PjRtCpuClient::memory_spaces() const {
   return memory_spaces_;
+}
+
+std::optional<PjRtPluginAttributes> PjRtCpuClient::plugin_attributes() const {
+  PjRtPluginAttributes attributes =
+      CommonPjRtClient::plugin_attributes().value_or(PjRtPluginAttributes());
+  attributes.attributes["mixed_mlir_dialects"] = true;
+  return attributes;
 }
 
 absl::StatusOr<DeviceAssignment> PjRtCpuClient::GetDefaultDeviceAssignment(

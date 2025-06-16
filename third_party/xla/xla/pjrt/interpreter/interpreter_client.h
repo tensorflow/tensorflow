@@ -443,6 +443,8 @@ class InterpreterClient final : public PjRtClient {
 
   absl::string_view platform_version() const override { return "<unknown>"; }
 
+  std::optional<PjRtPluginAttributes> plugin_attributes() const override;
+
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
