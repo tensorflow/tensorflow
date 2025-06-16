@@ -62,6 +62,8 @@ class LoopFusionKernelEmitter final : public MlirKernelEmitter {
   // specification.
   static Shape GetIndexingShape(const HloFusionSpec& fusion_spec);
 
+  std::string name() const final { return "loop_fusion_kernel_emitter"; }
+
  private:
   IndexingMap ComputeWorkItemIdToOutputIndexing(mlir::MLIRContext* ctx) const;
   absl::StatusOr<KernelSpec> GetKernelSpec() const;

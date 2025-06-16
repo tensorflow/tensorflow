@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/fusion_emitter.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
+#include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/runtime/all_gather_thunk.h"
 #include "xla/backends/cpu/runtime/all_reduce_thunk.h"
@@ -778,6 +779,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
     kernels_.push_back({kernel_spec.name(),
                         std::move(llvm_ir_kernel_source).thread_safe_module()});
 
+    SetModuleMemoryRegionName(
+        *kernels_.back().module.getModuleUnlocked(),
+        BuildModuleMemoryRegionName(kernel_emitter->name(), fusion));
+
     return MakeKernelThunkSequence(
         instruction, std::move(kernel_spec),
         /*min_alignment=*/cpu_function_runtime::MinAlign());
@@ -800,6 +805,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
 
     kernels_.push_back({kernel_spec.name(),
                         std::move(llvm_ir_kernel_source).thread_safe_module()});
+
+    SetModuleMemoryRegionName(
+        *kernels_.back().module.getModuleUnlocked(),
+        BuildModuleMemoryRegionName("loop_fusion_emitter", fusion));
 
     return MakeKernelThunkSequence(
         instruction, std::move(kernel_spec),

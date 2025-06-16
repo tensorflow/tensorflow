@@ -44,6 +44,8 @@ class CpuScatterFusion final : public MlirKernelEmitter {
 
   absl::StatusOr<MlirKernelDefinition> EmitKernelDefinition() final;
 
+  std::string name() const final { return "cpu_scatter_fusion"; }
+
  private:
   absl::Status EmitEntryFunction(
       const emitters::PartitionedComputations& computations,

@@ -42,12 +42,14 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/MDBuilder.h"
+#include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
 #include "llvm/Support/CodeGen.h"
 #include "xla/backends/cpu/codegen/symbol_name_util.h"
 #include "xla/cpu_function_runtime.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/ir_array.h"
@@ -249,6 +251,28 @@ absl::StatusOr<BufferAllocation::Slice> GetUniqueSlice(
 
 }  // namespace
 
+void SetModuleMemoryRegionName(llvm::Module& llvm_module,
+                               absl::string_view name) {
+  auto& context = llvm_module.getContext();
+  llvm::IRBuilder<> builder(context);
+
+  llvm::MDString* memory_region_name_md = llvm::MDString::get(context, name);
+
+  llvm::MDNode* custom_md_node =
+      llvm::MDNode::get(context, {memory_region_name_md});
+
+  llvm::NamedMDNode* named_md_node =
+      llvm_module.getOrInsertNamedMetadata(kMemoryRegionNameMetadataName);
+
+  named_md_node->addOperand(custom_md_node);
+}
+
+std::string BuildModuleMemoryRegionName(
+    absl::string_view generating_emitter_name, const HloInstruction* instr) {
+  return absl::StrCat("xla_cpu_emitter__", generating_emitter_name,
+                      "__hlo_opcode__", HloOpcodeString(instr->opcode()));
+}
+
 absl::StatusOr<std::vector<KernelApiIrBuilder::KernelParameter>>
 KernelApiIrBuilder::GetKernelArgumentsParameters(
     const HloInstruction* instruction,
@@ -304,7 +328,8 @@ KernelApiIrBuilder::KernelApiIrBuilder(llvm::LLVMContext& context,
 
 auto KernelApiIrBuilder::EmitKernelPrototype(
     llvm::Module& module, const HloInstruction* instr,
-    const BufferAssignment* buffer_assignment, absl::string_view suffix)
+    const BufferAssignment* buffer_assignment,
+    const std::string& generating_emitter_name, absl::string_view suffix)
     -> absl::StatusOr<KernelPrototype> {
   TF_ASSIGN_OR_RETURN(std::vector<KernelParameter> arguments,
                       GetKernelArgumentsParameters(instr, buffer_assignment));
@@ -313,15 +338,20 @@ auto KernelApiIrBuilder::EmitKernelPrototype(
 
   TF_ASSIGN_OR_RETURN(std::string name, GetKernelName(instr, suffix));
 
-  return EmitKernelPrototype(module, name, arguments, results);
+  return EmitKernelPrototype(
+      module, name, arguments, results,
+      BuildModuleMemoryRegionName(generating_emitter_name, instr));
 }
 
 auto KernelApiIrBuilder::EmitKernelPrototype(
     llvm::Module& module, absl::string_view name,
     absl::Span<const KernelParameter> arguments,
-    absl::Span<const KernelParameter> results)
+    absl::Span<const KernelParameter> results,
+    const std::string& module_memory_region_name)
     -> absl::StatusOr<KernelPrototype> {
   CHECK(&module.getContext() == &context_) << "Module context mismatch";
+
+  SetModuleMemoryRegionName(module, module_memory_region_name);
 
   VLOG(3) << "Emit kernel prototype: " << name
           << ", #arguments=" << arguments.size()
