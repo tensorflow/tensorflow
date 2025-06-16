@@ -191,14 +191,6 @@ class PjRtCpuClient final : public CommonPjRtClient {
     return std::make_pair(std::move(last_launch), std::move(count_down));
   }
 
-  tsl::AsyncValueRef<CpuEvent> GetLastEnqueueEvent() {
-    return last_enqueue_event_.CopyRef();
-  }
-
-  void SetLastEnqueueEvent(tsl::AsyncValueRef<CpuEvent> event) {
-    last_enqueue_event_ = std::move(event);
-  }
-
   absl::StatusOr<const xla::PjRtTopologyDescription*> GetTopologyDescription()
       const override {
     return &topology_;
@@ -317,13 +309,6 @@ class PjRtCpuClient final : public CommonPjRtClient {
 
   // A callback to customize the HloModuleConfig for each compiled module.
   std::function<void(HloModuleConfig&)> customize_hlo_module_config_;
-
-  // Used to prevent too much parallelism: we will not enqueue next non-parallel
-  // computation until last one is done within each user thread.
-  // TODO(yueshengys): Consider moving the enqueuing/ordering logic to JAX via
-  // token threading.
-  inline static thread_local tsl::AsyncValueRef<CpuEvent> last_enqueue_event_ =
-      tsl::MakeAvailableAsyncValueRef<CpuEvent>();
 };
 
 class PjRtCpuBuffer final : public AbstractCpuBuffer {
