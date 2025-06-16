@@ -61,7 +61,7 @@ class GpuCliqueKey : public CliqueKey {
       AsyncStreamKind stream_kind = AsyncStreamKind::kCollective,
       std::vector<std::vector<GlobalDeviceId>> participant_groups = {},
       GlobalDeviceId root_device = GlobalDeviceId(-1),
-      std::vector<uint64_t> incarnations = {});
+      std::vector<IncarnationId> incarnations = {});
 
   GpuCliqueKey(const GpuCliqueKey&) = default;
   GpuCliqueKey& operator=(const GpuCliqueKey&) = default;
@@ -99,7 +99,7 @@ class GpuCliqueKey : public CliqueKey {
   bool is_local() const { return num_local_participants_ == devices().size(); }
 
   // Returns the incarnation ids of the participating processes.
-  absl::Span<const uint64_t> incarnations() const { return incarnations_; }
+  absl::Span<const IncarnationId> incarnations() const { return incarnations_; }
 
   std::string ToString() const final;
 
@@ -136,7 +136,7 @@ class GpuCliqueKey : public CliqueKey {
 
   GlobalDeviceId root_device_;
 
-  std::vector<uint64_t> incarnations_;
+  std::vector<IncarnationId> incarnations_;
 };
 
 }  // namespace xla::gpu

@@ -173,7 +173,7 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       ExecutableRunOptions run_options) override;
 
  private:
-  absl::StatusOr<absl::flat_hash_map<GlobalDeviceId, uint64_t>>
+  absl::StatusOr<absl::flat_hash_map<GlobalDeviceId, IncarnationId>>
   GetLatestIncarnations();
 
   xla::StreamExecutorGpuTopologyDescription topology_;
