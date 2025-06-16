@@ -86,11 +86,19 @@ using tensorflow::profiler::ProfiledInstructionsProto;
 
 namespace {
 
-bool IsUnifiedAnalyticalModelEnabled(const HloModule& module) {
-  return module.config()
-             .debug_options()
-             .xla_gpu_enable_analytical_sol_latency_estimator() ||
-         IsPassEnabledAtOptimizationEffort<LatencyHidingScheduler>(module);
+bool HasOnlySupportedCollectives(const HloModule& module) {
+  for (const HloComputation* comp : module.computations()) {
+    for (const HloInstruction* instr : comp->instructions()) {
+      if (hlo_query::IsCollectiveCommunicationOp(instr->opcode()) &&
+          HloPredicateIsNotOp<HloOpcode::kAllReduceStart, HloOpcode::kAllReduce,
+                              HloOpcode::kReduceScatter,
+                              HloOpcode::kAllGatherStart,
+                              HloOpcode::kAllGather>(instr)) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 bool ShouldScheduleAsEarlyAsPossible(const HloInstruction& instr) {
@@ -269,7 +277,6 @@ HloInstructionSequence PostprocessorToScheduleSyncCollectives(
   return result;
 }
 
-namespace {
 ProfiledInstructionsProto FilterWithFingerprint(
     const ProfiledInstructionsProto& profile, absl::string_view fingerprint) {
   ProfiledInstructionsProto result;
@@ -425,8 +432,6 @@ std::optional<ProfiledInstructionsProto> ReadProfileFromSources(
   return std::nullopt;
 }
 
-}  // namespace
-
 std::optional<ProfiledInstructionsProto> ReadPGLEProfile(
     const HloModuleConfig& config, absl::string_view fingerprint) {
   auto profile = ReadProfileFromSources(config, fingerprint);
@@ -498,7 +503,8 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
         ShapeSizeBytesFunction(pointer_size), module.entry_computation());
   }
 
-  if (IsUnifiedAnalyticalModelEnabled(module)) {
+  if (::xla::gpu::detail::IsUnifiedAnalyticalModelEnabled(module,
+                                                          gpu_device_info)) {
     VLOG(1) << "Using Speed-of-Light (SoL) analytical latency estimator";
     auto cost_analysis =
         std::make_unique<GpuHloCostAnalysis>(GpuHloCostAnalysis::Options{
@@ -604,12 +610,15 @@ absl::Status RunLatencyHidingSchedulerPasses(
   return pipeline.Run(module).status();
 }
 
-bool IsLHSEnabled(const HloModule& module, absl::string_view fingerprint) {
+bool IsLHSEnabled(const HloModule& module, absl::string_view fingerprint,
+                  const se::DeviceDescription& gpu_device_info) {
   bool enable_lhs =
       module.config()
           .debug_options()
           .xla_gpu_enable_latency_hiding_scheduler() ||
-      IsPassEnabledAtOptimizationEffort<LatencyHidingScheduler>(module);
+      IsPassEnabledAtOptimizationEffort<LatencyHidingScheduler>(module) ||
+      ::xla::gpu::detail::IsUnifiedAnalyticalModelEnabled(module,
+                                                          gpu_device_info);
   if (!enable_lhs && HasValidPGLEProfile(module, fingerprint)) {
     LOG(WARNING)
         << "Profile data detected but "
@@ -711,7 +720,8 @@ absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
       ScheduleGpuModuleWithMemoryScheduler(module, pointer_size));
   TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
 
-  bool enable_latency_hiding_scheduler = IsLHSEnabled(*module, fingerprint);
+  bool enable_latency_hiding_scheduler =
+      IsLHSEnabled(*module, fingerprint, gpu_device_info);
 
   // Run Latency Hiding Scheduler (LHS). It maximizes the compute-communication
   // overlap, potentially at the cost of memory usage.
@@ -828,6 +838,20 @@ SchedulerConfig MakeGPUSchedulerConfig(uint64_t memory_limit,
 
   return config;
 }
+
+namespace detail {
+
+bool IsUnifiedAnalyticalModelEnabled(
+    const HloModule& module, const se::DeviceDescription& gpu_device_info) {
+  return module.config()
+             .debug_options()
+             .xla_gpu_enable_analytical_sol_latency_estimator() ||
+         IsPassEnabledAtOptimizationEffort<LatencyHidingScheduler>(module) ||
+         (gpu_device_info.cuda_compute_capability().IsHopper() &&
+          HasOnlySupportedCollectives(module));
+}
+
+}  // namespace detail
 
 }  // namespace gpu
 }  // namespace xla
