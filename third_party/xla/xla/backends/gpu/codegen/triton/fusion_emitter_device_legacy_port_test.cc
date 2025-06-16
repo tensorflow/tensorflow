@@ -1644,7 +1644,7 @@ ENTRY e {
 // TODO(b/393299275): this should be rewritten to work on post-optimization HLO,
 // and potentially have an associated fusion test.
 // Disabled because pads are not supported in the new emitter yet.
-TEST_F(TritonGemmTestWithSplitK, DISABLED_SplitKWithTrivialDimension) {
+TEST_F(TritonGemmTestWithSplitK, SplitKWithTrivialDimension) {
   constexpr absl::string_view kHloText = R"(
 ENTRY entry_computation {
   p0 = f16[1001,1]{1,0} parameter(0)
@@ -2374,7 +2374,7 @@ ENTRY entry_computation {
 }
 
 // TODO(b/393299275): transform this test once padding derivation if fixed.
-TEST_F(CompareTest, DISABLED_SupportsSplitKWithIndivisibleKUsingPaddingEqual1) {
+TEST_F(CompareTest, SupportsSplitKWithIndivisibleKUsingPaddingEqual1) {
   constexpr absl::string_view kHloTextRef = R"(
 HloModule extracted, entry_computation_layout={(f16[1,8,4,1023]{3,2,1,0}, f16[1,1023,128]{2,1,0})->f16[1,8,4,128]{3,2,1,0}}
 
@@ -2446,9 +2446,18 @@ ENTRY entry_computation {
 }
 )";
 
-  EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextSplitK,
-                                      ErrorSpec{/*aabs=*/4e-2, /*arel=*/2e-2},
-                                      /*run_hlo_passes=*/false));
+  TF_ASSERT_OK_AND_ASSIGN(
+      ModuleAndNestedFusionMetadata test_module_and_metadata,
+      GetModuleAndNestedFusionMetadata(kHloTextSplitK));
+
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata ref_module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(kHloTextRef));
+
+  EXPECT_TRUE(
+      RunAndCompareTwoModules(std::move(ref_module_and_metadata.module),
+                              std::move(test_module_and_metadata.module),
+                              ErrorSpec{/*aabs=*/4e-2, /*arel=*/2e-2},
+                              /*run_hlo_passes=*/false));
 }
 
 // TODO(b/393299275): symbolic tile derivation fails for one of the padded
@@ -2468,7 +2477,7 @@ ENTRY entry_computation {
 // is that offset constraints are handled via `tile_offsets_indexing` anyway,
 // and it's all that should be relevant afaik. We can probably let the caller
 // decide to drop pre-existing constraints.
-TEST_F(CompareTest, DISABLED_SupportsSplitKWithIndivisibleKUsingPaddingEqual5) {
+TEST_F(CompareTest, SupportsSplitKWithIndivisibleKUsingPaddingEqual5) {
   constexpr absl::string_view kHloTextRef = R"(
 HloModule extracted
 
