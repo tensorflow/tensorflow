@@ -198,6 +198,7 @@ cc_library(
     visibility = internal_visibility([
         "//xla/backends/profiler/gpu:__pkg__",
         "//xla/tsl/profiler:internal",
+        "//third_party/CoMMA:__pkg__",
     ]),
     deps = [
         "//xla/tsl/platform:types",
