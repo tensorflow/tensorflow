@@ -659,13 +659,16 @@ std::string ConcreteSharding::DebugString() const {
   return std::visit(
       [this](const auto& shape, const auto& shard_shapes) {
         return absl::StrFormat(
-            "ConcreteSharding(devices: %v, shape: %s, shard_shapes: %s, "
-            "memory_kind: %v)",
+            "ConcreteSharding(devices: %v, shape: %s, shard_shapes: [%s], "
+            "index_domains: %s, memory_kind: %v)",
             *devices_, shape.DebugString(),
             absl::StrJoin(shard_shapes, ",",
                           [](std::string* out, const auto& shard_shape) {
                             absl::StrAppend(out, shard_shape.DebugString());
                           }),
+            index_domains_.has_value()
+                ? absl::StrCat("[", absl::StrJoin(*index_domains_, ","), "]")
+                : "<nullopt>",
             memory_kind_);
       },
       shape_, shard_shapes_);
