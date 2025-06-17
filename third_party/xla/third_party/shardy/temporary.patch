@@ -1,30 +1,15 @@
-diff --git a/shardy/dialect/sdy/ir/constants.h b/shardy/dialect/sdy/ir/constants.h
-index 329b342..91eb85f 100644
---- a/shardy/dialect/sdy/ir/constants.h
-+++ b/shardy/dialect/sdy/ir/constants.h
-@@ -65,10 +65,6 @@ inline constexpr StringRef kResultPropagationEdgesAttr =
- // `sdy.sharding_constraint`, or `sdy.ManualComputationOp` input/output.
- inline constexpr StringRef kShardingOriginNameAttr = "sdy.sharding_origin_name";
- 
--// Attribute name for indicating whether a value has unreduced axes. Is either
--// `true` or not set.
--inline constexpr StringRef kHasUnreducedAxes = "sdy.has_unreduced_axes";
--
- // Default priority for a `DimensionShardingAttr` that doesn't have a
- // user-defined priority.
- inline constexpr int64_t kDefaultPriority = 0;
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 7739f8f..ae0c1b5 100644
+index ae0c1b5..f71cfbb 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "a082f665f85b1002ab22af263eeafceca5288657"
--    LLVM_SHA256 = "f8d06115707eb1a450bff52fae3cb98334c6e853a2dd1574ecb679d3559ffdbd"
-+    LLVM_COMMIT = "842377882a3f52e345668751fa6d46ba4f7268d2"
-+    LLVM_SHA256 = "84a3195d2b046cec382c86a2838be597f92dfd69f825b10072c2e6aff9b77e5d"
+-    LLVM_COMMIT = "842377882a3f52e345668751fa6d46ba4f7268d2"
+-    LLVM_SHA256 = "84a3195d2b046cec382c86a2838be597f92dfd69f825b10072c2e6aff9b77e5d"
++    LLVM_COMMIT = "02550da932913bd7c3987c68abc9060c9e5bde2c"
++    LLVM_SHA256 = "72ec7b1b1f82708c8d8a5b3f521bbb4f83a69bc24464f9164254b32eb87f05f5"
  
      tf_http_archive(
          name = name,
