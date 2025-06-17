@@ -786,7 +786,7 @@ absl::StatusOr<ModuleHandle> CudaExecutor::LoadModuleFromPtx(const char* ptx) {
 }
 
 absl::StatusOr<std::unique_ptr<Kernel>> CudaExecutor::LoadKernel(
-    const MultiKernelLoaderSpec& spec) {
+    const KernelLoaderSpec& spec) {
   auto cuda_kernel = std::make_unique<CudaKernel>(this);
   const std::string& kernel_name = spec.kernel_name();
 

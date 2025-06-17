@@ -46,11 +46,11 @@ LoadAddI32Ptrs3TestKernel(StreamExecutor* executor);
 absl::StatusOr<internal::CopyKernel::KernelType> LoadCopyTestKernel(
     StreamExecutor* executor);
 
-absl::StatusOr<MultiKernelLoaderSpec> GetAddI32TestKernelSpec(
+absl::StatusOr<KernelLoaderSpec> GetAddI32TestKernelSpec(
     Platform::Id platform_id);
 
 // Returns a PTX kernel loader spec for the `AddI32` PTX kernel above.
-MultiKernelLoaderSpec GetAddI32PtxKernelSpec();
+KernelLoaderSpec GetAddI32PtxKernelSpec();
 
 }  // namespace stream_executor::gpu
 

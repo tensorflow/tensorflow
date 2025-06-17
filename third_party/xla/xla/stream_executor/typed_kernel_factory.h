@@ -38,7 +38,7 @@ class TypedKernelFactory {
  public:
   // Creates a typed kernel on a given executor from a kernel specification.
   static absl::StatusOr<TypedKernel<Params...>> Create(
-      StreamExecutor *executor, const MultiKernelLoaderSpec &spec) {
+      StreamExecutor *executor, const KernelLoaderSpec &spec) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Kernel> kernel,
                         executor->LoadKernel(spec));
     return TypedKernel<Params...>(std::move(kernel));
@@ -52,10 +52,9 @@ class TypedKernelFactory {
   static absl::StatusOr<TypedKernel<Params...>> Create(StreamExecutor *executor,
                                                        std::string kernel_name,
                                                        absl::string_view ptx) {
-    MultiKernelLoaderSpec loader_spec =
-        MultiKernelLoaderSpec::CreateCudaPtxInMemorySpec(
-            ptx, std::move(kernel_name),
-            TypedKernel<Params...>::kNumberOfParameters);
+    KernelLoaderSpec loader_spec = KernelLoaderSpec::CreateCudaPtxInMemorySpec(
+        ptx, std::move(kernel_name),
+        TypedKernel<Params...>::kNumberOfParameters);
 
     return Create(executor, loader_spec);
   }
@@ -63,8 +62,8 @@ class TypedKernelFactory {
   static absl::StatusOr<TypedKernel<Params...>> Create(
       StreamExecutor *executor, std::string kernel_name,
       absl::Span<const uint8_t> cubin_data) {
-    MultiKernelLoaderSpec loader_spec =
-        MultiKernelLoaderSpec::CreateCudaCubinInMemorySpec(
+    KernelLoaderSpec loader_spec =
+        KernelLoaderSpec::CreateCudaCubinInMemorySpec(
             cubin_data, std::move(kernel_name),
             TypedKernel<Params...>::kNumberOfParameters);
 
@@ -76,10 +75,9 @@ class TypedKernelFactory {
   static absl::StatusOr<TypedKernel<Params...>> Create(StreamExecutor *executor,
                                                        std::string kernel_name,
                                                        void *symbol) {
-    MultiKernelLoaderSpec loader_spec =
-        MultiKernelLoaderSpec::CreateInProcessSymbolSpec(
-            symbol, std::move(kernel_name),
-            TypedKernel<Params...>::kNumberOfParameters);
+    KernelLoaderSpec loader_spec = KernelLoaderSpec::CreateInProcessSymbolSpec(
+        symbol, std::move(kernel_name),
+        TypedKernel<Params...>::kNumberOfParameters);
 
     return Create(executor, loader_spec);
   }

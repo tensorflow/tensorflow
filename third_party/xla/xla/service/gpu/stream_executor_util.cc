@@ -371,8 +371,8 @@ absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec) {
 absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
     std::string kernel_name, uint64_t num_args, absl::string_view ptx,
     se::StreamExecutor* stream_exec, uint32_t shared_mem_bytes) {
-  se::MultiKernelLoaderSpec loader_spec =
-      se::MultiKernelLoaderSpec::CreateCudaPtxInMemorySpec(
+  se::KernelLoaderSpec loader_spec =
+      se::KernelLoaderSpec::CreateCudaPtxInMemorySpec(
           ptx, std::move(kernel_name), num_args);
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,
@@ -388,8 +388,8 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
     std::string kernel_name, uint64_t num_args,
     absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec,
     uint32_t shared_mem_bytes) {
-  se::MultiKernelLoaderSpec loader_spec =
-      se::MultiKernelLoaderSpec::CreateCudaCubinInMemorySpec(
+  se::KernelLoaderSpec loader_spec =
+      se::KernelLoaderSpec::CreateCudaCubinInMemorySpec(
           cubin_data, std::move(kernel_name), num_args);
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Kernel> kernel,

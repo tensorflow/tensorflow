@@ -81,7 +81,7 @@ TEST(CudaExecutorTest, GetCudaKernel) {
   auto cuda_executor = dynamic_cast<CudaExecutor*>(executor);
   ASSERT_NE(cuda_executor, nullptr);
 
-  auto verify_kernel = [&](const MultiKernelLoaderSpec& spec) {
+  auto verify_kernel = [&](const KernelLoaderSpec& spec) {
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> kernel,
                             executor->LoadKernel(spec));
     EXPECT_THAT(cuda_executor->GetCudaKernel(kernel.get()),
@@ -95,7 +95,7 @@ TEST(CudaExecutorTest, GetCudaKernel) {
                 StatusIs(absl::StatusCode::kNotFound));
   };
 
-  TF_ASSERT_OK_AND_ASSIGN(MultiKernelLoaderSpec add,
+  TF_ASSERT_OK_AND_ASSIGN(KernelLoaderSpec add,
                           GetAddI32TestKernelSpec(cuda::kCudaPlatformId));
   verify_kernel(add);
   verify_kernel(GetAddI32PtxKernelSpec());

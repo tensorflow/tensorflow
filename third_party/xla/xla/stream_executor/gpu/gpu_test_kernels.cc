@@ -53,13 +53,13 @@ absl::StatusOr<internal::CopyKernel::KernelType> LoadCopyTestKernel(
       .LoadKernel<internal::CopyKernel>(executor);
 }
 
-absl::StatusOr<MultiKernelLoaderSpec> GetAddI32TestKernelSpec(
+absl::StatusOr<KernelLoaderSpec> GetAddI32TestKernelSpec(
     Platform::Id platform_id) {
   return GpuKernelRegistry::GetGlobalRegistry()
       .FindKernel<internal::AddI32Kernel>(platform_id);
 }
 
-MultiKernelLoaderSpec GetAddI32PtxKernelSpec() {
+KernelLoaderSpec GetAddI32PtxKernelSpec() {
   // PTX kernel compiled from:
   //
   //  __global__ void add(int* a, int* b, int* c) {
@@ -108,7 +108,7 @@ MultiKernelLoaderSpec GetAddI32PtxKernelSpec() {
 
 })";
 
-  return MultiKernelLoaderSpec::CreateCudaPtxInMemorySpec(kAddI32KernelPtx,
-                                                          "AddI32", 3);
+  return KernelLoaderSpec::CreateCudaPtxInMemorySpec(kAddI32KernelPtx, "AddI32",
+                                                     3);
 }
 }  // namespace stream_executor::gpu

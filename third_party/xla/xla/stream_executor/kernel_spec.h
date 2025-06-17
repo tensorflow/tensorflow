@@ -24,7 +24,7 @@ limitations under the License.
 //  GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
 //      RepeatBufferKernelCuda, stream_executor::gpu::RepeatBufferKernel,
 //      se::cuda::kCudaPlatformId, ([](size_t arity) {
-//        return se::MultiKernelLoaderSpec::CreateInProcessSymbolSpec(
+//        return se::KernelLoaderSpec::CreateInProcessSymbolSpec(
 //            absl::bit_cast<void*>(&se::gpu::RepeatBufferKernelImpl),
 
 //            "repeat_buffer_kernel", arity);
@@ -71,7 +71,7 @@ struct CudaCubinInMemory {
 };
 
 // Describes how to load a kernel on any subset of a number of target platforms.
-class MultiKernelLoaderSpec {
+class KernelLoaderSpec {
  public:
   // A function for converting kernel arguments into a packed kernels arguments
   // that can be directly passed to a device kernel. This indirection allows
@@ -123,13 +123,13 @@ class MultiKernelLoaderSpec {
   // Note that the kernel_name parameter must be consistent with the kernel in
   // the PTX being loaded. Also be aware that in CUDA C++ the kernel name may be
   // mangled by the compiler if it is not declared in an extern "C" scope.
-  static MultiKernelLoaderSpec CreateInProcessSymbolSpec(
+  static KernelLoaderSpec CreateInProcessSymbolSpec(
       void *symbol, std::string kernel_name, size_t arity,
       KernelArgsPacking kernel_args_packing = nullptr);
-  static MultiKernelLoaderSpec CreateCudaCubinInMemorySpec(
+  static KernelLoaderSpec CreateCudaCubinInMemorySpec(
       absl::Span<const uint8_t> cubin_bytes, std::string kernel_name,
       size_t arity, KernelArgsPacking kernel_args_packing = nullptr);
-  static MultiKernelLoaderSpec CreateCudaPtxInMemorySpec(
+  static KernelLoaderSpec CreateCudaPtxInMemorySpec(
       absl::string_view ptx, std::string kernel_name, size_t arity,
       KernelArgsPacking kernel_args_packing = nullptr);
 
@@ -147,9 +147,9 @@ class MultiKernelLoaderSpec {
   using Payload =
       std::variant<InProcessSymbol, CudaCubinInMemory, CudaPtxInMemory>;
 
-  explicit MultiKernelLoaderSpec(
-      Payload payload, std::string kernel_name, size_t arity,
-      KernelArgsPacking kernel_args_packing = nullptr)
+  explicit KernelLoaderSpec(Payload payload, std::string kernel_name,
+                            size_t arity,
+                            KernelArgsPacking kernel_args_packing = nullptr)
       : payload_(std::move(payload)),
         kernel_name_(std::move(kernel_name)),
         arity_(arity),

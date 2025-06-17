@@ -24,7 +24,7 @@ limitations under the License.
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
     RepeatBufferKernelRocm, stream_executor::gpu::RepeatBufferKernel,
     stream_executor::rocm::kROCmPlatformId, ([](size_t arity) {
-      return stream_executor::MultiKernelLoaderSpec::CreateInProcessSymbolSpec(
+      return stream_executor::KernelLoaderSpec::CreateInProcessSymbolSpec(
           absl::bit_cast<void*>(&stream_executor::gpu::RepeatBufferKernelImpl),
 
           "repeat_buffer_kernel", arity);

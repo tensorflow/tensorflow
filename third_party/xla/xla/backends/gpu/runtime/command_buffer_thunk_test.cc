@@ -76,7 +76,7 @@ limitations under the License.
 namespace xla::gpu {
 
 using MemoryAccess = BufferUse::MemoryAccess;
-using KernelArgsPacking = se::MultiKernelLoaderSpec::KernelArgsPacking;
+using KernelArgsPacking = se::KernelLoaderSpec::KernelArgsPacking;
 
 namespace {
 
@@ -553,7 +553,7 @@ TEST(CommandBufferThunkTest, CustomAddKernelLaunchCmd) {
 
   auto packing = CreateDefaultArgsPacking();
 
-  TF_ASSERT_OK_AND_ASSIGN(stream_executor::MultiKernelLoaderSpec spec,
+  TF_ASSERT_OK_AND_ASSIGN(stream_executor::KernelLoaderSpec spec,
                           stream_executor::gpu::GetAddI32TestKernelSpec(
                               stream_executor->GetPlatform()->id()));
 

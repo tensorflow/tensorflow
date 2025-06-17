@@ -632,7 +632,7 @@ absl::Status RocmExecutor::Init() {
 }
 
 absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
-    const MultiKernelLoaderSpec& spec) {
+    const KernelLoaderSpec& spec) {
   auto rocm_kernel = std::make_unique<RocmKernel>(this);
   const std::string& kernel_name = spec.kernel_name();
 

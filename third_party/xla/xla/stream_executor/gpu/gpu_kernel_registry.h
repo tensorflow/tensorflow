@@ -60,7 +60,7 @@ class GpuKernelRegistry {
   template <typename KernelTrait>
   absl::StatusOr<typename KernelTrait::KernelType> LoadKernel(
       StreamExecutor* executor) {
-    TF_ASSIGN_OR_RETURN(const MultiKernelLoaderSpec& spec,
+    TF_ASSIGN_OR_RETURN(const KernelLoaderSpec& spec,
                         FindKernel<KernelTrait>(executor->GetPlatform()->id()));
 
     return KernelTrait::KernelType::FactoryType::Create(executor, spec);
@@ -71,8 +71,8 @@ class GpuKernelRegistry {
   // load a kernel into a StreamExecutor instance. This function is
   // thread-safe.
   template <typename KernelTrait>
-  absl::StatusOr<std::reference_wrapper<const MultiKernelLoaderSpec>>
-  FindKernel(Platform::Id platform_id) {
+  absl::StatusOr<std::reference_wrapper<const KernelLoaderSpec>> FindKernel(
+      Platform::Id platform_id) {
     return object_registry_->FindObject<KernelTraitAdaptor<KernelTrait>>(
         platform_id);
   }
@@ -80,7 +80,7 @@ class GpuKernelRegistry {
   // Registers a kernel `kernel` in the registry. This function is thread-safe.
   template <typename KernelTrait>
   absl::Status RegisterKernel(Platform::Id platform_id,
-                              const MultiKernelLoaderSpec& kernel) {
+                              const KernelLoaderSpec& kernel) {
     return object_registry_->RegisterObject<KernelTraitAdaptor<KernelTrait>>(
         platform_id, kernel);
   }
@@ -96,7 +96,7 @@ class GpuKernelRegistry {
   // have one PlatformObjectRegistry trait per KernelTrait.
   template <typename KernelTrait>
   struct KernelTraitAdaptor {
-    using Type = MultiKernelLoaderSpec;
+    using Type = KernelLoaderSpec;
   };
 
   PlatformObjectRegistry* object_registry_;

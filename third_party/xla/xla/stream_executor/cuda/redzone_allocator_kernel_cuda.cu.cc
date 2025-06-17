@@ -25,7 +25,7 @@ limitations under the License.
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
     RedzoneAllocatorKernelCuda, stream_executor::gpu::RedzoneAllocatorKernel,
     stream_executor::cuda::kCudaPlatformId, ([](size_t arity) {
-      return stream_executor::MultiKernelLoaderSpec::CreateInProcessSymbolSpec(
+      return stream_executor::KernelLoaderSpec::CreateInProcessSymbolSpec(
           absl::bit_cast<void*>(
               &stream_executor::gpu::RedzoneAllocatorKernelImpl),
 

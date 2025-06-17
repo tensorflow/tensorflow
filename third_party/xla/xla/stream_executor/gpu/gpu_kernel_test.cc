@@ -59,7 +59,7 @@ class GpuKernelTest : public ::testing::Test {
     executor_ = platform->ExecutorForDevice(0).value();
   }
 
-  void RunAddI32Kernel(const MultiKernelLoaderSpec& spec) {
+  void RunAddI32Kernel(const KernelLoaderSpec& spec) {
     TF_ASSERT_OK_AND_ASSIGN(auto stream, executor_->CreateStream());
     TF_ASSERT_OK_AND_ASSIGN(auto add, AddI32Kernel::Create(executor_, spec));
 
@@ -102,14 +102,14 @@ TEST_F(GpuKernelTest, LoadAndRunKernelFromPtx) {
 TEST_F(GpuKernelTest, LoadAndRunKernelFromCubin) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto binary, GetGpuTestKernelsFatbin(executor_->GetPlatform()->Name()));
-  MultiKernelLoaderSpec spec =
-      MultiKernelLoaderSpec::CreateCudaCubinInMemorySpec(binary, "AddI32", 3);
+  KernelLoaderSpec spec =
+      KernelLoaderSpec::CreateCudaCubinInMemorySpec(binary, "AddI32", 3);
   RunAddI32Kernel(spec);
 }
 
 TEST_F(GpuKernelTest, LoadAndRunKernelFromSymbol) {
   TF_ASSERT_OK_AND_ASSIGN(
-      MultiKernelLoaderSpec spec,
+      KernelLoaderSpec spec,
       GetAddI32TestKernelSpec(executor_->GetPlatform()->id()));
   RunAddI32Kernel(spec);
 }

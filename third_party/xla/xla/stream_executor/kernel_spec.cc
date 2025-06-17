@@ -25,26 +25,25 @@ limitations under the License.
 
 namespace stream_executor {
 
-MultiKernelLoaderSpec MultiKernelLoaderSpec::CreateInProcessSymbolSpec(
+KernelLoaderSpec KernelLoaderSpec::CreateInProcessSymbolSpec(
     void *symbol, std::string kernel_name, size_t arity,
     KernelArgsPacking kernel_args_packing) {
-  return MultiKernelLoaderSpec{InProcessSymbol{symbol}, std::move(kernel_name),
-                               arity, kernel_args_packing};
+  return KernelLoaderSpec{InProcessSymbol{symbol}, std::move(kernel_name),
+                          arity, kernel_args_packing};
 }
 
-MultiKernelLoaderSpec MultiKernelLoaderSpec::CreateCudaCubinInMemorySpec(
+KernelLoaderSpec KernelLoaderSpec::CreateCudaCubinInMemorySpec(
     absl::Span<const uint8_t> cubin_bytes, std::string kernel_name,
     size_t arity, KernelArgsPacking kernel_args_packing) {
-  return MultiKernelLoaderSpec{CudaCubinInMemory{cubin_bytes},
-                               std::move(kernel_name), arity,
-                               kernel_args_packing};
+  return KernelLoaderSpec{CudaCubinInMemory{cubin_bytes},
+                          std::move(kernel_name), arity, kernel_args_packing};
 }
 
-MultiKernelLoaderSpec MultiKernelLoaderSpec::CreateCudaPtxInMemorySpec(
+KernelLoaderSpec KernelLoaderSpec::CreateCudaPtxInMemorySpec(
     absl::string_view ptx, std::string kernel_name, size_t arity,
     KernelArgsPacking kernel_args_packing) {
-  return MultiKernelLoaderSpec{CudaPtxInMemory{ptx}, std::move(kernel_name),
-                               arity, kernel_args_packing};
+  return KernelLoaderSpec{CudaPtxInMemory{ptx}, std::move(kernel_name), arity,
+                          kernel_args_packing};
 }
 
 }  // namespace stream_executor

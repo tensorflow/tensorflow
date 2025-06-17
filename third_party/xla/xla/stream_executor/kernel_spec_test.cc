@@ -29,9 +29,9 @@ namespace {
 using ::testing::Field;
 using ::testing::Optional;
 
-TEST(MultiKernelLoaderSpec, InProcessSymbol) {
+TEST(KernelLoaderSpec, InProcessSymbol) {
   void* symbol = absl::bit_cast<void*>(0xDEADBEEFul);
-  auto spec = stream_executor::MultiKernelLoaderSpec::CreateInProcessSymbolSpec(
+  auto spec = stream_executor::KernelLoaderSpec::CreateInProcessSymbolSpec(
       symbol, "kernel24", 2);
   EXPECT_FALSE(spec.has_cuda_cubin_in_memory());
   EXPECT_FALSE(spec.has_cuda_ptx_in_memory());
@@ -42,11 +42,10 @@ TEST(MultiKernelLoaderSpec, InProcessSymbol) {
   EXPECT_THAT(spec.kernel_name(), "kernel24");
 }
 
-TEST(MultiKernelLoaderSpec, CudaCubin) {
+TEST(KernelLoaderSpec, CudaCubin) {
   static constexpr std::array<uint8_t, 4> kCubinData = {0xDE, 0xAD, 0xBE, 0xEF};
-  auto spec =
-      stream_executor::MultiKernelLoaderSpec::CreateCudaCubinInMemorySpec(
-          kCubinData, "kernel24", 2);
+  auto spec = stream_executor::KernelLoaderSpec::CreateCudaCubinInMemorySpec(
+      kCubinData, "kernel24", 2);
   EXPECT_TRUE(spec.has_cuda_cubin_in_memory());
   EXPECT_FALSE(spec.has_cuda_ptx_in_memory());
   EXPECT_FALSE(spec.has_in_process_symbol());
@@ -56,9 +55,9 @@ TEST(MultiKernelLoaderSpec, CudaCubin) {
   EXPECT_THAT(spec.kernel_name(), "kernel24");
 }
 
-TEST(MultiKernelLoaderSpec, CudaPtx) {
+TEST(KernelLoaderSpec, CudaPtx) {
   static constexpr absl::string_view kPtxData = "PTX DEADBEEF";
-  auto spec = stream_executor::MultiKernelLoaderSpec::CreateCudaPtxInMemorySpec(
+  auto spec = stream_executor::KernelLoaderSpec::CreateCudaPtxInMemorySpec(
       kPtxData, "kernel24", 2);
   EXPECT_FALSE(spec.has_cuda_cubin_in_memory());
   EXPECT_TRUE(spec.has_cuda_ptx_in_memory());

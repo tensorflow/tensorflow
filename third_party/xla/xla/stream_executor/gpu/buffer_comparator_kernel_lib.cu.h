@@ -130,8 +130,8 @@ void RegisterBufferComparatorKernelParametrized(Platform::Id platform_id) {
   std::string kernel_name = absl::StrCat(
       xla::primitive_util::LowercasePrimitiveTypeName(p_type), "_comparison");
 
-  stream_executor::MultiKernelLoaderSpec spec =
-      stream_executor::MultiKernelLoaderSpec::CreateInProcessSymbolSpec(
+  stream_executor::KernelLoaderSpec spec =
+      stream_executor::KernelLoaderSpec::CreateInProcessSymbolSpec(
           kernel_symbol, kernel_name, 5);
 
   absl::Status result =

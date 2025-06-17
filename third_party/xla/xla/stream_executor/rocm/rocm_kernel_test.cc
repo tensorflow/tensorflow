@@ -38,7 +38,7 @@ TEST(RocmKernelTest, GetMaxOccupiedBlocksPerCore) {
                           PlatformManager::PlatformWithName("ROCM"));
   TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                           platform->ExecutorForDevice(0));
-  TF_ASSERT_OK_AND_ASSIGN(MultiKernelLoaderSpec add_kernel,
+  TF_ASSERT_OK_AND_ASSIGN(KernelLoaderSpec add_kernel,
                           GetAddI32TestKernelSpec(rocm::kROCmPlatformId));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Kernel> rocm_kernel,
                           executor->LoadKernel(add_kernel));
