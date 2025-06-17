@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -101,6 +102,7 @@ class CopyInsertionTest : public HloHardwareIndependentTestBase {
   }
 
   const Shape scalar_shape_ = ShapeUtil::MakeShape(F32, {});
+  const AliasInfo alias_info_;
 };
 
 TEST_F(CopyInsertionTest, SingleParameter) {
@@ -3022,7 +3024,7 @@ ENTRY TestComputation {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   InsertCopies(module.get());
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString();
@@ -3071,7 +3073,7 @@ ENTRY TestComputation {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   // The copy.1 must be kept due to modification in the other branch.
@@ -3116,7 +3118,7 @@ ENTRY %primitive_computation_cond.19 (parameter.1: s32[], parameter.2: s32[2], p
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   InsertCopies(module.get());
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString();
@@ -3161,7 +3163,7 @@ ENTRY TestComputation {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString() << "\n";
@@ -3204,7 +3206,7 @@ ENTRY main {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString();
@@ -3264,7 +3266,7 @@ ENTRY main {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString();
@@ -3321,7 +3323,7 @@ ENTRY entry {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.RemoveUnnecessaryCopies(module.get()));
   auto while_1 = FindInstruction(module.get(), "while.1");
@@ -3382,7 +3384,7 @@ ENTRY main {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   EXPECT_EQ(CountCopies(*module), 2);
@@ -3482,7 +3484,7 @@ ENTRY %main.13 (Arg_0.1: pred[], Arg_1.2: u8[300,451,3]) -> u8[300,451,3] {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(2) << module->ToString();
@@ -3502,7 +3504,7 @@ ROOT %arg_tuple.1 = (f32[]{:T(256)}, f32[]{:T(256)}) parameter(0), parameter_rep
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(2) << module->ToString();
@@ -3523,7 +3525,7 @@ TEST_F(CopyInsertionTest, AddControlDependencyForInputOutputAlias) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   EXPECT_EQ(CountCopies(*module), 1);
@@ -3569,7 +3571,7 @@ ENTRY %main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get(), {"foobar"}).status());
   VLOG(2) << module->ToString();
@@ -3608,7 +3610,7 @@ ENTRY %main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get(), {"foobar"}).status());
   VLOG(2) << module->ToString();
@@ -3654,7 +3656,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString();
@@ -3714,7 +3716,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString();
@@ -3757,7 +3759,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(3) << module->ToString();
@@ -3865,7 +3867,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(2) << module->ToString();
@@ -3908,7 +3910,7 @@ TEST_F(CopyInsertionTest, PartiallyPipelinedAsyncRecv) {
     )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
 
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
@@ -3969,7 +3971,7 @@ TEST_F(CopyInsertionTest, PartiallyPipelinedAsyncRecvMultipleUses) {
     )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
 
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
@@ -4037,7 +4039,7 @@ TEST_F(CopyInsertionTest, PartiallyPipelinedAsyncSendMultipleUses) {
     )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
 
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
@@ -4136,7 +4138,7 @@ TEST_F(CopyInsertionTest, PartiallyPipelinedAsyncSendRecvPipelineParallelism) {
     )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
 
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
@@ -4236,7 +4238,7 @@ TEST_F(CopyInsertionTest,
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   VLOG(2) << module->ToString();
@@ -4284,7 +4286,7 @@ TEST_F(CopyInsertionTest, NonCopyableOneChainOutsideWhileLoop) {
     )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
 
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
@@ -4333,7 +4335,7 @@ TEST_F(CopyInsertionTest, NonCopyableOneChainInsideWhileLoop) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
 
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
@@ -4398,7 +4400,7 @@ TEST_F(CopyInsertionTest, NonCopyableTwoChainsInsideWhileLoop) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
 
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
@@ -4468,7 +4470,7 @@ TEST_F(CopyInsertionTest, NonCopyableOneChainPartiallyInsideWhileLoop) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
 
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
@@ -4549,7 +4551,7 @@ TEST_F(CopyInsertionTest, NonCopyableChainPipelinedSeparatedParts) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
 
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
@@ -4630,7 +4632,7 @@ TEST_F(CopyInsertionTest, NonCopyableChainPipelinedConnectedParts) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
-  CopyInsertion copy_insertion(nullptr,
+  CopyInsertion copy_insertion(&alias_info_,
                                /*use_region_based_live_range_analysis=*/-1);
 
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());

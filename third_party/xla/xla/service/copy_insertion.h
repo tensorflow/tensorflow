@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -61,12 +62,27 @@ class CopyInsertion : public HloModulePass {
   //
   // TODO(b/80315712): Find a better way to tell whether a fusion can share
   // buffer.
+  // TODO(b/424109294): Remove this constructor and replace it with the one
+  // below.
   explicit CopyInsertion(
       const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr,
       int64_t use_region_based_live_range_analysis = kUseRegionAnalysisLimit)
       : can_share_buffer_(can_share_buffer),
         use_region_based_live_range_analysis_(
             use_region_based_live_range_analysis) {}
+
+  explicit CopyInsertion(
+      const AliasInfo* alias_info,
+      int64_t use_region_based_live_range_analysis = kUseRegionAnalysisLimit)
+      : use_region_based_live_range_analysis_(
+            use_region_based_live_range_analysis) {
+    // TODO(b/424109294): Avoid converting back to CanShareBuffer hook.
+    can_share_buffer_ = [alias_info](const HloInstruction* user,
+                                     const HloInstruction* operand,
+                                     const ShapeIndex& user_index) {
+      return alias_info->MayAlias(operand, {}, user, user_index);
+    };
+  }
 
   // Run the pass on the given module. Returns whether the module was changed
   // (copies were inserted).

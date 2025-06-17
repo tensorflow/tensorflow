@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_executable.h"
@@ -116,8 +117,11 @@ class GpuCompilerTest : public HloTestBase {
     const se::DeviceDescription& gpu_device_info =
         backend().default_stream_executor()->GetDeviceDescription();
     TF_RETURN_IF_ERROR(ScheduleGpuModule(module, 4, gpu_device_info).status());
-    return tensorflow::down_cast<GpuCompiler*>(compiler)
-        ->RunPostSchedulingPipelines(module, 4 * 1024 * 1024, gpu_device_info);
+    GpuCompiler* gpu_compiler = tensorflow::down_cast<GpuCompiler*>(compiler);
+    std::unique_ptr<GpuAliasInfo> alias_info =
+        gpu_compiler->GetAliasInfo(gpu_device_info);
+    return gpu_compiler->RunPostSchedulingPipelines(
+        module, 4 * 1024 * 1024, gpu_device_info, alias_info.get());
   }
 
   // Like GetOptimizedModule, but also runs the backend. This is important for

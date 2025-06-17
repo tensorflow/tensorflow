@@ -1,4 +1,4 @@
-/* Copyright 2023 The OpenXLA Authors.
+/* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/buffer_sharing.h"
+#include "xla/service/gpu/alias_info.h"
 
 #include <cstdint>
 #include <optional>
@@ -30,26 +30,18 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
-#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 
-namespace xla {
-namespace gpu {
-
+namespace xla::gpu {
+namespace {
 std::optional<bool> FusionCanShareBufferHint(
-    const HloInstruction* user, const HloInstruction* operand,
+    const HloInstruction* operand, const HloFusionInstruction* user,
     const ShapeIndex& user_index,
     const se::DeviceDescription& device_description) {
-  const HloFusionInstruction* fusion = DynCast<HloFusionInstruction>(user);
-  if (fusion == nullptr) {
-    return std::nullopt;
-  }
-
   // First, do the trivial check: if the fusion operand and the fusion output
   // have a different number of elements or have a different element byte size,
   // the buffer cannot be shared.
@@ -217,38 +209,17 @@ std::optional<bool> FusionCanShareBufferHint(
   }
   return found_path_to_output;
 }
+}  // namespace
 
-std::optional<bool> CanShareBufferHint(
-    const HloInstruction* user, const HloInstruction* operand,
-    const ShapeIndex& user_index,
-    const se::DeviceDescription& device_description) {
-  switch (user->opcode()) {
-    case HloOpcode::kAllReduce:
-    case HloOpcode::kCollectiveBroadcast:
-      // NCCL all-reduce and collective-broadcast can be performed in-place.
-      return user->operand_count() == 1 ||
-             (user_index.size() == 1 &&
-              user->operand(user_index[0]) == operand);
-    case HloOpcode::kCustomCall:
-      // The matrix bias operand can be overwritten in-place.
-      if (user->custom_call_target() == kCublasLtMatmulCallTarget) {
-        GemmBackendConfig config =
-            std::move(user->backend_config<GpuBackendConfig>())
-                ->gemm_backend_config();
-        return (config.beta() != 0.) && user->operand(2) == operand;
-      }
-      // The operand of cholesky can be shared with the first output.
-      if (user->custom_call_target() == kCusolverCholeskyCallTarget) {
-        return user_index.size() == 1 && user_index[0] == 0;
-      }
-      return false;
-    case HloOpcode::kFusion:
-      return FusionCanShareBufferHint(user, operand, user_index,
-                                      device_description);
-    default:
-      return std::nullopt;
+std::optional<bool> GpuAliasInfo::MayAlias(const HloInstruction* operand,
+                                           const ShapeIndex& operand_index,
+                                           const HloInstruction* user,
+                                           const ShapeIndex& user_index) const {
+  const HloFusionInstruction* fusion = DynCast<HloFusionInstruction>(user);
+  if (fusion != nullptr) {
+    return FusionCanShareBufferHint(operand, fusion, user_index,
+                                    *device_description_);
   }
+  return std::nullopt;
 }
-
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -28,8 +27,9 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/service/copy_insertion.h"
-#include "xla/service/gpu/buffer_sharing.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/stream_executor/device_description.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -66,35 +66,17 @@ void ExpectOptionalFalse(std::optional<bool> value) {
   EXPECT_FALSE(*value);
 }
 
-class CanShareBufferWrapper {
+class GpuCopyInsertionTest : public HloHardwareIndependentTestBase {
  public:
-  CanShareBufferWrapper()
-      : can_share_buffer_([&](const HloInstruction* fusion,
-                              const HloInstruction* operand,
-                              const ShapeIndex& user_index) {
-          return FusionCanShareBufferHint(fusion, operand, user_index,
-                                          device_description_);
-        }) {}
-
-  HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() const {
-    return can_share_buffer_;
+  CopyInsertion CreateCopyInsertion() const {
+    return CopyInsertion(&alias_info_,
+                         /*use_region_based_live_range_analysis=*/0);
   }
 
  private:
   const se::DeviceDescription device_description_{
       xla::gpu::TestGpuDeviceInfo::CudaOrRocmDeviceInfo()};
-  const HloDataflowAnalysis::CanShareBuffer can_share_buffer_;
-};
-
-class GpuCopyInsertionTest : public HloHardwareIndependentTestBase {
- public:
-  CopyInsertion CreateCopyInsertion() const {
-    return CopyInsertion(can_share_buffer_wrapper_.GetCanShareBuffer(),
-                         /*use_region_based_live_range_analysis=*/0);
-  }
-
- private:
-  const CanShareBufferWrapper can_share_buffer_wrapper_;
+  GpuAliasInfo alias_info_{&device_description_};
 };
 
 // This is some kind of end-to-end test for FusionCanShareBufferHint.
@@ -159,18 +141,16 @@ ENTRY main {
 
 class FusionCanShareBufferHintTest : public HloHardwareIndependentTestBase {
  public:
-  FusionCanShareBufferHintTest()
-      : can_share_buffer_(can_share_buffer_wrapper_.GetCanShareBuffer()) {}
-
   std::optional<bool> FusionCanShareBufferHint(const HloInstruction* fusion,
                                                const HloInstruction* operand,
                                                const ShapeIndex& user_index) {
-    return can_share_buffer_(fusion, operand, user_index);
+    return alias_info_.MayAlias(operand, {}, fusion, user_index);
   }
 
  private:
-  const CanShareBufferWrapper can_share_buffer_wrapper_;
-  const HloDataflowAnalysis::CanShareBuffer can_share_buffer_;
+  const se::DeviceDescription device_description_{
+      xla::gpu::TestGpuDeviceInfo::CudaOrRocmDeviceInfo()};
+  GpuAliasInfo alias_info_{&device_description_};
 };
 
 TEST_F(FusionCanShareBufferHintTest, BufferCanBeSharedSameShape) {

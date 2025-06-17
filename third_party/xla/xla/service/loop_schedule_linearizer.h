@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -40,9 +41,20 @@ class LoopScheduleLinearizer : public HloModulePass {
  public:
   absl::string_view name() const override { return "loop-schedule-linearizer"; }
 
+  // TODO(b/424109294): Remove this constructor and replace it with the one
+  // below.
   explicit LoopScheduleLinearizer(
       const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr)
       : can_share_buffer_(can_share_buffer) {}
+
+  explicit LoopScheduleLinearizer(const AliasInfo* alias_info) {
+    // TODO(b/424109294): Avoid converting back to CanShareBuffer hook.
+    can_share_buffer_ = [alias_info](const HloInstruction* user,
+                                     const HloInstruction* operand,
+                                     const ShapeIndex& user_index) {
+      return alias_info->MayAlias(operand, {}, user, user_index);
+    };
+  }
 
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(

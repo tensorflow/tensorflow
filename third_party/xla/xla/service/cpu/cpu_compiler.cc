@@ -98,6 +98,7 @@ limitations under the License.
 #include "xla/backends/cpu/transforms/xnn_graph_fusion.h"
 #include "xla/backends/cpu/xnn_fusion.h"
 #include "xla/cpu_function_runtime.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/analysis/indexed_array_analysis.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -932,9 +933,10 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   pipeline.AddPass<OptimizeInputOutputBufferAlias>(true);
 
   // If enabled we'll use more precise region based analysis for copy removal.
+  AliasInfo alias_info;
   if (debug_options.xla_cpu_copy_insertion_use_region_analysis()) {
     pipeline.AddPass<CopyInsertion>(
-        /*can_share_buffer=*/nullptr,
+        &alias_info,
         /*use_region_based_live_range_analysis=*/-1);
   } else {
     pipeline.AddPass<CopyInsertion>();

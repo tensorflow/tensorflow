@@ -150,6 +150,7 @@ limitations under the License.
 #include "xla/service/export_hlo.h"
 #include "xla/service/float_support.h"
 #include "xla/service/gather_expander.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/autotuning/custom_kernel_fusion_autotuner.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
@@ -1471,10 +1472,10 @@ AlgebraicSimplifierOptions GpuCompiler::GetAlgebraicSimplifierOptions(
 }
 
 absl::Status GpuCompiler::RunPreSchedulingCopyInsertion(
-    HloModule& hlo_module, const se::DeviceDescription& device_description) {
-  return PreSchedulingCopyInsertionPipeline(
-             hlo_module.config(), GetCanShareBuffer(device_description),
-             device_description)
+    HloModule& hlo_module, const se::DeviceDescription& device_description,
+    const GpuAliasInfo* alias_info) {
+  return PreSchedulingCopyInsertionPipeline(hlo_module.config(), alias_info,
+                                            device_description)
       .Run(&hlo_module)
       .status();
 }
@@ -1873,8 +1874,9 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
 
   const se::DeviceDescription& device_description =
       gpu_target_config.device_description;
-  TF_RETURN_IF_ERROR(
-      RunPreSchedulingCopyInsertion(*module, device_description));
+  std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(device_description);
+  TF_RETURN_IF_ERROR(RunPreSchedulingCopyInsertion(*module, device_description,
+                                                   alias_info.get()));
 
   uint64_t end_usecs = tsl::Env::Default()->NowMicros();
 
@@ -1914,9 +1916,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
 }
 
 namespace {
-absl::Status RunPostSchedulingCopyInsertion(
-    HloModule* module,
-    const HloDataflowAnalysis::CanShareBuffer& can_share_buffer) {
+absl::Status RunPostSchedulingCopyInsertion(HloModule* module,
+                                            const GpuAliasInfo* alias_info) {
   // We run a separate pass of copy elision here because the sequential ordering
   // from the HLO schedule potentially allows for more copies to be eliminated.
   constexpr int64_t kRegionBasedLiveRangeAnalysisLimit = -1;
@@ -1926,8 +1927,7 @@ absl::Status RunPostSchedulingCopyInsertion(
               .xla_gpu_copy_insertion_use_region_analysis()
           ? kRegionBasedLiveRangeAnalysisLimit
           : 0;
-  CopyInsertion copy_insertion(can_share_buffer,
-                               kUseRegionBasedLiveRangeAnalysis);
+  CopyInsertion copy_insertion(alias_info, kUseRegionBasedLiveRangeAnalysis);
   TF_RETURN_IF_ERROR(copy_insertion.RemoveUnnecessaryCopies(module));
 
   // Stash away the schedule during copy insertion, to avoid validation failures
@@ -2325,12 +2325,15 @@ GpuCompiler::CompileToBackendResult(
     se::StreamExecutor* executor, const CompileOptions& options,
     const se::DeviceDescription& gpu_device_info) {
   tsl::profiler::TraceMe traceme("CompileToBackendResult");
-  TF_RETURN_IF_ERROR(RunPreSchedulingPasses(module, executor, gpu_device_info));
+  std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(gpu_device_info);
+  TF_RETURN_IF_ERROR(RunPreSchedulingPasses(module, executor, gpu_device_info,
+                                            alias_info.get()));
   TF_ASSIGN_OR_RETURN(
       ScheduleMetadata schedule_metadata,
       ScheduleGpuModule(module, pointer_size_, gpu_device_info));
-  TF_RETURN_IF_ERROR(RunPostSchedulingPipelines(
-      module, schedule_metadata.scheduler_mem_limit, gpu_device_info));
+  TF_RETURN_IF_ERROR(
+      RunPostSchedulingPipelines(module, schedule_metadata.scheduler_mem_limit,
+                                 gpu_device_info, alias_info.get()));
 
   absl::StatusOr<se::Platform*> platform =
       se::PlatformManager::PlatformWithId(PlatformId());
@@ -2367,8 +2370,7 @@ GpuCompiler::CompileToBackendResult(
         compile_module_results,
         CompileModuleToLlvmIr(module, llvm_context, target_triple_,
                               data_layout_, *platform, gpu_device_info,
-                              GetCanShareBuffer(gpu_device_info),
-                              BufferSizeBytesFunction(),
+                              alias_info.get(), BufferSizeBytesFunction(),
                               /*split_constants_module=*/use_cache));
   }
 
@@ -2636,7 +2638,8 @@ absl::StatusOr<std::unique_ptr<AotCompilationResult>> GpuCompiler::Export(
 
 absl::Status GpuCompiler::RunPreSchedulingPasses(
     HloModule* module, se::StreamExecutor* stream_exec,
-    const se::DeviceDescription& gpu_device_info) {
+    const se::DeviceDescription& gpu_device_info,
+    const GpuAliasInfo* alias_info) {
   tsl::profiler::TraceMe traceme("RunPreSchedulingPasses");
   HloPassPipeline pipeline("pre-scheduling-passes");
   pipeline.AddPass<FusionWrapper>(gpu_device_info);
@@ -2745,10 +2748,10 @@ HloRematerialization::Options CreateRematOpts(
 
 absl::Status GpuCompiler::RunPostSchedulingPipelines(
     HloModule* module, int64_t scheduler_mem_limit,
-    const se::DeviceDescription& gpu_device_info) const {
+    const se::DeviceDescription& gpu_device_info,
+    const GpuAliasInfo* alias_info) const {
   tsl::profiler::TraceMe traceme("RunPostSchedulingPipelines");
-  TF_RETURN_IF_ERROR(RunPostSchedulingCopyInsertion(
-      module, GetCanShareBuffer(gpu_device_info)));
+  TF_RETURN_IF_ERROR(RunPostSchedulingCopyInsertion(module, alias_info));
   HloPassPipeline main_pipeline("post-scheduling-passes");
 
   // Pipeline for async -> sync conversion on for non-overlapped async ops.

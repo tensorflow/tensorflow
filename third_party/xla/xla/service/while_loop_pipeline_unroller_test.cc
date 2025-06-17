@@ -20,6 +20,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -80,7 +81,8 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   WhileLoopPipelineUnroller wlpu;
   ASSERT_IS_OK(wlpu.Run(module.get()).status());
-  CopyInsertion copy_insertion(nullptr,
+  AliasInfo alias_info;
+  CopyInsertion copy_insertion(&alias_info,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
 
@@ -148,7 +150,8 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   WhileLoopPipelineUnroller wlpu;
   ASSERT_IS_OK(wlpu.Run(module.get()).status());
-  CopyInsertion copy_insertion(nullptr,
+  AliasInfo alias_info;
+  CopyInsertion copy_insertion(&alias_info,
                                /*use_region_based_live_range_analysis=*/-1);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
 

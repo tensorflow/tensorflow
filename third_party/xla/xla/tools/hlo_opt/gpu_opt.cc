@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/executable.pb.h"
 #include "xla/service/gpu/gpu_compiler.h"
@@ -179,6 +180,8 @@ class GpuOptProvider : public CompiledOptProvider {
                         Compiler::GetForPlatform(platform));
 
     auto* gpu_compiler = static_cast<gpu::GpuCompiler*>(compiler.get());
+    std::unique_ptr<gpu::GpuAliasInfo> alias_info =
+        gpu_compiler->GetAliasInfo(device_description);
     if (!optimized_module->has_schedule()) {
       TF_ASSIGN_OR_RETURN(gpu::ScheduleMetadata schedule_metadata,
                           gpu::ScheduleGpuModule(optimized_module,
@@ -186,7 +189,7 @@ class GpuOptProvider : public CompiledOptProvider {
                                                  device_description));
       TF_RETURN_IF_ERROR(gpu_compiler->RunPostSchedulingPipelines(
           optimized_module, schedule_metadata.scheduler_mem_limit,
-          device_description));
+          device_description, alias_info.get()));
     }
 
     llvm::LLVMContext llvm_context;
@@ -195,8 +198,7 @@ class GpuOptProvider : public CompiledOptProvider {
         xla::gpu::CompileModuleToLlvmIr(
             optimized_module, &llvm_context, gpu_compiler->GetTargetTriple(),
             gpu_compiler->GetDataLayout(), platform, device_description,
-            gpu_compiler->GetCanShareBuffer(device_description),
-            gpu_compiler->BufferSizeBytesFunction()));
+            alias_info.get(), gpu_compiler->BufferSizeBytesFunction()));
     return llvm_ir::DumpToString(results.llvm_module.get());
   }
 };
