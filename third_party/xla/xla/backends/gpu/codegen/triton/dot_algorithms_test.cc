@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -22,6 +23,7 @@ limitations under the License.
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <numeric>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -1597,9 +1599,24 @@ INSTANTIATE_TEST_SUITE_P(
          PC::ALG_DOT_TF32_TF32_F32_X3, PC::ALG_DOT_F64_F64_F64, PC::ALG_UNSET}),
     AlgorithmTestParamToString);
 
+template <typename... Args>
+void Log(absl::string_view name, const absl::FormatSpec<Args...>& format,
+         const Args&... args) {
+  std::cerr << "stats: " << name << " " << absl::StrFormat(format, args...)
+            << "\n";
+}
+
+double CalculateStdDev(absl::Span<const double> values, double mean) {
+  double sum = 0.0;
+  for (int i = 0; i < values.size(); ++i) {
+    sum += (values[i] - mean) * (values[i] - mean);
+  }
+  return std::sqrt(sum / values.size());
+}
+
 template <typename T>
-void PrintHistogram(absl::string_view name, absl::Span<T> values,
-                    const std::vector<double>& expected_values) {
+void PrintStats(absl::string_view name, absl::Span<T> values,
+                const std::vector<double>& expected_values) {
   // Build the histogram of the relative differences.
   std::vector<double> rel_errors;
   rel_errors.reserve(values.size());
@@ -1613,30 +1630,34 @@ void PrintHistogram(absl::string_view name, absl::Span<T> values,
   double min_rel_error =
       *std::min_element(rel_errors.begin(), rel_errors.end());
   double rel_error_range = max_rel_error - min_rel_error;
+  double rel_error_sum =
+      std::accumulate(rel_errors.begin(), rel_errors.end(), 0.0);
+  double mean_rel_error = rel_error_sum / rel_errors.size();
+  double std_dev_rel_error = CalculateStdDev(rel_errors, mean_rel_error);
+
   constexpr int kNumBins = 40;
   double bin_width = rel_error_range / kNumBins;
   std::vector<int> histogram(kNumBins, 0);
-  double rel_error_sum = 0.0;
+  int samples_count = rel_errors.size();
   for (int i = 0; i < rel_errors.size(); ++i) {
-    rel_error_sum += rel_errors[i];
     int bin = static_cast<int>((rel_errors[i] - min_rel_error) / bin_width);
     if (bin >= kNumBins) {
       bin = kNumBins - 1;
     }
     histogram[bin]++;
   }
-  int samples_count = values.size();
-  int bar_width = 200;
+  int max_bin_size = *std::max_element(histogram.begin(), histogram.end());
+  constexpr int kMaxBarHeight = 100;
   int64_t samples = 0;
-  double mean_rel_error = rel_error_sum / values.size();
   bool median_found = false;
   std::tuple<int, double, double> median_bin;
   for (int i = 0; i < kNumBins; ++i) {
     samples += histogram[i];
     double bin_start = min_rel_error + i * bin_width;
     double bin_end = min_rel_error + (i + 1) * bin_width;
+    int bar_size = histogram[i] * kMaxBarHeight / max_bin_size;
     std::string bar =
-        std::string(histogram[i] * bar_width / samples_count, '*');
+        absl::StrCat(std::string(bar_size, '*'), " ", bar_size, " ");
     if (!median_found && samples >= samples_count / 2) {
       median_bin = std::make_tuple(i, bin_start, bin_end);
       median_found = true;
@@ -1653,23 +1674,17 @@ void PrintHistogram(absl::string_view name, absl::Span<T> values,
                         histogram[i], bar.c_str());
     std::cerr << "hist: " << line;
   }
-  std::cerr << "stats: " << name << " "
-            << absl::StrFormat("min rel error, %1.3e\n", min_rel_error);
-  std::cerr << "stats: " << name << " "
-            << absl::StrFormat("max rel error, %1.3e\n", max_rel_error);
-  std::cerr << "stats: " << name << " "
-            << absl::StrFormat(
-                   "max abs rel error, %1.3e\n",
-                   std::max(std::abs(min_rel_error), std::abs(max_rel_error)));
-  std::cerr << "stats: " << name << " "
-            << absl::StrFormat("rel error range, %1.3e\n",
-                               max_rel_error - min_rel_error);
-  std::cerr << "stats: " << name << " "
-            << absl::StrFormat("median bin, %d [%1.3e - %1.3e)\n",
-                               std::get<0>(median_bin), std::get<1>(median_bin),
-                               std::get<2>(median_bin));
-  std::cerr << "stats: " << name << " "
-            << absl::StrFormat("mean rel error, %1.3e\n", mean_rel_error);
+  double max_abs_rel_error =
+      std::max(std::abs(min_rel_error), std::abs(max_rel_error));
+  Log(name, "min rel error, %1.3e", min_rel_error);
+  Log(name, "max rel error, %1.3e", max_rel_error);
+  Log(name, "max abs rel error, %1.3e", max_abs_rel_error);
+  Log(name, "mean rel error, %1.3e", mean_rel_error);
+  Log(name, "std dev rel error, %1.3e", std_dev_rel_error);
+  Log(name, "CV(rel error) = %1.3f", std_dev_rel_error / mean_rel_error);
+  Log(name, "rel error range, %1.3e", rel_error_range);
+  Log(name, "median bin, %d [%1.3e - %1.3e)", std::get<0>(median_bin),
+      std::get<1>(median_bin), std::get<2>(median_bin));
 }
 
 class PrecisionTests
@@ -1826,7 +1841,7 @@ TEST_P(PrecisionTests, PrecisionCheck) {
   std::cerr << "\n";
   auto name =
       absl::StrCat(BackendToString(backend), "_", AlgorithmToString(algorithm));
-  PrintHistogram(name, test_result.data<float>(), ref_result);
+  PrintStats(name, test_result.data<float>(), ref_result);
   std::cerr << "stats: " << name << " min execution time, " << min_time
             << "ns\n";
   std::cerr << "stats: \n";
