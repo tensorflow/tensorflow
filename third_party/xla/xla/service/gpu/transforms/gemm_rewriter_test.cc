@@ -161,7 +161,7 @@ HloModule bf16codegendgemm
 ENTRY bf16gemm {
   %parameter.1 = bf16[3]{0} parameter(0)
   %parameter.2 = bf16[3]{0} parameter(1)
-  ROOT %dot.3 = bf16[] dot(bf16[3]{0} %parameter.1, bf16[3]{0} %parameter.2), lhs_contracting_dims={0}, rhs_contracting_dims={0}, operand_precision={highest,highest}
+  ROOT %dot.3 = bf16[] dot(bf16[3]{0} %parameter.1, bf16[3]{0} %parameter.2), lhs_contracting_dims={0}, rhs_contracting_dims={0}
 }
   )";
 
