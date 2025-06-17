@@ -16,6 +16,7 @@
 """Utilities related to disk I/O."""
 
 import os
+import sys
 
 
 def path_to_string(path):
@@ -48,12 +49,23 @@ def ask_to_proceed_with_overwrite(filepath):
   Returns:
       True if we can proceed with overwrite, False otherwise.
   """
-  overwrite = input('[WARNING] %s already exists - overwrite? '
-                    '[y/n]' % (filepath)).strip().lower()
-  while overwrite not in ('y', 'n'):
-    overwrite = input('Enter "y" (overwrite) or "n" '
-                      '(cancel).').strip().lower()
-  if overwrite == 'n':
+  # Detect non-interactive environments where input() would fail (e.g. when
+  # stdin is not connected to a TTY or has been redirected). In such cases we
+  # conservatively refuse to overwrite to avoid unexpected crashes or data
+  # loss.
+  if not sys.stdin or not sys.stdin.isatty():
+    print('[WARNING] %s already exists. Non-interactive mode detected; will not overwrite.' % (filepath))
     return False
-  print('[TIP] Next time specify overwrite=True!')
-  return True
+
+  try:
+    overwrite = input('[WARNING] %s already exists - overwrite? [y/n] ' % (filepath)).strip().lower()
+    while overwrite not in ('y', 'n'):
+      overwrite = input('Enter "y" (overwrite) or "n" (cancel).').strip().lower()
+    if overwrite == 'n':
+      return False
+    print('[TIP] Next time specify overwrite=True!')
+    return True
+  except EOFError:
+    # stdin closed unexpectedly – behave as if user typed "n".
+    print('[WARNING] Standard input closed; assuming no overwrite for %s.' % (filepath))
+    return False
