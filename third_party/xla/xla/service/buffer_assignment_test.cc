@@ -113,7 +113,7 @@ int64_t BufferSizeBytes(const BufferValue& buffer) {
 
 class BufferAssignmentTest : public HloHardwareIndependentTestBase {
  protected:
-  ~BufferAssignmentTest() override {}
+  ~BufferAssignmentTest() override = default;
 
   std::unique_ptr<BufferAssignment> RunBufferAssignment(HloModule* module,
                                                         int64_t alignment = 1) {
@@ -3662,6 +3662,310 @@ TEST(BufferAllocationTest, ToAndFromProto) {
                 new_allocation.param_shape_index());
     }
   });
+}
+
+TEST(ComputePeakMemoryTest, SimpleAllocation) {
+  BufferAssignmentProto proto;
+  HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
+  LogicalBufferProto* buffer = proto.add_logical_buffers();
+  buffer->set_id(0);
+  buffer->set_size(10);
+  HeapSimulatorTrace::Event* event1 = trace->add_events();
+  event1->set_buffer_id(0);
+  event1->set_kind(HeapSimulatorTrace::Event::ALLOC);
+  HeapSimulatorTrace::Event* event2 = trace->add_events();
+  event2->set_buffer_id(0);
+  event2->set_kind(HeapSimulatorTrace::Event::FREE);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result, ComputePeakMemory(proto));
+  EXPECT_EQ(result, 10);
+}
+
+TEST(ComputePeakMemoryTest, MultipleBuffers) {
+  BufferAssignmentProto proto;
+  HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
+
+  // Buffer 0
+  LogicalBufferProto* buffer0 = proto.add_logical_buffers();
+  buffer0->set_id(0);
+  buffer0->set_size(10);
+  HeapSimulatorTrace::Event* event1 = trace->add_events();
+  event1->set_buffer_id(buffer0->id());
+  event1->set_kind(HeapSimulatorTrace::Event::ALLOC);
+
+  // Buffer 1
+  LogicalBufferProto* buffer1 = proto.add_logical_buffers();
+  buffer1->set_id(1);
+  buffer1->set_size(20);
+  HeapSimulatorTrace::Event* event2 = trace->add_events();
+  event2->set_buffer_id(buffer1->id());
+  event2->set_kind(HeapSimulatorTrace::Event::ALLOC);
+
+  // Buffer 2
+  LogicalBufferProto* buffer2 = proto.add_logical_buffers();
+  buffer2->set_id(2);
+  buffer2->set_size(30);
+  HeapSimulatorTrace::Event* event3 = trace->add_events();
+  event3->set_buffer_id(buffer2->id());
+  event3->set_kind(HeapSimulatorTrace::Event::ALLOC);
+
+  // Free buffer 0
+  HeapSimulatorTrace::Event* event4 = trace->add_events();
+  event4->set_buffer_id(buffer0->id());
+  event4->set_kind(HeapSimulatorTrace::Event::FREE);
+
+  // Free buffer 2
+  HeapSimulatorTrace::Event* event5 = trace->add_events();
+  event5->set_buffer_id(buffer2->id());
+  event5->set_kind(HeapSimulatorTrace::Event::FREE);
+
+  // Free buffer 1
+  HeapSimulatorTrace::Event* event6 = trace->add_events();
+  event6->set_buffer_id(buffer1->id());
+  event6->set_kind(HeapSimulatorTrace::Event::FREE);
+
+  EXPECT_EQ(*ComputePeakMemory(proto), 60);
+}
+
+TEST(ComputePeakMemoryTest, SharedBuffers) {
+  BufferAssignmentProto proto;
+  HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
+
+  // Buffer 0
+  LogicalBufferProto* buffer0 = proto.add_logical_buffers();
+  buffer0->set_id(0);
+  buffer0->set_size(10);
+
+  // Buffer 1
+  LogicalBufferProto* buffer1 = proto.add_logical_buffers();
+  buffer1->set_id(1);
+  buffer1->set_size(10);  // same as buffer 0
+
+  // Allocate buffer 0
+  HeapSimulatorTrace::Event* event1 = trace->add_events();
+  event1->set_buffer_id(0);
+  event1->set_kind(HeapSimulatorTrace::Event::ALLOC);
+
+  // Make buffer 0 also visible as buffer 1.
+  HeapSimulatorTrace::Event* event2 = trace->add_events();
+  event2->set_buffer_id(1);
+  event2->set_kind(HeapSimulatorTrace::Event::SHARE_WITH);
+  event2->set_share_with_canonical_id(0);
+
+  // Free buffer 1. This doesn't change mem usage, since
+  // we explicitly allocated buffer 0 earlier.
+  HeapSimulatorTrace::Event* event3 = trace->add_events();
+  event3->set_buffer_id(1);
+  event3->set_kind(HeapSimulatorTrace::Event::FREE);
+
+  EXPECT_EQ(*ComputePeakMemory(proto), 10);
+
+  // Now allocate and free buffer 1 without sharing.
+  HeapSimulatorTrace::Event* event4 = trace->add_events();
+  event4->set_buffer_id(1);
+  event4->set_kind(HeapSimulatorTrace::Event::ALLOC);
+  HeapSimulatorTrace::Event* event5 = trace->add_events();
+  event5->set_buffer_id(1);
+  event5->set_kind(HeapSimulatorTrace::Event::FREE);
+
+  EXPECT_EQ(*ComputePeakMemory(proto), 20);
+}
+
+TEST(ComputePeakMemoryTest, SharedChain) {
+  BufferAssignmentProto proto;
+  HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
+  HeapSimulatorTrace::Event* e;
+
+  // Buffer 0
+  LogicalBufferProto* buffer0 = proto.add_logical_buffers();
+  buffer0->set_id(0);
+  buffer0->set_size(10);
+  // Buffer 1
+  LogicalBufferProto* buffer1 = proto.add_logical_buffers();
+  buffer1->set_id(1);
+  buffer1->set_size(10);  // same as buffer 0
+  // Buffer 2
+  LogicalBufferProto* buffer2 = proto.add_logical_buffers();
+  buffer2->set_id(2);
+  buffer2->set_size(10);  // same as buffer 0
+  // Buffer 3
+  LogicalBufferProto* buffer3 = proto.add_logical_buffers();
+  buffer3->set_id(3);
+  buffer3->set_size(300);
+  // Buffer 4
+  LogicalBufferProto* buffer4 = proto.add_logical_buffers();
+  buffer4->set_id(4);
+  buffer4->set_size(4000);
+
+  // Make buffer 0 visible as buffer 1.
+  e = trace->add_events();
+  e->set_buffer_id(1);
+  e->set_kind(HeapSimulatorTrace::Event::SHARE_WITH);
+  e->set_share_with_canonical_id(0);
+
+  // Make buffer 1 visible as buffer 2.
+  e = trace->add_events();
+  e->set_buffer_id(2);
+  e->set_kind(HeapSimulatorTrace::Event::SHARE_WITH);
+  e->set_share_with_canonical_id(1);
+
+  // Free buffer 2. This doesn't deallocate any memory, since buffer 1
+  // is sharing buffer 0 as well.
+  e = trace->add_events();
+  e->set_buffer_id(2);
+  e->set_kind(HeapSimulatorTrace::Event::FREE);
+
+  e = trace->add_events();
+  e->set_buffer_id(3);
+  e->set_kind(HeapSimulatorTrace::Event::ALLOC);
+  e = trace->add_events();
+  e->set_buffer_id(3);
+  e->set_kind(HeapSimulatorTrace::Event::FREE);
+
+  EXPECT_EQ(*ComputePeakMemory(proto), 310);
+
+  // Free buffer 1, as well. Now all buffers (including 0) are deallocated.
+  e = trace->add_events();
+  e->set_buffer_id(1);
+  e->set_kind(HeapSimulatorTrace::Event::FREE);
+
+  e = trace->add_events();
+  e->set_buffer_id(4);
+  e->set_kind(HeapSimulatorTrace::Event::ALLOC);
+  e = trace->add_events();
+  e->set_buffer_id(4);
+  e->set_kind(HeapSimulatorTrace::Event::FREE);
+
+  EXPECT_EQ(*ComputePeakMemory(proto), 4000);
+}
+
+TEST(ComputePeakMemoryTest, SharedChainReverseOrder) {
+  BufferAssignmentProto proto;
+  HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
+  HeapSimulatorTrace::Event* e;
+
+  // Buffer 0
+  LogicalBufferProto* buffer0 = proto.add_logical_buffers();
+  buffer0->set_id(0);
+  buffer0->set_size(10);
+  // Buffer 1
+  LogicalBufferProto* buffer1 = proto.add_logical_buffers();
+  buffer1->set_id(1);
+  buffer1->set_size(10);  // same as buffer 0
+  // Buffer 2
+  LogicalBufferProto* buffer2 = proto.add_logical_buffers();
+  buffer2->set_id(2);
+  buffer2->set_size(10);  // same as buffer 0
+  // Buffer 3
+  LogicalBufferProto* buffer3 = proto.add_logical_buffers();
+  buffer3->set_id(3);
+  buffer3->set_size(300);
+  // Buffer 4
+  LogicalBufferProto* buffer4 = proto.add_logical_buffers();
+  buffer4->set_id(4);
+  buffer4->set_size(4000);
+
+  // Make buffer 0 visible as buffer 1.
+  e = trace->add_events();
+  e->set_buffer_id(1);
+  e->set_kind(HeapSimulatorTrace::Event::SHARE_WITH);
+  e->set_share_with_canonical_id(0);
+
+  // Make buffer 1 visible as buffer 2.
+  e = trace->add_events();
+  e->set_buffer_id(2);
+  e->set_kind(HeapSimulatorTrace::Event::SHARE_WITH);
+  e->set_share_with_canonical_id(1);
+
+  // Free buffer 1, and set the first peak.
+  e = trace->add_events();
+  e->set_buffer_id(1);
+  e->set_kind(HeapSimulatorTrace::Event::FREE);
+  e = trace->add_events();
+  e->set_buffer_id(3);
+  e->set_kind(HeapSimulatorTrace::Event::ALLOC);
+
+  // We expect buffer 0 to still be alive here.
+  EXPECT_EQ(*ComputePeakMemory(proto), 310);
+  e = trace->add_events();
+  e->set_buffer_id(3);
+  e->set_kind(HeapSimulatorTrace::Event::FREE);
+
+  // Free buffer 0, as well. Memory usage should now be 0.
+  e = trace->add_events();
+  e->set_buffer_id(0);
+  e->set_kind(HeapSimulatorTrace::Event::FREE);
+
+  // Set second peak.
+  e = trace->add_events();
+  e->set_buffer_id(4);
+  e->set_kind(HeapSimulatorTrace::Event::ALLOC);
+  EXPECT_EQ(*ComputePeakMemory(proto), 4000);
+}
+
+TEST(ComputePeakMemoryTest, SharingAllocatesBuffers) {
+  BufferAssignmentProto proto;
+  HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
+  HeapSimulatorTrace::Event* e;
+
+  // Buffer 0
+  LogicalBufferProto* buffer0 = proto.add_logical_buffers();
+  buffer0->set_id(0);
+  buffer0->set_size(10);
+
+  // Buffer 1
+  LogicalBufferProto* buffer1 = proto.add_logical_buffers();
+  buffer1->set_id(1);
+  buffer1->set_size(10);  // same as buffer 0
+
+  // Buffer 2
+  LogicalBufferProto* buffer2 = proto.add_logical_buffers();
+  buffer2->set_id(2);
+  buffer2->set_size(200);
+
+  // Make buffer 0 visible as buffer 1. This allocates buffer 0.
+  e = trace->add_events();
+  e->set_buffer_id(1);
+  e->set_kind(HeapSimulatorTrace::Event::SHARE_WITH);
+  e->set_share_with_canonical_id(0);
+
+  EXPECT_EQ(*ComputePeakMemory(proto), 10);
+
+  // Free buffer 1. This also deallocates buffer 0 since it wasn't explicitly
+  // allocated before.
+  e->set_buffer_id(1);
+  e->set_kind(HeapSimulatorTrace::Event::FREE);
+
+  // Alloc and then free buffer 2, thus making this point in time the new peak.
+  e = trace->add_events();
+  e->set_buffer_id(2);
+  e->set_kind(HeapSimulatorTrace::Event::ALLOC);
+  e = trace->add_events();
+  e->set_buffer_id(2);
+  e->set_kind(HeapSimulatorTrace::Event::FREE);
+
+  EXPECT_EQ(*ComputePeakMemory(proto), 200);
+}
+
+TEST(ComputePeakMemoryTest, EmptyProto) {
+  BufferAssignmentProto proto;
+  EXPECT_EQ(*ComputePeakMemory(proto), 0);
+}
+
+TEST(ComputePeakMemoryTest, ProtoWithNoEvents) {
+  BufferAssignmentProto proto;
+  proto.add_heap_simulator_traces();
+
+  // Buffer 0
+  LogicalBufferProto* buffer0 = proto.add_logical_buffers();
+  buffer0->set_id(0);
+  buffer0->set_size(42);
+  // Buffer 1
+  LogicalBufferProto* buffer1 = proto.add_logical_buffers();
+  buffer1->set_id(1);
+  buffer1->set_size(23);
+
+  EXPECT_EQ(*ComputePeakMemory(proto), 0);
 }
 
 }  // namespace
