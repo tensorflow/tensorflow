@@ -227,9 +227,9 @@ def _tf_repositories():
         name = "onednn",
         build_file = "@local_xla//third_party/mkl_dnn:mkldnn_v1.BUILD",
         patch_file = ["@local_xla//third_party/mkl_dnn:setting_init.patch"],
-        sha256 = "8356aa9befde4d4ff93f1b016ac4310730b2de0cc0b8c6c7ce306690bc0d7b43",
-        strip_prefix = "oneDNN-3.5",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.5.tar.gz"),
+        sha256 = "071f289dc961b43a3b7c8cbe8a305290a7c5d308ec4b2f586397749abdc88296",
+        strip_prefix = "oneDNN-3.7.3",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.7.3.tar.gz"),
     )
 
     tf_http_archive(
