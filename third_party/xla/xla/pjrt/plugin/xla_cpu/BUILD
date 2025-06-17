@@ -120,7 +120,6 @@ cc_library(
     name = "cpu_static_registration",
     srcs = ["cpu_static_registration.cc"],
     deps = [
-        "//xla/pjrt:pjrt_api",
         "//xla/pjrt/c:pjrt_c_api_cpu_internal",
         "//xla/pjrt/plugin:plugin_names",
         "//xla/pjrt/plugin:static_registration",

@@ -13,9 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/plugin/example_plugin/myplugin_c_pjrt.h"
+#ifndef XLA_PJRT_PLUGIN_EXAMPLE_PLUGIN_MYPLUGIN_C_PJRT_INTERNAL_H_
+#define XLA_PJRT_PLUGIN_EXAMPLE_PLUGIN_MYPLUGIN_C_PJRT_INTERNAL_H_
 
 #include "xla/pjrt/c/pjrt_c_api.h"
-#include "xla/pjrt/plugin/example_plugin/myplugin_c_pjrt_internal.h"
 
-const PJRT_Api* GetPjrtApi() { return myplugin_pjrt::GetMyPluginPjrtApi(); }
+namespace myplugin_pjrt {
+// Does not pass ownership of returned PJRT_Api* to caller.
+const PJRT_Api* GetMyPluginPjrtApi();
+
+}  // namespace myplugin_pjrt
+
+#endif  // XLA_PJRT_PLUGIN_EXAMPLE_PLUGIN_MYPLUGIN_C_PJRT_INTERNAL_H_

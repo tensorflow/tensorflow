@@ -15,10 +15,19 @@ limitations under the License.
 
 #include "xla/pjrt/plugin/example_plugin/myplugin_c_pjrt.h"
 
+#include <dirent.h>
+#include <dlfcn.h>
+#include <unistd.h>
+
+#include <memory>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/statusor.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
-#include "tsl/platform/test.h"
+#include "xla/pjrt/pjrt_c_api_client.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 
 namespace {
 
@@ -27,4 +36,11 @@ TEST(MypluginCPjRtTest, CreatesPjRtAPI) {
   EXPECT_THAT(myplugin, ::testing::NotNull());
 }
 
+// This test builds the dynamic library and registers it as a PJRT plugin. This
+// exists to test the dynamic registration path.
+TEST(MypluginCPjRtTest, FindSharedLibrary) {
+  absl::StatusOr<std::unique_ptr<xla::PjRtClient>> c_api_client =
+      xla::GetCApiClient("myplugin");
+  TF_EXPECT_OK(c_api_client);
+}
 }  // namespace

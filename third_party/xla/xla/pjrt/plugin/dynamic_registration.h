@@ -13,30 +13,32 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PJRT_PLUGIN_STATIC_REGISTRATION_H_
-#define XLA_PJRT_PLUGIN_STATIC_REGISTRATION_H_
+#ifndef XLA_PJRT_PLUGIN_DYNAMIC_REGISTRATION_H_
+#define XLA_PJRT_PLUGIN_DYNAMIC_REGISTRATION_H_
 
 #include "absl/strings/string_view.h"
-#include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/pjrt_api.h"  // IWYU pragma: keep
 
-bool RegisterStaticPjrtPlugin(absl::string_view plugin_name,
-                              const PJRT_Api* plugin_api);
+bool RegisterDynamicPjrtPlugin(absl::string_view plugin_name,
+                               absl::string_view library_env_name);
 
-// Registers a static PJRT plugin.
+// Registers a dynamic PJRT plugin.
+//
+// The plugin is loaded from the library path specified by the environment
+// variable `library_env_name`.
 //
 // Example:
 //
 //   #include
-//   "third_party/tensorflow/compiler/xla/pjrt/plugin/static_registration.h"
+//   "third_party/tensorflow/compiler/xla/pjrt/plugin/dynamic_registration.h"
 //
-//   REGISTER_PJRT_PLUGIN("my_plugin", GetMyPluginPjrtApi);
+//   REGISTER_DYNAMIC_PJRT_PLUGIN("my_plugin", "MY_PJRT_PLUGIN_LIBRARY_PATH");
 //   // this will register a plugin named "my_plugin" that is loaded from the
 //   // path in the environment variable "MY_PJRT_PLUGIN_LIBRARY_PATH".
-#define REGISTER_PJRT_PLUGIN(plugin_name, get_plugin_fn)          \
-  [[maybe_unused]] static bool already_registered_##plugin_name = \
-      [](auto plugin_name, const PJRT_Api* plugin_api) -> bool {  \
-    return RegisterStaticPjrtPlugin(plugin_name, plugin_api);     \
-  }(plugin_name, get_plugin_fn);
+#define REGISTER_DYNAMIC_PJRT_PLUGIN(plugin_name, library_env_name)      \
+  [[maybe_unused]] static bool already_registered_##plugin_name =        \
+      [](auto plugin_name) {                                             \
+        return RegisterDynamicPjrtPlugin(plugin_name, library_env_name); \
+      }(plugin_name);
 
-#endif  // XLA_PJRT_PLUGIN_STATIC_REGISTRATION_H_
+#endif  // XLA_PJRT_PLUGIN_DYNAMIC_REGISTRATION_H_
