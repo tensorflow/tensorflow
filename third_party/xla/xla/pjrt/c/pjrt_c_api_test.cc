@@ -503,6 +503,43 @@ TEST_F(PjrtCApiTest, PluginAttributes) {
   EXPECT_TRUE(names.find("stablehlo_minimum_version") != names.end());
 }
 
+TEST_F(PjrtCApiTest, ExecutableOutputDimensions) {
+  // Create executable using the helper
+  auto executable_or = create_executable(api_, client_);
+  ASSERT_NE(executable_or.get(), nullptr);
+
+  // Get the underlying PJRT_Executable
+  auto executable = GetExecutable(executable_or.get(), api_);
+  ASSERT_NE(executable.get(), nullptr);
+
+  // Now test output dimensions
+  PJRT_Executable_OutputDimensions_Args args;
+  args.struct_size = PJRT_Executable_OutputDimensions_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.executable = executable.get();
+  args.num_outputs = 0;  // Should be set by the API call
+  args.dims = nullptr;
+  args.dim_sizes = nullptr;
+  args.error = nullptr;
+
+  PJRT_Error* dim_error = api_->PJRT_Executable_GetOutputDimensions(&args);
+  ASSERT_EQ(nullptr, dim_error);
+
+  // Verify that num_outputs was set properly
+  const size_t expected_num_outputs =
+      1;  // The add_one computation has 1 output
+  EXPECT_EQ(args.num_outputs, expected_num_outputs);
+  ASSERT_NE(args.dim_sizes, nullptr);
+  ASSERT_NE(args.dims, nullptr);
+
+  // Verify that we have the correct number of output shapes
+  size_t total_dims = 0;
+  for (size_t i = 0; i < args.num_outputs; ++i) {
+    total_dims += args.dim_sizes[i];
+  }
+  EXPECT_GT(total_dims, 0);
+}
+
 // --------------------------------- Devices -----------------------------------
 
 TEST_F(PjrtCApiTest, DeviceId) {
