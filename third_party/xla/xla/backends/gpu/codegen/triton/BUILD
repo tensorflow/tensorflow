@@ -661,6 +661,10 @@ xla_test(
         "b200",
         "amdgpu_any",
     ],
+    env = {
+        "CUBLAS_EMULATE_SINGLE_PRECISION": "1",  # Trigger single precision emulation (F32_F32_F32) with BF16x9 cublas algorithm. It was introduced in cublas 12.9.
+        "CUBLAS_EMULATION_STRATEGY": "performant",  # Trigger single precision emulation (F32_F32_F32) with BF16x9 cublas algorithm. It was introduced in cublas 12.9.
+    },
     shard_count = 30,
     tags = [
         "no_mac",
