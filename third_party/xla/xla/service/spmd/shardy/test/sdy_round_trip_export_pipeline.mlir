@@ -90,7 +90,7 @@ func.func @func_result_sharding_returning_op_value(%arg0: tensor<8x16xf32>)
 // CHECK-LABEL: func @sharding_constraint
 // CHECK-SAME:      %arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
 func.func @sharding_constraint(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
-  // CHECK: stablehlo.custom_call @Sharding(%arg0) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh_2, [{\22x\22, ?}, {?}]>]>"}, mhlo.sharding =
+  // CHECK: stablehlo.custom_call @Sharding(%arg0) {mhlo.frontend_attributes = {xla.sdy.sharding = "#sdy.sharding_per_value<[<@mesh_2, [{\22x\22, ?}, {?}]>]>"}, mhlo.sharding =
   %0 = sdy.sharding_constraint %arg0 <@mesh_2, [{"x", ?}, {?}]> :  tensor<8x8xf32>
   return %0 : tensor<8x8xf32>
 }
