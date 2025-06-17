@@ -119,6 +119,16 @@ struct OutputTilingInfo {
   // where pid_0 is replaced by (d0 floordiv 2) and pid_1 is replaced by
   // (d0 mod 2) in tile offset expressions.
   IndexingMap linear_output_tile_offset_indexing;
+
+  std::string ToString(const absl::string_view field_separator = "\n") {
+    return absl::StrCat(
+        "num_output_tiles_per_dim: ", num_output_tiles_per_dim.size(),
+        field_separator, absl::StrJoin(num_output_tiles_per_dim, ", "),
+        field_separator, "output_tile_offset_indexing: ",
+        xla::ToString(output_tile_offset_indexing), field_separator,
+        "linear_output_tile_offset_indexing: ",
+        xla::ToString(linear_output_tile_offset_indexing));
+  }
 };
 
 llvm::SmallVector<int64_t> GetNumberOfTilesPerDimension(
@@ -553,7 +563,7 @@ void SortTiledHloInstructionsInPostOrder(
                          [](std::string* out,
                             const std::unique_ptr<SymbolicTiledHloInstruction>&
                                 instruction) {
-                           absl::StrAppend(out, instruction->ToString());
+                           absl::StrAppend(out, instruction->ToString("; "));
                          });
   }
 }
@@ -1657,6 +1667,8 @@ absl::StatusOr<TiledHloComputation> ComputeTiledHloInstructionsImpl(
       ComputeOutputTilingInfo(real_root_indexing, flat_tiling_parameters,
                               major_to_minor_active_tiling_parameters, context,
                               parent_output_tile_dim_bounds));
+
+  VLOG(3) << "output_tiling_info: " << output_tiling_info.ToString("; ");
 
   OrderedUniquePtrValueHashSet<TiledHloInstruction> tiled_hlo_instructions_set;
   // The actual number of `TiledHloInstruction`s can be smaller than the number

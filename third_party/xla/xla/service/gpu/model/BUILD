@@ -679,6 +679,7 @@ cc_library(
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
