@@ -50,6 +50,7 @@ cc_library(
         "flatten_tensors.cc",
         "lower_tensors.cc",
         "lower_to_llvm.cc",
+        "lower_xla_math_lib.cc",
         "lower_xla_to_scf.cc",
         "merge_pointers_to_same_slice.cc",
         "propagate_slice_indices.cc",

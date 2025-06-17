@@ -18,6 +18,19 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
+def LowerXlaMathLibPass : Pass<"xla-lower-xla-math-lib", "mlir::func::FuncOp"> {
+  let summary = "Lowers XLA math function calls to xla.* math lib calls.";
+  let description = [{
+    Lowers XLA math function calls to xla.* math lib calls. This enables LLVM to
+    vectorize, inline, and optimize over LLVM IR implementations of these
+    functions and their approximations.
+  }];
+  let dependentDialects = [
+    "mlir::func::FuncDialect",
+  ];
+  let constructor = "CreateLowerXlaMathLibPass()";
+}
+
 def ConvertPureCallOpsPass
     : Pass<"xla-convert-pure-call-ops", "mlir::func::FuncOp"> {
   let summary = "Converts xla.pure_call to func.call";

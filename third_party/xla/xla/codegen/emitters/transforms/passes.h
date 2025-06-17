@@ -31,6 +31,7 @@ namespace emitters {
 #define GEN_PASS_DECL
 #include "xla/codegen/emitters/transforms/passes.h.inc"
 
+std::unique_ptr<mlir::Pass> CreateLowerXlaMathLibPass();
 std::unique_ptr<mlir::Pass> CreateConvertPureCallOpsPass();
 std::unique_ptr<mlir::Pass> CreateEraseDeadFunctionsPass();
 std::unique_ptr<mlir::Pass> CreateExpandFloatOpsPass();
