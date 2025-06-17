@@ -359,7 +359,6 @@ class PjRtCpuBuffer final : public AbstractCpuBuffer {
 
   PjRtCpuClient* client_;
   PjRtCpuDevice* const device_;
-  PjRtMemorySpace* const memory_space_;
 };
 
 class PjRtCpuExecutable final : public PjRtLoadedExecutable {

@@ -1264,11 +1264,10 @@ absl::Span<PjRtMemorySpace* const> PjRtStreamExecutorClient::memory_spaces()
 PjRtStreamExecutorBuffer::PjRtStreamExecutorBuffer(
     Shape on_device_shape, std::unique_ptr<TrackedDeviceBuffer> device_buffer,
     PjRtClient* client, PjRtDevice* device, PjRtMemorySpace* memory_space)
-    : CommonPjRtBuffer(std::move(device_buffer)),
+    : CommonPjRtBuffer(std::move(device_buffer), memory_space),
       client_(tensorflow::down_cast<PjRtStreamExecutorClient*>(client)),
       on_device_shape_(std::move(on_device_shape)),
-      device_(tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)),
-      memory_space_(memory_space) {}
+      device_(tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)) {}
 
 PjRtStreamExecutorBuffer::~PjRtStreamExecutorBuffer() { Delete(); }
 
