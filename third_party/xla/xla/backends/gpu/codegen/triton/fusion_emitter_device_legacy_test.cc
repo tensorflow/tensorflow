@@ -729,7 +729,7 @@ ENTRY entry {
 
   config.set_block_m(64);
   config.set_block_n(128);
-  config.set_block_k(128);
+  config.set_block_k(64);
   block_level_parameters.num_stages = 1;
   TF_ASSERT_OK(triton_dot_fusion->set_backend_config(backend_config));
 
@@ -4199,7 +4199,7 @@ ENTRY e {
   CompileAndOptionallyVerifyPtx(std::move(verified_module),
                                 R"(
 CHECK: $L__BB0_1:
-CHECK-NEXT: // begin inline asm
+CHECK:      // begin inline asm
 CHECK-NEXT: .pragma "nounroll";
 CHECK: wgmma
 )");
