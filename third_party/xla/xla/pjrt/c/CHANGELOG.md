@@ -1,14 +1,8 @@
 # PJRT C API changelog
 
-## 0.70
-
-*   Added `overridden_serialized_compile_options` and
-    `overridden_serialized_compile_options_size` fields to
-    `PJRT_Executable_DeserializeAndLoad_Args`.
-
 ## 0.69
 
-*   Implemented PjRtClient::CreateUninitializedBuffer
+* Implemented PjRtClient::CreateUninitializedBuffer
 
 ## 0.68
 
