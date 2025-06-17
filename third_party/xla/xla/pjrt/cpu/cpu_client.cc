@@ -664,12 +664,11 @@ static absl::StatusOr<std::unique_ptr<xla::Executable>> CompileAheadOfTime(
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtCpuClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
   XlaComputation xla_computation;
-  const ExecutableBuildOptions& exec_build_options =
-      options.executable_build_options;
+  ExecutableBuildOptions& exec_build_options = options.executable_build_options;
   TF_RETURN_IF_ERROR(MlirToXlaComputation(
       module, xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
-      /*return_tuple=*/false, exec_build_options.use_shardy_partitioner()));
+      /*return_tuple=*/false, &exec_build_options));
 
   if (options.argument_layouts) {
     return CompileAndLoad(xla_computation, options);
