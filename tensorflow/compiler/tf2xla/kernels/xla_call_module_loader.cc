@@ -436,12 +436,8 @@ absl::Status XlaCallModuleLoader::LoadModule(
     mlir::PassManager pm(module_->getContext());
     // TODO(b/422690222): Remove `addSdyRoundTripImportPipeline` 6 months
     // after mixed serialization will be supported by Shardy+StableHLO in JAX
-    xla::sdy::addSdyRoundTripImportPipeline(pm,
-                                            /*enableConstantImport=*/false);
+    xla::sdy::addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/false);
     pm.addPass(mlir::sdy::createInlineMeshesPass());
-    // We need to export shardings because the lowering path go directly to
-    // HLO but not the MLIR to HLO path that invokes SdyRoundTripExport.
-    xla::sdy::addSdyRoundTripExportPipeline(pm);
     if (failed(pm.run(*module_))) {
       return absl::InternalError(
           absl::StrCat("Shardy inline meshes pass failed: ",
@@ -537,6 +533,11 @@ absl::Status XlaCallModuleLoader::PrepareStablehloForLowering() {
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   pm.addPass(mlir::mhlo::createHloLegalizeToStablehloPass());
+  if (use_shardy_partitioner_) {
+    // We need to export shardings because the lowering path go directly to
+    // HLO but not the MLIR to HLO path that invokes SdyRoundTripExport.
+    xla::sdy::addSdyRoundTripExportPipeline(pm);
+  }
 
   if (failed(pm.run(*module_))) {
     return absl::InternalError(
