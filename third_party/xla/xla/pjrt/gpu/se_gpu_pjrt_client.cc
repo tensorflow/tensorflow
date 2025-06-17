@@ -644,7 +644,7 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
                });
 
   // Add a JobStateCallback to abort collectives when tasks fail.
-  if (distributed_client_) {
+  if (abort_collectives_on_failure && distributed_client_) {
     absl::StatusOr<tsl::CoordinationServiceAgent*> agent =
         distributed_client_->GetCoordinationServiceAgent();
     if (agent.ok()) {
