@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/casts.h"
 
 namespace xla {
 namespace gpu {
@@ -113,7 +114,7 @@ absl::Status RunAllToAllOnIndexBuffer(
     se::Stream& stream, Communicator* comm) {
   TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm->NumRanks());
 
-  TF_ASSIGN_OR_RETURN(GpuCommunicator * gpu_comm, collectives->TryCast(comm));
+  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
   tsl::AsyncValueRef<Communicator::Event> event =
       gpu_comm->GroupExecute([num_ranks, num_updates_per_replica, collectives,
                               element_type, &source_buffer, &destination_buffer,
@@ -182,7 +183,7 @@ absl::Status RunRaggedAllToAll(
   const int64_t* output_offsets = ragged_metadata_allocs[2];
   const int64_t* recv_sizes = ragged_metadata_allocs[3];
 
-  TF_ASSIGN_OR_RETURN(GpuCommunicator * gpu_comm, collectives->TryCast(comm));
+  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
   tsl::AsyncValueRef<Communicator::Event> event = gpu_comm->GroupExecute(
       [num_updates_per_replica, num_ranks, collectives, input_offsets,
        send_sizes, output_offsets, recv_sizes, ragged_row_element_size,

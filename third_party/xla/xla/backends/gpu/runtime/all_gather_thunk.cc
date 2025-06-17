@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
+#include "tsl/platform/casts.h"
 
 namespace xla {
 namespace gpu {
@@ -111,8 +112,7 @@ absl::Status RunAllGather(GpuCollectives* collectives,
   VLOG(3) << "Performing all-gather from device ordinal: " << device_ordinal;
   TF_RETURN_IF_ERROR(
       MaybeRegisterBuffers(collectives, stream.parent(), buffers, comm));
-
-  TF_ASSIGN_OR_RETURN(GpuCommunicator * gpu_comm, collectives->TryCast(comm));
+  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
   tsl::AsyncValueRef<Communicator::Event> event = gpu_comm->GroupExecute(
       [&buffers, &stream](GpuCommunicator* comm) -> absl::Status {
         for (DeviceBufferPair& buffer : buffers) {

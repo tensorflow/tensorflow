@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/casts.h"
 
 namespace xla {
 namespace gpu {
@@ -418,8 +419,7 @@ absl::Status RunCollectivePermute(
         }
       }
     } else {
-      TF_ASSIGN_OR_RETURN(GpuCommunicator * gpu_comm,
-                          collectives->TryCast(comm));
+      auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
       tsl::AsyncValueRef<Communicator::Event> event = gpu_comm->GroupExecute(
           [source_rank, &buffers, &src_addrs, &dest_addrs, &target_ranks,
            &stream](GpuCommunicator* comm) -> absl::Status {

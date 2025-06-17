@@ -146,16 +146,15 @@ NcclCollectives::CreateCommunicators(const CliqueKey& clique_key,
   VLOG(1) << "Initialize NCCL communicator for " << ranks.size() << " devices"
           << "; fingerprint(id)=" << clique_ids->fingerprint();
 
-  // Validate collectives config.
-  TF_ASSIGN_OR_RETURN(const GpuCollectives::Config* gpu_config,
-                      TryCast(&config));
-  if (!gpu_config->blocking_communicators && !gpu_config->async_execution) {
+  const auto& gpu_config =
+      tsl::down_cast<const GpuCollectives::Config&>(config);
+  if (!gpu_config.blocking_communicators && !gpu_config.async_execution) {
     return FailedPrecondition(
         "GpuCollectives::Config blocking_communicators is false, but "
         "async_execution is false. Non-blocking communicators require "
         "asynchronous execution.");
   }
-  ncclConfig_t comm_config = AsNcclConfig(*gpu_config);
+  ncclConfig_t comm_config = AsNcclConfig(gpu_config);
 
   // make_comm returns a new ncclComm_t.
   auto make_comm = [&](int i) -> absl::StatusOr<ncclComm_t> {
@@ -163,7 +162,8 @@ NcclCollectives::CreateCommunicators(const CliqueKey& clique_key,
             << " of " << clique_key.num_devices()
             << "; fingerprint(id)=" << clique_ids->fingerprint()
             << "; size(id)=" << clique_ids->data().size();
-    TF_ASSIGN_OR_RETURN(auto* device, TryCast(ranks[i].device));
+    auto* device = tsl::down_cast<GpuCollectives::Device*>(ranks[i].device);
+    TF_RET_CHECK(device != nullptr);
     auto activate_context = device->stream_executor()->Activate();
     TF_ASSIGN_OR_RETURN(auto nccl_unique_id, AsNcclUniqueId(clique_ids->at(0)));
     ncclComm_t comm;
@@ -184,7 +184,7 @@ NcclCollectives::CreateCommunicators(const CliqueKey& clique_key,
       pool.Schedule([&, i]() {
         absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm =
             NcclCommunicator::Create(std::bind(make_comm, i),
-                                     gpu_config->async_execution);
+                                     gpu_config.async_execution);
         if (!comm.ok()) {
           absl::call_once(once, [&] { status = comm.status(); });
           return;
@@ -216,8 +216,9 @@ NcclCollectives::SplitCommunicators(absl::Span<const Communicator* const> comms,
                         comms.size(), keys.size()));
   }
 
-  TF_ASSIGN_OR_RETURN(auto* gpu_config, TryCast(&config));
-  ncclConfig_t comm_config = AsNcclConfig(*gpu_config);
+  const auto& gpu_config =
+      tsl::down_cast<const GpuCollectives::Config&>(config);
+  ncclConfig_t comm_config = AsNcclConfig(gpu_config);
 
 #if !defined(TENSORFLOW_USE_ROCM) || TF_ROCM_VERSION >= 60000
   auto make_comm = [&](int i) -> absl::StatusOr<ncclComm_t> {
@@ -238,7 +239,7 @@ NcclCollectives::SplitCommunicators(absl::Span<const Communicator* const> comms,
       pool.Schedule([&, i]() {
         absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm =
             NcclCommunicator::Create(std::bind(make_comm, i),
-                                     gpu_config->async_execution);
+                                     gpu_config.async_execution);
         if (!comm.ok()) {
           statuses[i] = comm.status();
           return;

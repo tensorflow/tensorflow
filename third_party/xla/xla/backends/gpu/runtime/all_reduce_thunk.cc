@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/casts.h"
 
 namespace xla {
 namespace gpu {
@@ -93,7 +94,7 @@ absl::Status RunAllReduce(GpuCollectives* collectives,
   TF_RETURN_IF_ERROR(
       MaybeRegisterBuffers(collectives, stream.parent(), buffers, comm));
 
-  TF_ASSIGN_OR_RETURN(GpuCommunicator * gpu_comm, collectives->TryCast(comm));
+  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
   tsl::AsyncValueRef<Communicator::Event> event =
       gpu_comm->GroupExecute([reduction_kind, &buffers,
                               &stream](GpuCommunicator* comm) -> absl::Status {
@@ -278,7 +279,7 @@ absl::Status RunReduceScatter(GpuCollectives* collectives,
 
   TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm->NumRanks());
 
-  TF_ASSIGN_OR_RETURN(GpuCommunicator * gpu_comm, collectives->TryCast(comm));
+  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
   tsl::AsyncValueRef<Communicator::Event> event =
       gpu_comm->GroupExecute([num_ranks, reduction_kind, &buffers,
                               &stream](GpuCommunicator* comm) -> absl::Status {
