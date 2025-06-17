@@ -163,8 +163,8 @@ build:mkl_aarch64_threadpool --define=build_with_mkl_aarch64=true
 build:mkl_aarch64_threadpool -c opt
 
 # Default CUDA, CUDNN and NVSHMEM versions.
-build:cuda_version --repo_env=HERMETIC_CUDA_VERSION="12.6.3"
-build:cuda_version --repo_env=HERMETIC_CUDNN_VERSION="9.3.0"
+build:cuda_version --repo_env=HERMETIC_CUDA_VERSION="12.8.0"
+build:cuda_version --repo_env=HERMETIC_CUDNN_VERSION="9.8.0"
 build:cuda_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
 
 # CUDA: This config refers to building CUDA op kernels with nvcc.
@@ -486,6 +486,9 @@ common:rbe_linux_cpu --remote_instance_name=projects/tensorflow-testing/instance
 
 build:rbe_linux_cuda --config=cuda_clang_official
 build:rbe_linux_cuda --config=rbe_linux_cpu
+# dt9 is based on glibc 2.17, which is outdated and incompatible with CUDA 12.8.0
+# unset TF_SYSROOT
+build:rbe_linux_cuda --repo_env=TF_SYSROOT=
 build:rbe_linux_cuda --repo_env=USE_CUDA_TAR_ARCHIVE_FILES=1
 build:rbe_linux_cuda --repo_env=USE_NVSHMEM_TAR_ARCHIVE_FILES=1
 # For Remote build execution -- GPU configuration
