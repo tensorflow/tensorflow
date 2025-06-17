@@ -102,6 +102,7 @@ cc_library(
     visibility = internal_visibility(["//xla/pjrt/cpu:legacy_cpu_topology_users"]),
     deps = [
         ":cpu_async_execution_tracker",
+        ":execution_stream_event_map",
         "//xla:literal",
         "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:pjrt_client",
@@ -215,7 +216,6 @@ cc_library(
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -284,6 +284,18 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+cc_library(
+    name = "execution_stream_event_map",
+    hdrs = ["execution_stream_event_map.h"],
+    deps = [
+        ":cpu_event",
+        "//xla/tsl/concurrency:async_value",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
     ],
 )

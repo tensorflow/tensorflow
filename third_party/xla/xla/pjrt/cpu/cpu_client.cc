@@ -1572,7 +1572,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
   } else {
     // This is a non-parallel computation. Add the last enqueue event as a
     // dependency with any error cleared.
-    auto last_enqueue_event = client_->GetLastEnqueueEvent();
+    auto last_enqueue_event = device->stream_event_map()->GetLastEnqueueEvent(
+        options.execution_stream_id);
     if (!last_enqueue_event.IsAvailable()) {
       auto last_enqueue_done_event =
           tsl::MakeUnconstructedAsyncValueRef<CpuEvent>();
@@ -1700,7 +1701,14 @@ absl::StatusOr<PjRtLoadedExecutable::Result> PjRtCpuExecutable::ExecuteHelper(
     } else {
       // This is a non-parallel computation. Set the execute event as the new
       // last enqueue event.
-      client_->SetLastEnqueueEvent(execute_event.CopyRef());
+      auto* stream_event_map = device->stream_event_map();
+      stream_event_map->SetLastEnqueueEvent(options.execution_stream_id,
+                                            execute_event.CopyRef());
+      execute_event.AndThen([stream_event_map,
+                             execution_stream_id = options.execution_stream_id,
+                             self = execute_event.AsPtr()]() {
+        stream_event_map->Clear(execution_stream_id, self);
+      });
     }
     std::vector<tsl::RCReference<tsl::AsyncValue>> input_deps_avs_copy =
         CopyAsyncValues(input_deps);

@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/literal.h"
 #include "xla/pjrt/cpu/cpu_async_execution_tracker.h"
+#include "xla/pjrt/cpu/execution_stream_event_map.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/cpu/cpu_xfeed.h"
@@ -40,7 +41,8 @@ PjRtCpuDevice::PjRtCpuDevice(int process_id, int local_device_id,
     : description_(process_id, local_device_id),
       max_inflight_computations_semaphore_(
           /*capacity=*/max_inflight_computations),
-      async_execution_tracker_(std::make_unique<CpuAsyncExecutionTracker>()) {}
+      async_execution_tracker_(std::make_unique<CpuAsyncExecutionTracker>()),
+      stream_event_map_(std::make_unique<ExecutionStreamEventMap>()) {}
 
 absl::Status PjRtCpuDevice::TransferToInfeed(const LiteralSlice& literal) {
   return TransferLiteralToInfeedOnCpu(local_hardware_id().value(), literal);
