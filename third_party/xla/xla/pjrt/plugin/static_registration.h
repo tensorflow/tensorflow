@@ -32,7 +32,7 @@ bool RegisterStaticPjrtPlugin(absl::string_view plugin_name,
 //
 //   REGISTER_PJRT_PLUGIN("my_plugin", GetMyPluginPjrtApi);
 //   // this will register a plugin named "my_plugin" that is loaded from the
-//   // path in the environment variable "MY_PJRT_PLUGIN_LIBRARY_PATH".
+//   // static function GetMyPluginPjrtApi (which returns a PJRT_Api*).
 #define REGISTER_PJRT_PLUGIN(plugin_name, get_plugin_fn)          \
   [[maybe_unused]] static bool already_registered_##plugin_name = \
       [](auto plugin_name, const PJRT_Api* plugin_api) -> bool {  \
