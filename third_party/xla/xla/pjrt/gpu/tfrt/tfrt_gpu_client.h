@@ -262,6 +262,12 @@ class TfrtGpuClient final : public PjRtClient {
     return addressable_devices_.size();
   }
 
+  std::optional<PjRtPluginAttributes> plugin_attributes() const override {
+    PjRtPluginAttributes attributes;
+    attributes.attributes["mixed_mlir_dialects"] = true;
+    return attributes;
+  }
+
   absl::Span<PjRtDevice* const> devices() const override { return devices_; }
 
   absl::Span<PjRtDevice* const> addressable_devices() const override {
