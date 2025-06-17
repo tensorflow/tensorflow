@@ -1,1 +1,77 @@
+diff --ruN a/stablehlo/stablehlo/dialect/VhloTypes.cpp b/stablehlo/stablehlo/dialect/VhloTypes.cpp
+--- stablehlo/stablehlo/dialect/VhloTypes.cpp
++++ stablehlo/stablehlo/dialect/VhloTypes.cpp
+@@ -16,6 +16,7 @@
+ #include "stablehlo/dialect/VhloTypes.h"
+ 
+ #include <cstdint>
++#include <optional>
+ 
+ #include "llvm/ADT/SmallVectorExtras.h"
+ #include "llvm/ADT/StringRef.h"
+@@ -23,6 +24,7 @@
+ #include "mlir/Dialect/Quant/IR/QuantTypes.h"
+ #include "mlir/Dialect/Shape/IR/Shape.h"
+ #include "mlir/IR/Attributes.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/OpDefinition.h"
+@@ -31,6 +33,7 @@
+ #include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "stablehlo/dialect/AssemblyFormat.h"
++#include "stablehlo/dialect/VhloTypes.h"
+ 
+ namespace mlir {
+ namespace vhlo {
+@@ -397,6 +400,16 @@
+   return success();
+ }
+ 
++// RankedTensorV1Type implement ShapedTypeInterface
++mlir::ShapedType RankedTensorV1Type::cloneWith(
++  std::optional<llvm::ArrayRef<int64_t>> values, Type elementType) const {
++ArrayRef<int64_t> shape = values.value_or(getShape());
++return RankedTensorV1Type::get(getContext(), shape, elementType,
++                               getEncoding());
++}
++
++bool RankedTensorV1Type::hasRank() const { return true; }
++
+ }  // namespace vhlo
+ }  // namespace mlir
+ 
+diff --ruN a/stablehlo/stablehlo/dialect/VhloTypes.td b/stablehlo/stablehlo/dialect/VhloTypes.td
+--- stablehlo/stablehlo/dialect/VhloTypes.td
++++ stablehlo/stablehlo/dialect/VhloTypes.td
+@@ -18,6 +18,7 @@
+ #define STABLEHLO_DIALECT_VHLO_TYPES
+ 
+ include "mlir/IR/AttrTypeBase.td"
++include "mlir/IR/BuiltinTypeInterfaces.td"
+ include "stablehlo/dialect/VhloBase.td"
+ include "stablehlo/dialect/VhloDialect.td"
+ 
+@@ -33,8 +34,8 @@
+   ];
+ }
+ 
+-class VHLO_TypeDef<string cppName, string name, string minVersion, string maxVersion>
+-  : TypeDef<VHLO_Dialect, cppName, [VHLO_VersionedTypeInterface]> {
++class VHLO_TypeDef<string cppName, string name, string minVersion, string maxVersion, list<Trait> traits = []>
++  : TypeDef<VHLO_Dialect, cppName, [VHLO_VersionedTypeInterface] # traits> {
+   let mnemonic = name;
+   let extraClassDeclaration = [{
+     mlir::vhlo::Version getMinVersion() {
+@@ -186,7 +187,8 @@
+ // At the moment, it is used to represent dimension bounds to support bounded
+ // dynamism, and we're planning to look into it as part of the work on the
+ // dynamism RFC.
+-def VHLO_RankedTensorV1 : VHLO_TypeDef<"RankedTensorV1", "tensor_v1", "0.9.0", "current"> {
++def VHLO_RankedTensorV1 : VHLO_TypeDef<"RankedTensorV1", "tensor_v1", "0.9.0", "current",
++                                       [DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
+   let parameters = (ins
+     VHLO_Dims:$shape,
+     "::mlir::Type":$elementType,
 
