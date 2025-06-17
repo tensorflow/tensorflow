@@ -1,30 +1,1469 @@
-diff --git a/shardy/dialect/sdy/ir/constants.h b/shardy/dialect/sdy/ir/constants.h
-index 329b342..91eb85f 100644
---- a/shardy/dialect/sdy/ir/constants.h
-+++ b/shardy/dialect/sdy/ir/constants.h
-@@ -65,10 +65,6 @@ inline constexpr StringRef kResultPropagationEdgesAttr =
- // `sdy.sharding_constraint`, or `sdy.ManualComputationOp` input/output.
- inline constexpr StringRef kShardingOriginNameAttr = "sdy.sharding_origin_name";
+diff --git a/shardy/common/save_module_op.h b/shardy/common/save_module_op.h
+index bae32f1..dd07b6c 100644
+--- a/shardy/common/save_module_op.h
++++ b/shardy/common/save_module_op.h
+@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
+ limitations under the License.
+ ==============================================================================*/
  
--// Attribute name for indicating whether a value has unreduced axes. Is either
--// `true` or not set.
--inline constexpr StringRef kHasUnreducedAxes = "sdy.has_unreduced_axes";
+-#ifndef SHARDY_COMMON_SAVE_MODULE_OP_H_
+-#define SHARDY_COMMON_SAVE_MODULE_OP_H_
++#ifndef THIRD_PARTY_OPENXLA_SHARDY_SRC_SHARDY_COMMON_SAVE_MODULE_OP_H_
++#define THIRD_PARTY_OPENXLA_SHARDY_SRC_SHARDY_COMMON_SAVE_MODULE_OP_H_
+ 
+ #include "llvm/ADT/StringRef.h"
+ #include "mlir/IR/BuiltinOps.h"
+@@ -28,4 +28,4 @@ void saveModuleOp(ModuleOp moduleOp, StringRef dumpDirectory,
+ }  // namespace sdy
+ }  // namespace mlir
+ 
+-#endif  // SHARDY_COMMON_SAVE_MODULE_OP_H_
++#endif  // THIRD_PARTY_OPENXLA_SHARDY_SRC_SHARDY_COMMON_SAVE_MODULE_OP_H_
+diff --git a/shardy/dialect/sdy/ir/utils.h b/shardy/dialect/sdy/ir/utils.h
+index cc422c9..e81fb59 100644
+--- a/shardy/dialect/sdy/ir/utils.h
++++ b/shardy/dialect/sdy/ir/utils.h
+@@ -490,14 +490,6 @@ SmallVector<AxisRefAttr> getAxisSetDiff(ArrayRef<AxisRefAttr> axesA,
+                                         ArrayRef<AxisRefAttr> axesB,
+                                         MeshAttr mesh);
+ 
+-// Returns true if `op` is only used by ops of the specified types.
+-template <class... OpTys>
+-bool hasOnlyUsersOfType(Operation* op) {
+-  return llvm::all_of(op->getUsers(), [](Operation* user) {
+-    return mlir::isa<OpTys...>(user);
+-  });
+-}
 -
- // Default priority for a `DimensionShardingAttr` that doesn't have a
- // user-defined priority.
- inline constexpr int64_t kDefaultPriority = 0;
+ }  // namespace sdy
+ }  // namespace mlir
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/BUILD b/shardy/dialect/sdy/transforms/export/BUILD
+index bb9bc0c..607ca12 100644
+--- a/shardy/dialect/sdy/transforms/export/BUILD
++++ b/shardy/dialect/sdy/transforms/export/BUILD
+@@ -30,7 +30,7 @@ cc_library(
+     name = "passes",
+     srcs = [
+         "close_shardings.cc",
+-        "constant_or_scalar_merger.cc",
++        "constant_merger.cc",
+         "drop_sharding_rules.cc",
+         "export_pipeline.cc",
+         "insert_explicit_reshards.cc",
+diff --git a/shardy/dialect/sdy/transforms/export/constant_merger.cc b/shardy/dialect/sdy/transforms/export/constant_merger.cc
+new file mode 100644
+index 0000000..ce4a0b8
+--- /dev/null
++++ b/shardy/dialect/sdy/transforms/export/constant_merger.cc
+@@ -0,0 +1,76 @@
++/* Copyright 2025 The Shardy Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#include <memory>  // IWYU pragma: keep
++#include <utility>
++
++#include "llvm/Support/Casting.h"
++#include "llvm/Support/Debug.h"
++#include "mlir/Dialect/Func/IR/FuncOps.h"  // IWYU pragma: keep
++#include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/OpDefinition.h"
++#include "mlir/IR/Region.h"
++#include "mlir/Pass/Pass.h"  // IWYU pragma: keep
++#include "mlir/Support/LLVM.h"
++#include "shardy/dialect/sdy/ir/dialect.h"
++#include "shardy/dialect/sdy/transforms/export/passes.h"  // IWYU pragma: keep
++
++namespace mlir {
++namespace sdy {
++
++#define DEBUG_TYPE "sdy-export"
++
++#define GEN_PASS_DEF_CONSTANTMERGERPASS
++#include "shardy/dialect/sdy/transforms/export/passes.h.inc"
++
++namespace {
++
++struct ConstantMergerPass
++    : public impl::ConstantMergerPassBase<ConstantMergerPass> {
++  using ConstantMergerPassBase::ConstantMergerPassBase;
++
++  void runOnOperation() final {
++    // Store a map of <AttrDictionary,ParentRegion>
++    // This will account for all sharding annotations, as well as ensure that
++    // dedup does not cause operations or computations to be moved between
++    // regions and potentially invalidate sharding annotations.
++    llvm::DenseMap<std::pair<DictionaryAttr, Region*>, Operation*>
++        constantsCache;
++
++    getOperation().walk([&](Operation* op) {
++      if (!llvm::isa<sdy::ConstantOp>(op) &&
++          !op->hasTrait<OpTrait::ConstantLike>()) {
++        return;
++      }
++      auto key = std::make_pair(op->getAttrDictionary(), op->getParentRegion());
++      auto [cachedIt, inserted] = constantsCache.try_emplace(key, op);
++      if (inserted) {
++        // If insert was successful, then this is a new constant.
++        return;
++      }
++
++      Operation* cachedConstant = cachedIt->second;
++      LLVM_DEBUG(llvm::dbgs() << "Deduplicating constant: " << *op << "\n"
++                              << "With: " << *cachedConstant << "\n");
++      op->replaceAllUsesWith(cachedConstant);
++      op->erase();
++    });
++  }
++};
++
++}  // namespace
++
++}  // namespace sdy
++}  // namespace mlir
+diff --git a/shardy/dialect/sdy/transforms/export/constant_or_scalar_merger.cc b/shardy/dialect/sdy/transforms/export/constant_or_scalar_merger.cc
+deleted file mode 100644
+index 11b21f6..0000000
+--- a/shardy/dialect/sdy/transforms/export/constant_or_scalar_merger.cc
++++ /dev/null
+@@ -1,96 +0,0 @@
+-/* Copyright 2025 The Shardy Authors.
+-
+-Licensed under the Apache License, Version 2.0 (the "License");
+-you may not use this file except in compliance with the License.
+-You may obtain a copy of the License at
+-
+-    http://www.apache.org/licenses/LICENSE-2.0
+-
+-Unless required by applicable law or agreed to in writing, software
+-distributed under the License is distributed on an "AS IS" BASIS,
+-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-See the License for the specific language governing permissions and
+-limitations under the License.
+-==============================================================================*/
+-
+-#include <memory>  // IWYU pragma: keep
+-#include <tuple>
+-#include <utility>
+-
+-#include "llvm/Support/Casting.h"
+-#include "llvm/Support/Debug.h"
+-#include "mlir/Dialect/Func/IR/FuncOps.h"  // IWYU pragma: keep
+-#include "mlir/IR/BuiltinAttributes.h"
+-#include "mlir/IR/OpDefinition.h"
+-#include "mlir/IR/Region.h"
+-#include "mlir/IR/Types.h"
+-#include "mlir/IR/Value.h"
+-#include "mlir/Pass/Pass.h"  // IWYU pragma: keep
+-#include "mlir/Support/LLVM.h"
+-#include "shardy/dialect/sdy/ir/dialect.h"
+-#include "shardy/dialect/sdy/ir/utils.h"
+-#include "shardy/dialect/sdy/transforms/export/passes.h"  // IWYU pragma: keep
+-#include "stablehlo/dialect/StablehloOps.h"
+-
+-namespace mlir {
+-namespace sdy {
+-
+-#define DEBUG_TYPE "sdy-export"
+-
+-#define GEN_PASS_DEF_CONSTANTORSCALARMERGERPASS
+-#include "shardy/dialect/sdy/transforms/export/passes.h.inc"
+-
+-namespace {
+-
+-using ConstantKey = std::pair<DictionaryAttr, Region*>;
+-using BroadcastKey = std::tuple<DictionaryAttr, Region*, Type, Value>;
+-
+-Operation* maybeGetCachedOp(
+-    Operation* op, llvm::DenseMap<ConstantKey, Operation*>& constantsCache,
+-    llvm::DenseMap<BroadcastKey, Operation*>& broadcastsCache) {
+-  if (llvm::isa<sdy::ConstantOp>(op) || op->hasTrait<OpTrait::ConstantLike>()) {
+-    auto key = std::make_pair(op->getAttrDictionary(), op->getParentRegion());
+-    auto [cachedIt, inserted] = constantsCache.try_emplace(key, op);
+-    // If insert was successful, then this is a new constant.
+-    return inserted ? nullptr : cachedIt->second;
+-  }
+-  if (auto broadcastOp = dyn_cast<stablehlo::BroadcastInDimOp>(op);
+-      broadcastOp && isScalar(broadcastOp.getOperand())) {
+-    auto key = std::make_tuple(broadcastOp->getAttrDictionary(),
+-                               broadcastOp->getParentRegion(),
+-                               broadcastOp.getType(), broadcastOp.getOperand());
+-    auto [cachedIt, inserted] = broadcastsCache.try_emplace(key, op);
+-    // If insert was successful, then this is a new broadcast.
+-    return inserted ? nullptr : cachedIt->second;
+-  }
+-  return nullptr;
+-}
+-
+-struct ConstantOrScalarMergerPass
+-    : public impl::ConstantOrScalarMergerPassBase<ConstantOrScalarMergerPass> {
+-  using ConstantOrScalarMergerPassBase::ConstantOrScalarMergerPassBase;
+-
+-  void runOnOperation() final {
+-    // Store a map of <AttrDictionary,ParentRegion>
+-    // This will account for all sharding annotations, as well as ensure that
+-    // dedup does not cause operations or computations to be moved between
+-    // regions and potentially invalidate sharding annotations.
+-    llvm::DenseMap<ConstantKey, Operation*> constantsCache;
+-    llvm::DenseMap<BroadcastKey, Operation*> broadcastsCache;
+-    getOperation().walk([&](Operation* op) {
+-      if (Operation* cachedOp =
+-              maybeGetCachedOp(op, constantsCache, broadcastsCache);
+-          cachedOp) {
+-        LLVM_DEBUG(llvm::dbgs() << "Deduplicating op: " << *op << "\n"
+-                                << "With: " << *cachedOp << "\n");
+-        op->replaceAllUsesWith(cachedOp);
+-        op->erase();
+-      }
+-    });
+-  }
+-};
+-
+-}  // namespace
+-
+-}  // namespace sdy
+-}  // namespace mlir
+diff --git a/shardy/dialect/sdy/transforms/export/export_pipeline.cc b/shardy/dialect/sdy/transforms/export/export_pipeline.cc
+index 0c88e57..88cc086 100644
+--- a/shardy/dialect/sdy/transforms/export/export_pipeline.cc
++++ b/shardy/dialect/sdy/transforms/export/export_pipeline.cc
+@@ -40,7 +40,7 @@ void addCanonicalizerPass(OpPassManager& pm,
+ }  // namespace
+ 
+ void addExportPipeline(OpPassManager& pm, const ExportOptions& options) {
+-  pm.addNestedPass<func::FuncOp>(createConstantOrScalarMergerPass());
++  pm.addNestedPass<func::FuncOp>(createConstantMergerPass());
+   pm.addPass(createRemoveShardingGroupsPass());
+   if (!options.skipConvertToReshard) {
+     pm.addNestedPass<func::FuncOp>(createShardingConstraintToReshardPass());
+diff --git a/shardy/dialect/sdy/transforms/export/passes.td b/shardy/dialect/sdy/transforms/export/passes.td
+index 1acb85e..cb3186e 100644
+--- a/shardy/dialect/sdy/transforms/export/passes.td
++++ b/shardy/dialect/sdy/transforms/export/passes.td
+@@ -169,16 +169,15 @@ def DropShardingRulesPass : Pass<"sdy-drop-sharding-rules", "func::FuncOp"> {
+   let dependentDialects = ["mlir::sdy::SdyDialect"];
+ }
+ 
+-def ConstantOrScalarMergerPass : Pass<"sdy-constant-or-scalar-merger", "func::FuncOp"> {
+-  let summary = "Merge identical constants and scalar expansions with matching shardings.";
++def ConstantMergerPass : Pass<"sdy-constant-merger", "func::FuncOp"> {
++  let summary = "Merge identical constants with matching shardings.";
+   let description = [{
+     Performs a lightweight CSE on constants with identical shardings.
+ 
+-    The import pipeline splits and duplicates the constants and scalar
+-    expansions such that sharding is not propagated between different uses of a
+-    constant sub-computation. If the constants have same shardings after
+-    propagation, this pass merges them to save compilation time. See
+-    -sdy-constant-or-scalar-splitter for more info.
++    The import pipeline splits and duplicates the constants such that sharding
++    is not propagated between different uses of a constant sub-computation. If
++    the constants have same shardings after propagation, this pass merges them
++    to save compilation time.
+   }];
+   let dependentDialects = ["mlir::sdy::SdyDialect"];
+ }
+diff --git a/shardy/dialect/sdy/transforms/export/test/constant_merger.mlir b/shardy/dialect/sdy/transforms/export/test/constant_merger.mlir
+new file mode 100644
+index 0000000..de6f4be
+--- /dev/null
++++ b/shardy/dialect/sdy/transforms/export/test/constant_merger.mlir
+@@ -0,0 +1,66 @@
++// RUN: sdy_opt %s --sdy-constant-merger | FileCheck %s
++
++// CHECK-LABEL: func @merge_constants_sdy
++func.func @merge_constants_sdy() -> tensor<f32> {
++  // CHECK: %[[C0:.*]] = sdy.constant dense<1.0{{.*}}> : tensor<f32>
++  // CHECK-NOT: sdy.constant
++  %0 = sdy.constant dense<1.000000e+00> : tensor<f32>
++  %1 = sdy.constant dense<1.000000e+00> : tensor<f32>
++  // CHECK: stablehlo.add %[[C0]], %[[C0]] : tensor<f32>
++  %2 = stablehlo.add %0, %1 : tensor<f32>
++  return %2 : tensor<f32>
++}
++
++// CHECK-LABEL: func @merge_constants_constant_like
++func.func @merge_constants_constant_like() -> tensor<f32> {
++  // CHECK: %[[C0:.*]] = stablehlo.constant dense<1.0{{.*}}> : tensor<f32>
++  // CHECK-NOT: stablehlo.constant
++  %0 = stablehlo.constant dense<1.000000e+00> : tensor<f32>
++  %1 = stablehlo.constant dense<1.000000e+00> : tensor<f32>
++  // CHECK: stablehlo.add %[[C0]], %[[C0]] : tensor<f32>
++  %2 = stablehlo.add %0, %1 : tensor<f32>
++  return %2 : tensor<f32>
++}
++
++// CHECK-LABEL: func @dont_merge_constants_different_regions
++func.func @dont_merge_constants_different_regions(%arg0: tensor<i32>) -> tensor<i32> {
++  // CHECK: %[[C0:.*]] = sdy.constant dense<1> : tensor<i32>
++  // CHECK: stablehlo.while{{.*}} %[[C0]]
++  %c = sdy.constant dense<1> : tensor<i32>
++  %1 = stablehlo.while(%iterArg = %c) : tensor<i32>
++   cond {
++    // CHECK: %[[C1:.*]] = sdy.constant dense<1> : tensor<i32>
++    // CHECK-NEXT: stablehlo.compare{{.*}} %[[C1]]
++    %c_0 = sdy.constant dense<1> : tensor<i32>
++    %2 = stablehlo.compare  LT, %iterArg, %c_0 : (tensor<i32>, tensor<i32>) -> tensor<i1>
++    stablehlo.return %2 : tensor<i1>
++   } do {
++    // CHECK: %[[C2:.*]] = sdy.constant dense<1> : tensor<i32>
++    // CHECK-NEXT: return %[[C2]]
++    %c_0 = sdy.constant dense<1> : tensor<i32>
++    stablehlo.return %c_0 : tensor<i32>
++  }
++  return %1 : tensor<i32>
++}
++
++// CHECK-LABEL: func @merge_constants_same_annotations
++func.func @merge_constants_same_annotations() -> tensor<f32> {
++  // CHECK: %[[C0:.*]] = sdy.constant {some.annotation = "AA"} dense<1.0{{.*}}> : tensor<f32>
++  // CHECK-NOT: sdy.constant
++  %0 = sdy.constant {some.annotation = "AA"} dense<1.000000e+00> : tensor<f32>
++  %1 = sdy.constant {some.annotation = "AA"} dense<1.000000e+00> : tensor<f32>
++  // CHECK: stablehlo.add %[[C0]], %[[C0]] : tensor<f32>
++  %2 = stablehlo.add %0, %1 : tensor<f32>
++  return %2 : tensor<f32>
++}
++
++// CHECK-LABEL: func @dont_merge_constants_different_annotations
++func.func @dont_merge_constants_different_annotations() -> tensor<f32> {
++  // CHECK: %[[C0:.*]] = sdy.constant {some.annotation = "AA"} dense<1.0{{.*}}> : tensor<f32>
++  // CHECK: %[[C1:.*]] = sdy.constant {some.annotation = "BB"} dense<1.0{{.*}}> : tensor<f32>
++  %0 = sdy.constant {some.annotation = "AA"} dense<1.000000e+00> : tensor<f32>
++  %1 = sdy.constant {some.annotation = "BB"} dense<1.000000e+00> : tensor<f32>
++  // CHECK: stablehlo.add %[[C0]], %[[C1]] : tensor<f32>
++  %2 = stablehlo.add %0, %1 : tensor<f32>
++  return %2 : tensor<f32>
++}
+diff --git a/shardy/dialect/sdy/transforms/export/test/constant_or_scalar_merger.mlir b/shardy/dialect/sdy/transforms/export/test/constant_or_scalar_merger.mlir
+deleted file mode 100644
+index b565a1b..0000000
+--- a/shardy/dialect/sdy/transforms/export/test/constant_or_scalar_merger.mlir
++++ /dev/null
+@@ -1,182 +0,0 @@
+-// RUN: sdy_opt %s --sdy-constant-or-scalar-merger | FileCheck %s
+-
+-sdy.mesh @mesh = <["x"=2, "y"=2]>
+-
+-// CHECK-LABEL: func @merge_constants_sdy
+-func.func @merge_constants_sdy() -> tensor<f32> {
+-  // CHECK: %[[C0:.*]] = sdy.constant dense<1.0{{.*}}> : tensor<f32>
+-  // CHECK-NOT: sdy.constant
+-  %0 = sdy.constant dense<1.000000e+00> : tensor<f32>
+-  %1 = sdy.constant dense<1.000000e+00> : tensor<f32>
+-  // CHECK: stablehlo.add %[[C0]], %[[C0]] : tensor<f32>
+-  %2 = stablehlo.add %0, %1 : tensor<f32>
+-  return %2 : tensor<f32>
+-}
+-
+-// CHECK-LABEL: func @merge_constants_constant_like
+-func.func @merge_constants_constant_like() -> tensor<f32> {
+-  // CHECK: %[[C0:.*]] = stablehlo.constant dense<1.0{{.*}}> : tensor<f32>
+-  // CHECK-NOT: stablehlo.constant
+-  %0 = stablehlo.constant dense<1.000000e+00> : tensor<f32>
+-  %1 = stablehlo.constant dense<1.000000e+00> : tensor<f32>
+-  // CHECK: stablehlo.add %[[C0]], %[[C0]] : tensor<f32>
+-  %2 = stablehlo.add %0, %1 : tensor<f32>
+-  return %2 : tensor<f32>
+-}
+-
+-// CHECK-LABEL: func @dont_merge_constants_different_regions
+-func.func @dont_merge_constants_different_regions(%arg0: tensor<i32>) -> tensor<i32> {
+-  // CHECK: %[[C0:.*]] = sdy.constant dense<1> : tensor<i32>
+-  // CHECK: stablehlo.while{{.*}} %[[C0]]
+-  %c = sdy.constant dense<1> : tensor<i32>
+-  %1 = stablehlo.while(%iterArg = %c) : tensor<i32>
+-   cond {
+-    // CHECK: %[[C1:.*]] = sdy.constant dense<1> : tensor<i32>
+-    // CHECK-NEXT: stablehlo.compare{{.*}} %[[C1]]
+-    %c_0 = sdy.constant dense<1> : tensor<i32>
+-    %2 = stablehlo.compare  LT, %iterArg, %c_0 : (tensor<i32>, tensor<i32>) -> tensor<i1>
+-    stablehlo.return %2 : tensor<i1>
+-   } do {
+-    // CHECK: %[[C2:.*]] = sdy.constant dense<1> : tensor<i32>
+-    // CHECK-NEXT: return %[[C2]]
+-    %c_0 = sdy.constant dense<1> : tensor<i32>
+-    stablehlo.return %c_0 : tensor<i32>
+-  }
+-  return %1 : tensor<i32>
+-}
+-
+-// CHECK-LABEL: func @merge_constants_same_annotations
+-func.func @merge_constants_same_annotations() -> tensor<f32> {
+-  // CHECK: %[[C0:.*]] = sdy.constant {some.annotation = "AA"} dense<1.0{{.*}}> : tensor<f32>
+-  // CHECK-NOT: sdy.constant
+-  %0 = sdy.constant {some.annotation = "AA"} dense<1.000000e+00> : tensor<f32>
+-  %1 = sdy.constant {some.annotation = "AA"} dense<1.000000e+00> : tensor<f32>
+-  // CHECK: stablehlo.add %[[C0]], %[[C0]] : tensor<f32>
+-  %2 = stablehlo.add %0, %1 : tensor<f32>
+-  return %2 : tensor<f32>
+-}
+-
+-// CHECK-LABEL: func @dont_merge_non_scalar_constants_different_annotations
+-func.func @dont_merge_non_scalar_constants_different_annotations() -> tensor<32xf32> {
+-  // CHECK: %[[C0:.*]] = sdy.constant {some.annotation = "AA"} dense<1.0{{.*}}> : tensor<32xf32>
+-  // CHECK: %[[C1:.*]] = sdy.constant {some.annotation = "BB"} dense<1.0{{.*}}> : tensor<32xf32>
+-  %0 = sdy.constant {some.annotation = "AA"} dense<1.000000e+00> : tensor<32xf32>
+-  %1 = sdy.constant {some.annotation = "BB"} dense<1.000000e+00> : tensor<32xf32>
+-  // CHECK: stablehlo.add %[[C0]], %[[C1]] : tensor<32xf32>
+-  %2 = stablehlo.add %0, %1 : tensor<32xf32>
+-  return %2 : tensor<32xf32>
+-}
+-
+-// CHECK-LABEL: func @merge_scalar_constants_same_annotations
+-func.func @merge_scalar_constants_same_annotations() -> tensor<f32> {
+-  // CHECK: %[[C0:.*]] = sdy.constant {some.annotation = "AA"} dense<1.0{{.*}}> : tensor<f32>
+-  // CHECK-NOT: sdy.constant
+-  %0 = sdy.constant {some.annotation = "AA"} dense<1.000000e+00> : tensor<f32>
+-  %1 = sdy.constant {some.annotation = "AA"} dense<1.000000e+00> : tensor<f32>
+-  // CHECK: stablehlo.add %[[C0]], %[[C0]] : tensor<f32>
+-  %2 = stablehlo.add %0, %1 : tensor<f32>
+-  return %2 : tensor<f32>
+-}
+-
+-// CHECK-LABEL: func @dont_merge_broadcasts_different_regions
+-func.func @dont_merge_broadcasts_different_regions(%arg0: tensor<f32>, %arg1: tensor<i32>) -> tensor<2x64xf32> {
+-  // CHECK: %0 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %1 = "stablehlo.case"(%arg1) ({
+-  // CHECK-NEXT:   %3 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT:   stablehlo.return %3 : tensor<2x64xf32>
+-  // CHECK-NEXT: }, {
+-  // CHECK-NEXT:   %3 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT:   %4 = stablehlo.add %0, %3 : tensor<2x64xf32>
+-  // CHECK-NEXT:   stablehlo.return %4 : tensor<2x64xf32>
+-  // CHECK-NEXT: }) : (tensor<i32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %2 = stablehlo.add %0, %1 : tensor<2x64xf32>
+-  // CHECK-NEXT: return %2 : tensor<2x64xf32>
+-  %0 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  %1 = "stablehlo.case"(%arg1) ({
+-    %3 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-    stablehlo.return %3 : tensor<2x64xf32>
+-  }, {
+-    %3 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-    %4 = stablehlo.add %0, %3 : tensor<2x64xf32>
+-    stablehlo.return %4 : tensor<2x64xf32>
+-  }) : (tensor<i32>) -> tensor<2x64xf32>
+-  %2 = stablehlo.add %0, %1 : tensor<2x64xf32>
+-  return %2 : tensor<2x64xf32>
+-}
+-
+-// CHECK-LABEL: func @merge_broadcasts_same_annotations
+-func.func @merge_broadcasts_same_annotations(%arg0: tensor<f32>) -> tensor<2x64xf32> {
+-  // CHECK: %[[C0:.*]] = stablehlo.broadcast_in_dim %arg0, dims = [] {some.annotation = "AA"} : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NOT: stablehlo.broadcast_in_dim
+-  %0 = stablehlo.broadcast_in_dim %arg0, dims = [] {some.annotation = "AA"} : (tensor<f32>) -> tensor<2x64xf32>
+-  %1 = stablehlo.broadcast_in_dim %arg0, dims = [] {some.annotation = "AA"} : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK: stablehlo.add %[[C0]], %[[C0]] : tensor<2x64xf32>
+-  %2 = stablehlo.add %0, %1 : tensor<2x64xf32>
+-  return %2 : tensor<2x64xf32>
+-}
+-
+-// CHECK-LABEL: func @dont_merge_broadcasts_different_annotations
+-func.func @dont_merge_broadcasts_different_annotations(%arg0: tensor<f32>) -> tensor<2x64xf32> {
+-  // CHECK: %[[C0:.*]] = stablehlo.broadcast_in_dim %arg0, dims = [] {some.annotation = "AA"} : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK: %[[C1:.*]] = stablehlo.broadcast_in_dim %arg0, dims = [] {some.annotation = "BB"} : (tensor<f32>) -> tensor<2x64xf32>
+-  %0 = stablehlo.broadcast_in_dim %arg0, dims = [] {some.annotation = "AA"} : (tensor<f32>) -> tensor<2x64xf32>
+-  %1 = stablehlo.broadcast_in_dim %arg0, dims = [] {some.annotation = "BB"} : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK: stablehlo.add %[[C0]], %[[C1]] : tensor<2x64xf32>
+-  %2 = stablehlo.add %0, %1 : tensor<2x64xf32>
+-  return %2 : tensor<2x64xf32>
+-}
+-
+-// CHECK-LABEL: func @merge_broadcasts
+-func.func @merge_broadcasts() -> tensor<2x64xf32> {
+-  // CHECK: %0 = sdy.constant dense<1.000000e+00> : tensor<f32>
+-  // CHECK-NEXT: %1 = stablehlo.broadcast_in_dim %0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %2 = stablehlo.add %1, %1 : tensor<2x64xf32>
+-  // CHECK-NEXT: return %2 : tensor<2x64xf32>
+-  %0 = sdy.constant dense<1.000000e+00> : tensor<f32>
+-  %1 = stablehlo.broadcast_in_dim %0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  %2 = stablehlo.broadcast_in_dim %0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  %3 = stablehlo.add %1, %2 : tensor<2x64xf32>
+-  return %3 : tensor<2x64xf32>
+-}
+-
+-// CHECK-LABEL: func @does_not_merge_broadcasts_different_sharding
+-func.func @does_not_merge_broadcasts_different_sharding() -> tensor<2x64xf32> {
+-  // CHECK: %0 = sdy.constant dense<1.000000e+00> : tensor<f32>
+-  // CHECK-NEXT: %1 = stablehlo.broadcast_in_dim %0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %2 = stablehlo.broadcast_in_dim %0, dims = [] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {"y"}]>]>} : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %3 = stablehlo.add %1, %2 : tensor<2x64xf32>
+-  // CHECK-NEXT: return %3 : tensor<2x64xf32>
+-  %0 = sdy.constant dense<1.000000e+00> : tensor<f32>
+-  %1 = stablehlo.broadcast_in_dim %0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  %2 = stablehlo.broadcast_in_dim %0, dims = [] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {"y"}]>]>} : (tensor<f32>) -> tensor<2x64xf32>
+-  %3 = stablehlo.add %1, %2 : tensor<2x64xf32>
+-  return %3 : tensor<2x64xf32>
+-}
+-
+-// CHECK-LABEL: func @does_not_merge_broadcasts_with_different_operands
+-func.func @does_not_merge_broadcasts_with_different_operands(%arg0: tensor<f32>) -> tensor<2x64xf32> {
+-  // CHECK: %0 = sdy.constant dense<1.000000e+00> : tensor<f32>
+-  // CHECK-NEXT: %1 = stablehlo.broadcast_in_dim %0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %2 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %3 = stablehlo.add %1, %2 : tensor<2x64xf32>
+-  // CHECK-NEXT: return %3 : tensor<2x64xf32>
+-  %0 = sdy.constant dense<1.000000e+00> : tensor<f32>
+-  %1 = stablehlo.broadcast_in_dim %0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  %2 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  %3 = stablehlo.add %1, %2 : tensor<2x64xf32>
+-  return %3 : tensor<2x64xf32>
+-}
+-
+-// CHECK-LABEL: func @does_not_merge_broadcasts_on_non_scalars
+-func.func @does_not_merge_broadcasts_on_non_scalars() -> tensor<2x64xf32> {
+-  // CHECK: %0 = sdy.constant dense<1.000000e+00> : tensor<2xf32>
+-  // CHECK-NEXT: %1 = stablehlo.broadcast_in_dim %0, dims = [0] : (tensor<2xf32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %2 = stablehlo.broadcast_in_dim %0, dims = [0] : (tensor<2xf32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %3 = stablehlo.add %1, %2 : tensor<2x64xf32>
+-  // CHECK-NEXT: return %3 : tensor<2x64xf32>
+-  %0 = sdy.constant dense<1.000000e+00> : tensor<2xf32>
+-  %1 = stablehlo.broadcast_in_dim %0, dims = [0] : (tensor<2xf32>) -> tensor<2x64xf32>
+-  %2 = stablehlo.broadcast_in_dim %0, dims = [0] : (tensor<2xf32>) -> tensor<2x64xf32>
+-  %3 = stablehlo.add %1, %2 : tensor<2x64xf32>
+-  return %3 : tensor<2x64xf32>
+-}
+diff --git a/shardy/dialect/sdy/transforms/import/BUILD b/shardy/dialect/sdy/transforms/import/BUILD
+index ce6d8ae..410a35d 100644
+--- a/shardy/dialect/sdy/transforms/import/BUILD
++++ b/shardy/dialect/sdy/transforms/import/BUILD
+@@ -34,7 +34,7 @@ cc_library(
+     srcs = [
+         "add_data_flow_edges.cc",
+         "apply_sharding_constraints.cc",
+-        "constant_or_scalar_splitter.cc",
++        "constant_splitter.cc",
+         "import_pipeline.cc",
+         "inline_meshes.cc",
+         "lift_inlined_meshes.cc",
+diff --git a/shardy/dialect/sdy/transforms/import/constant_or_scalar_splitter.cc b/shardy/dialect/sdy/transforms/import/constant_splitter.cc
+similarity index 75%
+rename from shardy/dialect/sdy/transforms/import/constant_or_scalar_splitter.cc
+rename to shardy/dialect/sdy/transforms/import/constant_splitter.cc
+index 6c13370..eb7dc98 100644
+--- a/shardy/dialect/sdy/transforms/import/constant_or_scalar_splitter.cc
++++ b/shardy/dialect/sdy/transforms/import/constant_splitter.cc
+@@ -32,14 +32,13 @@ limitations under the License.
+ #include "mlir/Support/LogicalResult.h"
+ #include "mlir/Transforms/DialectConversion.h"
+ #include "shardy/dialect/sdy/ir/dialect.h"
+-#include "shardy/dialect/sdy/ir/utils.h"
+ #include "shardy/dialect/sdy/transforms/common/op_properties.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+ 
+ namespace mlir {
+ namespace sdy {
+ 
+-#define GEN_PASS_DEF_CONSTANTORSCALARSPLITTERPASS
++#define GEN_PASS_DEF_CONSTANTSPLITTERPASS
+ #include "shardy/dialect/sdy/transforms/import/passes.h.inc"
+ 
+ namespace {
+@@ -80,23 +79,13 @@ bool isConstantExpression(Operation* op,
+          });
+ }
+ 
+-// Returns true if the given op is a broadcast of scalar.
+-bool isScalarExpansion(Operation* op) {
+-  // TODO(enver): Allow for any tensor with exactly one element.
+-  if (auto broadcastOp = dyn_cast<stablehlo::BroadcastInDimOp>(op);
+-      broadcastOp && isScalar(broadcastOp.getOperand())) {
+-    return true;
+-  }
+-  return false;
+-}
+-
+ // Recursively clones all operands of the given op, that are not already mapped
+-// in `mapping`, and finally clones the op itself. We do not clone scalars as
+-// they do not get sharded.
++// in `mapping`, and finally clones the op itself.
+ void cloneSubComputation(OpResult opResult, IRMapping& mapping) {
+-  if (isScalar(opResult) || mapping.lookupOrNull(opResult)) {
++  if (mapping.lookupOrNull(opResult)) {
+     return;
+   }
++
+   Operation* op = opResult.getOwner();
+   for (Value operand : op->getOperands()) {
+     if (auto defOpResult = dyn_cast<OpResult>(operand)) {
+@@ -111,14 +100,10 @@ void cloneSubComputation(OpResult opResult, IRMapping& mapping) {
+ }
+ 
+ // Recursively clones all operands of the given op, that are not already cloned,
+-// and finally clones the op itself. We do not clone scalars as they do not get
+-// sharded.
++// and finally clones the op itself.
+ //
+ // Returns the cloned op result.
+ Value cloneSubComputation(OpResult opResult) {
+-  if (isScalar(opResult)) {
+-    return opResult;
+-  }
+   IRMapping mapping;
+   cloneSubComputation(opResult, mapping);
+   return mapping.lookup(opResult);
+@@ -139,10 +124,9 @@ class ConstantPattern : public OpConversionPattern<stablehlo::ConstantOp> {
+   }
+ };
+ 
+-struct ConstantOrScalarSplitterPass
+-    : public impl::ConstantOrScalarSplitterPassBase<
+-          ConstantOrScalarSplitterPass> {
+-  using ConstantOrScalarSplitterPassBase::ConstantOrScalarSplitterPassBase;
++struct ConstantSplitterPass
++    : public impl::ConstantSplitterPassBase<ConstantSplitterPass> {
++  using ConstantSplitterPassBase::ConstantSplitterPassBase;
+ 
+   LogicalResult initialize(MLIRContext* context) final {
+     target = std::make_shared<ConversionTarget>(*context);
+@@ -166,7 +150,7 @@ struct ConstantOrScalarSplitterPass
+     }
+ 
+     // Then we split constant sub-computations for each non-constant user.
+-    llvm::SetVector<Operation*> constantOps, scalarExpansionOps;
++    llvm::SetVector<Operation*> constantOps;
+     funcOp.walk([&](Operation* op) {
+       if (isa<ShardingGroupOp>(op)) {
+         return;
+@@ -175,20 +159,14 @@ struct ConstantOrScalarSplitterPass
+         constantOps.insert(op);
+         return;
+       }
+-      if (isScalarExpansion(op)) {
+-        scalarExpansionOps.insert(op);
+-        return;
+-      }
+       for (OpOperand& operand : op->getOpOperands()) {
+         if (auto defOpResult = dyn_cast<OpResult>(operand.get());
+-            defOpResult &&
+-            (constantOps.contains(defOpResult.getOwner()) ||
+-             scalarExpansionOps.contains(defOpResult.getOwner()))) {
++            defOpResult && constantOps.contains(defOpResult.getOwner())) {
+           // `op` is not a constant expression, while its `operand` is. We
+-          // recursively clone the sub-computation whose root is
+-          // `defOpResult`, and replace the `operand` with the cloned defining
+-          // op. The cloned constant sub-computation has only one user `op`,
+-          // so that it is isolated from the rest of the computation.
++          // recursively clone the sub-computation whose root is `defOpResult`,
++          // and replace the `operand` with the cloned defining op. The cloned
++          // constant sub-computation has only one user `op`, so that it is
++          // isolated from the rest of the computation.
+           operand.set(cloneSubComputation(defOpResult));
+         }
+       }
+@@ -197,14 +175,10 @@ struct ConstantOrScalarSplitterPass
+     // Since for every op in `constantOps` that has a use that isn't in
+     // `constantOps`, we replaced the use with a clone of the entire
+     // sub-computation, we can now erase all ops in `constantOps` as long as we
+-    // iterate in reverse order. Note that we did not clone scalars so we keep
+-    // the original.
+-    for (Operation* op : llvm::concat<Operation* const>(
+-             scalarExpansionOps, llvm::reverse(constantOps))) {
+-      if (hasOnlyUsersOfType<ShardingGroupOp>(op)) {
+-        eraseShardingGroupUsers(op);
+-        op->erase();
+-      }
++    // iterate in reverse order.
++    for (Operation* op : llvm::reverse(constantOps)) {
++      eraseShardingGroupUsers(op);
++      op->erase();
+     }
+   }
+ 
+diff --git a/shardy/dialect/sdy/transforms/import/import_pipeline.cc b/shardy/dialect/sdy/transforms/import/import_pipeline.cc
+index b8854f2..602fd7b 100644
+--- a/shardy/dialect/sdy/transforms/import/import_pipeline.cc
++++ b/shardy/dialect/sdy/transforms/import/import_pipeline.cc
+@@ -54,7 +54,7 @@ void addImportPipeline(OpPassManager& pm, StringRef dumpDirectory,
+   }
+   pm.addPass(createSymbolDCEPass());
+   pm.addPass(createLiftInlinedMeshesPass());
+-  pm.addNestedPass<func::FuncOp>(createConstantOrScalarSplitterPass());
++  pm.addNestedPass<func::FuncOp>(createConstantSplitterPass());
+   pm.addNestedPass<func::FuncOp>(createAddDataFlowEdgesPass());
+   pm.addPass(createManualAxesCleanupPass());
+   pm.addNestedPass<func::FuncOp>(createApplyShardingConstraintsPass());
+diff --git a/shardy/dialect/sdy/transforms/import/passes.td b/shardy/dialect/sdy/transforms/import/passes.td
+index 34dbc48..8e2c541 100644
+--- a/shardy/dialect/sdy/transforms/import/passes.td
++++ b/shardy/dialect/sdy/transforms/import/passes.td
+@@ -107,11 +107,10 @@ def ApplyShardingConstraintsPass : Pass<"sdy-apply-sharding-constraints", "func:
+   let dependentDialects = ["mlir::sdy::SdyDialect"];
+ }
+ 
+-def ConstantOrScalarSplitterPass : Pass<"sdy-constant-or-scalar-splitter", "func::FuncOp"> {
+-  let summary = "Splits constant and scalar expansions so each has a single use.";
++def ConstantSplitterPass : Pass<"sdy-constant-splitter", "func::FuncOp"> {
++  let summary = "Splits constant sub-computations so each has a single use.";
+   let description = [{
+-    Splits constant sub-computations and scalar expansions such that they have a
+-    single user.
++    Splits constant sub-computations such that they have a single user.
+ 
+     This ensures that a sharding isn't propagated between different uses of a
+     constant sub-computation, as this is considered a false dependency (the uses
+@@ -125,15 +124,10 @@ def ConstantOrScalarSplitterPass : Pass<"sdy-constant-or-scalar-splitter", "func
+       defined by constant sub-computations (recursively), along with the entire
+       sub-computations that define its operands.
+ 
+-    A scalar expansion is a broadcast of a scalar.
+-
+     Note that within a constant sub-computation, a value can have multiple uses
+     within that sub-computation.
+ 
+-    Also note that this pass does not split scalar tensors as they don't get
+-    sharded (they have rank 0).
+-
+-    NOTE: This pass covers the MLIR equivalent of `xla::HloConstantSplitter`,
++    NOTE: This pass is the MLIR equivalent of `xla::HloConstantSplitter`,
+     needed for the purpose of Shardy Propagation.
+   }];
+   let dependentDialects = ["mlir::sdy::SdyDialect"];
+diff --git a/shardy/dialect/sdy/transforms/import/test/constant_or_scalar_splitter.mlir b/shardy/dialect/sdy/transforms/import/test/constant_or_scalar_splitter.mlir
+deleted file mode 100644
+index c560df7..0000000
+--- a/shardy/dialect/sdy/transforms/import/test/constant_or_scalar_splitter.mlir
++++ /dev/null
+@@ -1,495 +0,0 @@
+-// RUN: sdy_opt %s -sdy-constant-or-scalar-splitter 2>&1 | FileCheck %s
+-
+-// CHECK-LABEL: func @constant_with_unregistered_attr
+-func.func @constant_with_unregistered_attr() -> tensor<8x16xf32> {
+-  // CHECK-NEXT: %[[CONST:.*]] = sdy.constant {foo} dense<1.000000e+00>
+-  // CHECK-NEXT: return %[[CONST]]
+-  %0 = stablehlo.constant {foo} dense<1.000000e+00> : tensor<8x16xf32>
+-  return %0 : tensor<8x16xf32>
+-}
+-
+-// CHECK-LABEL: func @func_arg_is_not_constant
+-func.func @func_arg_is_not_constant(%arg0: tensor<8x16xf32>, %arg1: tensor<16x16xf32>) -> (tensor<8x16xf32>, tensor<8x16xf32>) {
+-  // CHECK-NEXT: %[[CONST:.*]] = sdy.constant dense<1.000000e+00>
+-  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %arg0, %[[CONST]]
+-  // CHECK-NEXT: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %[[ADD]], %arg1
+-  // CHECK-NEXT: return %[[ADD]], %[[DOT_GENERAL]]
+-  %0 = stablehlo.constant dense<1.000000e+00> : tensor<8x16xf32>
+-  %1 = stablehlo.add %arg0, %0 : tensor<8x16xf32>
+-  %2 = stablehlo.dot_general %1, %arg1, contracting_dims = [1] x [0] : (tensor<8x16xf32>, tensor<16x16xf32>) -> tensor<8x16xf32>
+-  return %1, %2 : tensor<8x16xf32>, tensor<8x16xf32>
+-}
+-
+-// CHECK-LABEL: func @constant_multiple_users
+-func.func @constant_multiple_users(%arg0: tensor<16x16xf32>) -> (tensor<8x16xf32>, tensor<8x16xf32>) {
+-  // CHECK-NEXT: %[[CONST_0:.*]] = sdy.constant dense<1.000000e+00>
+-  // CHECK-NEXT: %[[CONST_1:.*]] = sdy.constant dense<1.000000e+00>
+-  // CHECK-NEXT: %[[CONST_2:.*]] = sdy.constant dense<1.000000e+00>
+-  // CHECK-NEXT: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %[[CONST_0]], %arg0
+-  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[CONST_1]], %[[DOT_GENERAL]]
+-  // CHECK-NEXT: return %[[CONST_2]], %[[ADD]]
+-  %0 = stablehlo.constant dense<1.000000e+00> : tensor<8x16xf32>
+-  %1 = stablehlo.dot_general %0, %arg0, contracting_dims = [1] x [0] : (tensor<8x16xf32>, tensor<16x16xf32>) -> tensor<8x16xf32>
+-  %2 = stablehlo.add %0, %1 : tensor<8x16xf32>
+-  return %0, %2 : tensor<8x16xf32>, tensor<8x16xf32>
+-}
+-
+-// CHECK-LABEL: func @scalar_constant_multiple_users_simple
+-func.func @scalar_constant_multiple_users_simple(%arg0: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
+-  // CHECK-NEXT: %[[CONST:.*]] = sdy.constant dense<1.000000e+00>
+-  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[CONST]], %arg0
+-  // CHECK-NEXT: return %[[CONST]], %[[ADD]]
+-  %0 = stablehlo.constant dense<1.000000e+00> : tensor<f32>
+-  %1 = stablehlo.add %0, %arg0 : tensor<f32>
+-  return %0, %1 : tensor<f32>, tensor<f32>
+-}
+-
+-// CHECK-LABEL: func @non_scalar_constant_multiple_users_simple
+-func.func @non_scalar_constant_multiple_users_simple(%arg0: tensor<2xf32>) -> (tensor<2xf32>, tensor<2xf32>) {
+-  // CHECK-NEXT: %[[CONST1:.*]] = sdy.constant dense<1.000000e+00>
+-  // CHECK-NEXT: %[[CONST2:.*]] = sdy.constant dense<1.000000e+00>
+-  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[CONST1]], %arg0
+-  // CHECK-NEXT: return %[[CONST2]], %[[ADD]]
+-  %0 = stablehlo.constant dense<1.000000e+00> : tensor<2xf32>
+-  %1 = stablehlo.add %0, %arg0 : tensor<2xf32>
+-  return %0, %1 : tensor<2xf32>, tensor<2xf32>
+-}
+-
+-// CHECK-LABEL: func @constant_sub_computation_multiple_users
+-func.func @constant_sub_computation_multiple_users(%arg0: tensor<5x8xi32>) -> (tensor<4x5xi32>, tensor<4x8xi32>) {
+-  // CHECK-NEXT: %[[IOTA_0:.*]] = stablehlo.iota dim = 0
+-  // CHECK-NEXT: %[[IOTA_1:.*]] = stablehlo.iota dim = 0
+-  // CHECK-NEXT: %[[CONST_0:.*]] = sdy.constant dense<2>
+-  // CHECK-NEXT: %[[CONST_1:.*]] = sdy.constant dense<2>
+-  // CHECK-NEXT: %[[ADD_0:.*]] = stablehlo.add %[[IOTA_0]], %[[IOTA_0]]
+-  // CHECK-NEXT: %[[ADD_1:.*]] = stablehlo.add %[[IOTA_1]], %[[IOTA_1]]
+-  // CHECK-NEXT: %[[MAX_0:.*]] = stablehlo.maximum %[[ADD_0]], %[[CONST_0]]
+-  // CHECK-NEXT: %[[MAX_1:.*]] = stablehlo.maximum %[[ADD_1]], %[[CONST_1]]
+-  // CHECK-NEXT: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %[[MAX_0]], %arg0
+-  // CHECK-NEXT: return %[[MAX_1]], %[[DOT_GENERAL]]
+-  %0 = stablehlo.iota dim = 0 : tensor<4x5xi32>
+-  %1 = stablehlo.constant dense<2> : tensor<4x5xi32>
+-  %2 = stablehlo.add %0, %0 : tensor<4x5xi32>
+-  %3 = stablehlo.maximum %2, %1 : tensor<4x5xi32>
+-  %4 = stablehlo.dot_general %3, %arg0, contracting_dims = [1] x [0] : (tensor<4x5xi32>, tensor<5x8xi32>) -> tensor<4x8xi32>
+-  return %3, %4 : tensor<4x5xi32>, tensor<4x8xi32>
+-}
+-
+-// CHECK-LABEL: func @constant_multiple_uses_by_same_op
+-func.func @constant_multiple_uses_by_same_op() -> (tensor<8x16xf32>, tensor<8x8xf32>) {
+-  // CHECK-NEXT: %[[CONST_0:.*]] = sdy.constant dense<1.000000e+00>
+-  // CHECK-NEXT: %[[CONST_1:.*]] = sdy.constant dense<1.000000e+00>
+-  // CHECK-NEXT: %[[CONST_2:.*]] = sdy.constant dense<1.000000e+00>
+-  // CHECK-NEXT: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %[[CONST_0]], %[[CONST_1]]
+-  // CHECK-NEXT: return %[[CONST_2]], %[[DOT_GENERAL]]
+-  %0 = stablehlo.constant dense<1.000000e+00> : tensor<8x16xf32>
+-  %1 = stablehlo.dot_general %0, %0, contracting_dims = [1] x [1] : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x8xf32>
+-  return %0, %1 : tensor<8x16xf32>, tensor<8x8xf32>
+-}
+-
+-// CHECK-LABEL: func @non_constant_broadcast_multiple_users
+-func.func @non_constant_broadcast_multiple_users(%arg0: tensor<4x5xf32>, %arg1: tensor<5xf32>) -> (tensor<5x8xf32>, tensor<4x8xf32>) {
+-  // CHECK-NEXT: %[[BROADCAST:.*]] = stablehlo.broadcast_in_dim %arg1
+-  // CHECK-NEXT: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %arg0, %[[BROADCAST]]
+-  // CHECK-NEXT: return %[[BROADCAST]], %[[DOT_GENERAL]]
+-  %0 = stablehlo.broadcast_in_dim %arg1, dims = [0] : (tensor<5xf32>) -> tensor<5x8xf32>
+-  %1 = stablehlo.dot_general %arg0, %0, contracting_dims = [1] x [0] : (tensor<4x5xf32>, tensor<5x8xf32>) -> tensor<4x8xf32>
+-  return %0, %1 : tensor<5x8xf32>, tensor<4x8xf32>
+-}
+-
+-// CHECK-LABEL: func @constant_broadcast_multiple_users
+-func.func @constant_broadcast_multiple_users(%arg0: tensor<5x8xi32>) -> (tensor<4x5xi32>, tensor<4x8xi32>) {
+-  // CHECK-NEXT: %[[IOTA_0:.*]] = stablehlo.iota dim = 0
+-  // CHECK-NEXT: %[[IOTA_1:.*]] = stablehlo.iota dim = 0
+-  // CHECK-NEXT: %[[ADD_0:.*]] = stablehlo.add %[[IOTA_0]], %[[IOTA_0]]
+-  // CHECK-NEXT: %[[ADD_1:.*]] = stablehlo.add %[[IOTA_1]], %[[IOTA_1]]
+-  // CHECK-NEXT: %[[BROADCAST_0:.*]] = stablehlo.broadcast_in_dim %[[ADD_0]]
+-  // CHECK-NEXT: %[[BROADCAST_1:.*]] = stablehlo.broadcast_in_dim %[[ADD_1]]
+-  // CHECK-NEXT: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %[[BROADCAST_0]], %arg0
+-  // CHECK-NEXT: return %[[BROADCAST_1]], %[[DOT_GENERAL]]
+-  %0 = stablehlo.iota dim = 0 : tensor<5xi32>
+-  %1 = stablehlo.add %0, %0 : tensor<5xi32>
+-  %2 = stablehlo.broadcast_in_dim %1, dims = [1] : (tensor<5xi32>) -> tensor<4x5xi32>
+-  %3 = stablehlo.dot_general %2, %arg0, contracting_dims = [1] x [0] : (tensor<4x5xi32>, tensor<5x8xi32>) -> tensor<4x8xi32>
+-  return %2, %3 : tensor<4x5xi32>, tensor<4x8xi32>
+-}
+-
+-// CHECK-LABEL: func @multiple_broadcasts_using_the_same_const_sub_computation
+-func.func @multiple_broadcasts_using_the_same_const_sub_computation(%arg0: tensor<5x8xi32>) -> (tensor<3x5xi32>, tensor<2x4xi32>) {
+-  // CHECK-NEXT: %[[IOTA_0:.*]] = stablehlo.iota dim = 0
+-  // CHECK-NEXT: %[[IOTA_1:.*]] = stablehlo.iota dim = 0
+-  // CHECK-NEXT: %[[IOTA_2:.*]] = stablehlo.iota dim = 0
+-  // CHECK-NEXT: %[[ADD_0:.*]] = stablehlo.add %[[IOTA_0]], %[[IOTA_0]]
+-  // CHECK-NEXT: %[[ADD_1:.*]] = stablehlo.add %[[IOTA_1]], %[[IOTA_1]]
+-  // CHECK-NEXT: %[[ADD_2:.*]] = stablehlo.add %[[IOTA_2]], %[[IOTA_2]]
+-  // CHECK-NEXT: %[[BROADCAST_0:.*]] = stablehlo.broadcast_in_dim %[[ADD_0]], dims = [1] : (tensor<5xi32>) -> tensor<2x5xi32>
+-  // CHECK-NEXT: %[[BROADCAST_1:.*]] = stablehlo.broadcast_in_dim %[[ADD_2]], dims = [1] : (tensor<5xi32>) -> tensor<3x5xi32>
+-  // CHECK-NEXT: %[[BROADCAST_2:.*]] = stablehlo.broadcast_in_dim %[[ADD_1]], dims = [0] : (tensor<5xi32>) -> tensor<5x4xi32>
+-  // CHECK-NEXT: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %[[BROADCAST_0]], %[[BROADCAST_2]]
+-  // CHECK-NEXT: return %[[BROADCAST_1]], %[[DOT_GENERAL]]
+-  %0 = stablehlo.iota dim = 0 : tensor<5xi32>
+-  %1 = stablehlo.add %0, %0 : tensor<5xi32>
+-  %2 = stablehlo.broadcast_in_dim %1, dims = [1] : (tensor<5xi32>) -> tensor<2x5xi32>
+-  %3 = stablehlo.broadcast_in_dim %1, dims = [1] : (tensor<5xi32>) -> tensor<3x5xi32>
+-  %4 = stablehlo.broadcast_in_dim %1, dims = [0] : (tensor<5xi32>) -> tensor<5x4xi32>
+-  %5 = stablehlo.dot_general %2, %4, contracting_dims = [1] x [0] : (tensor<2x5xi32>, tensor<5x4xi32>) -> tensor<2x4xi32>
+-  return %3, %5 : tensor<3x5xi32>, tensor<2x4xi32>
+-}
+-
+-// CHECK-LABEL: func @constant_slice_multiple_users
+-func.func @constant_slice_multiple_users(%arg0: tensor<8xi32>) -> (tensor<8xi32>, tensor<8xi32>) {
+-  // CHECK-NEXT: %[[IOTA_0:.*]] = stablehlo.iota dim = 0
+-  // CHECK-NEXT: %[[IOTA_1:.*]] = stablehlo.iota dim = 0
+-  // CHECK-NEXT: %[[SLICE_0:.*]] = stablehlo.slice %[[IOTA_0]]
+-  // CHECK-NEXT: %[[SLICE_1:.*]] = stablehlo.slice %[[IOTA_1]]
+-  // CHECK-NEXT: %[[SLICE_2:.*]] = stablehlo.slice %[[IOTA_0]]
+-  // CHECK-NEXT: %[[SLICE_3:.*]] = stablehlo.slice %[[IOTA_1]]
+-  // CHECK-NEXT: %[[ADD_0:.*]] = stablehlo.add %[[SLICE_0]], %[[SLICE_2]]
+-  // CHECK-NEXT: %[[ADD_1:.*]] = stablehlo.add %[[SLICE_1]], %[[SLICE_3]]
+-  // CHECK-NEXT: %[[ADD_2:.*]] = stablehlo.add %[[ADD_0]], %arg0
+-  // CHECK-NEXT: return %[[ADD_1]], %[[ADD_2]]
+-  %0 = stablehlo.iota dim = 0 : tensor<10xi32>
+-  %1 = stablehlo.slice %0 [0:8]: (tensor<10xi32>) -> tensor<8xi32>
+-  %2 = stablehlo.slice %0 [2:10]: (tensor<10xi32>) -> tensor<8xi32>
+-  %3 = stablehlo.add %1, %2 : tensor<8xi32>
+-  %4 = stablehlo.add %3, %arg0 : tensor<8xi32>
+-  return %3, %4 : tensor<8xi32>, tensor<8xi32>
+-}
+-
+-// CHECK-LABEL: func @splits_parts_of_const_sub_computation
+-func.func @splits_parts_of_const_sub_computation(%arg0: tensor<5x8xi32>) -> (tensor<4x5xi32>, tensor<4x5xi32>, tensor<4x8xi32>) {
+-  // CHECK-NEXT: %[[IOTA_0:.*]] = stablehlo.iota dim = 0
+-  // CHECK-NEXT: %[[IOTA_1:.*]] = stablehlo.iota dim = 0
+-  // CHECK-NEXT: %[[IOTA_2:.*]] = stablehlo.iota dim = 0
+-  // CHECK-NEXT: %[[CONST:.*]] = sdy.constant dense<2>
+-  // CHECK-NEXT: %[[ADD_0:.*]] = stablehlo.add %[[IOTA_0]], %[[IOTA_0]]
+-  // CHECK-NEXT: %[[ADD_1:.*]] = stablehlo.add %[[IOTA_2]], %[[IOTA_2]]
+-  // CHECK-NEXT: %[[MAX:.*]] = stablehlo.maximum %[[ADD_0]], %[[CONST]]
+-  // CHECK-NEXT: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %[[MAX]], %arg0
+-  // CHECK-NEXT: return %[[IOTA_1]], %[[ADD_1]], %[[DOT_GENERAL]]
+-  %0 = stablehlo.iota dim = 0 : tensor<4x5xi32>
+-  %1 = stablehlo.constant dense<2> : tensor<4x5xi32>
+-  %2 = stablehlo.add %0, %0 : tensor<4x5xi32>
+-  %3 = stablehlo.maximum %2, %1 : tensor<4x5xi32>
+-  %4 = stablehlo.dot_general %3, %arg0, contracting_dims = [1] x [0] : (tensor<4x5xi32>, tensor<5x8xi32>) -> tensor<4x8xi32>
+-  return %0, %2, %4 : tensor<4x5xi32>, tensor<4x5xi32>, tensor<4x8xi32>
+-}
+-
+-// CHECK-LABEL: func @splits_sdy_constants
+-func.func @splits_sdy_constants(%arg0: tensor<16x16xf32>) -> (tensor<8x16xf32>, tensor<8x16xf32>) {
+-  // CHECK-NEXT: %[[CONST_0:.*]] = sdy.constant dense<1.000000e+00>
+-  // CHECK-NEXT: %[[CONST_1:.*]] = sdy.constant dense<1.000000e+00>
+-  // CHECK-NEXT: %[[CONST_2:.*]] = sdy.constant dense<1.000000e+00>
+-  // CHECK-NEXT: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %[[CONST_0]], %arg0
+-  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[CONST_1]], %[[DOT_GENERAL]]
+-  // CHECK-NEXT: return %[[CONST_2]], %[[ADD]]
+-  %0 = sdy.constant dense<1.000000e+00> : tensor<8x16xf32>
+-  %1 = stablehlo.dot_general %0, %arg0, contracting_dims = [1] x [0] : (tensor<8x16xf32>, tensor<16x16xf32>) -> tensor<8x16xf32>
+-  %2 = stablehlo.add %0, %1 : tensor<8x16xf32>
+-  return %0, %2 : tensor<8x16xf32>, tensor<8x16xf32>
+-}
+-
+-// CHECK-LABEL: func @splits_sharding_groups
+-func.func @splits_sharding_groups(%arg0: tensor<16x16xf32>) -> (tensor<8x16xf32>, tensor<8x16xf32>) {
+-  // Each intermediate result is included in a distinct sharding group. Post
+-  // splitting, we verify that all subcomputation results corresponding to an
+-  // original unsplit result are included in the same sharding group.
+-  // CHECK-NEXT: %[[CONST_0:.*]] = sdy.constant dense<1.000000e+00>
+-  // CHECK-NEXT: sdy.sharding_group %[[CONST_0]] group_id=0
+-  // CHECK-NEXT: %[[CONST_1:.*]] = sdy.constant dense<1.000000e+00>
+-  // CHECK-NEXT: sdy.sharding_group %[[CONST_1]] group_id=0
+-  // CHECK-NEXT: %[[CONST_2:.*]] = sdy.constant dense<1.000000e+00>
+-  // CHECK-NEXT: sdy.sharding_group %[[CONST_2]] group_id=0
+-  // CHECK-NEXT: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %[[CONST_0]], %arg0
+-  // CHECK-NEXT: sdy.sharding_group %[[DOT_GENERAL]] group_id=1
+-  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[CONST_1]], %[[DOT_GENERAL]]
+-  // CHECK-NEXT: sdy.sharding_group %[[ADD]] group_id=2
+-  // CHECK-NEXT: return %[[CONST_2]], %[[ADD]]
+-  %0 = stablehlo.constant dense<1.000000e+00> : tensor<8x16xf32>
+-  sdy.sharding_group %0 group_id=0 : tensor<8x16xf32>
+-  %1 = stablehlo.dot_general %0, %arg0, contracting_dims = [1] x [0] : (tensor<8x16xf32>, tensor<16x16xf32>) -> tensor<8x16xf32>
+-  sdy.sharding_group %1 group_id=1 : tensor<8x16xf32>
+-  %2 = stablehlo.add %0, %1 : tensor<8x16xf32>
+-  sdy.sharding_group %2 group_id=2 : tensor<8x16xf32>
+-  return %0, %2 : tensor<8x16xf32>, tensor<8x16xf32>
+-}
+-
+-// CHECK-LABEL: func @splits_const_subexpr_with_sharding_group
+-func.func @splits_const_subexpr_with_sharding_group(%arg0: tensor<4x8xi32>) -> (tensor<4x8xi32>, tensor<4x8xi32>) {
+-  // CHECK-NEXT: sdy.sharding_group %arg0 group_id=0
+-  // CHECK-NEXT: %[[IOTA_0:.*]] = stablehlo.iota dim = 0
+-  // CHECK-NEXT: sdy.sharding_group %[[IOTA_0]] group_id=0
+-  // CHECK-NEXT: %[[IOTA_1:.*]] = stablehlo.iota dim = 0
+-  // CHECK-NEXT: sdy.sharding_group %[[IOTA_1]] group_id=0
+-  // CHECK-NEXT: %[[CONST_0:.*]] = sdy.constant dense<2>
+-  // CHECK-NEXT: %[[ADD_0:.*]] = stablehlo.add %[[IOTA_0]], %[[IOTA_0]]
+-  // CHECK-NEXT: %[[ADD_1:.*]] = stablehlo.add %[[IOTA_1]], %[[IOTA_1]]
+-  // CHECK-NEXT: %[[MAX_0:.*]] = stablehlo.maximum %[[ADD_1]], %[[CONST_0]]
+-  sdy.sharding_group %arg0 group_id=0 : tensor<4x8xi32>
+-  %0 = stablehlo.iota dim = 0 : tensor<4x8xi32>
+-  sdy.sharding_group %0 group_id=0 : tensor<4x8xi32>
+-  %1 = stablehlo.constant dense<2> : tensor<4x8xi32>
+-  %2 = stablehlo.add %0, %0 : tensor<4x8xi32>
+-  %3 = stablehlo.maximum %2, %1 : tensor<4x8xi32>
+-  return %2, %3 : tensor<4x8xi32>, tensor<4x8xi32>
+-}
+-
+-// CHECK-LABEL: func @does_not_split_broadcast_on_non_scalar_input
+-func.func @does_not_split_broadcast_on_non_scalar_input(%arg0: tensor<2xf32>) -> tensor<2x64xf32> {
+-  // CHECK-NEXT: %0 = stablehlo.broadcast_in_dim %arg0, dims = [0] : (tensor<2xf32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %1 = stablehlo.negate %0 : tensor<2x64xf32>
+-  // CHECK-NEXT: %2 = stablehlo.abs %0 : tensor<2x64xf32>
+-  // CHECK-NEXT: %3 = stablehlo.multiply %1, %2 : tensor<2x64xf32>
+-  // CHECK-NEXT: return %3 :  tensor<2x64xf32>
+-  %0 = stablehlo.broadcast_in_dim %arg0, dims = [0] : (tensor<2xf32>) -> tensor<2x64xf32>
+-  %1 = stablehlo.negate %0 : tensor<2x64xf32>
+-  %2 = stablehlo.abs %0 : tensor<2x64xf32>
+-  %3 = stablehlo.multiply %1, %2 : tensor<2x64xf32>
+-  return %3 :  tensor<2x64xf32>
+-}
+-
+-// CHECK-LABEL: func @does_not_split_broadcast_on_one_dimensional_input_of_size_one
+-func.func @does_not_split_broadcast_on_one_dimensional_input_of_size_one(%arg0: tensor<1xf32>) -> tensor<2x64xf32> {
+-  // CHECK-NEXT: %0 = stablehlo.broadcast_in_dim %arg0, dims = [0] : (tensor<1xf32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %1 = stablehlo.negate %0 : tensor<2x64xf32>
+-  // CHECK-NEXT: %2 = stablehlo.abs %0 : tensor<2x64xf32>
+-  // CHECK-NEXT: %3 = stablehlo.multiply %1, %2 : tensor<2x64xf32>
+-  // CHECK-NEXT: return %3 :  tensor<2x64xf32>
+-  %0 = stablehlo.broadcast_in_dim %arg0, dims = [0] : (tensor<1xf32>) -> tensor<2x64xf32>
+-  %1 = stablehlo.negate %0 : tensor<2x64xf32>
+-  %2 = stablehlo.abs %0 : tensor<2x64xf32>
+-  %3 = stablehlo.multiply %1, %2 : tensor<2x64xf32>
+-  return %3 :  tensor<2x64xf32>
+-}
+-
+-// CHECK-LABEL: func @splits_broadcast_on_scalar_simple
+-func.func @splits_broadcast_on_scalar_simple(%arg0: tensor<f32>) -> tensor<2x64xf32> {
+-  // CHECK-NEXT: %0 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %1 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %2 = stablehlo.negate %0 : tensor<2x64xf32>
+-  // CHECK-NEXT: %3 = stablehlo.abs %1 : tensor<2x64xf32>
+-  // CHECK-NEXT: %4 = stablehlo.multiply %2, %3 : tensor<2x64xf32>
+-  // CHECK-NEXT: return %4 :  tensor<2x64xf32>
+-  %0 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  %1 = stablehlo.negate %0 : tensor<2x64xf32>
+-  %2 = stablehlo.abs %0 : tensor<2x64xf32>
+-  %3 = stablehlo.multiply %1, %2 : tensor<2x64xf32>
+-  return %3 :  tensor<2x64xf32>
+-}
+-
+-// CHECK-LABEL: func @splits_multiple_broadcast_on_scalar_use_same_scalar
+-func.func @splits_multiple_broadcast_on_scalar_use_same_scalar(%arg0: tensor<f32>) -> tensor<2x64xf32> {
+-  // CHECK-NEXT: %0 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %1 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %2 = stablehlo.add %0, %1 : tensor<2x64xf32>
+-  // CHECK-NEXT: return %2 :  tensor<2x64xf32>
+-  %0 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  %1 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  %2 = stablehlo.add %0, %1 : tensor<2x64xf32>
+-  return %2 :  tensor<2x64xf32>
+-}
+-
+-// CHECK-LABEL: func @splits_multiple_broadcasts_on_scalar_non_constant
+-func.func @splits_multiple_broadcasts_on_scalar_non_constant(%arg0: tensor<f32>) -> tensor<2x64xf32> {
+-  // CHECK-NEXT: %0 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %1 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %2 = stablehlo.negate %0 : tensor<2x64xf32>
+-  // CHECK-NEXT: %3 = stablehlo.abs %1 : tensor<2x64xf32>
+-  // CHECK-NEXT: %4 = stablehlo.multiply %2, %3 : tensor<2x64xf32>
+-  // CHECK-NEXT: %5 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %6 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %7 = stablehlo.negate %5 : tensor<2x64xf32>
+-  // CHECK-NEXT: %8 = stablehlo.abs %6 : tensor<2x64xf32>
+-  // CHECK-NEXT: %9 = stablehlo.multiply %7, %8 : tensor<2x64xf32>
+-  // CHECK-NEXT: %10 = stablehlo.add %4, %9 : tensor<2x64xf32>
+-  // CHECK-NEXT: return %10 :  tensor<2x64xf32>
+-  %0 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  %1 = stablehlo.negate %0 : tensor<2x64xf32>
+-  %2 = stablehlo.abs %0 : tensor<2x64xf32>
+-  %3 = stablehlo.multiply %1, %2 : tensor<2x64xf32>
+-  %4 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  %5 = stablehlo.negate %4 : tensor<2x64xf32>
+-  %6 = stablehlo.abs %4 : tensor<2x64xf32>
+-  %7 = stablehlo.multiply %5, %6 : tensor<2x64xf32>
+-  %8 = stablehlo.add %3, %7 : tensor<2x64xf32>
+-  return %8 :  tensor<2x64xf32>
+-}
+-
+-// CHECK-LABEL: func @splits_broadcast_on_scalar_non_constant_use_and_itself_on_same_op
+-func.func @splits_broadcast_on_scalar_non_constant_use_and_itself_on_same_op(%arg0: tensor<f32>) -> tensor<2x64xf32> {
+-  // CHECK-NEXT: %0 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %1 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %2 = stablehlo.negate %0 : tensor<2x64xf32>
+-  // CHECK-NEXT: %3 = stablehlo.multiply %1, %2 : tensor<2x64xf32>
+-  // CHECK-NEXT: return %3 :  tensor<2x64xf32>
+-  %0 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  %1 = stablehlo.negate %0 : tensor<2x64xf32>
+-  %2 = stablehlo.multiply %0, %1 : tensor<2x64xf32>
+-  return %2 :  tensor<2x64xf32>
+-}
+-
+-// CHECK-LABEL: func @splits_broadcast_on_scalar_non_constant_one_of_multiple_use_is_func_return
+-func.func @splits_broadcast_on_scalar_non_constant_one_of_multiple_use_is_func_return(%arg0: tensor<f32>) -> (tensor<2x64xf32>, tensor<2x64xf32>) {
+-  // CHECK-NEXT: %0 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %1 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %2 = stablehlo.negate %0 : tensor<2x64xf32>
+-  // CHECK-NEXT: return %1, %2 : tensor<2x64xf32>, tensor<2x64xf32>
+-  %0 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  %1 = stablehlo.negate %0 : tensor<2x64xf32>
+-  return %0, %1 : tensor<2x64xf32>, tensor<2x64xf32>
+-}
+-
+-// CHECK-LABEL: func @splits_broadcast_on_scalar_non_constant_all_uses_on_same_op
+-func.func @splits_broadcast_on_scalar_non_constant_all_uses_on_same_op(%arg0: tensor<f32>) -> tensor<2x64xf32> {
+-  // CHECK-NEXT: %0 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %1 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %2 = stablehlo.add %0, %1 : tensor<2x64xf32>
+-  // CHECK-NEXT: return %2 :  tensor<2x64xf32>
+-  %0 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  %1 = stablehlo.add %0, %0 : tensor<2x64xf32>
+-  return %1 :  tensor<2x64xf32>
+-}
+-
+-// CHECK-LABEL: func @does_not_split_broadcast_single_use
+-func.func @does_not_split_broadcast_single_use(%arg0: tensor<f32>) -> tensor<2x64xf32> {
+-  // CHECK-NEXT: %0 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %1 = stablehlo.negate %0 : tensor<2x64xf32>
+-  // CHECK-NEXT: return %1 :  tensor<2x64xf32>
+-  %0 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  %1 = stablehlo.negate %0 : tensor<2x64xf32>
+-  return %1 :  tensor<2x64xf32>
+-}
+-
+-// CHECK-LABEL: func @splits_broadcast_on_scalar_non_constant_multiple_uses
+-func.func @splits_broadcast_on_scalar_non_constant_multiple_uses(%arg0: tensor<f32>) -> tensor<2x64xf32> {
+-  // CHECK-NEXT: %0 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %1 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %2 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %3 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %4 = stablehlo.add %0, %1 : tensor<2x64xf32>
+-  // CHECK-NEXT: %5 = stablehlo.negate %2 : tensor<2x64xf32>
+-  // CHECK-NEXT: %6 = stablehlo.divide %3, %5 : tensor<2x64xf32>
+-  // CHECK-NEXT: %7 = stablehlo.multiply %4, %6 : tensor<2x64xf32>
+-  // CHECK-NEXT: return %7 :  tensor<2x64xf32>
+-  %0 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  %1 = stablehlo.add %0, %0 : tensor<2x64xf32>
+-  %2 = stablehlo.negate %0 : tensor<2x64xf32>
+-  %3 = stablehlo.divide %0, %2 : tensor<2x64xf32>
+-  %4 = stablehlo.multiply %1, %3 : tensor<2x64xf32>
+-  return %4 :  tensor<2x64xf32>
+-}
+-
+-// CHECK-LABEL: func @splits_both_constant_and_broadcast_on_scalar_op_result
+-func.func @splits_both_constant_and_broadcast_on_scalar_op_result() -> tensor<2x64xf32> {
+-  // CHECK-NEXT: %0 = sdy.constant dense<0.000000e+00> : tensor<32xf32>
+-  // CHECK-NEXT: %1 = sdy.constant dense<0.000000e+00> : tensor<32xf32>
+-  // CHECK-NEXT: %2 = stablehlo.dot %0, %1 : (tensor<32xf32>, tensor<32xf32>) -> tensor<f32>
+-  // CHECK-NEXT: %3 = stablehlo.broadcast_in_dim %2, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %4 = stablehlo.broadcast_in_dim %2, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %5 = stablehlo.add %3, %4 : tensor<2x64xf32>
+-  // CHECK-NEXT: return %5 : tensor<2x64xf32>
+-  %0 = stablehlo.constant dense<0.0> : tensor<32xf32>
+-  %1 = stablehlo.dot %0, %0 : (tensor<32xf32>, tensor<32xf32>) -> tensor<f32>
+-  %2 = stablehlo.broadcast_in_dim %1, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  %3 = stablehlo.add %2, %2 : tensor<2x64xf32>
+-  return %3 : tensor<2x64xf32>
+-}
+-
+-// CHECK-LABEL: func @does_not_split_broadcast_on_scalar_constant_diamond
+-func.func @does_not_split_broadcast_on_scalar_constant_diamond() -> tensor<2x64xf32> {
+-  // CHECK-NEXT: %0 = sdy.constant dense<0.000000e+00> : tensor<f32>
+-  // CHECK-NEXT: %1 = stablehlo.broadcast_in_dim %0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %2 = stablehlo.negate %1 : tensor<2x64xf32>
+-  // CHECK-NEXT: %3 = stablehlo.abs %1 : tensor<2x64xf32>
+-  // CHECK-NEXT: %4 = stablehlo.multiply %2, %3 : tensor<2x64xf32>
+-  // CHECK-NEXT: return %4 : tensor<2x64xf32>
+-  %0 = stablehlo.constant dense<0.0> : tensor<f32>
+-  %1 = stablehlo.broadcast_in_dim %0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  %2 = stablehlo.negate %1 : tensor<2x64xf32>
+-  %3 = stablehlo.abs %1 : tensor<2x64xf32>
+-  %4 = stablehlo.multiply %2, %3 : tensor<2x64xf32>
+-  return %4 : tensor<2x64xf32>
+-}
+-
+-// CHECK-LABEL: func @splits_broadcast_on_scalar_constant_non_diamond
+-func.func @splits_broadcast_on_scalar_constant_non_diamond() -> (tensor<2x64xf32>, tensor<2x64xf32>) {
+-  // CHECK-NEXT: %0 = sdy.constant dense<0.000000e+00> : tensor<f32>
+-  // CHECK-NEXT: %1 = stablehlo.broadcast_in_dim %0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %2 = stablehlo.broadcast_in_dim %0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %3 = stablehlo.negate %2 : tensor<2x64xf32>
+-  // CHECK-NEXT: %4 = stablehlo.abs %1 : tensor<2x64xf32>
+-  // CHECK-NEXT: %5 = stablehlo.abs %2 : tensor<2x64xf32>
+-  // CHECK-NEXT: %6 = stablehlo.multiply %3, %5 : tensor<2x64xf32>
+-  // CHECK-NEXT: return %4, %6 : tensor<2x64xf32>, tensor<2x64xf32>
+-  %0 = stablehlo.constant dense<0.0> : tensor<f32>
+-  %1 = stablehlo.broadcast_in_dim %0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  %2 = stablehlo.negate %1 : tensor<2x64xf32>
+-  %3 = stablehlo.abs %1 : tensor<2x64xf32>
+-  %4 = stablehlo.multiply %2, %3 : tensor<2x64xf32>
+-  return %3, %4 : tensor<2x64xf32>, tensor<2x64xf32>
+-}
+-
+-// CHECK-LABEL: func @splits_broadcast_on_scalar_constant_diamond_also_used_outside_diamond
+-func.func @splits_broadcast_on_scalar_constant_diamond_also_used_outside_diamond() -> (tensor<2x64xf32>, tensor<2x64xf32>) {
+-  // CHECK-NEXT: %0 = sdy.constant dense<0.000000e+00> : tensor<f32>
+-  // CHECK-NEXT: %1 = stablehlo.broadcast_in_dim %0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %2 = stablehlo.broadcast_in_dim %0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %3 = stablehlo.negate %2 : tensor<2x64xf32>
+-  // CHECK-NEXT: %4 = stablehlo.abs %2 : tensor<2x64xf32>
+-  // CHECK-NEXT: %5 = stablehlo.multiply %3, %4 : tensor<2x64xf32>
+-  // CHECK-NEXT: return %1, %5 : tensor<2x64xf32>, tensor<2x64xf32>
+-  %0 = stablehlo.constant dense<0.0> : tensor<f32>
+-  %1 = stablehlo.broadcast_in_dim %0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  %2 = stablehlo.negate %1 : tensor<2x64xf32>
+-  %3 = stablehlo.abs %1 : tensor<2x64xf32>
+-  %4 = stablehlo.multiply %2, %3 : tensor<2x64xf32>
+-  return %1, %4 : tensor<2x64xf32>, tensor<2x64xf32>
+-}
+-
+-// CHECK-LABEL: func @splits_broadcast_on_non_scalar_constant
+-func.func @splits_broadcast_on_non_scalar_constant() -> (tensor<2x64xf32>, tensor<2x64xf32>) {
+-  // CHECK-NEXT: %0 = sdy.constant dense<0.000000e+00> : tensor<2xf32>
+-  // CHECK-NEXT: %1 = sdy.constant dense<0.000000e+00> : tensor<2xf32>
+-  // CHECK-NEXT: %2 = stablehlo.broadcast_in_dim %0, dims = [0] : (tensor<2xf32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %3 = stablehlo.broadcast_in_dim %1, dims = [0] : (tensor<2xf32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %4 = stablehlo.negate %3 : tensor<2x64xf32>
+-  // CHECK-NEXT: %5 = stablehlo.abs %3 : tensor<2x64xf32>
+-  // CHECK-NEXT: %6 = stablehlo.multiply %4, %5 : tensor<2x64xf32>
+-  // CHECK-NEXT: return %2, %6 : tensor<2x64xf32>, tensor<2x64xf32>
+-  %0 = stablehlo.constant dense<0.0> : tensor<2xf32>
+-  %1 = stablehlo.broadcast_in_dim %0, dims = [0] : (tensor<2xf32>) -> tensor<2x64xf32>
+-  %2 = stablehlo.negate %1 : tensor<2x64xf32>
+-  %3 = stablehlo.abs %1 : tensor<2x64xf32>
+-  %4 = stablehlo.multiply %2, %3 : tensor<2x64xf32>
+-  return %1, %4 : tensor<2x64xf32>, tensor<2x64xf32>
+-}
+-
+-// CHECK-LABEL: func @broadcast_on_scalar_constant_propagates_constant_expansion
+-func.func @broadcast_on_scalar_constant_propagates_constant_expansion() -> (tensor<2x64xf32>, tensor<2x64xf32>) {
+-  // CHECK-NEXT: %0 = sdy.constant dense<0.000000e+00> : tensor<f32>
+-  // CHECK-NEXT: %1 = stablehlo.broadcast_in_dim %0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %2 = stablehlo.broadcast_in_dim %0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %3 = stablehlo.negate %1 : tensor<2x64xf32>
+-  // CHECK-NEXT: %4 = stablehlo.negate %2 : tensor<2x64xf32>
+-  // CHECK-NEXT: %5 = stablehlo.add %1, %3 : tensor<2x64xf32>
+-  // CHECK-NEXT: %6 = stablehlo.add %2, %4 : tensor<2x64xf32>
+-  // CHECK-NEXT: return %5, %6 : tensor<2x64xf32>, tensor<2x64xf32>
+-  %0 = stablehlo.constant dense<0.0> : tensor<f32>
+-  %1 = stablehlo.broadcast_in_dim %0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  %2 = stablehlo.negate %1 : tensor<2x64xf32>
+-  %3 = stablehlo.add %1, %2 : tensor<2x64xf32>
+-  return %3, %3 : tensor<2x64xf32>, tensor<2x64xf32>
+-}
+-
+-// CHECK-LABEL: func @broadcast_on_scalar_non_constant_does_not_propagate_constant_expansion
+-func.func @broadcast_on_scalar_non_constant_does_not_propagate_constant_expansion(%arg0: tensor<f32>) -> (tensor<2x64xf32>, tensor<2x64xf32>) {
+-  // CHECK-NEXT: %0 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %1 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  // CHECK-NEXT: %2 = stablehlo.negate %0 : tensor<2x64xf32>
+-  // CHECK-NEXT: %3 = stablehlo.add %1, %2 : tensor<2x64xf32>
+-  // CHECK-NEXT: return %3, %3 : tensor<2x64xf32>, tensor<2x64xf32>
+-  %0 = stablehlo.broadcast_in_dim %arg0, dims = [] : (tensor<f32>) -> tensor<2x64xf32>
+-  %1 = stablehlo.negate %0 : tensor<2x64xf32>
+-  %2 = stablehlo.add %0, %1 : tensor<2x64xf32>
+-  return %2, %2 : tensor<2x64xf32>, tensor<2x64xf32>
+-}
+diff --git a/shardy/dialect/sdy/transforms/import/test/constant_splitter.mlir b/shardy/dialect/sdy/transforms/import/test/constant_splitter.mlir
+new file mode 100644
+index 0000000..1eb2e17
+--- /dev/null
++++ b/shardy/dialect/sdy/transforms/import/test/constant_splitter.mlir
+@@ -0,0 +1,214 @@
++// RUN: sdy_opt %s -sdy-constant-splitter 2>&1 | FileCheck %s
++
++// CHECK-LABEL: func @constant_with_unregistered_attr
++func.func @constant_with_unregistered_attr() -> tensor<8x16xf32> {
++  // CHECK-NEXT: %[[CONST:.*]] = sdy.constant {foo} dense<1.000000e+00>
++  // CHECK-NEXT: return %[[CONST]]
++  %0 = stablehlo.constant {foo} dense<1.000000e+00> : tensor<8x16xf32>
++  return %0 : tensor<8x16xf32>
++}
++
++// CHECK-LABEL: func @func_arg_is_not_constant
++func.func @func_arg_is_not_constant(%arg0: tensor<8x16xf32>, %arg1: tensor<16x16xf32>) -> (tensor<8x16xf32>, tensor<8x16xf32>) {
++  // CHECK-NEXT: %[[CONST:.*]] = sdy.constant dense<1.000000e+00>
++  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %arg0, %[[CONST]]
++  // CHECK-NEXT: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %[[ADD]], %arg1
++  // CHECK-NEXT: return %[[ADD]], %[[DOT_GENERAL]]
++  %0 = stablehlo.constant dense<1.000000e+00> : tensor<8x16xf32>
++  %1 = stablehlo.add %arg0, %0 : tensor<8x16xf32>
++  %2 = stablehlo.dot_general %1, %arg1, contracting_dims = [1] x [0] : (tensor<8x16xf32>, tensor<16x16xf32>) -> tensor<8x16xf32>
++  return %1, %2 : tensor<8x16xf32>, tensor<8x16xf32>
++}
++
++// CHECK-LABEL: func @constant_multiple_users
++func.func @constant_multiple_users(%arg0: tensor<16x16xf32>) -> (tensor<8x16xf32>, tensor<8x16xf32>) {
++  // CHECK-NEXT: %[[CONST_0:.*]] = sdy.constant dense<1.000000e+00>
++  // CHECK-NEXT: %[[CONST_1:.*]] = sdy.constant dense<1.000000e+00>
++  // CHECK-NEXT: %[[CONST_2:.*]] = sdy.constant dense<1.000000e+00>
++  // CHECK-NEXT: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %[[CONST_0]], %arg0
++  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[CONST_1]], %[[DOT_GENERAL]]
++  // CHECK-NEXT: return %[[CONST_2]], %[[ADD]]
++  %0 = stablehlo.constant dense<1.000000e+00> : tensor<8x16xf32>
++  %1 = stablehlo.dot_general %0, %arg0, contracting_dims = [1] x [0] : (tensor<8x16xf32>, tensor<16x16xf32>) -> tensor<8x16xf32>
++  %2 = stablehlo.add %0, %1 : tensor<8x16xf32>
++  return %0, %2 : tensor<8x16xf32>, tensor<8x16xf32>
++}
++
++// CHECK-LABEL: func @constant_sub_computation_multiple_users
++func.func @constant_sub_computation_multiple_users(%arg0: tensor<5x8xi32>) -> (tensor<4x5xi32>, tensor<4x8xi32>) {
++  // CHECK-NEXT: %[[IOTA_0:.*]] = stablehlo.iota dim = 0
++  // CHECK-NEXT: %[[IOTA_1:.*]] = stablehlo.iota dim = 0
++  // CHECK-NEXT: %[[CONST_0:.*]] = sdy.constant dense<2>
++  // CHECK-NEXT: %[[CONST_1:.*]] = sdy.constant dense<2>
++  // CHECK-NEXT: %[[ADD_0:.*]] = stablehlo.add %[[IOTA_0]], %[[IOTA_0]]
++  // CHECK-NEXT: %[[ADD_1:.*]] = stablehlo.add %[[IOTA_1]], %[[IOTA_1]]
++  // CHECK-NEXT: %[[MAX_0:.*]] = stablehlo.maximum %[[ADD_0]], %[[CONST_0]]
++  // CHECK-NEXT: %[[MAX_1:.*]] = stablehlo.maximum %[[ADD_1]], %[[CONST_1]]
++  // CHECK-NEXT: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %[[MAX_0]], %arg0
++  // CHECK-NEXT: return %[[MAX_1]], %[[DOT_GENERAL]]
++  %0 = stablehlo.iota dim = 0 : tensor<4x5xi32>
++  %1 = stablehlo.constant dense<2> : tensor<4x5xi32>
++  %2 = stablehlo.add %0, %0 : tensor<4x5xi32>
++  %3 = stablehlo.maximum %2, %1 : tensor<4x5xi32>
++  %4 = stablehlo.dot_general %3, %arg0, contracting_dims = [1] x [0] : (tensor<4x5xi32>, tensor<5x8xi32>) -> tensor<4x8xi32>
++  return %3, %4 : tensor<4x5xi32>, tensor<4x8xi32>
++}
++
++// CHECK-LABEL: func @constant_multiple_uses_by_same_op
++func.func @constant_multiple_uses_by_same_op() -> (tensor<8x16xf32>, tensor<8x8xf32>) {
++  // CHECK-NEXT: %[[CONST_0:.*]] = sdy.constant dense<1.000000e+00>
++  // CHECK-NEXT: %[[CONST_1:.*]] = sdy.constant dense<1.000000e+00>
++  // CHECK-NEXT: %[[CONST_2:.*]] = sdy.constant dense<1.000000e+00>
++  // CHECK-NEXT: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %[[CONST_0]], %[[CONST_1]]
++  // CHECK-NEXT: return %[[CONST_2]], %[[DOT_GENERAL]]
++  %0 = stablehlo.constant dense<1.000000e+00> : tensor<8x16xf32>
++  %1 = stablehlo.dot_general %0, %0, contracting_dims = [1] x [1] : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x8xf32>
++  return %0, %1 : tensor<8x16xf32>, tensor<8x8xf32>
++}
++
++// CHECK-LABEL: func @non_constant_broadcast_multiple_users
++func.func @non_constant_broadcast_multiple_users(%arg0: tensor<4x5xf32>, %arg1: tensor<5xf32>) -> (tensor<5x8xf32>, tensor<4x8xf32>) {
++  // CHECK-NEXT: %[[BROADCAST:.*]] = stablehlo.broadcast_in_dim %arg1
++  // CHECK-NEXT: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %arg0, %[[BROADCAST]]
++  // CHECK-NEXT: return %[[BROADCAST]], %[[DOT_GENERAL]]
++  %0 = stablehlo.broadcast_in_dim %arg1, dims = [0] : (tensor<5xf32>) -> tensor<5x8xf32>
++  %1 = stablehlo.dot_general %arg0, %0, contracting_dims = [1] x [0] : (tensor<4x5xf32>, tensor<5x8xf32>) -> tensor<4x8xf32>
++  return %0, %1 : tensor<5x8xf32>, tensor<4x8xf32>
++}
++
++// CHECK-LABEL: func @constant_broadcast_multiple_users
++func.func @constant_broadcast_multiple_users(%arg0: tensor<5x8xi32>) -> (tensor<4x5xi32>, tensor<4x8xi32>) {
++  // CHECK-NEXT: %[[IOTA_0:.*]] = stablehlo.iota dim = 0
++  // CHECK-NEXT: %[[IOTA_1:.*]] = stablehlo.iota dim = 0
++  // CHECK-NEXT: %[[ADD_0:.*]] = stablehlo.add %[[IOTA_0]], %[[IOTA_0]]
++  // CHECK-NEXT: %[[ADD_1:.*]] = stablehlo.add %[[IOTA_1]], %[[IOTA_1]]
++  // CHECK-NEXT: %[[BROADCAST_0:.*]] = stablehlo.broadcast_in_dim %[[ADD_0]]
++  // CHECK-NEXT: %[[BROADCAST_1:.*]] = stablehlo.broadcast_in_dim %[[ADD_1]]
++  // CHECK-NEXT: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %[[BROADCAST_0]], %arg0
++  // CHECK-NEXT: return %[[BROADCAST_1]], %[[DOT_GENERAL]]
++  %0 = stablehlo.iota dim = 0 : tensor<5xi32>
++  %1 = stablehlo.add %0, %0 : tensor<5xi32>
++  %2 = stablehlo.broadcast_in_dim %1, dims = [1] : (tensor<5xi32>) -> tensor<4x5xi32>
++  %3 = stablehlo.dot_general %2, %arg0, contracting_dims = [1] x [0] : (tensor<4x5xi32>, tensor<5x8xi32>) -> tensor<4x8xi32>
++  return %2, %3 : tensor<4x5xi32>, tensor<4x8xi32>
++}
++
++// CHECK-LABEL: func @multiple_broadcasts_using_the_same_const_sub_computation
++func.func @multiple_broadcasts_using_the_same_const_sub_computation(%arg0: tensor<5x8xi32>) -> (tensor<3x5xi32>, tensor<2x4xi32>) {
++  // CHECK-NEXT: %[[IOTA_0:.*]] = stablehlo.iota dim = 0
++  // CHECK-NEXT: %[[IOTA_1:.*]] = stablehlo.iota dim = 0
++  // CHECK-NEXT: %[[IOTA_2:.*]] = stablehlo.iota dim = 0
++  // CHECK-NEXT: %[[ADD_0:.*]] = stablehlo.add %[[IOTA_0]], %[[IOTA_0]]
++  // CHECK-NEXT: %[[ADD_1:.*]] = stablehlo.add %[[IOTA_1]], %[[IOTA_1]]
++  // CHECK-NEXT: %[[ADD_2:.*]] = stablehlo.add %[[IOTA_2]], %[[IOTA_2]]
++  // CHECK-NEXT: %[[BROADCAST_0:.*]] = stablehlo.broadcast_in_dim %[[ADD_0]], dims = [1] : (tensor<5xi32>) -> tensor<2x5xi32>
++  // CHECK-NEXT: %[[BROADCAST_1:.*]] = stablehlo.broadcast_in_dim %[[ADD_2]], dims = [1] : (tensor<5xi32>) -> tensor<3x5xi32>
++  // CHECK-NEXT: %[[BROADCAST_2:.*]] = stablehlo.broadcast_in_dim %[[ADD_1]], dims = [0] : (tensor<5xi32>) -> tensor<5x4xi32>
++  // CHECK-NEXT: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %[[BROADCAST_0]], %[[BROADCAST_2]]
++  // CHECK-NEXT: return %[[BROADCAST_1]], %[[DOT_GENERAL]]
++  %0 = stablehlo.iota dim = 0 : tensor<5xi32>
++  %1 = stablehlo.add %0, %0 : tensor<5xi32>
++  %2 = stablehlo.broadcast_in_dim %1, dims = [1] : (tensor<5xi32>) -> tensor<2x5xi32>
++  %3 = stablehlo.broadcast_in_dim %1, dims = [1] : (tensor<5xi32>) -> tensor<3x5xi32>
++  %4 = stablehlo.broadcast_in_dim %1, dims = [0] : (tensor<5xi32>) -> tensor<5x4xi32>
++  %5 = stablehlo.dot_general %2, %4, contracting_dims = [1] x [0] : (tensor<2x5xi32>, tensor<5x4xi32>) -> tensor<2x4xi32>
++  return %3, %5 : tensor<3x5xi32>, tensor<2x4xi32>
++}
++
++// CHECK-LABEL: func @constant_slice_multiple_users
++func.func @constant_slice_multiple_users(%arg0: tensor<8xi32>) -> (tensor<8xi32>, tensor<8xi32>) {
++  // CHECK-NEXT: %[[IOTA_0:.*]] = stablehlo.iota dim = 0
++  // CHECK-NEXT: %[[IOTA_1:.*]] = stablehlo.iota dim = 0
++  // CHECK-NEXT: %[[SLICE_0:.*]] = stablehlo.slice %[[IOTA_0]]
++  // CHECK-NEXT: %[[SLICE_1:.*]] = stablehlo.slice %[[IOTA_1]]
++  // CHECK-NEXT: %[[SLICE_2:.*]] = stablehlo.slice %[[IOTA_0]]
++  // CHECK-NEXT: %[[SLICE_3:.*]] = stablehlo.slice %[[IOTA_1]]
++  // CHECK-NEXT: %[[ADD_0:.*]] = stablehlo.add %[[SLICE_0]], %[[SLICE_2]]
++  // CHECK-NEXT: %[[ADD_1:.*]] = stablehlo.add %[[SLICE_1]], %[[SLICE_3]]
++  // CHECK-NEXT: %[[ADD_2:.*]] = stablehlo.add %[[ADD_0]], %arg0
++  // CHECK-NEXT: return %[[ADD_1]], %[[ADD_2]]
++  %0 = stablehlo.iota dim = 0 : tensor<10xi32>
++  %1 = stablehlo.slice %0 [0:8]: (tensor<10xi32>) -> tensor<8xi32>
++  %2 = stablehlo.slice %0 [2:10]: (tensor<10xi32>) -> tensor<8xi32>
++  %3 = stablehlo.add %1, %2 : tensor<8xi32>
++  %4 = stablehlo.add %3, %arg0 : tensor<8xi32>
++  return %3, %4 : tensor<8xi32>, tensor<8xi32>
++}
++
++// CHECK-LABEL: func @splits_parts_of_const_sub_computation
++func.func @splits_parts_of_const_sub_computation(%arg0: tensor<5x8xi32>) -> (tensor<4x5xi32>, tensor<4x5xi32>, tensor<4x8xi32>) {
++  // CHECK-NEXT: %[[IOTA_0:.*]] = stablehlo.iota dim = 0
++  // CHECK-NEXT: %[[IOTA_1:.*]] = stablehlo.iota dim = 0
++  // CHECK-NEXT: %[[IOTA_2:.*]] = stablehlo.iota dim = 0
++  // CHECK-NEXT: %[[CONST:.*]] = sdy.constant dense<2>
++  // CHECK-NEXT: %[[ADD_0:.*]] = stablehlo.add %[[IOTA_0]], %[[IOTA_0]]
++  // CHECK-NEXT: %[[ADD_1:.*]] = stablehlo.add %[[IOTA_2]], %[[IOTA_2]]
++  // CHECK-NEXT: %[[MAX:.*]] = stablehlo.maximum %[[ADD_0]], %[[CONST]]
++  // CHECK-NEXT: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %[[MAX]], %arg0
++  // CHECK-NEXT: return %[[IOTA_1]], %[[ADD_1]], %[[DOT_GENERAL]]
++  %0 = stablehlo.iota dim = 0 : tensor<4x5xi32>
++  %1 = stablehlo.constant dense<2> : tensor<4x5xi32>
++  %2 = stablehlo.add %0, %0 : tensor<4x5xi32>
++  %3 = stablehlo.maximum %2, %1 : tensor<4x5xi32>
++  %4 = stablehlo.dot_general %3, %arg0, contracting_dims = [1] x [0] : (tensor<4x5xi32>, tensor<5x8xi32>) -> tensor<4x8xi32>
++  return %0, %2, %4 : tensor<4x5xi32>, tensor<4x5xi32>, tensor<4x8xi32>
++}
++
++// CHECK-LABEL: func @splits_sdy_constants
++func.func @splits_sdy_constants(%arg0: tensor<16x16xf32>) -> (tensor<8x16xf32>, tensor<8x16xf32>) {
++  // CHECK-NEXT: %[[CONST_0:.*]] = sdy.constant dense<1.000000e+00>
++  // CHECK-NEXT: %[[CONST_1:.*]] = sdy.constant dense<1.000000e+00>
++  // CHECK-NEXT: %[[CONST_2:.*]] = sdy.constant dense<1.000000e+00>
++  // CHECK-NEXT: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %[[CONST_0]], %arg0
++  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[CONST_1]], %[[DOT_GENERAL]]
++  // CHECK-NEXT: return %[[CONST_2]], %[[ADD]]
++  %0 = sdy.constant dense<1.000000e+00> : tensor<8x16xf32>
++  %1 = stablehlo.dot_general %0, %arg0, contracting_dims = [1] x [0] : (tensor<8x16xf32>, tensor<16x16xf32>) -> tensor<8x16xf32>
++  %2 = stablehlo.add %0, %1 : tensor<8x16xf32>
++  return %0, %2 : tensor<8x16xf32>, tensor<8x16xf32>
++}
++
++// CHECK-LABEL: func @splits_sharding_groups
++func.func @splits_sharding_groups(%arg0: tensor<16x16xf32>) -> (tensor<8x16xf32>, tensor<8x16xf32>) {
++  // Each intermediate result is included in a distinct sharding group. Post
++  // splitting, we verify that all subcomputation results corresponding to an
++  // original unsplit result are included in the same sharding group.
++  // CHECK-NEXT: %[[CONST_0:.*]] = sdy.constant dense<1.000000e+00>
++  // CHECK-NEXT: sdy.sharding_group %[[CONST_0]] group_id=0
++  // CHECK-NEXT: %[[CONST_1:.*]] = sdy.constant dense<1.000000e+00>
++  // CHECK-NEXT: sdy.sharding_group %[[CONST_1]] group_id=0
++  // CHECK-NEXT: %[[CONST_2:.*]] = sdy.constant dense<1.000000e+00>
++  // CHECK-NEXT: sdy.sharding_group %[[CONST_2]] group_id=0
++  // CHECK-NEXT: %[[DOT_GENERAL:.*]] = stablehlo.dot_general %[[CONST_0]], %arg0
++  // CHECK-NEXT: sdy.sharding_group %[[DOT_GENERAL]] group_id=1
++  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[CONST_1]], %[[DOT_GENERAL]]
++  // CHECK-NEXT: sdy.sharding_group %[[ADD]] group_id=2
++  // CHECK-NEXT: return %[[CONST_2]], %[[ADD]]
++  %0 = stablehlo.constant dense<1.000000e+00> : tensor<8x16xf32>
++  sdy.sharding_group %0 group_id=0 : tensor<8x16xf32>
++  %1 = stablehlo.dot_general %0, %arg0, contracting_dims = [1] x [0] : (tensor<8x16xf32>, tensor<16x16xf32>) -> tensor<8x16xf32>
++  sdy.sharding_group %1 group_id=1 : tensor<8x16xf32>
++  %2 = stablehlo.add %0, %1 : tensor<8x16xf32>
++  sdy.sharding_group %2 group_id=2 : tensor<8x16xf32>
++  return %0, %2 : tensor<8x16xf32>, tensor<8x16xf32>
++}
++
++// CHECK-LABEL: func @splits_const_subexpr_with_sharding_group
++func.func @splits_const_subexpr_with_sharding_group(%arg0: tensor<4x8xi32>) -> (tensor<4x8xi32>, tensor<4x8xi32>) {
++  // CHECK-NEXT: sdy.sharding_group %arg0 group_id=0
++  // CHECK-NEXT: %[[IOTA_0:.*]] = stablehlo.iota dim = 0
++  // CHECK-NEXT: sdy.sharding_group %[[IOTA_0]] group_id=0
++  // CHECK-NEXT: %[[IOTA_1:.*]] = stablehlo.iota dim = 0
++  // CHECK-NEXT: sdy.sharding_group %[[IOTA_1]] group_id=0
++  // CHECK-NEXT: %[[CONST_0:.*]] = sdy.constant dense<2>
++  // CHECK-NEXT: %[[ADD_0:.*]] = stablehlo.add %[[IOTA_0]], %[[IOTA_0]]
++  // CHECK-NEXT: %[[ADD_1:.*]] = stablehlo.add %[[IOTA_1]], %[[IOTA_1]]
++  // CHECK-NEXT: %[[MAX_0:.*]] = stablehlo.maximum %[[ADD_1]], %[[CONST_0]]
++  sdy.sharding_group %arg0 group_id=0 : tensor<4x8xi32>
++  %0 = stablehlo.iota dim = 0 : tensor<4x8xi32>
++  sdy.sharding_group %0 group_id=0 : tensor<4x8xi32>
++  %1 = stablehlo.constant dense<2> : tensor<4x8xi32>
++  %2 = stablehlo.add %0, %0 : tensor<4x8xi32>
++  %3 = stablehlo.maximum %2, %1 : tensor<4x8xi32>
++  return %2, %3 : tensor<4x8xi32>, tensor<4x8xi32>
++}
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 7739f8f..ae0c1b5 100644
+index ae0c1b5..6b6f711 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "a082f665f85b1002ab22af263eeafceca5288657"
--    LLVM_SHA256 = "f8d06115707eb1a450bff52fae3cb98334c6e853a2dd1574ecb679d3559ffdbd"
-+    LLVM_COMMIT = "842377882a3f52e345668751fa6d46ba4f7268d2"
-+    LLVM_SHA256 = "84a3195d2b046cec382c86a2838be597f92dfd69f825b10072c2e6aff9b77e5d"
+-    LLVM_COMMIT = "842377882a3f52e345668751fa6d46ba4f7268d2"
+-    LLVM_SHA256 = "84a3195d2b046cec382c86a2838be597f92dfd69f825b10072c2e6aff9b77e5d"
++    LLVM_COMMIT = "8890706db67384a423773cc921302dd63d950ef5"
++    LLVM_SHA256 = "2afe19cef251a288b97fb5690835926826af09f9ce33690008f1a2ce73fe6e56"
  
      tf_http_archive(
          name = name,
