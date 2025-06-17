@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <initializer_list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,6 +29,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_operand_index.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -46,8 +48,6 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -2972,6 +2972,49 @@ TEST_F(CanShareOperandBufferWithUserTest, FusionCanShareBufferCustomized) {
                               const HloInstruction*, const ShapeIndex&) {
         return fusion->IsLoopFusion();
       });
+
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(operand, {},
+                                                                fusion, {}));
+}
+
+class CustomAliasInfo : public AliasInfo {
+ public:
+  std::optional<bool> MayAlias(const HloInstruction*, const ShapeIndex&,
+                               const HloInstruction* fusion,
+                               const ShapeIndex&) const override {
+    return fusion->IsLoopFusion();
+  }
+};
+
+std::unique_ptr<HloDataflowAnalysis> RunAnalysis(const HloModule& module,
+                                                 const AliasInfo* alias_info) {
+  return HloDataflowAnalysis::Run(module, alias_info, /*ssa_form=*/false,
+                                  /*bitcast_defines_value=*/false)
+      .value();
+}
+
+TEST_F(CanShareOperandBufferWithUserTest,
+       FusionCanShareBufferCustomizedAliasInfo) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
+
+  auto one = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+  auto operand = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(data_shape, one, {}));
+  auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
+      data_shape, HloOpcode::kMultiply, operand, operand));
+  auto two = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR2<float>({{2.0, 2.0}, {2.0, 2.0}})));
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(data_shape, HloOpcode::kAdd, mul, two));
+
+  auto module = CreateNewVerifiedModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  auto fusion = computation->CreateFusionInstruction(
+      {add, two, mul}, HloInstruction::FusionKind::kInput);
+  CustomAliasInfo alias_info;
+  auto dataflow_analysis = RunAnalysis(*module, &alias_info);
 
   EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(operand, {},
                                                                 fusion, {}));

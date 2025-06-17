@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_operand_index.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -112,6 +113,17 @@ HloDataflowAnalysis::HloDataflowAnalysis(
       bitcast_defines_value_(bitcast_defines_value),
       call_graph_(CallGraph::Build(&module)),
       can_share_buffer_(can_share_buffer) {}
+
+HloDataflowAnalysis::HloDataflowAnalysis(
+    const HloModule& module, const AliasInfo* alias_info, bool ssa_form,
+    bool bitcast_defines_value,
+    absl::flat_hash_set<absl::string_view> execution_threads)
+    : module_(module),
+      execution_threads_(std::move(execution_threads)),
+      ssa_form_(ssa_form),
+      bitcast_defines_value_(bitcast_defines_value),
+      call_graph_(CallGraph::Build(&module)),
+      alias_info_(alias_info) {}
 
 bool HloDataflowAnalysis::AreTransitiveUsesElementwiseOrTuple(
     const HloInstruction* inst) {
@@ -1643,28 +1655,44 @@ absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
   auto dataflow_analysis = absl::WrapUnique(
       new HloDataflowAnalysis(module, ssa_form, bitcast_defines_value,
                               can_share_buffer, execution_threads));
+  TF_RETURN_IF_ERROR(dataflow_analysis->RunImpl());
+  return dataflow_analysis;
+}
 
-  TF_RETURN_IF_ERROR(dataflow_analysis->InitializeInstructionValueSets());
-  dataflow_analysis->Propagate();
-  dataflow_analysis->OptimizePhiValues();
+/* static */
+absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
+    const HloModule& module, const AliasInfo* alias_info, bool ssa_form,
+    bool bitcast_defines_value,
+    absl::flat_hash_set<absl::string_view> execution_threads) {
+  VLOG(1) << "HloDataflowAnalysis::Run on module " << module.name();
+  XLA_VLOG_LINES(2, module.ToString());
+
+  auto dataflow_analysis = absl::WrapUnique(new HloDataflowAnalysis(
+      module, alias_info, ssa_form, bitcast_defines_value, execution_threads));
+  TF_RETURN_IF_ERROR(dataflow_analysis->RunImpl());
+  return dataflow_analysis;
+}
+
+absl::Status HloDataflowAnalysis::RunImpl() {
+  TF_RETURN_IF_ERROR(InitializeInstructionValueSets());
+  Propagate();
+  OptimizePhiValues();
 
   // Delete all values marked for deletion.
-  dataflow_analysis->DeleteMarkedValues();
+  DeleteMarkedValues();
 
   // Gather and set all non-definition positions of all values. Value deletion
   // is rare, so just use a vector indexed by Value::Id rather than a map from
   // Value::Id to positions. There should be very few holes in the vector, and
   // lookup is faster.
-  std::vector<std::vector<HloPosition>> value_positions(
-      dataflow_analysis->next_value_id_);
-  for (const HloComputation* computation : module.computations()) {
+  std::vector<std::vector<HloPosition>> value_positions(next_value_id_);
+  for (const HloComputation* computation : module_.computations()) {
     if (!HloInstruction::IsThreadIncluded(computation->execution_thread(),
-                                          execution_threads)) {
+                                          execution_threads_)) {
       continue;
     }
     for (HloInstruction* instruction : computation->instructions()) {
-      for (const auto& pair :
-           dataflow_analysis->GetInstructionValueSet(instruction)) {
+      for (const auto& pair : GetInstructionValueSet(instruction)) {
         const ShapeIndex& index = pair.first;
         const HloValueSet& value_set = pair.second;
         for (const HloValue* value : value_set.values()) {
@@ -1676,24 +1704,24 @@ absl::StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
       }
     }
   }
-  for (auto& pair : dataflow_analysis->values_) {
+  for (auto& pair : values_) {
     HloValue::Id value_id = pair.first;
     HloValue& value = *pair.second;
     value.SetPositions(value_positions[value_id]);
   }
 
   // Construct vector of values.
-  dataflow_analysis->values_vector_.reserve(dataflow_analysis->values_.size());
-  for (const auto& pair : dataflow_analysis->values_) {
-    dataflow_analysis->values_vector_.push_back(pair.second.get());
+  values_vector_.reserve(values_.size());
+  for (const auto& pair : values_) {
+    values_vector_.push_back(pair.second.get());
   }
-  absl::c_sort(dataflow_analysis->values_vector_, HloValue::IdLessThan);
+  absl::c_sort(values_vector_, HloValue::IdLessThan);
 
-  TF_DCHECK_OK(dataflow_analysis->Verify());
+  TF_DCHECK_OK(Verify());
 
-  XLA_VLOG_LINES(1, dataflow_analysis->ToString());
+  XLA_VLOG_LINES(1, ToString());
 
-  return dataflow_analysis;
+  return absl::OkStatus();
 }
 
 absl::Status HloDataflowAnalysis::Verify() const {
@@ -2031,9 +2059,16 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     }
   }
 
+  // TODO(b/424109294): remove this block.
   if (can_share_buffer_ != nullptr) {
     if (std::optional<bool> hint =
             can_share_buffer_(user, operand, user_index)) {
+      return *hint;
+    }
+  }
+  if (alias_info_ != nullptr) {
+    if (std::optional<bool> hint =
+            alias_info_->MayAlias(operand, operand_index, user, user_index)) {
       return *hint;
     }
   }

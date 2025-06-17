@@ -199,6 +199,18 @@ cc_library(
     hdrs = ["hlo_operand_index.h"],
     deps = [
         "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+    ],
+)
+
+cc_library(
+    name = "alias_info",
+    srcs = ["alias_info.cc"],
+    hdrs = ["alias_info.h"],
+    deps = [
+        ":hlo_operand_index",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
     ],
 )
 
@@ -207,6 +219,7 @@ cc_library(
     srcs = ["hlo_dataflow_analysis.cc"],
     hdrs = ["hlo_dataflow_analysis.h"],
     deps = [
+        ":alias_info",
         ":hlo_operand_index",
         "//xla:shape_util",
         "//xla:status_macros",
@@ -239,6 +252,7 @@ xla_cc_test(
     name = "hlo_dataflow_analysis_test",
     srcs = ["hlo_dataflow_analysis_test.cc"],
     deps = [
+        ":alias_info",
         ":hlo_dataflow_analysis",
         ":hlo_operand_index",
         ":hlo_ordering",
@@ -260,8 +274,6 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 

@@ -4,7 +4,6 @@ load("//xla:xla.default.bzl", "xla_cc_test")
 load(
     "//xla/stream_executor:build_defs.bzl",
     "if_cuda_or_rocm_is_configured",
-    "if_gpu_is_configured",
 )
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google")
@@ -130,31 +129,28 @@ cc_library(
 
 cc_library(
     name = "compilation_pipeline",
-    srcs = if_gpu_is_configured(
-        [],
-        ["compilation_pipeline_stub.cc"],
-    ) + if_cuda_is_configured([
+    srcs = if_cuda_is_configured([
         "compilation_pipeline_cuda.cc",
     ]) + if_rocm_is_configured([
         "compilation_pipeline_rocm.cc",
     ]),
     hdrs = ["compilation_pipeline.h"],
+    tags = ["gpu"],
     deps = [
+        "//xla/backends/gpu/codegen/triton/transforms:passes",
+        "//xla/service:hlo_module_config",
+        "//xla/service/gpu:matmul_utils",
+        "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
-        "@llvm-project//mlir:Pass",
-    ] + if_gpu_is_configured([
-        "//xla/backends/gpu/codegen/triton/transforms:passes",
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//mlir:ArithToLLVM",
         "@llvm-project//mlir:ControlFlowToLLVM",
         "@llvm-project//mlir:IndexToLLVM",
+        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SCFToControlFlow",
         "@llvm-project//mlir:Transforms",
-        "//xla/service:hlo_module_config",
-        "//xla/service/gpu:matmul_utils",
-        "//xla/stream_executor:device_description",
         "@triton//:TritonDialects",
         "@triton//:TritonGPUToLLVM",
         "@triton//:TritonGPUTransforms",
@@ -164,7 +160,7 @@ cc_library(
         "@triton//:TritonToTritonGPUPasses",
         "@triton//:TritonTransforms",
         "@triton//:WarpSpecialization",
-    ]) + if_cuda_is_configured([
+    ] + if_cuda_is_configured([
         "//xla/service/gpu/llvm_gpu_backend:nvptx_backend",
         "//xla/service/gpu/llvm_gpu_backend:nvptx_libdevice_path",
         "@triton//third_party/nvidia:NVGPUToLLVM",
@@ -179,12 +175,9 @@ cc_library(
 
 cc_library(
     name = "fusion_emitter",
-    # Using if_cuda_or_rocm_is_configured guard to prevent sycl target build / link errors.
-    srcs = if_cuda_or_rocm_is_configured(
-        ["fusion_emitter.cc"],
-        ["fusion_emitter_stub.cc"],
-    ),
+    srcs = ["fusion_emitter.cc"],
     hdrs = ["fusion_emitter.h"],
+    tags = ["gpu"],
     deps = [
         ":compilation_pipeline",
         ":dot_algorithms",
@@ -275,14 +268,13 @@ cc_library(
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:statusor",
         "@triton//:TritonDialects",
-        "@triton//:TritonTransforms",
-    ] + if_gpu_is_configured([
-        "@triton//:TritonNvidiaGPUTransforms",
         "@triton//:TritonGPUToLLVM",
-        "@triton//:TritonToTritonGPU",
         "@triton//:TritonGPUTransforms",
         "@triton//:TritonLLVMIR",
-    ]) + if_cuda_is_configured([
+        "@triton//:TritonNvidiaGPUTransforms",
+        "@triton//:TritonToTritonGPU",
+        "@triton//:TritonTransforms",
+    ] + if_cuda_is_configured([
         "@triton//third_party/nvidia:NVGPUToLLVM",
         "//xla/service/gpu/llvm_gpu_backend:nvptx_libdevice_path",
         "//xla/service/gpu/llvm_gpu_backend:nvptx_backend",
@@ -297,10 +289,7 @@ cc_library(
 
 cc_library(
     name = "fusion_emitter_legacy_matmul",
-    srcs = if_gpu_is_configured(
-        ["fusion_emitter_legacy_matmul.cc"],
-        ["fusion_emitter_legacy_matmul_stub.cc"],
-    ),
+    srcs = ["fusion_emitter_legacy_matmul.cc"],
     hdrs = ["fusion_emitter_legacy_matmul.h"],
     deps = [
         ":dot_algorithms",
@@ -386,67 +375,10 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "fusion_emitter_stub_for_testing",
-    srcs = [
-        "compilation_pipeline_stub.cc",
-        "fusion_emitter_legacy_matmul_stub.cc",
-        "fusion_emitter_stub.cc",
-    ],
-    hdrs = [
-        "compilation_pipeline.h",
-        "fusion_emitter.h",
-        "fusion_emitter_legacy_matmul.h",
-    ],
-    deps = [
-        "//xla:autotuning_proto_cc",
-        "//xla/backends/gpu/codegen/triton/ir:triton_xla",
-        "//xla/codegen:emitter_loc_op_builder",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/utils:hlo_traversal",
-        "//xla/service:hlo_module_config",
-        "//xla/service/gpu:launch_dimensions",
-        "//xla/service/gpu:matmul_utils",
-        "//xla/service/gpu:triton_fusion_analysis",
-        "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:launch_dim",
-        "//xla/stream_executor/gpu:tma_metadata",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:ir_headers",
-        "@llvm-project//mlir:FunctionInterfaces",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@triton//:TritonDialects",
-    ],
-)
-
-xla_cc_test(
-    name = "fusion_emitter_stub_test",
-    srcs = ["fusion_emitter_stub_test.cc"],
-    deps = [
-        ":fusion_emitter_stub_for_testing",
-        "//xla:literal",
-        "//xla:literal_util",
-        "//xla/codegen:emitter_loc_op_builder",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/utils:hlo_traversal",
-        "//xla/service:hlo_module_config",
-        "//xla/service/gpu/model:tiled_hlo_instruction_or_computation",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-    ],
-)
-
 xla_cc_test(
     name = "fusion_emitter_deviceless_test",
     srcs = ["fusion_emitter_deviceless_test.cc"],
-    tags = ["no_oss"],  # Doesn't pass in OSS when building with the `fusion_emitter_stub`.
+    tags = ["gpu"],
     deps = [
         ":fusion_emitter",
         "//xla:xla_proto_cc",
@@ -473,7 +405,7 @@ xla_cc_test(
 xla_test(
     name = "fusion_emitter_device_legacy_test",
     size = "large",
-    srcs = if_gpu_is_configured(["fusion_emitter_device_legacy_test.cc"]),
+    srcs = ["fusion_emitter_device_legacy_test.cc"],
     # TODO(b/372714955): Fix the memory leak!
     backend_args = if_google(
         {
@@ -529,7 +461,7 @@ xla_test(
 
 xla_test(
     name = "fusion_emitter_device_legacy_port_test",
-    srcs = if_gpu_is_configured(["fusion_emitter_device_legacy_port_test.cc"]),
+    srcs = ["fusion_emitter_device_legacy_port_test.cc"],
     backends = [
         "a100",
         "h100",
@@ -580,7 +512,7 @@ xla_test(
 xla_test(
     name = "fusion_emitter_int4_device_test",
     size = "large",
-    srcs = if_gpu_is_configured(["fusion_emitter_int4_device_test.cc"]),
+    srcs = ["fusion_emitter_int4_device_test.cc"],
     backends = [
         "a100",
         "h100",
@@ -615,7 +547,7 @@ xla_test(
 xla_test(
     name = "fusion_emitter_legacy_int4_device_test",
     size = "large",
-    srcs = if_gpu_is_configured(["fusion_emitter_legacy_int4_device_test.cc"]),
+    srcs = ["fusion_emitter_legacy_int4_device_test.cc"],
     backends = [
         "a100",
         "h100",
@@ -647,7 +579,7 @@ xla_test(
 
 xla_test(
     name = "dot_algorithms_test",
-    srcs = if_gpu_is_configured(["dot_algorithms_test.cc"]),
+    srcs = ["dot_algorithms_test.cc"],
     backend_args = if_google(
         {
             "h100": ["--heap_check="],
@@ -706,7 +638,7 @@ xla_test(
 
 xla_test(
     name = "fusion_emitter_device_test",
-    srcs = if_gpu_is_configured(["fusion_emitter_device_test.cc"]),
+    srcs = ["fusion_emitter_device_test.cc"],
     backends = [
         "a100",
         "h100",
@@ -796,6 +728,7 @@ cc_library(
     testonly = True,
     srcs = ["test_utils.cc"],
     hdrs = ["test_utils.h"],
+    tags = ["gpu"],
     deps = [
         ":fusion_emitter",
         "//xla:shape_util",
@@ -838,7 +771,7 @@ cc_library(
 xla_test(
     name = "fusion_emitter_large_test",
     size = "large",
-    srcs = if_gpu_is_configured(["fusion_emitter_large_test.cc"]),
+    srcs = ["fusion_emitter_large_test.cc"],
     backends = [
         "a100",
         "h100",
@@ -867,7 +800,7 @@ xla_test(
 
 xla_test(
     name = "fusion_emitter_parametrized_test",
-    srcs = if_gpu_is_configured(["fusion_emitter_parametrized_test.cc"]),
+    srcs = ["fusion_emitter_parametrized_test.cc"],
     backends = [
         "a100",
         "h100",
@@ -895,7 +828,7 @@ xla_test(
 
 xla_test(
     name = "fusion_emitter_parametrized_legacy_test",
-    srcs = if_gpu_is_configured(["fusion_emitter_parametrized_legacy_test.cc"]),
+    srcs = ["fusion_emitter_parametrized_legacy_test.cc"],
     backends = [
         "a100",
         "h100",
@@ -960,8 +893,6 @@ xla_cc_test(
     name = "support_test",
     srcs = ["support_test.cc"],
     shard_count = 25,
-    # TODO(b/353912594): this test does not need to run on GPU, but it is broken on CPU in OSS.
-    # Force it to run on GPU temporarily in order to get important OSS coverage.
     tags = ["gpu"],
     deps = [
         ":fusion_emitter",
@@ -991,7 +922,7 @@ xla_cc_test(
 
 xla_test(
     name = "support_legacy_test",
-    srcs = if_gpu_is_configured(["support_legacy_test.cc"]),
+    srcs = ["support_legacy_test.cc"],
     backends = [
         "a100",
         "h100",
