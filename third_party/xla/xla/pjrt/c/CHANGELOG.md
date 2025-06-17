@@ -1,5 +1,10 @@
 # PJRT C API changelog
 
+## 0.70
+
+* Sharding ops may appear directly in the payload (previously they were
+  serialized in `custom_calls`).
+
 ## 0.69
 
 * Implemented PjRtClient::CreateUninitializedBuffer

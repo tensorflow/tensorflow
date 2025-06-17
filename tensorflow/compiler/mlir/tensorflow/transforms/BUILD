@@ -662,6 +662,7 @@ cc_library(
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_portable_api",
         "@stablehlo//:stablehlo_serialization",
+        "@stablehlo//:version",
         "@stablehlo//:vhlo_ops",
     ],
 )
