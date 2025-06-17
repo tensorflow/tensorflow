@@ -1017,7 +1017,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:JITLink",
         "@llvm-project//llvm:Support",
-        "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/profiler/lib:traceme",
