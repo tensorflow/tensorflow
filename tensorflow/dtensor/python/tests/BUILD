@@ -869,6 +869,7 @@ dtensor_test(
         "gpu": 30,
         TPU_V3_DONUT_BACKEND: 20,
     },
+    env = { "TF_NUM_INTEROP_THREADS": "20" },
     deps = [
         ":test_util",
         "//tensorflow/dtensor/python:api",
