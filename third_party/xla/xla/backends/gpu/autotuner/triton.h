@@ -21,11 +21,12 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -34,9 +35,9 @@ namespace gpu {
 
 class TritonBackend : public GpuCodegenBackend {
  public:
-  explicit TritonBackend(const Compiler::TargetConfig* target_config,
+  explicit TritonBackend(stream_executor::StreamExecutor* stream_executor,
                          const DebugOptions* debug_options, Compiler* compiler)
-      : GpuCodegenBackend("Triton", target_config, debug_options, compiler) {}
+      : GpuCodegenBackend("Triton", stream_executor, debug_options, compiler) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(

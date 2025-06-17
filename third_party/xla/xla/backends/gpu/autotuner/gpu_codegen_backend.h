@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -41,10 +42,11 @@ class GpuCodegenBackend : public CodegenBackend {
  public:
   // target_config, debug_options and compiler should outlive the backend.
   GpuCodegenBackend(absl::string_view name,
-             const Compiler::TargetConfig* target_config,
-             const DebugOptions* debug_options, Compiler* compiler)
+                    stream_executor::StreamExecutor* stream_executor,
+                    const DebugOptions* debug_options, Compiler* compiler)
       : name_(name),
-        target_config_(*target_config),
+        stream_executor_(stream_executor),
+        target_config_(Compiler::TargetConfig(stream_executor)),
         debug_options_(*debug_options),
         compiler_(compiler) {}
 
@@ -52,6 +54,9 @@ class GpuCodegenBackend : public CodegenBackend {
 
   const Compiler::TargetConfig& target_config() const { return target_config_; }
   const DebugOptions& debug_options() const { return debug_options_; }
+  stream_executor::StreamExecutor* stream_executor() {
+    return stream_executor_;
+  }
 
   absl::StatusOr<std::unique_ptr<Executable>> Compile(
       const HloInstruction& hlo_instruction,
@@ -66,12 +71,10 @@ class GpuCodegenBackend : public CodegenBackend {
     hlo_module->mutable_config().set_debug_options(debug_options_);
 
     Compiler::CompileOptions options;
-    options.target_config = target_config_;
-
     TF_ASSIGN_OR_RETURN(auto optimized_module,
                         RunHloPasses(std::move(hlo_module), options));
-    return compiler_->RunBackend(std::move(optimized_module),
-                                 /*executor=*/nullptr, options);
+    return compiler_->RunBackend(std::move(optimized_module), stream_executor_,
+                                 options);
   }
 
  private:
@@ -83,7 +86,8 @@ class GpuCodegenBackend : public CodegenBackend {
       const Compiler::CompileOptions& options) = 0;
 
   std::string name_;
-  const Compiler::TargetConfig& target_config_;
+  stream_executor::StreamExecutor* stream_executor_;
+  Compiler::TargetConfig target_config_;
   const DebugOptions& debug_options_;
   // TODO(b/407494653): remove compiler when we don't need to run any HLO passes
   // and the codegen backend can directly produce an executable without a

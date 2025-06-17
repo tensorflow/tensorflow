@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/cublas.h"
 #include "xla/backends/gpu/autotuner/triton.h"
 #include "xla/service/compiler.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 
@@ -30,25 +31,25 @@ namespace gpu {
 
 // TODO: b/407494793 - Add support for ROCM, currently assumes CUDA.
 inline std::vector<std::unique_ptr<CodegenBackend>> GetAllGpuCodegenBackends(
-    const Compiler::TargetConfig* target_config,
+    stream_executor::StreamExecutor* stream_executor,
     const DebugOptions* debug_options, Compiler* compiler) {
   std::vector<std::unique_ptr<CodegenBackend>> backends;
-  backends.push_back(
-      std::make_unique<TritonBackend>(target_config, debug_options, compiler));
-  backends.push_back(std::make_unique<CublasBackend>(
-      target_config, debug_options, compiler));
+  backends.push_back(std::make_unique<TritonBackend>(stream_executor,
+                                                     debug_options, compiler));
+  backends.push_back(std::make_unique<CublasBackend>(stream_executor,
+                                                     debug_options, compiler));
   /*
   TODO(b/407494793): Enable backends as they are ready and verified.
   backends.push_back(std::make_unique<CublasLtBackend>(
-      target_config, debug_options, compiler));
+      stream_executor, debug_options, compiler));
   backends.push_back(std::make_unique<CudnnBackend>(
-      target_config, debug_options, compiler));
+      stream_executor, debug_options, compiler));
   backends.push_back(std::make_unique<CustomKernelBackend>(
-      target_config, debug_options, compiler));
+      stream_executor, debug_options, compiler));
   */
   /* TODO(b/407494793) : Enable FissionBackend which can rewrite fusions.
   backends.push_back(std::make_unique<FissionBackend>(
-      target_config, debug_options, compiler));
+      stream_executor, debug_options, compiler));
   */
   return backends;
 }

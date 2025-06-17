@@ -34,10 +34,10 @@ namespace gpu {
 // A codegen backend for custom kernels.
 class CustomKernelBackend : public GpuCodegenBackend {
  public:
-  explicit CustomKernelBackend(const Compiler::TargetConfig* target_config,
+  explicit CustomKernelBackend(stream_executor::StreamExecutor* stream_executor,
                                const DebugOptions* debug_options,
                                Compiler* compiler)
-      : GpuCodegenBackend("Cublas", target_config, debug_options, compiler) {}
+      : GpuCodegenBackend("Cublas", stream_executor, debug_options, compiler) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(
