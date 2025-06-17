@@ -1,19 +1,13 @@
 diff --git a/src/common/utils.hpp b/src/common/utils.hpp
-index 6ef5bf3163..ddd285f3fe 100644
+index be34002d19..804f6dbb0f 100644
 --- a/src/common/utils.hpp
 +++ b/src/common/utils.hpp
-@@ -673,11 +673,11 @@ template <typename T>
+@@ -714,7 +714,7 @@ template <typename T>
  struct setting_t {
  private:
      T value_;
 -    bool initialized_;
-+    std::atomic<bool> initialized_ = false;
-
++    std::atomic<bool> initialized_;
+ 
  public:
--    constexpr setting_t() : value_ {}, initialized_ {false} {}
--    constexpr setting_t(const T init) : value_ {init}, initialized_ {false} {}
-+    constexpr setting_t() : value_ {} {}
-+    constexpr setting_t(const T init) : value_ {init} {}
-     bool initialized() { return initialized_; }
-     T get() { return value_; }
-     void set(T new_value) {
+     constexpr setting_t() : value_ {}, initialized_ {false} {}
