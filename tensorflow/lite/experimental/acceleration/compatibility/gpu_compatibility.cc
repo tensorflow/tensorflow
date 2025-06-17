@@ -146,12 +146,6 @@ std::map<std::string, std::string> GPUCompatibilityList::InfosToMap(
   char buffer[128];
   int len = snprintf(buffer, 128 - 1, "%d.%d", gl_info.major_version,
                      gl_info.minor_version);
-
-  if (len >= 0 && len < static_cast<int>(sizeof(buffer))) {
-    buffer[len] = '\0';
-  } else {
-    buffer[sizeof(buffer) - 1] = '\0';
-  }
   variables[kOpenGLESVersion] = std::string(buffer);
   return variables;
 }
