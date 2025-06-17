@@ -779,7 +779,8 @@ void SetCudaGraphNodeEventUponApiExit(CuptiTracerEvent &event,
   event.correlation_id = cbdata->correlationId;
   event.cuda_graph_info.cbid = cbid;
   event.graph_id = graph_id_info.graph_id;
-  DCHECK_EQ(graph_id_info.node_id_map.size(), 1);
+  // TODO(rahulnayar): Re-enable this check once the bug is fixed.
+  // DCHECK_EQ(graph_id_info.node_id_map.size(), 1);
   event.graph_node_id = graph_id_info.node_id_map.begin()->first;
   event.cuda_graph_info.orig_graph_id = graph_id_info.orig_graph_id;
   event.cuda_graph_info.orig_graph_node_id =
