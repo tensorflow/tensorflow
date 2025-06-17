@@ -769,7 +769,7 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
   def embedding_tables(
       self,
   ) -> Dict[str, tf_variables.Variable]:
-    """Returns a dict of embedding tables, keyed by `TableConfig`."""
+    """Returns a dict of embedding tables, keyed by stacked table name."""
     self._maybe_build()
     # Only return the tables and not the slot variables.
     return {
