@@ -66,7 +66,7 @@ absl::StatusOr<bool> CopyFusion::DoCopyFusion(HloComputation* computation) {
       computation->MakeInstructionPostOrder();
 
   for (HloInstruction* hlo : defs_before_uses) {
-    if (HloPredicateIsNotOp<HloOpcode::kFusion>(hlo)) {
+    if (HloPredicateIsNotOp<HloOpcode::kFusion>(hlo) || hlo->IsCustomFusion()) {
       continue;
     }
     std::vector<HloInstruction*> copies;

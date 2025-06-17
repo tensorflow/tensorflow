@@ -550,6 +550,23 @@ TEST_F(CopyFusionTest, CopyFusionTupleAndGetTuple) {
       GmockMatch(m::Tuple(m::Negate(), m::Negate(), m::Copy(), m::Copy())));
 }
 
+TEST_F(CopyFusionTest, CopyFusionShouldSkipCustomFusions) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_computation {
+      param_0 = f32[128,512]{1,0} parameter(0)
+      mul = f32[128,512]{1,0} multiply(param_0, param_0)
+      ROOT neg = f32[128,512]{1,0} negate(mul)
+    }
+
+    ENTRY entry {
+      p0 = f32[128,512]{1,0} parameter(0)
+      fusion = f32[128,512]{1,0} fusion(p0), kind=kCustom, calls=fused_computation
+      ROOT copy = f32[128,512]{1,0} copy(fusion)
+    })"))
+                    .value();
+  EXPECT_FALSE(cf_.Run(module.get()).value());
+}
+
 TEST_F(CopyFusionTest, CopyFusionWithFusionReturningTupleAndOtherUser) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation {
