@@ -434,7 +434,6 @@ common --experimental_repo_remote_exec
 
 # Make Bazel not try to probe the host system for a C++ toolchain.
 build:rbe_base --config=resultstore
-build:rbe_base --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
 build:rbe_base --define=EXECUTOR=remote
 build:rbe_base --jobs=800
 build:rbe_base --remote_executor=grpcs://remotebuildexecution.googleapis.com
@@ -458,11 +457,6 @@ build:rbe_linux --host_linkopt=-lm
 
 build:rbe_linux_cpu --config=rbe_linux
 # Linux cpu and cuda builds share the same toolchain now.
-build:rbe_linux_cpu --host_crosstool_top="@local_config_cuda//crosstool:toolchain"
-build:rbe_linux_cpu --crosstool_top="@local_config_cuda//crosstool:toolchain"
-build:rbe_linux_cpu --extra_toolchains="@local_config_cuda//crosstool:toolchain-linux-x86_64"
-build:rbe_linux_cpu --repo_env=CC="/usr/lib/llvm-18/bin/clang"
-build:rbe_linux_cpu --repo_env=TF_SYSROOT="/dt9"
 build:rbe_linux_cpu --extra_execution_platforms="@ml_build_config_platform//:platform"
 build:rbe_linux_cpu --host_platform="@ml_build_config_platform//:platform"
 build:rbe_linux_cpu --platforms="@ml_build_config_platform//:platform"
@@ -477,6 +471,16 @@ build:rbe_linux_cpu --copt=-Wno-gnu-offsetof-extensions
 build:rbe_linux_cpu --python_path="/usr/bin/python3"
 # These you may need to change for your own GCP project.
 common:rbe_linux_cpu --remote_instance_name=projects/tensorflow-testing/instances/default_instance
+
+# Deprecated RBE config with non-hermetic toolchains.
+build:rbe_linux_cpu_clang_local --config=clang_local
+build:rbe_linux_cpu_clang_local --config=rbe_linux_cpu
+build:rbe_linux_cpu_clang_local --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
+build:rbe_linux_cpu_clang_local --host_crosstool_top="@local_config_cuda//crosstool:toolchain"
+build:rbe_linux_cpu_clang_local --crosstool_top="@local_config_cuda//crosstool:toolchain"
+build:rbe_linux_cpu_clang_local --extra_toolchains="@local_config_cuda//crosstool:toolchain-linux-x86_64"
+build:rbe_linux_cpu_clang_local --repo_env=CC="/usr/lib/llvm-18/bin/clang"
+build:rbe_linux_cpu_clang_local --repo_env=TF_SYSROOT="/dt9"
 
 # Download CUDA/CUDNN redistributions to preserve the repositories cache between
 # CPU and GPU builds.
@@ -498,7 +502,9 @@ build:rbe_linux_cuda_nvcc --config=rbe_linux_cuda
 build:rbe_linux_cuda_nvcc --config=cuda_nvcc
 build:rbe_linux_cuda_nvcc --repo_env TF_NCCL_USE_STUB=1
 
+build:rbe_win_base --config=clang_local
 build:rbe_win_base --config=rbe_base
+build:rbe_win_base --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
 build:rbe_win_base --shell_executable=C:\\tools\\msys64\\usr\\bin\\bash.exe
 build:rbe_win_base --remote_instance_name=projects/tensorflow-testing/instances/windows
 # Don't build the python zip archive in the RBE build.
@@ -514,6 +520,7 @@ build:rbe_windows_x86_cpu_2022 --config=rbe_win_base --config=windows_x86_cpu_20
 # END TF REMOTE BUILD EXECUTION OPTIONS
 
 # TFLite build configs for generic embedded Linux
+build:elinux --config=clang_local
 build:elinux --crosstool_top=@local_config_embedded_arm//:toolchain
 build:elinux --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
 build:elinux_aarch64 --config=elinux
@@ -539,6 +546,7 @@ build:release_macos_base --define=no_nccl_support=true --output_filter=^$
 
 # Ensure release_base is set on mac
 build:release_macos_base --config=cpu_cross
+build:release_macos_base --config=clang_local
 
 # Build configs for macOS x86
 build:release_macos_x86 --config=release_macos_base
@@ -591,11 +599,13 @@ build:tf_public_macos_cache_push --config=tf_public_macos_cache --remote_upload_
 # flags seem to be actually used to specify the execution platform details. It
 # seems it is this way because these flags are old and predate the distinction
 # between host and execution platform.
+build:cross_compile_base --config=clang_local
 build:cross_compile_base --host_cpu=k8
 build:cross_compile_base --host_crosstool_top=//tools/toolchains/cross_compile/cc:cross_compile_toolchain_suite
 build:cross_compile_base --extra_execution_platforms=//tools/toolchains/cross_compile/config:linux_x86_64
 
 build:rbe_cross_compile_base --config=rbe_base
+build:rbe_cross_compile_base --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
 build:rbe_cross_compile_base --remote_instance_name=projects/tensorflow-testing/instances/default_instance
 
 # Test-related settings below this point
