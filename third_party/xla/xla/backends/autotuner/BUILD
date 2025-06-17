@@ -22,7 +22,6 @@ cc_library(
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/service:executable",
-        "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -39,7 +38,6 @@ cc_library(
         ":profiler",
         "//xla/hlo/ir:hlo",
         "//xla/service:executable",
-        "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -66,7 +64,6 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:executable",
         "//xla/service/gpu:backend_configs_cc",
-        "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",

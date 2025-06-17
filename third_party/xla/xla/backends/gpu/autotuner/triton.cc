@@ -55,9 +55,7 @@ namespace gpu {
 using TritonBackendConfig = AutotuneResult::TritonGemmKey;
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
-TritonBackend::GetSupportedConfigs(
-    const HloInstruction& instr,
-    stream_executor::StreamExecutor* stream_executor) {
+TritonBackend::GetSupportedConfigs(const HloInstruction& instr) {
   if (!IsSupported(instr)) {
     return std::vector<std::unique_ptr<BackendConfig>>();
   }

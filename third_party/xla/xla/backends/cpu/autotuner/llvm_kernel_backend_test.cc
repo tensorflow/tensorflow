@@ -87,9 +87,8 @@ TEST_F(LlvmKernelBackendTest, IsSupportedTest) {
         ParseAndReturnVerifiedModule(kLlvmKernelConcatenateHlo));
 
     TF_ASSERT_OK_AND_ASSIGN(
-        auto configs,
-        backend_->GetSupportedConfigs(
-            *module->entry_computation()->root_instruction(), nullptr));
+        auto configs, backend_->GetSupportedConfigs(
+                          *module->entry_computation()->root_instruction()));
 
     EXPECT_FALSE(configs.empty());
   }
@@ -99,9 +98,8 @@ TEST_F(LlvmKernelBackendTest, IsSupportedTest) {
                             ParseAndReturnVerifiedModule(kLlvmKernelHlo));
 
     TF_ASSERT_OK_AND_ASSIGN(
-        auto configs,
-        backend_->GetSupportedConfigs(
-            *module->entry_computation()->root_instruction(), nullptr));
+        auto configs, backend_->GetSupportedConfigs(
+                          *module->entry_computation()->root_instruction()));
 
     EXPECT_TRUE(configs.empty());
   }
@@ -126,10 +124,9 @@ TEST_F(LlvmKernelBackendTest, GetSupportedConfigsTest) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(kLlvmKernelConcatenateHlo));
-  TF_ASSERT_OK_AND_ASSIGN(auto configs,
-                          backend_->GetSupportedConfigs(
-                              *module->entry_computation()->root_instruction(),
-                              /*stream_executor=*/nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto configs, backend_->GetSupportedConfigs(
+                        *module->entry_computation()->root_instruction()));
 
   EXPECT_EQ(configs.size(), 8);
 }
@@ -139,9 +136,8 @@ TEST_F(LlvmKernelBackendTest, CompileSupportedBackends) {
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(kLlvmKernelConcatenateHlo));
   HloInstruction* instruction = module->entry_computation()->root_instruction();
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto configs, backend_->GetSupportedConfigs(*instruction,
-                                                  /*stream_executor=*/nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(auto configs,
+                          backend_->GetSupportedConfigs(*instruction));
   for (auto& config : configs) {
     TF_ASSERT_OK_AND_ASSIGN(auto executable,
                             backend_->Compile(*instruction, *config));
@@ -153,9 +149,8 @@ TEST_F(LlvmKernelBackendTest, EnsureConfigIsApplied) {
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(kLlvmKernelConcatenateHlo));
   HloInstruction* instruction = module->entry_computation()->root_instruction();
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto configs, backend_->GetSupportedConfigs(*instruction,
-                                                  /*stream_executor=*/nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(auto configs,
+                          backend_->GetSupportedConfigs(*instruction));
 
   for (const auto& config : configs) {
     auto llvm_kernel_config =

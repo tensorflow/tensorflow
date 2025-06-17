@@ -129,12 +129,9 @@ TEST_F(CublasLtBackendTest, GetSupportedConfigs) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kCublasLtCustomCallHlo));
 
-  se::StreamExecutor* stream_executor =
-      PlatformUtil::GetDefaultPlatform().value()->ExecutorForDevice(0).value();
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
-          *hlo_module->entry_computation()->root_instruction()->operand(0),
-          stream_executor);
+          *hlo_module->entry_computation()->root_instruction()->operand(0));
   EXPECT_THAT(configs, IsOkAndHolds(testing::SizeIs(testing::Gt(0))));
 }
 
@@ -143,12 +140,9 @@ TEST_F(CublasLtBackendTest,
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kUnsupportedHlo));
 
-  se::StreamExecutor* stream_executor =
-      PlatformUtil::GetDefaultPlatform().value()->ExecutorForDevice(0).value();
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
-          *hlo_module->entry_computation()->root_instruction(),
-          stream_executor);
+          *hlo_module->entry_computation()->root_instruction());
   EXPECT_THAT(configs, IsOkAndHolds(testing::SizeIs(0)));
 }
 

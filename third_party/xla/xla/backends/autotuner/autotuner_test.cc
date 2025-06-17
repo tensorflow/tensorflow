@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -61,10 +60,7 @@ class MockCodegenBackend : public CodegenBackend {
  public:
   MOCK_METHOD(absl::string_view, name, (), (const, override));
   MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>,
-              GetSupportedConfigs,
-              (const HloInstruction& instr,
-               stream_executor::StreamExecutor* stream_executor),
-              (override));
+              GetSupportedConfigs, (const HloInstruction& instr), (override));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<BackendConfig>>, GetDefaultConfig,
               (const HloInstruction& instr), (override));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<Executable>>, Compile,
@@ -97,7 +93,7 @@ absl::StatusOr<std::unique_ptr<Autotuner>> SetupAutotunerWithExpectations(
 
   auto backend = std::make_unique<MockCodegenBackend>();
   EXPECT_CALL(*backend,
-              GetSupportedConfigs(InstructionMatcher(instr_to_autotune), _))
+              GetSupportedConfigs(InstructionMatcher(instr_to_autotune)))
       .WillOnce(Return(std::move(configs)));
   EXPECT_CALL(*backend, Compile(_, _))
       .WillOnce(Return(std::unique_ptr<Executable>()))
@@ -116,7 +112,7 @@ absl::StatusOr<std::unique_ptr<Autotuner>> SetupAutotunerWithExpectations(
 
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::move(backend));
-  return Autotuner::Create(std::move(backends), nullptr, std::move(profiler),
+  return Autotuner::Create(std::move(backends), std::move(profiler),
                            AutotuneConfig());
 }
 
@@ -134,7 +130,7 @@ constexpr absl::string_view kHlo = R"(
 class AutotunerTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(AutotunerTest, NoCodegenBackend) {
-  auto autotuner = Autotuner::Create({}, nullptr, nullptr, AutotuneConfig());
+  auto autotuner = Autotuner::Create({}, nullptr, AutotuneConfig());
   EXPECT_THAT(autotuner, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
@@ -156,7 +152,7 @@ TEST_F(AutotunerTest, AutotuneWithNoValidConfigs) {
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::move(backend));
   TF_ASSERT_OK_AND_ASSIGN(
-      auto autotuner, Autotuner::Create(std::move(backends), nullptr,
+      auto autotuner, Autotuner::Create(std::move(backends),
                                         std::move(profiler), AutotuneConfig()));
   auto dummy_instr = HloInstruction::CreateConstant(LiteralUtil::CreateR0(1));
   EXPECT_THAT(autotuner->Autotune(dummy_instr.get()),
@@ -186,7 +182,7 @@ TEST_F(AutotunerTest, AutotuneAppliesBestConfig) {
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::move(backend));
   TF_ASSERT_OK_AND_ASSIGN(
-      auto autotuner, Autotuner::Create(std::move(backends), nullptr,
+      auto autotuner, Autotuner::Create(std::move(backends),
                                         std::move(profiler), AutotuneConfig()));
   auto dummy_instr = HloInstruction::CreateConstant(LiteralUtil::CreateR0(1));
   EXPECT_THAT(autotuner->Autotune(dummy_instr.get()), IsOk());
@@ -198,8 +194,8 @@ TEST_F(AutotunerTest, AutotuneModuleFindsNoInstructionsToAutotune) {
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::move(backend));
   TF_ASSERT_OK_AND_ASSIGN(
-      auto autotuner, Autotuner::Create(std::move(backends), nullptr, nullptr,
-                                        AutotuneConfig()));
+      auto autotuner,
+      Autotuner::Create(std::move(backends), nullptr, AutotuneConfig()));
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kHlo));

@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/service/executable.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/fingerprint.h"
@@ -51,13 +50,12 @@ tsl::Fprint128 GetFingerprint(const HloInstruction* instr) {
 
 absl::StatusOr<std::unique_ptr<Autotuner>> Autotuner::Create(
     std::vector<std::unique_ptr<CodegenBackend>> codegen_backends,
-    stream_executor::StreamExecutor* stream_executor,
     std::unique_ptr<Profiler> profiler, AutotuneConfig autotune_config) {
   if (codegen_backends.empty()) {
     return absl::InvalidArgumentError("No codegen backends provided");
   }
   return absl::WrapUnique(new Autotuner(std::move(codegen_backends),
-                                        stream_executor, std::move(profiler),
+                                        std::move(profiler),
                                         std::move(autotune_config)));
 }
 
@@ -74,9 +72,8 @@ Autotuner::GetBestConfig(HloInstruction* instr) {
   CodegenBackend* best_codegen_backend = nullptr;
   absl::Duration min_duration = absl::InfiniteDuration();
   for (auto& codegen_backend : codegen_backends_) {
-    TF_ASSIGN_OR_RETURN(
-        std::vector<std::unique_ptr<BackendConfig>> configs,
-        codegen_backend->GetSupportedConfigs(*instr, stream_executor_));
+    TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                        codegen_backend->GetSupportedConfigs(*instr));
     VLOG(1) << "Got " << configs.size()
             << " configs from codegen backend: " << codegen_backend->name();
     std::vector<std::unique_ptr<Executable>> executables;

@@ -96,7 +96,7 @@ absl::Status Autotune(HloModule& module) {
   }
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Autotuner> autotuner,
-                      Autotuner::Create(std::move(backends), stream_executor,
+                      Autotuner::Create(std::move(backends),
                                         std::move(profiler), AutotuneConfig()));
 
   // TODO: b/407494793 - Expand the filter to include more instructions.

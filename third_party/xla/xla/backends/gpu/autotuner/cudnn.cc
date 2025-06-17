@@ -229,18 +229,17 @@ GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
-CudnnBackend::GetSupportedConfigs(
-    const HloInstruction& instr,
-    stream_executor::StreamExecutor* stream_executor) {
-  if (!IsSupportedByCudnn(instr, stream_executor, debug_options())) {
+CudnnBackend::GetSupportedConfigs(const HloInstruction& instr) {
+  if (!IsSupportedByCudnn(instr, stream_executor(), debug_options())) {
     return std::vector<std::unique_ptr<BackendConfig>>();
   }
   if (instr.opcode() == HloOpcode::kFusion) {
-    return GetCudnnFusionConfigs(instr, stream_executor);
+    return GetCudnnFusionConfigs(instr, stream_executor());
   }
   if (instr.opcode() == HloOpcode::kCustomCall) {
     auto custom_call_instr = Cast<HloCustomCallInstruction>(&instr);
-    return GetConvolutionCustomCallConfigs(custom_call_instr, stream_executor);
+    return GetConvolutionCustomCallConfigs(custom_call_instr,
+                                           stream_executor());
   }
 
   return std::vector<std::unique_ptr<BackendConfig>>();

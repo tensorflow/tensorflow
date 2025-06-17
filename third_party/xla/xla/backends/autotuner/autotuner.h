@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/fingerprint.h"
 
 using InstructionFilterFn = absl::FunctionRef<bool(const xla::HloInstruction&)>;
@@ -47,7 +46,6 @@ class Autotuner {
  public:
   static absl::StatusOr<std::unique_ptr<Autotuner>> Create(
       std::vector<std::unique_ptr<CodegenBackend>> codegen_backends,
-      stream_executor::StreamExecutor* stream_executor,
       std::unique_ptr<Profiler> profiler, AutotuneConfig autotune_config);
 
   // Try all supported configs from the registered codegen backends for the
@@ -66,10 +64,8 @@ class Autotuner {
                           tsl::Fprint128Hasher>;
 
   Autotuner(std::vector<std::unique_ptr<CodegenBackend>> codegen_backends,
-            stream_executor::StreamExecutor* stream_executor,
             std::unique_ptr<Profiler> profiler, AutotuneConfig autotune_config)
       : codegen_backends_(std::move(codegen_backends)),
-        stream_executor_(stream_executor),
         profiler_(std::move(profiler)),
         autotune_config_(autotune_config) {}
 
@@ -80,7 +76,6 @@ class Autotuner {
       const HloModule* module, const InstructionFilterFn& should_autotune);
 
   std::vector<std::unique_ptr<CodegenBackend>> codegen_backends_;
-  se::StreamExecutor* stream_executor_;
   std::unique_ptr<Profiler> profiler_;
   AutotuneConfig autotune_config_;
 };

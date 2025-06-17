@@ -50,9 +50,7 @@ class FissionBackend : public GpuCodegenBackend {
         custom_kernel_backend_(stream_executor, debug_options, compiler) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
-  GetSupportedConfigs(
-      const HloInstruction& instr,
-      stream_executor::StreamExecutor* stream_executor) override;
+  GetSupportedConfigs(const HloInstruction& instr) override;
 
   absl::StatusOr<std::unique_ptr<BackendConfig>> GetDefaultConfig(
       const HloInstruction& instr) override;

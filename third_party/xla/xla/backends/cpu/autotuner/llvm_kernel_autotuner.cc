@@ -53,7 +53,6 @@ absl::StatusOr<bool> LlvmKernelAutotuner::Run(
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Autotuner> autotuner,
                       Autotuner::Create(std::move(codegen_backends),
-                                        /*stream_executor=*/nullptr,
                                         std::move(profiler), AutotuneConfig()));
 
   bool hlo_changed = false;

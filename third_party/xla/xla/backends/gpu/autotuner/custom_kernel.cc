@@ -92,15 +92,13 @@ absl::StatusOr<std::vector<CustomKernel>> LoadKernels(
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
-CustomKernelBackend::GetSupportedConfigs(
-    const HloInstruction& instr,
-    stream_executor::StreamExecutor* stream_executor) {
+CustomKernelBackend::GetSupportedConfigs(const HloInstruction& instr) {
   if (!IsSupported(instr)) {
     return std::vector<std::unique_ptr<BackendConfig>>();
   }
   TF_ASSIGN_OR_RETURN(
       std::vector<CustomKernel> kernels,
-      LoadKernels(&instr, stream_executor->GetDeviceDescription()));
+      LoadKernels(&instr, stream_executor()->GetDeviceDescription()));
 
   std::vector<std::unique_ptr<BackendConfig>> configs;
   int num_kernels = kernels.size();

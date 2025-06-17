@@ -124,11 +124,9 @@ TEST_F(CustomKernelBackendTest, CanCreateCublasBackend) {
 TEST_F(CustomKernelBackendTest, GetSupportedConfigsFromCustomKernelFusion) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kCustomKernelFusionHlo));
-  se::StreamExecutor* stream_executor =
-      PlatformUtil::GetDefaultPlatform().value()->ExecutorForDevice(0).value();
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
-          (*module->entry_computation()->root_instruction()), stream_executor);
+          (*module->entry_computation()->root_instruction()));
   EXPECT_THAT(configs, IsOkAndHolds(testing::SizeIs(testing::Gt(0))));
 }
 
@@ -136,11 +134,9 @@ TEST_F(CustomKernelBackendTest,
        GetSupportedConfigsReturnsEmptyVectorForNonCustomKernelFusion) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kTritonFusionHlo));
-  se::StreamExecutor* stream_executor =
-      PlatformUtil::GetDefaultPlatform().value()->ExecutorForDevice(0).value();
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
-          (*module->entry_computation()->root_instruction()), stream_executor);
+          (*module->entry_computation()->root_instruction()));
   EXPECT_THAT(configs, IsOkAndHolds(testing::SizeIs(0)));
 }
 

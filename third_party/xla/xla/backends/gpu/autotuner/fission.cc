@@ -152,8 +152,8 @@ absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> GetCublasConfigs(
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     for (HloInstruction* instruction : computation->instructions()) {
       if (IsLegacyCublasMatmul(*instruction)) {
-        TF_ASSIGN_OR_RETURN(configs, cublas_backend.GetSupportedConfigs(
-                                         *instruction, stream_executor));
+        TF_ASSIGN_OR_RETURN(configs,
+                            cublas_backend.GetSupportedConfigs(*instruction));
         return configs;
       }
     }
@@ -170,8 +170,8 @@ absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> GetCublasLtConfigs(
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     for (HloInstruction* instruction : computation->instructions()) {
       if (IsCublasLtMatmul(*instruction) || IsCublasLtMatmulF8(*instruction)) {
-        TF_ASSIGN_OR_RETURN(configs, cublaslt_backend.GetSupportedConfigs(
-                                         *instruction, stream_executor));
+        TF_ASSIGN_OR_RETURN(configs,
+                            cublaslt_backend.GetSupportedConfigs(*instruction));
         return configs;
       }
     }
@@ -212,9 +212,8 @@ GetCustomKernelConfigs(CustomKernelBackend& custom_kernel_backend,
 
   for (HloComputation* computation : hlo_module->computations()) {
     if (IsCustomKernel(computation)) {
-      TF_ASSIGN_OR_RETURN(
-          configs, custom_kernel_backend.GetSupportedConfigs(
-                       *computation->FusionInstruction(), stream_executor));
+      TF_ASSIGN_OR_RETURN(configs, custom_kernel_backend.GetSupportedConfigs(
+                                       *computation->FusionInstruction()));
     }
   }
 
@@ -222,8 +221,7 @@ GetCustomKernelConfigs(CustomKernelBackend& custom_kernel_backend,
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
-FissionBackend::GetSupportedConfigs(const HloInstruction& instr,
-                                    se::StreamExecutor* stream_executor) {
+FissionBackend::GetSupportedConfigs(const HloInstruction& instr) {
   if (instr.opcode() != HloOpcode::kFusion) {
     return absl::InvalidArgumentError("Not a fusion instruction.");
   }
@@ -242,7 +240,7 @@ FissionBackend::GetSupportedConfigs(const HloInstruction& instr,
     TF_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<BackendConfig>> cublas_configs,
         GetCublasConfigs(cublas_backend_, std::move(cublas_hlo_module),
-                         stream_executor));
+                         stream_executor()));
     configs.insert(configs.end(),
                    std::make_move_iterator(cublas_configs.begin()),
                    std::make_move_iterator(cublas_configs.end()));
@@ -256,7 +254,7 @@ FissionBackend::GetSupportedConfigs(const HloInstruction& instr,
     TF_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<BackendConfig>> cublaslt_configs,
         GetCublasLtConfigs(cublaslt_backend_, std::move(cublaslt_hlo_module),
-                           stream_executor));
+                           stream_executor()));
     configs.insert(configs.end(),
                    std::make_move_iterator(cublaslt_configs.begin()),
                    std::make_move_iterator(cublaslt_configs.end()));
@@ -270,7 +268,7 @@ FissionBackend::GetSupportedConfigs(const HloInstruction& instr,
         std::vector<std::unique_ptr<BackendConfig>> custom_kernel_configs,
         GetCustomKernelConfigs(custom_kernel_backend_,
                                std::move(custom_kernel_hlo_module),
-                               stream_executor));
+                               stream_executor()));
     configs.insert(configs.end(),
                    std::make_move_iterator(custom_kernel_configs.begin()),
                    std::make_move_iterator(custom_kernel_configs.end()));

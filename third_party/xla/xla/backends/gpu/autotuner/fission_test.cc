@@ -87,11 +87,9 @@ TEST_F(FissionBackendTest, CanCreateCublasBackend) {
 TEST_F(FissionBackendTest, GetSupportedConfigsFromCublasCustomCall) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kTritonFusionHlo));
-  se::StreamExecutor* stream_executor =
-      PlatformUtil::GetDefaultPlatform().value()->ExecutorForDevice(0).value();
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
-          (*module->entry_computation()->root_instruction()), stream_executor);
+          (*module->entry_computation()->root_instruction()));
   EXPECT_THAT(configs, IsOkAndHolds(SizeIs(11)));
   // The first config is the cublas config.
   EXPECT_EQ(
@@ -117,11 +115,9 @@ TEST_F(FissionBackendTest, GetSupportedConfigsForUnsupportedInstructionFails) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo));
-  se::StreamExecutor* stream_executor =
-      PlatformUtil::GetDefaultPlatform().value()->ExecutorForDevice(0).value();
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
-          (*module->entry_computation()->root_instruction()), stream_executor);
+          (*module->entry_computation()->root_instruction()));
   EXPECT_THAT(configs.status(), StatusIs(absl::StatusCode::kInvalidArgument));
 }
 

@@ -133,24 +133,18 @@ TEST_F(CudnnBackendTest, CanCreateCublasBackend) {
 TEST_F(CudnnBackendTest, GetSupportedConfigsFromCudnnFusion) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kCudnnFusionHlo));
-  se::StreamExecutor* stream_executor =
-      PlatformUtil::GetDefaultPlatform().value()->ExecutorForDevice(0).value();
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
-          (*hlo_module->entry_computation()->root_instruction()),
-          stream_executor);
+          (*hlo_module->entry_computation()->root_instruction()));
   EXPECT_THAT(configs, IsOkAndHolds(SizeIs(Gt(0))));
 }
 
 TEST_F(CudnnBackendTest, GetSupportedConfigsFromCudnnCustomCall) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kCudnnCustomCallHlo));
-  se::StreamExecutor* stream_executor =
-      PlatformUtil::GetDefaultPlatform().value()->ExecutorForDevice(0).value();
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
-          (*hlo_module->entry_computation()->root_instruction()->operand(0)),
-          stream_executor);
+          (*hlo_module->entry_computation()->root_instruction()->operand(0)));
   EXPECT_THAT(configs, IsOkAndHolds(SizeIs(Gt(0))));
 }
 
@@ -158,12 +152,9 @@ TEST_F(CudnnBackendTest,
        GetSupportedConfigsFromNonCudnnFusionReturnsEmptyVector) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kUnsupportedHlo));
-  se::StreamExecutor* stream_executor =
-      PlatformUtil::GetDefaultPlatform().value()->ExecutorForDevice(0).value();
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
-          (*hlo_module->entry_computation()->root_instruction()),
-          stream_executor);
+          (*hlo_module->entry_computation()->root_instruction()));
   EXPECT_THAT(configs, IsOkAndHolds(SizeIs(0)));
 }
 

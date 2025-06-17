@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/executable.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
@@ -42,8 +41,7 @@ class CodegenBackend {
 
   // Returns all supported configs for the given HLO instruction.
   virtual absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
-  GetSupportedConfigs(const HloInstruction& instr,
-                      stream_executor::StreamExecutor* stream_executor) = 0;
+  GetSupportedConfigs(const HloInstruction& instr) = 0;
 
   // Returns a default config for the given HLO instruction.
   virtual absl::StatusOr<std::unique_ptr<BackendConfig>> GetDefaultConfig(

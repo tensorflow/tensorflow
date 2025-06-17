@@ -53,17 +53,16 @@ namespace se = ::stream_executor;
 using CublasBackendConfig = AutotuneResult::GemmKey;
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
-CublasBackend::GetSupportedConfigs(
-    const HloInstruction& instr,
-    stream_executor::StreamExecutor* stream_executor) {
+CublasBackend::GetSupportedConfigs(const HloInstruction& instr) {
   if (!IsLegacyCublasMatmul(instr)) {
     return std::vector<std::unique_ptr<BackendConfig>>();
   }
 
   std::unique_ptr<se::DeviceMemoryAllocator> allocator =
-      std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor);
-  TF_ASSIGN_OR_RETURN(se::Stream * stream,
-                      allocator->GetStream(stream_executor->device_ordinal()));
+      std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor());
+  TF_ASSIGN_OR_RETURN(
+      se::Stream * stream,
+      allocator->GetStream(stream_executor()->device_ordinal()));
 
   // We use GemmConfig::For with GemmBackendConfig as a fallback because
   // Matmul_utils.cc relies on backend config to determine gemm contracting
@@ -92,7 +91,7 @@ CublasBackend::GetSupportedConfigs(
                                        rz_buffers.input_buffers().at(1),
                                        rz_buffers.output_buffers().at(0)));
 
-  se::blas::BlasSupport* blas = stream_executor->AsBlas();
+  se::blas::BlasSupport* blas = stream_executor()->AsBlas();
   if (blas == nullptr) {
     return absl::InternalError("Failed to getBlas support.");
   }
