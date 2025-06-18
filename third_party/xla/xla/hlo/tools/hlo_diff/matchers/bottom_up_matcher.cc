@@ -247,15 +247,15 @@ void GreedyLimitedCandidatesBottomUpMatcher::Match(
             double dice_sim = DiceSimLimitedSubgraph(
                 left_node, &node, mappings, max_dice_subgraph_size_,
                 min_bfs_distance_, left_.GetNodeCount(), right_.GetNodeCount());
-            double node_attributes_similarity =
-                NodeAttributesSimilarity(left_node, &node);
+            double node_property_similarity =
+                NodePropertySimilarity(left_node, &node);
             double ancestor_similarity = AncestorSubGraphSimilarity(
                 left_node, &node, max_ancestors_to_consider_, min_bfs_distance_,
                 left_.GetNodeCount(), right_.GetNodeCount());
             // We give ancestor similarity a lower weight as its lower signal
             // in comparison to dice similarity and node attributes similarity.
             double similarity = operands_match_similarity +
-                                node_attributes_similarity + dice_sim +
+                                node_property_similarity + dice_sim +
                                 ancestor_similarity / 2;
             if (similarity > max_similarity) {
               max_similarity = similarity;
