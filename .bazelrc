@@ -803,8 +803,8 @@ build:tf_public_macos_cache_push --config=tf_public_macos_cache --remote_upload_
 # PYTHON TESTS run a suite of Python tests intended for verifying that the Python wheel
 # will work properly. These are usually run Nightly or upon Release.
 # CPU WHEEL
-test:linux_cpu_wheel_test_filters --test_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310
-test:linux_cpu_wheel_test_filters --build_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310
+test:linux_cpu_wheel_test_filters --test_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310,-no_oss_py313
+test:linux_cpu_wheel_test_filters --build_tag_filters=-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py38,-no_oss_py39,-no_oss_py310,-no_oss_py313
 test:linux_cpu_wheel_test_filters --test_lang_filters=py --test_size_filters=small,medium
 test:linux_cpu_wheel_test --@local_xla//third_party/py:wheel_dependency=true --config=linux_cpu_wheel_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:prebuilt_wheel_import_api_packages_test_cpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 # CUDA WHEEL
