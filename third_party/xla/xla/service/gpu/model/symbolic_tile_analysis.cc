@@ -307,7 +307,7 @@ absl::StatusOr<IndexingMap> ComputeTileOffsetIndexing(
           << tiled_hlo.ToString();
   IndexingMap tile_offset_indexing = ComposeIndexingMaps(
       output_tile_offset_indexing, tiled_hlo.indexing_map());
-
+  VLOG(4) << "composed map " << ToString(tile_offset_indexing);
   // A symbol in an indexing map means that to produce on element of output, we
   // need to read all elements of input in the symbol range. Since this function
   // computes start of the tile, we need to substitute each symbol with its
@@ -340,10 +340,19 @@ absl::StatusOr<IndexingMap> ComputeTileOffsetIndexing(
           /*numResultDims=*/tile_offset_indexing.GetDimVarsCount(),
           /*numResultSyms=*/tile_offset_indexing.GetRTVarsCount());
 
-  IndexingMap simplified_indexing_map =
-      IndexingMap{simplified_affine_map, tile_offset_indexing.GetDimVars(),
-                  /*range_vars=*/{}, tile_offset_indexing.GetRTVars(),
-                  tile_offset_indexing.GetConstraints()};
+  // TODO(b/419026602): update reduce to not have symbols. After that we might
+  // be able to remove symbol constraints.
+  llvm::DenseMap<mlir::AffineExpr, Interval> updated_constraints;
+  for (const auto& [expr, interval] : tile_offset_indexing.GetConstraints()) {
+    mlir::AffineExpr updated_expr = expr.replaceDimsAndSymbols(
+        /*dimReplacements=*/{},
+        /*symReplacements=*/symbol_lower_bounds);
+    updated_constraints[updated_expr] = interval;
+  }
+
+  IndexingMap simplified_indexing_map = IndexingMap{
+      simplified_affine_map, tile_offset_indexing.GetDimVars(),
+      /*range_vars=*/{}, tile_offset_indexing.GetRTVars(), updated_constraints};
 
   simplified_indexing_map.Simplify();
   simplified_indexing_map.RescaleSymbols();

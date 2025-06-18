@@ -26,6 +26,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -96,6 +98,23 @@ MATCHER_P2(InstructionMapping, instruction, num_tiling_parameters,
   return ExplainMatchResult(instruction, arg.instruction, result_listener) &&
          ExplainMatchResult(num_tiling_parameters, arg.num_tiling_parameters,
                             result_listener);
+}
+
+// Returns a map from parameter number to the tiled instruction corresponding to
+// the parameter. Note that parameters and their indexing are coming from the
+// ENTRY computation not from the fusion.
+absl::flat_hash_map<int64_t, const TiledHloInstruction*> GetParametersTiling(
+    const TiledHloComputation* tiled_hlo_computation) {
+  absl::flat_hash_map<int64_t, const TiledHloInstruction*> result;
+  for (const auto& instruction : tiled_hlo_computation->instructions()) {
+    const HloParameterInstruction* parameter =
+        dynamic_cast<const HloParameterInstruction*>(instruction->hlo());
+    if (!parameter) {
+      continue;
+    }
+    result[parameter->parameter_number()] = instruction;
+  }
+  return result;
 }
 
 // Fake emitter-specific constraints for testing. Requires that the tile size
@@ -1511,6 +1530,67 @@ ENTRY e {
                        /*tile_offsets_indexing=*/R"(
     (pid_0) -> (), domain: pid_0 in [0, 0]
   )"));
+}
+
+TEST_F(SymbolicTileAnalysisTest, AnalyzeReduceOfDynamicSlice) {
+  // Tiling of parameter 0 has a runtime variable and a range variable in the
+  // constraints. Test verifies that constraints are updated along with the
+  // indexing map. Regression test for b/425379905.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+f_add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+triton_softmax {
+  p0 = bf16[1024,512]{1,0} parameter(0)
+  select = s32[] parameter(1)
+  c_0 = s32[] constant(0)
+  dynamic_slice = bf16[256,512]{1,0} dynamic-slice(p0, select, c_0), dynamic_slice_sizes={256,512}
+  convert = f32[256,512] convert(dynamic_slice)
+  bitcast_1 = f32[32,8,8,64] bitcast(convert)
+  c_1 = f32[] constant(0)
+  reduce = f32[32,8,8] reduce(bitcast_1, c_1), dimensions={3}, to_apply=f_add
+  bitcast_2 = bf16[32,8,8] convert(reduce)
+  ROOT broadcast = bf16[1,32,8,8,64] broadcast(bitcast_2), dimensions={1,2,3}
+}
+
+ENTRY e {
+  p0 = bf16[1024,512]{1,0} parameter(0)
+  select = s32[] parameter(1)
+  ROOT triton_softmax = bf16[1,32,8,8,64] fusion(p0,  select), kind=kCustom, calls=triton_softmax,
+    backend_config={"fusion_backend_config":{"kind":"__triton"}}
+}
+)"));
+
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+
+  const HloInstruction* root =
+      module->entry_computation()->root_instruction()->fused_expression_root();
+  ASSERT_TRUE(analysis.has_value());
+  Tiling tiling = Tiling(Tiling::TileMapping({{root, {1, 1, 1, 1, 32}}}));
+  TF_ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
+                          analysis->ComputeTiledHloInstructions(
+                              /*tiling=*/tiling,
+                              /*constraints_are_known_satisfied=*/false,
+                              /*compute_all_tile_offset_indexing_maps=*/true));
+  absl::flat_hash_map<int64_t, const TiledHloInstruction*> parameter_tiling =
+      GetParametersTiling(&tiled_hlo_computation);
+  EXPECT_THAT(*parameter_tiling[0], MatchTiledHloInstruction(
+                                        /*tile_sizes=*/{1, 64},
+                                        /*tile_strides=*/{0, 1},
+                                        /*tile_offsets_indexing=*/R"(
+    (pid_0){rt0} -> (pid_0 floordiv 16 + rt0, ((pid_0 floordiv 2) mod 8) * 64),
+      domain: pid_0 in [0, 4095], rt0 in [0, 768]
+  )"));
+  EXPECT_THAT(*parameter_tiling[1], MatchTiledHloInstruction(
+                                        /*tile_sizes=*/{},
+                                        /*tile_strides=*/{},
+                                        /*tile_offsets_indexing=*/R"(
+    (pid_0) -> (), domain: pid_0 in [0, 4095])"));
 }
 
 TEST_F(SymbolicTileAnalysisTest, AnalyseNestedFusionWithRuntimeVariables) {
