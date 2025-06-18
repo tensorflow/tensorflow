@@ -1089,6 +1089,38 @@ CHECK: ROOT dot
       IsOkAndHolds(true));
 }
 
+TEST_F(NestGemmFusionTest, BitcastAreHoistedDownThroughBinaryOps) {
+  absl::string_view hlo = R"(
+triton_dot {
+  p0 = f32[3,7] parameter(0)
+  p1 = f32[5,7] parameter(1)
+  p2 = f32[15] parameter(2)
+  dot = f32[3,5] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  bitcast = f32[15] bitcast(dot)
+  ROOT add = f32[15] add(bitcast, p2)
+}
+
+ENTRY e {
+  p0 = f32[3,7] parameter(0)
+  p1 = f32[5,7] parameter(1)
+  p2 = f32[15] parameter(2)
+  ROOT result = f32[15] fusion(p0, p1, p2), kind=kCustom, calls=triton_dot,
+    backend_config={"fusion_backend_config": {kind: "__triton_gemm",
+    triton_gemm_config: {"block_m":16,"block_n":16,"block_k":8,
+    "split_k":1,"num_stages":1,"num_warps":1,"num_ctas":1}}}}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
+  EXPECT_THAT(NestGemmFusion(compute_capability_).Run(module.get()),
+              IsOkAndHolds(true));
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  EXPECT_THAT(
+      RunFileCheck(module->ToString(HloPrintOptions::ShortParsable()), R"(
+CHECK: ROOT add = f32[3,5]{1,0} add
+)"),
+      IsOkAndHolds(true));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
