@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/replicate_on_split.h"
 
+#include <gtest/gtest.h>
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_test_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
