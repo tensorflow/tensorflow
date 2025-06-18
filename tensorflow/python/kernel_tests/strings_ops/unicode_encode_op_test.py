@@ -60,15 +60,63 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
         ragged_string_ops.unicode_encode(encoding="UTF-8")  # pylint: disable=no-value-for-parameter,unexpected-keyword-arg
 
   @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
-  def testStrictErrors(self, encoding):
-    test_value = np.array([ord('H'), ord('e'), 0x7FFFFFFF, -1, ord('o'),
-                           0, ord('\b'), 0x1F600,  # valid
-                           0xD83D, 0xDE00,  # invalid, surrogate pair
-                           0xFDD0,  # invalid, non-character
-                           0xFFFE, 0xFFFF,  # invalid, last two in BMP
-                           0x10FFFF,  # invalid, last in plane 16
-                           0x110000],  # invalid, too large
+  def testStrictErrorsValid(self, encoding):
+    test_value = np.array([ord('H'), ord('e'), ord('o'), 0, ord('\b'), 0x1F600],
                           np.int32)
+    expected_value = u"Heo\0\b\U0001f600".encode(encoding)
+    unicode_encode_op = ragged_string_ops.unicode_encode(test_value, encoding,
+                                                         "strict")
+    self.assertAllEqual(unicode_encode_op, expected_value)
+
+  @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
+  def testStrictErrorsNegative(self, encoding):
+    test_value = np.array([-1], np.int32)
+    with self.cached_session() as session:
+      with self.assertRaises(errors.InvalidArgumentError):
+        session.run(
+            ragged_string_ops.unicode_encode(test_value, encoding, "strict"))
+
+  @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
+  def testStrictErrorsTooLarge(self, encoding):
+    test_value = np.array([0x110000], np.int32)
+    with self.cached_session() as session:
+      with self.assertRaises(errors.InvalidArgumentError):
+        session.run(
+            ragged_string_ops.unicode_encode(test_value, encoding, "strict"))
+
+  @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
+  def testStrictErrorsSurrogatePair(self, encoding):
+    test_value = np.array([0xD83D, 0xDE00], np.int32)
+    with self.cached_session() as session:
+      with self.assertRaises(errors.InvalidArgumentError):
+        session.run(
+            ragged_string_ops.unicode_encode(test_value, encoding, "strict"))
+
+  @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
+  def testStrictErrorsNonCharacter(self, encoding):
+    # This should not be an error.
+    # See https://www.unicode.org/versions/corrigendum9.html.
+    test_value = np.array([0xFDD0], np.int32)
+    with self.cached_session() as session:
+      with self.assertRaises(errors.InvalidArgumentError):
+        session.run(
+            ragged_string_ops.unicode_encode(test_value, encoding, "strict"))
+
+  @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
+  def testStrictErrorsLastTwoInBMP(self, encoding):
+    # This should not be an error.
+    # See https://www.unicode.org/versions/corrigendum9.html.
+    test_value = np.array([0xFFFE, 0xFFFF], np.int32)
+    with self.cached_session() as session:
+      with self.assertRaises(errors.InvalidArgumentError):
+        session.run(
+            ragged_string_ops.unicode_encode(test_value, encoding, "strict"))
+
+  @parameterized.parameters("UTF-8", "UTF-16-BE", "UTF-32-BE")
+  def testStrictErrorsLastInPlane16(self, encoding):
+    # This should not be an error.
+    # See https://www.unicode.org/versions/corrigendum9.html.
+    test_value = np.array([0x10FFFF], np.int32)
     with self.cached_session() as session:
       with self.assertRaises(errors.InvalidArgumentError):
         session.run(
@@ -79,16 +127,16 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
   def testIgnoreErrors(self, encoding):
     test_value = np.array([ord('H'), ord('e'), 0x7FFFFFFF, -1, ord('o'),
                            0, ord('\b'), 0x1F600,  # valid
-                           0xD83D, 0xDE00,  # invalid, surrogate pair
-                           0xFDD0,  # invalid, non-character
-                           0xFFFE, 0xFFFF,  # invalid, last two in BMP
-                           0x10FFFF,  # invalid, last in plane 16
-                           0x110000],  # invalid, too large
+                           0xD83D, 0xDE00,  # invalid, surrogate code points
+                           0xFDD0,  # noncharacter
+                           0xFFFE, 0xFFFF,  # last two in BMP
+                           0x10FFFF,  # last in plane 16 = last in Unicode
+                           0x110000],  # invalid, beyond Unicode
                           np.int32)
     # There are two inconsistencies with the output compared to the
     # strict/replace behavior:
     # 1. Surrogate pairs are not rejected, but are combined, then encoded.
-    # 2. U+10FFFF is not ignored even though it is invalid.
+    # 2. noncharacters are not rejected
     expected_value = (
         u"Heo\0\b\U0001F600\U0001F600\ufdd0\ufffe\uffff\U0010ffff"
     ).encode(encoding)
@@ -101,11 +149,11 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
   def testReplaceErrors(self, encoding):
     test_value = np.array([ord('H'), ord('e'), 0x7FFFFFFF, -1, ord('o'),
                            0, ord('\b'), 0x1F600,  # valid
-                           0xD83D, 0xDE00,  # invalid, surrogate pair
-                           0xFDD0,  # invalid, non-character
-                           0xFFFE, 0xFFFF,  # invalid, last two in BMP
-                           0x10FFFF,  # invalid, last in plane 16
-                           0x110000],  # invalid, too large
+                           0xD83D, 0xDE00,  # invalid, surrogate code points
+                           0xFDD0,  # noncharacter
+                           0xFFFE, 0xFFFF,  # last two in BMP
+                           0x10FFFF,  # last in plane 16 = last in Unicode
+                           0x110000],  # invalid, beyond Unicode
                           np.int32)
     expected_value = (
         u"He\ufffd\ufffdo\0\b\U0001F600" + u"\ufffd" * 7).encode(encoding)

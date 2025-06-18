@@ -261,7 +261,7 @@ class UnicodeDecodeTest(test_util.TensorFlowTestCase,
                     [0x80, 0x9F]]),
       dict(
           input=[b"\x00", b"hello", b"==\x01==", b"world",
-                 u"\x80\x9f".encode()],
+                 u"\u0080\u009f".encode()],
           input_encoding="UTF-8",
           replace_control_characters=True,
           replacement_char=0,
@@ -278,19 +278,17 @@ class UnicodeDecodeTest(test_util.TensorFlowTestCase,
                     [0xFFFD, 0xFFFD, 0xFFFD],
                     [0xFFFD, 0xFFFD, 0xFFFD, 0xFFFD, 0xFFFD, 0xFFFD]]),
       dict(
-          # Note that these characters are not considered valid by
-          # `unicode_encode()`, which is inconsistent.
-          input=["\ufdd0".encode(),  # invalid, non-character
-                 "\ufffe\uffff".encode(),  # invalid, last two in BMP
-                 "\U0010ffff".encode(),  # invalid, last in plane 16
-                 b"\xf1\x84\x80\x80"],  # too large
+          input=["\ufdd0".encode(),  # noncharacter
+                 "\ufffe\uffff".encode(),  # last two in BMP
+                 "\U0010ffff".encode(),  # last in plane 16 = last in Unicode
+                 b"\xc0\x80",  # overlong U+0000 encoding
+                 b"\xf4\x90\x80\x80"],  # U+110000, beyond Unicode
           input_encoding="UTF-8",
           expected=[[0xFDD0],
                     [0xFFFE, 0xFFFF],
                     [0x10FFFF],
-                    # This is very strange and bad.  The result has been
-                    # shifted right two bits.
-                    [0x110000 >> 2]]),
+                    [0xFFFD] * 2,
+                    [0xFFFD] * 4]),
   ])  # pyformat: disable
   def testErrorModes(self, expected=None, **args):
     result = ragged_string_ops.unicode_decode(**args)
