@@ -27,7 +27,7 @@
   },
   "gemma3_1b_flax_call_x86_1h1d_scheduled": { # config_id
     "CPU_TIME": {
-      "baseline_ms": 10000,
+      "baseline_ms": 3000,
       "threshold": 0.30 # Allow 30% regression max
     },
     "WALL_TIME": {
