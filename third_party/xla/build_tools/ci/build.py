@@ -494,7 +494,7 @@ Build(
         xla=f"{_GITHUB_WORKSPACE}/openxla/xla",
     ),
     options=_DEFAULT_BAZEL_OPTIONS,
-    repo_env={"HERMETIC_PYTHON_VERSION": "3.10"},
+    repo_env={"HERMETIC_PYTHON_VERSION": "3.11"},
     extra_setup_commands=(["nvidia-smi"],),
 )
 
