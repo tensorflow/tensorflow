@@ -1,4 +1,4 @@
-/* Copyright 2024 The OpenXLA Authors.
+/* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,28 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <linux/limits.h>
-#include <unistd.h>
-
 #include <string>
 
-#include "absl/log/log.h"
 #include "xla/pjrt/plugin/dynamic_registration.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
 
 static constexpr char kMyPluginName[] = "myplugin";
+static constexpr char kMyPluginLibraryEnvName[] = "MYPLUGIN_DYNAMIC_PATH";
 
-[[maybe_unused]] auto setup_test_plugin = []() -> bool {
+[[maybe_unused]] bool set_up_test_env = []() -> bool {
   std::string library_path = tsl::testing::XlaSrcRoot();
   library_path = tsl::io::JoinPath(
       library_path, "pjrt/plugin/example_plugin/pjrt_c_api_myplugin_plugin.so");
 
-  if (tsl::setenv("MYPLUGIN_DYNAMIC_PATH", library_path.c_str(), 1) != 0) {
-    LOG(ERROR) << "Failed to set MYPLUGIN_DYNAMIC_PATH environment variable.";
+  if (tsl::setenv(kMyPluginLibraryEnvName, library_path.c_str(), 1) != 0) {
     return false;
   }
-  REGISTER_DYNAMIC_PJRT_PLUGIN(kMyPluginName, "MYPLUGIN_DYNAMIC_PATH")
+  // This registration is not how a normal dynamic registration would look,
+  // this is only necessary for test code to set up the environment ahead.
+  // Usually the environment variable is set by the OS, but we need to set it
+  // in process here to test the dynamic registration path.
+  REGISTER_DYNAMIC_PJRT_PLUGIN(kMyPluginName, kMyPluginLibraryEnvName);
   return true;
 }();

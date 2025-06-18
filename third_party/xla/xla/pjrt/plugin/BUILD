@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
+load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 # Configuration file for an XLA plugin.
@@ -56,7 +57,21 @@ cc_library(
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "static_registration_test",
+    srcs = ["static_registration_test.cc"],
+    deps = [
+        ":static_registration",
+        "//xla/pjrt/c:pjrt_c_api_hdrs",
+        "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -68,6 +83,44 @@ cc_library(
         "//xla/pjrt:pjrt_api",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
     ],
+)
+
+xla_cc_test(
+    name = "dynamic_registration_test",
+    srcs = ["dynamic_registration_test.cc"],
+    # We must link this statically to prevent issues with symbol resolution between the loaded .so
+    # for the test and the .so file.
+    linkstatic = True,
+    deps = [
+        ":dynamic_registration",
+        ":dynamic_registration_test_helper",
+        "//xla/pjrt:pjrt_c_api_client",
+        "//xla/pjrt:pjrt_client",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:path",
+    ],
+)
+
+cc_library(
+    name = "dynamic_registration_test_helper",
+    testonly = True,
+    srcs = ["dynamic_registration_test_helper.cc"],
+    data = [
+        "//xla/pjrt/plugin/example_plugin:pjrt_c_api_myplugin_plugin.so",
+    ],
+    deps = [
+        ":dynamic_registration",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:test",
+        "@local_tsl//tsl/platform:path",
+    ],
+    alwayslink = 1,
 )

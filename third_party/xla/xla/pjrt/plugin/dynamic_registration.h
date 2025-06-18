@@ -16,11 +16,13 @@ limitations under the License.
 #ifndef XLA_PJRT_PLUGIN_DYNAMIC_REGISTRATION_H_
 #define XLA_PJRT_PLUGIN_DYNAMIC_REGISTRATION_H_
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/pjrt/pjrt_api.h"  // IWYU pragma: keep
 
-bool RegisterDynamicPjrtPlugin(absl::string_view plugin_name,
-                               absl::string_view library_env_name);
+absl::Status RegisterDynamicPjrtPlugin(absl::string_view plugin_name,
+                                       absl::string_view library_env_name);
 
 // Registers a dynamic PJRT plugin.
 //
@@ -35,10 +37,11 @@ bool RegisterDynamicPjrtPlugin(absl::string_view plugin_name,
 //   REGISTER_DYNAMIC_PJRT_PLUGIN("my_plugin", "MY_PJRT_PLUGIN_LIBRARY_PATH");
 //   // this will register a plugin named "my_plugin" that is loaded from the
 //   // path in the environment variable "MY_PJRT_PLUGIN_LIBRARY_PATH".
-#define REGISTER_DYNAMIC_PJRT_PLUGIN(plugin_name, library_env_name)      \
-  [[maybe_unused]] static bool already_registered_##plugin_name =        \
-      [](auto plugin_name) {                                             \
-        return RegisterDynamicPjrtPlugin(plugin_name, library_env_name); \
+#define REGISTER_DYNAMIC_PJRT_PLUGIN(plugin_name, library_env_name)          \
+  [[maybe_unused]] static bool already_registered_##plugin_name =            \
+      [](auto plugin_name) {                                                 \
+        QCHECK_OK(RegisterDynamicPjrtPlugin(plugin_name, library_env_name)); \
+        return true;                                                         \
       }(plugin_name);
 
 #endif  // XLA_PJRT_PLUGIN_DYNAMIC_REGISTRATION_H_
