@@ -85,14 +85,12 @@ CollectiveOpGroupMode GetGroupModeInst(HloInstType* inst) {
 
 }  // namespace
 
-absl::Status RunAllReduce(GpuCollectives* collectives,
-                          ReductionKind reduction_kind,
+absl::Status RunAllReduce(ReductionKind reduction_kind,
                           std::vector<DeviceBufferPair>& buffers,
                           se::Stream& stream, Communicator* comm) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing all-reduce from device ordinal: " << device_ordinal;
-  TF_RETURN_IF_ERROR(
-      MaybeRegisterBuffers(collectives, stream.parent(), buffers, comm));
+  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm));
 
   auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(comm);
   tsl::AsyncValueRef<Communicator::Event> event =
@@ -216,7 +214,6 @@ absl::StatusOr<bool> AllReduceStartThunk::RunCollective(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
-  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
 
   TF_ASSIGN_OR_RETURN(bool use_one_shot_kernel,
                       ShouldUseOneShotAllReduceKernel(
@@ -228,8 +225,8 @@ absl::StatusOr<bool> AllReduceStartThunk::RunCollective(
                    // using nccl.
   }
 
-  TF_RETURN_IF_ERROR(RunAllReduce(collectives, config_.reduction_kind,
-                                  device_buffers, stream, comm_handle.comm));
+  TF_RETURN_IF_ERROR(RunAllReduce(config_.reduction_kind, device_buffers,
+                                  stream, comm_handle.comm));
   return true;
 }
 
@@ -260,22 +257,18 @@ absl::StatusOr<bool> ReduceScatterStartThunk::RunCollective(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
                              config_.config.operand_element_type));
-  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
-  TF_RETURN_IF_ERROR(RunReduceScatter(collectives, config_.reduction_kind,
-                                      device_buffers, stream,
-                                      comm_handle.comm));
+  TF_RETURN_IF_ERROR(RunReduceScatter(config_.reduction_kind, device_buffers,
+                                      stream, comm_handle.comm));
   return true;
 }
 
-absl::Status RunReduceScatter(GpuCollectives* collectives,
-                              ReductionKind reduction_kind,
+absl::Status RunReduceScatter(ReductionKind reduction_kind,
                               std::vector<DeviceBufferPair>& buffers,
                               se::Stream& stream, Communicator* comm) {
   int device_ordinal = stream.parent()->device_ordinal();
   VLOG(3) << "Performing reduce-scatter from device ordinal: "
           << device_ordinal;
-  TF_RETURN_IF_ERROR(
-      MaybeRegisterBuffers(collectives, stream.parent(), buffers, comm));
+  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, comm));
 
   TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm->NumRanks());
 

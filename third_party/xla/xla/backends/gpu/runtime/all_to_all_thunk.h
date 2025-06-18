@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -97,12 +96,11 @@ class AllToAllStartThunk : public CollectiveThunk {
       ABSL_GUARDED_BY(events_mutex_);
 };
 
-absl::Status RunAllToAll(GpuCollectives* collectives, bool has_split_dimension,
+absl::Status RunAllToAll(bool has_split_dimension,
                          std::vector<DeviceBufferPair>& buffers,
                          se::Stream& stream, Communicator* comm);
 
-absl::Status RunMemCpyAllToAll(GpuCollectives* collectives,
-                               bool has_split_dimension,
+absl::Status RunMemCpyAllToAll(bool has_split_dimension,
                                std::vector<DeviceBufferPair>& buffers,
                                se::Stream& stream, Communicator* comm,
                                uint64_t receive_pointer_map[],

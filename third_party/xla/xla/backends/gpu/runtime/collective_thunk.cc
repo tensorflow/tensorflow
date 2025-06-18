@@ -334,8 +334,7 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
   return device_buffers;
 }
 
-absl::Status RegisterBufferOnce(GpuCollectives* collectives,
-                                se::StreamExecutor* executor,
+absl::Status RegisterBufferOnce(se::StreamExecutor* executor,
                                 Communicator* comm,
                                 se::DeviceMemoryBase buffer) {
   // Keep track of which communicators we have registered for already.
@@ -377,18 +376,17 @@ absl::Status RegisterBufferOnce(GpuCollectives* collectives,
   return absl::OkStatus();
 }
 
-absl::Status MaybeRegisterBuffers(GpuCollectives* collectives,
-                                  se::StreamExecutor* executor,
+absl::Status MaybeRegisterBuffers(se::StreamExecutor* executor,
                                   const std::vector<DeviceBufferPair>& buffers,
                                   Communicator* comm) {
   for (int i = 0; i < buffers.size(); ++i) {
     if (buffers[i].source_memory_space == kCollectiveMemorySpaceColor) {
-      TF_RETURN_IF_ERROR(RegisterBufferOnce(collectives, executor, comm,
-                                            buffers[i].source_buffer));
+      TF_RETURN_IF_ERROR(
+          RegisterBufferOnce(executor, comm, buffers[i].source_buffer));
     }
     if (buffers[i].destination_memory_space == kCollectiveMemorySpaceColor) {
-      TF_RETURN_IF_ERROR(RegisterBufferOnce(collectives, executor, comm,
-                                            buffers[i].destination_buffer));
+      TF_RETURN_IF_ERROR(
+          RegisterBufferOnce(executor, comm, buffers[i].destination_buffer));
     }
   }
   return absl::OkStatus();
