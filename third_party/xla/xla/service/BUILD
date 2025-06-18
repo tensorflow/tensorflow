@@ -3822,6 +3822,7 @@ xla_cc_test(
         "//xla/tests:test_utils",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
+        "@com_google_googletest//:gtest",
     ],
 )
 

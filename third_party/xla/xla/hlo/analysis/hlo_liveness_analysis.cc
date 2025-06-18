@@ -190,6 +190,23 @@ void PropagateLivenessThroughWhile(
                   live_index_map, worklist, workset);
 }
 
+// Propagates liveness through Call instructions.
+// For each live index in Call output, mark shape index of to_apply.root
+// and add it to the worklist.
+void PropagateLivenessThroughCall(
+    const HloInstruction* instruction,
+    HloLivenessAnalysis::HloIndexMap* live_index_map, Worklist* worklist,
+    Workset* workset) {
+  CHECK_EQ(instruction->opcode(), HloOpcode::kCall);
+  const ShapeTree<bool>& index_tree = *live_index_map->at(instruction);
+
+  ForEachLiveIndex(index_tree, [&](const ShapeIndex& shape_index) {
+    // Propagate liveness to while body computation root instruction.
+    MarkLiveAtIndex(instruction->to_apply()->root_instruction(), shape_index,
+                    live_index_map, worklist, workset);
+  });
+}
+
 // Propagates liveness out of Parameter instructions to callers and aliasing
 // positions. This can occur if liveness propagates to a parameter in the
 // while.condition computation, requiring liveness to propagate out to caller
@@ -216,6 +233,16 @@ void PropagateLivenessToParameterCallers(
           // Propagate liveness to operand(0){shape_index}.
           MarkLiveAtIndex(xla_while->operand(0), shape_index, live_index_map,
                           worklist, workset);
+        });
+      } else if (callsite.instruction()->opcode() == HloOpcode::kCall) {
+        HloInstruction* xla_call = callsite.instruction();
+        const HloInstruction* call_operand =
+            xla_call->operand(instruction->parameter_number());
+        const ShapeTree<bool>& index_tree = *live_index_map->at(instruction);
+        ForEachLiveIndex(index_tree, [&](const ShapeIndex& shape_index) {
+          // Propagate liveness to call operand.
+          MarkLiveAtIndex(call_operand, shape_index, live_index_map, worklist,
+                          workset);
         });
       }
     }
@@ -316,6 +343,10 @@ void HloLivenessAnalysis::RunAnalysis() {
       case HloOpcode::kWhile:
         PropagateLivenessThroughWhile(instruction, &live_index_map_, &worklist,
                                       &workset);
+        break;
+      case HloOpcode::kCall:
+        PropagateLivenessThroughCall(instruction, &live_index_map_, &worklist,
+                                     &workset);
         break;
       case HloOpcode::kParameter:
         PropagateLivenessToParameterCallers(instruction, &live_index_map_,
