@@ -1226,17 +1226,17 @@ std::vector<PjRtDevice*> GetAddressableDevicePointers(
   std::vector<PjRtDevice*> addressable_devices;
   for (const std::unique_ptr<TfrtGpuDevice>& device : devices) {
     if (device->IsAddressable()) {
-      int idx = device->local_hardware_id().value();
-      if (idx >= addressable_devices.size()) {
-        addressable_devices.resize(idx + 1);
-      }
-      CHECK(addressable_devices[idx] == nullptr) << idx;
-      addressable_devices[idx] = device.get();
+      addressable_devices.push_back(device.get());
     }
   }
-  for (PjRtDevice* device : addressable_devices) {
-    CHECK(device != nullptr);
-  }
+  // TODO(phawkins): we don't really promise anything about the order of
+  // these devices, but users may be depending on the current order. Sort into
+  // device ordinal order, which is the historical order these values have
+  // appeared.
+  absl::c_sort(addressable_devices,
+               [](const PjRtDevice* a, const PjRtDevice* b) {
+                 return a->local_device_id() < b->local_device_id();
+               });
   return addressable_devices;
 }
 
