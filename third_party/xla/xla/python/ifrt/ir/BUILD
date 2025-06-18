@@ -283,6 +283,33 @@ cc_library(
 )
 
 cc_library(
+    name = "basic_atom_program_compiler",
+    srcs = ["basic_atom_program_compiler.cc"],
+    hdrs = ["basic_atom_program_compiler.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//xla/python/ifrt:friends"],
+    deps = [
+        ":atom_program_compiler",
+        ":ir",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt/hlo:hlo_program",
+        "//xla/python/pjrt_ifrt:xla_ifrt",
+        "//xla/service:computation_placer_hdr",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:random",
+    ],
+)
+
+cc_library(
     name = "version",
     srcs = ["version.cc"],
     hdrs = ["version.h"],
