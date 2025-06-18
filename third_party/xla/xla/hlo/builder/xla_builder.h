@@ -28,6 +28,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
@@ -454,7 +455,7 @@ class XlaBuilder {
   absl::StatusOr<Shape> GetShape(XlaOp op) const;
 
   // Returns the shape of the given op.
-  virtual absl::StatusOr<const Shape*> GetShapePtr(XlaOp op) const;
+  virtual absl::StatusOr<const Shape* absl_nonnull> GetShapePtr(XlaOp op) const;
 
   // Returns the OpSharding of the given op. If "op" has no sharding, return
   // std::nullopt.
@@ -1246,7 +1247,7 @@ class XlaBuilder {
   std::deque<HloInstructionProto> instructions_;
   // A cache for the HloInstructionProto shapes, to avoid recreating Shape
   // objects from protos and to support the GetShapePtr() API.
-  std::vector<std::unique_ptr<Shape>> instruction_shapes_;
+  std::vector<absl_nonnull std::unique_ptr<Shape>> instruction_shapes_;
 
   // Dynamic parameter configuration of this computation.
   DynamicParameterBinding dynamic_parameter_binding_;
