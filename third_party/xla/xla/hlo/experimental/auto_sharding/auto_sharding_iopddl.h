@@ -29,7 +29,8 @@ constexpr int64_t kInfinityInt = 1e18;
 
 iopddl::Cost ConvertCost(double cost);
 
-iopddl::Problem ConvertToProblem(const AutoShardingSolverRequest& request);
+iopddl::Problem ConvertToProblem(const AutoShardingSolverRequest& request,
+                                 bool use_follower_constraints = true);
 
 AutoShardingSolverRequest ConvertToSolverRequest(
     const iopddl::Problem& problem);

@@ -494,9 +494,9 @@ cc_library(
     hdrs = ["auto_sharding_iopddl.h"],
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
+        ":auto_sharding_proto_cc",
+        ":auto_sharding_strategy",
         ":iopddl_lib",
-        "//xla/hlo/experimental/auto_sharding:auto_sharding_proto_cc",
-        "//xla/hlo/experimental/auto_sharding:auto_sharding_strategy",
         "@com_google_absl//absl/log:check",
     ],
 )
