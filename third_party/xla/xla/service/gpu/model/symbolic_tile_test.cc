@@ -800,6 +800,56 @@ TEST_F(SymbolicTileTest,
       )")));
 }
 
+TEST_F(SymbolicTileTest,
+       CanDeriveTileWhenPreexistingConstraintsModelRightPadding) {
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0, d1, d2)[s0] -> (d0 * 2048 + d1, s0)",
+                     &mlir_context_),
+      {4, 2048, 50304}, {50304});
+  // This constraint is not redundant, but it doesn't prevent us from deriving
+  // a valid tile (although that tile will need to be interpreted as containing
+  // high padding).
+  indexing_map.AddConstraint(ParseAffineExpr("d0 * 2048 + d1", &mlir_context_),
+                             Interval{0, 4096});
+
+  EXPECT_THAT(SymbolicTile::FromIndexingMap(indexing_map),
+              Optional(MatchSymbolicTileString(R"(
+      Symbolic tile with
+        offset_map: (d0, d1, d2) -> (0, 0)
+        size_map: (d0, d1, d2) -> (d0 * d1, 50304)
+        stride_map: (d0, d1, d2) -> (((-d1 + 2049) floordiv 2048) * ((-((-d0 + 5) floordiv 4) + 1) * 2048) + -((-d1 + 2049) floordiv 2048) + 1, 1)
+        constraints: d0 in [1, 1] || d1 in [1, 1] || d1 in [2048, 2048]
+      )")));
+}
+
+TEST_F(SymbolicTileTest,
+       BailsOutOnDerivingTileWhenPreexistingConstraintsModelLeftPadding) {
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0, d1, d2)[s0] -> (d0 * 2048 + d1, s0)",
+                     &mlir_context_),
+      {4, 2048, 50304}, {50304});
+  // This constraint models left padding, which we do not handle for now.
+  indexing_map.AddConstraint(ParseAffineExpr("d0 * 2048 + d1", &mlir_context_),
+                             Interval{2, 4096});
+
+  EXPECT_FALSE(SymbolicTile::FromIndexingMap(indexing_map).has_value());
+}
+
+TEST_F(SymbolicTileTest,
+       BailsOutOnDerivingTileWhenPreexistingConstraintsDoesNotApplyToResult) {
+  IndexingMap indexing_map = IndexingMap::FromTensorSizes(
+      ParseAffineMap("(d0, d1, d2)[s0] -> (d0 * 2048 + d1, s0)",
+                     &mlir_context_),
+      {4, 2048, 50304}, {50304});
+  // This constraint does not apply to a result, and actually models dilation
+  // across `d1`. Figuring out how to handle such cases holistically is
+  // difficult, and we bail out for now.
+  indexing_map.AddConstraint(ParseAffineExpr("d1 mod 5", &mlir_context_),
+                             Interval{0, 0});
+
+  EXPECT_FALSE(SymbolicTile::FromIndexingMap(indexing_map).has_value());
+}
+
 TEST_F(SymbolicTileTest, CanDeriveTileWhenTheIndexingMapHasSymbolsInASum) {
   // The example is from
   // https://github.com/google/paxml/blob/91893818862645f5e9f23b84f530e611551745f6/paxml/contrib/gpu/scripts_gpu/configs.py#L107-L120.
