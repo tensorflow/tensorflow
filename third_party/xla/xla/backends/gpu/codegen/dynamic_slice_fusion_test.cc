@@ -3517,47 +3517,47 @@ TEST_F(DynamicSliceFusionTest,
   const char* hlo = R"(
     HloModule test, replica_count=2
     add {
-      a = s32[] parameter(0)
-      b = s32[] parameter(1)
-      ROOT add = s32[] add(a, b)
+      a = s64[] parameter(0)
+      b = s64[] parameter(1)
+      ROOT add = s64[] add(a, b)
     }
     body {
-      param.1 = (s32[], s32[8,8,8], s32[8,8,8], s32[8,4,8], s32[8,4,8]) parameter(0)
-      iter.1 = s32[] get-tuple-element(param.1), index=0
-      c1 = s32[] constant(1)
-      c0 = s32[] constant(0)
-      src1 = s32[8,8,8] get-tuple-element(param.1), index=1
-      src2 = s32[8,8,8] get-tuple-element(param.1), index=2
-      dst1 = s32[8,4,8] get-tuple-element(param.1), index=3
-      dst2 = s32[8,4,8] get-tuple-element(param.1), index=4
-      ds1 = s32[1,8,8]{2,1,0} dynamic-slice(src1, iter.1, c0, c0), dynamic_slice_sizes={1,8,8}
-      ds2 = s32[1,8,8]{2,1,0} dynamic-slice(src2, iter.1, c0, c0), dynamic_slice_sizes={1,8,8}
-      rs1 = s32[8,8] reshape(ds1)
-      rs2 = s32[8,8] reshape(ds2)
-      rs = (s32[4,8], s32[4,8]) reduce-scatter(rs1, rs2), dimensions={0}, replica_groups={{0,1}}, to_apply=add
-      reduce-scatter1 = s32[4,8] get-tuple-element(rs), index=0
-      reduce-scatter2 = s32[4,8] get-tuple-element(rs), index=1
-      reshape1 = s32[1,4,8] reshape(reduce-scatter1)
-      reshape2 = s32[1,4,8] reshape(reduce-scatter2)
-      dus1 = s32[8,4,8] dynamic-update-slice(dst1, reshape1, iter.1, c0, c0)
-      dus2 = s32[8,4,8] dynamic-update-slice(dst2, reshape2, iter.1, c0, c0)
-      add = s32[] add(iter.1, c1)
+      param.1 = (s64[], s64[8,8,8], s64[8,8,8], s64[8,4,8], s64[8,4,8]) parameter(0)
+      iter.1 = s64[] get-tuple-element(param.1), index=0
+      c1 = s64[] constant(1)
+      c0 = s64[] constant(0)
+      src1 = s64[8,8,8] get-tuple-element(param.1), index=1
+      src2 = s64[8,8,8] get-tuple-element(param.1), index=2
+      dst1 = s64[8,4,8] get-tuple-element(param.1), index=3
+      dst2 = s64[8,4,8] get-tuple-element(param.1), index=4
+      ds1 = s64[1,8,8]{2,1,0} dynamic-slice(src1, iter.1, c0, c0), dynamic_slice_sizes={1,8,8}
+      ds2 = s64[1,8,8]{2,1,0} dynamic-slice(src2, iter.1, c0, c0), dynamic_slice_sizes={1,8,8}
+      rs1 = s64[8,8] reshape(ds1)
+      rs2 = s64[8,8] reshape(ds2)
+      rs = (s64[4,8], s64[4,8]) reduce-scatter(rs1, rs2), dimensions={0}, replica_groups={{0,1}}, to_apply=add
+      reduce-scatter1 = s64[4,8] get-tuple-element(rs), index=0
+      reduce-scatter2 = s64[4,8] get-tuple-element(rs), index=1
+      reshape1 = s64[1,4,8] reshape(reduce-scatter1)
+      reshape2 = s64[1,4,8] reshape(reduce-scatter2)
+      dus1 = s64[8,4,8] dynamic-update-slice(dst1, reshape1, iter.1, c0, c0)
+      dus2 = s64[8,4,8] dynamic-update-slice(dst2, reshape2, iter.1, c0, c0)
+      add = s64[] add(iter.1, c1)
       ROOT tuple = tuple(add, src1, src2, dus1, dus2)
     }
     condition {
-      param.2 = (s32[], s32[8,8,8], s32[8,8,8], s32[8,4,8], s32[8,4,8]) parameter(0)
-      iter.2 = s32[] get-tuple-element(param.2), index=0
-      c8 = s32[] constant(8)
+      param.2 = (s64[], s64[8,8,8], s64[8,8,8], s64[8,4,8], s64[8,4,8]) parameter(0)
+      iter.2 = s64[] get-tuple-element(param.2), index=0
+      c8 = s64[] constant(8)
       ROOT compare = pred[] compare(iter.2, c8), direction=LT
     }
     ENTRY main {
-      c0 = s32[] constant(0)
-      p1 = s32[8,8,8] parameter(0)
-      p2 = s32[8,8,8] parameter(1)
-      p3 = s32[8,4,8] parameter(2)
-      p4 = s32[8,4,8] parameter(3)
-      tuple = (s32[], s32[8,8,8], s32[8,8,8], s32[8,4,8], s32[8,4,8]) tuple(c0, p1, p2, p3, p4)
-      ROOT while = (s32[], s32[8,8,8], s32[8,8,8], s32[8,4,8], s32[8,4,8]) while(tuple), body=body, condition=condition
+      c0 = s64[] constant(0)
+      p1 = s64[8,8,8] parameter(0)
+      p2 = s64[8,8,8] parameter(1)
+      p3 = s64[8,4,8] parameter(2)
+      p4 = s64[8,4,8] parameter(3)
+      tuple = (s64[], s64[8,8,8], s64[8,8,8], s64[8,4,8], s64[8,4,8]) tuple(c0, p1, p2, p3, p4)
+      ROOT while = (s64[], s64[8,8,8], s64[8,8,8], s64[8,4,8], s64[8,4,8]) while(tuple), body=body, condition=condition
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
