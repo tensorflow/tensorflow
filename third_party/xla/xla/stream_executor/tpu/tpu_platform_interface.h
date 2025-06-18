@@ -28,10 +28,6 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 
-// TODO(skyewm): get rid of TpuTopologyPtr and either use SE_TpuTopology* or
-// return a TpuTopologyExternal.
-typedef SE_TpuTopology* TpuTopologyPtr;
-
 class TpuPlatformInterface : public stream_executor::Platform {
  public:
   // Returns a TPU platform to be used by TPU ops. If multiple TPU platforms are
@@ -53,7 +49,7 @@ class TpuPlatformInterface : public stream_executor::Platform {
 
   virtual bool ShouldRegisterTpuDeviceToDeviceCopy() = 0;
 
-  virtual const TpuTopologyPtr GetTopologyPtr() = 0;
+  virtual const SE_TpuTopology* GetTopologyPtr() = 0;
 
   virtual const TpuHostLocationExternal GetTpuHostLocation() const = 0;
 

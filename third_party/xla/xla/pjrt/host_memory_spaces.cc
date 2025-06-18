@@ -54,4 +54,19 @@ const int PinnedHostMemorySpace::kKindId = []() {
   return static_cast<int>(kind_id);
 }();
 
+CpuDeviceMemorySpace::CpuDeviceMemorySpace(int id, PjRtDevice* device)
+    : id_(id), device_(device) {
+  DCHECK(device_ != nullptr && device_->client() != nullptr);
+  auto* client = device_->client();
+  debug_string_ =
+      absl::StrFormat("CpuDeviceMemory(id=%i, process_index=%i, client=%s)",
+                      id_, client->process_index(), client->platform_name());
+  to_string_ = absl::StrFormat("CPU_DEVICE_%i", id_);
+}
+
+const int CpuDeviceMemorySpace::kKindId = []() {
+  uint32_t kind_id = tsl::Fingerprint32(CpuDeviceMemorySpace::kKind);
+  return static_cast<int>(kind_id);
+}();
+
 }  // namespace xla

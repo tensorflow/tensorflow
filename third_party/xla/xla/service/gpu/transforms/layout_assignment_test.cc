@@ -70,10 +70,8 @@ class LayoutAssignmentTest : public HloTestBase {
   }
 
   se::dnn::VersionInfo GetDnnVersion() {
-    // GpuLayoutAssignment has a special case heuristic for cudnn <= 7.3, but
-    // none of the tests trigger this heuristic.
     return GetDnnVersionInfoOrDefault(backend().default_stream_executor(),
-                                      se::dnn::VersionInfo{8, 3, 0});
+                                      se::dnn::VersionInfo{8, 9, 0});
   }
 };
 
@@ -517,9 +515,10 @@ TEST_F(LayoutAssignmentTest, MoveToHostCustomCallConstrained) {
 HloModule TestModule
 
 ENTRY entry {
-  Arg_0 = f32[2,5,5]{2,1,0} parameter(0)
+  Arg_0 = f32[2,5,5]{0,1,2} parameter(0)
   custom-call.0 = f32[2,5,5] custom-call(Arg_0), custom_call_target="MoveToHost"
-  ROOT custom-call.1 = f32[2,5,5]{2, 1, 0} custom-call(custom-call.0), custom_call_target="fixed_call", operand_layout_constraints={f32[2,5,5]{1,2,0}}
+  ROOT custom-call.1 = f32[2,5,5]{2, 1, 0} custom-call(custom-call.0),
+      custom_call_target="fixed_call", operand_layout_constraints={f32[2,5,5]{1,2,0}}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
@@ -536,9 +535,8 @@ ENTRY entry {
   const HloInstruction* call_0 = FindInstruction(m.get(), "custom-call.0");
   const Layout input_layout = call_0->operand(0)->shape().layout();
   const Layout output_layout = call_0->shape().layout();
-  EXPECT_TRUE(LayoutUtil::Equal(input_layout, output_layout))
-      << "Expected the same input/output layouts.  Input: " << input_layout
-      << ". Output: " << output_layout;
+  EXPECT_EQ(input_layout, LayoutUtil::GetDefaultLayoutForR3());
+  EXPECT_EQ(output_layout, LayoutUtil::GetDefaultLayoutForR3());
 }
 
 TEST_F(LayoutAssignmentTest, MoveToDeviceCustomCallConstrained) {
@@ -546,9 +544,10 @@ TEST_F(LayoutAssignmentTest, MoveToDeviceCustomCallConstrained) {
 HloModule TestModule
 
 ENTRY entry {
-  Arg_0 = f32[2,5,5]{2,1,0} parameter(0)
+  Arg_0 = f32[2,5,5]{1,2,0} parameter(0)
   custom-call.0 = f32[2,5,5] custom-call(Arg_0), custom_call_target="MoveToDevice"
-  ROOT custom-call.1 = f32[2,5,5]{2, 1, 0} custom-call(custom-call.0), custom_call_target="fixed_call", operand_layout_constraints={f32[2,5,5]{1,2,0}}
+  ROOT custom-call.1 = f32[2,5,5]{2, 1, 0} custom-call(custom-call.0),
+      custom_call_target="fixed_call", operand_layout_constraints={f32[2,5,5]{0,1,2}}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
@@ -565,9 +564,8 @@ ENTRY entry {
   const HloInstruction* call_0 = FindInstruction(m.get(), "custom-call.0");
   const Layout input_layout = call_0->operand(0)->shape().layout();
   const Layout output_layout = call_0->shape().layout();
-  EXPECT_TRUE(LayoutUtil::Equal(input_layout, output_layout))
-      << "Expected the same input/output layouts.  Input: " << input_layout
-      << ". Output: " << output_layout;
+  EXPECT_EQ(input_layout, LayoutUtil::GetDefaultLayoutForR3());
+  EXPECT_EQ(output_layout, LayoutUtil::GetDefaultLayoutForR3());
 }
 
 TEST_F(LayoutAssignmentTest, CuDNNConvolutionHasNHWCLayoutPostHopper) {
@@ -872,6 +870,46 @@ TEST_F(LayoutAssignmentTest, AutoLayoutS4DotContractingMinorRhs) {
               GmockMatch(m::Parameter(1).WithShape(S4, {5120, 10240}, {0, 1})));
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Dot().WithShape(BF16, {128, 10240}, {1, 0})));
+}
+
+TEST_F(LayoutAssignmentTest, AutoLayoutS4DotFollowingTheChain) {
+  const char* hlo = R"(
+  HloModule AutoLayoutS4DotFollowingTheChain
+
+  ENTRY main {
+    p0 = s4[3072,128] parameter(0)
+    p0.c = s8[3072,128] convert(p0)
+    p0.c2 = bf16[3072,128] convert(p0.c)
+    p1 = bf16[3072,128] parameter(1)
+    p0.m = bf16[3072,128] multiply(p0.c2, p1)
+    p2 = bf16[3072,9216] parameter(2)
+    ROOT dot = bf16[128,9216] dot(p0.m, p2), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> m,
+      ParseAndReturnUnverifiedModule(
+          hlo, {}, HloParserOptions().set_fill_missing_layouts(false)));
+  DebugOptions debug_options = m->config().debug_options();
+  debug_options.set_xla_gpu_experimental_pack_dot_operands_along_k_dimension(
+      true);
+  m->mutable_config().set_debug_options(debug_options);
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape(),
+      /*ignore_layouts=*/false);
+
+  GpuLayoutAssignment layout_assignment(
+      &computation_layout, GetGpuComputeCapability(), GetDnnVersion(),
+      GetDeviceDescription());
+  ASSERT_THAT(layout_assignment.Run(m.get()), IsOkAndHolds(true));
+  EXPECT_THAT(m->entry_computation()->parameter_instruction(0),
+              GmockMatch(m::Parameter(0).WithShape(S4, {3072, 128}, {0, 1})));
+  EXPECT_THAT(m->entry_computation()->parameter_instruction(1),
+              GmockMatch(m::Parameter(1).WithShape(BF16, {3072, 128}, {0, 1})));
+  EXPECT_THAT(
+      m->entry_computation()->parameter_instruction(2),
+      GmockMatch(m::Parameter(2).WithShape(BF16, {3072, 9216}, {1, 0})));
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Dot().WithShape(BF16, {128, 9216}, {1, 0})));
 }
 
 TEST_F(LayoutAssignmentTest, VariadicReduceSameOperandLayout) {

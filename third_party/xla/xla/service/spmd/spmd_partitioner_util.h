@@ -592,6 +592,20 @@ std::vector<std::vector<int64_t>> GetPartitionGroupsForReplication(
     const HloSharding& sharding, absl::Span<const int64_t> replication_dims);
 
 // Generates partition groups (groups of devices that will communicate via a
+// collective) across provided target dims with provided group sizes in vector
+// of vector format (legacy format).
+std::vector<std::vector<int64_t>> GetPartitionGroupsAcrossTargetDims(
+    const HloSharding& sharding, std::vector<int64_t> target_dims,
+    std::vector<int64_t> group_sizes);
+
+// Generates partition groups (groups of devices that will communicate via a
+// collective) across provided target dims with provided group sizes in iota
+// format from sharding.
+std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsAcrossTargetDims(
+    const HloSharding& sharding, std::vector<int64_t> target_dims,
+    std::vector<int64_t> group_sizes, int64_t num_partitions);
+
+// Generates partition groups (groups of devices that will communicate via a
 // collective) in iota format from sharding and provided replication_dims.
 // NOTE: If provided sharding does not utilize all the partitions, we skip
 // generating a compressed format. This is because this device ids
@@ -959,6 +973,42 @@ absl::StatusOr<std::pair<int64_t, int64_t>> EvaluatePartitionCost(
 // new PartitionedHlo for the copy.
 PartitionedHlo MakeACopyAndReturnItsPartitionedHlo(const PartitionedHlo& phlo,
                                                    SpmdBuilder* b);
+
+// For dynamic-update-slice, we focus on the partitioned slice dimensions,
+// ignoring batch dimensions and replicated slice dimensions. We have three
+// methods to handle the partitioned slice dimensions.
+//
+// 1. **Default.** Replicate all tensors along the slice dimensions.
+// 2. **Single Partition Update.** The update is entirely contained within a
+//    single partition. All partitioned slice dimensions satisfy
+//    2.1 The slice size is 1, OR
+//    2.2 The update indices are compile-time constants, and the start and end
+//        indices reside in the same partition.
+// 3. **Constant Indices.** All partitioned slice dimensions have compile-time
+//    constant indices.
+//
+// If both optimizations (2 and 3) are feasible, we prioritize (2) over (3).
+// Refer to go/dus-spmd for more details.
+enum class DynamicUpdateSliceMethod {
+  // Replicate all tensors along the slice dimensions.
+  kDefault,
+
+  // The update is fully contained in a single partition.
+  kUpdateOnASinglePartition,
+
+  // All partitioned slice dimensions have compile-time constant indices.
+  kAllPartitionedSliceDimsHaveConstantIndices,
+};
+
+struct DynamicUpdateSliceAnalysis {
+  DynamicUpdateSliceMethod method;
+  // All slice dimensions of the dynamic update slice instruction.
+  std::vector<int64_t> slice_dims;
+  // The slice dimensions that are partitioned.
+  std::vector<int64_t> partitioned_slice_dims;
+};
+
+DynamicUpdateSliceAnalysis AnalyzeDynamicUpdateSlice(const HloInstruction* hlo);
 
 }  // namespace spmd
 }  // namespace xla

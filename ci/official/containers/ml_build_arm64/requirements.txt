@@ -1,7 +1,7 @@
 portpicker==1.6.0
 # For wheel verification, and uploading
 auditwheel ~= 6.1.0
-twine ~= 5.1.1
+twine ~= 6.1.0
 
 # uv is faster than pip for installing Python packages.
 uv ~= 0.5.30

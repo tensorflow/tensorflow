@@ -835,7 +835,6 @@ void Generator::Generate(const FileDescriptor& fd) {
   Print();
   Print("using ::tensorflow::strings::ProtoSpaceAndComments;");
   Print("using ::tensorflow::strings::Scanner;");
-  Print("using ::tensorflow::strings::StrCat;");
   AddNamespaceToCurrentSection(package, true /* is_open */);
 
   // Add declarations and definitions.

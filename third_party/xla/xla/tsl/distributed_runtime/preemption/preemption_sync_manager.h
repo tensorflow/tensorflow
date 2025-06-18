@@ -15,12 +15,19 @@ limitations under the License.
 #ifndef XLA_TSL_DISTRIBUTED_RUNTIME_PREEMPTION_PREEMPTION_SYNC_MANAGER_H_
 #define XLA_TSL_DISTRIBUTED_RUNTIME_PREEMPTION_PREEMPTION_SYNC_MANAGER_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
+#include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "xla/tsl/distributed_runtime/preemption/preemption_notifier.h"
+#include "xla/tsl/platform/env.h"
 
 namespace tsl {
 
@@ -33,15 +40,18 @@ namespace tsl {
 // TODO(b/230630494): Add Reset() to allow multiple sync points to be set.
 class PreemptionSyncManager {
  public:
-  virtual ~PreemptionSyncManager() = default;
+  PreemptionSyncManager() = default;
+  ~PreemptionSyncManager() { Shutdown(); }
+  absl::Status Initialize(CoordinationServiceAgent* agent);
+  absl::Status Initialize(CoordinationServiceAgent* agent,
+                          const std::string& preemption_notifier_type);
+  absl::Status Initialize(CoordinationServiceAgent* agent,
+                          std::unique_ptr<PreemptionNotifier> notifier);
 
-  virtual absl::Status Initialize(CoordinationServiceAgent* agent) = 0;
-  virtual absl::Status Initialize(
-      CoordinationServiceAgent* agent,
-      const std::string& preemption_notifier_type) = 0;
-  virtual absl::Status Initialize(
-      CoordinationServiceAgent* agent,
-      std::unique_ptr<PreemptionNotifier> notifier) = 0;
+  // Shuts down the PreemptionSyncManager. Shutdown cannot be called
+  // concurrently with other methods. After Shutdown is called, no other methods
+  // should be called.
+  void Shutdown();
 
   // Check if the synchronized point has been reached. When a task has been
   // preempted, a safe sync point will be determined by using the fastest task's
@@ -57,7 +67,33 @@ class PreemptionSyncManager {
   // task. Once a preemption notice is received, all tasks will agree on a safe
   // step to pause training and handle the preemption (e.g. save checkpoint and
   // exit, or wait for preempted task to restart, then resume training).
-  virtual bool ReachedSyncPoint(int step_counter) = 0;
+  bool ReachedSyncPoint(int step_counter);
+
+ private:
+  static constexpr int64_t kPreemptionSyncUnsetCounter = -1;
+
+  // Determine the sync point upon receipt of preemption notice (death time).
+  void ComputeSyncCallCounter(absl::Time death_time);
+  // Notify other tasks to not wait at the barrier if the sync protocol failed
+  // midway.
+  void CancelPreemptionBarrier();
+
+  absl::Mutex mu_;
+  // Shutdown flag
+  bool shut_down_ ABSL_GUARDED_BY(mu_) = false;
+  // Tracks the last step_counter passed into ReachedSyncPoint();
+  int64_t call_counter_ ABSL_GUARDED_BY(mu_) = 0;
+  // If set, determines the sync point.
+  int64_t preemption_sync_counter_ ABSL_GUARDED_BY(mu_) =
+      kPreemptionSyncUnsetCounter;
+  std::string current_call_counter_key_;
+
+  Env* env_;                         // Not owned;
+  CoordinationServiceAgent* agent_;  // Not owned.
+  absl::Notification shutdown_;
+  std::unique_ptr<Thread> sync_protocol_thread_ ABSL_GUARDED_BY(mu_);
+  std::unique_ptr<PreemptionNotifier> preemption_notifier_;
+  std::shared_ptr<CallOptions> call_opts_;
 };
 
 std::unique_ptr<PreemptionSyncManager> CreatePreemptionSyncManager();

@@ -65,7 +65,7 @@ class ReshardCallback:
     Override this method if the arguments to restore op need to be updated as
     per the resharding required.
     Args:
-      checkpoint_key: The cehckpopoint key as requested by the caller
+      checkpoint_key: The checkpoint key as requested by the caller
       shape_and_slice_spec: The shape and slice spec as requested by caller
 
     Returns:

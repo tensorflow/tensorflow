@@ -96,12 +96,12 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_NoBlockCache) {
   absl::string_view result;
 
   // Read the first chunk.
-  TF_EXPECT_OK(file->Read(0, sizeof(scratch), &result, scratch));
+  TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
   EXPECT_EQ("012345", result);
 
   // Read the second chunk.
-  EXPECT_TRUE(errors::IsOutOfRange(
-      file->Read(sizeof(scratch), sizeof(scratch), &result, scratch)));
+  EXPECT_TRUE(absl::IsOutOfRange(file->Read(
+      sizeof(scratch), result, absl::MakeSpan(scratch, sizeof(scratch)))));
   EXPECT_EQ("6789", result);
 }
 
@@ -143,12 +143,12 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered) {
   absl::string_view result;
 
   // Read the first chunk.
-  TF_EXPECT_OK(file->Read(0, sizeof(scratch), &result, scratch));
+  TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
   EXPECT_EQ("012345", result);
 
   // Read the second chunk.
-  EXPECT_TRUE(errors::IsOutOfRange(
-      file->Read(sizeof(scratch), sizeof(scratch), &result, scratch)));
+  EXPECT_TRUE(absl::IsOutOfRange(file->Read(
+      sizeof(scratch), result, absl::MakeSpan(scratch, sizeof(scratch)))));
   EXPECT_EQ("6789", result);
 }
 
@@ -191,13 +191,13 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_Errors) {
   absl::string_view result;
 
   // Read the first chunk.
-  EXPECT_TRUE(
-      errors::IsUnavailable(file->Read(0, sizeof(scratch), &result, scratch)));
+  EXPECT_TRUE(absl::IsUnavailable(
+      file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch)))));
   EXPECT_EQ("", result);
 
   // Read the second chunk.
-  EXPECT_TRUE(errors::IsOutOfRange(
-      file->Read(sizeof(scratch), sizeof(scratch), &result, scratch)));
+  EXPECT_TRUE(absl::IsOutOfRange(file->Read(
+      sizeof(scratch), result, absl::MakeSpan(scratch, sizeof(scratch)))));
   EXPECT_EQ("123", result);
 }
 
@@ -238,12 +238,12 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_ReadAtEOF) {
   absl::string_view result;
 
   // Read the first chunk.
-  TF_EXPECT_OK(file->Read(0, sizeof(scratch), &result, scratch));
+  TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
   EXPECT_EQ("0123456789", result);
 
   // Read the second chunk.
-  EXPECT_TRUE(errors::IsOutOfRange(
-      file->Read(sizeof(scratch), sizeof(scratch), &result, scratch)));
+  EXPECT_TRUE(absl::IsOutOfRange(file->Read(
+      sizeof(scratch), result, absl::MakeSpan(scratch, sizeof(scratch)))));
   EXPECT_EQ("", result);
 }
 
@@ -280,15 +280,15 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_CachedOutOfRange) {
 
   // Read the first chunk. Even though the backend response is out-of-range,
   // we should get a OK status since we're just reading the first 5 bytes.
-  TF_EXPECT_OK(file->Read(0, sizeof(scratch), &result, scratch));
+  TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
   EXPECT_EQ("01234", result);
 
-  TF_EXPECT_OK(file->Read(4, sizeof(scratch), &result, scratch));
+  TF_EXPECT_OK(file->Read(4, result, absl::MakeSpan(scratch, sizeof(scratch))));
   EXPECT_EQ("45678", result);
 
   // Return the cached error once the user starts reading out of range.
-  EXPECT_TRUE(
-      errors::IsOutOfRange(file->Read(5, sizeof(scratch), &result, scratch)));
+  EXPECT_TRUE(absl::IsOutOfRange(
+      file->Read(5, result, absl::MakeSpan(scratch, sizeof(scratch)))));
   EXPECT_EQ("5678", result);
 }
 
@@ -330,9 +330,9 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_CachedNotSequential) {
   char scratch[5];
   absl::string_view result;
 
-  TF_EXPECT_OK(file->Read(1, sizeof(scratch), &result, scratch));
+  TF_EXPECT_OK(file->Read(1, result, absl::MakeSpan(scratch, sizeof(scratch))));
   EXPECT_EQ("12345", result);
-  TF_EXPECT_OK(file->Read(0, sizeof(scratch), &result, scratch));
+  TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
   EXPECT_EQ("01234", result);
 }
 
@@ -375,11 +375,11 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_Growing) {
   // Read the first chunk. Since the first read is out-of-range,
   // we don't cache the out-of-range flag and each subsequent read triggers a
   // backend call.
-  EXPECT_TRUE(
-      errors::IsOutOfRange(file->Read(0, sizeof(scratch), &result, scratch)));
+  EXPECT_TRUE(absl::IsOutOfRange(
+      file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch)))));
   EXPECT_EQ("012345678", result);
 
-  TF_EXPECT_OK(file->Read(0, sizeof(scratch), &result, scratch));
+  TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
   EXPECT_EQ("0123456789", result);
 }
 
@@ -421,12 +421,12 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_Buffered_ReadBackwards) {
   absl::string_view result;
 
   // Read the first chunk.
-  EXPECT_TRUE(
-      errors::IsOutOfRange(file->Read(5, sizeof(scratch), &result, scratch)));
+  EXPECT_TRUE(absl::IsOutOfRange(
+      file->Read(5, result, absl::MakeSpan(scratch, sizeof(scratch)))));
   EXPECT_EQ("56789", result);
 
   // Go back and read from the beginning of the file.
-  TF_EXPECT_OK(file->Read(0, sizeof(scratch), &result, scratch));
+  TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
   EXPECT_EQ("0123456789", result);
 }
 
@@ -577,14 +577,16 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_NoBlockCache_DifferentN) {
   absl::string_view result;
 
   // Read the first chunk.
-  TF_EXPECT_OK(file->Read(0, sizeof(small_scratch), &result, small_scratch));
+  TF_EXPECT_OK(file->Read(
+      0, result, absl::MakeSpan(small_scratch, sizeof(small_scratch))));
   EXPECT_EQ("012", result);
 
   // Read the second chunk that is larger. Requires allocation of new buffer.
   char large_scratch[10];
 
-  EXPECT_TRUE(errors::IsOutOfRange(file->Read(
-      sizeof(small_scratch), sizeof(large_scratch), &result, large_scratch)));
+  EXPECT_TRUE(absl::IsOutOfRange(
+      file->Read(sizeof(small_scratch), result,
+                 absl::MakeSpan(large_scratch, sizeof(large_scratch)))));
   EXPECT_EQ("3456789", result);
 }
 
@@ -640,35 +642,37 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithBlockCache) {
     // Read the first chunk. The cache will be populated with the first block of
     // 9 bytes.
     scratch[5] = 'x';
-    TF_EXPECT_OK(file->Read(0, 4, &result, scratch));
+    TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, 4)));
     EXPECT_EQ("0123", result);
     EXPECT_EQ(scratch[5], 'x');  // Make sure we only copied 4 bytes.
 
     // The second chunk will be fully loaded from the cache, no requests are
     // made.
-    TF_EXPECT_OK(file->Read(4, 4, &result, scratch));
+    TF_EXPECT_OK(file->Read(4, result, absl::MakeSpan(scratch, 4)));
     EXPECT_EQ("4567", result);
 
     // The chunk is only partially cached -- the request will be made to fetch
     // the next block. 9 bytes will be requested, starting at offset 9.
-    TF_EXPECT_OK(file->Read(6, 5, &result, scratch));
+    TF_EXPECT_OK(file->Read(6, result, absl::MakeSpan(scratch, 5)));
     EXPECT_EQ("6789a", result);
 
     // The range can only be partially satisfied, as the second block contains
     // only 6 bytes for a total of 9 + 6 = 15 bytes in the file.
-    EXPECT_TRUE(errors::IsOutOfRange(file->Read(6, 10, &result, scratch)));
+    EXPECT_TRUE(
+        absl::IsOutOfRange(file->Read(6, result, absl::MakeSpan(scratch, 10))));
     EXPECT_EQ("6789abcde", result);
 
     // The range cannot be satisfied, and the requested offset is past the end
     // of the cache. A new request will be made to read 9 bytes starting at
     // offset 18. This request will return an empty response, and there will not
     // be another request.
-    EXPECT_TRUE(errors::IsOutOfRange(file->Read(20, 10, &result, scratch)));
+    EXPECT_TRUE(absl::IsOutOfRange(
+        file->Read(20, result, absl::MakeSpan(scratch, 10))));
     EXPECT_TRUE(result.empty());
 
     // The beginning of the file should still be in the LRU cache. There should
     // not be another request. The buffer size is still 15.
-    TF_EXPECT_OK(file->Read(0, 4, &result, scratch));
+    TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, 4)));
   }
 
   EXPECT_EQ("0123", result);
@@ -723,13 +727,13 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithBlockCache_Flush) {
   // Read the first chunk. The cache will be populated with the first block of
   // 9 bytes.
   scratch[5] = 'x';
-  TF_EXPECT_OK(file->Read(0, 4, &result, scratch));
+  TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, 4)));
   EXPECT_EQ("0123", result);
   EXPECT_EQ(scratch[5], 'x');  // Make sure we only copied 4 bytes.
   // Flush caches and read the second chunk. This will be a cache miss, and
   // the same block will be fetched again.
   fs.FlushCaches(nullptr);
-  TF_EXPECT_OK(file->Read(4, 4, &result, scratch));
+  TF_EXPECT_OK(file->Read(4, result, absl::MakeSpan(scratch, 4)));
   EXPECT_EQ("4567", result);
 }
 
@@ -778,20 +782,20 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithBlockCache_MaxStaleness) {
     TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/object", nullptr, &file1));
     TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/object", nullptr, &file2));
     // Reading the first block from file1 should load it once.
-    TF_EXPECT_OK(file1->Read(0, 8, &result, scratch));
+    TF_EXPECT_OK(file1->Read(0, result, absl::MakeSpan(scratch, 8)));
     EXPECT_EQ("01234567", result);
     // Reading the first block from file2 should not trigger a request to load
     // the first block again, because the FileBlockCache shared by file1 and
     // file2 already has the first block.
-    TF_EXPECT_OK(file2->Read(0, 8, &result, scratch));
+    TF_EXPECT_OK(file2->Read(0, result, absl::MakeSpan(scratch, 8)));
     EXPECT_EQ("01234567", result);
     // Reading the second block from file2 should load it once.
-    TF_EXPECT_OK(file2->Read(8, 8, &result, scratch));
+    TF_EXPECT_OK(file2->Read(8, result, absl::MakeSpan(scratch, 8)));
     EXPECT_EQ("89abcdef", result);
     // Reading the second block from file1 should not trigger a request to load
     // the second block again, because the FileBlockCache shared by file1 and
     // file2 already has the second block.
-    TF_EXPECT_OK(file1->Read(8, 8, &result, scratch));
+    TF_EXPECT_OK(file1->Read(8, result, absl::MakeSpan(scratch, 8)));
     EXPECT_EQ("89abcdef", result);
   }
 }
@@ -844,11 +848,11 @@ TEST(GcsFileSystemTest,
   absl::string_view result;
 
   // First read.
-  TF_EXPECT_OK(file->Read(0, sizeof(scratch), &result, scratch));
+  TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
   EXPECT_EQ("01234", result);
 
   // Second read. File signatures are different.
-  TF_EXPECT_OK(file->Read(0, sizeof(scratch), &result, scratch));
+  TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
   EXPECT_EQ("43210", result);
 }
 
@@ -867,7 +871,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_NoObjectName) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::unique_ptr<RandomAccessFile> file;
-  EXPECT_TRUE(errors::IsInvalidArgument(
+  EXPECT_TRUE(absl::IsInvalidArgument(
       fs.NewRandomAccessFile("gs://bucket/", nullptr, &file)));
 }
 
@@ -910,8 +914,8 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_InconsistentRead) {
   char scratch[6];
   absl::string_view result;
 
-  EXPECT_TRUE(
-      errors::IsInternal(file->Read(0, sizeof(scratch), &result, scratch)));
+  EXPECT_TRUE(absl::IsInternal(
+      file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch)))));
 }
 
 TEST(GcsFileSystemTest, NewWritableFile) {
@@ -973,7 +977,7 @@ TEST(GcsFileSystemTest, NewWritableFile) {
       fs.NewRandomAccessFile("gs://bucket/path/writeable", nullptr, &rfile));
   char scratch[100];
   absl::string_view result;
-  TF_EXPECT_OK(rfile->Read(0, 4, &result, scratch));
+  TF_EXPECT_OK(rfile->Read(0, result, absl::MakeSpan(scratch, 4)));
   EXPECT_EQ("0123", result);
   // Open the writable file.
   std::unique_ptr<WritableFile> wfile;
@@ -986,7 +990,7 @@ TEST(GcsFileSystemTest, NewWritableFile) {
   TF_EXPECT_OK(wfile->Append("content2"));
   TF_EXPECT_OK(wfile->Flush());
   // Re-reading the file should trigger another HTTP request to GCS.
-  TF_EXPECT_OK(rfile->Read(0, 4, &result, scratch));
+  TF_EXPECT_OK(rfile->Read(0, result, absl::MakeSpan(scratch, 4)));
   EXPECT_EQ("0123", result);
   // The calls to flush, sync, and close below should not cause uploads because
   // the file is not dirty.
@@ -1139,7 +1143,7 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadSucceedsOnGetStatus) {
       fs.NewRandomAccessFile("gs://bucket/path/writeable", nullptr, &rfile));
   char scratch[100];
   absl::string_view result;
-  TF_EXPECT_OK(rfile->Read(0, 4, &result, scratch));
+  TF_EXPECT_OK(rfile->Read(0, result, absl::MakeSpan(scratch, 4)));
   EXPECT_EQ("0123", result);
   // Now write to the same file. Once the write succeeds, the cached block will
   // be flushed.
@@ -1150,13 +1154,13 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadSucceedsOnGetStatus) {
   TF_EXPECT_OK(wfile->Append("content2"));
   // Appending doesn't invalidate the read cache - only flushing does. This read
   // will not trigger an HTTP request to GCS.
-  TF_EXPECT_OK(rfile->Read(4, 4, &result, scratch));
+  TF_EXPECT_OK(rfile->Read(4, result, absl::MakeSpan(scratch, 4)));
   EXPECT_EQ("4567", result);
   // Closing the file triggers HTTP requests to GCS and invalidates the read
   // cache for the file.
   TF_EXPECT_OK(wfile->Close());
   // Reading the first block of the file goes to GCS again.
-  TF_EXPECT_OK(rfile->Read(0, 8, &result, scratch));
+  TF_EXPECT_OK(rfile->Read(0, result, absl::MakeSpan(scratch, 8)));
   EXPECT_EQ("01234567", result);
 }
 
@@ -1229,7 +1233,7 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadAllAttemptsFail) {
   TF_EXPECT_OK(file->Append("content1,"));
   TF_EXPECT_OK(file->Append("content2"));
   const auto& status = file->Close();
-  EXPECT_TRUE(errors::IsAborted(status));
+  EXPECT_TRUE(absl::IsAborted(status));
   EXPECT_TRUE(
       absl::StrContains(status.message(),
                         "All 10 retry attempts failed. The last failure: "
@@ -1294,7 +1298,7 @@ TEST(GcsFileSystemTest, NewWritableFile_UploadReturns410) {
     TF_EXPECT_OK(file->Append("content1,"));
     TF_EXPECT_OK(file->Append("content2"));
     const auto& status = file->Close();
-    EXPECT_TRUE(errors::IsUnavailable(status));
+    EXPECT_TRUE(absl::IsUnavailable(status));
     EXPECT_TRUE(
         absl::StrContains(status.message(),
                           "Upload to gs://bucket/path/writeable.txt failed, "
@@ -1327,7 +1331,7 @@ TEST(GcsFileSystemTest, NewWritableFile_NoObjectName) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::unique_ptr<WritableFile> file;
-  EXPECT_TRUE(errors::IsInvalidArgument(
+  EXPECT_TRUE(absl::IsInvalidArgument(
       fs.NewWritableFile("gs://bucket/", nullptr, &file)));
 }
 
@@ -1403,14 +1407,14 @@ TEST(GcsFileSystemTest, NewAppendableFile) {
       fs.NewRandomAccessFile("gs://bucket/path/appendable", nullptr, &rfile));
   char scratch[100];
   absl::string_view result;
-  TF_EXPECT_OK(rfile->Read(0, 8, &result, scratch));
+  TF_EXPECT_OK(rfile->Read(0, result, absl::MakeSpan(scratch, 8)));
   EXPECT_EQ("content1", result);
   // Closing the appendable file will flush its contents to GCS, triggering HTTP
   // requests.
   TF_EXPECT_OK(wfile->Close());
   // Redo the read. The block should be reloaded from GCS, causing one more HTTP
   // request to load it.
-  TF_EXPECT_OK(rfile->Read(0, 4, &result, scratch));
+  TF_EXPECT_OK(rfile->Read(0, result, absl::MakeSpan(scratch, 4)));
   EXPECT_EQ("0123", result);
 }
 
@@ -1428,7 +1432,7 @@ TEST(GcsFileSystemTest, NewAppendableFile_NoObjectName) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::unique_ptr<WritableFile> file;
-  EXPECT_TRUE(errors::IsInvalidArgument(
+  EXPECT_TRUE(absl::IsInvalidArgument(
       fs.NewAppendableFile("gs://bucket/", nullptr, &file)));
 }
 
@@ -1515,7 +1519,7 @@ TEST(GcsFileSystemTest, NewReadOnlyMemoryRegionFromFile_NoObjectName) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::unique_ptr<ReadOnlyMemoryRegion> region;
-  EXPECT_TRUE(errors::IsInvalidArgument(
+  EXPECT_TRUE(absl::IsInvalidArgument(
       fs.NewReadOnlyMemoryRegionFromFile("gs://bucket/", nullptr, &region)));
 }
 
@@ -1625,7 +1629,7 @@ TEST(GcsFileSystemTest, FileExists_NotAsObjectOrFolder) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   EXPECT_TRUE(
-      errors::IsNotFound(fs.FileExists("gs://bucket/path/file1.txt", nullptr)));
+      absl::IsNotFound(fs.FileExists("gs://bucket/path/file1.txt", nullptr)));
 }
 
 TEST(GcsFileSystemTest, FileExists_NotAsBucket) {
@@ -2121,8 +2125,8 @@ TEST(GcsFileSystemTest, GetMatchingPaths_OnlyWildcard) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   std::vector<string> result;
-  EXPECT_TRUE(errors::IsInvalidArgument(
-      fs.GetMatchingPaths("gs://*", nullptr, &result)));
+  EXPECT_TRUE(
+      absl::IsInvalidArgument(fs.GetMatchingPaths("gs://*", nullptr, &result)));
 }
 
 TEST(GcsFileSystemTest, GetMatchingPaths_Cache) {
@@ -2267,13 +2271,13 @@ TEST(GcsFileSystemTest, DeleteFile) {
   std::unique_ptr<RandomAccessFile> file;
   TF_EXPECT_OK(
       fs.NewRandomAccessFile("gs://bucket/path/file1.txt", nullptr, &file));
-  TF_EXPECT_OK(file->Read(0, 8, &result, scratch));
+  TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, 8)));
   EXPECT_EQ("01234567", result);
   // Deleting the file triggers the next HTTP request to GCS.
   TF_EXPECT_OK(fs.DeleteFile("gs://bucket/path/file1.txt", nullptr));
   // Re-reading the file causes its contents to be reloaded from GCS and not
   // from the block cache.
-  TF_EXPECT_OK(file->Read(0, 8, &result, scratch));
+  TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, 8)));
   EXPECT_EQ("76543210", result);
 }
 
@@ -2290,8 +2294,7 @@ TEST(GcsFileSystemTest, DeleteFile_NoObjectName) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  EXPECT_TRUE(
-      errors::IsInvalidArgument(fs.DeleteFile("gs://bucket/", nullptr)));
+  EXPECT_TRUE(absl::IsInvalidArgument(fs.DeleteFile("gs://bucket/", nullptr)));
 }
 
 TEST(GcsFileSystemTest, DeleteFile_StatCacheRemoved) {
@@ -2477,8 +2480,8 @@ TEST(GcsFileSystemTest, GetFileSize_NoObjectName) {
       nullptr /* gcs additional header */, false /* compose append */);
 
   uint64 size;
-  EXPECT_TRUE(errors::IsInvalidArgument(
-      fs.GetFileSize("gs://bucket/", nullptr, &size)));
+  EXPECT_TRUE(
+      absl::IsInvalidArgument(fs.GetFileSize("gs://bucket/", nullptr, &size)));
 }
 
 TEST(GcsFileSystemTest, RenameFile_Folder) {
@@ -2662,19 +2665,19 @@ TEST(GcsFileSystemTest, RenameFile_Object) {
   std::unique_ptr<RandomAccessFile> dst;
   TF_EXPECT_OK(
       fs.NewRandomAccessFile("gs://bucket/path/src.txt", nullptr, &src));
-  TF_EXPECT_OK(src->Read(0, 8, &result, scratch));
+  TF_EXPECT_OK(src->Read(0, result, absl::MakeSpan(scratch, 8)));
   EXPECT_EQ("01234567", result);
   TF_EXPECT_OK(
       fs.NewRandomAccessFile("gs://bucket/path/dst.txt", nullptr, &dst));
-  TF_EXPECT_OK(dst->Read(0, 8, &result, scratch));
+  TF_EXPECT_OK(dst->Read(0, result, absl::MakeSpan(scratch, 8)));
   EXPECT_EQ("76543210", result);
   // Now rename src to dst. This should flush the block cache for both files.
   TF_EXPECT_OK(fs.RenameFile("gs://bucket/path/src.txt",
                              "gs://bucket/path/dst.txt", nullptr));
   // Re-read both files. This should reload their contents from GCS.
-  TF_EXPECT_OK(src->Read(0, 8, &result, scratch));
+  TF_EXPECT_OK(src->Read(0, result, absl::MakeSpan(scratch, 8)));
   EXPECT_EQ("89abcdef", result);
-  TF_EXPECT_OK(dst->Read(0, 8, &result, scratch));
+  TF_EXPECT_OK(dst->Read(0, result, absl::MakeSpan(scratch, 8)));
   EXPECT_EQ("fedcba98", result);
 }
 
@@ -2849,7 +2852,7 @@ TEST(GcsFileSystemTest, RenameFile_Object_Incomplete) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  EXPECT_TRUE(errors::IsUnimplemented(fs.RenameFile(
+  EXPECT_TRUE(absl::IsUnimplemented(fs.RenameFile(
       "gs://bucket/path/src.txt", "gs://bucket/path/dst.txt", nullptr)));
 }
 
@@ -3834,7 +3837,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_StatsRecording) {
   char scratch[6];
   absl::string_view result;
 
-  TF_EXPECT_OK(file->Read(0, sizeof(scratch), &result, scratch));
+  TF_EXPECT_OK(file->Read(0, result, absl::MakeSpan(scratch, sizeof(scratch))));
   EXPECT_EQ("012345", result);
 
   EXPECT_EQ("gs://bucket/random_access.txt", stats.block_load_request_file_);

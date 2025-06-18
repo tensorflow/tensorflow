@@ -1,5 +1,6 @@
 load("//xla:py_strict.bzl", "py_strict_test")
 load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
     "if_llvm_aarch64_available",
@@ -11,7 +12,7 @@ load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//xla/backends/cpu:xla_backend_cpu_internal_access"],
+    default_visibility = internal_visibility(["//xla/backends/cpu:xla_backend_cpu_internal_access"]),
     licenses = ["notice"],
 )
 
@@ -61,6 +62,7 @@ cc_library(
         ":cpu_features",
         ":polynomial_approximations",
         "//xla:util",
+        "//xla:xla_proto_cc",
         "//xla/service:hlo_module_config",
         "//xla/service/cpu:cpu_options",
         "//xla/service/llvm_ir:llvm_util",
@@ -99,16 +101,21 @@ cc_library(
         "//xla:util",
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
         "//xla/backends/cpu/codegen/emitters/transforms:passes",
+        "//xla/codegen:llvm_ir_kernel_source",
+        "//xla/codegen:mlir_kernel_source",
         "//xla/codegen/emitters/ir:xla",
+        "//xla/codegen/emitters/ir:xla_attrs_inc_gen",
         "//xla/codegen/emitters/transforms:passes",
         "//xla/mlir/tools/mlir_replay/public:compiler_trace_proto_cc",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:mhlo_passes",
         "//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Core",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:AffineToStandard",
@@ -130,6 +137,7 @@ cc_library(
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SCFToControlFlow",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:ToLLVMIRTranslation",
         "@llvm-project//mlir:Transforms",
@@ -241,6 +249,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu:alignment",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:Support",
@@ -286,7 +295,6 @@ cc_library(
     deps = [
         ":target_machine_features",
         "//xla:shape_util",
-        "//xla:types",
         "//xla:xla_data_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/algorithm:container",
@@ -308,7 +316,6 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
-        "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
         "//xla/service:hlo_module_config",
         "//xla/service/llvm_ir:ir_array",
@@ -342,14 +349,17 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:buffer_assignment",
+        "//xla/service:buffer_value",
         "//xla/service:hlo_module_config",
         "//xla/service:logical_buffer",
+        "//xla/service/cpu:cpu_executable",
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:llvm_util",
-        "//xla/tests:hlo_test_base",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
@@ -441,7 +451,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:JITLink",
-        "@llvm-project//llvm:OrcJIT",
+        "@llvm-project//llvm:OrcJIT",  # buildcleaner: keep
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",
     ],
@@ -480,6 +490,22 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+py_strict_test(
+    name = "scatter_kernel_emitter_test",
+    srcs = ["scatter_kernel_emitter_test.py"],
+    tags = [
+        "no_oss",
+    ],
+    deps = [
+        "//third_party/py/numpy",
+        "//xla/backends/cpu/testlib",
+        "//xla/codegen/testlib",
+        "//xla/python:xla_extension",
+        "@absl_py//absl/testing:absltest",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -534,8 +560,6 @@ xla_cc_test(
         ":symbol_name_util",
         "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 

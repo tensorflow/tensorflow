@@ -337,5 +337,5 @@ HloModule CholeskyExpanderTest
 
 ENTRY test {
   input = f32[1,256,256] parameter(0)
-  ROOT decomp = f32[1,256,256] cholesky(%input)
+  ROOT decomp = f32[1,256,256] cholesky(input)
 }

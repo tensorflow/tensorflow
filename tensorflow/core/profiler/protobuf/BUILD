@@ -26,19 +26,6 @@ package_group(
     ],
 )
 
-tf_proto_library(
-    name = "xplane_proto",
-    srcs = ["xplane.proto"],
-    make_default_target_header_only = True,
-    protodeps = [
-        "@local_tsl//tsl/profiler/protobuf:xplane_proto",
-    ],
-    visibility = [":friends"],
-    exports = [
-        "@local_tsl//tsl/profiler/protobuf:xplane_proto",
-    ],
-)
-
 # This is needed because of how tf_android_core_proto_sources parses proto paths.
 exports_files(
     srcs = ["xplane.proto"],
@@ -280,11 +267,6 @@ tf_proto_library(
 )
 
 # copybara:uncomment_begin(google-only)
-# py_proto_library(
-#     name = "xplane_py_pb2",
-#     visibility = [":friends"],
-#     deps = [":xplane_proto"],
-# )
 #
 # py_proto_library(
 #     name = "memory_viewer_preprocess_py_pb2",

@@ -18,6 +18,7 @@ filegroup(
     srcs = [
         "math_util.h",
     ],
+    compatible_with = get_compatible_with_portable(),
 )
 
 cc_library(

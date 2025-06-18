@@ -89,6 +89,7 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
            PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
           {"enable_mock_nccl", PJRT_NamedValue_Type::PJRT_NamedValue_kBool},
           {"mock_gpu_topology", PJRT_NamedValue_Type::PJRT_NamedValue_kString},
+          {"slice_index", PJRT_NamedValue_Type::PJRT_NamedValue_kInt64},
       });
   PJRT_RETURN_IF_ERROR(
       ValidateCreateOptions(create_options, kExpectedOptionNameAndTypes));
@@ -158,6 +159,11 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
       it != create_options.end()) {
     mock_gpu_topology = std::get<std::string>(it->second);
   }
+  std::optional<int64_t> slice_index;
+  if (auto it = create_options.find("slice_index");
+      it != create_options.end()) {
+    slice_index = std::get<int64_t>(it->second);
+  }
 
   xla::GpuClientOptions options;
   options.allocator_config = allocator_config;
@@ -172,6 +178,7 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
       should_stage_host_to_device_transfers;
   options.enable_mock_nccl = enable_mock_nccl;
   options.mock_gpu_topology = mock_gpu_topology;
+  options.slice_index = slice_index;
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
                         xla::GetStreamExecutorGpuClient(options));
   args->client = pjrt::CreateWrapperClient(std::move(client));
@@ -312,9 +319,11 @@ PLUGIN_Profiler_Api profiler_api{
 };
 
 PJRT_Profiler_Extension profiler_extension{
-    /*struct_size=*/PJRT_Profiler_Extension_STRUCT_SIZE,
-    /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Profiler,
-    /*next=*/nullptr,
+    PJRT_Extension_Base{
+        /*struct_size=*/PJRT_Profiler_Extension_STRUCT_SIZE,
+        /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Profiler,
+        /*next=*/nullptr,
+    },
     /*profiler_api=*/&profiler_api,
 };
 
@@ -341,9 +350,11 @@ PJRT_Error* PJRT_Register_Batch_Partitionable(
 }
 
 PJRT_Custom_Partitioner_Extension custom_partitioner{
-    /*struct_size=*/PJRT_Custom_Partitioner_Extension_STRUCT_SIZE,
-    /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Custom_Partitioner,
-    /*next=*/reinterpret_cast<PJRT_Extension_Base*>(&profiler_extension),
+    PJRT_Extension_Base{
+        /*struct_size=*/PJRT_Custom_Partitioner_Extension_STRUCT_SIZE,
+        /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Custom_Partitioner,
+        /*next=*/&profiler_extension.base,
+    },
     /*register_custom_partitioner=*/PJRT_Register_Custom_Partitioner,
     /*register_batch_partitionable=*/PJRT_Register_Batch_Partitionable,
 };
@@ -374,9 +385,11 @@ PJRT_Error* PJRT_Wait_Until_Buffer_Ready_On_Stream(
 }
 
 PJRT_Stream_Extension stream{
-    /*struct_size=*/PJRT_Stream_Extension_STRUCT_SIZE,
-    /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Stream,
-    /*next=*/reinterpret_cast<PJRT_Extension_Base*>(&custom_partitioner),
+    PJRT_Extension_Base{
+        /*struct_size=*/PJRT_Stream_Extension_STRUCT_SIZE,
+        /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Stream,
+        /*next=*/&custom_partitioner.base,
+    },
     /*get_stream=*/PJRT_Get_Stream_For_External_Ready_Events,
     /*wait_stream=*/PJRT_Wait_Until_Buffer_Ready_On_Stream,
 };
@@ -412,32 +425,31 @@ PJRT_Error* PJRT_Gpu_Register_Custom_Call(
 
 const PJRT_Api* GetGpuPjrtApi() {
   static PJRT_Gpu_Custom_Call custom_call{
-      /*struct_size=*/PJRT_Gpu_Custom_Call_STRUCT_SIZE,
-      /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Gpu_Custom_Call,
-      /*next=*/reinterpret_cast<PJRT_Extension_Base*>(&stream),
+      PJRT_Extension_Base{
+          /*struct_size=*/PJRT_Gpu_Custom_Call_STRUCT_SIZE,
+          /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Gpu_Custom_Call,
+          /*next=*/&stream.base,
+      },
       /*custom_call=*/PJRT_Gpu_Register_Custom_Call,
   };
 
   static PJRT_Layouts_Extension layouts_extension =
-      pjrt::CreateLayoutsExtension(
-          reinterpret_cast<PJRT_Extension_Base*>(&custom_call));
+      pjrt::CreateLayoutsExtension(&custom_call.base);
 
-  static PJRT_FFI_Extension ffi_extension = pjrt::CreateFfiExtension(
-      reinterpret_cast<PJRT_Extension_Base*>(&layouts_extension));
+  static PJRT_FFI_Extension ffi_extension =
+      pjrt::CreateFfiExtension(&layouts_extension.base);
 
   static PJRT_MemoryDescriptions_Extension memory_descriptions_extension =
-      pjrt::CreateMemoryDescriptionsExtension(
-          reinterpret_cast<PJRT_Extension_Base*>(&ffi_extension));
+      pjrt::CreateMemoryDescriptionsExtension(&ffi_extension.base);
 
-  static PJRT_Triton_Extension triton_extension = pjrt::CreateTritonExtension(
-      reinterpret_cast<PJRT_Extension_Base*>(&memory_descriptions_extension));
+  static PJRT_Triton_Extension triton_extension =
+      pjrt::CreateTritonExtension(&memory_descriptions_extension.base);
 
   static const PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
       pjrt::gpu_plugin::PJRT_Client_Create,
       pjrt::gpu_plugin::PJRT_ExecuteContext_Create,
       pjrt::gpu_plugin::PJRT_GpuDeviceTopology_Create,
-      pjrt::PJRT_Plugin_Initialize_NoOp,
-      reinterpret_cast<PJRT_Extension_Base*>(&triton_extension),
+      pjrt::PJRT_Plugin_Initialize_NoOp, &triton_extension.base,
       pjrt::PJRT_Plugin_Attributes_Xla);
 
   return &pjrt_api;

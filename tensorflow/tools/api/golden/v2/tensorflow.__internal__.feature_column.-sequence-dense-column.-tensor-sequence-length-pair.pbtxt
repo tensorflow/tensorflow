@@ -4,11 +4,11 @@ tf_class {
   is_instance: "<type \'tuple\'>"
   member {
     name: "dense_tensor"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'collections._tuplegetter\'>"
   }
   member {
     name: "sequence_length"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'collections._tuplegetter\'>"
   }
   member_method {
     name: "__init__"

@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "xla/runtime/resource_use.h"
 
+#include <vector>
+
+#include <gtest/gtest.h>
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -47,6 +50,13 @@ TEST(ResourceUseTest, ReadWriteSet) {
   EXPECT_TRUE(rwset.HasConflicts({ResourceUse::Write(token0)}));
   EXPECT_FALSE(rwset.HasConflicts({ResourceUse::Read(token1)}));
   EXPECT_FALSE(rwset.HasConflicts({ResourceUse::Write(token1)}));
+
+  ResourceUse::ReadWriteSet rwset2;
+  rwset2.Add(ResourceUse::Write(token0));
+
+  std::vector<ResourceUse> conflicts = rwset.Conflicts(rwset2);
+  ASSERT_EQ(conflicts.size(), 1);
+  EXPECT_EQ(conflicts.front(), ResourceUse::Write(token0));
 }
 
 }  // namespace

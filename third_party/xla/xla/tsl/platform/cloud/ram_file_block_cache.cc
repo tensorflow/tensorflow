@@ -19,12 +19,14 @@ limitations under the License.
 #include <memory>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "xla/tsl/platform/env.h"
 
 namespace tsl {
 
 bool RamFileBlockCache::BlockNotStale(const std::shared_ptr<Block>& block) {
-  mutex_lock l(block->mu);
+  absl::MutexLock l(&block->mu);
   if (block->state != FetchState::FINISHED) {
     return true;  // No need to check for staleness.
   }
@@ -34,7 +36,7 @@ bool RamFileBlockCache::BlockNotStale(const std::shared_ptr<Block>& block) {
 
 std::shared_ptr<RamFileBlockCache::Block> RamFileBlockCache::Lookup(
     const Key& key) {
-  mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
   auto entry = block_map_.find(key);
   if (entry != block_map_.end()) {
     if (BlockNotStale(entry->second)) {
@@ -70,7 +72,7 @@ void RamFileBlockCache::Trim() {
 /// Move the block to the front of the LRU list if it isn't already there.
 absl::Status RamFileBlockCache::UpdateLRU(const Key& key,
                                           const std::shared_ptr<Block>& block) {
-  mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
   if (block->timestamp == 0) {
     // The block was evicted from another thread. Allow it to remain evicted.
     return absl::OkStatus();
@@ -106,7 +108,7 @@ absl::Status RamFileBlockCache::MaybeFetch(
         // Perform this action in a cleanup callback to avoid locking mu_ after
         // locking block->mu.
         if (downloaded_block) {
-          mutex_lock l(mu_);
+          absl::MutexLock l(&mu_);
           // Do not update state if the block is already to be evicted.
           if (block->timestamp != 0) {
             // Use capacity() instead of size() to account for all  memory
@@ -122,7 +124,7 @@ absl::Status RamFileBlockCache::MaybeFetch(
       });
   // Loop until either block content is successfully fetched, or our request
   // encounters an error.
-  mutex_lock l(block->mu);
+  absl::MutexLock l(&block->mu);
   absl::Status status = absl::OkStatus();
   while (true) {
     switch (block->state) {
@@ -130,7 +132,7 @@ absl::Status RamFileBlockCache::MaybeFetch(
         TF_FALLTHROUGH_INTENDED;
       case FetchState::CREATED:
         block->state = FetchState::FETCHING;
-        block->mu.unlock();  // Release the lock while making the API call.
+        block->mu.Unlock();  // Release the lock while making the API call.
         block->data.clear();
         block->data.resize(block_size_, 0);
         size_t bytes_transferred;
@@ -139,7 +141,7 @@ absl::Status RamFileBlockCache::MaybeFetch(
         if (cache_stats_ != nullptr) {
           cache_stats_->RecordCacheMissBlockSize(bytes_transferred);
         }
-        block->mu.lock();  // Reacquire the lock immediately afterwards
+        block->mu.Lock();  // Reacquire the lock immediately afterwards
         if (status.ok()) {
           block->data.resize(bytes_transferred, 0);
           // Shrink the data capacity to the actual size used.
@@ -150,10 +152,10 @@ absl::Status RamFileBlockCache::MaybeFetch(
         } else {
           block->state = FetchState::ERROR;
         }
-        block->cond_var.notify_all();
+        block->cond_var.SignalAll();
         return status;
       case FetchState::FETCHING:
-        block->cond_var.wait_for(l, std::chrono::seconds(60));
+        block->cond_var.WaitWithTimeout(&block->mu, absl::Seconds(60));
         if (block->state == FetchState::FINISHED) {
           return absl::OkStatus();
         }
@@ -232,7 +234,7 @@ absl::Status RamFileBlockCache::Read(const string& filename, size_t offset,
 
 bool RamFileBlockCache::ValidateAndUpdateFileSignature(const string& filename,
                                                        int64_t file_signature) {
-  mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
   auto it = file_signature_map_.find(filename);
   if (it != file_signature_map_.end()) {
     if (it->second == file_signature) {
@@ -248,13 +250,13 @@ bool RamFileBlockCache::ValidateAndUpdateFileSignature(const string& filename,
 }
 
 size_t RamFileBlockCache::CacheSize() const {
-  mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
   return cache_size_;
 }
 
 void RamFileBlockCache::Prune() {
   while (!WaitForNotificationWithTimeout(&stop_pruning_thread_, 1000000)) {
-    mutex_lock lock(mu_);
+    absl::MutexLock lock(&mu_);
     uint64 now = env_->NowSeconds();
     while (!lra_list_.empty()) {
       auto it = block_map_.find(lra_list_.back());
@@ -270,7 +272,7 @@ void RamFileBlockCache::Prune() {
 }
 
 void RamFileBlockCache::Flush() {
-  mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
   block_map_.clear();
   lru_list_.clear();
   lra_list_.clear();
@@ -278,7 +280,7 @@ void RamFileBlockCache::Flush() {
 }
 
 void RamFileBlockCache::RemoveFile(const string& filename) {
-  mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
   RemoveFile_Locked(filename);
 }
 

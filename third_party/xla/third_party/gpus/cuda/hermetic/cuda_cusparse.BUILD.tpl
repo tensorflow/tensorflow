@@ -4,9 +4,6 @@ load(
     "cuda_rpath_flags",
 )
 
-exports_files([
-    "version.txt",
-])
 %{multiline_comment}
 cc_import(
     name = "cusparse_shared_library",

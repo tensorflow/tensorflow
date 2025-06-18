@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -40,7 +40,7 @@ using AsyncExecutionStreamIds =
 namespace xla::gpu {
 namespace {
 
-class ExecutionStreamAssignmentTest : public HloTestBase {
+class ExecutionStreamAssignmentTest : public HloHardwareIndependentTestBase {
  protected:
   // Adds expectations for the `ExecutionStreamId` for all synchronous
   // `HloInstructions` in the given `HloComputation`.

@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/gpu/ir_emitter.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -87,7 +88,7 @@ class IrEmitterUnnested : public IrEmitter {
   static std::unique_ptr<IrEmitterUnnested> Create(
       IrEmitterContext* ir_emitter_context);
 
-  // Transfers the ownship of thunk_sequence_ out.
+  // Transfers the ownership of thunk_sequence_ out.
   std::unique_ptr<SequentialThunk> ConsumeThunkSequence(
       Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo{}) {
     return std::make_unique<SequentialThunk>(thunk_info,

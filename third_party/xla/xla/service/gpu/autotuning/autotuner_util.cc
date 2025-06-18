@@ -470,6 +470,7 @@ namespace {
 
 bool IsTextProtoPath(absl::string_view file_path) {
   return absl::EndsWith(file_path, ".txt") ||
+         absl::EndsWith(file_path, ".txtpb") ||
          absl::EndsWith(file_path, ".textproto") ||
          absl::EndsWith(file_path, ".prototxt") ||
          absl::EndsWith(file_path, ".pbtxt");
@@ -495,6 +496,7 @@ bool IsTextProtoPath(absl::string_view file_path) {
         kVersion, results.version()));
   }
 
+  AddVersionToAutotuneResults(results);
   TF_RETURN_IF_ERROR(LoadAutotuneResults(results, allow_override));
   return absl::OkStatus();
 }
@@ -567,6 +569,15 @@ bool IsTextProtoPath(absl::string_view file_path) {
 /*static*/ void AutotunerUtil::ClearCacheStats() {
   absl::MutexLock lock(&autotune_cache_mu);
   autotune_cache_stats = CacheStats();
+}
+
+void AddVersionToAutotuneResults(AutotuneResults& results) {
+  for (auto& result : *results.mutable_results()) {
+    if (result.version() == 0) {
+      // Set to current version if we don't have one specified.
+      result.set_version(AutotuneCacheKey::kCurrentVersion);
+    }
+  }
 }
 
 }  // namespace gpu

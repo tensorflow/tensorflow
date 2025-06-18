@@ -103,9 +103,10 @@ class MergeFusionWithUniformDequantizePattern
     }
     for (auto user : users_to_erase) rewriter.eraseOp(user);
     rewriter.eraseOp(call_op);
-    func_op.eraseResult(0);
-    func_op.insertResult(0, new_call_op.getResult(0).getType(),
-                         /*resultAttrs=*/nullptr);
+    if (failed(func_op.eraseResult(0))) return failure();
+    if (failed(func_op.insertResult(0, new_call_op.getResult(0).getType(),
+                                    /*resultAttrs=*/nullptr)))
+      return failure();
 
     // Modify the quantized fused function to do dequantize+relu(6).
     rewriter.setInsertionPoint(req_op);

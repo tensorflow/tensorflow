@@ -15,45 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_COST_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_COST_UTILS_H_
 
-#include <string>
-
-#include "absl/container/flat_hash_set.h"
-#include "tensorflow/core/grappler/costs/cost_estimator.h"
-#include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/utils/xplane_visitor.h"
-
-namespace tensorflow {
-namespace profiler {
-
-// This is a wrapper of tensorflow::grappler::OpLevelCostEstimator and use
-// tracing time information to estimate the roof line stats for each traced
-// tensorflow op.
-class TfOpRoofLineCostEstimator
-    : public tensorflow::grappler::OpLevelCostEstimator {
- public:
-  TfOpRoofLineCostEstimator() = default;
-  ~TfOpRoofLineCostEstimator() override;
-
-  grappler::DeviceInfo GetDeviceInfo(
-      const DeviceProperties& device) const override;
-
-  struct OpRoofLineStats {
-    uint64 flops = 0LL;
-    uint64 bytes_accessed = 0LL;
-    bool inaccurate = false;
-  };
-  OpRoofLineStats Predict(const XEventVisitor& event);
-
- private:
-  absl::flat_hash_set<std::string>
-      unsupported_ops_;  // summary for unsupported ops.
-
-  TfOpRoofLineCostEstimator(const TfOpRoofLineCostEstimator&) = delete;
-  void operator=(const TfOpRoofLineCostEstimator&) = delete;
-};
-
-}  // namespace profiler
-}  // namespace tensorflow
+#include "xprof/utils/cost_utils.h"  // from @org_xprof  // IWYU pragma: export
 
 #endif  // TENSORFLOW_CORE_PROFILER_UTILS_COST_UTILS_H_

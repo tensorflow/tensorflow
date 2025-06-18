@@ -55,7 +55,7 @@ void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp input,
 
   OP_REQUIRES(
       ctx,
-      paddings.shape().dimensions_size() == 2 &&
+      paddings.shape().dimensions().size() == 2 &&
           block_rank == xla::ShapeUtil::GetDimension(paddings.shape(), 0) &&
           2 == xla::ShapeUtil::GetDimension(paddings.shape(), 1),
       errors::InvalidArgument("paddings should have shape [", block_rank,

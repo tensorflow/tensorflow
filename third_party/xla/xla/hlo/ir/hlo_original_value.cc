@@ -91,7 +91,7 @@ OriginalValueProto OriginalValueToProto(const OriginalValue& original_value) {
   return original_value_proto;
 }
 
-void CopyOriginalValue(const HloInstruction* src_instruction,
+void MoveOriginalValue(const HloInstruction* src_instruction,
                        HloInstruction* dest_instruction) {
   std::shared_ptr<OriginalValue> original_value =
       src_instruction->original_value();
@@ -104,7 +104,7 @@ void CopyOriginalValue(const HloInstruction* src_instruction,
                              dest_instruction->shape())) {
     LOG(WARNING)
         << "Expect the new instruction to have the same shape with the old "
-           "instruction when copying over original_value";
+           "instruction when moving over original_value";
     return;
   }
 

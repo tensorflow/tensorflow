@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #include "tsl/platform/retrying_file_system.h"
 
 #ifndef _WIN32
@@ -51,7 +52,6 @@ limitations under the License.
 #include "xla/tsl/platform/cloud/time_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"
@@ -373,7 +373,7 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
       return read_fn_(filename_, offset, n, result, scratch);
     }
     {
-      mutex_lock l(buffer_mutex_);
+      absl::MutexLock l(&buffer_mutex_);
       size_t buffer_end = buffer_start_ + buffer_.size();
       size_t copy_size = 0;
       if (offset < buffer_end && offset >= buffer_start_) {
@@ -430,7 +430,7 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
 
   // Mutex for buffering operations that can be accessed from multiple threads.
   // The following members are mutable in order to provide a const Read.
-  mutable mutex buffer_mutex_;
+  mutable absl::Mutex buffer_mutex_;
 
   // Offset of buffer from start of the file.
   mutable uint64 buffer_start_ TF_GUARDED_BY(buffer_mutex_);
@@ -1024,7 +1024,7 @@ absl::Status GcsFileSystem::NewRandomAccessFile(
                                                      uint64 offset, size_t n,
                                                      absl::string_view* result,
                                                      char* scratch) {
-      tf_shared_lock l(block_cache_lock_);
+      absl::ReaderMutexLock l(&block_cache_lock_);
       GcsFileStat stat;
       TF_RETURN_IF_ERROR(stat_cache_->LookupOrCompute(
           fname, &stat,
@@ -1073,7 +1073,7 @@ absl::Status GcsFileSystem::NewRandomAccessFile(
 void GcsFileSystem::ResetFileBlockCache(size_t block_size_bytes,
                                         size_t max_bytes,
                                         uint64 max_staleness_secs) {
-  mutex_lock l(block_cache_lock_);
+  absl::MutexLock l(&block_cache_lock_);
   file_block_cache_ =
       MakeFileBlockCache(block_size_bytes, max_bytes, max_staleness_secs);
   if (stats_ != nullptr) {
@@ -1307,7 +1307,7 @@ absl::Status GcsFileSystem::ParseGcsPath(absl::string_view fname,
 }
 
 void GcsFileSystem::ClearFileCaches(const string& fname) {
-  tf_shared_lock l(block_cache_lock_);
+  absl::ReaderMutexLock l(&block_cache_lock_);
   file_block_cache_->RemoveFile(fname);
   stat_cache_->Delete(fname);
   // TODO(rxsang): Remove the patterns that matche the file in
@@ -1378,8 +1378,9 @@ absl::Status GcsFileSystem::NewAppendableFile(
   TF_RETURN_IF_ERROR(GetTmpFilename(&old_content_filename));
   std::ofstream old_content(old_content_filename, std::ofstream::binary);
   while (true) {
-    status = reader->Read(offset, kReadAppendableFileBufferSize, &read_chunk,
-                          buffer.get());
+    status = reader->Read(
+        offset, read_chunk,
+        absl::MakeSpan(buffer.get(), kReadAppendableFileBufferSize));
     if (status.ok()) {
       old_content << read_chunk;
       offset += kReadAppendableFileBufferSize;
@@ -1452,7 +1453,7 @@ absl::Status GcsFileSystem::NewReadOnlyMemoryRegionFromFile(
   TF_RETURN_IF_ERROR(NewRandomAccessFile(fname, token, &file));
 
   absl::string_view piece;
-  TF_RETURN_IF_ERROR(file->Read(0, size, &piece, data.get()));
+  TF_RETURN_IF_ERROR(file->Read(0, piece, absl::MakeSpan(data.get(), size)));
 
   result->reset(new GcsReadOnlyMemoryRegion(std::move(data), size));
   return absl::OkStatus();
@@ -2125,7 +2126,7 @@ absl::Status GcsFileSystem::DeleteRecursively(const string& dirname,
 // reclaiming memory once filesystem operations are done (e.g. model is loaded),
 // or for resetting the filesystem to a consistent state.
 void GcsFileSystem::FlushCaches(TransactionToken* token) {
-  tf_shared_lock l(block_cache_lock_);
+  absl::ReaderMutexLock l(&block_cache_lock_);
   file_block_cache_->Flush();
   stat_cache_->Clear();
   matching_paths_cache_->Clear();
@@ -2135,13 +2136,13 @@ void GcsFileSystem::FlushCaches(TransactionToken* token) {
 void GcsFileSystem::SetStats(GcsStatsInterface* stats) {
   CHECK(stats_ == nullptr) << "SetStats() has already been called.";
   CHECK(stats != nullptr);
-  mutex_lock l(block_cache_lock_);
+  absl::MutexLock l(&block_cache_lock_);
   stats_ = stats;
   stats_->Configure(this, &throttle_, file_block_cache_.get());
 }
 
 void GcsFileSystem::SetCacheStats(FileBlockCacheStatsInterface* cache_stats) {
-  tf_shared_lock l(block_cache_lock_);
+  absl::ReaderMutexLock l(&block_cache_lock_);
   if (file_block_cache_ == nullptr) {
     LOG(ERROR) << "Tried to set cache stats of non-initialized file block "
                   "cache object. This may result in not exporting the intended "
@@ -2153,7 +2154,7 @@ void GcsFileSystem::SetCacheStats(FileBlockCacheStatsInterface* cache_stats) {
 
 void GcsFileSystem::SetAuthProvider(
     std::unique_ptr<AuthProvider> auth_provider) {
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   auth_provider_ = std::move(auth_provider);
 }
 
@@ -2169,7 +2170,7 @@ absl::Status GcsFileSystem::CreateHttpRequest(
 
   string auth_token;
   {
-    tf_shared_lock l(mu_);
+    absl::ReaderMutexLock l(&mu_);
     TF_RETURN_IF_ERROR(
         AuthProvider::GetToken(auth_provider_.get(), &auth_token));
   }

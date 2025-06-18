@@ -172,6 +172,9 @@ tsl::AsyncValueRef<DotThunk::ExecuteEvent> DotThunk::Execute(
   };
 
   switch (element_type) {
+    case BF16:
+      dispatch(bfloat16{});  // Enable Eigen BF16 kernel for fallback.
+      break;
     case F16:
       dispatch(half{});
       break;

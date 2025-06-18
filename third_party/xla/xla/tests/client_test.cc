@@ -13,22 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
-#include "absl/status/statusor.h"
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "xla/client/local_client.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/testlib/test_helpers.h"
+#include "xla/layout_util.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/service/service.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_macros.h"
-#include "xla/tests/test_utils.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -60,8 +66,9 @@ XLA_TEST_F(ClientTest, ExecuteWithLayout) {
       TF_ASSERT_OK_AND_ASSIGN(
           auto computed, client_->Transfer(*data, &expected_literal.shape()));
 
-      ASSERT_TRUE(LiteralTestUtil::EqualShapesAndLayouts(
-          expected_literal.shape(), computed.shape()));
+      ASSERT_THAT(
+          computed.shape().ToProto(),
+          tsl::proto_testing::EqualsProto(expected_literal.shape().ToProto()));
       EXPECT_TRUE(LiteralTestUtil::Equal(expected_literal, computed));
     }
   }

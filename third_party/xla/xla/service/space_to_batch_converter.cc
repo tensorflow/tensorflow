@@ -2059,10 +2059,10 @@ absl::StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
         consumer->shape().dimensions_size() - 1;
     instr_to_dim_map_[consumer] = dim_map;
     auto new_consumer = computation->AddInstruction(consumer->Clone());
-    new_consumer->mutable_shape()->mutable_dimensions()[new_batch_dim] =
-        producer->shape().dimensions(old_batch_dim);
-    new_consumer->mutable_shape()->mutable_dimensions()[new_space_dim] =
-        producer->shape().dimensions(old_space_dim);
+    new_consumer->mutable_shape()->set_dimensions(
+        new_batch_dim, producer->shape().dimensions(old_batch_dim));
+    new_consumer->mutable_shape()->set_dimensions(
+        new_space_dim, producer->shape().dimensions(old_space_dim));
     old_to_new_instrs_[consumer] = new_consumer;
     return true;
   }

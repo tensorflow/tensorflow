@@ -42,25 +42,31 @@ _DELEGATE_NO_GL_DEPS = select({
     ":tflite_profile",
     #"//third_party/GL:EGL_headers",
     #"//third_party/GL:GLES3_headers",
+    # go/keep-sorted start
     "@com_google_absl//absl/container:flat_hash_map",
     "@com_google_absl//absl/container:flat_hash_set",
     "@com_google_absl//absl/memory",
     "@com_google_absl//absl/strings",
     "@com_google_absl//absl/types:span",
-    "//tensorflow/lite:kernel_api",
-    "//tensorflow/lite:minimal_logging",
     "//tensorflow/lite/async:backend_async_kernel_interface",
     "//tensorflow/lite/core/async/interop/c:types",
     "//tensorflow/lite/core/c:common",
-    "//tensorflow/lite/delegates:serialization",
     "//tensorflow/lite/delegates/gpu/cl:util",
+    "//tensorflow/lite/delegates/gpu/common:data_type",
+    "//tensorflow/lite/delegates/gpu/common:model",
     "//tensorflow/lite/delegates/gpu/common:model_builder",
     "//tensorflow/lite/delegates/gpu/common:model_builder_helper",
     "//tensorflow/lite/delegates/gpu/common:quantization_util",
+    "//tensorflow/lite/delegates/gpu/common:status",
+    "//tensorflow/lite/delegates:serialization",
     "//tensorflow/lite/kernels:kernel_util",
     "//tensorflow/lite/profiling/telemetry",
-    "//tensorflow/lite/profiling/telemetry:telemetry_status",
+    "//tensorflow/lite/profiling/telemetry/c:telemetry_setting",
     "//tensorflow/lite/profiling/telemetry/c:telemetry_setting_internal",
+    "//tensorflow/lite/profiling/telemetry:telemetry_status",
+    "//tensorflow/lite:kernel_api",
+    "//tensorflow/lite:minimal_logging",
+    # go/keep-sorted end
 ]
 
 config_setting(
@@ -70,14 +76,12 @@ config_setting(
 
 config_setting(
     name = "tflite_gpu_extra_gles_deps",
-    # copybara:uncomment_begin(google-only)
-    # constraint_values = [
-    # "//third_party/bazel_platforms/os:linux",
-    # ],
-    # copybara:uncomment_end
+    constraint_values = [
+        "//third_party/bazel_platforms/cpu:x86_64",
+        "//third_party/bazel_platforms/os:linux",
+    ],
     values = {
         "copt": "-DTFLITE_GPU_EXTRA_GLES_DEPS",
-        "cpu": "k8",
     },
 )
 

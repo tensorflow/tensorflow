@@ -140,8 +140,7 @@ void TargetAnnotationPass::runOnFunction() {
 
   func.walk([&](Operation* op) {
     // We only care about TFL dialect.
-    if (IsNonConstOp(op) && NotTFLQuantDequantizeOp(op) &&
-        !IsTerminatorOp(op) &&
+    if (IsNonConstOp(op) && !IsTerminatorOp(op) &&
         !llvm::isa<func::ReturnOp, func::FuncOp, CallOpInterface>(op)) {
       SetTargetAnnotation(op, device_specs_flag_, &builder);
     }

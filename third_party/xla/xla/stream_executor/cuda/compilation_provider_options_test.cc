@@ -19,6 +19,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
 #include "absl/strings/str_cat.h"
+#include "xla/xla.pb.h"
 
 namespace stream_executor::cuda {
 namespace {

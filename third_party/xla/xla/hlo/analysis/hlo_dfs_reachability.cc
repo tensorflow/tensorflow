@@ -115,9 +115,10 @@ void HloDfsReachability::OnInstructionReplaced(const HloInstruction* previous,
                                                const HloInstruction* now) {
   auto it = instruction_to_idx_.find(previous);
   CHECK(it != instruction_to_idx_.end());
-  auto inserted = instruction_to_idx_.insert({now, it->second}).second;
-  CHECK(inserted);
+  auto idx = it->second;
   instruction_to_idx_.erase(it);
+  auto inserted = instruction_to_idx_.insert({now, idx}).second;
+  CHECK(inserted);
 }
 
 }  // namespace xla

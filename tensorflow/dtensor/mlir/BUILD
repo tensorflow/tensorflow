@@ -20,16 +20,10 @@ package(
 gentbl_cc_library(
     name = "tensorflow_dtensor_ops_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "ir/tf_dtensor.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "ir/tf_dtensor.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "ir/tf_dtensor.h.inc": ["-gen-op-decls"],
+        "ir/tf_dtensor.cc.inc": ["-gen-op-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tf_dtensor.td",
     td_srcs = [
@@ -48,13 +42,10 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "dtensor_passes_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [(
-        [
-            "-gen-pass-decls",
-            "-name=DTensor",
-        ],
-        "dtensor_passes.h.inc",
-    )],
+    tbl_outs = {"dtensor_passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=DTensor",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "Passes.td",
     deps = ["@llvm-project//mlir:PassBaseTdFiles"],

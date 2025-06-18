@@ -39,6 +39,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test.h"
+#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/transforms/simplifiers/flatten_call_graph.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/literal.h"
@@ -52,9 +55,6 @@ limitations under the License.
 #include "xla/service/logical_buffer.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/test_helpers.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/status.h"
@@ -99,7 +99,11 @@ const std::vector<const HloInstruction*> GetInstructions(HloInstruction* root) {
   return main_list.GetInstructions();
 }
 
-class BufferAssignmentTest : public HloTestBase {
+int64_t BufferSizeBytes(const BufferValue& buffer) {
+  return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
+}
+
+class BufferAssignmentTest : public HloHardwareIndependentTestBase {
  protected:
   ~BufferAssignmentTest() override {}
 
@@ -107,7 +111,7 @@ class BufferAssignmentTest : public HloTestBase {
                                                         int64_t alignment = 1) {
     return BufferAssigner::Run(
                module, std::make_unique<DependencyHloOrdering>(module),
-               backend().compiler()->BufferSizeBytesFunction(),
+               &BufferSizeBytes,
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true)
         .value();
@@ -118,9 +122,8 @@ class BufferAssignmentTest : public HloTestBase {
     // Dump proto for buffer assignments.
     auto proto = buffers->ToProto();
     // Recreate buffer assignment from proto.
-    return BufferAssignment::FromProto(
-        proto, module, backend().compiler()->BufferSizeBytesFunction(),
-        /*can_share_buffer=*/nullptr);
+    return BufferAssignment::FromProto(proto, module, &BufferSizeBytes,
+                                       /*can_share_buffer=*/nullptr);
   }
 
   std::unique_ptr<BufferAssignment> RunBufferAssignmentWithSequentialOrdering(
@@ -132,7 +135,7 @@ class BufferAssignmentTest : public HloTestBase {
     return BufferAssigner::Run(
                module,
                std::make_unique<SequentialHloOrdering>(module->schedule()),
-               backend().compiler()->BufferSizeBytesFunction(),
+               &BufferSizeBytes,
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true, colorer,
                /*must_not_live_out=*/std::nullopt, /*can_share_buffer=*/nullptr,
@@ -145,7 +148,7 @@ class BufferAssignmentTest : public HloTestBase {
       HloModule* module, int64_t alignment = 1) {
     return BufferAssigner::Run(
                module, std::make_unique<DependencyHloOrdering>(module),
-               backend().compiler()->BufferSizeBytesFunction(),
+               &BufferSizeBytes,
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/false)
         .value();
@@ -161,7 +164,7 @@ class BufferAssignmentTest : public HloTestBase {
 
     return BufferAssigner::Run(
                module, std::make_unique<DependencyHloOrdering>(module),
-               backend().compiler()->BufferSizeBytesFunction(),
+               &BufferSizeBytes,
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/false,
                /*colorer=*/BufferAssigner::DefaultColorer(),
@@ -174,7 +177,7 @@ class BufferAssignmentTest : public HloTestBase {
       int64_t alignment = 1) {
     return BufferAssigner::Run(
                module, std::make_unique<DependencyHloOrdering>(module),
-               backend().compiler()->BufferSizeBytesFunction(),
+               &BufferSizeBytes,
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true, std::move(colorer))
         .value();
@@ -187,7 +190,7 @@ class BufferAssignmentTest : public HloTestBase {
     schedule.set_sequence(module->entry_computation(), instruction_sequence);
     return BufferAssigner::Run(
                module, std::make_unique<SequentialHloOrdering>(schedule),
-               backend().compiler()->BufferSizeBytesFunction(),
+               &BufferSizeBytes,
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true)
         .value();
@@ -198,7 +201,7 @@ class BufferAssignmentTest : public HloTestBase {
       int64_t alignment = 1) {
     return BufferAssigner::Run(
                module, std::make_unique<DependencyHloOrdering>(module),
-               backend().compiler()->BufferSizeBytesFunction(),
+               &BufferSizeBytes,
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true,
                BufferAssigner::DefaultColorer(),
@@ -213,8 +216,7 @@ class BufferAssignmentTest : public HloTestBase {
     return BufferAssigner::Run(
                module,
                std::make_unique<SequentialHloOrdering>(module->schedule()),
-               backend().compiler()->BufferSizeBytesFunction(),
-               [](LogicalBuffer::Color) { return 1; },
+               &BufferSizeBytes, [](LogicalBuffer::Color) { return 1; },
                /*allocate_buffers_for_constants=*/true,
                BufferAssigner::DefaultColorer(),
                /*must_not_live_out=*/std::nullopt, /*can_share_buffer=*/nullptr,
@@ -1771,8 +1773,6 @@ TEST_F(BufferAssignmentTest, ElementOfNestedTupleParameterAsOutput) {
             GetTopLevelAllocation(*assignment, tuple_element));
 }
 
-// TODO(b/32248867): Enable when buffer assignment gives allocations to
-// constants.
 TEST_F(BufferAssignmentTest, TupleConstantAsOutput) {
   // Test that a tuple constant which is forwarded to the computation output
   // is properly handled.
@@ -1956,8 +1956,6 @@ TEST_F(BufferAssignmentTest, BitcastAsOutput) {
             GetTopLevelAllocation(*assignment, bitcast));
 }
 
-// TODO(b/34669761): Remove this test when buffers are allowed to share
-// allocations.
 TEST_F(BufferAssignmentTest, TupleBufferNotReused) {
   // Test a computation that returns a tuple parameter.
   auto builder = HloComputation::Builder(TestName());
@@ -2286,7 +2284,7 @@ ENTRY main {
   }
 }
 
-class WhileBufferAssignmentTest : public HloTestBase {
+class WhileBufferAssignmentTest : public HloHardwareIndependentTestBase {
  protected:
   std::unique_ptr<HloComputation> BuildWhileConditionComputation(
       const std::string& name) {
@@ -2642,8 +2640,7 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
       auto assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<SequentialHloOrdering>(schedule),
-          backend().compiler()->BufferSizeBytesFunction(),
-          [](LogicalBuffer::Color) { return 1; },
+          &BufferSizeBytes, [](LogicalBuffer::Color) { return 1; },
           /*allocate_buffers_for_constants=*/true));
 
   // The result tuple elements must be assigned with different buffers.

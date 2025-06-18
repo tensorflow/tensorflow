@@ -208,3 +208,12 @@ def SinkConstantsToControlFlowPass : Pass<"stablehlo-ext-sink-constants-to-contr
   }];
 }
 
+def SymbolicShapeOptimizationPass : Pass<"stablehlo-ext-symbolic-shape-optimization", "func::FuncOp"> {
+  let summary = "Analyzes shapes and performs shape-related optimizations";
+  let description = [{
+    This pass analyzes shapes and performs shape-related optimizations, mostly
+    only used from programs resulting from TF compilation. This pass is largely
+    unmaintained otherwise.
+  }];
+}
+

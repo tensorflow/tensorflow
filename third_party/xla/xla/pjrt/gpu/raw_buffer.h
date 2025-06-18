@@ -41,7 +41,7 @@ class PjRtStreamExecutorRawBuffer : public PjRtRawBuffer {
         device_buffer_(device_buffer) {}
   PjRtMemorySpace* memory_space() const override { return memory_space_; }
 
-  absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override {
+  size_t GetOnDeviceSizeInBytes() const override {
     return device_buffer_->mem().size();
   }
 

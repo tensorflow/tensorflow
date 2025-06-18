@@ -16,28 +16,42 @@ limitations under the License.
 
 #include "xla/tests/local_client_test_base.h"
 
+#include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
+#include "absl/base/const_init.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
+#include "xla/client/client_library.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
+#include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/test_helpers.h"
-#include "xla/map_util.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/platform_util.h"
+#include "xla/service/shaped_buffer.h"
 #include "xla/service/stream_pool.h"
-#include "xla/shape_util.h"
+#include "xla/service/transfer_manager.h"
+#include "xla/shape.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/threadpool.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
 

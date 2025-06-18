@@ -29,15 +29,13 @@ limitations under the License.
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/types/span.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
-#include "xla/pjrt/cpu/abstract_tfrt_cpu_buffer.h"
 #include "xla/pjrt/cpu/cpu_client.h"
-#include "xla/pjrt/cpu/cpu_device.h"
-#include "xla/pjrt/cpu/cpu_event.h"
-#include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
@@ -45,7 +43,6 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -84,40 +81,28 @@ class AliasHelper {
   }
 
   absl::Status SwapOutputAliasedBuffersToArgumentBuffers(
-      PjRtBuffer* result,
+      std::vector<std::unique_ptr<PjRtBuffer>>& results,
       std::vector<std::unique_ptr<PjRtBuffer>>& args_buffers,
       std::vector<PjRtBuffer*>& args_ptrs) {
     if (!ComputationHasAliasing()) {
       return absl::OkStatus();
     }
-    TfrtCpuBuffer* result_tfrt_cpu_buffer =
-        tsl::down_cast<TfrtCpuBuffer*>(result);
-
-    TF_ASSIGN_OR_RETURN(
-        AbstractTfrtCpuBuffer::DonationTransaction buffer_donation,
-        result_tfrt_cpu_buffer->AcquireDonation());
-    TrackedCpuDeviceBuffer* tracked_tfrt_cpu_device_buffer =
-        buffer_donation.device_buffer();
-
-    for (const auto& [output_index, arg_index] :
+    for (const auto& [output_sindex, arg_index] :
          aliased_output_index_to_argument_index_) {
-      // we don't need the entire buffer just the one at the output index
-      tsl::AsyncValuePtr<CpuDeviceMemory> output_cpu_memory =
-          tracked_tfrt_cpu_device_buffer->Buffer(output_index);
-
-      auto tracked_device_buffer = std::make_unique<TrackedCpuDeviceBuffer>(
-          /*is_tuple=*/false, /*owns_buffers=*/true,
-          absl::InlinedVector<tsl::AsyncValueRef<CpuDeviceMemory>, 4>{
-              output_cpu_memory.CopyRef()},
-          tsl::MakeAvailableAsyncValueRef<CpuEvent>());
-
-      args_buffers[arg_index] = std::make_unique<TfrtCpuBuffer>(
-          tsl::down_cast<AbstractTfrtCpuBuffer*>(args_buffers[arg_index].get())
-              ->on_device_shape(),
-          std::move(tracked_device_buffer),
-          tsl::down_cast<TfrtCpuClient*>(client_),
-          tsl::down_cast<TfrtCpuDevice*>(device_), memory_space_);
-
+      if (output_sindex.size() > 1) {
+        return absl::InvalidArgumentError("Nested tuples not supported");
+      }
+      size_t output_index = 0;
+      if (output_sindex.size() == 1) {
+        output_index = output_sindex[0];
+      }
+      if (output_index >= results.size()) {
+        return absl::InvalidArgumentError("index out of bounds.");
+      }
+      if (!results[output_index]) {
+        return absl::InvalidArgumentError("Result already donated.");
+      }
+      args_buffers[arg_index] = std::move(results[output_index]);
       args_ptrs[arg_index] = args_buffers[arg_index].get();
     }
     return absl::OkStatus();
@@ -139,17 +124,38 @@ absl::Status RunHloBenchmark(benchmark::State& state,
                              absl::Span<const Literal* const> args,
                              StrToStrMapping replacements,
                              const HloBenchmarkOptions& benchmark_options) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      ParseAndReturnUnverifiedModule(
+                          absl::StrReplaceAll(hlo_module, replacements),
+                          HloModuleConfig() /* unused */));
+  return RunHloBenchmark(state, std::move(module), args, benchmark_options);
+}
+
+absl::Status RunHloBenchmark(benchmark::State& state,
+                             std::unique_ptr<HloComputation> hlo_computation,
+                             absl::Span<const Literal* const> args,
+                             const HloBenchmarkOptions& benchmark_options) {
+  std::unique_ptr<HloModule> module = std::make_unique<VerifiedHloModule>(
+      "test", HloModuleConfig() /* unused */,
+      /*verifier_layout_sensitive=*/false,
+      /*allow_mixed_precision_in_hlo_verifier=*/true,
+      ShapeUtil::ByteSizeOfElements);
+  module->AddEntryComputation(std::move(hlo_computation));
+
+  return RunHloBenchmark(state, std::move(module), args, benchmark_options);
+}
+
+// NOLINTNEXTLINE(readability-function-cognitive-complexity)
+absl::Status RunHloBenchmark(benchmark::State& state,
+                             std::unique_ptr<HloModule> module,
+                             absl::Span<const Literal* const> args,
+                             const HloBenchmarkOptions& benchmark_options) {
   xla::CpuClientOptions client_options;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtClient> client,
                       xla::GetXlaPjrtCpuClient(client_options));
   PjRtDevice* device = client->devices().front();
   TF_ASSIGN_OR_RETURN(PjRtMemorySpace * memory_space,
                       device->default_memory_space());
-
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      ParseAndReturnUnverifiedModule(
-                          absl::StrReplaceAll(hlo_module, replacements),
-                          HloModuleConfig() /* unused */));
 
   XlaComputation computation(module->ToProto());
 
@@ -158,6 +164,12 @@ absl::Status RunHloBenchmark(benchmark::State& state,
   if (benchmark_options.disable_parallel_task_assigner) {
     compile_options.executable_build_options.mutable_debug_options()
         ->add_xla_disable_hlo_passes("cpu-parallel-task-assigner");
+  }
+  // TODO(intel-tf): Remove this if-block once oneDNN custom calls are enabled
+  // with thunk runtime
+  if (!benchmark_options.use_thunk_runtime) {
+    compile_options.executable_build_options.mutable_debug_options()
+        ->set_xla_cpu_use_thunk_runtime(false);
   }
   std::unique_ptr<PjRtLoadedExecutable> executable;
   if (benchmark_options.aot_options) {
@@ -215,6 +227,7 @@ absl::Status RunHloBenchmark(benchmark::State& state,
   // thread pool if we need to run multiple executions in parallel.
   ExecuteOptions execute_options;
   execute_options.execution_mode = ExecuteOptions::ExecutionMode::kSynchronous;
+  execute_options.untuple_result = true;
 
   std::vector<std::vector<PjRtBuffer*>> execution_args_ptrs(
       benchmark_options.num_executions);
@@ -266,20 +279,12 @@ absl::Status RunHloBenchmark(benchmark::State& state,
     for (size_t i = 0; i < benchmark_options.num_executions; ++i) {
       for (const auto& result : execution_results[i]) {
         CHECK_OK(result->GetReadyFuture().Await());
-        CHECK(!alias_helper.ComputationHasAliasing() ||
-              result->IsTuple() && execution_results[i].size() == 1)
-            << "Only single output tuple is supported in benchmarking aliased "
-               "models. "
-               "result->IsTuple(): "
-            << result->IsTuple()
-            << " execution_results size: " << execution_results[i].size();
-        std::vector<std::unique_ptr<PjRtBuffer>>& args_buffers =
-            execution_args_buffers[i];
-        std::vector<PjRtBuffer*>& args_ptrs = execution_args_ptrs[i];
-        TF_RETURN_IF_ERROR(
-            alias_helper.SwapOutputAliasedBuffersToArgumentBuffers(
-                result.get(), args_buffers, args_ptrs));
       }
+      std::vector<std::unique_ptr<PjRtBuffer>>& args_buffers =
+          execution_args_buffers[i];
+      std::vector<PjRtBuffer*>& args_ptrs = execution_args_ptrs[i];
+      TF_RETURN_IF_ERROR(alias_helper.SwapOutputAliasedBuffersToArgumentBuffers(
+          execution_results[i], args_buffers, args_ptrs));
     }
 
     return absl::OkStatus();
@@ -315,6 +320,12 @@ absl::Status CompileHloBenchmark(benchmark::State& state,
   if (benchmark_options.disable_parallel_task_assigner) {
     compile_options.executable_build_options.mutable_debug_options()
         ->add_xla_disable_hlo_passes("cpu-parallel-task-assigner");
+  }
+  // TODO(intel-tf): Remove this if-block once oneDNN custom calls are enabled
+  // with thunk runtime
+  if (!benchmark_options.use_thunk_runtime) {
+    compile_options.executable_build_options.mutable_debug_options()
+        ->set_xla_cpu_use_thunk_runtime(false);
   }
 
   for (auto _ : state) {

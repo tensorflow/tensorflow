@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <functional>
@@ -31,11 +32,13 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "xla/permutation_util.h"
 #include "xla/types.h"
 
 namespace xla {
@@ -324,6 +327,23 @@ class Array {
     }
   }
 
+  // Templated variants of Each() that avoid virtual function call
+  // overhead per element. Useful for hot code paths.
+  template <class Fn>  // void(absl::Span<const int64_t>, T*)
+  void TemplatedEach(const Fn& f) {
+    OwnedBuffer<int64_t> index(sizes_.size, default_init_t{});
+    for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
+      f(index.span(), &values_[i]);
+    }
+  }
+  template <class Fn>  // void(absl::Span<const int64_t>, T)
+  void TemplatedEach(const Fn& f) const {
+    OwnedBuffer<int64_t> index(sizes_.size, default_init_t{});
+    for (int64_t i = 0; i < num_elements(); ++i, next_index(&index)) {
+      f(index.span(), values_[i]);
+    }
+  }
+
   // Invokes a callback with the (indices, value_ptr) for each cell in the
   // array. If a callback returns a non-OK status, returns that else returns
   // absl::OkStatus().
@@ -364,7 +384,10 @@ class Array {
   typename std::enable_if<array_impl::pack_is_integral<Dims...>::value,
                           const T&>::type
   operator()(Dims... dims) const {
-    CHECK_EQ(sizeof...(dims), num_dimensions());
+    DCHECK_EQ(sizeof...(dims), num_dimensions());
+    // Check each index is within the bounds of the array.
+    int64_t i = 0;
+    ([&] { DCHECK_LT(dims, sizes_[i++]); }(), ...);
     // We are using a std::array to avoid having to allocate memory in this
     // function for performance reasons.
     std::array<int64_t, sizeof...(dims)> indexes{
@@ -532,18 +555,20 @@ class Array {
             std::enable_if_t<std::is_integral_v<IntT>>* = nullptr>
   void TransposeDimensionsImpl(absl::Span<const IntT> permutation) {
     CHECK_EQ(sizes_.size, permutation.size());
+    if (IsIdentityPermutation(permutation)) {
+      return;  // Nothing to permute.
+    }
+
     OwnedBuffer<int64_t> permuted_dims(permutation.size());
     for (int64_t i = 0; i < permutation.size(); ++i) {
       permuted_dims[i] = this->dim(permutation[i]);
     }
-    Array<T> permuted(permuted_dims.span());
-    OwnedBuffer<int64_t> src_indices(sizes_.size, -1);
-    permuted.Each([&](absl::Span<const int64_t> indices, T* value) {
-      for (int64_t i = 0; i < sizes_.size; ++i) {
-        src_indices[permutation[i]] = indices[i];
-      }
-      *value = (*this)(src_indices.span());
-    });
+    Array<T> permuted(permuted_dims.span(), no_default_init_t{});
+    if (sizes_.size == 2) {
+      TransposeDimensionsImpl2D(permutation, permuted);
+    } else {
+      TransposeDimensionsImpl3DOrMore(permutation, permuted);
+    }
     *this = std::move(permuted);
   }
 
@@ -700,14 +725,96 @@ class Array {
   // wrapped around (i.e. result isn't {0, 0, ...}).
   bool next_index(OwnedBuffer<int64_t>* index) const {
     DCHECK_EQ(index->size, sizes_.size);
-    for (int64_t i = sizes_.size - 1; i >= 0; --i) {
-      (*index)[i]++;
-      if ((*index)[i] < sizes_[i]) {
+    for (size_t i_plus_1 = sizes_.size; i_plus_1 > 0; --i_plus_1) {
+      size_t i = i_plus_1 - 1;
+      int64_t new_index = (*index)[i] + 1;
+      if (new_index < sizes_[i]) {
+        (*index)[i] = new_index;
         return true;
       }
       (*index)[i] = 0;
     }
     return false;
+  }
+
+  template <typename IntT,
+            std::enable_if_t<std::is_integral_v<IntT>>* = nullptr>
+  void TransposeDimensionsImpl2D(absl::Span<const IntT> permutation,
+                                 Array<T>& permuted) {
+    DCHECK_EQ(permutation[0], 1);
+    DCHECK_EQ(permutation[1], 0);
+    size_t src_value_index = 0;
+    const size_t size0 = sizes_[0];
+    const size_t size1 = sizes_[1];
+    for (size_t i0 = 0; i0 < size0; ++i0) {
+      size_t dst_value_index = i0;
+      for (size_t i1 = 0; i1 < size1; ++i1) {
+        // original: i0 * sizes_[1] + i1
+        // permutated: i1 * sizes_[0] + i0
+        permuted.values_[dst_value_index] = this->values_[src_value_index];
+        ++src_value_index;
+        dst_value_index += size0;
+      }
+    }
+  }
+
+  template <typename IntT,
+            std::enable_if_t<std::is_integral_v<IntT>>* = nullptr>
+  void TransposeDimensionsImpl3DOrMore(absl::Span<const IntT> permutation,
+                                       Array<T>& permuted) {
+    const size_t num_array_elements = num_elements();
+    if (num_array_elements == 0) {
+      return;
+    }
+    const size_t num_dims = sizes_.size;
+    absl::InlinedVector<size_t, 8> strides(num_dims);
+    strides[num_dims - 1] = 1;
+    for (size_t k = num_dims - 1; k > 0; --k) {
+      strides[k - 1] = strides[k] * permuted.dim(k);
+    }
+    DCHECK_EQ(strides[0] * permuted.dim(0), num_array_elements);
+
+    // A 3D Example:
+    //                   `this` sizes: { 7,  8,  9}
+    //                    permutation: { 1,  2,  0}
+    //                  permuted_dims: { 8,  9,  7}
+    //                        strides: {63,  7,  1}
+    // strides_aligned_with_src_array: { 1, 63,  7}
+    absl::InlinedVector<size_t, 8> strides_aligned_with_src_array(num_dims);
+    for (size_t k = 0; k < num_dims; ++k) {
+      strides_aligned_with_src_array[permutation[k]] = strides[k];
+    }
+
+    absl::InlinedVector<size_t, 8> dst_value_index_stack(num_dims);
+    absl::InlinedVector<size_t, 8> src_indexes(num_dims);
+    std::memset(src_indexes.data(), 0, num_dims * sizeof(size_t));
+    const size_t src_value_index_end = num_array_elements - 1;
+    size_t dst_value_index = 0;
+    for (size_t src_value_index = 0;; ++src_value_index) {
+      permuted.values_[dst_value_index] = this->values_[src_value_index];
+      if (src_value_index == src_value_index_end) {
+        break;
+      }
+      size_t dim_index_plus_1;
+      for (dim_index_plus_1 = num_dims;; --dim_index_plus_1) {
+        DCHECK_GE(dim_index_plus_1, 1);
+        size_t dim_index = dim_index_plus_1 - 1;
+        size_t new_index = src_indexes[dim_index] + 1;
+        if (new_index < dim(dim_index)) {
+          src_indexes[dim_index] = new_index;
+          dst_value_index = dst_value_index_stack[dim_index] +
+                            strides_aligned_with_src_array[dim_index];
+          dst_value_index_stack[dim_index] = dst_value_index;
+          break;
+        }
+      }
+      DCHECK_GE(dim_index_plus_1, 1);
+      for (size_t dim_index = dim_index_plus_1; dim_index < num_dims;
+           ++dim_index) {
+        src_indexes[dim_index] = 0;
+        dst_value_index_stack[dim_index] = dst_value_index;
+      }
+    }
   }
 
   static size_t calculate_elements(absl::Span<const int64_t> sizes) {

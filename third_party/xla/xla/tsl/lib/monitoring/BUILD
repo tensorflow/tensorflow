@@ -28,8 +28,8 @@ package(
         "//xla/tsl/distributed_runtime:__subpackages__",
         "//tensorflow/compiler/mlir/tf2xla:__subpackages__",
         "//tensorflow_serving/model_servers:__subpackages__",
-        # xprof/pywrap depends on this package
-        "//third_party/xprof/pywrap:__pkg__",
+        # xprof depends on this package
+        "//third_party/xprof:__subpackages__",
         "//tensorflow/python/profiler/internal:__pkg__",
     ]),
     licenses = ["notice"],
@@ -45,8 +45,9 @@ cc_library(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:types",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
@@ -62,8 +63,8 @@ cc_library(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:types",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
@@ -82,8 +83,8 @@ cc_library(
         "//xla/tsl/protobuf:histogram_proto_cc",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
@@ -124,8 +125,8 @@ cc_library(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:histogram_proto_cc",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:stringpiece",
         "@local_tsl//tsl/platform:thread_annotations",
     ],
@@ -191,8 +192,8 @@ cc_library(
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:thread_annotations",
     ],
 )

@@ -87,10 +87,7 @@ class GpuKernelRegistry {
   }
 
   // Returns a reference to the process-wide instance of the registry.
-  static GpuKernelRegistry& GetGlobalRegistry() {
-    static auto registry = new GpuKernelRegistry();
-    return *registry;
-  }
+  static GpuKernelRegistry& GetGlobalRegistry();
 
  private:
   absl::Status RegisterKernel(const std::type_info& type,

@@ -246,22 +246,6 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
     return EmitterFusionKind::kCuDnn;
   }
 
-  if (input_output_info_.smallest_input_dtype_bits < 8 ||
-      input_output_info_.smallest_output_dtype_bits < 8) {
-    // Only loop and input slice fusions currently can handle packed
-    // inputs/outputs, due to the special handling with IrArray needed to deal
-    // with multiple values occupying a single byte.
-    if (fusion_roots_.size() > 1 &&
-        IsInputFusibleNonStridedSlices(fusion_roots_) &&
-        AllSliceInputsAreCompatible(fusion_roots_)) {
-      return EmitterFusionKind::kInputSlices;
-    }
-    if (fusion_roots_[0].opcode() == HloOpcode::kScatter) {
-      return EmitterFusionKind::kScatter;
-    }
-    return EmitterFusionKind::kLoop;
-  }
-
   std::optional<HloInstructionAdaptor> first_reduce_hero;
   for (auto [root, hero] : llvm::zip(fusion_roots_, fusion_heroes_)) {
     if (IsRealReductionHero(root.instruction(), hero.instruction(),

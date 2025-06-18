@@ -20,6 +20,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -30,10 +31,13 @@
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/basic_device_list.h"
 #include "xla/python/ifrt/client.h"
@@ -64,6 +68,20 @@
 namespace xla {
 namespace ifrt {
 namespace proxy {
+
+namespace {
+
+std::string device_summary(Device* device) {
+  auto it = device->Attributes().map().find("slice_index");
+  int slice_index =
+      (it != device->Attributes().map().end() &&
+       std::holds_alternative<AttributeMap::Int64Value>(it->second))
+          ? std::get<AttributeMap::Int64Value>(it->second).value
+          : 0;
+  return absl::StrCat(device->Kind(), "s", slice_index);
+}
+
+}  // namespace
 
 char Client::ID = 0;
 
@@ -220,11 +238,9 @@ absl::StatusOr<xla::ifrt::Device*> Client::LookupDevice(
   return it->second.get();
 }
 
-absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
-Client::MakeArrayFromHostBuffer(
+absl::StatusOr<xla::ifrt::ArrayRef> Client::MakeArrayFromHostBuffer(
     const void* data, DType dtype, Shape shape,
-    std::optional<absl::Span<const int64_t>> byte_strides,
-    std::shared_ptr<const Sharding> sharding,
+    std::optional<absl::Span<const int64_t>> byte_strides, ShardingRef sharding,
     xla::ifrt::Client::HostBufferSemantics semantics,
     std::function<void()> on_done_with_host_buffer,
     tsl::RCReference<xla::ifrt::UserContext> user_context) {
@@ -234,7 +250,7 @@ Client::MakeArrayFromHostBuffer(
       std::move(sharding), semantics, std::move(on_done_with_host_buffer));
 }
 
-absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
 Client::MakeArraysFromHostBufferShards(
     absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
     xla::ifrt::Client::HostBufferSemantics semantics,
@@ -243,10 +259,17 @@ Client::MakeArraysFromHostBufferShards(
       this, rpc_helper_, specs, semantics, std::move(user_context));
 }
 
-absl::StatusOr<tsl::RCReference<xla::ifrt::Array>>
-Client::AssembleArrayFromSingleDeviceArrays(
-    DType dtype, Shape shape, std::shared_ptr<const Sharding> sharding,
-    absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::MakeErrorArrays(
+    const absl::Status& error,
+    absl::Span<const xla::ifrt::ArraySpec> array_specs,
+    tsl::RCReference<xla::ifrt::UserContext> user_context) {
+  return Array::MakeErrorArrays(this, rpc_helper_, error, array_specs,
+                                std::move(user_context));
+}
+
+absl::StatusOr<xla::ifrt::ArrayRef> Client::AssembleArrayFromSingleDeviceArrays(
+    DType dtype, Shape shape, ShardingRef sharding,
+    absl::Span<xla::ifrt::ArrayRef> arrays,
     ArrayCopySemantics array_copy_semantics,
     SingleDeviceShardSemantics single_device_shard_semantics) {
   return Array::AssembleArrayFromSingleDeviceArrays(
@@ -254,17 +277,16 @@ Client::AssembleArrayFromSingleDeviceArrays(
       array_copy_semantics, single_device_shard_semantics);
 }
 
-absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
-Client::CopyArrays(absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
-                   std::optional<xla::ifrt::DeviceListRef> devices,
-                   std::optional<MemoryKind> memory_kind,
-                   ArrayCopySemantics semantics) {
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
+    absl::Span<xla::ifrt::ArrayRef> arrays,
+    std::optional<xla::ifrt::DeviceListRef> devices,
+    std::optional<MemoryKind> memory_kind, ArrayCopySemantics semantics) {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint([n_arrays = arrays.size()]() {
     return tsl::profiler::TraceMeEncode("IfrtProxyEntrypointCopyArrays",
                                         {{"n_arrays", n_arrays}});
   });
   if (arrays.empty()) {
-    return std::vector<tsl::RCReference<xla::ifrt::Array>>();
+    return std::vector<xla::ifrt::ArrayRef>();
   }
 
   for (int i = 1; i < arrays.size(); ++i) {
@@ -323,28 +345,30 @@ Client::CopyArrays(absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
         });
   }
 
-  std::vector<tsl::RCReference<xla::ifrt::Array>> new_arrays;
+  std::vector<xla::ifrt::ArrayRef> new_arrays;
   new_arrays.reserve(arrays.size());
   for (int i = 0; i < result_handles.size(); ++i) {
     TF_ASSIGN_OR_RETURN(
         auto new_sharding,
         arrays[i]->sharding().WithDeviceAssignment(devices, memory_kind));
+    auto* proxy_array = llvm::cast<xla::ifrt::proxy::Array>(arrays[i].get());
+    CHECK(proxy_array != nullptr);
     new_arrays.push_back(tsl::MakeRef<Array>(
         this, rpc_helper_, arrays[i]->dtype(), arrays[i]->shape(),
-        std::move(new_sharding), ArrayHandle{result_handles[i]}));
+        std::move(new_sharding), ArrayHandle{result_handles[i]},
+        /*layout=*/proxy_array->custom_layout()));
   }
   return new_arrays;
 }
 
-absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
-Client::RemapArrays(const RemapPlan& plan,
-                    absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
-                    ArrayCopySemantics semantics) {
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::RemapArrays(
+    const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
+    ArrayCopySemantics semantics) {
   return Array::RemapArrays(this, rpc_helper_, plan, arrays, semantics);
 }
 
 xla::ifrt::Future<> Client::GetReadyFuture(
-    absl::Span<const tsl::RCReference<xla::ifrt::Value>> values) {
+    absl::Span<const xla::ifrt::ValueRef> values) {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint([n_values = values.size()]() {
     return tsl::profiler::TraceMeEncode("IfrtProxyEntrypointGetReadyFuture",
                                         {{"n_values", n_values}});
@@ -406,6 +430,45 @@ xla::ifrt::DeviceListRef Client::MakeDeviceList(
   return xla::ifrt::BasicDeviceList::Create(devices);
 }
 
+absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> Client::GetDefaultLayout(
+    xla::ifrt::DType dtype, absl::Span<const int64_t> dims,
+    xla::ifrt::Device* device, xla::ifrt::MemoryKind memory_kind) const {
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint(
+      "IfrtProxyEntrypointGetDefaultLayout");
+  auto req = std::make_unique<GetDefaultLayoutRequest>();
+
+  LayoutKey key{
+      /*dtype=*/dtype,
+      /*dims=*/std::vector<int64_t>(dims.begin(), dims.end()),
+      /*memory_kind=*/memory_kind,
+      /*device_summary=*/device_summary(llvm::dyn_cast<Device>(device))};
+
+  {
+    absl::MutexLock l(&mu_);
+    if (auto it = layout_cache_.find(key); it != layout_cache_.end()) {
+      return it->second;
+    }
+  }
+
+  *req->mutable_dtype() = dtype.ToProto();
+  req->mutable_dims()->Reserve(dims.size());
+  for (int64_t dim : dims) {
+    req->add_dims(dim);
+  }
+  req->set_device_id(device->Id().value());
+  req->set_memory_kind(std::string(memory_kind.memory_kind().value_or("")));
+
+  auto future = rpc_helper_->GetDefaultLayout(std::move(req));
+  TF_ASSIGN_OR_RETURN(auto response, future.Await());
+
+  TF_ASSIGN_OR_RETURN(auto layout, xla::PjRtLayout::Deserialize(
+                                       response->serialized_pjrt_layout()));
+  {
+    absl::MutexLock l(&mu_);
+    layout_cache_.insert({key, layout});
+  }
+  return layout;
+}
 }  // namespace proxy
 }  // namespace ifrt
 }  // namespace xla

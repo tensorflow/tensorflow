@@ -121,7 +121,7 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
             out_tensors->push_back(std::move(line_contents));
             *end_of_sequence = false;
             return absl::OkStatus();
-          } else if (!errors::IsOutOfRange(s)) {
+          } else if (!absl::IsOutOfRange(s)) {
             // Report non-EOF errors to the caller.
             return s;
           }

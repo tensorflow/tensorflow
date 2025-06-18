@@ -70,9 +70,11 @@ static PJRT_Error* PJRT_FFI_UserData_Add(PJRT_FFI_UserData_Add_Args* args) {
 
 PJRT_FFI_Extension CreateFfiExtension(PJRT_Extension_Base* next) {
   return {
-      /*struct_size=*/PJRT_FFI_Extension_STRUCT_SIZE,
-      /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_FFI,
-      /*next=*/next,
+      PJRT_Extension_Base{
+          /*struct_size=*/PJRT_FFI_Extension_STRUCT_SIZE,
+          /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_FFI,
+          /*next=*/next,
+      },
       /*type_id_register=*/PJRT_FFI_TypeID_Register,
       /*user_data_add=*/PJRT_FFI_UserData_Add,
   };

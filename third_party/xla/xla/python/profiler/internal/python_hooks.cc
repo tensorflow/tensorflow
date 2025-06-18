@@ -133,7 +133,7 @@ std::string PythonTraceEntry::Name() const {
 }
 
 PythonHooks* PythonHooks::GetSingleton() {
-  static PythonHooks* singleton = new PythonHooks;
+  static PythonHooks* const singleton = new PythonHooks;
   return singleton;
 }
 

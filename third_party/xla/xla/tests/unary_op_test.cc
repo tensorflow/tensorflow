@@ -13,21 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-#include <vector>
+#include <cmath>
+#include <cstdint>
+#include <limits>
 
-#include "xla/client/local_client.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-class UnaryOpTest : public ClientLibraryTestBase {
+class UnaryOpTest : public ClientLibraryTestRunnerMixin<
+                        HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  protected:
   template <typename T>
   T inf() {
@@ -131,19 +136,19 @@ void UnaryOpTest::SignAbsTestHelper<complex64>() {
   ComputeAndCompareLiteral(&builder, expected, {}, ErrorSpec(1e-6f));
 }
 
-XLA_TEST_F(UnaryOpTest, AbsTestR1Size0) {
+TEST_F(UnaryOpTest, AbsTestR1Size0) {
   AbsSize0TestHelper<int>();
   AbsSize0TestHelper<float>();
   AbsSize0TestHelper<complex64>();
 }
 
-XLA_TEST_F(UnaryOpTest, AbsTestR1) {
+TEST_F(UnaryOpTest, AbsTestR1) {
   AbsTestHelper<int>();
   AbsTestHelper<float>();
   AbsTestHelper<complex64>();
 }
 
-XLA_TEST_F(UnaryOpTest, AbsTestR0) {
+TEST_F(UnaryOpTest, AbsTestR0) {
   XlaBuilder builder(TestName());
   auto argi = ConstantR0<int>(&builder, -5);
   auto absi = Abs(argi);
@@ -158,7 +163,7 @@ XLA_TEST_F(UnaryOpTest, AbsTestR0) {
   ComputeAndCompareR0<float>(&builder, 8.5f, {});
 }
 
-XLA_TEST_F(UnaryOpTest, SignTestR0) {
+TEST_F(UnaryOpTest, SignTestR0) {
   XlaBuilder builder(TestName());
   auto argi = ConstantR0<int>(&builder, -5);
   auto sgni = Sign(argi);  // -1
@@ -175,20 +180,20 @@ XLA_TEST_F(UnaryOpTest, SignTestR0) {
   ComputeAndCompareLiteral(&builder, expected, {}, ErrorSpec(1e-6f));
 }
 
-XLA_TEST_F(UnaryOpTest, SignTestR1) {
+TEST_F(UnaryOpTest, SignTestR1) {
   SignTestHelper<int>();
   SignTestHelper<int64_t>();
   SignTestHelper<float>();
   SignTestHelper<complex64>();
 }
 
-XLA_TEST_F(UnaryOpTest, SignAbsTestR1) {
+TEST_F(UnaryOpTest, SignAbsTestR1) {
   SignAbsTestHelper<int>();
   SignAbsTestHelper<float>();
   SignAbsTestHelper<complex64>();
 }
 
-XLA_TEST_F(UnaryOpTest, SignAbsTestR2) {
+TEST_F(UnaryOpTest, SignAbsTestR2) {
   XlaBuilder builder(TestName());
   auto arg = ConstantR2<float>(&builder, {{1.0, -2.0}, {-3.0, 4.0}});
   auto sign = Sign(arg);
@@ -198,7 +203,7 @@ XLA_TEST_F(UnaryOpTest, SignAbsTestR2) {
   ComputeAndCompareR2<float>(&builder, {{0, 0}, {0, 0}}, {});
 }
 
-XLA_TEST_F(UnaryOpTest, ConvertElementTypePredToS32) {
+TEST_F(UnaryOpTest, ConvertElementTypePredToS32) {
   XlaBuilder builder(TestName());
   auto lhs = ConstantR1<int32_t>(&builder, {0, 1});
   auto rhs = ConstantR1<int32_t>(&builder, {1, 1});
@@ -207,7 +212,7 @@ XLA_TEST_F(UnaryOpTest, ConvertElementTypePredToS32) {
   ComputeAndCompareR1<int32_t>(&builder, {0, 1}, {});
 }
 
-XLA_TEST_F(UnaryOpTest, ConvertElementTypePredToF32) {
+TEST_F(UnaryOpTest, ConvertElementTypePredToF32) {
   XlaBuilder builder(TestName());
   auto lhs = ConstantR1<int32_t>(&builder, {0, 1});
   auto rhs = ConstantR1<int32_t>(&builder, {1, 1});

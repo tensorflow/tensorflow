@@ -17,6 +17,9 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_RUNTIME_CALL_THUNK_H_
 
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -38,6 +41,9 @@ class CallThunk final : public Thunk {
   ResourceUses resource_uses() const final;
 
   const ThunkExecutor& called_executor() const { return called_executor_; }
+
+  std::vector<std::pair<std::string, const ThunkSequence*>> nested_thunks()
+      const final;
 
  private:
   CallThunk(Info info, ThunkExecutor called_executor);

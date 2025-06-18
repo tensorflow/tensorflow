@@ -24,10 +24,7 @@ namespace stream_executor::cuda {
 // These are various kernels that update Gpu conditionals based on the device
 // memory values, and allow implementing on-device control flow via conditional
 // command buffers.
-absl::StatusOr<MultiKernelLoaderSpec> GetSetIfConditionKernelLoaderSpec();
-absl::StatusOr<MultiKernelLoaderSpec> GetSetIfElseConditionKernelLoaderSpec();
 absl::StatusOr<MultiKernelLoaderSpec> GetSetCaseConditionKernelLoaderSpec();
-absl::StatusOr<MultiKernelLoaderSpec> GetSetForConditionKernelLoaderSpec();
 absl::StatusOr<MultiKernelLoaderSpec> GetSetWhileConditionKernelLoaderSpec();
 absl::StatusOr<MultiKernelLoaderSpec> GetNoOpKernelLoaderSpec();
 

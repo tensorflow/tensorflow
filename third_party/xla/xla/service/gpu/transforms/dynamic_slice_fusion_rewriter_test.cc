@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <optional>
 
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
@@ -25,20 +26,23 @@ limitations under the License.
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla::gpu {
 
-class DynamicSliceFusionRewriterTest : public HloTestBase {};
+class DynamicSliceFusionRewriterTest : public HloHardwareIndependentTestBase {};
 
 TEST_F(DynamicSliceFusionRewriterTest, SimpleGemm) {
   const char* hlo = R"(
@@ -937,9 +941,11 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCall) {
              /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
              /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI);
   TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
-  xla::HloModuleConfig hlo_config(
-      xla::ProgramShape(computation.proto().host_program_shape()),
-      /*ignore_layouts=*/false);
+  TF_ASSERT_OK_AND_ASSIGN(
+      ProgramShape program_shape,
+      ProgramShape::FromProto(computation.proto().host_program_shape()));
+  xla::HloModuleConfig hlo_config(program_shape,
+                                  /*ignore_layouts=*/false);
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   hlo_config.set_debug_options(debug_options);
@@ -985,9 +991,11 @@ TEST_F(DynamicSliceFusionRewriterTest, SimpleCustomCallLegacy) {
                     {128}, {1})},
              ShapeUtil::MakeShape(F32, {128}), /*opaque=*/"");
   TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
-  xla::HloModuleConfig hlo_config(
-      xla::ProgramShape(computation.proto().host_program_shape()),
-      /*ignore_layouts=*/false);
+  TF_ASSERT_OK_AND_ASSIGN(
+      ProgramShape program_shape,
+      ProgramShape::FromProto(computation.proto().host_program_shape()));
+  xla::HloModuleConfig hlo_config(program_shape,
+                                  /*ignore_layouts=*/false);
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   hlo_config.set_debug_options(debug_options);
@@ -1045,9 +1053,11 @@ TEST_F(DynamicSliceFusionRewriterTest, TupleSliceCustomCallLegacy) {
       },
       ShapeUtil::MakeShape(F32, {128}), /*opaque=*/"");
   TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
-  xla::HloModuleConfig hlo_config(
-      xla::ProgramShape(computation.proto().host_program_shape()),
-      /*ignore_layouts=*/false);
+  TF_ASSERT_OK_AND_ASSIGN(
+      ProgramShape program_shape,
+      ProgramShape::FromProto(computation.proto().host_program_shape()));
+  xla::HloModuleConfig hlo_config(program_shape,
+                                  /*ignore_layouts=*/false);
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   hlo_config.set_debug_options(debug_options);
@@ -1117,9 +1127,11 @@ TEST_F(DynamicSliceFusionRewriterTest, TupledOutputCustomCallLegacy) {
   Tuple(&b, {GetTupleElement(GetTupleElement(custom_call, 1), 0),
              GetTupleElement(custom_call, 2)});
   TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
-  xla::HloModuleConfig hlo_config(
-      xla::ProgramShape(computation.proto().host_program_shape()),
-      /*ignore_layouts=*/false);
+  TF_ASSERT_OK_AND_ASSIGN(
+      ProgramShape program_shape,
+      ProgramShape::FromProto(computation.proto().host_program_shape()));
+  xla::HloModuleConfig hlo_config(program_shape,
+                                  /*ignore_layouts=*/false);
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   hlo_config.set_debug_options(debug_options);
@@ -1178,9 +1190,11 @@ TEST_F(DynamicSliceFusionRewriterTest, UnalignedSlice) {
       {Slice(Broadcast(ConstantR0WithType(&b, S32, 42), {17}), {1}, {17}, {1})},
       ShapeUtil::MakeShape(S32, {16}), /*opaque=*/"");
   TF_ASSERT_OK_AND_ASSIGN(auto computation, b.Build());
-  xla::HloModuleConfig hlo_config(
-      xla::ProgramShape(computation.proto().host_program_shape()),
-      /*ignore_layouts=*/false);
+  TF_ASSERT_OK_AND_ASSIGN(
+      ProgramShape program_shape,
+      ProgramShape::FromProto(computation.proto().host_program_shape()));
+  xla::HloModuleConfig hlo_config(program_shape,
+                                  /*ignore_layouts=*/false);
   DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   hlo_config.set_debug_options(debug_options);

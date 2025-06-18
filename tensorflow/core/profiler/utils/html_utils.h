@@ -16,21 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_HTML_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_HTML_UTILS_H_
 
-#include <string>
-
-#include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
-
-namespace tensorflow {
-namespace profiler {
-
-// Creates a html that links to the given url with the given text.
-inline std::string AnchorElement(absl::string_view url,
-                                 absl::string_view text) {
-  return absl::StrCat("<a href=\"", url, "\" target=\"_blank\">", text, "</a>");
-}
-
-}  // namespace profiler
-}  // namespace tensorflow
+#include "xprof/utils/html_utils.h"  // from @org_xprof  // IWYU pragma: export
 
 #endif  // TENSORFLOW_CORE_PROFILER_UTILS_HTML_UTILS_H_

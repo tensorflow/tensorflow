@@ -18,30 +18,41 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <limits>
 #include <memory>
+#include <optional>
+#include <ostream>
 #include <string>
+#include <tuple>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/log_severity.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/log_sink.h"
+#include "absl/log/scoped_mock_log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/autotune_results.pb.h"
+#include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -52,11 +63,13 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu/metrics.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/xla_debug_info_manager.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -67,6 +80,11 @@ limitations under the License.
 #include "xla/tsl/lib/monitoring/collected_metrics.h"
 #include "xla/tsl/lib/monitoring/collection_registry.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status_matchers.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -84,10 +102,12 @@ namespace {
 
 namespace m = ::xla::match;
 
+using ::testing::EndsWith;
 using ::testing::IsEmpty;
 using ::testing::IsSupersetOf;
 using ::testing::Matches;
 using ::testing::Not;
+using ::testing::StartsWith;
 using ::testing::TempDir;
 
 class GpuCompilerTest : public HloTestBase {
@@ -100,10 +120,27 @@ class GpuCompilerTest : public HloTestBase {
     return tensorflow::down_cast<GpuCompiler*>(compiler)
         ->RunPostSchedulingPipelines(module, 4 * 1024 * 1024, gpu_device_info);
   }
+
+  // Like GetOptimizedModule, but also runs the backend. This is important for
+  // tests that need to verify behavior of passes that run in RunBackend. The
+  // former function will only run the passes in RunHloPasses.
+  // This returns the module and the executable because the latter owns the
+  // former.
+  absl::StatusOr<std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>>
+  GetOptimizedModuleForExecutable(absl::string_view hlo,
+                                  const HloModuleConfig& config) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
+                        ParseAndReturnVerifiedModule(hlo, config));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<OpaqueExecutable> executable,
+        CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
+    TF_ASSIGN_OR_RETURN(const HloModule* optimized_module,
+                        test_runner().HloModuleFromWrapped(executable.get()));
+    return {{optimized_module, std::move(executable)}};
+  }
 };
 
-// TODO(b/399912696): Fix and enable this test.
-TEST_F(GpuCompilerTest, DISABLED_CompiledProgramsCount) {
+TEST_F(GpuCompilerTest, CompiledProgramsCount) {
   const char* hlo_text = R"(
 HloModule test
 
@@ -113,7 +150,7 @@ ENTRY main {
 }
 )";
   auto module = ParseAndReturnVerifiedModule(hlo_text).value();
-  ResetCompiledProgramsCountForTesting();
+  auto before = GetCompiledProgramsCount();
   std::unique_ptr<Executable> executable =
       backend()
           .compiler()
@@ -123,7 +160,7 @@ ENTRY main {
                         /*layout_canonicalization_callback=*/{},
                         /*is_autotuning_compilation=*/false})
           .value();
-  EXPECT_EQ(GetCompiledProgramsCount(), 1);
+  EXPECT_EQ(GetCompiledProgramsCount(), before + 1);
 }
 
 TEST_F(GpuCompilerTest, RecordsStreamzStackTrace) {
@@ -704,10 +741,20 @@ ENTRY main {
     return GetOptimizedModule(std::move(module));
   };
 
-  auto cc = backend()
-                .default_stream_executor()
-                ->GetDeviceDescription()
-                .cuda_compute_capability();
+  auto gpu_cc = backend()
+                    .default_stream_executor()
+                    ->GetDeviceDescription()
+                    .gpu_compute_capability();
+  bool is_cuda =
+      std::holds_alternative<stream_executor::CudaComputeCapability>(gpu_cc);
+  auto cuda_cc = backend()
+                     .default_stream_executor()
+                     ->GetDeviceDescription()
+                     .cuda_compute_capability();
+  auto rocm_cc = backend()
+                     .default_stream_executor()
+                     ->GetDeviceDescription()
+                     .rocm_compute_capability();
 
   const std::string triton_keep_types = absl::Substitute(
       R"(CHECK: fusion($0{{[^)]*}}, $1{{[^)]*}}){{.*}}"kind":"__triton_gemm")",
@@ -722,8 +769,7 @@ ENTRY main {
 
   HloPrintOptions print_options =
       HloPrintOptions().set_print_operand_shape(true);
-
-  {
+  if (is_cuda) {
     // Triton enabled, no fallback.
     TF_ASSERT_OK_AND_ASSIGN(auto optimized_module_no_fallback,
                             optimize_module(/*enable_triton=*/true,
@@ -731,8 +777,9 @@ ENTRY main {
                                             /*enable_blas_fallback=*/false));
     // Triton supports f8e4m3fn on Hopper and f8e5m2 on Ampere.
     const std::string triton_expected_check =
-        (cc.IsAtLeastHopper() ||
-         (cc.IsAtLeastAmpere() && lhs_type == F8E5M2 && rhs_type == F8E5M2))
+        (cuda_cc.IsAtLeastHopper() ||
+         (cuda_cc.IsAtLeastAmpere() && lhs_type == F8E5M2 &&
+          rhs_type == F8E5M2))
             ? triton_keep_types
             : cublas_convert_to_f16;
     TF_ASSERT_OK_AND_ASSIGN(
@@ -751,7 +798,8 @@ ENTRY main {
     // cuBLASlt is only available on Hopper and it doesn't support
     // f8e5m2×f8e5m2.
     const std::string blas_expected_check =
-        (cc.IsAtLeastHopper() && !(lhs_type == F8E5M2 && rhs_type == F8E5M2))
+        ((rocm_cc.has_ocp_fp8_support() || cuda_cc.IsAtLeastHopper()) &&
+         !(lhs_type == F8E5M2 && rhs_type == F8E5M2))
             ? cublaslt_keep_types
             : cublas_convert_to_f16;
 
@@ -776,125 +824,6 @@ ENTRY main {
   }
 }
 
-TEST_F(GpuCompilerTest, CollectivePermuteDecompositionAndPipelining) {
-  const char* kModuleStr = R"(
-HloModule cp
-
-cond {
-    param = (u32[], f32[1, 1024, 1024]) parameter(0)
-    count = get-tuple-element(%param), index=0
-    ub = u32[] constant(11)
-    ROOT result = pred[] compare(count, ub), direction=LT
- }
-
-body {
-    param = (u32[], f32[1, 1024, 1024]) parameter(0)
-    count = get-tuple-element(%param), index=0
-    send-data = get-tuple-element(%param), index=1
-
-    recv-data = f32[1, 1024, 1024] collective-permute(send-data),
-      source_target_pairs={{0,1}, {1,2}, {2,3}, {3,4}}, channel_id=1
-
-    // The computation code that uses the current recv-data and
-    // produces the send-data for the next iteration.
-    c1 = u32[] constant(1)
-    new_count = u32[] add(count, c1)
-    replica = u32[] replica-id()
-    c10 = u32[] constant(10)
-    sum = u32[] add(replica, c10)
-    sum2 = u32[] add(sum, count)
-    conv = f32[] convert(sum2)
-    p = f32[1, 1024, 1024] broadcast(conv), dimensions={}
-    b = f32[1, 1024, 1024] add(p, recv-data)
-    c = f32[1, 1024, 1024] multiply(b, b)
-    d = f32[1, 1024, 1024] tan(c)
-    s = f32[1, 1024, 1024] dot(c, d), lhs_batch_dims={0},
-      lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
-
-    ROOT result = (u32[], f32[1, 1024, 1024]) tuple(new_count, s)
-}
-
-ENTRY test_computation {
-    c0 = u32[] constant(0)
-    f0 = f32[] constant(0.0)
-    init = f32[1, 1024, 1024] broadcast(f0), dimensions={}
-    while_init = (u32[], f32[1, 1024, 1024]) tuple(c0, init)
-    while_result = (u32[], f32[1, 1024, 1024]) while(while_init), body=body, condition=cond
-    ROOT result = f32[1, 1024, 1024] get-tuple-element(while_result), index=1
-}
-)";
-
-  const char* kExpected = R"(
-CHECK:       recv-done
-CHECK-SAME:    channel_id=[[CHANNEL_ID:[0-9]+]]
-CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0"}
-CHECK:       %[[AFTER_ALL:.*]] = after-all
-CHECK:       send-done
-CHECK-SAME:    channel_id=[[CHANNEL_ID]]
-CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0"}
-CHECK:       %[[CUSTOM_CALL:.*]] = custom-call
-CHECK:       %[[RESULT_RECV:.*]] = recv(%[[AFTER_ALL]])
-CHECK-SAME:    channel_id=[[CHANNEL_ID]]
-CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0",
-CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3},{3,4}}},
-CHECK-SAME:                         control-predecessors={%[[CUSTOM_CALL]]}
-CHECK:       %[[RESULT_SEND:.*]] = send(%[[SOME_SEND_ARG:.*]], %[[AFTER_ALL]])
-CHECK-SAME:    channel_id=1
-CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0",
-CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3},{3,4}}},
-CHECK-SAME:                         control-predecessors={%[[RESULT_RECV]]}
-CHECK:       ROOT
-// We actually expect both RESULT_RECV and RESULT_SEND to match on this line.
-// However, despite popular belief, CHECK-DAG-SAME is not actually a valid
-// directive. Checking for both without using a DAG would be inherently flaky,
-// so we take the hit and only check for one of them.
-CHECK-SAME:    %[[RESULT_RECV]]
-
-CHECK: ENTRY
-CHECK:       %[[ENTRY_AFTER_ALL:.*]] = after-all
-CHECK:       %[[ENTRY_RECV:.*]] = recv(%[[ENTRY_AFTER_ALL]])
-CHECK-SAME:    channel_id=[[CHANNEL_ID]]
-CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0",
-CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3},{3,4}}}
-CHECK:       %[[ENTRY_SEND:.*]] = send(%[[SOME_SEND_ARG:.*]], %[[ENTRY_AFTER_ALL]])
-CHECK-SAME:    channel_id=1
-CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0",
-CHECK-SAME{LITERAL}:                _xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3},{3,4}}},
-CHECK-SAME:                         control-predecessors={%[[ENTRY_RECV]]}
-CHECK:       %[[WHILE_INIT:.*]] = tuple
-// Check here that the send argument is likewise passed to the while loop, as
-// a counterpart to the check in the child computation above.
-CHECK-SAME:    %[[ENTRY_SEND]]
-CHECK:       while(%[[WHILE_INIT]])
-CHECK:       recv-done
-CHECK-SAME:    channel_id=[[CHANNEL_ID]]
-CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0"}
-CHECK:       send-done
-CHECK-SAME:    channel_id=[[CHANNEL_ID]]
-CHECK-SAME:    frontend_attributes={_xla_send_recv_pipeline="0"}
-)";
-
-  HloModuleConfig config;
-  DebugOptions debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_enable_latency_hiding_scheduler(true);
-  debug_options.set_xla_gpu_collective_permute_decomposer_threshold(1);
-  debug_options.set_xla_gpu_enable_pipelined_p2p(true);
-  debug_options.set_xla_gpu_enable_triton_gemm(false);
-  config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(std::move(module)));
-  TF_ASSERT_OK(Schedule(optimized_module.get()));
-
-  HloPrintOptions options;
-  options.set_print_operand_shape(false);
-  options.set_print_result_shape(false);
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool filecheck_matched,
-      RunFileCheck(optimized_module->ToString(options), kExpected));
-  EXPECT_TRUE(filecheck_matched);
-}
 
 class KernelCacheTest : public HloTestBase {
  public:
@@ -1105,57 +1034,6 @@ TEST_F(NoKernelCacheTest, NoCacheWithoutCompilationParallelism) {
   EXPECT_FALSE(CacheFileExists());
 }
 
-TEST_F(GpuCompilerTest, TestFlag_xla_gpu_unsafe_pipelined_loop_annotator) {
-  const char* hlo = R"(
-  HloModule test, entry_computation_layout={()->(s32[], s32[])}
-    %Body (param: (s32[], s32[])) -> (s32[], s32[]) {
-      %param = (s32[], s32[]) parameter(0)
-      %i = s32[] get-tuple-element((s32[], s32[]) %param), index=1
-      %one = s32[] constant(1)
-      %i_plus_one = s32[] add(s32[] %i, s32[] %one)
-      %permute = s32[] collective-permute(%i_plus_one), channel_id=1, source_target_pairs={{0,1},{1,2},{2,3},{3,0}}
-      ROOT %tuple = (s32[], s32[]) tuple(s32[] %permute, s32[] %i_plus_one)
-    }
-    %Cond (param.1: (s32[], s32[])) -> pred[] {
-      %param.1 = (s32[], s32[]) parameter(0)
-      %i.1 = s32[] get-tuple-element((s32[], s32[]) %param.1), index=1
-      %trip_count = s32[] constant(10)
-      ROOT %done = pred[] compare(s32[] %i.1, s32[] %trip_count), direction=LT
-    }
-    ENTRY %test () -> (s32[], s32[]) {
-      %i_start = s32[] constant(0)
-      %p_start = s32[] constant(0)
-      %initial_tuple = (s32[], s32[]) tuple(s32[] %i_start, s32[] %p_start)
-      ROOT %while = (s32[], s32[]) while((s32[], s32[]) %initial_tuple), condition=%Cond, body=%Body, frontend_attributes={is_pipelined_while_loop="true"}
-    })";
-
-  const char* kExpected = R"(
-  // CHECK: {{.+}} = recv({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{3,0}},_xla_send_recv_validation={{[{]}}{3,9}}}
-  // CHECK: {{.+}} = send({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{3,0}},_xla_send_recv_validation={{[{]}}{3,9}}}
-  // CHECK: {{.+}} = recv({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{0,1},{1,2},{2,3}},_xla_send_recv_validation={{[{]}}{0,6},{1,7},{2,8}}}
-  // CHECK: {{.+}} = send({{.+}}), {{.+}}, frontend_attributes={_xla_send_recv_source_target_pairs={{[{]}}{0,1},{1,2},{2,3}},_xla_send_recv_validation={{[{]}}{0,6},{1,7},{2,8}}}
-  )";
-
-  DebugOptions debug_options;
-  HloModuleConfig config;
-  debug_options.set_xla_gpu_unsafe_pipelined_loop_annotator(true);
-  debug_options.set_xla_gpu_enable_pipelined_p2p(true);
-  config.set_debug_options(debug_options);
-  config.set_num_partitions(4);
-  config.set_use_spmd_partitioning(true);
-  TF_ASSERT_OK_AND_ASSIGN(auto unoptimized_module,
-                          ParseAndReturnVerifiedModule(hlo, config));
-  TF_ASSERT_OK_AND_ASSIGN(auto optimized_module,
-                          GetOptimizedModule(std::move(unoptimized_module)));
-  HloPrintOptions options;
-  options.set_print_operand_shape(false);
-  options.set_print_result_shape(false);
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool filecheck_matched,
-      RunFileCheck(optimized_module->ToString(options), kExpected));
-  EXPECT_TRUE(filecheck_matched);
-}
-
 bool HasBlockLevelFusionConfig(const HloInstruction* fusion) {
   return fusion->opcode() == HloOpcode::kFusion &&
          fusion->has_backend_config() &&
@@ -1184,10 +1062,10 @@ ENTRY main {
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<VerifiedHloModule> module,
-      ParseAndReturnVerifiedModule(transpose_fusion_module));
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(std::move(module)));
+      auto module_and_executable,
+      GetOptimizedModuleForExecutable(transpose_fusion_module,
+                                      GetModuleConfigForTest()));
+  const HloModule* optimized_module = module_and_executable.first;
 
   if (cc.IsAtLeastAmpere()) {
     EXPECT_TRUE(HasBlockLevelFusionConfig(
@@ -1217,18 +1095,17 @@ TEST_F(
   // succeed.
   constexpr absl::string_view rewritable_transpose_string = R"(
 ENTRY main {
-  p0 = f32[1024,4096]{1,0} parameter(0)
-  reshape = f32[1024,1024,4]{2,1,0} reshape(p0)
-  ROOT transpose = f32[4,1024,1024]{2,1,0} transpose(reshape), dimensions={2,1,0}
+  p0 = f32[1024,2048]{1,0} parameter(0)
+  reshape = f32[1024,1024,2]{2,1,0} reshape(p0)
+  ROOT transpose = f32[2,1024,1024]{2,1,0} transpose(reshape), dimensions={2,1,0}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<VerifiedHloModule> rewritable_transpose_module,
-      ParseAndReturnVerifiedModule(rewritable_transpose_string));
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> rewritable_transpose_optimized_module,
-      GetOptimizedModule(std::move(rewritable_transpose_module)));
+      auto rewritable_transpose_module_and_executable,
+      GetOptimizedModuleForExecutable(rewritable_transpose_string,
+                                      GetModuleConfigForTest()));
+  const HloModule* rewritable_transpose_optimized_module =
+      rewritable_transpose_module_and_executable.first;
   EXPECT_TRUE(HasBlockLevelFusionConfig(
       rewritable_transpose_optimized_module->entry_computation()
           ->root_instruction()));
@@ -1247,8 +1124,11 @@ ENTRY main {
       ParseAndReturnVerifiedModule(unrewritable_transpose_string));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> unrewritable_transpose_optimized_module,
-      GetOptimizedModule(std::move(unrewritable_transpose_module)));
+      auto unrewritable_transpose_module_and_executable,
+      GetOptimizedModuleForExecutable(unrewritable_transpose_string,
+                                      GetModuleConfigForTest()));
+  const HloModule* unrewritable_transpose_optimized_module =
+      unrewritable_transpose_module_and_executable.first;
   EXPECT_FALSE(HasBlockLevelFusionConfig(
       unrewritable_transpose_optimized_module->entry_computation()
           ->root_instruction()));
@@ -1476,7 +1356,7 @@ class PassOrderTest : public GpuCompilerTest {
     int other_pass_first_run = std::numeric_limits<int>::max();
     int run_index = 0;
     for (const HloPassMetadata& pass_metadata :
-         optimized_module_->metadata()->proto().pass_metadata()) {
+         optimized_module_->metadata().proto().pass_metadata()) {
       if (RE2::FullMatch(pass_metadata.pass_name(), first_pass_regex)) {
         VLOG(2) << "Pass " << pass_metadata.pass_name()
                 << " matches first_pass_regex." << std::endl;
@@ -1517,7 +1397,7 @@ class PassOrderTest : public GpuCompilerTest {
     int last_pass_earliest_run = std::numeric_limits<int>::max();
     int run_index = 0;
     for (const HloPassMetadata& pass_metadata :
-         optimized_module_->metadata()->proto().pass_metadata()) {
+         optimized_module_->metadata().proto().pass_metadata()) {
       std::string name = pass_metadata.pass_name();
       if (include_pipeline_name) {
         name = absl::StrCat(pass_metadata.pipeline_name(), ".",
@@ -1549,9 +1429,10 @@ class PassOrderTest : public GpuCompilerTest {
   // `pass_range.first_pass_run_index` and `pass_range.second_pass_run_index`.
   void VerifyNotRunInBetween(const PassRange& pass_range,
                              absl::string_view pass_regex) {
+    CHECK(optimized_module_);
     int run_index = 0;
     for (const HloPassMetadata& pass_metadata :
-         optimized_module_->metadata()->proto().pass_metadata()) {
+         optimized_module_->metadata().proto().pass_metadata()) {
       if (run_index >= pass_range.second_pass_run_index) {
         break;
       }
@@ -1564,21 +1445,22 @@ class PassOrderTest : public GpuCompilerTest {
   }
 
  protected:
-  absl::Status ScheduleModule() { return Schedule(optimized_module_.get()); }
-
+  // Compiles a dummy module with the given configuration, running all passes,
+  // including the ones in RunBackend. This is important because otherwise, we
+  // might miss some passes when verifying pass order.
   void CompileModule(const HloModuleConfig& config) {
     constexpr absl::string_view constant_module = R"(
-ENTRY main {
-  ROOT constant = f32[] constant(0)
-})";
+        ENTRY main {
+          ROOT constant = f32[] constant(0)
+        })";
     TF_ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<VerifiedHloModule> module,
-        ParseAndReturnVerifiedModule(constant_module, config));
-    TF_ASSERT_OK_AND_ASSIGN(optimized_module_,
-                            GetOptimizedModule(std::move(module)));
+        std::tie(optimized_module_, compiled_executable_),
+        GetOptimizedModuleForExecutable(constant_module, config));
   }
 
-  std::unique_ptr<HloModule> optimized_module_;
+  // Owns the optimized_module_ below.
+  std::unique_ptr<OpaqueExecutable> compiled_executable_ = nullptr;
+  const HloModule* optimized_module_ = nullptr;
 };
 
 TEST_F(PassOrderTest, PassesAreRunInCorrectOrder) {
@@ -1594,16 +1476,6 @@ TEST_F(PassOrderTest, OffloadingPassesAreRunInCorrectOrder) {
   // host memory offloading segments.
   VerifyPassRunsAtLeastOnceBefore(/*first_pass_regex=*/"host-offload-legalize",
                                   /*other_pass_regex=*/"layout_normalization");
-
-  // CSE should not run between HostOffloadLegalize and HostOffloader
-  // because it could break the invariants established
-  // by the legalize pass, such as the buffer initialization broadcasts
-  // before loops having only a single use
-  // (see https://github.com/openxla/xla/issues/20373).
-  auto pass_range =
-      VerifyPassOrder(/*first_pass_regex=*/"host-offload-legalize",
-                      /*last_pass_regex=*/"host-offloader");
-  VerifyNotRunInBetween(pass_range, /*pass_regex=*/"cse");
 }
 
 TEST_F(PassOrderTest, FusionDispatchRunsAfterAllFusionPasses) {
@@ -1620,18 +1492,18 @@ TEST_F(PassOrderTest, FusionDispatchRunsAfterAllFusionPasses) {
       true);
   SetDebugOptions(debug_options);
 
-  VerifyPassOrder(/*first_pass_regex=*/".*fusion.*",
-                  /*last_pass_regex=*/"fusion-dispatch-pipeline.*",
-                  /*include_pipeline_name=*/true);
+  VerifyPassOrder(
+      /*first_pass_regex=*/".*(fusion|stream-attribute-annotator).*",
+      /*last_pass_regex=*/"fusion-dispatch-pipeline.*",
+      /*include_pipeline_name=*/true);
 }
 
-TEST_F(PassOrderTest, CollectivePipelinerRunsAfterCollectiveQuantizer) {
-  DebugOptions options = GetDebugOptionsForTest();
-  options.set_xla_gpu_enable_pipelined_collectives(true);
-  SetDebugOptions(options);
-
-  VerifyPassOrder(/*first_pass_regex=*/"collective-quantizer",
-                  /*last_pass_regex=*/"collective-pipeliner.*");
+TEST_F(PassOrderTest,
+       SortRewriterRunsBeforeStableSortExpanderAndComparisonExpander) {
+  VerifyPassOrder(/*first_pass_regex=*/"sort-rewriter",
+                  /*last_pass_regex=*/"stable-sort-expander");
+  VerifyPassOrder(/*first_pass_regex=*/"sort-rewriter",
+                  /*last_pass_regex=*/"comparison-expander");
 }
 
 TEST_F(PassOrderTest,
@@ -1649,7 +1521,7 @@ TEST_F(PassOrderTest, StableSortExpanderRunsAfterDynamicPadder) {
 
 MATCHER_P(HasExpectedPasses, expected_pass_names, "") {
   std::vector<absl::string_view> run_pass_names;
-  auto metadata = arg->metadata()->proto();
+  auto metadata = arg->metadata().proto();
   run_pass_names.reserve(metadata.pass_metadata_size());
   for (auto& pass_metadata : metadata.pass_metadata()) {
     run_pass_names.push_back(pass_metadata.pass_name());
@@ -1660,7 +1532,6 @@ MATCHER_P(HasExpectedPasses, expected_pass_names, "") {
 TEST_F(PassOrderTest, ExecEffortAt0point2RunsSpecifiedPasses) {
   HloModuleConfig config = GetModuleConfigForTest();
   CompileModule(config);
-  TF_ASSERT_OK(ScheduleModule());
 
   // Make sure passes are not enabled by default.
   std::vector<std::string> kExpectedPasses = {
@@ -1675,7 +1546,6 @@ TEST_F(PassOrderTest, ExecEffortAt0point2RunsSpecifiedPasses) {
   // enabled.
   config.set_exec_time_optimization_effort(0.2);
   CompileModule(config);
-  TF_ASSERT_OK(ScheduleModule());
   EXPECT_THAT(optimized_module_, HasExpectedPasses(kExpectedPasses));
 }
 
@@ -1687,7 +1557,6 @@ TEST_F(PassOrderTest, LHSRunsIfProfileDataIsAvailable) {
       "latency-hiding-scheduler",
   };
   CompileModule(config);
-  TF_ASSERT_OK(ScheduleModule());
   EXPECT_THAT(optimized_module_, Not(HasExpectedPasses(kExpectedPasses)));
 
   // Make sure we turn the LHS on with we schedule with profile data.
@@ -1696,7 +1565,6 @@ TEST_F(PassOrderTest, LHSRunsIfProfileDataIsAvailable) {
   )pb";
   config.set_fdo_profile(kProfile);
   CompileModule(config);
-  TF_ASSERT_OK(ScheduleModule());
 
   EXPECT_THAT(optimized_module_, HasExpectedPasses(kExpectedPasses));
 }
@@ -1732,6 +1600,38 @@ TEST_F(PassOrderTest, NestGemmFusionRunsAfterGemmFusionAutotuner) {
   options.set_xla_gpu_unsupported_enable_generic_triton_emitter_for_gemms(true);
   SetDebugOptions(options);
   VerifyPassOrder("gemm-fusion-autotuner", "nest_gemm_fusion");
+}
+
+TEST_F(PassOrderTest, TransposeDimensionGrouperRunsBeforeGemmRewriter) {
+  auto cc = backend()
+                .default_stream_executor()
+                ->GetDeviceDescription()
+                .cuda_compute_capability();
+  if (!cc.IsAtLeastAmpere()) {
+    GTEST_SKIP() << "triton-gemm-rewriter requires at least Ampere to run.";
+  }
+  if (!optimized_module_) {
+    CompileModule(GetModuleConfigForTest());
+  }
+  // DebugOptions options = GetDebugOptionsForTest();
+  // options.set_xla_gpu_enable_triton_gemm(true);
+  // SetDebugOptions(options);
+  // Verify that transpose-dimension-grouper runs immediately before
+  // triton-gemm-rewriter. We want to keep them close together to avoid the
+  // possibility of new passes to rewrite the transpose and make it
+  // not compatible with the generic triton emitter.
+  // Simple VerifyPassOrder does not work here as we want to check that passes
+  // are run next to each other, also transpose-dimension-grouper runs one more
+  // time after the gemm rewriter.
+  CHECK(optimized_module_);
+  std::string previous_pass_name;
+  for (const HloPassMetadata& pass_metadata :
+       optimized_module_->metadata().proto().pass_metadata()) {
+    if (pass_metadata.pass_name() == "triton-gemm-rewriter") {
+      EXPECT_EQ(previous_pass_name, "transpose-dimension-grouper");
+    }
+    previous_pass_name = pass_metadata.pass_name();
+  }
 }
 
 TEST_F(PassOrderTest,
@@ -1859,6 +1759,7 @@ TEST_F(GpuCompilerTest,
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> exec,
                           test_runner_as_hlo_runner().ExecutableFromWrapped(
                               std::move(wrapped_exec)));
+  std::cout << "exec module: " << exec->module().ToString() << "\n";
   const char* kExpected = R"(
     // CHECK:      dynamic-slice-fusion{{.+}} {
     // CHECK:        %[[slice:.+]] = {{.+}} slice({{.+}}), slice={[4:8], [0:32]}
@@ -1922,6 +1823,111 @@ TEST_F(GpuCompilerTest, DynamicSliceFusionReduceScatterMultipleBuffers) {
   )";
   EXPECT_THAT(RunFileCheck(m->ToString(), kExpected),
               ::tsl::testing::IsOkAndHolds(true));
+}
+
+TEST_F(GpuCompilerTest, CompilingSortsWorksWithoutDevice) {
+  constexpr absl::string_view kHlo = R"(
+HloModule TestModule
+
+%compare {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %lt = pred[] compare(%lhs, %rhs), direction=LT
+}
+
+ENTRY %main {
+  %input = f32[1000] parameter(0)
+  ROOT %sort = f32[1000] sort(%input), dimensions={0}, to_apply=%compare
+})";
+
+  HloModuleConfig config;
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_enable_cub_radix_sort(true);
+
+  std::string target_file;
+  ASSERT_TRUE(tsl::Env::Default()->LocalTempFilename(&target_file));
+  TF_ASSERT_OK(tsl::WriteTextProto(
+      tsl::Env::Default(), target_file,
+      Compiler::TargetConfig(backend().default_stream_executor()).ToProto()));
+  debug_options.set_xla_gpu_target_config_filename(target_file);
+  config.set_debug_options(debug_options);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo, config));
+  // absl::ScopedMockLog only works if we're actually using ABSL logging, and
+  // TSL supports a homegrown logging implementation, so we should only check
+  // the log is emitted when ABSL logging is used.
+  absl::ScopedMockLog mock_log(absl::MockLogDefault::kIgnoreUnexpected);
+  if constexpr (std::is_same_v<absl::LogSink, tsl::TFLogSink>) {
+    EXPECT_CALL(mock_log,
+                Log(absl::LogSeverity::kWarning, EndsWith("/gpu_compiler.cc"),
+                    StartsWith("Using fallback sort algorithm")));
+  }
+  // StartCapturingLogs has to be called even if we expect not to capture any
+  // logs.
+  mock_log.StartCapturingLogs();
+  auto status_or_module = backend().compiler()->RunHloPasses(
+      std::move(module), nullptr, GetAllocator());
+  TF_ASSERT_OK(status_or_module.status());
+}
+
+TEST_F(GpuCompilerTest, CompilingAndCollectingMetadata) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule cluster
+
+    ENTRY main {
+      cst = f32[1]{0} constant({0})
+      ROOT tuple_out = (f32[1]{0}, f32[1]{0}, f32[1]{0}, f32[1]{0}) tuple(cst, cst, cst, cst)
+    }
+  )";
+
+  HloModuleConfig config;
+  DebugOptions debug_options = GetDebugOptionsForTest();
+
+  std::string target_file;
+  ASSERT_TRUE(tsl::Env::Default()->LocalTempFilename(&target_file));
+  TF_ASSERT_OK(tsl::WriteTextProto(
+      tsl::Env::Default(), target_file,
+      Compiler::TargetConfig(backend().default_stream_executor()).ToProto()));
+  debug_options.set_xla_gpu_target_config_filename(target_file);
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo, config));
+
+  auto status_or_module = backend().compiler()->RunHloPasses(
+      std::move(module), nullptr, GetAllocator());
+
+  auto opt_module = std::move(status_or_module.value());
+  const HloModuleMetadataProto& metadata = opt_module->metadata()->proto();
+  for (int pass = 0; pass < metadata.pass_metadata().size(); pass++) {
+    const HloPassMetadata& pass_metadata = metadata.pass_metadata(pass);
+    EXPECT_NE(pass_metadata.pass_id(), 0);
+    EXPECT_FALSE(pass_metadata.pass_name().empty());
+    EXPECT_FALSE(pass_metadata.pipeline_name().empty());
+    EXPECT_EQ(pass_metadata.module_id(), opt_module->unique_id());
+    EXPECT_GT(pass_metadata.start_timestamp_usec(), 0);
+    EXPECT_LE(pass_metadata.start_timestamp_usec(),
+              pass_metadata.end_timestamp_usec());
+  }
+  auto status_or_executable = backend().compiler()->RunBackend(
+      std::move(opt_module), backend().default_stream_executor(),
+      {/*device_allocator=*/nullptr,
+       /*thread_pool=*/nullptr,
+       /*layout_canonicalization_callback=*/{},
+       /*is_autotuning_compilation=*/false});
+
+  auto& exe_module = status_or_executable.value()->module();
+  const HloModuleMetadataProto& exe_metadata = exe_module.metadata()->proto();
+  for (int pass = 0; pass < exe_metadata.pass_metadata().size(); pass++) {
+    const HloPassMetadata& pass_metadata = exe_metadata.pass_metadata(pass);
+    EXPECT_NE(pass_metadata.pass_id(), 0);
+    EXPECT_FALSE(pass_metadata.pass_name().empty());
+    EXPECT_FALSE(pass_metadata.pipeline_name().empty());
+    EXPECT_EQ(pass_metadata.module_id(), exe_module.unique_id());
+    EXPECT_GT(pass_metadata.start_timestamp_usec(), 0);
+    EXPECT_LE(pass_metadata.start_timestamp_usec(),
+              pass_metadata.end_timestamp_usec());
+  }
 }
 
 }  // namespace

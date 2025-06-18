@@ -67,11 +67,11 @@ class GemvRewriterVisitor : public DfsHloRewriteVisitor {
     // This pass relies on dot decomposer which ensures that all non-batch
     // dimensions are merged into one.
     bool lhs_has_non_contracting_dim =
-        lhs->shape().dimensions_size() ==
+        lhs->shape().dimensions().size() ==
         dim_numbers.lhs_batch_dimensions_size() +
             dim_numbers.lhs_contracting_dimensions_size() + 1;
     bool rhs_has_non_contracting_dim =
-        rhs->shape().dimensions_size() ==
+        rhs->shape().dimensions().size() ==
         dim_numbers.rhs_batch_dimensions_size() +
             dim_numbers.rhs_contracting_dimensions_size() + 1;
 

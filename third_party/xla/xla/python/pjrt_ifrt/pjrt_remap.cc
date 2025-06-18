@@ -40,11 +40,11 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
-PjRtCompatibleClientRemapArrays(
-    PjRtCompatibleClient* client, const RemapPlan& plan,
-    absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
-    ArrayCopySemantics semantics) {
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
+PjRtCompatibleClientRemapArrays(PjRtCompatibleClient* client,
+                                const RemapPlan& plan,
+                                absl::Span<xla::ifrt::ArrayRef> arrays,
+                                ArrayCopySemantics semantics) {
   TF_RETURN_IF_ERROR(plan.CheckArrayCopySemantics(semantics));
   const int num_inputs = plan.input_specs.size();
   const int num_actual_inputs = arrays.size();
@@ -128,7 +128,7 @@ PjRtCompatibleClientRemapArrays(
     }
   }
 
-  std::vector<tsl::RCReference<xla::ifrt::Array>> output_arrays;
+  std::vector<xla::ifrt::ArrayRef> output_arrays;
   output_arrays.reserve(num_outputs);
   for (int i = 0; i < num_outputs; ++i) {
     CHECK_GE(out_buffers_list[i].size(), 1);

@@ -1038,7 +1038,7 @@ absl::Status Partition(const PartitionOptions& opts, Graph* g,
     if (opts.need_to_record_start_times) {
       int64_t start_time;
       status = GetNodeAttr(*dst_def, "_start_time", &start_time);
-      if (errors::IsNotFound(status)) {
+      if (absl::IsNotFound(status)) {
         start_time = opts.start_times[dst->id()].value();
         AddNodeAttr("_start_time", start_time, dst_def);
       } else if (!status.ok()) {
@@ -1101,14 +1101,14 @@ absl::Status Partition(const PartitionOptions& opts, Graph* g,
       int64_t recv_start_time = 0;
       if (opts.scheduling_for_recvs) {
         status = GetNodeAttr(src->attrs(), "_start_time", &send_start_time);
-        if (errors::IsNotFound(status) && opts.need_to_record_start_times) {
+        if (absl::IsNotFound(status) && opts.need_to_record_start_times) {
           send_start_time = opts.start_times[src->id()].value();
         } else if (!status.ok()) {
           return status;
         }
 
         status = GetNodeAttr(dst->attrs(), "_start_time", &recv_start_time);
-        if (errors::IsNotFound(status) && opts.need_to_record_start_times) {
+        if (absl::IsNotFound(status) && opts.need_to_record_start_times) {
           recv_start_time = opts.start_times[dst->id()].value();
         } else if (!status.ok()) {
           return status;

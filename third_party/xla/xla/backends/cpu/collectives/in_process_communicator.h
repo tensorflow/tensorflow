@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -39,46 +41,47 @@ class InProcessCommunicator : public Communicator {
  public:
   InProcessCommunicator(size_t rank, size_t num_ranks);
 
-  absl::Status AllReduce(se::DeviceMemoryBase send_buffer,
-                         se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
-                         size_t count, ReductionKind reduction_kind,
-                         const Executor& executor) override;
+  tsl::AsyncValueRef<Event> AllReduce(se::DeviceMemoryBase send_buffer,
+                                      se::DeviceMemoryBase recv_buffer,
+                                      PrimitiveType dtype, size_t count,
+                                      ReductionKind reduction_kind,
+                                      const Executor& executor) override;
 
-  absl::Status CollectivePermute(se::DeviceMemoryBase send_buffer,
-                                 se::DeviceMemoryBase recv_buffer,
-                                 PrimitiveType dtype, size_t count,
-                                 std::optional<RankId> source_rank,
-                                 absl::Span<const RankId> target_ranks,
-                                 const Executor& executor) override;
+  tsl::AsyncValueRef<Event> CollectivePermute(
+      se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
+      PrimitiveType dtype, size_t count, std::optional<RankId> source_rank,
+      absl::Span<const RankId> target_ranks, const Executor& executor) override;
 
-  absl::Status AllToAll(absl::Span<const se::DeviceMemoryBase> send_buffers,
-                        absl::Span<const se::DeviceMemoryBase> recv_buffers,
-                        PrimitiveType dtype, size_t count,
-                        const Executor& executor) override;
+  tsl::AsyncValueRef<Event> AllToAll(
+      absl::InlinedVector<se::DeviceMemoryBase, 4> send_buffers,
+      absl::InlinedVector<se::DeviceMemoryBase, 4> recv_buffers,
+      PrimitiveType dtype, size_t count, const Executor& executor) override;
 
-  absl::Status AllGather(se::DeviceMemoryBase send_buffer,
-                         se::DeviceMemoryBase recv_buffer, PrimitiveType dtype,
-                         size_t count, const Executor& executor) override;
+  tsl::AsyncValueRef<Event> AllGather(se::DeviceMemoryBase send_buffer,
+                                      se::DeviceMemoryBase recv_buffer,
+                                      PrimitiveType dtype, size_t count,
+                                      const Executor& executor) override;
 
-  absl::Status ReduceScatter(se::DeviceMemoryBase send_buffer,
-                             se::DeviceMemoryBase recv_buffer,
-                             PrimitiveType dtype, size_t count,
-                             ReductionKind reduction_kind,
-                             const Executor& executor) override;
+  tsl::AsyncValueRef<Event> ReduceScatter(se::DeviceMemoryBase send_buffer,
+                                          se::DeviceMemoryBase recv_buffer,
+                                          PrimitiveType dtype, size_t count,
+                                          ReductionKind reduction_kind,
+                                          const Executor& executor) override;
 
-  absl::Status Broadcast(se::DeviceMemoryBase, se::DeviceMemoryBase,
-                         PrimitiveType, size_t, RankId,
-                         const Executor&) override {
+  tsl::AsyncValueRef<Event> Broadcast(se::DeviceMemoryBase,
+                                      se::DeviceMemoryBase, PrimitiveType,
+                                      size_t, RankId,
+                                      const Executor&) override {
     return Unimplemented("Broadcast is not implemented");
   }
 
-  absl::Status Send(se::DeviceMemoryBase, PrimitiveType, size_t, RankId,
-                    const Executor&) override {
+  tsl::AsyncValueRef<Event> Send(se::DeviceMemoryBase, PrimitiveType, size_t,
+                                 RankId, const Executor&) override {
     return Unimplemented("Send is not implemented");
   }
 
-  absl::Status Recv(se::DeviceMemoryBase, PrimitiveType, size_t, RankId,
-                    const Executor&) override {
+  tsl::AsyncValueRef<Event> Recv(se::DeviceMemoryBase, PrimitiveType, size_t,
+                                 RankId, const Executor&) override {
     return Unimplemented("Recv is not implemented");
   }
 

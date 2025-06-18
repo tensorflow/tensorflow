@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
+#include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/runtime/dot_lib.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -78,10 +79,21 @@ bool XnnShouldUseThreadPool(const HloComputation* computation) {
 
 absl::StatusOr<bool> IsXnnDotSupported(
     const DotDimensionNumbers& dot_dimensions, const Shape& lhs_shape,
-    const Shape& rhs_shape, const Shape& out_shape) {
+    const Shape& rhs_shape, const Shape& out_shape,
+    TargetMachineFeatures* cpu_features) {
   // TODO(ezhulenev): Support other element types.
-  if (lhs_shape.element_type() != F32 || rhs_shape.element_type() != F32 ||
-      out_shape.element_type() != F32) {
+  auto check_dtype = [&](PrimitiveType in_dtype, PrimitiveType out_dtype) {
+    return lhs_shape.element_type() == in_dtype &&
+           rhs_shape.element_type() == in_dtype &&
+           out_shape.element_type() == out_dtype;
+  };
+
+  // We assume that the feature is available if `cpu_features` is not provided.
+  bool cpu_has_avx512bf16 =
+      cpu_features == nullptr || cpu_features->has_avx512bf16();
+  bool dtype_is_supported =
+      check_dtype(F32, F32) || (check_dtype(BF16, F32) && cpu_has_avx512bf16);
+  if (!dtype_is_supported) {
     return false;
   }
 

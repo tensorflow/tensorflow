@@ -1,0 +1,57 @@
+
+--- a/lib/Conversion/TritonGPUToLLVM/ConvertLayoutOpToLLVM.cpp	2025-03-25 07:48:50.000000000 -0700
++++ b/lib/Conversion/TritonGPUToLLVM/ConvertLayoutOpToLLVM.cpp	2025-05-01 06:10:17.000000000 -0700
+@@ -295,7 +295,7 @@
+             offset);
+       }
+       auto vecAddr = b.gep(sharedPtrTy, elemTy, smemBase, offset);
+-      vecAddr.setInbounds(true);
++      vecAddr.setNoWrapFlags(mlir::LLVM::GEPNoWrapFlags::inbounds);
+       return vecAddr;
+     };
+ 
+
+--- a/lib/Conversion/TritonGPUToLLVM/Utility.cpp	2025-04-25 05:19:43.000000000 -0700
++++ b/lib/Conversion/TritonGPUToLLVM/Utility.cpp	2025-05-01 06:10:17.000000000 -0700
+@@ -399,7 +399,7 @@
+   }
+   auto ptrTy = smemBase.getType();
+   auto vecAddr = b.gep(ptrTy, elemLlvmTy, smemBase, smemOffset);
+-  vecAddr.setInbounds(true);
++  vecAddr.setNoWrapFlags(mlir::LLVM::GEPNoWrapFlags::inbounds);
+   return vecAddr;
+ }
+ 
+
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/MemoryOpToLLVM.cpp	2025-04-11 01:29:32.000000000 -0700
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/MemoryOpToLLVM.cpp	2025-05-01 06:10:17.000000000 -0700
+@@ -191,7 +191,7 @@
+             .second;
+     Value offset = b.xor_(regBase, b.i32_val(regIdx));
+     auto vecAddr = b.gep(smemPtrTy, llvmElemTy, smemBase, offset);
+-    vecAddr.setInbounds(true);
++    vecAddr.setNoWrapFlags(mlir::LLVM::GEPNoWrapFlags::inbounds);
+     SmallVector<Value> inValsVec;
+     for (int j = 0; j < srcVec; j++)
+       inValsVec.push_back(srcVals[i + j]);
+
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TargetInfo.cpp	2025-04-11 01:29:32.000000000 -0700
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/TargetInfo.cpp	2025-05-01 06:10:17.000000000 -0700
+@@ -234,7 +234,7 @@
+     SmallVector<Value> vals = unpackLLVector(loc, val, rewriter);
+     for (int i = 0; i < vec / maxVec; i++) {
+       auto newPtr = b.gep(ptr.getType(), elemTy, ptr, b.i32_val(i * maxVec),
+-                          /*inbounds=*/true);
++                          mlir::LLVM::GEPNoWrapFlags::inbounds);
+       storeDShared(
+           rewriter, loc, newPtr, ctaId,
+           packLLVector(loc, ArrayRef(vals).slice(i * maxVec, maxVec), rewriter),
+@@ -347,7 +347,7 @@
+     SmallVector<Value> vals;
+     for (int i = 0; i < vec / maxVec; i++) {
+       auto newPtr = b.gep(ptr.getType(), elemTy, ptr, b.i32_val(i * maxVec),
+-                          /*inbounds=*/true);
++                          mlir::LLVM::GEPNoWrapFlags::inbounds);
+       auto newVal = loadDShared(rewriter, loc, newPtr, ctaId,
+                                 vec_ty(elemTy, maxVec), pred);
+       for (Value v : unpackLLVector(loc, newVal, rewriter)) {

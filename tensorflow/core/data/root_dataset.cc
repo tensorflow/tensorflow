@@ -502,7 +502,7 @@ absl::Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
 
   *output = rewritten_output.get();
   bool rewritten = (*output != input);
-  if (errors::IsDeadlineExceeded(s)) {
+  if (absl::IsDeadlineExceeded(s)) {
     // Ignore DeadlineExceeded as it implies that the attempted rewrite took too
     // long which should not prevent further computation.
     LOG(WARNING) << s;

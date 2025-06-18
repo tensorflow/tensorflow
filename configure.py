@@ -1127,7 +1127,7 @@ def set_system_libs_flag(environ_cp):
       syslibs = ','.join(sorted(syslibs.split()))
     write_action_env_to_bazelrc('TF_SYSTEM_LIBS', syslibs)
 
-  for varname in ('PREFIX', 'LIBDIR', 'INCLUDEDIR', 'PROTOBUF_INCLUDE_PATH'):
+  for varname in ('PREFIX', 'PROTOBUF_INCLUDE_PATH'):
     if varname in environ_cp:
       write_to_bazelrc('build --define=%s=%s' % (varname, environ_cp[varname]))
 

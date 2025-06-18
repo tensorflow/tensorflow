@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/saved_model/python/saved_model_load_and_run.h"
 
+#include <Python.h>
+
 #include <memory>
 #include <string>
 #include <unordered_set>

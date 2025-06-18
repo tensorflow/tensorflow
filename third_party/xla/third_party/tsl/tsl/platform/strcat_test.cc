@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "tsl/platform/strcat.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/types.h"
+#include "tsl/platform/bfloat16.h"
 #include "tsl/platform/stringprintf.h"
 
 #ifdef _MSC_VER
@@ -336,35 +340,35 @@ TEST(StrAppend, Death) {
 }
 
 static void CheckHex64(uint64 v) {
-  string actual = StrCat(Hex(v, kZeroPad16));
+  string actual = strings::StrCat(absl::Hex(v, absl::kZeroPad16));
   string expected = Printf("%016llx", static_cast<unsigned long long>(v));
   EXPECT_EQ(expected, actual) << " decimal value " << v;
 
-  actual = StrCat(Hex(v, kZeroPad8));
+  actual = strings::StrCat(absl::Hex(v, absl::kZeroPad8));
   expected = Printf("%08llx", static_cast<unsigned long long>(v));
   EXPECT_EQ(expected, actual) << " decimal value " << v;
 
-  actual = StrCat(Hex(v));
+  actual = strings::StrCat(absl::Hex(v));
   expected = Printf("%llx", static_cast<unsigned long long>(v));
   EXPECT_EQ(expected, actual) << " decimal value " << v;
 }
 
 static void CheckHex32(uint32 v) {
-  string actual = StrCat(Hex(v, kZeroPad8));
+  string actual = strings::StrCat(absl::Hex(v, absl::kZeroPad8));
   string expected = Printf("%08x", v);
   EXPECT_EQ(expected, actual) << " decimal value " << v;
 
-  actual = StrCat(Hex(v));
+  actual = strings::StrCat(absl::Hex(v));
   expected = Printf("%x", v);
   EXPECT_EQ(expected, actual) << " decimal value " << v;
 }
 
 static void CheckHexSigned32(int32_t v) {
-  string actual = StrCat(Hex(v, kZeroPad8));
+  string actual = strings::StrCat(absl::Hex(v, absl::kZeroPad8));
   string expected = Printf("%08x", v);
   EXPECT_EQ(expected, actual) << " decimal value " << v;
 
-  actual = StrCat(Hex(v));
+  actual = strings::StrCat(absl::Hex(v));
   expected = Printf("%x", v);
   EXPECT_EQ(expected, actual) << " decimal value " << v;
 }
@@ -381,10 +385,10 @@ static void TestFastPrints() {
   CheckHex32(0x12345678);
 
   int8_t minus_one_8bit = -1;
-  EXPECT_EQ("ff", StrCat(Hex(minus_one_8bit)));
+  EXPECT_EQ("ff", strings::StrCat(absl::Hex(minus_one_8bit)));
 
   int16_t minus_one_16bit = -1;
-  EXPECT_EQ("ffff", StrCat(Hex(minus_one_16bit)));
+  EXPECT_EQ("ffff", strings::StrCat(absl::Hex(minus_one_16bit)));
 }
 
 TEST(Numbers, TestFunctionsMovedOverFromNumbersMain) { TestFastPrints(); }

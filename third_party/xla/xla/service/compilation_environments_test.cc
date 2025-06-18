@@ -21,8 +21,8 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/service/test_compilation_environment.pb.h"
-#include "xla/test.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/casts.h"
@@ -242,6 +242,21 @@ TEST_F(CompilationEnvironmentsTest, EnvTypePresenceCheck) {
   EXPECT_TRUE(envs.HasEnv<TestCompilationEnvironment1>());
 }
 
+TEST_F(CompilationEnvironmentsTest, InitializeAllKnownEnvs) {
+  CompilationEnvironments envs;
+  auto env1 = std::make_unique<TestCompilationEnvironment1>();
+  env1->set_some_flag(400);
+  TF_ASSERT_OK(envs.AddEnv(std::move(env1)));
+  EXPECT_TRUE(envs.HasEnv<TestCompilationEnvironment1>());
+  EXPECT_EQ(envs.GetMutableEnv<TestCompilationEnvironment1>().some_flag(), 400);
+  TF_ASSERT_OK(envs.InitializeAllKnownEnvs());
+  EXPECT_TRUE(envs.HasEnv<TestCompilationEnvironment1>());
+  EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment1>().some_flag(), 400);
+  EXPECT_TRUE(envs.HasEnv<TestCompilationEnvironment2>());
+  EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment2>().some_other_flag(), 200);
+  EXPECT_TRUE(envs.HasEnv<TestCompilationEnvironment3>());
+  EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment3>().a_third_flag(), 300);
+}
 }  // namespace
 }  // namespace test
 }  // namespace xla

@@ -255,7 +255,7 @@ absl::Status BuildXlaDeviceCompiler(DeviceBase* device,
     return platform.status();
   }
 
-  absl::StatusOr<xla::Compiler*> compiler_for_platform =
+  absl::StatusOr<std::unique_ptr<xla::Compiler>> compiler_for_platform =
       xla::Compiler::GetForPlatform(platform.value());
   if (!compiler_for_platform.ok()) {
     // In some rare cases (usually in unit tests with very small clusters) we

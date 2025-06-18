@@ -25,6 +25,7 @@ from tensorflow.python.distribute.cluster_resolver.cluster_resolver import Clust
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import UnionClusterResolver
 from tensorflow.python.distribute.cluster_resolver.gce_cluster_resolver import GCEClusterResolver
+from tensorflow.python.distribute.cluster_resolver.kubernetes_cluster_resolver import  ExecutableLocation
 from tensorflow.python.distribute.cluster_resolver.kubernetes_cluster_resolver import KubernetesClusterResolver
 from tensorflow.python.distribute.cluster_resolver.slurm_cluster_resolver import SlurmClusterResolver
 from tensorflow.python.distribute.cluster_resolver.tfconfig_cluster_resolver import TFConfigClusterResolver

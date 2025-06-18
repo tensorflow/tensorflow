@@ -1071,6 +1071,11 @@ int64_t BufferIntervalTree::HeapSizeInInterval(const int64_t start,
   return max_memory_used;
 }
 
+void BufferIntervalTree::Clear() {
+  root_ = nullptr;
+  node_storage_.clear();
+}
+
 template <typename BufferType>
 std::string
 GlobalDecreasingSizeBestFitHeap<BufferType>::BufferInterval::ToString() const {
@@ -2587,7 +2592,7 @@ ConstrainedGlobalDecreasingSizeBestFitHeap::Finish() {
     multi_heap_result.heap_size += result_.heap_size;
     multi_heap_result.heap_results.push_back(std::move(result_));
     result_ = {};
-    interval_tree_ = {};
+    interval_tree_.Clear();
   } while (!sorted_buffer_intervals.empty());
 
   VLOG(1) << "Number of heaps produced = "

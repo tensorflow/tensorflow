@@ -22,7 +22,9 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/cleanup/cleanup.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/array.h"
@@ -48,16 +50,20 @@ absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> AllocateAndMapPjrtMemory(
 // An structure which represents a single copy of a chunk out of a buffer
 // with an assigned 'buffer_id'.
 struct DmaCopyChunk {
-  tsl::RCReference<xla::ifrt::Array> arr;
+  xla::ifrt::ArrayRef arr;
   xla::PjRtBuffer* buffer;
   size_t buffer_id;
   size_t offset;
   size_t size;
 
+  static DmaCopyChunk Make(xla::ifrt::ArrayRef arr, xla::PjRtBuffer* buffer,
+                           size_t buffer_id, size_t offset, size_t size) {
+    return DmaCopyChunk{std::move(arr), buffer, buffer_id, offset, size};
+  }
+
   // Divides an IFRT array up evenly for copying.
   static absl::StatusOr<std::vector<DmaCopyChunk>> DivideBufferCopiesEvenly(
-      tsl::RCReference<xla::ifrt::Array> arr, size_t xfer_size,
-      size_t buffer_id);
+      xla::ifrt::ArrayRef arr, size_t xfer_size, size_t buffer_id);
 };
 
 // Copies into subdivisions of scratch asyncly in parallel calling on_done

@@ -16,6 +16,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -170,10 +171,12 @@ TEST_F(IfTest, TestWithXNNPACK) {
   builder_->BuildFloatIfSubgraph(&interpreter_->primary_subgraph(), 3);
 
   const auto opt = TfLiteXNNPackDelegateOptionsDefault();
-  TfLiteDelegate* xnnpack_delegate = TfLiteXNNPackDelegateCreate(&opt);
+  std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)> xnnpack_delegate(
+      TfLiteXNNPackDelegateCreate(&opt), TfLiteXNNPackDelegateDelete);
   interpreter_->primary_subgraph().MarkAsDelegationSkippable();
   interpreter_->subgraph(1)->MarkAsDelegationSkippable();
-  ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(xnnpack_delegate), kTfLiteOk);
+  ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(std::move(xnnpack_delegate)),
+            kTfLiteOk);
   ASSERT_EQ(interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {1}),
             kTfLiteOk);
   ASSERT_EQ(interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {1}),
@@ -201,7 +204,6 @@ TEST_F(IfTest, TestWithXNNPACK) {
   interpreter_->typed_input_tensor<bool>(0)[0] = true;
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
-  TfLiteXNNPackDelegateDelete(xnnpack_delegate);
 }
 
 TEST_F(IfTest, TestInputIsOutput) {

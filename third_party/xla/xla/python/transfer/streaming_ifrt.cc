@@ -91,7 +91,7 @@ absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> AllocateAndMapPjrtMemory(
 }
 
 absl::StatusOr<std::vector<DmaCopyChunk>>
-DmaCopyChunk::DivideBufferCopiesEvenly(tsl::RCReference<xla::ifrt::Array> arr,
+DmaCopyChunk::DivideBufferCopiesEvenly(xla::ifrt::ArrayRef arr,
                                        size_t xfer_size, size_t buffer_id) {
   auto* pjrt_arr =
       llvm::dyn_cast_or_null<xla::ifrt::PjRtCompatibleArray>(arr.get());

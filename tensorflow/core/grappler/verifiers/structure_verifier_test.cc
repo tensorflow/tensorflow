@@ -85,7 +85,7 @@ TEST_F(StructureVerifierTest, OpNotRegistered) {
       "node { name: 't1' op: 'TestMul' input: [ 'input:0', 't2' ] }"
       "node { name: 't2' op: 'TestMul' input: [ 'input:1', 't1' ] }");
   absl::Status status = verifier_->Verify(graph_);
-  EXPECT_TRUE(errors::IsNotFound(status));
+  EXPECT_TRUE(absl::IsNotFound(status));
   EXPECT_TRUE(absl::StrContains(status.message(), "Op type not registered"));
 }
 
@@ -94,7 +94,7 @@ TEST_F(StructureVerifierTest, DuplicateNodeNames) {
       "node { name: 'A' op: 'TestParams' }"
       "node { name: 'A' op: 'TestInput' }");
   absl::Status status = verifier_->Verify(graph_);
-  EXPECT_TRUE(errors::IsAlreadyExists(status));
+  EXPECT_TRUE(absl::IsAlreadyExists(status));
   EXPECT_TRUE(absl::StrContains(status.message(), "Node already exists:"));
 }
 
@@ -104,7 +104,7 @@ TEST_F(StructureVerifierTest, GraphWithInvalidCycle) {
       "node { name: 't1' op: 'TestMul' input: [ 'input:0', 't2' ] }"
       "node { name: 't2' op: 'TestMul' input: [ 'input:1', 't1' ] }");
   absl::Status status = verifier_->Verify(graph_);
-  EXPECT_TRUE(errors::IsInvalidArgument(status));
+  EXPECT_TRUE(absl::IsInvalidArgument(status));
   EXPECT_TRUE(absl::StrContains(
       status.message(), "The graph couldn't be sorted in topological order"));
 }

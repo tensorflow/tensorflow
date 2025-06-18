@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
+#include <cstdint>
 #if GOOGLE_CUDA
 
 #include "xla/experiments/sm_bandwidth_benchmark/sm_bw_kernels.h"

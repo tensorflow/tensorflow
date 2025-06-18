@@ -673,6 +673,24 @@ XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_RunId_Get_Args, run_id);
 typedef XLA_FFI_Error* XLA_FFI_RunId_Get(XLA_FFI_RunId_Get_Args* args);
 
 //===----------------------------------------------------------------------===//
+// DeviceOrdinal
+//===----------------------------------------------------------------------===//
+
+struct XLA_FFI_DeviceOrdinal_Get_Args {
+  size_t struct_size;
+  XLA_FFI_Extension_Base* extension_start;
+
+  XLA_FFI_ExecutionContext* ctx;
+  int32_t device_ordinal;  // out
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_DeviceOrdinal_Get_Args, device_ordinal);
+
+// Returns a unique identifier for the current logical execution.
+typedef XLA_FFI_Error* XLA_FFI_DeviceOrdinal_Get(
+    XLA_FFI_DeviceOrdinal_Get_Args* args);
+
+//===----------------------------------------------------------------------===//
 // Metadata extension
 //===----------------------------------------------------------------------===//
 
@@ -721,11 +739,12 @@ struct XLA_FFI_Api {
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Future_SetAvailable);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_Future_SetError);
   _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_RunId_Get);
+  _XLA_FFI_API_STRUCT_FIELD(XLA_FFI_DeviceOrdinal_Get);
 };
 
 #undef _XLA_FFI_API_STRUCT_FIELD
 
-XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Api, XLA_FFI_Stream_Get);
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_Api, XLA_FFI_DeviceOrdinal_Get);
 
 const XLA_FFI_Api* XLA_FFI_GetApi();
 

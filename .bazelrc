@@ -129,6 +129,9 @@ build --config=v2
 # Disable AWS/HDFS support by default
 build --define=no_aws_support=true
 build --define=no_hdfs_support=true
+# Precompiling results in some action conflicts. Disable it for now until
+# the problematic targets are fixed.
+build --@rules_python//python/config_settings:precompile=force_disabled
 
 # TF now has `cc_shared_library` targets, so it needs the experimental flag
 # TODO(rostam): Remove when `cc_shared_library` is enabled by default
@@ -164,15 +167,19 @@ build:android --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
 build:android_arm --config=android
 build:android_arm --cpu=armeabi-v7a
 build:android_arm --fat_apk_cpu=armeabi-v7a
+build:android_arm --platforms=@org_tensorflow//tensorflow/tools/toolchains/android:armeabi-v7a
 build:android_arm64 --config=android
 build:android_arm64 --cpu=arm64-v8a
 build:android_arm64 --fat_apk_cpu=arm64-v8a
+build:android_arm64 --platforms=@org_tensorflow//tensorflow/tools/toolchains/android:arm64-v8a
 build:android_x86 --config=android
 build:android_x86 --cpu=x86
 build:android_x86 --fat_apk_cpu=x86
+build:android_x86 --platforms=@org_tensorflow//tensorflow/tools/toolchains/android:x86
 build:android_x86_64 --config=android
 build:android_x86_64 --cpu=x86_64
 build:android_x86_64 --fat_apk_cpu=x86_64
+build:android_x86_64 --platforms=@org_tensorflow//tensorflow/tools/toolchains/android:x86_64
 
 # Build everything statically for Android since all static libs are later
 # bundled together into a single .so for deployment.
@@ -205,6 +212,7 @@ build:apple-toolchain --host_crosstool_top=@local_config_apple_cc//:toolchain
 # Settings for MacOS on ARM CPUs.
 build:macos_arm64 --cpu=darwin_arm64
 build:macos_arm64 --macos_minimum_os=11.0
+build:macos_arm64 --platforms=@build_bazel_apple_support//configs/platforms:darwin_arm64
 
 # iOS configs for each architecture and the fat binary builds.
 build:ios --apple_platform_type=ios
@@ -213,14 +221,19 @@ build:ios --copt=-Wno-c++11-narrowing
 build:ios --config=apple-toolchain
 build:ios_armv7 --config=ios
 build:ios_armv7 --cpu=ios_armv7
+build:ios_armv7 --platforms=@org_tensorflow//tensorflow/tools/toolchains/ios:ios_armv7
 build:ios_arm64 --config=ios
 build:ios_arm64 --cpu=ios_arm64
+build:ios_arm64 --platforms=@build_bazel_apple_support//configs/platforms:ios_arm64
 build:ios_arm64e --config=ios
 build:ios_arm64e --cpu=ios_arm64e
+build:ios_arm64e --platforms=@build_bazel_apple_support//configs/platforms:ios_arm64e
 build:ios_sim_arm64 --config=ios
 build:ios_sim_arm64 --cpu=ios_sim_arm64
+build:ios_sim_arm64 --platforms=@build_bazel_apple_support//configs/platforms:ios_sim_arm64
 build:ios_x86_64 --config=ios
 build:ios_x86_64 --cpu=ios_x86_64
+build:ios_x86_64 --platforms=@build_bazel_apple_support//configs/platforms:ios_x86_64
 build:ios_fat --config=ios
 build:ios_fat --ios_multi_cpus=armv7,arm64,i386,x86_64
 
@@ -247,23 +260,23 @@ build:mkl_threadpool --define=build_with_mkl_opensource=true
 build:mkl_threadpool -c opt
 
 # Config setting to build oneDNN with Compute Library for the Arm Architecture (ACL).
-build:mkl_aarch64 --define=build_with_mkl_aarch64=true
-build:mkl_aarch64 --define=build_with_openmp=true
-build:mkl_aarch64 --define=build_with_acl=true
-build:mkl_aarch64 -c opt
-
-# Config setting to build oneDNN with Compute Library for the Arm Architecture (ACL).
 # with Eigen threadpool support
 build:mkl_aarch64_threadpool --define=build_with_mkl_aarch64=true
+build:mkl_aarch64_threadpool --define=build_with_acl=true
 build:mkl_aarch64_threadpool -c opt
+
+# This is an alias for the mkl_aarch64_threadpool build.
+build:mkl_aarch64 --config=mkl_aarch64_threadpool
+
+# Default CUDA and CUDNN versions.
+build:cuda_version --repo_env=HERMETIC_CUDA_VERSION="12.5.1"
+build:cuda_version --repo_env=HERMETIC_CUDNN_VERSION="9.3.0"
 
 # CUDA: This config refers to building CUDA op kernels with nvcc.
 build:cuda --repo_env TF_NEED_CUDA=1
 build:cuda --crosstool_top=@local_config_cuda//crosstool:toolchain
 build:cuda --@local_config_cuda//:enable_cuda
-# Default CUDA and CUDNN versions.
-build:cuda --repo_env=HERMETIC_CUDA_VERSION="12.5.1"
-build:cuda --repo_env=HERMETIC_CUDNN_VERSION="9.3.0"
+build:cuda --config=cuda_version
 # This flag is needed to include CUDA libraries.
 build:cuda --@local_config_cuda//cuda:include_cuda_libs=true
 
@@ -293,8 +306,7 @@ build:cuda_clang --linkopt="-lm"
 
 # Set up compilation CUDA version and paths and use the CUDA Clang toolchain.
 build:cuda_clang_official --config=cuda_clang
-build:cuda_clang_official --repo_env=HERMETIC_CUDA_VERSION="12.5.1"
-build:cuda_clang_official --repo_env=HERMETIC_CUDNN_VERSION="9.3.0"
+build:cuda_clang_official --config=cuda_version
 build:cuda_clang_official --action_env=CLANG_CUDA_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
 build:cuda_clang_official --crosstool_top="@local_config_cuda//crosstool:toolchain"
 
@@ -458,12 +470,8 @@ build:windows --dynamic_mode=off
 
 # Default paths for TF_SYSTEM_LIBS
 build:linux --define=PREFIX=/usr
-build:linux --define=LIBDIR=$(PREFIX)/lib
-build:linux --define=INCLUDEDIR=$(PREFIX)/include
 build:linux --define=PROTOBUF_INCLUDE_PATH=$(PREFIX)/include
 build:macos --define=PREFIX=/usr
-build:macos --define=LIBDIR=$(PREFIX)/lib
-build:macos --define=INCLUDEDIR=$(PREFIX)/include
 build:macos --define=PROTOBUF_INCLUDE_PATH=$(PREFIX)/include
 # TF_SYSTEM_LIBS do not work on windows.
 
@@ -624,6 +632,12 @@ build:rbe_linux_cpu --python_path="/usr/bin/python3"
 # These you may need to change for your own GCP project.
 common:rbe_linux_cpu --remote_instance_name=projects/tensorflow-testing/instances/default_instance
 
+# Download CUDA/CUDNN redistributions to preserve the repositories cache between
+# CPU and GPU builds.
+# TODO(ybaturina): Uncomment when RBE is ready to support this.
+# build:rbe_linux_cpu --repo_env USE_CUDA_REDISTRIBUTIONS=1
+# build:rbe_linux_cpu --config=cuda_version
+
 # TODO(kanglan): Remove it after toolchain update is complete.
 build:rbe_linux_cpu_old --config=rbe_linux
 build:rbe_linux_cpu_old --host_crosstool_top="@ubuntu20.04-gcc9_manylinux2014-cuda11.2-cudnn8.1-tensorrt7.2_config_cuda//crosstool:toolchain"
@@ -637,6 +651,7 @@ common:rbe_linux_cpu_old --remote_instance_name=projects/tensorflow-testing/inst
 
 build:rbe_linux_cuda --config=cuda_clang_official
 build:rbe_linux_cuda --config=rbe_linux_cpu
+build:rbe_linux_cuda --repo_env=USE_CUDA_TAR_ARCHIVE_FILES=1
 # For Remote build execution -- GPU configuration
 build:rbe_linux_cuda --repo_env=REMOTE_GPU_TESTING=1
 
@@ -677,8 +692,10 @@ build:elinux --crosstool_top=@local_config_embedded_arm//:toolchain
 build:elinux --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
 build:elinux_aarch64 --config=elinux
 build:elinux_aarch64 --cpu=aarch64
+build:elinux_aarch64 --platforms=@org_tensorflow//tensorflow/tools/toolchains/linux:linux_aarch64
 build:elinux_armhf --config=elinux
 build:elinux_armhf --cpu=armhf
+build:elinux_armhf --platforms=@org_tensorflow//tensorflow/tools/toolchains/linux:linux_armhf
 build:elinux_armhf --copt -mfp16-format=ieee
 
 # Config-specific options should come above this line.

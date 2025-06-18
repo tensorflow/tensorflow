@@ -513,7 +513,7 @@ class HloModuleConfig {
   // instead. O3 might enable costly algorithms to reduce memory usage that may
   // greatly increase compile time.
   ExecutionOptions::EffortLevel memory_fitting_level_ =
-      ExecutionOptions::EFFORT_UNKNOWN;
+      ExecutionOptions::EFFORT_O2;
 
   // If enabled, deduplicate equivalent hlos into function calls to reduce code
   // size.

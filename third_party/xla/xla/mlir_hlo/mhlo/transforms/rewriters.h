@@ -101,12 +101,6 @@ inline void populateUnfuseBatchNormPatterns(MLIRContext *context,
 void populateTrigonometricToApproximationPatterns(MLIRContext *context,
                                                   RewritePatternSet *patterns);
 
-// Populate patterns to prepare moving dynamic broadcasts up over element-wise
-// operations and broadcast the operands rather than the result. This will
-// eventually allow for larger fusions.
-void populateMergeAssumingOpsPatterns(MLIRContext *context,
-                                      RewritePatternSet *patterns);
-
 // Populate patterns to group reduction and parallel dimensions of reduction
 // operations and realize them through equivalent 1D or 2D reductions.
 void populateGroupReductionDimensionsPatterns(MLIRContext *context,
@@ -147,6 +141,10 @@ void populateHloToStablehloPatterns(RewritePatternSet *patterns,
 void populateStablehloToHloPatterns(RewritePatternSet *patterns,
                                     TypeConverter *converter,
                                     MLIRContext *context);
+
+// Sets up legality definitions for StableHLO ops and non-StableHLO ops that
+// may have StableHLO operands.
+void setupStablehloToHloConversionTarget(ConversionTarget &target);
 
 }  // namespace stablehlo
 

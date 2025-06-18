@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -31,8 +32,8 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -42,7 +43,7 @@ namespace {
 
 namespace m = ::xla::match;
 
-class CudnnVectorizeConvolutionsTest : public HloTestBase {
+class CudnnVectorizeConvolutionsTest : public HloHardwareIndependentTestBase {
  protected:
   // Runs this pass and some cleanup to make pattern-matching easier.
   absl::StatusOr<bool> Run(std::pair<int, int> compute_capability,
@@ -50,7 +51,7 @@ class CudnnVectorizeConvolutionsTest : public HloTestBase {
     CudnnVectorizeConvolutions pass(
         se::CudaComputeCapability{compute_capability.first,
                                   compute_capability.second},
-        se::dnn::VersionInfo(8, 3, 0));
+        se::dnn::VersionInfo(8, 9, 0));
     TF_ASSIGN_OR_RETURN(bool changed, RunHloPass(&pass, module));
 
     CallInliner inliner;
@@ -229,7 +230,7 @@ TEST_F(CudnnVectorizeConvolutionsTest, NoVectorizeTo4) {
                     .value();
   CudnnVectorizeConvolutions pass(
       /*compute_capability=*/{7, 5},
-      /*cudnn_version=*/se::dnn::VersionInfo{8, 3, 0});
+      /*cudnn_version=*/se::dnn::VersionInfo{8, 9, 0});
   TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
 
   SCOPED_TRACE(module->ToString());

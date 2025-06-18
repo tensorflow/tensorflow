@@ -23,11 +23,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/cloud/file_block_cache.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/notification.h"
 #include "tsl/platform/stringpiece.h"
 #include "tsl/platform/thread_annotations.h"
@@ -176,11 +176,11 @@ class RamFileBlockCache : public FileBlockCache {
     /// The timestamp (seconds since epoch) at which the block was cached.
     uint64 timestamp;
     /// Mutex to guard state variable
-    mutex mu;
+    absl::Mutex mu;
     /// The state of the block.
     FetchState state TF_GUARDED_BY(mu) = FetchState::CREATED;
     /// Wait on cond_var if state is FETCHING.
-    condition_variable cond_var;
+    absl::CondVar cond_var;
   };
 
   /// \brief The block map type for the file block cache.
@@ -222,7 +222,7 @@ class RamFileBlockCache : public FileBlockCache {
   Notification stop_pruning_thread_;
 
   /// Guards access to the block map, LRU list, and cached byte count.
-  mutable mutex mu_;
+  mutable absl::Mutex mu_;
 
   /// The block map (map from Key to Block).
   BlockMap block_map_ TF_GUARDED_BY(mu_);

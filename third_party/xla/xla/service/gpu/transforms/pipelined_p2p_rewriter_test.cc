@@ -21,14 +21,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-class PipelinedP2pRewriterTest : public HloTestBase {
+class PipelinedP2pRewriterTest : public HloHardwareIndependentTestBase {
  protected:
   void DoFileCheck(const HloModule* module, absl::string_view expected) {
     HloPrintOptions options;

@@ -25,14 +25,17 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/test_macros.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
 
-class PrngTest : public ClientLibraryTestBase {
+class PrngTest : public ClientLibraryTestRunnerMixin<
+                     HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  public:
   template <PrimitiveType value_type, PrimitiveType bit_type,
             typename ValueT = typename primitive_util::PrimitiveTypeToNative<
@@ -81,7 +84,7 @@ class PrngTest : public ClientLibraryTestBase {
   }
 };
 
-XLA_TEST_F(PrngTest, RandomBitsToUniformFloatingPointInvalidArguments) {
+TEST_F(PrngTest, RandomBitsToUniformFloatingPointInvalidArguments) {
   // Existing prng test targets do not test invalid arguments cases, where
   // the number of bits are smaller than the value type's mantissa bits.
   TestConvertRandomBitsToUniformFloatingPoint<PrimitiveType::F32,

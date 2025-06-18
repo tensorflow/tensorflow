@@ -130,9 +130,7 @@ typedef PJRT_Error* PJRT_Register_Batch_Partitionable(
     PJRT_Register_Batch_Partitionable_Args* args);
 
 typedef struct PJRT_Custom_Partitioner_Extension {
-  size_t struct_size;
-  PJRT_Extension_Type type;
-  PJRT_Extension_Base* next;
+  PJRT_Extension_Base base;
   PJRT_Register_Custom_Partitioner* register_custom_partitioner;
   PJRT_Register_Batch_Partitionable* register_batch_partitionable;
 } PJRT_Custom_Partitioner_Extension;

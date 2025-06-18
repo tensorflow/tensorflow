@@ -20,16 +20,23 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -63,7 +70,6 @@ absl::Status CollectiveGroupThunk::Initialize(const InitializeParams& params) {
 
 absl::Status CollectiveGroupThunk::ExecuteOnStream(
     const Thunk::ExecuteParams& params) {
-  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
   int64_t async_stream_idx = static_cast<int64_t>(stream_kind_);
   // Async streams are already assigned in gpu_executable.cc::ExecuteThunks.
   // async_streams is therefore guaranteed to be non-null and to have enough
@@ -71,16 +77,57 @@ absl::Status CollectiveGroupThunk::ExecuteOnStream(
   se::Stream* async_stream =
       params.collective_params->async_streams.at(async_stream_idx);
   TF_RETURN_IF_ERROR(async_stream->WaitFor(params.stream));
-  TF_RETURN_IF_ERROR(collectives->GroupStart());
-  for (const std::unique_ptr<Thunk>& thunk : thunks_) {
-    TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
+
+  // Gather the set of all communicators. There should be only one.
+  absl::flat_hash_set<Communicator*> communicator_set;
+  absl::Status s;
+  ForAllThunks([&params, &s, &communicator_set](const Thunk* thunk) {
+    absl::StatusOr<std::vector<Communicator*>> communicators =
+        thunk->GetCommunicators(params);
+    if (!communicators.ok()) {
+      s = communicators.status();
+      return;
+    }
+    for (Communicator* comm : *communicators) {
+      communicator_set.insert(comm);
+    }
+  });
+  if (communicator_set.empty()) {
+    return absl::InvalidArgumentError("No communicators in NCCL group");
   }
-  TF_RETURN_IF_ERROR(collectives->GroupEnd());
+  if (communicator_set.size() > 1) {
+    return absl::InvalidArgumentError(
+        "More than one communicator in NCCL group");
+  }
+
+  Communicator* comm = *communicator_set.begin();
+  TF_ASSIGN_OR_RETURN(GpuCommunicator * gpu_comm,
+                      GpuCollectives::TryCast(comm));
+  tsl::AsyncValueRef<Communicator::Event> group_event = gpu_comm->GroupExecute(
+      [this, &params](GpuCommunicator* comm) -> absl::Status {
+        for (const std::unique_ptr<Thunk>& thunk : thunks_) {
+          TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
+        }
+        return absl::OkStatus();
+      });
+  tsl::BlockUntilReady(group_event);
+  if (group_event.IsError()) {
+    return group_event.GetError();
+  }
+
   TF_ASSIGN_OR_RETURN(se::Event * event,
                       async_events_->GetEvent(params.stream->parent()));
   TF_RETURN_IF_ERROR(async_stream->RecordEvent(event));
 
   return absl::OkStatus();
+}
+
+void CollectiveGroupThunk::ForAllThunks(
+    absl::FunctionRef<void(const Thunk*)> fn) const {
+  fn(this);
+  for (const std::unique_ptr<Thunk>& thunk : thunks_) {
+    thunk->ForAllThunks(fn);
+  }
 }
 
 }  // namespace gpu

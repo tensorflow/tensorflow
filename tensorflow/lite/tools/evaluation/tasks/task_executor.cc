@@ -17,7 +17,6 @@ limitations under the License.
 #include <optional>
 #include <string>
 
-#include "absl/types/optional.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/logging.h"

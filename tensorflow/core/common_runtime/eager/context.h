@@ -398,6 +398,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   FunctionLibraryDefinition* FuncLibDef() override { return &func_lib_def_; }
 
+  const FunctionLibraryDefinition* FuncLibDef() const { return &func_lib_def_; }
+
   FunctionLibraryDefinition* GetComponentFunctionFunctionLibraryDefinition(
       const string& function_name) {
     tf_shared_lock lock(cache_mu_);

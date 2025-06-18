@@ -5,11 +5,11 @@ tf_class {
   is_instance: "<type \'tuple\'>"
   member {
     name: "device_type"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'collections._tuplegetter\'>"
   }
   member {
     name: "name"
-    mtype: "<type \'property\'>"
+    mtype: "<class \'collections._tuplegetter\'>"
   }
   member_method {
     name: "__init__"

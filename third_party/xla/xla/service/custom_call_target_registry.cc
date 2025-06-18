@@ -25,7 +25,7 @@ limitations under the License.
 namespace xla {
 
 CustomCallTargetRegistry* CustomCallTargetRegistry::Global() {
-  static auto* registry = new CustomCallTargetRegistry;
+  static auto* const registry = new CustomCallTargetRegistry;
   return registry;
 }
 

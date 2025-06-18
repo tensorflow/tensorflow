@@ -24,7 +24,7 @@ limitations under the License.
 #include "xla/pjrt/status_casters.h"
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/rpc/client/capture_profile.h"
-#include "tensorflow/core/profiler/convert/tool_options.h"
+#include "xprof/convert/tool_options.h"  // from @org_xprof
 #include "xprof/pywrap/profiler_plugin_impl.h"  // from @org_xprof
 
 namespace py = ::pybind11;

@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/optimize_batch_matmul_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/utils.h"
 
 namespace mlir {
@@ -56,7 +57,7 @@ bool NotFromDequant(mlir::Value value) {
 
 // Converts batch_matmul operation to fully_connected if rhs is a
 // constant tensor with rank 2
-struct ConvertBatchMatMulOp2FullyConnectedOp
+struct ConvertBatchMatMulOp2FullyConnectedOp_Rank2ConstantRhs
     : public OpRewritePattern<TFL::BatchMatMulOp> {
   using OpRewritePattern<TFL::BatchMatMulOp>::OpRewritePattern;
   LogicalResult matchAndRewrite(TFL::BatchMatMulOp bmm_op,
@@ -263,6 +264,127 @@ struct ConvertBatchMatMulOpToReduceSum
     return false;
   }
 };
+
+// Pattern to fuse transpose op into RHS of batch_matmul op if the transpose and
+// batch_matmul are separated by a reshape op; and the transpose op is used
+// exclusively to transpose the contracting dimension and the LHS-Output
+// dimension.
+// Converts batch_matmul operation to fully_connected if rhs is rank-2
+// else converts it to a BatchMatMul op with adj_y = true and transpose fused
+// into RHS.
+//
+// Example:
+// % 0 = "tfl.transpose" // Input: [2048, 32, 128] -> [128, 2048, 32]
+// % 1 = "tfl.reshape"(%0)  // reshaped [128, 2048, 32] -> [128, 65536]
+// % 2 = "tfl.batch_matmul"  // LHS: [4, 128], RHS: [128, 65536] -> [4, 65536]
+struct FuseRhsTransposeIntoBatchMatMulOp
+    : public OpRewritePattern<TFL::BatchMatMulOp> {
+  using OpRewritePattern<TFL::BatchMatMulOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(TFL::BatchMatMulOp bmm_op,
+                                PatternRewriter& rewriter) const override {
+    // Exit the pattern if adj_y is true.
+    if (bmm_op.getAdjY()) {
+      return rewriter.notifyMatchFailure(
+          bmm_op, "Pattern does not apply when adj_y is true.");
+    }
+
+    // Exit the pattern if the RHS of BatchMatMulOp is not originated from a
+    // TFL::TransposeOp->TFL::ReshapeOp.
+    auto reshape_op = bmm_op.getY().getDefiningOp<ReshapeOp>();
+    if (!reshape_op) {
+      return rewriter.notifyMatchFailure(
+          bmm_op,
+          "RHS is not originated from a transpose->reshape op pattern.");
+    }
+
+    auto transpose_op = reshape_op.getInput().getDefiningOp<TransposeOp>();
+    if (!transpose_op) {
+      return rewriter.notifyMatchFailure(
+          bmm_op,
+          "RHS is not originated from a transpose->reshape op pattern.");
+    }
+
+    // Get the dimensions info of the RHS of BatchMatMulOp.
+    auto rhs_dimensions_info = GetBatchMatMulRhsDimensionsInfo(
+        mlir::cast<ShapedType>(bmm_op.getY().getType()));
+
+    // Make sure that the reshape op is flattening either the contracting
+    // dimension or the output dimension.
+    auto reshape_input_shape = GetShape(reshape_op.getInput());
+    if (!HasFlattenedContractingDims(reshape_input_shape,
+                                     rhs_dimensions_info) &&
+        !HasFlattenedOutDims(reshape_input_shape, rhs_dimensions_info)) {
+      return rewriter.notifyMatchFailure(
+          bmm_op,
+          "Reshape op is not flattening the contracting dimension or the "
+          "output dimension.");
+    }
+
+    // Make sure that the transpose op is only transposing the contracting
+    // dimensions and the output dimensions.
+    auto transpose_perm_status_or_value =
+        GetValueAsIntArray(transpose_op.getPerm());
+    auto transpose_input_shape = GetShape(transpose_op.getInput());
+    if (transpose_perm_status_or_value.ok() &&
+        !HasTransposedContractingAndOutDims(
+            transpose_input_shape, transpose_perm_status_or_value.value(),
+            rhs_dimensions_info)) {
+      return rewriter.notifyMatchFailure(
+          bmm_op,
+          "Transpose op is not transposing the contracting dimension and the "
+          "output dimension.");
+    }
+
+    auto rhs_contracting_dimensions =
+        rhs_dimensions_info.contracting_dimensions();
+    auto rhs_out_dimensions = rhs_dimensions_info.out_dimensions();
+    auto rhs_batch_dimensions = rhs_dimensions_info.batch_dimensions();
+
+    // Create a new ReshapeOp, without the TransposeOp, to flatten the
+    // contracting dimension and the output dimension, as needed.
+    llvm::SmallVector<int32_t> new_reshape_input_shape;
+    if (!rhs_dimensions_info.batch_dimensions().AxesArray().empty()) {
+      for (auto dim_size : rhs_batch_dimensions.SizesArray()) {
+        new_reshape_input_shape.push_back(dim_size);
+      }
+    }
+    new_reshape_input_shape.push_back(rhs_out_dimensions.SizesArray().front());
+    new_reshape_input_shape.push_back(
+        rhs_contracting_dimensions.SizesArray().front());
+
+    Value new_reshape_shape_value = rewriter.create<arith::ConstantOp>(
+        bmm_op->getLoc(),
+        GetI32ElementsAttr(new_reshape_input_shape, &rewriter));
+    auto new_reshape_value = rewriter.create<TFL::ReshapeOp>(
+        bmm_op->getLoc(), transpose_op.getInput(), new_reshape_shape_value);
+
+    // Replace the BatchMatMulOp with a FullyConnectedOp, if the RHS of BMM has
+    // no broadcasting dimensions. I.e. RHS of BMM is of Rank 2.
+    if (rhs_dimensions_info.batch_dimensions().AxesArray().empty()) {
+      auto no_input = rewriter.create<TFL::NoValueOp>(
+          bmm_op->getLoc(), rewriter.getNoneType(), rewriter.getUnitAttr());
+      auto fc_op = rewriter.create<TFL::FullyConnectedOp>(
+          bmm_op->getLoc(), ArrayRef<Type>{bmm_op.getType()},
+          /*input=*/bmm_op.getX(), /*filter=*/new_reshape_value,
+          /*bias=*/no_input,
+          /*fused_activation_function=*/rewriter.getStringAttr("NONE"),
+          /*weights_format=*/rewriter.getStringAttr("DEFAULT"),
+          /*keep_num_dims=*/rewriter.getBoolAttr(true),
+          /*asymmetric_quantize_inputs=*/mlir::BoolAttr());
+      rewriter.replaceOp(bmm_op, {fc_op.getResult(0)});
+    } else {
+      // Replace the BatchMatMulOp with a BatchMatMulOp with adj_y = true and
+      // transpose fused into RHS.
+      auto bmm_op_with_adj_y = rewriter.create<TFL::BatchMatMulOp>(
+          bmm_op->getLoc(), bmm_op.getType(), bmm_op.getX(), new_reshape_value,
+          bmm_op.getAdjX(), /*adj_y=*/true, mlir::BoolAttr());
+      rewriter.replaceOp(bmm_op, {bmm_op_with_adj_y.getResult()});
+    }
+
+    return success();
+  }
+};
+
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize_batch_matmul.inc"
 }  // namespace
 
@@ -271,8 +393,10 @@ void OptimizeBatchMatmulPass::runOnOperation() {
   auto* ctx = &getContext();
 
   RewritePatternSet patterns(ctx);
-  patterns.add<ConvertBatchMatMulOp2FullyConnectedOp,
-               ConvertBatchMatMulOpToReduceSum>(ctx);
+  patterns
+      .add<ConvertBatchMatMulOp2FullyConnectedOp_Rank2ConstantRhs,
+           ConvertBatchMatMulOpToReduceSum, FuseRhsTransposeIntoBatchMatMulOp>(
+          ctx);
   TFL::populateWithGenerated(patterns);
   (void)applyPatternsGreedily(func, std::move(patterns));
 }

@@ -47,16 +47,10 @@ td_library(
 gentbl_cc_library(
     name = "tensorflow_op_interfaces_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-op-interface-decls"],
-            "ir/tf_op_interfaces.h.inc",
-        ),
-        (
-            ["-gen-op-interface-defs"],
-            "ir/tf_op_interfaces.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "ir/tf_op_interfaces.h.inc": ["-gen-op-interface-decls"],
+        "ir/tf_op_interfaces.cc.inc": ["-gen-op-interface-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tf_op_interfaces.td",
     test = True,
@@ -68,12 +62,7 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tensorflow_struct_doc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-dialect-doc"],
-            "g3doc/tf_ops.md",
-        ),
-    ],
+    tbl_outs = {"g3doc/tf_ops.md": ["-gen-dialect-doc"]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tf_ops.td",
     test = True,
@@ -107,16 +96,10 @@ cc_library(
 gentbl_cc_library(
     name = "tensorflow_all_ops_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "ir/tf_all_ops.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "ir/tf_all_ops.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "ir/tf_all_ops.h.inc": ["-gen-op-decls"],
+        "ir/tf_all_ops.cc.inc": ["-gen-op-defs"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tf_ops.td",
     deps = [
@@ -140,22 +123,16 @@ tf_ops_category_list = [
     gentbl_cc_library(
         name = "tensorflow_" + target["name"] + "_inc_gen",
         compatible_with = get_compatible_with_portable(),
-        tbl_outs = [
-            (
-                [
-                    "-gen-op-decls",
-                    "-op-include-regex=" + target["include"],
-                ],
-                "ir/tf_" + target["name"] + ".h.inc",
-            ),
-            (
-                [
-                    "-gen-op-defs",
-                    "-op-include-regex=" + target["include"],
-                ],
-                "ir/tf_" + target["name"] + ".cc.inc",
-            ),
-        ],
+        tbl_outs = {
+            "ir/tf_" + target["name"] + ".h.inc": [
+                "-gen-op-decls",
+                "-op-include-regex=" + target["include"],
+            ],
+            "ir/tf_" + target["name"] + ".cc.inc": [
+                "-gen-op-defs",
+                "-op-include-regex=" + target["include"],
+            ],
+        },
         tblgen = "@llvm-project//mlir:mlir-tblgen",
         td_file = "ir/tf_ops.td",
         deps = [
@@ -167,22 +144,16 @@ tf_ops_category_list = [
 gentbl_cc_library(
     name = "tensorflow_remaining_ops_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            [
-                "-gen-op-decls",
-                "-op-exclude-regex=" + "|".join([target["include"] for target in tf_ops_category_list]),
-            ],
-            "ir/tf_remaining_ops.h.inc",
-        ),
-        (
-            [
-                "-gen-op-defs",
-                "-op-exclude-regex=" + "|".join([target["include"] for target in tf_ops_category_list]),
-            ],
-            "ir/tf_remaining_ops.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "ir/tf_remaining_ops.h.inc": [
+            "-gen-op-decls",
+            "-op-exclude-regex=" + "|".join([target["include"] for target in tf_ops_category_list]),
+        ],
+        "ir/tf_remaining_ops.cc.inc": [
+            "-gen-op-defs",
+            "-op-exclude-regex=" + "|".join([target["include"] for target in tf_ops_category_list]),
+        ],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tf_ops.td",
     deps = [
@@ -193,20 +164,11 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tf_saved_model_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "ir/tf_saved_model.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "ir/tf_saved_model.cc.inc",
-        ),
-        (
-            ["-gen-dialect-doc"],
-            "g3doc/tf_saved_model.md",
-        ),
-    ],
+    tbl_outs = {
+        "ir/tf_saved_model.h.inc": ["-gen-op-decls"],
+        "ir/tf_saved_model.cc.inc": ["-gen-op-defs"],
+        "g3doc/tf_saved_model.md": ["-gen-dialect-doc"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tf_saved_model_ops.td",
     test = True,
@@ -219,23 +181,14 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tensorflow_executor_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "ir/tf_executor.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "ir/tf_executor.cc.inc",
-        ),
-        (
-            [
-                "-gen-dialect-doc",
-                "-dialect=tf_executor",
-            ],
-            "g3doc/tf_executor.md",
-        ),
-    ],
+    tbl_outs = {
+        "ir/tf_executor.h.inc": ["-gen-op-decls"],
+        "ir/tf_executor.cc.inc": ["-gen-op-defs"],
+        "g3doc/tf_executor.md": [
+            "-gen-dialect-doc",
+            "-dialect=tf_executor",
+        ],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tf_executor_ops.td",
     test = True,
@@ -250,20 +203,11 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "tensorflow_device_ops_inc_gen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "ir/tf_device.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "ir/tf_device.cc.inc",
-        ),
-        (
-            ["-gen-dialect-doc"],
-            "g3doc/tf_device.md",
-        ),
-    ],
+    tbl_outs = {
+        "ir/tf_device.h.inc": ["-gen-op-decls"],
+        "ir/tf_device.cc.inc": ["-gen-op-defs"],
+        "g3doc/tf_device.md": ["-gen-dialect-doc"],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tf_device_ops.td",
     test = True,
@@ -1034,9 +978,9 @@ cc_library(
         ":mlir_roundtrip_flags",
         ":serialize_mlir_module_utils",
         ":tensorflow",
-        "//tensorflow/compiler/mlir/lite/tools:translate_cl_options",
         "//tensorflow/compiler/mlir/tensorflow/translate/tools:parsers",
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
+        "//tensorflow/compiler/mlir/tools:translate_cl_options",
         "//tensorflow/compiler/mlir/utils:string_container_utils",
         "//tensorflow/compiler/tf2xla:layout_util",
         "//tensorflow/compiler/tf2xla:xla_argument",
@@ -1695,6 +1639,7 @@ cc_library(
     deps = [
         "tensorflow_side_effects",
         "tensorflow_types",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SideEffectInterfaces",
         "@llvm-project//mlir:Support",

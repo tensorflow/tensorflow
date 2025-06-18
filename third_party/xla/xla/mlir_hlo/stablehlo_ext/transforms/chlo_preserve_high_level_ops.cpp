@@ -282,11 +282,12 @@ struct ChloPreserveHighLevelOpsPass
   void runOnOperation() override {
     // Do a single traversal to recompose CustomCallOp to CHLO ops.
     GreedyRewriteConfig config;
-    config.useTopDownTraversal = true;
-    config.enableRegionSimplification = GreedySimplifyRegionLevel::Aggressive;
-    config.maxIterations = 2;
-    config.maxNumRewrites = GreedyRewriteConfig::kNoLimit;
-    config.strictMode = GreedyRewriteStrictness::ExistingOps;
+    config.setUseTopDownTraversal(true)
+        .setRegionSimplificationLevel(
+            mlir::GreedySimplifyRegionLevel::Aggressive)
+        .setMaxIterations(2)
+        .setMaxNumRewrites(GreedyRewriteConfig::kNoLimit)
+        .setStrictness(GreedyRewriteStrictness::ExistingOps);
 
     RewritePatternSet patterns(&getContext());
     if (useDeprecatedCustomCallEncoding) {

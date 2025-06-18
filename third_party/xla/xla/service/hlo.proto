@@ -614,6 +614,10 @@ message HloModuleProto {
     string fingerprint = 5;
     // The type of profile generation strategy used to generate the profile.
     ProfileGenerationStrategy profile_generation_strategy = 6;
+    // The original changelist the profile was generated at.
+    int64 original_changelist = 7;
+    // The changelist this profile was last updated at.
+    int64 changelist = 8;
   }
 
   // Profile information for the HLO module.

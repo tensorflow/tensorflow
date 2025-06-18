@@ -65,8 +65,8 @@ static cudnnStatus_t GetSymbolNotFoundError() {
   return CUDNN_STATUS_INTERNAL_ERROR;
 }
 
-static absl::flat_hash_map<std::string_view, void*> const& SymbolOverrides() {
-  static auto* syms = new absl::flat_hash_map<std::string_view, void*>{
+static absl::flat_hash_map<absl::string_view, void*> const& SymbolOverrides() {
+  static auto* const syms = new absl::flat_hash_map<absl::string_view, void*>{
       {"cudnnGetVersion", reinterpret_cast<void*>(&GetVersionStub)},
       {"cudnnGetMaxDeviceVersion", reinterpret_cast<void*>(&GetVersionStub)},
       {"cudnnGetCudartVersion", reinterpret_cast<void*>(&GetVersionStub)},

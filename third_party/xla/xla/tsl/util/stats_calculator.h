@@ -217,6 +217,9 @@ class StatsCalculator {
                     int64_t run_order, int64_t rel_end_us, int64_t mem_used);
 
  private:
+  // Orders the nodes in the details_ map by the given sorting metric. The
+  // details vector is populated with pointers to the Detail objects in the
+  // details_ map.
   void OrderNodesByMetric(SortingMetric sorting_metric,
                           std::vector<const Detail*>* details) const;
 

@@ -15,9 +15,10 @@ limitations under the License.
 
 #include "xla/service/gpu/transforms/fusion_dynamic_memcpy_rewriter.h"
 
+#include <memory>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"

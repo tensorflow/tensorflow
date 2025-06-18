@@ -242,7 +242,7 @@ InterpreterValue Contract(InterpreterState&, vector::ContractionOp contraction,
   contraction.getIterationBounds(iter.sizes);
   auto maps = contraction.getIndexingMapsArray();
   auto result_ty = contraction->getResultTypes()[0];
-  auto shaped_ty = result_ty.dyn_cast<ShapedType>();
+  auto shaped_ty = mlir::dyn_cast<ShapedType>(result_ty);
   auto result =
       DispatchScalarType(result_ty, [&](auto dummy) -> InterpreterValue {
         using T = decltype(dummy);
@@ -621,8 +621,8 @@ InterpreterValue ShapeCast(InterpreterState&, vector::ShapeCastOp op,
                            const InterpreterValue& in) {
   auto out = in.CoerceLayout({});
   auto& out_view = out.View();
-  out_view.sizes =
-      llvm::to_vector(op->getResultTypes()[0].cast<ShapedType>().getShape());
+  out_view.sizes = llvm::to_vector(
+      mlir::cast<ShapedType>(op->getResultTypes()[0]).getShape());
   out_view.strides = BufferView::GetDefaultStrides(out_view.sizes);
   return out;
 }
@@ -656,8 +656,8 @@ InterpreterValue Splat(InterpreterState&, vector::SplatOp op,
                        const InterpreterValue& in) {
   auto out = in.AsUnitTensor(/*is_vector=*/true);
   auto& view = out.View();
-  view.sizes =
-      llvm::to_vector(op->getResultTypes()[0].cast<ShapedType>().getShape());
+  view.sizes = llvm::to_vector(
+      mlir::cast<ShapedType>(op->getResultTypes()[0]).getShape());
   view.strides = SmallVector<int64_t>(view.sizes.size(), 0);
   return out;
 }
@@ -805,7 +805,8 @@ llvm::SmallVector<InterpreterValue> TransferWrite(
              src_view.num_dimensions() &&
          "expected matching number of results");
 
-  dst = transfer.getSource().getType().isa<TensorType>() ? dst.Clone() : dst;
+  dst =
+      mlir::isa<TensorType>(transfer.getSource().getType()) ? dst.Clone() : dst;
   auto dst_slice = ExtractMemorySlice(state, transfer.getPermutationMap(), dst,
                                       src, offsets, transfer.getInBounds());
   if (!dst_slice) {

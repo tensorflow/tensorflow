@@ -49,9 +49,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Triton_Compile_Args, out_cluster_dim_z);
 typedef PJRT_Error* PJRT_Triton_Compile(PJRT_Triton_Compile_Args* args);
 
 typedef struct PJRT_Triton_Extension {
-  size_t struct_size;
-  PJRT_Extension_Type type;
-  PJRT_Extension_Base* next;
+  PJRT_Extension_Base base;
   PJRT_Triton_Compile* compile;
 } PJRT_Triton;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Triton_Extension, compile);

@@ -72,7 +72,8 @@ absl::StatusOr<std::unique_ptr<HloModuleConfig>> GetHloModuleConfig(
     Backend* backend) {
   const HloModuleProto& proto = computation.proto();
   TF_RET_CHECK(proto.has_host_program_shape());
-  ProgramShape program_shape(proto.host_program_shape());
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                      ProgramShape::FromProto(proto.host_program_shape()));
 
   // Validate incoming layouts.
   if (argument_layouts.size() != program_shape.parameters_size()) {

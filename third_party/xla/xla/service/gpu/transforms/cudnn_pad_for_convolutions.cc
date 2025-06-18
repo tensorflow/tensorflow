@@ -25,7 +25,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/bind_front.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -40,6 +43,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -59,10 +63,10 @@ static HloInstruction* PadInstruction(HloInstruction* instr,
   HloComputation* comp = instr->parent();
 
   const Shape& shape = instr->shape();
-  PaddingConfig pad_config = MakeNoPaddingConfig(shape.dimensions_size());
+  PaddingConfig pad_config = MakeNoPaddingConfig(shape.dimensions().size());
 
   bool added_padding = false;
-  for (int64_t dim = 0; dim < shape.dimensions_size(); ++dim) {
+  for (int64_t dim = 0; dim < shape.dimensions().size(); ++dim) {
     if (shape.dimensions(dim) == new_shape.dimensions(dim)) {
       continue;
     }
@@ -122,10 +126,10 @@ static absl::Status PadConv(HloCustomCallInstruction* conv,
   // Slice the new conv result if necessary, keeping in mind that new_conv
   // has tuple shape (new_result_shape, u8[0]).
   if (!ShapeUtil::Equal(result_shape, new_result_shape)) {
-    std::vector<int64_t> start_indices(result_shape.dimensions_size(), 0);
+    std::vector<int64_t> start_indices(result_shape.dimensions().size(), 0);
     std::vector<int64_t> end_indices(result_shape.dimensions().begin(),
                                      result_shape.dimensions().end());
-    std::vector<int64_t> strides(result_shape.dimensions_size(), 1);
+    std::vector<int64_t> strides(result_shape.dimensions().size(), 1);
 
     auto* new_conv_result = add(
         HloInstruction::CreateGetTupleElement(new_result_shape, new_conv, 0));

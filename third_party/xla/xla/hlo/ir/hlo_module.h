@@ -120,8 +120,8 @@ class HloModule {
   // Marks duplicate fusions with the same name to be able to group them for
   // analysis purposes (e.g. through Xprof).
   void MarkFusionDuplications(
-      const absl::flat_hash_map<HloComputation*, HloComputation*>&
-          replacements);
+      const absl::flat_hash_map<HloComputation*, HloComputation*>& replacements)
+      const;
 
   // Replaces all uses of computations that are keys of 'replacements' with
   // the corresponding values in 'replacements'. Replaces the entry computation,
@@ -287,7 +287,7 @@ class HloModule {
 
   // Returns the computation in this module that has the name `name`.  Returns
   // null if there is no such computation.
-  HloComputation* GetComputationWithName(absl::string_view name);
+  HloComputation* GetComputationWithName(absl::string_view name) const;
 
   // Gets the number of computations in this module.
   int64_t computation_count() const { return computations_.size(); }
@@ -424,6 +424,9 @@ class HloModule {
   // param because gdb ignores default params, but does resolve overloads.)
   absl::Cord ToCord() const { return ToCord(HloPrintOptions::Default()); }
   absl::Cord ToCord(const HloPrintOptions& options) const;
+
+  // Returns a stable fingerprint of the module using the given print options.
+  uint64_t ToFingerprint(const HloPrintOptions& options) const;
 
   // Convert an HloModule to or from a proto.
   HloModuleProto ToProto() const;

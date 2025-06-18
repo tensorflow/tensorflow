@@ -26,10 +26,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -208,7 +210,10 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   // options (e.g. disabling additional passes).
   virtual DebugOptions GetDebugOptionsForTest() const;
 
-  void TearDown() override { default_device_assignment_.reset(); }
+  void TearDown() override {
+    absl::MutexLock ml(&device_assignment_mu_);
+    default_device_assignment_.reset();
+  }
   // Gets an HloModuleConfig with options appropriate for tests.
   HloModuleConfig GetModuleConfigForTest(
       int64_t replica_count = 1, int64_t num_partitions = 1,
@@ -220,6 +225,7 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
     if (device_assignment.has_value()) {
       config.set_static_device_assignment(*device_assignment);
     } else {
+      absl::MutexLock ml(&device_assignment_mu_);
       default_device_assignment_ = std::make_unique<DeviceAssignment>(
           GetDefaultDeviceAssignment(replica_count, num_partitions));
       config.set_static_device_assignment(*default_device_assignment_);
@@ -305,7 +311,10 @@ class HloHardwareIndependentTestBase : public ::testing::Test {
   bool allow_mixed_precision_in_hlo_verifier_;
   HloPredicate instruction_can_change_layout_func_;
   std::unique_ptr<HloVerifier> hlo_verifier_;
-  mutable std::unique_ptr<DeviceAssignment> default_device_assignment_;
+  mutable absl::Mutex device_assignment_mu_;
+  mutable std::unique_ptr<DeviceAssignment> default_device_assignment_
+      ABSL_GUARDED_BY(device_assignment_mu_)
+          ABSL_PT_GUARDED_BY(device_assignment_mu_);
 };
 
 }  // namespace xla

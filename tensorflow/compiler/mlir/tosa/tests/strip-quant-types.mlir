@@ -1,5 +1,5 @@
-// RUN: tf-opt --split-input-file --tosa-strip-quant-types  --verify-each %s | FileCheck %s
-// REQUIRES: tf_tosa
+// RUN: tf-tosa-opt --split-input-file --tosa-strip-quant-types  --verify-each %s | FileCheck %s
+
 
 // -----
 

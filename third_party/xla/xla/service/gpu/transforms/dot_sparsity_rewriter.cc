@@ -71,12 +71,12 @@ class SparseDotRewriterImpl : public DfsHloRewriteVisitor {
 
     // Result dimensions: <batch>, <rhs_noncontracting>, <lhs_noncontracting>
     int batch_dims = dnums.lhs_batch_dimensions().size();
-    int new_lhs_noncontracting = rhs->shape().dimensions_size() - batch_dims -
+    int new_lhs_noncontracting = rhs->shape().dimensions().size() - batch_dims -
                                  dnums.lhs_contracting_dimensions().size();
-    int new_rhs_noncontracting = lhs->shape().dimensions_size() - batch_dims -
+    int new_rhs_noncontracting = lhs->shape().dimensions().size() - batch_dims -
                                  dnums.rhs_contracting_dimensions().size();
 
-    int rank = dot->shape().dimensions_size();
+    int rank = dot->shape().dimensions().size();
     DimensionVector dimensions(rank);
     for (int i = 0; i < batch_dims; ++i) {
       dimensions[i] = i;

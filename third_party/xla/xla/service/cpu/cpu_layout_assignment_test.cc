@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/utils/hlo_matchers.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/service/cpu/target_machine_features_stub.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_utils.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -47,7 +47,7 @@ namespace op = xla::testing::opcode_matchers;
 namespace xla {
 namespace {
 
-class CpuLayoutAssignmentTest : public HloTestBase {
+class CpuLayoutAssignmentTest : public HloHardwareIndependentTestBase {
  protected:
   void AssignLayouts(HloModule* module,
                      ComputationLayout* entry_computation_layout) {
@@ -349,7 +349,8 @@ static void AssertCorrectLayoutForDotOutputFusion(
                                        ? LayoutUtil::MakeLayout({0, 1})
                                        : LayoutUtil::MakeLayout({1, 0});
   if (layout_assignment_result.dot_rhs_fusion_param->shape()
-          .dimensions_size() == 1) {
+          .dimensions()
+          .size() == 1) {
     expected_dot_rhs_layout = LayoutUtil::MakeLayout({0});
   }
   EXPECT_TRUE(LayoutUtil::Equal(
@@ -359,13 +360,15 @@ static void AssertCorrectLayoutForDotOutputFusion(
   EXPECT_TRUE(LayoutUtil::Equal(
       LayoutUtil::MakeDescendingLayout(
           layout_assignment_result.dot_lhs_fusion_param->shape()
-              .dimensions_size()),
+              .dimensions()
+              .size()),
       layout_assignment_result.dot_lhs_fusion_param->shape().layout()));
 
   EXPECT_TRUE(LayoutUtil::Equal(
       LayoutUtil::MakeDescendingLayout(
           layout_assignment_result.addend_fusion_param->shape()
-              .dimensions_size()),
+              .dimensions()
+              .size()),
       layout_assignment_result.addend_fusion_param->shape().layout()));
   EXPECT_THAT(computation->instructions(), Each(Not(op::Copy())));
 }

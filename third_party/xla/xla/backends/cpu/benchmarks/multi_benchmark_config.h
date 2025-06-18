@@ -254,18 +254,17 @@ class MultiBenchmarkConfig {
 // Benchmarks 'fn' in JIT and AOT modes. The JIT benchmark
 // keeps the given 'name'; AOT is suffixed with '_Aot'.
 inline MultiBenchmarkConfig* RegisterJitAndAotBenchmarks(
-    absl::string_view name,
-    void(fn)(benchmark::State&, const HloBenchmarkOptions&)) {
+    absl::string_view name, void(fn)(benchmark::State&, HloBenchmarkOptions)) {
   std::string jit_name(name);
   std::string aot_name = jit_name + "_Aot";
   auto jit_fn = [fn](benchmark::State& state) {
     HloBenchmarkOptions options;
-    fn(state, options);
+    fn(state, std::move(options));
   };
   auto aot_fn = [fn](benchmark::State& state) {
     HloBenchmarkOptions options;
     options.aot_options = GetAotCompilationOptions();
-    fn(state, options);
+    fn(state, std::move(options));
   };
   benchmark::internal::Benchmark* jit =
       benchmark::RegisterBenchmark(jit_name, jit_fn);
@@ -277,8 +276,17 @@ inline MultiBenchmarkConfig* RegisterJitAndAotBenchmarks(
 // Registers the given benchmark in both JIT and AOT modes.
 // The benchmark's function signature must be as follows:
 // `void BenchmarkFunc(benchmark::State&, const HloBenchmarkOptions&)`.
-#define XLA_CPU_BENCHMARK(n) \
-  static MultiBenchmarkConfig* n##_ptr = RegisterJitAndAotBenchmarks(#n, n)
+#define XLA_CPU_BENCHMARK(n) XLA_CPU_BENCHMARK_HELPER(__COUNTER__, n)
+
+// Helper for implementing macros above.  Do not use directly.
+//
+// Forces the evaluation of "counter", which we expect is equal to __COUNTER__.
+#define XLA_CPU_BENCHMARK_HELPER(ctr, n) XLA_CPU_BENCHMARK_HELPER2(ctr, n)
+
+// Helper for macros above.  Don't use directly.
+#define XLA_CPU_BENCHMARK_HELPER2(ctr, n)                    \
+  static MultiBenchmarkConfig* xla_cpu_benchmark_ptr_##ctr = \
+      RegisterJitAndAotBenchmarks(#n, n)
 
 }  // namespace xla::cpu
 

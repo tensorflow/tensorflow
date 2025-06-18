@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -43,7 +44,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -56,7 +56,7 @@ using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::tsl::testing::StatusIs;
 
-class GpuIndexingPerformanceModelTest : public HloTestBase {
+class GpuIndexingPerformanceModelTest : public HloHardwareIndependentTestBase {
  public:
   mlir::MLIRContext mlir_context_;
   // The reference times in the test cases below are measured
@@ -68,8 +68,6 @@ class GpuIndexingPerformanceModelTest : public HloTestBase {
       &mlir_context_};
 
   size_t WarpSize() const { return ::xla::gpu::WarpSize(device_info_); }
-
-  GpuIndexingPerformanceModelTest() : HloTestBase() {}
 };
 
 TEST_F(GpuIndexingPerformanceModelTest, BroadcastElementwise) {

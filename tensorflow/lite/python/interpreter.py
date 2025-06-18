@@ -216,7 +216,7 @@ class SignatureRunner:
     self._signature_key = signature_key
     signature_defs = interpreter._get_full_signature_list()
     if signature_key not in signature_defs:
-      raise ValueError('Invalid signature_key provided.')
+      raise ValueError(f'Invalid signature_key provided: "{signature_key}".')
     self._signature_def = signature_defs[signature_key]
     self._outputs = self._signature_def['outputs'].items()
     self._inputs = self._signature_def['inputs']
@@ -488,7 +488,7 @@ class Interpreter:
           x for x in self._custom_op_registerers if not isinstance(x, str)
       ]
       self._interpreter = _interpreter_wrapper.CreateWrapperFromFile(
-          model_path,
+          os.fspath(model_path),
           op_resolver_id,
           custom_op_registerers_by_name,
           custom_op_registerers_by_func,

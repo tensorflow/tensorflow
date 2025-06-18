@@ -52,14 +52,14 @@ TEST_P(CustomCallProgramSerDesTest, RoundTrip) {
   Shape shape0({10, 20});
   Shape shard_shape0({5, 20});
   DeviceListRef devices = GetDevices({0, 1});
-  std::shared_ptr<const Sharding> sharding0 =
+  ShardingRef sharding0 =
       ConcreteEvenSharding::Create(devices, MemoryKind(),
                                    /*shape=*/shape0,
                                    /*shard_shape=*/shard_shape0);
 
   Shape shape1({});
   Shape shard_shape1({});
-  std::shared_ptr<const Sharding> sharding1 =
+  ShardingRef sharding1 =
       ConcreteEvenSharding::Create(devices, MemoryKind(),
                                    /*shape=*/shape1,
                                    /*shard_shape=*/shard_shape1);

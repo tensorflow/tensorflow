@@ -230,6 +230,15 @@ func.func @main(%arg0: tensor<8x16xf32>) -> (tensor<8x16xf32>) {
 
 // -----
 
+// CHECK-LABEL: func @main
+func.func @main(%arg0: tensor<8x16xf32>) -> (tensor<8x16xf32>) {
+  // CHECK: sdy.propagation_barrier %arg0 allowed_direction=BACKWARD : tensor<8x16xf32>
+  %r = sdy.propagation_barrier %arg0 allowed_direction=BACKWARD : tensor<8x16xf32>
+  return %r : tensor<8x16xf32>
+}
+
+// -----
+
 // Test call with backend config and multiple results. This is what JAX would
 // emit in the frontend, and then we'd convert it to a NamedComputationOp when
 // coming back.

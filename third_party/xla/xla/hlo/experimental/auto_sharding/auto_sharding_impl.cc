@@ -42,25 +42,15 @@ absl::StatusOr<AutoShardingSolverOutput> Solve(
     const HloModule& hlo_module, const HloLiveRange& hlo_live_range,
     const StrategyMap& strategy_map, const StrategyGroups& strategy_groups,
     const CostGraph& cost_graph, const AliasSet& alias_set,
-    const std::vector<std::pair<LivenessIdx, LivenessIdx>>& node_intervals,
-    const std::vector<std::pair<LivenessIdx, LivenessIdx>>& edge_intervals,
-    const std::vector<absl::btree_set<int64_t>>& node_groups,
-    const std::vector<absl::btree_set<int64_t>>& edge_groups,
     const AutoShardingOption& option, absl::string_view request_prefix,
     const absl::flat_hash_map<std::string, HloSharding>&
         sharding_propagation_solution) {
   return CreateAutoShardingSolverRequestAndCallSolver(
       hlo_module, hlo_live_range, strategy_map, strategy_groups, cost_graph,
-      alias_set, node_intervals, edge_intervals, node_groups, edge_groups,
-      /*s_hint*/ {},
-      /*compute_iis*/ true, option.solver_timeout_in_seconds, option,
-      /*max_cost*/ std::nullopt, request_prefix, sharding_propagation_solution,
+      alias_set, /*s_hint*/ {}, /*compute_iis*/ true,
+      option.solver_timeout_in_seconds, option, /*max_cost*/ std::nullopt,
+      request_prefix, sharding_propagation_solution,
       /*deterministic mode*/ true);
-}
-
-void PopulateTemporalValues(const CostGraph& cost_graph,
-                            AutoShardingSolverRequest& request) {
-  // TODO(moffitt): Implement this.
 }
 
 double GetDotConvReplicationPenalty(const HloInstruction* inst,

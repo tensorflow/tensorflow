@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_ALGORITHM_UTIL_H_
 
 #include <cstdint>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -35,6 +36,22 @@ namespace algorithm_util {
 // Get the ComputationType corresponding to an algorithm. See the
 // ComputationType definition for more info.
 absl::StatusOr<stream_executor::blas::ComputationType> GetBlasComputationType(
+    PrecisionConfig::Algorithm algorithm);
+
+// Returns the list of types that are allowed for the dot operands of the given
+// algorithm. The expectation is always that both dot operands use the same
+// type.
+//
+// Algorithms mostly expect that their input and output types correspond to
+// what the algorithm describes. This is not always the case though, e.g.
+// for BF16_BF16_F32_X9, working from inputs casted to BF16 makes no sense;
+// this algorithm instead expects F32 inputs, and performs splits into BF16
+// sub-values under the hood.
+//
+// Another exception (and why we can't return a single type) are algorithms
+// working on F8 types, where we sometimes allow any flavour of F8 type to be
+// used.
+absl::StatusOr<std::vector<PrimitiveType>> GetAllowedOperandsTypeForAlgorithm(
     PrecisionConfig::Algorithm algorithm);
 
 // Get the accumulator type of an algorithm.

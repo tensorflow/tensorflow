@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/substitute.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -63,10 +65,12 @@ absl::StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype) {
     CASE(DType::kOpaque, xla::PrimitiveType::OPAQUE_TYPE);
 #undef CASE
     case DType::kString:
-      return InvalidArgument("Not supported as XLA PrimitiveType: %d",
-                             static_cast<int>(dtype.kind()));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Not supported as XLA PrimitiveType: ",
+                       static_cast<int>(dtype.kind())));
   }
-  return InvalidArgument("Invalid DType: %d", static_cast<int>(dtype.kind()));
+  return absl::InvalidArgumentError(
+      absl::StrCat("Invalid DType: ", static_cast<int>(dtype.kind())));
 }
 
 absl::StatusOr<DType> ToDType(xla::PrimitiveType primitive_type) {
@@ -104,8 +108,10 @@ absl::StatusOr<DType> ToDType(xla::PrimitiveType primitive_type) {
     case xla::PrimitiveType::OPAQUE_TYPE:
       return DType(static_cast<DType::Kind>(static_cast<int>(primitive_type)));
     default:
-      return InvalidArgument("Invalid XLA PrimitiveType: %d",
-                             static_cast<int>(primitive_type));
+      return absl::InvalidArgumentError(
+          absl::Substitute("Invalid XLA PrimitiveType: $0 ($1)",
+                           static_cast<int>(primitive_type),
+                           xla::PrimitiveType_Name(primitive_type)));
   }
 }
 

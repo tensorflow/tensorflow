@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -6312,6 +6313,31 @@ ENTRY entry {
                              .WithShapeEqualTo(&result_shape)));
 }
 
+// Test that the transformation above doesn't happen when disabled.
+TEST_F(AlgebraicSimplifierTest, DisabledTransposeReshapeToConcatSlice) {
+  const std::string& hlo_string = R"(
+HloModule TransposeReshapeDepthToSpace
+
+ENTRY entry {
+  %param = f32[8,14,14,128] parameter(0)
+  %reshape.1 = f32[8,14,14,2,64] reshape(%param)
+  %transpose = transpose(%reshape.1), dimensions={0,1,3,2,4}
+  ROOT %reshape.2 = f32[8,28,14,64] reshape(%transpose)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_rewrite_reshape_transpose_as_slice_concatenate(false);
+  AlgebraicSimplifier simplifier(options);
+  ASSERT_FALSE(simplifier.Run(module.get()).value());
+
+  Shape result_shape = ShapeUtil::MakeShape(F32, {8, 28, 14, 64});
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Reshape(m::Transpose(m::Reshape(m::Parameter(0))))));
+}
+
 // Test that a depth-to-space transformation expressed as
 // reshape(transpose(reshape(op))) with a large number of chunks
 // is not rewritten.
@@ -9824,11 +9850,25 @@ TEST_F(AlgebraicSimplifierTest, CanDisableDotToMultiplyRewrite) {
 TEST_F(AlgebraicSimplifierTest,
        NoDotToMultiplyRewriteWithPrecisionConfigAlgorithm) {
   constexpr char kModuleStr[] = R"(
+HloModule test
+ENTRY dot {
+ a = f32[128]{0} parameter(0)
+ b = f32[128]{0} parameter(1)
+ ROOT dot = f32[128,128]{1,0} dot(a, b), algorithm=dot_tf32_tf32_f32
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest,
+       NoDotToMultiplyRewriteZeroContractingDimWithPrecisionConfigAlgorithm) {
+  constexpr char kModuleStr[] = R"(
     HloModule test
     ENTRY dot {
-      a = f32[128]{0} parameter(0)
-      b = f32[128]{0} parameter(1)
-      ROOT dot = f32[128,128]{1,0} dot(a, b), algorithm=dot_tf32_tf32_f32
+    a = f32[] parameter(0)
+    b = f32[] parameter(1)
+    ROOT dot = f32[] dot(a, b), algorithm=dot_tf32_tf32_f32
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
@@ -12970,6 +13010,30 @@ TEST_F(AlgebraicSimplifierTest, CopyReshapeToReshapeCopyWithHostCopies) {
   options.set_enable_conv_simplification(false);
   AlgebraicSimplifier simplifier(options);
   EXPECT_FALSE(simplifier.Run(m.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, SimplifyShardedPad) {
+  const char* hlo = R"(
+HloModule test, num_partitions=4
+
+ENTRY main {
+  c0 = f32[] constant(0)
+  c1 = f32[] constant(1)
+  b0 = f32[512,34,5]{2,1,0} broadcast(c0), dimensions={}, sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+  ROOT pad = f32[512,46,5]{2,1,0} pad(b0, c1), padding=0_0x6_6x0_0, sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(
+                  m::Pad(m::Broadcast(m::Constant()), m::Constant()))));
+  TF_EXPECT_OK(VerifyHloModule(m.get(),
+                               /*layout_sensitive=*/true,
+                               /*allow_mixed_precision=*/true));
 }
 
 }  // namespace

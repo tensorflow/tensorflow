@@ -323,7 +323,7 @@ void TestSoftErrorOnDecompress(CompressionOptions input_options) {
     ZlibInputStream in(input_stream.get(), 100, 100, input_options);
 
     tstring unused;
-    EXPECT_TRUE(errors::IsDataLoss(in.ReadNBytes(5, &unused)));
+    EXPECT_TRUE(absl::IsDataLoss(in.ReadNBytes(5, &unused)));
   }
 
   // Test `SkipNBytes` returns an error.
@@ -334,7 +334,7 @@ void TestSoftErrorOnDecompress(CompressionOptions input_options) {
         new RandomAccessInputStream(file_reader.get()));
     ZlibInputStream in(input_stream.get(), 100, 100, input_options);
 
-    EXPECT_TRUE(errors::IsDataLoss(in.SkipNBytes(5)));
+    EXPECT_TRUE(absl::IsDataLoss(in.SkipNBytes(5)));
   }
 }
 

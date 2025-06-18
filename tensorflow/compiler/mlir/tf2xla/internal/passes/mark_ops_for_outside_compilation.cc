@@ -287,7 +287,7 @@ bool IsSupportedOp(Operation& op,
 
   auto abstractOp = op.getRegisteredInfo();
   if (!abstractOp) return false;
-  return mlir::mhlo::HasTf2XlaFallback(abstractOp->getTypeID());
+  return mlir::hlo::HasTf2XlaFallback(abstractOp->getTypeID());
 }
 
 bool IsVariant(Value value) {
@@ -465,7 +465,7 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
     return signalPassFailure();
   }
   RewritePatternSet patterns(&getContext());
-  mlir::mhlo::PopulateLegalizeTfPatterns(module.getContext(), &patterns);
+  mlir::hlo::PopulateLegalizeTfPatterns(module.getContext(), &patterns);
   mlir::TF::PopulateTFLoweringBeforeHLOPatterns(module.getContext(), &patterns);
   mlir::TF::PopulateLoweringQuantizedPatterns(module.getContext(), &patterns);
   AddCanonicalizationPatterns(module.getContext(), &patterns);

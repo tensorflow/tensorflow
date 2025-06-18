@@ -15382,7 +15382,7 @@ e.g. Max(segment_ids) should be equal to `num_segments` - 1 for a 1-d segment_id
 With inconsistent num_segments, the op still runs. only difference is,
 the output takes the size of num_segments irrespective of size of segment_ids and data.
 for num_segments less than expected output size, the last elements are ignored
-for num_segments more than the expected output size, last elements are assigned 
+for num_segments more than the expected output size, last elements are assigned
 smallest possible value for the specific numeric type.
 
 For example:
@@ -15552,7 +15552,7 @@ e.g. Max(segment_ids) should be equal to `num_segments` - 1 for a 1-d segment_id
 With inconsistent num_segments, the op still runs. only difference is,
 the output takes the size of num_segments irrespective of size of segment_ids and data.
 for num_segments less than expected output size, the last elements are ignored
-for num_segments more than the expected output size, last elements are assigned 
+for num_segments more than the expected output size, last elements are assigned
 the largest possible value for the specific numeric type.
 
 For example:
@@ -15658,7 +15658,7 @@ The only difference with SegmentProd is the additional input  `num_segments`.
 This helps in evaluating the output shape in compile time.
 `num_segments` should be consistent with segment_ids.
 e.g. Max(segment_ids) - 1 should be equal to `num_segments` for a 1-d segment_ids
-With inconsistent num_segments, the op still runs. only difference is, 
+With inconsistent num_segments, the op still runs. only difference is,
 the output takes the size of num_segments irrespective of size of segment_ids and data.
 for num_segments less than expected output size, the last elements are ignored
 for num_segments more than the expected output size, last elements are assigned 1.
@@ -21424,7 +21424,8 @@ platform argument (see `platforms`) nor the dimension arguments (see
     DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$platforms,
     DefaultValuedOptionalAttr<TF_SymbolRefArrayAttr, "{}">:$function_list,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$has_token_input_output,
-    DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$disabled_checks
+    DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$disabled_checks,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$use_shardy_partitioner
   );
 
   let results = (outs

@@ -221,7 +221,6 @@ cc_library(
         ":xplane_visitor",
         "//xla/tsl/platform:types",
         "//xla/tsl/util:stats_calculator_portable",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
@@ -408,7 +407,8 @@ cc_library(
     ]),
     deps = [
         "//xla/tsl/platform:logging",
-        "@local_tsl//tsl/platform:mutex",
+        "//xla/tsl/util:safe_reinterpret_cast",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:thread_annotations",
     ],

@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -292,6 +293,14 @@ class LiteralBase {
   void EachCell(
       absl::FunctionRef<void(absl::Span<const int64_t> indices, NativeT value)>
           per_cell) const;
+  template <typename NativeT>
+  // Like the above, but allows early return. At any time in the iteration, if
+  // the callback returns false, the iteration will be aborted and the function
+  // will return false. Otherwise it will iterate over all elements and return
+  // true.
+  bool EachCellUntilFailure(
+      absl::FunctionRef<bool(absl::Span<const int64_t> indices, NativeT value)>
+          per_cell) const;
 
   // Checks whether all of this literal's values are equal to the given scalar
   // literal.
@@ -428,7 +437,7 @@ class LiteralBase {
       }
     });
 
-    return std::move(state);
+    return state;
   }
 
   // Templated wrapper struct to control layout sensitivity during Absl::Hash.
@@ -786,7 +795,7 @@ class LiteralBase {
       if (!proto.ParseFromString(shape_bytes)) {
         return InvalidArgument("Failed to parse shape protobuf");
       }
-      Shape shape(proto);
+      TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(proto));
       TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
       return std::move(shape);
     }
@@ -874,7 +883,7 @@ class LiteralBase {
     // Gets/sets the buffer holding dynamic sizes.
     const DynamicSizeType* dynamic_size_buffer() const {
       DCHECK(LayoutUtil::IsDenseArray(*subshape_));
-      return reinterpret_cast<const DynamicSizeType*>(
+      return tsl::safe_reinterpret_cast<const DynamicSizeType*>(
           buffer() + dynamic_size_buffer_offset());
     }
     DynamicSizeType* dynamic_size_buffer() {
@@ -1746,7 +1755,7 @@ absl::Status LiteralBase::SerializeWithShapeProto(const ShapeProto& shape_proto,
           return InvalidArgument("Shape cannot be serialized: %s",
                                  shape().ToString());
         }
-        primitive_util::ArrayTypeSwitch<void>(
+        primitive_util::ArrayTypeSwitch(
             [&](auto primitive_type) {
               using NativeT = primitive_util::NativeTypeOf<primitive_type>;
               piece.SerializeData<NativeT>(state);
@@ -1780,7 +1789,7 @@ absl::StatusOr<Literal> Literal::Deserialize(InputIterator begin,
               return InvalidArgument("Shape cannot be deserialized: %s",
                                      shape.ToString());
             }
-            bool ok = primitive_util::ArrayTypeSwitch<bool>(
+            bool ok = primitive_util::ArrayTypeSwitch(
                 [&](auto primitive_type) {
                   using NativeT = primitive_util::NativeTypeOf<primitive_type>;
                   return piece->DeserializeData<NativeT>(state);
@@ -1815,8 +1824,8 @@ absl::Span<const NativeT> LiteralBase::Piece::data() const {
       << PrimitiveType_Name(primitive_util::NativeToPrimitiveType<NativeT>())
       << " type, but literal element type is "
       << PrimitiveType_Name(subshape().element_type());
-  return absl::Span<const NativeT>(reinterpret_cast<const NativeT*>(buffer()),
-                                   element_count());
+  return absl::Span<const NativeT>(
+      tsl::safe_reinterpret_cast<const NativeT*>(buffer()), element_count());
 }
 
 template <typename NativeT>
@@ -1833,7 +1842,7 @@ absl::Span<NativeT> LiteralBase::Piece::data() {
       << PrimitiveType_Name(primitive_util::NativeToPrimitiveType<NativeT>())
       << " type, but literal element type is "
       << PrimitiveType_Name(subshape().element_type());
-  return absl::Span<NativeT>(reinterpret_cast<NativeT*>(buffer()),
+  return absl::Span<NativeT>(tsl::safe_reinterpret_cast<NativeT*>(buffer()),
                              element_count());
 }
 
@@ -1931,7 +1940,7 @@ int64_t LiteralBase::CountEqual(T value) const {
     return 0;
   }
   Literal scalar(ShapeUtil::MakeScalarShape(ty));
-  return primitive_util::ArrayTypeSwitch<int64_t>(
+  return primitive_util::ArrayTypeSwitch(
       [&](auto primitive_type_constant) -> int64_t {
         using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
         scalar.Set<NativeT>({}, static_cast<NativeT>(value));
@@ -1947,7 +1956,7 @@ int64_t LiteralBase::CountEqual(std::complex<T> value) const {
     return 0;
   }
   Literal scalar(ShapeUtil::MakeScalarShape(ty));
-  return primitive_util::ComplexTypeSwitch<int64_t>(
+  return primitive_util::ComplexTypeSwitch(
       [&](auto primitive_type_constant) -> int64_t {
         using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
         scalar.Set<NativeT>({}, static_cast<NativeT>(value));
@@ -1960,10 +1969,21 @@ template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE void LiteralBase::EachCell(
     absl::FunctionRef<void(absl::Span<const int64_t> indices, NativeT value)>
         per_cell) const {
+  EachCellUntilFailure<NativeT>(
+      [=](absl::Span<const int64_t> indices, NativeT value) {
+        per_cell(indices, value);
+        return true;
+      });
+}
+
+template <typename NativeT>
+TF_ATTRIBUTE_NOINLINE bool LiteralBase::EachCellUntilFailure(
+    absl::FunctionRef<bool(absl::Span<const int64_t> indices, NativeT value)>
+        per_cell) const {
   CHECK(LayoutUtil::IsDenseArray(shape()))
       << __func__ << " is only supported for dense arrays: " << shape();
   if (ShapeUtil::IsZeroElementArray(shape())) {
-    return;
+    return true;
   }
   std::vector<int64_t> indices(shape().dimensions().size(), 0);
 
@@ -1972,8 +1992,9 @@ TF_ATTRIBUTE_NOINLINE void LiteralBase::EachCell(
     shape_dynamic.set_dimensions(i, GetDynamicSize(i));
   }
   do {
-    per_cell(indices, Get<NativeT>(indices));
+    if (!per_cell(indices, Get<NativeT>(indices))) return false;
   } while (IndexUtil::BumpIndices(shape_dynamic, absl::MakeSpan(indices)));
+  return true;
 }
 
 template <typename NativeT>

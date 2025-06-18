@@ -25,6 +25,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/kernel.h"

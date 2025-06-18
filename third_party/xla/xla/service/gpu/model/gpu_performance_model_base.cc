@@ -334,9 +334,9 @@ absl::Duration GpuPerformanceModelBase::WriteTime(
 }
 
 /*static*/
-absl::Duration GpuPerformanceModelBase::ComputeTime(
-    const se::DeviceDescription& gpu_device_info, int64_t flops,
-    int64_t num_blocks, int64_t num_threads_per_block) {
+int64_t GpuPerformanceModelBase::CalculateEffectiveFlopsPerNs(
+    const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
+    int64_t num_threads_per_block) {
   int64_t n_active_fpus_per_core =
       std::min<int64_t>(num_threads_per_block, gpu_device_info.fpus_per_core());
 
@@ -345,17 +345,23 @@ absl::Duration GpuPerformanceModelBase::ComputeTime(
   int64_t fpu_count = n_active_core * n_active_fpus_per_core;
 
   int64_t flop_per_ns_per_fpu = gpu_device_info.clock_rate_ghz() * /*fma:*/ 2;
-  int64_t flop_per_ns_effective = flop_per_ns_per_fpu * fpu_count;
+  return flop_per_ns_per_fpu * fpu_count;
+}
+
+/*static*/
+absl::Duration GpuPerformanceModelBase::ComputeTime(
+    const se::DeviceDescription& gpu_device_info, int64_t flops,
+    int64_t num_blocks, int64_t num_threads_per_block) {
+  int64_t flop_per_ns_effective = CalculateEffectiveFlopsPerNs(
+      gpu_device_info, num_blocks, num_threads_per_block);
   return absl::Nanoseconds(1.0f * flops / flop_per_ns_effective);
 }
 
 /*static*/
 absl::Duration GpuPerformanceModelBase::CombineComputeAndMemoryAccessTime(
-    absl::Duration compute_time, absl::Duration memory_access_time,
-    const GpuPerformanceModelOptions& config) {
+    absl::Duration compute_time, absl::Duration memory_access_time) {
   return compute_time + memory_access_time -
-         std::min(compute_time, memory_access_time) *
-             config.memory_compute_parallelism;
+         std::min(compute_time, memory_access_time) * kMemoryComputeParallelism;
 }
 
 /*static*/

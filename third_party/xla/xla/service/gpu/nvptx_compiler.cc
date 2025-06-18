@@ -124,11 +124,8 @@ class ConvBfloat16Support : public FloatSupport {
       se::dnn::VersionInfo cudnn_version,
       se::CudaComputeCapability cuda_compute_capability)
       : FloatSupport(BF16),
-        is_conv_bf16_supported_((cudnn_version.major_version() > 8 ||
-                                 (cudnn_version.major_version() == 8 &&
-                                  cudnn_version.minor_version() >= 2)) &&
-                                cuda_compute_capability.IsAtLeast(
-                                    se::CudaComputeCapability::kAmpere)) {}
+        is_conv_bf16_supported_(cuda_compute_capability.IsAtLeast(
+            se::CudaComputeCapability::kAmpere)) {}
 
   bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
                                    int64_t operand_index) const override {
@@ -201,7 +198,7 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   if (!hlo_module->config()
            .debug_options()
            .xla_gpu_experimental_disable_binary_libraries()) {
-    pipeline.AddPass<ConvRewriter>(cuda_compute_capability);
+    pipeline.AddPass<ConvRewriter>(cuda_compute_capability, dnn_version);
     pipeline.AddPass<CudnnFusedConvRewriter>(cuda_compute_capability,
                                              dnn_version, toolkit_version);
     pipeline.AddPass<ConvPaddingLegalization>();

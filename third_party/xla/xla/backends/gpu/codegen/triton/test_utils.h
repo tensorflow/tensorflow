@@ -39,8 +39,12 @@ limitations under the License.
 #include "xla/service/gpu/model/tiled_hlo_computation.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
+
+std::vector<xla::PrimitiveType> AllXlaDataTypes();
 
 bool SupportsBF16(const stream_executor::GpuComputeCapability& cc);
 
@@ -65,9 +69,9 @@ absl::Status CreateTritonIrAndFileCheckForDot(
     const HloComputation& computation, absl::string_view filecheck_pattern);
 
 inline BlockLevelParameters FromOutputTileSizes(
-    std::vector<int64_t> output_tile_sizes) {
+    std::vector<std::vector<int64_t>> output_tile_sizes) {
   BlockLevelParameters block_level_parameters;
-  block_level_parameters.output_tile_sizes.push_back(output_tile_sizes);
+  block_level_parameters.output_tile_sizes = std::move(output_tile_sizes);
   return block_level_parameters;
 }
 

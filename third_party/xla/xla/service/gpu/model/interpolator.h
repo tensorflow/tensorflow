@@ -20,10 +20,14 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/strings/str_join.h"
 
 namespace xla::gpu {
 
@@ -35,15 +39,10 @@ class InterpolatorBase {
   virtual ~InterpolatorBase() = default;
 
   // Adds point to the interpolation space.
-  void Add(std::array<int64_t, N>& point, R val) {
-    plane_.emplace_back(point, val);
-  };
+  virtual void Add(std::array<int64_t, N>& point, R val) = 0;
 
   // Returns interpolated value.
-  virtual R Eval(std::array<int64_t, N>& point) = 0;
-
- protected:
-  std::vector<std::pair<std::array<int64_t, N>, R>> plane_;
+  virtual R Eval(std::array<int64_t, N>& point) const = 0;
 };
 
 // `Interpolates` any point in euclidean space by just returning the nearest
@@ -52,18 +51,20 @@ class InterpolatorBase {
 // is to make it aware of the n-dimensional grid properties (like a constant
 // distance per dimension between neighbouring points) which in turn can make
 // shave off a bunch of time complexity.
-// TODO: Speed up NN retrieval if it happens to be a compilation bottleneck (by
-// rounding, k-d trees etc).
 template <typename R, size_t N>
 class EuclideanNNInterpolator : public InterpolatorBase<R, N> {
  public:
-  R Eval(std::array<int64_t, N>& point) override {
-    CHECK_GT(this->plane_.size(), 0);
+  void Add(std::array<int64_t, N>& point, R val) override {
+    plane_.emplace_back(point, val);
+  };
+
+  R Eval(std::array<int64_t, N>& point) const override {
+    CHECK_GT(plane_.size(), 0);
 
     R result;
     uint64_t min_dist = std::numeric_limits<uint64_t>::max();
 
-    for (const auto& [plane_point, val] : this->plane_) {
+    for (const auto& [plane_point, val] : plane_) {
       int64_t dist = Norm2(plane_point, point);
       if (dist < min_dist) {
         result = val;
@@ -75,7 +76,7 @@ class EuclideanNNInterpolator : public InterpolatorBase<R, N> {
 
  private:
   int64_t Norm2(const std::array<int64_t, N>& lhs,
-                const std::array<int64_t, N>& rhs) {
+                const std::array<int64_t, N>& rhs) const {
     int64_t dist = 0;
     for (int i = 0; i < lhs.size(); ++i) {
       int coord = lhs[i];
@@ -84,6 +85,96 @@ class EuclideanNNInterpolator : public InterpolatorBase<R, N> {
     }
     return dist;
   }
+
+  std::vector<std::pair<std::array<int64_t, N>, R>> plane_;
+};
+
+template <typename R, size_t N>
+class EuclideanComplementInterpolator : public EuclideanNNInterpolator<R, N> {
+ public:
+  explicit EuclideanComplementInterpolator(
+      std::array<int64_t, N> next_context,
+      std::array<int64_t, N> next_power_context,
+      std::array<int64_t, N> max_context, std::array<int64_t, N> min_context)
+      : retrieval_ctx_(next_context),
+        retrieval_pow_ctx_(next_power_context),
+        max_ctx_(max_context),
+        min_ctx_(min_context) {}
+
+  void Add(std::array<int64_t, N>& point, R val) override {
+    retrieval_[point] = val;
+  }
+
+  R Eval(std::array<int64_t, N>& point) const override {
+    CHECK_GT(retrieval_.size(), 0);
+    std::array<int64_t, N> interpolation_point;
+    for (int i = 0; i < point.size(); ++i) {
+      std::optional<int64_t> next_potential_dim;
+      if (retrieval_ctx_[i] != -1) {
+        int64_t next = retrieval_ctx_[i];
+        next_potential_dim = Closest(point[i], PrevComplement(point[i], next),
+                                     NextComplement(point[i], next));
+      }
+      if (retrieval_pow_ctx_[i] != -1) {
+        next_potential_dim = Closest(point[i], PrevPowerOfTwo(point[i]),
+                                     NextPowerOfTwo(point[i]));
+      }
+      CHECK(next_potential_dim.has_value());
+      interpolation_point[i] =
+          std::max(std::min(*next_potential_dim, max_ctx_[i]), min_ctx_[i]);
+    }
+    return retrieval_.at(interpolation_point);
+  }
+
+ private:
+  int64_t Closest(int64_t n, int64_t prev, int64_t next) const {
+    if (n - prev < next - n) {
+      return prev;
+    }
+    return next;
+  }
+
+  int64_t NextComplement(int64_t n, int64_t complement) const {
+    return (n + complement) & ~(complement - 1);
+  }
+
+  int64_t PrevComplement(int64_t n, int64_t complement) const {
+    return n & ~(complement - 1);
+  }
+
+  bool IsPowerOfTwo(int n) {
+    if (n <= 0) {
+      return false;
+    }
+    return (n & (n - 1)) == 0;
+  }
+
+  int64_t PrevPowerOfTwo(int64_t n) const { return NextPowerOfTwo(n << 1); }
+
+  int64_t NextPowerOfTwo(int64_t n) const {
+    if (n == 0) {
+      return 1;
+    }
+    n--;
+    n |= n >> 1;
+    n |= n >> 2;
+    n |= n >> 4;
+    n |= n >> 8;
+    n |= n >> 16;
+    n |= n >> 32;
+    return n + 1;
+  }
+
+  std::string PointStr(std::array<int64_t, N> point) const {
+    return absl::StrJoin(point, ", ");
+  }
+
+  std::array<int64_t, N> retrieval_ctx_;
+  std::array<int64_t, N> retrieval_pow_ctx_;
+  std::array<int64_t, N> max_ctx_;
+  std::array<int64_t, N> min_ctx_;
+
+  absl::flat_hash_map<std::array<int64_t, N>, R> retrieval_;
 };
 
 }  // namespace xla::gpu

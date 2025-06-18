@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/lib/slicing.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -37,7 +39,9 @@ limitations under the License.
 #include "xla/stream_executor/tpu/c_api_decl.h"
 #include "xla/stream_executor/tpu/tpu_api.h"
 #include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -64,9 +68,52 @@ namespace tensorflow {
 namespace {
 
 // Get the SparseCore logical replica count.
-absl::StatusOr<int64_t> GetSparseCoresPerChip() {
-  return stream_executor::tpu::OpsApiFn()->TpuTopology_AvailableCoresPerChipFn(
-      /*tpu_core_type=*/TpuCoreTypeEnum::kEmbeddingV2);
+absl::StatusOr<int64_t> GetSparseCoresPerLogicalDevice() {
+  return stream_executor::tpu::OpsApiFn()
+      ->TpuTopology_MaybeAvailableSparseCoresPerLogicalDeviceFn(
+          /*tpu_core_type=*/TpuCoreTypeEnum::kEmbeddingV2);
+}
+
+// Helper function to get the number of sparsecores per device from the topology
+// if available. Or if not, from the op's attribute.
+void GetAndSetSparseCoresPerLogicalDevice(OpKernelConstruction* ctx,
+                                          int64_t& num_sparsecores_per_device) {
+  // Try to get the number of sparsecores per chip from topology.
+  absl::StatusOr<int> num_from_topology = GetSparseCoresPerLogicalDevice();
+  int64_t num_sparsecores_from_attribute;
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("num_sparsecores_per_device",
+                                   &num_sparsecores_from_attribute));
+
+  if (num_from_topology.ok()) {
+    num_sparsecores_per_device = num_from_topology.value();
+    // Verify that the attribute is consistent with the topology value.
+    OP_REQUIRES(
+        ctx,
+        num_sparsecores_from_attribute == -1 ||
+            num_sparsecores_from_attribute == num_sparsecores_per_device,
+        absl::InvalidArgumentError(absl::StrCat(
+            "The op's attribute num_sparsecores_per_device: ",
+            num_sparsecores_per_device,
+            " is not consistent with the value discovered from the topology: ",
+            num_sparsecores_from_attribute)));
+  } else {
+    // Fall back to the attribute if topology is not available or failed.;
+    num_sparsecores_per_device = num_sparsecores_from_attribute;
+  }
+
+  // Validate the final value.
+  OP_REQUIRES(
+      ctx, num_sparsecores_per_device == 2 || num_sparsecores_per_device == 4,
+      absl::InvalidArgumentError(
+          absl::StrCat("num_sparsecores_per_device must be 2 or 4, but got: ",
+                       num_sparsecores_per_device)));
+}
+
+// Returns the number of ops in the tuple.
+absl::StatusOr<int32_t> GetTupleOpSize(xla::XlaBuilder* builder,
+                                       xla::XlaOp tuple_op) {
+  TF_ASSIGN_OR_RETURN(xla::Shape tuple_shape, builder->GetShape(tuple_op));
+  return tuple_shape.tuple_shapes().size();
 }
 
 // This TensorFlow op performs the embedding lookup on SparseCore. It takes the
@@ -143,8 +190,6 @@ class XlaSparseDenseMatmulOp : public XlaOpKernel {
 
     // Pack the input tensors as a tuple. This is a intermediate stage before
     // switching to SparseTensor type.
-    xla::XlaOp coo_tensor_input =
-        xla::Tuple(builder, {row_ids, col_ids, values});
 
     new_frontend_attributes.mutable_map()->insert(
         {"_xla_sharding_strategy", "mod"});
@@ -160,7 +205,7 @@ class XlaSparseDenseMatmulOp : public XlaOpKernel {
 
     xla::XlaOp result = xla::CustomCall(
         builder, "SparseDenseMatmulOp",
-        {coo_tensor_input, embedding_table, offsets, activation_init},
+        {row_ids, col_ids, values, embedding_table, offsets, activation_init},
         xla::ShapeUtil::MakeTupleShape({activation_shape, row_pointers_shape,
                                         sorted_ids_shape, sorted_ids_shape,
                                         sorted_gains_shape}));
@@ -201,12 +246,10 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
       : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("table_name", &table_name_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("input_size", &input_size_));
-    OP_REQUIRES_VALUE(num_sparsecores_per_chip_, ctx, GetSparseCoresPerChip());
-    OP_REQUIRES(ctx, input_size_ % num_sparsecores_per_chip_ == 0,
-                errors::InvalidArgument("input_size_ ", input_size_,
-                                        " not divisible by the number "
-                                        "of sparsecores per chip ",
-                                        num_sparsecores_per_chip_));
+
+    // Try to get the number of sparsecores per chip from topology. And fall
+    // back to the attribute if the topology is not available.
+    GetAndSetSparseCoresPerLogicalDevice(ctx, num_sparsecores_per_device_);
 
     // Get and save quantization config params, if they were configured.
     // num_buckets == 0 indicate no quantization configs were provided.
@@ -247,7 +290,7 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     int64_t per_sparse_core_batch_size =
-        input_size_ / num_sparsecores_per_chip_;
+        input_size_ / num_sparsecores_per_device_;
     int64_t max_ids_per_partition = 0;
     int64_t max_unique_ids_per_partition = 0;
 
@@ -340,9 +383,9 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
     ctx->SetOutput(0, result);
   }
 
- private:
+ protected:
   int input_size_;
-  int64_t num_sparsecores_per_chip_;
+  int64_t num_sparsecores_per_device_;
   std::optional<float> quantization_config_low_;
   std::optional<float> quantization_config_high_;
   std::optional<int> quantization_config_num_buckets_;
@@ -357,6 +400,191 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
 REGISTER_XLA_OP(Name("XlaSparseDenseMatmulWithCsrInput"),
                 XlaSparseDenseMatmulWithCsrInputOp);
 
+// Similar to XlaSparseDenseMatmulWithCsrInputOp, but with an additional field
+// `sorted_pos_ids` in the input Csr, `weights` which is a tensor of shape
+// [num_weights] to be used by the `combiner_computation`. It produces the same
+// embedding look up result as `XlaSparseDenseMatmulWithCsrInputOp`.
+class XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp
+    : public XlaSparseDenseMatmulWithCsrInputOp {
+ public:
+  explicit XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp(
+      OpKernelConstruction* ctx)
+      : XlaSparseDenseMatmulWithCsrInputOp(ctx) {
+    const NameAttrList* name_attr;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("max_valency", &max_valency_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("num_weights", &num_weights_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("combiner_computation", &name_attr));
+    combiner_computation_ = *name_attr;
+  }
+
+  ~XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp() override = default;
+
+  absl::StatusOr<xla::XlaComputation> BuildTcCustomCombinerComputation(
+      XlaOpKernelContext* ctx, const int32_t feature_width) {
+    XlaCompiler::CompileOptions options;
+    options.use_tuple_arg = false;
+    options.always_return_tuple = false;
+    options.is_entry_computation = false;
+
+    XlaCompiler* compiler = ctx->compiler();
+    XlaCompiler::CompilationResult custom_combiner_computation_result;
+
+    XlaCompiler::Argument valencies_arg;
+    XlaCompiler::Argument vectors_arg;
+
+    valencies_arg.kind = XlaCompiler::Argument::kParameter;
+    valencies_arg.type = DT_INT32;
+    valencies_arg.shape = xla::ShapeUtil::MakeShape(xla::S32, {input_size_});
+    valencies_arg.name = "valencies";
+    vectors_arg.kind = XlaCompiler::Argument::kParameter;
+    vectors_arg.type = DT_FLOAT;
+    vectors_arg.shape = xla::ShapeUtil::MakeShape(
+        xla::F32, {input_size_, max_valency_, feature_width});
+    vectors_arg.name = "vectors";
+
+    std::vector<XlaCompiler::Argument> arguments = {valencies_arg, vectors_arg};
+
+    // Don't add the weights argument if it's not needed. This helps avoid
+    // issues of passing around zero-sized tensors and Xla values.
+    if (num_weights_ > 0) {
+      XlaCompiler::Argument weights_arg;
+      weights_arg.kind = XlaCompiler::Argument::kParameter;
+      weights_arg.type = DT_FLOAT;
+      weights_arg.shape =
+          xla::ShapeUtil::MakeShape(xla::F32, {input_size_, num_weights_});
+      weights_arg.name = "weights";
+      arguments.push_back(weights_arg);
+    }
+
+    TF_RETURN_IF_ERROR(
+        compiler->CompileFunction(options, combiner_computation_, arguments,
+                                  &custom_combiner_computation_result));
+    return std::move(*custom_combiner_computation_result.computation);
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    int64_t per_sparse_core_batch_size =
+        input_size_ / num_sparsecores_per_device_;
+    int64_t max_ids_per_partition = 0;
+    int64_t max_unique_ids_per_partition = 0;
+
+    xla::XlaBuilder* builder = ctx->builder();
+    xla::XlaOp row_pointers = ctx->Input("row_pointers");
+    xla::XlaOp sorted_sample_ids = ctx->Input("sorted_sample_ids");
+    xla::XlaOp sorted_token_ids = ctx->Input("sorted_token_ids");
+    xla::XlaOp sorted_pos_ids = ctx->Input("sorted_pos_ids");
+    xla::XlaOp sorted_gains = ctx->Input("sorted_gains");
+    xla::XlaOp embedding_table = ctx->Input("embedding_table");
+
+    OP_REQUIRES_VALUE(xla::Shape embedding_table_shape, ctx,
+                      ctx->InputXlaShape("embedding_table"));
+    const int32_t feature_width = embedding_table_shape.dimensions(1);
+
+    OP_REQUIRES_OK(
+        ctx, GetMaxIdsAndUniques(per_sparse_core_batch_size, feature_width,
+                                 &max_ids_per_partition,
+                                 &max_unique_ids_per_partition));
+    // Log max_ids and max_uniques for offline analysis. We do this here since
+    // these values are fixed at TPU compile time and remain fixed during
+    // training.
+    max_ids_per_partition_gauge_->GetCell(device_name_, table_name_)
+        ->Set(max_ids_per_partition);
+    max_unique_ids_per_partition_gauge_->GetCell(device_name_, table_name_)
+        ->Set(max_unique_ids_per_partition);
+    LOG(INFO) << "Lowering "
+                 "XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp to HLO: "
+              << "table_name = '" << table_name_
+              << "', max_ids = " << max_ids_per_partition
+              << ", max_uniques = " << max_unique_ids_per_partition;
+
+    xla::FrontendAttributes tc_frontend_attributes;
+    xla::FrontendAttributes sc_frontend_attributes;
+
+    sc_frontend_attributes.mutable_map()->insert(
+        {"_xla_compute_type", "sparse"});
+
+    sc_frontend_attributes.mutable_map()->insert(
+        {"_xla_sharding_strategy", "mod"});
+
+    sc_frontend_attributes.mutable_map()->insert(
+        {"_xla_pad_value", absl::StrCat(kXlaPadValue)});
+
+    sc_frontend_attributes.mutable_map()->insert(
+        {"_xla_max_ids_per_partition", absl::StrCat(max_ids_per_partition)});
+
+    sc_frontend_attributes.mutable_map()->insert(
+        {"_xla_max_unique_ids_per_partition",
+         absl::StrCat(max_unique_ids_per_partition)});
+
+    sc_frontend_attributes.mutable_map()->insert(
+        {"_xla_max_valency", absl::StrCat(max_valency_)});
+
+    if (quantization_config_low_.has_value()) {
+      sc_frontend_attributes.mutable_map()->insert(
+          {"_xla_quantization_high_value",
+           absl::StrCat(quantization_config_high_.value())});
+      sc_frontend_attributes.mutable_map()->insert(
+          {"_xla_quantization_low_value",
+           absl::StrCat(quantization_config_low_.value())});
+      sc_frontend_attributes.mutable_map()->insert(
+          {"_xla_quantization_num_buckets_value",
+           absl::StrCat(quantization_config_num_buckets_.value())});
+    }
+
+    tc_frontend_attributes =
+        builder->SwapFrontendAttributes(sc_frontend_attributes);
+
+    // Emit the custom call that performs the SC embedding lookup.
+    xla::Shape valencies_shape =
+        xla::ShapeUtil::MakeShape(xla::S32, {input_size_});
+    xla::Shape vectors_shape = xla::ShapeUtil::MakeShape(
+        xla::F32, {input_size_, max_valency_, feature_width});
+    xla::Shape gains_shape =
+        xla::ShapeUtil::MakeShape(xla::F32, {input_size_, max_valency_});
+    xla::XlaOp sc_lookup_result_tuple = xla::CustomCall(
+        builder, "SparseDenseMatmulCustomCombinerTcCombinerMegachipOp",
+        {row_pointers, sorted_token_ids, sorted_sample_ids, sorted_pos_ids,
+         sorted_gains, embedding_table},
+        xla::ShapeUtil::MakeTupleShape(
+            {valencies_shape, vectors_shape, gains_shape}));
+
+    // Emit the custom combiner computation into an HLO computation.
+    OP_REQUIRES_VALUE(xla::XlaComputation custom_combiner_tc_computation, ctx,
+                      BuildTcCustomCombinerComputation(ctx, feature_width));
+
+    builder->SetFrontendAttributes(tc_frontend_attributes);
+
+    xla::XlaOp valencies = xla::GetTupleElement(sc_lookup_result_tuple, 0);
+    xla::XlaOp vectors = xla::GetTupleElement(sc_lookup_result_tuple, 1);
+
+    std::vector<xla::XlaOp> tc_combiner_args = {valencies, vectors};
+    if (num_weights_ > 0) {
+      xla::XlaOp weights = ctx->Input("weights");
+      tc_combiner_args.push_back(xla::Broadcast(weights, {input_size_}));
+    }
+
+    xla::XlaOp tc_activations =
+        xla::Call(builder, custom_combiner_tc_computation, tc_combiner_args);
+
+    ctx->SetOutput(0, tc_activations);
+    ctx->SetOutput(1, valencies);
+    ctx->SetOutput(2, vectors);
+  }
+
+ private:
+  int max_valency_;
+  int num_weights_;
+  NameAttrList combiner_computation_;
+
+  XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp(
+      const XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp&) = delete;
+  void operator=(const XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp&) =
+      delete;
+};
+
+REGISTER_XLA_OP(Name("XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInput"),
+                XlaSparseDenseMatmulCustomCombinerOnTcWithCsrInputOp);
+
 // Base class for all the minibatch with CSR input optimizer kernel.
 class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
  public:
@@ -365,6 +593,10 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("table_name", &table_name_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("clip_weight_min", &clip_weight_min_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("clip_weight_max", &clip_weight_max_));
+
+    // Try to get the number of sparsecores per chip from topology. And fall
+    // back to the attribute if the topology is not available.
+    GetAndSetSparseCoresPerLogicalDevice(ctx, num_sparsecores_per_device_);
 
     OP_REQUIRES(ctx, clip_weight_min_ <= clip_weight_max_,
                 absl::InvalidArgumentError(
@@ -384,15 +616,6 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
   virtual xla::XlaOp get_hyperparameters_input(XlaOpKernelContext* ctx) = 0;
 
   virtual xla::Shape get_tables_shape(xla::Shape embedding_table_shape) = 0;
-
-  xla::XlaOp apply_weight_clipping_to_table(xla::XlaBuilder* builder,
-                                            xla::XlaOp table) {
-    xla::XlaOp clip_weight_min = xla::ConstantR0(builder, clip_weight_min_);
-    xla::XlaOp clip_weight_max = xla::ConstantR0(builder, clip_weight_max_);
-    xla::XlaOp clipped_table =
-        xla::Clamp(clip_weight_min, table, clip_weight_max);
-    return clipped_table;
-  }
 
   virtual absl::Status GetMaxIdsAndUniques(
       int64_t num_samples_per_sparse_core, int64_t feature_width,
@@ -423,16 +646,14 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
                 errors::InvalidArgument(
                     "activations input has non static or non-rank 2 shape: ",
                     activation_shape.ToString()));
-    OP_REQUIRES_VALUE(int64_t num_sparsecores_per_chip, ctx,
-                      GetSparseCoresPerChip());
     int64 num_samples_per_chip = activation_shape.dimensions(0);
-    OP_REQUIRES(ctx, num_samples_per_chip % num_sparsecores_per_chip == 0,
+    OP_REQUIRES(ctx, num_samples_per_chip % num_sparsecores_per_device_ == 0,
                 errors::InvalidArgument(
                     "num_samples_per_chip ", num_samples_per_chip,
                     " not divisible by the number of sparsecores per chip ",
-                    num_sparsecores_per_chip));
+                    num_sparsecores_per_device_));
     int64_t per_sparse_core_batch_size =
-        num_samples_per_chip / num_sparsecores_per_chip;
+        num_samples_per_chip / num_sparsecores_per_device_;
     int64_t max_ids_per_partition = 0;
     int64_t max_unique_ids_per_partition = 0;
     OP_REQUIRES_VALUE(xla::Shape embedding_table_shape, ctx,
@@ -496,7 +717,7 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
     builder->SetFrontendAttributes(tuple_frontend_attributes);
 
     // Updated embedding table.
-    for (int i = 0; i < tables_shape.tuple_shapes_size(); ++i) {
+    for (int i = 0; i < tables_shape.tuple_shapes().size(); ++i) {
       ctx->SetOutput(i, xla::GetTupleElement(updated_tables, i));
     }
 
@@ -509,6 +730,7 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
 
  private:
   std::string table_name_;
+  int64_t num_sparsecores_per_device_;
 
   XlaSparseDenseMatmulGradWithCsrInputBase(
       const XlaSparseDenseMatmulGradWithCsrInputBase&) = delete;
@@ -522,6 +744,11 @@ class XlaSparseDenseMatmulGradWithCsrInputOp : public XlaOpKernel {
     const NameAttrList* name_attr;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("custom_computation", &name_attr));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("table_name", &table_name_));
+
+    // Try to get the number of sparsecores per chip from topology. And fall
+    // back to the attribute if the topology is not available.
+    GetAndSetSparseCoresPerLogicalDevice(ctx, num_sparsecores_per_device_);
+
     custom_computation_ = *name_attr;
   }
 
@@ -555,17 +782,16 @@ class XlaSparseDenseMatmulGradWithCsrInputOp : public XlaOpKernel {
                 absl::InvalidArgumentError(absl::StrCat(
                     "activations input has non static or non-rank 2 shape: ",
                     activation_shape.ToString())));
-    OP_REQUIRES_VALUE(int64_t num_sparsecores_per_chip, ctx,
-                      GetSparseCoresPerChip());
+
     int64_t num_samples_per_chip = activation_shape.dimensions(0);
-    OP_REQUIRES(ctx, num_samples_per_chip % num_sparsecores_per_chip == 0,
+    OP_REQUIRES(ctx, num_samples_per_chip % num_sparsecores_per_device_ == 0,
                 absl::InvalidArgumentError(absl::StrCat(
                     "num_samples_per_chip ", num_samples_per_chip,
                     " not divisible by the number of sparsecores per chip ",
-                    num_sparsecores_per_chip)));
+                    num_sparsecores_per_device_)));
 
     int64_t per_sparse_core_batch_size =
-        num_samples_per_chip / num_sparsecores_per_chip;
+        num_samples_per_chip / num_sparsecores_per_device_;
     int64_t max_ids_per_partition = 0;
     int64_t max_unique_ids_per_partition = 0;
 
@@ -669,7 +895,7 @@ class XlaSparseDenseMatmulGradWithCsrInputOp : public XlaOpKernel {
     builder->SetFrontendAttributes(tuple_frontend_attributes);
 
     // Updated embedding table.
-    for (int i = 0; i < tables_shape.tuple_shapes_size(); ++i) {
+    for (int i = 0; i < tables_shape.tuple_shapes().size(); ++i) {
       ctx->SetOutput(i, xla::GetTupleElement(updated_tables, i));
     }
 
@@ -679,6 +905,7 @@ class XlaSparseDenseMatmulGradWithCsrInputOp : public XlaOpKernel {
  private:
   std::string table_name_;
   NameAttrList custom_computation_;
+  int64_t num_sparsecores_per_device_;
   XlaSparseDenseMatmulGradWithCsrInputOp(
       const XlaSparseDenseMatmulGradWithCsrInputOp&) = delete;
   void operator=(const XlaSparseDenseMatmulGradWithCsrInputOp&) = delete;
@@ -686,6 +913,703 @@ class XlaSparseDenseMatmulGradWithCsrInputOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("XlaSparseDenseMatmulGradWithCsrInput"),
                 XlaSparseDenseMatmulGradWithCsrInputOp);
+
+class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase
+    : public XlaOpKernel {
+ public:
+  explicit XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase(
+      OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("table_name", &table_name_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("max_valency", &max_valency_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("num_weights", &num_weights_));
+
+    // Not all subclasses have the weight range attributes. We parse these
+    // attributes anyway (otherwise we lose the op construction context) and
+    // record possible errors. The main compile method can choose to report
+    // errors or not (depending if the attributes are expected to be present).
+    clip_weight_range_status_.Update(
+        ctx->GetAttr("clip_weight_min", &clip_weight_min_));
+    clip_weight_range_status_.Update(
+        ctx->GetAttr("clip_weight_max", &clip_weight_max_));
+    if (clip_weight_range_status_.ok() && clip_weight_min_ > clip_weight_max_) {
+      clip_weight_range_status_ = absl::InvalidArgumentError(absl::StrCat(
+          "clip_weight_min must be smaller or equal to "
+          "clip_weight_max but got clip_weight_min as ",
+          clip_weight_min_, " and clip_weight_max as ", clip_weight_max_, "."));
+    }
+
+    const NameAttrList* name_attr;
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttr("combiner_table_vjp_computation", &name_attr));
+    combiner_lookups_custom_vjp_computation_ = *name_attr;
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("combiner_weights_vjp_computation", &name_attr));
+    combiner_weights_custom_vjp_computation_ = *name_attr;
+  }
+
+  virtual absl::Status HandleClipWeightRangeStatus() {
+    // Most subclasses require the weight range attributes, and we return the
+    // status as-is.
+    return clip_weight_range_status_;
+  }
+
+  // Returns an xla::Tuple of all table-shaped optimizer inputs.
+  virtual absl::StatusOr<xla::XlaOp> GetTablesInput(
+      XlaOpKernelContext* ctx, xla::XlaBuilder* builder) = 0;
+
+  // Returns an xla::Tuple of all hyperparameter optimizer inputs.
+  virtual absl::StatusOr<xla::XlaOp> GetHyperparametersInput(
+      XlaOpKernelContext* ctx, xla::XlaBuilder* builder) = 0;
+
+  // Returns the optimizer computation.
+  virtual absl::StatusOr<xla::XlaComputation> BuildOptimizerComputation(
+      XlaOpKernelContext* ctx, int32_t feature_width) = 0;
+
+  absl::StatusOr<int32_t> GetNumTablesInput(XlaOpKernelContext* ctx) {
+    // No side effects should remain from this builder -- we derive the number
+    // of inputs by inspecting the tuple XlaOp, which should be optimized away
+    // as the results are not consumed.
+    xla::XlaBuilder* builder = ctx->builder();
+    TF_ASSIGN_OR_RETURN(xla::XlaOp tuple_op, GetTablesInput(ctx, builder));
+    return GetTupleOpSize(builder, tuple_op);
+  }
+
+  absl::StatusOr<int32_t> GetNumHyperparametersInput(XlaOpKernelContext* ctx) {
+    // No side effects should remain from this builder -- see comments above.
+    xla::XlaBuilder* builder = ctx->builder();
+    TF_ASSIGN_OR_RETURN(xla::XlaOp tuple_op,
+                        GetHyperparametersInput(ctx, builder));
+    return GetTupleOpSize(builder, tuple_op);
+  }
+
+  std::vector<XlaCompiler::Argument> BuildVjpArguments(XlaOpKernelContext* ctx,
+                                                       int32_t input_size,
+                                                       int32_t feature_width) {
+    std::vector<XlaCompiler::Argument> arguments;
+
+    XlaCompiler::Argument valencies_arg;
+    XlaCompiler::Argument vectors_arg;
+    XlaCompiler::Argument weights_arg;
+    XlaCompiler::Argument activation_gradients_arg;
+
+    valencies_arg.kind = XlaCompiler::Argument::kParameter;
+    valencies_arg.type = DT_INT32;
+    valencies_arg.shape = xla::ShapeUtil::MakeShape(xla::S32, {input_size});
+    valencies_arg.name = "valencies";
+
+    vectors_arg.kind = XlaCompiler::Argument::kParameter;
+    vectors_arg.type = DT_FLOAT;
+    vectors_arg.shape = xla::ShapeUtil::MakeShape(
+        xla::F32, {input_size, max_valency_, feature_width});
+    vectors_arg.name = "vectors";
+
+    weights_arg.kind = XlaCompiler::Argument::kParameter;
+    weights_arg.type = DT_FLOAT;
+    weights_arg.shape =
+        xla::ShapeUtil::MakeShape(xla::F32, {input_size, num_weights_});
+    weights_arg.name = "weights";
+    arguments.push_back(weights_arg);
+
+    activation_gradients_arg.kind = XlaCompiler::Argument::kParameter;
+    activation_gradients_arg.type = DT_FLOAT;
+    activation_gradients_arg.shape =
+        xla::ShapeUtil::MakeShape(xla::F32, {input_size, feature_width});
+    activation_gradients_arg.name = "activation_gradients";
+    arguments.push_back(activation_gradients_arg);
+
+    if (num_weights_ > 0) {
+      arguments = {valencies_arg, vectors_arg, weights_arg,
+                   activation_gradients_arg};
+    } else {
+      // Don't add the weights argument if it's not needed. This helps avoid
+      // issues of passing around zero-sized tensors and Xla values.
+      arguments = {valencies_arg, vectors_arg, activation_gradients_arg};
+    }
+
+    return arguments;
+  }
+
+  absl::StatusOr<xla::XlaComputation> BuildCombinerVjpComputation(
+      XlaOpKernelContext* ctx, int32_t input_size, int32_t feature_width,
+      const NameAttrList& computation) {
+    XlaCompiler::CompileOptions options;
+    options.use_tuple_arg = false;
+    options.always_return_tuple = false;
+    options.is_entry_computation = false;
+
+    XlaCompiler* compiler = ctx->compiler();
+    XlaCompiler::CompilationResult vjp_computation_result;
+
+    TF_RETURN_IF_ERROR(compiler->CompileFunction(
+        options, computation, BuildVjpArguments(ctx, input_size, feature_width),
+        &vjp_computation_result));
+    return std::move(*vjp_computation_result.computation);
+  }
+
+  absl::StatusOr<xla::XlaOp> EmitTensorCoreComputations(
+      XlaOpKernelContext* ctx, xla::XlaBuilder* builder, int32_t input_size,
+      int32_t feature_width) {
+    xla::XlaOp weights = ctx->Input("weights");
+    xla::XlaOp preserved_weights = ctx->Input("preserved_weights");
+    xla::XlaOp activation_gradients = ctx->Input("activation_gradients");
+    xla::XlaOp valencies = ctx->Input("preserved_valencies");
+    xla::XlaOp vectors = ctx->Input("preserved_vectors");
+
+    // Build the required computations for the custom combiner.
+    TF_ASSIGN_OR_RETURN(
+        xla::XlaComputation combiner_vectors_vjp,
+        BuildCombinerVjpComputation(ctx, input_size, feature_width,
+                                    combiner_lookups_custom_vjp_computation_));
+    TF_ASSIGN_OR_RETURN(
+        xla::XlaComputation combiner_weights_vjp,
+        BuildCombinerVjpComputation(ctx, input_size, feature_width,
+                                    combiner_weights_custom_vjp_computation_));
+
+    // The updated weights are the last output in the list.
+    const int32_t kUpdatedWeightsIndex = ctx->num_outputs() - 1;
+
+    std::vector<xla::XlaOp> vjp_args;
+    if (num_weights_ > 0) {
+      xla::XlaOp broadcasted_preserved_weights =
+          xla::Broadcast(preserved_weights, {input_size});
+      vjp_args = {valencies, vectors, broadcasted_preserved_weights,
+                  activation_gradients};
+    } else {
+      vjp_args = {valencies, vectors, activation_gradients};
+    }
+
+    // Compute the lookup gradients based on the activation gradients. This
+    // result will be passed to SC to drive the embedding table update.
+    xla::XlaOp lookup_gradients =
+        xla::Call(builder, combiner_vectors_vjp, vjp_args);
+
+    // Compute the weights gradients based on the activation gradients.
+    if (num_weights_ > 0) {
+      // The weights VJP returns a tensor of shape f32[input_size, num_weights].
+      xla::XlaOp weights_gradients_all_samples =
+          xla::Call(builder, combiner_weights_vjp, vjp_args);
+      // Local reduction, which aggregates the contributions from all samples
+      // and returns a tensor of shape f32[num_weights].
+      xla::XlaOp per_replica_reduced_weights_gradients = xla::Reduce(
+          weights_gradients_all_samples, xla::ConstantR0<float>(builder, 0.0),
+          xla::CreateScalarAddComputation(xla::F32, builder), {0});
+      // Global reduction, which aggregates the contributions from all replicas
+      // and returns a tensor of shape f32[num_weights].
+      // Here we assume that all replicas participate in the all-reduce (using
+      // default value of `replica_groups`) and that all-reduce from different
+      // modules do not participate in this reduction (using default value of
+      // `channel_id`).
+      xla::XlaOp global_reduced_weights_gradients =
+          xla::AllReduce(per_replica_reduced_weights_gradients,
+                         xla::CreateScalarAddComputation(xla::F32, builder));
+      // Use SGD optimizer on the weights.
+      // TODO(peitianpan): Add support for more optimizers.
+      xla::XlaOp learning_rate = ctx->Input("combiner_weights_learning_rate");
+      xla::XlaOp updated_weights =
+          weights - learning_rate * global_reduced_weights_gradients;
+      ctx->SetOutput(kUpdatedWeightsIndex, updated_weights);
+    } else {
+      // The caller is not supposed to rely on this output if num_weights is 0.
+      ctx->SetOutput(kUpdatedWeightsIndex, xla::ConstantR0<float>(builder, 0));
+    }
+
+    return lookup_gradients;
+  }
+
+  absl::Status EmitSparseCoreComputations(XlaOpKernelContext* ctx,
+                                          xla::XlaBuilder* builder,
+                                          xla::XlaOp lookup_gradients,
+                                          int32_t max_ids_per_partition,
+                                          int32_t max_unique_ids_per_partition,
+                                          int32_t feature_width) {
+    xla::XlaOp row_pointers = ctx->Input("row_pointers");
+    xla::XlaOp sorted_sample_ids = ctx->Input("sorted_sample_ids");
+    xla::XlaOp sorted_token_ids = ctx->Input("sorted_token_ids");
+    xla::XlaOp sorted_pos_ids = ctx->Input("sorted_pos_ids");
+    xla::XlaOp sorted_gains = ctx->Input("sorted_gains");
+
+    xla::FrontendAttributes original_frontend_attributes =
+        builder->frontend_attributes();
+
+    xla::FrontendAttributes tuple_frontend_attributes;
+
+    tuple_frontend_attributes.mutable_map()->insert(
+        {"_xla_compute_type", "sparse"});
+
+    builder->SetFrontendAttributes(tuple_frontend_attributes);
+
+    TF_ASSIGN_OR_RETURN(xla::XlaOp tables, GetTablesInput(ctx, builder));
+    TF_ASSIGN_OR_RETURN(xla::XlaOp hyperparameters,
+                        GetHyperparametersInput(ctx, builder));
+
+    TF_ASSIGN_OR_RETURN(xla::Shape tables_shape, builder->GetShape(tables));
+    if (tables_shape.tuple_shapes().size() + 1 != ctx->num_outputs()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Expecting ", tables_shape.tuple_shapes().size() + 1,
+                       " outputs but got ", ctx->num_outputs()));
+    }
+
+    TF_ASSIGN_OR_RETURN(xla::XlaComputation optimizer,
+                        BuildOptimizerComputation(ctx, feature_width));
+
+    xla::FrontendAttributes custom_call_frontend_attributes;
+
+    custom_call_frontend_attributes.mutable_map()->insert(
+        {"_xla_compute_type", "sparse"});
+
+    custom_call_frontend_attributes.mutable_map()->insert(
+        {"_xla_sharding_strategy", "mod"});
+
+    custom_call_frontend_attributes.mutable_map()->insert(
+        {"_xla_pad_value", absl::StrCat(kXlaPadValue)});
+
+    custom_call_frontend_attributes.mutable_map()->insert(
+        {"_xla_max_ids_per_partition", absl::StrCat(max_ids_per_partition)});
+
+    custom_call_frontend_attributes.mutable_map()->insert(
+        {"_xla_max_unique_ids_per_partition",
+         absl::StrCat(max_unique_ids_per_partition)});
+
+    builder->SetFrontendAttributes(custom_call_frontend_attributes);
+
+    xla::XlaOp updated_tables = xla::CustomCallWithComputation(
+        builder,
+        "SparseDenseMatmulCustomCombinerTcCombinerGradOptimizerUpdateMegachipO"
+        "p",
+        {row_pointers, sorted_token_ids, sorted_sample_ids, sorted_pos_ids,
+         sorted_gains, tables, lookup_gradients, hyperparameters},
+        optimizer, tables_shape);
+
+    builder->SetFrontendAttributes(tuple_frontend_attributes);
+
+    // Updated embedding table.
+    for (int i = 0; i < tables_shape.tuple_shapes().size(); ++i) {
+      ctx->SetOutput(i, xla::GetTupleElement(updated_tables, i));
+    }
+
+    builder->SetFrontendAttributes(original_frontend_attributes);
+    return absl::OkStatus();
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::XlaBuilder* builder = ctx->builder();
+
+    OP_REQUIRES_OK(ctx, HandleClipWeightRangeStatus());
+
+    // Get the shape of the gradient.
+    OP_REQUIRES_VALUE(xla::Shape activation_shape, ctx,
+                      ctx->InputXlaShape("activation_gradients"));
+    OP_REQUIRES(ctx,
+                activation_shape.is_static() &&
+                    activation_shape.dimensions().size() == 2,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "activations input has non static or non-rank 2 shape: ",
+                    activation_shape.ToString())));
+    OP_REQUIRES_VALUE(int64_t num_sparsecores_per_device, ctx,
+                      GetSparseCoresPerLogicalDevice());
+    int64_t num_samples_per_chip = activation_shape.dimensions(0);
+    OP_REQUIRES(ctx, num_samples_per_chip % num_sparsecores_per_device == 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "num_samples_per_chip ", num_samples_per_chip,
+                    " not divisible by the number of sparsecores per chip ",
+                    num_sparsecores_per_device)));
+
+    int64_t per_sparse_core_batch_size =
+        num_samples_per_chip / num_sparsecores_per_device;
+    int64_t max_ids_per_partition = 0;
+    int64_t max_unique_ids_per_partition = 0;
+
+    const int32_t feature_width = activation_shape.dimensions(1);
+    OP_REQUIRES_OK(
+        ctx, GetMaxIdsAndUniquesExternal(kUnknownProgramKey, table_name_,
+                                         per_sparse_core_batch_size,
+                                         feature_width, &max_ids_per_partition,
+                                         &max_unique_ids_per_partition));
+    LOG(INFO)
+        << "Lowering XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputOp "
+        << "to HLO: table_name = '" << table_name_
+        << "', max_ids = " << max_ids_per_partition
+        << ", max_uniques = " << max_unique_ids_per_partition;
+
+    // Emit the two custom combiner VJP computations onto TC.
+    int32_t input_size = activation_shape.dimensions(0);
+    OP_REQUIRES_VALUE(
+        xla::XlaOp lookup_gradients, ctx,
+        EmitTensorCoreComputations(ctx, builder, input_size, feature_width));
+
+    // Pass the TC activation gradients back to SC for back-propagation with
+    // optimizer.
+    OP_REQUIRES_OK(ctx,
+                   EmitSparseCoreComputations(
+                       ctx, builder, lookup_gradients, max_ids_per_partition,
+                       max_unique_ids_per_partition, feature_width));
+  }
+
+ protected:
+  int32_t max_valency_;
+  int32_t num_weights_;
+  float clip_weight_min_;
+  float clip_weight_max_;
+  std::string table_name_;
+  NameAttrList combiner_weights_custom_vjp_computation_;
+  NameAttrList combiner_lookups_custom_vjp_computation_;
+
+  absl::Status clip_weight_range_status_;
+
+ private:
+  XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase(
+      const XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase&) =
+      delete;
+  void operator=(
+      const XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase&) =
+      delete;
+};
+
+// TC custom combiner VJP + SC back-propagation with a custom optimizer.
+class XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputOp
+    : public XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase {
+ public:
+  explicit XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputOp(
+      OpKernelConstruction* ctx)
+      : XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("N", &num_tables_));
+
+    const NameAttrList* name_attr;
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttr("optimizer_custom_computation", &name_attr));
+    optimizer_custom_computation_ = *name_attr;
+  }
+
+  absl::Status HandleClipWeightRangeStatus() override {
+    // The custom optimizer BWD op does not require the weight clip range.
+    return absl::OkStatus();
+  }
+
+  absl::StatusOr<xla::XlaOp> GetTablesInput(XlaOpKernelContext* ctx,
+                                            xla::XlaBuilder* builder) override {
+    std::vector<xla::XlaOp> tables_input;
+    std::vector<TensorShape> tables_shapes;
+    TF_RETURN_IF_ERROR(ctx->InputList("tables", &tables_input, &tables_shapes));
+    if (num_tables_ != tables_shapes.size()) {
+      return absl::InvalidArgumentError(absl::StrCat("Expecting ", num_tables_,
+                                                     " tables, but got ",
+                                                     tables_shapes.size()));
+    }
+    return xla::Tuple(builder, tables_input);
+  }
+
+  absl::StatusOr<xla::XlaOp> GetHyperparametersInput(
+      XlaOpKernelContext* ctx, xla::XlaBuilder* builder) override {
+    std::vector<xla::XlaOp> hyperparameters_input;
+    std::vector<TensorShape> hyperparameters_shapes;
+    TF_RETURN_IF_ERROR(ctx->InputList("hyperparameters", &hyperparameters_input,
+                                      &hyperparameters_shapes));
+    return xla::Tuple(builder, hyperparameters_input);
+  }
+
+  absl::StatusOr<xla::XlaComputation> BuildOptimizerComputation(
+      XlaOpKernelContext* ctx, int32_t feature_width) override {
+    XlaCompiler::CompileOptions options;
+
+    // We don't use tuple args and always return tuple for this computation.
+    options.use_tuple_arg = false;
+    options.always_return_tuple = true;
+    options.is_entry_computation = false;
+
+    XlaCompiler* compiler = ctx->compiler();
+
+    XlaCompiler::CompilationResult custom_computation_result;
+
+    // The number of arguments is the number of tables + the number of
+    // hyperparameters + 1 for the activation gradients.
+    TF_ASSIGN_OR_RETURN(const int32_t num_tables_inputs,
+                        GetNumTablesInput(ctx));
+    TF_ASSIGN_OR_RETURN(const int32_t num_hyperparameters_inputs,
+                        GetNumHyperparametersInput(ctx));
+    int32_t num_arguments = 1 + num_tables_inputs + num_hyperparameters_inputs;
+
+    std::vector<XlaCompiler::Argument> arguments(num_arguments);
+
+    // For all the arguments, we use the float type and the shape is
+    // {1, feature_width}.
+    for (int32_t i = 0; i < num_arguments; ++i) {
+      arguments[i].kind = XlaCompiler::Argument::kParameter;
+      arguments[i].type = DT_FLOAT;
+      arguments[i].shape =
+          xla::ShapeUtil::MakeShape(xla::F32, {1, feature_width});
+    }
+
+    TF_RETURN_IF_ERROR(
+        compiler->CompileFunction(options, optimizer_custom_computation_,
+                                  arguments, &custom_computation_result));
+
+    return std::move(*custom_computation_result.computation);
+  }
+
+ private:
+  int32_t num_tables_;
+  NameAttrList optimizer_custom_computation_;
+
+  XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputOp(
+      const XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputOp&) = delete;
+  void operator=(
+      const XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputOp&) = delete;
+};
+
+REGISTER_XLA_OP(Name("XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInput"),
+                XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputOp);
+
+// TC custom combiner VJP + SC back-propagation with the SGD optimizer.
+class XlaSparseDenseMatmulCustomCombinerOnTcGradWithSgdAndCsrInputOp
+    : public XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase {
+ public:
+  explicit XlaSparseDenseMatmulCustomCombinerOnTcGradWithSgdAndCsrInputOp(
+      OpKernelConstruction* ctx)
+      : XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase(ctx) {}
+
+  ~XlaSparseDenseMatmulCustomCombinerOnTcGradWithSgdAndCsrInputOp() override =
+      default;
+
+  absl::StatusOr<xla::XlaOp> GetTablesInput(XlaOpKernelContext* ctx,
+                                            xla::XlaBuilder* builder) override {
+    return xla::Tuple(builder, {ctx->Input("embedding_table")});
+  }
+
+  absl::StatusOr<xla::XlaOp> GetHyperparametersInput(
+      XlaOpKernelContext* ctx, xla::XlaBuilder* builder) override {
+    return xla::Tuple(builder, {ctx->Input("learning_rate")});
+  }
+
+  absl::StatusOr<xla::XlaComputation> BuildOptimizerComputation(
+      XlaOpKernelContext* ctx, const int32_t feature_width) override {
+    return BuildSgdOptimizerComputation(feature_width, clip_weight_min_,
+                                        clip_weight_max_);
+  }
+
+ private:
+  XlaSparseDenseMatmulCustomCombinerOnTcGradWithSgdAndCsrInputOp(
+      const XlaSparseDenseMatmulCustomCombinerOnTcGradWithSgdAndCsrInputOp&) =
+      delete;
+  void operator=(
+      const XlaSparseDenseMatmulCustomCombinerOnTcGradWithSgdAndCsrInputOp&) =
+      delete;
+};
+
+REGISTER_XLA_OP(
+    Name("XlaSparseDenseMatmulCustomCombinerOnTcGradWithSgdAndCsrInput"),
+    XlaSparseDenseMatmulCustomCombinerOnTcGradWithSgdAndCsrInputOp);
+
+// TC custom combiner VJP + SC back-propagation with the Adagrad optimizer.
+class XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradAndCsrInputOp
+    : public XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase {
+ public:
+  explicit XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradAndCsrInputOp(
+      OpKernelConstruction* ctx)
+      : XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase(ctx) {}
+
+  ~XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradAndCsrInputOp()
+      override = default;
+
+  absl::StatusOr<xla::XlaOp> GetTablesInput(XlaOpKernelContext* ctx,
+                                            xla::XlaBuilder* builder) override {
+    return xla::Tuple(
+        builder, {ctx->Input("embedding_table"), ctx->Input("accumulator")});
+  }
+
+  absl::StatusOr<xla::XlaOp> GetHyperparametersInput(
+      XlaOpKernelContext* ctx, xla::XlaBuilder* builder) override {
+    return xla::Tuple(builder, {ctx->Input("learning_rate")});
+  }
+
+  absl::StatusOr<xla::XlaComputation> BuildOptimizerComputation(
+      XlaOpKernelContext* ctx, const int32_t feature_width) override {
+    return BuildAdagradOptimizerComputation(feature_width, clip_weight_min_,
+                                            clip_weight_max_);
+  }
+
+ private:
+  XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradAndCsrInputOp(
+      const XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradAndCsrInputOp&) =  // NOLINT
+      delete;
+  void operator=(
+      const XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradAndCsrInputOp&) =  // NOLINT
+      delete;
+};
+
+REGISTER_XLA_OP(
+    Name("XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradAndCsrInput"),
+    XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradAndCsrInputOp);
+
+// TC custom combiner VJP + SC back-propagation with the AdagradMomentum
+// optimizer.
+class XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradMomentumAndCsrInputOp
+    : public XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase {
+ public:
+  explicit XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradMomentumAndCsrInputOp(  // NOLINT
+      OpKernelConstruction* ctx)
+      : XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_nesterov", &use_nesterov_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("exponent", &exponent_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("beta1", &beta1_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("beta2", &beta2_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("epsilon", &epsilon_));
+  }
+
+  ~XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradMomentumAndCsrInputOp()
+      override = default;
+
+  absl::StatusOr<xla::XlaOp> GetTablesInput(XlaOpKernelContext* ctx,
+                                            xla::XlaBuilder* builder) override {
+    return xla::Tuple(builder,
+                      {ctx->Input("embedding_table"), ctx->Input("accumulator"),
+                       ctx->Input("momenta")});
+  }
+
+  absl::StatusOr<xla::XlaOp> GetHyperparametersInput(
+      XlaOpKernelContext* ctx, xla::XlaBuilder* builder) override {
+    return xla::Tuple(builder, {ctx->Input("learning_rate")});
+  }
+
+  absl::StatusOr<xla::XlaComputation> BuildOptimizerComputation(
+      XlaOpKernelContext* ctx, const int32_t feature_width) override {
+    return BuildAdagradMomentumOptimizerComputation(
+        feature_width, use_nesterov_, exponent_, beta1_, beta2_, epsilon_,
+        clip_weight_min_, clip_weight_max_);
+  }
+
+ private:
+  bool use_nesterov_;
+  float exponent_;
+  float beta1_;
+  float beta2_;
+  float epsilon_;
+
+  XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradMomentumAndCsrInputOp(
+      const XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradMomentumAndCsrInputOp&) =  // NOLINT
+      delete;
+  void operator=(
+      const XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradMomentumAndCsrInputOp&) =  // NOLINT
+      delete;
+};
+
+REGISTER_XLA_OP(
+    Name("XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradMomentumAndCsrIn"
+         "put"),
+    XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdagradMomentumAndCsrInputOp);
+
+// TC custom combiner VJP + SC back-propagation with the Adam optimizer.
+class XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdamAndCsrInputOp
+    : public XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase {
+ public:
+  explicit XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdamAndCsrInputOp(
+      OpKernelConstruction* ctx)
+      : XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase(ctx) {
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttr("use_sum_inside_sqrt", &use_sum_inside_sqrt_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("beta1", &beta1_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("beta2", &beta2_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("epsilon", &epsilon_));
+  }
+
+  ~XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdamAndCsrInputOp() override =
+      default;
+
+  absl::StatusOr<xla::XlaOp> GetTablesInput(XlaOpKernelContext* ctx,
+                                            xla::XlaBuilder* builder) override {
+    return xla::Tuple(builder, {ctx->Input("embedding_table"),
+                                ctx->Input("momenta"), ctx->Input("velocity")});
+  }
+
+  absl::StatusOr<xla::XlaOp> GetHyperparametersInput(
+      XlaOpKernelContext* ctx, xla::XlaBuilder* builder) override {
+    return xla::Tuple(builder, {ctx->Input("learning_rate")});
+  }
+
+  absl::StatusOr<xla::XlaComputation> BuildOptimizerComputation(
+      XlaOpKernelContext* ctx, const int32_t feature_width) override {
+    return BuildAdamOptimizerComputation(feature_width, use_sum_inside_sqrt_,
+                                         beta1_, beta2_, epsilon_,
+                                         clip_weight_min_, clip_weight_max_);
+  }
+
+ private:
+  bool use_sum_inside_sqrt_;
+  float beta1_;
+  float beta2_;
+  float epsilon_;
+
+  XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdamAndCsrInputOp(
+      const XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdamAndCsrInputOp&) =
+      delete;
+  void operator=(
+      const XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdamAndCsrInputOp&) =
+      delete;
+};
+
+REGISTER_XLA_OP(
+    Name("XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdamAndCsrInput"),
+    XlaSparseDenseMatmulCustomCombinerOnTcGradWithAdamAndCsrInputOp);
+
+// TC custom combiner VJP + SC back-propagation with the FTRL optimizer.
+class XlaSparseDenseMatmulCustomCombinerOnTcGradWithFtrlAndCsrInputOp
+    : public XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase {
+ public:
+  explicit XlaSparseDenseMatmulCustomCombinerOnTcGradWithFtrlAndCsrInputOp(
+      OpKernelConstruction* ctx)
+      : XlaSparseDenseMatmulCustomCombinerOnTcGradWithCsrInputBase(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("multiply_linear_by_learning_rate",
+                                     &multiply_linear_by_learning_rate_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("beta", &beta_));
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttr("learning_rate_power", &learning_rate_power_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("l1_regularization_strength",
+                                     &l1_regularization_strength_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("l2_regularization_strength",
+                                     &l2_regularization_strength_));
+  }
+
+  ~XlaSparseDenseMatmulCustomCombinerOnTcGradWithFtrlAndCsrInputOp() override =
+      default;
+
+  absl::StatusOr<xla::XlaOp> GetTablesInput(XlaOpKernelContext* ctx,
+                                            xla::XlaBuilder* builder) override {
+    return xla::Tuple(builder,
+                      {ctx->Input("embedding_table"), ctx->Input("accumulator"),
+                       ctx->Input("linear")});
+  }
+
+  absl::StatusOr<xla::XlaOp> GetHyperparametersInput(
+      XlaOpKernelContext* ctx, xla::XlaBuilder* builder) override {
+    return xla::Tuple(builder, {ctx->Input("learning_rate")});
+  }
+
+  absl::StatusOr<xla::XlaComputation> BuildOptimizerComputation(
+      XlaOpKernelContext* ctx, const int32_t feature_width) override {
+    return BuildFtrlOptimizerComputation(
+        feature_width, multiply_linear_by_learning_rate_, beta_,
+        learning_rate_power_, l1_regularization_strength_,
+        l2_regularization_strength_, clip_weight_min_, clip_weight_max_);
+  }
+
+ private:
+  bool multiply_linear_by_learning_rate_;
+  float beta_;
+  float learning_rate_power_;
+  float l1_regularization_strength_;
+  float l2_regularization_strength_;
+
+  XlaSparseDenseMatmulCustomCombinerOnTcGradWithFtrlAndCsrInputOp(
+      const XlaSparseDenseMatmulCustomCombinerOnTcGradWithFtrlAndCsrInputOp&) =
+      delete;
+  void operator=(
+      const XlaSparseDenseMatmulCustomCombinerOnTcGradWithFtrlAndCsrInputOp&) =
+      delete;
+};
+
+REGISTER_XLA_OP(
+    Name("XlaSparseDenseMatmulCustomCombinerOnTcGradWithFtrlAndCsrInput"),
+    XlaSparseDenseMatmulCustomCombinerOnTcGradWithFtrlAndCsrInputOp);
 
 // This TensorFlow op calculates the gradients and performs SGD update on the
 // embedding table on SparseCore. It takes the activation gradients, input
@@ -703,36 +1627,8 @@ class XlaSparseDenseMatmulGradWithSgdAndCsrInputOp
 
   xla::XlaComputation build_optimizer_computation(
       const int32_t feature_width) override {
-    xla::XlaComputation sgd_optimizer = [&] {
-      auto sgd_optimizer_builder =
-          std::make_unique<xla::XlaBuilder>("sgd_optimizer_builder");
-
-      xla::Shape per_row_shape =
-          xla::ShapeUtil::MakeShapeWithType<float>({1, feature_width});
-
-      xla::XlaOp gradient = xla::Parameter(sgd_optimizer_builder.get(), 0,
-                                           per_row_shape, "gradient");
-
-      xla::XlaOp embedding_table = xla::Parameter(
-          sgd_optimizer_builder.get(), 1, per_row_shape, "embedding_table");
-
-      xla::XlaOp learning_rate = xla::Parameter(sgd_optimizer_builder.get(), 2,
-                                                per_row_shape, "learning_rate");
-
-      xla::XlaOp updated_embedding_table =
-          embedding_table - learning_rate * gradient;
-
-      // Apply the weight clipping.
-      xla::XlaOp clipped_embedding_table = apply_weight_clipping_to_table(
-          sgd_optimizer_builder.get(), updated_embedding_table);
-
-      xla::XlaOp updated_tables =
-          xla::Tuple(sgd_optimizer_builder.get(), {clipped_embedding_table});
-
-      return sgd_optimizer_builder->Build(updated_tables).value();
-    }();
-
-    return sgd_optimizer;
+    return BuildSgdOptimizerComputation(feature_width, clip_weight_min_,
+                                        clip_weight_max_);
   }
 
   xla::XlaOp get_tables_input(XlaOpKernelContext* ctx) override {
@@ -772,42 +1668,8 @@ class XlaSparseDenseMatmulGradWithAdagradAndCsrInputOp
 
   xla::XlaComputation build_optimizer_computation(
       const int32_t feature_width) override {
-    xla::XlaComputation adagrad_optimizer = [&] {
-      auto adagrad_optimizer_builder =
-          std::make_unique<xla::XlaBuilder>("adagrad_optimizer_builder");
-
-      xla::Shape per_row_shape =
-          xla::ShapeUtil::MakeShapeWithType<float>({1, feature_width});
-
-      xla::XlaOp gradient = xla::Parameter(adagrad_optimizer_builder.get(), 0,
-                                           per_row_shape, "gradient");
-
-      xla::XlaOp embedding_table = xla::Parameter(
-          adagrad_optimizer_builder.get(), 1, per_row_shape, "embedding_table");
-
-      xla::XlaOp accumulator = xla::Parameter(adagrad_optimizer_builder.get(),
-                                              2, per_row_shape, "accumulator");
-
-      xla::XlaOp learning_rate = xla::Parameter(
-          adagrad_optimizer_builder.get(), 3, per_row_shape, "learning_rate");
-
-      xla::XlaOp new_accumulator = accumulator + gradient * gradient;
-
-      xla::XlaOp updated_embedding_table =
-          embedding_table -
-          learning_rate * gradient / xla::Sqrt(new_accumulator);
-
-      // Apply the weight clipping.
-      xla::XlaOp clipped_embedding_table = apply_weight_clipping_to_table(
-          adagrad_optimizer_builder.get(), updated_embedding_table);
-
-      xla::XlaOp updated_tables =
-          xla::Tuple(adagrad_optimizer_builder.get(),
-                     {clipped_embedding_table, new_accumulator});
-      return adagrad_optimizer_builder->Build(updated_tables).value();
-    }();
-
-    return adagrad_optimizer;
+    return BuildAdagradOptimizerComputation(feature_width, clip_weight_min_,
+                                            clip_weight_max_);
   }
 
   xla::XlaOp get_tables_input(XlaOpKernelContext* ctx) override {
@@ -857,82 +1719,9 @@ class XlaSparseDenseMatmulGradWithAdagradMomentumAndCsrInputOp
 
   xla::XlaComputation build_optimizer_computation(
       const int32_t feature_width) override {
-    xla::XlaComputation adagrad_momentum_optimizer = [&] {
-      auto adagrad_momentum_optimizer_builder =
-          std::make_unique<xla::XlaBuilder>(
-              "adagrad_momentum_optimizer_builder");
-
-      xla::Shape per_row_shape =
-          xla::ShapeUtil::MakeShapeWithType<float>({1, feature_width});
-
-      xla::XlaOp gradient =
-          xla::Parameter(adagrad_momentum_optimizer_builder.get(), 0,
-                         per_row_shape, "gradient");
-      xla::XlaOp embedding_table =
-          xla::Parameter(adagrad_momentum_optimizer_builder.get(), 1,
-                         per_row_shape, "embedding_table");
-      xla::XlaOp accumulator =
-          xla::Parameter(adagrad_momentum_optimizer_builder.get(), 2,
-                         per_row_shape, "accumulator");
-      xla::XlaOp momenta =
-          xla::Parameter(adagrad_momentum_optimizer_builder.get(), 3,
-                         per_row_shape, "momenta");
-      xla::XlaOp learning_rate =
-          xla::Parameter(adagrad_momentum_optimizer_builder.get(), 4,
-                         per_row_shape, "learning_rate");
-
-      xla::XlaOp beta1 =
-          xla::ConstantR0(adagrad_momentum_optimizer_builder.get(), beta1_);
-      xla::XlaOp beta2 =
-          xla::ConstantR0(adagrad_momentum_optimizer_builder.get(), beta2_);
-      xla::XlaOp epsilon =
-          xla::ConstantR0(adagrad_momentum_optimizer_builder.get(), epsilon_);
-
-      // If beta_2 == 1:
-      //    accumulator(t) = accumulator(t-1) + gradient(t) ^ 2
-      // Else:
-      //    accumulator(t) = beta_2 * accumulator(t-1) +
-      //                    (1-beta_2) * gradient(t) ^ 2
-      xla::XlaOp exponent = xla::ConstantR0(
-          adagrad_momentum_optimizer_builder.get(), 1.0f / exponent_);
-      xla::XlaOp one =
-          xla::ConstantR0(adagrad_momentum_optimizer_builder.get(), 1.0f);
-
-      xla::XlaOp new_accumulator = xla::Select(
-          xla::Eq(beta2, one), accumulator + gradient * gradient,
-          beta2 * accumulator + (one - beta2) * gradient * gradient);
-
-      // scaled_gradient = (accumulator + epsilon)^(-1/k) * gradient
-      xla::XlaOp scaled_gradients =
-          Pow(new_accumulator + epsilon, xla::Neg(exponent)) * gradient;
-
-      // momenta(t) = beta1 * momenta(t-1) + scaled_gradient(t)
-      xla::XlaOp new_momenta = beta1 * momenta + scaled_gradients;
-
-      // Table update:
-      // non-nesterov: update = momenta_t
-      // nesterov:     update = beta_1 * momenta_t + scaled_gradient
-      // weights(t) = weights(t-1) - lr * update
-      xla::XlaOp updated_embedding_table;
-      if (use_nesterov_) {
-        updated_embedding_table =
-            embedding_table -
-            learning_rate * (beta1 * new_momenta + scaled_gradients);
-      } else {
-        updated_embedding_table = embedding_table - learning_rate * new_momenta;
-      }
-
-      // Apply the weight clipping.
-      xla::XlaOp clipped_embedding_table = apply_weight_clipping_to_table(
-          adagrad_momentum_optimizer_builder.get(), updated_embedding_table);
-
-      xla::XlaOp updated_tables =
-          xla::Tuple(adagrad_momentum_optimizer_builder.get(),
-                     {clipped_embedding_table, new_accumulator, new_momenta});
-      return adagrad_momentum_optimizer_builder->Build(updated_tables).value();
-    }();
-
-    return adagrad_momentum_optimizer;
+    return BuildAdagradMomentumOptimizerComputation(
+        feature_width, use_nesterov_, exponent_, beta1_, beta2_, epsilon_,
+        clip_weight_min_, clip_weight_max_);
   }
 
   xla::XlaOp get_tables_input(XlaOpKernelContext* ctx) override {
@@ -986,64 +1775,9 @@ class XlaSparseDenseMatmulGradWithAdamAndCsrInputOp
 
   xla::XlaComputation build_optimizer_computation(
       const int32_t feature_width) override {
-    xla::XlaComputation adam_optimizer = [&] {
-      auto adam_optimizer_builder =
-          std::make_unique<xla::XlaBuilder>("adam_optimizer_builder");
-
-      xla::Shape per_row_shape =
-          xla::ShapeUtil::MakeShapeWithType<float>({1, feature_width});
-
-      xla::XlaOp gradient = xla::Parameter(adam_optimizer_builder.get(), 0,
-                                           per_row_shape, "gradient");
-      xla::XlaOp embedding_table = xla::Parameter(
-          adam_optimizer_builder.get(), 1, per_row_shape, "embedding_table");
-      xla::XlaOp momenta = xla::Parameter(adam_optimizer_builder.get(), 2,
-                                          per_row_shape, "momenta");
-      xla::XlaOp velocity = xla::Parameter(adam_optimizer_builder.get(), 3,
-                                           per_row_shape, "velocity");
-      xla::XlaOp learning_rate = xla::Parameter(adam_optimizer_builder.get(), 4,
-                                                per_row_shape, "learning_rate");
-
-      xla::XlaOp beta1 = xla::ConstantR0(adam_optimizer_builder.get(), beta1_);
-      xla::XlaOp beta2 = xla::ConstantR0(adam_optimizer_builder.get(), beta2_);
-      xla::XlaOp epsilon =
-          xla::ConstantR0(adam_optimizer_builder.get(), epsilon_);
-
-      // Depending on sum_inside_sqrt, the denominator is either:
-      //     sum_inside_sqrt==true: sqrt(v + eps^2)
-      //     sum_inside_sqrt==false: sqrt(v) + eps
-      // To simplify the for loop below, write the sqrt denominator as:
-      //     sqrt(v + e1) + e2
-      // and set e1 and e2 appropriately:
-      xla::XlaOp zero = xla::ConstantR0(adam_optimizer_builder.get(), 0.0f);
-      xla::XlaOp one = xla::ConstantR0(adam_optimizer_builder.get(), 1.0f);
-      xla::XlaOp e1 = use_sum_inside_sqrt_ ? epsilon * epsilon : zero;
-      xla::XlaOp e2 = use_sum_inside_sqrt_ ? zero : epsilon;
-
-      // momentum(t) = beta_1 * momentum(t-1)
-      //                      + (1-beta_1)*gradient(t)
-      xla::XlaOp new_momenta = beta1 * momenta + (one - beta1) * gradient;
-
-      // velocity(t) = beta_2 * velocity(t-1)
-      //                      + (1-beta_2)*gradient(t)*gradient(t)
-      xla::XlaOp new_velocity =
-          beta2 * velocity + (one - beta2) * gradient * gradient;
-
-      xla::XlaOp updated_embedding_table =
-          embedding_table -
-          learning_rate * new_momenta / (xla::Sqrt(new_velocity + e1) + e2);
-
-      // Apply the weight clipping.
-      xla::XlaOp clipped_embedding_table = apply_weight_clipping_to_table(
-          adam_optimizer_builder.get(), updated_embedding_table);
-
-      xla::XlaOp updated_tables =
-          xla::Tuple(adam_optimizer_builder.get(),
-                     {clipped_embedding_table, new_momenta, new_velocity});
-      return adam_optimizer_builder->Build(updated_tables).value();
-    }();
-
-    return adam_optimizer;
+    return BuildAdamOptimizerComputation(feature_width, use_sum_inside_sqrt_,
+                                         beta1_, beta2_, epsilon_,
+                                         clip_weight_min_, clip_weight_max_);
   }
 
   xla::XlaOp get_tables_input(XlaOpKernelContext* ctx) override {
@@ -1101,104 +1835,10 @@ class XlaSparseDenseMatmulGradWithFtrlAndCsrInputOp
 
   xla::XlaComputation build_optimizer_computation(
       const int32_t feature_width) override {
-    xla::XlaComputation ftrl_optimizer = [&] {
-      auto ftrl_optimizer_builder =
-          std::make_unique<xla::XlaBuilder>("ftrl_optimizer_builder");
-
-      xla::Shape per_row_shape =
-          xla::ShapeUtil::MakeShapeWithType<float>({1, feature_width});
-
-      xla::XlaOp gradient = xla::Parameter(ftrl_optimizer_builder.get(), 0,
-                                           per_row_shape, "gradient");
-
-      xla::XlaOp embedding_table = xla::Parameter(
-          ftrl_optimizer_builder.get(), 1, per_row_shape, "embedding_table");
-      xla::XlaOp accumulator = xla::Parameter(ftrl_optimizer_builder.get(), 2,
-                                              per_row_shape, "accumulator");
-      xla::XlaOp linear = xla::Parameter(ftrl_optimizer_builder.get(), 3,
-                                         per_row_shape, "linear");
-      xla::XlaOp learning_rate = xla::Parameter(ftrl_optimizer_builder.get(), 4,
-                                                per_row_shape, "learning_rate");
-
-      // accumulator(t) = accumulator(t-1) + gradient(t) ^ 2
-      xla::XlaOp new_accumulator = accumulator + gradient * gradient;
-
-      xla::XlaOp learning_rate_power =
-          xla::ConstantR0(ftrl_optimizer_builder.get(), learning_rate_power_);
-
-      xla::XlaOp power_old = Pow(accumulator, xla::Neg(learning_rate_power));
-      xla::XlaOp power_new =
-          Pow(new_accumulator, xla::Neg(learning_rate_power));
-      xla::XlaOp delta_p = power_new - power_old;
-
-      xla::XlaOp zero = xla::ConstantR0(ftrl_optimizer_builder.get(), 0.0f);
-
-      xla::XlaOp two = xla::ConstantR0(ftrl_optimizer_builder.get(), 2.0f);
-
-      xla::XlaOp l1_regularization_strength = xla::ConstantR0(
-          ftrl_optimizer_builder.get(), l1_regularization_strength_);
-
-      xla::XlaOp l2_regularization_strength = xla::ConstantR0(
-          ftrl_optimizer_builder.get(), l2_regularization_strength_);
-
-      xla::XlaOp beta = xla::ConstantR0(ftrl_optimizer_builder.get(), beta_);
-
-      // Note:
-      //    min(|linear(t)|, lr*l1)*sgn(linear(t))
-      // can be written as
-      //    clamp( -lr*l1, linear(t), lr*l1)
-      // assuming lr>0 and l1>0.
-      xla::XlaOp new_linear;
-      xla::XlaOp numer;
-      xla::XlaOp denom;
-      if (multiply_linear_by_learning_rate_) {
-        new_linear =
-            linear + learning_rate * gradient - delta_p * embedding_table;
-        // if multiply_linear:
-        //   linear(t) = linear(t-1) + lr*g - delta_p * table(t-1)
-        //   Update numerator:
-        //      N = min(|linear(t)|, lr*l1)*sgn(linear(t)) - linear(t)
-        //   Update denomninator:
-        //      D = power(t) + 2*lr*l2 + beta
-        //   table(t) = N / D
-        numer = xla::Select(
-            xla::Eq(l1_regularization_strength, zero), xla::Neg(new_linear),
-            xla::Clamp(xla::Neg(learning_rate * l1_regularization_strength),
-                       new_linear, learning_rate * l1_regularization_strength) -
-                new_linear);
-        denom =
-            power_new + two * learning_rate * l2_regularization_strength + beta;
-      } else {
-        new_linear =
-            linear + gradient - delta_p * embedding_table / learning_rate;
-        // if NOT multiply_linear:
-        //   linear(t) = linear(t-1) + g - (1/lr) * delta_p * table(t-1)
-        //   Update numerator:
-        //     N = min(|linear(t)|, l1)*sgn(linear(t)) - linear(t)
-        //   Update denomninator:
-        //     D = (1/lr) * (power(t) + beta) + 2*l2
-        //   table(t) = N / D
-        numer = xla::Select(xla::Eq(l1_regularization_strength, zero),
-                            xla::Neg(new_linear),
-                            xla::Clamp(xla::Neg(l1_regularization_strength),
-                                       new_linear, l1_regularization_strength) -
-                                new_linear);
-        denom = (power_new + beta) / learning_rate +
-                two * l2_regularization_strength;
-      }
-      xla::XlaOp updated_embedding_table = numer / denom;
-
-      // Apply the weight clipping.
-      xla::XlaOp clipped_embedding_table = apply_weight_clipping_to_table(
-          ftrl_optimizer_builder.get(), updated_embedding_table);
-
-      xla::XlaOp updated_tables =
-          xla::Tuple(ftrl_optimizer_builder.get(),
-                     {clipped_embedding_table, new_accumulator, new_linear});
-      return ftrl_optimizer_builder->Build(updated_tables).value();
-    }();
-
-    return ftrl_optimizer;
+    return BuildFtrlOptimizerComputation(
+        feature_width, multiply_linear_by_learning_rate_, beta_,
+        learning_rate_power_, l1_regularization_strength_,
+        l2_regularization_strength_, clip_weight_min_, clip_weight_max_);
   }
 
   xla::XlaOp get_tables_input(XlaOpKernelContext* ctx) override {

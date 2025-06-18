@@ -65,7 +65,7 @@ absl::StatusOr<Shape> GetBatchRowColumnShape(
   TF_RET_CHECK(shape.has_layout());
 
   std::vector<int64_t> minor_to_major;
-  for (size_t i = 0; i < shape.dimensions_size();) {
+  for (size_t i = 0; i < shape.dimensions().size();) {
     // The GeMM output always has its layout set such that the batch, row, and
     // col dim groups are each laid out physically sequentially. GeMM operands
     // must, therefore, be laid out similarly.
@@ -112,7 +112,7 @@ absl::StatusOr<Shape> GetBatchRowColumnShape(
 
 // Returns the matrix layout for a logical shape (batch, rows, columns).
 /*static*/ absl::StatusOr<MatrixLayout> MatrixLayout::For(const Shape& shape) {
-  TF_RET_CHECK(shape.dimensions_size() == 3);
+  TF_RET_CHECK(shape.dimensions().size() == 3);
   TF_RET_CHECK(shape.has_layout());
 
   int64_t batch_size = shape.dimensions(0);
@@ -175,10 +175,10 @@ absl::StatusOr<Shape> GetBatchRowColumnShape(
     size_t rhs_num_batch_dims, size_t rhs_num_col_dims) {
   size_t num_batch_dims = std::max(lhs_num_batch_dims, rhs_num_batch_dims);
 
-  TF_RET_CHECK(shape.dimensions_size() ==
+  TF_RET_CHECK(shape.dimensions().size() ==
                num_batch_dims + lhs_num_row_dims + rhs_num_col_dims);
 
-  std::vector<int64_t> dims(shape.dimensions_size());
+  std::vector<int64_t> dims(shape.dimensions().size());
   absl::c_iota(dims, 0);
 
   auto batch_dims = absl::Span<const int64_t>(dims).first(num_batch_dims);
@@ -300,10 +300,10 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
   int64_t num_batch_dims =
       std::max(lhs_batch_dims.size(), rhs_batch_dims.size());
 
-  TF_RET_CHECK(output_shape.dimensions_size() ==
+  TF_RET_CHECK(output_shape.dimensions().size() ==
                num_batch_dims + lhs_row_dims.size() + rhs_col_dims.size());
 
-  std::vector<int64_t> output_dims(output_shape.dimensions_size());
+  std::vector<int64_t> output_dims(output_shape.dimensions().size());
   absl::c_iota(output_dims, 0);
 
   auto output_batch_dims =
@@ -864,6 +864,27 @@ bool IsDotSupportedByClassicalEmitters(const HloInstruction& dot) {
       return true;
     default:
       return false;
+  }
+}
+
+PrimitiveType GetGemmAccumulatorType(HloDotInstruction* dot) {
+  // Return the accumulator type if it is explicitly specified as dot algorithm.
+  auto accumulator_type = algorithm_util::GetDotAccumulatorType(
+      dot->precision_config().algorithm());
+  if (accumulator_type.ok()) {
+    return accumulator_type.value();
+  }
+  // Otherwise, return the default accumulator type for the output type.
+  PrimitiveType output_type = dot->shape().element_type();
+  switch (output_type) {
+    case PrimitiveType::F16:
+    case PrimitiveType::BF16:
+      return PrimitiveType::F32;
+    case PrimitiveType::F32:
+    case PrimitiveType::F64:
+    case PrimitiveType::S32:
+    default:
+      return output_type;
   }
 }
 

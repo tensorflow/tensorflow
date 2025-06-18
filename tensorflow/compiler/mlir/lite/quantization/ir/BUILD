@@ -26,30 +26,18 @@ td_library(
 gentbl_cc_library(
     name = "QuantOpsIncGen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-op-decls"],
-            "QuantOps.h.inc",
-        ),
-        (
-            ["-gen-op-defs"],
-            "QuantOps.cc.inc",
-        ),
-        (
-            [
-                "-gen-dialect-decls",
-                "-dialect=quantfork",
-            ],
-            "QuantOpsDialect.h.inc",
-        ),
-        (
-            [
-                "-gen-dialect-defs",
-                "-dialect=quantfork",
-            ],
-            "QuantOpsDialect.cc.inc",
-        ),
-    ],
+    tbl_outs = {
+        "QuantOps.h.inc": ["-gen-op-decls"],
+        "QuantOps.cc.inc": ["-gen-op-defs"],
+        "QuantOpsDialect.h.inc": [
+            "-gen-dialect-decls",
+            "-dialect=quantfork",
+        ],
+        "QuantOpsDialect.cc.inc": [
+            "-gen-dialect-defs",
+            "-dialect=quantfork",
+        ],
+    },
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "QuantOps.td",
     deps = [":QuantizationOpsTdFiles"],
@@ -58,15 +46,10 @@ gentbl_cc_library(
 gentbl_cc_library(
     name = "QuantPassIncGen",
     compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            [
-                "-gen-pass-decls",
-                "-name=quantfork",
-            ],
-            "Passes.h.inc",
-        ),
-    ],
+    tbl_outs = {"Passes.h.inc": [
+        "-gen-pass-decls",
+        "-name=quantfork",
+    ]},
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "Passes.td",
     deps = ["@llvm-project//mlir:PassBaseTdFiles"],

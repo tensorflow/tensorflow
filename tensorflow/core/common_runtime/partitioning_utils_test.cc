@@ -129,7 +129,7 @@ TEST_F(PartitioningUtilsTest, GraphWithoutAssignedDevicesFails) {
   std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
   absl::Status status =
       PartitionFunctionGraph(device_set_, std::move(graph), &subgraphs);
-  ASSERT_TRUE(errors::IsInvalidArgument(status)) << status.ToString();
+  ASSERT_TRUE(absl::IsInvalidArgument(status)) << status.ToString();
 }
 
 TEST_F(PartitioningUtilsTest, OneDevice) {

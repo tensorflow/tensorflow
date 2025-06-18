@@ -252,7 +252,7 @@ func.func @atomic_rmw_f32(%in: tensor<8xf32>, %i: index) -> (tensor<8xf32>) {
 // CHECK: %[[ADDR:.*]] = llvm.getelementptr
 // CHECK-NEXT: %[[INIT:.*]] = llvm.load %[[ADDR]]
 // CHECK-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
-// CHECK: %[[RES:.*]] = llvm.bitcast %{{.*}} : f32 to i32
+// CHECK: %[[RES:.*]] = arith.bitcast %{{.*}} : f32 to i32
 // CHECK-NEXT: llvm.cmpxchg %[[ADDR]], %[[VAR]], %[[RES]]
 
 // -----
@@ -277,11 +277,41 @@ func.func @atomic_rmw_f16(%in: tensor<8xf16>, %i: index)
 // CHECK-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
 // CHECK-NEXT: %[[VAR_SHIFT:.*]] = llvm.lshr %[[VAR]], %{{.*}}
 // CHECK-NEXT: %[[VAR_TRUNC:.*]] = llvm.trunc %[[VAR_SHIFT]]
-// CHECK-NEXT: llvm.bitcast %[[VAR_TRUNC]] : i16 to f16
-// CHECK: %[[RES:.*]] = llvm.bitcast %{{.*}} : f16 to i16
+// CHECK-NEXT: arith.bitcast %[[VAR_TRUNC]] : i16 to f16
+// CHECK: %[[RES:.*]] = arith.bitcast %{{.*}} : f16 to i16
 // CHECK-NEXT: %[[RES_WIDE:.*]] = llvm.zext %[[RES]]
 // CHECK-NEXT: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %{{.*}}
 // CHECK-NEXT: %[[RES_SHIFT:.*]] = llvm.shl %[[RES_WIDE]], %{{.*}}
+// CHECK-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
+// CHECK-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]
+
+// -----
+
+func.func @atomic_rmw_f8E4M3(%in: tensor<8xf8E4M3>, %i: index)
+    -> (tensor<8xf8E4M3>) {
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xf8E4M3> {
+    ^bb0(%current : f8E4M3):
+      %c1 = arith.constant 1.0 : f8E4M3
+      %add = arith.addf %current, %c1 : f8E4M3
+      xla.yield %add : f8E4M3
+  }
+  return %ret : tensor<8xf8E4M3>
+}
+// CHECK-LABEL: @atomic_rmw_f8E4M3
+// CHECK: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
+// CHECK-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
+// CHECK-NEXT: %[[INDEX:.*]] = llvm.mul %[[OFFSET]], %{{.*}}
+// CHECK-NEXT: %[[BASE:.*]] = llvm.getelementptr inbounds %[[ADDR]][%[[INDEX]]]
+// CHECK: %[[INIT:.*]] = llvm.load %[[BASE]]
+// CHECK-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
+// CHECK-NEXT: %[[VAR_SHIFT:.*]] = llvm.lshr %[[VAR]], %{{.*}}
+// CHECK-NEXT: %[[VAR_TRUNC:.*]] = llvm.trunc %[[VAR_SHIFT]]
+// CHECK-NEXT: arith.bitcast %[[VAR_TRUNC]] : i8 to f8E4M3
+// CHECK: %[[RES:.*]] = arith.bitcast %{{.*}} : f8E4M3 to i8
+// CHECK-NEXT: %[[RES_WIDE:.*]] = llvm.zext %[[RES]]
+// CHECK-DAG: %[[RES_SHIFT:.*]] = llvm.shl %[[RES_WIDE]], %{{.*}}
+// CHECK-DAG: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %{{.*}}
 // CHECK-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
 // CHECK-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]
 
@@ -360,10 +390,32 @@ func.func @atomic_rmw_overwrite(%in: tensor<8xf16>, %i: index)
 // CHECK-NEXT: %[[BASE:.*]] = llvm.getelementptr inbounds %[[ADDR]][%[[INDEX]]]
 // CHECK: %[[INIT:.*]] = llvm.load %[[BASE]]
 // CHECK-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
-// CHECK: %[[RES:.*]] = llvm.bitcast %{{.*}} : f16 to i16
-// CHECK-NEXT: %[[RES_WIDE:.*]] = llvm.zext %[[RES]]
-// CHECK-NEXT: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %{{.*}}
-// CHECK-NEXT: %[[RES_SHIFT:.*]] = llvm.shl %[[RES_WIDE]], %{{.*}}
+// CHECK-DAG: %[[RES_SHIFT:.*]] = llvm.shl %{{.*}}, %{{.*}}
+// CHECK-DAG: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %{{.*}}
+// CHECK-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
+// CHECK-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]
+
+// -----
+
+func.func @atomic_rmw_overwrite_f8E4M3(%in: tensor<8xf8E4M3>, %i: index)
+    -> (tensor<8xf8E4M3>) {
+  %c1 = arith.constant 1.0 : f8E4M3
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xf8E4M3> {
+    ^bb0(%current : f8E4M3):
+      xla.yield %c1 : f8E4M3
+  }
+  return %ret : tensor<8xf8E4M3>
+}
+// CHECK-LABEL: @atomic_rmw_overwrite_f8E4M3
+// CHECK: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-NEXT: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
+// CHECK-NEXT: %[[OFFSET:.*]] = llvm.and %[[ADDR_INT]], %{{.*}}
+// CHECK-NEXT: %[[INDEX:.*]] = llvm.mul %[[OFFSET]], %{{.*}}
+// CHECK-NEXT: %[[BASE:.*]] = llvm.getelementptr inbounds %[[ADDR]][%[[INDEX]]]
+// CHECK: %[[INIT:.*]] = llvm.load %[[BASE]]
+// CHECK-NEXT: scf.while (%[[VAR:.*]] = %[[INIT]])
+// CHECK-DAG: %[[RES_SHIFT:.*]] = llvm.shl %{{.*}}, %{{.*}}
+// CHECK-DAG: %[[NEW_MASKED:.*]] = llvm.and %[[VAR]], %{{.*}}
 // CHECK-NEXT: %[[NEW:.*]] = llvm.or %[[NEW_MASKED]], %[[RES_SHIFT]]
 // CHECK-NEXT: llvm.cmpxchg %[[BASE]], %[[VAR]], %[[NEW]]
 
@@ -375,6 +427,15 @@ func.func @shared_complex() -> tensor<10xcomplex<f32>> {
 }
 // CHECK: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32} : !llvm.array<10 x struct<(f32, f32)>>
 // CHECK-LABEL: @shared_complex
+
+// -----
+
+func.func @shared_i4() -> tensor<10xi4> {
+  %shared = xla_gpu.allocate_shared : tensor<10xi4>
+  return %shared : tensor<10xi4>
+}
+// CHECK: llvm.mlir.global private @{{.*}}() {addr_space = 3 : i32} : !llvm.array<5 x i8>
+// CHECK-LABEL: @shared_i4
 
 // -----
 
@@ -398,18 +459,18 @@ func.func @i4_load_store(%arg: tensor<10xi4>, %i: index, %j: index)
 // CHECK: scf.while (%[[INIT:.*]] = %[[CURRENT_I32]])
 // CHECK: %[[SHIFTED:.*]] = llvm.lshr %[[INIT]]
 // CHECK: %[[CURRENT:.*]] = llvm.trunc %[[SHIFTED]]
-// CHECK: %[[MASKED_CURRENT_LO:.*]] = arith.andi %[[CURRENT]], %[[C_NEG16]] : i8
-// CHECK: %[[MASKED_VALUE_I8:.*]] = arith.andi %[[VALUE_I8]], %[[C15]] : i8
+// CHECK-DAG: %[[MASKED_VALUE_I8:.*]] = arith.andi %[[VALUE_I8]], %[[C15]] : i8
+// CHECK-DAG: %[[MASKED_CURRENT_LO:.*]] = arith.andi %[[CURRENT]], %[[C_NEG16]] : i8
 // CHECK: %[[NEW_LO:.*]] = arith.ori %[[MASKED_CURRENT_LO]], %[[MASKED_VALUE_I8]] : i8
-// CHECK: %[[MASKED_CURRENT_HI:.*]] = arith.andi %[[CURRENT]], %[[C15]] : i8
-// CHECK: %[[VALUE_HI:.*]] = arith.shli %[[VALUE_I8]], %[[C4]] : i8
+// CHECK-DAG: %[[VALUE_HI:.*]] = arith.shli %[[VALUE_I8]], %[[C4]] : i8
+// CHECK-DAG: %[[MASKED_CURRENT_HI:.*]] = arith.andi %[[CURRENT]], %[[C15]] : i8
 // CHECK: %[[NEW_HI:.*]] = arith.ori %[[MASKED_CURRENT_HI]], %[[VALUE_HI]] : i8
 // CHECK: %[[NEW_VALUE:.*]] = arith.select %{{.*}}, %[[NEW_LO]], %[[NEW_HI]] : i8
 // CHECK: %[[NEW_VALUE_I32:.*]] = llvm.zext %[[NEW_VALUE]]
-// CHECK: %[[MASKED_INIT:.*]] = llvm.and %[[INIT]]
-// CHECK: %[[NEW_VALUE_SHIFTED:.*]] = llvm.shl %[[NEW_VALUE_I32]]
+// CHECK-DAG: %[[NEW_VALUE_SHIFTED:.*]] = llvm.shl %[[NEW_VALUE_I32]]
+// CHECK-DAG: %[[MASKED_INIT:.*]] = llvm.and %[[INIT]]
 // CHECK: %[[NEW_INIT:.*]] = llvm.or %[[MASKED_INIT]], %[[NEW_VALUE_SHIFTED]]
-// CHECK: llvm.cmpxchg %{{.*}}, %[[INIT]], %[[NEW_INIT]] seq_cst seq_cst
+// CHECK: llvm.cmpxchg %{{.*}}, %[[INIT]], %[[NEW_INIT]] monotonic monotonic
 // CHECK: scf.condition
 
 // -----
@@ -443,7 +504,7 @@ func.func @direct_atomic_rmw_addi(%in: tensor<8xi32>,
 // CHECK-PASCAL-LABEL: @direct_atomic_rmw_addi
 // CHECK-PASCAL: %[[C2:.*]] = arith.constant 2
 // CHECK-PASCAL: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-PASCAL: llvm.atomicrmw add %[[ADDR]], %[[C2]] seq_cst
+// CHECK-PASCAL: llvm.atomicrmw add %[[ADDR]], %[[C2]] monotonic
 
 // -----
 
@@ -460,7 +521,7 @@ func.func @direct_atomic_rmw_maxsi(%in: tensor<8xi32>,
 // CHECK-PASCAL-LABEL: @direct_atomic_rmw_maxsi
 // CHECK-PASCAL: %[[C2:.*]] = arith.constant 2
 // CHECK-PASCAL: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-PASCAL: llvm.atomicrmw max %[[ADDR]], %[[C2]] seq_cst
+// CHECK-PASCAL: llvm.atomicrmw max %[[ADDR]], %[[C2]] monotonic
 
 // -----
 
@@ -477,7 +538,7 @@ func.func @direct_atomic_rmw_maxui(%in: tensor<8xi32>,
 // CHECK-PASCAL-LABEL: @direct_atomic_rmw_maxui
 // CHECK-PASCAL: %[[C2:.*]] = arith.constant 2
 // CHECK-PASCAL: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-PASCAL: llvm.atomicrmw umax %[[ADDR]], %[[C2]] seq_cst
+// CHECK-PASCAL: llvm.atomicrmw umax %[[ADDR]], %[[C2]] monotonic
 
 // -----
 
@@ -494,7 +555,7 @@ func.func @direct_atomic_rmw_minsi(%in: tensor<8xi32>,
 // CHECK-PASCAL-LABEL: @direct_atomic_rmw_minsi
 // CHECK-PASCAL: %[[C2:.*]] = arith.constant 2
 // CHECK-PASCAL: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-PASCAL: llvm.atomicrmw min %[[ADDR]], %[[C2]] seq_cst
+// CHECK-PASCAL: llvm.atomicrmw min %[[ADDR]], %[[C2]] monotonic
 
 // -----
 
@@ -511,7 +572,7 @@ func.func @direct_atomic_rmw_minui(%in: tensor<8xi32>,
 // CHECK-PASCAL-LABEL: @direct_atomic_rmw_minui
 // CHECK-PASCAL: %[[C2:.*]] = arith.constant 2
 // CHECK-PASCAL: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-PASCAL: llvm.atomicrmw umin %[[ADDR]], %[[C2]] seq_cst
+// CHECK-PASCAL: llvm.atomicrmw umin %[[ADDR]], %[[C2]] monotonic
 
 // -----
 
@@ -528,29 +589,27 @@ func.func @direct_atomic_rmw_fadd_f32(%in: tensor<8xf32>,
 // CHECK-PASCAL-LABEL: @direct_atomic_rmw_fadd_f32
 // CHECK-PASCAL: %[[C2:.*]] = arith.constant 2
 // CHECK-PASCAL: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-PASCAL: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] seq_cst
+// CHECK-PASCAL: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-VOLTA-LABEL: @direct_atomic_rmw_fadd_f32
 // CHECK-VOLTA: %[[C2:.*]] = arith.constant 2
 // CHECK-VOLTA: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-VOLTA: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] seq_cst
+// CHECK-VOLTA: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-AMPERE-LABEL: @direct_atomic_rmw_fadd_f32
 // CHECK-AMPERE: %[[C2:.*]] = arith.constant 2
 // CHECK-AMPERE: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-AMPERE: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] seq_cst
+// CHECK-AMPERE: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-GFX908-MI100-LABEL: @direct_atomic_rmw_fadd_f32
 // CHECK-GFX908-MI100: %[[C2:.*]] = arith.constant 2
 // CHECK-GFX908-MI100: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-GFX908-MI100: %[[ADDR_CAST:.*]] = llvm.addrspacecast %[[ADDR]] : !llvm.ptr to !llvm.ptr<1>
-// CHECK-GFX908-MI100: llvm.atomicrmw fadd %[[ADDR_CAST]], %[[C2]] syncscope("agent") seq_cst
+// CHECK-GFX908-MI100: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] syncscope("agent-one-as") monotonic
 
 // CHECK-GFX90A-MI200-LABEL: @direct_atomic_rmw_fadd_f32
 // CHECK-GFX90A-MI200: %[[C2:.*]] = arith.constant 2
 // CHECK-GFX90A-MI200: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-GFX90A-MI200: %[[ADDR_CAST:.*]] = llvm.addrspacecast %[[ADDR]] : !llvm.ptr to !llvm.ptr<1>
-// CHECK-GFX90A-MI200: llvm.atomicrmw fadd %[[ADDR_CAST]], %[[C2]] syncscope("agent") seq_cst
+// CHECK-GFX90A-MI200: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] syncscope("agent-one-as") monotonic
 
 // -----
 
@@ -570,21 +629,78 @@ func.func @direct_atomic_rmw_fadd_f16(%in: tensor<8xf16>,
 // CHECK-VOLTA-LABEL: @direct_atomic_rmw_fadd_f16
 // CHECK-VOLTA: %[[C2:.*]] = arith.constant 2
 // CHECK-VOLTA: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-VOLTA: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] seq_cst
+// CHECK-VOLTA: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-AMPERE-LABEL: @direct_atomic_rmw_fadd_f16
 // CHECK-AMPERE: %[[C2:.*]] = arith.constant 2
 // CHECK-AMPERE: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-AMPERE: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] seq_cst
+// CHECK-AMPERE: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-GFX908-MI100-LABEL: @direct_atomic_rmw_fadd_f16
-// CHECK-GFX908-MI100-NOT: llvm.atomicrmw fadd
+// CHECK-GFX908-MI100: %[[CST:.*]] = arith.constant 2
+// CHECK-GFX908-MI100: %[[C_NEG4:.*]] = llvm.mlir.constant(-4 : i64) : i64
+// CHECK-GFX908-MI100: %[[C2:.*]] = llvm.mlir.constant(2 : i32) : i32
+// CHECK-GFX908-MI100: %[[C8:.*]] = llvm.mlir.constant(8 : i32) : i32
+// CHECK-GFX908-MI100: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-GFX908-MI100: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
+// CHECK-GFX908-MI100: %[[ADDR_MASKED:.*]] = llvm.and %[[ADDR_INT]], %[[C_NEG4]]
+// CHECK-GFX908-MI100: %[[ADDR_TRUNC:.*]] = llvm.trunc %[[ADDR_INT]]
+// CHECK-GFX908-MI100: %[[OFFSET:.*]] = llvm.and %[[ADDR_TRUNC]], %[[C2]]
+// CHECK-GFX908-MI100: %[[SHIFT:.*]] = llvm.mul %[[OFFSET]], %[[C8]]
+// CHECK-GFX908-MI100: %[[VAL_INT:.*]] = llvm.bitcast %[[CST]] : f16 to i16
+// CHECK-GFX908-MI100: %[[VAL_WIDE:.*]] = llvm.zext %[[VAL_INT]] : i16 to i32
+// CHECK-GFX908-MI100: %[[VAL_SHIFT:.*]] = llvm.shl %[[VAL_WIDE]], %[[SHIFT]]
+// CHECK-GFX908-MI100: %[[ADDR:.*]] = llvm.inttoptr %[[ADDR_MASKED]]
+// CHECK-GFX908-MI100: %[[VAL:.*]] = llvm.bitcast %[[VAL_SHIFT]] : i32 to vector<2xf16>
+// CHECK-GFX908-MI100: llvm.atomicrmw fadd %[[ADDR]], %[[VAL]] syncscope("agent-one-as") monotonic
+
 
 // CHECK-GFX90A-MI200-LABEL: @direct_atomic_rmw_fadd_f16
-// CHECK-GFX90A-MI200: %[[C2:.*]] = arith.constant 2
+// CHECK-GFX90A-MI200: %[[CST:.*]] = arith.constant 2
+// CHECK-GFX90A-MI200: %[[C_NEG4:.*]] = llvm.mlir.constant(-4 : i64) : i64
+// CHECK-GFX90A-MI200: %[[C2:.*]] = llvm.mlir.constant(2 : i32) : i32
+// CHECK-GFX90A-MI200: %[[C8:.*]] = llvm.mlir.constant(8 : i32) : i32
 // CHECK-GFX90A-MI200: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-GFX90A-MI200: %[[ADDR_CAST:.*]] = llvm.addrspacecast %[[ADDR]] : !llvm.ptr to !llvm.ptr<1>
-// CHECK-GFX90A-MI200: llvm.atomicrmw fadd %[[ADDR_CAST]], %[[C2]] syncscope("agent") seq_cst
+// CHECK-GFX90A-MI200: %[[ADDR_INT:.*]] = llvm.ptrtoint %[[ADDR]]
+// CHECK-GFX90A-MI200: %[[ADDR_MASKED:.*]] = llvm.and %[[ADDR_INT]], %[[C_NEG4]]
+// CHECK-GFX90A-MI200: %[[ADDR_TRUNC:.*]] = llvm.trunc %[[ADDR_INT]]
+// CHECK-GFX90A-MI200: %[[OFFSET:.*]] = llvm.and %[[ADDR_TRUNC]], %[[C2]]
+// CHECK-GFX90A-MI200: %[[SHIFT:.*]] = llvm.mul %[[OFFSET]], %[[C8]]
+// CHECK-GFX90A-MI200: %[[VAL_INT:.*]] = llvm.bitcast %[[CST]] : f16 to i16
+// CHECK-GFX90A-MI200: %[[VAL_WIDE:.*]] = llvm.zext %[[VAL_INT]] : i16 to i32
+// CHECK-GFX90A-MI200: %[[VAL_SHIFT:.*]] = llvm.shl %[[VAL_WIDE]], %[[SHIFT]]
+// CHECK-GFX90A-MI200: %[[ADDR:.*]] = llvm.inttoptr %[[ADDR_MASKED]]
+// CHECK-GFX90A-MI200: %[[VAL:.*]] = llvm.bitcast %[[VAL_SHIFT]] : i32 to vector<2xf16>
+// CHECK-GFX90A-MI200: llvm.atomicrmw fadd %[[ADDR]], %[[VAL]] syncscope("agent-one-as") monotonic
+
+// -----
+
+func.func @no_direct_atomic_rmw_fadd_f8E4M3(%in: tensor<8xf8E4M3>,
+    %i: index) -> (tensor<8xf8E4M3>) {
+  %c2 = arith.constant 2.0 : f8E4M3
+  %ret = xla.atomic_rmw %in[%i] : tensor<8xf8E4M3> {
+    ^bb0(%current : f8E4M3):
+      %min = arith.addf %current, %c2 : f8E4M3
+      xla.yield %c2 : f8E4M3
+  }
+  return %ret : tensor<8xf8E4M3>
+}
+// CHECK-PASCAL-LABEL: @no_direct_atomic_rmw_fadd_f8E4M3
+// CHECK-PASCAL-NOT: llvm.atomicrmw fadd
+
+// CHECK-VOLTA-LABEL: @no_direct_atomic_rmw_fadd_f8E4M3
+// CHECK-VOLTA-NOT: llvm.atomicrmw fadd
+
+// CHECK-AMPERE-LABEL: @no_direct_atomic_rmw_fadd_f8E4M3
+// CHECK-AMPERE-NOT: llvm.atomicrmw fadd
+
+// CHECK-GFX908-MI100-LABEL: @no_direct_atomic_rmw_fadd_f8E4M3
+// CHECK-GFX908-MI100-NOT: llvm.atomicrmw fadd
+// CHECK-GFX908-MI100: return
+
+// CHECK-GFX90A-MI200-LABEL: @no_direct_atomic_rmw_fadd_f8E4M3
+// CHECK-GFX90A-MI200-NOT: llvm.atomicrmw fadd
+// CHECK-GFX90A-MI200: return
 
 // -----
 
@@ -604,7 +720,7 @@ func.func @direct_atomic_rmw_fadd_bf16(%in: tensor<8xbf16>,
 // CHECK-HOPPER-LABEL: @direct_atomic_rmw_fadd_bf16
 // CHECK-HOPPER: %[[C2:.*]] = arith.constant 2
 // CHECK-HOPPER: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-HOPPER: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] seq_cst
+// CHECK-HOPPER: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
 
 // -----
 
@@ -621,23 +737,29 @@ func.func @direct_atomic_rmw_fadd_f64(%in: tensor<8xf64>,
 // CHECK-PASCAL-LABEL: @direct_atomic_rmw_fadd_f64
 // CHECK-PASCAL: %[[C2:.*]] = arith.constant 2
 // CHECK-PASCAL: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-PASCAL: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] seq_cst
+// CHECK-PASCAL: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-VOLTA-LABEL: @direct_atomic_rmw_fadd_f64
 // CHECK-VOLTA: %[[C2:.*]] = arith.constant 2
 // CHECK-VOLTA: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-VOLTA: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] seq_cst
+// CHECK-VOLTA: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-AMPERE-LABEL: @direct_atomic_rmw_fadd_f64
 // CHECK-AMPERE: %[[C2:.*]] = arith.constant 2
 // CHECK-AMPERE: %[[ADDR:.*]] = llvm.getelementptr
-// CHECK-AMPERE: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] seq_cst
+// CHECK-AMPERE: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] monotonic
 
 // CHECK-GFX908-MI100-LABEL: @direct_atomic_rmw_fadd_f64
-// CHECK-GFX908-MI100-NOT: llvm.atomicrmw fadd
+// CHECK-GFX908-MI100: %[[C2:.*]] = arith.constant 2
+// CHECK-GFX908-MI100: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-GFX908-MI100: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] syncscope("agent-one-as") monotonic
+
 
 // CHECK-GFX90A-MI200-LABEL: @direct_atomic_rmw_fadd_f64
-// CHECK-GFX90A-MI200-NOT: llvm.atomicrmw fadd
+// CHECK-GFX90A-MI200: %[[C2:.*]] = arith.constant 2
+// CHECK-GFX90A-MI200: %[[ADDR:.*]] = llvm.getelementptr
+// CHECK-GFX90A-MI200: llvm.atomicrmw fadd %[[ADDR]], %[[C2]] syncscope("agent-one-as") monotonic
+
 
 // -----
 
@@ -665,12 +787,12 @@ func.func @direct_atomic_rmw_maximumf(%in: tensor<8xf32>,
 // CHECK-PASCAL:   %[[MODIFIER_OR_NAN:.*]] = llvm.select %[[MODIFIER_IS_NAN]], %[[NAN]], %[[MODIFIER]] : i1, f32
 // CHECK-PASCAL:   %[[VAL_13:.*]] = llvm.fcmp "ult" %[[CURRENT]], %[[MODIFIER_OR_NAN]] : f32
 // CHECK-PASCAL:   scf.if %[[VAL_13]] {
-// CHECK-PASCAL:     %[[INT_MODIFIER_OR_NAN:.*]] = llvm.bitcast %[[MODIFIER_OR_NAN]] : f32 to i32
+// CHECK-PASCAL:     %[[INT_MODIFIER_OR_NAN:.*]] = arith.bitcast %[[MODIFIER_OR_NAN]] : f32 to i32
 // CHECK-PASCAL:     %[[IS_POSITIVE:.*]] = llvm.icmp "sge" %[[INT_MODIFIER_OR_NAN]], %[[C0]] : i32
 // CHECK-PASCAL:     scf.if %[[IS_POSITIVE]] {
-// CHECK-PASCAL:       llvm.atomicrmw max %[[ADDR]], %[[INT_MODIFIER_OR_NAN]] seq_cst
+// CHECK-PASCAL:       llvm.atomicrmw max %[[ADDR]], %[[INT_MODIFIER_OR_NAN]] monotonic
 // CHECK-PASCAL:     } else {
-// CHECK-PASCAL:       llvm.atomicrmw umin %[[ADDR]], %[[INT_MODIFIER_OR_NAN]] seq_cst
+// CHECK-PASCAL:       llvm.atomicrmw umin %[[ADDR]], %[[INT_MODIFIER_OR_NAN]] monotonic
 // CHECK-PASCAL:     }
 // CHECK-PASCAL:   }
 // CHECK-PASCAL: }

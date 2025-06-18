@@ -77,7 +77,9 @@ TfLiteStatus ResourceVariable::AssignFrom(const TfLiteTensor* tensor) {
     tensor_.bytes = old_bytes;
   }
 
-  memcpy(tensor_.data.raw, tensor->data.raw, tensor_.bytes);
+  if (tensor->data.raw) {
+    memcpy(tensor_.data.raw, tensor->data.raw, tensor_.bytes);
+  }
   is_initialized_ = true;
 
   return kTfLiteOk;

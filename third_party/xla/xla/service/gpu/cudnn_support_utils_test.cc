@@ -30,12 +30,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -48,7 +48,7 @@ namespace {
 
 using ::tsl::testing::IsOkAndHolds;
 
-class CudnnSupportUtilsTest : public HloTestBase {
+class CudnnSupportUtilsTest : public HloHardwareIndependentTestBase {
  public:
   // Gets the custom call with `target` from the `module`. Expects that there is
   // one and only one matching call.

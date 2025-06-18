@@ -2767,12 +2767,12 @@ ENTRY test {
 R"(HloModule test
 
 ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(C+,S)} parameter(0)
+  ROOT root = f32[10,10]{1,0:D(C,S)} parameter(0)
 })",
-R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(C+,S)})->f32[10,10]{1,0:D(C+,S)}}
+R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(C,S)})->f32[10,10]{1,0:D(C,S)}}
 
 ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(C+,S)} parameter(0)
+  ROOT root = f32[10,10]{1,0:D(C,S)} parameter(0)
 })",
 },
 
@@ -2781,12 +2781,12 @@ ENTRY test {
 R"(HloModule test
 
 ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(C+~,S~)} parameter(0)
+  ROOT root = f32[10,10]{1,0:D(C,S)} parameter(0)
 })",
-R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(C+~,S~)})->f32[10,10]{1,0:D(C+~,S~)}}
+R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(C,S)})->f32[10,10]{1,0:D(C,S)}}
 
 ENTRY test {
-  ROOT root = f32[10,10]{1,0:D(C+~,S~)} parameter(0)
+  ROOT root = f32[10,10]{1,0:D(C,S)} parameter(0)
 })",
 },
 });
@@ -4153,7 +4153,7 @@ TEST_F(HloParserTest, ParseUnknownSharding) {
 
 TEST_F(HloParserTest, ParseFrontendAttributes) {
   const std::string original =
-      R"({attr_a="test_a",attr_b="b",attr_c="s64",attr_d="a/b"})";
+      R"({attr_a="test_a",attr_b="b",attr_c={type="s64"},attr_d="a=\"b/c\""})";
   TF_ASSERT_OK_AND_ASSIGN(FrontendAttributes frontend_attributes,
                           ParseFrontendAttributes(original));
   EXPECT_EQ(FrontendAttributesToString(frontend_attributes), original);
@@ -4794,17 +4794,6 @@ TEST_F(HloParserTest, ParseDynamicTuple) {
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual:   " << ShapeUtil::HumanString(actual);
-}
-
-TEST_F(HloParserTest, ParseInvalidDimLevel) {
-  constexpr absl::string_view shape_string = "f32[123]{0:D(D+~)}";
-  absl::StatusOr<Shape> result = ParseShape(shape_string);
-  ASSERT_THAT(
-      result.status(),
-      tsl::testing::StatusIs(
-          tsl::error::INVALID_ARGUMENT,
-          testing::HasSubstr(
-              "invalid DimLevelType/unique/ordered combination in shape")));
 }
 
 TEST_F(HloParserTest, NegativeParameterNumber) {
@@ -5581,11 +5570,11 @@ ENTRY %Entry (p0: f32[10]) -> f32[20] {
   ROOT %async-done.1 = f32[20]{0} async-done(((f32[10]{0}), f32[20]{0}, s32[]) %async-start.1)
 }
   )";
-  EXPECT_THAT(ParseAndReturnUnverifiedModule(hlo_string).status(),
-              tsl::testing::StatusIs(
-                  tsl::error::INVALID_ARGUMENT,
-                  HasSubstr("Computation async_wrapped is already referenced "
-                            "by another async op")));
+  EXPECT_THAT(
+      ParseAndReturnUnverifiedModule(hlo_string).status(),
+      tsl::testing::StatusIs(tsl::error::INVALID_ARGUMENT,
+                             HasSubstr("Computation async_wrapped is called by "
+                                       "more than one async op")));
 }
 
 TEST_F(HloParserTest, AsyncUpdateWrongComputation) {
@@ -5972,14 +5961,13 @@ TEST_F(HloParserTest,
   // Check the async-start and async-done instructions.
   HloInstruction* async_done = m->entry_computation()->root_instruction();
   HloInstruction* async_start = async_done->async_chain_start();
-  EXPECT_EQ(async_start->metadata().DebugString(),
-            wrapped_instr->metadata().DebugString());
+  EXPECT_THAT(async_start->metadata(), EqualsProto(wrapped_instr->metadata()));
   EXPECT_EQ(async_start->raw_backend_config_string(),
             wrapped_instr->raw_backend_config_string());
-  EXPECT_EQ(async_start->frontend_attributes().DebugString(),
-            wrapped_instr->frontend_attributes().DebugString());
-  EXPECT_EQ(async_start->statistics_viz().DebugString(),
-            wrapped_instr->statistics_viz().DebugString());
+  EXPECT_THAT(async_start->frontend_attributes(),
+              EqualsProto(wrapped_instr->frontend_attributes()));
+  EXPECT_THAT(async_start->statistics_viz(),
+              EqualsProto(wrapped_instr->statistics_viz()));
   EXPECT_EQ(OriginalValueToString(*async_done->original_value()),
             OriginalValueToString(*wrapped_instr->original_value()));
 }
@@ -6001,6 +5989,39 @@ TEST_F(HloParserTest, ResultAccuracyToProto) {
   EXPECT_TRUE(exp_hlo_inst_proto.has_result_accuracy());
   EXPECT_EQ(exp_hlo_inst_proto.result_accuracy().tolerance().rtol(), 0.5);
   EXPECT_EQ(exp_hlo_inst_proto.result_accuracy().tolerance().atol(), 1.0);
+}
+
+TEST_F(HloParserTest, ParseBufferEmptyElement) {
+  std::string shape_string = "b()";
+  auto result = ParseShape(shape_string);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  ExpectHasSubstr(result.status().message(), "expected primitive type");
+}
+
+TEST_F(HloParserTest, ParseBufferMoreThanOneElement) {
+  std::string shape_string = "b(s32[], f32[])";
+  auto result = ParseShape(shape_string);
+  EXPECT_NE(absl::OkStatus(), result.status());
+  ExpectHasSubstr(result.status().message(),
+                  "expects ')' at the end of buffer shape");
+}
+
+TEST_F(HloParserTest, ParseBufferScalar) {
+  std::string shape_string = "b(s32[])";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected = ShapeUtil::MakeBufferShape(S32, {});
+  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
+}
+
+TEST_F(HloParserTest, ParseBufferArray) {
+  std::string shape_string = "b(f32[8,16]{1,0})";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected = ShapeUtil::MakeBufferShape(F32, {8, 16});
+  ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
+      << "expected: " << ShapeUtil::HumanString(expected)
+      << "actual:   " << ShapeUtil::HumanString(actual);
 }
 
 }  // namespace

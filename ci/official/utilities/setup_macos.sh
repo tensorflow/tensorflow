@@ -61,10 +61,23 @@ fi
 # those VMs does not support installing Python 3.12 and above which we need
 # for running smoke tests in nightly/release wheel builds.
 if [[ "${TFCI_MACOS_UPGRADE_PYENV_ENABLE}" == 1 ]]; then
-  # The TFCI Mac VM image seems to have uncommitted local changes to the Pyenv
-  # repository so we have to discard them and reset the working directory before
-  # we can pull in the latest changes.
-  cd /Users/kbuilder/.pyenv/ && git reset --hard HEAD && git pull && cd -
+  echo "Upgrading pyenv..."
+  echo "Current pyevn version: $(pyenv --version)"
+
+  # Check if pyenv is managed by homebrew. If so, update and upgrade pyenv.
+  # Otherwise, install the latest pyenv from github.
+  if command -v brew &> /dev/null && brew list pyenv &> /dev/null; then
+    # On "ventura-slcn" VMs, pyenv is managed via Homebrew.
+    echo "pyenv is installed and managed by homebrew."
+    brew update && brew upgrade pyenv
+  else
+    echo "pyenv is not managed by homebrew. Installing it via github..."
+    # On "ventura" VMs, pyenv is not managed by Homebrew. Install the latest
+    # pyenv from github.
+    rm -rf "$PYENV_ROOT"
+    git clone https://github.com/pyenv/pyenv.git "$PYENV_ROOT"
+  fi
+  echo "Upgraded pyenv version: $(pyenv --version)"
 fi
 
 # "TFCI_MACOS_PYENV_INSTALL_ENABLE" controls whether to use Pyenv to install

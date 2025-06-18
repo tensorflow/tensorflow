@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -52,6 +53,7 @@ limitations under the License.
 #include "xla/service/rendezvous.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -285,9 +287,10 @@ absl::Status CollectivePermuteStartThunk::RunCollective(
 
     // Perform a rendezvous to make sure all receivers have their events
     // recorded.
-    Rendezvous(rendezvous_name, rendezvous_key, num_local_participants,
-               /*warn_stuck_timeout=*/absl::Seconds(20),
-               /*terminate_timeout=*/absl::Seconds(40));
+    TF_RETURN_IF_ERROR(Rendezvous(rendezvous_name, rendezvous_key,
+                                  num_local_participants,
+                                  /*warn_stuck_timeout=*/absl::Seconds(20),
+                                  /*terminate_timeout=*/absl::Seconds(40)));
 
     // For sending side, wait for the recorded event from the receiving side.
     if (target_id) {
@@ -325,9 +328,10 @@ absl::Status CollectivePermuteStartThunk::RunCollective(
 
     // Perform a rendezvous to make sure all senders have their events
     // recorded.
-    Rendezvous(rendezvous_name, rendezvous_key, num_local_participants,
-               /*warn_stuck_timeout=*/absl::Seconds(20),
-               /*terminate_timeout=*/absl::Seconds(40));
+    TF_RETURN_IF_ERROR(Rendezvous(rendezvous_name, rendezvous_key,
+                                  num_local_participants,
+                                  /*warn_stuck_timeout=*/absl::Seconds(20),
+                                  /*terminate_timeout=*/absl::Seconds(40)));
 
     // For receiving side, wait for the recorded event from the sending side.
     if (source_id) {
@@ -394,26 +398,46 @@ absl::Status RunCollectivePermute(
     // GroupStart/End API is needed if we need to dispatch multiple NCCL kernels
     // for multiple buffers
     const bool is_nccl_group_needed = (buffers.size() > 1);
-    if (is_nccl_group_needed) {
-      TF_RETURN_IF_ERROR(collectives->GroupStart());
-    }
 
     std::optional<RankId> source_rank;
     std::vector<RankId> target_ranks;
     if (source_id) source_rank = RankId(*source_id);
     if (target_id) target_ranks.push_back(RankId(*target_id));
 
-    for (uint64_t idx = 0; idx < buffers.size(); ++idx) {
-      const auto src_addr = src_addrs.at(idx);
-      const auto dest_addr = dest_addrs.at(idx);
-      const auto buffer = buffers.at(idx);
-      TF_RETURN_IF_ERROR(comm->CollectivePermute(
-          src_addr, dest_addr, buffer.element_type, buffer.element_count,
-          source_rank, target_ranks, GpuCollectives::On(stream)));
-    }
-
-    if (is_nccl_group_needed) {
-      TF_RETURN_IF_ERROR(collectives->GroupEnd());
+    if (!is_nccl_group_needed) {
+      for (uint64_t idx = 0; idx < buffers.size(); ++idx) {
+        const auto src_addr = src_addrs.at(idx);
+        const auto dest_addr = dest_addrs.at(idx);
+        const auto buffer = buffers.at(idx);
+        auto event = comm->CollectivePermute(
+            src_addr, dest_addr, buffer.element_type, buffer.element_count,
+            source_rank, target_ranks, GpuCollectives::On(stream));
+        tsl::BlockUntilReady(event);
+        if (event.IsError()) {
+          return event.GetError();
+        }
+      }
+    } else {
+      TF_ASSIGN_OR_RETURN(GpuCommunicator * gpu_comm,
+                          collectives->TryCast(comm));
+      tsl::AsyncValueRef<Communicator::Event> event = gpu_comm->GroupExecute(
+          [source_rank, &buffers, &src_addrs, &dest_addrs, &target_ranks,
+           &stream](GpuCommunicator* comm) -> absl::Status {
+            for (uint64_t idx = 0; idx < buffers.size(); ++idx) {
+              const auto src_addr = src_addrs.at(idx);
+              const auto dest_addr = dest_addrs.at(idx);
+              const auto buffer = buffers.at(idx);
+              TF_RETURN_IF_ERROR(comm->LaunchCollectivePermute(
+                  src_addr, dest_addr, buffer.element_type,
+                  buffer.element_count, source_rank, target_ranks,
+                  GpuCollectives::On(stream)));
+            }
+            return absl::OkStatus();
+          });
+      tsl::BlockUntilReady(event);
+      if (event.IsError()) {
+        return event.GetError();
+      }
     }
   }
 

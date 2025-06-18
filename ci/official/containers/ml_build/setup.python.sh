@@ -28,7 +28,7 @@ if [[ ${VERSION} == "python3.13-nogil" ]]; then
   cat >pythons.txt <<EOF
 $VERSION
 EOF
-elif [[ ${VERSION} == "python3.13" || ${VERSION} == "python3.12" ]]; then
+elif [[ ${VERSION} == "python3.14" || ${VERSION} == "python3.13" || ${VERSION} == "python3.12" ]]; then
   cat >pythons.txt <<EOF
 $VERSION
 $VERSION-dev
@@ -72,7 +72,8 @@ wget --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=15 --tries=5 
 # For Python 3.13t, do not install twine as it does not have pre-built wheels
 # for this Python version and building it from source fails. We only need twine
 # to be present on the system Python which in this case is 3.12.
-if [[ ${VERSION} == "python3.13-nogil" ]]; then
+# Same reason for Python 3.140a7.
+if [[ ${VERSION} == "python3.13-nogil" || ${VERSION} == "python3.14" ]]; then
   grep -v "twine" $REQUIREMENTS > requirements_without_twine.txt
   REQUIREMENTS=requirements_without_twine.txt
 fi

@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
@@ -169,42 +170,40 @@ class PjRtClient final
   //   function to fail.
   //   (3) only the `kImmutableDuringCall` semantics is supported currently.
   //   Fails for other values of `HostBufferSemantics`.
-  absl::StatusOr<tsl::RCReference<Array>> MakeArrayFromHostBuffer(
+  absl::StatusOr<ArrayRef> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
-      absl::Nonnull<std::shared_ptr<const Sharding>> sharding,
-      HostBufferSemantics semantics,
+      ShardingRef sharding, HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer,
       tsl::RCReference<UserContext> user_context) override;
 
-  absl::StatusOr<std::vector<tsl::RCReference<Array>>>
-  MakeArraysFromHostBufferShards(
+  absl::StatusOr<std::vector<ArrayRef>> MakeArraysFromHostBufferShards(
       absl::Span<MakeArraysFromHostBufferShardsSpec> specs,
       HostBufferSemantics semantics,
       tsl::RCReference<UserContext> user_context) override;
 
-  absl::StatusOr<tsl::RCReference<Array>> AssembleArrayFromSingleDeviceArrays(
-      DType dtype, Shape shape, std::shared_ptr<const Sharding> sharding,
-      absl::Span<tsl::RCReference<Array>> arrays,
-      ArrayCopySemantics array_copy_semantics,
+  absl::StatusOr<std::vector<ArrayRef>> MakeErrorArrays(
+      const absl::Status& error, absl::Span<const ArraySpec> array_specs,
+      tsl::RCReference<UserContext> user_context) override;
+
+  absl::StatusOr<ArrayRef> AssembleArrayFromSingleDeviceArrays(
+      DType dtype, Shape shape, ShardingRef sharding,
+      absl::Span<ArrayRef> arrays, ArrayCopySemantics array_copy_semantics,
       SingleDeviceShardSemantics single_device_shard_semantics) override;
 
-  absl::StatusOr<std::vector<tsl::RCReference<Array>>> CopyArrays(
-      absl::Span<tsl::RCReference<Array>> arrays,
-      std::optional<DeviceListRef> devices,
+  absl::StatusOr<std::vector<ArrayRef>> CopyArrays(
+      absl::Span<ArrayRef> arrays, std::optional<DeviceListRef> devices,
       std::optional<MemoryKind> memory_kind,
       ArrayCopySemantics semantics) override;
 
-  absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>> RemapArrays(
-      const RemapPlan& plan,
-      absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> RemapArrays(
+      const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
       ArrayCopySemantics semantics) override;
 
-  Future<> GetReadyFuture(
-      absl::Span<const tsl::RCReference<Value>> values) override;
+  Future<> GetReadyFuture(absl::Span<const ValueRef> values) override;
 
   absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
-      absl::Span<tsl::RCReference<Value>> values) override;
+      absl::Span<ValueRef> values) override;
 
   absl::string_view runtime_type() const override { return "pjrt_ifrt"; }
 

@@ -125,7 +125,7 @@ class RespectCompiledTrainableState(object):
   at `Model.compile` time will be used when training that model. In order to
   respect this requirement, it may be necessary to set the trainable value of
   layers to their compile time values before beginning a training endpoint and
-  restore the values before returing from said endpoint. This scope checks if
+  restore the values before returning from said endpoint. This scope checks if
   any layer's trainable state has changed since Model compile, and performs this
   set and un-set bookkeeping.
 

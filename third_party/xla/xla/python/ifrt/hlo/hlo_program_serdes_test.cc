@@ -28,7 +28,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Support/DebugStringHelper.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/serdes.h"
@@ -48,11 +48,10 @@ TEST(HloProgramSerDesTest, RoundTrip) {
   static constexpr absl::string_view kMlirModuleStr = R"(
 module {
   func.func @main(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
-    %0 = "mhlo.copy"(%arg0) : (tensor<2x3xf32>) -> tensor<2x3xf32>
-    %1 = mhlo.constant dense<1.000000e+00> : tensor<f32>
-    %2 = "mhlo.broadcast"(%1) {broadcast_sizes = dense<[2, 3]> : tensor<2xi64>} : (tensor<f32>) -> tensor<2x3xf32>
-    %3 = mhlo.add %0, %2 : tensor<2x3xf32>
-    return %3 : tensor<2x3xf32>
+    %0 = stablehlo.constant dense<1.000000e+00> : tensor<f32>
+    %1 = "stablehlo.broadcast_in_dim"(%0) {broadcast_dimensions = array<i64>} : (tensor<f32>) -> tensor<2x3xf32>
+    %2 = stablehlo.add %arg0, %1 : tensor<2x3xf32>
+    return %2 : tensor<2x3xf32>
   }
 })";
 
@@ -72,13 +71,13 @@ module {
       std::unique_ptr<HloProgram> xla_program,
       Deserialize<HloProgram>(serialized, /*options=*/nullptr));
 
-  // Verify that the deserialized program has no StableHLO ops.
+  // Verify that the deserialized program has no MHLO ops.
   bool has_unsupported_dialect = false;
   xla_program->mlir_module->walk([&](mlir::Operation *op) {
     if (!llvm::isa<mlir::BuiltinDialect, mlir::func::FuncDialect,
-                   mlir::mhlo::MhloDialect>(op->getDialect())) {
+                   mlir::stablehlo::StablehloDialect>(op->getDialect())) {
       LOG(ERROR) << "Found an op with an unsupported dialect: "
-                 << mlir::debugString(op);
+                 << mlir::debugString(*op);
       has_unsupported_dialect = true;
     }
   });

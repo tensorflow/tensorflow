@@ -29,15 +29,18 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/primitive_util.h"
 #include "xla/service/hlo.pb.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/test_macros.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
 
-class ComparatorsTest : public ClientLibraryTestBase {
+class ComparatorsTest : public ClientLibraryTestRunnerMixin<
+                            HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  public:
   ComparatorsTest() : builder_(TestName()) {}
   XlaBuilder* builder() { return &builder_; }
@@ -96,56 +99,56 @@ void BuildComparatorAndComparisons(ComparatorsTest* test,
   }
 }
 
-XLA_TEST_F(ComparatorsTest, CompareLtBF16) {
+TEST_F(ComparatorsTest, CompareLtBF16) {
   absl::InlinedVector<bool, 10> expected;
   BuildComparatorAndComparisons<BF16>(this, /*compare_less_than=*/true,
                                       &expected);
   ComputeAndCompareR1<bool>(builder(), expected, {});
 }
 
-XLA_TEST_F(ComparatorsTest, CompareGtBF16) {
+TEST_F(ComparatorsTest, CompareGtBF16) {
   absl::InlinedVector<bool, 10> expected;
   BuildComparatorAndComparisons<BF16>(this, /*compare_less_than=*/false,
                                       &expected);
   ComputeAndCompareR1<bool>(builder(), expected, {});
 }
 
-XLA_TEST_F(ComparatorsTest, CompareLtF16) {
+TEST_F(ComparatorsTest, CompareLtF16) {
   absl::InlinedVector<bool, 10> expected;
   BuildComparatorAndComparisons<F16>(this, /*compare_less_than=*/true,
                                      &expected);
   ComputeAndCompareR1<bool>(builder(), expected, {});
 }
 
-XLA_TEST_F(ComparatorsTest, CompareGtF16) {
+TEST_F(ComparatorsTest, CompareGtF16) {
   absl::InlinedVector<bool, 10> expected;
   BuildComparatorAndComparisons<F16>(this, /*compare_less_than=*/false,
                                      &expected);
   ComputeAndCompareR1<bool>(builder(), expected, {});
 }
 
-XLA_TEST_F(ComparatorsTest, CompareLtF32) {
+TEST_F(ComparatorsTest, CompareLtF32) {
   absl::InlinedVector<bool, 10> expected;
   BuildComparatorAndComparisons<F32>(this, /*compare_less_than=*/true,
                                      &expected);
   ComputeAndCompareR1<bool>(builder(), expected, {});
 }
 
-XLA_TEST_F(ComparatorsTest, CompareGtF32) {
+TEST_F(ComparatorsTest, CompareGtF32) {
   absl::InlinedVector<bool, 10> expected;
   BuildComparatorAndComparisons<F32>(this, /*compare_less_than=*/false,
                                      &expected);
   ComputeAndCompareR1<bool>(builder(), expected, {});
 }
 
-XLA_TEST_F(ComparatorsTest, CompareLtF64) {
+TEST_F(ComparatorsTest, CompareLtF64) {
   absl::InlinedVector<bool, 10> expected;
   BuildComparatorAndComparisons<F64>(this, /*compare_less_than=*/true,
                                      &expected);
   ComputeAndCompareR1<bool>(builder(), expected, {});
 }
 
-XLA_TEST_F(ComparatorsTest, CompareGtF64) {
+TEST_F(ComparatorsTest, CompareGtF64) {
   absl::InlinedVector<bool, 10> expected;
   BuildComparatorAndComparisons<F64>(this, /*compare_less_than=*/false,
                                      &expected);

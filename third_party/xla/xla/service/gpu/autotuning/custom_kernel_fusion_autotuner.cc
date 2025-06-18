@@ -33,12 +33,11 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
+#include "xla/service/gpu/autotuning/redzone_buffers.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/kernels/custom_kernel_fusion.h"
-#include "xla/service/shaped_buffer.h"
-#include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/stream.h"
@@ -89,12 +88,16 @@ absl::StatusOr<std::vector<std::tuple<int, absl::Duration>>> ProfileKernels(
           std::make_unique<se::StreamExecutorMemoryAllocator>(stream_exec);
       allocator = owned_allocator.get();
     }
-    TF_ASSIGN_OR_RETURN(se::Stream* const stream, autotune_config.GetStream());
 
+    bool should_init_buffers = autotune_config.should_init_buffers();
+    bool should_check_correctness = autotune_config.should_check_correctness();
+    int redzone_padding_bytes = debug_options.xla_gpu_redzone_padding_bytes();
+    TF_ASSIGN_OR_RETURN(se::Stream* const stream, autotune_config.GetStream());
     TF_ASSIGN_OR_RETURN(auto rz_buffers,
                         RedzoneBuffers::FromInstruction(
-                            *fusion_instruction, autotune_config, debug_options,
-                            RedzoneBuffers::kAllInputs));
+                            *fusion_instruction, allocator, stream,
+                            RedzoneBuffers::kAllInputs, should_init_buffers,
+                            should_check_correctness, redzone_padding_bytes));
 
     TF_ASSIGN_OR_RETURN(
         AutotunerCompileUtil::ProfilingOutput profiling_output,

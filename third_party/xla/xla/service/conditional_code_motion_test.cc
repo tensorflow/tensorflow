@@ -24,11 +24,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/test.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
 #include "xla/shape_util.h"
-#include "xla/test.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -37,7 +37,7 @@ limitations under the License.
 namespace xla {
 namespace conditional_opt {
 
-using ConditionalCodeMotionTest = HloTestBase;
+using ConditionalCodeMotionTest = HloHardwareIndependentTestBase;
 namespace op = xla::testing::opcode_matchers;
 
 TEST_F(ConditionalCodeMotionTest, MoveSubsetTupleOut) {
@@ -2329,11 +2329,12 @@ ENTRY %xla_computation  {
       root->branch_computation(1)->root_instruction();
   const HloInstruction* conditional_true =
       root->branch_computation(0)->root_instruction();
-  EXPECT_THAT(conditional_false->shape().tuple_shapes_size(), 1);
-  EXPECT_THAT(conditional_false->shape().tuple_shapes(0).tuple_shapes_size(),
+  EXPECT_THAT(conditional_false->shape().tuple_shapes().size(), 1);
+  EXPECT_THAT(conditional_false->shape().tuple_shapes(0).tuple_shapes().size(),
               2);
-  EXPECT_THAT(conditional_true->shape().tuple_shapes_size(), 1);
-  EXPECT_THAT(conditional_true->shape().tuple_shapes(0).tuple_shapes_size(), 2);
+  EXPECT_THAT(conditional_true->shape().tuple_shapes().size(), 1);
+  EXPECT_THAT(conditional_true->shape().tuple_shapes(0).tuple_shapes().size(),
+              2);
 }
 
 // Move partially used operands inside empty conditional branches.
@@ -2391,11 +2392,12 @@ ENTRY %xla_computation  {
       root->branch_computation(1)->root_instruction();
   const HloInstruction* conditional_true =
       root->branch_computation(0)->root_instruction();
-  EXPECT_THAT(conditional_false->shape().tuple_shapes_size(), 2);
-  EXPECT_THAT(conditional_false->shape().tuple_shapes(1).tuple_shapes_size(),
+  EXPECT_THAT(conditional_false->shape().tuple_shapes().size(), 2);
+  EXPECT_THAT(conditional_false->shape().tuple_shapes(1).tuple_shapes().size(),
               2);
-  EXPECT_THAT(conditional_true->shape().tuple_shapes_size(), 2);
-  EXPECT_THAT(conditional_true->shape().tuple_shapes(1).tuple_shapes_size(), 2);
+  EXPECT_THAT(conditional_true->shape().tuple_shapes().size(), 2);
+  EXPECT_THAT(conditional_true->shape().tuple_shapes(1).tuple_shapes().size(),
+              2);
 }
 
 // Move partially used operands inside empty conditional branches.

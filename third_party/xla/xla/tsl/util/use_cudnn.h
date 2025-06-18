@@ -23,7 +23,6 @@ limitations under the License.
 namespace tsl {
 
 bool CudnnUseAutotune();
-bool CudnnUseFrontend();
 bool CudnnUseRuntimeFusion();
 bool CudnnRnnUseAutotune();
 bool CudnnDisableConv1x1Optimization();

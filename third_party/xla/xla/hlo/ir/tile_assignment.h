@@ -27,9 +27,11 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/printer.h"
@@ -189,6 +191,11 @@ class TileAssignment {
                           absl::Span<const int> transpose_perm)
       : iota_(IotaTileAssignment::Create(dims, reshape_dims, transpose_perm)) {}
 
+  TileAssignment(const TileAssignment& other);
+  TileAssignment(TileAssignment&& other);
+  TileAssignment& operator=(const TileAssignment& other);
+  TileAssignment& operator=(TileAssignment&& other);
+
   bool operator==(const TileAssignment& other) const;
   bool operator!=(const TileAssignment& other) const {
     return !operator==(other);
@@ -213,6 +220,14 @@ class TileAssignment {
 
   void Each(
       absl::FunctionRef<void(absl::Span<const int64_t>, int64_t)> f) const;
+
+  // Templated variant of Each() that avoids virtual function call
+  // overhead per element. Useful for hot code paths.
+  template <class Fn>
+  void TemplatedEach(const Fn& fn) const {
+    MaybeMaterializeFullArray();
+    array_->TemplatedEach(fn);
+  }
 
   absl::Status EachStatus(
       absl::FunctionRef<absl::Status(absl::Span<const int64_t>, int64_t)> f)
@@ -241,7 +256,7 @@ class TileAssignment {
   const Array<int64_t>& array() const;
   // Similar to array() but returns the underlying shared_ptr to avoid deep
   // copy.
-  const std::shared_ptr<const Array<int64_t>>& shared_array() const;
+  std::shared_ptr<const Array<int64_t>> shared_array() const;
   // Makes a deep copy of shared_array().
   std::shared_ptr<Array<int64_t>> shared_array_clone() const;
 
@@ -264,18 +279,21 @@ class TileAssignment {
         shared_array_(std::move(shared_array)),
         array_(shared_array_.get()) {}
 
-  void MaybeMaterializeFullArray() const;
+  void MaybeMaterializeFullArray() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   static const Array<int64_t>* ReplicatedArray() {
-    static auto* array = new Array<int64_t>({0});
+    static auto* const array = new Array<int64_t>({0});
     return array;
   }
 
   std::optional<IotaTileAssignment> iota_;
+
+  mutable absl::Mutex mu_;
   // If iota_ is set, shared_array_ is a lazy cache of the materialized array.
-  mutable std::shared_ptr<const Array<int64_t>> shared_array_;
+  mutable std::shared_ptr<const Array<int64_t>> shared_array_
+      ABSL_GUARDED_BY(mu_);
   // Pointer to the storage of the fully materialized array format.
-  mutable const Array<int64_t>* array_ = nullptr;
+  mutable const Array<int64_t>* array_ ABSL_GUARDED_BY(mu_) = nullptr;
 };
 
 }  // namespace xla

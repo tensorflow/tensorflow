@@ -16,13 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
 #define TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
 
+#include <cstddef>
+
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/strings/scanner.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/numbers.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/str_util.h"
-#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace strings {
@@ -43,28 +44,30 @@ class ProtoTextOutput {
 
   // Writes opening of nested message and increases indent level.
   void OpenNestedMessage(const char field_name[]) {
-    StrAppend(output_, level_empty_ ? "" : field_separator_, indent_,
-              field_name, " {", field_separator_);
-    if (!short_debug_) StrAppend(&indent_, "  ");
+    absl::StrAppend(output_, level_empty_ ? "" : field_separator_, indent_,
+                    field_name, " {", field_separator_);
+    if (!short_debug_) absl::StrAppend(&indent_, "  ");
     level_empty_ = true;
   }
 
   // Writes close of nested message and decreases indent level.
   void CloseNestedMessage() {
     if (!short_debug_) indent_.resize(indent_.size() - 2);
-    StrAppend(output_, level_empty_ ? "" : field_separator_, indent_, "}");
+    absl::StrAppend(output_, level_empty_ ? "" : field_separator_, indent_,
+                    "}");
     level_empty_ = false;
   }
 
   // Print the close of the top-level message that was printed.
   void CloseTopMessage() {
-    if (!short_debug_ && !level_empty_) StrAppend(output_, "\n");
+    if (!short_debug_ && !level_empty_) absl::StrAppend(output_, "\n");
   }
 
   // Appends a numeric value, like my_field: 123
   template <typename T>
   void AppendNumeric(const char field_name[], T value) {
-    AppendFieldAndValue(field_name, StrCat(value));
+    AppendFieldAndValue(field_name,
+                        absl::StrCat(strings::LegacyPrecision(value)));
   }
 
   // Appends a numeric value, like my_field: 123, but only if value != 0.
@@ -85,7 +88,8 @@ class ProtoTextOutput {
 
   // Appends a string value, like my_field: "abc123".
   void AppendString(const char field_name[], const string& value) {
-    AppendFieldAndValue(field_name, StrCat("\"", absl::CEscape(value), "\""));
+    AppendFieldAndValue(field_name,
+                        absl::StrCat("\"", absl::CEscape(value), "\""));
   }
 
   // Appends a string value, like my_field: "abc123", but only if value is not

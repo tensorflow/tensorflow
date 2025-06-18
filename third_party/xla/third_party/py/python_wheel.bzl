@@ -114,14 +114,14 @@ Examples:
                                      --repo_env=ML_WHEEL_BUILD_DATE=20250107
 2. release wheel version: 2.19.0
    Env vars passed to Bazel command: --repo_env=ML_WHEEL_TYPE=release
-3. release candidate wheel version: 2.19.0-rc1
+3. release candidate wheel version: 2.19.0rc1
    Env vars passed to Bazel command: --repo_env=ML_WHEEL_TYPE=release
-                                     --repo_env=ML_WHEEL_VERSION_SUFFIX=-rc1
-4. custom wheel version: 2.19.0.dev20250107+cbe478fc5-custom
+                                     --repo_env=ML_WHEEL_VERSION_SUFFIX=rc1
+4. custom wheel version: 2.19.0.dev20250107+cbe478fc5custom
    Env vars passed to Bazel command: --repo_env=ML_WHEEL_TYPE=custom
                                      --repo_env=ML_WHEEL_BUILD_DATE=$(git show -s --format=%as HEAD)
                                      --repo_env=ML_WHEEL_GIT_HASH=$(git rev-parse HEAD)
-                                     --repo_env=ML_WHEEL_VERSION_SUFFIX=-custom
+                                     --repo_env=ML_WHEEL_VERSION_SUFFIX=custom
 5. snapshot wheel version: 2.19.0.dev0+selfbuilt
    Env vars passed to Bazel command: --repo_env=ML_WHEEL_TYPE=snapshot
 
@@ -168,11 +168,12 @@ def _collect_data_aspect_impl(_, ctx):
     if hasattr(ctx.rule.attr, "data"):
         for data in ctx.rule.attr.data:
             for f in data.files.to_list():
-                if not any([f.path.endswith(ext) for ext in extensions]):
+                if not f.owner.package:
                     continue
-                if "pypi" in f.path:
-                    continue
-                files[f] = True
+                for ext in extensions:
+                    if f.extension == ext:
+                        files[f] = True
+                        break
 
     if hasattr(ctx.rule.attr, "deps"):
         for dep in ctx.rule.attr.deps:
@@ -187,17 +188,50 @@ collect_data_aspect = aspect(
     attr_aspects = ["deps"],
     attrs = {
         "_extensions": attr.string_list(
-            default = [".so", ".pyd", ".pyi", ".dll", ".dylib", ".lib", ".pd"],
+            default = ["so", "pyd", "pyi", "dll", "dylib", "lib", "pd"],
+        ),
+    },
+)
+
+def _collect_symlink_data_aspect_impl(_, ctx):
+    files = {}
+    symlink_extensions = ctx.attr._symlink_extensions
+    if not hasattr(ctx.rule.attr, "deps"):
+        return [FilePathInfo(files = depset(files.keys()))]
+    for dep in ctx.rule.attr.deps:
+        if not (dep[DefaultInfo].default_runfiles and
+                dep[DefaultInfo].default_runfiles.files):
+            continue
+        for file in dep[DefaultInfo].default_runfiles.files.to_list():
+            if not file.owner.package:
+                continue
+            for ext in symlink_extensions:
+                if file.extension == ext:
+                    files[file] = True
+                    break
+
+    return [FilePathInfo(files = depset(files.keys()))]
+
+collect_symlink_data_aspect = aspect(
+    implementation = _collect_symlink_data_aspect_impl,
+    attr_aspects = ["symlink_deps"],
+    attrs = {
+        "_symlink_extensions": attr.string_list(
+            default = ["pyi", "lib", "pd"],
         ),
     },
 )
 
 def _collect_data_files_impl(ctx):
-    files = []
+    files = {}
     for dep in ctx.attr.deps:
-        files.extend((dep[FilePathInfo].files.to_list()))
+        for f in dep[FilePathInfo].files.to_list():
+            files[f] = True
+    for symlink_dep in ctx.attr.symlink_deps:
+        for f in symlink_dep[FilePathInfo].files.to_list():
+            files[f] = True
     return [DefaultInfo(files = depset(
-        files,
+        files.keys(),
     ))]
 
 collect_data_files = rule(
@@ -205,6 +239,9 @@ collect_data_files = rule(
     attrs = {
         "deps": attr.label_list(
             aspects = [collect_data_aspect],
+        ),
+        "symlink_deps": attr.label_list(
+            aspects = [collect_symlink_data_aspect],
         ),
     },
 )

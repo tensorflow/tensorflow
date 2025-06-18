@@ -1,5 +1,12 @@
 # PJRT C API changelog
 
+## 0.68
+
+* Changed the type of ``topology`` in
+  ``PJRT_TopologyDescription_PlatformName_Args`` and
+  ``PJRT_TopologyDescription_GetDeviceDescriptions_Args`` from
+  ``PJRT_TopologyDescription*`` to ``const PJRT_TopologyDescription*``.
+
 ## 0.67
 * Added ``PJRT_Client_DmaMap`` and ``PJRT_Client_DmaUnmap``.
 

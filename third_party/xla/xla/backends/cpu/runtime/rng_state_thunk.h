@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/numeric/int128.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/backends/cpu/runtime/rng_state_lib.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
 
@@ -42,7 +43,7 @@ class RngGetAndUpdateStateThunk final : public Thunk {
     return {{state_buffer_, BufferUse::kWrite}};
   }
 
-  int64_t delta() const { return delta_; }
+  int64_t delta() const { return rng_state_.delta(); }
 
   const BufferAllocation::Slice& state_buffer() const { return state_buffer_; }
 
@@ -51,10 +52,7 @@ class RngGetAndUpdateStateThunk final : public Thunk {
                             int64_t delta);
 
   BufferAllocation::Slice state_buffer_;
-  int64_t delta_;
-
-  absl::Mutex mu_;
-  absl::int128 state_ ABSL_GUARDED_BY(mu_);
+  RngState rng_state_;
 };
 
 }  // namespace xla::cpu

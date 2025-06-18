@@ -22,9 +22,11 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/backend.h"
+#include "xla/service/compiler.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/dump.h"
 #include "xla/service/platform_util.h"
+#include "xla/service/service.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/types.h"
@@ -50,13 +52,14 @@ CompileOnlyService::NewService(const ServiceOptions& options) {
   TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));
 
   std::unique_ptr<CompileOnlyService> service(
-      new CompileOnlyService(options, compiler));
+      new CompileOnlyService(options, std::move(compiler)));
   return std::move(service);
 }
 
 CompileOnlyService::CompileOnlyService(const ServiceOptions& options,
-                                       Compiler* compiler)
-    : Service(options, /*execute_backend=*/nullptr), compiler_(compiler) {}
+                                       std::unique_ptr<Compiler> compiler)
+    : Service(options, /*execute_backend=*/nullptr),
+      compiler_(std::move(compiler)) {}
 
 absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 CompileOnlyService::CompileAheadOfTime(
@@ -118,10 +121,12 @@ CompileOnlyService::CompileAheadOfTime(
     }
 
     TF_ASSIGN_OR_RETURN(
+        ProgramShape program_shape,
+        ProgramShape::FromProto(instance.computation.host_program_shape()));
+    TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleConfig> module_config,
-        CreateModuleConfig(
-            ProgramShape(instance.computation.host_program_shape()),
-            instance.argument_layouts, &execution_options, &options));
+        CreateModuleConfig(program_shape, instance.argument_layouts,
+                           &execution_options, &options));
 
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModule> hlo_module,

@@ -22,6 +22,7 @@ limitations under the License.
 #include <string_view>
 #include <utility>
 
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/macros.h"
 #include "tsl/platform/platform.h"  // IWYU pragma: keep
 #include "tsl/profiler/lib/nvtx_utils.h"
@@ -44,7 +45,8 @@ void PushAnnotation(const T& generator) {
 
 #if !defined(IS_MOBILE_PLATFORM)
   if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
-    AnnotationStack::PushAnnotation(static_cast<std::string_view>(generator()));
+    AnnotationStack::PushAnnotation(
+        static_cast<absl::string_view>(generator()));
   }
 #endif
 }

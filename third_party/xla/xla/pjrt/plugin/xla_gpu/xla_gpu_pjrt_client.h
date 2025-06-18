@@ -24,9 +24,6 @@ limitations under the License.
 
 namespace xla {
 
-// Whether to use the TFRT GPU Client.
-bool UseTfrtGpuClient();
-
 // Public entry point to get an XLA:GPU PjRtClient
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetXlaPjrtGpuClient(
     GpuClientOptions options);

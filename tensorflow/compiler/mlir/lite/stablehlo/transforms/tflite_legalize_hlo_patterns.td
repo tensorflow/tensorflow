@@ -56,7 +56,7 @@ def : Pat<
 def I64AttrToI32Attr:
   NativeCodeCall<
     "$_builder.getI32IntegerAttr("
-      "static_cast<int32_t>($0.cast<IntegerAttr>().getInt()))">;
+      "static_cast<int32_t>(llvm::cast<IntegerAttr>($0).getInt()))">;
 
 def : Pat<
   (MHLO_ConcatenateOp $inputs, $dim),
@@ -298,7 +298,7 @@ foreach pair = [
 // Check implicit bool cast of `$_self` to ensure Attribute is non-null before
 // casting.
 def HasSupportedComparisonType : AttrConstraint<
-  CPred<"!$_self || SupportedComparisonType($_self.cast<mhlo::ComparisonTypeAttr>())">>;
+  CPred<"!$_self || SupportedComparisonType(llvm::cast<mhlo::ComparisonTypeAttr>($_self))">>;
 
 class MHLO_ComparisonDirectionValue<string enumStr> :
   ConstantAttr<MHLO_ComparisonDirectionAttr,

@@ -19,7 +19,6 @@ cc_library(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
         "//xla/pjrt/gpu/tfrt:tfrt_gpu_client",
-        "//xla/tsl/util:env_var",
         "@com_google_absl//absl/status:statusor",
     ],
 )
@@ -51,7 +50,6 @@ xla_test(
         "no_oss",
     ] + if_google(["config-cuda-only"]),
     deps = [
-        ":xla_gpu_client_options",
         ":xla_gpu_pjrt_client",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
         "//xla/pjrt/gpu/tfrt:tfrt_gpu_client",

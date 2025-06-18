@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
@@ -52,8 +53,12 @@ std::unique_ptr<tsl::protobuf::Message> ProcessNewEnv(
 TEST(ExecutableBuildOptionsTest, ProtoRoundTripWorks) {
   ExecutableBuildOptionsProto p;
   p.set_device_ordinal(1);
+
+  // Set result_layout to an array shape.
+  p.mutable_result_layout()->set_element_type(PrimitiveType::F32);
   p.mutable_result_layout()->add_dimensions(2);
   p.mutable_result_layout()->add_is_dynamic_dimension(true);
+
   {
     CompilationEnvironments::RegisterProcessNewEnvFn(
         test::TestCompilationEnvironment1::descriptor(), ProcessNewEnv);

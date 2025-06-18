@@ -28,7 +28,7 @@ namespace {
 
 TEST(ArrayTest, MakeArrayPointerListTest) {
   const int kNumArrays = 3;
-  std::vector<tsl::RCReference<Array>> arrays;
+  std::vector<ArrayRef> arrays;
   arrays.reserve(kNumArrays);
   for (int i = 0; i < kNumArrays; ++i) {
     arrays.push_back(tsl::MakeRef<MockArray>());

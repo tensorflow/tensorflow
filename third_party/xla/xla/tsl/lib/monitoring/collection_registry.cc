@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "xla/tsl/lib/monitoring/collection_registry.h"
 
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/lib/monitoring/collected_metrics.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/stringpiece.h"
 
 // We replace this implementation with a null implementation for mobile
@@ -39,14 +39,14 @@ void Collector::CollectMetricValues(
 }
 
 std::unique_ptr<CollectedMetrics> Collector::ConsumeCollectedMetrics() {
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   return std::move(collected_metrics_);
 }
 
 void Collector::CollectMetricDescriptor(
     const AbstractMetricDef* const metric_def) {
   auto* const metric_descriptor = [&]() {
-    mutex_lock l(mu_);
+    absl::MutexLock l(&mu_);
     return collected_metrics_->metric_descriptor_map
         .insert(std::make_pair(
             string(metric_def->name()),
@@ -81,7 +81,7 @@ CollectionRegistry::Register(const AbstractMetricDef* const metric_def,
   CHECK(collection_function)
       << "Requires collection_function to contain an implementation.";
 
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
 
   const auto found_it = registry_.find(metric_def->name());
   if (found_it != registry_.end()) {
@@ -103,7 +103,7 @@ CollectionRegistry::Register(const AbstractMetricDef* const metric_def,
 }
 
 void CollectionRegistry::Unregister(const AbstractMetricDef* const metric_def) {
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   registry_.erase(metric_def->name());
 }
 
@@ -111,7 +111,7 @@ std::unique_ptr<CollectedMetrics> CollectionRegistry::CollectMetrics(
     const CollectMetricsOptions& options) const {
   internal::Collector collector(env_->NowMicros() / 1000);
 
-  mutex_lock l(mu_);
+  absl::MutexLock l(&mu_);
   for (const auto& registration : registry_) {
     if (options.collect_metric_descriptors) {
       collector.CollectMetricDescriptor(registration.second.metric_def);

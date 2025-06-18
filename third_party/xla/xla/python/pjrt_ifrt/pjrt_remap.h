@@ -34,11 +34,11 @@ class PjRtCompatibleClient;
 
 // Common implementation of `xla::ifrt::Client::RemapArrays` for
 // `PjRtCompatibleClient`.
-absl::StatusOr<std::vector<tsl::RCReference<xla::ifrt::Array>>>
-PjRtCompatibleClientRemapArrays(
-    PjRtCompatibleClient* client, const RemapPlan& plan,
-    absl::Span<tsl::RCReference<xla::ifrt::Array>> arrays,
-    ArrayCopySemantics semantics);
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
+PjRtCompatibleClientRemapArrays(PjRtCompatibleClient* client,
+                                const RemapPlan& plan,
+                                absl::Span<xla::ifrt::ArrayRef> arrays,
+                                ArrayCopySemantics semantics);
 
 }  // namespace ifrt
 }  // namespace xla

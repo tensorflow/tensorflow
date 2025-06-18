@@ -115,7 +115,7 @@ absl::StatusOr<HouseHolderResult> HouseRow(
     PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
   TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-  const int64_t num_dims = a_shape.dimensions_size();
+  const int64_t num_dims = a_shape.dimensions().size();
   const int64_t n = ShapeUtil::GetDimension(a_shape, -1);
   XlaOp zero = ScalarLike(i, 0);
   XlaOp x = DynamicSliceInMinorDims(a, {i, zero}, {1, n});
@@ -181,7 +181,7 @@ absl::StatusOr<HouseHolderResult> HouseCol(
     PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
   TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-  const int64_t num_dims = a_shape.dimensions_size();
+  const int64_t num_dims = a_shape.dimensions().size();
   const int64_t m = ShapeUtil::GetDimension(a_shape, -2);
   XlaOp zero = ScalarLike(i, 0);
   XlaOp x = DynamicSliceInMinorDims(a, {zero, j}, {m, 1});
@@ -259,7 +259,7 @@ absl::StatusOr<SVDResult> HouseHolderBidiagonalization(
     XlaOp a, XlaOp eps, PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
   TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-  const int64_t num_dims = a_shape.dimensions_size();
+  const int64_t num_dims = a_shape.dimensions().size();
   const int64_t num_batch_dims = num_dims - 2;
   std::vector<int64_t> batch_dims(num_batch_dims);
   for (int i = 0; i < num_batch_dims; ++i) {
@@ -464,7 +464,7 @@ absl::StatusOr<SVDResult> OneSidedJacobiUpdate(SVDResult svd_result, XlaOp p,
   XlaOp d = svd_result.d;
   XlaBuilder* builder = d.builder();
   TF_ASSIGN_OR_RETURN(Shape d_shape, builder->GetShape(d));
-  const int64_t num_dims = d_shape.dimensions_size();
+  const int64_t num_dims = d_shape.dimensions().size();
   const int64_t num_batch_dims = num_dims - 2;
   std::vector<int64_t> batch_dims(num_batch_dims);
   for (int i = 0; i < num_batch_dims; ++i) {
@@ -574,7 +574,7 @@ absl::StatusOr<SVDResult> OneSidedJacobiUpdate(SVDResult svd_result, XlaOp p,
 absl::StatusOr<XlaOp> ComputeToleranceComparison(XlaOp w, XlaOp epsilon) {
   XlaBuilder* builder = w.builder();
   TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(w));
-  auto num_dims = static_cast<int32_t>(shape.dimensions_size());
+  auto num_dims = static_cast<int32_t>(shape.dimensions().size());
   int64_t n = shape.dimensions(num_dims - 1);
   shape.set_dimensions(num_dims - 2, n);
   auto w_sliced = SliceInMinorDims(w, {0, 0}, {n, n});
@@ -743,7 +743,7 @@ absl::StatusOr<SVDResult> SortBySingularValuesAndPostProcessing(
     SVDResult result) {
   XlaBuilder* builder = result.d.builder();
   TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(result.d));
-  const int64_t num_dims = shape.dimensions_size();
+  const int64_t num_dims = shape.dimensions().size();
   auto dimensions = shape.dimensions();
   const int64_t m = ShapeUtil::GetDimension(shape, -2);
   const int64_t n = ShapeUtil::GetDimension(shape, -1);
@@ -844,7 +844,7 @@ SVDResult SVD(XlaOp a, int64_t max_iter, float epsilon,
     return return_error(shape_with_status.status());
   }
   Shape a_shape = shape_with_status.value();
-  const int64_t num_dims = a_shape.dimensions_size();
+  const int64_t num_dims = a_shape.dimensions().size();
   const int64_t num_batch_dims = num_dims - 2;
   std::vector<int64_t> batch_dims(num_batch_dims);
   for (int i = 0; i < num_batch_dims; ++i) {

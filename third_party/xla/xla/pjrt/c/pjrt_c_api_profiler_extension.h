@@ -29,9 +29,7 @@ extern "C" {
 #define PJRT_API_PROFILER_EXTENSION_VERSION 1
 
 typedef struct PJRT_Profiler_Extension {
-  size_t struct_size;
-  PJRT_Extension_Type type;
-  PJRT_Extension_Base* next;
+  PJRT_Extension_Base base;
   // can be nullptr if PJRT_Profiler_Extension is used as an args extension
   PLUGIN_Profiler_Api* profiler_api;
   // valid only when used as an args extension

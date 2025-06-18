@@ -14,31 +14,37 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cmath>
+#include <cstdint>
+#include <functional>
+#include <utility>
 #include <vector>
 
-#include "absl/status/statusor.h"
+#include "absl/log/check.h"
+#include "absl/types/span.h"
 #include "Eigen/Core"
+#include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/hlo/testlib/test_helpers.h"
-#include "xla/literal.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_macros.h"
-#include "xla/tests/test_utils.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/types.h"
 
 // Tests the handling of the basic mathematics operations with F16 operands.
 
 namespace xla {
 namespace {
 
-class HalfTestBase : public ClientLibraryTestBase {
- protected:
-  const ErrorSpec error_spec_{0.001, 0.001};
-  // Number of elements in the input buffers.
-  static constexpr int kNumElements = 4;
-};
-
 using UnaryBuildFuncTy = std::function<void(const xla::XlaOp& src)>;
+
+// Number of elements in the input buffers.
+constexpr int kNumElements = 4;
+constexpr ErrorSpec kErrorSpec{0.001, 0.001};
+
+using HalfTestBase = ClientLibraryTestRunnerMixin<
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
 
 struct UnaryOpTestParam {
   std::function<half(half)> compute_func;
@@ -67,7 +73,7 @@ XLA_TEST_P(UnaryOpTest, Ops) {
   UnaryBuildFuncTy build_func = GetParam().build_func;
   build_func(x_opnd);
 
-  ComputeAndCompareR1<half>(&builder, expected, {x_data.get()}, error_spec_);
+  ComputeAndCompareR1<half>(&builder, expected, {&x_data}, kErrorSpec);
 }
 
 half sign_imp(half value) {
@@ -125,7 +131,7 @@ XLA_TEST_P(UnaryPredTest, Ops) {
   UnaryBuildFuncTy build_func = GetParam().build_func;
   build_func(x_opnd);
 
-  ComputeAndCompareR1<bool>(&builder, expected, {x_data.get()});
+  ComputeAndCompareR1<bool>(&builder, expected, {&x_data});
 }
 
 INSTANTIATE_TEST_SUITE_P(half, UnaryPredTest,
@@ -166,8 +172,7 @@ XLA_TEST_P(BinaryOpTest, Ops) {
   BinaryBuildFuncTy build_func = GetParam().build_func;
   build_func(x_opnd, y_opnd, {});
 
-  ComputeAndCompareR1<half>(&builder, expected, {x_data.get(), y_data.get()},
-                            error_spec_);
+  ComputeAndCompareR1<half>(&builder, expected, {&x_data, &y_data}, kErrorSpec);
 }
 
 half atan2_imp(half x, half y) {
@@ -221,7 +226,7 @@ XLA_TEST_P(BinaryPredTest, Ops) {
   BinaryBuildFuncTy build_func = GetParam().build_func;
   build_func(x_opnd, y_opnd, {});
 
-  ComputeAndCompareR1<bool>(&builder, expected, {x_data.get(), y_data.get()});
+  ComputeAndCompareR1<bool>(&builder, expected, {&x_data, &y_data});
 }
 
 INSTANTIATE_TEST_SUITE_P(

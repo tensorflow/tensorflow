@@ -335,6 +335,8 @@ message XNNPackSettings {
   // reloaded from this cache which can reduce initialization time and the
   // packing memory footprint.
   optional string weight_cache_file_path = 3;
+  // Extra flags to pass to xnn_create_runtime
+  optional int32 runtime_flags = 4;
 }
 
 // CoreML Delegate settings.

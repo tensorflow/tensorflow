@@ -71,7 +71,7 @@ struct LowerLoadOp : public mlir::OpRewritePattern<LoadOp> {
         ptr, kernel_call_frame, cast,
         llvm::SmallVector<mlir::LLVM::GEPArg, 2>{mlir::LLVM::GEPArg(0),
                                                  mlir::LLVM::GEPArg(3)},
-        /*inbounds=*/true);
+        mlir::LLVM::GEPNoWrapFlags::inbounds);
     auto args_ptr = b.create<mlir::LLVM::LoadOp>(ptr, args_gep);
     args_ptr.setInvariant(true);
 
@@ -80,7 +80,7 @@ struct LowerLoadOp : public mlir::OpRewritePattern<LoadOp> {
         ptr, kernel_arg, args_ptr,
         llvm::SmallVector<mlir::LLVM::GEPArg, 2>{
             mlir::LLVM::GEPArg(op.getIndex()), mlir::LLVM::GEPArg(0)},
-        /*inbounds=*/true);
+        mlir::LLVM::GEPNoWrapFlags::inbounds);
     auto arg_ptr = b.create<mlir::LLVM::LoadOp>(ptr, arg_gep);
     arg_ptr.setInvariant(true);
     arg_ptr->setAttr(mlir::LLVM::LLVMDialect::getAlignAttrName(),
@@ -113,12 +113,14 @@ struct LowerThreadId : public mlir::OpRewritePattern<ThreadIdOp> {
                                                            op.getCallFrame())
                     .getResult(0);
     auto tid_gep = b.create<mlir::LLVM::GEPOp>(
-        ptr, kernel_call_frame, cast, mlir::LLVM::GEPArg(1), /*inbounds=*/true);
+        ptr, kernel_call_frame, cast, mlir::LLVM::GEPArg(1),
+        mlir::LLVM::GEPNoWrapFlags::inbounds);
     auto tid_ptr = b.create<mlir::LLVM::LoadOp>(ptr, tid_gep);
 
     // Load 'x'.
     auto thread_x_get = b.create<mlir::LLVM::GEPOp>(
-        ptr, kernel_dim, tid_ptr, mlir::LLVM::GEPArg(0), /*inbounds=*/true);
+        ptr, kernel_dim, tid_ptr, mlir::LLVM::GEPArg(0),
+        mlir::LLVM::GEPNoWrapFlags::inbounds);
     auto thread_id = b.create<mlir::LLVM::LoadOp>(i64_ty, thread_x_get);
 
     mlir::Value tix = thread_id.getResult();

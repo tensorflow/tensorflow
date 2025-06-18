@@ -26,14 +26,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-class P2PSchedulePreparationTest : public HloTestBase {
+class P2PSchedulePreparationTest : public HloHardwareIndependentTestBase {
  public:
   // Verifies that no control dependence is added to the P2P group.
   void VerifyP2PNotTransformed(HloModule* module,

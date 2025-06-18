@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -46,7 +45,9 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_dnn.h"
 #include "xla/stream_executor/cuda/cudnn_frontend_helpers.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -132,11 +133,13 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToForwardFMHA(
                                         custom_call->shape(), {1})));
   }
 
+  int input_index = 3;
   std::optional<se::dnn::TensorDescriptor> bias;
   if (kind == CudnnfMHAKind::kScaleBiasSoftmax ||
       kind == CudnnfMHAKind::kScaleBiasSoftmaxDropout) {
     const HloInstruction &bias_hlo = *custom_call->operand(3);
     TF_ASSIGN_OR_RETURN(bias, TensorDescriptorFor(bias_hlo.shape()));
+    input_index++;
   }
 
   const double dropout_rate = config.dropout_rate();
@@ -148,13 +151,39 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToForwardFMHA(
 
   const int sliding_window_length = config.sliding_window_length();
   const int max_seg_per_batch = config.max_seg_per_batch();
+  const bool is_paged_attention = config.is_paged_attention();
+
+  if (config.mask_type() == xla::gpu::CudnnfMHABackendConfig::PADDING ||
+      config.mask_type() == xla::gpu::CudnnfMHABackendConfig::PADDING_CAUSAL ||
+      max_seg_per_batch > 1 || is_paged_attention) {
+    // skip q_seqlen and kv_seqlen
+    input_index += 2;
+  }
+
+  if (max_seg_per_batch > 1) {
+    // skip q_offsets and kv_offsets
+    input_index += 2;
+  }
+
+  std::optional<se::dnn::TensorDescriptor> page_table_k;
+  std::optional<se::dnn::TensorDescriptor> page_table_v;
+  if (is_paged_attention) {
+    TF_ASSIGN_OR_RETURN(
+        page_table_k,
+        TensorDescriptorFor(custom_call->operand(input_index++)->shape()));
+    TF_ASSIGN_OR_RETURN(
+        page_table_v,
+        TensorDescriptorFor(custom_call->operand(input_index++)->shape()));
+  }
+  TF_RET_CHECK(input_index == custom_call->operand_count());
+
   TF_ASSIGN_OR_RETURN(
       se::gpu::CudnnGraph graph,
       se::gpu::GetCudnnFlashAttentionOperationGraph(
           dnn_support, lhs_bmm1, rhs_bmm1, rhs_bmm2, output, bias, activation,
-          static_cast<float>(config.fmha_scale()), dropout_rate > 0.0,
-          dropout_rate, dnn_mask_type, sliding_window_length,
-          max_seg_per_batch));
+          page_table_k, page_table_v, static_cast<float>(config.fmha_scale()),
+          dropout_rate > 0.0, dropout_rate, dnn_mask_type,
+          sliding_window_length, max_seg_per_batch));
   return graph;
 }
 
@@ -165,7 +194,8 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToForwardFMHAF8(
       custom_call->backend_config<xla::gpu::GpuBackendConfig>());
   const xla::gpu::CudnnfMHABackendConfig &config =
       gpu_config.cudnn_fmha_backend_config();
-  Shape intermediate_tensor_shape(config.intermediate_tensor_shape());
+  TF_ASSIGN_OR_RETURN(Shape intermediate_tensor_shape,
+                      Shape::FromProto(config.intermediate_tensor_shape()));
 
   TF_ASSIGN_OR_RETURN(CudnnfMHAMaskKind cudnn_mask_type,
                       AsCudnnFmhaMaskKind(config.mask_type()));
@@ -217,7 +247,8 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBackwardFMHA(
       custom_call->operand(input_index++)->shape();
   const Shape &bmm2_grad_gemm2_rhs_shape =
       custom_call->operand(input_index++)->shape();
-  const Shape bmm2_grad_gemm1_lhs_shape(config.intermediate_tensor_shape());
+  TF_ASSIGN_OR_RETURN(const Shape bmm2_grad_gemm1_lhs_shape,
+                      Shape::FromProto(config.intermediate_tensor_shape()));
   ++input_index;
   const Shape &d_output_shape = custom_call->operand(input_index++)->shape();
 
@@ -341,7 +372,8 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBackwardFMHAF8(
   Shape fwd_output_shape = custom_call->operand(3)->shape();
   Shape d_output_shape = custom_call->operand(4)->shape();
 
-  Shape bmm2_grad_gemm1_lhs_shape(config.intermediate_tensor_shape());
+  TF_ASSIGN_OR_RETURN(Shape bmm2_grad_gemm1_lhs_shape,
+                      Shape::FromProto(config.intermediate_tensor_shape()));
 
   Shape d_bmm1_lhs_shape = ShapeUtil::GetSubshape(custom_call->shape(), {0});
   Shape d_bmm1_rhs_shape = ShapeUtil::GetSubshape(custom_call->shape(), {1});
@@ -395,7 +427,7 @@ absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBackwardFMHAF8(
 absl::StatusOr<se::gpu::CudnnGraph> BuildGraphForCustomCallToBlockScaledDot(
     se::dnn::DnnSupport &dnn_support, HloCustomCallInstruction *custom_call) {
   TF_RET_CHECK(custom_call->operand_count() == 4);
-  TF_RET_CHECK(custom_call->shape().tuple_shapes_size() == 2);
+  TF_RET_CHECK(custom_call->shape().tuple_shapes().size() == 2);
 
   TF_ASSIGN_OR_RETURN(TensorDescriptor lhs_data,
                       TensorDescriptorFor(custom_call->operand(0)->shape()));

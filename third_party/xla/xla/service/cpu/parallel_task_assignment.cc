@@ -230,18 +230,35 @@ bool ParallelTaskAssigner::AssignParallelTasksHelper(
   std::vector<HloInstruction*> instructions(computation->instructions().begin(),
                                             computation->instructions().end());
   for (auto* instruction : instructions) {
-    // Assign parallel tasks to sub-computations for While and Call HLOs.
+    // Assign parallel tasks to sub-computations for While, Conditional and Call
+    // HLOs.
     // TODO(b/27458679) Evaluate alternative intra-op parallelism placement,
     // and support other callable computations like reduce.
+    bool control_flow_hlo = false;
+
     if (instruction->opcode() == HloOpcode::kWhile) {
+      control_flow_hlo = true;
       changed |= AssignParallelTasksHelper(module, instruction->while_body(),
                                            hlo_to_parallel_tasks);
-      continue;
+
+    } else if (instruction->opcode() == HloOpcode::kConditional) {
+      control_flow_hlo = true;
+      for (HloComputation* branch : instruction->branch_computations()) {
+        changed |=
+            AssignParallelTasksHelper(module, branch, hlo_to_parallel_tasks);
+      }
+
     } else if (instruction->opcode() == HloOpcode::kCall) {
+      control_flow_hlo = true;
       changed |= AssignParallelTasksHelper(module, instruction->to_apply(),
                                            hlo_to_parallel_tasks);
+    }
+
+    // Continue to the next instruction if we handled control flow above.
+    if (control_flow_hlo) {
       continue;
     }
+
     // Skip if no parallel tasks were computed in first pass.
     auto it = hlo_to_parallel_tasks.find(instruction);
     if (it == hlo_to_parallel_tasks.end()) {

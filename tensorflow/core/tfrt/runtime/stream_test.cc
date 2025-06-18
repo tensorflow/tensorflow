@@ -50,7 +50,29 @@ using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
 using ::testing::status::StatusIs;
 
-TEST(StreamTest, Simple) {
+class TestStreamControllerInterface : public StreamControllerInterface {
+ public:
+  TestStreamControllerInterface()
+      : StreamControllerInterface("test_controller_address") {}
+};
+
+class StreamTest : public ::testing::Test {
+ protected:
+  static void SetUpTestSuite() {
+    GetGlobalStreamInterfaceFactory().RegisterController(
+        []() { return std::make_unique<TestStreamControllerInterface>(); });
+  }
+};
+
+TEST_F(StreamTest, Initialize) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto controller_interface,
+      GetGlobalStreamInterfaceFactory().CreateControllerStreamInterface());
+  EXPECT_EQ(controller_interface->controller_address(),
+            "test_controller_address");
+}
+
+TEST_F(StreamTest, Simple) {
   StreamCallbackId callback_id(1234);
   StepId step_id(5678);
 
@@ -97,7 +119,7 @@ TEST(StreamTest, Simple) {
   EXPECT_THAT(status, StatusIs(absl::StatusCode::kAlreadyExists));
 }
 
-TEST(StreamTest, MultipleWriters) {
+TEST_F(StreamTest, MultipleWriters) {
   StreamCallbackId callback_id(1234);
   StepId step_id(5678);
 
@@ -144,22 +166,6 @@ TEST(StreamTest, MultipleWriters) {
                                    Pair("b", ElementsAreArray({200}))),
               UnorderedElementsAre(Pair("c", ElementsAreArray({300})))));
   }
-}
-
-class TestStreamControllerInterface : public StreamControllerInterface {
- public:
-  TestStreamControllerInterface()
-      : StreamControllerInterface("test_controller_address") {}
-};
-
-TEST(StreamControllerInterface, Initialize) {
-  GetGlobalStreamInterfaceFactory().RegisterController(
-      []() { return std::make_unique<TestStreamControllerInterface>(); });
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto controller_interface,
-      GetGlobalStreamInterfaceFactory().CreateControllerStreamInterface());
-  EXPECT_EQ(controller_interface->controller_address(),
-            "test_controller_address");
 }
 
 class TestStreamWorkerInterface : public StreamWorkerInterface {

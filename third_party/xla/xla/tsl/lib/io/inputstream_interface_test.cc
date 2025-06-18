@@ -58,7 +58,7 @@ TEST(InputStreamInterface, Basic) {
   TF_ASSERT_OK(ss.ReadNBytes(11, &res));
   EXPECT_EQ("test string", res);
   // Skipping past end of the file causes OutOfRange error.
-  EXPECT_TRUE(errors::IsOutOfRange(ss.SkipNBytes(1)));
+  EXPECT_TRUE(absl::IsOutOfRange(ss.SkipNBytes(1)));
 
   TF_ASSERT_OK(ss.Reset());
   TF_ASSERT_OK(ss.ReadNBytes(4, &res));

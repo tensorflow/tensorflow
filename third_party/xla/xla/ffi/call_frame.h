@@ -154,10 +154,13 @@ class CallFrame {
   absl::Status UpdateWithBuffers(absl::Span<const se::DeviceMemoryBase> args,
                                  absl::Span<const se::DeviceMemoryBase> rets);
 
+  // Creates a copy of the call frame.
+  CallFrame Copy() const;
+
   // Creates a copy of the call frame with updated arguments and results.
   absl::StatusOr<CallFrame> CopyWithBuffers(
       absl::Span<const se::DeviceMemoryBase> args,
-      absl::Span<const se::DeviceMemoryBase> rets);
+      absl::Span<const se::DeviceMemoryBase> rets) const;
 
   // Builds an XLA_FFI_CallFrame from owned arguments and attributes.
   XLA_FFI_CallFrame Build(

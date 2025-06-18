@@ -32,7 +32,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
-#include "xla/service/gpu/transforms/all_gather_optimizer.h"
+#include "xla/service/gpu/transforms/collectives/all_gather_optimizer.h"
 #include "xla/service/gpu/transforms/cudnn_custom_call_converter.h"
 #include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
 #include "xla/service/gpu/transforms/dot_dimension_sorter.h"
@@ -177,10 +177,10 @@ class GpuOptProvider : public CompiledOptProvider {
                         GetDeviceDescription(optimized_module));
     TF_ASSIGN_OR_RETURN(se::Platform * platform,
                         PlatformUtil::GetPlatform(GetPlatformName()));
-    TF_ASSIGN_OR_RETURN(Compiler * compiler,
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
                         Compiler::GetForPlatform(platform));
 
-    auto* gpu_compiler = static_cast<gpu::GpuCompiler*>(compiler);
+    auto* gpu_compiler = static_cast<gpu::GpuCompiler*>(compiler.get());
     if (!optimized_module->has_schedule()) {
       TF_ASSIGN_OR_RETURN(gpu::ScheduleMetadata schedule_metadata,
                           gpu::ScheduleGpuModule(optimized_module,

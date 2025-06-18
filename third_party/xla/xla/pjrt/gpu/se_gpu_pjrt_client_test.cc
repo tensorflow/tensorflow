@@ -24,6 +24,7 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -37,12 +38,15 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/debug_options_flags.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -51,15 +55,19 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/distributed.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
 #include "xla/pjrt/gpu/gpu_topology.pb.h"
+#include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/host_memory_spaces.h"
+#include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
@@ -67,6 +75,7 @@ limitations under the License.
 #include "xla/pjrt/profiling/device_time_measurement.h"
 #include "xla/pjrt/profiling/test_util/mock_device_time_measurement.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -76,21 +85,20 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/subprocess.h"
+#include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/mem.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace {
@@ -158,9 +166,16 @@ static constexpr char const* kProgram = R"(HloModule HostTransfer
       ROOT result = f32[2] get-tuple-element(recv-done), index=0
     })";
 
+GpuClientOptions DefaultOptions() {
+  // Most test cases expect exactly 2 GPUs.
+  GpuClientOptions options;
+  options.allowed_devices = std::set<int>({0, 1});
+  return options;
+}
+
 TEST(StreamExecutorGpuClientTest, MemorySpace) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   ASSERT_GE(client->devices().size(), 1);
 
   for (auto* device : client->devices()) {
@@ -181,7 +196,7 @@ TEST(StreamExecutorGpuClientTest, MemorySpace) {
 
 TEST(StreamExecutorGpuClientTest, MemorySpacesUniqueIds) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   ASSERT_GE(client->devices().size(), 1);
 
   absl::flat_hash_map<int, std::string> memories;
@@ -198,7 +213,7 @@ TEST(StreamExecutorGpuClientTest, MemorySpacesUniqueIds) {
 #if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
 TEST(StreamExecutorGpuClientTest, DonateExternalMem) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   auto shape = xla::ShapeUtil::MakeScalarShape(xla::F32);
 
   std::vector<float> data = {1.0f};
@@ -241,13 +256,13 @@ ENTRY main.5 {
 
   ASSERT_EQ(result.size(), 1);
   ASSERT_EQ(result[0].size(), 1);
-  EXPECT_OK(result[0][0]->GetReadyFuture().Await());
+  TF_EXPECT_OK(result[0][0]->GetReadyFuture().Await());
 }
-#endif
+#endif  // defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
 
 TEST(StreamExecutorGpuClientTest, PropagateError) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   auto shape = xla::ShapeUtil::MakeScalarShape(xla::F32);
   absl::Status input_error = absl::InvalidArgumentError("input error");
   TF_ASSERT_OK_AND_ASSIGN(
@@ -283,7 +298,7 @@ ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
 // TODO(b/372735047): Fix and reenable.
 TEST(StreamExecutorGpuClientTest, DISABLED_DonateWithControlDependency) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   auto shape = xla::ShapeUtil::MakeScalarShape(xla::F32);
   absl::Status input_error = absl::InvalidArgumentError("input error");
   TF_ASSERT_OK_AND_ASSIGN(
@@ -327,7 +342,7 @@ ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
 
 TEST(StreamExecutorGpuClientTest, SendRecvChunked) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
 
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CompileExecutable(kProgram, *client));
@@ -379,7 +394,7 @@ TEST(StreamExecutorGpuClientTest, SendRecvChunked) {
 
 TEST(StreamExecutorGpuClientTest, SendErrorNoDeadLock) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
 
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CompileExecutable(kProgram, *client));
@@ -414,7 +429,7 @@ TEST(StreamExecutorGpuClientTest, SendErrorNoDeadLock) {
 
 TEST(StreamExecutorGpuClientTest, RecvErrorNoDeadLock) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
 
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CompileExecutable(kProgram, *client));
@@ -486,7 +501,7 @@ TEST(StreamExecutorGpuClientTest, ForwardUserDataToFfiHandler) {
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CompileExecutable(kProgram, *client));
 
@@ -536,7 +551,7 @@ TEST(StreamExecutorGpuClientTest, PassAttrToFfiHandler) {
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CompileExecutable(kProgram, *client));
 
@@ -550,7 +565,7 @@ TEST(StreamExecutorGpuClientTest, PassAttrToFfiHandler) {
 
 TEST(StreamExecutorGpuClientTest, ToLiteralAsync) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   ASSERT_GE(client->addressable_devices().size(), 1);
 
   auto* d = client->addressable_devices()[0];
@@ -588,7 +603,7 @@ TEST(StreamExecutorGpuClientTest, ToLiteralAsync) {
 
 TEST(StreamExecutorGpuClientTest, ToLiteralAsyncWithNonCompactLayout) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   ASSERT_GE(client->addressable_devices().size(), 1);
 
   xla::Shape transposed_shape = xla::ShapeUtil::MakeShapeWithDenseLayout(
@@ -609,34 +624,97 @@ TEST(StreamExecutorGpuClientTest, ToLiteralAsyncWithNonCompactLayout) {
           client->addressable_devices()[0]->memory_spaces()[0]));
   auto buffer = transfer_manager->RetrieveBuffer(0);
 
-  absl::Mutex mu;
+  absl::Notification n;
   auto literal = std::make_shared<Literal>(
       ShapeUtil::DeviceShapeToHostShape(buffer->on_device_shape()));
-  bool got_literal = false;
 
   TF_ASSERT_OK(
       transfer_manager->TransferLiteralToBuffer(0, src_literal, [&]() {}));
 
   buffer->ToLiteral(literal.get()).OnReady([&](absl::Status s) {
-    absl::MutexLock l(&mu);
     TF_ASSERT_OK(s);
-    got_literal = true;
+    n.Notify();
   });
   buffer.reset();
 
-  {
-    absl::MutexLock l(&mu);
-    mu.Await(absl::Condition(&got_literal));
-  }
+  n.WaitForNotification();
 
   ASSERT_TRUE(ShapeUtil::Compatible(src_literal.shape(), literal->shape()));
   ASSERT_EQ(src_literal.data<int32_t>(),
             literal->Relayout(src_literal.shape().layout()).data<int32_t>());
 }
 
+TEST(StreamExecutorGpuClientTest, ToLiteralAsyncWithDifferentMajorToMinor) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(DefaultOptions()));
+  ASSERT_GE(client->addressable_devices().size(), 1);
+
+  xla::Shape shape = xla::ShapeUtil::MakeShapeWithDenseLayout(
+      xla::S32, {2, 3}, /*minor_to_major=*/{1, 0});
+  xla::Literal src_literal = xla::LiteralUtil::CreateR2WithLayout<int32_t>(
+      {{3, 14, 25}, {36, 47, 58}}, shape.layout());
+
+  PjRtClient::ShapeSpec spec;
+  spec.element_type = src_literal.shape().element_type();
+  spec.dims = DimensionVector(src_literal.shape().dimensions().begin(),
+                              src_literal.shape().dimensions().end());
+  xla::Shape transposed_shape = xla::ShapeUtil::MakeShapeWithDenseLayout(
+      xla::S32, {2, 3}, /*minor_to_major=*/{0, 1});
+  std::vector<std::optional<xla::Layout>> device_layouts = {
+      std::make_optional(transposed_shape.layout())};
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto transfer_manager,
+      client->CreateBuffersForAsyncHostToDevice(
+          {spec}, device_layouts,
+          client->addressable_devices()[0]->memory_spaces()[0]));
+  auto buffer = transfer_manager->RetrieveBuffer(0);
+
+  absl::Notification n;
+  auto literal = std::make_shared<Literal>(shape);
+
+  TF_ASSERT_OK(
+      transfer_manager->TransferLiteralToBuffer(0, src_literal, [&]() {}));
+
+  buffer->ToLiteral(literal.get()).OnReady([&](absl::Status s) {
+    TF_ASSERT_OK(s);
+    n.Notify();
+  });
+  buffer.reset();
+
+  n.WaitForNotification();
+
+  ASSERT_TRUE(ShapeUtil::Compatible(src_literal.shape(), literal->shape()));
+  ASSERT_EQ(src_literal.data<int32_t>(),
+            literal->Relayout(src_literal.shape().layout()).data<int32_t>());
+}
+
+TEST(StreamExecutorGpuClientTest, ToLiteralAsyncToken) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(DefaultOptions()));
+  ASSERT_GE(client->addressable_devices().size(), 1);
+
+  xla::Literal literal = xla::LiteralUtil::CreateToken();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->BufferFromHostLiteral(
+          literal, client->addressable_devices()[0]->memory_spaces()[0]));
+  TF_ASSERT_OK(buffer->GetReadyFuture().Await());
+
+  absl::Notification n;
+
+  buffer->ToLiteral(&literal).OnReady([&](absl::Status s) {
+    TF_ASSERT_OK(s);
+    n.Notify();
+  });
+  buffer.reset();
+
+  n.WaitForNotification();
+}
+
 TEST(StreamExecutorGpuClientTest, ToLiteralAsyncBeforeBufferReady) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   ASSERT_GE(client->addressable_devices().size(), 1);
 
   auto* d = client->addressable_devices()[0];
@@ -677,7 +755,7 @@ TEST(StreamExecutorGpuClientTest, ToLiteralAsyncBeforeBufferReady) {
 
 TEST(StreamExecutorGpuClientTest, FromHostAsync) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   ASSERT_GE(client->addressable_devices().size(), 1);
 
   auto* d = client->addressable_devices()[0];
@@ -746,7 +824,7 @@ TEST(StreamExecutorGpuClientTest, FromHostAsync) {
 
 TEST(StreamExecutorGpuClientTest, FromHostAsyncPinnedHost) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   ASSERT_GE(client->addressable_devices().size(), 1);
   TF_ASSERT_OK_AND_ASSIGN(
       auto* pinned_memory_space,
@@ -818,7 +896,7 @@ TEST(StreamExecutorGpuClientTest, FromHostAsyncPinnedHost) {
 
 TEST(StreamExecutorGpuClientTest, FromHostAsyncPinnedHostChunked) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   ASSERT_THAT(client->addressable_devices(), SizeIs(Gt(0)));
   TF_ASSERT_OK_AND_ASSIGN(
       PjRtMemorySpace * memspace,
@@ -902,7 +980,7 @@ TEST(StreamExecutorGpuClientTest, DeleteBufferThenFulfillBufferNoDeadLock) {
 
 TEST(StreamExecutorGpuClientTest, CopyRawToHostFullBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   auto literal = xla::LiteralUtil::CreateR1<float>({41.0f, 42.0f});
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> buffer,
@@ -922,7 +1000,7 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostFullBuffer) {
 
 TEST(StreamExecutorGpuClientTest, CopyRawToHostSubBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   auto literal = xla::LiteralUtil::CreateR1<float>({41.0f, 42.0f});
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -941,7 +1019,7 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostSubBuffer) {
 
 TEST(StreamExecutorGpuClientTest, CopyRawToHostOutOfRange) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   auto literal = xla::LiteralUtil::CreateR1<float>({41.0f, 42.0f});
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -959,7 +1037,7 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostOutOfRange) {
 
 TEST(StreamExecutorGpuClientTest, CopyRawToHostFuture) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   auto literal = xla::LiteralUtil::CreateR1<float>({41.0f, 42.0f});
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> buffer,
@@ -972,8 +1050,8 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostFuture) {
   auto ready = buffer->GetReadyFuture();
   auto result = buffer->CopyRawToHostFuture(dst_future, 0, size);
 
-  // Drop the buffer before fulfilling `dst`. The transfer should still keep the
-  // buffer alive.
+  // Drop the buffer before fulfilling `dst`. The transfer should still keep
+  // the buffer alive.
   buffer.reset();
   ready.OnReady([dst_promise = std::move(dst_promise),
                  size](absl::Status status) mutable {
@@ -992,7 +1070,7 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostFuture) {
 
 TEST(StreamExecutorGpuClientTest, AsyncCopyToDevice) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   ASSERT_GE(client->addressable_devices().size(), 2);
 
   // d0 is the device we will perform local/remote sends from.
@@ -1026,7 +1104,7 @@ TEST(StreamExecutorGpuClientTest, AsyncCopyToDevice) {
 
 TEST(StreamExecutorGpuClientTest, CreateMixOfErrorBuffers) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   ASSERT_GE(client->addressable_devices().size(), 1);
 
   std::vector<Literal> src_literals;
@@ -1136,10 +1214,10 @@ TEST(StreamExecutorGpuClientTest, GetDeviceFabricInfo) {
   auto kv_store = std::make_shared<InMemoryKeyValueStore>();
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(),
                                       "PopulateAndRetrieveFabricInfos", 4);
-  int num_nodes = 2;
+  constexpr int num_nodes = 2;
   for (int node_id = 0; node_id < num_nodes; ++node_id) {
-    thread_pool.Schedule([kv_store, node_id, num_nodes] {
-      GpuClientOptions options;
+    thread_pool.Schedule([kv_store, node_id] {
+      GpuClientOptions options = DefaultOptions();
       options.node_id = node_id;
       options.num_nodes = num_nodes;
       options.kv_store = kv_store;
@@ -1154,7 +1232,7 @@ TEST(StreamExecutorGpuClientTest, GetDeviceFabricInfo) {
                   &executor->GetDeviceDescription())) == 9) {
             auto fabric_info = GetDeviceFabricInfo(executor->device_ordinal());
             if (fabric_info.ok()) {
-              EXPECT_FALSE(true);
+              ADD_FAILURE();
             }
           }
         }
@@ -1165,7 +1243,7 @@ TEST(StreamExecutorGpuClientTest, GetDeviceFabricInfo) {
 
 TEST(StreamExecutorGpuClientTest, GetAllocatorStatsTest) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   ASSERT_GE(client->addressable_devices().size(), 2);
 
   for (auto device : client->addressable_devices()) {
@@ -1174,6 +1252,7 @@ TEST(StreamExecutorGpuClientTest, GetAllocatorStatsTest) {
     TF_ASSERT_OK_AND_ASSIGN(
         std::unique_ptr<PjRtBuffer> buffer,
         client->BufferFromHostLiteral(literal, memory_space));
+    TF_ASSERT_OK(buffer->GetReadyFuture().Await());
 
     auto stats = device->GetAllocatorStats();
     TF_ASSERT_OK(stats.status());
@@ -1183,7 +1262,7 @@ TEST(StreamExecutorGpuClientTest, GetAllocatorStatsTest) {
 
 TEST(StreamExecutorGpuClientTest, GpuDeviceDescriptionTest) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   for (int device_index = 0; device_index < client->device_count();
        device_index++) {
     auto coords =
@@ -1194,9 +1273,32 @@ TEST(StreamExecutorGpuClientTest, GpuDeviceDescriptionTest) {
   }
 }
 
+TEST(StreamExecutorGpuClientTest, GetTopologyDescriptionWithGlobalDevicesTest) {
+  const int num_nodes = 4;
+  GpuClientOptions options;
+  options.num_nodes = num_nodes;
+  options.enable_mock_nccl = true;
+  options.mock_gpu_topology = "2x2x2";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+  int devices_per_host = client->addressable_device_count();
+
+  TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                          client->GetTopologyDescription());
+
+  std::vector<std::unique_ptr<const PjRtDeviceDescription>>
+      device_descriptions = topology->DeviceDescriptions();
+  EXPECT_EQ(client->device_count(), device_descriptions.size());
+
+  for (const auto& device_description : device_descriptions) {
+    EXPECT_EQ(device_description->process_index(),
+              device_description->id() / devices_per_host);
+  }
+}
+
 TEST(TfrtCpuClientTest, CopyToMemorySpace) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   for (auto* memory_space : client->memory_spaces()) {
     xla::Shape shape = xla::ShapeUtil::MakeShape(S32, {128, 256});
     TF_ASSERT_OK_AND_ASSIGN(auto literal, xla::MakeFakeLiteral(shape));
@@ -1211,8 +1313,8 @@ TEST(TfrtCpuClientTest, CopyToMemorySpace) {
 }
 
 TEST(StreamExecutorGpuClientTest, MockNcclClientTest) {
+  GpuClientOptions options = DefaultOptions();
   const int num_nodes = 4;
-  GpuClientOptions options;
   options.num_nodes = num_nodes;
   options.enable_mock_nccl = true;
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
@@ -1230,7 +1332,7 @@ TEST(StreamExecutorGpuClientTest, MockNcclClientTest) {
 }
 
 TEST(StreamExecutorGpuClientTest, ShouldStageHostToDeviceTransfersSetToTrue) {
-  GpuClientOptions options_staging;
+  GpuClientOptions options_staging = DefaultOptions();
   options_staging.should_stage_host_to_device_transfers = true;
   TF_ASSERT_OK_AND_ASSIGN(auto client_staging,
                           GetStreamExecutorGpuClient(options_staging));
@@ -1259,7 +1361,7 @@ TEST(StreamExecutorGpuClientTest, ShouldStageHostToDeviceTransfersSetToTrue) {
 }
 
 TEST(StreamExecutorGpuClientTest, ShouldStageHostToDeviceTransfersSetToFalse) {
-  GpuClientOptions options_no_staging;
+  GpuClientOptions options_no_staging = DefaultOptions();
   options_no_staging.should_stage_host_to_device_transfers = false;
   TF_ASSERT_OK_AND_ASSIGN(auto client_no_staging,
                           GetStreamExecutorGpuClient(options_no_staging));
@@ -1288,7 +1390,7 @@ TEST(StreamExecutorGpuClientTest, ShouldStageHostToDeviceTransfersSetToFalse) {
 }
 
 TEST(StreamExecutorGpuClientTest, MockNcclClientWithGpuTopologyTest) {
-  GpuClientOptions options;
+  GpuClientOptions options = DefaultOptions();
   options.enable_mock_nccl = true;
   options.num_nodes = 8;
   options.mock_gpu_topology = "2x4x2";
@@ -1325,7 +1427,7 @@ module @jit_f attributes {mhlo.num_partitions = 8 : i32,
 })";
 
 TEST(StreamExecutorGpuClientTest, MockNcclClientWithGpuTopologyExecuteTest) {
-  GpuClientOptions client_options;
+  GpuClientOptions client_options = DefaultOptions();
   client_options.enable_mock_nccl = true;
   client_options.num_nodes = 4;
   client_options.mock_gpu_topology = "2x2x2";
@@ -1370,7 +1472,7 @@ TEST(StreamExecutorGpuClientTest, MockNcclClientWithGpuTopologyExecuteTest) {
 }
 
 TEST(StreamExecutorGpuClientTest, MockNcclClientWithGpuTopologyMismatchTest) {
-  GpuClientOptions options;
+  GpuClientOptions options = DefaultOptions();
   options.enable_mock_nccl = true;
   options.num_nodes = 16;
   options.mock_gpu_topology = "2x4";
@@ -1379,7 +1481,7 @@ TEST(StreamExecutorGpuClientTest, MockNcclClientWithGpuTopologyMismatchTest) {
 
 TEST(StreamExecutorGpuClientTest, BufferFromHostBufferPinnedMemory) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   std::vector<int32_t> data{1, 2, 3, 4};
   Shape shape = ShapeUtil::MakeShape(S32, {4});
   TF_ASSERT_OK_AND_ASSIGN(
@@ -1405,7 +1507,7 @@ TEST(StreamExecutorGpuClientTest, BufferFromHostBufferPinnedMemory) {
 
 TEST(StreamExecutorGpuClientTest, CopyToPinnedHostMemorySpace) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   std::vector<int32_t> data{1, 2, 3, 4};
   Shape shape = ShapeUtil::MakeShape(S32, {4});
   auto device = client->addressable_devices()[0];
@@ -1435,7 +1537,7 @@ TEST(StreamExecutorGpuClientTest, CopyToPinnedHostMemorySpace) {
 
 TEST(StreamExecutorGpuClientTest, CopyToPinnedHostMemorySpaceInt4) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   std::vector<int8_t> data{1, 2, 3, 4};
   Shape shape = ShapeUtil::MakeShape(S4, {4});
   auto device = client->addressable_devices()[0];
@@ -1465,7 +1567,7 @@ TEST(StreamExecutorGpuClientTest, CopyToPinnedHostMemorySpaceInt4) {
 
 TEST(StreamExecutorGpuClientTest, OpaqueDeviceMemoryDataPointer) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   ASSERT_THAT(client->addressable_devices(), SizeIs(Gt(0)));
   PjRtDevice* device = client->addressable_devices()[0];
   TF_ASSERT_OK_AND_ASSIGN(
@@ -1586,7 +1688,7 @@ constexpr char const* kCollectiveMemorySpaceOutput = R"(
 
 TEST(StreamExecutorGpuClientTest, ExecutePinnedHostOutputTest) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   TF_ASSERT_OK_AND_ASSIGN(auto input, CreateDeviceBufferForTest(client.get()));
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CompileExecutable(kD2HProgram, *client));
@@ -1596,15 +1698,15 @@ TEST(StreamExecutorGpuClientTest, ExecutePinnedHostOutputTest) {
   std::vector<std::unique_ptr<xla::PjRtBuffer>>& result_buffers = result[0];
   EXPECT_EQ(result_buffers[0]->memory_space()->kind(), "pinned_host");
 
-  TF_ASSERT_OK_AND_ASSIGN(auto memory_stats,
-                          executable->GetCompiledMemoryStats());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto memory_stats, executable->GetExecutable()->GetCompiledMemoryStats());
   EXPECT_EQ(memory_stats.output_size_in_bytes, 0);
   EXPECT_EQ(memory_stats.host_output_size_in_bytes, 16);
 }
 
 TEST(StreamExecutorGpuClientTest, ExecutePinnedHostOutputTupleTest) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   TF_ASSERT_OK_AND_ASSIGN(auto input, CreateDeviceBufferForTest(client.get()));
 
   // Build the output shape with the correct memory space set.
@@ -1637,23 +1739,23 @@ TEST(StreamExecutorGpuClientTest, ExecutePinnedHostOutputTupleTest) {
 
 TEST(StreamExecutorGpuClientTest, ExecutablePinnedHostOutputMemoryKindTest) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CompileExecutable(kD2HProgram, *client));
 
   TF_ASSERT_OK_AND_ASSIGN(auto memory_kinds,
-                          executable->GetOutputMemoryKinds());
+                          executable->GetExecutable()->GetOutputMemoryKinds());
   EXPECT_EQ(memory_kinds.size(), 1);
   EXPECT_EQ(memory_kinds[0].size(), 1);
   EXPECT_EQ(memory_kinds[0][0], "pinned_host");
 }
 
-// Verify the output device memory kind with collective memory space shape when
-// NCCL user buffer is enabled.
+// Verify the output device memory kind with collective memory space shape
+// when NCCL user buffer is enabled.
 TEST(StreamExecutorGpuClientTest,
      ExecutableCollectiveMemoryOutputMemoryKindTest) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   xla::CompileOptions options;
   options.executable_build_options.mutable_debug_options()
       ->set_xla_gpu_enable_nccl_user_buffers(true);
@@ -1680,7 +1782,7 @@ TEST(StreamExecutorGpuClientTest,
   EXPECT_EQ(input->memory_space()->kind(), "device");
 
   TF_ASSERT_OK_AND_ASSIGN(auto memory_kinds,
-                          executable->GetOutputMemoryKinds());
+                          executable->GetExecutable()->GetOutputMemoryKinds());
   EXPECT_EQ(memory_kinds.size(), 1);
   EXPECT_EQ(memory_kinds[0].size(), 1);
   EXPECT_EQ(memory_kinds[0][0], "device");
@@ -1694,10 +1796,44 @@ TEST(StreamExecutorGpuClientTest,
   EXPECT_EQ(memory_space, 1);
 }
 
+TEST(StreamExecutorGpuClientTest, CollectiveMemorySpaceSmoke) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+  xla::CompileOptions opts;
+  opts.executable_build_options.mutable_debug_options()
+      ->set_xla_gpu_enable_nccl_user_buffers(true);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto exe, CompileExecutable(kCollectiveMemorySpaceOutput, *client, opts));
+
+  std::vector<int32_t> data{1, 2, 3, 4};
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, {1, 4}, {1, 0});
+  shape.mutable_layout()->set_memory_space(Layout::kDefaultMemorySpace);
+  auto* device = client->addressable_devices()[0];
+  TF_EXPECT_OK(device->default_memory_space());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto input,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+          /*on_done_with_host_buffer=*/nullptr, *device->default_memory_space(),
+          /*device_layout=*/nullptr));
+  EXPECT_EQ(input->memory_space()->kind(), "device");
+
+  TF_ASSERT_OK_AND_ASSIGN(auto results,
+                          exe->Execute({{input.get()}}, ExecuteOptions()));
+  auto& buf = results[0][0];
+
+  // Override default memory space to collective memory space.
+  EXPECT_EQ(buf->on_device_shape().layout().memory_space(),
+            gpu::kCollectiveMemorySpaceColor);
+}
+
 TEST(StreamExecutorGpuClientTest,
      ExecutablePinnedHostTupleOutputMemoryKindTest) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
 
   // Build the output shape with the correct memory space set.
   Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, {4}, {0});
@@ -1715,7 +1851,7 @@ TEST(StreamExecutorGpuClientTest,
       CompileExecutable(kD2HProgramTupleOutput, *client, options));
 
   TF_ASSERT_OK_AND_ASSIGN(auto memory_kinds,
-                          executable->GetOutputMemoryKinds());
+                          executable->GetExecutable()->GetOutputMemoryKinds());
   EXPECT_EQ(memory_kinds.size(), 1);
   EXPECT_EQ(memory_kinds[0].size(), 2);
   EXPECT_EQ(memory_kinds[0][0], "device");
@@ -1743,14 +1879,15 @@ TEST(StreamExecutorGpuClientTest, MlirParameterHostMemorySpaceIsSetInHlo) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
 
   mlir::MLIRContext context;
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           xla::ParseMlirModuleString(kMlirH2D, context));
 
   TF_ASSERT_OK_AND_ASSIGN(auto executable, client->CompileAndLoad(*module, {}));
-  TF_ASSERT_OK_AND_ASSIGN(auto modules, executable->GetHloModules());
+  TF_ASSERT_OK_AND_ASSIGN(auto modules,
+                          executable->GetExecutable()->GetHloModules());
 
   auto first_param_layout =
       modules[0]->entry_computation_layout().parameter_layout(0).layout();
@@ -1781,14 +1918,15 @@ TEST(StreamExecutorGpuClientTest, MlirResultHostMemorySpaceIsSetInHlo) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
 
   mlir::MLIRContext context;
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           xla::ParseMlirModuleString(kMlirD2H, context));
 
   TF_ASSERT_OK_AND_ASSIGN(auto executable, client->CompileAndLoad(*module, {}));
-  TF_ASSERT_OK_AND_ASSIGN(auto modules, executable->GetHloModules());
+  TF_ASSERT_OK_AND_ASSIGN(auto modules,
+                          executable->GetExecutable()->GetHloModules());
 
   auto first_param_layout =
       modules[0]->entry_computation_layout().parameter_layout(0).layout();
@@ -1807,7 +1945,7 @@ TEST(StreamExecutorGpuClientTest, ProfileExecution) {
       ROOT res = f32[] add(c0, c1)
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CompileExecutable(kProgram, *client));
   ExecutionProfile profile;
@@ -1832,14 +1970,15 @@ TEST(StreamExecutorGpuClientTest, MlirAutoResultLayoutIsSet) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
 
   mlir::MLIRContext context;
   TF_ASSERT_OK_AND_ASSIGN(auto module, xla::ParseMlirModuleString(
                                            kMlirWithParameterLayout, context));
 
   TF_ASSERT_OK_AND_ASSIGN(auto executable, client->CompileAndLoad(*module, {}));
-  TF_ASSERT_OK_AND_ASSIGN(auto modules, executable->GetHloModules());
+  TF_ASSERT_OK_AND_ASSIGN(auto modules,
+                          executable->GetExecutable()->GetHloModules());
 
   auto result_layout =
       modules[0]->entry_computation_layout().result_layout().layout();
@@ -1861,18 +2000,58 @@ TEST(StreamExecutorGpuClientTest, MlirAutoParameterLayoutIsSet) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
 
   mlir::MLIRContext context;
   TF_ASSERT_OK_AND_ASSIGN(auto module, xla::ParseMlirModuleString(
                                            kMlirWithParameterLayout, context));
 
   TF_ASSERT_OK_AND_ASSIGN(auto executable, client->CompileAndLoad(*module, {}));
-  TF_ASSERT_OK_AND_ASSIGN(auto modules, executable->GetHloModules());
+  TF_ASSERT_OK_AND_ASSIGN(auto modules,
+                          executable->GetExecutable()->GetHloModules());
+
+  // Check that the executable can be serialized.
+  TF_ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
+                          executable->GetExecutable()->SerializeExecutable());
 
   auto first_param_layout =
       modules[0]->entry_computation_layout().parameter_layout(0).layout();
   EXPECT_EQ(first_param_layout, Layout({1, 2, 0}));
+}
+
+TEST(StreamExecutorGpuClientTest, ValidatesClientName) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(GpuClientOptions()));
+
+  static constexpr char const* kAddProgram =
+      R"(
+HloModule Add.6, entry_computation_layout={(f32[], f32[])->(f32[], f32[])}
+
+ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
+  %a.1 = f32[] parameter(0)
+  %b.2 = f32[] parameter(1)
+  %add.3 = f32[] add(f32[] %a.1, f32[] %b.2)
+  %add.4 = f32[] add(f32[] %add.3, f32[] %add.3)
+  ROOT %tuple.5 = (f32[], f32[]) tuple(f32[] %add.3, f32[] %add.4)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CompileExecutable(kAddProgram, *client));
+  auto gpu_exe = static_cast<PjRtStreamExecutorLoadedExecutable*>(
+      std::move(executable).get());
+  TF_ASSERT_OK_AND_ASSIGN(std::string serialized,
+                          gpu_exe->SerializeExecutable());
+
+  ExecutableAndOptionsProto proto;
+  proto.ParseFromString(serialized);
+  EXPECT_EQ(proto.pjrt_client_name(), "PjRtStreamExecutorClient");
+  proto.set_pjrt_client_name("SomeGpuClient");
+  serialized = proto.SerializeAsString();
+
+  EXPECT_THAT(client->DeserializeExecutable(serialized, std::nullopt),
+              StatusIs(absl::StatusCode::kInternal,
+                       HasSubstr("PjRt client type expected by the serialized "
+                                 "executable: SomeGpuClient")));
 }
 
 TEST(StreamExecutorGpuClientTest, MlirParameterLayoutIsSetInHlo) {
@@ -1888,14 +2067,15 @@ TEST(StreamExecutorGpuClientTest, MlirParameterLayoutIsSetInHlo) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
 
   mlir::MLIRContext context;
   TF_ASSERT_OK_AND_ASSIGN(auto module, xla::ParseMlirModuleString(
                                            kMlirWithParameterLayout, context));
 
   TF_ASSERT_OK_AND_ASSIGN(auto executable, client->CompileAndLoad(*module, {}));
-  TF_ASSERT_OK_AND_ASSIGN(auto modules, executable->GetHloModules());
+  TF_ASSERT_OK_AND_ASSIGN(auto modules,
+                          executable->GetExecutable()->GetHloModules());
 
   auto first_param_layout =
       modules[0]->entry_computation_layout().parameter_layout(0).layout();
@@ -1915,7 +2095,7 @@ TEST(StreamExecutorGpuClientTest, MlirParameterLayoutFromOptionsIsSetInHlo) {
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
 
   mlir::MLIRContext context;
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -1924,8 +2104,7 @@ TEST(StreamExecutorGpuClientTest, MlirParameterLayoutFromOptionsIsSetInHlo) {
   xla::CompileOptions options;
   options.argument_layouts = {
       {ShapeUtil::MakeShapeWithDenseLayout(S32, {2, 2, 2}, {0, 2, 1})}};
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          client->CompileAndLoad(*module, options));
+  TF_ASSERT_OK_AND_ASSIGN(auto executable, client->Compile(*module, options));
   TF_ASSERT_OK_AND_ASSIGN(auto modules, executable->GetHloModules());
 
   auto first_param_layout =
@@ -1972,7 +2151,7 @@ TEST(StreamExecutorGpuClientTest,
       auto module, xla::ParseMlirModuleString(
                        mlir_mul_explicit_sharding_layout_and_memory, context));
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
 
   xla::CompileOptions options;
   options.executable_build_options.set_num_partitions(2)
@@ -1981,7 +2160,8 @@ TEST(StreamExecutorGpuClientTest,
 
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           client->CompileAndLoad(*module, options));
-  TF_ASSERT_OK_AND_ASSIGN(auto modules, executable->GetHloModules());
+  TF_ASSERT_OK_AND_ASSIGN(auto modules,
+                          executable->GetExecutable()->GetHloModules());
 
   auto first_param_layout =
       modules[0]->entry_computation_layout().parameter_layout(0).layout();
@@ -1993,7 +2173,8 @@ TEST(StreamExecutorGpuClientTest,
 
   // Verify that the executable's layout callback is null.
   // This is necessary for the executable to be serializable.
-  EXPECT_EQ(executable->GetCompileOptions()
+  EXPECT_EQ(executable->GetExecutable()
+                ->GetCompileOptions()
                 .value()
                 .executable_build_options.layout_canonicalization_callback(),
             nullptr);
@@ -2001,7 +2182,7 @@ TEST(StreamExecutorGpuClientTest,
 
 TEST(StreamExecutorGpuClientTest, GetDefaultLayout) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   auto shape = ShapeUtil::MakeShape(S4, {2, 2});
   TF_ASSERT_OK_AND_ASSIGN(
       auto layout,
@@ -2028,23 +2209,28 @@ TEST(StreamExecutorGpuClientTest, AutoLayoutIsSupported) {
           hlo_text, {}, HloParserOptions().set_fill_missing_layouts(false)));
 
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   CompileOptions compile_options;
   compile_options.executable_build_options.mutable_debug_options()
       ->set_xla_pjrt_allow_auto_layout_in_hlo(true);
   XlaComputation computation = m->ToProto();
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           client->CompileAndLoad(computation, compile_options));
-  TF_ASSERT_OK_AND_ASSIGN(auto layouts, executable->GetParameterLayouts());
+  TF_ASSERT_OK_AND_ASSIGN(auto layouts,
+                          executable->GetExecutable()->GetParameterLayouts());
   // Check that the assigned layouts are not default.
   EXPECT_NE(layouts[0]->ToString(), "{2,1,0}");
   EXPECT_NE(layouts[1]->ToString(), "{2,1,0}");
 }
 
-// Same test as SendRecvChunked, but check GPU device time measurement.
-TEST(StreamExecutorGpuClientTest, NonZeroGPUDeviceTimeMeasurement) {
+// Same test as SendRecvChunked, but check non-zero GPU device time measurement.
+TEST(StreamExecutorGpuClientTest, NonZeroGPUDeviceTimeMeasurementSingleGPU) {
+  if (tsl::kIsOpenSource) {
+    GTEST_SKIP()
+        << "DeviceTimeMeasurement implementation isn't available in OSS.";
+  }
   TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
+                          GetStreamExecutorGpuClient(DefaultOptions()));
 
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CompileExecutable(kProgram, *client));
@@ -2101,28 +2287,84 @@ TEST(StreamExecutorGpuClientTest, NonZeroGPUDeviceTimeMeasurement) {
       absl::ZeroDuration());
 }
 
+// Same test as MockNcclClientWithGpuTopologyExecuteTest, but check non-zero
+// GPU device time measurement.
+TEST(StreamExecutorGpuClientTest, NonZeroGPUDeviceTimeMeasurementMultiGPU) {
+  if (tsl::kIsOpenSource) {
+    GTEST_SKIP()
+        << "DeviceTimeMeasurement implementation isn't available in OSS.";
+  }
+  GpuClientOptions client_options;
+  client_options.enable_mock_nccl = true;
+  client_options.num_nodes = 4;
+  client_options.mock_gpu_topology = "2x2x2";
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(client_options));
+
+  auto devices_per_host = client->addressable_device_count();
+  EXPECT_EQ(devices_per_host, 2) << "This test requires 2 local GPUs.";
+
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, xla::ParseMlirModuleString(kMlirDistributedSum, context));
+
+  xla::CompileOptions options;
+  options.executable_build_options.set_num_partitions(8)
+      .set_use_spmd_partitioning(true)
+      .set_allow_spmd_sharding_propagation_to_output({true});
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          client->CompileAndLoad(*module, options));
+
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(S32, {1}, {0});
+  std::vector<std::unique_ptr<PjRtBuffer>> inputs;
+  std::vector<std::vector<PjRtBuffer*>> input_ptrs;
+  for (int i = 0; i < devices_per_host; i++) {
+    auto device = client->addressable_devices()[i];
+    std::vector<int32_t> data{i};
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto input,
+        client->BufferFromHostBuffer(
+            data.data(), shape.element_type(), shape.dimensions(),
+            /*byte_strides=*/std::nullopt,
+            PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall,
+            /*on_done_with_host_buffer=*/nullptr,
+            *device->default_memory_space(), /*device_layout=*/nullptr));
+    input_ptrs.push_back({input.get()});
+    inputs.push_back(std::move(input));
+  }
+
+  // Test non-zero GPU device time measurement.
+  auto measurement0 = CreateDeviceTimeMeasurement();
+
+  // Test that running the program does not crash/hang.
+  TF_ASSERT_OK(
+      executable->Execute(absl::MakeSpan(input_ptrs), ExecuteOptions()));
+
+  // Check measurement after execution completes.
+  EXPECT_GT(
+      measurement0->GetTotalDuration(DeviceTimeMeasurement::DeviceType::kGpu),
+      absl::ZeroDuration());
+}
+
 TEST(StreamExecutorGpuClientTest, DmaMapUnmap) {
-  GpuClientOptions options = GpuClientOptions();
-  TF_ASSERT_OK_AND_ASSIGN(auto gpu_client, GetStreamExecutorGpuClient(options));
+  TF_ASSERT_OK_AND_ASSIGN(auto gpu_client,
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   auto client =
       tensorflow::down_cast<PjRtStreamExecutorClient*>(gpu_client.get());
   size_t dma_size = 1024;
   size_t alignment = 4096;
-  void* host_dma_ptr = nullptr;
-  (void)posix_memalign(&host_dma_ptr, alignment, dma_size);
-  TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
-  EXPECT_TRUE(client->IsDmaMapped(host_dma_ptr, dma_size));
-  EXPECT_FALSE(
-      client->IsDmaMapped(reinterpret_cast<char*>(host_dma_ptr) + 5, dma_size));
-  TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr));
-  EXPECT_FALSE(client->IsDmaMapped(host_dma_ptr, dma_size));
-  free(host_dma_ptr);
+  auto host_dma_ptr = xla::AlignedAlloc(alignment, dma_size);
+  TF_EXPECT_OK(client->DmaMap(host_dma_ptr.get(), dma_size));
+  EXPECT_TRUE(client->IsDmaMapped(host_dma_ptr.get(), dma_size));
+  EXPECT_FALSE(client->IsDmaMapped(
+      reinterpret_cast<char*>(host_dma_ptr.get()) + 5, dma_size));
+  TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr.get()));
+  EXPECT_FALSE(client->IsDmaMapped(host_dma_ptr.get(), dma_size));
 }
 
 TEST(StreamExecutorGpuClientTest, MultipleDeviceShareDmaMapping) {
-  GpuClientOptions options = GpuClientOptions();
-
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(DefaultOptions()));
   ASSERT_GE(client->devices().size(), 2);
 
   size_t test_length = 0.5l * 1024 * 1024;
@@ -2145,11 +2387,10 @@ TEST(StreamExecutorGpuClientTest, MultipleDeviceShareDmaMapping) {
 
   size_t dma_size = 2 * 1024 * 1024;
   size_t alignment = 1024;
-  void* host_dma_ptr = nullptr;
-  (void)posix_memalign(&host_dma_ptr, alignment, dma_size);
-  TF_EXPECT_OK(client->DmaMap(host_dma_ptr, dma_size));
+  auto host_dma_ptr = xla::AlignedAlloc(alignment, dma_size);
+  TF_EXPECT_OK(client->DmaMap(host_dma_ptr.get(), dma_size));
 
-  auto result = first_buffer->CopyRawToHost(host_dma_ptr, 0, size);
+  auto result = first_buffer->CopyRawToHost(host_dma_ptr.get(), 0, size);
   TF_EXPECT_OK(result.Await());
 
   PjRtDevice* const second_device = client->addressable_devices()[1];
@@ -2160,19 +2401,17 @@ TEST(StreamExecutorGpuClientTest, MultipleDeviceShareDmaMapping) {
   auto second_buffer = transfer_manager->RetrieveBuffer(0);
 
   TF_EXPECT_OK(transfer_manager->TransferRawDataToSubBuffer(
-      0, host_dma_ptr, 0, size, true, []() {}));
+      0, host_dma_ptr.get(), 0, size, true, []() {}));
   TF_ASSERT_OK_AND_ASSIGN(auto literal, second_buffer->ToLiteralSync());
   EXPECT_EQ(literal->element_count(), test_length);
   EXPECT_THAT(literal->data<int32_t>(), ElementsAreArray(data));
 
-  TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr));
-  free(host_dma_ptr);
+  TF_EXPECT_OK(client->DmaUnmap(host_dma_ptr.get()));
 }
 
 TEST(TpuLocalClientTest, RawBuffer) {
-  GpuClientOptions options = GpuClientOptions();
-
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(DefaultOptions()));
 
   std::vector<int32_t> data(256);
   std::iota(data.begin(), data.end(), 10);
@@ -2188,12 +2427,11 @@ TEST(TpuLocalClientTest, RawBuffer) {
               *client->addressable_devices()[0]->default_memory_space(),
               /*device_layout=*/nullptr)
           .value();
-  ASSERT_OK(buffer->GetReadyFuture().Await());
-  ASSERT_OK_AND_ASSIGN(auto raw_buffer,
-                       PjRtRawBuffer::CreateRawAliasOfBuffer(buffer.get()));
+  TF_ASSERT_OK(buffer->GetReadyFuture().Await());
+  TF_ASSERT_OK_AND_ASSIGN(auto raw_buffer,
+                          PjRtRawBuffer::CreateRawAliasOfBuffer(buffer.get()));
   ASSERT_EQ(raw_buffer->memory_space(), buffer->memory_space());
-  ASSERT_OK_AND_ASSIGN(size_t on_device_size,
-                       raw_buffer->GetOnDeviceSizeInBytes());
+  size_t on_device_size = raw_buffer->GetOnDeviceSizeInBytes();
   ASSERT_EQ(on_device_size, 1024);
 
   std::vector<int32_t> data2(256);
@@ -2201,8 +2439,8 @@ TEST(TpuLocalClientTest, RawBuffer) {
   auto* dst1 = tsl::port::AlignedMalloc(1024, 1024);
   auto* dst2 = tsl::port::AlignedMalloc(1024, 1024);
   memcpy(dst1, data2.data(), sizeof(int32_t) * data2.size());
-  EXPECT_OK(raw_buffer->CopyRawHostToDevice(dst1, 0, 1024).Await());
-  EXPECT_OK(raw_buffer->CopyRawDeviceToHost(dst2, 0, 1024).Await());
+  TF_EXPECT_OK(raw_buffer->CopyRawHostToDevice(dst1, 0, 1024).Await());
+  TF_EXPECT_OK(raw_buffer->CopyRawDeviceToHost(dst2, 0, 1024).Await());
   EXPECT_EQ(absl::MakeSpan(reinterpret_cast<int32_t*>(dst2), 256), data2);
 
   tsl::port::AlignedFree(dst1);
@@ -2234,7 +2472,11 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
   std::string cache_dir;
   CHECK(tsl::Env::Default()->LocalTempFilename(&cache_dir));
 
-  tsl::setenv("TF_CPP_VMODULE", "gemm_fusion_autotuner=1", /*overwrite=*/true);
+  if (tsl::kIsOpenSource) {
+    // Test relies on VLOG(1) messages. Enable VLOG(1) in OSS.
+    tsl::setenv("TF_CPP_VMODULE", "gemm_fusion_autotuner=1",
+                /*overwrite=*/true);
+  }
 
   // Compile twice to test both empty and non-empty disk cache.
   for (int iteration = 0; iteration < 2; ++iteration) {
@@ -2251,6 +2493,11 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
       argv.push_back(absl::StrFormat("--num_nodes_using_cache=%d",
                                      param.num_nodes_using_cache));
       argv.push_back(absl::StrFormat("--cache_dir=%s", cache_dir));
+      // Test relies on VLOG(1) messages. Enable VLOG(1) in Non-OSS.
+      if (!tsl::kIsOpenSource) {
+        argv.push_back("--vmodule=gemm_fusion_autotuner=1");
+        argv.push_back("--logtostderr");
+      }
       child[node_id].SetProgram("/proc/self/exe", argv);
       child[node_id].SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
       child[node_id].SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
@@ -2279,6 +2526,8 @@ TEST_P(ShardedAutotuningTest, ShardedAutotuningWorks) {
                         "Rank %d / %d: autotuning %d / 1 fusions", node_id,
                         param.num_active_nodes, num_fusions_to_autotune)));
       } else {
+        stderr_str = absl::StrReplaceAll(
+            stderr_str, {{"sharded_autotuning_test", "sharded_test"}});
         EXPECT_THAT(stderr_str, Not(HasSubstr("autotuning")));
       }
     }
@@ -2305,7 +2554,7 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id,
   auto distributed_client =
       GetDistributedRuntimeClient("127.0.0.1:12345", distributed_options);
   TF_QCHECK_OK(distributed_client->Connect());
-  GpuClientOptions options;
+  GpuClientOptions options = DefaultOptions();
   options.node_id = node_id;
   options.allowed_devices = {node_id};
   options.num_nodes = ShardedAutotuningTest::kNumNodes;
@@ -2335,7 +2584,6 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id,
   DebugOptions& debug_options =
       *compile_options.executable_build_options.mutable_debug_options();
   debug_options.set_xla_gpu_shard_autotuning(true);
-  debug_options.set_xla_gpu_unsupported_force_triton_gemm(true);
   debug_options.set_xla_gpu_cublas_fallback(false);
 
   if (node_id < num_nodes_using_cache) {
@@ -2370,7 +2618,7 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id,
   }
 
   const std::string optimized_hlo =
-      executable->GetHloModules()->front()->ToString();
+      executable->GetExecutable()->GetHloModules()->front()->ToString();
   TF_RET_CHECK(absl::StrContains(optimized_hlo, "triton_gemm"))
       << optimized_hlo;
 
@@ -2385,6 +2633,7 @@ INSTANTIATE_TEST_SUITE_P(
                                                                {false, 2, 1},
                                                                {false, 2, 2}}),
     ShardedAutotuningTestInfo::Name);
+
 }  // namespace
 }  // namespace xla
 
@@ -2416,7 +2665,7 @@ int main(int argc, char* argv[]) {
         node_id, num_active_nodes, num_nodes_using_cache, cache_dir,
         use_xla_computation);
     if (!result.ok()) {
-      LOG(ERROR) << result.ToString();
+      LOG(ERROR) << result;
     }
     return result.raw_code();
   }

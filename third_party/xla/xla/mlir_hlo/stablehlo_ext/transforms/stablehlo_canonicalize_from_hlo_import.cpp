@@ -54,7 +54,7 @@ namespace {
 
 // Expands the mhlo.tuple used in return op. Also updates function
 // signature accordingly.
-void expandTupledTensorInReturnOp(func::FuncOp func) {
+LogicalResult expandTupledTensorInReturnOp(func::FuncOp func) {
   FunctionType oldFuncType = func.getFunctionType();
   // Update input signatures.
   // We will flatten the tuples for the function inputs as well.
@@ -84,7 +84,11 @@ void expandTupledTensorInReturnOp(func::FuncOp func) {
       Location loc = func.getBody().getLoc();
       for (auto flattenedType : tupleType.getTypes()) {
         expandedInputTypes.push_back(flattenedType);
-        func.insertArgument(++argumentIndex, flattenedType, {}, loc);
+        if (failed(
+                func.insertArgument(++argumentIndex, flattenedType, {}, loc))) {
+          return failure();
+        }
+
         flattenedOperands.push_back(func.getArgument(argumentIndex));
       }
 
@@ -97,7 +101,9 @@ void expandTupledTensorInReturnOp(func::FuncOp func) {
 
       // Now the original argument has been rewired, we should be able to
       // safely erase it.
-      func.eraseArgument(originalArgumentIndex);
+      if (failed(func.eraseArgument(originalArgumentIndex))) {
+        return failure();
+      }
     }
   }
 
@@ -122,7 +128,7 @@ void expandTupledTensorInReturnOp(func::FuncOp func) {
     }
   }
 
-  if (returnOp.getOperands() == expandedReturnOperands) return;
+  if (returnOp.getOperands() == expandedReturnOperands) return success();
 
   builder.create<mlir::func::ReturnOp>(returnOp.getLoc(),
                                        expandedReturnOperands);
@@ -130,36 +136,46 @@ void expandTupledTensorInReturnOp(func::FuncOp func) {
   auto newFuncType = FunctionType::get(oldFuncType.getContext(),
                                        expandedInputTypes, expandedResultTypes);
   func.setType(newFuncType);
+  return success();
 }
 
 /////////////
 // Flatten Tuples in Custom Calls
 
 // Calculates the flatten types of a value.
-void flattenTupleType(Value value, llvm::SmallVectorImpl<Type> &types) {
-  if (!mlir::isa<TupleType>(value.getType())) {
-    types.push_back(value.getType());
+void flattenTupleType(Type type, llvm::SmallVectorImpl<Type> &flattenedTypes) {
+  auto tupleType = mlir::dyn_cast<mlir::TupleType>(type);
+  if (!tupleType) {
+    flattenedTypes.push_back(type);
     return;
   }
 
-  // This function doesn't handle nested tuple.
-  auto tupleType = mlir::cast<TupleType>(value.getType());
-  types.append(tupleType.begin(), tupleType.end());
+  for (auto childType : tupleType.getTypes()) {
+    flattenTupleType(childType, flattenedTypes);
+  }
 }
 
 // FlattenTupleValue and CreateTupleValue is a pair of functions to create and
 // flatten tuples in the exact same order. CreateTupleValue returns the result
 // of the root TupleOp or given value if the type is not TupleType.
 Value createTupleValue(OpBuilder &builder, Location loc,
-                       ValueRange flattenValues, Type tupleType) {
-  if (!mlir::isa<TupleType>(tupleType)) {
-    assert(flattenValues.size() == 1);
-    return flattenValues[0];
+                       ValueRange &flattenValues, Type type) {
+  auto tupleType = mlir::dyn_cast<mlir::TupleType>(type);
+  if (!tupleType) {
+    assert(!flattenValues.empty());
+    auto retval = flattenValues.front();
+    flattenValues = flattenValues.drop_front();
+    return retval;
   }
 
-  assert(mlir::cast<TupleType>(tupleType).getTypes().size() ==
-         flattenValues.size());
-  return builder.create<stablehlo::TupleOp>(loc, flattenValues);
+  SmallVector<Value> flattenedSubValues;
+  for (auto childType : tupleType.getTypes()) {
+    flattenedSubValues.push_back(
+        createTupleValue(builder, loc, flattenValues, childType));
+  }
+
+  return builder.create<mlir::stablehlo::TupleOp>(loc, flattenedSubValues)
+      .getResult();
 }
 
 void flattenTupleValue(OpBuilder &builder, Location loc, Value value,
@@ -182,6 +198,8 @@ struct FlattenCustomCallOp : public OpRewritePattern<stablehlo::CustomCallOp> {
 
   LogicalResult matchAndRewrite(stablehlo::CustomCallOp op,
                                 PatternRewriter &rewriter) const override {
+    // We only flatten a single result tuple, as this is what we expect from
+    // HLO, where an instruction can only have a single result.
     bool flattenResult = op->getNumResults() == 1 &&
                          mlir::isa<TupleType>(op->getResult(0).getType());
     bool flattenOperands = llvm::any_of(op.getInputs(), [](Value operand) {
@@ -195,26 +213,27 @@ struct FlattenCustomCallOp : public OpRewritePattern<stablehlo::CustomCallOp> {
       flattenTupleValue(rewriter, op->getLoc(), operand, flattenedOperands);
 
     llvm::SmallVector<Type, 4> flattenedResultTypes;
-    if (!flattenResult) {
-      flattenedResultTypes.push_back(op->getResult(0).getType());
+    if (flattenResult) {
+      flattenTupleType(op->getResult(0).getType(), flattenedResultTypes);
     } else {
-      // Check for nested tuples.
-      for (Type innerType :
-           mlir::cast<TupleType>(op->getResult(0).getType()).getTypes())
-        if (mlir::isa<TupleType>(innerType)) return failure();
-
-      for (auto result : op->getResults())
-        flattenTupleType(result, flattenedResultTypes);
+      flattenedResultTypes.append(op->result_type_begin(),
+                                  op->result_type_end());
     }
 
     auto flattenedCall = rewriter.create<stablehlo::CustomCallOp>(
         op->getLoc(), flattenedResultTypes, flattenedOperands, op->getAttrs());
 
-    rewriter.replaceOp(op, flattenResult
-                               ? createTupleValue(rewriter, op->getLoc(),
-                                                  flattenedCall.getResults(),
-                                                  op->getResult(0).getType())
-                               : flattenedCall.getResult(0));
+    if (flattenResult) {
+      ValueRange flattenedResultsRef(flattenedCall.getResults());
+      Value newResult =
+          createTupleValue(rewriter, op->getLoc(), flattenedResultsRef,
+                           op->getResult(0).getType());
+      // Verify all flattened results have been consumed.
+      assert(flattenedResultsRef.empty());
+      rewriter.replaceOp(op, newResult);
+    } else {
+      rewriter.replaceOp(op, flattenedCall.getResults());
+    }
     return success();
   }
 };
@@ -235,7 +254,9 @@ struct StablehloCanonicalizeFromHloImportPass
           llvm::any_of(llvm::concat<const Type>(func.getArgumentTypes(),
                                                 func.getResultTypes()),
                        [](Type type) { return mlir::isa<TupleType>(type); })) {
-        expandTupledTensorInReturnOp(func);
+        if (failed(expandTupledTensorInReturnOp(func))) {
+          return signalPassFailure();
+        }
       }
     }
 
@@ -248,11 +269,10 @@ struct StablehloCanonicalizeFromHloImportPass
 
     // Apply patterns without folding
     GreedyRewriteConfig config;
-    config.useTopDownTraversal = true;
-    config.enableRegionSimplification =
-        mlir::GreedySimplifyRegionLevel::Disabled;
-    config.fold = false;
-    config.cseConstants = false;
+    config.setUseTopDownTraversal(true)
+        .setRegionSimplificationLevel(mlir::GreedySimplifyRegionLevel::Disabled)
+        .enableFolding(false)
+        .enableConstantCSE(false);
     if (failed(applyPatternsGreedily(func, std::move(patterns), config)))
       signalPassFailure();
   }

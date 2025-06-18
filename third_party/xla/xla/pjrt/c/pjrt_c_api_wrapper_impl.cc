@@ -1360,7 +1360,7 @@ PJRT_Error* PJRT_Executable_NumOutputs(PJRT_Executable_NumOutputs_Args* args) {
   }
   const xla::Shape& shape = output_shapes[0];
   if (shape.IsTuple()) {
-    args->num_outputs = shape.tuple_shapes_size();
+    args->num_outputs = shape.tuple_shapes().size();
   } else {
     // The output size is 1, as it is not a tuple.
     args->num_outputs = 1;
@@ -1765,8 +1765,9 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
     std::vector<std::unique_ptr<xla::PjRtBuffer>> cpp_buffer_list;
     std::optional<xla::PjRtFuture<>> returned_future;
     bool fill_future = args->device_complete_events != nullptr;
-    PJRT_ASSIGN_OR_RETURN(xla::CompileOptions compile_options,
-                          args->executable->get()->GetCompileOptions());
+    PJRT_ASSIGN_OR_RETURN(
+        xla::CompileOptions compile_options,
+        args->executable->get()->GetExecutable()->GetCompileOptions());
     if (compile_options.compile_portable_executable) {
       PJRT_ASSIGN_OR_RETURN(
           cpp_buffer_list,
@@ -1862,7 +1863,8 @@ PJRT_Error* PJRT_LoadedExecutable_GetExecutable(
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_LoadedExecutable_GetExecutable_Args",
       PJRT_LoadedExecutable_GetExecutable_Args_STRUCT_SIZE, args->struct_size));
-  args->executable = new PJRT_Executable{args->loaded_executable->executable};
+  args->executable =
+      new PJRT_Executable{args->loaded_executable->executable->GetExecutable()};
   return nullptr;
 }
 
@@ -2619,9 +2621,15 @@ PJRT_Client::PJRT_Client(std::unique_ptr<xla::PjRtClient> cpp_client)
       topology(pjrt::GetStatusOrTopologyDescription(*client)) {}
 
 PJRT_Executable::PJRT_Executable(
-    std::shared_ptr<xla::PjRtExecutable> executable)
-    : executable(std::move(executable)),
-      fingerprint(this->executable->FingerprintExecutable()) {}
+    std::shared_ptr<xla::PjRtExecutable> shared_executable)
+    : shared_executable(std::move(shared_executable)),
+      fingerprint(this->shared_executable->FingerprintExecutable()) {
+  executable = this->shared_executable.get();
+}
+
+PJRT_Executable::PJRT_Executable(xla::PjRtExecutable* unowned_executable)
+    : executable(unowned_executable),
+      fingerprint(executable->FingerprintExecutable()) {}
 
 PJRT_LoadedExecutable::PJRT_LoadedExecutable(
     std::shared_ptr<xla::PjRtLoadedExecutable> executable, PJRT_Client* client)
@@ -2831,9 +2839,11 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
 
 PJRT_Layouts_Extension CreateLayoutsExtension(PJRT_Extension_Base* next) {
   return PJRT_Layouts_Extension{
-      /*struct_size=*/PJRT_Layouts_Extension_STRUCT_SIZE,
-      /*type=*/PJRT_Extension_Type_Layouts,
-      /*next=*/next,
+      PJRT_Extension_Base{
+          /*struct_size=*/PJRT_Layouts_Extension_STRUCT_SIZE,
+          /*type=*/PJRT_Extension_Type_Layouts,
+          /*next=*/next,
+      },
       /*PJRT_Layouts_MemoryLayout_Destroy=*/
       pjrt::PJRT_Layouts_MemoryLayout_Destroy,
       /*PJRT_Layouts_MemoryLayout_Serialize=*/
@@ -2848,14 +2858,15 @@ PJRT_Layouts_Extension CreateLayoutsExtension(PJRT_Extension_Base* next) {
 PJRT_MemoryDescriptions_Extension CreateMemoryDescriptionsExtension(
     PJRT_Extension_Base* next) {
   return PJRT_MemoryDescriptions_Extension{
-      /*struct_size=*/PJRT_MemoryDescriptions_Extension_STRUCT_SIZE,
-      /*type=*/PJRT_Extension_Type_MemoryDescriptions,
-      /*next=*/next,
+      PJRT_Extension_Base{
+          /*struct_size=*/PJRT_MemoryDescriptions_Extension_STRUCT_SIZE,
+          /*type=*/PJRT_Extension_Type_MemoryDescriptions,
+          /*next=*/next,
+      },
       /*PJRT_DeviceDescription_MemorySpaces=*/
       pjrt::PJRT_DeviceDescription_MemoryDescriptions,
       /*PJRT_MemoryDescription_Kind=*/
-      pjrt::PJRT_MemoryDescription_Kind,
-  };
+      pjrt::PJRT_MemoryDescription_Kind};
 }
 
 }  // namespace pjrt

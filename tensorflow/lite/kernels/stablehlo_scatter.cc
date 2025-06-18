@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
@@ -314,6 +315,8 @@ TfLiteStatus EvalWithIndexType(TfLiteContext* context, TfLiteNode* node,
       return EvalWithTypes<IndexType, uint32_t>(context, node);
     case kTfLiteUInt64:
       return EvalWithTypes<IndexType, uint64_t>(context, node);
+    case kTfLiteBool:
+      return EvalWithTypes<IndexType, bool>(context, node);
     default:
       TF_LITE_KERNEL_LOG(
           context, "(Index Type: %s, Data Type: %s) currently not supported.\n",

@@ -38,6 +38,19 @@ template <typename T>
 class OperationPass;
 class Pass;
 
+namespace hlo {
+
+// Verifies that the TF/XLA ops have all been lowered to MHLO.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateVerifyTFXLALegalizationPass(
+    bool legalize_chlo = true);
+
+/// Adds the TF to TF lowerings and TF to XLA rewrite patterns to the pattern
+/// list.
+void PopulateLegalizeTfPatterns(MLIRContext* context,
+                                RewritePatternSet* patterns);
+
+}  // namespace hlo
+
 namespace mhlo {
 
 /// Lowers from TF dialect to HLO dialect. When allow_partial_conversion is
@@ -53,11 +66,6 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFPass(
     bool legalize_chlo = true,
     std::optional<StringRef> tf2xla_fallback_device_type = std::nullopt,
     bool prefer_tf2xla = false);
-
-/// Adds the TF to TF lowerings and TF to XLA rewrite patterns to the pattern
-/// list.
-void PopulateLegalizeTfPatterns(MLIRContext* context,
-                                RewritePatternSet* patterns);
 
 // Populates TF to MHLO legalization for some of the quantization ops.
 //
@@ -87,10 +95,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCommunicationPass();
 // Legalizes TF/XLA collective ops (TF dialect) to HLO dialect collective
 // ops.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCollectivePass();
-
-// Verifies that the TF/XLA ops have all been lowered to MHLO.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateVerifyTFXLALegalizationPass(
-    bool legalize_chlo = true);
 
 // Transforms TFXLA Device specific ops into device independent ops.
 std::unique_ptr<OperationPass<func::FuncOp>>

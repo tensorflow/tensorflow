@@ -73,7 +73,6 @@ PJRT_ClientDeleter MakeClientDeleter(const PJRT_Api* api) {
     destroy_args.client = client;
 
     PJRT_Error* error = api->PJRT_Client_Destroy(&destroy_args);
-    // TODO(b/236710439): handle the error and remove this CHECK() call
     CHECK(error == nullptr);
   };
 }
@@ -1074,7 +1073,7 @@ absl::string_view PlatformName(const PJRT_Api* api,
   PJRT_TopologyDescription_PlatformName_Args args;
   args.struct_size = PJRT_TopologyDescription_PlatformName_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
-  args.topology = const_cast<PJRT_TopologyDescription*>(topo_desc);
+  args.topology = topo_desc;
   LogFatalIfPjrtError(api->PJRT_TopologyDescription_PlatformName(&args), api);
   return {args.platform_name, args.platform_name_size};
 }
@@ -1085,7 +1084,7 @@ absl::Span<PJRT_DeviceDescription* const> DeviceDescriptions(
   args.struct_size =
       PJRT_TopologyDescription_GetDeviceDescriptions_Args_STRUCT_SIZE;
   args.extension_start = nullptr;
-  args.topology = const_cast<PJRT_TopologyDescription*>(topo_desc);
+  args.topology = topo_desc;
   LogFatalIfPjrtError(
       api->PJRT_TopologyDescription_GetDeviceDescriptions(&args), api);
   return {args.descriptions, args.num_descriptions};
@@ -1120,9 +1119,11 @@ PJRT_Profiler_Extension CreatePjrtProfilerExtension(
       traceme_name, tsl::profiler::ContextType::kPjrtLibraryCall);
   int64_t traceme_context_id = producer.GetContextId();
   PJRT_Profiler_Extension profiler_extension{
-      /*struct_size=*/PJRT_Profiler_Extension_STRUCT_SIZE,
-      /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Profiler,
-      /*next=*/nullptr,
+      PJRT_Extension_Base{
+          /*struct_size=*/PJRT_Profiler_Extension_STRUCT_SIZE,
+          /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_Profiler,
+          /*next=*/nullptr,
+      },
       /*profiler_api=*/nullptr,
       /*traceme_context_id=*/traceme_context_id,
   };

@@ -29,10 +29,10 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/match.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/types.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/stringpiece.h"
 
 #ifdef PLATFORM_WINDOWS
@@ -110,7 +110,7 @@ class RamFileSystem : public FileSystem {
   absl::Status NewRandomAccessFile(
       const std::string& fname_, TransactionToken* token,
       std::unique_ptr<RandomAccessFile>* result) override {
-    mutex_lock m(mu_);
+    absl::MutexLock m(&mu_);
     auto fname = StripRamFsPrefix(fname_);
 
     if (fs_.find(fname) == fs_.end()) {
@@ -127,7 +127,7 @@ class RamFileSystem : public FileSystem {
   absl::Status NewWritableFile(const std::string& fname_,
                                TransactionToken* token,
                                std::unique_ptr<WritableFile>* result) override {
-    mutex_lock m(mu_);
+    absl::MutexLock m(&mu_);
     auto fname = StripRamFsPrefix(fname_);
 
     if (fs_.find(fname) == fs_.end()) {
@@ -144,7 +144,7 @@ class RamFileSystem : public FileSystem {
   absl::Status NewAppendableFile(
       const std::string& fname_, TransactionToken* token,
       std::unique_ptr<WritableFile>* result) override {
-    mutex_lock m(mu_);
+    absl::MutexLock m(&mu_);
     auto fname = StripRamFsPrefix(fname_);
 
     if (fs_.find(fname) == fs_.end()) {
@@ -174,7 +174,7 @@ class RamFileSystem : public FileSystem {
 
   absl::Status GetChildren(const std::string& dir_, TransactionToken* token,
                            std::vector<std::string>* result) override {
-    mutex_lock m(mu_);
+    absl::MutexLock m(&mu_);
     auto dir = StripRamFsPrefix(dir_);
 
     auto it = fs_.lower_bound(dir);
@@ -193,7 +193,7 @@ class RamFileSystem : public FileSystem {
   absl::Status GetMatchingPaths(const std::string& pattern_,
                                 TransactionToken* token,
                                 std::vector<std::string>* results) override {
-    mutex_lock m(mu_);
+    absl::MutexLock m(&mu_);
     auto pattern = StripRamFsPrefix(pattern_);
 
     Env* env = Env::Default();
@@ -207,7 +207,7 @@ class RamFileSystem : public FileSystem {
 
   absl::Status Stat(const std::string& fname_, TransactionToken* token,
                     FileStatistics* stat) override {
-    mutex_lock m(mu_);
+    absl::MutexLock m(&mu_);
     auto fname = StripRamFsPrefix(fname_);
 
     auto it = fs_.lower_bound(fname);
@@ -230,7 +230,7 @@ class RamFileSystem : public FileSystem {
 
   absl::Status DeleteFile(const std::string& fname_,
                           TransactionToken* token) override {
-    mutex_lock m(mu_);
+    absl::MutexLock m(&mu_);
     auto fname = StripRamFsPrefix(fname_);
 
     if (fs_.find(fname) != fs_.end()) {
@@ -243,7 +243,7 @@ class RamFileSystem : public FileSystem {
 
   absl::Status CreateDir(const std::string& dirname_,
                          TransactionToken* token) override {
-    mutex_lock m(mu_);
+    absl::MutexLock m(&mu_);
     auto dirname = StripRamFsPrefix(dirname_);
 
     auto it = fs_.find(dirname);
@@ -274,7 +274,7 @@ class RamFileSystem : public FileSystem {
 
   absl::Status DeleteDir(const std::string& dirname_,
                          TransactionToken* token) override {
-    mutex_lock m(mu_);
+    absl::MutexLock m(&mu_);
     auto dirname = StripRamFsPrefix(dirname_);
 
     auto it = fs_.find(dirname);
@@ -291,7 +291,7 @@ class RamFileSystem : public FileSystem {
 
   absl::Status GetFileSize(const std::string& fname_, TransactionToken* token,
                            uint64* file_size) override {
-    mutex_lock m(mu_);
+    absl::MutexLock m(&mu_);
     auto fname = StripRamFsPrefix(fname_);
 
     if (fs_.find(fname) != fs_.end()) {
@@ -306,7 +306,7 @@ class RamFileSystem : public FileSystem {
 
   absl::Status RenameFile(const std::string& src_, const std::string& target_,
                           TransactionToken* token) override {
-    mutex_lock m(mu_);
+    absl::MutexLock m(&mu_);
     auto src = StripRamFsPrefix(src_);
     auto target = StripRamFsPrefix(target_);
 
@@ -322,7 +322,7 @@ class RamFileSystem : public FileSystem {
   ~RamFileSystem() override {}
 
  private:
-  mutex mu_;
+  absl::Mutex mu_;
   std::map<std::string, std::shared_ptr<std::string>> fs_;
 
   std::vector<std::string> StrSplit(std::string s, std::string delim) {

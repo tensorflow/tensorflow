@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_RUNTIME_THUNK_PROTO_SERDES_H_
 #define XLA_BACKENDS_CPU_RUNTIME_THUNK_PROTO_SERDES_H_
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -27,6 +28,11 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 
 namespace xla::cpu {
+
+// Invokes callback for every thunk, including nested thunks, in the given
+// thunk sequence.
+void ForEachThunkProto(const ThunkSequenceProto& proto,
+                       std::function<void(const ThunkProto&)> callback);
 
 class ThunkSequenceSerDesProtobuf : public SerDesBase<ThunkSequence> {
  public:

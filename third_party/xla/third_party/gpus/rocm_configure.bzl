@@ -26,7 +26,6 @@ load(
     "get_cpu_value",
     "get_host_environ",
     "get_python_bin",
-    "raw_exec",
     "realpath",
     "relative_to",
     "which",
@@ -59,6 +58,10 @@ _ROCM_VERSION = "ROCM_VERSION"
 _DEFAULT_ROCM_TOOLKIT_PATH = "/opt/rocm"
 _TF_ROCM_MULTIPLE_PATHS = "TF_ROCM_MULTIPLE_PATHS"
 _LLVM_PATH = "LLVM_PATH"
+
+def _is_clang_enabled(repository_ctx):
+    return get_host_environ(repository_ctx, "TF_ROCM_CLANG") == "1"
+
 
 def verify_build_defines(params):
     """Verify all variables that crosstool/BUILD.rocm.tpl expects are substituted.
@@ -679,6 +682,10 @@ def _create_local_rocm_repository(repository_ctx):
         "-DUSE_ROCM",
     ])
 
+    rocm_defines["%{link_flags}"] = to_list_of_strings([
+        "-fuse-ld={}".format("lld" if _is_clang_enabled(repository_ctx) else "gold"),
+    ])
+
     rocm_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
 
     rocm_defines["%{cxx_builtin_include_directories}"] = to_list_of_strings(
@@ -707,9 +714,8 @@ def _create_local_rocm_repository(repository_ctx):
         tpl_paths["crosstool:clang/bin/crosstool_wrapper_driver_rocm"],
         {
             "%{cpu_compiler}": str(cc),
-            "%{compiler}": "clang" if is_rocm_clang else "unknown",
-            "%{hipcc_path}": rocm_config.rocm_toolkit_path + "/bin/hipcc",
             "%{compiler_is_clang}": "True" if is_rocm_clang else "False",
+            "%{hipcc_path}": str(repository_ctx.path(rocm_config.rocm_toolkit_path + "/bin/hipcc")),
             "%{hipcc_env}": _hipcc_env(repository_ctx),
             "%{rocm_path}": str(repository_ctx.path(rocm_config.rocm_toolkit_path)),
             "%{rocr_runtime_path}": str(repository_ctx.path(rocm_config.rocm_toolkit_path + "/lib")),
@@ -718,6 +724,7 @@ def _create_local_rocm_repository(repository_ctx):
             "%{hip_runtime_library}": "amdhip64",
             "%{crosstool_verbose}": _crosstool_verbose(repository_ctx),
             "%{gcc_host_compiler_path}": str(cc),
+            "%{crosstool_clang}": "1" if _is_clang_enabled(repository_ctx) else "0",
         },
     )
 
@@ -825,6 +832,7 @@ _ENVIRONS = [
     "TF_NEED_CUDA",  # Needed by the `if_gpu_is_configured` macro
     _ROCM_TOOLKIT_PATH,
     _TF_ROCM_AMDGPU_TARGETS,
+    "CLANG_COMPILER_PATH",
     _OS,
     _ROCM_VERSION,
 ]

@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/rocm/roctracer_wrapper.h"
 #include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
 #include "xla/tsl/profiler/utils/parse_annotation.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tsl/platform/env_time.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/macros.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/thread_annotations.h"
 #include "tsl/platform/types.h"
@@ -45,8 +45,6 @@ namespace profiler {
 
 namespace se = ::stream_executor;
 using tensorflow::ProfileOptions;
-using tsl::mutex;
-using tsl::mutex_lock;
 using tsl::profiler::Annotation;
 using tsl::profiler::AnnotationStack;
 using tsl::profiler::FindOrAddMutablePlaneWithName;
@@ -393,7 +391,7 @@ class PerDeviceCollector {
   }
 
   void SortByStartTime() {
-    mutex_lock lock(events_mutex);
+    absl::MutexLock lock(&events_mutex);
     std::sort(events.begin(), events.end(),
               [](const RocmTracerEvent& event1, const RocmTracerEvent& event2) {
                 return event1.start_time_ns < event2.start_time_ns;
@@ -438,7 +436,7 @@ class PerDeviceCollector {
               uint64_t end_gputime_ns, XPlaneBuilder* device_plane,
               XPlaneBuilder* host_plane) {
     int host_ev_cnt = 0, dev_ev_cnt = 0;
-    mutex_lock l(events_mutex);
+    absl::MutexLock l(&events_mutex);
     // Tracking event types per line.
     absl::flat_hash_map<tsl::int64, absl::flat_hash_set<RocmTracerEventType>>
         events_types_per_line;
@@ -481,7 +479,7 @@ class PerDeviceCollector {
   PerDeviceCollector() = default;
 
   void AddEvent(const RocmTracerEvent& event) {
-    mutex_lock l(events_mutex);
+    absl::MutexLock l(&events_mutex);
     if (event.source == RocmTracerEventSource::ApiCallback) {
       // Cupti api callback events were used to populate launch times etc.
       if (event.correlation_id != RocmTracerEvent::kInvalidCorrelationId) {
@@ -562,7 +560,7 @@ class PerDeviceCollector {
   }
 
  private:
-  mutex events_mutex;
+  absl::Mutex events_mutex;
   std::vector<RocmTracerEvent> events TF_GUARDED_BY(events_mutex);
   absl::flat_hash_map<uint32_t, CorrelationInfo> correlation_info_
       TF_GUARDED_BY(events_mutex);
@@ -599,7 +597,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
   uint64_t start_gputime_ns_;
   int num_gpus_;
 
-  mutex event_maps_mutex_;
+  absl::Mutex event_maps_mutex_;
   absl::flat_hash_map<uint32_t, RocmTracerEvent> api_events_map_
       TF_GUARDED_BY(event_maps_mutex_);
 
@@ -623,7 +621,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
 
 void RocmTraceCollectorImpl::AddEvent(RocmTracerEvent&& event,
                                       bool is_auxiliary) {
-  mutex_lock lock(event_maps_mutex_);
+  absl::MutexLock lock(&event_maps_mutex_);
 
   if (event.source == RocmTracerEventSource::ApiCallback && !is_auxiliary) {
     if (num_callback_events_ > options_.max_callback_api_events) {
@@ -665,7 +663,7 @@ void RocmTraceCollectorImpl::AddEvent(RocmTracerEvent&& event,
 }
 
 void RocmTraceCollectorImpl::Flush() {
-  mutex_lock lock(event_maps_mutex_);
+  absl::MutexLock lock(&event_maps_mutex_);
   auto& aggregated_events_ = ApiActivityInfoExchange();
 
   VLOG(3) << "RocmTraceCollector collected " << num_callback_events_

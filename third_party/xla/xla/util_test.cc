@@ -411,6 +411,17 @@ TEST(UtilTest, MaybeOwningTestShared) {
   EXPECT_EQ(c1.get(), c2.get());
 }
 
+TEST(UtilTest, MaybeOwningTestSharedNoCharType) {
+  auto owner = std::make_unique<int>();
+  *owner = 42;
+  MaybeOwning<int> i1(owner.get());
+  MaybeOwning<int> i2(owner.get());
+
+  EXPECT_EQ(*i1, 42);
+  EXPECT_EQ(*i2, 42);
+  EXPECT_EQ(i1.get(), i2.get());
+}
+
 TEST(UtilTest, PrintAllFields) {
   // Here we are using one of the bool fields that has the default value to
   // false and ensuring that it is always printed.

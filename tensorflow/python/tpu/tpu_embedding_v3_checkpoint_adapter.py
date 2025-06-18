@@ -15,8 +15,8 @@
 """Checkpoint adapter for TPUEmbedding."""
 
 import collections
-
-from typing import Mapping, Sequence, Optional
+import time
+from typing import Mapping, Optional, Sequence
 
 from absl import logging
 
@@ -52,7 +52,131 @@ def _shard_info_str(shape, shard_info) -> str:
   return full_shape_str + slice_spec
 
 
-class EmbeddingReshardCallback(checkpoint_adapter.ReshardCallback):
+def _shard_from_cpu_to_sc(
+    feature_values: tensor.Tensor,
+    shape_and_slice: str,
+    to_shard_layout: Sequence[sparse_core_layout_pb2.SparseCoreTableLayout],
+) -> tensor.Tensor:
+  """Shards the feature tables from CPU to SparseCore."""
+
+  def pad_value(value, variable_shape, table_shape):
+    return array_ops.pad(
+        value,
+        [
+            [0, variable_shape[0] - table_shape[0]],
+            [0, variable_shape[1] - table_shape[1]],
+        ],
+        "CONSTANT",
+    )
+
+  var_full_shape, shard_info = _parse_shard_info_str(shape_and_slice)
+  if shard_info.offset > var_full_shape:
+    raise ValueError(
+        "Invalid shard offset: {}. Offset should be less than the full shape"
+        " of the variable: {}".format(
+            shard_info.offset,
+            var_full_shape,
+        )
+    )
+  num_sc_per_partition = (
+      to_shard_layout[0].num_sparse_cores // to_shard_layout[0].num_partitions
+  )
+
+  total_rows_per_sc = to_shard_layout[0].total_rows_per_sparse_core_shard
+  total_rows_per_partition = total_rows_per_sc * num_sc_per_partition
+  full_values = {}
+  if (shard_info.shape[0] % total_rows_per_partition) != 0:
+    raise ValueError(
+        "Invalid shard shape: {}. Number of rows in input shard slice should"
+        " be multiple of number of rows in a partition({})".format(
+            shard_info.shape,
+            total_rows_per_partition,
+        )
+    )
+  # From the shard info, get the row offsets corresponding to the slice
+  # being looked up.
+  required_shard_offsets = range(
+      shard_info.offset[0],
+      shard_info.offset[0] + shard_info.shape[0],
+      total_rows_per_partition,
+  )
+  output_shards = []
+  for required_shard_offset in required_shard_offsets:
+    sharded_tensors = []
+    for i in range(num_sc_per_partition):
+      shard_idx = (required_shard_offset // total_rows_per_sc) + i
+      for table_idx, layout in enumerate(to_shard_layout):
+        if table_idx not in full_values:
+          full_values[table_idx] = pad_value(
+              feature_values[table_idx],
+              layout.unsharded_padded_shape,
+              layout.unsharded_shape,
+          )
+
+        table_value = full_values[table_idx]
+        # Apply rotation to get this table's shard index
+        table_shard_offset = (
+            shard_idx
+            + (layout.num_sparse_cores - layout.sparse_core_shard_rotation)
+        ) % layout.num_sparse_cores
+        sharded_tensors.append(
+            table_value[
+                table_shard_offset :: layout.num_sparse_cores,
+                :,
+            ]
+        )
+    output_shards.append(array_ops.concat(sharded_tensors, axis=0))
+    logging.vlog(
+        1,
+        "_shard_from_cpu_to_sc: last output_shards.shape: %s",
+        output_shards[-1].shape,
+    )
+  return array_ops.concat(output_shards, axis=0)
+
+
+def _unshard_from_sc_to_cpu(
+    stacked_table: tensor.Tensor,
+    from_shard_layouts: Sequence[sparse_core_layout_pb2.SparseCoreTableLayout],
+) -> Sequence[tensor.Tensor]:
+  """Undo the shard the feature tables into SparseCore stacked table.
+
+  Args:
+    stacked_table: The value of a SparseCore stacked and sharded table.
+    from_shard_layouts: The target layouts for the target hardware.
+
+  Returns:
+    The unsharded feature tables.
+  """
+  logging.vlog(
+      1,
+      "To unshuffle_from_sc_to_cpu on stacked_table.shape: %s",
+      stacked_table[0].shape,
+  )
+  ret_tensors = []
+
+  for layout in from_shard_layouts:
+    padded_table = tpu_embedding_v3_utils.unshuffle_from_sc_to_cpu(
+        stacked_table[0],
+        num_sparse_cores=layout.num_sparse_cores,
+        offset_in_shard=layout.sparse_core_shard_row_offset,
+        size_in_shard=layout.unsharded_padded_shape[0]
+        // layout.num_sparse_cores,
+        shard_rotation=layout.sparse_core_shard_rotation,
+    )
+
+    orig_table = tpu_embedding_v3_utils.remove_padding_from_sc(
+        padded_table, layout.unsharded_shape
+    )
+
+    logging.vlog(
+        1, "orig_tensors.shape[%s]: %s", layout.table_name, orig_table.shape
+    )
+    ret_tensors.append(orig_table)
+
+  return ret_tensors
+
+
+class EmbeddingUnshardToShardCallback(checkpoint_adapter.ReshardCallback):
   """Reshard callback for embeddings."""
 
   def __init__(
@@ -144,76 +268,135 @@ class EmbeddingReshardCallback(checkpoint_adapter.ReshardCallback):
     Returns:
       The resharded tensor slice.
     """
-    def pad_value(value, variable_shape, table_shape):
-      return array_ops.pad(
-          value,
-          [
-              [0, variable_shape[0] - table_shape[0]],
-              [0, variable_shape[1] - table_shape[1]],
-          ],
-          "CONSTANT",
-      )
-
-    var_full_shape, shard_info = _parse_shard_info_str(shape_and_slice)
-    if shard_info.offset > var_full_shape:
-      raise ValueError(
-          "Invalid shard offset: {}. Offset should be less than the full shape"
-          " of the variable: {}".format(
-              shard_info.offset,
-              var_full_shape,
-          )
-      )
-    num_sc_per_partition = (
-        self._to_shard_layout[0].num_sparse_cores
-        // self._to_shard_layout[0].num_partitions
+    return _shard_from_cpu_to_sc(
+        checkpoint_values, shape_and_slice, self._to_shard_layout
     )
 
-    total_rows_per_sc = self._to_shard_layout[
-        0
-    ].total_rows_per_sparse_core_shard
-    total_rows_per_parition = total_rows_per_sc * num_sc_per_partition
-    full_values = {}
-    if (shard_info.shape[0] % total_rows_per_parition) != 0:
-      raise ValueError(
-          "Invalid shard shape: {}. Number of rows in input shard slice should"
-          " be multiple of number of rows in a partition({})".format(
-              shard_info.shape,
-              total_rows_per_parition,
-          )
-      )
-    # From the shard info, get the row offsets corresponding to the slice
-    # being looked up.
-    required_shard_offsets = range(
-        shard_info.offset[0],
-        shard_info.offset[0] + shard_info.shape[0],
-        total_rows_per_parition,
+
+class EmbeddingReshardCallback(checkpoint_adapter.ReshardCallback):
+  """Reshard callback for embeddings."""
+
+  def __init__(
+      self,
+      object_local_name: str,
+      from_shard_layouts: Sequence[
+          sparse_core_layout_pb2.SparseCoreTableLayout
+      ],  # table name to layout
+      to_shard_layouts: Sequence[
+          sparse_core_layout_pb2.SparseCoreTableLayout
+      ],  # table name to layout
+  ):
+    """Initializes  Reshard callback.
+
+    Args:
+      object_local_name:  The local name of the object being restored.
+      from_shard_layouts: layouts as in checkpoint being restored from.
+      to_shard_layouts: target layouts as specified in the embedding being
+        restored.
+    """
+    logging.info("Creating EmbeddingReshardCallback for %s", object_local_name)
+    self._object_local_name = object_local_name
+    self._from_shard_layouts = from_shard_layouts
+    self._to_shard_layouts = to_shard_layouts
+
+  def object_name(self) -> str:
+    return self._object_local_name
+
+  def update_restore_inputs(
+      self, checkpoint_key: str, shape_and_slice_spec: str
+  ) -> tuple[Sequence[str], Sequence[str]]:
+    """Return the full shape of the stacked that is passed into restore_v2.
+
+    This shape information is required by the restore_v2 process to ensure it
+    loads the complete tensor from the checkpoint. The full tensor is required
+    to perform resharding operations.
+
+    Args:
+      checkpoint_key: The input checkpoint key to be read.
+      shape_and_slice_spec: The shape and slice spec of the checkpoint key to be
+        read.
+
+    Returns:
+      A tuple of (keys, slices) that should be passed to restore_v2 in order to
+      reshard according to the resharding plan. The restored tensors from
+      restore_v2 op will usually be passed to reshard method of this class to
+      get the final resharded value.
+    """
+    logging.vlog(
+        1,
+        "Updating restore v2 inputs for %s[%s]: %s",
+        checkpoint_key,
+        self._object_local_name,
+        shape_and_slice_spec,
     )
-    output_shards = []
-    for required_shard_offset in required_shard_offsets:
-      sharded_tensors = []
-      for i in range(num_sc_per_partition):
-        shard_idx = (required_shard_offset // total_rows_per_sc) + i
-        for table_idx, layout in enumerate(self._to_shard_layout):
-          if table_idx not in full_values:
-            full_values[table_idx] = pad_value(
-                checkpoint_values[table_idx],
-                layout.unsharded_padded_shape,
-                layout.unsharded_shape,
-            )
-          table_value = full_values[table_idx]
-          # Apply rotation to get this table's shard index
-          table_shard_offset = (
-              shard_idx
-              + (layout.num_sparse_cores - layout.sparse_core_shard_rotation)
-          ) % layout.num_sparse_cores
-          sharded_tensors.append(
-              table_value[
-                  table_shard_offset :: layout.num_sparse_cores,
-                  :,
-              ]
-          )
-      output_shards.append(array_ops.concat(sharded_tensors, axis=0))
-    return array_ops.concat(output_shards, axis=0)
+
+    slices = []
+
+    # use the first layout get the full shape of the stacked table
+    first_layout = self._from_shard_layouts[0]
+    full_vocab_size = (
+        first_layout.total_rows_per_sparse_core_shard
+        * first_layout.num_sparse_cores
+    )
+    stack_dim = first_layout.unsharded_padded_shape[1]
+    full_shape = [full_vocab_size, stack_dim]
+    logging.vlog(
+        1,
+        "Read checkpoint_key %s: %s",
+        checkpoint_key,
+        full_shape,
+    )
+
+    slices.append(
+        _shard_info_str(
+            full_shape,
+            trackable_base.ShardInfo(offset=[0, 0], shape=full_shape),
+        )
+    )
+    return ([checkpoint_key], slices)
+
+  def reshard(
+      self, checkpoint_values: tensor.Tensor, shape_and_slice: str
+  ) -> tensor.Tensor:
+    # unshard
+    stime = time.time()
+    logging.vlog(
+        1,
+        "EmbeddingReshardCallback: starting to reshard [%s]",
+        self._object_local_name,
+    )
+    unsharded_tensors = _unshard_from_sc_to_cpu(
+        checkpoint_values, self._from_shard_layouts
+    )
+
+    ret = _shard_from_cpu_to_sc(
+        unsharded_tensors, shape_and_slice, self._to_shard_layouts
+    )
+
+    etime = time.time()
+    logging.info(
+        "EmbeddingReshardCallback: reshard [%s] took %s",
+        self._object_local_name,
+        etime - stime,
+    )
+    return ret
+
+
+def _reorg_layouts(
+    layouts: Sequence[sparse_core_layout_pb2.SparseCoreTableLayout],
+) -> Mapping[str, Sequence[sparse_core_layout_pb2.SparseCoreTableLayout]]:
+  """Reorg the layouts to be in the order of the logical table."""
+  stacked_name_to_table_names = collections.defaultdict(list)
+  for layout in layouts:
+    stacked_name_to_table_names[layout.stacked_table_name].append(layout)
+  for stacked_name in stacked_name_to_table_names.keys():
+    sorted_layouts = sorted(
+        stacked_name_to_table_names[stacked_name],
+        key=lambda layout: layout.sparse_core_shard_row_offset,
+    )
+    stacked_name_to_table_names[stacked_name] = sorted_layouts
+
+  return stacked_name_to_table_names
 
 
 class TpuEmbeddingV3CheckpointAdapter(
@@ -273,7 +456,7 @@ class TpuEmbeddingV3CheckpointAdapter(
         )
         logging.info("Creating resharding plan for %s", stacked_name)
         self._checkpoint_to_reshard_callback[sorted_layouts[0].table_name] = (
-            EmbeddingReshardCallback(
+            EmbeddingUnshardToShardCallback(
                 stacked_name,
                 [l.table_name for l in sorted_layouts],
                 sorted_layouts,
@@ -284,8 +467,18 @@ class TpuEmbeddingV3CheckpointAdapter(
     if not embedding_layouts:
       # TODO(b/326644306): From sharded to unsharded
       raise NotImplementedError("Sharded to Unsharded is not implemented yet.")
-    # TODO(b/326644391): First unshard then shard.
-    raise NotImplementedError("Changing topology is not implemented yet.")
+    # Reshard to different SC Layout
+    from_layouts = _reorg_layouts(list(self._checkpoint_layouts.values()))
+    to_layouts = _reorg_layouts(list(embedding_layouts.values()))
+    for stacked_name in from_layouts.keys():
+      logging.info("Creating resharding plan for %s", stacked_name)
+      self._checkpoint_to_reshard_callback[stacked_name] = (
+          EmbeddingReshardCallback(
+              object_local_name=stacked_name,
+              from_shard_layouts=from_layouts[stacked_name],
+              to_shard_layouts=to_layouts[stacked_name],
+          )
+      )
 
   def is_layouts_same(self, embedding_layouts) -> bool:
     """Returns True if the all the embedding and checkpoint layouts are the same.

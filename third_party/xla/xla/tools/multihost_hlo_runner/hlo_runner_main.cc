@@ -98,6 +98,8 @@ struct HloRunnerConfig {
   int32_t while_execution_count = -1;
   bool remove_infeed_outfeed = true;
   bool compile_as_stablehlo = false;
+  bool use_layouts_from_hlo_module = false;
+  bool force_auto_layout = false;
   int32_t num_repeats = 1;
   std::string execution_options_path = "";
   int64_t gpu_client_initialization_timeout_sec = 300;
@@ -300,8 +302,33 @@ static absl::Status RunMultihostHloRunner(int argc, char** argv,
 
 }  // namespace xla
 
+namespace {
+
+// This function is parsing only the debug options file, because we cannot wait
+// till all the flags are parsed. If the debug_options file exists, then we have
+// to first consider the debug_options from that file, then XLA_FLAGS, and then
+// the command line flags. Hence, we parse the debug_options file first.
+std::optional<absl::string_view> GetDebugOptionsFileName(int argc,
+                                                         char* argv[]) {
+  for (int i = 1; i < argc; ++i) {
+    absl::string_view arg = argv[i];
+    if (absl::StrContains(arg, "--debug_options_file")) {
+      auto eq_idx = arg.find('=');
+      if (eq_idx != absl::string_view::npos) {
+        return arg.substr(eq_idx + 1);
+      } else {
+        LOG(QFATAL) << "No value provided for --debug_options_file. Expected "
+                    << "--debug_options_file=<filename>";
+      }
+    }
+  }
+  return std::nullopt;
+}
+}  // namespace
+
 int main(int argc, char** argv) {
   HloRunnerConfig opts;
+  std::string unused_debug_options_filename;
   std::vector<tsl::Flag> flag_list = {
       tsl::Flag("input_format", &opts.input_format_str,
                 "HLO input mode: text, proto_text, proto_binary, "
@@ -361,6 +388,12 @@ int main(int argc, char** argv) {
       tsl::Flag("compile_as_stablehlo", &opts.compile_as_stablehlo,
                 "If set, convert the module to StableHLO before passing to "
                 "PjRt for compilation."),
+      tsl::Flag("use_layouts_from_hlo_module",
+                &opts.use_layouts_from_hlo_module,
+                "If set, use layouts from the HLO module's "
+                "entry_computation_layout."),
+      tsl::Flag("force_auto_layout", &opts.force_auto_layout,
+                "If set, force auto layout."),
       tsl::Flag("num_repeats", &opts.num_repeats,
                 "Repeatedly execute the HLO for this many times."),
       tsl::Flag("execution_options_path", &opts.execution_options_path,
@@ -377,9 +410,23 @@ int main(int argc, char** argv) {
       tsl::Flag("profile_execution", &opts.profile_execution,
                 "If set, we will profile the execution and print the results."),
       tsl::Flag("xla_gpu_dump_xspace_to", &opts.xla_gpu_dump_xspace_to,
-                "A directory to dump xspace data for GPU profiling.")};
+                "A directory to dump xspace data for GPU profiling."),
+      // This option is not used during parsing, but it is added here for
+      // documentation, and for ensuring that the parser knows this should be
+      // ignored if present.
+      tsl::Flag("debug_options_file", &unused_debug_options_filename,
+                "A file containing debug options to be passed to the HLO "
+                "module. The file should contain a serialized DebugOptions "
+                "proto message. The order of precedence: command line flags > "
+                "XLA_FLAGS > debug_options_file > default flags.")};
 
   xla::AppendDebugOptionsFlags(&flag_list);
+
+  auto debugOptionsFilename = GetDebugOptionsFileName(argc, argv);
+  if (debugOptionsFilename.has_value()) {
+    xla::ParseFlagsFromDebugOptionsFile(debugOptionsFilename.value());
+  }
+  xla::ParseDebugOptionFlagsFromEnv(true);
 
   // The usage string includes the message at the top of the file, the
   // DebugOptions flags and the flags defined above.

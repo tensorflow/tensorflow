@@ -25,7 +25,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 
 namespace mlir {
-namespace mhlo {
+namespace hlo {
 namespace test {
 
 using ::mlir::DialectRegistry;
@@ -50,5 +50,5 @@ absl::StatusOr<OwningOpRef<ModuleOp>> GetMlirModuleFromString(
 }
 
 }  // namespace test
-}  // namespace mhlo
+}  // namespace hlo
 }  // namespace mlir

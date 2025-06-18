@@ -32,8 +32,7 @@ module @call_hlo {
                      #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
 // CHECK-LABEL: @call_hlo_sdy_lowered
 module @call_hlo_sdy_lowered attributes {
-    mhlo.frontend_attributes = {
-      xla.sdy.meshes ="{mesh = #sdy.mesh<[\\\22x\\\22=2]>}"}} {
+    ifrt.sdy.meshes ="{mesh = #sdy.mesh<[\\\22x\\\22=2]>}"} {
   func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
     // CHECK: ifrt.CallLoadedExecutable @fake_component__fake_method_1(%arg0)
     %0, %ctrl_0 = ifrt.Call @add_one::@main(%arg0) on devices [0,1]

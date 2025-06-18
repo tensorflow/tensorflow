@@ -58,6 +58,8 @@ typedef struct {
   // Number of threads to use in the thread pool.
   // 0 or negative value means no thread pool used.
   int32_t num_threads;
+  // Flags to pass to `xnn_create_runtime`
+  uint32_t runtime_flags;
   // Bitfield with any combination of the following binary options:
   // - TFLITE_XNNPACK_DELEGATE_FLAG_QS8
   // - TFLITE_XNNPACK_DELEGATE_FLAG_QU8

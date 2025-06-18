@@ -57,8 +57,8 @@ PJRT_Error* PJRT_RawBuffer_GetOnDeviceSizeInBytes(
       "PJRT_RawBuffer_GetOnDeviceSizeInBytes_Args",
       PJRT_RawBuffer_GetOnDeviceSizeInBytes_Args_STRUCT_SIZE,
       args->struct_size));
-  PJRT_ASSIGN_OR_RETURN(args->on_device_size_in_bytes,
-                        args->buffer->buffer->GetOnDeviceSizeInBytes());
+  args->on_device_size_in_bytes =
+      args->buffer->buffer->GetOnDeviceSizeInBytes();
   return nullptr;
 }
 PJRT_Error* PJRT_RawBuffer_GetMemorySpace(
@@ -98,9 +98,11 @@ PJRT_Error* PJRT_RawBuffer_CopyRawDeviceToHost(
 
 PJRT_RawBuffer_Extension CreateRawBufferExtension(PJRT_Extension_Base* next) {
   return {
-      /*struct_size=*/PJRT_RawBuffer_Extension_STRUCT_SIZE,
-      /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_RawBuffer,
-      /*next=*/next,
+      PJRT_Extension_Base{
+          /*struct_size=*/PJRT_RawBuffer_Extension_STRUCT_SIZE,
+          /*type=*/PJRT_Extension_Type::PJRT_Extension_Type_RawBuffer,
+          /*next=*/next,
+      },
       /*PJRT_RawBuffer_CreateRawAliasOfBuffer=*/
       pjrt::PJRT_RawBuffer_CreateRawAliasOfBuffer,
       /*PJRT_RawBuffer_Destroy=*/pjrt::PJRT_RawBuffer_Destroy,

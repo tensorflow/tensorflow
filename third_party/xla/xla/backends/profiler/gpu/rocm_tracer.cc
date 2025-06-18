@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/synchronization/mutex.h"
 #include "rocm/rocm_config.h"
 #include "xla/tsl/profiler/backends/cpu/annotation_stack.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
@@ -33,8 +34,6 @@ namespace xla {
 namespace profiler {
 
 namespace se = ::stream_executor;
-using tsl::mutex;
-using tsl::mutex_lock;
 using tsl::profiler::AnnotationStack;
 
 constexpr uint32_t RocmTracerEvent::kInvalidDeviceId;
@@ -304,7 +303,7 @@ absl::Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
   if (data->phase == ACTIVITY_API_PHASE_ENTER) {
     if (options_.api_tracking_set.find(cbid) !=
         options_.api_tracking_set.end()) {
-      mutex_lock lock(api_call_start_mutex_);
+      absl::MutexLock lock(&api_call_start_mutex_);
       api_call_start_time_.emplace(data->correlation_id,
                                    RocmTracer::GetTimestamp());
     }
@@ -317,7 +316,7 @@ absl::Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
 
     if (options_.api_tracking_set.find(cbid) !=
         options_.api_tracking_set.end()) {
-      mutex_lock lock(api_call_start_mutex_);
+      absl::MutexLock lock(&api_call_start_mutex_);
       if (api_call_start_time_.find(data->correlation_id) !=
           api_call_start_time_.end()) {
         enter_time = api_call_start_time_.at(data->correlation_id);
@@ -1324,7 +1323,7 @@ void RocmActivityCallbackImpl::AddHipOpsMemsetActivityEvent(
 }
 
 /* static */ RocmTracer* RocmTracer::GetRocmTracerSingleton() {
-  static auto* singleton = new RocmTracer();
+  static auto* const singleton = new RocmTracer();
   return singleton;
 }
 

@@ -294,8 +294,8 @@ cc_library(
     hdrs = ["decode_jpeg_register.h"],
     copts = tflite_copts(),
     deps = [
+        ":decode_jpeg_status",
         ":libjpeg_decoder",
-        "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",

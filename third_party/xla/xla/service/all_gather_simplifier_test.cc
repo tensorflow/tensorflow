@@ -21,9 +21,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -31,7 +31,7 @@ namespace {
 
 namespace m = match;
 
-using AllGatherSimplifierTest = HloTestBase;
+using AllGatherSimplifierTest = HloHardwareIndependentTestBase;
 
 TEST_F(AllGatherSimplifierTest, ReplicatedParameters) {
   const absl::string_view kModuleStr = R"(

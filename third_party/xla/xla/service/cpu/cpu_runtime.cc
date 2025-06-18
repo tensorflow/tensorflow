@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/dynamic_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -57,6 +58,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/status.h"
@@ -69,8 +71,8 @@ namespace cpu {
 namespace runtime {
 
 XfeedManager* GetXfeedManager(int device_ordinal) {
-  static auto* managers = new absl::flat_hash_map<int, XfeedManager*>();
-  static absl::Mutex* mutex = new absl::Mutex();
+  static auto* const managers = new absl::flat_hash_map<int, XfeedManager*>();
+  static absl::Mutex* const mutex = new absl::Mutex();
 
   absl::MutexLock lock(mutex);
   auto it = managers->find(device_ordinal);
@@ -205,7 +207,7 @@ absl::StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
   if (!shape_proto.ParseFromArray(shape_ptr, size_bytes)) {
     return tsl::errors::Internal("Failed parsing the shape proto");
   }
-  Shape shape(shape_proto);
+  TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(shape_proto));
   auto status = ShapeUtil::ValidateShape(shape);
   if (!status.ok()) {
     return status;
@@ -400,8 +402,8 @@ void AllToAllImpl(const ExecutableRunOptions* run_options,
 
   CpuCollectives::Executor executor(rendezvous_key, DefaultCollectiveTimeout());
 
-  std::vector<se::DeviceMemoryBase> source_buffers_data;
-  std::vector<se::DeviceMemoryBase> destination_buffers_data;
+  absl::InlinedVector<se::DeviceMemoryBase, 4> source_buffers_data;
+  absl::InlinedVector<se::DeviceMemoryBase, 4> destination_buffers_data;
   for (int i = 0; i < num_buffers; i++) {
     source_buffers_data.push_back(
         se::DeviceMemoryBase(source_buffers[i], buffer_size));
@@ -409,9 +411,11 @@ void AllToAllImpl(const ExecutableRunOptions* run_options,
         se::DeviceMemoryBase(destination_buffers[i], buffer_size));
   }
 
-  TF_CHECK_OK(communicator->AllToAll(source_buffers_data,
-                                     destination_buffers_data, U8, buffer_size,
-                                     executor));
+  auto event = communicator->AllToAll(std::move(source_buffers_data),
+                                      std::move(destination_buffers_data), U8,
+                                      buffer_size, executor);
+  tsl::BlockUntilReady(event);
+  CHECK(!event.IsError()) << event.GetError();
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY
@@ -441,8 +445,10 @@ void AllGatherImpl(const ExecutableRunOptions* run_options,
   se::DeviceMemoryBase output_buffer_data(destination_buffer, buffer_size);
 
   CpuCollectives::Executor executor(rendezvous_key, DefaultCollectiveTimeout());
-  TF_CHECK_OK(communicator->AllGather(input_buffer_data, output_buffer_data, U8,
-                                      buffer_size, executor));
+  auto event = communicator->AllGather(input_buffer_data, output_buffer_data,
+                                       U8, buffer_size, executor);
+  tsl::BlockUntilReady(event);
+  CHECK(!event.IsError()) << event.GetError();
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY
@@ -479,9 +485,12 @@ void ReduceScatterImpl(const ExecutableRunOptions* run_options,
                                           primitive_util::ByteWidth(dtype));
 
   CpuCollectives::Executor executor(rendezvous_key, DefaultCollectiveTimeout());
-  TF_CHECK_OK(communicator->ReduceScatter(
+  auto event = communicator->ReduceScatter(
       input_buffer_data, output_buffer_data, dtype, chunk_elems,
-      static_cast<ReductionKind>(reduction_kind), executor));
+      static_cast<ReductionKind>(reduction_kind), executor);
+
+  tsl::BlockUntilReady(event);
+  CHECK(!event.IsError()) << event.GetError();
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY
@@ -532,10 +541,12 @@ void AllReduceImpl(const ExecutableRunOptions* run_options,
 
   for (int i = 0; i < num_buffers; i++) {
     Shape subshape = num_buffers == 1 ? shape : shape.tuple_shapes(i);
-    TF_CHECK_OK(communicator->AllReduce(
+    auto event = communicator->AllReduce(
         input_buffers_data[i], output_buffers_data[i], subshape.element_type(),
         ShapeUtil::ElementsIn(subshape),
-        static_cast<ReductionKind>(reduction_kind), executor));
+        static_cast<ReductionKind>(reduction_kind), executor);
+    tsl::BlockUntilReady(event);
+    CHECK(!event.IsError()) << event.GetError();
   }
 }
 
@@ -586,9 +597,11 @@ void CollectivePermuteImpl(const ExecutableRunOptions* run_options,
   se::DeviceMemoryBase input_buffer_data(input_buffer, byte_size);
   se::DeviceMemoryBase output_buffer_data(output_buffer, byte_size);
 
-  TF_CHECK_OK(communicator->CollectivePermute(
+  auto event = communicator->CollectivePermute(
       input_buffer_data, output_buffer_data, U8, byte_size, source_replica_id,
-      copy_to, executor));
+      copy_to, executor);
+  tsl::BlockUntilReady(event);
+  CHECK(!event.IsError()) << event.GetError();
 }
 }  // namespace
 }  // namespace runtime

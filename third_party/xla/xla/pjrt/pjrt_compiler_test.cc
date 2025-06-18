@@ -69,7 +69,7 @@ TEST(PjRtCompilerTest, CompilerNotRegistered) {
   XlaComputation computation;
   auto res = PjRtCompile(options, computation, topology);
 
-  EXPECT_TRUE(tsl::errors::IsNotFound(res.status()));
+  EXPECT_TRUE(absl::IsNotFound(res.status()));
 }
 
 TEST(PjRtCompilerTest, CompilerRegistered) {
@@ -117,7 +117,7 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
   XlaComputation computation;
   auto res = PjRtCompile(options, computation, topology);
 
-  EXPECT_TRUE(tsl::errors::IsUnimplemented(res.status()));
+  EXPECT_TRUE(absl::IsUnimplemented(res.status()));
 }
 
 TEST(PjRtCompilerTest, PjrtCompileComputationMetric) {

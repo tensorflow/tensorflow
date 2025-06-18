@@ -26,6 +26,7 @@ namespace TFL {
 class OptimizePassOptions;
 class VariableFreezingPipelineOptions;
 class EmptyPassOptions;
+class OptimizeBroadcastLikePassOptions;
 
 // PassOptionsSetter to set TFLite Converter Pass/Pipeline Options based on
 // ConverterFlags and TFL::PassConfig values.
@@ -40,6 +41,7 @@ class ConverterPassOptionsSetter : public PassOptionsSetter {
   void SetOptions(OptimizePassOptions& options) const override;
   void SetOptions(VariableFreezingPipelineOptions& options) const override;
   void SetOptions(EmptyPassOptions& options) const override;
+  void SetOptions(OptimizeBroadcastLikePassOptions& options) const override;
 
  private:
   tflite::ConverterFlags converter_flags_;

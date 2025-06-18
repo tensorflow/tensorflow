@@ -80,7 +80,7 @@ class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
       // The layout order of the reduction output can be different to the
       // ordering of kept dimensions in the input operand, thus we need to
       // calculate the new layout.
-      DimensionVector new_reduce_shape_layout(reduce_shape.dimensions_size());
+      DimensionVector new_reduce_shape_layout(reduce_shape.dimensions().size());
       std::vector<int64_t> reduce_shape_logical_to_physical =
           LayoutUtil::MakeLogicalToPhysical(reduce_shape.layout());
 
@@ -92,11 +92,11 @@ class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
                });
       };
 
-      for (int i = 0; i < operand_shape.dimensions_size(); i++) {
+      for (int i = 0; i < operand_shape.dimensions().size(); i++) {
         // Process the dimensions in the major-to-minor order in order to
         // enforce the default layout.
         int64_t major_to_minor_dim_idx =
-            operand_shape.dimensions_size() - i - 1;
+            operand_shape.dimensions().size() - i - 1;
         int64_t logical_dim =
             operand_layout.minor_to_major(major_to_minor_dim_idx);
         int64_t dim_size = operand_shape.dimensions(logical_dim);
@@ -113,7 +113,7 @@ class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
               reduce_shape_logical_to_physical[logical_reduce_dim];
           VLOG(5) << "logical_reduce_dim = " << logical_reduce_dim << ", "
                   << "physical_reduce_dim = " << physical_reduce_dim;
-          new_reduce_shape_layout[reduce_shape.dimensions_size() -
+          new_reduce_shape_layout[reduce_shape.dimensions().size() -
                                   physical_reduce_dim - 1] =
               new_reduce_shape_data.size() - 1;
         }

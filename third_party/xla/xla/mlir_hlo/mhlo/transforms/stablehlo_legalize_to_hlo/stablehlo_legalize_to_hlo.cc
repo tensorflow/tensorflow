@@ -19,6 +19,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/map_stablehlo_to_hlo_op.h"
 #include "mhlo/transforms/rewriters.h"
@@ -193,7 +194,7 @@ Attribute convertAttr(Attribute stablehloAttr) {
 #undef RETURN_CONVERTED_ENUM_ATTR
 
 // Convert array of enum strings to array of enum attrs
-//   ["PACKED_NIBBLE"] --> [#mhlo<precision PACKED_NIBBLE>]
+//   ["HIGHEST"] --> [#mhlo<precision HIGHEST>]
 Attribute decodePrecisionConfig(Attribute stablehloAttr) {
   auto arrayAttr = mlir::dyn_cast<ArrayAttr>(stablehloAttr);
   if (!arrayAttr) return {};
@@ -248,10 +249,10 @@ LogicalResult convertFuncToStablehloRegion(Operation* op, func::FuncOp funcOp,
 //
 // Example:
 //  %0 = stablehlo.custom_call @mhlo.dot {
-//    mhlo.attributes = {precision_config = ["PACKED_NIBBLE"]}}
+//    mhlo.attributes = {precision_config = ["HIGHEST"]}}
 //  ==>
 //   %0 = "mhlo.dot"(%arg0, %arg1) {
-//     precision_config = [#mhlo<precision PACKED_NIBBLE>] } ...
+//     precision_config = [#mhlo<precision HIGHEST>] } ...
 LogicalResult rewriteCustomCallAsMhloOp(stablehlo::CustomCallOp stablehloOp,
                                         ConversionPatternRewriter& rewriter,
                                         const TypeConverter* typeConverter,
@@ -425,6 +426,64 @@ class StablehloToHloOpConverter : public OpConversionPattern<StablehloOpTy> {
   }
 };
 
+// AddDependencyOp is the only op that doesn't exist in StableHLO but uses
+// token types. This led to two options (1) support either token type in
+// AddDependencyOp or (2) Design a token conversion (or unrealized cast) between
+// MHLO and StableHLO. Option (1) seems safer, and we can hopefully obsolete
+// mhlo::TokenType all together and just use StableHLO tokens everywhere.
+//
+// Note: Only the second argument needs to be converted. All token creation and
+// propagation is already handled by existing conversions.
+struct AddDependencyOpToMhoTokenConverter
+    : public OpConversionPattern<mhlo::AddDependencyOp> {
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      mhlo::AddDependencyOp op, mhlo::AddDependencyOpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    // Only convert if input token type is MHLO token
+    if (!llvm::isa<mhlo::TokenType>(adaptor.getToken().getType()))
+      return rewriter.notifyMatchFailure(op, "nothing to convert");
+    rewriter.replaceOpWithNewOp<mhlo::AddDependencyOp>(op, adaptor.getOperand(),
+                                                       adaptor.getToken());
+    return success();
+  }
+};
+
+bool hasStablehloOperand(Operation* op) {
+  return llvm::any_of(op->getOperandTypes(), [](Type type) {
+    // Check for !stablehlo.token
+    if (llvm::isa<stablehlo::StablehloDialect>(type.getDialect())) return true;
+
+    // Check for tensor<X, #stablehlo.bounds<...>>
+    if (auto rankedType = dyn_cast<RankedTensorType>(type)) {
+      return llvm::isa_and_nonnull<stablehlo::TypeExtensionsAttr>(
+          rankedType.getEncoding());
+    }
+    // Not StableHLO
+    return false;
+  });
+}
+
+struct UpdateOperandsInUnknownOp : public ConversionPattern {
+  UpdateOperandsInUnknownOp(TypeConverter& converter, MLIRContext* context)
+      : ConversionPattern(converter, MatchAnyOpTypeTag(), /*benefit=*/1,
+                          context) {}
+  LogicalResult matchAndRewrite(
+      Operation* op, ArrayRef<Value> operands,
+      ConversionPatternRewriter& rewriter) const override {
+    // Input types already converted to MHLO.
+    if (llvm::isa<mhlo::MhloDialect, stablehlo::StablehloDialect>(
+            op->getDialect()))
+      return rewriter.notifyMatchFailure(op, "op is not an unknown op");
+
+    if (!hasStablehloOperand(op))
+      return rewriter.notifyMatchFailure(op, "op has no stablehlo operands");
+
+    rewriter.modifyOpInPlace(op, [&]() { op->setOperands(operands); });
+    return success();
+  }
+};
+
 // Deprecated ops.
 template <>
 class StablehloToHloOpConverter<stablehlo::UnaryEinsumOp>
@@ -458,6 +517,22 @@ void populateStablehloToHloPatterns(RewritePatternSet* patterns,
 #define GET_OP_LIST
 #include "stablehlo/dialect/StablehloOps.cpp.inc"
       >(patterns, converter, context);
+
+  // Populate conversion patterns for ops that don't exist in StableHLO
+  // and unknown dialect ops that may have StableHLO operands.
+  patterns->add<AddDependencyOpToMhoTokenConverter>(context);
+  patterns->add<UpdateOperandsInUnknownOp>(*converter, context);
+}
+
+void setupStablehloToHloConversionTarget(ConversionTarget& target) {
+  target.addIllegalDialect<stablehlo::StablehloDialect>();
+  target.addLegalDialect<mhlo::MhloDialect>();
+
+  // Some ops may have MHLO / StableHLO types in operands
+  target.addDynamicallyLegalOp<mhlo::AddDependencyOp>(
+      [](mhlo::AddDependencyOp op) { return !hasStablehloOperand(op); });
+  target.markUnknownOpDynamicallyLegal(
+      [](Operation* op) { return !hasStablehloOperand(op); });
 }
 
 }  // namespace stablehlo

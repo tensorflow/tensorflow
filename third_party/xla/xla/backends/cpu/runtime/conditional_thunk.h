@@ -17,11 +17,14 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_RUNTIME_CONDITIONAL_THUNK_H_
 
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk_executor.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla::cpu {
@@ -44,6 +47,9 @@ class ConditionalThunk final : public Thunk {
   const BufferAllocation::Slice& branch_index_buffer() const {
     return branch_index_buffer_;
   }
+
+  std::vector<std::pair<std::string, const ThunkSequence*>> nested_thunks()
+      const final;
 
  private:
   ConditionalThunk(Info info, BufferAllocation::Slice branch_index_buffer,

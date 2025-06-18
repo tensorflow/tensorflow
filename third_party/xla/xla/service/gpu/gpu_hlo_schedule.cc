@@ -59,7 +59,6 @@ limitations under the License.
 #include "xla/service/gpu/transforms/async_collective_annotator.h"
 #include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/gpu/transforms/pgle_accuracy_checker.h"
-#include "xla/service/gpu/transforms/schedule_postprocessing.h"
 #include "xla/service/gpu/transforms/scheduling_instruction_annotator.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/latency_hiding_scheduler.h"
@@ -397,6 +396,8 @@ std::optional<ProfiledInstructionsProto> ProfileFromPath(
     LOG(ERROR) << "Tried but failed to parse PGLE proto from "
                << (as_text ? "text" : "binary") << " file '" << path
                << "'. Error message: " << s.message();
+  } else {
+    LOG(ERROR) << "PGLE profile file does not exist: " << path;
   }
   return std::nullopt;
 }
@@ -564,6 +565,7 @@ LegalizeSchedulingAnnotations::Config SchedulingAnnotationsConfig() {
 absl::Status RunLatencyHidingSchedulerPasses(
     HloModule* module, int pointer_size, absl::string_view fingerprint,
     uint64_t memory_limit, const se::DeviceDescription& gpu_device_info) {
+  tsl::profiler::TraceMe traceme("RunLatencyHidingSchedulerPasses");
   HloPassPipeline pipeline("latency-hiding-scheduler");
   const DebugOptions& options = module->config().debug_options();
   pipeline.AddPass<LegalizeSchedulingAnnotations>(
@@ -596,7 +598,6 @@ absl::Status RunLatencyHidingSchedulerPasses(
       std::move(estimator), std::move(async_tracker), std::move(scheduler_core),
       shape_size_in_bytes);
   pipeline.AddPass<SchedulingInstructionAnnotator>();
-  pipeline.AddPass<SchedulePostprocessing>();
 
   return pipeline.Run(module).status();
 }
@@ -649,17 +650,16 @@ uint64_t GetSchedulerMemoryLimit(const HloModule& module,
         total_io_size -= get_device_shape_size(subshape);
       });
 
-  uint64_t limit = 0;
   if (total_io_size > base_limit) {
     LOG(ERROR) << "The byte size of input/output arguments (" << total_io_size
                << ") exceeds the base limit (" << base_limit
                << "). This indicates an error in the calculation!";
-  } else {
-    limit = (base_limit - total_io_size) *
-            module.config().debug_options().xla_gpu_memory_limit_slop_factor() /
-            100;
+    return 0;
   }
-  return limit;
+
+  return (base_limit - total_io_size) *
+         module.config().debug_options().xla_gpu_memory_limit_slop_factor() /
+         100;
 }
 
 bool IsLHSEnabled(const HloModule& module, absl::string_view fingerprint) {
@@ -746,7 +746,7 @@ absl::Status RunAsyncCollectivesConversionPasses(HloModule* module) {
 absl::StatusOr<ScheduleMetadata> ScheduleGpuModule(
     HloModule* module, int64_t pointer_size,
     const se::DeviceDescription& gpu_device_info) {
-  tsl::profiler::TraceMe traceme("GpuCompiler::CompileToBackendResult");
+  tsl::profiler::TraceMe traceme("ScheduleGpuModule");
 
   // Tag the module with its 128 bit fingerprint. The fingerprint should include
   // instruction name with ids.

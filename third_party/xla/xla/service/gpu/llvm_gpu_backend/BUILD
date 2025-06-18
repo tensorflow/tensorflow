@@ -60,6 +60,20 @@ cc_library(
 )
 
 cc_library(
+    name = "ptx_version_util",
+    srcs = [
+        "ptx_version_util.cc",
+    ],
+    hdrs = [
+        "ptx_version_util.h",
+    ],
+    deps = [
+        "//xla/stream_executor:semantic_version",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_library(
     name = "nvptx_backend",
     srcs = [
         "nvptx_backend.cc",
@@ -75,6 +89,7 @@ cc_library(
         ":llvm_gpu_backend",
         ":load_ir_module",
         ":nvptx_libdevice_path",
+        ":ptx_version_util",
         "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/service/gpu:metrics",
@@ -123,38 +138,26 @@ cc_library(
     deps = [
         ":llvm_gpu_backend",
         ":load_ir_module",
-        ":utils",
-        "//xla:status_macros",
-        "//xla:types",
         "//xla:util",
         "//xla:xla_proto_cc",
-        "//xla/service/gpu:metrics",
         "//xla/service/llvm_ir:llvm_command_line_options",
         "//xla/service/llvm_ir:llvm_type_conversion_util",
         "//xla/stream_executor:device_description",
-        "//xla/stream_executor:semantic_version",
-        "//xla/stream_executor/cuda:subprocess_compilation",
         "//xla/tsl/platform:rocm_rocdl_path",
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/base",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
         "@llvm-project//llvm:AMDGPUAsmParser",
-        "@llvm-project//llvm:AMDGPUCodeGen",
         "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:BitReader",
         "@llvm-project//llvm:BitWriter",
         "@llvm-project//llvm:CodeGen",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:IPO",
-        "@llvm-project//llvm:IRReader",
         "@llvm-project//llvm:Linker",
         "@llvm-project//llvm:MC",
         "@llvm-project//llvm:ObjCARC",  # buildcleaner: keep
@@ -162,10 +165,6 @@ cc_library(
         "@llvm-project//llvm:Scalar",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
-        "@llvm-project//mlir:NVVMDialect",
-        "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_rocm//rocm:rocm_headers",
-        "@local_tsl//tsl/platform:cuda_root_path",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
@@ -173,7 +172,6 @@ cc_library(
         "@local_tsl//tsl/platform:random",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/profiler/lib:scoped_annotation",
         "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
@@ -234,7 +232,6 @@ xla_cc_test(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:semantic_version",
         "//xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:test",
     ],
 )

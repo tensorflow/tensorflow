@@ -79,7 +79,7 @@ bool ShouldUseMultiThreadedEigen(const HloModuleConfig& config) {
 }
 
 // Return whether the given shape is rank 2.
-bool IsRank2(const Shape& shape) { return shape.dimensions_size() == 2; }
+bool IsRank2(const Shape& shape) { return shape.dimensions().size() == 2; }
 
 bool IsSimpleLayout(const Layout& layout) {
   return layout.tiles().empty() && LayoutUtil::IsDense(layout);
@@ -178,8 +178,8 @@ DotImplementationStrategy GetNonBatchDotImplementationStrategy(
   // Any Matrix-Vector product of floating point or integral type, or
   // a transpose-dot fusion of the same can be lowered to a tiled LLVM
   // IR implementation.
-  if ((dot_info.result_shape.dimensions_size() <= 1 ||
-       (dot_info.result_shape.dimensions_size() == 2 &&
+  if ((dot_info.result_shape.dimensions().size() <= 1 ||
+       (dot_info.result_shape.dimensions().size() == 2 &&
         (dot_info.result_shape.dimensions(0) == 1 ||
          dot_info.result_shape.dimensions(1) == 1))) &&
       (primitive_util::IsFloatingPointType(element_type) ||
@@ -188,12 +188,12 @@ DotImplementationStrategy GetNonBatchDotImplementationStrategy(
   }
 
   // MatMul smaller than 3x3 should use naive nested loop.
-  if ((dot_info.lhs_shape.dimensions_size() <= 1 ||
-       (dot_info.lhs_shape.dimensions_size() == 2 &&
+  if ((dot_info.lhs_shape.dimensions().size() <= 1 ||
+       (dot_info.lhs_shape.dimensions().size() == 2 &&
         (dot_info.lhs_shape.dimensions(0) <= 3 ||
          dot_info.lhs_shape.dimensions(1) <= 3))) &&
-      (dot_info.rhs_shape.dimensions_size() <= 1 ||
-       (dot_info.rhs_shape.dimensions_size() == 2 &&
+      (dot_info.rhs_shape.dimensions().size() <= 1 ||
+       (dot_info.rhs_shape.dimensions().size() == 2 &&
         (dot_info.rhs_shape.dimensions(0) <= 3 ||
          dot_info.rhs_shape.dimensions(1) <= 3))) &&
       (primitive_util::IsFloatingPointType(element_type) ||
@@ -962,14 +962,14 @@ absl::Status DotOpEmitter::EmitCallToBatchRuntime() {
 }
 
 DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
-  CHECK_LE(dot_info_.result_shape.dimensions_size(), 2);
+  CHECK_LE(dot_info_.result_shape.dimensions().size(), 2);
 
   const Shape& lhs_shape = lhs_array_.GetShape();
   const Shape& rhs_shape = rhs_array_.GetShape();
   const DotDimensionNumbers& dim_nums = dot_info_.dim_nums;
 
   auto is_column_major = [](const Shape& shape) {
-    return shape.dimensions_size() > 1 &&
+    return shape.dimensions().size() > 1 &&
            LayoutUtil::Minor(shape.layout(), 0) == 0;
   };
 
@@ -978,29 +978,29 @@ DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
   CHECK_GE(dim_nums.rhs_contracting_dimensions_size(), 0);
 
   return {
-      /*m=*/lhs_shape.dimensions_size() <= 1
+      /*m=*/lhs_shape.dimensions().size() <= 1
           ? 1LL
           : lhs_shape.dimensions(1LL - dim_nums.lhs_contracting_dimensions(0)),
       /*k=*/lhs_shape.dimensions(dim_nums.lhs_contracting_dimensions(0)),
-      /*n=*/rhs_shape.dimensions_size() <= 1
+      /*n=*/rhs_shape.dimensions().size() <= 1
           ? 1LL
           : rhs_shape.dimensions(1LL - dim_nums.rhs_contracting_dimensions(0)),
       /*lhs_column_major=*/is_column_major(lhs_shape),
-      /*lhs_canonical=*/lhs_shape.dimensions_size() <= 1 ||
+      /*lhs_canonical=*/lhs_shape.dimensions().size() <= 1 ||
           dim_nums.lhs_contracting_dimensions(0) == 1,
       /*rhs_column_major=*/is_column_major(rhs_shape),
       /*rhs_canonical=*/dim_nums.rhs_contracting_dimensions(0) == 0};
 }
 
 DotOpEmitter::MatMultDims DotOpEmitter::GetBatchMatMultDims() const {
-  CHECK_LE(dot_info_.result_shape.dimensions_size(), 2);
+  CHECK_LE(dot_info_.result_shape.dimensions().size(), 2);
 
   const Shape& lhs_shape = lhs_array_.GetShape();
   const Shape& rhs_shape = rhs_array_.GetShape();
   const DotDimensionNumbers& dim_nums = dot_info_.dim_nums;
 
   auto is_column_major = [](const Shape& shape) {
-    return shape.dimensions_size() > 1 &&
+    return shape.dimensions().size() > 1 &&
            LayoutUtil::Minor(shape.layout(), 0) == 0;
   };
 
@@ -1009,15 +1009,15 @@ DotOpEmitter::MatMultDims DotOpEmitter::GetBatchMatMultDims() const {
   CHECK_GE(dim_nums.rhs_contracting_dimensions_size(), 0);
 
   return {
-      /*m=*/lhs_shape.dimensions_size() <= 1
+      /*m=*/lhs_shape.dimensions().size() <= 1
           ? 1LL
           : lhs_shape.dimensions(2LL - dim_nums.lhs_contracting_dimensions(0)),
       /*k=*/lhs_shape.dimensions(1LL + dim_nums.lhs_contracting_dimensions(0)),
-      /*n=*/rhs_shape.dimensions_size() <= 1
+      /*n=*/rhs_shape.dimensions().size() <= 1
           ? 1LL
           : rhs_shape.dimensions(2LL - dim_nums.rhs_contracting_dimensions(0)),
       /*lhs_column_major=*/is_column_major(lhs_shape),
-      /*lhs_canonical=*/lhs_shape.dimensions_size() <= 1 ||
+      /*lhs_canonical=*/lhs_shape.dimensions().size() <= 1 ||
           dim_nums.lhs_contracting_dimensions(0) == 1,
       /*rhs_column_major=*/is_column_major(rhs_shape),
       /*rhs_canonical=*/dim_nums.rhs_contracting_dimensions(0) == 0};
@@ -1027,8 +1027,8 @@ DotOpEmitter::MatMultDims DotOpEmitter::GetBatchMatMultDims() const {
 // column major.
 std::optional<int64_t> ProfitableToMakeDotOperandColumnMajor(
     const HloInstruction& hlo) {
-  if (hlo.opcode() == HloOpcode::kDot && hlo.shape().dimensions_size() <= 1) {
-    if (hlo.operand(0)->shape().dimensions_size() != 1 ||
+  if (hlo.opcode() == HloOpcode::kDot && hlo.shape().dimensions().size() <= 1) {
+    if (hlo.operand(0)->shape().dimensions().size() != 1 ||
         hlo.dot_dimension_numbers().rhs_contracting_dimensions(0) != 0) {
       return {};
     }
@@ -1118,7 +1118,7 @@ llvm_ir::IrArray CollapseFirstNDims(llvm::IRBuilderBase* b,
   const Shape& shape = array.GetShape();
   CHECK(shape.has_layout() &&
         LayoutUtil::IsMonotonicWithDim0Major(shape.layout()));
-  CHECK_GE(shape.dimensions_size(), n);
+  CHECK_GE(shape.dimensions().size(), n);
   Shape new_shape = CollapseFirstNDims(shape, n);
   llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, b->getContext());
   return llvm_ir::IrArray(array.GetBasePointer(), new_ir_type,
@@ -1145,7 +1145,7 @@ llvm_ir::IrArray SliceOutInnerArray(llvm_ir::IrArray outer_array,
                                     llvm::Value* batch_index,
                                     llvm::IRBuilderBase* b) {
   Shape inner_shape = DropFirstDim(outer_array.GetShape());
-  std::vector<llvm::Value*> multidim_index(inner_shape.dimensions_size() + 1,
+  std::vector<llvm::Value*> multidim_index(inner_shape.dimensions().size() + 1,
                                            b->getInt64(0));
   multidim_index[0] = batch_index;
   llvm_ir::IrArray::Index slice_index(multidim_index, outer_array.GetShape(),

@@ -531,3 +531,106 @@ func.func @simple_atomic_rmw(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // CHECK-HOPPER:               xla.atomic_rmw %[[ARG0]]
 // CHECK-HOPPER-NEXT:            ^bb0(%[[CURRENT:.*]]: vector<2xf32>):
 // CHECK-HOPPER-NEXT:              arith.addf %[[CURRENT]], %[[LOOP]]
+
+// -----
+
+func.func @fold_insert_extract(%in: tensor<64xf32>, %out: tensor<64xf32>)
+    -> tensor<64xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c4 = arith.constant 2 : index
+  %loop = scf.for %j = %c0 to %c4 step %c1 iter_args(%out_ = %out) -> tensor<64xf32> {
+    %extracted = tensor.extract %in[%j] : tensor<64xf32>
+    %inserted = tensor.insert %extracted into %out_[%j] : tensor<64xf32>
+    scf.yield %inserted : tensor<64xf32>
+  }
+  return %loop : tensor<64xf32>
+}
+// CHECK-LABEL: @fold_insert_extract
+// CHECK-NOT:   scf.for
+// CHECK:         vector.transfer_read
+// CHECK-NEXT:    vector.transfer_write
+
+
+// -----
+
+func.func @fold_insert_extract_two_results(
+    %arg0: tensor<8xf64>, %arg1: tensor<8xf64>,
+    %arg2: tensor<8xf64>, %arg3: tensor<8xf64>, %arg4: tensor<8xf64>)
+      -> (tensor<8xf64>, tensor<8xf64>) {
+  %cst = arith.constant 0.00e+00 : f64
+  %cst_0 = arith.constant dense<0.00e+00> : vector<4xf64>
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c4 = arith.constant 4 : index
+  %18 = vector.transfer_read %arg1[%c0], %cst {in_bounds = [true]}
+    : tensor<8xf64>, vector<4xf64>
+  %16 = vector.transfer_read %arg2[%c0], %cst {in_bounds = [true]}
+    : tensor<8xf64>, vector<4xf64>
+  %20 = vector.transfer_read %arg0[%c0], %cst {in_bounds = [true]}
+    : tensor<8xf64>, vector<4xf64>
+  %21:4 = scf.for %i = %c0 to %c4 step %c1
+      iter_args(%arg6 = %arg3, %arg7 = %arg4, %arg8 = %cst_0, %arg9 = %cst_0)
+      -> (tensor<8xf64>, tensor<8xf64>, vector<4xf64>, vector<4xf64>) {
+    %24 = vector.extract %20[%i] : f64 from vector<4xf64>
+    %25 = vector.extract %18[%i] : f64 from vector<4xf64>
+    %26 = arith.addf %24, %25 : f64
+    %27 = vector.extract %16[%i] : f64 from vector<4xf64>
+    %28 = vector.insert %27, %arg8 [%i] : f64 into vector<4xf64>
+    %29 = vector.insert %26, %arg9 [%i] : f64 into vector<4xf64>
+    scf.yield %arg6, %arg7, %28, %29
+      : tensor<8xf64>, tensor<8xf64>, vector<4xf64>, vector<4xf64>
+  }
+  %22 = vector.transfer_write %21#3, %arg3[%c0] {in_bounds = [true]}
+    : vector<4xf64>, tensor<8xf64>
+  %23 = vector.transfer_write %21#2, %arg4[%c0] {in_bounds = [true]}
+    : vector<4xf64>, tensor<8xf64>
+  return %22, %23 : tensor<8xf64>, tensor<8xf64>
+}
+// CHECK-LABEL:   func.func @fold_insert_extract_two_results(
+// CHECK-SAME:      %[[VAL_0:[a-zA-Z0-9_]*]]: tensor<8xf64>,
+// CHECK-SAME:      %[[VAL_1:[a-zA-Z0-9_]*]]: tensor<8xf64>,
+// CHECK-SAME:      %[[VAL_2:[a-zA-Z0-9_]*]]: tensor<8xf64>,
+// CHECK-SAME:      %[[VAL_3:[a-zA-Z0-9_]*]]: tensor<8xf64>,
+// CHECK-SAME:      %[[VAL_4:[a-zA-Z0-9_]*]]: tensor<8xf64>) -> (tensor<8xf64>, tensor<8xf64>) {
+
+// CHECK-DAG:   %[[C0_F32:.*]] = arith.constant 0.000000e+00 : f64
+// CHECK-DAG:   %[[C0_VEC:.*]] = arith.constant dense<0.000000e+00> : vector<4xf64>
+// CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:   %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:   %[[C4:.*]] = arith.constant 4 : index
+// CHECK-DAG:   %[[VAL_0_VEC:.*]] = vector.transfer_read %[[VAL_0]]
+// CHECK-DAG:   %[[VAL_1_VEC:.*]] = vector.transfer_read %[[VAL_1]]
+// CHECK-DAG:   %[[VAL_2_VEC:.*]] = vector.transfer_read %[[VAL_2]]
+
+// CHECK:   %[[FOR:.*]] = scf.for %[[I:.*]] = %[[C0]] to %[[C4]] step %[[C1]]
+// CHECK-SAME:   iter_args(%[[INIT:.*]] = %[[C0_VEC]]) -> (vector<4xf64>) {
+
+// CHECK:     %[[VEC_0_ELEM:.*]] = vector.extract %[[VAL_0_VEC]][%[[I]]]
+// CHECK:     %[[VEC_1_ELEM:.*]] = vector.extract %[[VAL_1_VEC]][%[[I]]]
+// CHECK:     %[[ADD:.*]] = arith.addf %[[VEC_0_ELEM]], %[[VEC_1_ELEM]] : f64
+// CHECK:     %[[INSERT:.*]] = vector.insert %[[ADD]], %[[INIT]] [%[[I]]]
+// CHECK:     scf.yield %[[INSERT]] : vector<4xf64>
+// CHECK:   }
+// CHECK:   %[[RES0:.*]] = vector.transfer_write %[[FOR]], %[[VAL_3]][%[[C0]]]
+// CHECK:   %[[RES1:.*]] = vector.transfer_write %[[VAL_2_VEC]], %[[VAL_4]][%[[C0]]]
+// CHECK:   return %[[RES0]], %[[RES1]] : tensor<8xf64>, tensor<8xf64>
+// CHECK: }
+
+// -----
+
+func.func @avoid_folding_small_tensors(%arg0: tensor<2xi4>, %arg1: tensor<2xi4>)
+    -> tensor<2xi4> {
+  %c1 = arith.constant 1 : index
+  %c0 = arith.constant 0 : index
+  %c2 = arith.constant 2 : index
+  %0 = scf.for %arg2 = %c0 to %c2 step %c1 iter_args(%arg3 = %arg1)
+      -> (tensor<2xi4>) {
+    %extracted = tensor.extract %arg0[%arg2] : tensor<2xi4>
+    %inserted = tensor.insert %extracted into %arg3[%arg2] : tensor<2xi4>
+    scf.yield %inserted : tensor<2xi4>
+  }
+  return %0 : tensor<2xi4>
+}
+// CHECK-LABEL: func.func @avoid_folding_small_tensors
+// CHECK:         scf.for

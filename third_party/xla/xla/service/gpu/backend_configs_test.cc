@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 
@@ -31,10 +31,11 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::testing::HasSubstr;
 using ::testing::IsFalse;
 using ::tsl::testing::IsOk;
 
-using BackendConfigsTest = HloTestBase;
+using BackendConfigsTest = HloHardwareIndependentTestBase;
 
 TEST_F(BackendConfigsTest, DefaultCollectiveBackendConfig) {
   constexpr absl::string_view kHloString = R"(
@@ -59,7 +60,6 @@ TEST_F(BackendConfigsTest, DefaultCollectiveBackendConfig) {
   const auto& collective_backend_config =
       gpu_config.collective_backend_config();
   EXPECT_THAT(collective_backend_config.is_sync(), IsFalse());
-  EXPECT_THAT(collective_backend_config.no_parallel_custom_call(), IsFalse());
 }
 
 TEST_F(BackendConfigsTest, DefaultGpuBackendConfigParseOpQueue) {
@@ -132,9 +132,10 @@ TEST_F(BackendConfigsTest, DefaultGpuBackendConfigSetOpQueue) {
   GpuBackendConfig gpu_backend_config;
   gpu_backend_config.set_operation_queue_id(2);
   EXPECT_THAT(add->set_backend_config(gpu_backend_config), IsOk());
-  EXPECT_EQ(add->raw_backend_config_string(),
-            "{\"operation_queue_id\":\"2\",\"wait_on_operation_queues\":[],"
-            "\"force_earliest_schedule\":false}");
+  EXPECT_THAT(
+      add->raw_backend_config_string(),
+      HasSubstr("{\"operation_queue_id\":\"2\",\"wait_on_operation_queues\":[],"
+                "\"force_earliest_schedule\":false"));
 }
 
 TEST_F(BackendConfigsTest, DefaultGpuBackendConfigSetWaitOnQueue) {
@@ -159,9 +160,11 @@ TEST_F(BackendConfigsTest, DefaultGpuBackendConfigSetWaitOnQueue) {
   gpu_backend_config.mutable_wait_on_operation_queues()->Add(0);
   gpu_backend_config.mutable_wait_on_operation_queues()->Add(1);
   EXPECT_THAT(add->set_backend_config(gpu_backend_config), IsOk());
-  EXPECT_EQ(add->raw_backend_config_string(),
-            "{\"operation_queue_id\":\"0\",\"wait_on_operation_queues\":[\"0\","
-            "\"1\"],\"force_earliest_schedule\":false}");
+  EXPECT_THAT(
+      add->raw_backend_config_string(),
+      HasSubstr(
+          "{\"operation_queue_id\":\"0\",\"wait_on_operation_queues\":[\"0\","
+          "\"1\"],\"force_earliest_schedule\":false"));
   TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig config,
                           add->backend_config<GpuBackendConfig>());
 }

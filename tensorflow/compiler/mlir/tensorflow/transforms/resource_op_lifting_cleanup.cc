@@ -19,6 +19,7 @@ limitations under the License.
 #include <variant>
 
 #include "llvm/ADT/BitVector.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -172,8 +173,8 @@ func::FuncOp CloneFunctionIfNeeded(func::FuncOp func) {
 // branch functions to (a) drop the ununsed return values, and (b) as a result
 // if some argument becomes unused in all branches, drop that argument and the
 // corresponding if/case input operand.
-void EliminateUnusedResultsForIfCase(Operation *op,
-                                     ArrayRef<func::FuncOp> branches) {
+LogicalResult EliminateUnusedResultsForIfCase(Operation *op,
+                                              ArrayRef<func::FuncOp> branches) {
   // Clone branch functions if needed since we will be mutating them.
   SmallVector<func::FuncOp, 2> cloned_branches;
   cloned_branches.reserve(branches.size());
@@ -216,7 +217,11 @@ void EliminateUnusedResultsForIfCase(Operation *op,
     // Traverse arguments backward so that indices to be deleted stay unchanged.
     for (int idx = num_args - 1; idx >= 0; --idx) {
       if (used_args.test(idx)) continue;
-      for (func::FuncOp func : cloned_branches) func.eraseArgument(idx);
+      for (func::FuncOp func : cloned_branches) {
+        if (failed(func.eraseArgument(idx))) {
+          return failure();
+        }
+      }
       // For if/case, arg #i of attached function corresponds to operand #i+1
       op->eraseOperand(idx + 1);
     }
@@ -231,10 +236,11 @@ void EliminateUnusedResultsForIfCase(Operation *op,
   }
 
   EliminateUnusedResults(op);
+  return success();
 }
 
 // Eliminated unused results from a functional while.
-void EliminateUnusedResultsForWhile(TF::WhileOp op) {
+LogicalResult EliminateUnusedResultsForWhile(TF::WhileOp op) {
   func::FuncOp cond = op.cond_function();
   func::FuncOp body = op.body_function();
 
@@ -254,7 +260,7 @@ void EliminateUnusedResultsForWhile(TF::WhileOp op) {
     }
   }
 
-  if (can_eliminate.empty()) return;
+  if (can_eliminate.empty()) return success();
 
   func::FuncOp cloned_cond = CloneFunctionIfNeeded(cond);
   func::FuncOp cloned_body = CloneFunctionIfNeeded(body);
@@ -268,9 +274,13 @@ void EliminateUnusedResultsForWhile(TF::WhileOp op) {
   // deleted stay unchanged.
   for (int idx = op.getNumResults() - 1; idx >= 0; --idx) {
     if (!can_eliminate.test(idx)) continue;
-    cloned_cond.eraseArgument(idx);
+    if (failed(cloned_cond.eraseArgument(idx))) {
+      return failure();
+    }
     cloned_body.front().getTerminator()->eraseOperand(idx);
-    cloned_body.eraseArgument(idx);
+    if (failed(cloned_body.eraseArgument(idx))) {
+      return failure();
+    }
   }
 
   // Patch up branch function types.
@@ -280,6 +290,7 @@ void EliminateUnusedResultsForWhile(TF::WhileOp op) {
                           func.front().getTerminator()->getOperandTypes()));
   }
   EliminateUnusedResults(op, &can_eliminate);
+  return success();
 }
 
 // For resource results, replace all uses with the resource input to which the
@@ -348,7 +359,9 @@ LogicalResult CanonicalizeFunctionalIfCase(Operation *op,
   if (!has_resource_result) return success();
 
   // Drop unused results.
-  EliminateUnusedResultsForIfCase(op, branches);
+  if (failed(EliminateUnusedResultsForIfCase(op, branches))) {
+    return failure();
+  }
   return success();
 }
 
@@ -368,7 +381,9 @@ LogicalResult CanonicalizeFunctionalWhile(TF::WhileOp op) {
   if (!has_resource_result) return success();
 
   // Drop unused results.
-  EliminateUnusedResultsForWhile(op);
+  if (failed(EliminateUnusedResultsForWhile(op))) {
+    return failure();
+  }
   return success();
 }
 

@@ -39,6 +39,15 @@ namespace {
 using ::mlir::ArrayRef;
 using ::mlir::sdy::FactorType;
 using ::mlir::sdy::kNullDim;
+using ::mlir::sdy::OpShardingRuleBuilder;
+
+struct CopyShardingRuleOpInterface
+    : public mlir::sdy::ShardingRuleOpInterface::ExternalModel<
+          CopyShardingRuleOpInterface, mhlo::CopyOp> {
+  mlir::sdy::OpShardingRuleAttr getShardingRule(mlir::Operation* op) const {
+    return OpShardingRuleBuilder::buildPointwise(op);
+  }
+};
 
 enum RaggedDotMode {
   // Ragged non-contracting (m): [b,m,k], [g,b,k,n], [b,g] -> [b,m,n].
@@ -87,7 +96,7 @@ struct RaggedDotShardingRuleOpInterface
       mode = RaggedDotMode::kNonContracting;
     }
 
-    mlir::sdy::OpShardingRuleBuilder builder(raggedDot);
+    OpShardingRuleBuilder builder(raggedDot);
 
     mlir::RankedTensorType lhsType = raggedDot.getLhs().getType();
     mlir::RankedTensorType rhsType = raggedDot.getRhs().getType();
@@ -181,6 +190,7 @@ struct RaggedDotShardingRuleOpInterface
 
 void registerMhloExtensions(mlir::DialectRegistry& registry) {
   registry.addExtension(+[](mlir::MLIRContext* ctx, mhlo::MhloDialect*) {
+    mhlo::CopyOp::attachInterface<CopyShardingRuleOpInterface>(*ctx);
     mhlo::RaggedDotOp::attachInterface<RaggedDotShardingRuleOpInterface>(*ctx);
   });
 }

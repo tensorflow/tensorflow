@@ -335,8 +335,8 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForFusion(
                   launch_dimensions.num_threads_per_block());
   absl::Duration write_time = WriteTime(*device_info_, bytes_written);
   absl::Duration memory_access_time = read_time + write_time;
-  absl::Duration exec_time = CombineComputeAndMemoryAccessTime(
-      compute_time, memory_access_time, GpuPerformanceModelOptions::Default());
+  absl::Duration exec_time =
+      CombineComputeAndMemoryAccessTime(compute_time, memory_access_time);
 
   EstimateRunTimeData runtime_data = {flops,     bytes_read, bytes_written,
                                       read_time, write_time, compute_time,
@@ -512,12 +512,12 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledHloComputation(
   }
 
   absl::Duration compute_time =
-      ComputeTime(*device_info_, flops, launch_dimensions.num_blocks(),
+      ComputeTime(*device_info_, flops, num_blocks,
                   launch_dimensions.num_threads_per_block());
 
   absl::Duration memory_access_time = read_time + write_time;
-  absl::Duration exec_time = CombineComputeAndMemoryAccessTime(
-      compute_time, memory_access_time, GpuPerformanceModelOptions::Default());
+  absl::Duration exec_time =
+      CombineComputeAndMemoryAccessTime(compute_time, memory_access_time);
 
   return EstimateRunTimeData{/*flops=*/flops,
                              /*bytes_read=*/bytes_read,
@@ -543,15 +543,12 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
     return absl::FailedPreconditionError(absl::StrCat(
         "SymbolicTileAnalysis failed. ", fusion_decision->Explain()));
   }
-  // TODO(b/390559452): Add support for more than one fusion root.
-  if (tile_sizes.size() != 1) {
-    return absl::UnimplementedError("Only 1 root is supported right now");
-  }
   SymbolicTileAnalysis analysis =
       std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
 
   TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
-                      analysis.ComputeTiledHloInstructions(tile_sizes[0]));
+                      analysis.ComputeTiledHloInstructions(
+                          tile_sizes[analysis.real_root_index()]));
 
   return EstimateRunTimeForTiledHloComputation(
       fusion_adaptor, tiled_hlo_computation, launch_dimensions);

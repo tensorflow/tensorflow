@@ -44,10 +44,6 @@ void RecordPtxToCubinDuration(uint64_t time_usecs);
 // Counts compiled programs count.
 void IncrementCompiledProgramsCount();
 
-// DO NOT USE---this is exposed only for testing.
-// Resets compiled programs count.
-void ResetCompiledProgramsCountForTesting();
-
 // Gets compiled programs count.
 int64_t GetCompiledProgramsCount();
 

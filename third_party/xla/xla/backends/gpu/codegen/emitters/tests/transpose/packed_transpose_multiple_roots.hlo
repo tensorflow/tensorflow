@@ -1,0 +1,21 @@
+// RUN: fusion_to_mlir %s | emitters_opt -xla-gpu-test-optimize |\
+// RUN:   FileCheck %s
+// RUN: test_correctness %s
+
+fused_transpose {
+  %iota.32.11 = s32[64,64]{1,0} iota(), iota_dimension=1
+  %iota.33.11 = s32[64,64]{1,0} iota(), iota_dimension=0
+  %compare.7.11 = pred[64,64]{1,0} compare(%iota.32.11, %iota.33.11), direction=GE
+  %transpose.47.1 = pred[64,64]{1,0} transpose(%compare.7.11), dimensions={1,0}
+  %copy.36 = pred[64,64]{1,0} copy(%transpose.47.1)
+  %copy.37 = pred[64,64]{1,0} copy(%transpose.47.1)
+  %copy.38 = pred[64,64]{1,0} copy(%transpose.47.1)
+  %copy.39 = pred[64,64]{1,0} copy(%transpose.47.1)
+  %copy.40 = pred[64,64]{1,0} copy(%transpose.47.1)
+  ROOT %tuple.10 = (pred[64,64]{1,0}, pred[64,64]{1,0}, pred[64,64]{1,0},
+    pred[64,64]{1,0}, pred[64,64]{1,0}, /*index=5*/pred[64,64]{1,0})
+   tuple(%transpose.47.1, %copy.36, %copy.37,
+         %copy.38, %copy.39, /*index=5*/%copy.40)
+}
+// CHECK:  xla_gpu.allocate_shared : tensor<128x128xi8>
+// CHECK-NOT:  xla_gpu.allocate_shared

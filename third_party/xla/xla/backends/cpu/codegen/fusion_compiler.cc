@@ -16,10 +16,15 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"
@@ -39,23 +44,30 @@ limitations under the License.
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Pass/PassManager.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Transforms/Passes.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_dialect.h"
 #include "xla/backends/cpu/codegen/emitters/transforms/passes.h"
+#include "xla/codegen/emitters/ir/xla_attrs.h.inc"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/transforms/passes.h"
+#include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/codegen/mlir_kernel_source.h"
 #include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla::cpu {
@@ -175,12 +187,34 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
   std::unique_ptr<llvm::Module> llvm_module =
       mlir::translateModuleToLLVMIR(mlir_module, llvm_context);
 
+  if (mlir::Attribute options =
+          mlir_module->getAttr(xla::ExtraBackendOptionsAttr::name)) {
+    const auto formatter = [](std::string* out, const mlir::StringAttr& attr) {
+      absl::StrAppend(out, attr.str());
+    };
+    std::string options_csv = absl::StrJoin(
+        mlir::cast<xla::ExtraBackendOptionsAttr>(options), ",", formatter);
+    llvm::MDString* options_mdstring =
+        llvm::MDString::get(llvm_context, options_csv);
+    llvm_module->addModuleFlag(llvm::Module::Error, "xla_backend_extra_options",
+                               options_mdstring);
+  }
+
   TF_RET_CHECK(llvm_module != nullptr)
       << "Failed to translate module to LLVM IR.";
 
   llvm_module->setDataLayout(llvm_module->getDataLayout());
 
   return llvm_module;
+}
+
+// Compile a MLIR kernel source to a LLVM kernel source.
+absl::StatusOr<LlvmIrKernelSource> FusionCompiler::Compile(
+    MlirKernelSource mlir_kernel_source) {
+  auto llvm_context = std::make_unique<llvm::LLVMContext>();
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<llvm::Module> llvm_module,
+                      Compile(*llvm_context, mlir_kernel_source.module()));
+  return LlvmIrKernelSource(std::move(llvm_context), std::move(llvm_module));
 }
 
 std::unique_ptr<mlir::MLIRContext> FusionCompiler::CreateContext() {

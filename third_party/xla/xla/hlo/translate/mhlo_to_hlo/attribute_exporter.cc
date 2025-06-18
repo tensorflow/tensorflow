@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/Base.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -66,8 +67,77 @@ ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
   return output;
 }
 
+ConvolutionDimensionNumbers ConvertConvDimensionNumbers(
+    mlir::stablehlo::ConvDimensionNumbersAttr input) {
+  ConvolutionDimensionNumbers output;
+
+  output.set_input_batch_dimension(input.getInputBatchDimension());
+  output.set_input_feature_dimension(input.getInputFeatureDimension());
+  for (auto v : input.getInputSpatialDimensions()) {
+    output.add_input_spatial_dimensions(v);
+  }
+
+  output.set_kernel_input_feature_dimension(
+      input.getKernelInputFeatureDimension());
+  output.set_kernel_output_feature_dimension(
+      input.getKernelOutputFeatureDimension());
+
+  for (auto v : input.getKernelSpatialDimensions()) {
+    output.add_kernel_spatial_dimensions(v);
+  }
+
+  output.set_output_batch_dimension(input.getOutputBatchDimension());
+  output.set_output_feature_dimension(input.getOutputFeatureDimension());
+
+  for (auto v : input.getOutputSpatialDimensions()) {
+    output.add_output_spatial_dimensions(v);
+  }
+
+  return output;
+}
+
 absl::StatusOr<xla::PrecisionConfig::Algorithm> ConvertDotAlgorithm(
     mlir::mhlo::DotAlgorithmAttr attr) {
+  auto algorithm = mlir::hlo::detail::getKnownDotAlgorithm(
+      attr.getLhsPrecisionType(), attr.getRhsPrecisionType(),
+      attr.getAccumulationType(), attr.getLhsComponentCount(),
+      attr.getRhsComponentCount(), attr.getNumPrimitiveOperations(),
+      attr.getAllowImpreciseAccumulation());
+  if (failed(algorithm)) return Internal("Unknown dot algorithm");
+
+  switch (algorithm.value()) {
+    case mlir::hlo::detail::KnownDotAlgorithm::ANY_F8_ANY_F8_F32:
+      return xla::PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32;
+    case mlir::hlo::detail::KnownDotAlgorithm::ANY_F8_ANY_F8_F32_FAST_ACCUM:
+      return xla::PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM;
+    case mlir::hlo::detail::KnownDotAlgorithm::F16_F16_F16:
+      return xla::PrecisionConfig::ALG_DOT_F16_F16_F16;
+    case mlir::hlo::detail::KnownDotAlgorithm::F16_F16_F32:
+      return xla::PrecisionConfig::ALG_DOT_F16_F16_F32;
+    case mlir::hlo::detail::KnownDotAlgorithm::BF16_BF16_BF16:
+      return xla::PrecisionConfig::ALG_DOT_BF16_BF16_BF16;
+    case mlir::hlo::detail::KnownDotAlgorithm::BF16_BF16_F32:
+      return xla::PrecisionConfig::ALG_DOT_BF16_BF16_F32;
+    case mlir::hlo::detail::KnownDotAlgorithm::BF16_BF16_F32_X3:
+      return xla::PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3;
+    case mlir::hlo::detail::KnownDotAlgorithm::BF16_BF16_F32_X6:
+      return xla::PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6;
+    case mlir::hlo::detail::KnownDotAlgorithm::BF16_BF16_F32_X9:
+      return xla::PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9;
+    case mlir::hlo::detail::KnownDotAlgorithm::TF32_TF32_F32:
+      return xla::PrecisionConfig::ALG_DOT_TF32_TF32_F32;
+    case mlir::hlo::detail::KnownDotAlgorithm::TF32_TF32_F32_X3:
+      return xla::PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3;
+    case mlir::hlo::detail::KnownDotAlgorithm::F32_F32_F32:
+      return xla::PrecisionConfig::ALG_DOT_F32_F32_F32;
+    case mlir::hlo::detail::KnownDotAlgorithm::F64_F64_F64:
+      return xla::PrecisionConfig::ALG_DOT_F64_F64_F64;
+  }
+  return Internal("Unknown dot algorithm");
+}
+
+absl::StatusOr<xla::PrecisionConfig::Algorithm> ConvertDotAlgorithm(
+    mlir::stablehlo::DotAlgorithmAttr attr) {
   auto algorithm = mlir::hlo::detail::getKnownDotAlgorithm(
       attr.getLhsPrecisionType(), attr.getRhsPrecisionType(),
       attr.getAccumulationType(), attr.getLhsComponentCount(),
@@ -188,6 +258,26 @@ absl::StatusOr<xla::CustomCallSchedule> ConvertCustomCallSchedule(
     default:
       return InvalidArgument("Unknown CustomCallSchedule enum value #%d",
                              schedule);
+  }
+}
+
+absl::StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
+    mlir::stablehlo::CustomCallApiVersion api_version) {
+  switch (api_version) {
+    case mlir::stablehlo::CustomCallApiVersion::API_VERSION_UNSPECIFIED:
+      return xla::CustomCallApiVersion::API_VERSION_UNSPECIFIED;
+    case mlir::stablehlo::CustomCallApiVersion::API_VERSION_ORIGINAL:
+      return xla::CustomCallApiVersion::API_VERSION_ORIGINAL;
+    case mlir::stablehlo::CustomCallApiVersion::API_VERSION_STATUS_RETURNING:
+      return xla::CustomCallApiVersion::API_VERSION_STATUS_RETURNING;
+    case mlir::stablehlo::CustomCallApiVersion::
+        API_VERSION_STATUS_RETURNING_UNIFIED:
+      return xla::CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED;
+    case mlir::stablehlo::CustomCallApiVersion::API_VERSION_TYPED_FFI:
+      return xla::CustomCallApiVersion::API_VERSION_TYPED_FFI;
+    default:
+      return InvalidArgument("Unknown CustomCallApiVersion enum value #%d",
+                             api_version);
   }
 }
 

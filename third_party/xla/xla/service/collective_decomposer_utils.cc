@@ -41,7 +41,7 @@ CreateStartIndicesForCollectiveDecomposition(
   if (update_layout) {
     update_layout(*zero->mutable_shape());
   }
-  std::vector<HloInstruction *> start_indices(shard_shape.dimensions_size(),
+  std::vector<HloInstruction *> start_indices(shard_shape.dimensions().size(),
                                               zero);
   const Shape &scalar_shape = zero->shape();
 

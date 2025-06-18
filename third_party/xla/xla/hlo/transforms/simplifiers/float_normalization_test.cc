@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
@@ -210,6 +211,73 @@ TEST_F(FloatNormalizationTest, ResolveIfUnsupportedBF16) {
   EXPECT_EQ(mul0->shape().element_type(), F32);
   EXPECT_EQ(mul1->shape().element_type(), F32);
   EXPECT_EQ(mul1->operand(0)->opcode(), HloOpcode::kConvert);
+}
+
+TEST_F(FloatNormalizationTest, ResolveIfUnsupportedBF16CalledComputation) {
+  constexpr absl::string_view kHlo = R"(
+HloModule main
+
+ENTRY main {
+  arg.0 = f32[2,4] parameter(0)
+  arg.1 = bf16[2,4] parameter(1)
+  arg.2 = f32[2,4] parameter(2)
+  ROOT call.0 = call(arg.0, arg.1, arg.2), to_apply={
+    arg.0 = f32[2,4] parameter(0)
+    arg.1 = bf16[2,4] parameter(1)
+    arg.2 = f32[2,4] parameter(2)
+    multiply.0 = bf16[2,4] multiply(arg.0, arg.1)
+    ROOT multiply.1 = bf16[2,4] multiply(multiply.0, arg.2)
+  }
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+
+  EXPECT_TRUE(Normalize(module.get()));
+
+  HloInstruction* call0 = FindInstruction(module.get(), "call.0");
+  ASSERT_NE(call0, nullptr);
+  HloComputation* computation = call0->to_apply();
+  EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kConvert);
+  HloInstruction* multiply1 = FindInstruction(module.get(), "multiply.1");
+  ASSERT_NE(multiply1, nullptr);
+  EXPECT_EQ(computation->root_instruction()->operand(0), multiply1);
+  EXPECT_EQ(multiply1->shape().element_type(), F32);
+  EXPECT_EQ(multiply1->shape().element_type(), F32);
+  EXPECT_EQ(multiply1->operand(0)->opcode(), HloOpcode::kConvert);
+}
+
+TEST_F(FloatNormalizationTest, ResolveIfUnsupportedBF16AsyncComputation) {
+  constexpr absl::string_view kHlo = R"(
+HloModule main
+
+ENTRY main {
+  arg.0 = f32[2,4] parameter(0)
+  arg.1 = bf16[2,4] parameter(1)
+  arg.2 = f32[2,4] parameter(2)
+  call-start.0 = ((f32[2,4], bf16[2,4], f32[2,4]), bf16[2,4], s32[]) call-start(arg.0, arg.1, arg.2), to_apply={
+    arg.0 = f32[2,4] parameter(0)
+    arg.1 = bf16[2,4] parameter(1)
+    arg.2 = f32[2,4] parameter(2)
+    multiply.0 = bf16[2,4] multiply(arg.0, arg.1)
+    ROOT multiply.1 = bf16[2,4] multiply(multiply.0, arg.2)
+  }
+  ROOT call-done.0 = bf16[2,4] call-done(call-start.0)
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+
+  EXPECT_TRUE(Normalize(module.get()));
+  HloInstruction* call_start0 = FindInstruction(module.get(), "call-start.0");
+  ASSERT_NE(call_start0, nullptr);
+  HloComputation* computation =
+      call_start0->async_wrapped_instruction()->to_apply();
+  EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kConvert);
+  HloInstruction* multiply1 = FindInstruction(module.get(), "multiply.1");
+  ASSERT_NE(multiply1, nullptr);
+  EXPECT_EQ(computation->root_instruction()->operand(0), multiply1);
+  EXPECT_EQ(multiply1->shape().element_type(), F32);
+  EXPECT_EQ(multiply1->shape().element_type(), F32);
+  EXPECT_EQ(multiply1->operand(0)->opcode(), HloOpcode::kConvert);
 }
 
 TEST_F(FloatNormalizationTest, ResolveUnsupportedMixedPrecisionSubtraction) {

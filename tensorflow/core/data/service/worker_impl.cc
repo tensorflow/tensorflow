@@ -701,7 +701,7 @@ void DataServiceWorkerImpl::UpdateTasks(const WorkerHeartbeatResponse& response)
         continue;
       }
       absl::Status s = ProcessTaskInternal(task);
-      if (!s.ok() && !errors::IsAlreadyExists(s)) {
+      if (!s.ok() && !absl::IsAlreadyExists(s)) {
         LOG(WARNING) << "Failed to start processing task " << task.task_id()
                      << ": " << s;
       }

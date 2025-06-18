@@ -96,6 +96,14 @@ inline constexpr llvm::StringRef kShardingGroupCustomCallTargetName =
 inline constexpr llvm::StringRef kShardingGroupIdAttr =
     "xla.sdy.sharding_group_id";
 
+// Shardy propagation barrier custom call target name.
+inline constexpr llvm::StringRef kPropagationBarrierCustomCallTargetName =
+    "xla.sdy.PropagationBarrier";
+
+// Propagation barrier allowed direction attribute name.
+inline constexpr llvm::StringRef kAllowedDirectionAttr =
+    "xla.sdy.allowed_direction";
+
 // Attribute name for storing frontend attributes in XLA.
 inline constexpr llvm::StringRef kFrontendAttributesAttr =
     "mhlo.frontend_attributes";

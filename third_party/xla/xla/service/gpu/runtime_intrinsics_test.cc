@@ -34,7 +34,7 @@ HloModule m
 
 ENTRY e {
   constant = u32[2]{0} constant({0, 1})
-  ROOT nop_return_token = token[] custom-call(constant), custom_call_target="NopReturnToken", custom_call_has_side_effect=true
+  ROOT nop_return_token = token[] custom-call(constant), custom_call_target="NopReturnToken", custom_call_has_side_effect=true, api_version=API_VERSION_STATUS_RETURNING
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,

@@ -27,7 +27,6 @@ namespace tensorflow {
 using tsl::CudnnDisableConv1x1Optimization;
 using tsl::CudnnRnnUseAutotune;
 using tsl::CudnnUseAutotune;
-using tsl::CudnnUseFrontend;
 using tsl::CudnnUseRuntimeFusion;
 using tsl::DebugCudnnRnn;
 using tsl::DebugCudnnRnnAlgo;

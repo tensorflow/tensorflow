@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/index_util.h"
 
+#include <cstdint>
 #include <initializer_list>
 #include <vector>
 

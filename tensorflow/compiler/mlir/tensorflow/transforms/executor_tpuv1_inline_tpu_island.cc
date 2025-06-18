@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Transforms/Inliner.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -57,6 +58,7 @@ void ExecutorTPUV1IslandInliningPass::runOnOperation() {
   if (!nested_module) return;
 
   InlinerInterface inliner(&getContext());
+  InlinerConfig config;
   auto walk_result = getOperation().walk([&](TF::PartitionedCallOp call_op) {
     if (!call_op.getF().getRootReference().getValue().starts_with(
             kNestedModule))
@@ -69,7 +71,7 @@ void ExecutorTPUV1IslandInliningPass::runOnOperation() {
     auto called_func =
         dyn_cast_or_null<func::FuncOp>(call_interface.resolveCallable());
 
-    if (failed(inlineCall(inliner, call_interface,
+    if (failed(inlineCall(inliner, config.getCloneCallback(), call_interface,
                           cast<CallableOpInterface>(called_func.getOperation()),
                           called_func.getCallableRegion(),
                           /* shouldCloneInlinedRegion = */ false))) {

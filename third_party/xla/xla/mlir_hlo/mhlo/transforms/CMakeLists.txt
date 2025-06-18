@@ -29,7 +29,6 @@ add_public_tablegen_target(MLIRChloLegalizeToHloIncGen)
 
 
 add_mlir_library(MhloPasses
-  broadcast_propagation/broadcast_propagation.cc
   collapse_elementwise_map/collapse_elementwise_map.cc
   convert_to_signless/convert_to_signless_pass.cc
   expand_hlo_tuples/expand_hlo_tuples.cc
@@ -39,14 +38,10 @@ add_mlir_library(MhloPasses
   legalize_trigonometric_to_approximation/legalize_trigonometric_to_approximation.cc
   materialize_broadcasts/materialize_broadcasts.cc
   materialize_broadcasts/materialize_broadcasts_pass.cc
-  merge_assuming_ops/merge_assuming_ops.cc
   mhlo_flatten_tuple/mhlo_flatten_tuple.cc
   prepare_for_export/prepare_for_export.cc
   optimize_mhlo/optimize_mhlo.cc
-  shape_legalize_to_hlo/shape_legalize_to_hlo.cc
-  shape_simplification/shape_simplification.cc
   sink_constants_to_control_flow/sink_constants_to_control_flow.cc
-  symbolic_shape_optimization/symbolic_shape_optimization.cc
   test_infer_shaped_type/test_infer_shaped_type_pass.cc
   unfuse_batch_norm/unfuse_batch_norm.cc
   unfuse_batch_norm/unfuse_batch_norm_pass.cc

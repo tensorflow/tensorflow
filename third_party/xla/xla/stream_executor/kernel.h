@@ -79,6 +79,7 @@ limitations under the License.
 #include <tuple>
 #include <type_traits>
 #include <utility>
+#include <variant>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/meta/type_traits.h"
@@ -91,7 +92,6 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
-#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 
@@ -528,6 +528,8 @@ class KernelArgsPackedArray : public KernelArgsPackedArrayBase, ArgsStorage {
   size_t number_of_argument_addresses_ = 0;
 };
 
+using KernelArgument = std::variant<DeviceMemoryBase, TensorMap>;
+
 namespace internal {
 template <int n>
 std::unique_ptr<KernelArgsPackedArrayBase> PackKernelArgs(
@@ -541,11 +543,49 @@ std::unique_ptr<KernelArgsPackedArrayBase> PackKernelArgs(
   }
   return packed;
 }
+
+template <int n>
+std::unique_ptr<KernelArgsPackedArrayBase> PackKernelArgs(
+    absl::Span<const KernelArgument> args, uint32_t shared_mem_bytes) {
+  auto contains_tensor_map = [](absl::Span<const KernelArgument> args) -> bool {
+    return absl::c_any_of(args, [](const auto &arg) {
+      return std::holds_alternative<TensorMap>(arg);
+    });
+  };
+
+  if (contains_tensor_map(args)) {
+    auto packed =
+        std::make_unique<KernelArgsPackedArray<n, PodArgs<n, 128, 64>>>();
+    for (auto &buf : args) {
+      if (std::holds_alternative<DeviceMemoryBase>(buf)) {
+        // Buffer argument.
+        packed->add_device_memory_argument(std::get<DeviceMemoryBase>(buf));
+      } else {
+        // TMA descriptor argument.
+        packed->add_argument(std::get<TensorMap>(buf).storage);
+      }
+    }
+    if (shared_mem_bytes > 0) {
+      packed->add_shared_bytes(shared_mem_bytes);
+    }
+    return packed;
+  }
+
+  // No TensorMap arguments -> Can use EmptyArgs.
+  auto packed = std::make_unique<KernelArgsPackedArray<n, EmptyArgs>>();
+  for (auto &buf : args) {
+    packed->add_device_memory_argument(std::get<DeviceMemoryBase>(buf));
+  }
+  if (shared_mem_bytes > 0) {
+    packed->add_shared_bytes(shared_mem_bytes);
+  }
+  return packed;
+}
 }  // namespace internal
 
+template <typename ArgType>
 inline absl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>>
-PackKernelArgs(absl::Span<const DeviceMemoryBase> args,
-               uint32_t shared_mem_bytes) {
+PackKernelArgs(absl::Span<const ArgType> args, uint32_t shared_mem_bytes) {
   static constexpr int kKernelArgsLimit = 1024;
 
   if (args.size() > kKernelArgsLimit)
@@ -575,9 +615,9 @@ PackKernelArgs(absl::Span<const DeviceMemoryBase> args,
   return internal::PackKernelArgs<kKernelArgsLimit>(args, shared_mem_bytes);
 }
 
+template <typename ArgType>
 inline absl::StatusOr<std::unique_ptr<KernelArgsPackedArrayBase>>
-PackKernelArgs(absl::Span<const DeviceMemoryBase> args,
-               const KernelMetadata &metadata) {
+PackKernelArgs(absl::Span<const ArgType> args, const KernelMetadata &metadata) {
   return PackKernelArgs(args, metadata.shared_memory_bytes().value_or(0));
 }
 

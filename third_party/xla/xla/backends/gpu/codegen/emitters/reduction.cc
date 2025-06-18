@@ -114,7 +114,7 @@ struct ReductionFusion::EmitterState {
       root_indices[&root.instruction()] = root_index;
       fusion_result_index_starts[&root.instruction()] = output_index;
       output_index +=
-          root.shape().IsTuple() ? root.shape().tuple_shapes_size() : 1;
+          root.shape().IsTuple() ? root.shape().tuple_shapes().size() : 1;
     }
   }
 

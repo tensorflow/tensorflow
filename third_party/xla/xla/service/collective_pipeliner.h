@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/collective_pipeliner_utils.h"
 
 namespace xla {
 
@@ -60,18 +61,12 @@ namespace xla {
 // }
 class CollectivePipeliner : public HloModulePass {
  public:
-  enum PipeliningDirection {
-    kBackward,
-    kForward,
-    kForwardSink,
-  };
-
   // Postprocessing cloned collective instructions, such as peeled instructions
   // before and after the loop, and rotated instructions. The new while op is
   // only passed for the peeled trailing ops when the new while op was already
   // created.
-  using HloPostprocessor = std::optional<std::function<absl::Status(
-      HloInstruction* instr, HloInstruction* new_while_instr)>>;
+  using HloPostprocessor = std::function<absl::Status(
+      HloInstruction* instr, HloInstruction* new_while_instr)>;
 
   struct Config {
     int64_t level_to_operate_on = 0;
@@ -85,7 +80,8 @@ class CollectivePipeliner : public HloModulePass {
     // iteration.
     bool pipeline_use_tree = false;
     bool process_different_sized_ops = false;
-    PipeliningDirection pipelining_direction = PipeliningDirection::kForward;
+    collective_pipeliner_utils::PipeliningDirection pipelining_direction =
+        collective_pipeliner_utils::PipeliningDirection::kForward;
     HloPredicate should_process;
     // Filter acceptable formatting ops for for forward pipelining to discard
     // cases that pipeline formatting operations that we don't want to support.
@@ -104,14 +100,14 @@ class CollectivePipeliner : public HloModulePass {
     // pipelined. This is currently only used to support kBackward pipelining.
     bool should_allow_control_dependencies = false;
     // TODO(b/399476667): Consolidate these postprocessing functions.
-    HloPostprocessor postprocess_backward_peeled_op = std::nullopt;
-    HloPostprocessor postprocess_backward_rotated_op = std::nullopt;
-    HloPostprocessor postprocess_backward_peeled_trailing_op = std::nullopt;
+    HloPostprocessor postprocess_backward_peeled_op;
+    HloPostprocessor postprocess_backward_rotated_op;
+    HloPostprocessor postprocess_backward_peeled_trailing_op;
     // Determines whether a loop invariant instruction can be considered
     // in the pipelining chain.
     bool should_add_loop_invariant_op_in_chain = false;
     // Postprocessing hook which runs for every successfully pipelined op.
-    HloPostprocessor postprocess_pipelined_ops = std::nullopt;
+    HloPostprocessor postprocess_pipelined_ops;
     int64_t collective_size_threshold_to_stop_sinking = INT64_MAX;
   };
   static const char* const kInsertedByPreviousStep;
@@ -119,15 +115,16 @@ class CollectivePipeliner : public HloModulePass {
   explicit CollectivePipeliner(const Config& config) : config_(config) {}
   CollectivePipeliner(CollectivePipeliner&& other) = default;
   CollectivePipeliner& operator=(CollectivePipeliner&& other) = default;
-  absl::string_view GetPipelineDirectionString(PipeliningDirection direction) {
+  absl::string_view GetPipelineDirectionString(
+      collective_pipeliner_utils::PipeliningDirection direction) {
     switch (direction) {
-      case PipeliningDirection::kForward: {
+      case collective_pipeliner_utils::PipeliningDirection::kForward: {
         return "forward";
       }
-      case PipeliningDirection::kBackward: {
+      case collective_pipeliner_utils::PipeliningDirection::kBackward: {
         return "backward";
       }
-      case PipeliningDirection::kForwardSink: {
+      case collective_pipeliner_utils::PipeliningDirection::kForwardSink: {
         return "forwardsink";
       }
     }
@@ -135,9 +132,11 @@ class CollectivePipeliner : public HloModulePass {
 
   static constexpr absl::string_view kName = "collective-pipeliner";
   absl::string_view name() const override {
-    if (config_.pipelining_direction == kForward) {
+    if (config_.pipelining_direction ==
+        collective_pipeliner_utils::PipeliningDirection::kForward) {
       return "collective-pipeliner-forward";
-    } else if (config_.pipelining_direction == kBackward) {
+    } else if (config_.pipelining_direction ==
+               collective_pipeliner_utils::PipeliningDirection::kBackward) {
       return "collective-pipeliner-backward";
     } else {
       return "collective-pipeliner-forwardsink";

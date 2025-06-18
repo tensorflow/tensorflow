@@ -290,8 +290,8 @@ absl::Status CreateZerosTensorListWithShape(
     xla::XlaOp zero =
         xla::ConstantLiteral(b, xla::LiteralUtil::Zero(shape.element_type()));
     xla::XlaOp zeros = xla::Broadcast(zero, shape.dimensions());
-    TF_RET_CHECK(dynamic_dims[i].size() == shape.dimensions_size());
-    for (int64_t dim = 0; dim < shape.dimensions_size(); ++dim) {
+    TF_RET_CHECK(dynamic_dims[i].size() == shape.dimensions().size());
+    for (int64_t dim = 0; dim < shape.dimensions().size(); ++dim) {
       if (shape.is_dynamic_dimension(dim)) {
         zeros = xla::SetDimensionSize(zeros, dynamic_dims[i][dim], dim);
       }
@@ -343,7 +343,7 @@ absl::Status GetInitializedTensorListForElement(xla::XlaOp list,
     // Prepare dynamic dimension dimensions for zero tensor list. The dynamic
     // sizes are created by reading the dynamic dimension size of sub-elements.
     std::vector<std::vector<xla::XlaOp>> list_dynamic_dims;
-    for (int i = 0; i < list_shape.tuple_shapes_size() - 1; ++i) {
+    for (int i = 0; i < list_shape.tuple_shapes().size() - 1; ++i) {
       std::vector<xla::XlaOp> dynamic_dims;
       const xla::Shape& shape = list_shape.tuple_shapes(i);
       dynamic_dims.push_back(leading_dim_dynamic_size);
@@ -353,7 +353,7 @@ absl::Status GetInitializedTensorListForElement(xla::XlaOp list,
       } else {
         sub_element = element;
       }
-      for (int64_t dim = 0; dim < shape.dimensions_size() - 1; ++dim) {
+      for (int64_t dim = 0; dim < shape.dimensions().size() - 1; ++dim) {
         dynamic_dims.push_back(xla::GetDimensionSize(sub_element, dim));
       }
       list_dynamic_dims.push_back(dynamic_dims);
@@ -392,7 +392,7 @@ absl::Status ExecuteTensorListPushBack(xla::XlaOp list, xla::XlaOp element,
       element_part = xla::Reshape(element_part, element_part_dims);
 
       std::vector<xla::XlaOp> start_indices(
-          element_part_shape.dimensions_size() + 1,
+          element_part_shape.dimensions().size() + 1,
           xla::ConstantR0<int32>(b, 0));
       start_indices[0] = push_index;
 
@@ -408,7 +408,7 @@ absl::Status ExecuteTensorListPushBack(xla::XlaOp list, xla::XlaOp element,
     element_dims.insert(element_dims.begin(), 1);
     xla::XlaOp update = xla::Reshape(element, element_dims);
 
-    std::vector<xla::XlaOp> start_indices(element_shape.dimensions_size() + 1,
+    std::vector<xla::XlaOp> start_indices(element_shape.dimensions().size() + 1,
                                           xla::ConstantR0<int32>(b, 0));
     start_indices[0] = push_index;
 
@@ -447,7 +447,7 @@ absl::Status ExecuteTensorListPopBack(xla::XlaOp list, xla::XlaOp* list_result,
   for (int i = 0; i < list_tuple_size - 1; i++) {
     const xla::Shape& list_part_shape =
         xla::ShapeUtil::GetTupleElementShape(list_shape, i);
-    std::vector<xla::XlaOp> start_indices(list_part_shape.dimensions_size(),
+    std::vector<xla::XlaOp> start_indices(list_part_shape.dimensions().size(),
                                           xla::ConstantR0<int32>(b, 0));
     start_indices[0] = push_index;
 
@@ -495,7 +495,7 @@ absl::Status ExecuteTensorListSetItem(xla::XlaOp list, xla::XlaOp index,
   element_dims.insert(element_dims.begin(), 1);
   xla::XlaOp update = xla::Reshape(element, element_dims);
 
-  std::vector<xla::XlaOp> start_indices(element_shape.dimensions_size() + 1,
+  std::vector<xla::XlaOp> start_indices(element_shape.dimensions().size() + 1,
                                         xla::ConstantR0<int32>(b, 0));
   start_indices[0] = index;
 
@@ -504,7 +504,7 @@ absl::Status ExecuteTensorListSetItem(xla::XlaOp list, xla::XlaOp index,
     TF_ASSIGN_OR_RETURN(const xla::Shape* list_part_shape,
                         b->GetShapePtr(list_part));
     TF_ASSIGN_OR_RETURN(const xla::Shape* update_shape, b->GetShapePtr(update));
-    for (int i = 0; i < list_part_shape->dimensions_size(); ++i) {
+    for (int i = 0; i < list_part_shape->dimensions().size(); ++i) {
       auto list_part_dim_size = list_part_shape->dimensions(i);
       auto update_dim_size = update_shape->dimensions(i);
       // If the update is larger than the list part, the DynamicUpdateSlice will
@@ -549,7 +549,7 @@ absl::Status ExecuteTensorListGetItem(xla::XlaOp list, xla::XlaOp index,
   TF_ASSIGN_OR_RETURN(xla::Shape list_shape, b->GetShape(list));
   const xla::Shape& buffer_shape =
       xla::ShapeUtil::GetTupleElementShape(list_shape, 0);
-  std::vector<xla::XlaOp> start_indices(buffer_shape.dimensions_size(),
+  std::vector<xla::XlaOp> start_indices(buffer_shape.dimensions().size(),
                                         xla::ConstantR0<int32>(b, 0));
   start_indices[0] = index;
 
@@ -561,7 +561,7 @@ absl::Status ExecuteTensorListGetItem(xla::XlaOp list, xla::XlaOp index,
   xla::XlaOp read = xla::DynamicSlice(list_part, start_indices, slice_shape);
   // Propagate dynamic dimensions from buffer to the sliced buffer, except for
   // leading dimension (which is always static 1).
-  for (int64_t i = 1; i < buffer_shape.dimensions_size(); ++i) {
+  for (int64_t i = 1; i < buffer_shape.dimensions().size(); ++i) {
     if (buffer_shape.is_dynamic_dimension(i)) {
       auto buffer = xla::GetTupleElement(list, 0);
       auto gds = xla::GetDimensionSize(buffer, i);

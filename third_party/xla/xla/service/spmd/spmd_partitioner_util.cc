@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
+#include <iterator>
 #include <limits>
 #include <map>
 #include <memory>
@@ -100,9 +102,11 @@ bool EvenlyPartitions(const Shape& shape, const HloSharding& sharding) {
   if (sharding.IsTileMaximal()) {
     return sharding.IsReplicated();
   }
-  for (int64_t i = 0; i < shape.dimensions_size(); ++i) {
-    if (shape.dimensions(i) % sharding.tile_assignment().dim(i) != 0) {
-      return false;
+  if (shape.IsArray()) {
+    for (int64_t i = 0; i < shape.dimensions().size(); ++i) {
+      if (shape.dimensions(i) % sharding.tile_assignment().dim(i) != 0) {
+        return false;
+      }
     }
   }
   return true;
@@ -2453,24 +2457,173 @@ HloInstruction* PadDataFromWindowReshard(
 
 std::vector<std::vector<int64_t>> GetPartitionGroupsForReplication(
     const HloSharding& sharding, absl::Span<const int64_t> replication_dims) {
+  absl::Span<const int64_t> tile_assignment_dims =
+      sharding.tile_assignment().dimensions();
+  DCHECK_GE(tile_assignment_dims.size(), replication_dims.size());
   int64_t group_size = 1;
   for (int64_t i : replication_dims) {
-    group_size *= sharding.tile_assignment().dim(i);
+    DCHECK_LT(i, tile_assignment_dims.size());
+    group_size *= tile_assignment_dims[i];
   }
+  std::vector<int64_t> non_replication_indices;
+  non_replication_indices.reserve(tile_assignment_dims.size() -
+                                  replication_dims.size());
+  for (int64_t i = 0; i < tile_assignment_dims.size(); ++i) {
+    if (!absl::c_linear_search(replication_dims, i)) {
+      non_replication_indices.push_back(i);
+    }
+  }
+  DCHECK_EQ(replication_dims.size() + non_replication_indices.size(),
+            tile_assignment_dims.size());
+  std::vector<int64_t> non_replication_strides(non_replication_indices.size());
+  if (!non_replication_strides.empty()) {
+    non_replication_strides.back() = 1;
+    for (int64_t i = non_replication_indices.size() - 1; i > 0; --i) {
+      non_replication_strides[i - 1] =
+          non_replication_strides[i] *
+          tile_assignment_dims[non_replication_indices[i]];
+    }
+  }
+
   std::vector<std::vector<int64_t>> partition_groups(
       sharding.tile_assignment().num_elements() / group_size);
   sharding.tile_assignment().Each(
       [&](absl::Span<const int64_t> indices, int64_t partition) {
         int64_t group_id = 0;
-        for (int64_t i = 0; i < indices.size(); ++i) {
-          if (!absl::c_linear_search(replication_dims, i)) {
-            group_id *= sharding.tile_assignment().dim(i);
-            group_id += indices[i];
-          }
+        auto non_replication_strides_it = non_replication_strides.begin();
+        for (int64_t non_replication_index : non_replication_indices) {
+          group_id +=
+              indices[non_replication_index] * (*non_replication_strides_it);
+          ++non_replication_strides_it;
         }
+        DCHECK(non_replication_strides_it == non_replication_strides.end());
+        DCHECK_LT(group_id, partition_groups.size());
         partition_groups[group_id].push_back(partition);
       });
   return partition_groups;
+}
+
+std::vector<std::vector<int64_t>> GetPartitionGroupsAcrossTargetDims(
+    const HloSharding& sharding, std::vector<int64_t> target_dims,
+    std::vector<int64_t> group_sizes) {
+  CHECK(target_dims.size() == group_sizes.size());
+  int64_t total_group_size = std::accumulate(
+      group_sizes.begin(), group_sizes.end(), 1, std::multiplies<int64_t>());
+  std::vector<std::vector<int64_t>> groups(
+      sharding.tile_assignment().num_elements() / total_group_size);
+  sharding.tile_assignment().Each(
+      [&](absl::Span<const int64_t> indices, int64_t device) {
+        int64_t group_id = 0;
+        for (int64_t dim = 0; dim < indices.size(); ++dim) {
+          auto it = absl::c_find(target_dims, dim);
+          if (it != target_dims.end()) {
+            int64_t group_size =
+                group_sizes[std::distance(target_dims.begin(), it)];
+            group_id *= sharding.tile_assignment().dim(dim) / group_size;
+            group_id += indices[dim] / group_size;
+          } else {
+            group_id *= sharding.tile_assignment().dim(dim);
+            group_id += indices[dim];
+          }
+        }
+        groups[group_id].push_back(device);
+      });
+  return groups;
+}
+
+std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsAcrossTargetDims(
+    const HloSharding& sharding, std::vector<int64_t> target_dims,
+    std::vector<int64_t> group_sizes, int64_t num_partitions) {
+  CHECK(target_dims.size() == group_sizes.size());
+  // If provided sharding is not HloShardingV2, we cannot generate partition
+  // groups in an iota format.
+  if (!sharding.tile_assignment().iota().has_value()) {
+    return std::nullopt;
+  }
+
+  // If the sharding does not utilize all the partitions, we skip generating
+  // compressed format.
+  if (sharding.tile_assignment().num_elements() != num_partitions) {
+    return std::nullopt;
+  }
+
+  // The goal of this function is to generate partition groups which span across
+  // target dims without using explicit indexing and instead using transposes
+  // and reshapes of the tile assignment. We do this by reshaping the tile
+  // assignment by expanding each target dim to [target_dim/group_size,
+  // group_size]. We then transpose the tile assignment, making the newly
+  // created target dims the most minor dims, preserving the order of the target
+  // dims. Consider the following example:
+  // Tile assignment: [8,8,16]<=[1024]
+  // Target dims: [0,1]
+  // Group sizes: [4,4]
+  //
+  // In this case we would generate 64 replica groups of size 16.
+  // These replica groups would span the target dims 0 and 1.
+  // We perform the following steps on the original tile assignment:
+  // 1. Expand target dims: [8,8,16]->[2,4,2,4,16]
+  // 2. Transpose to make target dims minor: [2,4,2,4,16]->[2,2,16,4,4] with
+  // (0,1,2,3,4) -> (0,2,4,1,3)
+  // 3. Reshape to get groups of size 16: [2,4,16,2,4]->[2,2,16,16]
+  int64_t total_group_size = std::accumulate(
+      group_sizes.begin(), group_sizes.end(), 1, std::multiplies<int64_t>());
+  int64_t num_replica_groups =
+      sharding.tile_assignment().num_elements() / total_group_size;
+
+  std::vector<int64_t> reshape_dimensions;
+  reshape_dimensions.reserve(sharding.tile_assignment().num_dimensions());
+  std::vector<int64_t> target_dim_locations;
+  for (int64_t dim = 0; dim < sharding.tile_assignment().num_dimensions();
+       ++dim) {
+    auto it = std::find(target_dims.begin(), target_dims.end(), dim);
+    if (it != target_dims.end()) {
+      int64_t current_val = sharding.tile_assignment().dim(dim);
+      int64_t group_size = group_sizes[std::distance(target_dims.begin(), it)];
+      reshape_dimensions.push_back(current_val / group_size);
+      reshape_dimensions.push_back(group_size);
+      target_dim_locations.push_back(reshape_dimensions.size() - 1);
+    } else {
+      reshape_dimensions.push_back(sharding.tile_assignment().dim(dim));
+    }
+  }
+
+  std::vector<int> transpose_dims(reshape_dimensions.size());
+  std::iota(transpose_dims.begin(), transpose_dims.end(), 0);
+  for (int64_t loc : target_dim_locations) {
+    auto it = std::find(transpose_dims.begin(), transpose_dims.end(), loc);
+    if (it != transpose_dims.end()) {
+      transpose_dims.erase(it);
+      transpose_dims.push_back(loc);
+    }
+  }
+
+  // Step 1: Expand target dims.
+  auto reshaped_tile_assignment =
+      sharding.tile_assignment().Reshape(reshape_dimensions);
+
+  // If after the reshape we do not have an iota tile assignment
+  // (HloShardingV2), we cannot generate a compressed format.
+  if (!reshaped_tile_assignment.iota().has_value()) {
+    return std::nullopt;
+  }
+
+  // Step 2: Transpose the tile assignment to make the target dims minor.
+  auto tranposed_tile_assignment =
+      reshaped_tile_assignment.iota()->Transpose(transpose_dims);
+  // If after the transpose we do not have an iota tile assignment
+  // (HloShardingV2), we cannot generate a compressed format.
+  if (!tranposed_tile_assignment.has_value()) {
+    return std::nullopt;
+  }
+
+  // Step 3: Final reshape to get groups of size total_group_size. This is done
+  // implicitly by creating an IotaReplicaGroupList with num_replica_groups,
+  // total_group_size.
+  IotaReplicaGroupList groups(
+      num_replica_groups, total_group_size,
+      tranposed_tile_assignment.value().reshape_dims(),
+      tranposed_tile_assignment.value().transpose_perm());
+  return groups;
 }
 
 // Returns partition groups in an iota format.
@@ -2575,6 +2728,63 @@ PartitionedHlo MakeACopyAndReturnItsPartitionedHlo(const PartitionedHlo& phlo,
       phlo.hlo()->shape(), HloOpcode::kCopy, phlo.hlo()));
   copy_hlo->copy_sharding(phlo.hlo());
   return PartitionedHlo(copy_hlo, phlo.base_shape(), phlo.state());
+}
+
+DynamicUpdateSliceAnalysis AnalyzeDynamicUpdateSlice(
+    const HloInstruction* hlo) {
+  CHECK(!hlo->sharding().IsTileMaximal());
+
+  DynamicUpdateSliceAnalysis analysis;
+
+  bool update_on_a_single_partition = true;
+  bool has_partitioned_slice_dim_with_dynamic_index = false;
+  for (int64_t i = 0; i < hlo->shape().dimensions_size(); ++i) {
+    if (hlo->operand(1)->shape().dimensions(i) == hlo->shape().dimensions(i)) {
+      continue;
+    }
+    analysis.slice_dims.push_back(i);
+
+    if (hlo->sharding().tile_assignment().dim(i) == 1) {
+      continue;
+    }
+    analysis.partitioned_slice_dims.push_back(i);
+
+    int64_t slice_size = hlo->operand(1)->shape().dimensions(i);
+    if (slice_size == 1) {
+      continue;
+    }
+
+    if (hlo->operand(i + 2)->IsConstant()) {
+      const PrimitiveType elemType =
+          hlo->operand(i + 2)->shape().element_type();
+      int64_t start_index =
+          elemType == S64 ? hlo->operand(i + 2)->literal().Get<int64_t>({})
+                          : hlo->operand(i + 2)->literal().Get<int>({});
+      int64_t end_index = start_index + slice_size - 1;
+
+      int64_t per_partition_size = CeilOfRatio(
+          hlo->shape().dimensions(i), hlo->sharding().tile_assignment().dim(i));
+      if (start_index / per_partition_size != end_index / per_partition_size) {
+        update_on_a_single_partition = false;
+      }
+    } else {
+      update_on_a_single_partition = false;
+      has_partitioned_slice_dim_with_dynamic_index = true;
+    }
+  }
+
+  if (analysis.partitioned_slice_dims.empty()) {
+    analysis.method = DynamicUpdateSliceMethod::kDefault;
+  } else if (update_on_a_single_partition) {
+    analysis.method = DynamicUpdateSliceMethod::kUpdateOnASinglePartition;
+  } else if (has_partitioned_slice_dim_with_dynamic_index) {
+    analysis.method = DynamicUpdateSliceMethod::kDefault;
+  } else {
+    analysis.method =
+        DynamicUpdateSliceMethod::kAllPartitionedSliceDimsHaveConstantIndices;
+  }
+
+  return analysis;
 }
 
 }  // namespace spmd

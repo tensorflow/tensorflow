@@ -1060,8 +1060,7 @@ absl::Status ReadMetadataFile(
 
 absl::Status DumpDatasetGraph(Env* env, const std::string& path, uint64 hash,
                               const GraphDef* graph) {
-  std::string hash_hex =
-      strings::StrCat(strings::Hex(hash, strings::kZeroPad16));
+  std::string hash_hex = absl::StrCat(absl::Hex(hash, absl::kZeroPad16));
   std::string graph_file =
       io::JoinPath(path, absl::StrCat(hash_hex, "-graph.pbtxt"));
 

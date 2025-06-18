@@ -23,18 +23,18 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/cpu_executable.h"
 #include "xla/service/cpu/target_machine_features_stub.h"
 #include "xla/service/hlo_cost_analysis.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-class ParallelTaskAssignmentTest : public HloTestBase {
+class ParallelTaskAssignmentTest : public HloHardwareIndependentTestBase {
  protected:
   // Use any value larger than 2 since we only test whether a module is
   // parallelized or not
@@ -43,7 +43,7 @@ class ParallelTaskAssignmentTest : public HloTestBase {
   cpu::TargetMachineFeaturesStub target_machine_features_;
 
   ParallelTaskAssignmentTest()
-      : HloTestBase(), target_machine_features_([](int64_t shape_size) {
+      : target_machine_features_([](int64_t shape_size) {
           return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
         }) {}
 

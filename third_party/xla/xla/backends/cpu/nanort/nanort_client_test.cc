@@ -15,18 +15,26 @@ limitations under the License.
 
 #include "xla/backends/cpu/nanort/nanort_client.h"
 
+#include <stdalign.h>
+
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array2d.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
+#include "xla/ffi/execution_context.h"
+#include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_api.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -36,8 +44,11 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
+#include "xla/runtime/device_id.h"
+#include "xla/service/computation_placer.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -272,6 +283,126 @@ ENTRY test_module {
 
   EXPECT_TRUE(event.IsConcrete());
   EXPECT_EQ(result_span[0], expected_result);
+}
+
+TEST(NanoRtClientTest, CompileAndRunPartitionAndReplicaIdInstructions) {
+  constexpr absl::string_view hlo = R"(
+    HloModule replica-and-partition-id
+
+ENTRY ReplicaAndPartitionId {
+  replica_id = u32[] replica-id()
+  partition_id = u32[] partition-id()
+  ROOT result = (u32[], u32[]) tuple(replica_id, partition_id)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  XlaComputation computation(module->ToProto());
+
+  NanoRtClient client;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
+                          client.Compile(computation));
+
+  ComputationPlacer computation_placer;
+  constexpr int kReplicaCount = 2;
+  constexpr int kComputationCount = 2;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto device_assignment,
+      computation_placer.AssignDevices(kReplicaCount, kComputationCount));
+
+  for (int i = 0; i < kReplicaCount; ++i) {
+    for (int j = 0; j < kComputationCount; ++j) {
+      alignas(32) uint32_t result_replica_id = 0;
+      alignas(32) uint32_t result_computation_id = 0;
+      Results results = {{&result_replica_id, 1}, {&result_computation_id, 1}};
+
+      auto execute_options = NanoRtExecutable::ExecuteOptions();
+      execute_options.set_device_assignment(&device_assignment);
+
+      TF_ASSERT_OK_AND_ASSIGN(
+          auto device_id,
+          computation_placer.DeviceId(i, j, kReplicaCount, kComputationCount));
+      execute_options.set_global_device_id(GlobalDeviceId(device_id));
+
+      auto event = executable->Execute({}, results, {}, execute_options);
+      tsl::BlockUntilReady(event);
+
+      EXPECT_TRUE(event.IsConcrete());
+      EXPECT_EQ(result_replica_id, i);
+      EXPECT_EQ(result_computation_id, j);
+    }
+  }
+}
+
+//===----------------------------------------------------------------------===//
+// Custom call tests below
+//===----------------------------------------------------------------------===//
+
+struct StrUserData {
+  explicit StrUserData(std::string str) : str(std::move(str)) {}
+  std::string str;
+};
+
+static absl::Status Add(StrUserData* user_data,
+                        ffi::BufferR0<PrimitiveType::S32> a,
+                        ffi::BufferR0<PrimitiveType::S32> b,
+                        ffi::Result<ffi::BufferR0<PrimitiveType::S32>> sum) {
+  EXPECT_EQ(user_data->str, "foo");
+  sum->typed_data()[0] = a.typed_data()[0] + b.typed_data()[0];
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(kAdd, Add,
+                       ffi::Ffi::Bind()
+                           .Ctx<ffi::UserData<StrUserData>>()
+                           .Arg<ffi::BufferR0<PrimitiveType::S32>>()
+                           .Arg<ffi::BufferR0<PrimitiveType::S32>>()
+                           .Ret<ffi::BufferR0<PrimitiveType::S32>>());
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_nanort_test$$add", "Host",
+                         kAdd);
+
+TEST(NanoRtClientTest, CustomCallTest) {
+  const char* kModuleStr = R"(
+    HloModule module
+
+    ENTRY custom_call {
+      a = s32[] parameter(0)
+      b = s32[] parameter(1)
+      ROOT custom-call = s32[] custom-call(a, b),
+        custom_call_target="__xla_nanort_test$$add",
+        api_version=API_VERSION_TYPED_FFI
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+  XlaComputation computation(module->ToProto());
+
+  NanoRtClient client;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<NanoRtExecutable> executable,
+                          client.Compile(computation));
+
+  int32_t a = 1.0f;
+  int32_t b = 2.0f;
+  int32_t result = 0.0f;
+
+  std::vector<NanoRtExecutable::Argument> arguments;
+  std::vector<NanoRtExecutable::Result> results;
+  arguments.push_back({&a, 1});
+  arguments.push_back({&b, 1});
+  results.push_back({&result, 1});
+
+  ffi::ExecutionContext context;
+  TF_ASSERT_OK(context.Emplace<StrUserData>("foo"));
+
+  NanoRtExecutable::ExecuteOptions execute_options;
+  execute_options.set_ffi_context(&context);
+
+  auto event = executable->Execute(arguments, results, {}, execute_options);
+  tsl::BlockUntilReady(event);
+
+  EXPECT_TRUE(event.IsConcrete());
+  EXPECT_EQ(result, 3.0f);
 }
 
 //===----------------------------------------------------------------------===//

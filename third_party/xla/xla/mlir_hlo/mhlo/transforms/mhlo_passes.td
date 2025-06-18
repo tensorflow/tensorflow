@@ -129,31 +129,6 @@ def TestInferShapedTypeMethodsPass : Pass<"mhlo-test-infer-shaped-type-methods",
   let constructor = "createTestInferShapedTypeMethodsPass()";
 }
 
-def BroadcastPropagationPass : Pass<"mhlo-broadcast-propagation", "func::FuncOp"> {
-  let summary = "Move dynamic broadcasts up over element-wise operations and "
-    "broadcast the operands rather than the result. This will eventually allow "
-    "for larger fusions.";
-  let constructor = "createBroadcastPropagationPass()";
-}
-
-def MergeAssumingOpsPass : Pass<"mhlo-merge-assuming-ops", "func::FuncOp"> {
-  let summary = "Prepare moving dynamic broadcasts up over element-wise "
-    "operations and broadcast the operands rather than the result. This will "
-    "eventually allow for larger fusions.";
-  let constructor = "createMergeAssumingOpsPass()";
-}
-
-def SymbolicShapeOptimization : Pass<"symbolic-shape-optimization", "func::FuncOp"> {
-  let summary = "Analyzes shapes and performs shape-related optimizations";
-  let constructor = "createSymbolicShapeOptimizationPass()";
-}
-
-def ShapeSimplification
-    : Pass<"shape-simplification", "mlir::func::FuncOp"> {
-  let summary = "Simplify shape ops";
-  let constructor = "createShapeSimplification()";
-}
-
 def TestUnfuseBatchNormPass : Pass<"mhlo-test-unfuse-batch-norm", "func::FuncOp"> {
   let summary = "Test pass for materializing 'broadcast_dimensions' attributes.";
   let constructor = "createTestUnfuseBatchNormPass()";
@@ -206,8 +181,12 @@ def HloLegalizeToStablehloPass : Pass<"hlo-legalize-to-stablehlo", "ModuleOp"> {
 
 def StablehloLegalizeToHloPass : Pass<"stablehlo-legalize-to-hlo", "ModuleOp"> {
   let summary = "Legalize StableHLO to HLO.";
-  let constructor = "createStablehloLegalizeToHloPass()";
   let dependentDialects = ["mhlo::MhloDialect"];
+  let options = [
+    Option<"convert_xla_supported_stablehlo_", "convert-xla-supported-stablehlo",
+           "bool", /*default=*/"true",
+           "Don't convert ops that have direct HLO lowering support.">
+  ];
 }
 
 def PrepareForExportPass : Pass<"xla-prepare-for-export", "mlir::func::FuncOp"> {
@@ -222,21 +201,4 @@ def PrepareForExportPass : Pass<"xla-prepare-for-export", "mlir::func::FuncOp"> 
     Note: The result of this pass need not be a module in canonical form and
     canonicalization may undo transformations.
   }];
-}
-
-def ShapeLegalizeToHloPass : Pass<"shape-legalize-to-hlo", "func::FuncOp"> {
-  let summary = "Legalize shape-related ops to HLO.";
-  let constructor = "createShapeLegalizeToHloPass()";
-  let description = [{
-    An experimental pass that legalizes shape-related ops to MHLO ops.
-
-    Bringing shape and data computations together via an optional pass will
-    make it possible for the MHLO ecosystem to potentially leverage the
-    compilation pipelines that use HLO operations to model dynamism.
-  }];
-  let dependentDialects = ["mhlo::MhloDialect"];
-  let options = [
-    Option<"legalize_constraints_", "legalize-constraints", "bool",
-           /*default=*/"false", "Whether to legalize Cstr Ops to shape_assertion custom_call">
-  ];
 }

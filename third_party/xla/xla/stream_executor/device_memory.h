@@ -174,6 +174,12 @@ class DeviceMemory final : public DeviceMemoryBase {
   DeviceMemory(void *opaque, uint64_t size) : DeviceMemoryBase(opaque, size) {}
 };
 
+// TensorMap is a wrapper around a 128 bytes of storage. It is used to pass TMA
+// descriptors to the kernel.
+struct TensorMap {
+  alignas(64) std::byte storage[128];
+};
+
 }  // namespace stream_executor
 
 #endif  // XLA_STREAM_EXECUTOR_DEVICE_MEMORY_H_

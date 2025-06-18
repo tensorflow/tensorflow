@@ -32,7 +32,7 @@ AlphaNum::AlphaNum(Hex hex) {
   char *const end = &digits_[kFastToBufferSize];
   char *writer = end;
   uint64 value = hex.value;
-  uint64 width = hex.spec;
+  uint64 width = hex.width;
   // We accomplish minimum width by OR'ing in 0x10000 to the user's value,
   // where 0x10000 is the smallest hex number that is as wide as the user
   // asked for.

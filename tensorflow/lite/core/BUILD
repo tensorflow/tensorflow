@@ -148,6 +148,19 @@ cc_library(
     alwayslink = 1,  # TODO(b/161243354): eliminate this.
 )
 
+# This is a private target, its visibility is set to public only to be
+# used by LiteRT dependencies.
+# Do not use this target directly and don't consider it as a part of the public API.
+# TODO(weiyiw): Refactor LiteRT deps from TFLite.
+alias(
+    name = "private_cc_api_stable",
+    actual = ":cc_api_stable",
+    tags = ["avoid_dep"],
+    visibility = [
+        "//visibility:public",
+    ],
+)
+
 # TODO(b/242310498): move logger.cc from tensorflow/lite/ to here.
 cc_library(
     name = "cc_api_stable",

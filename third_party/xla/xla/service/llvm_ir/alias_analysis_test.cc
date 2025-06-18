@@ -17,8 +17,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/cpu/tests/cpu_codegen_test.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
 
@@ -27,7 +27,8 @@ namespace {
 
 class AliasAnalysisTest : public CpuCodegenTest {
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
     // We do not generate IR for while loops with thunks runtime, so we
     // explicitly disable it for this test.
     debug_options.set_xla_cpu_use_thunk_runtime(false);

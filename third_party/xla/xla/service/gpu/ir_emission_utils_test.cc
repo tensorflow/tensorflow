@@ -20,18 +20,26 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/backend_config.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/hlo_runner.h"
+#include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_runner_agnostic_test_base.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -40,9 +48,23 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+using ::testing::ElementsAre;
+using ::testing::SizeIs;
 using ::tsl::testing::IsOkAndHolds;
 
-using IrEmissionUtilsTest = HloTestBase;
+class IrEmissionUtilsTest : public HloRunnerAgnosticTestBase {
+ public:
+  IrEmissionUtilsTest()
+      : HloRunnerAgnosticTestBase(
+            std::make_unique<HloRunner>(*PlatformUtil::GetDefaultPlatform())) {}
+
+  TransposeSpec GetTransposeSpecFromRoot(absl::string_view hlo_text) {
+    auto module = ParseAndReturnVerifiedModule(hlo_text).value();
+    auto* root = module->entry_computation()->root_instruction();
+    return GetTransposeSpec(Cast<HloTransposeInstruction>(root));
+  }
+};
+
 using InlinedVector = absl::InlinedVector<int64_t, 3>;
 
 TEST_F(IrEmissionUtilsTest, FindTiledLogicalTranspose) {
@@ -83,6 +105,65 @@ ENTRY entry {
   EXPECT_EQ(result->instr, tr);
   EXPECT_EQ(result->dimensions, InlinedVector({48, 32, 2}));
   EXPECT_EQ(result->permutation, InlinedVector({1, 0, 2}));
+}
+
+TEST_F(IrEmissionUtilsTest, FindTiledLogical210TransposeWithSmallDimension) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = f16[4,256,128]{2,1,0} parameter(0)
+  ROOT t = f16[128,256,4]{2,1,0} transpose(p), dimensions={2,1,0}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  HloInstruction* tr = module->entry_computation()->root_instruction();
+
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr);
+  EXPECT_TRUE(result.has_value());
+  EXPECT_EQ(result->instr, tr);
+  EXPECT_EQ(result->dimensions, InlinedVector({128, 256, 4}));
+  EXPECT_EQ(result->permutation, InlinedVector({2, 1, 0}));
+}
+
+TEST_F(IrEmissionUtilsTest, FindTiledLogicalTransposeDimensionTooSmall) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = f16[1024,3]{1,0} parameter(0)
+  ROOT t = f16[3,1024]{1,0} transpose(p), dimensions={1,0}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  HloInstruction* tr = module->entry_computation()->root_instruction();
+
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr);
+
+  // Transposed dimensions should be at least 4. See
+  // go/xla-transpose-emitter-performance-analysis for more details.
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST_F(IrEmissionUtilsTest, FindTiledLogicalTranspose2103ProductTooSmall) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = s4[8,256,8,2]{3,2,1,0} parameter(0)
+  ROOT t = s4[8,256,8,2]{3,2,1,0} transpose(p), dimensions={2,1,0,3}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+  HloInstruction* tr = module->entry_computation()->root_instruction();
+
+  // Transposed dimensions combined should be at least 256 (16 x 16). See
+  // go/xla-transpose-emitter-performance-analysis for more details.
+  auto result = GetDescriptionForTiledTransposeEmitter(*tr);
+  EXPECT_FALSE(result.has_value());
 }
 
 TEST_F(IrEmissionUtilsTest, FindTiledLogical102TransposeTooMuchMemoryRequired) {
@@ -1125,8 +1206,12 @@ ENTRY e {
 }
 
 constexpr absl::string_view kWhileLoopTestModule = R"(
-    identity {
-      ROOT p0 = s32[] parameter(0)
+    plus_one {
+      p0 = s32[] parameter(0)
+      p1 = s32[] parameter(1)
+      c1 = s32[] constant(0)
+      sum = s32[] add(p0, c1)
+      ROOT tuple = (s32[], s32[]) tuple(sum, p1)
     }
     identity2 {
       ROOT p0 = s32[] parameter(0)
@@ -1140,7 +1225,11 @@ constexpr absl::string_view kWhileLoopTestModule = R"(
 
     call_body {
       p0 = s32[] parameter(0)
-      ROOT called_fusion = s32[] fusion(p0), kind=kLoop, calls=identity
+      p1 = s32[] parameter(1)
+      p2 = s32[] parameter(2)
+      sum = s32[] add(p0, p2)
+      called_fusion = (s32[], s32[]) fusion(p1, sum), kind=kLoop, calls=plus_one
+      ROOT gte = s32[] get-tuple-element(called_fusion), index=0
     }
 
     add_values {
@@ -1154,11 +1243,10 @@ constexpr absl::string_view kWhileLoopTestModule = R"(
       ivar = s32[] get-tuple-element(p0), index=0
       ivar_copy = s32[] copy(ivar)
 
-      // `derived` and `call` are functionally dependent on the induction variable.
-      derived = s32[] fusion(ivar_copy), kind=kLoop, calls=remainder
-      call = s32[] call(derived), to_apply=call_body
-
       side_effect = s32[] custom-call(), custom_call_target=""
+
+      derived = s32[] fusion(ivar_copy), kind=kLoop, calls=remainder
+      call = s32[] call(side_effect, derived, ivar), to_apply=call_body
 
       // `derived_with_invalid_dep` and `not_functionally_dependent` are not, because
       // they have a custom call in their transitive dependencies.
@@ -1199,22 +1287,22 @@ TEST_F(IrEmissionUtilsTest, ResolveWhileLoopDependency) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kWhileLoopTestModule));
 
-  auto* while_body = module->GetComputationWithName("while_body");
+  HloComputation* while_body = module->GetComputationWithName("while_body");
+  HloComputation* plus_one = module->GetComputationWithName("plus_one");
+  HloComputation* call_body = module->GetComputationWithName("call_body");
 
   const HloInstruction* loop = module->entry_computation()->root_instruction();
-  const HloInstruction* call = while_body->GetInstructionWithName("call");
-  const HloInstruction* called_fusion =
-      module->GetComputationWithName("call_body")
-          ->GetInstructionWithName("called_fusion");
   auto result = ResolveFunctionalDependencyOnInductionVariable(
-      /*call_stack=*/{loop, call, called_fusion},
-      module->GetComputationWithName("identity")->root_instruction());
+      plus_one->GetInstructionWithName("sum"));
 
   ASSERT_TRUE(result.has_value());
-  EXPECT_EQ(result->derived_value,
-            while_body->GetInstructionWithName("derived"));
   EXPECT_EQ(result->loop, loop);
   EXPECT_EQ(result->induction_var, while_body->GetInstructionWithName("ivar"));
+
+  EXPECT_THAT(result->required_parameters, SizeIs(2));
+  EXPECT_THAT(result->required_parameters[plus_one], ElementsAre(true, false));
+  EXPECT_THAT(result->required_parameters[call_body],
+              ElementsAre(false, true, false));
 }
 
 TEST_F(IrEmissionUtilsTest,
@@ -1222,33 +1310,10 @@ TEST_F(IrEmissionUtilsTest,
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kWhileLoopTestModule));
 
-  auto* while_body = module->GetComputationWithName("while_body");
-
   HloInstruction* loop = module->entry_computation()->root_instruction();
   loop->clear_backend_config();
-  const HloInstruction* call = while_body->GetInstructionWithName("call");
-  const HloInstruction* called_fusion =
-      module->GetComputationWithName("call_body")
-          ->GetInstructionWithName("called_fusion");
   auto result = ResolveFunctionalDependencyOnInductionVariable(
-      /*call_stack=*/{loop, call, called_fusion},
-      module->GetComputationWithName("identity")->root_instruction());
-
-  ASSERT_FALSE(result.has_value());
-}
-
-TEST_F(IrEmissionUtilsTest, ResolveWhileLoopDependencyWhileLoopNotInCallStack) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kWhileLoopTestModule));
-
-  auto* while_body = module->GetComputationWithName("while_body");
-  const HloInstruction* call = while_body->GetInstructionWithName("call");
-  const HloInstruction* called_fusion =
-      module->GetComputationWithName("call_body")
-          ->GetInstructionWithName("called_fusion");
-  auto result = ResolveFunctionalDependencyOnInductionVariable(
-      /*call_stack=*/{call, called_fusion},
-      module->GetComputationWithName("identity")->root_instruction());
+      module->GetComputationWithName("plus_one")->root_instruction());
 
   ASSERT_FALSE(result.has_value());
 }
@@ -1260,15 +1325,48 @@ TEST_F(IrEmissionUtilsTest, ResolveWhileLoopDependencySideEffect) {
                           ParseAndReturnVerifiedModule(kWhileLoopTestModule));
 
   auto* while_body = module->GetComputationWithName("while_body");
-
-  const HloInstruction* loop = module->entry_computation()->root_instruction();
   const HloInstruction* called_fusion =
       while_body->GetInstructionWithName("not_functionally_dependent");
   auto result = ResolveFunctionalDependencyOnInductionVariable(
-      /*call_stack=*/{loop, called_fusion},
-      module->GetComputationWithName("identity2")->root_instruction());
+      called_fusion->called_computations()[0]->root_instruction());
 
   ASSERT_FALSE(result.has_value());
+}
+
+TEST_F(IrEmissionUtilsTest, Transpose_10) {
+  auto spec = GetTransposeSpecFromRoot(R"(ENTRY entry {
+    p0 = f32[8, 32] parameter(0)
+    ROOT transpose_p0 = f32[32, 8] transpose(p0), dimensions={1, 0}
+  })");
+  EXPECT_THAT(spec.permutation, ElementsAre(1, 0));
+  EXPECT_THAT(spec.inv_permutation, ElementsAre(1, 0));
+  EXPECT_THAT(spec.canonical_input_shape, ElementsAre(8, 1, 32, 1));
+  EXPECT_THAT(spec.canonical_output_shape, ElementsAre(32, 1, 8, 1));
+  EXPECT_THAT(spec.canonical_permutation, ElementsAre(2, 1, 0, 3));
+  EXPECT_THAT(spec.canonical_inv_permutation, ElementsAre(2, 1, 0, 3));
+}
+
+TEST_F(IrEmissionUtilsTest, Transpose_210) {
+  auto spec = GetTransposeSpecFromRoot(R"(ENTRY entry {
+    p0 = f32[8, 2, 32] parameter(0)
+    ROOT transpose_p0 = f32[32, 2, 8] transpose(p0), dimensions={2, 1, 0}
+  })");
+  EXPECT_THAT(spec.canonical_input_shape, ElementsAre(8, 2, 32, 1));
+  EXPECT_THAT(spec.canonical_output_shape, ElementsAre(32, 2, 8, 1));
+  EXPECT_THAT(spec.canonical_permutation, ElementsAre(2, 1, 0, 3));
+  EXPECT_THAT(spec.canonical_inv_permutation, ElementsAre(2, 1, 0, 3));
+}
+
+TEST_F(IrEmissionUtilsTest, Transpose_102) {
+  auto spec = GetTransposeSpecFromRoot(R"(ENTRY entry {
+    p0 = f32[8, 2, 32, 7, 6] parameter(0)
+    ROOT transpose_p0 = f32[6, 32, 2, 7, 8] transpose(p0),
+      dimensions={4, 2, 1, 3, 0}
+  })");
+  EXPECT_THAT(spec.canonical_input_shape, ElementsAre(8, 2, 32, 7, 6, 1));
+  EXPECT_THAT(spec.canonical_output_shape, ElementsAre(6, 32, 2, 7, 8, 1));
+  EXPECT_THAT(spec.canonical_permutation, ElementsAre(4, 2, 1, 3, 0, 5));
+  EXPECT_THAT(spec.canonical_inv_permutation, ElementsAre(4, 2, 1, 3, 0, 5));
 }
 
 }  // namespace gpu

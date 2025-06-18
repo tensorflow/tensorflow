@@ -19,7 +19,6 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -196,37 +195,6 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitPadHostKernel(
       KernelInfo(std::move(kernel_prototype), se::BlockDim(), se::ThreadDim()));
 }
 
-absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionWithFusionEmitters(
-    const HloFusionInstruction* fusion) {
-  std::unique_ptr<mlir::MLIRContext> mlir_context =
-      FusionCompiler::CreateContext();
-  FusionEmitterKind fusion_emitter_kind = AnalyzeHloFusion(fusion);
-  std::unique_ptr<CpuFusionEmitterBase> emitter;
-  switch (fusion_emitter_kind) {
-    case FusionEmitterKind::kScatter:
-      emitter = std::make_unique<CpuScatterFusion>(
-          mlir_context.get(), &module_->getContext(),
-          nested_ir_emitter_->assignment(), fusion);
-      break;
-    default:
-      return Internal("Unimplemented fusion kind %d for instruction: %s",
-                      fusion_emitter_kind, fusion->ToString());
-  }
-
-  TF_ASSIGN_OR_RETURN(auto fusion_result, emitter->Emit());
-  // Match data layouts to avoid warning messages.
-  fusion_result.llvm_module->setDataLayout(module_->getDataLayout());
-  if (llvm::Linker::linkModules(*module_,
-                                std::move(fusion_result.llvm_module))) {
-    return Internal("Cannot link additional LLVM module for fusion %s",
-                    fusion->name());
-  }
-  return kernels_.emplace_back(KernelInfo(
-      std::string(fusion->name()), se::BlockDim(),
-      se::ThreadDim(emitter->num_threads()), fusion_result.invariant_arguments,
-      emitter->BackendExtraOptions()));
-}
-
 absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
     const HloFusionInstruction* fusion) {
   VLOG(2) << "Emit fusion host kernel: " << fusion->name();
@@ -239,10 +207,6 @@ absl::StatusOr<IrEmitter2::KernelInfo> IrEmitter2::EmitFusionHostKernel(
   if (fusion->fusion_kind() != HloInstruction::FusionKind::kLoop) {
     return Internal("Unsupported fusion kind for instruction: %s",
                     fusion->ToString());
-  }
-
-  if (IsSupportedByFusionEmitter(fusion)) {
-    return EmitFusionWithFusionEmitters(fusion);
   }
 
   TF_ASSIGN_OR_RETURN(KernelPrototype kernel_prototype,

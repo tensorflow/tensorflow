@@ -1067,6 +1067,7 @@ class TestDelegateWithDynamicTensors : public ::testing::Test {
     TfLiteRegistration reg = DynamicCopyOpRegistration();
     interpreter_->AddNodeWithParameters({0}, {1, 2}, nullptr, 0, nullptr, &reg);
 
+    delegate_ = TfLiteDelegateCreate();
     delegate_.Prepare = [](TfLiteContext* context,
                            TfLiteDelegate* delegate) -> TfLiteStatus {
       // In this test, the delegate replaces all the nodes if this function is

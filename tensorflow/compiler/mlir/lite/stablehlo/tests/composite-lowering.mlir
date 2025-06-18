@@ -467,3 +467,13 @@ func.func private @XlaCallModule_odml.random_standard_normal.impl_0(%arg0: tenso
 // CHECK-LABEL  func.func @random_standard_normal
 // CHECK:  %0 = "tfl.random_standard_normal"(%arg0) <{seed = 0 : i64, seed2 = 1 : i64}> : (tensor<3xi32>) -> tensor<1x2x3xf32> 
 // CHECK:  return %0 : tensor<1x2x3xf32>
+
+
+func.func private @XlaCallModule_tfl.unpack.impl_0(%arg0: tensor<1x3x4x1xf32>) -> (tensor<1x4x1xf32>, tensor<1x4x1xf32>, tensor<1x4x1xf32>)
+func.func @jax_unstack(%arg0: tensor<1x3x4x1xf32>) -> (tensor<1x4x1xf32>, tensor<1x4x1xf32>, tensor<1x4x1xf32>) {
+  %0:3 = mhlo.composite "tfl.unpack" %arg0 {composite_attributes = {num = 3 : i32, axis = 1 : i32}, decomposition = @XlaCallModule_tfl.unpack.impl_0} : (tensor<1x3x4x1xf32>) -> (tensor<1x4x1xf32>, tensor<1x4x1xf32>, tensor<1x4x1xf32>)
+  return %0#0, %0#1, %0#2 : tensor<1x4x1xf32>, tensor<1x4x1xf32>, tensor<1x4x1xf32>
+}
+
+// CHECK-LABEL: jax_unstack
+// CHECK: %0:3 = "tfl.unpack"(%arg0) <{axis = 1 : i32, num = 3 : i32}> : (tensor<1x3x4x1xf32>) -> (tensor<1x4x1xf32>, tensor<1x4x1xf32>, tensor<1x4x1xf32>)

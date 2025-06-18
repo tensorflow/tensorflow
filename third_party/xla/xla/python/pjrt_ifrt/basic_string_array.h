@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/hash/hash.h"
 #include "absl/log/check.h"
 #include "absl/strings/cord.h"
 #include "absl/synchronization/mutex.h"
@@ -70,12 +69,12 @@ class BasicStringArray final
   // The number and order of buffers must match the number and order of devices
   // in `sharding`.
   static absl::StatusOr<tsl::RCReference<BasicStringArray>> Create(
-      Client* client, Shape shape, std::shared_ptr<const Sharding> sharding,
+      Client* client, Shape shape, ShardingRef sharding,
       Future<Buffers> buffers, OnDoneWithBuffer on_done_with_buffer);
 
   ~BasicStringArray() override;
 
-  absl::StatusOr<tsl::RCReference<Array>> FullyReplicatedShard(
+  absl::StatusOr<ArrayRef> FullyReplicatedShard(
       ArrayCopySemantics semantics) override;
 
   // ifrt::Array API
@@ -100,15 +99,15 @@ class BasicStringArray final
     return *sharding_;
   }
 
-  std::shared_ptr<const Sharding> shared_ptr_sharding() const override {
+  ShardingRef shared_ptr_sharding() const override {
     DCHECK(this);
     return sharding_;
   }
 
-  absl::StatusOr<std::shared_ptr<const PjRtLayout>> layout() const override;
+  absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> layout()
+      const override;
 
-  absl::StatusOr<std::vector<tsl::RCReference<Array>>>
-  DisassembleIntoSingleDeviceArrays(
+  absl::StatusOr<std::vector<ArrayRef>> DisassembleIntoSingleDeviceArrays(
       ArrayCopySemantics array_copy_semantics,
       SingleDeviceShardSemantics single_device_shard_semantics) override;
 
@@ -117,7 +116,7 @@ class BasicStringArray final
       void* data, std::optional<absl::Span<const int64_t>> byte_strides,
       ArrayCopySemantics semantics) override;
 
-  absl::StatusOr<tsl::RCReference<Array>> Copy(
+  absl::StatusOr<ArrayRef> Copy(
       std::optional<xla::ifrt::DeviceListRef> devices,
       std::optional<xla::ifrt::MemoryKind> memory_kind,
       ArrayCopySemantics semantics);
@@ -143,8 +142,7 @@ class BasicStringArray final
   template <typename T, typename... Args>
   friend tsl::RCReference<T> tsl::MakeRef(Args&&... args);
 
-  BasicStringArray(Client* client, Shape shape,
-                   std::shared_ptr<const Sharding> sharding,
+  BasicStringArray(Client* client, Shape shape, ShardingRef sharding,
                    Future<Buffers> buffers, Future<> ready_future,
                    OnDoneWithBuffer on_done_with_buffer);
 
@@ -153,7 +151,7 @@ class BasicStringArray final
 
   Client* client_;
   Shape shape_;
-  std::shared_ptr<const Sharding> sharding_;
+  ShardingRef sharding_;
   Future<Buffers> buffers_;
   Future<> ready_future_;
 

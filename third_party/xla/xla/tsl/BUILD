@@ -399,15 +399,7 @@ config_setting(
 
 config_setting(
     name = "fuchsia",
-    constraint_values = if_google(
-        ["@platforms//os:fuchsia"],
-        [],
-    ),
-    values = if_oss(
-        # TODO(b/149248802) When we have a Fuchsia Bazel SDK update to use the values it sets.
-        {"cpu": "fuchsia"},
-        {},
-    ),
+    constraint_values = ["@platforms//os:fuchsia"],
     visibility = ["//visibility:public"],
 )
 
@@ -416,7 +408,7 @@ config_setting(
     name = "android_x86",
     constraint_values =
         [
-            ":x86_any",
+            "@platforms//cpu:x86_32",
             "@platforms//os:android",
         ],
     values = dict(
@@ -439,15 +431,6 @@ selects.config_setting_group(
         "@platforms//cpu:armv7e-m",
         "@platforms//cpu:armv7e-mf",
     ] + tsl_extra_config_settings_targets(),
-    visibility = ["//visibility:public"],
-)
-
-selects.config_setting_group(
-    name = "x86_any",
-    match_any = [
-        "@platforms//cpu:x86_32",
-        "@platforms//cpu:x86_64",
-    ],
     visibility = ["//visibility:public"],
 )
 

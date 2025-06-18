@@ -189,10 +189,6 @@ static absl::StatusOr<DecomposedCp> DecomposeCollectivePermute(
     case DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE:
       TF_RETURN_IF_ERROR(recv_done->AddControlDependencyTo(send));
       break;
-    case DebugOptions::PIPELINE_PARALLELISM_OPT_LEVEL_ENABLE_CYCLE_DECOMPOSER:
-      TF_RETURN_IF_ERROR(recv->AddControlDependencyTo(send));
-      TF_RETURN_IF_ERROR(recv_done->AddControlDependencyTo(send_done));
-      break;
     default:
       return absl::InvalidArgumentError(
           absl::StrCat("Unsupported pipeline parallelism opt level: ",

@@ -49,7 +49,7 @@ class MirrorPadOp : public XlaOpKernel {
     // - [1, 2, 3, 3, 2] in symmetric mode.
     int64_t excluded_edges = mode == MirrorPadMode::REFLECT ? 1 : 0;
     xla::XlaOp accum = t;
-    for (int64_t dimno = original_shape.dimensions_size() - 1; dimno >= 0;
+    for (int64_t dimno = original_shape.dimensions().size() - 1; dimno >= 0;
          --dimno) {
       auto t_rev = xla::Rev(accum, {dimno});
       int64_t lhs_padding = pad_literal.Get<int64_t>({dimno, 0});
@@ -137,7 +137,7 @@ class MirrorPadGradOp : public XlaOpKernel {
     // - [1, 2, 3, 3, 2] in symmetric mode.
     int64_t excluded_edges = mode == MirrorPadMode::REFLECT ? 1 : 0;
     xla::XlaOp grad = t;
-    for (int64_t dimno = original_shape.dimensions_size() - 1; dimno >= 0;
+    for (int64_t dimno = original_shape.dimensions().size() - 1; dimno >= 0;
          --dimno) {
       int64_t lhs_padding = pad_literal.Get<int64_t>({dimno, 0});
       int64_t rhs_padding = pad_literal.Get<int64_t>({dimno, 1});

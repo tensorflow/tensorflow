@@ -56,10 +56,10 @@ def AreDnumsFullyDefined : Constraint<CPred<
 // get a new Type with the same element type as value, but with
 // shape permuted based on from and to layouts.
 def PermuteShape : NativeCodeCall<
-  "$2.getType().cast<RankedTensorType>()"
+  "llvm::cast<RankedTensorType>($2.getType())"
     ".clone($0.PermuteShape("
       "$1,"
-      "$2.getType().cast<RankedTensorType>().getShape()))">;
+      "llvm::cast<RankedTensorType>($2.getType()).getShape()))">;
 
 def IsStandardConv : Constraint<CPred<
   "IsStandardConv($0.getDefiningOp<mhlo::ConvolutionOp>())">>;
@@ -380,7 +380,7 @@ def GetExplicitPaddingArgs : NativeCodeCall<
 
 // Gets element type from Value.
 def GetElementType : NativeCodeCall<
-  "$0.getType().cast<RankedTensorType>().getElementType()">;
+  "llvm::cast<RankedTensorType>($0.getType()).getElementType()">;
 
 // Given element type, get a DenseElements with scalar shape and 0 value.
 def GetZeroScalarAttrFromType : NativeCodeCall<
@@ -439,9 +439,9 @@ def UnfuseConvWithExplicitPadding : Pat<(MHLO_ConvolutionOp:$conv
 
 def TrivialStrides : NativeCodeCall<
   "DenseIntElementsAttr::get("
-    "RankedTensorType::get({$0.getType().cast<ShapedType>().getRank()},"
+    "RankedTensorType::get({llvm::cast<ShapedType>($0.getType()).getRank()},"
       "$_builder.getI64Type()),"
-      "llvm::SmallVector<int64_t>($0.getType().cast<ShapedType>().getRank(),"
+      "llvm::SmallVector<int64_t>(llvm::cast<ShapedType>($0.getType()).getRank(),"
         "1))">;
 
 def SliceStart : NativeCodeCall<

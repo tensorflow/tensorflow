@@ -1619,7 +1619,7 @@ def pack_x_y_sample_weight(x, y=None, sample_weight=None):
     # For single x-input, we do no tuple wrapping since in this case
     # there is no ambiguity. This also makes NumPy and Dataset
     # consistent in that the user does not have to wrap their Dataset
-    # data in an unecessary tuple
+    # data in an unnecessary tuple
     if not nest.is_nested(x):
       return x
     else:

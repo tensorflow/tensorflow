@@ -15,11 +15,16 @@ limitations under the License.
 
 #include "xla/tsl/util/stats_calculator.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <iomanip>
+#include <ios>
 #include <map>
 #include <queue>
 #include <sstream>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace tsl {
 
@@ -103,37 +108,52 @@ std::string StatsCalculator::ColumnString(const Detail& detail,
 
 void StatsCalculator::OrderNodesByMetric(
     SortingMetric metric, std::vector<const Detail*>* details) const {
+  // We convert each metric value to a string and use a priority queue to keep
+  // them sorted in descending order. For cases where we want to sort in
+  // ascending order, we transform the metric value to a string that
+  // represents the inverse of the original value.
   std::priority_queue<std::pair<std::string, const Detail*>> sorted_list;
-  const int num_nodes = details_.size();
 
-  for (const auto& det : details_) {
-    const Detail* detail = &(det.second);
+  // We keep the run order metric in ascending order, so we need to know the
+  // maximum run order in order to sort the nodes correctly.
+  int max_run_order = 0;
+  for (const auto& [_, detail] : details_) {
+    max_run_order = std::max<int>(max_run_order, detail.run_order);
+  }
+  const int num_nodes = max_run_order;
+
+  for (const auto& [_, detail] : details_) {
     std::stringstream stream;
     stream << std::setw(20) << std::right << std::setprecision(10)
            << std::fixed;
 
     switch (metric) {
       case BY_NAME:
-        stream << detail->name;
+        // Sorted in ascending order of length of name.
+        stream << detail.name;
         break;
       case BY_RUN_ORDER:
-        stream << num_nodes - detail->run_order;
+        // Sorted in ascending order.
+        stream << num_nodes - detail.run_order;
         break;
       case BY_TIME:
-        stream << detail->elapsed_time.avg();
+        // Sorted in descending order.
+        stream << detail.elapsed_time.avg();
         break;
       case BY_MEMORY:
-        stream << detail->mem_used.avg();
+        // Sorted in descending order.
+        stream << detail.mem_used.avg();
         break;
       case BY_TYPE:
-        stream << detail->type;
+        // Sorted in ascending order of length of type.
+        stream << detail.type;
         break;
       default:
         stream << "";
         break;
     }
 
-    sorted_list.emplace(stream.str(), detail);
+    sorted_list.emplace(stream.str(), &detail);
   }
 
   while (!sorted_list.empty()) {

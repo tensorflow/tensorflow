@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_PYTHON_PJRT_IFRT_XLA_SHARDING_H_
 #define XLA_PYTHON_PJRT_IFRT_XLA_SHARDING_H_
 
+#include <atomic>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -31,7 +33,6 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -73,19 +74,15 @@ class HloSharding final
       std::optional<DeviceListRef> devices,
       std::optional<MemoryKind> memory_kind) const override;
 
-  absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
-  Disassemble(const Shape& shape) const override;
-  absl::StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
-  Disassemble(
+  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
+      const Shape& shape) const override;
+  absl::StatusOr<std::vector<std::pair<Shape, ShardingRef>>> Disassemble(
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
-  absl::StatusOr<
-      std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
-  Disassemble(const DynamicShape& dynamic_shape) const override;
-  absl::StatusOr<
-      std::vector<std::pair<DynamicShape, std::shared_ptr<const Sharding>>>>
-  Disassemble(
+  absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
+      const DynamicShape& dynamic_shape) const override;
+  absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingRef>>> Disassemble(
       const DynamicShape& dynamic_shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
@@ -106,6 +103,11 @@ class HloSharding final
   void Hash(absl::HashState state) const override;
 
   xla::HloSharding xla_hlo_sharding_;
+
+  // Cached hash. 0 indicates the hash needs to be computed and cached.
+  // May be written multiple times with the same non-zero value.
+  static constexpr uint64_t kUnsetHash = 0;
+  mutable std::atomic<uint64_t> hash_ = kUnsetHash;
 };
 
 // Test only: returns `HloSharding::IndexDomains()`, using `xla::HloSharding`

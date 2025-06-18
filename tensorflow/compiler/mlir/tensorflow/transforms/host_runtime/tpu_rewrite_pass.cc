@@ -19,13 +19,13 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 
+#include "absl/log/log.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/IR/Attributes.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -192,6 +192,11 @@ Operation* BuildCompileOp(
         metadata.args(operand_and_idx.index()).shape());
     if (shape.IsFullyDefined()) continue;
 
+    VLOG(1) << "Building compile op for module_name: " << module_name.str()
+            << " dynamic shape for operand index: " << operand_and_idx.index()
+            << " metadata: "
+            << metadata.args(operand_and_idx.index()).DebugString();
+
     auto shape_op = builder->create<TF::ShapeOp>(
         cluster_func.getLoc(),
         tensorflow::GetTypeFromTFTensorShape({-1}, builder->getIntegerType(64)),
@@ -311,8 +316,7 @@ LogicalResult AddToParallelExecuteOp(
     int num_results_pre_cluster, Operation* compile_op,
     tf_device::ClusterFuncOp cluster_func, OpBuilder* builder,
     tf_device::ParallelExecuteOp old_parallel_execute,
-    tf_device::ParallelExecuteOp* new_parallel_execute,
-    int* cluster_idx) {
+    tf_device::ParallelExecuteOp* new_parallel_execute, int* cluster_idx) {
   const int num_cores_per_replica = tpu_devices.front().size();
   // parallel_execute op returns concatenated list of return values of
   // all its regions.
@@ -386,7 +390,7 @@ LogicalResult AddToParallelExecuteOp(
         builder, block.getParent()->getLoc(), execute, device);
 
     builder->create<tf_device::ReturnOp>(block.getParent()->getLoc(),
-                                               block_launch_op.getResults());
+                                         block_launch_op.getResults());
   }
 
   return success();
@@ -466,8 +470,7 @@ LogicalResult CheckParallelExecuteConstainsValidNonClusterProcess(
   return success();
 }
 
-int GetNumResultsPreCluster(
-    tf_device::ParallelExecuteOp parallel_execute) {
+int GetNumResultsPreCluster(tf_device::ParallelExecuteOp parallel_execute) {
   int num_results_pre_cluster = 0;
   for (mlir::Region& region : parallel_execute.getRegions()) {
     if (llvm::isa<tf_device::LaunchOp>(region.front().front())) {

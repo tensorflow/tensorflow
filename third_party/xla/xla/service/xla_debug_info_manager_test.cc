@@ -23,9 +23,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 
@@ -71,7 +71,7 @@ namespace {
 using ::testing::IsEmpty;
 using ::testing::UnorderedElementsAre;
 
-class XlaDebugInfoManagerTest : public HloTestBase {
+class XlaDebugInfoManagerTest : public HloHardwareIndependentTestBase {
  protected:
   struct DebugMetadata {
     // We allow same id to be registered multiple times. we need unique id to

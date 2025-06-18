@@ -872,7 +872,7 @@ LogicalResult FormClustersInBlock(
         block, cluster_ops, results, cluster_successor_ops.getArrayRef());
 
     auto num_replicas = cluster_metadata->getSecond().get(kNumReplicasAttr);
-    if (!num_replicas || !num_replicas.isa<mlir::IntegerAttr>())
+    if (!num_replicas || !mlir::isa<mlir::IntegerAttr>(num_replicas))
       return cluster.emitError()
              << "requires '" << kNumReplicasAttr << "' int attribute";
 
@@ -881,9 +881,9 @@ LogicalResult FormClustersInBlock(
         cluster_metadata->getSecond().get(kNumCoresPerReplicaAttr));
     if (num_cores_per_replica_attr)
       num_cores_per_replica = num_cores_per_replica_attr.getInt();
-    if (failed(ReplicateCluster(cluster,
-                                num_replicas.cast<mlir::IntegerAttr>().getInt(),
-                                num_cores_per_replica)))
+    if (failed(ReplicateCluster(
+            cluster, mlir::cast<mlir::IntegerAttr>(num_replicas).getInt(),
+            num_cores_per_replica)))
       return mlir::failure();
 
     // Copy TPUReplicateMetadata attributes to `tf_device.cluster`.

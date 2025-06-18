@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <tuple>
+#include <variant>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -104,17 +105,10 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
     uint32_t shared_mem_bytes = 0);
 
 // Runs loaded kernel on the stream with the provided arguments.
-absl::Status ExecuteKernelOnStream(se::Kernel& kernel,
-                                   absl::Span<const se::DeviceMemoryBase> args,
-                                   const LaunchDimensions& dims,
-                                   se::Stream* stream);
-
-// Runs loaded kernel on the stream with the provided arguments.
-absl::Status ExecuteKernelOnStream(se::Kernel& kernel,
-                                   absl::Span<const se::DeviceMemoryBase> args,
-                                   const LaunchDimensions& dims,
-                                   const se::ClusterDim& cluster_dim,
-                                   se::Stream* stream);
+absl::Status ExecuteKernelOnStream(
+    se::Kernel& kernel, absl::Span<const se::KernelArgument> args,
+    const LaunchDimensions& dims,
+    const std::optional<se::ClusterDim>& cluster_dim, se::Stream* stream);
 
 // Initializes `buffer` with random data on `stream`.
 // `rng_state` is an inout parameter for the pseudorandom generator state.

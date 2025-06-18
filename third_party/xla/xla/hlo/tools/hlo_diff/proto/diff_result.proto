@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package xla.hlo_diff;
+
+// Represents a pair of matched instructions in the left and right modules.
+message MatchedInstructionPairProto {
+  string left = 1;
+  string right = 2;
+}
+
+// Represents the result of computing the diff between two HLO modules.
+message DiffResultProto {
+  repeated string left_unmatched_instructions = 1;
+  repeated string right_unmatched_instructions = 2;
+  repeated MatchedInstructionPairProto unchanged_instructions = 3;
+  repeated MatchedInstructionPairProto changed_instructions = 4;
+}

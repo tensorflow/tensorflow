@@ -171,4 +171,5 @@ message CompileOptionsProto {
 message ExecutableAndOptionsProto {
   bytes serialized_executable = 1;
   CompileOptionsProto compile_options = 2;
+  string pjrt_client_name = 3;
 }

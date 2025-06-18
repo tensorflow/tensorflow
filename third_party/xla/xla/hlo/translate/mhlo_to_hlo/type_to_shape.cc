@@ -52,23 +52,20 @@ using xla::PrimitiveType;
 
 namespace xla {
 
-std::optional<std::tuple<DimLevelType, bool, bool>> ConvertDimLevelType(
+std::optional<DimLevelType> ConvertDimLevelType(
     mlir::sparse_tensor::LevelType lt) {
   auto f = mlir::sparse_tensor::getLevelFormat(lt);
   if (!f) return std::nullopt;
 
-  bool unique = mlir::sparse_tensor::isUniqueLT(lt);
-  bool ordered = mlir::sparse_tensor::isOrderedLT(lt);
   switch (*f) {
     case mlir::sparse_tensor::LevelFormat::Singleton:
-      return std::make_tuple(DimLevelType::DIM_SINGLETON, unique, ordered);
+      return DimLevelType::DIM_SINGLETON;
     case mlir::sparse_tensor::LevelFormat::Compressed:
-      return std::make_tuple(DimLevelType::DIM_COMPRESSED, unique, ordered);
+      return DimLevelType::DIM_COMPRESSED;
     case mlir::sparse_tensor::LevelFormat::Dense:
-      return std::make_tuple(DimLevelType::DIM_DENSE, unique, ordered);
+      return DimLevelType::DIM_DENSE;
     case mlir::sparse_tensor::LevelFormat::LooseCompressed:
-      return std::make_tuple(DimLevelType::DIM_LOOSE_COMPRESSED, unique,
-                             ordered);
+      return DimLevelType::DIM_LOOSE_COMPRESSED;
     default:
       return std::nullopt;
   }
@@ -181,14 +178,10 @@ Shape TypeToShape(mlir::Type type) {
       if (sparse.getPosWidth() != 32 || sparse.getCrdWidth() != 32) return {};
 
       llvm::SmallVector<DimLevelType, 3> lvl_types;
-      llvm::SmallVector<bool, 3> level_unique;
-      llvm::SmallVector<bool, 3> level_ordered;
       for (auto lt : sparse.getLvlTypes()) {
         auto new_lt = ConvertDimLevelType(lt);
         if (!new_lt) return {};
-        lvl_types.push_back(std::get<0>(*new_lt));
-        level_unique.push_back(std::get<1>(*new_lt));
-        level_ordered.push_back(std::get<2>(*new_lt));
+        lvl_types.push_back(*new_lt);
       }
 
       std::vector<int64_t> ordering(rank);
@@ -201,8 +194,7 @@ Shape TypeToShape(mlir::Type type) {
       auto final_ordering = mlir::applyPermutationMap(
           dimToLvl, llvm::ArrayRef<int64_t>(ordering));
       auto sparse_shape = ::xla::ShapeUtil::MakeShapeWithSparseLayout(
-          primitive_type, shape, final_ordering, lvl_types, level_unique,
-          level_ordered);
+          primitive_type, shape, final_ordering, lvl_types);
       return sparse_shape;
     }
 

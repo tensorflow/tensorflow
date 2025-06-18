@@ -292,12 +292,13 @@ TokKind HloLexer::LexIdentifier() {
   absl::string_view identifier =
       StringViewFromPointers(token_state_.token_start, current_ptr_);
 
-  // Primitive type strings are reserved words. The exception is 'tuple' whose
-  // type is represented using nested parentheses without the string 'tuple'.
+  // Primitive type strings are reserved words. The exception is 'tuple' and
+  // 'buffer' whose type are represented using nested parentheses without the
+  // string 'tuple' or 'buffer'.
   if (primitive_util::IsPrimitiveTypeName(identifier)) {
     PrimitiveType primitive_type =
         primitive_util::StringToPrimitiveType(identifier).value();
-    if (primitive_type != TUPLE) {
+    if (primitive_type != TUPLE && primitive_type != BUFFER) {
       token_state_.primitive_type_val = primitive_type;
       return TokKind::kPrimitiveType;
     }

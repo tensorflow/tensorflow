@@ -1,0 +1,167 @@
+# Copyright 2025 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+# .github/workflows/presubmit_benchmarks.yml
+name: Presubmit - Run Benchmarks
+
+permissions:
+  contents: read # Default for checkout, other permissions are job-specific
+
+on:
+  workflow_dispatch:
+    inputs:
+      halt-for-connection:
+        description: 'Should this workflow run wait for a remote connection?'
+        type: choice
+        required: true
+        default: 'no'
+        options:
+        - 'yes'
+        - 'no'
+  pull_request:
+    branches:
+      - main
+
+# Cancel in-progress runs for the same PR if a new commit is pushed
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true 
+
+jobs:
+  # ================================================================
+  # Job 1: Generate the matrix specifically for PRESUBMIT benchmarks
+  # ================================================================
+  generate_matrix:
+    name: Generate Presubmit Matrix
+    uses: ./.github/workflows/generate_benchmark_matrix.yml
+    with:
+      workflow_type: 'presubmit'
+      registry_file: 'xla/tools/benchmarks/registries/default_registry.yml'
+      checkout_ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+  # ================================================================
+  # Job 2: Run benchmarks based on the generated matrix
+  # ================================================================
+  run_benchmarks:
+    name: Run Benchmark (${{ matrix.benchmark_entry.benchmark_name }} / ${{ matrix.benchmark_entry.hardware_category }})
+    needs: generate_matrix
+    if: success() && needs.generate_matrix.outputs.matrix_include_json != '[]' && needs.generate_matrix.outputs.matrix_include_json != ''
+
+    strategy:
+      fail-fast: false
+      matrix:
+         benchmark_entry: ${{ fromJson(needs.generate_matrix.outputs.matrix_include_json) }}
+
+    runs-on: ${{ matrix.benchmark_entry.runner_label }}
+    container: ${{ matrix.benchmark_entry.container_image }}
+
+    defaults:
+      run:
+        shell: bash
+        # working-directory: ${{ github.workspace }} 
+
+    timeout-minutes: 60
+
+    env:
+      # --- Pass all Matrix and GitHub context info via ENV ---
+      BENCHMARK_NAME: ${{ matrix.benchmark_entry.benchmark_name }}
+      CONFIG_ID: ${{ matrix.benchmark_entry.config_id || matrix.benchmark_entry.benchmark_name }}
+      RUNNER_LABEL: ${{ matrix.benchmark_entry.runner_label }}
+      CONTAINER_IMAGE: ${{ matrix.benchmark_entry.container_image }}
+      ARTIFACT_LOCATION: ${{ matrix.benchmark_entry.artifact_location }}
+      IS_GCS_ARTIFACT: ${{ matrix.benchmark_entry.is_gcs_artifact }}
+      INPUT_FORMAT: ${{ matrix.benchmark_entry.input_format }}
+      XLA_FLAGS_JSON: ${{ toJson(matrix.benchmark_entry.xla_compilation_flags) }}
+      RUNTIME_FLAGS_JSON: ${{ toJson(matrix.benchmark_entry.runtime_flags) }}
+      TARGET_METRICS_JSON: ${{ toJson(matrix.benchmark_entry.target_metrics) }}
+      TOPOLOGY_JSON: ${{ toJson(matrix.benchmark_entry.topology) }}
+      HARDWARE_CATEGORY: ${{ matrix.benchmark_entry.hardware_category }}
+      GITHUB_LABELS_JSON: ${{ toJson(matrix.benchmark_entry.github_labels) }}
+      CHECKOUT_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+      COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      WORKFLOW_RUN_ID: ${{ github.run_id }}
+      # --- Define only the NAME of the output dir here ---
+      OUTPUT_DIR_NAME: benchmark_output_${{ matrix.benchmark_entry.config_id || matrix.benchmark_entry.benchmark_name }}_${{ matrix.benchmark_entry.hardware_category }}
+      # --- Location for scripts (Adjust if you move them, e.g., to .github/scripts) ---
+      SCRIPT_DIR_RELATIVE: .github/workflows/benchmarks # Relative to GITHUB_WORKSPACE
+
+    steps:
+      - name: "Wait For Connection"
+        uses: google-ml-infra/actions/ci_connection@main
+        with:
+          halt-dispatch-input: ${{ inputs.halt-for-connection }}
+
+      - name: Print Job Info & Set Env Vars
+        run: |
+          FULL_OUTPUT_DIR_PATH="${GITHUB_WORKSPACE}/${OUTPUT_DIR_NAME}"
+          RESOLVED_SCRIPT_DIR_PATH="${GITHUB_WORKSPACE}/${SCRIPT_DIR_RELATIVE}" # Renamed for clarity
+
+          echo "--- Benchmark Job Info ---"
+          echo "Config ID: $CONFIG_ID"
+          echo "Benchmark Name: $BENCHMARK_NAME"
+          echo "Runner Label: $RUNNER_LABEL"
+          echo "Hardware Category: $HARDWARE_CATEGORY"
+          echo "Output Directory Name (relative to workspace): $OUTPUT_DIR_NAME"
+          echo "Full Output Directory Path (will be created by script): $FULL_OUTPUT_DIR_PATH"
+          echo "Full Script Directory Path: $RESOLVED_SCRIPT_DIR_PATH"
+          echo "GITHUB_WORKSPACE: ${GITHUB_WORKSPACE}"
+          echo "Current PWD: $(pwd)"
+          echo "--------------------------"
+
+          echo "RESOLVED_OUTPUT_DIR=$FULL_OUTPUT_DIR_PATH" >> $GITHUB_ENV
+          echo "RESOLVED_SCRIPT_DIR=$RESOLVED_SCRIPT_DIR_PATH" >> $GITHUB_ENV
+
+      - name: Checkout OpenXLA Repository
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          ref: ${{ env.CHECKOUT_REF }}
+
+      - name: Build Binaries
+        id: build_binaries
+        # Use the RESOLVED_SCRIPT_DIR and RESOLVED_OUTPUT_DIR from GITHUB_ENV
+        run: |
+           bash "${RESOLVED_SCRIPT_DIR}/build_binaries.sh"
+        env:
+          OUTPUT_DIR: ${{ env.RESOLVED_OUTPUT_DIR }} # Pass the correctly resolved full path
+
+      - name: Prepare Benchmark Artifact
+        id: prep_artifact
+        run: |
+           bash "${RESOLVED_SCRIPT_DIR}/prepare_artifact.sh"
+        env:
+          OUTPUT_DIR: ${{ env.RESOLVED_OUTPUT_DIR }} # Pass the correctly resolved full path
+
+      - name: Run Benchmark and Generate Stats
+        id: run_hlo
+        env:
+           RUNNER_BINARY: "${{ steps.build_binaries.outputs.runner_binary }}"
+           STATS_BINARY: "${{ steps.build_binaries.outputs.stats_binary }}"
+           DEVICE_TYPE_FLAG: "${{ steps.build_binaries.outputs.device_type_flag }}"
+           LOCAL_ARTIFACT_PATH: "${{ steps.prep_artifact.outputs.artifact_local_path }}"
+           OUTPUT_DIR: ${{ env.RESOLVED_OUTPUT_DIR }} # Pass the correctly resolved full path
+           # Other job-level env vars are automatically inherited
+        run: |
+           bash "${RESOLVED_SCRIPT_DIR}/run_benchmark.sh"
+
+      #TODO(juliagmt): add a step to compare the stats with the baseline and block the PR if there is a regression.
+
+      - name: Upload Benchmark Artifacts
+        if: always()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: results-${{ env.CONFIG_ID }}-${{ env.HARDWARE_CATEGORY }}
+          # Use the RESOLVED_OUTPUT_DIR that was set in GITHUB_ENV
+          path: ${{ env.RESOLVED_OUTPUT_DIR }}
+          retention-days: 7
+          if-no-files-found: error

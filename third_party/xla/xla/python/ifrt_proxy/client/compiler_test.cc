@@ -74,7 +74,8 @@ class TestProgramSerDes : public llvm::RTTIExtends<TestProgramSerDes, SerDes> {
   }
 
   absl::StatusOr<std::string> Serialize(
-      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
+      const Serializable& serializable,
+      std::unique_ptr<SerializeOptions>) override {
     CHECK(llvm::isa<TestProgram>(serializable));
     return "";
   }
@@ -105,7 +106,8 @@ class TestCompileOptionsSerDes
   }
 
   absl::StatusOr<std::string> Serialize(
-      Serializable& serializable, std::unique_ptr<SerializeOptions>) override {
+      const Serializable& serializable,
+      std::unique_ptr<SerializeOptions>) override {
     CHECK(llvm::isa<TestCompileOptions>(serializable));
     return "";
   }
@@ -195,8 +197,8 @@ TEST_F(CompilerTest, Compile) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto executable,
-      compiler.Compile(std::make_unique<TestProgram>(),
-                       std::make_unique<TestCompileOptions>()));
+      compiler.CompileAndLoad(std::make_unique<TestProgram>(),
+                              std::make_unique<TestCompileOptions>()));
 
   EXPECT_EQ(requests_queue.Pop().compile_request().program().type_name(),
             "xla::ifrt::proxy::TestProgram");

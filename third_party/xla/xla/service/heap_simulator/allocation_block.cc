@@ -94,6 +94,10 @@ std::string AllocationBlock::ToString() const {
 }
 
 int AllocationBlock::GetColocationsCount() const {
+  if (next_colocated == nullptr) {
+    return 1;
+  }
+
   int count = 1;
   for (const AllocationBlock* colocated = next_colocated; colocated != this;
        colocated = colocated->next_colocated, ++count) {

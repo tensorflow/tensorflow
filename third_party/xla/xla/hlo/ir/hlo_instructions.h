@@ -302,12 +302,6 @@ class HloAsyncStartInstruction : public HloAsyncInstruction {
       HloComputation* async_computation,
       absl::string_view async_execution_thread = kMainExecutionThread);
 
-  ~HloAsyncStartInstruction() override;
-  void ClearCalledComputations() override;
-  // When an async instruction is being destructed, remove it from the vector of
-  // pointers of its called computation, to avoid referencing freed memory.
-  void ClearAsyncComputationInstruction();
-
   absl::string_view async_execution_thread() const override {
     return async_execution_thread_;
   };

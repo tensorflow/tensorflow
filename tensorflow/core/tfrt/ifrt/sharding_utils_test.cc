@@ -109,7 +109,7 @@ TEST_P(ReshardToTensorTest, MakeHostTensorFromDeviceArrays) {
                           xla::ifrt::test_util::GetDevices(
                               client.get(), GetParam().device_indices));
 
-  std::vector<tsl::RCReference<xla::ifrt::Array>> split_arrays;
+  std::vector<xla::ifrt::ArrayRef> split_arrays;
   for (int i = 0; i < GetParam().split_tensors.size(); ++i) {
     const auto& split_tensor = GetParam().split_tensors[i];
     auto single_device_sharding = xla::ifrt::SingleDeviceSharding::Create(
@@ -128,7 +128,7 @@ TEST_P(ReshardToTensorTest, MakeHostTensorFromDeviceArrays) {
 
   auto ifrt_sharding = xla::ifrt::HloSharding::Create(
       device_list, xla::ifrt::MemoryKind(), GetParam().sharding);
-  tsl::RCReference<xla::ifrt::Array> assembled_array;
+  xla::ifrt::ArrayRef assembled_array;
 
   TF_ASSERT_OK_AND_ASSIGN(
       assembled_array,

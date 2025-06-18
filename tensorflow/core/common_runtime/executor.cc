@@ -1228,7 +1228,7 @@ bool ExecutorState<PropagatorStateType>::NodeDone(
         // trigger cancellation, and here we make sure the original error is
         // exposed to users and not buried as a derived error.
         if (cancellation_manager_ && cancellation_manager_->IsCancelled() &&
-            (errors::IsCancelled(s) || errors::IsAborted(s))) {
+            (absl::IsCancelled(s) || absl::IsAborted(s))) {
           status_ = StatusGroup::MakeDerived(s);
           maybe_derived_s = status_;
         } else {

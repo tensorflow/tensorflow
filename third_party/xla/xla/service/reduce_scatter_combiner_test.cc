@@ -25,8 +25,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 namespace {
@@ -36,7 +36,7 @@ namespace op = xla::testing::opcode_matchers;
 constexpr int64_t kMaxCombineCount = 256;
 constexpr int64_t kMaxByteCount = 10 * 1024 * 1024;
 
-class ReduceScatterCombinerTest : public HloTestBase {
+class ReduceScatterCombinerTest : public HloHardwareIndependentTestBase {
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> RunPass(
       absl::string_view hlo_module, bool expect_change,

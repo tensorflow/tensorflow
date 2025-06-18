@@ -61,16 +61,29 @@ GlooCollectives::CreateCommunicators(const CliqueKey& clique_key,
 
     auto gloo_context = std::make_shared<gloo::rendezvous::Context>(
         rank, clique_key.num_devices());
-    auto prefix_store = gloo::rendezvous::PrefixStore(
+
+#ifdef GLOO_SHARED_STORE
+    auto store_pointer = std::shared_ptr<gloo::rendezvous::Store>(
+        store_.get(), [](gloo::rendezvous::Store*) {});
+#else
+    auto& store_pointer = *store_;
+#endif  // GLOO_SHARED_STORE
+
+    auto prefix_store = std::make_shared<gloo::rendezvous::PrefixStore>(
         absl::StrCat("gloo/",
                      absl::StrJoin(clique_key.devices(), ",",
                                    [](std::string* out, GlobalDeviceId id) {
                                      absl::StrAppend(out, id.value());
                                    })),
-        *store_);
+        store_pointer);
 
     try {
-      gloo_context->connectFullMesh(prefix_store, device_);
+#ifdef GLOO_SHARED_STORE
+      auto prefix_store_pointer = prefix_store;
+#else
+      auto& prefix_store_pointer = *prefix_store;
+#endif  // GLOO_SHARED_STORE
+      gloo_context->connectFullMesh(prefix_store_pointer, device_);
     } catch (std::exception& e) {
       return absl::UnknownError(
           absl::StrCat("Gloo context initialization failed: ", e.what()));

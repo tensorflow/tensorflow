@@ -22,7 +22,7 @@ package(
         # tensorflow/examples/custom_ops_doc/simple_hash_table uses map_util
         "//tensorflow/examples/custom_ops_doc/simple_hash_table:__pkg__",
         # tensorflow/core/profiler/convert uses map_util
-        "//tensorflow/core/profiler/convert:__pkg__",
+        "@org_xprof//xprof/convert:__pkg__",
     ],
     licenses = ["notice"],
 )

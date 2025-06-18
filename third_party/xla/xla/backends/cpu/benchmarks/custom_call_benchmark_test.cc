@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
+#include "xla/backends/cpu/benchmarks/multi_benchmark_config.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
 #include "xla/literal.h"
@@ -49,7 +50,8 @@ XLA_FFI_DEFINE_HANDLER(
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_bm$$minimal", "Host",
                          kMinimal);
 
-static void BM_CustomCall_Minimal(benchmark::State& state) {
+static void BM_CustomCall_Minimal(benchmark::State& state,
+                                  HloBenchmarkOptions options) {
   const char* kModuleStr = R"(
     HloModule module
 
@@ -60,7 +62,7 @@ static void BM_CustomCall_Minimal(benchmark::State& state) {
     }
   )";
   CHECK_OK(RunHloBenchmark(state, kModuleStr, /*args=*/{},
-                           /*replacements=*/{}));
+                           /*replacements=*/{}, options));
 }
 
 static absl::Status ManyIntAttributes(
@@ -94,7 +96,8 @@ XLA_FFI_DEFINE_HANDLER(kManyIntAttributes, ManyIntAttributes,
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_bm$$many_int_attributes",
                          "Host", kManyIntAttributes);
 
-static void BM_CustomCall_16IntAttributes(benchmark::State& state) {
+static void BM_CustomCall_16IntAttributes(benchmark::State& state,
+                                          HloBenchmarkOptions options) {
   absl::string_view hlo = R"(
     HloModule module
 
@@ -111,7 +114,8 @@ static void BM_CustomCall_16IntAttributes(benchmark::State& state) {
   }
   config << "}";
   CHECK_OK(RunHloBenchmark(state, hlo, /*args=*/{},
-                           /*replacements=*/{{"$config", config.str()}}));
+                           /*replacements=*/{{"$config", config.str()}},
+                           options));
 }
 
 static absl::Status ManyFloatBuffers(
@@ -151,7 +155,8 @@ XLA_FFI_DEFINE_HANDLER(kManyFloatBuffers, ManyFloatBuffers,
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_bm$$many_float_buffers",
                          "Host", kManyFloatBuffers);
 
-static void BM_CustomCall_16FloatBuffers(benchmark::State& state) {
+static void BM_CustomCall_16FloatBuffers(benchmark::State& state,
+                                         HloBenchmarkOptions options) {
   int64_t d = 128;
 
   absl::string_view hlo = R"(
@@ -182,12 +187,13 @@ static void BM_CustomCall_16FloatBuffers(benchmark::State& state) {
   auto p0 = *LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
   std::vector<const Literal*> args(10, &p0);
 
-  CHECK_OK(RunHloBenchmark(state, hlo, args, {{"$d", absl::StrCat(d)}}));
+  CHECK_OK(
+      RunHloBenchmark(state, hlo, args, {{"$d", absl::StrCat(d)}}, options));
 }
 
-BENCHMARK(BM_CustomCall_Minimal)->MeasureProcessCPUTime();
-BENCHMARK(BM_CustomCall_16IntAttributes)->MeasureProcessCPUTime();
-BENCHMARK(BM_CustomCall_16FloatBuffers)->MeasureProcessCPUTime();
+XLA_CPU_BENCHMARK(BM_CustomCall_Minimal)->MeasureProcessCPUTime();
+XLA_CPU_BENCHMARK(BM_CustomCall_16IntAttributes)->MeasureProcessCPUTime();
+XLA_CPU_BENCHMARK(BM_CustomCall_16FloatBuffers)->MeasureProcessCPUTime();
 
 }  // namespace
 }  // namespace xla::cpu

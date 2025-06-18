@@ -21,11 +21,13 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/literal_util.h"
+#include "xla/primitive_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -429,6 +431,12 @@ std::unique_ptr<HloInstruction> MakeScalarConstantWithShape(const Shape& shape,
       },
       shape.element_type());
 }
+
+// Create instructions that check if the given instruction is within the given
+// bounds (lower_bound <= inst < upper_bound).
+absl::StatusOr<HloInstruction*> MakeWithinBounds(HloInstruction* inst,
+                                                 HloInstruction* lower_bound,
+                                                 HloInstruction* upper_bound);
 
 }  // namespace xla
 

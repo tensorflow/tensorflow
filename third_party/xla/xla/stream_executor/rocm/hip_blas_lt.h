@@ -103,19 +103,20 @@ class BlasLt : public gpu::BlasLt {
     ~MatmulPlan() override = default;
 
     absl::Status ExecuteOnStream(
-        Stream* stream, const MatmulAlgorithm& algorithm,
-        const gpu::BlasLt::MemoryArgs& args,
+        Stream* stream, const gpu::BlasLt::MemoryArgs& args,
         blas::ProfileResult* profile_result) const override;
 
     absl::StatusOr<std::vector<MatmulAlgorithm>> GetAlgorithms(
         const Stream* stream, size_t max_algorithm_count,
         size_t max_workspace_size) const override;
 
-    absl::Status SetAlgorithm(const MatmulAlgorithm& algorithm) const override;
+    absl::Status SetAlgorithm(const MatmulAlgorithm& algorithm) override {
+      algorithm_ = algorithm;
+      return absl::OkStatus();
+    }
 
    protected:
     absl::Status DoMatmul(Stream* stream, const void* alpha, const void* beta,
-                          const MatmulAlgorithm& algorithm,
                           const gpu::BlasLt::MemoryArgs& args,
                           blas::ProfileResult* profile_result) const;
 
@@ -129,7 +130,7 @@ class BlasLt : public gpu::BlasLt {
     xla::complex128 alpha_;
     double beta_;
     bool must_swap_operands_;
-    mutable std::optional< MatmulAlgorithm > algorithm_; // selected algorithm
+    std::optional<MatmulAlgorithm> algorithm_;  // selected algorithm
   };  // class MatmulPlan
 
   explicit BlasLt(StreamExecutor* parent)

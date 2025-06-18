@@ -109,7 +109,7 @@ mlir::BlockArgument InsertArgumentForDevice(mlir::OpBuilder& builder,
 
   llvm::ArrayRef<mlir::NamedAttribute> named_array_ref(named_attrs);
   mlir::DictionaryAttr dic_attr = builder.getDictionaryAttr(named_array_ref);
-  func.insertArgument(arg_index, arg_type, dic_attr, func.getLoc());
+  (void)func.insertArgument(arg_index, arg_type, dic_attr, func.getLoc());
 
   return func.getArgument(arg_index);
 }
@@ -363,7 +363,7 @@ mlir::LogicalResult RewriteTPUFunction(mlir::func::FuncOp func,
 
   // Erase the function's original arguments.
   for (unsigned arg_idx = 0; arg_idx < num_arguments; ++arg_idx) {
-    func.eraseArgument(0);
+    if (failed(func.eraseArgument(0))) return mlir::failure();
   }
 
   // Update the function's type.
@@ -691,9 +691,11 @@ mlir::LogicalResult BuildOuterMainFunc(
   std::vector<mlir::Value> inputs;
   for (auto [arg_index, arg] :
        llvm::enumerate(translated_func.getArguments())) {
-    main_func.insertArgument(arg_index, arg.getType(),
-                             translated_func.getArgAttrDict(arg_index),
-                             old_main_func.getLoc());
+    if (failed((main_func.insertArgument(
+            arg_index, arg.getType(), translated_func.getArgAttrDict(arg_index),
+            old_main_func.getLoc())))) {
+      return mlir::failure();
+    }
     inputs.emplace_back(main_func.getArgument(arg_index));
   }
 

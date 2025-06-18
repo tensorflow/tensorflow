@@ -16,30 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_DIAGNOSTICS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_DIAGNOSTICS_H_
 
-#include "absl/strings/string_view.h"
-#include "xla/tsl/platform/macros.h"
-#include "tensorflow/core/profiler/protobuf/diagnostics.pb.h"
-#include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
-
-namespace tensorflow {
-namespace profiler {
-
-// Error message that the visualization is based on incomplete step.
-TF_CONST_INIT extern const absl::string_view kErrorIncompleteStep;
-
-// Error message that no step marker is seen and visualization contains no
-// step info.
-TF_CONST_INIT extern const absl::string_view kErrorNoStepMarker;
-
-TF_CONST_INIT extern const absl::string_view kNoDeviceTraceCollected;
-
-TF_CONST_INIT extern const absl::string_view kStepsDropped;
-
-void PopulateStepDiagnostics(const OpStats& op_stats, Diagnostics* diag);
-
-void PopulateOverviewDiagnostics(const OpStats& op_stats, Diagnostics* diag);
-
-}  // namespace profiler
-}  // namespace tensorflow
+#include "xprof/utils/diagnostics.h"  // from @org_xprof  // IWYU pragma: export
 
 #endif  // TENSORFLOW_CORE_PROFILER_UTILS_DIAGNOSTICS_H_

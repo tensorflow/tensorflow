@@ -27,9 +27,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -42,7 +42,7 @@ auto MakeDeviceDescription() {
   return device_description;
 }
 
-class StreamAttributeAnnotatorTest : public HloTestBase {
+class StreamAttributeAnnotatorTest : public HloHardwareIndependentTestBase {
  public:
   const se::DeviceDescription& device_description() const {
     return device_description_;

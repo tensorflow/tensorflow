@@ -54,10 +54,6 @@ from setuptools.dist import Distribution
 # result for pip.
 _VERSION = '0.0.0'
 
-# Update this version when a new libtpu stable version is released.
-LATEST_RELEASE_LIBTPU_VERSION = '0.0.11'
-NEXT_LIBTPU_VERSION = '0.0.12'
-
 # We use the same setup.py for all tensorflow_* packages and for the nightly
 # equivalents (tf_nightly_*). The package is controlled from the argument line
 # when building the pip package.
@@ -91,7 +87,7 @@ REQUIRED_PACKAGES = [
     'libclang >= 13.0.0',
     'opt_einsum >= 2.3.2',
     'packaging',
-    'protobuf>=4.21.6,<6.0.0dev',
+    'protobuf>=4.21.6',
     'requests >= 2.21.0, < 3',
     'setuptools',
     'six >= 1.12.0',
@@ -309,24 +305,8 @@ matches = []
 for path in so_lib_paths:
   matches.extend(['../' + x for x in find_files('*', path) if '.py' not in x])
 
-# If building a tpu package, LibTPU for Cloud TPU VM can be installed via:
-# $ pip install <tf-tpu project> -f \
-#  https://storage.googleapis.com/libtpu-releases/index.html
-# libtpu is built and uploaded to this link every night (PST).
 if '_tpu' in project_name:
-  # For tensorflow-tpu releases, use a set libtpu version;
-  # For tf-nightly-tpu, use the most recent libtpu-nightly. Because of the
-  # timing of these tests, the UTC date from eight hours ago is expected to be a
-  # valid version.
-  _libtpu_version = standard_or_nightly(
-      LATEST_RELEASE_LIBTPU_VERSION,
-      NEXT_LIBTPU_VERSION + '.dev'
-      + (
-          datetime.datetime.now(tz=datetime.timezone.utc)
-          - datetime.timedelta(hours=8)
-      ).strftime('%Y%m%d') + '+nightly',
-  )
-  REQUIRED_PACKAGES.append([f'libtpu=={_libtpu_version}'])
+  REQUIRED_PACKAGES.append([f'libtpu~=0.0.14'])
   CONSOLE_SCRIPTS.extend([
       'start_grpc_tpu_worker = tensorflow.python.tools.grpc_tpu_worker:run',
       ('start_grpc_tpu_service = '
@@ -430,6 +410,7 @@ setup(
         'Programming Language :: Python :: 3.10',
         'Programming Language :: Python :: 3.11',
         'Programming Language :: Python :: 3.12',
+        'Programming Language :: Python :: 3.13',
         'Programming Language :: Python :: 3 :: Only',
         'Topic :: Scientific/Engineering',
         'Topic :: Scientific/Engineering :: Mathematics',

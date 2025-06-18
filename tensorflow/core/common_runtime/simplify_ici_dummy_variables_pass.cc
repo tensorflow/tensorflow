@@ -48,6 +48,8 @@ namespace tensorflow {
 namespace {
 
 constexpr absl::string_view kTpuExecute = "TPUExecute";
+constexpr absl::string_view kTpuExecuteAndUpdateVariables =
+    "TPUExecuteAndUpdateVariables";
 constexpr absl::string_view kParallelExecuteIds = "_parallel_execution_ids";
 const char kICIWeightDistributionMlirBridgeMarker[] =
     "_ici_weight_distribution_mlir_bridge_marker";
@@ -66,7 +68,8 @@ std::vector<Node*> GetNonMainReplicaIciTPUExecuteNodes(Graph* graph,
                                                        bool& is_spmd) {
   std::vector<Node*> tpu_nodes;
   for (Node* node : graph->nodes()) {
-    if (node->type_string() == kTpuExecute &&
+    if ((node->type_string() == kTpuExecute ||
+         node->type_string() == kTpuExecuteAndUpdateVariables) &&
         HasNodeAttr(node->def(), kParallelExecuteIds)) {
       auto parallel_exec_ids = node->attrs().Find(kParallelExecuteIds)->s();
       std::vector<std::string> group_vec =

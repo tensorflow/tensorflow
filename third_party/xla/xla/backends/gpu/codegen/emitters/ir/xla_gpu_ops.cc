@@ -54,32 +54,21 @@ namespace {
 
 using llvm::ArrayRef;
 using mlir::AffineExpr;
-using mlir::AffineMap;
-using mlir::Block;
 using mlir::DenseI64ArrayAttr;
 using mlir::failure;
-using mlir::getAffineConstantExpr;
-using mlir::getAffineDimExpr;
-using mlir::getAffineSymbolExpr;
 using mlir::Location;
 using mlir::LogicalResult;
 using mlir::MLIRContext;
 using mlir::OpAsmParser;
 using mlir::OpAsmPrinter;
-using mlir::OpBuilder;
 using mlir::OperationState;
 using mlir::ParseResult;
-using mlir::PatternRewriter;
 using mlir::RankedTensorType;
-using mlir::Region;
 using mlir::SmallVector;
 using mlir::success;
 using mlir::Type;
 using mlir::TypeRange;
-using mlir::Value;
 using mlir::ValueRange;
-
-namespace arith = mlir::arith;
 
 }  // namespace
 

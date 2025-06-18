@@ -54,7 +54,7 @@ static absl::InlinedVector<XLA_CPU_KernelArg, 8> ConvertBuffersToKernelArgs(
     absl::Span<const Kernel::DeviceMemoryBase> buffers) {
   absl::InlinedVector<XLA_CPU_KernelArg, 8> args(buffers.size());
   for (size_t i = 0; i < buffers.size(); ++i) {
-    args[i].data = const_cast<void*>(buffers[i].opaque());
+    args[i].data = buffers[i].opaque();
     args[i].size = buffers[i].size();
   }
   return args;

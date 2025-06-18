@@ -36,7 +36,7 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:mutex",
+        "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
@@ -49,7 +49,6 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:types",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:notification",
         "@local_tsl//tsl/platform:stringpiece",
         "@local_tsl//tsl/platform:thread_annotations",
@@ -68,7 +67,8 @@ cc_library(
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:types",
         "@com_google_absl//absl/cleanup",
-        "@local_tsl//tsl/platform:mutex",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:notification",
         "@local_tsl//tsl/platform:stringpiece",
         "@local_tsl//tsl/platform:thread_annotations",
@@ -87,7 +87,10 @@ cc_library(
         "//xla/tsl/platform:status",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:retrying_utils",
+        "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -98,6 +101,8 @@ cc_library(
     copts = tsl_copts(),
     deps = [
         "//xla/tsl/platform:env",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -127,8 +132,8 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@jsoncpp_git//:jsoncpp",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:protobuf",
@@ -172,8 +177,8 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@jsoncpp_git//:jsoncpp",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:protobuf",
@@ -261,9 +266,9 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@jsoncpp_git//:jsoncpp",
         "@local_tsl//tsl/platform:base64",
-        "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:path",
         "@local_tsl//tsl/platform:retrying_utils",
         "@local_tsl//tsl/platform:thread_annotations",
@@ -315,7 +320,7 @@ cc_library(
     deps = [
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:types",
-        "@local_tsl//tsl/platform:mutex",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -416,6 +421,7 @@ tsl_cc_test(
         ":gcs_dns_cache",
         "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:str_util",
     ],

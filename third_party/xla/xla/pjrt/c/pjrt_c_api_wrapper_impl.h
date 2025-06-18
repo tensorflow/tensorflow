@@ -130,7 +130,8 @@ struct PJRT_ExecuteContext {
 
 struct PJRT_Executable {
   // Must be shared_ptr so that we can share with PJRT_LoadedExecutable.
-  std::shared_ptr<xla::PjRtExecutable> executable;
+  std::shared_ptr<xla::PjRtExecutable> shared_executable;
+  xla::PjRtExecutable* executable;
 
   absl::StatusOr<std::string> fingerprint;
 
@@ -156,9 +157,10 @@ struct PJRT_Executable {
   std::vector<size_t> out_dimension_sizes;
 
   explicit PJRT_Executable(std::shared_ptr<xla::PjRtExecutable> executable);
+  explicit PJRT_Executable(xla::PjRtExecutable* executable);
 
-  const xla::PjRtExecutable* get() const { return executable.get(); }
-  xla::PjRtExecutable* get() { return executable.get(); }
+  const xla::PjRtExecutable* get() const { return executable; }
+  xla::PjRtExecutable* get() { return executable; }
 };
 
 struct PJRT_LoadedExecutable {

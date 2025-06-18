@@ -116,7 +116,7 @@ absl::Status ShouldIgnoreInput(const NodeDef& node, int i, bool* result) {
           return absl::OkStatus();
         }
       }
-    } else if (errors::IsNotFound(status)) {
+    } else if (absl::IsNotFound(status)) {
       LOG(WARNING) << "Cannot find " << node.op()
                    << " in global op registry, so cannot determine which "
                       "inputs are seeds.";

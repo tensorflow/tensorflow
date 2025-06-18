@@ -153,6 +153,15 @@ def ConvertXlaCallModuleOpToBfloat16Pass : Pass<"stablehlo-convert-xla-call-modu
   ];
 }
 
+def ConvertShapeToStablehloWithConstraintsPass : Pass<"stablehlo-convert-shape-to-stablehlo-with-constraints", "mlir::func::FuncOp"> {
+  let summary = "Convert shape.cstr_broadcastable to stablehlo.custom_call @shape_assertion";
+  let dependentDialects = [
+    "mlir::shape::ShapeDialect",
+    "mlir::tensor::TensorDialect",
+    "mlir::stablehlo::StablehloDialect",
+  ];
+}
+
 def OptimizeGraphPass : Pass<"optimize-graph", "ModuleOp"> {
   let summary = "Optimize the sub-optimal patterns after quantization.";
   let dependentDialects = ["mlir::stablehlo::StablehloDialect",];

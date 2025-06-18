@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "tsl/platform/protobuf.h"

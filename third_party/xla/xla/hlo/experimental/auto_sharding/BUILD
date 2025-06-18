@@ -33,6 +33,7 @@ cc_library(
     deps = [
         ":auto_sharding_cost_graph",
         ":auto_sharding_device_mesh",
+        ":auto_sharding_iopddl",
         ":auto_sharding_option",
         ":auto_sharding_solver",
         ":auto_sharding_strategy",
@@ -164,6 +165,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
     ] + if_google(
         ["@com_google_ortools//ortools/linear_solver:linear_solver_wrapper"],
         ["@com_google_ortools//ortools/linear_solver"],
@@ -176,7 +178,6 @@ cc_library(
     hdrs = ["auto_sharding_cost_graph.h"],
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
-        ":auto_sharding_device_mesh",
         ":auto_sharding_strategy",
         ":matrix",
         "//xla:shape_util",
@@ -195,9 +196,7 @@ cc_library(
     hdrs = ["auto_sharding_option.h"],
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
-        ":auto_sharding_device_mesh",
         ":auto_sharding_util",
-        "//xla:array",
         "//xla/service:hlo_module_config",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
@@ -439,4 +438,51 @@ xla_cc_test(
         "@local_tsl//tsl/platform",
         "@local_tsl//tsl/platform:statusor",
     ] + if_google(["@com_google_ortools//ortools/linear_solver:linear_solver_scip"]),
+)
+
+cc_library(
+    name = "iopddl_lib",
+    srcs = [
+        "iopddl.cc",
+        "solver.cc",
+    ],
+    hdrs = [
+        "iopddl.h",
+        "solver.h",
+    ],
+    compatible_with = get_compatible_with_libtpu_portable(),
+    deps = [
+        "@com_google_absl//absl/numeric:int128",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+cc_test(
+    # CC_TEST_OK=tests imported from the IOPDDL library.
+    name = "iopddl_test",
+    srcs = ["iopddl_test.cc"],
+    data = ["example.json"],
+    deps = [
+        ":iopddl_lib",
+        "//xla/tsl/platform:status_matchers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "auto_sharding_iopddl",
+    srcs = ["auto_sharding_iopddl.cc"],
+    hdrs = ["auto_sharding_iopddl.h"],
+    compatible_with = get_compatible_with_libtpu_portable(),
+    deps = [
+        ":iopddl_lib",
+        "//xla/hlo/experimental/auto_sharding:auto_sharding_proto_cc",
+        "//xla/hlo/experimental/auto_sharding:auto_sharding_strategy",
+        "@com_google_absl//absl/log:check",
+    ],
 )

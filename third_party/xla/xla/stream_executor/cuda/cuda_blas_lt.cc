@@ -27,6 +27,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -40,20 +41,17 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
-#include "xla/stream_executor/cuda/cuda_blas.h"
 #include "xla/stream_executor/cuda/cuda_blas_utils.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/event_based_timer.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
-#include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/ml_dtypes.h"
-#include "tsl/platform/statusor.h"
 
 #define SET_ATTR(setter, handle, attr, value) \
   ToStatus(setter(handle, attr, &value, sizeof(decltype(value))), #setter)
@@ -347,8 +345,12 @@ auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg,
 
 absl::Status BlasLt::MatmulPlan::DoMatmul(
     Stream* stream, const void* alpha, const void* beta,
-    const MatmulAlgorithm& algorithm, const gpu::BlasLt::MemoryArgs& args,
+    const gpu::BlasLt::MemoryArgs& args,
     blas::ProfileResult* profile_result) const {
+  if (!algorithm_.has_value()) {
+    return absl::InternalError(
+        "Algorithm must be set before calling DoMatMul!");
+  }
   DeviceMemoryBase a = args.a, b = args.b;
   if (must_swap_operands_) {
     std::swap(a, b);
@@ -364,7 +366,7 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
   }
 
   void* workspace_addr = nullptr;
-  uint64_t workspace_size = algorithm.workspace_size;
+  uint64_t workspace_size = algorithm_->workspace_size;
   if (workspace_size > 0) {
     if (args.scratch_allocator != nullptr) {
       TF_ASSIGN_OR_RETURN(
@@ -379,7 +381,7 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
     }
   }
 
-  auto palgo = std::any_cast<cublasLtMatmulAlgo_t>(&algorithm.opaque_algo);
+  auto palgo = std::any_cast<cublasLtMatmulAlgo_t>(&algorithm_->opaque_algo);
   {
     absl::MutexLock lock(&blas_lt->mu_);
     TF_RET_CHECK(blas_lt->blas_lt_ != nullptr);
@@ -462,7 +464,8 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
           blas_lt->blas_lt_.get(), op_desc_.get(), alpha, a.opaque(),
           a_desc_.get(), b.opaque(), b_desc_.get(), beta, args.c.opaque(),
           c_desc_.get(), args.d.opaque(), d_desc_.get(), palgo, workspace_addr,
-          workspace_size, gpu::AsGpuStreamValue(stream)));
+          workspace_size,
+          absl::bit_cast<CUstream>(stream->platform_specific_handle().stream)));
     } else {
       return absl::InternalError("cublaslt: Invalid algorithm type");
     }
@@ -479,8 +482,7 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
 }
 
 absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
-    Stream* stream, const MatmulAlgorithm& algorithm,
-    const gpu::BlasLt::MemoryArgs& args,
+    Stream* stream, const gpu::BlasLt::MemoryArgs& args,
     blas::ProfileResult* profile_result) const {
   auto wrapped_matmul = [&](auto scale) {
     using Scale = decltype(scale);
@@ -492,7 +494,7 @@ absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
       salpha = static_cast<Scale>(alpha_.real());
     }
     Scale sbeta = static_cast<Scale>(beta_);
-    return DoMatmul(stream, &salpha, &sbeta, algorithm, args, profile_result);
+    return DoMatmul(stream, &salpha, &sbeta, args, profile_result);
   };
 
   std::tuple operand_types{a_desc_.type(), b_desc_.type(), c_desc_.type(),
