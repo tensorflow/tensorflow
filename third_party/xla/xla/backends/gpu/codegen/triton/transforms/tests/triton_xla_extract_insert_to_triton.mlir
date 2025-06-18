@@ -165,3 +165,30 @@ func.func @extract_with_non_static_strides(%arg0: tensor<1024x1024xbf16>,
 // CHECK-TMA:   tt.make_tensor_ptr
 // CHECK-TMA:   tt.load
 // CHECK-TMA:   tt.descriptor_store
+
+// -----
+
+func.func @lower_extract_insert_1d(%arg0: tensor<128xbf16>,
+          %arg1: tensor<256xbf16>) -> tensor<256xbf16> {
+  %extracted_tensor = triton_xla.extract %arg0 [0] [16] [1]
+    {layout = array<i64:0>} : tensor<128xbf16> to tensor<16xbf16>
+  %updated_tensor = triton_xla.insert %extracted_tensor into
+    %arg1 [0] [16] [1] {layout = array<i64:0>}
+    : tensor<16xbf16> into tensor<256xbf16>
+  func.return %updated_tensor : tensor<256xbf16>
+}
+
+// CHECK-LABEL: tt.func @lower_extract_insert
+// CHECK-SAME:  %[[ARG_0:.*]]: !tt.ptr<bf16> {tt.divisibility = 16 : i32}, %[[ARG_1:.*]]: !tt.ptr<bf16> {tt.divisibility = 16 : i32}
+// CHECK:         %[[PTR_0:.*]] = tt.make_tensor_ptr %[[ARG_0]]
+// CHECK:         %[[LOAD:.*]] = tt.load %[[PTR_0]]
+// CHECK:         %[[PTR_1:.*]] = tt.make_tensor_ptr %[[ARG_1]]
+// CHECK:         tt.store %[[PTR_1]], %[[LOAD]]
+// CHECK:       tt.return
+
+// CHECK-TMA-LABEL: tt.func @lower_extract_insert
+// CHECK-TMA-SAME:  %[[ARG_0:.*]]: !tt.tensordesc<tensor<16xbf16>> {tt.nv_tma_desc = 1 : i32, tt.tma_descriptor = #triton_xla.tma_descriptor<global_shape = [128], tile_shape = [16], tile_strides = [1], layout = [0], element_byte_size = 2>},
+// CHECK-TMA-SAME:  %[[ARG_1:.*]]: !tt.tensordesc<tensor<16xbf16>> {tt.nv_tma_desc = 1 : i32, tt.tma_descriptor = #triton_xla.tma_descriptor<global_shape = [256], tile_shape = [16], tile_strides = [1], layout = [0], element_byte_size = 2>}
+// CHECK-TMA:    %[[LOAD:.*]] = tt.descriptor_load %[[ARG_0]]
+// CHECK-TMA:    tt.descriptor_store %[[ARG_1]][{{.*}}], %[[LOAD]]
+// CHECK-TMA:    tt.return
