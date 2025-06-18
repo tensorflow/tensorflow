@@ -2280,9 +2280,7 @@ ENTRY entry {
 // There were relatively large numeric errors with an f16 temporary buffer, so I
 // ended up using --xla_gpu_triton_gemm_disable_reduced_precision_reduction=true
 // when generating this test case.
-//
-// TODO(b/393299275): transform this test once padding derivation if fixed.
-TEST_F(CompareTest, DISABLED_SupportsSplitKWithIndivisibleKComplexExample) {
+TEST_F(CompareTest, SupportsSplitKWithIndivisibleKComplexExample) {
   constexpr absl::string_view kHloTextRef = R"(
 dot {
   p0 = s8[3,129,5,32]{3,2,1,0} parameter(0)
