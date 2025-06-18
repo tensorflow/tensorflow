@@ -189,7 +189,6 @@ td_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":lift_as_function_call_td_files",
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
         "@llvm-project//mlir:ArithOpsTdFiles",
         "@llvm-project//mlir:FuncTdFiles",
