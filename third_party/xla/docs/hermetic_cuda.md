@@ -11,15 +11,15 @@ versions.
 
 The supported CUDA versions are specified in `CUDA_REDIST_JSON_DICT`
 dictionary,
-[third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl).
+[@rules_ml_toolchain//third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/google-ml-infra/rules_ml_toolchain/tree/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl).
 
 The supported CUDNN versions are specified in `CUDNN_REDIST_JSON_DICT`
 dictionary,
-[third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl).
+[@rules_ml_toolchain//third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/google-ml-infra/rules_ml_toolchain/tree/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl).
 
 The supported NVSHMEM versions are specified in `NVSHMEM_REDIST_JSON_DICT`
 dictionary,
-[third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl).
+[@rules_ml_toolchain//third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/google-ml-infra/rules_ml_toolchain/tree/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl).
 
 The `.bazelrc` files of individual projects have `HERMETIC_CUDA_VERSION`,
 `HERMETIC_CUDNN_VERSION`, `HERMETIC_NVSHMEM_VERSION` environment variables set
@@ -59,7 +59,7 @@ hermetic CUDA/CUDNN repository rules will look up `TF_CUDA_VERSION` and
 compatibility with non-hermetic CUDA/CUDNN repository rules.
 
 The mapping between CUDA version and NCCL distribution version to be downloaded
-is specified in [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
+is specified in [@rules_ml_toolchain//third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/google-ml-infra/rules_ml_toolchain/tree/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
 
 ## Configure hermetic CUDA, CUDNN and NCCL
 
@@ -70,7 +70,7 @@ is specified in [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https:
 
    ```
    load(
-      "@local_xla//third_party/gpus/cuda/hermetic:cuda_json_init_repository.bzl",
+      "@rules_ml_toolchain//third_party/gpus/cuda/hermetic:cuda_json_init_repository.bzl",
       "cuda_json_init_repository",
    )
 
@@ -82,7 +82,7 @@ is specified in [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https:
       "CUDNN_REDISTRIBUTIONS",
    )
    load(
-      "@local_xla//third_party/gpus/cuda/hermetic:cuda_redist_init_repositories.bzl",
+      "@rules_ml_toolchain//third_party/gpus/cuda/hermetic:cuda_redist_init_repositories.bzl",
       "cuda_redist_init_repositories",
       "cudnn_redist_init_repository",
    )
@@ -96,21 +96,21 @@ is specified in [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https:
    )
 
    load(
-      "@local_xla//third_party/gpus/cuda/hermetic:cuda_configure.bzl",
+      "@rules_ml_toolchain//third_party/gpus/cuda/hermetic:cuda_configure.bzl",
       "cuda_configure",
    )
 
    cuda_configure(name = "local_config_cuda")
 
    load(
-      "@local_xla//third_party/nccl/hermetic:nccl_redist_init_repository.bzl",
+      "@rules_ml_toolchain//third_party/nccl/hermetic:nccl_redist_init_repository.bzl",
       "nccl_redist_init_repository",
    )
 
    nccl_redist_init_repository()
 
    load(
-      "@local_xla//third_party/nccl/hermetic:nccl_configure.bzl",
+      "@rules_ml_toolchain//third_party/nccl/hermetic:nccl_configure.bzl",
       "nccl_configure",
    )
 
@@ -168,7 +168,7 @@ is specified in [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https:
 
    ```
    load(
-    "@local_xla//third_party/nvshmem/hermetic:nvshmem_json_init_repository.bzl",
+    "@rules_ml_toolchain//third_party/nvshmem/hermetic:nvshmem_json_init_repository.bzl",
     "nvshmem_json_init_repository",
    )
 
@@ -179,7 +179,7 @@ is specified in [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https:
       "NVSHMEM_REDISTRIBUTIONS",
    )
    load(
-      "@local_xla//third_party/nvshmem/hermetic:nvshmem_redist_init_repository.bzl",
+      "@rules_ml_toolchain//third_party/nvshmem/hermetic:nvshmem_redist_init_repository.bzl",
       "nvshmem_redist_init_repository",
    )
 
@@ -188,7 +188,7 @@ is specified in [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https:
    )
 
    load(
-      "@local_xla//third_party/nvshmem/hermetic:nvshmem_configure.bzl",
+      "@rules_ml_toolchain//third_party/nvshmem/hermetic:nvshmem_configure.bzl",
       "nvshmem_configure",
    )
 
@@ -219,18 +219,18 @@ is specified in [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https:
 
 1.  Create and submit a pull request with updated `CUDA_REDIST_JSON_DICT`,
     `CUDNN_REDIST_JSON_DICT`, `NVSHMEM_REDIST_JSON_DICT` dictionaries in
-    [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl).
+    [@rules_ml_toolchain//third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/google-ml-infra/rules_ml_toolchain/tree/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl).
 
     Update `CUDA_NCCL_WHEELS` in
-    [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
+    [@rules_ml_toolchain//third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/google-ml-infra/rules_ml_toolchain/tree/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
     if needed.
 
     Update `REDIST_VERSIONS_TO_BUILD_TEMPLATES` in
-    [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
+    [@rules_ml_toolchain//third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/google-ml-infra/rules_ml_toolchain/tree/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
     if needed.
 
     Update `PTX_VERSION_DICT` in
-    [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
+    [@rules_ml_toolchain//third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/google-ml-infra/rules_ml_toolchain/tree/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl)
     if needed.
 
 2.  For each Google ML project create a separate pull request with updated
@@ -256,7 +256,7 @@ is specified in [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https:
     `MIRRORED_TARS_CUDA_REDIST_JSON_DICT`,
     `MIRRORED_TARS_CUDNN_REDIST_JSON_DICT`,
     `MIRRORED_TARS_NVSHMEM_REDIST_JSON_DICT` dictionaries in
-    [third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/openxla/xla/blob/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl).
+    [@rules_ml_toolchain//third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl](https://github.com/google-ml-infra/rules_ml_toolchain/tree/main/third_party/gpus/cuda/hermetic/cuda_redist_versions.bzl).
 
 ## Pointing to CUDA/CUDNN/NCCL/NVSHMEM redistributions on local file system
 
@@ -573,7 +573,7 @@ content of resulting CUDNN JSON file. The NCCL wheels data is merged from
 
 ```
 load(
-    //third_party/gpus/cuda/hermetic:cuda_redist_versions.bzl",
+    "@rules_ml_toolchain//third_party/gpus/cuda/hermetic:cuda_redist_versions.bzl",
     "CUDA_REDIST_PATH_PREFIX",
     "CUDA_NCCL_WHEELS",
     "CUDA_REDIST_JSON_DICT",
@@ -605,7 +605,7 @@ load(
 )
 
 load(
-   "//third_party/gpus/cuda/hermetic:cuda_redist_init_repositories.bzl",
+   "@rules_ml_toolchain//third_party/gpus/cuda/hermetic:cuda_redist_init_repositories.bzl",
    "cuda_redist_init_repositories",
    "cudnn_redist_init_repository",
 )
@@ -655,7 +655,7 @@ cudnn_redist_init_repository(
 )
 
 load(
-    "//third_party/nccl/hermetic:nccl_redist_init_repository.bzl",
+    "@rules_ml_toolchain//third_party/nccl/hermetic:nccl_redist_init_repository.bzl",
     "nccl_redist_init_repository",
 )
 
@@ -688,17 +688,17 @@ projects:
 
    For XLA and JAX:
    ```
-   load("@local_xla//third_party/gpus:cuda_configure.bzl", "cuda_configure")
+   load("@rules_ml_toolchain//third_party/gpus:cuda_configure.bzl", "cuda_configure")
    cuda_configure(name = "local_config_cuda")
-   load("@local_xla//third_party/nccl:nccl_configure.bzl", "nccl_configure")
+   load("@rules_ml_toolchain//third_party/nccl:nccl_configure.bzl", "nccl_configure")
    nccl_configure(name = "local_config_nccl")
    ```
 
    For Tensorflow:
    ```
-   load("@local_xla//third_party/gpus:cuda_configure.bzl", "cuda_configure")
+   load("@rules_ml_toolchain//third_party/gpus:cuda_configure.bzl", "cuda_configure")
    cuda_configure(name = "local_config_cuda")
-   load("@local_xla//third_party/nccl:nccl_configure.bzl", "nccl_configure")
+   load("@rules_ml_toolchain//third_party/nccl:nccl_configure.bzl", "nccl_configure")
    nccl_configure(name = "local_config_nccl")
    ```
 
