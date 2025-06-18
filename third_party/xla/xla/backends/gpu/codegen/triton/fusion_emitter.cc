@@ -1763,10 +1763,10 @@ absl::StatusOr<stream_executor::gpu::TmaMetadata> ExtractTmaMetadata(
             idx, "tt.tma_descriptor")) {
       TF_ASSIGN_OR_RETURN(
           auto tma_desc,
-          Create2DTmaDescriptor(attr.getGlobalShape(), attr.getTileShape(),
-                                attr.getTileStrides(), attr.getLayout(),
-                                attr.getElementByteSize(),
-                                attr.getSwizzleMode().getValue()));
+          CreateTmaDescriptor(attr.getGlobalShape(), attr.getTileShape(),
+                              attr.getTileStrides(), attr.getLayout(),
+                              attr.getElementByteSize(),
+                              attr.getSwizzleMode().getValue()));
       tma_metadata.arg_index_to_tma_info.insert({idx, tma_desc});
     }
   }

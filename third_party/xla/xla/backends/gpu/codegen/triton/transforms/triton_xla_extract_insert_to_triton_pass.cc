@@ -111,9 +111,9 @@ bool CanUseTMA(::xla::EmitterLocOpBuilder& builder, bool tma_enabled,
   if (!TmaIsEnabledForDevice(device_description)) {
     return false;
   }
-  // Currently only 2D tensors are supported.
+  // Currently only 1D/2D tensors are supported.
   // TODO(b/417039624): Support more dimensions.
-  if (tile_shape.size() != 2) {
+  if (tile_shape.empty() || tile_shape.size() > 2) {
     return false;
   }
 

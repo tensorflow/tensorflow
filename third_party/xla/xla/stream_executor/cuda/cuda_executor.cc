@@ -1469,8 +1469,8 @@ absl::StatusOr<TensorMap> CudaExecutor::CreateTensorMap(TmaDescriptor tma_desc,
   CUtensorMap tensor_map;
   auto result = cuTensorMapEncodeTiled(
       &tensor_map, data_type, tma_desc.num_dimensions(), global_address,
-      &tma_desc.global_dims()[0], &tma_desc.global_strides()[0],
-      &tma_desc.box_dims()[0], &tma_desc.element_strides()[0], interleave,
+      tma_desc.global_dims().data(), tma_desc.global_strides().data(),
+      tma_desc.box_dims().data(), tma_desc.element_strides().data(), interleave,
       swizzle, l2_promotion, float_oob_fill);
   if (result != CUDA_SUCCESS) {
     const char* error_message;

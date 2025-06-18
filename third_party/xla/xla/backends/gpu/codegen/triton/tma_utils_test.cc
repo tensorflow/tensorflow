@@ -39,7 +39,7 @@ using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::tsl::testing::StatusIs;
 
-TEST(Create2DTmaDescriptorTest, ValidInputReturnCorrectDescriptor) {
+TEST(CreateTmaDescriptorTest, Valid2DInputReturnCorrectDescriptor) {
   mlir::MLIRContext mlir_context;
   mlir::Builder b(&mlir_context);
   llvm::SmallVector<int64_t, 2> global_shape = {256, 128};
@@ -50,8 +50,8 @@ TEST(Create2DTmaDescriptorTest, ValidInputReturnCorrectDescriptor) {
   SwizzleMode swizzle_mode = SwizzleMode::k128b;
   TF_ASSERT_OK_AND_ASSIGN(
       TmaDescriptor tma_desc,
-      Create2DTmaDescriptor(global_shape, tile_shape, tile_strides, layout,
-                            element_byte_size, swizzle_mode));
+      CreateTmaDescriptor(global_shape, tile_shape, tile_strides, layout,
+                          element_byte_size, swizzle_mode));
   EXPECT_EQ(tma_desc.element_size(), 4);
   EXPECT_EQ(tma_desc.num_dimensions(), 2);
   EXPECT_THAT(tma_desc.global_dims(), ElementsAre(128, 256));
@@ -64,7 +64,32 @@ TEST(Create2DTmaDescriptorTest, ValidInputReturnCorrectDescriptor) {
   EXPECT_EQ(tma_desc.float_oob_fill(), TmaDescriptor::TmaFloatOobFill::kNone);
 }
 
-TEST(Create2DTmaDescriptorTest, BadGlobalShapeFailsGracefully) {
+TEST(CreateTmaDescriptorTest, Valid1DInputReturnCorrectDescriptor) {
+  mlir::MLIRContext mlir_context;
+  mlir::Builder b(&mlir_context);
+  llvm::SmallVector<int64_t, 2> global_shape = {128};
+  llvm::SmallVector<int64_t, 2> tile_shape = {32};
+  llvm::SmallVector<int64_t, 2> tile_strides = {1};
+  llvm::SmallVector<int64_t, 2> layout = {0};
+  int element_byte_size = 4;
+  SwizzleMode swizzle_mode = SwizzleMode::kNone;
+  TF_ASSERT_OK_AND_ASSIGN(
+      TmaDescriptor tma_desc,
+      CreateTmaDescriptor(global_shape, tile_shape, tile_strides, layout,
+                          element_byte_size, swizzle_mode));
+  EXPECT_EQ(tma_desc.element_size(), 4);
+  EXPECT_EQ(tma_desc.num_dimensions(), 1);
+  EXPECT_THAT(tma_desc.global_dims(), ElementsAre(128));
+  EXPECT_THAT(tma_desc.global_strides().size(), 0);
+  EXPECT_THAT(tma_desc.box_dims(), ElementsAre(32));
+  EXPECT_THAT(tma_desc.element_strides(), ElementsAre(1));
+  EXPECT_EQ(tma_desc.interleave(), TmaDescriptor::TmaInterleave::kNone);
+  EXPECT_EQ(tma_desc.swizzle(), TmaDescriptor::TmaSwizzle::kNone);
+  EXPECT_EQ(tma_desc.l2_promotion(), TmaDescriptor::TmaL2Promotion::k128B);
+  EXPECT_EQ(tma_desc.float_oob_fill(), TmaDescriptor::TmaFloatOobFill::kNone);
+}
+
+TEST(CreateTmaDescriptorTest, ShapeMismatchFailsGracefully) {
   mlir::MLIRContext mlir_context;
   mlir::Builder b(&mlir_context);
   llvm::SmallVector<int64_t, 1> global_shape = {128};
@@ -73,28 +98,44 @@ TEST(Create2DTmaDescriptorTest, BadGlobalShapeFailsGracefully) {
   llvm::SmallVector<int64_t, 2> layout = {1, 0};
   int element_byte_size = 4;
   EXPECT_THAT(
-      Create2DTmaDescriptor(global_shape, tile_shape, tile_strides, layout,
-                            element_byte_size, SwizzleMode::k128b),
-      StatusIs(StatusCode::kInvalidArgument,
-               HasSubstr("expected 2D global shape")));
+      CreateTmaDescriptor(global_shape, tile_shape, tile_strides, layout,
+                          element_byte_size, SwizzleMode::k128b),
+      StatusIs(
+          StatusCode::kInvalidArgument,
+          HasSubstr("global_shape and tile_shape must have the same size")));
 }
 
-TEST(Create2DTmaDescriptorTest, BadBlockShapeFailsGracefully) {
+TEST(CreateTmaDescriptorTest, EmptyShapeFailsGracefully) {
   mlir::MLIRContext mlir_context;
   mlir::Builder b(&mlir_context);
-  llvm::SmallVector<int64_t, 2> global_shape = {128, 128};
-  llvm::SmallVector<int64_t, 2> tile_shape = {128};
+  llvm::SmallVector<int64_t, 2> global_shape = {};
+  llvm::SmallVector<int64_t, 2> tile_shape = {};
   llvm::SmallVector<int64_t, 2> tile_strides = {1, 1};
   llvm::SmallVector<int64_t, 2> layout = {1, 0};
   int element_byte_size = 4;
   EXPECT_THAT(
-      Create2DTmaDescriptor(global_shape, tile_shape, tile_strides, layout,
-                            element_byte_size, SwizzleMode::k128b),
+      CreateTmaDescriptor(global_shape, tile_shape, tile_strides, layout,
+                          element_byte_size, SwizzleMode::k128b),
       StatusIs(StatusCode::kInvalidArgument,
-               HasSubstr("expected 2D block shape")));
+               HasSubstr("expected 1D or 2D global/tile shapes")));
 }
 
-TEST(Create2DTmaDescriptorTest, NonUnitTileStridesAreCorrectlyHandled) {
+TEST(CreateTmaDescriptorTest, UnsupportedShapeFailsGracefully) {
+  mlir::MLIRContext mlir_context;
+  mlir::Builder b(&mlir_context);
+  llvm::SmallVector<int64_t, 2> global_shape = {16, 16, 16};
+  llvm::SmallVector<int64_t, 2> tile_shape = {4, 4, 4};
+  llvm::SmallVector<int64_t, 2> tile_strides = {1, 1, 1};
+  llvm::SmallVector<int64_t, 2> layout = {2, 1, 0};
+  int element_byte_size = 4;
+  EXPECT_THAT(
+      CreateTmaDescriptor(global_shape, tile_shape, tile_strides, layout,
+                          element_byte_size, SwizzleMode::k128b),
+      StatusIs(StatusCode::kInvalidArgument,
+               HasSubstr("expected 1D or 2D global/tile shapes")));
+}
+
+TEST(CreateTmaDescriptorTest, NonUnitTileStridesAreCorrectlyHandled) {
   mlir::MLIRContext mlir_context;
   mlir::Builder b(&mlir_context);
   llvm::SmallVector<int64_t, 2> global_shape = {1024, 1024};
@@ -105,8 +146,8 @@ TEST(Create2DTmaDescriptorTest, NonUnitTileStridesAreCorrectlyHandled) {
   SwizzleMode swizzle_mode = SwizzleMode::k128b;
   TF_ASSERT_OK_AND_ASSIGN(
       TmaDescriptor tma_desc,
-      Create2DTmaDescriptor(global_shape, tile_shape, tile_strides, layout,
-                            element_byte_size, swizzle_mode));
+      CreateTmaDescriptor(global_shape, tile_shape, tile_strides, layout,
+                          element_byte_size, swizzle_mode));
   EXPECT_EQ(tma_desc.box_dims()[0], 32);
   EXPECT_EQ(tma_desc.element_strides()[0], 1);
   EXPECT_EQ(tma_desc.element_strides()[1], 3);
@@ -114,7 +155,7 @@ TEST(Create2DTmaDescriptorTest, NonUnitTileStridesAreCorrectlyHandled) {
   EXPECT_EQ(tma_desc.box_dims()[1], 32 * 3);
 }
 
-TEST(Create2DTmaDescriptorTest, BoxDimsAreAdjustedForSwizzleMode) {
+TEST(CreateTmaDescriptorTest, BoxDimsAreAdjustedForSwizzleMode) {
   mlir::MLIRContext mlir_context;
   mlir::Builder b(&mlir_context);
   llvm::SmallVector<int64_t, 2> global_shape = {1024, 1024};
@@ -127,22 +168,22 @@ TEST(Create2DTmaDescriptorTest, BoxDimsAreAdjustedForSwizzleMode) {
   SwizzleMode swizzle_mode = SwizzleMode::k128b;
   TF_ASSERT_OK_AND_ASSIGN(
       TmaDescriptor tma_desc,
-      Create2DTmaDescriptor(global_shape, tile_shape, tile_strides, layout,
-                            element_byte_size, swizzle_mode));
+      CreateTmaDescriptor(global_shape, tile_shape, tile_strides, layout,
+                          element_byte_size, swizzle_mode));
   EXPECT_EQ(tma_desc.box_dims()[0], 32);
 
   // 64B swizzle mode.
   swizzle_mode = SwizzleMode::k64b;
   TF_ASSERT_OK_AND_ASSIGN(
-      tma_desc, Create2DTmaDescriptor(global_shape, tile_shape, tile_strides,
-                                      layout, element_byte_size, swizzle_mode));
+      tma_desc, CreateTmaDescriptor(global_shape, tile_shape, tile_strides,
+                                    layout, element_byte_size, swizzle_mode));
   EXPECT_EQ(tma_desc.box_dims()[0], 16);
 
   // 32B swizzle mode.
   swizzle_mode = SwizzleMode::k32b;
   TF_ASSERT_OK_AND_ASSIGN(
-      tma_desc, Create2DTmaDescriptor(global_shape, tile_shape, tile_strides,
-                                      layout, element_byte_size, swizzle_mode));
+      tma_desc, CreateTmaDescriptor(global_shape, tile_shape, tile_strides,
+                                    layout, element_byte_size, swizzle_mode));
   EXPECT_EQ(tma_desc.box_dims()[0], 8);
 }
 
