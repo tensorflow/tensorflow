@@ -1351,9 +1351,9 @@ func.func @reshape_2D_1D_semidynamic(%arg0: tensor<1x?xi32>) -> tensor<1xi32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<1x?xi32>) -> tensor<1xi32>
   func.return %0 : tensor<1xi32>
 }
-// CHECK: %[[CAST:.*]] = tensor.cast %{{.*}} : tensor<1x?xi32> to tensor<1x1xi32>
-// CHECK: %[[COLLAPSE:.*]] = tensor.collapse_shape %[[CAST]] {{\[}}[0, 1]] : tensor<1x1xi32> into tensor<1xi32>
-// CHECK: return %[[COLLAPSE:.*]] : tensor<1xi32>
+// CHECK: %[[COLLAPSE:.*]] = tensor.collapse_shape %arg0 {{\[}}[0, 1]] : tensor<1x?xi32> into tensor<?xi32>
+// CHECK: %[[CAST:.*]] = tensor.cast %[[COLLAPSE]] : tensor<?xi32> to tensor<1xi32>
+// CHECK: return %[[CAST]] : tensor<1xi32>
 
 // -----
 
@@ -1384,9 +1384,9 @@ func.func @reshape_3D_1D_semidynamic(%arg0: tensor<16x1x?xi32>) -> tensor<16xi32
   %0 = "mhlo.reshape"(%arg0) : (tensor<16x1x?xi32>) -> tensor<16xi32>
   func.return %0 : tensor<16xi32>
 }
-// CHECK: %[[CAST:.*]] = tensor.cast %{{.*}} : tensor<16x1x?xi32> to tensor<16x1x1xi32>
-// CHECK: %[[COLLAPSE:.*]] = tensor.collapse_shape %[[CAST]] {{\[}}[0, 1, 2]] : tensor<16x1x1xi32> into tensor<16xi32>
-// CHECK: return %[[COLLAPSE:.*]] : tensor<16xi32>
+// CHECK: %[[COLLAPSE:.*]] = tensor.collapse_shape %arg0 {{\[}}[0, 1, 2]] : tensor<16x1x?xi32> into tensor<?xi32>
+// CHECK: %[[CAST:.*]] = tensor.cast %[[COLLAPSE]] : tensor<?xi32> to tensor<16xi32>
+// CHECK: return %[[CAST]] : tensor<16xi32>
 
 // -----
 
