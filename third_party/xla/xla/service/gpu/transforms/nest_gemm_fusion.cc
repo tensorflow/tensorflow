@@ -630,17 +630,16 @@ absl::StatusOr<ReshapeParams> CalculateTransposeInputReshape(
                                    InversePermutation(transpose->dimensions()));
 }
 
-// Simulates a rewrite of all producers of a given bitcast, moving the bitcast
-// outside of the computation.
+// Simulates a rewrite of all producers of a given bitcast or reshape, moving
+// the instruction outside of the computation.
 // Returns the new shapes of affected instructions in order of traversal from
 // consumers to producers.
-// Assumes that the bitcast does not covert the type of the operand.
 absl::StatusOr<std::vector<std::pair<HloInstruction*, Shape>>>
 PlanHoistBitcastUpwardsToCallers(const HloInstruction* bitcast) {
-  // Check that all producers only affect the bitcast. If there are any
+  // Check that all producers only affect the bitcast/reshape. If there are any
   // other consumers: refuse the hoisting.
-  // It is possible to support more cases by sinking the bitcast from such
-  // producers downward.
+  // It is possible to support more cases by sinking the bitcast/reshape from
+  // such producers downward.
   HloInstructionSetVector producers = GetProducerSet(bitcast);
   TF_RETURN_IF_ERROR(VerifyIsClosedProducerSet(producers, bitcast));
   if (bitcast->shape().element_type() !=
@@ -672,8 +671,8 @@ PlanHoistBitcastUpwardsToCallers(const HloInstruction* bitcast) {
   TF_RETURN_IF_ERROR(set_shape(bitcast->operands(), bitcast->shape()));
   std::vector<std::pair<HloInstruction*, Shape>> result;
   // We want to visit instructions in order from consumers to producers: we
-  // hoist the bitcast upwards and having a valid HLO at every rewrite step
-  // helps a lot.
+  // hoist the bitcast/reshape upwards and having a valid HLO at every rewrite
+  // step helps a lot.
   // A simple DFS or BFS over operands will not work in non-tree situations when
   // there are multiple consumers of the same producer. Instead of writing a
   // custom traversal we can simply walk the post-order (producers before
@@ -699,8 +698,9 @@ PlanHoistBitcastUpwardsToCallers(const HloInstruction* bitcast) {
         // No operands.
         break;
       case HloOpcode::kBitcast:
-        // Other bitcast will be hoisted separately so we don't need to update
-        // its operand.
+      case HloOpcode::kReshape:
+        // Other bitcast/reshape will be hoisted separately so we don't need to
+        // update its operand.
         break;
       case HloOpcode::kBroadcast: {
         TF_ASSIGN_OR_RETURN(ReshapeParams params,
@@ -723,7 +723,7 @@ PlanHoistBitcastUpwardsToCallers(const HloInstruction* bitcast) {
       default:
         if (!instruction->IsElementwise()) {
           return absl::FailedPreconditionError(absl::StrCat(
-              "Cannot hoist bitcast past ", instruction->ToString()));
+              "Cannot hoist bitcast/reshape past ", instruction->ToString()));
         }
         TF_RETURN_IF_ERROR(set_shape(instruction->operands(), shape));
         break;
@@ -732,17 +732,15 @@ PlanHoistBitcastUpwardsToCallers(const HloInstruction* bitcast) {
   return result;
 }
 
-// Simulates a rewrite of all consumers of a given bitcast, moving the bitcast
-// outside of the computation.
-// Returns the new operand shapes of affected instructions in order of traversal
-// from producers to consumers. Assumes that the bitcast does not convert the
-// type of the operand.
+// Simulates a rewrite of all consumers of a given bitcast/reshape, moving the
+// instruction outside of the computation. Returns the new operand shapes of
+// affected instructions in order of traversal from producers to consumers.
 absl::StatusOr<std::vector<std::pair<HloInstruction*, Shape>>>
 PlanHoistBitcastDownwardsToCallers(const HloInstruction* bitcast) {
-  // Check that all consumers only affect the bitcast. If there are any
+  // Check that all consumers only affect the bitcast/reshape. If there are any
   // other producers: refuse the hoisting.
-  // It is possible to support more cases by hoisting the bitcast from such
-  // consumers upward.
+  // It is possible to support more cases by hoisting the bitcast/reshape from
+  // such consumers upward.
   HloInstructionSetVector consumers = GetConsumerSet(bitcast);
   TF_RETURN_IF_ERROR(VerifyIsClosedConsumerSet(consumers, bitcast));
   if (bitcast->shape().element_type() !=
@@ -774,12 +772,12 @@ PlanHoistBitcastDownwardsToCallers(const HloInstruction* bitcast) {
   TF_RETURN_IF_ERROR(set_shape(bitcast->users(), bitcast->operand(0)->shape()));
   std::vector<std::pair<HloInstruction*, Shape>> result;
   // We want to visit instructions in order from producers to consumers: we
-  // hoist the bitcast downwards and having a valid HLO at every rewrite step
-  // helps a lot.
-  // A simple DFS or BFS over results will not work in non-tree situations when
-  // there are multiple producers of the same consumer. Instead of writing a
-  // custom traversal we can simply walk the post-order (producers before
-  // consumers) list and only update the instructions affected.
+  // hoist the bitcast/reshape downwards and having a valid HLO at every rewrite
+  // step helps a lot. A simple DFS or BFS over results will not work in
+  // non-tree situations when there are multiple producers of the same consumer.
+  // Instead of writing a custom traversal we can simply walk the post-order
+  // (producers before consumers) list and only update the instructions
+  // affected.
   // TODO(b/393299275): use MakeInstructionPostOrderFrom(bitcast) - that should
   // be slightly more efficient.
   auto def_before_use = bitcast->parent()->MakeInstructionPostOrder();
@@ -796,8 +794,9 @@ PlanHoistBitcastDownwardsToCallers(const HloInstruction* bitcast) {
         ShapeUtil::HumanStringWithLayout(shape));
     switch (instruction->opcode()) {
       case HloOpcode::kBitcast:
-        // Other bitcast will be hoisted separately so we don't need to update
-        // its operand.
+      case HloOpcode::kReshape:
+        // Other bitcast/reshape will be hoisted separately so we don't need to
+        // update its operand.
         break;
       case HloOpcode::kBroadcast: {
         TF_ASSIGN_OR_RETURN(ReshapeParams params,
@@ -818,7 +817,7 @@ PlanHoistBitcastDownwardsToCallers(const HloInstruction* bitcast) {
       default:
         if (!instruction->IsElementwise()) {
           return absl::FailedPreconditionError(absl::StrCat(
-              "Cannot hoist bitcast past ", instruction->ToString()));
+              "Cannot hoist bitcast/reshape past ", instruction->ToString()));
         }
         TF_RETURN_IF_ERROR(set_shape(instruction->users(), shape));
         break;
@@ -827,8 +826,8 @@ PlanHoistBitcastDownwardsToCallers(const HloInstruction* bitcast) {
   return result;
 }
 
-// Hoists the given 'bitcast' upwards out of its computation, to the parent of
-// each caller.
+// Hoists the given 'bitcast' or 'reshape' upwards out of its computation, to
+// the parent of each caller.
 absl::Status HoistBitcastUpwardsToCallers(
     HloInstruction* bitcast, const std::vector<HloInstruction*>& callers) {
   TF_ASSIGN_OR_RETURN(auto rewrite_plan,
@@ -843,6 +842,9 @@ absl::Status HoistBitcastUpwardsToCallers(
         // Create a new bitcast in callers.
         int64_t number = instruction->parameter_number();
         for (HloInstruction* caller : callers) {
+          // Create a `bitcast` regardless of whether we started with a
+          // `bitcast` or a `reshape`. `reshape` is strictly a special case of
+          // `bitcast` anyway.
           HloInstruction* new_bitcast =
               caller->AddInstruction(HloInstruction::CreateBitcast(
                   shape, caller->mutable_operand(number)));
@@ -855,7 +857,7 @@ absl::Status HoistBitcastUpwardsToCallers(
         auto* broadcast = Cast<HloBroadcastInstruction>(instruction);
         auto params =
             CalculateBroadcastOutputReshape(broadcast, shape.dimensions());
-        // Must be OK, already succeeded in PlanHoistBitcasUpwardsToCallers.
+        // Must be OK, already succeeded in PlanHoistBitcastUpwardsToCallers.
         QCHECK_OK(params);
         *broadcast->mutable_dimensions() = params->new_dims;
         break;
@@ -879,8 +881,8 @@ absl::Status HoistBitcastUpwardsToCallers(
   return absl::OkStatus();
 }
 
-// Hoists the given 'bitcast' downwards out of its computation, to the parent
-// of each caller.
+// Hoists the given `bitcast` or `reshape` downwards out of its computation, to
+// the parent of each caller.
 absl::Status HoistBitcastDownwardsToCallers(
     HloInstruction* bitcast, const std::vector<HloInstruction*>& callers) {
   TF_ASSIGN_OR_RETURN(auto rewrite_plan,
@@ -917,7 +919,9 @@ absl::Status HoistBitcastDownwardsToCallers(
     *instruction->mutable_shape() = shape;
   }
 
-  // Insert new bitcast for each caller's result.
+  // Insert new bitcast for each caller's result. We create a `bitcast`
+  // regardless of whether we started with a `bitcast` or a a `reshape`.
+  // `reshape` is strictly a special case of `bitcast` anyway.
   for (HloInstruction* caller : callers) {
     HloInstruction* new_bitcast = caller->AddInstruction(
         HloInstruction::CreateBitcast(caller->shape(), caller));
@@ -933,31 +937,33 @@ absl::Status HoistBitcastDownwardsToCallers(
   return absl::OkStatus();
 }
 
-// Try hoisting bitcasts in the computation away from 'dot' to the callers of
-// the computation. Some bitcasts may remain in the computation, because they
-// cannot be hoisted across all ops, e.g. across some transposes and broadcasts.
-// This is not reported as an error.
+// Try hoisting bitcasts and reshapes in the computation away from 'dot' to the
+// callers of the computation. Some bitcasts/reshapes may remain in the
+// computation, because they cannot be hoisted across all ops, e.g. across some
+// transposes and broadcasts. This is not reported as an error.
 absl::Status TryHoistBitcastsInComputationToCallers(HloInstruction* dot,
                                                     CallGraph* call_graph) {
   auto callers = call_graph->GetComputationCallers(dot->parent());
   for (HloInstruction* instruction : GetProducerSet(dot)) {
-    if (HloPredicateIsNotOp<HloOpcode::kBitcast>(instruction)) {
+    if (!HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kReshape>(
+            instruction)) {
       continue;
     }
     VLOG(2) << "Hoisting bitcast upwards " << instruction->ToString();
     auto status = HoistBitcastUpwardsToCallers(instruction, callers);
     if (!status.ok()) {
-      VLOG(2) << "Failed to hoist bitcast upwards: " << status;
+      VLOG(2) << "Failed to hoist bitcast or reshape upwards: " << status;
     }
   }
   for (HloInstruction* instruction : GetConsumerSet(dot)) {
-    if (HloPredicateIsNotOp<HloOpcode::kBitcast>(instruction)) {
+    if (!HloPredicateIsOp<HloOpcode::kBitcast, HloOpcode::kReshape>(
+            instruction)) {
       continue;
     }
     VLOG(2) << "Hoisting bitcast downwards " << instruction->ToString();
     auto status = HoistBitcastDownwardsToCallers(instruction, callers);
     if (!status.ok()) {
-      VLOG(2) << "Failed to hoist bitcast downwards: " << status;
+      VLOG(2) << "Failed to hoist bitcast or reshape downwards: " << status;
     }
   }
   return absl::OkStatus();
@@ -992,7 +998,8 @@ class NestGemmFusionVisitor : public DfsHloRewriteVisitor {
     HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
     TF_RETURN_IF_ERROR(
         TryHoistBitcastsInComputationToCallers(instr, call_graph_));
-    VLOG(2) << "After hoisting bitcasts: " << computation->ToString();
+    VLOG(2) << "After hoisting bitcasts and reshapes: "
+            << computation->ToString();
 
     TF_RETURN_IF_ERROR(
         MakeNestedFusionFromGemmFusion(fusion, config.value(), dot, ctx_));
@@ -1082,7 +1089,7 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
   auto expected_dot_tile_sizes =
       get_tile_sizes(dot->shape().dimensions().size());
   VLOG(2) << "FindOutputTileSizesForEpilogue: " << tiled_dot.ToString()
-          << "Constraints: "
+          << "\nConstraints: "
           << analysis.GetTilingSpecification().constraints().ToString()
           << "Expected dot tile sizes: "
           << absl::StrJoin(expected_dot_tile_sizes, " ");
