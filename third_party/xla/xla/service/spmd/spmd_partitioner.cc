@@ -3948,7 +3948,7 @@ absl::Status SpmdPartitioningVisitor::HandleGetTupleElement(
       gte, tuple.base_shape().tuple_shapes(hlo->tuple_index()),
       MakePartitioningState());
   source_partitioned_gte = source_partitioned_gte.Reshard(hlo->sharding());
-  SetPartitionedHlo(hlo, source_partitioned_gte);
+  SetPartitionedHlo(hlo, std::move(source_partitioned_gte));
   return absl::OkStatus();
 }
 

@@ -77,7 +77,7 @@ absl::Status DebugCallbackCustomCallPartitioner::Partition(
       spmd::PartitionedHlo(partitioned_hlo, hlo->shape(),
                            partitioner->MakePartitioningState())
           .Reshard(hlo->sharding());
-  partitioner->SetPartitionedHlo(hlo, result_partitioned);
+  partitioner->SetPartitionedHlo(hlo, std::move(result_partitioned));
 
   return absl::OkStatus();
 }

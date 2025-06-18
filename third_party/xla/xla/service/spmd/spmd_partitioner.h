@@ -477,6 +477,12 @@ class PartitionedHlo {
         << "PartitionedHlo is missing sharding:" << hlo->ToString();
   }
 
+  PartitionedHlo(PartitionedHlo&& other) = default;
+  PartitionedHlo(const PartitionedHlo& other) = default;
+
+  PartitionedHlo& operator=(PartitionedHlo&& other) = default;
+  PartitionedHlo& operator=(const PartitionedHlo& other) = default;
+
   PartitionedHlo CloneWithNewHlo(HloInstruction* hlo) const {
     PartitionedHlo new_phlo = *this;
     new_phlo.hlo_ = hlo;
@@ -691,7 +697,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
 
   // Sets the PartitionedHlo for the original hlo.
   void SetPartitionedHlo(const HloInstruction* hlo,
-                         const PartitionedHlo& partitioned_hlo) {
+                         PartitionedHlo&& partitioned_hlo) {
     CHECK_EQ(partitioned_instructions_.count(hlo), 0);
     partitioned_instructions_.emplace(hlo, partitioned_hlo);
     changed_ = true;

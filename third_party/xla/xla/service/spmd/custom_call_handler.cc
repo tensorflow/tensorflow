@@ -278,7 +278,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_RotateRight(
 
   amount %= full_size;
   if (amount == 0) {
-    SetPartitionedHlo(hlo, input);
+    SetPartitionedHlo(hlo, std::move(input));
     return absl::OkStatus();
   }
 
