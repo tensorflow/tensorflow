@@ -4,9 +4,9 @@
 #
 #    bazel run //ci/official/requirements_updater:requirements.update
 #
-absl-py==2.2.1 \
-    --hash=sha256:4c7bc50d42d021c12d4f31b7001167925e0bd71ade853069f64af410f5565ff9 \
-    --hash=sha256:ca8209abd5005ae6e700ef36e2edc84ad5338678f95625a3f15275410a89ffbc
+absl-py==2.3.0 \
+    --hash=sha256:d96fda5c884f1b22178852f30ffa85766d50b99e00775ea626c23304f582fc4f \
+    --hash=sha256:9824a48b654a306168f63e0d97714665f8490b8d89ec7bf2efc24bf67cf579b3
     # via
     #   dm-tree
     #   keras-nightly
