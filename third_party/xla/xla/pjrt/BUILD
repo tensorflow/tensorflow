@@ -999,6 +999,7 @@ xla_cc_test(
         "//xla/hlo/parser:hlo_parser",
         "//xla/pjrt/c:pjrt_c_api_cpu_internal",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
+        "//xla/service:computation_placer_hdr",
         "//xla/tests:literal_test_util",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
