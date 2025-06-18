@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -56,9 +57,11 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -1560,24 +1563,24 @@ CHECK: tt.reshape
 
 TEST_F(TritonEmitterTest, HighPad1DIsLoweredCorrectly) {
   constexpr absl::string_view kHloText = R"(
-    triton_computation {
-      param_0 = f32[17]{0} parameter(0)
-      c1 = f32[] constant(1)
-      ROOT pad = f32[49]{0} pad(param_0, c1), padding=0_32
-    }
+triton_computation {
+  param_0 = f32[17]{0} parameter(0)
+  c1 = f32[] constant(1)
+  ROOT pad = f32[49]{0} pad(param_0, c1), padding=0_32
+}
 
-    ENTRY main {
-      param_0 = f32[17]{0} parameter(0)
-      ROOT triton_fusion = f32[49]{0} fusion(param_0), kind=kCustom,
-        calls=triton_computation, backend_config={
-          "fusion_backend_config":{
-            "kind":"__triton_nested_gemm_fusion",
-            "block_level_fusion_config":{
-              "output_tiles":[{"sizes":["32"]}],
-              "num_warps":"1",
-              "num_ctas":"1",
-              "num_stages":"1"}}}
-    })";
+ENTRY main {
+  param_0 = f32[17]{0} parameter(0)
+  ROOT triton_fusion = f32[49]{0} fusion(param_0), kind=kCustom,
+    calls=triton_computation, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["32"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+})";
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText, "triton_computation",
                                           R"(
 // #xla.indexing_map<"(pid_0) -> (pid_0 * 32), domain: pid_0 in [0, 1]
@@ -1605,24 +1608,24 @@ TEST_F(TritonEmitterTest, HighPad1DIsLoweredCorrectly) {
 
 TEST_F(TritonEmitterTest, HighPad2DIsLoweredCorrectly) {
   constexpr absl::string_view kHloText = R"(
-    triton_computation {
-      param_0 = f32[17,137]{1,0} parameter(0)
-      c1 = f32[] constant(1)
-      ROOT pad = f32[32,138]{1,0} pad(param_0, c1), padding=0_15x0_1
-    }
+triton_computation {
+  param_0 = f32[17,137]{1,0} parameter(0)
+  c1 = f32[] constant(1)
+  ROOT pad = f32[32,138]{1,0} pad(param_0, c1), padding=0_15x0_1
+}
 
-    ENTRY main {
-      param_0 = f32[17,137]{1,0} parameter(0)
-      ROOT triton_fusion = f32[32,138]{1,0} fusion(param_0), kind=kCustom,
-        calls=triton_computation, backend_config={
-          "fusion_backend_config":{
-            "kind":"__triton_nested_gemm_fusion",
-            "block_level_fusion_config":{
-              "output_tiles":[{"sizes":["32","16"]}],
-              "num_warps":"1",
-              "num_ctas":"1",
-              "num_stages":"1"}}}
-    })";
+ENTRY main {
+  param_0 = f32[17,137]{1,0} parameter(0)
+  ROOT triton_fusion = f32[32,138]{1,0} fusion(param_0), kind=kCustom,
+    calls=triton_computation, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["32","16"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+})";
   TF_EXPECT_OK(CreateTritonIrAndFileCheck(this, kHloText, "triton_computation",
                                           R"(
 // CHECK: triton_xla.extract {{.*}} : tensor<17x137xf32> to tensor<32x16xf32>
@@ -3481,27 +3484,14 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::ValuesIn(AllXlaDataTypes())),
     DotUnsetAlgorithmEmitterTest::ParamToString);
 
-TEST_F(TritonEmitterTest, CheckRocmWarpSize) {
+TEST_F(TritonEmitterTest, RocmWarpSizeIsSetCorrectly) {
   if (std::get_if<se::CudaComputeCapability>(&GpuComputeCapability())) {
     GTEST_SKIP() << "Warp size is always 32 on CUDA";
   }
 
-  constexpr absl::string_view kHloText = R"(
-  %gemm_fusion___computation.clone {
-    %parameter_0 = f16[30,30]{1,0} parameter(0)
-    %parameter_1 = s8[30,30]{1,0} parameter(1)
-    %cp1.1 = f16[30,30]{1,0} convert(%parameter_1)
-    ROOT %_.1 = f16[30,30]{1,0} dot(%parameter_0, %cp1.1), lhs_contracting_dims={0}, rhs_contracting_dims={1}
-  }
-
-  ENTRY %entry_computation {
-    %p1 = s8[30,30]{1,0} parameter(1)
-    %p0 = f16[30,30]{1,0} parameter(0)
-    ROOT %gemm_fusion__ = f16[30,30]{1,0} fusion(%p0, %p1), kind=kCustom, calls=%gemm_fusion___computation.clone, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"16","block_n":"16","block_k":"256","split_k":"1","num_stages":"1","num_warps":"4","num_ctas":"1"}},"force_earliest_schedule":false,"reification_cost":[]}
-  })";
-
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> verified_module,
-                          ParseAndReturnVerifiedModule(kHloText));
+                          ParseAndReturnVerifiedModule(GetDotAlgorithmHlo(
+                              F16, F16, PrecisionConfig::ALG_UNSET)));
 
   std::string output_directory;
   if (!tsl::io::GetTestUndeclaredOutputsDir(&output_directory)) {

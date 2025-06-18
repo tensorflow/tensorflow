@@ -622,6 +622,21 @@ CodegenDecision IsTritonSupportedInstructionImpl(
         "F8E4M3FN, F8E5M2 and S4 are not supported for iota.");
   }
 
+  if (instr.opcode() == HloOpcode::kDynamicSlice) {
+    auto dynamic_slice = Cast<HloDynamicSliceInstruction>(&instr);
+    if (type == PrimitiveType::S4) {
+      return CodegenDecision::Forbid("S4 is not supported.");
+    }
+
+    if (absl::c_any_of(dynamic_slice->index_shapes(),
+                       [](const Shape& index_shape) {
+                         return index_shape.element_type() == PrimitiveType::S4;
+                       })) {
+      return CodegenDecision::Forbid("S4 indexes are not supported.");
+    }
+    return CodegenDecision::Allow();
+  }
+
   switch (instr.opcode()) {
     case HloOpcode::kReduce: {
       return CanTritonHandleReduce(*Cast<HloReduceInstruction>(&instr),
@@ -629,11 +644,6 @@ CodegenDecision IsTritonSupportedInstructionImpl(
     }
     case HloOpcode::kParameter:
       return CodegenDecision::Allow();
-    case HloOpcode::kDynamicSlice:
-      // TODO(b/417172838): enable this once we confirm that no benchmarks were
-      // regressed.
-      return CodegenDecision::Forbid(
-          "dynamic slice is supported but not enabled yet");
     case HloOpcode::kBitcast:
     case HloOpcode::kBroadcast:
     case HloOpcode::kReshape:

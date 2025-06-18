@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <cassert>
 #include <cstddef>
-#include <memory>
 #include <tuple>
 #include <utility>
 
