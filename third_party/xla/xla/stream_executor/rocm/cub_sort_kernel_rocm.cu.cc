@@ -31,9 +31,9 @@ limitations under the License.
 
 // Required for sorting Eigen::half and bfloat16.
 namespace rocprim {
-namespace detail {
 
-#if (TF_ROCM_VERSION >= 50200)
+#if (TF_ROCM_VERSION >= 50200 && TF_ROCM_VERSION < 70000)
+namespace detail {
 template <>
 struct float_bit_mask<Eigen::half> {
   static constexpr uint16_t sign_bit = 0x8000;
@@ -49,7 +49,32 @@ struct float_bit_mask<tsl::bfloat16> {
   static constexpr uint16_t mantissa = 0x007F;
   using bit_type = uint16_t;
 };
-#endif  // TF_ROCM_VERSION >= 50200
+}  // namespace detail
+#else   // TF_ROCM_VERSION >= 70000
+namespace traits {
+
+template <>
+struct rocprim::traits::define<Eigen::half> {
+  using float_bit_mask =
+      rocprim::traits::float_bit_mask::values<uint16_t, 0x8000, 0x7C00, 0x03FF>;
+  using is_arithmetic = rocprim::traits::is_arithmetic::values<true>;
+  using number_format = rocprim::traits::number_format::values<
+      traits::number_format::kind::floating_point_type>;
+};
+
+template <>
+struct rocprim::traits::define<tsl::bfloat16> {
+  using float_bit_mask =
+      rocprim::traits::float_bit_mask::values<uint16_t, 0x8000, 0x7F80, 0x007F>;
+  using is_arithmetic = rocprim::traits::is_arithmetic::values<true>;
+  using number_format = rocprim::traits::number_format::values<
+      traits::number_format::kind::floating_point_type>;
+};
+
+}  // namespace traits
+#endif  // TF_ROCM_VERSION >= 50200 && TF_ROCM_VERSION < 70000
+
+namespace detail {
 template <>
 struct radix_key_codec_base<Eigen::half>
     : radix_key_codec_floating<Eigen::half, uint16_t> {};

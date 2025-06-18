@@ -294,9 +294,10 @@ CHECK: tt.dot {{.*}} : tensor<16x32xf32> * tensor<32x64xf32> -> tensor<16x64xf32
 )"));
 }
 
-// TODO(b/393299275): this requires adding support for dynamic-slice in the
-// generic Triton emitter.
-TEST_F(TritonTest, DISABLED_CodegenDynamicSliceWithCorrectOffsets) {
+TEST_F(TritonTest, CodegenDynamicSliceWithCorrectOffsets) {
+  // TODO(b/417172838): we now should support non-majormost dimensions, port
+  // this test to fusion_emitter_device_test with that support.
+
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
   // because we don't support dynamic slice on those dimensions.
   constexpr absl::string_view kHloText = R"(
@@ -325,27 +326,27 @@ ENTRY e {
          "fusion_backend_config":{
            "kind":"__triton_gemm","triton_gemm_config":{
              "block_m":"32","block_n":"32","block_k":"32","split_k":"1",
-             "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
+             "num_stages":"1","num_warps":"1","num_ctas":"1"}}}
 })";
-
-  ASSERT_THAT(
-      CreateTritonIrAndFileCheckForDot(this, kHloText, "triton_gemm", R"(
-CHECK:     tt.func @triton_fn({{[^,]*}}, %[[DYNAMIC_SLICE_INPUT:[^:]*]]: !tt.ptr<f32> {{[^,]*}}, %[[START_INDEX0_PTR:[^:]*]]: !tt.ptr<i32>
-CHECK-DAG:   %[[C0_i32:.*]] = arith.constant 0 : i32
-CHECK-DAG:   %[[C1_i64:.*]] = arith.constant 1 : i64
-CHECK-DAG:   %[[C2_i64:.*]] = arith.constant 2 : i64
-CHECK-DAG:   %[[C3_i32:.*]] = arith.constant 3 : i32
-CHECK-DAG:   %[[C5_i32:.*]] = arith.constant 5 : i32
-CHECK-DAG:   %[[C5_i64:.*]] = arith.constant 5 : i64
-CHECK-DAG:   %[[START_INDEX0:.*]] = tt.load %[[START_INDEX0_PTR]] : !tt.ptr<i32>
-CHECK-DAG:   %[[SEMI_CLAMPED_START_INDEX0:.*]] = arith.maxsi %[[START_INDEX0]], %[[C0_i32]] : i32
-CHECK-DAG:   %[[CLAMPED_START_INDEX0:.*]] = arith.minsi %[[SEMI_CLAMPED_START_INDEX0]], %[[C3_i32]] : i32
-CHECK-DAG:   %[[ROW_OFFSET:.*]] = arith.muli %[[CLAMPED_START_INDEX0]], %[[C5_i32]] : i32
-CHECK-DAG:   %[[ROW_OFFSET_i64:.*]] = arith.extsi %[[ROW_OFFSET]] : i32 to i64
-CHECK-DAG:   %[[ROW_LIMIT:.*]] = arith.addi %[[ROW_OFFSET_i64]], %[[C5_i64]] : i64
-CHECK-DAG:   tt.make_tensor_ptr %[[DYNAMIC_SLICE_INPUT]], [%[[C2_i64]], %[[ROW_LIMIT]]], [%[[C1_i64]], %[[C2_i64]]], [%[[C0_i32]], %[[ROW_OFFSET]]]
-)"),
-      tsl::testing::IsOk());
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(kHloText));
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
+                               ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+  TF_EXPECT_OK(
+      CreateTritonIrAndFileCheck(*module_and_metadata.computation,
+                                 module_and_metadata.block_level_parameters, R"(
+    CHECK: func.func @triton_fn(%[[ARG0:.*]]: tensor<2x4xf32>, %[[ARG1:.*]]: tensor<4x5x2xf32>, %[[ARG2:.*]]: tensor<i32>, %[[ARG3:.*]]: tensor<i32>, %[[ARG4:.*]]: tensor<i32>, %[[ARG5:.*]]: tensor<4x5xf32>) -> tensor<4x5xf32> {
+    CHECK-DAG: %[[c3:.*]] = arith.constant 3 : i32
+    CHECK-DAG: %[[c0:.*]] = arith.constant 0 : i32
+    CHECK-DAG: triton_xla.extract %[[ARG0]][0, 0] [32, 32] [1, 1]
+    CHECK: %[[V2:.*]] = tensor.extract %[[ARG2]][] : tensor<i32>
+    CHECK: %[[CLAMP0:.*]] = arith.maxsi %[[V2]], %[[c0]] : i32
+    CHECK: %[[CLAMP1:.*]] = arith.minsi %[[CLAMP0]], %[[c3]] : i32
+    CHECK: %[[OFFSET:.*]] = arith.index_castui %[[CLAMP1]] : i32 to index
+    CHECK: triton_xla.extract %[[ARG1]][%[[OFFSET]], 0, 0] [1, 32, 32] [0, 1, 1]
+    CHECK: tt.dot
+  )"));
 }
 
 TEST_F(TritonGemmTest, DoNotUseTensorCoresWithNonDefaultPrecision) {
@@ -898,10 +899,8 @@ e {
 // TODO(b/393299275): this test may have some value while Triton tiling
 // propagation is being replaced, but has little worth as a codegen test.
 // Consider moving this.
-// TODO(b/393299275): likely uncovered a bug in `NestGemmFusion`, where after
-// transformations and collapse of a dimension, broadcast dimensions are wrong.
 TEST_F(TritonGemmTest,
-       DISABLED_BroadcastsOfTriviallySizedContractingDimensionsAreSupported) {
+       BroadcastsOfTriviallySizedContractingDimensionsAreSupported) {
   constexpr absl::string_view kHloText = R"(
 f {
   a = f16[2] parameter(0)
@@ -930,9 +929,7 @@ e {
                                ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-// TODO(b/393299275): this requires adding support for dynamic-slice in the
-// generic Triton emitter.
-TEST_F(TritonGemmTest, DISABLED_DynamicSliceIsSupportedInLhsEndToEnd) {
+TEST_F(TritonGemmTest, DynamicSliceIsSupportedInLhsEndToEnd) {
   // The select is used to restrict the start index to values that make sense.
   // If it was constant, then the dynamic-slice would be optimized to slice. It
   // is not strictly needed, because we also support clamping the indices.
@@ -966,9 +963,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
-// TODO(b/393299275): this requires adding support for dynamic-slice in the
-// generic Triton emitter.
-TEST_F(TritonGemmTest, DISABLED_DynamicSliceIsSupportedInRhs) {
+TEST_F(TritonGemmTest, DynamicSliceIsSupportedInRhs) {
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
   // because we don't support dynamic slice on those dimensions.
   constexpr absl::string_view kHloText = R"(
@@ -998,21 +993,23 @@ ENTRY e {
              "block_m":"32","block_n":"32","block_k":"32","split_k":"1",
              "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
 })";
-
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(kHloText));
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
+                               ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
 class TritonGemmDynamicSliceClampingTest
     : public TritonTest,
       public ::testing::WithParamInterface<int> {};
 
-// TODO(b/393299275): this requires adding support for dynamic-slice in the
-// generic Triton emitter.
 TEST_P(TritonGemmDynamicSliceClampingTest,
-       DISABLED_DynamicSliceIsSupportedWhenTheStartIndexNeedsClamping) {
+       DynamicSliceIsSupportedWhenTheStartIndexNeedsClamping) {
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
   // because we don't support dynamic slice on those dimensions.
+  // TODO(b/417172838): we now should support non-majormost dimensions, port
+  // this test to fusion_emitter_device_test with that support.
 
   const std::string hlo_text = absl::Substitute(R"(
 HloModule m
@@ -1042,9 +1039,11 @@ ENTRY e {
              "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
 })",
                                                 GetParam());
-
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      hlo_text, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(hlo_text));
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
+                               ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
 std::string OffsetParamToString(const ::testing::TestParamInfo<int>& data) {
@@ -1055,10 +1054,7 @@ std::string OffsetParamToString(const ::testing::TestParamInfo<int>& data) {
 INSTANTIATE_TEST_SUITE_P(All, TritonGemmDynamicSliceClampingTest,
                          ::testing::Values(-100, 3, 999), OffsetParamToString);
 
-// TODO(b/393299275): this requires adding support for dynamic-slice in the
-// generic Triton emitter.
-TEST_F(TritonGemmTest,
-       DISABLED_DynamicSliceOfMajormostContractingDimIsSupported) {
+TEST_F(TritonGemmTest, DynamicSliceOfMajormostContractingDimIsSupported) {
   // Tests that dynamic-slice works on the majormost dimension even if that
   // dimension is contracted.
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
@@ -1090,18 +1086,20 @@ ENTRY e {
              "block_m":"32","block_n":"32","block_k":"32","split_k":"1",
              "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
 })";
-
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(kHloText));
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
+                               ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
-// TODO(b/393299275): this requires adding support for dynamic-slice in the
-// generic Triton emitter.
-TEST_F(TritonGemmTest, DISABLED_DynamicSliceOfMajormostBatchDimIsSupported) {
+TEST_F(TritonGemmTest, DynamicSliceOfMajormostBatchDimIsSupported) {
   // Tests that dynamic-slice works on the majormost dimension even if that
   // dimension is a batch.
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
   // because we don't support dynamic slice on those dimensions.
+  // TODO(b/417172838): we now should support non-majormost dimensions, port
+  // this test to fusion_emitter_device_test with that support.
   constexpr absl::string_view kHloText = R"(
 HloModule m
 
@@ -1132,14 +1130,14 @@ ENTRY e {
              "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
 })";
 
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(kHloText));
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
+                               ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
-// TODO(b/393299275): this requires adding support for dynamic-slice in the
-// generic Triton emitter.
-TEST_F(TritonGemmTest,
-       DISABLED_DynamicSliceSingleDimensionIntoReshapeIsSupported) {
+TEST_F(TritonGemmTest, DynamicSliceSingleDimensionIntoReshapeIsSupported) {
   // This directly tests the targeted use case (b/307922364) of iterating over
   // layer weights and extracting them with dynamic slice.
   // The start index(es) for the non-majormost dimension(s) are constant zero(s)
@@ -1174,9 +1172,11 @@ ENTRY e {
              "block_m":"32","block_n":"32","block_k":"32","split_k":"1",
              "num_stages":"1","num_warps":"4","num_ctas":"1"}}}
 })";
-
-  EXPECT_TRUE(RunAndCompareNoHloPasses(
-      kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(kHloText));
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(module_and_metadata.module->ToString(),
+                               ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
 }
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
@@ -1605,14 +1605,10 @@ ENTRY e {
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 }
 
-// TODO(b/393299275): symbolic tile analysis fails to derive a tile for one
-// outer parameter here. However, we shouldn't be deriving this tile anyway,
-// and the underlying indexing map is incorrect. This requires a fix in
-// symbolic tile derivation.
 // TODO(b/393299275): this should just be a fusion test and does not need to be
 // in the codegen directory.
 TEST_F(TritonGemmTestWithSplitK,
-       DISABLED_SplitKDoesNotBreakSlicedFragmentedContractingDimension) {
+       SplitKDoesNotBreakSlicedFragmentedContractingDimension) {
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f16[16,8,128]{2,1,0} parameter(0)
@@ -1629,8 +1625,8 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           GetOptimizedModule(kHloText));
   EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch(m::Fusion(m::Parameter(), m::Parameter())
+      GetNonBitcastRoot(module->entry_computation()),
+      GmockMatch(m::Fusion(m::Parameter(), m::Bitcast(m::Parameter()))
                      .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
@@ -1638,6 +1634,7 @@ ENTRY e {
 
 // TODO(b/393299275): this should be rewritten to work on post-optimization HLO,
 // and potentially have an associated fusion test.
+// Disabled because pads are not supported in the new emitter yet.
 TEST_F(TritonGemmTestWithSplitK, SplitKWithTrivialDimension) {
   constexpr absl::string_view kHloText = R"(
 ENTRY entry_computation {
@@ -1778,10 +1775,10 @@ ENTRY e {
 
 // TODO(b/393299275): this should just be a fusion test and does not need to be
 // in the codegen directory.
-// TODO(b/393299275): symbolic tile analysis fails to derive a tile for one
-// outer parameter here. However, we shouldn't be deriving this tile anyway,
-// and the underlying indexing map is incorrect. This requires a fix in
-// symbolic tile derivation.
+// TODO(b/393299275): we are again the unfortunate victims of a `bitcast`. This
+// time, the `bitcast` we need to hoist needs to be hoisted *upwards* but is
+// located after the dot (it collapses two consecutive non-contracting
+// dimensions together).
 TEST_F(TritonGemmTest, DISABLED_SplitLHSInputOutputIsFused) {
   if (!SupportsBF16(GpuComputeCapability())) {
     GTEST_SKIP() << "BF16 not supported.";
@@ -2368,7 +2365,7 @@ ENTRY entry_computation {
 }
 
 // TODO(b/393299275): transform this test once padding derivation if fixed.
-TEST_F(CompareTest, DISABLED_SupportsSplitKWithIndivisibleKUsingPaddingEqual1) {
+TEST_F(CompareTest, SupportsSplitKWithIndivisibleKUsingPaddingEqual1) {
   constexpr absl::string_view kHloTextRef = R"(
 HloModule extracted, entry_computation_layout={(f16[1,8,4,1023]{3,2,1,0}, f16[1,1023,128]{2,1,0})->f16[1,8,4,128]{3,2,1,0}}
 
@@ -2440,9 +2437,18 @@ ENTRY entry_computation {
 }
 )";
 
-  EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextSplitK,
-                                      ErrorSpec{/*aabs=*/4e-2, /*arel=*/2e-2},
-                                      /*run_hlo_passes=*/false));
+  TF_ASSERT_OK_AND_ASSIGN(
+      ModuleAndNestedFusionMetadata test_module_and_metadata,
+      GetModuleAndNestedFusionMetadata(kHloTextSplitK));
+
+  TF_ASSERT_OK_AND_ASSIGN(ModuleAndNestedFusionMetadata ref_module_and_metadata,
+                          GetModuleAndNestedFusionMetadata(kHloTextRef));
+
+  EXPECT_TRUE(
+      RunAndCompareTwoModules(std::move(ref_module_and_metadata.module),
+                              std::move(test_module_and_metadata.module),
+                              ErrorSpec{/*aabs=*/4e-2, /*arel=*/2e-2},
+                              /*run_hlo_passes=*/false));
 }
 
 // TODO(b/393299275): symbolic tile derivation fails for one of the padded
@@ -2462,7 +2468,7 @@ ENTRY entry_computation {
 // is that offset constraints are handled via `tile_offsets_indexing` anyway,
 // and it's all that should be relevant afaik. We can probably let the caller
 // decide to drop pre-existing constraints.
-TEST_F(CompareTest, DISABLED_SupportsSplitKWithIndivisibleKUsingPaddingEqual5) {
+TEST_F(CompareTest, SupportsSplitKWithIndivisibleKUsingPaddingEqual5) {
   constexpr absl::string_view kHloTextRef = R"(
 HloModule extracted
 
@@ -2905,10 +2911,10 @@ ENTRY e {
                                       /*run_hlo_passes=*/false));
 }
 
-// TODO(b/393299275): symbolic tile analysis fails to derive a tile for one
-// outer parameter here. However, we shouldn't be deriving this tile anyway,
-// and the underlying indexing map is incorrect. This requires a fix in
-// symbolic tile derivation.
+// TODO(b/393299275): it seems like this requires recognizing that the merge of
+// the two transposes in the fusion allows hoisting the final bitcast (`b1`).
+// I'm not sure if this is even required, since now we canonicalize transposes
+// before fusing.
 TEST_F(CompareTest, DISABLED_DifferentLayoutsAreSupportedInOneScope) {
   const std::string kHloTextTest = R"(
 triton_dot {

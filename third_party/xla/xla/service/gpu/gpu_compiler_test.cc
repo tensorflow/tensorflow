@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_executable.h"
@@ -116,8 +117,11 @@ class GpuCompilerTest : public HloTestBase {
     const se::DeviceDescription& gpu_device_info =
         backend().default_stream_executor()->GetDeviceDescription();
     TF_RETURN_IF_ERROR(ScheduleGpuModule(module, 4, gpu_device_info).status());
-    return tensorflow::down_cast<GpuCompiler*>(compiler)
-        ->RunPostSchedulingPipelines(module, 4 * 1024 * 1024, gpu_device_info);
+    GpuCompiler* gpu_compiler = tensorflow::down_cast<GpuCompiler*>(compiler);
+    std::unique_ptr<GpuAliasInfo> alias_info =
+        gpu_compiler->GetAliasInfo(gpu_device_info);
+    return gpu_compiler->RunPostSchedulingPipelines(
+        module, 4 * 1024 * 1024, gpu_device_info, alias_info.get());
   }
 
   // Like GetOptimizedModule, but also runs the backend. This is important for
@@ -163,6 +167,10 @@ ENTRY main {
 }
 
 TEST_F(GpuCompilerTest, RecordsStreamzStackTrace) {
+  if (tsl::kIsOpenSource) {
+    GTEST_SKIP() << "Streamz is not supported in OSS.";
+  }
+
   const char* hlo_text = R"(
 HloModule test
 
@@ -1088,9 +1096,9 @@ TEST_F(
   // succeed.
   constexpr absl::string_view rewritable_transpose_string = R"(
 ENTRY main {
-  p0 = f32[1024,2048]{1,0} parameter(0)
-  reshape = f32[1024,1024,2]{2,1,0} reshape(p0)
-  ROOT transpose = f32[2,1024,1024]{2,1,0} transpose(reshape), dimensions={2,1,0}
+  p0 = f32[1024,4096]{1,0} parameter(0)
+  reshape = f32[1024,1024,4]{2,1,0} reshape(p0)
+  ROOT transpose = f32[4,1024,1024]{2,1,0} transpose(reshape), dimensions={2,1,0}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(

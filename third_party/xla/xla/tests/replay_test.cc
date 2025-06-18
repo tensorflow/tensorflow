@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
@@ -67,13 +66,11 @@ TEST_F(ReplayTest, TwoPlusTwoReplay) {
   LiteralTestUtil::ExpectR0Equal<int32_t>(4, literal);
 }
 
-XLA_TEST_F(ReplayTest, XPlusYReplayWithParameters) {
+TEST_F(ReplayTest, XPlusYReplayWithParameters) {
   // Make computation.
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(S32, {}).value(), "x");
-  auto y = Parameter(&builder, 1,
-                     ShapeUtil::MakeValidatedShape(S32, {}).value(), "y");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(S32, {}), "x");
+  auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(S32, {}), "y");
   Add(x, y);
   XlaComputation computation = builder.Build().value();
 
@@ -111,8 +108,7 @@ TEST_F(ReplayTest, MapPlusTwoOverR1) {
   // As above, but with map(+2) over some constant array.
   XlaBuilder plus_two_builder("plus two");
   auto input =
-      Parameter(&plus_two_builder, 0,
-                ShapeUtil::MakeValidatedShape(S32, {}).value(), "input");
+      Parameter(&plus_two_builder, 0, ShapeUtil::MakeShape(S32, {}), "input");
   Add(input, ConstantR0<int32_t>(&plus_two_builder, 2));
   XlaComputation plus_two = plus_two_builder.Build().value();
 

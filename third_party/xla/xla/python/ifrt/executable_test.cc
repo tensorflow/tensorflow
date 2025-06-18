@@ -19,6 +19,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/execute_options.pb.h"
+#include "xla/python/ifrt/serdes_test_util.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
@@ -28,7 +30,17 @@ namespace ifrt {
 using ::testing::Pair;
 using ::testing::UnorderedElementsAre;
 
-TEST(ExecuteOptionsTest, RoundTrip) {
+class ExecuteOptionsSerDesTest : public testing::TestWithParam<SerDesVersion> {
+ public:
+  ExecuteOptionsSerDesTest() : version_(GetParam()) {}
+
+  SerDesVersion version() const { return version_; }
+
+ private:
+  SerDesVersion version_;
+};
+
+TEST_P(ExecuteOptionsSerDesTest, RoundTrip) {
   LoadedExecutable::ExecuteOptions options;
   options.launch_id = 1234;
   options.non_donatable_input_indices.insert(0);
@@ -36,7 +48,8 @@ TEST(ExecuteOptionsTest, RoundTrip) {
   options.fill_status = true;
   options.custom_options = AttributeMap(
       AttributeMap::Map({{"foo", AttributeMap::StringValue("bar")}}));
-  TF_ASSERT_OK_AND_ASSIGN(ExecuteOptionsProto serialized, options.ToProto());
+  TF_ASSERT_OK_AND_ASSIGN(ExecuteOptionsProto serialized,
+                          options.ToProto(version()));
   TF_ASSERT_OK_AND_ASSIGN(
       auto deserialized,
       LoadedExecutable::ExecuteOptions::FromProto(serialized));
@@ -49,6 +62,10 @@ TEST(ExecuteOptionsTest, RoundTrip) {
       deserialized.custom_options->map(),
       UnorderedElementsAre(Pair("foo", AttributeMap::StringValue("bar"))));
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    SerDesVersion, ExecuteOptionsSerDesTest,
+    testing::ValuesIn(test_util::AllSupportedSerDesVersions()));
 
 }  // namespace ifrt
 }  // namespace xla

@@ -81,6 +81,7 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/trace_command_buffer_factory.h"
@@ -594,7 +595,8 @@ TracedCommandBuffer::TracedCommandBuffer(
 
 absl::StatusOr<se::CommandBuffer*> TracedCommandBuffer::GetOrTraceCommandBuffer(
     const BufferAllocations* buffer_allocation, se::StreamExecutor* executor,
-    se::Stream* stream, absl::FunctionRef<absl::Status(se::Stream*)> trace) {
+    se::Stream* stream, absl::FunctionRef<absl::Status(se::Stream*)> trace,
+    se::StreamPriority priority) {
   // Collect memory addresses for relevant allocations.
   absl::InlinedVector<se::DeviceMemoryBase, 4> allocs;
   allocs.reserve(allocs_indices_.size());
@@ -634,6 +636,9 @@ absl::StatusOr<se::CommandBuffer*> TracedCommandBuffer::GetOrTraceCommandBuffer(
           entries_[i].command_buffer,
           se::TraceCommandBufferFactory::Create(executor, stream, trace));
       entries_[i].recorded_allocs.assign(allocs.begin(), allocs.end());
+      if (priority != se::StreamPriority::Default) {
+        TF_RETURN_IF_ERROR(entries_[i].command_buffer->SetPriority(priority));
+      }
       VLOG(6) << "Command buffer trace cache create new item for command "
               << trace_cmd_->ToString();
       return shift_right(i).command_buffer.get();
@@ -677,7 +682,7 @@ TracedCommandBufferCmd::RecordTracedCommand(
       auto nested_cmd,
       traced_cmd->GetOrTraceCommandBuffer(
           execute_params.buffer_allocations, execute_params.stream->parent(),
-          execute_params.command_buffer_trace_stream, trace));
+          execute_params.command_buffer_trace_stream, trace, priority()));
 
   VLOG(5) << "Record traced command into command buffer: " << command_buffer;
   return Handle(
@@ -764,10 +769,17 @@ absl::Status LaunchCmd::Initialize(const Thunk::InitializeParams& params,
     }
   }
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<se::Kernel> kernel,
-      CreateKernel(kernel_name_, args_.size(), params.src.text,
-                   params.src.binary, params.executor, shmem_bytes_));
+  std::unique_ptr<se::Kernel> kernel;
+  if (!params.src.binary.empty()) {
+    TF_ASSIGN_OR_RETURN(
+        kernel, CreateKernel(kernel_name_, args_.size(), params.src.binary,
+                             params.executor, shmem_bytes_));
+
+  } else {
+    TF_ASSIGN_OR_RETURN(
+        kernel, CreateKernel(kernel_name_, args_.size(), params.src.text,
+                             params.executor, shmem_bytes_));
+  }
 
   absl::MutexLock lock(&mutex_);
   kernels_.emplace(params.executor, std::move(kernel));
@@ -806,9 +818,9 @@ absl::StatusOr<const se::CommandBuffer::Command*> LaunchCmd::Record(
   return Handle(
       std::move(record_action),
       [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
-        return command_buffer->CreateLaunch(dims_.thread_counts_per_block(),
-                                            dims_.block_counts(), *kernel,
-                                            *kernel_args, dependencies);
+        return command_buffer->CreateLaunch(
+            dims_.thread_counts_per_block(), dims_.block_counts(), *kernel,
+            *kernel_args, dependencies, priority());
       },
       [&](const se::CommandBuffer::Command* command) {
         return command_buffer->UpdateLaunch(
@@ -888,9 +900,9 @@ absl::StatusOr<const se::CommandBuffer::Command*> CustomKernelLaunchCmd::Record(
   return Handle(
       std::move(record_action),
       [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
-        return command_buffer->CreateLaunch(custom_kernel_.thread_dims(),
-                                            custom_kernel_.block_dims(),
-                                            *kernel, kernel_args, dependencies);
+        return command_buffer->CreateLaunch(
+            custom_kernel_.thread_dims(), custom_kernel_.block_dims(), *kernel,
+            kernel_args, dependencies, priority());
       },
       [&](const se::CommandBuffer::Command* command) {
         return command_buffer->UpdateLaunch(
@@ -1561,7 +1573,8 @@ CollectiveCmd::CollectiveCmd(CommandBufferCmdType cmd_type,
                              ExecutionStreamId execution_stream_id,
                              ExecutionStreamId async_from_stream_id,
                              CollectiveConfig config)
-    : CommandBufferCmd(cmd_type, execution_stream_id),
+    : CommandBufferCmd(cmd_type, execution_stream_id,
+                       se::StreamPriority::Highest),
       async_from_stream_id_(async_from_stream_id),
       config_(std::move(config)) {}
 
@@ -1588,6 +1601,10 @@ CollectiveCmd::RecordTracedCommand(
                       se::TraceCommandBufferFactory::Create(
                           execute_params.stream->parent(),
                           execute_params.command_buffer_trace_stream, trace));
+
+  if (priority() != se::StreamPriority::Default) {
+    TF_RETURN_IF_ERROR(nested_cmd->SetPriority(priority()));
+  }
 
   return Handle(
       std::move(record_action),
@@ -1648,8 +1665,8 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllReduceCmd::Record(
   return RecordTracedCommand(
       execute_params, record_params, std::move(record_action), command_buffer,
       [&](se::Stream* stream) {
-        return RunAllReduce(collectives, reduction_kind_, device_buffers,
-                            *stream, comm_handle.comm);
+        return RunAllReduce(reduction_kind_, device_buffers, *stream,
+                            comm_handle.comm);
       });
 }
 
@@ -1711,9 +1728,9 @@ absl::StatusOr<const se::CommandBuffer::Command*> ReduceScatterCmd::Record(
 
   return RecordTracedCommand(execute_params, record_params, record_action,
                              command_buffer, [&](se::Stream* stream) {
-                               return RunReduceScatter(
-                                   collectives, reduction_kind_, device_buffers,
-                                   *stream, comm_handle.comm);
+                               return RunReduceScatter(reduction_kind_,
+                                                       device_buffers, *stream,
+                                                       comm_handle.comm);
                              });
 }
 
@@ -1773,8 +1790,8 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllToAllCmd::Record(
   return RecordTracedCommand(
       execute_params, record_params, std::move(record_action), command_buffer,
       [&](se::Stream* stream) {
-        return RunAllToAll(collectives, has_split_dimension_, device_buffers,
-                           *stream, comm_handle.comm);
+        return RunAllToAll(has_split_dimension_, device_buffers, *stream,
+                           comm_handle.comm);
       });
 }
 
@@ -1831,12 +1848,11 @@ absl::StatusOr<const se::CommandBuffer::Command*> AllGatherCmd::Record(
               *execute_params.collective_cliques, config().replica_groups,
               config().group_mode, GetAsyncStreamKind()));
 
-  return RecordTracedCommand(execute_params, record_params,
-                             std::move(record_action), command_buffer,
-                             [&](se::Stream* stream) {
-                               return RunAllGather(collectives, device_buffers,
-                                                   *stream, comm_handle.comm);
-                             });
+  return RecordTracedCommand(
+      execute_params, record_params, std::move(record_action), command_buffer,
+      [&](se::Stream* stream) {
+        return RunAllGather(device_buffers, *stream, comm_handle.comm);
+      });
 }
 
 CommandBufferCmd::BufferUseVector AllGatherCmd::buffers() const {
@@ -1894,12 +1910,12 @@ CollectiveBroadcastCmd::Record(const Thunk::ExecuteParams& execute_params,
               *execute_params.collective_cliques, config().replica_groups,
               config().group_mode, GetAsyncStreamKind()));
 
-  return RecordTracedCommand(
-      execute_params, record_params, std::move(record_action), command_buffer,
-      [&](se::Stream* stream) {
-        return RunCollectiveBroadcast(device_buffers, *stream, comm_handle.comm,
-                                      collectives);
-      });
+  return RecordTracedCommand(execute_params, record_params,
+                             std::move(record_action), command_buffer,
+                             [&](se::Stream* stream) {
+                               return RunCollectiveBroadcast(
+                                   device_buffers, *stream, comm_handle.comm);
+                             });
 }
 
 CommandBufferCmd::BufferUseVector CollectiveBroadcastCmd::buffers() const {

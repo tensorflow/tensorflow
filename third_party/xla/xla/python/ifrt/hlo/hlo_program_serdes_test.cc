@@ -33,6 +33,8 @@ limitations under the License.
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
+#include "xla/python/ifrt/serdes_test_util.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -44,7 +46,17 @@ using ::testing::HasSubstr;
 using ::testing::Not;
 using ::tsl::testing::StatusIs;
 
-TEST(HloProgramSerDesTest, RoundTrip) {
+class HloProgramSerDesTest : public testing::TestWithParam<SerDesVersion> {
+ public:
+  HloProgramSerDesTest() : version_(GetParam()) {}
+
+  SerDesVersion version() const { return version_; }
+
+ private:
+  SerDesVersion version_;
+};
+
+TEST_P(HloProgramSerDesTest, RoundTrip) {
   static constexpr absl::string_view kMlirModuleStr = R"(
 module {
   func.func @main(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
@@ -63,8 +75,10 @@ module {
         xla::ParseMlirModuleString(kMlirModuleStr, *context));
     auto program =
         std::make_unique<HloProgram>(std::move(context), std::move(module));
+    auto options = std::make_unique<SerializeOptions>();
+    options->version = version();
     TF_ASSERT_OK_AND_ASSIGN(serialized,
-                            Serialize(*program, /*options=*/nullptr));
+                            Serialize(*program, std::move(options)));
   }
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -84,7 +98,7 @@ module {
   EXPECT_FALSE(has_unsupported_dialect);
 }
 
-TEST(HloProgramSerDesTest, SerializationError) {
+TEST_P(HloProgramSerDesTest, SerializationError) {
   static constexpr absl::string_view kMlirModuleStr = R"(
 module {
   func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
@@ -102,13 +116,15 @@ module {
         xla::ParseMlirModuleString(kMlirModuleStr, *context));
     auto program =
         std::make_unique<HloProgram>(std::move(context), std::move(module));
-    EXPECT_THAT(Serialize(*program, /*options=*/nullptr),
+    auto options = std::make_unique<SerializeOptions>();
+    options->version = version();
+    EXPECT_THAT(Serialize(*program, std::move(options)),
                 StatusIs(Not(absl::StatusCode::kOk),
                          HasSubstr("Failed to serialize StableHLO")));
   }
 }
 
-TEST(HloProgramSerDesTest, DeserializationError) {
+TEST_P(HloProgramSerDesTest, DeserializationError) {
   static constexpr absl::string_view kMlirModuleStr = R"(
 module {
   func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
@@ -124,8 +140,10 @@ module {
         xla::ParseMlirModuleString(kMlirModuleStr, *context));
     auto program =
         std::make_unique<HloProgram>(std::move(context), std::move(module));
+    auto options = std::make_unique<SerializeOptions>();
+    options->version = version();
     TF_ASSERT_OK_AND_ASSIGN(serialized,
-                            Serialize(*program, /*options=*/nullptr));
+                            Serialize(*program, std::move(options)));
   }
 
   serialized.set_data("invalid data");
@@ -134,6 +152,10 @@ module {
               StatusIs(Not(absl::StatusCode::kOk),
                        HasSubstr("Failed to deserialize StableHLO module")));
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    SerDesVersion, HloProgramSerDesTest,
+    testing::ValuesIn(test_util::Week4OldOrLaterSerDesVersions()));
 
 }  // namespace
 }  // namespace ifrt

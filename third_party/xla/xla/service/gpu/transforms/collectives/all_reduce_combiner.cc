@@ -33,9 +33,7 @@ limitations under the License.
 
 namespace xla::gpu {
 
-namespace {
-
-std::optional<AllReduceCombiner::GroupKey> DefaultCombinerKey(
+static std::optional<AllReduceCombiner::GroupKey> DefaultCombinerKey(
     const HloInstruction* instruction, const HloDomainMap& domain_map) {
   std::optional<AllReduceCombiner::GroupKey> key =
       AllReduceCombiner::CombineKey(instruction, domain_map);
@@ -50,7 +48,7 @@ std::optional<AllReduceCombiner::GroupKey> DefaultCombinerKey(
   return key;
 }
 
-std::optional<AllReduceCombiner::GroupKey> PipelinedCombinerKey(
+static std::optional<AllReduceCombiner::GroupKey> PipelinedCombinerKey(
     const HloInstruction* instruction, const HloDomainMap& domain_map) {
   if (!IsPipelinedCollective(*instruction)) {
     return std::nullopt;
@@ -58,7 +56,7 @@ std::optional<AllReduceCombiner::GroupKey> PipelinedCombinerKey(
   return AllReduceCombiner::CombineKey(instruction, domain_map);
 }
 
-std::optional<AllReduceCombiner::GroupKey> SynchronousCombinerKey(
+static std::optional<AllReduceCombiner::GroupKey> SynchronousCombinerKey(
     const HloInstruction* instruction, const HloDomainMap& domain_map) {
   if (!IsCombinableSyncCollective(*instruction)) {
     return std::nullopt;
@@ -69,8 +67,6 @@ std::optional<AllReduceCombiner::GroupKey> SynchronousCombinerKey(
   }
   return AllReduceCombiner::CombineKey(instruction, domain_map);
 }
-
-}  // namespace
 
 absl::StatusOr<bool> GpuAllReduceCombiner::Run(
     HloModule* module,

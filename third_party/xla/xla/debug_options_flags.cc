@@ -18,6 +18,7 @@ limitations under the License.
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
+#include <fstream>
 #include <limits>
 #include <memory>
 #include <string>
@@ -184,23 +185,12 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_analytical_sol_latency_estimator(false);
   auto* sol_estimator_defaults =
       opts.mutable_xla_gpu_analytical_latency_estimator_options();
-  sol_estimator_defaults->emplace(
-      "nccl_op_launch_us",
-      absl::StrCat(static_cast<int>(100.0f * kDefaultNcclCostModelCoeff)));
-  // GBytes per second = 10^9 bytes per second
-  sol_estimator_defaults->emplace(
-      "nic_speed_gbps",
-      absl::StrCat(static_cast<int>(55.56f * kDefaultNcclCostModelCoeff)));
-  sol_estimator_defaults->emplace(
-      "chunk_prep_us",
-      absl::StrCat(static_cast<int>(13.34f * kDefaultNcclCostModelCoeff)));
-  sol_estimator_defaults->emplace(
-      "rtt_us",
-      absl::StrCat(static_cast<int>(68.89f * kDefaultNcclCostModelCoeff)));
-  sol_estimator_defaults->emplace(
-      "chunk_size_bytes", absl::StrCat(kDefaultNcclCostModelChunkSizeBytes));
-  sol_estimator_defaults->emplace(
-      "gpus_per_node", absl::StrCat(kDefaultNcclCostModelGPUsPerNode));
+  sol_estimator_defaults->emplace(kSolNcclOpLaunchUs, "-1");
+  sol_estimator_defaults->emplace(kSolNicSpeedGbps, "-1");
+  sol_estimator_defaults->emplace(kSolChunkPrepUs, "-1");
+  sol_estimator_defaults->emplace(kSolRttUs, "-1");
+  sol_estimator_defaults->emplace(kSolChunkSizeBytes, "-1");
+  sol_estimator_defaults->emplace(kSolGpusPerNode, "-1");
   opts.set_xla_gpu_pgle_profile_file_or_directory_path("");
   opts.set_xla_gpu_memory_limit_slop_factor(95);
   opts.set_xla_gpu_enable_highest_priority_async_stream(true);
@@ -2059,6 +2049,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       bool_setter_for(&DebugOptions::set_xla_gpu_use_memcpy_local_p2p),
       debug_options->xla_gpu_use_memcpy_local_p2p(),
       "Whether to use memcpy for local p2p communication."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_use_inprocess_lld",
+                bool_setter_for(&DebugOptions::set_xla_gpu_use_inprocess_lld),
+                debug_options->xla_gpu_use_inprocess_lld(),
+                "Whether to use lld as a library for the linking."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_dump_autotune_logs_to",
       string_setter_for(&DebugOptions::set_xla_gpu_dump_autotune_logs_to),
@@ -2389,13 +2384,15 @@ bool ParseFlagsFromDebugOptionsFile(absl::string_view filename) {
   VLOG(2) << "Parsing flags from file: " << filename;
   // Read the file content
   std::string file_content;
-  absl::Status status = tsl::ReadFileToString(
-      tsl::Env::Default(), std::string(filename), &file_content);
-  if (!status.ok()) {
-    LOG(ERROR) << "Failed to read file: " << filename
-               << ", error: " << status.ToString();
+  std::ifstream file{std::string(filename)};
+  if (!file.is_open()) {
+    LOG(ERROR) << "Failed to open file: " << filename;
     return false;
   }
+  std::stringstream buffer;
+  buffer << file.rdbuf();
+  file_content = buffer.str();
+  file.close();
   DebugOptions new_debug_options;
   tsl::protobuf::TextFormat::Parser parser;
   tsl::protobuf::TextFormat::ParseInfoTree tree;

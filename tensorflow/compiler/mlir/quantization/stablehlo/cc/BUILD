@@ -150,12 +150,12 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":io",
+        ":pass_pipeline",
         ":saved_model_import",
-        ":tf_pass_pipeline",
         ":types",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:tf_passes",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:convert_asset_args",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:unfreeze_constants",
@@ -190,7 +190,7 @@ tf_cc_test(
     srcs = ["saved_model_export_test.cc"],
     deps = [
         ":saved_model_export",
-        "//tensorflow/compiler/mlir/quantization/common:tf_test_base",
+        "//tensorflow/compiler/mlir/quantization/common:test_base",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
         "//tensorflow/core:all_kernels",  # buildcleaner: keep Required to export to GraphDef
         "//tensorflow/core:core_cpu_base",
@@ -244,31 +244,10 @@ tf_cc_test(
     deps = [
         ":saved_model_import",
         ":types",
-        "//tensorflow/compiler/mlir/quantization/common:tf_test_base",
+        "//tensorflow/compiler/mlir/quantization/common:test_base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
-    name = "tf_pass_pipeline",
-    srcs = ["tf_pass_pipeline.cc"],
-    hdrs = ["tf_pass_pipeline.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:tf_passes",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:tf_passes",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:ReconcileUnrealizedCasts",
-        "@llvm-project//mlir:Transforms",
-        "@local_xla//xla/mlir_hlo:mhlo_passes",
-        "@stablehlo//:stablehlo_passes",
     ],
 )
 
@@ -290,32 +269,6 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo:mhlo_passes",
         "@stablehlo//:stablehlo_passes",
-    ],
-)
-
-cc_library(
-    name = "tf_pre_calibration",
-    srcs = ["tf_pre_calibration.cc"],
-    hdrs = ["tf_pre_calibration.h"],
-    compatible_with = get_compatible_with_portable(),
-    visibility = [
-        "//tensorflow/compiler/mlir/quantization/stablehlo:__subpackages__",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:__subpackages__",
-    ],
-    deps = [
-        ":component",
-        ":tf_pass_pipeline",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:tf_passes",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
-        "@com_google_absl//absl/base:nullability",
-        "@com_google_absl//absl/log:die_if_null",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@local_xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -362,27 +315,6 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@local_xla//xla/tsl/platform:status_matchers",
-    ],
-)
-
-cc_library(
-    name = "tf_report",
-    srcs = ["tf_report.cc"],
-    hdrs = ["tf_report.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":io",
-        "//tensorflow/compiler/mlir/quantization/common:tf_lift_as_function_call",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -438,30 +370,6 @@ cc_library(
 )
 
 cc_library(
-    name = "tf_post_calibration",
-    srcs = ["tf_post_calibration.cc"],
-    hdrs = ["tf_post_calibration.h"],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        ":component",
-        ":config",
-        ":tf_pass_pipeline",
-        "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/stablehlo/instrumentations:tf_save_report",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:tf_passes",
-        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
-        "@com_google_absl//absl/base:nullability",
-        "@com_google_absl//absl/log:die_if_null",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@local_xla//xla/mlir_hlo:mhlo_passes",
-        "@local_xla//xla/tsl/platform:errors",
-    ],
-)
-
-cc_library(
     name = "post_calibration",
     srcs = ["post_calibration.cc"],
     hdrs = ["post_calibration.h"],
@@ -493,10 +401,10 @@ cc_library(
     deps = [
         ":component",
         ":context",
+        ":post_calibration",
+        ":pre_calibration",
         ":saved_model_export",
         ":saved_model_import",
-        ":tf_post_calibration",
-        ":tf_pre_calibration",
         ":types",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
         "//tensorflow/compiler/mlir/quantization/stablehlo/cc/calibration:component",
@@ -528,14 +436,14 @@ cc_library(
         ":component",
         ":config",
         ":context",
+        ":pass_pipeline",
         ":saved_model_export",
         ":saved_model_import",
-        ":tf_pass_pipeline",
         ":types",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/stablehlo/instrumentations:tf_save_report",
+        "//tensorflow/compiler/mlir/quantization/stablehlo/instrumentations:save_report",
         "//tensorflow/compiler/mlir/quantization/tensorflow:exported_model_proto_cc",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:tf_passes",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow/python:py_function_lib",
         "//tensorflow/core:core_cpu_base",

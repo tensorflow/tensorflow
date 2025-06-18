@@ -786,8 +786,8 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
   }
   std::unique_ptr<stream_executor::ActivateContext> scoped_activation =
       stream->parent()->Activate();
-  profiler::ScopedMemoryDebugAnnotation op_annotation(
-      op_kernel->name_view().data(), context->step_id());
+  profiler::ScopedMemoryDebugAnnotation op_annotation(op_kernel->name_view(),
+                                                      context->step_id());
   bool should_log_inputs_and_outputs = ShouldLogInputsAndOutputs(op_kernel);
 
   if (should_log_inputs_and_outputs) {

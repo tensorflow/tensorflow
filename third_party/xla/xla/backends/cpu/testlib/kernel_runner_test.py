@@ -104,9 +104,7 @@ class MlirKernelRunnerTest(absltest.TestCase):
         }
       }
     """
-    mlir_emitter = cpu_testlib.MlirTestKernelEmitter(
-        ir, "sum_kernel", (1, 1, 1)
-    )
+    mlir_emitter = cpu_testlib.MlirTestKernelEmitter(ir, "sum", (1, 1, 1))
 
     kernel_definition = mlir_emitter.emit_kernel_definition()
 

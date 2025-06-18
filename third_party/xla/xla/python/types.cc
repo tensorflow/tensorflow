@@ -637,7 +637,7 @@ std::optional<CastToArrayResult> CastToArray(nb::handle h) {
   for (int i = 0; i < array.ndim(); ++i) {
     dims[i] = array.shape(i);
   }
-  Shape shape = ShapeUtil::MakeValidatedShape(type, dims).value();
+  Shape shape = ShapeUtil::MakeShape(type, dims);
   if (array.size() * array.itemsize() != ShapeUtil::ByteSizeOf(shape)) {
     throw xla::XlaRuntimeError(absl::StrCat(
         "Size mismatch for buffer: ", array.size() * array.itemsize(), " vs. ",

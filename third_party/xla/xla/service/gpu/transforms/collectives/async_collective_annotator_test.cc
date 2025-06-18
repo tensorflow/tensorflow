@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/tests/test_macros.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
@@ -101,7 +100,7 @@ class AsyncCollectiveAnnotatorTest
     : public HloHardwareIndependentTestBase,
       public ::testing::WithParamInterface<TestCase> {};
 
-XLA_TEST_P(AsyncCollectiveAnnotatorTest, Test) {
+TEST_P(AsyncCollectiveAnnotatorTest, Test) {
   const TestCase& test_case = GetParam();
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,

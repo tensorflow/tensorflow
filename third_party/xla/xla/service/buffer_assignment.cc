@@ -2345,4 +2345,71 @@ BufferAssigner::CreateAssignment(
   return std::move(assignment);
 }
 
+namespace {
+
+struct Buffer {
+  int64_t size;
+  int ref_count;
+  struct Buffer* underlying;  // canonical buffer in case of SHARE_WITH
+  explicit Buffer(int64_t size)
+      : size(size), ref_count(0), underlying(nullptr) {}
+};
+
+struct BufferMap {
+  explicit BufferMap(const BufferAssignmentProto& proto) {
+    buffers.reserve(proto.logical_buffers_size());
+    for (const LogicalBufferProto& b : proto.logical_buffers()) {
+      buffers.push_back(Buffer(b.size()));
+      id_to_buffer[b.id()] = &buffers.back();
+    }
+  }
+  absl::flat_hash_map<int64_t, Buffer*> id_to_buffer;
+  std::vector<Buffer> buffers;
+};
+
+}  // namespace
+
+absl::StatusOr<int> ComputePeakMemory(const BufferAssignmentProto& proto) {
+  BufferMap buffers(proto);
+  int64_t memory = 0;
+  int64_t peak_memory = 0;
+  for (const HeapSimulatorTrace& trace : proto.heap_simulator_traces()) {
+    for (const HeapSimulatorTrace::Event& event : trace.events()) {
+      Buffer* buffer = buffers.id_to_buffer[event.buffer_id()];
+      switch (event.kind()) {
+        case HeapSimulatorTrace::Event::ALLOC:
+          memory += buffer->size;
+          buffer->ref_count++;
+          break;
+        case HeapSimulatorTrace::Event::FREE: {
+          Buffer* root = buffer;
+          while (root->underlying) {
+            root = root->underlying;
+          }
+          buffer->underlying = nullptr;  // we no longer share the buffer.
+          if (--root->ref_count == 0) {
+            memory -= root->size;
+          }
+          break;
+        }
+        case HeapSimulatorTrace::Event::SHARE_WITH: {
+          Buffer* root = buffers.id_to_buffer[event.share_with_canonical_id()];
+          while (root->underlying) {
+            root = root->underlying;
+          }
+          buffer->underlying = root;
+          if (++root->ref_count == 1) {
+            memory += root->size;
+          }
+          break;
+        }
+        default:
+          break;
+      }
+      peak_memory = std::max(peak_memory, memory);
+    }
+  }
+  return peak_memory;
+}
+
 }  // namespace xla

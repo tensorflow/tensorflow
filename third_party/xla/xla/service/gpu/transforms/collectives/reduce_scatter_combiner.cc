@@ -31,9 +31,8 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
-namespace {
 
-std::optional<ReduceScatterCombiner::GroupKey> DefaultCombinerKey(
+static std::optional<ReduceScatterCombiner::GroupKey> DefaultCombinerKey(
     const HloInstruction* instruction, const HloDomainMap& domain_map,
     bool combine_by_dim) {
   std::optional<ReduceScatterCombiner::GroupKey> key =
@@ -50,7 +49,7 @@ std::optional<ReduceScatterCombiner::GroupKey> DefaultCombinerKey(
   return key;
 }
 
-std::optional<ReduceScatterCombiner::GroupKey> PipelinedCombinerKey(
+static std::optional<ReduceScatterCombiner::GroupKey> PipelinedCombinerKey(
     const HloInstruction* instruction, const HloDomainMap& domain_map,
     bool combine_by_dim) {
   if (!IsPipelinedCollective(*instruction)) {
@@ -60,7 +59,7 @@ std::optional<ReduceScatterCombiner::GroupKey> PipelinedCombinerKey(
                                            combine_by_dim);
 }
 
-std::optional<ReduceScatterCombiner::GroupKey> SynchronousCombinerKey(
+static std::optional<ReduceScatterCombiner::GroupKey> SynchronousCombinerKey(
     const HloInstruction* instruction, const HloDomainMap& domain_map,
     bool combine_by_dim) {
   if (!IsCombinableSyncCollective(*instruction)) {
@@ -73,8 +72,6 @@ std::optional<ReduceScatterCombiner::GroupKey> SynchronousCombinerKey(
   return ReduceScatterCombiner::CombineKey(instruction, domain_map,
                                            combine_by_dim);
 }
-
-}  // namespace
 
 absl::StatusOr<bool> GpuReduceScatterCombiner::Run(
     HloModule* module,

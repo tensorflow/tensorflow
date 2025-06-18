@@ -1,0 +1,24 @@
+diff --git a/src/include/non_abi/device/pt-to-pt/utils_device.h b/src/include/non_abi/device/pt-to-pt/utils_device.h
+index 8342ebe06aeed8fcd5461e0fb45b36de266f7ae5..58a2a874d63e9a716544b17c9e3c55ea2b0e7e6c 100644
+--- a/src/include/non_abi/device/pt-to-pt/utils_device.h
++++ b/src/include/non_abi/device/pt-to-pt/utils_device.h
+@@ -29,6 +29,8 @@
+ 
+ #ifdef NVSHMEMI_COMM_DEVICE_UTILS_USE_PTX
+ 
++#if defined __CUDA_ARCH__
++
+ __device__ static inline uint64_t BSWAP64(uint64_t x) {
+     uint64_t ret;
+     asm volatile(
+@@ -83,6 +85,8 @@ __device__ static inline uint16_t BSWAP16(uint16_t x) {
+     return ret;
+ }
+ 
++#endif /*! __CUDA_ARCH__ */
++
+ #else /* NVSHMEMI_COMM_DEVICE_UTILS_USE_PTX */
+ 
+ #define BSWAP64(x)                                                               \
+
+

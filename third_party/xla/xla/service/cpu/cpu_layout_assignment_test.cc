@@ -64,7 +64,7 @@ class CpuLayoutAssignmentTest : public HloHardwareIndependentTestBase {
 TEST_F(CpuLayoutAssignmentTest, DotWithConstantRhsTensor) {
   auto builder = HloComputation::Builder(TestName());
   Shape lhs_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {12}, {0});
-  Shape rhs_shape = ShapeUtil::MakeValidatedShape(F32, {12, 24}).value();
+  Shape rhs_shape = ShapeUtil::MakeShape(F32, {12, 24});
   Shape result_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {24}, {0});
   auto dot_lhs = builder.AddInstruction(
       HloInstruction::CreateParameter(0, lhs_shape, "param0"));
@@ -99,7 +99,7 @@ TEST_F(CpuLayoutAssignmentTest, MultipleDotsWithSameConstantRhsTensor0) {
   // products can be optimized if the constant has a column-major layout.
   auto builder = HloComputation::Builder(TestName());
   Shape lhs_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {12}, {0});
-  Shape rhs_shape = ShapeUtil::MakeValidatedShape(F32, {12, 24}).value();
+  Shape rhs_shape = ShapeUtil::MakeShape(F32, {12, 24});
   Shape result_shape = ShapeUtil::MakeShapeWithDenseLayout(F32, {24}, {0});
   auto dot_a_lhs = builder.AddInstruction(
       HloInstruction::CreateParameter(0, lhs_shape, "param0"));
@@ -223,12 +223,11 @@ TEST_F(CpuLayoutAssignmentTest, DotWithConstantRhsTensorThroughGTE) {
   Shape other_shape =
       ShapeUtil::MakeShapeWithDenseLayout(F32, {100, 24}, {0, 1});
 
-  auto constant_shape =
-      ShapeUtil::MakeValidatedTupleShape({other_shape, rhs_shape}).value();
+  auto constant_shape = ShapeUtil::MakeTupleShape({other_shape, rhs_shape});
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateFromShape(constant_shape)));
 
-  Shape result_shape = ShapeUtil::MakeValidatedShape(F32, {1, 24}).value();
+  Shape result_shape = ShapeUtil::MakeShape(F32, {1, 24});
 
   auto dot_lhs = builder.AddInstruction(
       HloInstruction::CreateParameter(0, lhs_shape, "param0"));
@@ -272,15 +271,15 @@ static absl::StatusOr<DotOutputFusionLayoutAssignmentResult> RunDotOutputFusion(
 
   auto builder = HloComputation::Builder(test_name);
 
-  Shape dot_lhs_shape = ShapeUtil::MakeValidatedShape(F32, {m, k}).value();
-  Shape dot_rhs_shape = ShapeUtil::MakeValidatedShape(F32, {k, n}).value();
-  Shape dot_shape = ShapeUtil::MakeValidatedShape(F32, {m, n}).value();
+  Shape dot_lhs_shape = ShapeUtil::MakeShape(F32, {m, k});
+  Shape dot_rhs_shape = ShapeUtil::MakeShape(F32, {k, n});
+  Shape dot_shape = ShapeUtil::MakeShape(F32, {m, n});
   if (m == 1) {
-    dot_lhs_shape = ShapeUtil::MakeValidatedShape(F32, {k}).value();
-    dot_shape = ShapeUtil::MakeValidatedShape(F32, {n}).value();
+    dot_lhs_shape = ShapeUtil::MakeShape(F32, {k});
+    dot_shape = ShapeUtil::MakeShape(F32, {n});
   } else if (n == 1) {
-    dot_rhs_shape = ShapeUtil::MakeValidatedShape(F32, {k}).value();
-    dot_shape = ShapeUtil::MakeValidatedShape(F32, {m}).value();
+    dot_rhs_shape = ShapeUtil::MakeShape(F32, {k});
+    dot_shape = ShapeUtil::MakeShape(F32, {m});
   }
 
   HloInstruction* dot_lhs = builder.AddInstruction(

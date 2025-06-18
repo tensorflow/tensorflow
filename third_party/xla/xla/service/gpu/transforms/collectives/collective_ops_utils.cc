@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -39,11 +40,12 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
 namespace {
 
 struct CommunicationMetadata {
   absl::flat_hash_map<int64_t, size_t> node_to_participant_count;
+  int num_devices_per_host;
+  int64_t replica_count;
 };
 
 bool SameParticipantCounts(const absl::flat_hash_map<int64_t, size_t>& lhs,
@@ -64,44 +66,68 @@ bool SameParticipantCounts(const absl::flat_hash_map<int64_t, size_t>& lhs,
 }
 
 absl::StatusOr<CommunicationMetadata> CommunicationContext(
-    const CollectiveDeviceList& device_list, int num_devices_per_host) {
+    const HloChannelInstruction& instr, int num_devices_per_host) {
   absl::flat_hash_map<int64_t, size_t> node_to_participant_count;
-  for (const ReplicaGroup& replica_group : device_list.replica_groups()) {
-    absl::flat_hash_map<int64_t, size_t> buffer;
-    for (int64_t rank : replica_group.replica_ids()) {
-      int64_t node_id = rank / num_devices_per_host;
-      buffer[node_id]++;
+
+  if (auto* collective =
+          dynamic_cast<const HloCollectiveInstruction*>(&instr)) {
+    for (const ReplicaGroup& replica_group :
+         collective->device_list().replica_groups()) {
+      absl::flat_hash_map<int64_t, size_t> buffer;
+      for (int64_t rank : replica_group.replica_ids()) {
+        int64_t node_id = rank / num_devices_per_host;
+        buffer[node_id]++;
+      }
+      if (!node_to_participant_count.empty() &&
+          !SameParticipantCounts(buffer, node_to_participant_count)) {
+        return absl::FailedPreconditionError(
+            absl::StrCat("Non homogenous replica group: ",
+                         collective->device_list().ToString()));
+      }
+      if (node_to_participant_count.empty()) {
+        node_to_participant_count = buffer;
+      }
     }
-    if (!node_to_participant_count.empty() &&
-        !SameParticipantCounts(buffer, node_to_participant_count)) {
-      return absl::FailedPreconditionError(absl::StrCat(
-          "Non homogenous replica group: ", device_list.ToString()));
+  } else if (auto* permute =
+                 dynamic_cast<const HloCollectivePermuteInstruction*>(&instr)) {
+    for (const auto& [source, target] : permute->source_target_pairs()) {
+      int64_t source_node = source / num_devices_per_host;
+      int64_t target_node = target / num_devices_per_host;
+      node_to_participant_count[source_node]++;
+      node_to_participant_count[target_node]++;
     }
-    if (node_to_participant_count.empty()) {
-      node_to_participant_count = buffer;
-    }
+  } else {
+    return absl::FailedPreconditionError(
+        "Cannot determine communication context for non-collective channel "
+        "instruction");
   }
 
-  return CommunicationMetadata{node_to_participant_count};
+  return CommunicationMetadata{node_to_participant_count, num_devices_per_host,
+                               instr.GetModule()->config().replica_count()};
 }
 
 bool IsSingleHost(const CommunicationMetadata& pattern) {
-  return pattern.node_to_participant_count.size() == 1;
+  if (pattern.node_to_participant_count.size() == 1) {
+    return true;
+  }
+  return pattern.replica_count > 0 &&
+         pattern.node_to_participant_count.empty() &&
+         pattern.replica_count <= pattern.num_devices_per_host;
 }
 
-bool IsRailAligned(const CommunicationMetadata& pattern,
-                   int num_devices_per_host) {
-  return absl::c_all_of(pattern.node_to_participant_count,
-                        [num_devices_per_host](const auto& elem) {
-                          const auto& [node_id, participant_count] = elem;
-                          return participant_count == num_devices_per_host;
-                        });
+bool IsRailAligned(const CommunicationMetadata& pattern) {
+  if (!IsSingleHost(pattern) && pattern.node_to_participant_count.empty()) {
+    return true;
+  }
+  return absl::c_all_of(
+      pattern.node_to_participant_count, [&pattern](const auto& elem) {
+        const auto& [node_id, participant_count] = elem;
+        return participant_count == pattern.num_devices_per_host;
+      });
 }
 
-bool IsNonRailAligned(const CommunicationMetadata& pattern,
-                      int num_devices_per_host) {
-  return !IsSingleHost(pattern) &&
-         !IsRailAligned(pattern, num_devices_per_host);
+bool IsNonRailAligned(const CommunicationMetadata& pattern) {
+  return !IsSingleHost(pattern) && !IsRailAligned(pattern);
 }
 
 }  // namespace
@@ -115,36 +141,21 @@ bool IsGPUSyncCollective(const HloInstruction& instr) {
 }
 
 absl::StatusOr<GPUCommunicationType> CommunicationType(
-    const HloCollectiveInstruction& instr,
+    int num_devices_per_host, const HloChannelInstruction& instr,
     const se::GpuComputeCapability& gpu_version) {
-  auto iota = instr.device_list().iota_replica_group_list();
-
   if (!std::holds_alternative<se::CudaComputeCapability>(gpu_version)) {
     return absl::FailedPreconditionError("Only CUDA is supported.");
   }
 
-  auto cuda_compute_capability =
-      std::get<se::CudaComputeCapability>(gpu_version);
-  if (!cuda_compute_capability.IsHopper()) {
-    return absl::FailedPreconditionError(
-        "Only Hopper is supported to get communication type");
-  }
-
-  // We assume no topology was provided to the compiler and no
-  // `CUDA_VISIBLE_DEVICES` env var has been set.
-  // For now we only support H100 and assume 8GPUs per host.
-  int num_devices_per_host = 8;
-
-  TF_ASSIGN_OR_RETURN(
-      CommunicationMetadata comm,
-      CommunicationContext(instr.device_list(), num_devices_per_host));
+  TF_ASSIGN_OR_RETURN(CommunicationMetadata comm,
+                      CommunicationContext(instr, num_devices_per_host));
   if (IsSingleHost(comm)) {
     return GPUCommunicationType::SINGLE_HOST;
   }
-  if (IsRailAligned(comm, num_devices_per_host)) {
+  if (IsRailAligned(comm)) {
     return GPUCommunicationType::RAIL_ALIGNED;
   }
-  if (IsNonRailAligned(comm, num_devices_per_host)) {
+  if (IsNonRailAligned(comm)) {
     return GPUCommunicationType::NON_RAIL_ALIGNED;
   }
 

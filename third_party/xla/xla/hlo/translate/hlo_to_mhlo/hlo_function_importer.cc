@@ -1021,11 +1021,18 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         const std::string& raw_backend_config =
             instruction->raw_backend_config_string();
         if (!raw_backend_config.empty()) {
-          llvm::SmallVector<NamedAttribute, 1> frontend_attributes;
           frontend_attributes.push_back(builder_->getNamedAttr(
               "backend_config", builder_->getStringAttr(raw_backend_config)));
-          call->setAttr(kFrontendAttributesAttr,
-                        builder_->getDictionaryAttr(frontend_attributes));
+          if (frontend_attributes.size() == 1) {
+            frontend_attributes_index = attributes.size();
+            attributes.push_back(builder_->getNamedAttr(
+                kFrontendAttributesAttr,
+                builder_->getDictionaryAttr(frontend_attributes)));
+          } else {
+            attributes[frontend_attributes_index] = builder_->getNamedAttr(
+                kFrontendAttributesAttr,
+                builder_->getDictionaryAttr(frontend_attributes));
+          }
         }
         for (auto attr : attributes) {
           call->setAttr(attr.getName(), attr.getValue());
@@ -1743,10 +1750,8 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         flattened_ret_types.insert(flattened_ret_types.begin(), state_type);
 
         if (instruction->has_sharding()) {
-          Shape tuple_shape =
-              ShapeUtil::MakeValidatedTupleShape(
-                  {rng_op->operand(0)->shape(), instruction->shape()})
-                  .value();
+          Shape tuple_shape = ShapeUtil::MakeTupleShape(
+              {rng_op->operand(0)->shape(), instruction->shape()});
           HloSharding tuple_sharding = HloSharding::Tuple(
               tuple_shape, {HloSharding::Replicate(), instruction->sharding()});
           CHECK_EQ(attributes.front().getName().str(), kShardingAttr);

@@ -32,7 +32,6 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/call_once.h"
 #include "absl/base/dynamic_annotations.h"
-#include "absl/base/nullability.h"
 #include "absl/base/optimization.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/inlined_vector.h"
@@ -458,8 +457,7 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
       ifrt::DType dtype, ifrt::Shape shape) {
     TF_ASSIGN_OR_RETURN(xla::PrimitiveType xla_dtype,
                         ifrt::ToPrimitiveType(dtype));
-    auto xla_shape =
-        ShapeUtil::MakeValidatedShape(xla_dtype, shape.dims()).value();
+    auto xla_shape = xla::ShapeUtil::MakeShape(xla_dtype, shape.dims());
     auto strides = xla::ShapeUtil::ByteStrides(xla_shape);
     if (!strides.has_value()) {
       return InvalidArgument("Couldn't compute byte strides for shape: %s",
@@ -1007,7 +1005,7 @@ class NanoExecutable final
       const ProgramShape& program_shape, const XlaComputation& computation) {
     const auto& result_shape = program_shape.result();
 
-    int output_id = computation.proto().computations(0).root_id();
+    int64_t output_id = computation.proto().computations(0).root_id();
 
     std::vector<OpSharding> shardings(
         (result_shape.IsTuple() ? result_shape.tuple_shapes().size() : 1));

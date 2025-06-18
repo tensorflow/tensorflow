@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -133,7 +132,7 @@ TEST_F(ComputeConstantTest, ScalarRng) {
     XlaBuilder b(TestName());
     auto computation =
         RngUniform(ConstantR0<float>(&b, 1.1f), ConstantR0<float>(&b, 2.1f),
-                   ShapeUtil::MakeValidatedShape(F32, {}).value());
+                   ShapeUtil::MakeShape(F32, {}));
     EXPECT_FALSE(IsConstant(computation, &b));
 
     auto value = ComputeConstantScalar<float>(client, computation, &b);
@@ -146,8 +145,7 @@ TEST_F(ComputeConstantTest, DirectParamMissing) {
   for (ClientType client_type : client_types) {
     Client* client = ClientOrDie(platform_, client_type);
     XlaBuilder b(TestName());
-    auto computation = Parameter(
-        &b, 0, ShapeUtil::MakeValidatedShape(F32, {}).value(), "param");
+    auto computation = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {}), "param");
     EXPECT_FALSE(IsConstant(computation, &b));
 
     auto value = ComputeConstantScalar<float>(client, computation, &b);
@@ -196,14 +194,12 @@ TEST_F(ComputeConstantTest, UnrelatedParam) {
     Client* client = ClientOrDie(platform_, client_type);
     XlaBuilder b(TestName());
 
-    auto param_a = Parameter(
-        &b, 10, ShapeUtil::MakeValidatedShape(F32, {}).value(), "param0");
+    auto param_a = Parameter(&b, 10, ShapeUtil::MakeShape(F32, {}), "param0");
     auto constant_4 =
         Add(ConstantR0<float>(&b, 2.5f), ConstantR0<float>(&b, 1.5f));
     auto not_constant_a = Add(constant_4, param_a);
 
-    auto param_b = Parameter(
-        &b, 1, ShapeUtil::MakeValidatedShape(F32, {}).value(), "param1");
+    auto param_b = Parameter(&b, 1, ShapeUtil::MakeShape(F32, {}), "param1");
     auto constant_9 =
         Mul(ConstantR0<float>(&b, 2.0f), ConstantR0<float>(&b, 4.5f));
     auto not_constant_b = Add(param_b, constant_9);
@@ -250,7 +246,7 @@ TEST_F(ComputeConstantTest, IntegerDivide) {
   }
 }
 
-XLA_TEST_F(ComputeConstantTest, Layout) {
+TEST_F(ComputeConstantTest, Layout) {
   for (ClientType client_type : client_types) {
     Client* client = ClientOrDie(platform_, client_type);
     XlaBuilder b(TestName());

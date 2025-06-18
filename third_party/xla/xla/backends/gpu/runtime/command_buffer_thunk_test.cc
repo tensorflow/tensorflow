@@ -76,7 +76,7 @@ limitations under the License.
 namespace xla::gpu {
 
 using MemoryAccess = BufferUse::MemoryAccess;
-using KernelArgsPacking = se::MultiKernelLoaderSpec::KernelArgsPacking;
+using KernelArgsPacking = se::KernelLoaderSpec::KernelArgsPacking;
 
 namespace {
 
@@ -95,8 +95,9 @@ struct OwningExecutableSource {
 };
 
 absl::StatusOr<OwningExecutableSource> ExecutableSource() {
-  TF_ASSIGN_OR_RETURN(std::vector<uint8_t> fatbin,
-                      se::gpu::GetGpuTestKernelsFatbin());
+  TF_ASSIGN_OR_RETURN(
+      std::vector<uint8_t> fatbin,
+      se::gpu::GetGpuTestKernelsFatbin(GpuExecutor()->GetPlatform()->Name()));
   return OwningExecutableSource{/*text=*/{},
                                 /*binary=*/fatbin};
 }
@@ -552,8 +553,9 @@ TEST(CommandBufferThunkTest, CustomAddKernelLaunchCmd) {
 
   auto packing = CreateDefaultArgsPacking();
 
-  se::MultiKernelLoaderSpec spec(/*arity=*/3, std::move(packing));
-  spec.AddInProcessSymbol(se::gpu::internal::GetAddI32Kernel(), "add");
+  TF_ASSERT_OK_AND_ASSIGN(stream_executor::KernelLoaderSpec spec,
+                          stream_executor::gpu::GetAddI32TestKernelSpec(
+                              stream_executor->GetPlatform()->id()));
 
   auto custom_kernel =
       CustomKernel("AddI32", std::move(spec), se::BlockDim(),
@@ -695,11 +697,10 @@ TEST(CommandBufferThunkTest, GemmCmd) {
   BufferAllocation::Slice slice_workspace(&alloc_workspace, 0, 1024 * 1024);
 
   auto config = GemmConfig::For(
-      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {2, 4}).value(), {},
-      {1}, ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {4, 3}).value(),
-      {}, {0},
-      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {2, 3}).value(), 1.0,
-      0.0, 0.0, PrecisionConfig::ALG_UNSET, std::nullopt,
+      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), {}, {1},
+      ShapeUtil::MakeShape(PrimitiveType::F32, {4, 3}), {}, {0},
+      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 3}), 1.0, 0.0, 0.0,
+      PrecisionConfig::ALG_UNSET, std::nullopt,
       se::blas::kDefaultComputePrecision, false, false,
       stream_executor->GetDeviceDescription().gpu_compute_capability());
   ASSERT_TRUE(config.ok());
@@ -826,11 +827,10 @@ TEST(CommandBufferThunkTest, DISABLED_DynamicSliceFusionCmd) {
   BufferAllocation::Slice slice_workspace(fake_allocations[3].get(), 0,
                                           1024 * 1024);
   auto config = GemmConfig::For(
-      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {2, 4}).value(), {},
-      {1}, ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {4, 3}).value(),
-      {}, {0},
-      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {2, 3}).value(), 1.0,
-      0.0, 0.0, PrecisionConfig::ALG_UNSET, std::nullopt,
+      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), {}, {1},
+      ShapeUtil::MakeShape(PrimitiveType::F32, {4, 3}), {}, {0},
+      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 3}), 1.0, 0.0, 0.0,
+      PrecisionConfig::ALG_UNSET, std::nullopt,
       se::blas::kDefaultComputePrecision, false, false,
       stream_executor->GetDeviceDescription().gpu_compute_capability());
   ASSERT_TRUE(config.ok());
@@ -860,11 +860,11 @@ TEST(CommandBufferThunkTest, DISABLED_DynamicSliceFusionCmd) {
       lhs_offsets, std::nullopt, std::nullopt, std::nullopt};
 
   std::vector<std::optional<Shape>> orig_shapes = {
-      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {4, 4}).value(),
-      std::nullopt, std::nullopt, std::nullopt};
+      ShapeUtil::MakeShape(PrimitiveType::F32, {4, 4}), std::nullopt,
+      std::nullopt, std::nullopt};
   std::vector<std::optional<Shape>> sliced_shapes = {
-      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {2, 4}).value(),
-      std::nullopt, std::nullopt, std::nullopt};
+      ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), std::nullopt,
+      std::nullopt, std::nullopt};
   std::vector<std::optional<uint64_t>> offset_byte_sizes = {
       sizeof(int64_t), std::nullopt, std::nullopt, std::nullopt};
 
@@ -964,17 +964,13 @@ TEST(CommandBufferThunkTest, CublasLtCmd) {
   BufferAllocation::Slice slice_workspace(&alloc_workspace, 0, 1024 * 1024);
 
   auto config = GemmConfig::For(
-      /*lhs_shape*/ ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {2, 4})
-          .value(),
+      /*lhs_shape*/ ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}),
       /*lhs_batch_dims*/ {}, /*lhs_contracting_dims*/ {1},
-      /*rhs_shape*/
-      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {4, 3}).value(),
+      /*rhs_shape*/ ShapeUtil::MakeShape(PrimitiveType::F32, {4, 3}),
       /*rhs_batch_dims*/ {}, /*rhs_contracting_dims*/ {0},
-      /*c_shape*/
-      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {2, 3}).value(),
+      /*c_shape*/ ShapeUtil::MakeShape(PrimitiveType::F32, {2, 3}),
       /*bias_shape_ptr*/ nullptr,
-      /*output_shape*/
-      ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {2, 3}).value(),
+      /*output_shape*/ ShapeUtil::MakeShape(PrimitiveType::F32, {2, 3}),
       /*alpha_real*/ 1.0, /*alpha_imag*/ 0,
       /*beta*/ 1.0,
       /*precision_algorithm*/ PrecisionConfig::ALG_UNSET,

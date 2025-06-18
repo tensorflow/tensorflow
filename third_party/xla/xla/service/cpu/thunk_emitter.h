@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
+#include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/runtime/sort_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -68,7 +69,7 @@ class ThunkEmitter {
   ThunkEmitter(IrEmitter2& ir_emitter,
                const BufferAssignment& buffer_assignment,
                const TargetMachineFeatures& target_machine_features,
-               const HloModuleConfig& hlo_module_config,
+               const HloModule& hlo_module,
                const Options& options = {
                    /*compile_copy_as_llvm_kernel=*/false});
 
@@ -253,6 +254,8 @@ class ThunkEmitter {
       token_resources_;
 
   std::vector<EmittedKernel> kernels_;
+
+  FusionCompiler fusion_compiler_;
 };
 
 }  // namespace xla::cpu

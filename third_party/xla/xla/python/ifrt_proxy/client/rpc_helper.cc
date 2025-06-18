@@ -132,6 +132,7 @@ class RpcHelper::Batcher {
 
   // Asks the underlying transport to terminate.
   void Finish(absl::Status s) {
+    LOG(INFO) << "RpcHelper::Batcher::Finish() starting: " << s;
     {
       absl::MutexLock l(&mu_);
       finished_ = true;
@@ -145,8 +146,11 @@ class RpcHelper::Batcher {
                         "still batched destruct operations";
       }
     }
+    LOG(INFO) << "RpcHelper::Batcher::Finish(): resetting thread_pool_.";
     thread_pool_.reset();
+    LOG(INFO) << "RpcHelper::Batcher::Finish(): calling session_->Finish().";
     session_->Finish(s);
+    LOG(INFO) << "RpcHelper::Batcher::Finish(): done.";
   }
 
  private:
@@ -362,14 +366,19 @@ RpcHelper::RpcHelper(IfrtProxyVersion version,
     : batcher_(std::make_unique<Batcher>(std::move(session))),
       version_(std::move(version)) {}
 
-RpcHelper::~RpcHelper() { Disconnect(); }
+RpcHelper::~RpcHelper() {
+  LOG(INFO) << "RpcHelper::~RpcHelper() starting.";
+  Disconnect();
+  LOG(INFO) << "RpcHelper::~RpcHelper() done.";
+}
 
 void RpcHelper::Batch(BatchOperation op, ArrayHandle handle) {
   return batcher_->Batch(op, handle);
 }
 
 void RpcHelper::Disconnect() {
-  batcher_->Finish(absl::CancelledError("Disconnected by client"));
+  batcher_->Finish(absl::CancelledError(
+      "Disconnected by client [via RpcHelper::Disconnect()]"));
 }
 
 uint64_t RpcHelper::NextHandle() {

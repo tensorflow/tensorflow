@@ -148,7 +148,7 @@ TEST(HloModuleTest, GetModifySetConfig) {
 void CreateComputation(HloModule& module, absl::string_view name, bool is_entry,
                        HloSchedule& schedule) {
   HloComputation::Builder builder(name);
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
 
   builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
 

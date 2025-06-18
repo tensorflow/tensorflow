@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
@@ -261,8 +260,8 @@ TEST_F(ConstantsTest, FullLikeScalar) {
 using ConstantsHloTest = HloPjRtTestBase;
 
 // TODO(b/121147351): Fails on GPU. Not clear if this is expected behavior.
-TEST_F(ConstantsHloTest, DISABLED_ON_TPU(BitcastOfConstant)) {
-  if (test::DeviceIs(test::kGpu)) {
+TEST_F(ConstantsHloTest, BitcastOfConstant) {
+  if (test::DeviceIs(test::kGpu) || test::DeviceTypeIs(test::kTpu)) {
     GTEST_SKIP();
   }
   const char* testcase = R"(

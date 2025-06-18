@@ -25,23 +25,20 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/CommandLine.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_executor_to_graph.h"
-#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/public/session_options.h"
 
 #define DEBUG_TYPE "run-tf-graph-optimization"
@@ -66,6 +63,9 @@ class GraphOptPass
       : passes_(std::move(passes)) {}
 
  protected:
+  // For MLIR LIT tests only.
+  GraphOptPass() = default;
+
   void runOnOperation() override;
 
   // The passes to run on the module.
@@ -154,24 +154,14 @@ static std::vector<GraphOptimizationPass*> FindRegisteredPassesByName(
   return pass_ids;
 }
 
-// TODO(prakalps): Move these flags and pass registration to a header file so
-// that it is clear that this is a generic pass library and command line is used
-// for testing only.
-
-// NOLINTNEXTLINE
-static llvm::cl::OptionCategory clOptionsCategory(DEBUG_TYPE " options");
-
-// NOLINTNEXTLINE
-static llvm::cl::list<std::string> cl_pass_list(
-    "graph-passes", llvm::cl::value_desc("list"),
-    llvm::cl::desc("comma separated list of GraphOptimizationPass to run."),
-    llvm::cl::CommaSeparated, llvm::cl::cat(clOptionsCategory));
-
 class GraphOptByNamePass : public GraphOptPass {
  public:
-  explicit GraphOptByNamePass() : GraphOptByNamePass(cl_pass_list) {}
-  explicit GraphOptByNamePass(const std::vector<std::string>& pass_names)
-      : GraphOptPass(FindRegisteredPassesByName(pass_names)) {}
+  // For MLIR LIT tests only.
+  GraphOptByNamePass() = default;
+
+  explicit GraphOptByNamePass(const std::vector<std::string>& pass_names) {
+    passes_ = FindRegisteredPassesByName(pass_names);
+  }
 
   llvm::StringRef getArgument() const final {
     return "run-tf-graph-optimization";
@@ -181,14 +171,23 @@ class GraphOptByNamePass : public GraphOptPass {
     return "runs passes registered as tensorflow::GraphOptimizationPass";
   }
 
+ protected:
+  mlir::Pass::ListOption<std::string> cl_pass_list_{
+      *this, "graph-passes",
+      llvm::cl::desc("comma separated list of GraphOptimizationPass to run.")};
+
  private:
   void runOnOperation() override {
-    // Verify all passes requested were registered/found.
-    for (auto pass_it : llvm::enumerate(passes_)) {
-      if (pass_it.value() == nullptr) {
-        mlir::emitError(mlir::UnknownLoc::get(&getContext()))
-            << "could not find pass " << cl_pass_list[pass_it.index()];
-        return signalPassFailure();
+    if (!cl_pass_list_.empty()) {
+      passes_ = FindRegisteredPassesByName(cl_pass_list_);
+
+      // Verify all passes requested were registered/found.
+      for (auto pass_it : llvm::enumerate(passes_)) {
+        if (pass_it.value() == nullptr) {
+          mlir::emitError(mlir::UnknownLoc::get(&getContext()))
+              << "could not find pass " << cl_pass_list_[pass_it.index()];
+          return signalPassFailure();
+        }
       }
     }
     return GraphOptPass::runOnOperation();

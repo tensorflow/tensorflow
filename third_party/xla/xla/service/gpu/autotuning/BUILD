@@ -201,9 +201,9 @@ xla_test(
     timeout = "long",
     srcs = ["gemm_fusion_autotuner_test.cc"],
     backends = [
-        "gpu_a100",
-        "gpu_h100",
-        "gpu_b200",
+        "a100",
+        "h100",
+        "b200",
     ],
     tags = [
         "cuda-only",
@@ -300,6 +300,7 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -482,8 +483,8 @@ xla_test(
     name = "gemm_algorithm_picker_test",
     srcs = ["gemm_algorithm_picker_test.cc"],
     backends = [
-        "gpu_v100",
-        "gpu_amd_any",
+        "v100",
+        "amdgpu_any",
     ],
     deps = [
         ":autotuner_util",
@@ -579,8 +580,8 @@ xla_test(
     name = "conv_algorithm_picker_test",
     srcs = ["conv_algorithm_picker_test.cc"],
     backends = [
-        "gpu_v100",
-        "gpu_amd_any",
+        "v100",
+        "amdgpu_any",
     ],
     tags = [
         "cuda-only",

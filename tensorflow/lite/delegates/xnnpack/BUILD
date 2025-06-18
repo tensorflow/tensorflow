@@ -2650,6 +2650,19 @@ cc_test(
 )
 
 cc_test(
+    name = "delegate_weight_cache_test",
+    srcs = ["delegate_weight_cache_test.cc"],
+    deps = [
+        ":weight_cache",
+        ":xnnpack_delegate_hdrs_only",
+        "//tensorflow/lite:framework_experimental",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core:model_building",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "flexbuffers_util_test",
     srcs = ["flexbuffers_util_test.cc"],
     deps = [

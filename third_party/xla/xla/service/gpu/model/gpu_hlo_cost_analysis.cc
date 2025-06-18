@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -532,12 +533,14 @@ absl::Status GpuHloCostAnalysis::HandleAllGatherStart(
 
 absl::Status GpuHloCostAnalysis::HandleAsyncStart(const HloInstruction* hlo) {
   auto* async_start = DynCast<HloAsyncStartInstruction>(hlo);
-  if (async_start->async_wrapped_opcode() != HloOpcode::kReduceScatter) {
-    VLOG(2) << "Only Reduce Scatter is supported.";
-    return absl::OkStatus();
+  TF_RETURN_IF_ERROR(hlo->async_wrapped_instruction()->Accept(this));
+  if (async_start->async_wrapped_opcode() == HloOpcode::kReduceScatter) {
+    return HandleReduceScatter(async_start->async_wrapped_instruction());
   }
-
-  return HandleReduceScatter(async_start->async_wrapped_instruction());
+  if (async_start->async_wrapped_opcode() == HloOpcode::kAllToAll) {
+    return HandleAllToAll(async_start->async_wrapped_instruction());
+  }
+  return absl::OkStatus();
 }
 
 absl::Status GpuHloCostAnalysis::HandleReduceScatter(
@@ -558,6 +561,12 @@ absl::Status GpuHloCostAnalysis::HandleReduceScatter(
   current_properties_[kFlopsKey] = GetFlopsForElementwiseOp(
       hlo->to_apply()->root_instruction()->opcode(), hlo->shape());
 
+  return absl::OkStatus();
+}
+
+absl::Status GpuHloCostAnalysis::HandleAllToAll(const HloInstruction* hlo) {
+  int64_t bytes_transferred = ShapeSize(hlo->shape(), options_.shape_size);
+  current_properties_[kCollBytesTransferred] = bytes_transferred;
   return absl::OkStatus();
 }
 

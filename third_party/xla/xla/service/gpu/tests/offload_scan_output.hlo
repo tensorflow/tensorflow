@@ -1,4 +1,4 @@
-// RUN: hlo-opt %s --platform=gpu --stage=hlo --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/a100_pcie_80.txtpb --split-input-file | FileCheck --check-prefixes=CHECK %s
+// RUN: hlo-opt %s --platform=gpu --stage=hlo --xla_gpu_target_config_filename=%S/../../../tools/hlo_opt/gpu_specs/%{GPU}.txtpb --split-input-file | FileCheck --check-prefixes=CHECK %s
 
 HloModule jit_f, entry_computation_layout={()->(f32[4]{0:S(5)}, f32[4]{0})}, allow_spmd_sharding_propagation_to_output={true,true}
 

@@ -406,9 +406,13 @@ PjRtCApiClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
     version_string = xla::GetDefaultStablehloVersion(
         plugin_attributes()->pjrt_c_api_minor_version);
   }
-
-  TF_ASSIGN_OR_RETURN(std::string serialized,
-                      xla::Serialize(module, version_string));
+  TF_ASSIGN_OR_RETURN(
+      std::string serialized,
+      xla::Serialize(module, version_string,
+                     /*plugin_version=*/plugin_attributes().has_value()
+                         ? std::make_optional(
+                               plugin_attributes()->pjrt_c_api_minor_version)
+                         : std::nullopt));
   std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompile(this, c_api_, c_client_.get(), options,
                                   serialized, format);
@@ -425,6 +429,17 @@ PjRtCApiClient::LoadSerializedExecutable(absl::string_view serialized,
   des_args.client = c_client_.get();
   des_args.serialized_executable = serialized.data();
   des_args.serialized_executable_size = serialized.length();
+  des_args.overridden_serialized_compile_options = nullptr;
+  des_args.overridden_serialized_compile_options_size = 0;
+
+  std::string options_str;
+  if (options) {
+    TF_ASSIGN_OR_RETURN(const CompileOptionsProto options_proto,
+                        options->ToProto());
+    options_str = options_proto.SerializeAsString();
+    des_args.overridden_serialized_compile_options = options_str.c_str();
+    des_args.overridden_serialized_compile_options_size = options_str.size();
+  }
 
   const PJRT_Api* api = pjrt_c_api();
 
@@ -434,6 +449,46 @@ PjRtCApiClient::LoadSerializedExecutable(absl::string_view serialized,
   CHECK(c_exec != nullptr);
   return std::unique_ptr<PjRtLoadedExecutable>(
       std::make_unique<PjRtCApiLoadedExecutable>(this, c_exec));
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+PjRtCApiClient::CreateUninitializedBuffer(const Shape& shape,
+                                          PjRtMemorySpace* memory_space) {
+  if (pjrt_c_api()->pjrt_api_version.major_version == 0 &&
+      pjrt_c_api()->pjrt_api_version.minor_version < 69) {
+    return absl::UnimplementedError(
+        "PJRT_Client_CreateUninitializedBuffer available in this version of "
+        "the PjRT plugin");
+  }
+
+  PJRT_Client_CreateUninitializedBuffer_Args args;
+  args.struct_size = PJRT_Client_CreateUninitializedBuffer_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.client = c_client_.get();
+
+  args.shape_dims = shape.dimensions().data();
+  args.shape_num_dims = shape.dimensions().size();
+  args.shape_element_type = pjrt::ConvertToPjRtBufferType(shape.element_type());
+
+  pjrt::BufferMemoryLayoutData c_layout_data;
+  if (shape.has_layout()) {
+    TF_ASSIGN_OR_RETURN(c_layout_data,
+                        pjrt::ConvertToBufferMemoryLayoutData(shape.layout()));
+    args.shape_layout = &c_layout_data.c_layout;
+  } else {
+    args.shape_layout = nullptr;
+  }
+
+  args.memory =
+      tensorflow::down_cast<PjRtCApiMemorySpace*>(memory_space)->c_memory();
+
+  RETURN_STATUS_IF_PJRT_ERROR(
+      c_api_->PJRT_Client_CreateUninitializedBuffer(&args), c_api_);
+
+  auto buffer = std::unique_ptr<PjRtBuffer>(
+      std::make_unique<PjRtCApiBuffer>(this, args.buffer));
+
+  return buffer;
 }
 
 absl::StatusOr<const PjRtTopologyDescription*>
@@ -1730,8 +1785,10 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
   args.options->non_donatable_input_indices =
       non_donatable_input_indices_storage.data();
   args.num_devices = argument_handles.size();
-  CHECK_GT(args.num_devices, 0);
-  args.num_args = argument_handles[0].size();
+
+  // If the executable has no addressable devices, `num_args` cannot be
+  // determined but it is unused. 0 serves as a placeholder.
+  args.num_args = (args.num_devices > 0) ? argument_handles[0].size() : 0;
   if (device_complete_events.has_value() || using_host_callbacks) {
     device_complete_events->resize(args.num_devices);
     args.device_complete_events = device_complete_events->data();
@@ -1900,9 +1957,10 @@ PjRtCApiLoadedExecutable::Execute(
     }
   }
 
+  int inner_size =
+      c_output_lists_storage.empty() ? 0 : c_output_lists_storage[0].size();
   return Convert2DCBuffersToCppBuffers(args.output_lists, args.num_devices,
-                                       c_output_lists_storage[0].size(),
-                                       client_);
+                                       inner_size, client_);
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
@@ -2587,7 +2645,8 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
   }
   TF_ASSIGN_OR_RETURN(
       std::string serialized,
-      xla::Serialize(module, xla::GetDefaultStablehloVersion(plugin_version)));
+      xla::Serialize(module, xla::GetDefaultStablehloVersion(plugin_version),
+                     /*plugin_version=*/plugin_version));
   std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompileAot(c_api_, client, options, topology,
                                      serialized, format);

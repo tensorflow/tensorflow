@@ -1473,8 +1473,8 @@ cc_library(
     }) +
     # The TF proto implementations that we will statically link here.
     [
-        "//tensorflow/compiler/mlir/lite:model_flags_proto_cc_impl",
         "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc_impl",
+        "//tensorflow/compiler/mlir/lite:model_flags_proto_cc_impl",
         "//tensorflow/compiler/mlir/lite:types_proto_cc_impl",
         "//tensorflow/compiler/mlir/lite/debug:debug_options_proto_cc_impl",
         "//tensorflow/compiler/mlir/quantization/stablehlo:quantization_config_proto_cc_impl",
@@ -1499,10 +1499,15 @@ cc_library(
         "@local_xla//xla/service/gpu/model:hlo_op_profile_proto_cc_impl",
         "@local_xla//xla/stream_executor:device_description_proto_cc_impl",
         "@local_xla//xla/stream_executor/cuda:cuda_compute_capability_proto_cc_impl",
-        "//tensorflow/lite/toco:toco_flags_proto_cc_impl",
-        "//tensorflow/lite/toco:model_flags_proto_cc_impl",
-        "//tensorflow/lite/toco:types_proto_cc_impl",
-    ] + tf_protos_grappler_impl() + tf_monitoring_framework_deps(),
+    ] + tf_protos_grappler_impl() + tf_monitoring_framework_deps() + select({
+        # Disable the TF Lite proto implementations in the OSS build for LiteRT repository.
+        "//tensorflow:disable_tf_lite_py": [],
+        "//conditions:default": [
+            "//tensorflow/lite/toco:model_flags_proto_cc_impl",
+            "//tensorflow/lite/toco:toco_flags_proto_cc_impl",
+            "//tensorflow/lite/toco:types_proto_cc_impl",
+        ],
+    }),
     # Alwayslink causes a cc_binary to "always link" in the
     # srcs for a given cc_library, even if they are unreferenced, see:
     # https://docs.bazel.build/versions/master/be/c-cpp.html#cc_library.alwayslink

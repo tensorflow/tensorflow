@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef XLA_TESTS_XLA_TEST_BACKEND_PREDICATES_H_
 #define XLA_TESTS_XLA_TEST_BACKEND_PREDICATES_H_
 
+#include "absl/base/nullability.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 
@@ -46,14 +47,20 @@ inline constexpr const absl::string_view kB100 = "b100";
 
 inline constexpr const absl::string_view kInterpreter = "interpreter";
 
+inline constexpr const absl::string_view kTpu = "tpu";
 inline constexpr const absl::string_view kHardware = "hardware";
 inline constexpr const absl::string_view kIss = "iss";
 inline constexpr const absl::string_view kGrm = "grm";
+
+absl::string_view GetEnvOrDie(const char* absl_nonnull key);
 
 // Returns true if `device` matches the device under test.
 bool DeviceIs(absl::string_view device);
 
 bool DeviceIsOneOf(absl::Span<const absl::string_view> devices);
+
+// Matches based on wider `device_type`, like `tpu|gpu|cpu|interpreter`.
+bool DeviceTypeIs(absl::string_view device_type);
 
 // Returns true if all `modifiers` match the current backend.
 bool HasModifiers(absl::Span<const absl::string_view> modifiers);
@@ -69,5 +76,6 @@ bool BackendIsExactly(absl::string_view device,
 
 // Returns true only for base variant hardware + emulation.
 bool BackendIsStrict(absl::string_view device);
+
 }  // namespace xla::test
 #endif  // XLA_TESTS_XLA_TEST_BACKEND_PREDICATES_H_

@@ -98,6 +98,7 @@ using mlir::func::ReturnOp;
 namespace mt = ::mlir::tensor;
 namespace mv = ::mlir::vector;
 
+constexpr int kTileSize = 32;
 constexpr int kNumRows = 4;
 constexpr int kNumThreadsPerBlock = 128;
 constexpr int kMaxVectorizedBytes = 4;
@@ -146,7 +147,7 @@ TransposeFusion::TransposeFusion(const HloFusionAnalysis& analysis)
       permutation_(transpose_.permutation),
       input_shape_(
           Permute(transpose_.dimensions, InversePermutation(permutation_))),
-      base_block_size_(WarpSize(analysis_.device_info())) {
+      base_block_size_(kTileSize) {
   ConstHloInstructionSet transposes_to_tile;
   int index = 0;
   int64_t shmem_usage = 0;
@@ -241,10 +242,11 @@ std::optional<IndexingMap> TransposeFusion::ComputeThreadIdToInputIndexing(
   if (!GetDescriptionForTiledTransposeEmitter(hero)) {
     auto map = ComposeIndexingMaps(
         *ComputeThreadIdToOutputIndexing(root_index, mlir_context),
-        *ComputeOutputToInputIndexing(
-             &analysis_.fusion_root(root_index).instruction(), 0, mlir_context)
-             .indexing_maps[hero_operand_index]
-             .begin());
+        ComputeOutputToInputIndexing(
+            &analysis_.fusion_root(root_index).instruction(), 0, mlir_context)
+            .indexing_maps[hero_operand_index]
+            .begin()
+            ->map());
     map.Simplify();
     return map;
   }
@@ -525,11 +527,8 @@ IndexingMap TransposeFusion::GetIndexing(bool input, const xla::Shape& shape,
       RangeVarsFromTensorSizes({block_size_ / kNumRows, vector_size_}),
       {}};
   auto normalized_shape =
-      input ? ShapeUtil::MakeValidatedShape(shape.element_type(), input_shape_)
-                  .value()
-            : ShapeUtil::MakeValidatedShape(shape.element_type(),
-                                            transpose_.dimensions)
-                  .value();
+      input ? ShapeUtil::MakeShape(shape.element_type(), input_shape_)
+            : ShapeUtil::MakeShape(shape.element_type(), transpose_.dimensions);
   for (auto [size, dim] : llvm::zip(normalized_shape.dimensions(),
                                     result.GetAffineMap().getResults())) {
     result.AddConstraint(dim, {0, size - 1});
@@ -1027,11 +1026,12 @@ IndexingMap PackedTranspose::GetOutputIndexing(mlir::MLIRContext* ctx) const {
 
 std::unique_ptr<EmitterBase> CreateTransposeFusion(
     const HloFusionAnalysis& analysis) {
-  auto transpose_it = absl::c_find_if(
-      analysis.fusion_heroes(), [](const HloInstructionAdaptor& hero) {
+  absl::Span<const HloInstructionAdaptor> heroes = analysis.fusion_heroes();
+  auto transpose_it =
+      absl::c_find_if(heroes, [](const HloInstructionAdaptor& hero) {
         return hero.opcode() == HloOpcode::kTranspose;
       });
-  if (transpose_it != analysis.fusion_heroes().end()) {
+  if (transpose_it != heroes.end()) {
     auto spec = GetTransposeSpec(
         Cast<HloTransposeInstruction>(&transpose_it->instruction()));
     auto packed_transpose_tile = GetPackedTransposeTileSizes(spec);

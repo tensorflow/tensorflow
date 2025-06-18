@@ -47,7 +47,8 @@ typedef enum {
   PJRT_Extension_Type_FFI,
   PJRT_Extension_Type_MemoryDescriptions,
   PJRT_Extension_Type_Triton,
-  PJRT_Extension_Type_RawBuffer,  // Experimental.
+  PJRT_Extension_Type_RawBuffer,     // Experimental.
+  PJRT_Extension_Type_PhaseCompile,  // Experimental.
 } PJRT_Extension_Type;
 
 // PJRT_Extension_Base contains a type and a pointer to next
@@ -82,7 +83,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 68
+#define PJRT_API_MINOR 71
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -318,6 +319,7 @@ typedef struct PJRT_LoadedExecutable PJRT_LoadedExecutable;
 typedef struct PJRT_Buffer PJRT_Buffer;
 typedef struct PJRT_AsyncHostToDeviceTransferManager
     PJRT_AsyncHostToDeviceTransferManager;
+typedef struct PJRT_PhaseCompiler PJRT_PhaseCompiler;
 
 // The caller of PJRT_Client_Create can optionally provide a key-value store
 // accessible across nodes and/or processes. KV store access may be necessary to
@@ -902,6 +904,33 @@ struct PJRT_Buffer_MemoryLayout {
   PJRT_Buffer_MemoryLayout_Type type;
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_MemoryLayout, type);
+
+struct PJRT_Client_CreateUninitializedBuffer_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Client* client;
+
+  // Shape fields.
+  const int64_t* shape_dims;
+  size_t shape_num_dims;
+  PJRT_Buffer_Type shape_element_type;
+  PJRT_Buffer_MemoryLayout* shape_layout;
+
+  // Device to copy host data to.
+  PJRT_Device* device;
+
+  // If nullptr, host data will be copied to `device`, otherwise we copy data to
+  // `memory`.
+  PJRT_Memory* memory;
+
+  // Output device buffer. The caller is responsible for calling
+  // PJRT_Buffer_Destroy.
+  PJRT_Buffer* buffer;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_CreateUninitializedBuffer_Args, buffer);
+
+typedef PJRT_Error* PJRT_Client_CreateUninitializedBuffer(
+    PJRT_Client_CreateUninitializedBuffer_Args* args);
 
 struct PJRT_Client_BufferFromHostBuffer_Args {
   size_t struct_size;
@@ -1776,6 +1805,11 @@ struct PJRT_Executable_DeserializeAndLoad_Args {
   const char* serialized_executable;
   size_t serialized_executable_size;
   PJRT_LoadedExecutable* loaded_executable;  // out
+  // Serialized CompileOptionsProto or null (to use the options
+  // from the serialized executable).
+  // (https://github.com/openxla/xla/blob/main/xla/pjrt/compile_options.proto)
+  const char* overridden_serialized_compile_options;
+  size_t overridden_serialized_compile_options_size;
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_DeserializeAndLoad_Args,
                           loaded_executable);
@@ -2475,10 +2509,13 @@ typedef struct PJRT_Api {
   _PJRT_API_STRUCT_FIELD(PJRT_AsyncHostToDeviceTransferManager_AddMetadata);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_DmaMap);
   _PJRT_API_STRUCT_FIELD(PJRT_Client_DmaUnmap);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_Client_CreateUninitializedBuffer);
 } PJRT_Api;
 
 enum {
-  PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Client_DmaUnmap)
+  PJRT_Api_STRUCT_SIZE =
+      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Client_CreateUninitializedBuffer)
 };
 
 #undef _PJRT_API_STRUCT_FIELD

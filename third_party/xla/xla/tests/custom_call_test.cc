@@ -63,7 +63,6 @@ limitations under the License.
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -191,11 +190,11 @@ using ::testing::HasSubstr;
 
 class CustomCallTest : public HloPjRtTestBase {
  protected:
-  Shape r0f32_ = ShapeUtil::MakeValidatedShape(F32, {}).value();
-  Shape r2f32_ = ShapeUtil::MakeValidatedShape(F32, {2, 2}).value();
+  Shape r0f32_ = ShapeUtil::MakeShape(F32, {});
+  Shape r2f32_ = ShapeUtil::MakeShape(F32, {2, 2});
 };
 
-XLA_TEST_F(CustomCallTest, CustomCallR0F32Add2) {
+TEST_F(CustomCallTest, CustomCallR0F32Add2) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -211,7 +210,7 @@ XLA_TEST_F(CustomCallTest, CustomCallR0F32Add2) {
   LiteralTestUtil::ExpectR0Near<float>(44.0f, result, kDefaultErrorSpec);
 }
 
-XLA_TEST_F(CustomCallTest, CustomCallR0F32Add2Aliased) {
+TEST_F(CustomCallTest, CustomCallR0F32Add2Aliased) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -230,7 +229,7 @@ XLA_TEST_F(CustomCallTest, CustomCallR0F32Add2Aliased) {
   LiteralTestUtil::ExpectR0Near<float>(44.0f, result, kDefaultErrorSpec);
 }
 
-XLA_TEST_F(CustomCallTest, CustomCallR2F32Reduce) {
+TEST_F(CustomCallTest, CustomCallR2F32Reduce) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -252,7 +251,7 @@ XLA_TEST_F(CustomCallTest, CustomCallR2F32Reduce) {
   LiteralTestUtil::ExpectR0Near<float>(10.0f, result, kDefaultErrorSpec);
 }
 
-XLA_TEST_F(CustomCallTest, ReportsSuccess) {
+TEST_F(CustomCallTest, ReportsSuccess) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -268,15 +267,14 @@ XLA_TEST_F(CustomCallTest, ReportsSuccess) {
   LiteralTestUtil::ExpectR0Near<float>(44.0f, result, kDefaultErrorSpec);
 }
 
-XLA_TEST_F(CustomCallTest, ReportsFailure) {
+TEST_F(CustomCallTest, ReportsFailure) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   builder.AddInstruction(HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeValidatedShape(F32, {}).value(), {constant},
-      "CustomCallFail",
+      ShapeUtil::MakeShape(F32, {}), {constant}, "CustomCallFail",
       /*opaque=*/"", CustomCallApiVersion::API_VERSION_STATUS_RETURNING));
 
   module->AddEntryComputation(builder.Build());
@@ -286,22 +284,20 @@ XLA_TEST_F(CustomCallTest, ReportsFailure) {
   EXPECT_THAT(status.message(), ::testing::HasSubstr("Failed: 42.0"));
 }
 
-XLA_TEST_F(CustomCallTest, ReportsFirstFailure) {
+TEST_F(CustomCallTest, ReportsFirstFailure) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
   auto constant_1 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
   auto res_1 = builder.AddInstruction(HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeValidatedShape(F32, {}).value(), {constant_1},
-      "CustomCallFail",
+      ShapeUtil::MakeShape(F32, {}), {constant_1}, "CustomCallFail",
       /*opaque=*/"", CustomCallApiVersion::API_VERSION_STATUS_RETURNING));
   auto res_2 = builder.AddInstruction(HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeValidatedShape(F32, {}).value(), {res_1}, "CustomCallFail",
+      ShapeUtil::MakeShape(F32, {}), {res_1}, "CustomCallFail",
       /*opaque=*/"", CustomCallApiVersion::API_VERSION_STATUS_RETURNING));
   builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeValidatedShape(F32, {}).value(), HloOpcode::kAdd, res_1,
-      res_2));
+      ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd, res_1, res_2));
 
   module->AddEntryComputation(builder.Build());
 
@@ -310,7 +306,7 @@ XLA_TEST_F(CustomCallTest, ReportsFirstFailure) {
   EXPECT_THAT(status.message(), ::testing::HasSubstr("Failed: 1.0"));
 }
 
-XLA_TEST_F(CustomCallTest, TransitiveCustomCallReportsFirstFailure) {
+TEST_F(CustomCallTest, TransitiveCustomCallReportsFirstFailure) {
   const char* const kModuleStr = R"(
     HloModule m
     sub {
@@ -332,7 +328,7 @@ XLA_TEST_F(CustomCallTest, TransitiveCustomCallReportsFirstFailure) {
   EXPECT_THAT(status.message(), HasSubstr("Failed: 1.0"));
 }
 
-XLA_TEST_F(CustomCallTest, FillStatusMsgWithBackendConfigStr) {
+TEST_F(CustomCallTest, FillStatusMsgWithBackendConfigStr) {
   const char* const kModuleStr = R"(
     HloModule m
     ENTRY test {
@@ -358,10 +354,10 @@ class CustomCallClientAPITest
 
 // When using the client API, CustomCall targets can't begin with '$' -- these
 // are reserved for internal use.
-XLA_TEST_F(CustomCallClientAPITest, IllegalCustomCallTarget) {
+TEST_F(CustomCallClientAPITest, IllegalCustomCallTarget) {
   XlaBuilder builder(TestName());
   CustomCall(&builder, "$illegal", /*operands=*/{},
-             ShapeUtil::MakeValidatedShape(F32, {1}).value());
+             ShapeUtil::MakeShape(F32, {1}));
 
   EXPECT_IS_NOT_OK(ExecuteAndTransfer(&builder, /*arguments=*/{}).status());
 }
@@ -841,7 +837,7 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$Concat3Vectors",
 
 using FfiCustomCallTest = CustomCallTest;
 
-XLA_TEST_F(FfiCustomCallTest, FfiReportsSuccess) {
+TEST_F(FfiCustomCallTest, FfiReportsSuccess) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -855,17 +851,16 @@ XLA_TEST_F(FfiCustomCallTest, FfiReportsSuccess) {
   EXPECT_EQ(status, absl::OkStatus());
 }
 
-XLA_TEST_F(FfiCustomCallTest, Tokens) {
+TEST_F(FfiCustomCallTest, Tokens) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
-  std::vector<Shape> ret = {ShapeUtil::MakeValidatedShape(F32, {}).value(),
+  std::vector<Shape> ret = {ShapeUtil::MakeShape(F32, {}),
                             ShapeUtil::MakeTokenShape()};
 
   auto* token = builder.AddInstruction(HloInstruction::CreateToken());
   builder.AddInstruction(HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeValidatedTupleShape(ret).value(), {token},
-      "__xla_test$$tokens", "",
+      ShapeUtil::MakeTupleShape(ret), {token}, "__xla_test$$tokens", "",
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
   module->AddEntryComputation(builder.Build());
@@ -873,7 +868,7 @@ XLA_TEST_F(FfiCustomCallTest, Tokens) {
   TF_EXPECT_OK(Execute(std::move(module), {}).status());
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiUnknownTarget) {
+TEST_F(FfiCustomCallTest, FfiUnknownTarget) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -887,7 +882,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiUnknownTarget) {
   EXPECT_THAT(status.message(), HasSubstr("No FFI handler registered for"));
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiReportsFailure) {
+TEST_F(FfiCustomCallTest, FfiReportsFailure) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -903,7 +898,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiReportsFailure) {
   EXPECT_THAT(status.message(), ::testing::HasSubstr("Failed: 42"));
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiReportsOneOfFailures) {
+TEST_F(FfiCustomCallTest, FfiReportsOneOfFailures) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -928,7 +923,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiReportsOneOfFailures) {
   EXPECT_THAT(status.message(), HasSubstr("Failed:"));
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiTransitiveCustomCallReportsOneOfFailures) {
+TEST_F(FfiCustomCallTest, FfiTransitiveCustomCallReportsOneOfFailures) {
   const char* const kModuleStr = R"(
     HloModule m
     sub_2 {
@@ -954,7 +949,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiTransitiveCustomCallReportsOneOfFailures) {
   EXPECT_THAT(status.message(), HasSubstr("Failed:"));
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiWrongNumberOfArguments) {
+TEST_F(FfiCustomCallTest, FfiWrongNumberOfArguments) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -969,7 +964,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiWrongNumberOfArguments) {
   EXPECT_THAT(status.message(), HasSubstr("Wrong number of arguments"));
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiWrongRankOfArgument) {
+TEST_F(FfiCustomCallTest, FfiWrongRankOfArgument) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -992,7 +987,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiWrongRankOfArgument) {
   EXPECT_THAT(status.message(), HasSubstr("Wrong buffer rank"));
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiWrongDTypeOfArgument) {
+TEST_F(FfiCustomCallTest, FfiWrongDTypeOfArgument) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -1009,7 +1004,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiWrongDTypeOfArgument) {
   EXPECT_THAT(status.message(), HasSubstr("Wrong buffer dtype"));
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiHandleTypedBuffers) {
+TEST_F(FfiCustomCallTest, FfiHandleTypedBuffers) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -1025,7 +1020,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiHandleTypedBuffers) {
   LiteralTestUtil::ExpectR0Near<float>(44.0f, result, kDefaultErrorSpec);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiHandleInputAsParameters) {
+TEST_F(FfiCustomCallTest, FfiHandleInputAsParameters) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -1043,7 +1038,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiHandleInputAsParameters) {
   LiteralTestUtil::ExpectR0Near<float>(44.0f, result, kDefaultErrorSpec);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiHandleBufferBaseFloat) {
+TEST_F(FfiCustomCallTest, FfiHandleBufferBaseFloat) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -1059,14 +1054,14 @@ XLA_TEST_F(FfiCustomCallTest, FfiHandleBufferBaseFloat) {
   LiteralTestUtil::ExpectR0Near<float>(44.0f, result, kDefaultErrorSpec);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiHandleBufferBaseDouble) {
+TEST_F(FfiCustomCallTest, FfiHandleBufferBaseDouble) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<double>(42.0f)));
   builder.AddInstruction(HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeValidatedShape(F64, {}).value(), {constant},
+      ShapeUtil::MakeShape(F64, {}), {constant},
       "__xla_test$$FfiR0FAdd2BufferBase", "",
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
@@ -1076,7 +1071,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiHandleBufferBaseDouble) {
   LiteralTestUtil::ExpectR0Near<double>(44.0f, result, kDefaultErrorSpec);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiHandleAttr) {
+TEST_F(FfiCustomCallTest, FfiHandleAttr) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -1093,7 +1088,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiHandleAttr) {
   LiteralTestUtil::ExpectR0Near<float>(45.0f, result, kDefaultErrorSpec);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiHandleAttrPointer) {
+TEST_F(FfiCustomCallTest, FfiHandleAttrPointer) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -1112,7 +1107,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiHandleAttrPointer) {
   LiteralTestUtil::ExpectR0Near<float>(46.0f, result, kDefaultErrorSpec);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiHandleR2Vector) {
+TEST_F(FfiCustomCallTest, FfiHandleR2Vector) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -1135,7 +1130,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiHandleR2Vector) {
   LiteralTestUtil::ExpectR0Near<float>(10.0f, result, kDefaultErrorSpec);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiWrongEnumType) {
+TEST_F(FfiCustomCallTest, FfiWrongEnumType) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -1169,7 +1164,7 @@ class FfiCustomCallEnumTest
     : public FfiCustomCallTest,
       public ::testing::WithParamInterface<std::tuple<BinaryOp, InitMethod>> {};
 
-XLA_TEST_P(FfiCustomCallEnumTest, FfiHandleEnumAttr) {
+TEST_P(FfiCustomCallEnumTest, FfiHandleEnumAttr) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -1216,7 +1211,7 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Combine(::testing::Values(BinaryOp::kAdd, BinaryOp::kMul),
                        ::testing::Values(InitMethod::kZero, InitMethod::kOne)));
 
-XLA_TEST_F(FfiCustomCallTest, FfiUsedInOtherComputations) {
+TEST_F(FfiCustomCallTest, FfiUsedInOtherComputations) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -1224,21 +1219,21 @@ XLA_TEST_F(FfiCustomCallTest, FfiUsedInOtherComputations) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR2FromArray2D(
           Array2D<float>{{1.0f, 2.0f}, {3.0f, 4.0f}})));
   auto incremented = builder.AddInstruction(HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeValidatedShape(F32, {1, 2, 2}).value(), {input},
+      ShapeUtil::MakeShape(F32, {1, 2, 2}), {input},
       "__xla_test$$FfiF32Add1ToValues",
       /*opaque=*/"",
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
   auto incremented_again =
       builder.AddInstruction(HloInstruction::CreateCustomCall(
-          ShapeUtil::MakeValidatedShape(F32, {1, 2, 2}).value(), {incremented},
+          ShapeUtil::MakeShape(F32, {1, 2, 2}), {incremented},
           "__xla_test$$FfiF32Add1ToValues",
           /*opaque=*/"",
           /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
   // Concatenate the values along first dim.
-  builder.AddInstruction(HloInstruction::CreateConcatenate(
-      ShapeUtil::MakeValidatedShape(F32, {2, 2, 2}).value(),
-      {incremented, incremented_again}, 0));
+  builder.AddInstruction(
+      HloInstruction::CreateConcatenate(ShapeUtil::MakeShape(F32, {2, 2, 2}),
+                                        {incremented, incremented_again}, 0));
 
   module->AddEntryComputation(builder.Build());
 
@@ -1247,7 +1242,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiUsedInOtherComputations) {
       Array3D<float>{{{2, 3}, {4, 5}}, {{3, 4}, {5, 6}}}, result);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiInputAndOutputLayoutDiffer) {
+TEST_F(FfiCustomCallTest, FfiInputAndOutputLayoutDiffer) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -1271,7 +1266,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiInputAndOutputLayoutDiffer) {
   LiteralTestUtil::ExpectR2Equal<float>({{2.f, 4.f}, {3.f, 5.f}}, result);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiLayoutConstrained) {
+TEST_F(FfiCustomCallTest, FfiLayoutConstrained) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -1301,7 +1296,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiLayoutConstrained) {
   LiteralTestUtil::ExpectR2Equal<float>({{3.f, 4.f}, {5.f, 6.f}}, result);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiTupleOutput) {
+TEST_F(FfiCustomCallTest, FfiTupleOutput) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -1310,8 +1305,8 @@ XLA_TEST_F(FfiCustomCallTest, FfiTupleOutput) {
   auto input1 =
       builder.AddInstruction(HloInstruction::CreateParameter(1, r0f32_, "p1"));
   builder.AddInstruction(HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeValidatedTupleShape({r0f32_, r0f32_}).value(),
-      {input0, input1}, "__xla_test$$FfiF32TupleSwap", /*opaque=*/"",
+      ShapeUtil::MakeTupleShape({r0f32_, r0f32_}), {input0, input1},
+      "__xla_test$$FfiF32TupleSwap", /*opaque=*/"",
       /*api_version=*/CustomCallApiVersion::API_VERSION_TYPED_FFI));
 
   module->AddEntryComputation(builder.Build());
@@ -1325,7 +1320,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiTupleOutput) {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiNestedTupleOutput) {
+TEST_F(FfiCustomCallTest, FfiNestedTupleOutput) {
   const char* const kModuleStr = R"(
     HloModule m
 
@@ -1357,7 +1352,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiNestedTupleOutput) {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiTupleInput) {
+TEST_F(FfiCustomCallTest, FfiTupleInput) {
   const char* const kModuleStr = R"(
     HloModule m
 
@@ -1377,7 +1372,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiTupleInput) {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiNestedTupleInput) {
+TEST_F(FfiCustomCallTest, FfiNestedTupleInput) {
   const char* const kModuleStr = R"(
     HloModule m
 
@@ -1399,7 +1394,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiNestedTupleInput) {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(FfiCustomCallTest, SwapTupleAnyBuffersToS16U32) {
+TEST_F(FfiCustomCallTest, SwapTupleAnyBuffersToS16U32) {
   const char* const kModuleStr = R"(
     HloModule m
 
@@ -1420,7 +1415,7 @@ XLA_TEST_F(FfiCustomCallTest, SwapTupleAnyBuffersToS16U32) {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(FfiCustomCallTest, IgnoresEmptyTupleParameter) {
+TEST_F(FfiCustomCallTest, IgnoresEmptyTupleParameter) {
   const char* const kModuleStr = R"(
     HloModule m
 
@@ -1445,7 +1440,7 @@ XLA_TEST_F(FfiCustomCallTest, IgnoresEmptyTupleParameter) {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(FfiCustomCallTest, SwapTupleU32S16ToS16U32) {
+TEST_F(FfiCustomCallTest, SwapTupleU32S16ToS16U32) {
   const char* const kModuleStr = R"(
     HloModule m
 
@@ -1466,7 +1461,7 @@ XLA_TEST_F(FfiCustomCallTest, SwapTupleU32S16ToS16U32) {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(FfiCustomCallTest, HandleR2Tuple) {
+TEST_F(FfiCustomCallTest, HandleR2Tuple) {
   const char* const kModuleStr = R"(
     HloModule m
 
@@ -1491,7 +1486,7 @@ XLA_TEST_F(FfiCustomCallTest, HandleR2Tuple) {
                                         result);
 }
 
-XLA_TEST_F(FfiCustomCallTest, HandleTupleDifferentRanks) {
+TEST_F(FfiCustomCallTest, HandleTupleDifferentRanks) {
   const char* const kModuleStr = R"(
     HloModule m
 
@@ -1535,7 +1530,7 @@ XLA_TEST_F(FfiCustomCallTest, HandleTupleDifferentRanks) {
   EXPECT_EQ(result, expected_tuple);
 }
 
-XLA_TEST_F(FfiCustomCallTest, FfiNestedTupleInputAndOutput) {
+TEST_F(FfiCustomCallTest, FfiNestedTupleInputAndOutput) {
   const char* const kModuleStr = R"(
     HloModule m
 
@@ -1563,7 +1558,7 @@ XLA_TEST_F(FfiCustomCallTest, FfiNestedTupleInputAndOutput) {
   EXPECT_EQ(result, expected);
 }
 
-XLA_TEST_F(FfiCustomCallTest, IntraOpThreadPool) {
+TEST_F(FfiCustomCallTest, IntraOpThreadPool) {
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
@@ -1837,7 +1832,7 @@ static absl::StatusOr<LocalClient*> CreateClient() {
 
 TEST_F(CustomCallClientAPITest, FfiExecutionContext) {
   XlaBuilder b(TestName());
-  const Shape shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
+  const Shape shape = ShapeUtil::MakeShape(F32, {});
   CustomCall(&b, "xla.cpu.ffi_execution_context", /*operands=*/{}, shape,
              /*opaque=*/"",
              /*has_side_effect=*/false,

@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_macros.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/test.h"
 
@@ -33,13 +32,13 @@ namespace {
 
 using BroadcastTest = HloPjRtTestBase;
 
-XLA_TEST_F(BroadcastTest, BroadcastScalarToScalar) {
+TEST_F(BroadcastTest, BroadcastScalarToScalar) {
   // Test degenerate case of broadcasting a scalar into a scalar.
   auto builder = HloComputation::Builder(TestName());
   auto input = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
   builder.AddInstruction(HloInstruction::CreateBroadcast(
-      ShapeUtil::MakeValidatedShape(F32, {}).value(), input, {}));
+      ShapeUtil::MakeShape(F32, {}), input, {}));
 
   // Create HLO module, compile, and execute.
   auto hlo_module = CreateNewVerifiedModule();
@@ -50,12 +49,12 @@ XLA_TEST_F(BroadcastTest, BroadcastScalarToScalar) {
                                     kDefaultErrorSpec));
 }
 
-XLA_TEST_F(BroadcastTest, BroadcastScalarTo2D) {
+TEST_F(BroadcastTest, BroadcastScalarTo2D) {
   auto builder = HloComputation::Builder(TestName());
   auto input = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
   builder.AddInstruction(HloInstruction::CreateBroadcast(
-      ShapeUtil::MakeValidatedShape(F32, {2, 2}).value(), input, {}));
+      ShapeUtil::MakeShape(F32, {2, 2}), input, {}));
 
   // Create HLO module, compile, and execute.
   auto hlo_module = CreateNewVerifiedModule();
@@ -67,7 +66,7 @@ XLA_TEST_F(BroadcastTest, BroadcastScalarTo2D) {
       kDefaultErrorSpec));
 }
 
-XLA_TEST_F(BroadcastTest, BroadcastVectorTo2D) {
+TEST_F(BroadcastTest, BroadcastVectorTo2D) {
   auto builder = HloComputation::Builder(TestName());
   auto input = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0})));
@@ -75,9 +74,9 @@ XLA_TEST_F(BroadcastTest, BroadcastVectorTo2D) {
   // Broadcast vector in both dimension 0 and dimension 1. Join them in a tuple
   // to enable testing of the results.
   auto element1 = builder.AddInstruction(HloInstruction::CreateBroadcast(
-      ShapeUtil::MakeValidatedShape(F32, {3, 2}).value(), input, {0}));
+      ShapeUtil::MakeShape(F32, {3, 2}), input, {0}));
   auto element2 = builder.AddInstruction(HloInstruction::CreateBroadcast(
-      ShapeUtil::MakeValidatedShape(F32, {2, 3}).value(), input, {1}));
+      ShapeUtil::MakeShape(F32, {2, 3}), input, {1}));
   builder.AddInstruction(HloInstruction::CreateTuple({element1, element2}));
 
   // Create HLO module, compile, and execute.
@@ -94,12 +93,12 @@ XLA_TEST_F(BroadcastTest, BroadcastVectorTo2D) {
       LiteralSlice(result, {1}), kDefaultErrorSpec));
 }
 
-XLA_TEST_F(BroadcastTest, Broadcast2DTo2D) {
+TEST_F(BroadcastTest, Broadcast2DTo2D) {
   auto builder = HloComputation::Builder(TestName());
   auto input = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}})));
   builder.AddInstruction(HloInstruction::CreateBroadcast(
-      ShapeUtil::MakeValidatedShape(F32, {2, 2}).value(), input, {0, 1}));
+      ShapeUtil::MakeShape(F32, {2, 2}), input, {0, 1}));
 
   // Create HLO module, compile, and execute.
   auto hlo_module = CreateNewVerifiedModule();
@@ -111,14 +110,14 @@ XLA_TEST_F(BroadcastTest, Broadcast2DTo2D) {
       kDefaultErrorSpec));
 }
 
-XLA_TEST_F(BroadcastTest, Broadcast2DTo2DTranspose) {
+TEST_F(BroadcastTest, Broadcast2DTo2DTranspose) {
   // Degenerately broadcasting a shape into a shape of the same rank reorders
   // the dimensions, ie transpose.
   auto builder = HloComputation::Builder(TestName());
   auto input = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}})));
   builder.AddInstruction(HloInstruction::CreateBroadcast(
-      ShapeUtil::MakeValidatedShape(F32, {2, 2}).value(), input, {1, 0}));
+      ShapeUtil::MakeShape(F32, {2, 2}), input, {1, 0}));
 
   // Create HLO module, compile, and execute.
   auto hlo_module = CreateNewVerifiedModule();
@@ -130,12 +129,12 @@ XLA_TEST_F(BroadcastTest, Broadcast2DTo2DTranspose) {
       kDefaultErrorSpec));
 }
 
-XLA_TEST_F(BroadcastTest, Broadcast2DTo3D) {
+TEST_F(BroadcastTest, Broadcast2DTo3D) {
   auto builder = HloComputation::Builder(TestName());
   auto input = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}})));
   builder.AddInstruction(HloInstruction::CreateBroadcast(
-      ShapeUtil::MakeValidatedShape(F32, {2, 3, 2}).value(), input, {0, 2}));
+      ShapeUtil::MakeShape(F32, {2, 3, 2}), input, {0, 2}));
 
   // Create HLO module, compile, and execute.
   auto hlo_module = CreateNewVerifiedModule();
@@ -155,7 +154,7 @@ TEST_F(BroadcastTest, Broadcast_R1_2_To_R4_2x2x3x3) {
 
   // Broadcast vector in dimension 1.
   builder.AddInstruction(HloInstruction::CreateBroadcast(
-      ShapeUtil::MakeValidatedShape(F32, {2, 2, 3, 3}).value(), input, {1}));
+      ShapeUtil::MakeShape(F32, {2, 2, 3, 3}), input, {1}));
 
   // Create HLO module, compile, and execute.
   auto hlo_module = CreateNewVerifiedModule();
@@ -181,8 +180,7 @@ TEST_F(BroadcastTest, Broadcast_R1_1025_To_R4_3x3x3x1025) {
 
   // Broadcast vector in dimension 3.
   builder.AddInstruction(HloInstruction::CreateBroadcast(
-      ShapeUtil::MakeValidatedShape(F32, {3, 3, 3, r1_size}).value(), input,
-      {3}));
+      ShapeUtil::MakeShape(F32, {3, 3, 3, r1_size}), input, {3}));
 
   // Create HLO module, compile, and execute.
   auto hlo_module = CreateNewVerifiedModule();
@@ -203,7 +201,7 @@ TEST_F(BroadcastTest, Broadcast_R1_1025_To_R4_3x3x3x1025) {
                             result, kDefaultErrorSpec));
 }
 
-XLA_TEST_F(BroadcastTest, Broadcast_R1_64_To_R4_32x64x7x7) {
+TEST_F(BroadcastTest, Broadcast_R1_64_To_R4_32x64x7x7) {
   auto builder = HloComputation::Builder(TestName());
   Array4D<float> r4_array(32, 64, 7, 7);
   r4_array.Fill(42.0);
@@ -214,7 +212,7 @@ XLA_TEST_F(BroadcastTest, Broadcast_R1_64_To_R4_32x64x7x7) {
 
   // Broadcast vector in dimension 1.
   builder.AddInstruction(HloInstruction::CreateBroadcast(
-      ShapeUtil::MakeValidatedShape(F32, {32, 64, 7, 7}).value(), input, {1}));
+      ShapeUtil::MakeShape(F32, {32, 64, 7, 7}), input, {1}));
 
   // Create HLO module, compile, and execute.
   auto hlo_module = CreateNewVerifiedModule();
@@ -230,7 +228,7 @@ TEST_F(BroadcastTest, Broadcast_R0_to_R4_64x64x3x3) {
   auto input = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
   builder.AddInstruction(HloInstruction::CreateBroadcast(
-      ShapeUtil::MakeValidatedShape(F32, {64, 64, 3, 3}).value(), input, {}));
+      ShapeUtil::MakeShape(F32, {64, 64, 3, 3}), input, {}));
 
   // Create HLO module, compile, and execute.
   auto hlo_module = CreateNewVerifiedModule();
@@ -254,7 +252,7 @@ TEST_F(BroadcastTest, Broadcast_R2_2x2_To_R4_3x3x2x2) {
 
   // Broadcast vector in dimensions 2 and 3.
   builder.AddInstruction(HloInstruction::CreateBroadcast(
-      ShapeUtil::MakeValidatedShape(F32, {3, 3, 2, 2}).value(), input, {2, 3}));
+      ShapeUtil::MakeShape(F32, {3, 3, 2, 2}), input, {2, 3}));
 
   // Create HLO module, compile, and execute.
   auto hlo_module = CreateNewVerifiedModule();
@@ -289,8 +287,7 @@ TEST_F(BroadcastTest, Broadcast_R3_2x3x4_to_R4_2x3x4x5) {
 
   // Broadcast vector in dimensions 2 and 3.
   builder.AddInstruction(HloInstruction::CreateBroadcast(
-      ShapeUtil::MakeValidatedShape(F32, {2, 3, 4, 5}).value(), input,
-      {0, 1, 2}));
+      ShapeUtil::MakeShape(F32, {2, 3, 4, 5}), input, {0, 1, 2}));
 
   // Create HLO module, compile, and execute.
   auto hlo_module = CreateNewVerifiedModule();

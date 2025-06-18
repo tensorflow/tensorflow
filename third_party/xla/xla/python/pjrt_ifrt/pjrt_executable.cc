@@ -293,7 +293,7 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
     xla::Shape result_shape;
     std::vector<xla::Shape> output_shapes;
     if (tuple_output) {
-      result_shape = ShapeUtil::MakeValidatedTupleShape(result_shapes).value();
+      result_shape = xla::ShapeUtil::MakeTupleShape(result_shapes);
       output_shapes = std::move(result_shapes);
     } else {
       result_shape = result_shapes.front();
@@ -380,7 +380,7 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::CreateInternal(
       // directly take `xla::DimensionVector` as inputs.
       tile_shape_dimensions =
           xla::ShapeUtil::CreateDimensionVectorFromShape(sharding->TileShape(
-              ShapeUtil::MakeValidatedShape(element_type, dimensions).value()));
+              xla::ShapeUtil::MakeShape(element_type, dimensions)));
     }
     output_shardings.push_back(ifrt::ConcreteEvenSharding::Create(
         executable_devices, memory_kind,
@@ -566,6 +566,7 @@ PjRtLoadedExecutable::Execute(absl::Span<ArrayRef> args,
   opts.launch_id = options.launch_id;
   opts.use_major_to_minor_data_layout_for_callbacks = true;
   opts.non_donatable_input_indices = options.non_donatable_input_indices;
+  opts.execution_stream_id = options.execution_stream_id;
 
   auto context = std::make_unique<xla::ExecuteContext>();
   auto platform_id = pjrt_loaded_executable_->client()->platform_id();

@@ -42,8 +42,8 @@ PYBIND11_MODULE(_pywrap_tfcompile, m) {
          std::string entry_point, std::string cpp_class,
          std::string out_function_object, std::string out_metadata_object,
          std::string out_header, std::string out_session_module,
-         std::string mlir_components, bool gen_name_to_index,
-         bool gen_program_shape) {
+         std::string out_constant_buffers_object, std::string mlir_components,
+         bool gen_name_to_index, bool gen_program_shape) {
         tensorflow::tfcompile::MainFlags flags;
         flags.graph = std::move(graph);
         flags.config = std::move(config);
@@ -65,6 +65,8 @@ PYBIND11_MODULE(_pywrap_tfcompile, m) {
         flags.out_metadata_object = std::move(out_metadata_object);
         flags.out_header = std::move(out_header);
         flags.out_session_module = std::move(out_session_module);
+        flags.out_constant_buffers_object =
+            std::move(out_constant_buffers_object);
         flags.mlir_components = std::move(mlir_components);
 
         // C++ codegen options
@@ -84,6 +86,7 @@ PYBIND11_MODULE(_pywrap_tfcompile, m) {
       py::arg("out_function_object") = "out_model.o",
       py::arg("out_metadata_object") = "out_helper.o",
       py::arg("out_header") = "out.h", py::arg("out_session_module") = "",
+      py::arg("out_constant_buffers_object") = "",
       py::arg("mlir_components") = "", py::arg("gen_name_to_index") = false,
       py::arg("gen_program_shape") = false);
 }

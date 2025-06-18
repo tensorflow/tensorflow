@@ -72,10 +72,8 @@ TEST_F(CheckExecutionArityTest, TwoParamComputationNumArguments) {
 TEST_F(CheckExecutionArityTest, CheckArgumentShapes) {
   XlaBuilder builder("add_two_params");
 
-  auto p0 = Parameter(&builder, 0,
-                      ShapeUtil::MakeValidatedShape(F32, {}).value(), "param0");
-  auto p1 = Parameter(
-      &builder, 1, ShapeUtil::MakeValidatedShape(F32, {4}).value(), "param1");
+  auto p0 = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "param0");
+  auto p1 = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {4}), "param1");
   Mul(p0, p1);
 
   auto computation_status = builder.Build();

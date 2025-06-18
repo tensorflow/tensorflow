@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
+#include "xla/hlo/analysis/hlo_operand_index.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -786,6 +787,10 @@ HloInstruction* InstructionFusion::AddFusionInstruction(
             consumer->shape(), kind, consumer,
             absl::StrCat(HloOpcodeString(producer->opcode()), "_",
                          HloOpcodeString(consumer->opcode()), "_")));
+    // A fussion instruction does not require an original value, which should
+    // have the same value as the root of the fused computation. However, we
+    // copy the value nontheless to simplify some use cases that involve
+    // fusions.
     TF_CHECK_OK(computation->ReplaceInstruction(consumer, fusion_instruction));
   }
   fusion_instruction->set_called_computations_execution_thread(

@@ -122,13 +122,11 @@ class ReduceScatterStartThunk : public AllReduceReduceScatterThunkBase {
 
 // -----------------------------------------------------------------------------
 
-absl::Status RunAllReduce(GpuCollectives* collectives,
-                          ReductionKind reduction_kind,
+absl::Status RunAllReduce(ReductionKind reduction_kind,
                           std::vector<DeviceBufferPair>& buffers,
                           se::Stream& stream, Communicator* comm);
 
-absl::Status RunReduceScatter(GpuCollectives* collectives,
-                              ReductionKind reduction_kind,
+absl::Status RunReduceScatter(ReductionKind reduction_kind,
                               std::vector<DeviceBufferPair>& buffers,
                               se::Stream& stream, Communicator* comm);
 

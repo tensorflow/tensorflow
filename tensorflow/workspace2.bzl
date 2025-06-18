@@ -160,18 +160,18 @@ def _tf_repositories():
     # LINT.IfChange(xnnpack)
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "3fc19fcedc7aadd02c2cab647dadd5aef9bf3cf9bafd16d2c7a392c52df5c98b",
-        strip_prefix = "XNNPACK-240217afed5486735a54444e7d42bbf894da2483",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/240217afed5486735a54444e7d42bbf894da2483.zip"),
+        sha256 = "1c532db6db8a3511a812f509643cee0193e8434bfd1a0c83143f3329395688ca",
+        strip_prefix = "XNNPACK-8b3d5687eb8e4a266731ad8a288de6c813c2959b",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/8b3d5687eb8e4a266731ad8a288de6c813c2959b.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
     # XNNPack dependency.
     tf_http_archive(
         name = "KleidiAI",
-        sha256 = "cb6af19d3ef21a0c683bd0c7c5b455c386dee0b7d0d4bc2cc0e14503019ff1e8",
-        strip_prefix = "kleidiai-1.4.0",
-        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/refs/tags/v1.4.0.zip"),
+        sha256 = "ad04cc186b12810ecde9d75911c76a0113d3c055773c700377de302eef6c4419",
+        strip_prefix = "kleidiai-247088200c679f30b1b4a680bd12fee18457a100",
+        urls = tf_mirror_urls("https://github.com/ARM-software/kleidiai/archive/247088200c679f30b1b4a680bd12fee18457a100.zip"),
     )
 
     tf_http_archive(
@@ -184,18 +184,18 @@ def _tf_repositories():
     # LINT.IfChange(pthreadpool)
     tf_http_archive(
         name = "pthreadpool",
-        sha256 = "745e56516d6a58d183eb33d9017732d87cff43ce9f78908906f9faa52633e421",
-        strip_prefix = "pthreadpool-b92447772365661680f486e39a91dfe6675adafc",
-        urls = tf_mirror_urls("https://github.com/google/pthreadpool/archive/b92447772365661680f486e39a91dfe6675adafc.zip"),
+        sha256 = "b193fcb18abf0d5bdb989968ccd8e274ae0ce8d89b0f1a61763582fb716b259c",
+        strip_prefix = "pthreadpool-dcc9f28589066af0dbd4555579281230abbf74dd",
+        urls = tf_mirror_urls("https://github.com/google/pthreadpool/archive/dcc9f28589066af0dbd4555579281230abbf74dd.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/cmake/DownloadPThreadPool.cmake)
 
     tf_http_archive(
         name = "cpuinfo",
-        sha256 = "593ac799e8c9382362e7b29a58917053299fa906e271185204bb571465bb2f79",
-        strip_prefix = "cpuinfo-b73ae6ce38d5dd0b7fe46dbe0a4b5f4bab91c7ea",
+        sha256 = "ae356c4c0c841e20711b5e111a1ccdec9c2f3c1dd7bde7cfba1bed18d6d02459",
+        strip_prefix = "cpuinfo-de0ce7c7251372892e53ce9bc891750d2c9a4fd8",
         patch_file = ["//third_party/cpuinfo:cpuinfo_ppc64le_support.patch"],
-        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/b73ae6ce38d5dd0b7fe46dbe0a4b5f4bab91c7ea.zip"),
+        urls = tf_mirror_urls("https://github.com/pytorch/cpuinfo/archive/de0ce7c7251372892e53ce9bc891750d2c9a4fd8.zip"),
     )
 
     tf_http_archive(
@@ -227,9 +227,9 @@ def _tf_repositories():
         name = "onednn",
         build_file = "@local_xla//third_party/mkl_dnn:mkldnn_v1.BUILD",
         patch_file = ["@local_xla//third_party/mkl_dnn:setting_init.patch"],
-        sha256 = "8356aa9befde4d4ff93f1b016ac4310730b2de0cc0b8c6c7ce306690bc0d7b43",
-        strip_prefix = "oneDNN-3.5",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.5.tar.gz"),
+        sha256 = "071f289dc961b43a3b7c8cbe8a305290a7c5d308ec4b2f586397749abdc88296",
+        strip_prefix = "oneDNN-3.7.3",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.7.3.tar.gz"),
     )
 
     tf_http_archive(
@@ -416,10 +416,10 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_google_googletest",
-        # Use the commit on 2025/3/21:
-        # https://github.com/google/googletest/commit/2ae29b52fdff88c52fef655fa0d245fc514ca35b
-        sha256 = "21a3a4021fd5e3127c90547234e2126d24f23571fedefa0d9370bf706a870fba",
-        strip_prefix = "googletest-2ae29b52fdff88c52fef655fa0d245fc514ca35b",
+        # Use the commit on 2025/6/09:
+        # https://github.com/google/googletest/commit/28e9d1f26771c6517c3b4be10254887673c94018
+        sha256 = "f253ca1a07262f8efde8328e4b2c68979e40ddfcfc001f70d1d5f612c7de2974",
+        strip_prefix = "googletest-28e9d1f26771c6517c3b4be10254887673c94018",
         # Patch googletest to:
         #   - avoid dependencies on @fuchsia_sdk,
         #   - refer to re2 as @com_googlesource_code_re2,
@@ -431,13 +431,13 @@ def _tf_repositories():
         # $ cd github
         # $ git clone https://github.com/google/googletest.git
         # $ cd googletest
-        # $ git checkout 2ae29b52fdff88c52fef655fa0d245fc514ca35b
+        # $ git checkout 28e9d1f26771c6517c3b4be10254887673c94018
         # ... make local changes to googletest ...
         # $ git diff > <client-root>/third_party/tensorflow/third_party/googletest/googletest.patch
         #
         # The patch path is relative to third_party/tensorflow.
         patch_file = ["@local_xla//third_party/googletest:googletest.patch"],
-        urls = tf_mirror_urls("https://github.com/google/googletest/archive/2ae29b52fdff88c52fef655fa0d245fc514ca35b.zip"),
+        urls = tf_mirror_urls("https://github.com/google/googletest/archive/28e9d1f26771c6517c3b4be10254887673c940189.zip"),
     )
 
     tf_http_archive(
@@ -926,10 +926,10 @@ def _tf_repositories():
     # Required by riegeli.
     tf_http_archive(
         name = "net_zstd",
-        build_file = "//third_party:net_zstd.BUILD",
-        sha256 = "b6c537b53356a3af3ca3e621457751fa9a6ba96daf3aebb3526ae0f610863532",
-        strip_prefix = "zstd-1.4.5/lib",
-        urls = tf_mirror_urls("https://github.com/facebook/zstd/archive/v1.4.5.zip"),  # 2020-05-22
+        build_file = "@local_xla//third_party:net_zstd.BUILD",
+        sha256 = "7897bc5d620580d9b7cd3539c44b59d78f3657d33663fe97a145e07b4ebd69a4",
+        strip_prefix = "zstd-1.5.7/lib",
+        urls = tf_mirror_urls("https://github.com/facebook/zstd/archive/v1.5.7.zip"),  # 2025-05-20
     )
 
     tf_http_archive(
@@ -941,9 +941,13 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "org_xprof",
-        sha256 = "ff84f44bf87b2805fd6badc398b1889049f1d86d2478ecc466680c6939261afe",
-        strip_prefix = "xprof-05e9e316c9cf8de6dd5fdcd8c841723fc1e8a20f",
-        urls = tf_mirror_urls("https://github.com/openxla/xprof/archive/05e9e316c9cf8de6dd5fdcd8c841723fc1e8a20f.zip"),
+        sha256 = "d27bcd502a0843e463fc4eb7d3532d0d720ddd6af6e39942846f1aa769352625",
+        strip_prefix = "xprof-c695e43eba127a74a67263775ab611bded7fba34",
+        urls = tf_mirror_urls("https://github.com/openxla/xprof/archive/c695e43eba127a74a67263775ab611bded7fba34.zip"),
+        repo_mapping = {
+            "@xla": "@local_xla",
+            "@tsl": "@local_tsl",
+        },
     )
 
     # used for adding androidx.annotation dependencies in tflite android jni.

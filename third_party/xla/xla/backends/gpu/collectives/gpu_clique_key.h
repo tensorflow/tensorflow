@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/hash/hash.h"
+#include "absl/types/span.h"
 #include "xla/core/collectives/clique_key.h"
 #include "xla/service/global_device_id.h"
 #include "xla/tsl/lib/gtl/int_type.h"
@@ -59,7 +60,8 @@ class GpuCliqueKey : public CliqueKey {
       CollectiveStreamId stream_id = CollectiveStreamId(0),
       AsyncStreamKind stream_kind = AsyncStreamKind::kCollective,
       std::vector<std::vector<GlobalDeviceId>> participant_groups = {},
-      GlobalDeviceId root_device = GlobalDeviceId(-1));
+      GlobalDeviceId root_device = GlobalDeviceId(-1),
+      std::vector<uint64_t> incarnations = {});
 
   GpuCliqueKey(const GpuCliqueKey&) = default;
   GpuCliqueKey& operator=(const GpuCliqueKey&) = default;
@@ -96,6 +98,9 @@ class GpuCliqueKey : public CliqueKey {
   // environments this likely to be all devices on the same host).
   bool is_local() const { return num_local_participants_ == devices().size(); }
 
+  // Returns the incarnation ids of the participating processes.
+  absl::Span<const uint64_t> incarnations() const { return incarnations_; }
+
   std::string ToString() const final;
 
   // GPU clique keys have a total order on which we rely on for acquiring
@@ -130,6 +135,8 @@ class GpuCliqueKey : public CliqueKey {
   std::vector<std::vector<GlobalDeviceId>> participant_groups_;
 
   GlobalDeviceId root_device_;
+
+  std::vector<uint64_t> incarnations_;
 };
 
 }  // namespace xla::gpu

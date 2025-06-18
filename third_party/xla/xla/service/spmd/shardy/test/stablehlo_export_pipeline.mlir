@@ -418,7 +418,7 @@ func.func @while_with_no_sharding_inside_manual_comp(
       %arg0: tensor<32x2xi32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x", "y"}, {}]>})
       -> (tensor<32x2xi32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x", "y"}, {}]>}) {
   // CHECK-NEXT: %[[COPY_0:.*]] = mhlo.copy %arg0 {mhlo.sharding = "{devices=[32,1]<=[32]}"}
-  // CHECK-NEXT: %[[FULL_TO_SHARD:.*]] = stablehlo.custom_call @SPMDFullToShardShape(%0)
+  // CHECK-NEXT: %[[FULL_TO_SHARD:.*]] = stablehlo.custom_call @SPMDFullToShardShape(%[[COPY_0]])
   // CHECK:      %[[C0:.*]] = stablehlo.constant {mhlo.sharding = "{manual}"} dense<0>
   // CHECK:      %[[WHILE:.*]]:2 = stablehlo.while(%iterArg = %[[FULL_TO_SHARD]], %iterArg_1 = %[[C0]])
   // CHECK-SAME:   attributes {mhlo.sharding = "{{[{][{]}}manual}, {manual}}"}
@@ -445,6 +445,88 @@ func.func @propagation_barrier(%arg0: tensor<8x16xf32>) -> (tensor<8x16xf32>) {
   // CHECK-NEXT: return %arg0 : tensor<8x16xf32>
   %r = sdy.propagation_barrier %arg0 allowed_direction=BACKWARD : tensor<8x16xf32>
   return %r : tensor<8x16xf32>
+}
+
+// CHECK-LABEL: func @all_reduce_input_no_unreduced_axes
+func.func @all_reduce_input_no_unreduced_axes(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_5, [{"j"}, {}]>}) -> tensor<8x8xf32> {
+  // CHECK-NEXT: return %arg0 : tensor<8x8xf32>
+  %0 = sdy.all_reduce {"i"} %arg0 out_sharding=<@mesh_5, [{"j"}, {}]> : tensor<8x8xf32>
+  return %0 : tensor<8x8xf32>
+}
+
+// CHECK-LABEL: func @all_reduce_input_with_unreduced_axes
+// CHECK-SAME:  (%arg0: tensor<8x8xf32> {mhlo.sharding = "{devices=[2,1,2]<=[2,2]T(1,0) last_tile_dim_replicate}"}) -> tensor<8x8xf32> {
+// CHECK-NOT:   mhlo.frontend_attributes
+func.func @all_reduce_input_with_unreduced_axes(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_5, [{"j"}, {}], unreduced={"i"}>}) -> tensor<8x8xf32> {
+  // CHECK-NEXT: %[[COPY_0:.*]] = mhlo.copy %arg0 {mhlo.frontend_attributes = {xla.sdy.has_unreduced_axes = "true"}, mhlo.sharding = "{devices=[2,1,2]<=[2,2]T(1,0) last_tile_dim_replicate}"
+  // CHECK-NEXT: %[[FULL_TO_SHARD:.*]] = stablehlo.custom_call @SPMDFullToShardShape(%[[COPY_0]]) {mhlo.sharding = "{manual}"}
+  // CHECK-NEXT: %[[ALL_REDUCE:.*]] = "stablehlo.all_reduce"(%1) <{
+  // CHECK-SAME:   channel_handle = #stablehlo.channel_handle<handle = 1, type = 1>,
+  // CHECK-SAME:   replica_groups = dense<{{\[}}[0, 2], [1, 3]]> : tensor<2x2xi64>, use_global_device_ids}> ({
+  // CHECK-NEXT: ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+  // CHECK-NEXT:   %[[ADD:.*]] = stablehlo.add %arg1, %arg2 {mhlo.sharding = "{manual}"}
+  // CHECK-NEXT:   stablehlo.return %[[ADD]]
+  // CHECK-NEXT: }) {mhlo.sharding = "{manual}"}
+  // CHECK-NEXT: %[[COPY_1:.*]] = mhlo.copy %[[ALL_REDUCE]] {mhlo.sharding = "{manual}"}
+  // CHECK-NEXT: %[[SHARD_TO_FULL:.*]] = stablehlo.custom_call @SPMDShardToFullShape(%3) {mhlo.sharding = "{devices=[2,1,2]<=[2,2]T(1,0) last_tile_dim_replicate}"}
+  // CHECK-NEXT: return %[[SHARD_TO_FULL]]
+  %0 = sdy.all_reduce {"i"} %arg0 out_sharding=<@mesh_5, [{"j"}, {}]> : tensor<8x8xf32>
+  return %0 : tensor<8x8xf32>
+}
+
+//===----------------------------------------------------------------------===//
+// Unreduced frontend attribute tests
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @unreduced_func_input
+func.func @unreduced_func_input(%arg0: tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh_5, [{}, {}], unreduced={"j"}>}, %arg1: tensor<4x8xf32>) -> tensor<4x8xf32> {
+  // CHECK-NEXT: %[[MUL:.*]] = stablehlo.multiply %arg0, %arg1
+  // CHECK-NOT:  mhlo.frontend_attributes
+  // CHECK-NEXT: return %[[MUL]]
+  %0 = stablehlo.multiply %arg0, %arg1 : tensor<4x8xf32>
+  return %0 : tensor<4x8xf32>
+}
+
+// CHECK-LABEL: func @unreduced_op
+func.func @unreduced_op(%arg0: tensor<4x64x16xf32> {sdy.sharding = #sdy.sharding<@mesh_5, [{}, {"i", "j"}, {}]>}) -> tensor<4x16xf32> {
+  // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [1] {mhlo.frontend_attributes = {xla.sdy.has_unreduced_axes = "true"}
+  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[REDUCE]], %[[REDUCE]] {mhlo.frontend_attributes = {xla.sdy.has_unreduced_axes = "true"}
+  %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+  %1 = stablehlo.reduce(%arg0 init: %0) applies stablehlo.add across dimensions = [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_5, [{}, {}], unreduced={"i"}>]>} : (tensor<4x64x16xf32>, tensor<f32>) -> tensor<4x16xf32>
+  %2 = stablehlo.add %1, %1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_5, [{}, {}], unreduced={"i"}>]>} : tensor<4x16xf32>
+  %3 = sdy.all_reduce {"i"} %2 out_sharding=<@mesh_5, [{}, {}]> : tensor<4x16xf32>
+  return %3 : tensor<4x16xf32>
+}
+
+// CHECK-LABEL: func @no_unreduced_op
+func.func @no_unreduced_op(%arg0: tensor<4x64x16xf32> {sdy.sharding = #sdy.sharding<@mesh_5, [{}, {"i", "j"}, {}]>}) -> tensor<4x16xf32> {
+  // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [1]
+  // CHECK-NOT:  mhlo.frontend_attributes
+  // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %[[REDUCE]], %[[REDUCE]]
+  // CHECK-NOT:  mhlo.frontend_attributes
+  // CHECK-NEXT: return %[[ADD]]
+  %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+  %1 = stablehlo.reduce(%arg0 init: %0) applies stablehlo.add across dimensions = [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_5, [{}, {}]>]>} : (tensor<4x64x16xf32>, tensor<f32>) -> tensor<4x16xf32>
+  %2 = stablehlo.add %1, %1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_5, [{}, {}]>]>} : tensor<4x16xf32>
+  return %2 : tensor<4x16xf32>
+}
+
+// CHECK-LABEL: func @both_results_unreduced
+func.func @both_results_unreduced(%arg0: tensor<4x64x16xf32> {sdy.sharding = #sdy.sharding<@mesh_5, [{}, {"i", "j"}, {}]>}, %arg1: tensor<4x64x16xf32> {sdy.sharding = #sdy.sharding<@mesh_5, [{}, {"i", "j"}, {}]>}) -> (tensor<4x16xf32>, tensor<4x16xf32>) {
+  // CHECK:      %[[REDUCE:.*]]:2 = stablehlo.reduce(%arg0 init: %cst), (%arg1 init: %cst) across dimensions = [1] {mhlo.frontend_attributes = {xla.sdy.has_unreduced_axes = "true"}
+  // CHECK:      %[[ADD0:.*]] = stablehlo.add %[[REDUCE]]#0, %[[REDUCE]]#0 {mhlo.frontend_attributes = {xla.sdy.has_unreduced_axes = "true"}
+  // CHECK-NEXT: %[[ADD1:.*]] = stablehlo.add %[[REDUCE]]#1, %[[REDUCE]]#1 {mhlo.frontend_attributes = {xla.sdy.has_unreduced_axes = "true"}
+  // CHECK:      return %[[ADD0]], %[[ADD1]]
+  %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+  %1:2 = stablehlo.reduce(%arg0 init: %0), (%arg1 init: %0) across dimensions = [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_5, [{}, {}], unreduced={"i"}>, <@mesh_5, [{}, {}], unreduced={"i"}>]>} : (tensor<4x64x16xf32>, tensor<4x64x16xf32>, tensor<f32>, tensor<f32>) -> (tensor<4x16xf32>, tensor<4x16xf32>)
+    reducer(%arg2: tensor<f32>, %arg4: tensor<f32>) (%arg3: tensor<f32>, %arg5: tensor<f32>)  {
+      %2 = stablehlo.add %arg2, %arg4 : tensor<f32>
+      %3 = stablehlo.add %arg3, %arg5 : tensor<f32>
+      stablehlo.return %2, %3 : tensor<f32>, tensor<f32>
+    }
+  %2 = stablehlo.add %1#0, %1#0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_5, [{}, {}], unreduced={"i"}>]>} : tensor<4x16xf32>
+  %3 = stablehlo.add %1#1, %1#1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_5, [{}, {}], unreduced={"i"}>]>} : tensor<4x16xf32>
+  return %2, %3 : tensor<4x16xf32>, tensor<4x16xf32>
 }
 
 

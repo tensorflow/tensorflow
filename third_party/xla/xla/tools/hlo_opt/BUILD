@@ -10,7 +10,7 @@ load(
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
-    "tf_cuda_tests_tags",
+    "tf_gpu_tests_tags",
 )
 
 # hlo-opt tool.
@@ -94,7 +94,7 @@ cc_library(
         "//xla/service:hlo_graph_dumper",
         "//xla/service:hlo_module_config",
         "//xla/service:platform_util",
-        "//xla/service/gpu:buffer_sharing",
+        "//xla/service/gpu:alias_info",
         "//xla/service/gpu:compile_module_to_llvm_ir",
         "//xla/service/gpu:executable_proto_cc",
         "//xla/service/gpu:gpu_compiler",
@@ -233,10 +233,10 @@ lit_test_suite(
     ]),
     cfg = "//xla:lit.cfg.py",
     data = [":test_utilities"],
-    default_tags = tf_cuda_tests_tags(),
+    default_tags = tf_gpu_tests_tags(),
     hermetic_cuda_data_dir = "%S/../../../../../cuda_nvcc",
     tags_override = {
-        "gpu_hlo_ptx.hlo": ["cuda-only"],
+        "tests/gpu_hlo_ptx.hlo": ["cuda-only"],
     },
     tools = [
         "//xla/tools:hlo-opt",

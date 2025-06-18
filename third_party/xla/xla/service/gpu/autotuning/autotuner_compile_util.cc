@@ -15,9 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 
-#include <cstdint>
-#include <iterator>
-#include <limits>
 #include <memory>
 #include <utility>
 #include <vector>

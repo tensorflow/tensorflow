@@ -29,11 +29,14 @@ message IfrtIrAtomProgramProto {
 
 // Proto for storing a serialized IFRT IR program.
 message IfrtIrProgramProto {
+  int32 version_number = 4;
+
   bytes ifrt_program = 1;
 
   // String of the form "major.minor.patch", representing the IFRT IR version.
   // If ifrt version is not set, then the program is not versioned and the
   // whole program will be serialized into the `ifrt_program` field.
+  // TODO(hyeontaek): Migrate this field to `version` field.
   optional string ifrt_version = 2;
 
   // List of atom programs that are used by the IFRT IR program. It is empty

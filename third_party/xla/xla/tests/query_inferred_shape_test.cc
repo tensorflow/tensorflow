@@ -28,8 +28,7 @@ TEST(QueryInferredShapeTest, OnePlusOneShape) {
   XlaOp one = ConstantR0<float>(&builder, 1.0);
   XlaOp result = Add(one, one);
   TF_ASSERT_OK_AND_ASSIGN(const Shape shape, builder.GetShape(result));
-  ASSERT_TRUE(
-      ShapeUtil::Equal(shape, ShapeUtil::MakeValidatedShape(F32, {}).value()));
+  ASSERT_TRUE(ShapeUtil::Equal(shape, ShapeUtil::MakeShape(F32, {})));
 }
 
 }  // namespace

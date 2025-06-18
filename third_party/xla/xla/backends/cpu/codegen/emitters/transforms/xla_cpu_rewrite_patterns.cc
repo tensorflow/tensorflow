@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/emitters/transforms/xla_cpu_rewrite_patterns.h"
 
 #include <cstdint>
+#include <string>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -220,11 +221,13 @@ class WrapEntryWithCallFrame
 
     mlir::ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
 
+    std::string kernel_name(op.getName());
+    op.setName(absl::StrCat(kernel_name, "_wrapped"));
+
     auto call_frame_type = CallFrameType::get(context);
     auto error_type = ErrorType::get(context);
     mlir::func::FuncOp kernel_func = builder.create<mlir::func::FuncOp>(
-        absl::StrCat(absl::string_view(op.getName()), "_kernel"),
-        rewriter.getFunctionType({call_frame_type}, {error_type}));
+        kernel_name, rewriter.getFunctionType({call_frame_type}, {error_type}));
 
     builder.setInsertionPointToStart(kernel_func.addEntryBlock());
 

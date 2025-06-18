@@ -337,8 +337,7 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
 // enable zero-copy collectives.
 //
 // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/bufferreg.html
-absl::Status MaybeRegisterBuffers(GpuCollectives* collectives,
-                                  se::StreamExecutor* executor,
+absl::Status MaybeRegisterBuffers(se::StreamExecutor* executor,
                                   const std::vector<DeviceBufferPair>& buffers,
                                   Communicator* comm);
 

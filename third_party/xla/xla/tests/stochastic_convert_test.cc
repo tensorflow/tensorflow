@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
@@ -44,7 +43,7 @@ const char* const kModuleStr = R"(
   }
 )";
 
-XLA_TEST_F(StochasticConvertTest, CorrectComputation) {
+TEST_F(StochasticConvertTest, CorrectComputation) {
   EXPECT_TRUE(RunAndCompare(kModuleStr, ErrorSpec{0.001}));
 }
 
@@ -52,10 +51,10 @@ TEST_F(StochasticConvertTest, ReturnsErrorWhenHloPassesDisabled) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
 
-  auto arg0_shape = ShapeUtil::MakeValidatedShape(F32, {65536}).value();
+  auto arg0_shape = ShapeUtil::MakeShape(F32, {65536});
   auto arg0 = MakeFakeLiteral(arg0_shape).value();
 
-  auto arg1_shape = ShapeUtil::MakeValidatedShape(U32, {65536}).value();
+  auto arg1_shape = ShapeUtil::MakeShape(U32, {65536});
   auto arg1 = MakeFakeLiteral(arg1_shape).value();
 
   auto status_or_result =

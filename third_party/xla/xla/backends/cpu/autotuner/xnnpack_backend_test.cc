@@ -116,10 +116,9 @@ TEST_F(XnnpackBackendTest, InvalidFusionKind) {
 TEST_F(XnnpackBackendTest, GetSupportedConfigsTest) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kXnnpackFusionHlo));
-  TF_ASSERT_OK_AND_ASSIGN(auto configs,
-                          backend_->GetSupportedConfigs(
-                              *module->entry_computation()->root_instruction(),
-                              /*stream_executor=*/nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto configs, backend_->GetSupportedConfigs(
+                        *module->entry_computation()->root_instruction()));
 
   EXPECT_EQ(configs.size(), 2);
   EXPECT_TRUE(tsl::down_cast<XnnpackBackend::Config*>(configs[0].get())
@@ -133,9 +132,8 @@ TEST_F(XnnpackBackendTest, CompileSupportedBackends) {
                           ParseAndReturnVerifiedModule(kXnnpackFusionHlo));
   HloInstruction* fusion_instruction =
       module->entry_computation()->root_instruction();
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto configs, backend_->GetSupportedConfigs(*fusion_instruction,
-                                                  /*stream_executor=*/nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(auto configs,
+                          backend_->GetSupportedConfigs(*fusion_instruction));
   for (auto& config : configs) {
     TF_ASSERT_OK_AND_ASSIGN(auto executable,
                             backend_->Compile(*fusion_instruction, *config));
@@ -147,9 +145,8 @@ TEST_F(XnnpackBackendTest, EnsureConfigIsApplied) {
                           ParseAndReturnVerifiedModule(kXnnpackFusionHlo));
   HloInstruction* fusion_instruction =
       module->entry_computation()->root_instruction();
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto configs, backend_->GetSupportedConfigs(*fusion_instruction,
-                                                  /*stream_executor=*/nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(auto configs,
+                          backend_->GetSupportedConfigs(*fusion_instruction));
 
   for (const auto& config : configs) {
     auto xnnpack_config = tsl::down_cast<XnnpackBackend::Config*>(config.get());

@@ -39,7 +39,7 @@ class XnnGraphFusion : public InstructionFusion {
   HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer,
                        HloComputation* computation) override;
 
-  bool IsOpSupported(HloInstruction* instr) const;
+  bool IsOpSupported(const HloInstruction* instr) const;
 
   bool IsXnnGraphFusion(const HloInstruction* instr) const;
 };

@@ -553,6 +553,16 @@ bzl_library(
     visibility = ["//xla:__subpackages__"],
 )
 
+bzl_library(
+    name = "tsl_default_bzl",
+    srcs = if_oss(["tsl.default.bzl"]),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":package_groups_bzl",
+        ":tsl_bzl",
+    ],
+)
+
 # copybara:comment_begin(oss-only)
 cc_library(
     name = "grpc++",

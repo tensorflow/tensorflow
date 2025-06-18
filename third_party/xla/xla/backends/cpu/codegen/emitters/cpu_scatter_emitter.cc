@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
@@ -52,6 +51,7 @@ limitations under the License.
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
+#include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/emitters/ir/xla_attrs.h.inc"
@@ -262,6 +262,10 @@ absl::StatusOr<MlirKernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
       builder.getAttr<xla::ExtraBackendOptionsAttr>(
           llvm::ArrayRef{disable_loop_unrolling_attr}));
 
+  mlir_module->getOperation()->setAttr(
+      xla::CpuMemoryRegionNameAttr::name,
+      builder.getStringAttr(BuildModuleMemoryRegionName(name(), fusion_)));
+
   TF_ASSIGN_OR_RETURN(
       mlir::func::FuncOp entry_func,
       EmitEntryFunctionApi(mlir_module.get(), *fusion_,
@@ -313,10 +317,11 @@ absl::StatusOr<MlirKernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
     }
   }
 
-  KernelSpec kernel_spec(absl::StrCat(module_name, "_kernel"),
+  KernelSpec kernel_spec(module_name,
                          NumWorkGroups{static_cast<uint64_t>(num_threads_)},
                          std::move(argument_buffers), std::move(result_buffers),
                          std::move(invariant_arguments));
+
   return MlirKernelDefinition(
       std::move(kernel_spec),
       MlirKernelSource(std::move(context), std::move(mlir_module)));

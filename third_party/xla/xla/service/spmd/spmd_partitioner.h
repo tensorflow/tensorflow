@@ -111,6 +111,10 @@ struct SpmdPartitionerOptions {
   // operand as an already rewritten windowed einsum loop.
   bool disable_ag_rewrite_for_multiple_consumers = false;
 
+  // Enables partially windowed einsums with more than one sharded operand
+  // dimension as seen in simultaneous data and tensor parallelism.
+  bool partial_windowed_einsum = false;
+
   // Partitioning method to prioritize for gather operations.
   std::vector<GatherScatterPartitioningMethod>
       preferred_gather_partition_methods = {

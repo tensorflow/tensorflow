@@ -62,6 +62,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -203,7 +204,7 @@ absl::StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
                                                         int32_t size_bytes) {
   ShapeProto shape_proto;
   if (!shape_proto.ParseFromArray(shape_ptr, size_bytes)) {
-    return tsl::errors::Internal("Failed parsing the shape proto");
+    return absl::InternalError("Failed parsing the shape proto");
   }
   TF_ASSIGN_OR_RETURN(Shape shape, Shape::FromProto(shape_proto));
   auto status = ShapeUtil::ValidateShape(shape);

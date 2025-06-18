@@ -16,7 +16,7 @@ load("//xla/tsl:tsl.bzl", "if_google", "if_oss")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
-    "tf_cuda_tests_tags",
+    "tf_gpu_tests_tags",
 )
 load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
@@ -50,7 +50,7 @@ cc_library(
     testonly = True,
     srcs = ["gpu_codegen_test.cc"],
     hdrs = ["gpu_codegen_test.h"],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_gpu_tests_tags(),
     deps = [
         "//xla:debug_options_flags",
         "//xla:shape_util",
@@ -163,7 +163,7 @@ xla_test(
 xla_cc_test(
     name = "async_command_buffer_test",
     srcs = ["async_command_buffer_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_gpu_tests_tags(),
     deps = [
         "//xla:debug_options_flags",
         "//xla:literal",
@@ -347,11 +347,11 @@ xla_test(
     name = "gpu_triton_custom_call_test",
     srcs = ["gpu_triton_custom_call_test.cc"],
     backends = [
-        "gpu_a100",
-        "gpu_h100",
-        "gpu_v100",
-        "gpu_b200",
-        "gpu_amd_any",
+        "a100",
+        "h100",
+        "v100",
+        "b200",
+        "amdgpu_any",
     ],
     deps = [
         ":gpu_codegen_test",
@@ -424,9 +424,9 @@ xla_test(
     name = "gpu_kernel_tiling_test",
     srcs = ["gpu_kernel_tiling_test.cc"],
     backends = [
-        "gpu_p100",
-        "gpu_amd_any",
-    ] + if_oss(["gpu_any"]),
+        "p100",
+        "amdgpu_any",
+    ] + if_oss(["nvgpu_any"]),
     deps = [
         ":gpu_codegen_test",
         "//xla:error_spec",
@@ -613,8 +613,9 @@ lit_test_suite(
         "//xla/tools/hlo_opt:gpu_specs/p100.txtpb",
         "//xla/tools/hlo_opt:gpu_specs/v100.txtpb",
     ],
-    default_tags = tf_cuda_tests_tags(),
+    default_tags = tf_gpu_tests_tags(),
     hermetic_cuda_data_dir = "%S/../../../../../cuda_nvcc",
+    tags = ["no-sycl"],
     tags_override = {
         "element_wise_row_vectorization.hlo": ["cuda-only"],
         "scatter_bf16.hlo": ["cuda-only"],
@@ -727,11 +728,11 @@ xla_test(
     name = "tensor_float_32_global_var_test",
     srcs = ["tensor_float_32_global_var_test.cc"],
     backends = [
-        "gpu_a100",
-        "gpu_b200",
-        "gpu_amd_any",
+        "a100",
+        "b200",
+        "amdgpu_any",
     ] + if_oss([
-        "gpu_any",
+        "nvgpu_any",
     ]),
     tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
@@ -768,9 +769,10 @@ xla_test(
     name = "gpu_fused_mha_test",
     srcs = ["gpu_fused_mha_test.cc"],
     backends = [
-        "gpu_a100",
-        "gpu_h100",
-        "gpu_b200",
+        "a100",
+        "h100",
+        "b200",
+        "amdgpu_any",
     ],
     shard_count = 2,
     deps = [
@@ -796,7 +798,6 @@ xla_test(
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
-        "//xla/tests:test_macros_header",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status:statusor",
@@ -812,7 +813,7 @@ cc_library(
     name = "simple_optimization_test",
     testonly = True,
     srcs = ["simple_optimization_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_gpu_tests_tags(),
     deps = [
         "//xla/tests:hlo_test_base",
         "//xla/tsl/lib/core:status_test_util",

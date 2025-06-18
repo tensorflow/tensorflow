@@ -111,7 +111,7 @@ class TempFileDesc : public FileDescriptor {
       std::abort();
     }
     path_ = filename;
-    fd_ = open(path_.c_str(), O_CREAT | O_EXCL | O_RDWR, 0644);
+    fd_ = open(path_.c_str(), O_CREAT | O_EXCL | O_RDWR | O_BINARY, 0644);
     if (fd_ < 0) {
       fprintf(stderr, "Could not create temporary filename.\n");
       std::abort();
@@ -424,7 +424,11 @@ TEST(WeightCacheBuilderTest, InMemoryCacheTriggeredByCorrectPrefix) {
     WeightCacheBuilder builder;
     EXPECT_TRUE(builder.Start(kInMemoryCachePath, FileDescriptor()));
     EXPECT_TRUE(builder.IsStarted());
+#if defined(_MSC_VER)
+    const FileDescriptor file_fd(open(kInMemoryCachePath, O_RDONLY | O_BINARY));
+#else
     const FileDescriptor file_fd(open(kInMemoryCachePath, O_RDONLY));
+#endif
     EXPECT_FALSE(file_fd.IsValid());
     EXPECT_EQ(errno, ENOENT);
   }
@@ -435,7 +439,11 @@ TEST(WeightCacheBuilderTest, InMemoryCacheTriggeredByCorrectPrefix) {
     EXPECT_TRUE(
         builder.Start(path_with_in_memory_prefix.c_str(), FileDescriptor()));
     EXPECT_TRUE(builder.IsStarted());
+#if defined(_MSC_VER)
+    const FileDescriptor file_fd(open(kInMemoryCachePath, O_RDONLY | O_BINARY));
+#else
     const FileDescriptor file_fd(open(kInMemoryCachePath, O_RDONLY));
+#endif
     EXPECT_FALSE(file_fd.IsValid());
     EXPECT_EQ(errno, ENOENT);
   }
@@ -1085,6 +1093,39 @@ TEST_P(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
         LightSpan<const char>(loaded_packed_data_3, size(packed_data_ref_3)),
         ElementsAreArray(packed_data_ref_3));
   }
+}
+
+class IsCompatibleCacheFileTest : public testing::Test {
+ public:
+  void SetUp() override {
+    header_.version = XNNPackCacheHeader::kVersion;
+    memcpy(header_.xnnpack_build_identifier,
+           xnn_experimental_get_build_identifier_data(),
+           xnn_experimental_get_build_identifier_size());
+  }
+
+  bool WriteHeaderAndReturnIsCompatibleCacheFile() {
+    const bool res = fd_.Write(&header_, sizeof(header_));
+    fd_.Close();
+    return res && IsCompatibleCacheFile(fd_.GetCPath());
+  }
+
+  XNNPackCacheHeader header_{};
+  TempFileDesc fd_;
+};
+
+TEST_F(IsCompatibleCacheFileTest, ReturnsTrueForACorrectHeader) {
+  EXPECT_TRUE(WriteHeaderAndReturnIsCompatibleCacheFile());
+}
+
+TEST_F(IsCompatibleCacheFileTest, ReturnsFalseForWrongHeaderVersion) {
+  header_.version += 1;
+  EXPECT_FALSE(WriteHeaderAndReturnIsCompatibleCacheFile());
+}
+
+TEST_F(IsCompatibleCacheFileTest, ReturnsFalseForWrongBuildIdentifier) {
+  header_.xnnpack_build_identifier[0] += 1;
+  EXPECT_FALSE(WriteHeaderAndReturnIsCompatibleCacheFile());
 }
 
 }  // namespace

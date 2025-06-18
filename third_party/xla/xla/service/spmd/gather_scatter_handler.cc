@@ -37,7 +37,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/spmd/spmd_partitioner.h"
 #include "xla/service/spmd/spmd_partitioner_util.h"
 #include "xla/shape.h"
@@ -281,7 +283,7 @@ IndexBoundsForGatherScatterOperandPartitionedOnTrivialSliceDims(
     auto offset = operand_offsets[dim];
     if (offset->shape().element_type() != indices_type) {
       offset = b->AddInstruction(HloInstruction::CreateConvert(
-          ShapeUtil::MakeValidatedShape(indices_type, {}).value(), offset));
+          ShapeUtil::MakeShape(indices_type, {}), offset));
     }
     min_indices.push_back(offset);
     auto partition_size_minus_1 = CreateR0WithType<int32_t>(
@@ -297,17 +299,14 @@ IndexBoundsForGatherScatterOperandPartitionedOnTrivialSliceDims(
     // [1], and concat them if there are more than one.
     for (int64_t i = 0; i < min_indices.size(); ++i) {
       min_indices[i] = b->AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeValidatedShape(indices_type, {1}).value(),
-          min_indices[i]));
+          ShapeUtil::MakeShape(indices_type, {1}), min_indices[i]));
       max_indices[i] = b->AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeValidatedShape(indices_type, {1}).value(),
-          max_indices[i]));
+          ShapeUtil::MakeShape(indices_type, {1}), max_indices[i]));
     }
     int64_t slice_dims = max_indices.size();
     if (slice_dims > 1) {
       min_indices[0] = b->AddInstruction(HloInstruction::CreateConcatenate(
-          ShapeUtil::MakeValidatedShape(indices_type, {slice_dims}).value(),
-          min_indices, 0));
+          ShapeUtil::MakeShape(indices_type, {slice_dims}), min_indices, 0));
       max_indices[0] = b->AddInstruction(HloInstruction::CreateConcatenate(
           min_indices[0]->shape(), max_indices, 0));
     }
@@ -637,8 +636,8 @@ absl::StatusOr<HloInstruction*> PartitionGatherTrivialSlicedOperandDimensions(
         }
       }
       filter = b->AddInstruction(HloInstruction::CreateReduce(
-          ShapeUtil::MakeValidatedShape(PRED, reduced_filter_dims).value(),
-          filter, CreateR0WithType(PRED, false, b), {dnums.index_vector_dim()},
+          ShapeUtil::MakeShape(PRED, reduced_filter_dims), filter,
+          CreateR0WithType(PRED, false, b), {dnums.index_vector_dim()},
           MakeBinaryAdd(PRED, indices.state().module)));
     }
     std::vector<int64_t> batch_dims;
@@ -736,7 +735,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherParallelDimensions(
       HloInstruction* index_offset =
           indices.num_dimensions() > index_dim
               ? b->AddInstruction(HloInstruction::CreateReshape(
-                    ShapeUtil::MakeValidatedShape(S32, {1}).value(),
+                    ShapeUtil::MakeShape(S32, {1}),
                     operand_offsets[dnums.start_index_map(start_idx)]))
               : operand_offsets[dnums.start_index_map(start_idx)];
       index_offsets.push_back(index_offset);
@@ -745,9 +744,8 @@ absl::StatusOr<HloInstruction*> PartitionGatherParallelDimensions(
     if (indices.num_dimensions() > index_dim) {
       // Concatenate the offsets for the parallel dimensions to subtract.
       adjusted_indices = b->AddInstruction(HloInstruction::CreateConcatenate(
-          ShapeUtil::MakeValidatedShape(
-              S32, {indices.base_shape().dimensions(index_dim)})
-              .value(),
+          ShapeUtil::MakeShape(S32,
+                               {indices.base_shape().dimensions(index_dim)}),
           index_offsets, 0));
     } else {
       CHECK_EQ(index_offsets.size(), 1);
@@ -1035,7 +1033,7 @@ Shape MaybeMakeTupleShape(absl::Span<const HloInstruction* const> hlos) {
   for (const HloInstruction* hlo : hlos) {
     element_shapes.push_back(&hlo->shape());
   }
-  return ShapeUtil::MakeValidatedTupleShapeWithPtrs(element_shapes).value();
+  return ShapeUtil::MakeTupleShapeWithPtrs(element_shapes);
 }
 
 Shape MaybeGetTuplePerGroupBaseShape(const GroupedSharding& grouped_sharding,
@@ -1048,27 +1046,7 @@ Shape MaybeGetTuplePerGroupBaseShape(const GroupedSharding& grouped_sharding,
   for (const Shape& shape : original_base_shape.tuple_shapes()) {
     element_shapes.push_back(GetPerGroupBaseShape(grouped_sharding, shape));
   }
-  return ShapeUtil::MakeValidatedTupleShape(element_shapes).value();
-}
-
-// Returns the opcode if `reduction_comp` represents a simple binary elementwise
-// computation on the two operands.
-std::optional<HloOpcode> ParseReductionComputation(
-    const HloComputation* reduction_comp) {
-  if (reduction_comp->num_parameters() != 2) {
-    return std::nullopt;
-  }
-  auto root = reduction_comp->root_instruction();
-  if (!HloOpcodeIsBinaryCommutative(root->opcode())) {
-    return std::nullopt;
-  }
-  if (!absl::c_linear_search(root->operands(),
-                             reduction_comp->parameter_instruction(0)) ||
-      !absl::c_linear_search(root->operands(),
-                             reduction_comp->parameter_instruction(1))) {
-    return std::nullopt;
-  }
-  return root->opcode();
+  return ShapeUtil::MakeTupleShape(element_shapes);
 }
 
 // Priority for operand dimensions in scatter from lowest to highest, in case of
@@ -1223,7 +1201,7 @@ absl::StatusOr<HloInstruction*> PartitionScatterParallelDimensions(
       HloInstruction* index_offset =
           indices.base_shape().dimensions().size() > index_dim
               ? b->AddInstruction(HloInstruction::CreateReshape(
-                    ShapeUtil::MakeValidatedShape(S32, {1}).value(),
+                    ShapeUtil::MakeShape(S32, {1}),
                     operand_offsets[dnums.scatter_dims_to_operand_dims(
                         start_idx)]))
               : operand_offsets[dnums.scatter_dims_to_operand_dims(start_idx)];
@@ -1233,9 +1211,8 @@ absl::StatusOr<HloInstruction*> PartitionScatterParallelDimensions(
     if (indices.base_shape().dimensions().size() > index_dim) {
       // Concatenate the offsets for the parallel dimensions to subtract.
       adjusted_indices = b->AddInstruction(HloInstruction::CreateConcatenate(
-          ShapeUtil::MakeValidatedShape(
-              S32, {indices.base_shape().dimensions(index_dim)})
-              .value(),
+          ShapeUtil::MakeShape(S32,
+                               {indices.base_shape().dimensions(index_dim)}),
           index_offsets, 0));
     } else {
       CHECK_EQ(index_offsets.size(), 1);
@@ -1501,36 +1478,21 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
   PartitionedHlo per_group_operand =
       PerGroupPartitionedHlo(operands[0], operand_grouped, b, clean_ups);
 
-  auto reduction_opcode = ParseReductionComputation(scatter->to_apply());
-  if (!reduction_opcode.has_value() || *reduction_opcode == HloOpcode::kXor) {
+  std::optional<ReductionKind> reduction_kind =
+      MatchReductionComputation(scatter->to_apply());
+  if (!reduction_kind) {
     // XOR is not supported for now, as it will need to keep the operand
     // around in buffer after local scatter to XOR with the final all-reduced
     // results.
     return nullptr;
   }
-  HloInstruction* identity;
-  switch (*reduction_opcode) {
-    case HloOpcode::kAdd:
-    case HloOpcode::kOr:
-      identity = CreateZero(per_group_operand.hlo()->shape(), b);
-      break;
-    case HloOpcode::kMultiply:
-    case HloOpcode::kAnd:
-      identity = CreateOne(per_group_operand.hlo()->shape(), b);
-      break;
-    case HloOpcode::kMinimum:
-      identity = CreateConstant(
-          per_group_operand.hlo()->shape(),
-          LiteralUtil::MaxValue(scatter->shape().element_type()), b);
-      break;
-    case HloOpcode::kMaximum:
-      identity = CreateConstant(
-          per_group_operand.hlo()->shape(),
-          LiteralUtil::MinValue(scatter->shape().element_type()), b);
-      break;
-    default:
-      return nullptr;
+  std::optional<Literal> identity_literal =
+      GetReductionIdentity(*reduction_kind, scatter->shape().element_type());
+  if (!identity_literal) {
+    return nullptr;
   }
+  HloInstruction* identity = CreateConstant(per_group_operand.hlo()->shape(),
+                                            std::move(*identity_literal), b);
   // Update partition_id for partial replicate.
   auto partition_id = indices.state().partition_id;
   if (indices.sharding().ReplicateOnLastTileDim()) {
@@ -1544,7 +1506,7 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
   // To avoid accumulating the initial operand multiple times during
   // all-reduce, we use identity operands for all non-zero partitions.
   auto not_partition_zero = b->AddInstruction(HloInstruction::CreateConvert(
-      ShapeUtil::MakeValidatedScalarShape(PRED).value(), partition_id));
+      ShapeUtil::MakeScalarShape(PRED), partition_id));
   not_partition_zero = b->AddInstruction(HloInstruction::CreateBroadcast(
       ShapeUtil::ChangeElementType(identity->shape(), PRED), not_partition_zero,
       {}));

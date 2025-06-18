@@ -58,9 +58,8 @@ absl::StatusOr<bool> AsyncWrapper::Run(
         // If the predicate matches, then wrap the instructions in async blocks.
         TF_RETURN_IF_ERROR(
             computation
-                ->CreateAsyncInstructions(
-                    instruction,
-                    {ShapeUtil::MakeValidatedScalarShape(U32).value()})
+                ->CreateAsyncInstructions(instruction,
+                                          {ShapeUtil::MakeScalarShape(U32)})
                 .status());
         changed = true;
         continue;

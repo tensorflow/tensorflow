@@ -61,6 +61,7 @@ class SolGpuCostModelStatsCollectionTest
   se::DeviceDescription device_info_ =
       TestGpuDeviceInfo::RTXA6000DeviceInfo(se::CudaComputeCapability(9, 0));
   ShapeSizeFn shape_size_fn_;
+  int pointer_size_ = 8;
 };
 
 TEST_F(SolGpuCostModelStatsCollectionTest,
@@ -85,7 +86,8 @@ TEST_F(SolGpuCostModelStatsCollectionTest,
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, SolGpuCostModelStatsCollection(device_info_, shape_size_fn_)
+      bool changed, SolGpuCostModelStatsCollection(device_info_, shape_size_fn_,
+                                                   pointer_size_)
                         .Run(module.get()));
 
   VLOG(1) << module->ToString();

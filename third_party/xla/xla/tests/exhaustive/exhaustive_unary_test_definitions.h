@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/literal.h"  // IWYU pragma: keep, exhaustive_unary_test_definitions.inc
 #include "xla/tests/exhaustive/exhaustive_op_test.h"  // IWYU pragma: keep, exhaustive_unary_test_definitions.inc
 #include "xla/tests/exhaustive/exhaustive_op_test_utils.h"  // IWYU pragma: keep, exhaustive_unary_test_definitions.inc
-#include "xla/tests/test_macros.h"  // IWYU pragma: keep, exhaustive_unary_test_definitions.inc
 #include "tsl/platform/test.h"  // IWYU pragma: keep, exhaustive_unary_test_definitions.inc
 
 namespace xla {

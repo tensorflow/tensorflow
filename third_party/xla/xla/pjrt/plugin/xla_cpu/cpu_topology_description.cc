@@ -39,7 +39,7 @@ namespace xla {
 
 absl::StatusOr<Layout> CpuTopologyDescription::GetDefaultLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims) const {
-  Shape shape = ShapeUtil::MakeValidatedShape(element_type, dims).value();
+  Shape shape = ShapeUtil::MakeShape(element_type, dims);
   return LayoutUtil::GetWithDefaultLayout(shape).layout();
 }
 

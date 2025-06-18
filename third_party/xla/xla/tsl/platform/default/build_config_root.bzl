@@ -5,8 +5,10 @@ be separate to avoid cyclic references.
 """
 
 load("@local_config_remote_execution//:remote_execution.bzl", "gpu_test_tags")
+load("@local_config_rocm//rocm:build_defs.bzl", "is_rocm_configured")
 load("@local_xla//third_party/py/rules_pywrap:pywrap.default.bzl", "use_pywrap_rules")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
+load("//xla/tsl/platform/default:cuda_build_defs.bzl", "is_cuda_configured")
 
 visibility(DEFAULT_LOAD_VISIBILITY)
 
@@ -18,7 +20,19 @@ GPU_TEST_PROPERTIES = {
 }
 
 def tf_gpu_tests_tags():
-    return ["requires-gpu-nvidia", "gpu"] + gpu_test_tags()
+    """Gets tags for TensorFlow GPU tests based on the configured environment.
+
+    Returns:
+        A list of tags to be added to the test target.
+    """
+    if is_cuda_configured():
+        return ["requires-gpu-cuda", "gpu"] + gpu_test_tags()
+    elif is_rocm_configured():
+        return ["requires-gpu-rocm", "gpu"] + gpu_test_tags()
+    else:
+        # If neither CUDA nor ROCm is configured, we assume no GPU support.
+        # This is a fallback and should not be used in practice.
+        return ["requires-gpu", "gpu"] + gpu_test_tags()
 
 # terminology changes: saving tf_cuda_* for compatibility
 def tf_cuda_tests_tags():

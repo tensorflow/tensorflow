@@ -6124,6 +6124,90 @@ computation for better efficiency.}]>:$reserve_space_3
   }];
 }
 
+def TF_FusedConv2DBiasActivationOp : TF_Op<"FusedConv2DBiasActivation", [Pure]> {
+  let summary = [{
+    Computes a fused kernel which implements: 2-D convolution, adds side input,
+  }];
+
+  let description = [{
+    with separate scaling on convolution and side inputs, then adds bias and
+    applies the RELU activation function to the result. Supports both float and
+    qint8 data formats. In the case of qint8, the output is clipped to [0..127].
+
+    conv_input: A tensor with format as specified by `data_format` (see below).
+    filter: A tensor with format depending on `data_format` as follows:
+        "NHWC", "NCHW":
+             `float [ filter_height, filter_width, in_channels, out_channels ]`
+        "NCHW_VECT_C":
+             `qint8 [ out_channels, in_channels, filter_height, filter_width ]`
+    bias: 1-D float tensor with size matching the `out_channels` dimension of
+        `filter`.
+        Note: this tensor is still float, even if other inputs are qint8.
+    side_input: A tensor with format as specified by `data_format` (see below).
+        This tensor will be ignored and can be [] if side_input_scale == 0.
+        Otherwise, the size of each dimension must match the `output` tensor.
+    conv_input_scale: scalar float value to be multiplied by `conv_input`.
+        (conceptually.. in reality it is applied after convolution).
+        For the CPU version, this can also be a 1-D Tensor of per output-channel
+        scales.
+    side_input_scale: scalar float value to be multiplied by `side_input`.
+    output: A tensor with format as specified by `data_format` (see below).
+        The dimension sizes are determined automatically based on other inputs
+        and attributes.
+    T: The element data type of `conv_input`, `side_input` and `output` tensors.
+        Note: must match with the `data_format`.
+    Tbias: The element data type of `bias`.
+    strides: 1-D tensor of length 4.  The stride of the sliding window for each
+        dimension of `input`. The dimension order is determined by the value of
+        `data_format`, see below for details.
+        Note: the stride for batch and channel dimensions must be 1.
+    padding: The type of padding algorithm to use.
+    data_format: A string specifying the data format of `conv_input`,
+        `side_input` and `output` tensors with the following options:
+        "NHWC": `float [ batch, height, width, channels ]`
+        "NCHW": `float [ batch, channels, height, width ]`
+        "NCHW_VECT_C":
+            `qint8 [ batch, channels / 4, height, width, channels % 4 ]`
+        Note: for "NCHW_VECT_C", `channels` must be a multiple of 4.
+    filter_format: A string specifying the data format of `filter`,
+        "HWIO": `float [ kernel_height, kernel_width, input_channels,
+                         output_channels ]`
+        "OIHW_VECT_I":
+            `qint8 [ output_channels, input_channels / 4,
+                     kernel_height, kernel_width, input_channels % 4 ]`
+    activation_mode: The activation applied to the output.
+        Must be "Relu" or "None".
+    dilations: 1-D tensor of length 4.  The dilation factor for each dimension
+        of `input`. If set to k > 1, there will be k-1 skipped cells between
+        each filter element on that dimension. The dimension order is determined
+        by the value of `data_format`, see above for details. Dilations in the
+        batch and depth dimensions must be 1.
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Float16, TF_Float32, TF_Qint8]>:$conv_input,
+    TensorOf<[TF_Float16, TF_Float32, TF_Qint8]>:$filter,
+    TensorOf<[TF_Float16, TF_Float32]>:$bias,
+    TensorOf<[TF_Float16, TF_Float32, TF_Qint8]>:$side_input,
+    TF_Float32Tensor:$conv_input_scale,
+    TF_Float32Tensor:$side_input_scale,
+
+    I64ArrayAttr:$strides,
+    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
+    DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["NHWC", "NCHW", "NCHW_VECT_C"]>, "\"NHWC\"">:$data_format,
+    DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["HWIO", "OIHW", "OIHW_VECT_I"]>, "\"HWIO\"">:$filter_format,
+    DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["Relu", "None"]>, "\"Relu\"">:$activation_mode,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{1, 1, 1, 1}">:$dilations
+  );
+
+  let results = (outs
+    TensorOf<[TF_Float16, TF_Float32, TF_Qint8]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tbias = TF_DerivedOperandTypeAttr<2>;
+}
+
 def TF_GatherOp : TF_Op<"Gather", [Pure]> {
   let summary = "Gather slices from `params` according to `indices`.";
 

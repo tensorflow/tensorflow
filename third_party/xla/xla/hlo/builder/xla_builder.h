@@ -28,6 +28,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
@@ -454,7 +455,7 @@ class XlaBuilder {
   absl::StatusOr<Shape> GetShape(XlaOp op) const;
 
   // Returns the shape of the given op.
-  virtual absl::StatusOr<const Shape*> GetShapePtr(XlaOp op) const;
+  virtual absl::StatusOr<const Shape* absl_nonnull> GetShapePtr(XlaOp op) const;
 
   // Returns the OpSharding of the given op. If "op" has no sharding, return
   // std::nullopt.
@@ -1246,7 +1247,7 @@ class XlaBuilder {
   std::deque<HloInstructionProto> instructions_;
   // A cache for the HloInstructionProto shapes, to avoid recreating Shape
   // objects from protos and to support the GetShapePtr() API.
-  std::vector<std::unique_ptr<Shape>> instruction_shapes_;
+  std::vector<absl_nonnull std::unique_ptr<Shape>> instruction_shapes_;
 
   // Dynamic parameter configuration of this computation.
   DynamicParameterBinding dynamic_parameter_binding_;
@@ -1510,6 +1511,15 @@ class XlaBuilder {
   friend XlaOp CustomCall(
       XlaBuilder* builder, const std::string& call_target_name,
       absl::Span<const XlaOp> operands, const Shape& shape,
+      const std::string& opaque, bool has_side_effect,
+      absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+          output_operand_aliasing,
+      const Literal* literal, CustomCallSchedule schedule,
+      CustomCallApiVersion api_version);
+  friend XlaOp CustomCallWithComputationAndLayouts(
+      XlaBuilder* builder, const std::string& call_target_name,
+      absl::Span<const XlaOp> operands, XlaComputationId computation,
+      const Shape& shape, absl::Span<const Shape> operand_shapes_with_layout,
       const std::string& opaque, bool has_side_effect,
       absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
           output_operand_aliasing,
@@ -2492,6 +2502,19 @@ XlaOp CompositeCall(XlaBuilder* builder, XlaComputationId computation,
 XlaOp CustomCall(
     XlaBuilder* builder, const std::string& call_target_name,
     absl::Span<const XlaOp> operands, const Shape& shape,
+    const std::string& opaque = "", bool has_side_effect = false,
+    absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
+        output_operand_aliasing = {},
+    const Literal* literal = nullptr,
+    CustomCallSchedule schedule = CustomCallSchedule::SCHEDULE_NONE,
+    CustomCallApiVersion api_version = API_VERSION_ORIGINAL);
+
+// Overload which constructs a custom call that applies an Xla computation
+// and fixed layout.
+XlaOp CustomCallWithComputationAndLayouts(
+    XlaBuilder* builder, const std::string& call_target_name,
+    absl::Span<const XlaOp> operands, XlaComputationId computation,
+    const Shape& shape, absl::Span<const Shape> operand_shapes_with_layout,
     const std::string& opaque = "", bool has_side_effect = false,
     absl::Span<const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>
         output_operand_aliasing = {},

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/while_loop_simplifier.h"
 
+#include <cstdint>
 #include <string>
 
 #include <gmock/gmock.h>
@@ -22,6 +23,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -167,6 +169,13 @@ TEST_F(WhileLoopSimplifierTest, LoopWithTwoIterationsNotSimplified) {
   EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).value());
 }
 
+TEST_F(WhileLoopSimplifierTest, LoopWithTwoIterationsAndDeadCodeNotSimplified) {
+  auto m = MakeModuleWithSimpleLoop(/*num_iters=*/2);
+  m->entry_computation()->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(50)));
+  EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).value());
+}
+
 TEST_F(WhileLoopSimplifierTest,
        LoopWithControlDependencySimplifiedDependencyPreserved) {
   auto m = MakeModuleWithSimpleLoop(/*num_iters=*/1);
@@ -209,9 +218,9 @@ TEST_F(WhileLoopSimplifierTest, LoopWithRecvNotSimplified) {
   ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
   auto* while_body = while_op->while_body();
   auto* token = while_body->AddInstruction(HloInstruction::CreateToken());
-  auto* recv = while_body->AddInstruction(HloInstruction::CreateRecv(
-      ShapeUtil::MakeValidatedShape(F32, {1}).value(), token,
-      /*channel_id=*/0, /*is_host_transfer=*/false));
+  auto* recv = while_body->AddInstruction(
+      HloInstruction::CreateRecv(ShapeUtil::MakeShape(F32, {1}), token,
+                                 /*channel_id=*/0, /*is_host_transfer=*/false));
   while_body->AddInstruction(HloInstruction::CreateRecvDone(
       recv, /*channel_id=*/0, /*is_host_transfer=*/false));
   EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).value());
@@ -227,7 +236,7 @@ TEST_F(WhileLoopSimplifierTest, LoopWithInfeedSimplified) {
   auto* while_body = while_op->while_body();
   auto token = while_body->AddInstruction(HloInstruction::CreateToken());
   while_body->AddInstruction(HloInstruction::CreateInfeed(
-      ShapeUtil::MakeValidatedShape(F32, {1}).value(), token, "config"));
+      ShapeUtil::MakeShape(F32, {1}), token, "config"));
   EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).value());
 }
 
@@ -242,7 +251,7 @@ TEST_F(WhileLoopSimplifierTest, LoopWithInfeedInCondNotSimplified) {
   auto* while_cond = while_op->while_condition();
   auto token = while_cond->AddInstruction(HloInstruction::CreateToken());
   while_cond->AddInstruction(HloInstruction::CreateInfeed(
-      ShapeUtil::MakeValidatedShape(F32, {1}).value(), token, "config"));
+      ShapeUtil::MakeShape(F32, {1}), token, "config"));
   EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).value());
 }
 
@@ -472,10 +481,10 @@ TEST_F(WhileLoopSimplifierTest, RemoveUnusedLoopOperands) {
                 instr->name() != "while");
       });
 
-  auto scalar_s32 = ShapeUtil::MakeValidatedShape(S32, {}).value();
-  EXPECT_TRUE(ShapeUtil::Equal(
-      new_while_op->shape(),
-      ShapeUtil::MakeValidatedTupleShape({scalar_s32, scalar_s32}).value()))
+  auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
+  EXPECT_TRUE(
+      ShapeUtil::Equal(new_while_op->shape(),
+                       ShapeUtil::MakeTupleShape({scalar_s32, scalar_s32})))
       << ShapeUtil::HumanString(new_while_op->shape());
   EXPECT_THAT(
       new_while_op->while_body()->root_instruction(),
@@ -487,6 +496,9 @@ TEST_F(WhileLoopSimplifierTest, RemoveUnusedLoopOperands) {
   EXPECT_THAT(new_while_op->while_condition()->root_instruction(),
               op::Eq(op::Constant(),
                      op::GetTupleElement(op::Parameter(0), /*tuple_index=*/1)));
+
+  EXPECT_THAT(new_while_op->while_init(),
+              op::Tuple(op::Constant(), op::Parameter(1)));
 }
 
 // This while loop has three tuple elements.  Element 0 is unused and should be
@@ -930,6 +942,43 @@ TEST_F(WhileLoopSimplifierTest, RemoveRepeatedParams) {
   EXPECT_TRUE(ShapeUtil::Equal(
       new_while->while_condition()->parameter_instruction(0)->shape(),
       new_while_shape));
+}
+
+TEST_F(WhileLoopSimplifierTest, RepeatedParamsWithDomain) {
+  const std::string hlo_string = R"(
+  HloModule SwappingTupleElements
+
+  SwappingTupleElements.body {
+    loop_var = (s32[], s32[], s32[]) parameter(0)
+    get-tuple-element = s32[] get-tuple-element(loop_var), index=0
+    get-tuple-element.1 = s32[] get-tuple-element(loop_var), index=1
+    get-tuple-element.2 = s32[] get-tuple-element(loop_var), index=2
+    y = s32[] add(get-tuple-element.1, get-tuple-element.2)
+    ROOT tuple = (s32[], s32[], s32[]) tuple(s32[] get-tuple-element, y,
+      s32[] get-tuple-element.2)
+  }
+
+  SwappingTupleElements.always_true {
+   param = (s32[], s32[], s32[]) parameter(0)
+   dom0 = (s32[], s32[], s32[]) domain((s32[], s32[], s32[]) param), domain={kind="sharding", entry={maximal device=0}, exit={maximal device=1}}
+   get-tuple-element = s32[] get-tuple-element(dom0), index=0
+   get-tuple-element.1 = s32[] get-tuple-element(dom0), index=1
+   less-than = pred[] compare(get-tuple-element, get-tuple-element.1), direction=LT
+   ROOT dom1 = pred[] domain(pred[] less-than), domain={kind="sharding", entry={maximal device=1}, exit={maximal device=0}}
+  }
+
+  ENTRY SwappingTupleElements {
+   x = s32[] parameter(0)
+   y = s32[] parameter(1)
+   tuple.1 = (s32[], s32[], s32[]) tuple(s32[] x, s32[] y, s32[] x)
+   ROOT while = (s32[], s32[], s32[]) while(tuple.1),
+     condition=SwappingTupleElements.always_true,
+     body=SwappingTupleElements.body
+  }
+  )";
+
+  auto m = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).value());
 }
 
 // A group of elements are inter-dependent, but unused as by the output.

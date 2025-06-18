@@ -104,7 +104,7 @@ TEST_P(XnnFusionThunkTest, ElementwiseAdd) {
   auto [lhs_slice, rhs_slice, out_slice] =
       CreateBufferAllocationSlice(lhs_alloc, rhs_alloc, out_alloc);
 
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {2, 2}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
 
   XnnFusionThunk::Argument lhs_arg = {lhs_slice, shape};
   XnnFusionThunk::Argument rhs_arg = {rhs_slice, shape};

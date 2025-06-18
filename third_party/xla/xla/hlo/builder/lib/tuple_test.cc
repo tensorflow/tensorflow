@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
@@ -40,15 +39,12 @@ using TupleTest = ClientLibraryTestRunnerMixin<HloTestBase>;
 TEST_F(TupleTest, DisassembleAssemble) {
   XlaBuilder builder(TestName());
 
-  Shape shape =
-      ShapeUtil::MakeValidatedTupleShape(
-          {
-              ShapeUtil::MakeShape(S32, {3}),
-              ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(S32, {4}),
-                                         ShapeUtil::MakeShape(S32, {5})}),
-              ShapeUtil::MakeShape(S32, {6}),
-          })
-          .value();
+  Shape shape = ShapeUtil::MakeTupleShape({
+      ShapeUtil::MakeShape(S32, {3}),
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(S32, {4}), ShapeUtil::MakeShape(S32, {5})}),
+      ShapeUtil::MakeShape(S32, {6}),
+  });
   Literal input = LiteralUtil::MakeTupleOwned(
       LiteralUtil::CreateFullWithDescendingLayout({3}, int32_t{42}),
       LiteralUtil::MakeTupleOwned(

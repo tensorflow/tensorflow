@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -25,10 +26,13 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"
+#include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -57,6 +61,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_dialect.h"
 #include "xla/backends/cpu/codegen/emitters/transforms/passes.h"
+#include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/codegen/emitters/ir/xla_attrs.h.inc"
 #include "xla/codegen/emitters/ir/xla_dialect.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
@@ -147,11 +152,14 @@ static void AddLoweringPasses(mlir::OpPassManager& pm, int32_t vector_width) {
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::createCSEPass());
 
+  pm.addNestedPass<mlir::func::FuncOp>(cpu::CreateExpandFloatOpsPass());
   pm.addPass(emitters::CreateExpandFloatOpsPass());
   pm.addPass(emitters::CreateEraseDeadFunctionsPass());
   pm.addPass(mlir::createLowerAffinePass());
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mlir::createSCFToControlFlowPass());
+  pm.addNestedPass<mlir::func::FuncOp>(emitters::CreateLowerXlaMathLibPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createConvertMathToLLVMPass());
   pm.addPass(emitters::CreateLowerToLLVMPass(/*target_type=*/"cpu"));
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   pm.addPass(mlir::createInlinerPass());
@@ -172,13 +180,32 @@ static int GetLlvmFunctionDefCount(mlir::ModuleOp m) {
 
 absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
     llvm::LLVMContext& llvm_context, mlir::ModuleOp mlir_module) {
-  mlir::PassManager pass_manager(mlir_module.getContext());
+  mlir::PassManager optimization_pass_manager(mlir_module.getContext());
 
-  AddXlaOpsOptimizationPasses(pass_manager);
-  AddLoopTransformationPasses(pass_manager);
-  AddLoweringPasses(pass_manager, options_.vector_width);
+  if (hooks_.pre_optimization) {
+    hooks_.pre_optimization(mlir_module);
+  }
 
-  TF_RETURN_IF_ERROR(RunPassPipeline(mlir_module, pass_manager, nullptr));
+  AddXlaOpsOptimizationPasses(optimization_pass_manager);
+  AddLoopTransformationPasses(optimization_pass_manager);
+
+  TF_RETURN_IF_ERROR(
+      RunPassPipeline(mlir_module, optimization_pass_manager, nullptr));
+
+  if (hooks_.post_optimization) {
+    hooks_.post_optimization(mlir_module);
+  }
+
+  mlir::PassManager lowering_pass_manager(mlir_module.getContext());
+
+  AddLoweringPasses(lowering_pass_manager, options_.vector_width);
+
+  TF_RETURN_IF_ERROR(
+      RunPassPipeline(mlir_module, lowering_pass_manager, nullptr));
+
+  if (hooks_.post_lowering) {
+    hooks_.post_lowering(mlir_module);
+  }
 
   // At the end of the MLIR pipeline we must have just one function definition.
   // This helps later compilation stages, where each thunk is assumed to be a
@@ -188,8 +215,12 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
                     func_count);
   }
 
-  std::unique_ptr<llvm::Module> llvm_module =
-      mlir::translateModuleToLLVMIR(mlir_module, llvm_context);
+  constexpr absl::string_view kXlaModuleIdentifier = "__compute_module";
+  absl::string_view module_name =
+      mlir_module.getName() ? *mlir_module.getName() : "UnknownFusionModule";
+  std::unique_ptr<llvm::Module> llvm_module = mlir::translateModuleToLLVMIR(
+      mlir_module, llvm_context,
+      absl::StrCat(kXlaModuleIdentifier, "_", module_name));
 
   if (mlir::Attribute options =
           mlir_module->getAttr(xla::ExtraBackendOptionsAttr::name)) {
@@ -202,6 +233,12 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
         llvm::MDString::get(llvm_context, options_csv);
     llvm_module->addModuleFlag(llvm::Module::Error, "xla_backend_extra_options",
                                options_mdstring);
+  }
+
+  if (mlir::Attribute options =
+          mlir_module->getAttr(xla::CpuMemoryRegionNameAttr::name)) {
+    SetModuleMemoryRegionName(*llvm_module,
+                              mlir::cast<mlir::StringAttr>(options).str());
   }
 
   TF_RET_CHECK(llvm_module != nullptr)
@@ -236,6 +273,7 @@ std::unique_ptr<mlir::MLIRContext> FusionCompiler::CreateContext() {
   mlir::func::registerInlinerExtension(registry);
   mlir::registerLLVMDialectTranslation(registry);
   mlir::registerBuiltinDialectTranslation(registry);
+  mlir::registerConvertMathToLLVMInterface(registry);
   context->appendDialectRegistry(registry);
 
   return context;

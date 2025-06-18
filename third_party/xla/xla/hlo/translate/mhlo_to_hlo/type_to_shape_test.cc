@@ -80,14 +80,12 @@ TEST(TypeToShapeTest, ConvertBasicTypesToTypes) {
       ShapeUtil::IsScalarWithElementType(TypeToShape(b.getF32Type()), F32));
   EXPECT_THAT(
       TypeToShape(VectorType::get({8, 128}, b.getIntegerType(32))).ToProto(),
-      EqualsProto(ShapeUtil::MakeValidatedShape(PrimitiveType::S32, {8, 128})
-                      .value()
-                      .ToProto()));
+      EqualsProto(
+          ShapeUtil::MakeShape(PrimitiveType::S32, {8, 128}).ToProto()));
   EXPECT_THAT(
       TypeToShape(VectorType::get({8, 128}, b.getF32Type())).ToProto(),
-      EqualsProto(ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {8, 128})
-                      .value()
-                      .ToProto()));
+      EqualsProto(
+          ShapeUtil::MakeShape(PrimitiveType::F32, {8, 128}).ToProto()));
 
   // MLIR Type that is not representable as XLA Shape.
   EXPECT_THAT(
@@ -102,25 +100,21 @@ TEST(TypeToShapeTest, ConvertMemRefTypeToTypes) {
   // Memref without any affine map. Note: memory space is ignored for shape.
   EXPECT_THAT(
       TypeToShape(MemRefType::get({8, 128}, b.getF32Type())).ToProto(),
-      EqualsProto(ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {8, 128})
-                      .value()
-                      .ToProto()));
+      EqualsProto(
+          ShapeUtil::MakeShape(PrimitiveType::F32, {8, 128}).ToProto()));
   EXPECT_THAT(
       TypeToShape(MemRefType::get({100, 13, 210}, b.getF32Type())).ToProto(),
       EqualsProto(
-          ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {100, 13, 210})
-              .value()
-              .ToProto()));
+          ShapeUtil::MakeShape(PrimitiveType::F32, {100, 13, 210}).ToProto()));
 
   // Vector types are "flattened" into the end of the shape.
   EXPECT_THAT(
       TypeToShape(MemRefType::get({100, 13, 210},
                                   VectorType::get({8, 128}, b.getF32Type())))
           .ToProto(),
-      EqualsProto(ShapeUtil::MakeValidatedShape(PrimitiveType::F32,
-                                                {100, 13, 210, 8, 128})
-                      .value()
-                      .ToProto()));
+      EqualsProto(
+          ShapeUtil::MakeShape(PrimitiveType::F32, {100, 13, 210, 8, 128})
+              .ToProto()));
 }
 
 TEST(TypeToShapeTest, ConvertTensorTypeToTypes) {
@@ -131,9 +125,8 @@ TEST(TypeToShapeTest, ConvertTensorTypeToTypes) {
 
   EXPECT_THAT(
       TypeToShape(RankedTensorType::get({8, 128}, b.getF32Type())).ToProto(),
-      EqualsProto(ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {8, 128})
-                      .value()
-                      .ToProto()));
+      EqualsProto(
+          ShapeUtil::MakeShape(PrimitiveType::F32, {8, 128}).ToProto()));
 
   llvm::SmallVector<int64_t, 4> bounds = {8, mlir::ShapedType::kDynamic};
   auto extensions = mlir::mhlo::TypeExtensionsAttr::get(&context, bounds);
@@ -141,10 +134,9 @@ TEST(TypeToShapeTest, ConvertTensorTypeToTypes) {
       TypeToShape(RankedTensorType::get({mlir::ShapedType::kDynamic, 128},
                                         b.getF32Type(), extensions))
           .ToProto(),
-      EqualsProto(ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {8, 128},
-                                                {true, false})
-                      .value()
-                      .ToProto()));
+      EqualsProto(
+          ShapeUtil::MakeShape(PrimitiveType::F32, {8, 128}, {true, false})
+              .ToProto()));
 
   auto extensions_stablehlo =
       mlir::stablehlo::TypeExtensionsAttr::get(&context, bounds);
@@ -152,19 +144,17 @@ TEST(TypeToShapeTest, ConvertTensorTypeToTypes) {
       TypeToShape(RankedTensorType::get({mlir::ShapedType::kDynamic, 128},
                                         b.getF32Type(), extensions_stablehlo))
           .ToProto(),
-      EqualsProto(ShapeUtil::MakeValidatedShape(PrimitiveType::F32, {8, 128},
-                                                {true, false})
-                      .value()
-                      .ToProto()));
+      EqualsProto(
+          ShapeUtil::MakeShape(PrimitiveType::F32, {8, 128}, {true, false})
+              .ToProto()));
 
   EXPECT_THAT(
       TypeToShape(RankedTensorType::get({mlir::ShapedType::kDynamic, 784},
                                         b.getF32Type()))
           .ToProto(),
-      EqualsProto(ShapeUtil::MakeValidatedShape(PrimitiveType::F32,
-                                                {Shape::kUnboundedSize, 784},
-                                                {true, false})
-                      .value()
+      EqualsProto(ShapeUtil::MakeShape(PrimitiveType::F32,
+                                       {Shape::kUnboundedSize, 784},
+                                       {true, false})
                       .ToProto()));
 
   EXPECT_THAT(TypeToShape(UnrankedTensorType::get(b.getF32Type())).ToProto(),

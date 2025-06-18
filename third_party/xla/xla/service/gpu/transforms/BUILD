@@ -13,7 +13,6 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
-        "//xla/backends/autotuner/backends/gpu:__subpackages__",
         "//xla/backends/gpu:__subpackages__",
         "//xla/hlo/tools/hlo_opt:__subpackages__",
         "//xla/service/gpu:__subpackages__",
@@ -324,7 +323,7 @@ xla_cc_test(
 xla_test(
     name = "block_scaling_rewriter_cudnn_test",
     srcs = ["block_scaling_rewriter_cudnn_test.cc"],
-    backends = ["gpu_b200"],
+    backends = ["b200"],
     tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":block_scaling_rewriter",
@@ -517,13 +516,13 @@ cc_library(
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:reduction_utils",
         "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:errors",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:logging",
     ],
 )
 
@@ -532,14 +531,19 @@ xla_cc_test(
     srcs = ["copy_fusion_test.cc"],
     deps = [
         ":copy_fusion",
+        "//xla:literal_util",
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/service:pattern_matcher",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/service/gpu:gpu_fusible",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -659,10 +663,16 @@ cc_library(
 xla_test(
     name = "cudnn_fused_conv_rewriter_test",
     srcs = ["cudnn_fused_conv_rewriter_test.cc"],
+    backend_tags = {
+        "gpu_a100": [
+            "noasan",
+            "nomsan",
+        ],
+    },
     backends = [
-        "gpu_h100",
-        "gpu_amd_any",
-    ] + if_oss(["gpu_any"]),
+        "a100",
+        "amdgpu_any",
+    ] + if_oss(["nvgpu_any"]),
     shard_count = 10,
     deps = [
         ":conv_rewriter",
@@ -1141,11 +1151,11 @@ xla_test(
     name = "dot_operand_converter_test",
     srcs = if_gpu_is_configured(["dot_operand_converter_test.cc"]),
     backends = [
-        "gpu_a100",
-        "gpu_p100",
-        "gpu_v100",
-        "gpu_b200",
-        "gpu_amd_any",
+        "a100",
+        "p100",
+        "v100",
+        "b200",
+        "amdgpu_any",
     ],
     deps = if_gpu_is_configured(
         [
@@ -2164,6 +2174,7 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
@@ -2198,10 +2209,12 @@ xla_cc_test(
         "//xla/service/gpu/model:gpu_hlo_cost_analysis",
         "//xla/stream_executor:device_description",
         "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -3047,9 +3060,10 @@ xla_test(
     timeout = "short",
     srcs = ["triton_fusion_numerics_verifier_test.cc"],
     backends = [
-        "gpu_a100",
-        "gpu_h100",
-        "gpu_b200",
+        "a100",
+        "h100",
+        "b200",
+        "amdgpu_any",
     ],
     tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [

@@ -32,7 +32,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/rocm_rocdl_path.h"
 #include "triton/Conversion/TritonGPUToLLVM/Passes.h"
-#include "triton/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.h"
+#include "triton/Conversion/TritonToTritonGPU/Passes.h"
 #include "triton/Dialect/Triton/Transforms/Passes.h"
 #include "triton/Dialect/TritonGPU/Transforms/Passes.h"
 #include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
@@ -58,8 +58,7 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
                                   int num_ctas, int num_stages,
                                   mt::nvidia_gpu::ClusterInfo& out_cluster_info,
                                   bool is_xla_fusion) {
-  // TODO(ROCm): Check why some test fail when threadsPerWarp is set to 64.
-  const int threadsPerWarp = 32;
+  const int threadsPerWarp = (arch_name[3] == '9') ? 64 : 32;
   auto cc = se::RocmComputeCapability(std::move(arch_name));
 
   if (is_xla_fusion) {
@@ -69,25 +68,26 @@ absl::Status CreateTritonPipeline(mlir::OpPassManager* pm,
   // Based on make_ttir() in
   // @triton//:third_party/amd/backend/compiler.py
   pm->addPass(mlir::createInlinerPass());
-  pm->addPass(mt::createRewriteTensorPointerPass());
+  pm->addPass(mt::createTritonRewriteTensorPointer());
+  pm->addPass(mt::createTritonRewriteTensorDescriptorToPointer());
   pm->addPass(mlir::createCanonicalizerPass());
-  pm->addPass(mt::createCombineOpsPass());
-  pm->addPass(mt::createReorderBroadcastPass());
+  pm->addPass(mt::createTritonCombineOps());
+  pm->addPass(mt::createTritonReorderBroadcast());
   pm->addPass(mlir::createCSEPass());
   pm->addPass(mlir::createLoopInvariantCodeMotionPass());
   pm->addPass(mlir::createSymbolDCEPass());
-  pm->addPass(mt::createLoopUnrollPass());
+  pm->addPass(mt::createTritonLoopUnroll());
 
   // Based on make_ttgir() in
   // @triton//:third_party/amd/backend/compiler.py
-  pm->addPass(mt::createConvertTritonToTritonGPUPass(
-      absl::StrCat("hip:", cc.gfx_version()), num_warps, threadsPerWarp,
-      num_ctas));
+  pm->addPass(mt::createConvertTritonToTritonGPU(
+      {absl::StrCat("hip:", cc.gfx_version()), num_warps, threadsPerWarp,
+       num_ctas}));
   pm->addPass(mt::gpu::createTritonGPUCoalesce());
   pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm->addPass(mt::gpu::createTritonGPUOptimizeThreadLocality());
   // TODO ROCm Pass cc.gfx_version() after fixing issue with fmfa
-  pm->addPass(mlir::createTritonAMDGPUAccelerateMatmulPass());
+  pm->addPass(mlir::createTritonAMDGPUAccelerateMatmulPass(arch_name));
   pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   // TODO ROCm Check if we want to compare MI100 and greater
   pm->addPass(mlir::createTritonAMDGPUOptimizeEpiloguePass());

@@ -213,7 +213,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "draw_bounding_box_op",
     prefix = "draw_bounding_box_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + ["@com_google_absl//absl/log"],
 )
 
 tf_kernel_library(

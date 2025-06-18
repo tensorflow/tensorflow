@@ -34,8 +34,8 @@ limitations under the License.
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
-#include "xla/service/gpu/buffer_sharing.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/executable.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -94,7 +94,8 @@ class GpuCompiler : public LLVMCompiler {
 
   absl::Status RunPostSchedulingPipelines(
       HloModule* module, int64_t scheduler_mem_limit,
-      const se::DeviceDescription& gpu_device_info) const;
+      const se::DeviceDescription& gpu_device_info,
+      const GpuAliasInfo* alias_info) const;
 
   std::string target_triple() const { return target_triple_; }
   std::string data_layout() const { return data_layout_; }
@@ -109,13 +110,9 @@ class GpuCompiler : public LLVMCompiler {
       const Compiler::CompileOptions& options, const DebugOptions& debug_opts,
       se::StreamExecutor* executor);
 
-  virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer(
+  virtual std::unique_ptr<GpuAliasInfo> GetAliasInfo(
       const se::DeviceDescription& device_description) const {
-    return [&](const HloInstruction* user, const HloInstruction* operand,
-               const ShapeIndex& user_index) {
-      return FusionCanShareBufferHint(user, operand, user_index,
-                                      device_description);
-    };
+    return std::make_unique<GpuAliasInfo>(&device_description);
   }
 
   virtual absl::StatusOr<bool> CanUseLinkModules(
@@ -210,7 +207,8 @@ class GpuCompiler : public LLVMCompiler {
 
   absl::Status RunPreSchedulingPasses(
       HloModule* module, se::StreamExecutor* stream_exec,
-      const se::DeviceDescription& gpu_device_info);
+      const se::DeviceDescription& gpu_device_info,
+      const GpuAliasInfo* alias_info);
   absl::Status RunCollectiveScheduleLinearizerPasses(
       HloModule* hlo_module, se::StreamExecutor* stream_exec);
 
@@ -237,7 +235,8 @@ class GpuCompiler : public LLVMCompiler {
 
   // Inserts and optimizes mandatory copies. Necessary for correctness.
   absl::Status RunPreSchedulingCopyInsertion(
-      HloModule& hlo_module, const se::DeviceDescription& device_description);
+      HloModule& hlo_module, const se::DeviceDescription& device_description,
+      const GpuAliasInfo* alias_info);
 
   virtual absl::StatusOr<std::vector<uint8_t>> LinkModules(
       const stream_executor::DeviceDescription& device_description,

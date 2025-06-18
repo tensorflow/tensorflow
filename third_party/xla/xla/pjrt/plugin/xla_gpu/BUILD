@@ -45,7 +45,7 @@ cc_library(
 xla_test(
     name = "xla_gpu_pjrt_client_test",
     srcs = ["xla_gpu_pjrt_client_test.cc"],
-    backends = ["gpu_any"],
+    backends = ["nvgpu_any"],
     tags = [
         "gpu",
         "no_oss",
@@ -63,8 +63,7 @@ cc_library(
     name = "gpu_static_registration",
     srcs = ["gpu_static_registration.cc"],
     deps = [
-        "//xla/pjrt:pjrt_api",
-        "//xla/pjrt/c:pjrt_c_api_gpu",
+        "//xla/pjrt/c:pjrt_c_api_gpu_internal",
         "//xla/pjrt/plugin:plugin_names",
         "//xla/pjrt/plugin:static_registration",
     ],

@@ -16,17 +16,23 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
 
 #include <algorithm>
+#include <cassert>
 #include <list>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_callbacks.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_driver_cbid.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_result.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
@@ -96,7 +102,8 @@ inline void LogIfError(const absl::Status &status) {
       if (status == CUPTI_ERROR_INSUFFICIENT_PRIVILEGES) {                  \
         return tsl::errors::PermissionDenied("CUPTI need root access!");    \
       } else {                                                              \
-        return tsl::errors::Internal("CUPTI call error", errstr);           \
+        return absl::InternalError(                                         \
+            absl::StrCat("CUPTI call error: ", errstr));                    \
       }                                                                     \
     }                                                                       \
   } while (false)
@@ -620,6 +627,7 @@ void SetCuMemHostUnregisterEventUponApiExit(
 struct GraphResourceCreationInfo {
   uint32_t graph_id = 0;
   uint32_t orig_graph_id = 0;
+  absl::flat_hash_map<uint64_t, uint64_t> node_id_map;
 };
 
 static GraphResourceCreationInfo &GetGraphResourceCreationInfo() {
@@ -627,13 +635,73 @@ static GraphResourceCreationInfo &GetGraphResourceCreationInfo() {
   return per_thread_graph_info;
 }
 
+// This class is instantiated per thread. The contention will happen at the
+// moment of start/stop the tracing, when control thread is clearing all thread
+// local data, while worker threads are injecting events. The mutex in practice
+// will have no contention at all, so still cheap.
+class GuardedCallbackAnnotationsAndEvents {
+ public:
+  CallbackAnnotationsAndEvents Consume() {
+    absl::MutexLock lock(&mu_);
+    CallbackAnnotationsAndEvents grabbed;
+    std::swap(grabbed, annotations_and_events_);
+    return grabbed;
+  }
+
+  void Clear() {
+    absl::MutexLock lock(&mu_);
+    annotations_and_events_.Clear();
+  }
+
+  void IncNumDroppedEvents() {
+    absl::MutexLock lock(&mu_);
+    annotations_and_events_.IncNumDroppedEvents();
+  }
+
+  void Push(const CuptiTracer &tracer, CuptiTracerEvent &&event) {
+    absl::MutexLock lock(&mu_);
+    // Some logic change as no cross thread string comparison should be
+    // made here. The max_annotation_string is used to limit per-thread
+    // annotation string count. And annotation string is not collected
+    // if total callback event count overflow.
+    bool too_many_annotations = tracer.TooManyAnnotationStrings(
+        annotations_and_events_.NumAnnotations());
+    event.annotation = annotations_and_events_.DedupAnnotation(
+        too_many_annotations ? absl::string_view() : event.annotation),
+    event.nvtx_range = annotations_and_events_.DedupNvtxRange(
+        too_many_annotations ? absl::string_view() : event.nvtx_range);
+    annotations_and_events_.event_queue().Push(std::move(event));
+  }
+
+  void AddScopeRangeIdSequence(absl::Span<const int64_t> sequence) {
+    if (sequence.size() > 1) {
+      const int64_t *head = sequence.data();
+      const int64_t *curr = &sequence.back();
+
+      absl::MutexLock lock(&mu_);
+      ScopeRangeIdTree &tree = annotations_and_events_.scope_range_id_tree();
+      for (; curr > head && !tree.contains(*curr); --curr) {
+        tree.emplace(*curr, *(curr - 1));
+      }
+    }
+  }
+
+ private:
+  absl::Mutex mu_;
+  CallbackAnnotationsAndEvents annotations_and_events_ TF_GUARDED_BY(mu_);
+};
+
+using PerThreadCallbackAnnotationsAndEvents =
+    tsl::profiler::PerThread<GuardedCallbackAnnotationsAndEvents>;
+
 // Currently used for cuGraphInstantiate*, cuGraphLaunch*, cuGraphCreate,
 // cuGraphClone.
-void SetCudaGraphEventUponApiExit(CuptiTracerEvent &event,
-                                  CuptiInterface *cupti_interface,
-                                  uint32_t device_id, CUpti_CallbackId cbid,
-                                  const CUpti_CallbackData *cbdata,
-                                  uint64_t start_time, uint64_t end_time) {
+void SetCudaGraphEventUponApiExit(
+    CuptiTracerEvent &event, CuptiInterface *cupti_interface,
+    uint32_t device_id, CUpti_CallbackId cbid, const CUpti_CallbackData *cbdata,
+    uint64_t start_time, uint64_t end_time,
+    GuardedCallbackAnnotationsAndEvents &guarded_annotations_and_events,
+    CuptiTracer *tracer) {
   GraphResourceCreationInfo &graph_id_info = GetGraphResourceCreationInfo();
   if (cbid == CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch ||
       cbid == CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch_ptsz) {
@@ -641,6 +709,40 @@ void SetCudaGraphEventUponApiExit(CuptiTracerEvent &event,
         static_cast<const cuGraphLaunch_params *>(cbdata->functionParams);
     cupti_interface->GetGraphExecId(params->hGraph, &graph_id_info.graph_id);
     graph_id_info.orig_graph_id = 0;
+  }
+  // Create multiple events for cuGraphClone/cuGraphInstantiateWithFlags.
+  // The multiple events are created for each node in the graph.
+  // Each event has a unique node_id and orig_node_id. The orig_graph_id and
+  // graph_id are the same for all the events.
+  if (cbid == CUPTI_DRIVER_TRACE_CBID_cuGraphClone ||
+      cbid == CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiateWithFlags) {
+    // Create multiple events based on the node_id_map size
+    uint64_t current_start_time = start_time;
+    // The time increment is set to 1 ns. This is to make sure that each
+    // CudaGraphNodeMap events has a time width of 1 ns.
+    constexpr uint64_t kTimeIncrementNs = 1;
+    for (const auto &[node_id, orig_node_id] : graph_id_info.node_id_map) {
+      CuptiTracerEvent current_event = event;
+      current_event.type = CuptiTracerEventType::CudaGraphNodeMap;
+      current_event.source = CuptiTracerEventSource::DriverCallback;
+      current_event.name =
+          absl::StrCat("CudaGraphNodeMap: ", cbdata->functionName);
+      current_event.start_time_ns = current_start_time;
+      current_event.end_time_ns = current_start_time + kTimeIncrementNs;
+      current_event.thread_id = Env::Default()->GetCurrentThreadId();
+      current_event.device_id = device_id;
+      current_event.context_id = cbdata->contextUid;
+      current_event.correlation_id = cbdata->correlationId;
+      current_event.cuda_graph_info.cbid = cbid;
+      current_event.graph_id = graph_id_info.graph_id;
+      current_event.graph_node_id = node_id;
+      current_event.cuda_graph_info.orig_graph_node_id = orig_node_id;
+      current_event.cuda_graph_info.orig_graph_id = graph_id_info.orig_graph_id;
+      VLOG(3) << "Observed CudaGraphNodeMap API exit."
+              << " name=" << cbdata->functionName;
+      guarded_annotations_and_events.Push(*tracer, std::move(current_event));
+    }
+    graph_id_info.node_id_map.clear();
   }
 
   event.type = CuptiTracerEventType::CudaGraph;
@@ -657,6 +759,36 @@ void SetCudaGraphEventUponApiExit(CuptiTracerEvent &event,
   event.cuda_graph_info.orig_graph_id = graph_id_info.orig_graph_id;
   VLOG(3) << "Observed CudaGraph API exit."
           << " name=" << cbdata->functionName;
+}
+
+// Currently used for all CUPTI_DRIVER_TRACE_CBID_cuGraphAdd*.
+void SetCudaGraphNodeEventUponApiExit(CuptiTracerEvent &event,
+                                      CuptiInterface *cupti_interface,
+                                      uint32_t device_id, CUpti_CallbackId cbid,
+                                      const CUpti_CallbackData *cbdata,
+                                      uint64_t start_time, uint64_t end_time) {
+  GraphResourceCreationInfo &graph_id_info = GetGraphResourceCreationInfo();
+
+  event.type = CuptiTracerEventType::CudaGraph;
+  event.source = CuptiTracerEventSource::DriverCallback;
+  event.name = cbdata->functionName;
+  event.start_time_ns = start_time;
+  event.end_time_ns = end_time;
+  event.thread_id = Env::Default()->GetCurrentThreadId();
+  event.device_id = device_id;
+  event.context_id = cbdata->contextUid;
+  event.correlation_id = cbdata->correlationId;
+  event.cuda_graph_info.cbid = cbid;
+  event.graph_id = graph_id_info.graph_id;
+  // TODO(rahulnayar): Re-enable this check once the bug is fixed.
+  // DCHECK_EQ(graph_id_info.node_id_map.size(), 1);
+  event.graph_node_id = graph_id_info.node_id_map.begin()->first;
+  event.cuda_graph_info.orig_graph_id = graph_id_info.orig_graph_id;
+  event.cuda_graph_info.orig_graph_node_id =
+      graph_id_info.node_id_map.begin()->second;
+  VLOG(3) << "Observed CudaGraphNode API exit."
+          << " name=" << cbdata->functionName;
+  graph_id_info.node_id_map.clear();
 }
 
 void SetGenericEventUponApiExit(CuptiTracerEvent &event, uint32_t device_id,
@@ -677,12 +809,12 @@ void SetGenericEventUponApiExit(CuptiTracerEvent &event, uint32_t device_id,
           << " name=" << cbdata->functionName;
 }
 
-static void SetCallbackEventUponApiExit(CuptiTracerEvent &event,
-                                        CuptiInterface *cupti_interface,
-                                        uint32_t device_id,
-                                        CUpti_CallbackId cbid,
-                                        const CUpti_CallbackData *cbdata,
-                                        uint64_t start_tsc, uint64_t end_tsc) {
+static void SetCallbackEventUponApiExit(
+    CuptiTracerEvent &event, CuptiInterface *cupti_interface,
+    uint32_t device_id, CUpti_CallbackId cbid, const CUpti_CallbackData *cbdata,
+    uint64_t start_tsc, uint64_t end_tsc,
+    GuardedCallbackAnnotationsAndEvents &guarded_annotations_and_events,
+    CuptiTracer *tracer) {
   switch (cbid) {
     case CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel:
 #if CUDA_VERSION >= 11080  // CUDA 11.8
@@ -786,7 +918,27 @@ static void SetCallbackEventUponApiExit(CuptiTracerEvent &event,
     case CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiateWithParams:
     case CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiateWithParams_ptsz:
       SetCudaGraphEventUponApiExit(event, cupti_interface, device_id, cbid,
-                                   cbdata, start_tsc, end_tsc);
+                                   cbdata, start_tsc, end_tsc,
+                                   guarded_annotations_and_events, tracer);
+      break;
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddKernelNode:
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddKernelNode_v2:
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddMemcpyNode:
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddMemsetNode:
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddChildGraphNode:
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddEmptyNode:
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddHostNode:
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddNode:
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddNode_v2:
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddEventRecordNode:
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddEventWaitNode:
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddExternalSemaphoresSignalNode:
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddExternalSemaphoresWaitNode:
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddMemAllocNode:
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddMemFreeNode:
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddBatchMemOpNode:
+      SetCudaGraphNodeEventUponApiExit(event, cupti_interface, device_id, cbid,
+                                       cbdata, start_tsc, end_tsc);
       break;
 #endif  // CUDA_VERSION >= 11070
     default:
@@ -795,65 +947,6 @@ static void SetCallbackEventUponApiExit(CuptiTracerEvent &event,
       break;
   }
 }
-
-// This class is instantiated per thread. The contention will happen at the
-// moment of start/stop the tracing, when control thread is clearing all thread
-// local data, while worker threads are injecting events. The mutex in practice
-// will have no contention at all, so still cheap.
-class GuardedCallbackAnnotationsAndEvents {
- public:
-  CallbackAnnotationsAndEvents Consume() {
-    absl::MutexLock lock(&mu_);
-    CallbackAnnotationsAndEvents grabbed;
-    std::swap(grabbed, annotations_and_events_);
-    return grabbed;
-  }
-
-  void Clear() {
-    absl::MutexLock lock(&mu_);
-    annotations_and_events_.Clear();
-  }
-
-  void IncNumDroppedEvents() {
-    absl::MutexLock lock(&mu_);
-    annotations_and_events_.IncNumDroppedEvents();
-  }
-
-  void Push(const CuptiTracer &tracer, CuptiTracerEvent &&event) {
-    absl::MutexLock lock(&mu_);
-    // Some logic change as no cross thread string comparison should be
-    // made here. The max_annotation_string is used to limit per-thread
-    // annotation string count. And annotation string is not collected
-    // if total callback event count overflow.
-    bool too_many_annotations = tracer.TooManyAnnotationStrings(
-        annotations_and_events_.NumAnnotations());
-    event.annotation = annotations_and_events_.DedupAnnotation(
-        too_many_annotations ? absl::string_view() : event.annotation),
-    event.nvtx_range = annotations_and_events_.DedupNvtxRange(
-        too_many_annotations ? absl::string_view() : event.nvtx_range);
-    annotations_and_events_.event_queue().Push(std::move(event));
-  }
-
-  void AddScopeRangeIdSequence(absl::Span<const int64_t> sequence) {
-    if (sequence.size() > 1) {
-      const int64_t *head = sequence.data();
-      const int64_t *curr = &sequence.back();
-
-      absl::MutexLock lock(&mu_);
-      ScopeRangeIdTree &tree = annotations_and_events_.scope_range_id_tree();
-      for (; curr > head && !tree.contains(*curr); --curr) {
-        tree.emplace(*curr, *(curr - 1));
-      }
-    }
-  }
-
- private:
-  absl::Mutex mu_;
-  CallbackAnnotationsAndEvents annotations_and_events_ TF_GUARDED_BY(mu_);
-};
-
-using PerThreadCallbackAnnotationsAndEvents =
-    tsl::profiler::PerThread<GuardedCallbackAnnotationsAndEvents>;
 
 absl::Status AddDriverApiCallbackEvent(
     CuptiTracer *tracer, CuptiInterface *cupti_interface, int device_id,
@@ -876,7 +969,8 @@ absl::Status AddDriverApiCallbackEvent(
   event.nvtx_range = nvtx_range;
   event.scope_range_id = range_ids.empty() ? 0 : range_ids.back();
   SetCallbackEventUponApiExit(event, cupti_interface, device_id, cbid, cbdata,
-                              start_tsc, end_tsc);
+                              start_tsc, end_tsc,
+                              guarded_annotations_and_events, tracer);
   guarded_annotations_and_events.Push(*tracer, std::move(event));
   return absl::OkStatus();
 }
@@ -953,7 +1047,9 @@ absl::Span<const uint32_t> GetCudaGraphTracingResourceCbids() {
 #if CUDA_VERSION >= 11070
   static constexpr uint32_t res_cbids[] = {
       CUPTI_CBID_RESOURCE_GRAPH_CREATED, CUPTI_CBID_RESOURCE_GRAPH_CLONED,
-      CUPTI_CBID_RESOURCE_GRAPHEXEC_CREATED};
+      CUPTI_CBID_RESOURCE_GRAPHEXEC_CREATED,
+      CUPTI_CBID_RESOURCE_GRAPHNODE_CREATED,
+      CUPTI_CBID_RESOURCE_GRAPHNODE_CLONED};
   return absl::MakeSpan(res_cbids);
 #else
   return absl::Span<const uint32_t>();
@@ -1059,9 +1155,74 @@ void CuptiTracer::Disable() {
   tsl::profiler::AnnotationStack::Enable(false);
 }
 
+std::vector<CUpti_driver_api_trace_cbid_enum>
+CuptiTracer::CreateDefaultCallbackIds() {
+  return {
+      // KERNEL
+      CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel,
+#if CUDA_VERSION >= 11080  // CUDA 11.8
+      CUPTI_DRIVER_TRACE_CBID_cuLaunchKernelEx,
+#endif  // CUDA_VERSION >= 11080
+      // MEMCPY
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpy,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoDAsync_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoH_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoHAsync_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoD_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoA_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoA_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpy2D_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DUnaligned_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DAsync_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpy3D_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DAsync_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoA_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoAAsync_v2,
+      // MemAlloc
+      CUPTI_DRIVER_TRACE_CBID_cuMemAlloc_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemAllocPitch_v2,
+      // MemFree
+      CUPTI_DRIVER_TRACE_CBID_cuMemFree_v2,
+      // Memset
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD8_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD16_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD32_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD8Async,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD16Async,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD32Async,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8Async,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16Async,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32Async,
+      // GENERIC
+      CUPTI_DRIVER_TRACE_CBID_cuStreamSynchronize,
+#if CUDA_VERSION >= 12080  // CUDA 12.8
+      CUPTI_DRIVER_TRACE_CBID_cuGraphCreate,
+      CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiate,
+      CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch,
+      CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch_ptsz,
+      CUPTI_DRIVER_TRACE_CBID_cuGraphClone,
+      CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiate_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiateWithFlags,
+      CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiateWithParams,
+      CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiateWithParams_ptsz,
+      CUPTI_DRIVER_TRACE_CBID_cuGraphAddMemcpyNode,
+#endif  // CUDA_VERSION >= 12080
+  };
+}
+
 absl::Status CuptiTracer::FlushEventsToCollector() {
-  if (!api_tracing_enabled_ && !activity_tracing_enabled_)
+  if (!api_tracing_enabled_ && !activity_tracing_enabled_) {
     return absl::OkStatus();
+  }
 
   // Need get the cached activity buffers first, but send to collector after
   // the callback events are processed.
@@ -1242,6 +1403,10 @@ absl::Status CuptiTracer::HandleResourceCallback(
   auto *graph_data =
       reinterpret_cast<const CUpti_GraphData *>(resource->resourceDescriptor);
   GraphResourceCreationInfo &graph_id_info = GetGraphResourceCreationInfo();
+  auto orig_graph_node = static_cast<CUgraphNode>(graph_data->originalNode);
+  auto created_graph_node = static_cast<CUgraphNode>(graph_data->node);
+  uint64_t orig_graph_node_id = 0;
+  uint64_t graph_node_id = 0;
   switch (cbid) {
     case CUPTI_CBID_RESOURCE_GRAPH_CREATED:
       cupti_interface_->GetGraphId(graph_data->graph, &graph_id_info.graph_id);
@@ -1258,6 +1423,28 @@ absl::Status CuptiTracer::HandleResourceCallback(
       cupti_interface_->GetGraphId(graph_data->graph,
                                    &graph_id_info.orig_graph_id);
       break;
+    case CUPTI_CBID_RESOURCE_GRAPHNODE_CREATED:
+      cupti_interface_->GetGraphNodeId(created_graph_node, &graph_node_id);
+      graph_id_info.node_id_map[graph_node_id] = 0;
+      break;
+    case CUPTI_CBID_RESOURCE_GRAPHNODE_CLONED:
+      cupti_interface_->GetGraphNodeId(created_graph_node, &graph_node_id);
+      cupti_interface_->GetGraphNodeId(orig_graph_node, &orig_graph_node_id);
+      // Graph Node instance process, two graph nodes are first created this
+      // will generate a two map entries linked to 0 node id. When graph node is
+      // cloned/instantiated, the orig_graph_node_id will be populated.
+      if (graph_id_info.node_id_map.contains(graph_node_id) &&
+          graph_id_info.node_id_map[graph_node_id] > 0) {
+        LOG_FIRST_N(ERROR, 10)
+            << "Duplicate graph node id: " << graph_node_id
+            << " graph_id: " << graph_id_info.graph_id
+            << " orig_graph_id: " << graph_id_info.orig_graph_id
+            << " orig_graph_node_id: "
+            << graph_id_info.node_id_map[graph_node_id]
+            << " ,inserting: " << orig_graph_node_id;
+      }
+      graph_id_info.node_id_map[graph_node_id] = orig_graph_node_id;
+      break;
   }
   return absl::OkStatus();
 }
@@ -1271,7 +1458,7 @@ absl::Status CuptiTracer::HandleDriverApiCallback(
     // API callback is called before any CUDA context is created.
     // This is expected to be rare, and we ignore this case.
     VLOG(3) << "API callback received before creation of CUDA context\n";
-    return tsl::errors::Internal("cutpi callback without context");
+    return absl::InternalError("cutpi callback without context");
   }
 
   // Grab a correct device ID.
@@ -1279,7 +1466,7 @@ absl::Status CuptiTracer::HandleDriverApiCallback(
   RETURN_IF_CUPTI_ERROR(
       cupti_interface_->GetDeviceId(cbdata->context, &device_id));
   if (device_id >= num_gpus_) {
-    return tsl::errors::Internal("Invalid device id:", device_id);
+    return absl::InternalError(absl::StrCat("Invalid device id:", device_id));
   }
 
   if (cbdata->callbackSite == CUPTI_API_ENTER) {
@@ -1378,7 +1565,7 @@ absl::Status CuptiTracer::ProcessActivityBuffer(CUcontext context,
     LOG(WARNING) << "CUPTI activity buffer is reclaimed after flush.";
     return absl::OkStatus();
   }
-  if (cupti_interface_->Disabled()) return tsl::errors::Internal("Disabled.");
+  if (cupti_interface_->Disabled()) return absl::InternalError("Disabled.");
 
   // Report dropped records.
   size_t dropped = 0;

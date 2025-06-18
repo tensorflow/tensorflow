@@ -30,10 +30,10 @@ limitations under the License.
 #include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace tridiagonal {
@@ -44,7 +44,7 @@ class TridiagonalTest
           HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>,
       public ::testing::WithParamInterface<std::tuple<int, int, int>> {};
 
-XLA_TEST_P(TridiagonalTest, SimpleTridiagonalMatMulOk) {
+TEST_P(TridiagonalTest, SimpleTridiagonalMatMulOk) {
   xla::XlaBuilder builder(TestName());
 
   // Since the last element ignored, it will be {{{34, 35, 0}}}
@@ -86,21 +86,17 @@ XLA_TEST_P(TridiagonalTest, SimpleTridiagonalMatMulOk) {
   EXPECT_EQ(result.data<float>({}), expected_values);
 }
 
-XLA_TEST_P(TridiagonalTest, TridiagonalMatMulWrongShape) {
+TEST_P(TridiagonalTest, TridiagonalMatMulWrongShape) {
   xla::XlaBuilder builder(TestName());
 
   XlaOp upper_diagonal_xla = Parameter(
-      &builder, 0, ShapeUtil::MakeValidatedShape(F32, {5, 3, 7}).value(),
-      "upper_diagonal");
+      &builder, 0, ShapeUtil::MakeShape(F32, {5, 3, 7}), "upper_diagonal");
   XlaOp main_diagonal_xla = Parameter(
-      &builder, 1, ShapeUtil::MakeValidatedShape(F32, {5, 3, 7}).value(),
-      "main_diagonal");
+      &builder, 1, ShapeUtil::MakeShape(F32, {5, 3, 7}), "main_diagonal");
   XlaOp lower_diagonal_xla = Parameter(
-      &builder, 2, ShapeUtil::MakeValidatedShape(F32, {5, 3, 7}).value(),
-      "lower_diagonal");
-  XlaOp rhs_xla = Parameter(
-      &builder, 3, ShapeUtil::MakeValidatedShape(F32, {5, 3, 7, 6}).value(),
-      "rhs");
+      &builder, 2, ShapeUtil::MakeShape(F32, {5, 3, 7}), "lower_diagonal");
+  XlaOp rhs_xla =
+      Parameter(&builder, 3, ShapeUtil::MakeShape(F32, {5, 3, 7, 6}), "rhs");
 
   auto result = TridiagonalMatMul(upper_diagonal_xla, main_diagonal_xla,
                                   lower_diagonal_xla, rhs_xla);
@@ -109,7 +105,7 @@ XLA_TEST_P(TridiagonalTest, TridiagonalMatMulWrongShape) {
                 "superdiag must have same rank as rhs, but got 3 and 4."));
 }
 
-XLA_TEST_P(TridiagonalTest, Solves) {
+TEST_P(TridiagonalTest, Solves) {
   const auto& spec = GetParam();
   xla::XlaBuilder builder(TestName());
 

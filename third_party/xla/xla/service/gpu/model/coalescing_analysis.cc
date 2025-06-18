@@ -253,7 +253,7 @@ std::optional<GroupedByOpIndexingMap> GetThreadIdToInputMemoryLayoutsMaps(
         return std::nullopt;
       }
       // Compute indexing from output to inputs for logical layout.
-      GroupedByOpIndexingMap instr_indexing_keyed_by_operands =
+      GroupedByOpIndexing instr_indexing_keyed_by_operands =
           ComputeGroupedOutputToInputIndexing(fusion_adaptor, hero_operand,
                                               mlir_context);
       // For every operand compute thread ID -> physical layout of operand
@@ -271,18 +271,17 @@ std::optional<GroupedByOpIndexingMap> GetThreadIdToInputMemoryLayoutsMaps(
             GetIndexingMapFromLogicalToPhysicalLayout(operand_shape,
                                                       mlir_context);
         IndexingMap operand_physical_to_linearized_shape = GetBitcastMap(
-            ShapeUtil::
-                MakeValidatedShapeWithDescendingLayoutAndSamePhysicalLayout(
-                    operand_shape)
-                    .value(),
+            ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+                operand_shape),
             GetLinearizedShape(operand_shape), mlir_context);
         IndexingMap operand_logical_to_linearized_physical_shape =
             operand_logical_to_physical_map *
             operand_physical_to_linearized_shape;
         operand_logical_to_linearized_physical_shape.Simplify();
 
-        for (const IndexingMap& operand_indexing_map :
+        for (const OperandIndexing& operand_indexing :
              operand_indexing_maps_it->second) {
+          const IndexingMap& operand_indexing_map = operand_indexing.map();
           // If one of the indexing maps for the operand is undefined, we remove
           // all indexing maps for it and store only the undefined one.
           if (operand_indexing_map.IsUndefined()) {

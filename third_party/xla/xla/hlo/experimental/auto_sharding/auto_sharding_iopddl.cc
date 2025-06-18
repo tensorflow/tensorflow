@@ -39,7 +39,8 @@ iopddl::Cost ConvertCost(const double cost) {
   return static_cast<int64_t>(cost);
 }
 
-iopddl::Problem ConvertToProblem(const AutoShardingSolverRequest& request) {
+iopddl::Problem ConvertToProblem(const AutoShardingSolverRequest& request,
+                                 const bool use_follower_constraints) {
   iopddl::Problem problem = {.name = request.request_name()};
   std::vector<iopddl::Interval> node_intervals;
   // Process all nodes, taking intervals if provided.
@@ -172,17 +173,19 @@ iopddl::Problem ConvertToProblem(const AutoShardingSolverRequest& request) {
     }
   }
   // The third kind of edges come from request.s_follow
-  for (int64_t node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
-    CHECK_LT(node_idx, request.s_follow_size());
-    if (request.s_follow(node_idx) < 0) {
-      continue;
-    }
-    problem.edges.push_back({{request.s_follow(node_idx), node_idx}});
-    CHECK_LT(node_idx, request.s_len_size());
-    for (int64_t i = 0; i < request.s_len(node_idx); ++i) {
-      for (int64_t j = 0; j < request.s_len(node_idx); ++j) {
-        const iopddl::Cost cost = (i == j) ? 0 : kInfinityInt;
-        problem.edges.back().strategies.push_back({cost});
+  if (use_follower_constraints) {
+    for (int64_t node_idx = 0; node_idx < request.num_nodes(); ++node_idx) {
+      CHECK_LT(node_idx, request.s_follow_size());
+      if (request.s_follow(node_idx) < 0) {
+        continue;
+      }
+      problem.edges.push_back({{request.s_follow(node_idx), node_idx}});
+      CHECK_LT(node_idx, request.s_len_size());
+      for (int64_t i = 0; i < request.s_len(node_idx); ++i) {
+        for (int64_t j = 0; j < request.s_len(node_idx); ++j) {
+          const iopddl::Cost cost = (i == j) ? 0 : kInfinityInt;
+          problem.edges.back().strategies.push_back({cost});
+        }
       }
     }
   }

@@ -353,6 +353,85 @@ ENTRY entry {
             1);
 }
 
+TEST_F(HloDiffTest, DebugInfoIsAttached) {
+  // Create left module with entry computation containing the following
+  // structure:
+  // [Param 0] ---> ┌-------┐
+  //                | add_0 |
+  // [Param 1] ---> └-------┘
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  parameter.0 = f32[] parameter(0)
+  parameter.1 = f32[] parameter(1)
+  add.0 = f32[] add(parameter.0, parameter.1)
+}
+)"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
+                          HloGumgraph::Create(module_l.get()));
+
+  // Create right module with entry computation containing the following
+  // structure:
+  // [Param 0] ---> ┌-------┐
+  //                | add_0 |
+  // [Param 1] ---> └-------┘
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  parameter.0 = f64[] parameter(0)
+  parameter.1 = f32[] parameter(1)
+  add.0 = f32[] add(parameter.0, parameter.1)
+}
+)"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
+                          HloGumgraph::Create(module_r.get()));
+  auto mappings = std::make_unique<HloGumgraphMappings>();
+  ASSERT_NO_FATAL_FAILURE(OverwriteMapInstructions(
+      GetNodeByName(*graph_l, "add.0"), GetNodeByName(*graph_r, "add.0"),
+      *mappings, /*position_unchanged=*/true,
+      /*matcher_debug_info=*/"debug_info_add"));
+  ASSERT_NO_FATAL_FAILURE(OverwriteMapInstructions(
+      GetNodeByName(*graph_l, "parameter.0"),
+      GetNodeByName(*graph_r, "parameter.0"), *mappings,
+      /*position_unchanged=*/true, /*matcher_debug_info=*/"debug_info_param0"));
+  ASSERT_NO_FATAL_FAILURE(OverwriteMapInstructions(
+      GetNodeByName(*graph_l, "parameter.1"),
+      GetNodeByName(*graph_r, "parameter.1"), *mappings,
+      /*position_unchanged=*/true, /*matcher_debug_info=*/"debug_info_param1"));
+  auto diff_result = ConstructDiffResult(*graph_l, *graph_r, *mappings);
+
+  EXPECT_THAT(
+      diff_result->map_by,
+      UnorderedElementsAre(
+          Pair(Pair(Pointee(Property(&HloInstruction::name, "parameter.0")),
+                    Pointee(Property(&HloInstruction::name, "parameter.0"))),
+               MatcherType::kManual),
+          Pair(Pair(Pointee(Property(&HloInstruction::name, "add.0")),
+                    Pointee(Property(&HloInstruction::name, "add.0"))),
+               MatcherType::kManual),
+          Pair(Pair(Pointee(Property(&HloInstruction::name, "parameter.1")),
+                    Pointee(Property(&HloInstruction::name, "parameter.1"))),
+               MatcherType::kManual)));
+
+  EXPECT_THAT(
+      diff_result->matcher_debug_info,
+      UnorderedElementsAre(
+          Pair(Pair(Pointee(Property(&HloInstruction::name, "parameter.0")),
+                    Pointee(Property(&HloInstruction::name, "parameter.0"))),
+               "debug_info_param0"),
+          Pair(Pair(Pointee(Property(&HloInstruction::name, "add.0")),
+                    Pointee(Property(&HloInstruction::name, "add.0"))),
+               "debug_info_add"),
+          Pair(Pair(Pointee(Property(&HloInstruction::name, "parameter.1")),
+                    Pointee(Property(&HloInstruction::name, "parameter.1"))),
+               "debug_info_param1")));
+}
+
 }  // namespace
 }  // namespace hlo_diff
 }  // namespace xla

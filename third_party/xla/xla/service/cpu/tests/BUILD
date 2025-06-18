@@ -393,7 +393,6 @@ xla_cc_test(
         "//xla/service/cpu:onednn_contraction_rewriter",
         "//xla/service/cpu:onednn_util",
         "//xla/tests:hlo_test_base",
-        "//xla/tests:test_macros_header",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:platform_port",
@@ -415,7 +414,6 @@ xla_cc_test(
         "//xla/service/cpu:onednn_contraction_rewriter",
         "//xla/service/cpu:onednn_util",
         "//xla/tests:hlo_test_base",
-        "//xla/tests:test_macros_header",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:platform_port",
@@ -427,6 +425,7 @@ xla_cc_test(
     srcs = ["onednn_memory_util_test.cc"],
     copts = tsl_copts(),
     fail_if_no_test_linked = False,  # NOLINT=There are only tests for Intel MKL.
+    fail_if_no_test_selected = False,  # NOLINT=There are only tests for Intel MKL.
     deps = [
         "//xla:shape_util",
         "//xla/hlo/testlib:filecheck",
@@ -458,7 +457,7 @@ xla_cc_test(
     name = "onednn_softmax_test",
     srcs = ["onednn_softmax_test.cc"],
     copts = tsl_copts(),
-    shard_count = 4,
+    shard_count = if_graph_api(4, 1),
     deps = [
         "//xla:literal",
         "//xla:shape_util",
@@ -472,7 +471,6 @@ xla_cc_test(
         "//xla/service/cpu:onednn_ops_rewriter",
         "//xla/service/cpu:onednn_util",
         "//xla/tests:hlo_test_base",
-        "//xla/tests:test_macros_header",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings",
     ],

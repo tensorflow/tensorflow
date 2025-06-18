@@ -145,7 +145,8 @@ bool IfrtVerifyDeviceTypeConsistencyPass::IsConsistentWithModuleType(
       return true;
     case ModuleType::kXLA:
       return platform_name == xla::TpuName() ||
-             platform_name == xla::CudaName();
+             platform_name == xla::CudaName() ||
+             platform_name == xla::CpuName();
     default:
       LOG(ERROR) << "Unexpected value for InferredDeviceType.";
       return false;

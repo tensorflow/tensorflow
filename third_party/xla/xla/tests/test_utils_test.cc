@@ -23,7 +23,6 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/shape_util.h"
 #include "xla/tests/local_client_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 
 namespace xla {
@@ -32,17 +31,17 @@ namespace {
 // A test fixture is used because we need a client for our computation builder.
 class TestUtilsTest : public LocalClientTestBase {};
 
-XLA_TEST_F(TestUtilsTest, UnusedParam) {
+TEST_F(TestUtilsTest, UnusedParam) {
   XlaBuilder builder(TestName());
   // Make the reduction lambda.
-  Shape single_float = ShapeUtil::MakeValidatedShape(F32, {}).value();
+  Shape single_float = ShapeUtil::MakeShape(F32, {});
   Parameter(&builder, 0, single_float, "unused");
   Parameter(&builder, 1, single_float, "used");
   auto computation_status = builder.Build();
   TF_ASSERT_OK(computation_status.status());
 
   // Make the reduction.
-  Shape pair_float = ShapeUtil::MakeValidatedShape(F32, {2}).value();
+  Shape pair_float = ShapeUtil::MakeShape(F32, {2});
   Reduce(Parameter(&builder, 0, pair_float, "operand"),
          Parameter(&builder, 1, single_float, "init"),
          computation_status.value(), {0});
@@ -58,7 +57,7 @@ XLA_TEST_F(TestUtilsTest, UnusedParam) {
   TF_ASSERT_OK(MakeFakeArguments(&module).status());
 }
 
-XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicSlices) {
+TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicSlices) {
   auto module = ParseAndReturnVerifiedModule(
                     R"(HloModule index_space_module
 
@@ -86,7 +85,7 @@ XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicSlices) {
   EXPECT_LE(args[2].Get<int32_t>({}), 3);
 }
 
-XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicUpdateSlices) {
+TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicUpdateSlices) {
   auto module = ParseAndReturnVerifiedModule(
                     R"(HloModule index_space_module
 
@@ -117,7 +116,7 @@ XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicUpdateSlices) {
   EXPECT_LE(args[2].Get<int32_t>({}), 3);
 }
 
-XLA_TEST_F(TestUtilsTest, NoDuplicatesFloats) {
+TEST_F(TestUtilsTest, NoDuplicatesFloats) {
   // Inputs which are sort keys in key/value sorts should have no duplicates.
   auto module = ParseAndReturnVerifiedModule(R"(
 HloModule sort.148.1589
@@ -148,7 +147,7 @@ ENTRY %sort.148.1589 (parameter.0: f32[1048576], parameter.1: s32[1048576]) -> (
   }
 }
 
-XLA_TEST_F(TestUtilsTest, NoDuplicatesInt32) {
+TEST_F(TestUtilsTest, NoDuplicatesInt32) {
   // Inputs which are sort keys in key/value sorts should have no duplicates.
   auto module = ParseAndReturnVerifiedModule(R"(
 HloModule sort.148.1589
@@ -179,7 +178,7 @@ ENTRY %sort.148.1589 (parameter.0: s32[1048576], parameter.1: s32[1048576]) -> (
   }
 }
 
-XLA_TEST_F(TestUtilsTest, NoDuplicatesBfloat16) {
+TEST_F(TestUtilsTest, NoDuplicatesBfloat16) {
   // Inputs which are sort keys in key/value sorts should have no duplicates.
   auto module = ParseAndReturnVerifiedModule(R"(
 HloModule sort, is_scheduled=true
@@ -210,7 +209,7 @@ ENTRY %sort. (parameter.0: bf16[2,1452], parameter.1: s32[2,1452]) -> (bf16[2,14
   }
 }
 
-XLA_TEST_F(TestUtilsTest, MakeFakeArgumentsR0InputToDynamicSlice) {
+TEST_F(TestUtilsTest, MakeFakeArgumentsR0InputToDynamicSlice) {
   auto module = ParseAndReturnVerifiedModule(R"(
 HloModule Test
 
@@ -231,15 +230,14 @@ ENTRY %module (parameter.0: s32[], parameter.1: f32[20,20]) -> f32[] {
   TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
                           MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 2);
-  EXPECT_TRUE(ShapeUtil::Equal(args[0].shape(),
-                               ShapeUtil::MakeValidatedShape(S32, {}).value()))
+  EXPECT_TRUE(ShapeUtil::Equal(args[0].shape(), ShapeUtil::MakeShape(S32, {})))
       << ShapeUtil::HumanString(args[0].shape());
-  EXPECT_TRUE(ShapeUtil::Equal(
-      args[1].shape(), ShapeUtil::MakeValidatedShape(F32, {20, 20}).value()))
+  EXPECT_TRUE(
+      ShapeUtil::Equal(args[1].shape(), ShapeUtil::MakeShape(F32, {20, 20})))
       << ShapeUtil::HumanString(args[1].shape());
 }
 
-XLA_TEST_F(TestUtilsTest, MakeFakeArgumentsForGather) {
+TEST_F(TestUtilsTest, MakeFakeArgumentsForGather) {
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule Test
 
@@ -263,8 +261,8 @@ ENTRY %module(parameter.0: f32[200,100,300], parameter.1: s32[10,2]) ->
   ASSERT_EQ(args.size(), 2);
 
   const Shape& indices_shape = args[1].shape();
-  EXPECT_TRUE(ShapeUtil::Equal(
-      indices_shape, ShapeUtil::MakeValidatedShape(S32, {10, 2}).value()))
+  EXPECT_TRUE(
+      ShapeUtil::Equal(indices_shape, ShapeUtil::MakeShape(S32, {10, 2})))
       << ShapeUtil::HumanString(indices_shape);
   auto indices = args[1].data<int32_t>();
   for (const auto index : indices) {
@@ -273,7 +271,7 @@ ENTRY %module(parameter.0: f32[200,100,300], parameter.1: s32[10,2]) ->
   }
 }
 
-XLA_TEST_F(TestUtilsTest, MakeFakeArgumentsForGatherTupleParam) {
+TEST_F(TestUtilsTest, MakeFakeArgumentsForGatherTupleParam) {
   auto module = ParseAndReturnVerifiedModule(R"(
 HloModule cluster_13361217111314620287__.11, entry_computation_layout={((s32[10]{0:T(1024)}, bf16[100,256]{1,0:T(8,128)(2,1)}))->(bf16[10,256]{1,0:T(8,128)(2,1)})}
 
@@ -300,8 +298,7 @@ ENTRY cluster_13361217111314620287__.11 {
   ASSERT_EQ(args.size(), 1);
 
   const Shape& indices_shape = args[0].shape().tuple_shapes()[0];
-  EXPECT_TRUE(ShapeUtil::Equal(
-      indices_shape, ShapeUtil::MakeValidatedShape(S32, {10}).value()))
+  EXPECT_TRUE(ShapeUtil::Equal(indices_shape, ShapeUtil::MakeShape(S32, {10})))
       << ShapeUtil::HumanString(indices_shape);
   const std::vector<Literal> results = args[0].DecomposeTuple();
   auto indices = results[0].data<int32_t>();
@@ -311,7 +308,7 @@ ENTRY cluster_13361217111314620287__.11 {
   }
 }
 
-XLA_TEST_F(TestUtilsTest, MakeFakeArgumentsForScatter) {
+TEST_F(TestUtilsTest, MakeFakeArgumentsForScatter) {
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule Test
 
@@ -339,8 +336,8 @@ ENTRY main {
   ASSERT_EQ(args.size(), 3);
 
   const Shape& indices_shape = args[1].shape();
-  EXPECT_TRUE(ShapeUtil::Equal(
-      indices_shape, ShapeUtil::MakeValidatedShape(S32, {10, 2}).value()))
+  EXPECT_TRUE(
+      ShapeUtil::Equal(indices_shape, ShapeUtil::MakeShape(S32, {10, 2})))
       << ShapeUtil::HumanString(indices_shape);
   auto indices = args[1].data<int32_t>();
   for (const auto index : indices) {

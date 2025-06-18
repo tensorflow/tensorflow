@@ -77,7 +77,7 @@ static absl::StatusOr<ConstantAllocation> LiteralToConstantAllocation(
     // buffer with correct alignment. Keep it allocated on heap to avoid
     // capturing stack address that will be invalidated by a move below.
     auto packed = std::make_unique<Literal>(
-        ShapeUtil::MakeValidatedShape(U8, {packed_size_bytes}).value());
+        ShapeUtil::MakeShape(U8, {packed_size_bytes}));
 
     PackIntN(
         bit_width,

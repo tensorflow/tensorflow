@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/service/computation_placer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
@@ -325,6 +326,44 @@ TEST(PjRtCApiClientTest, ForwardExecuteContext) {
   EXPECT_TRUE(LiteralTestUtil::Equal(
       LiteralUtil::CreateR1<float>({42.0f, 42.0f, 42.0f, 42.0f}),
       *result_literal));
+}
+
+TEST(PjRtClientTest, DeserializeExecutableWithDifferentDeviceAssignment) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+  ASSERT_GT(client->addressable_devices().size(), 1);
+
+  XlaBuilder builder("Identity");
+  Shape shape = ShapeUtil::MakeShape(S32, {2, 3});
+  auto input = Parameter(&builder, 0, shape, "input");
+  auto computation = builder.Build(input).value();
+
+  auto compile_options_for_device = [](int id) -> xla::CompileOptions {
+    xla::DeviceAssignment device_assignment(1, 1);
+    device_assignment(0, 0) = id;
+    xla::CompileOptions options;
+    options.executable_build_options.set_device_assignment(device_assignment);
+    return options;
+  };
+
+  // Compile the executable for device 0 and serialize it.
+  std::unique_ptr<PjRtLoadedExecutable> executable =
+      client->CompileAndLoad(computation, compile_options_for_device(0))
+          .value();
+  TF_ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
+                          executable->SerializeExecutable());
+
+  // Deserialize the executable for device 1.
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto deserialized_executable,
+      client->LoadSerializedExecutable(
+          serialized_executable, compile_options_for_device(1), LoadOptions{}));
+
+  // Check that the executable's compile options were overridden
+  // with device id 1.
+  EXPECT_EQ(
+      deserialized_executable->addressable_devices()[0]->global_device_id(), 1);
 }
 
 }  // namespace

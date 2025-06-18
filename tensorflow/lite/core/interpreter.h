@@ -298,15 +298,23 @@ class Interpreter {
     return primary_subgraph().tensor(tensor_index);
   }
 
-  /// Returns a pointer to an operation and registration data structure if in
-  /// bounds from the primary subgraph(subgraph_[0]).
+  // Returns a pointer to an operation and registration data structure if in
+  // bounds from the primary subgraph(subgraph_[0]).
+  //
+  // Warning: No guarantee is given about address stability. Operations
+  // (including but not limited to: `Invoke`, `ModifyGraphWithDelegate`) may
+  // invalidate the pointer returned by this function.
   const std::pair<TfLiteNode, TfLiteRegistration>* node_and_registration(
       int node_index) const {
     return primary_subgraph().node_and_registration(node_index);
   }
 
-  /// Returns a pointer to an operation and registration data structure if in
-  /// bounds.
+  // Returns a pointer to an operation and registration data structure if in
+  // bounds.
+  //
+  // Warning: No guarantee is given about address stability. Operations
+  // (including but not limited to: `Invoke`, `ModifyGraphWithDelegate`) may
+  // invalidate the pointer returned by this function.
   const std::pair<TfLiteNode, TfLiteRegistration>* node_and_registration(
       int subgraph_index, int node_index) const {
     return subgraph(subgraph_index)->node_and_registration(node_index);

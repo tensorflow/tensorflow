@@ -58,10 +58,6 @@ using ::operations_research::MPConstraint;
 using ::operations_research::MPSolver;
 using ::operations_research::MPVariable;
 
-// We need to nudge the maximum cost (if present) slightly, since the constraint
-// solver cannot guarantee exact numerical precision.
-constexpr double kMaxCostEpsilon = 1.0001;
-
 // Memory contributions in the Mixed ILP are converted to units in this range;
 // beware that significantly larger / smaller values can cause numerical issues.
 constexpr double kMemoryMultiplier = 1e6;
@@ -805,15 +801,6 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
         solver->MutableObjective()->SetCoefficient(
             s[node_idx][j], accumulated_coefficient + departure_cost);
       }
-    }
-  }
-  if (params.max_cost.has_value() && *params.max_cost < kMaxCostValue) {
-    double max_cost = kMaxCostEpsilon * (*params.max_cost);
-    max_cost -= solver->Objective().offset();
-    MPConstraint* cost_constraint = solver->MakeRowConstraint(
-        -MPSolver::infinity(), max_cost, "cost_constraint");
-    for (const auto [var, coeff] : solver->Objective().terms()) {
-      cost_constraint->SetCoefficient(var, coeff);
     }
   }
 

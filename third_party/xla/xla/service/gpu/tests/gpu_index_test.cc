@@ -40,13 +40,13 @@ class GpuIndexTest : public GpuCodegenTest {};
 TEST_F(GpuIndexTest, CompatibleUseLinearIndex) {
   HloComputation::Builder builder(TestName());
 
-  auto param_shape = ShapeUtil::MakeValidatedShape(F32, {5, 7, 2}).value();
+  auto param_shape = ShapeUtil::MakeShape(F32, {5, 7, 2});
   HloInstruction* param_x = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "x"));
   HloInstruction* param_y = builder.AddInstruction(
       HloInstruction::CreateParameter(1, param_shape, "y"));
   builder.AddInstruction(HloInstruction::CreateCompare(
-      ShapeUtil::MakeValidatedShape(PRED, {5, 7, 2}).value(), param_x, param_y,
+      ShapeUtil::MakeShape(PRED, {5, 7, 2}), param_x, param_y,
       ComparisonDirection::kGe));
 
   auto hlo_module = CreateNewVerifiedModule();

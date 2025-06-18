@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
+#include "stablehlo/dialect/Version.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/quantization/common/func.h"
 #include "tensorflow/compiler/mlir/quantization/common/lift_as_function_call.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/utils/stablehlo_type_utils.h"
@@ -340,7 +341,8 @@ bool ShouldAddOpToSubgraph(Operation* op,
     current_depth++;
 
     for (Operation* descendant : current_layer_descendants) {
-      if (!IsStablehloOp(descendant) || !ops_to_add.contains(descendant)) {
+      if (!quant::stablehlo::IsStablehloOp(descendant) ||
+          !ops_to_add.contains(descendant)) {
         all_descendants.clear();
         return false;
       }
@@ -397,7 +399,7 @@ void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOps(
     liveouts.update(*op);
     ops_to_add.remove(op);
 
-    if (!IsStablehloOp(op)) {
+    if (!quant::stablehlo::IsStablehloOp(op)) {
       // Always update the liveouts when the subgraph isn't being continued.
       liveouts.snapshot_previous_state();
       return;
@@ -416,7 +418,7 @@ void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOps(
     // in the subgraph. We only trace StableHLO ops that have all users inside
     // the current subgraph.
     // TODO: b/311239049 - Consider rewrite this using BFS.
-    if (!IsStablehloOp(op)) {
+    if (!quant::stablehlo::IsStablehloOp(op)) {
       bool should_add_op = true;
       while (should_add_op) {
         should_add_op = false;
@@ -493,7 +495,7 @@ void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass::
     runOnOperation() {
   ModuleOp module_op = getOperation();
 
-  func::FuncOp main_func = FindMainFuncOp(module_op);
+  func::FuncOp main_func = quant::FindMainFuncOp(module_op);
   if (!main_func) return;
 
   // In case the model has tf.StatefulPartitionedCallOp or tf.PartitionedCallOp,

@@ -869,6 +869,34 @@ PJRT_Error* PJRT_Client_DefaultDeviceAssignment(
   return nullptr;
 }
 
+PJRT_Error* PJRT_Client_CreateUninitializedBuffer(
+    PJRT_Client_CreateUninitializedBuffer_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Client_CreateUninitializedBuffer_Args",
+      PJRT_Client_CreateUninitializedBuffer_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  PJRT_ASSIGN_OR_RETURN(
+      xla::Shape shape,
+      pjrt::BuildXlaShapeFromC(args->shape_element_type, args->shape_dims,
+                               args->shape_num_dims, args->shape_layout));
+
+  xla::PjRtMemorySpace* memory_space;
+  if (args->device) {
+    PJRT_ASSIGN_OR_RETURN(memory_space,
+                          args->device->device->default_memory_space());
+  } else {
+    memory_space = args->memory->memory_space;
+  }
+
+  std::unique_ptr<xla::PjRtBuffer> buffer;
+  PJRT_ASSIGN_OR_RETURN(buffer, args->client->client->CreateUninitializedBuffer(
+                                    shape, memory_space));
+
+  args->buffer = new PJRT_Buffer{std::move(buffer), args->client};
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Client_BufferFromHostBuffer(
     PJRT_Client_BufferFromHostBuffer_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -1848,10 +1876,21 @@ PJRT_Error* PJRT_Executable_DeserializeAndLoad(
   absl::string_view serialized(args->serialized_executable,
                                args->serialized_executable_size);
 
+  std::optional<xla::CompileOptions> overridden_options;
+
+  if (args->overridden_serialized_compile_options &&
+      args->overridden_serialized_compile_options_size > 0) {
+    PJRT_ASSIGN_OR_RETURN(
+        overridden_options,
+        ParseCompileOptions(absl::string_view(
+            args->overridden_serialized_compile_options,
+            args->overridden_serialized_compile_options_size)));
+  }
+
   PJRT_ASSIGN_OR_RETURN(
       std::unique_ptr<xla::PjRtLoadedExecutable> executable,
       args->client->client->LoadSerializedExecutable(
-          serialized, /*options=*/std::nullopt, xla::LoadOptions()));
+          serialized, overridden_options, xla::LoadOptions()));
 
   args->loaded_executable =
       new PJRT_LoadedExecutable(std::move(executable), args->client);
@@ -2834,6 +2873,9 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       pjrt::PJRT_AsyncHostToDeviceTransferManager_AddMetadata,
       /*PJRT_Client_DmaMap=*/pjrt::PJRT_Client_DmaMap,
       /*PJRT_Client_DmaUnmap=*/pjrt::PJRT_Client_DmaUnmap,
+
+      /*PJRT_Client_CreateUninitializedBuffer=*/
+      pjrt::PJRT_Client_CreateUninitializedBuffer,
   };
 }
 

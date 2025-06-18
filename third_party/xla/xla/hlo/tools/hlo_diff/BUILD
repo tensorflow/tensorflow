@@ -22,6 +22,7 @@ cc_library(
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph_node",
         "//xla/service:call_graph",
         "@boost//:bimap",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

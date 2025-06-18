@@ -93,7 +93,7 @@ class CpuExecutable : public Executable {
   absl::Status ExecuteThunks(const ExecutableRunOptions* run_options,
                              absl::Span<MaybeOwningDeviceMemory const> buffers);
 
-  absl::Span<const std::string> obj_files() const { return obj_files_; }
+  absl::Span<const ObjFileProto> obj_files() const { return obj_files_; }
 
   std::vector<SymbolProto> get_compiled_symbols_proto() const {
     std::vector<SymbolProto> symbols;
@@ -106,7 +106,7 @@ class CpuExecutable : public Executable {
     return symbols;
   }
 
-  void set_obj_files(std::vector<std::string> obj_files) {
+  void set_obj_files(std::vector<ObjFileProto> obj_files) {
     obj_files_ = std::move(obj_files);
   }
 
@@ -210,7 +210,7 @@ class CpuExecutable : public Executable {
   // Object files (machine code) compiled from an HLO module by the JIT
   // compiler. We capture all object files created by JitCompiler so we can
   // export them to AOT compilation result.
-  std::vector<std::string> obj_files_;
+  std::vector<ObjFileProto> obj_files_;
 
   // Generate compiled symbols. We capture all compiled symbols so we can export
   // them to AOT compilation result.

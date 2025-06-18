@@ -77,8 +77,9 @@ namespace proxy {
   const uint64_t session_id =
       next_session_id_.fetch_add(1, std::memory_order_relaxed);
 
-  VLOG(0) << "Starting a new IFRT session with session_id=" << session_id
-          << ", version=" << metadata.version().ShortDebugString();
+  LOG(INFO) << "Starting new IFRT session " << session_id << " for peer '"
+            << context->peer()
+            << "' with metadata=" << metadata.ShortDebugString();
 
   // Create a host buffer store for the session.
   auto host_buffer_store =
@@ -117,7 +118,7 @@ namespace proxy {
       break;
     }
     if (!first_request_read) {
-      VLOG(0) << "First request read for session " << session_id;
+      LOG(INFO) << "First request read for session " << session_id;
       first_request_read = true;
     }
     const uint64_t op_id = request->request_metadata().op_id();
@@ -134,8 +135,12 @@ namespace proxy {
         });
   }
 
+  LOG(INFO) << "stream->Read() returned false for session " << session_id
+            << "; waiting until all response callbacks are called.";
   backend->reset();  // Blocks until all response callbacks are called.
-  VLOG(0) << "Finishing IFRT session " << session_id;
+  LOG(INFO) << "Cleaning up host buffer store for session " << session_id;
+  std::move(cleanup).Invoke();
+  LOG(INFO) << "Done with IFRT session " << session_id;
   return ::grpc::Status::OK;
 }
 
@@ -160,6 +165,12 @@ namespace proxy {
     return ::grpc::Status(::grpc::StatusCode::DATA_LOSS,
                           "Unable to parse GrpcHostBufferStoreMetadata");
   }
+  auto store = GetHostBufferStore(metadata.session_id());
+  if (!store.ok()) {
+    LOG(INFO) << "HostBufferStore failed to get host buffer store for session "
+              << metadata.session_id() << ": " << store.status();
+    return xla::ToGrpcStatus(store.status());
+  }
 
   VLOG(3) << "HostBufferStore starting to receive data "
           << metadata.ShortDebugString();
@@ -180,11 +191,12 @@ namespace proxy {
     return ::grpc::Status(::grpc::StatusCode::DATA_LOSS, error);
   }
 
-  auto store = GetHostBufferStore(metadata.session_id());
-  if (!store.ok()) {
-    return xla::ToGrpcStatus(store.status());
+  absl::Status s = (*store)->Store(metadata.handle(), std::move(data));
+  if (!s.ok()) {
+    LOG(INFO) << "HostBufferStore for session " << metadata.session_id()
+              << " failed to store buffer " << metadata.handle() << ": " << s;
   }
-  return xla::ToGrpcStatus((*store)->Store(metadata.handle(), std::move(data)));
+  return xla::ToGrpcStatus(std::move(s));
 }
 
 ::grpc::Status GrpcServiceImpl::HostBufferLookup(

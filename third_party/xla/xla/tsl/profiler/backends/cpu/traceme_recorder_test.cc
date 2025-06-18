@@ -73,8 +73,8 @@ TEST(RecorderTest, Multithreaded) {
   constexpr static int kNumThreads = 4;
 
   // Start several threads writing events.
-  tsl::Notification start;
-  tsl::Notification stop;
+  absl::Notification start;
+  absl::Notification stop;
   thread::ThreadPool pool(tsl::Env::Default(), "testpool", kNumThreads);
   std::atomic<int> thread_count = {0};
   for (int i = 0; i < kNumThreads; i++) {

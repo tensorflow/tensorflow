@@ -20,6 +20,7 @@
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -44,8 +45,11 @@ namespace ifrt {
 namespace proxy {
 
 GrpcServer::~GrpcServer() {
+  LOG(INFO) << "GrpcServer::~GrpcServer(): before Shutdown.";
   server_->Shutdown();
+  LOG(INFO) << "GrpcServer::~GrpcServer(): after Shutdown, before Wait.";
   server_->Wait();
+  LOG(INFO) << "GrpcServer::~GrpcServer(): done with Wait.";
 }
 
 absl::StatusOr<std::unique_ptr<GrpcServer>> GrpcServer::Create(

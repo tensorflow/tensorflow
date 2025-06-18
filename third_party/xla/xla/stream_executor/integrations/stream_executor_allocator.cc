@@ -38,6 +38,22 @@ StreamExecutorAllocator::StreamExecutorAllocator(
       memory_type_(memory_type),
       index_(index) {}
 
+// Converts MemoryType to a human-readable string for allocation error messages
+static absl::string_view MemoryTypeToString(MemoryType type) {
+  switch (type) {
+    case MemoryType::kDevice:
+      return "device";
+    case MemoryType::kUnified:
+      return "unified";
+    case MemoryType::kHost:
+      return "pinned host";
+    case MemoryType::kCollective:
+      return "collective";
+    default:
+      return "unknown";
+  }
+}
+
 void* StreamExecutorAllocator::Alloc(size_t alignment, size_t num_bytes,
                                      size_t* bytes_received) {
   tsl::profiler::TraceMe traceme("StreamExecutorAllocator::Alloc");
@@ -47,8 +63,8 @@ void* StreamExecutorAllocator::Alloc(size_t alignment, size_t num_bytes,
   if (num_bytes > 0) {
     auto allocation = memory_allocator_->Allocate(num_bytes);
     if (!allocation.ok()) {
-      LOG(WARNING) << "could not allocate pinned host memory of size: "
-                   << num_bytes;
+      LOG(WARNING) << "could not allocate " << MemoryTypeToString(memory_type_)
+                   << " of size: " << num_bytes;
       *bytes_received = 0;
       return nullptr;
     }

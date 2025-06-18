@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "xla/codegen/emitters/implicit_arith_op_builder.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/map_mhlo_to_scalar_op.h"
@@ -58,54 +59,7 @@ using mlir::Value;
 
 namespace {
 
-// Wraps a Value to provide operator overloading for more readable expressions.
-struct Val {
-  Value value;
-  mlir::ImplicitLocOpBuilder* b;
-
-  operator Value() const { return value; }  // NOLINT
-
-  Val operator+(int64_t rhs) const { return Binop<ma::AddIOp>(rhs); }
-  Val operator+(Value rhs) const { return Binop<ma::AddIOp>(rhs); }
-  Val operator-(int64_t rhs) const { return Binop<ma::SubIOp>(rhs); }
-  Val operator-(Value rhs) const { return Binop<ma::SubIOp>(rhs); }
-  Val operator*(int64_t rhs) const { return Binop<ma::MulIOp>(rhs); }
-  Val operator*(Value rhs) const { return Binop<ma::MulIOp>(rhs); }
-  Val operator&(Value rhs) const { return Binop<ma::AndIOp>(rhs); }
-  Val operator&(int64_t rhs) const { return Binop<ma::AndIOp>(rhs); }
-  Val operator|(Value rhs) const { return Binop<ma::OrIOp>(rhs); }
-  Val operator|(int64_t rhs) const { return Binop<ma::OrIOp>(rhs); }
-  Val operator^(Value rhs) const { return Binop<ma::XOrIOp>(rhs); }
-  Val shl(Value rhs) const { return Binop<ma::ShLIOp>(rhs); }
-  Val shl(int64_t rhs) const { return Binop<ma::ShLIOp>(rhs); }
-  Val shrui(Value rhs) const { return Binop<ma::ShRUIOp>(rhs); }
-  Val shrui(int64_t rhs) const { return Binop<ma::ShRUIOp>(rhs); }
-
-  Val cmp(ma::CmpIPredicate pred, Value rhs) const {
-    return {b->create<ma::CmpIOp>(pred, value, rhs), b};
-  }
-  Val cmp(ma::CmpIPredicate pred, int64_t rhs) const {
-    return cmp(pred, MakeConstant(rhs));
-  }
-  Val operator==(Value rhs) const { return cmp(ma::CmpIPredicate::eq, rhs); }
-  Val operator==(int64_t rhs) const { return cmp(ma::CmpIPredicate::eq, rhs); }
-  Val operator!=(int64_t rhs) const { return cmp(ma::CmpIPredicate::ne, rhs); }
-
-  Val MakeConstant(int64_t c) const {
-    return {b->create<ma::ConstantIntOp>(c, value.getType()), b};
-  }
-
- private:
-  template <typename Op>
-  Val Binop(Value rhs) const {
-    return {b->create<Op>(value, rhs), b};
-  }
-
-  template <typename Op>
-  Val Binop(int64_t rhs) const {
-    return Binop<Op>(MakeConstant(rhs));
-  }
-};
+using Val = ImplicitArithOpBuilder;
 
 struct RewriteErf32Pattern : public mlir::OpRewritePattern<mlir::math::ErfOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -362,7 +316,7 @@ Value EmitFloatConversion(Value value, mlir::FloatType to_ty,
 
   auto round_bits_to_nearest_even = [&](Val bits, Val roundoff,
                                         bool use_implicit_bit = false) {
-    assert(bits.value.getType() == roundoff.value.getType());
+    assert(bits.value().getType() == roundoff.value().getType());
     // Round to nearest even by adding a bias term.
     // Consider a bit pattern
     //   FFF...FLRTT...T,
@@ -453,8 +407,9 @@ Value EmitFloatConversion(Value value, mlir::FloatType to_ty,
         convert_int(wide_int_ty, biased_exponent).shl(from_mantissa);
 
     Value biased_exp_sle_zero = biased_exponent.cmp(CmpIPredicate::sle, 0);
-    bits.value =
-        b.create<SelectOp>(biased_exp_sle_zero, subnormal_bits, normal_bits);
+    bits = Val(
+        b.create<SelectOp>(biased_exp_sle_zero, subnormal_bits, normal_bits),
+        &b);
     if (digit_shift >= 0) {
       bits = bits.shl(digit_shift);
     } else {
@@ -496,9 +451,11 @@ Value EmitFloatConversion(Value value, mlir::FloatType to_ty,
             .shrui(exponent_shift_from_ty));
     // To avoid UB, limit rounding and shifting to the full mantissa plus
     // leading 1.
-    positive_bits.value = b.create<SelectOp>(
-        exponent_shift_i32.cmp(CmpIPredicate::sle, from_mantissa + 1),
-        positive_bits, to_zero);
+    positive_bits =
+        Val(b.create<SelectOp>(
+                exponent_shift_i32.cmp(CmpIPredicate::sle, from_mantissa + 1),
+                positive_bits, to_zero),
+            &b);
 
     Val negative_bits = convert_int(to_int_ty, rounded_from_bits)
                             .shl(to_zero - exponent_shift_to_ty);

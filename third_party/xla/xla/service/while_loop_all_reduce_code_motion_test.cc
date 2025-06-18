@@ -1535,10 +1535,11 @@ TEST_F(WhileLoopAllReduceCodeMotionTest, ReduceScatterConvertAccumulate) {
   EXPECT_THAT(moved_reduce_scatter, op::ReplicaGroups({{0, 1, 2, 3}}));
   EXPECT_FALSE(moved_reduce_scatter->constrain_layout());
   EXPECT_TRUE(moved_reduce_scatter->use_global_device_ids());
-  HloComputation* reduction_computation =
-      module->GetComputationWithName("reduction");
-  ASSERT_THAT(reduction_computation, NotNull());
-  EXPECT_EQ(moved_reduce_scatter->to_apply(), reduction_computation);
+  EXPECT_EQ(moved_reduce_scatter->to_apply()
+                ->root_instruction()
+                ->shape()
+                .element_type(),
+            F32);
 }
 
 // This test checks the add((convert(all-reduce()), buffer) case

@@ -17,15 +17,19 @@ limitations under the License.
 #include <cstdint>
 #include <sstream>
 #include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 #include "absl/hash/hash.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 
@@ -65,9 +69,8 @@ TEST_F(HloShardingTest, Replicate) {
   HloSharding other = HloSharding::Replicate();
   EXPECT_EQ(other, sharding);
 
-  EXPECT_IS_OK(
-      sharding.Validate(ShapeUtil::MakeValidatedShape(U32, {4}).value(),
-                        /*num_devices=*/2));
+  EXPECT_IS_OK(sharding.Validate(ShapeUtil::MakeShape(U32, {4}),
+                                 /*num_devices=*/2));
   EXPECT_FALSE(sharding.HasUniqueDevice());
 }
 
@@ -82,14 +85,13 @@ TEST_F(HloShardingTest, DevicePlacement) {
   HloSharding other = HloSharding::Replicate();
   EXPECT_NE(other, sharding);
 
-  EXPECT_IS_OK(
-      sharding.Validate(ShapeUtil::MakeValidatedShape(U32, {4}).value(),
-                        /*num_devices=*/6));
-  EXPECT_IS_NOT_OK(sharding.Validate(
-      ShapeUtil::MakeValidatedShape(U32, {4}).value(), /*num_devices=*/5));
+  EXPECT_IS_OK(sharding.Validate(ShapeUtil::MakeShape(U32, {4}),
+                                 /*num_devices=*/6));
+  EXPECT_IS_NOT_OK(
+      sharding.Validate(ShapeUtil::MakeShape(U32, {4}), /*num_devices=*/5));
 
   ShapeTree<HloSharding> shape_tree =
-      sharding.GetAsShapeTree(ShapeUtil::MakeValidatedShape(U32, {4}).value());
+      sharding.GetAsShapeTree(ShapeUtil::MakeShape(U32, {4}));
   EXPECT_EQ(shape_tree.element({}), sharding);
   EXPECT_TRUE(shape_tree.IsLeaf({}));
 }
@@ -140,34 +142,30 @@ TEST_F(HloShardingTest, Tile) {
   {
     // Test should fail because of a duplicate tile assignment.
     HloSharding sharding = HloSharding::Tile(MakeArray({2, 2}, {0, 0, 2, 3}));
-    EXPECT_IS_NOT_OK(
-        sharding.Validate(ShapeUtil::MakeValidatedShape(F32, {4, 6}).value(),
-                          /*num_devices=*/4));
+    EXPECT_IS_NOT_OK(sharding.Validate(ShapeUtil::MakeShape(F32, {4, 6}),
+                                       /*num_devices=*/4));
   }
 
   {
     // Test should fail because of more devices used than `num_device`.
     HloSharding sharding = HloSharding::Tile(MakeArray({2, 2}, {0, 1, 2, 3}));
-    EXPECT_IS_NOT_OK(
-        sharding.Validate(ShapeUtil::MakeValidatedShape(U32, {4, 6}).value(),
-                          /*num_devices=*/2));
+    EXPECT_IS_NOT_OK(sharding.Validate(ShapeUtil::MakeShape(U32, {4, 6}),
+                                       /*num_devices=*/2));
   }
 
   {
     // Test should fail because not all devices present in tile assignment.
     HloSharding sharding = HloSharding::Tile(MakeArray({2, 2}, {0, 1, 2, 3}));
-    EXPECT_IS_NOT_OK(
-        sharding.Validate(ShapeUtil::MakeValidatedShape(U32, {4, 6}).value(),
-                          /*num_devices=*/5));
+    EXPECT_IS_NOT_OK(sharding.Validate(ShapeUtil::MakeShape(U32, {4, 6}),
+                                       /*num_devices=*/5));
   }
 
   {
     // Test should pass.
-    Shape shape = ShapeUtil::MakeValidatedShape(U32, {4, 5}).value();
+    Shape shape = ShapeUtil::MakeShape(U32, {4, 5});
     HloSharding sharding = HloSharding::Tile(MakeArray({2, 2}, {0, 3, 2, 1}));
-    EXPECT_IS_OK(
-        sharding.Validate(ShapeUtil::MakeValidatedShape(F32, {3, 5}).value(),
-                          /*num_devices=*/4));
+    EXPECT_IS_OK(sharding.Validate(ShapeUtil::MakeShape(F32, {3, 5}),
+                                   /*num_devices=*/4));
 
     EXPECT_EQ(0, sharding.DeviceForTileIndex({0, 0}));
     EXPECT_EQ(3, sharding.DeviceForTileIndex({0, 1}));
@@ -183,7 +181,80 @@ TEST_F(HloShardingTest, Tile) {
     EXPECT_EQ(sharding.TileOffsetForDevice(shape, 1),
               (std::vector<int64_t>{2, 3}));
 
+    EXPECT_EQ(sharding.TileLimitForDevice(shape, 0),
+              (std::vector<int64_t>{2, 3}));
+    EXPECT_EQ(sharding.TileLimitForDevice(shape, 3),
+              (std::vector<int64_t>{2, 5}));
+    EXPECT_EQ(sharding.TileLimitForDevice(shape, 2),
+              (std::vector<int64_t>{4, 3}));
+    EXPECT_EQ(sharding.TileLimitForDevice(shape, 1),
+              (std::vector<int64_t>{4, 5}));
+
     EXPECT_FALSE(sharding.HasUniqueDevice());
+
+    // {device_index, tile_offest, tile_limit}.
+    std::vector<std::tuple<int, std::vector<int64_t>, std::vector<int64_t>>>
+        tiles;
+    TF_ASSERT_OK(sharding.EachTile(
+        shape.dimensions(),
+        [&tiles](int device_index, absl::Span<const int64_t> tile_offset,
+                 absl::Span<const int64_t> tile_limit) {
+          std::vector<int64_t> offset(tile_offset.begin(), tile_offset.end());
+          std::vector<int64_t> limit(tile_limit.begin(), tile_limit.end());
+          tiles.emplace_back(device_index, std::move(offset), std::move(limit));
+        }));
+    EXPECT_THAT(tiles, ::testing::UnorderedElementsAre(
+                           std::make_tuple(0, std::vector<int64_t>{0, 0},
+                                           std::vector<int64_t>{2, 3}),
+                           std::make_tuple(1, std::vector<int64_t>{2, 3},
+                                           std::vector<int64_t>{4, 5}),
+                           std::make_tuple(2, std::vector<int64_t>{2, 0},
+                                           std::vector<int64_t>{4, 3}),
+                           std::make_tuple(3, std::vector<int64_t>{0, 3},
+                                           std::vector<int64_t>{2, 5})));
+  }
+}
+
+TEST_F(HloShardingTest, EachTile) {
+  auto validate = [](const Shape& shape,
+                     const HloSharding& sharding) -> absl::Status {
+    return sharding.EachTile(
+        shape.dimensions(),
+        [&shape, &sharding](int device_index,
+                            absl::Span<const int64_t> tile_offset,
+                            absl::Span<const int64_t> tile_limit) {
+          EXPECT_EQ(tile_offset,
+                    sharding.TileOffsetForDevice(shape, device_index));
+          EXPECT_EQ(tile_limit,
+                    sharding.TileLimitForDevice(shape, device_index));
+        });
+  };
+  {
+    // 6-way sharded along axis 0, 1-way sharded along axis 1.
+    HloSharding sharding = HloSharding::Tile(TileAssignment({6, 1}));
+    Shape shape = ShapeUtil::MakeShape(U32, {12, 20});
+    TF_EXPECT_OK(validate(shape, sharding));
+  }
+  {
+    // 6-way sharded along axis 0, 1-way sharded along axis 1.
+    HloSharding sharding = HloSharding::Tile(TileAssignment({6, 1}));
+    Shape shape = ShapeUtil::MakeShape(U32, {11, 20});
+    TF_EXPECT_OK(validate(shape, sharding));
+  }
+  {
+    // 2-way sharded along axis 0, 1-way sharded along axis 1, each shard
+    // replicated by 3 times.
+    HloSharding sharding = HloSharding::PartialTile(TileAssignment({2, 1, 3}));
+    Shape shape = ShapeUtil::MakeShape(U32, {10, 20});
+    TF_EXPECT_OK(validate(shape, sharding));
+  }
+  {
+    // 2-way sharded along axis 0, 1-way sharded along axis 1, each shard
+    // replicated by 3 times.
+    HloSharding sharding = HloSharding::Subgroup(TileAssignment({2, 1, 3}),
+                                                 {OpSharding::REPLICATED});
+    Shape shape = ShapeUtil::MakeShape(U32, {10, 20});
+    TF_EXPECT_OK(validate(shape, sharding));
   }
 }
 
@@ -267,17 +338,15 @@ TEST_F(HloShardingTest, V1V2SubgroupEquivalence) {
 
 // Tests that empty tuple is supported.
 TEST_F(HloShardingTest, EmptySingleTuple) {
-  HloSharding sharding =
-      HloSharding::SingleTuple(ShapeUtil::MakeValidatedTupleShape({}).value(),
-                               HloSharding::AssignDevice(0));
+  HloSharding sharding = HloSharding::SingleTuple(ShapeUtil::MakeTupleShape({}),
+                                                  HloSharding::AssignDevice(0));
   EXPECT_TRUE(sharding.ExtractSingleSharding());
 }
 
 // Tests that empty tuple is not a shard group.
 TEST_F(HloShardingTest, EmptySingleTupleIsNotShardGroup) {
-  HloSharding sharding =
-      HloSharding::SingleTuple(ShapeUtil::MakeValidatedTupleShape({}).value(),
-                               HloSharding::AssignDevice(0));
+  HloSharding sharding = HloSharding::SingleTuple(ShapeUtil::MakeTupleShape({}),
+                                                  HloSharding::AssignDevice(0));
   EXPECT_FALSE(sharding.IsShardGroup());
   EXPECT_FALSE(sharding.IsShardAs());
   EXPECT_FALSE(sharding.IsShardLike());
@@ -285,14 +354,11 @@ TEST_F(HloShardingTest, EmptySingleTupleIsNotShardGroup) {
 
 TEST_F(HloShardingTest, NestedTuple) {
   // nested_tuple_shape = (f32[], (f32[3]), f32[4, 6])
-  Shape nested_tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape(
-          {
-              ShapeUtil::MakeShape(F32, {}),
-              ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {3})}),
-              ShapeUtil::MakeShape(F32, {4, 6}),
-          })
-          .value();
+  Shape nested_tuple_shape = ShapeUtil::MakeTupleShape({
+      ShapeUtil::MakeShape(F32, {}),
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {3})}),
+      ShapeUtil::MakeShape(F32, {4, 6}),
+  });
 
   HloSharding tiled_sharding = HloSharding::Tile(Array<int64_t>({{0, 1}}));
   OpSharding proto;
@@ -310,13 +376,11 @@ TEST_F(HloShardingTest, NestedTuple) {
 
   EXPECT_IS_OK(tuple_sharding.Validate(nested_tuple_shape, /*num_devices=*/2));
   // Test should fail because tuple element count does not match.
-  EXPECT_IS_NOT_OK(
-      tuple_sharding.Validate(ShapeUtil::MakeValidatedTupleShape({}).value(),
-                              /*num_devices=*/5));
+  EXPECT_IS_NOT_OK(tuple_sharding.Validate(ShapeUtil::MakeTupleShape({}),
+                                           /*num_devices=*/5));
   // Test should fail because the input type is not a tuple.
-  EXPECT_IS_NOT_OK(
-      tuple_sharding.Validate(ShapeUtil::MakeValidatedShape(F32, {}).value(),
-                              /*num_devices=*/5));
+  EXPECT_IS_NOT_OK(tuple_sharding.Validate(ShapeUtil::MakeShape(F32, {}),
+                                           /*num_devices=*/5));
 }
 
 TEST_F(HloShardingTest, NormalizeTrivialSubgroupToManual) {
@@ -367,16 +431,16 @@ TEST_F(HloShardingTest, Hash) {
 
   HloSharding default_sharding = HloSharding::Replicate();
   {
-    ShapeTree<HloSharding> shape_tree(
-        ShapeUtil::MakeValidatedTupleShape({}).value(), default_sharding);
+    ShapeTree<HloSharding> shape_tree(ShapeUtil::MakeTupleShape({}),
+                                      default_sharding);
     HloSharding sharding1 = HloSharding::Replicate();
     HloSharding sharding2 = HloSharding::Tuple(shape_tree);
     EXPECT_FALSE(hash_compare_equal(sharding1, sharding2));
   }
 
   {
-    ShapeTree<HloSharding> shape_tree(
-        ShapeUtil::MakeValidatedTupleShape({}).value(), default_sharding);
+    ShapeTree<HloSharding> shape_tree(ShapeUtil::MakeTupleShape({}),
+                                      default_sharding);
     HloSharding sharding1 = HloSharding::Tuple(shape_tree);
     HloSharding sharding2 = HloSharding::Tuple(shape_tree);
     EXPECT_TRUE(hash_compare_equal(sharding1, sharding2));
@@ -384,13 +448,11 @@ TEST_F(HloShardingTest, Hash) {
 
   {
     ShapeTree<HloSharding> shape_tree1(
-        ShapeUtil::MakeValidatedTupleShape({ShapeUtil::MakeShape(F32, {4})})
-            .value(),
+        ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {4})}),
         default_sharding);
     *shape_tree1.mutable_element({0}) = HloSharding::Replicate();
     ShapeTree<HloSharding> shape_tree2(
-        ShapeUtil::MakeValidatedTupleShape({ShapeUtil::MakeShape(F32, {4})})
-            .value(),
+        ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {4})}),
         default_sharding);
     *shape_tree2.mutable_element({0}) = HloSharding::AssignDevice(0);
     HloSharding sharding1 = HloSharding::Tuple(shape_tree1);
@@ -400,13 +462,11 @@ TEST_F(HloShardingTest, Hash) {
 
   {
     ShapeTree<HloSharding> shape_tree1(
-        ShapeUtil::MakeValidatedTupleShape({ShapeUtil::MakeShape(F32, {4})})
-            .value(),
+        ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {4})}),
         default_sharding);
     *shape_tree1.mutable_element({0}) = HloSharding::AssignDevice(0);
     ShapeTree<HloSharding> shape_tree2(
-        ShapeUtil::MakeValidatedTupleShape({ShapeUtil::MakeShape(F32, {4})})
-            .value(),
+        ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {4})}),
         default_sharding);
     *shape_tree2.mutable_element({0}) = HloSharding::AssignDevice(0);
     HloSharding sharding1 = HloSharding::Tuple(shape_tree1);
@@ -504,10 +564,9 @@ INSTANTIATE_TEST_SUITE_P(
 
 TEST_F(HloShardingTest, ToStringTupleTest) {
   HloSharding sharding = HloSharding::Tuple(
-      ShapeUtil::MakeValidatedTupleShape({ShapeUtil::MakeShape(F32, {3, 5}),
-                                          ShapeUtil::MakeShape(U32, {7, 25}),
-                                          ShapeUtil::MakeShape(S32, {9, 11})})
-          .value(),
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {3, 5}),
+                                 ShapeUtil::MakeShape(U32, {7, 25}),
+                                 ShapeUtil::MakeShape(S32, {9, 11})}),
       {HloSharding::Replicate(), HloSharding::Tile(Array2D<int64_t>({{3, 5}})),
        HloSharding::AssignDevice(3)});
   EXPECT_EQ(sharding.ToString(),
@@ -517,10 +576,9 @@ TEST_F(HloShardingTest, ToStringTupleTest) {
 TEST_F(HloShardingTest, ToStringTupleWithMetadataTest) {
   auto metadata = SingleMetadata();
   HloSharding sharding = HloSharding::Tuple(
-      ShapeUtil::MakeValidatedTupleShape({ShapeUtil::MakeShape(F32, {3, 5}),
-                                          ShapeUtil::MakeShape(U32, {7, 25}),
-                                          ShapeUtil::MakeShape(S32, {9, 11})})
-          .value(),
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {3, 5}),
+                                 ShapeUtil::MakeShape(U32, {7, 25}),
+                                 ShapeUtil::MakeShape(S32, {9, 11})}),
       {HloSharding::Replicate({GetMetadata("d")}),
        HloSharding::Tile(Array2D<int64_t>({{3, 5}})),
        HloSharding::AssignDevice(3, {GetMetadata("e")})});
@@ -554,15 +612,14 @@ TEST_P(HloParseShardingWithMetadataTest, ParseHloString) {
   check(HloSharding::Tile(Array4D<int64_t>({{{{0}, {1}}}}), GetParam()));
   // Empty tuple. One sharding is required for empty tuples, as we need to be
   // able to assign sharding to them, even though they have no leaves.
-  check(HloSharding::Tuple(ShapeUtil::MakeValidatedTupleShape({}).value(),
+  check(HloSharding::Tuple(ShapeUtil::MakeTupleShape({}),
                            {HloSharding::Replicate(GetParam())}));
   {
     // Non-nested tuple.
-    auto tuple_shape = ShapeUtil::MakeValidatedTupleShape(
-                           {ShapeUtil::MakeShape(F32, {3, 1, 5, 7}),
-                            ShapeUtil::MakeShape(F32, {3, 5, 7}),
-                            ShapeUtil::MakeShape(F32, {3, 7})})
-                           .value();
+    auto tuple_shape =
+        ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {3, 1, 5, 7}),
+                                   ShapeUtil::MakeShape(F32, {3, 5, 7}),
+                                   ShapeUtil::MakeShape(F32, {3, 7})});
     check(HloSharding::Tuple(
         tuple_shape,
         {HloSharding::Tile(Array4D<int64_t>({{{{0}, {1}}}})),
@@ -570,12 +627,10 @@ TEST_P(HloParseShardingWithMetadataTest, ParseHloString) {
   }
   {
     // Nested tuple.
-    auto tuple_shape =
-        ShapeUtil::MakeValidatedTupleShape(
-            {ShapeUtil::MakeShape(F32, {3, 1, 5, 7}),
-             ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {3, 5, 7}),
-                                        ShapeUtil::MakeShape(F32, {3, 7})})})
-            .value();
+    auto tuple_shape = ShapeUtil::MakeTupleShape(
+        {ShapeUtil::MakeShape(F32, {3, 1, 5, 7}),
+         ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {3, 5, 7}),
+                                    ShapeUtil::MakeShape(F32, {3, 7})})});
     std::vector<HloSharding> leaf_shardings = {
         HloSharding::Tile(Array4D<int64_t>({{{{0}, {1}}}})),
         HloSharding::Replicate(), HloSharding::AssignDevice(1, GetParam())};
@@ -614,10 +669,9 @@ TEST_F(HloShardingTest, WithMetadataNoOverwrite) {
 
   {
     HloSharding sharding = HloSharding::Tuple(
-        ShapeUtil::MakeValidatedTupleShape({ShapeUtil::MakeShape(F32, {3, 5}),
-                                            ShapeUtil::MakeShape(U32, {7, 25}),
-                                            ShapeUtil::MakeShape(S32, {9, 11})})
-            .value(),
+        ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {3, 5}),
+                                   ShapeUtil::MakeShape(U32, {7, 25}),
+                                   ShapeUtil::MakeShape(S32, {9, 11})}),
         {HloSharding::Replicate(SingleMetadata()),
          HloSharding::Tile(Array2D<int64_t>({{3, 5}})),
          HloSharding::AssignDevice(3, SingleMetadata())});
@@ -666,10 +720,9 @@ TEST_F(HloShardingTest, WithMetadataOverwrite) {
 
   {
     HloSharding sharding = HloSharding::Tuple(
-        ShapeUtil::MakeValidatedTupleShape({ShapeUtil::MakeShape(F32, {3, 5}),
-                                            ShapeUtil::MakeShape(U32, {7, 25}),
-                                            ShapeUtil::MakeShape(S32, {9, 11})})
-            .value(),
+        ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {3, 5}),
+                                   ShapeUtil::MakeShape(U32, {7, 25}),
+                                   ShapeUtil::MakeShape(S32, {9, 11})}),
         {HloSharding::Replicate(SingleMetadata()),
          HloSharding::Tile(Array2D<int64_t>({{3, 5}})),
          HloSharding::AssignDevice(3, SingleMetadata())});
@@ -703,10 +756,9 @@ TEST_F(HloShardingTest, WithoutMetadata) {
 
   {
     HloSharding sharding = HloSharding::Tuple(
-        ShapeUtil::MakeValidatedTupleShape({ShapeUtil::MakeShape(F32, {3, 5}),
-                                            ShapeUtil::MakeShape(U32, {7, 25}),
-                                            ShapeUtil::MakeShape(S32, {9, 11})})
-            .value(),
+        ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {3, 5}),
+                                   ShapeUtil::MakeShape(U32, {7, 25}),
+                                   ShapeUtil::MakeShape(S32, {9, 11})}),
         {HloSharding::Replicate(SingleMetadata()),
          HloSharding::Tile(Array2D<int64_t>({{3, 5}})),
          HloSharding::AssignDevice(3, ListMetadata())});

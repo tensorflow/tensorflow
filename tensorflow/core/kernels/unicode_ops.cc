@@ -261,10 +261,9 @@ class UnicodeTranscodeOp : public OpKernel {
     // Make a temporary UConverter to ensure it will create without error
     // at execution time (and to warm any data caches the converter needs).
     // This instance is not used.
-    std::unique_ptr<WrappedConverter> input_encoder =
-        std::make_unique<WrappedConverter>();
-    input_encoder->init(input_encoding_);
-    OP_REQUIRES(ctx, input_encoder->converter_,
+    WrappedConverter input_encoder;
+    input_encoder.init(input_encoding_);
+    OP_REQUIRES(ctx, input_encoder.converter_,
                 errors::InvalidArgument(
                     "Could not create converter for input encoding: " +
                     input_encoding_));
@@ -274,12 +273,9 @@ class UnicodeTranscodeOp : public OpKernel {
     const Tensor* input_tensor;
     OP_REQUIRES_OK(ctx, ctx->input("input", &input_tensor));
 
-    static thread_local std::unique_ptr<WrappedConverter> input_encoder;
-    if (!input_encoder) {
-      input_encoder.reset(new WrappedConverter());
-    }
-    input_encoder->init(input_encoding_);
-    OP_REQUIRES(ctx, input_encoder->converter_,
+    static thread_local WrappedConverter input_encoder;
+    input_encoder.init(input_encoding_);
+    OP_REQUIRES(ctx, input_encoder.converter_,
                 errors::InvalidArgument(
                     "Could not create converter for input encoding: " +
                     input_encoding_));
@@ -302,7 +298,7 @@ class UnicodeTranscodeOp : public OpKernel {
     auto output_flat = output_tensor->flat<tstring>();
     bool found_any_format_error = false;
     for (size_t i = 0; i < output_flat.size(); ++i) {
-      Transcode(&(output_flat(i)), input_encoder->converter_,
+      Transcode(&(output_flat(i)), input_encoder.converter_,
                 &found_any_format_error);
     }
     if (error_options_.error_on_malformatting && found_any_format_error) {
@@ -361,10 +357,9 @@ class UnicodeDecodeBaseOp : public OpKernel {
     // Make a temporary UConverter to ensure it will create without error
     // at execution time (and to warm any data caches the converter needs).
     // This instance is not used.
-    std::unique_ptr<WrappedConverter> input_encoder =
-        std::make_unique<WrappedConverter>();
-    input_encoder->init(input_encoding_);
-    OP_REQUIRES(ctx, input_encoder->converter_,
+    WrappedConverter input_encoder;
+    input_encoder.init(input_encoding_);
+    OP_REQUIRES(ctx, input_encoder.converter_,
                 errors::InvalidArgument(
                     "Could not create converter for input encoding: " +
                     input_encoding_));
@@ -407,10 +402,9 @@ class UnicodeDecodeBaseOp : public OpKernel {
     // Go through all the strings in `input`.
     const auto& input_vec = input_tensor->flat<tstring>();
 
-    std::unique_ptr<WrappedConverter> input_encoder =
-        std::make_unique<WrappedConverter>();
-    input_encoder->init(input_encoding_);
-    OP_REQUIRES(ctx, input_encoder->converter_,
+    WrappedConverter input_encoder;
+    input_encoder.init(input_encoding_);
+    OP_REQUIRES(ctx, input_encoder.converter_,
                 errors::InvalidArgument(
                     "Could not create converter for input encoding: " +
                     input_encoding_));
@@ -435,7 +429,7 @@ class UnicodeDecodeBaseOp : public OpKernel {
       row_split_index++;
       int current_offset = 0;
       IterateUnicodeString(
-          input, input_encoder->converter_,
+          input, input_encoder.converter_,
           std::bind(&UnicodeDecodeBaseOp::Decode, this, ctx, &char_values,
                     &offset_values, &current_offset, &next_row_split,
                     std::placeholders::_1, std::placeholders::_2,

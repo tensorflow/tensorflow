@@ -265,9 +265,8 @@ absl::StatusOr<ScalarIndexedArray*> IndexedArrayAnalysis::FoldGatherOfGather(
 
   Array* inner_indices = ConstructScalarIndexedArray(
       x, y, source_dim_for_index_array, output_dims_for_index_array,
-      ShapeUtil::MakeValidatedShape(x->shape().element_type(),
-                                    dim_sizes_for_composed_index)
-          .value());
+      ShapeUtil::MakeShape(x->shape().element_type(),
+                           dim_sizes_for_composed_index));
   return ConstructScalarIndexedArray(a, inner_indices, source->source_dim(),
                                      output_dims_for_new_gather,
                                      std::move(shape));
@@ -482,7 +481,7 @@ Shape StripDegenerateDimensions(const Shape& shape) {
   DimensionVector new_dims;
   absl::c_copy_if(shape.dimensions(), std::back_inserter(new_dims),
                   [](int64_t dim) { return dim != 1; });
-  return ShapeUtil::MakeValidatedShape(shape.element_type(), new_dims).value();
+  return ShapeUtil::MakeShape(shape.element_type(), new_dims);
 }
 };  // namespace
 
@@ -506,8 +505,7 @@ IndexedArrayAnalysis::ReshapeToRemoveDegenerateDims(
   }
 
   Shape new_source_shape =
-      ShapeUtil::MakeValidatedShape(shape.element_type(), new_source_shape_dims)
-          .value();
+      ShapeUtil::MakeShape(shape.element_type(), new_source_shape_dims);
   Shape new_indices_shape =
       StripDegenerateDimensions(operand->indices()->shape());
 
@@ -609,14 +607,10 @@ IndexedArrayAnalysis::ReshapeToAddDegenerateDims(
   InsertAt(&new_source_shape_dims, /*index=*/new_source_dim,
            /*value=*/source_dim_size);
 
-  Shape new_source_shape =
-      ShapeUtil::MakeValidatedShape(operand->shape().element_type(),
-                                    new_source_shape_dims)
-          .value();
-  Shape new_result_shape =
-      ShapeUtil::MakeValidatedShape(operand->shape().element_type(),
-                                    new_result_shape_dims)
-          .value();
+  Shape new_source_shape = ShapeUtil::MakeShape(operand->shape().element_type(),
+                                                new_source_shape_dims);
+  Shape new_result_shape = ShapeUtil::MakeShape(operand->shape().element_type(),
+                                                new_result_shape_dims);
 
   TF_ASSIGN_OR_RETURN(
       Array* const new_source,

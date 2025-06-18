@@ -139,7 +139,7 @@ TEST(GpuDeviceMemoryTest, OwningToNonOwning) {
 TEST(GpuDeviceMemoryTest, AsShapeBuffer) {
   LocalClient* client = ClientLibrary::LocalClientOrDie();
   TestDevice device;
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {1, 2, 3}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 2, 3});
   TestAllocator allocator;
   int64_t byte_size =
       client->backend().transfer_manager()->GetByteSizeRequirement(shape);

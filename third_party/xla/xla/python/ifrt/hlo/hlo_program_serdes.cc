@@ -32,6 +32,8 @@ limitations under the License.
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes_version.h"
+#include "xla/python/ifrt/serdes_week_4_old_version_accessor.h"
 
 namespace xla {
 namespace ifrt {
@@ -63,7 +65,17 @@ class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
 
   absl::StatusOr<std::string> Serialize(
       const Serializable& serializable,
-      std::unique_ptr<SerializeOptions>) override {
+      std::unique_ptr<SerializeOptions> options) override {
+    // All serialization of `HloProgram` is pinned to a at-least-4-week-old
+    // version. An acceptable IFRT SerDes version is [4-week-old, current].
+    const SerDesVersion version = GetRequestedSerDesVersion(options.get());
+    if (version.version_number() <
+        SerDesWeek4OldVersionAccessor::Get().version_number()) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Unsupported ", version.version_number(),
+                       " for HloProgram serialization"));
+    }
+
     // Currently, PjRT-IFRT accepts an `HloProgram` that contains C/MHLO. Since
     // these dialects don't provide version compatibility, the following
     // converts the module into StableHLO and use its portable serialization.

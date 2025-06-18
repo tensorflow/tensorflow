@@ -151,6 +151,12 @@ class NativeInterpreterWrapper implements AutoCloseable {
         outputTensors[i] = null;
       }
     }
+    // Close the delegates first as they may reference the model.
+    delegates.clear();
+    for (Delegate ownedDelegate : ownedDelegates) {
+      ownedDelegate.close();
+    }
+    ownedDelegates.clear();
     delete(errorHandle, modelHandle, interpreterHandle);
     deleteCancellationFlag(cancellationFlagHandle);
     errorHandle = 0;
@@ -161,11 +167,6 @@ class NativeInterpreterWrapper implements AutoCloseable {
     inputsIndexes = null;
     outputsIndexes = null;
     isMemoryAllocated = false;
-    delegates.clear();
-    for (Delegate ownedDelegate : ownedDelegates) {
-      ownedDelegate.close();
-    }
-    ownedDelegates.clear();
   }
 
   /** Runs model inference based on SignatureDef provided through {@code signatureKey}. */

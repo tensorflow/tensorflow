@@ -364,8 +364,9 @@ class IfrtBackend::InOrderRequestsProcessor {
           "InOrderRequestsProcessor already stopped: ", *shutdown_msg_)));
       return result;
     }
+    absl::string_view req_name = GetRequestName(request.get());
     Entry entry{/*req=*/std::move(request), /*promise=*/std::move(promise),
-                XFlowHelper(GetRequestName(request.get()))};
+                XFlowHelper(req_name)};
     entry.xflow.InstantActivity<XFlowHelper::kSend>();
     entries_.push_back(std::move(entry));
     return result;
@@ -746,6 +747,7 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleInit(
     m->set_debug_string(AsProtoStringData(memory->DebugString()));
     m->set_to_string(AsProtoStringData(memory->ToString()));
   }
+  *init_resp->mutable_client_attributes() = client_->Attributes().ToProto();
 
   return response;
 }
@@ -1232,7 +1234,7 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleCopyArraysRequest(
       TF_ASSIGN_OR_RETURN(ds.emplace_back(),
                           client_->LookupDevice(DeviceId(device_id)));
     }
-    devices.emplace(BasicDeviceList::Create(std::move(ds)));
+    devices.emplace(client_->MakeDeviceList(std::move(ds)));
   }
   std::optional<MemoryKind> memory_kind;
   if (copy_arrays_request.has_memory_kind()) {
@@ -1604,7 +1606,7 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
       TF_ASSIGN_OR_RETURN(d.emplace_back(),
                           client_->LookupDevice(DeviceId(device_id)));
     }
-    devices = BasicDeviceList::Create(std::move(d));
+    devices = client_->MakeDeviceList(std::move(d));
   }
 
   TF_ASSIGN_OR_RETURN(xla::ifrt::LoadedExecutable::ExecuteResult result,

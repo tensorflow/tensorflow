@@ -50,6 +50,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.tpu import _pywrap_sparse_core_layout
+from tensorflow.python.tpu import embedding_context_utils as ecu
 from tensorflow.python.tpu import tpu_embedding_base
 from tensorflow.python.tpu import tpu_embedding_v2_utils
 from tensorflow.python.tpu import tpu_embedding_v3_checkpoint_adapter
@@ -103,11 +104,19 @@ class EmbeddingPipeliningContext(control_flow_ops.ControlFlowContext):
       # special casing of summary recording because, presumably, this is not
       # a single step loop so pipelining is still valid.
       recording_summaries = False
-    if enable and recording_summaries:
+
+    if enable and (
+        recording_summaries or not ecu.embedding_pipelining_state.enabled
+    ):
       # We'll still flag these ops for the SC forward/backward pass, but we'll
       # run them sequentially. This has to be handled in the MLIR passes
       # embedding_pipelining.cc and embedding_sequencing.cc.
-      logging.info("Summary recording detected, disabling pipelining.")
+      disable_reason = (
+          "Summary recording"
+          if recording_summaries
+          else "_embedding_pipelining_state.enabled = False"
+      )
+      logging.info("%s detected, disabling pipelining.", disable_reason)
       self._mode = attr_value_pb2.AttrValue(
           s=compat.as_bytes(mode + _PIPELINE_MODEL_SEQUENTIAL)
       )
@@ -759,8 +768,8 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
   @property
   def embedding_tables(
       self,
-  ) -> Dict[tpu_embedding_v2_utils.TableConfig, tf_variables.Variable]:
-    """Returns a dict of embedding tables, keyed by `TableConfig`."""
+  ) -> Dict[str, tf_variables.Variable]:
+    """Returns a dict of embedding tables, keyed by stacked table name."""
     self._maybe_build()
     # Only return the tables and not the slot variables.
     return {

@@ -60,8 +60,7 @@ class TestBugSearch : public BugCheckerInterface {
 };
 
 Literal CreateLiteral(float value) {
-  Literal result =
-      Literal::CreateFromShape(ShapeUtil::MakeValidatedShape(F32, {}).value());
+  Literal result = Literal::CreateFromShape(ShapeUtil::MakeShape(F32, {}));
   result.PopulateWithValue(value);
   return result;
 }

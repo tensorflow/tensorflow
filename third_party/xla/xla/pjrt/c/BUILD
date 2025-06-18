@@ -75,6 +75,25 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_c_api_phase_compile_extension_hdrs",
+    hdrs = ["pjrt_c_api_phase_compile_extension.h"],
+    visibility = ["//visibility:public"],
+    deps = [":pjrt_c_api_hdrs"],
+)
+
+cc_library(
+    name = "pjrt_c_api_phase_compile_internal",
+    srcs = ["pjrt_c_api_phase_compile_internal.cc"],
+    hdrs = ["pjrt_c_api_phase_compile_internal.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_phase_compile_extension_hdrs",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
     name = "pjrt_c_api_triton_extension_hdrs",
     hdrs = ["pjrt_c_api_triton_extension.h"],
     visibility = ["//visibility:public"],
@@ -155,6 +174,7 @@ cc_library(
     name = "pjrt_c_api_raw_buffer_external",
     srcs = ["pjrt_c_api_raw_buffer_external.cc"],
     hdrs = ["pjrt_c_api_raw_buffer_external.h"],
+    visibility = internal_visibility(["//xla/pjrt:friends"]),
     deps = [
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
@@ -595,4 +615,10 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_for_library",
     ],
+)
+
+cc_library(
+    name = "pjrt_c_api_tpu_internal",
+    hdrs = ["pjrt_c_api_tpu_internal.h"],
+    deps = [":pjrt_c_api_hdrs"],
 )

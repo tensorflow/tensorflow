@@ -2,12 +2,7 @@
 #   GPU-platform specific StreamExecutor support code.
 
 load(
-    "@local_config_cuda//cuda:build_defs.bzl",
-    "if_cuda",
-)
-load(
     "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm",
     "if_rocm_is_configured",
 )
 load(
@@ -16,12 +11,7 @@ load(
 )
 load("//xla:xla.default.bzl", "xla_cc_test")
 load(
-    "//xla/service/gpu:build_defs.bzl",
-    "gpu_kernel_library",
-)
-load(
     "//xla/stream_executor:build_defs.bzl",
-    "if_gpu_is_configured",
     "stream_executor_gpu_friends",
 )
 load(
@@ -172,6 +162,7 @@ cc_library(
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:platform",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:env",
@@ -323,32 +314,30 @@ cc_library(
         "//tensorflow/core/kernels:__subpackages__",
     ]),
     deps = [
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status",
         "//xla/tsl/platform:subprocess",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:status",
     ],
 )
 
-gpu_kernel_library(
+cc_library(
     name = "redzone_allocator_kernel",
-    srcs = [
-        "redzone_allocator_kernel.cu.cc",
+    hdrs = [
+        "redzone_allocator_kernel.h",
     ],
-    tags = ["gpu"],
-    deps = if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-    ]) + if_rocm_is_configured([
-        "@local_config_rocm//rocm:rocm_headers",
-        "@local_config_rocm//rocm:rocm_config",
-    ]),
+    deps = [
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
+    ],
 )
 
 cc_library(
@@ -359,18 +348,17 @@ cc_library(
     hdrs = ["redzone_allocator.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
-        ":gpu_asm_opts",
+        ":gpu_kernel_registry",
+        ":redzone_allocator_kernel",
         "//xla:shape_util",
         "//xla/service/gpu:stream_executor_util",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
         "//xla/stream_executor:device_memory_handle",
-        "//xla/stream_executor:kernel",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor:typed_kernel_factory",
         "//xla/tsl/framework:allocator",
         "//xla/tsl/lib/math:math_util",
         "//xla/tsl/platform:errors",
@@ -382,11 +370,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
-    ] + if_gpu_is_configured([
-        ":redzone_allocator_kernel",
-    ]),
+    ],
 )
 
 xla_test(
@@ -443,7 +427,7 @@ cc_library(
 xla_test(
     name = "gpu_cudamallocasync_allocator_test",
     srcs = ["gpu_cudamallocasync_allocator_test.cc"],
-    backends = ["gpu_any"],
+    backends = ["nvgpu_any"],
     tags = ["cuda-only"],
     deps = [
         ":gpu_cudamallocasync_allocator",
@@ -523,20 +507,36 @@ xla_cc_test(
     ],
 )
 
-gpu_kernel_library(
+cc_library(
+    name = "gpu_test_kernel_traits",
+    hdrs = ["gpu_test_kernel_traits.h"],
+    deps = [
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
+    ],
+)
+
+cc_library(
     name = "gpu_test_kernels",
     testonly = 1,
-    srcs = ["gpu_test_kernels.cu.cc"],
+    srcs = ["gpu_test_kernels.cc"],
     hdrs = ["gpu_test_kernels.h"],
     linkstatic = True,
-    tags = ["gpu"],
+    tags = [
+        "gpu",
+        "no-sycl",
+    ],
     deps = [
+        ":gpu_kernel_registry",
+        ":gpu_test_kernel_traits",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_spec",
-    ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-    ]) + if_rocm_is_configured([
-        "@local_config_rocm//rocm:rocm_headers",
-    ]),
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
 )
 
 cc_library(
@@ -544,9 +544,11 @@ cc_library(
     testonly = True,
     srcs = ["gpu_test_kernels_fatbin.cc"],
     hdrs = ["gpu_test_kernels_fatbin.h"],
-    data = [
-        ":gpu_test_kernels",
-    ],
+    data = if_cuda_is_configured([
+        "//xla/stream_executor/cuda:gpu_test_kernels_cuda",
+    ]) + if_rocm_is_configured([
+        "//xla/stream_executor/rocm:gpu_test_kernels_rocm",
+    ]),
     tags = ["gpu"],
     deps = [
         ":gpu_init_impl",
@@ -571,9 +573,11 @@ xla_cc_test(
     tags = ["gpu"],
     deps = [
         ":gpu_test_kernels_fatbin",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
     ],
 )
 
@@ -643,11 +647,7 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
-    ] + if_cuda([
-        "//xla/stream_executor/cuda:cuda_platform",
-    ]) + if_rocm([
-        "//xla/stream_executor/rocm:rocm_platform",
-    ]),
+    ],
 )
 
 xla_test(
@@ -664,11 +664,7 @@ xla_test(
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-    ] + if_cuda([
-        "//xla/stream_executor/cuda:cuda_platform",
-    ]) + if_rocm([
-        "//xla/stream_executor/rocm:rocm_platform",
-    ]),
+    ],
 )
 
 xla_test(
@@ -687,11 +683,7 @@ xla_test(
         "@com_google_googletest//:gtest_main",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-    ] + if_cuda([
-        "//xla/stream_executor/cuda:cuda_platform",
-    ]) + if_rocm([
-        "//xla/stream_executor/rocm:rocm_platform",
-    ]),
+    ],
 )
 
 xla_test(
@@ -714,11 +706,7 @@ xla_test(
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-    ] + if_cuda([
-        "//xla/stream_executor/cuda:cuda_platform",
-    ]) + if_rocm([
-        "//xla/stream_executor/rocm:rocm_platform",
-    ]),
+    ],
 )
 
 xla_test(
@@ -766,13 +754,14 @@ cc_library(
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@llvm-project//llvm:Support",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -784,7 +773,6 @@ xla_cc_test(
         "//xla/tsl/platform:status_matchers",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -795,18 +783,14 @@ cc_library(
     deps = [
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:platform",
-        "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:typed_kernel_factory",
         "//xla/stream_executor/platform:initialize",
+        "//xla/stream_executor/platform:platform_object_registry",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -818,6 +802,7 @@ xla_cc_test(
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor/cuda:cuda_platform_id",
+        "//xla/stream_executor/platform:platform_object_registry",
         "//xla/stream_executor/rocm:rocm_platform_id",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:status_matchers",
@@ -839,6 +824,9 @@ exports_files([
     "buffer_comparator_kernel_lib.cu.h",
     "all_reduce_kernel_lib.cu.h",
     "ragged_all_to_all_kernel_lib.cu.h",
+    "repeat_buffer_kernel.cu.h",
+    "redzone_allocator_kernel_lib.cu.h",
+    "gpu_test_kernels_lib.cu.h",
 ])
 
 cc_library(
@@ -875,5 +863,38 @@ cc_library(
     deps = [
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:kernel",
+    ],
+)
+
+cc_library(
+    name = "repeat_buffer_kernel",
+    hdrs = ["repeat_buffer_kernel.h"],
+    deps = [
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:kernel",
+    ],
+)
+
+xla_test(
+    name = "repeat_buffer_kernel_test",
+    srcs = ["repeat_buffer_kernel_test.cc"],
+    backends = ["gpu"],
+    disabled_backends = [],
+    deps = [
+        ":gpu_kernel_registry",
+        ":repeat_buffer_kernel",
+        "//xla/service:platform_util",
+        "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:status_matchers",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )

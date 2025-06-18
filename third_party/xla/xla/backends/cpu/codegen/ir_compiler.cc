@@ -58,9 +58,13 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/Triple.h"
+#include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/Instrumentation/DataFlowSanitizer.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
+#include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/polynomial_approximations.h"
+#include "xla/codegen/math/math_compiler_lib.h"
+#include "xla/codegen/math_lib.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -148,19 +152,6 @@ static llvm::PipelineTuningOptions GetPipelineTuningOptions(
 
     // TODO(b/411125413): Re-enable SLPVectorization once the LLVM bug is fixed.
     pto.SLPVectorization = false;
-
-    // TODO(b/419635451): Without AVX512 loop unrolling leads to LLVM generating
-    // enormous IR that later times out during code generation (AVX2 doesn't
-    // have masked SIMD instructions, and control flow ends up vectorizing to a
-    // lot of scalar loads and stores, which takes forever to codegen in machine
-    // instruction selection). As a workaround, disable loop unrolling when
-    // AVX512 is not available. Revisit this decision once we migrate to new
-    // fusion emitters that do not rely on LLVM that much.
-    auto target_features = target_machine->getTargetFeatureString();
-    if (target_features.contains("+avx2") &&
-        !target_features.contains("+avx512")) {
-      pto.LoopUnrolling = false;
-    }
 
     return pto;
   };
@@ -334,6 +325,8 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
       std::make_unique<llvm::TargetLibraryInfoImpl>(target_triple);
   target_library_info_impl->addVectorizableFunctions(
       PolynomialApproximationsVectorization());
+  codegen::MathFunctionLib math_lib;
+  target_library_info_impl->addVectorizableFunctions(math_lib.Vectorizations());
 
   fam.registerPass(
       [&] { return llvm::TargetLibraryAnalysis(*target_library_info_impl); });
@@ -376,12 +369,17 @@ llvm::Error IrCompiler::RunIrPasses(llvm::Module& module,
     if (llvm::verifyModule(module, &error_stream)) {
       return llvm::make_error<llvm::StringError>(
           llvm::errc::invalid_argument,
-          absl::StrFormat("Invalid LLVM IR after optimizations:\n%s",
+          absl::StrFormat("Invalid LLVM IR after optimizations:\n%s\n",
                           error_stream.str()));
     }
   }
 
+  auto replaced_functions = math_lib.RewriteMathFunctions(module);
   RewriteToPolynomialApproximations(&module, options_.fast_math_flags);
+  if (!replaced_functions.empty()) {
+    codegen::math::RemoveFromCompilerUsed(module, replaced_functions);
+    codegen::math::RunInlineAndOptPasses(module);
+  }
 
   return llvm::Error::success();
 }
@@ -398,8 +396,20 @@ std::unique_ptr<llvm::MemoryBuffer> IrCompiler::EmitMachineCode(
   target_machine->addPassesToEmitMC(codegen_passes, mc_context, ostream);
   codegen_passes.run(module);
 
+  llvm::NamedMDNode* memory_region_name_md =
+      module.getNamedMetadata(std::string(kMemoryRegionNameMetadataName));
+  CHECK(memory_region_name_md != nullptr)
+      << "Memory region name metadata not found in LLVM module.";
+  CHECK_GT(memory_region_name_md->getNumOperands(), 0);
+  llvm::MDNode* node = memory_region_name_md->getOperand(0);
+  CHECK(node != nullptr);
+  CHECK_GT(node->getNumOperands(), 0);
+  llvm::MDString* md_str = llvm::dyn_cast<llvm::MDString>(node->getOperand(0));
+  CHECK(md_str != nullptr);
+  llvm::StringRef mem_region_name_str = md_str->getString();
+
   return std::make_unique<llvm::SmallVectorMemoryBuffer>(
-      std::move(mc_stream_buffer));
+      std::move(mc_stream_buffer), mem_region_name_str);
 }
 
 llvm::CodeGenOptLevel IrCompiler::GetCodeGenOptLevel(

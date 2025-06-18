@@ -1,226 +1,186 @@
-diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/dialect/StablehloOps.h
---- stablehlo/stablehlo/dialect/StablehloOps.h
-+++ stablehlo/stablehlo/dialect/StablehloOps.h
-@@ -24,6 +24,7 @@
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir b/stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
+--- stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
++++ stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
+@@ -1051,9 +1051,9 @@
+   %0 = "stablehlo.reshape"(%arg0) : (tensor<1x?xi32>) -> tensor<1xi32>
+   func.return %0 : tensor<1xi32>
+ }
+-// CHECK: %[[CAST:.*]] = tensor.cast %{{.*}} : tensor<1x?xi32> to tensor<1x1xi32>
+-// CHECK: %[[COLLAPSE:.*]] = tensor.collapse_shape %[[CAST]] {{\[}}[0, 1]] : tensor<1x1xi32> into tensor<1xi32>
+-// CHECK: return %[[COLLAPSE:.*]] : tensor<1xi32>
++// CHECK: %[[COLLAPSE:.*]] = tensor.collapse_shape %arg0 {{\[}}[0, 1]] : tensor<1x?xi32> into tensor<?xi32>
++// CHECK: %[[CAST:.*]] = tensor.cast %[[COLLAPSE]] : tensor<?xi32> to tensor<1xi32>
++// CHECK: return %[[CAST]] : tensor<1xi32>
+ 
+ // -----
+ 
+@@ -1084,9 +1084,10 @@
+   %0 = "stablehlo.reshape"(%arg0) : (tensor<16x1x?xi32>) -> tensor<16xi32>
+   func.return %0 : tensor<16xi32>
+ }
+-// CHECK: %[[CAST:.*]] = tensor.cast %{{.*}} : tensor<16x1x?xi32> to tensor<16x1x1xi32>
+-// CHECK: %[[COLLAPSE:.*]] = tensor.collapse_shape %[[CAST]] {{\[}}[0, 1, 2]] : tensor<16x1x1xi32> into tensor<16xi32>
+-// CHECK: return %[[COLLAPSE:.*]] : tensor<16xi32>
++
++// CHECK: %[[COLLAPSE:.*]] = tensor.collapse_shape %arg0 {{\[}}[0, 1, 2]] : tensor<16x1x?xi32> into tensor<?xi32>
++// CHECK: %[[CAST:.*]] = tensor.cast %[[COLLAPSE]] : tensor<?xi32> to tensor<16xi32>
++// CHECK: return %[[CAST]] : tensor<16xi32>
+ 
+ // -----
+ 
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
+--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
+@@ -30,6 +30,7 @@
+ #include "llvm/ADT/SetVector.h"
+ #include "llvm/ADT/SmallVector.h"
+ #include "llvm/ADT/SmallVectorExtras.h"
++#include "llvm/Support/Debug.h"
+ #include "llvm/Support/Casting.h"
+ #include "mlir/Dialect/Arith/IR/Arith.h"
+ #include "mlir/Dialect/Arith/Utils/Utils.h"
+@@ -72,6 +73,8 @@
+ #include "stablehlo/conversions/linalg/transforms/TypeConversion.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+ 
++#define DEBUG_TYPE "stablehlo-legalize-to-linalg"
++
+ namespace mlir::stablehlo {
+ 
+ #define GEN_PASS_DEF_STABLEHLOLEGALIZETOLINALGPASS
+@@ -1127,6 +1130,10 @@
+     // collapse_shape.
+     if (std::optional<SmallVector<ReassociationIndices>> reassociationMap =
+             getReassociationIndicesForReshape(operandType, resultType)) {
++      LLVM_DEBUG(llvm::dbgs() << "ReshapeOp: " << operandType << " -> "
++                              << resultType << " \n"
++                              << "  using reassociation map: "
++                              << reassociationMap.value().size() << "\n");
+       if (resultType.getRank() < operandType.getRank()) {
+         // We have found a working reassociation map. If the operand is dynamic,
+         // we first need to cast all unknown dimensions in the input that get
+@@ -1134,9 +1141,10 @@
+         SmallVector<int64_t> shape(operandType.getShape().begin(),
+                                    operandType.getShape().end());
+         for (auto [idx, dims] : llvm::enumerate(*reassociationMap)) {
+-          // If the result dim is dynamic, we do not mind dynamic entries in the
+-          // source.
+-          if (resultType.isDynamicDim(idx)) continue;
++          // If the result dim is dynamic or scalar, we do not mind dynamic
++          // entries in the source.
++          if (resultType.getRank() == 0 || resultType.isDynamicDim(idx))
++            continue;
+           for (auto targetDim : dims) {
+             if (shape[targetDim] == ShapedType::kDynamic) shape[targetDim] = 1;
+           }
+@@ -1149,10 +1157,14 @@
+                                                     newOperandType, operand);
+         }
+         // Generate collapse operation.
++        // For scalar collapses must pass an empty reassociation map.
++        if (resultType.getRank() == 0) reassociationMap->clear();
+         rewriter.replaceOpWithNewOp<tensor::CollapseShapeOp>(
+             reshapeOp, resultType, operand, *reassociationMap);
+       } else {
+         // Generate expand operation.
++          // For scalar expands must pass an empty reassociation map.
++        if (operandType.getRank() == 0) reassociationMap->clear();
+         rewriter.replaceOpWithNewOp<tensor::ExpandShapeOp>(
+             reshapeOp, resultType, operand, *reassociationMap);
+       }
+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgRandom.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgRandom.cpp
+--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgRandom.cpp
++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgRandom.cpp
+@@ -319,6 +319,7 @@
+   auto reassociationIndices =
+       getReassociationIndicesForCollapse(destTy.getShape(), srcTy.getShape());
+   if (reassociationIndices.has_value()) {
++    if (srcTy.getRank() == 0) reassociationIndices->clear();
+     src = builder.create<tensor::ExpandShapeOp>(loc, destTy, src,
+                                                 reassociationIndices.value());
+   }
+@@ -328,6 +329,7 @@
+   reassociationIndices =
+       getReassociationIndicesForCollapse(srcTy.getShape(), destTy.getShape());
+   if (reassociationIndices.has_value()) {
++    if (destTy.getRank() == 0) reassociationIndices->clear();
+     src = builder.create<tensor::CollapseShapeOp>(loc, destTy, src,
+                                                   reassociationIndices.value());
+   }
+diff --ruN a/stablehlo/stablehlo/dialect/VhloTypes.cpp b/stablehlo/stablehlo/dialect/VhloTypes.cpp
+--- stablehlo/stablehlo/dialect/VhloTypes.cpp
++++ stablehlo/stablehlo/dialect/VhloTypes.cpp
+@@ -16,6 +16,7 @@
+ #include "stablehlo/dialect/VhloTypes.h"
+ 
+ #include <cstdint>
++#include <optional>
+ 
+ #include "llvm/ADT/SmallVectorExtras.h"
+ #include "llvm/ADT/StringRef.h"
+@@ -23,6 +24,7 @@
  #include "mlir/Dialect/Quant/IR/QuantTypes.h"
  #include "mlir/Dialect/Shape/IR/Shape.h"
  #include "mlir/IR/Attributes.h"
-+#include "mlir/IR/Block.h"
- #include "mlir/IR/Builders.h"
- #include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
  #include "mlir/IR/BuiltinTypes.h"
-@@ -33,6 +34,7 @@
  #include "mlir/IR/MLIRContext.h"
  #include "mlir/IR/OpDefinition.h"
- #include "mlir/IR/Operation.h"
-+#include "mlir/IR/Region.h"
- #include "mlir/IR/TensorEncoding.h"
- #include "mlir/IR/TypeUtilities.h"
- #include "mlir/IR/Types.h"
-@@ -174,6 +176,21 @@
-                     const llvm::ArrayRef<Type> &elementTypes, int64_t dimension,
-                     bool isStable, ComparisonDirection direction);
+@@ -31,6 +33,7 @@
+ #include "mlir/Support/LLVM.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "stablehlo/dialect/AssemblyFormat.h"
++#include "stablehlo/dialect/VhloTypes.h"
  
-+template <typename OpTy>
-+void buildReduceBody(Type elementType, Region &body, OpBuilder &builder) {
-+  OpBuilder::InsertionGuard guard(builder);
-+  Block *block = builder.createBlock(&body);
-+
-+  // Block arguments are scalars of the given element type.
-+  Type type = RankedTensorType::get(/*shape=*/{}, elementType);
-+  Location loc = body.getLoc();
-+  block->addArguments({type, type}, {loc, loc});
-+
-+  auto reducer =
-+      builder.create<OpTy>(loc, block->getArgument(0), block->getArgument(1));
-+  builder.create<stablehlo::ReturnOp>(loc, reducer.getResult());
+ namespace mlir {
+ namespace vhlo {
+@@ -397,6 +400,16 @@
+   return success();
+ }
+ 
++// RankedTensorV1Type implement ShapedTypeInterface
++mlir::ShapedType RankedTensorV1Type::cloneWith(
++  std::optional<llvm::ArrayRef<int64_t>> values, Type elementType) const {
++ArrayRef<int64_t> shape = values.value_or(getShape());
++return RankedTensorV1Type::get(getContext(), shape, elementType,
++                               getEncoding());
 +}
 +
- }  // end namespace stablehlo
- }  // end namespace mlir
++bool RankedTensorV1Type::hasRank() const { return true; }
++
+ }  // namespace vhlo
+ }  // namespace mlir
  
-diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
---- stablehlo/stablehlo/dialect/StablehloOps.td
-+++ stablehlo/stablehlo/dialect/StablehloOps.td
-@@ -1161,7 +1161,8 @@
- //===----------------------------------------------------------------------===//
+diff --ruN a/stablehlo/stablehlo/dialect/VhloTypes.td b/stablehlo/stablehlo/dialect/VhloTypes.td
+--- stablehlo/stablehlo/dialect/VhloTypes.td
++++ stablehlo/stablehlo/dialect/VhloTypes.td
+@@ -18,6 +18,7 @@
+ #define STABLEHLO_DIALECT_VHLO_TYPES
  
- def StableHLO_InfeedOp : StableHLO_Op<"infeed", [
--      MemoryEffects<[MemRead<StableHLO_InfeedResource>]>,
-+      MemoryEffects<[MemRead<StableHLO_InfeedResource>,
-+                     MemWrite<StableHLO_InfeedResource>]>,
-     ]> {
-   let summary = "Infeed operation";
-   let description = [{
-@@ -1188,7 +1189,8 @@
+ include "mlir/IR/AttrTypeBase.td"
++include "mlir/IR/BuiltinTypeInterfaces.td"
+ include "stablehlo/dialect/VhloBase.td"
+ include "stablehlo/dialect/VhloDialect.td"
  
- def StableHLO_OutfeedOp : StableHLO_Op<"outfeed", [
-       DeclareOpInterfaceMethods<InferTypeOpInterface>,
--      MemoryEffects<[MemWrite<StableHLO_OutfeedResource>]>,
-+      MemoryEffects<[MemRead<StableHLO_OutfeedResource>,
-+                     MemWrite<StableHLO_OutfeedResource>]>,
-     ]> {
-   let summary = "Outfeed operation";
-   let description = [{
-@@ -1214,7 +1216,8 @@
- 
- def StableHLO_SendOp : StableHLO_Op<"send", [
-       DeclareOpInterfaceMethods<InferTypeOpInterface>,
--      MemoryEffects<[MemWrite<StableHLO_SendResource>]>,
-+      MemoryEffects<[MemRead<StableHLO_SendResource>,
-+                     MemWrite<StableHLO_SendResource>]>,
-     ]> {
-   let summary = "Send operation";
-   let description = [{
-@@ -1243,7 +1246,8 @@
+@@ -33,8 +34,8 @@
+   ];
  }
  
- def StableHLO_RecvOp : StableHLO_Op<"recv", [
--      MemoryEffects<[MemRead<StableHLO_RecvResource>]>
-+      MemoryEffects<[MemRead<StableHLO_RecvResource>,
-+                     MemWrite<StableHLO_RecvResource>]>,
-     ]> {
-   let summary = "Recv operation";
-   let description = [{
-diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
---- stablehlo/stablehlo/dialect/TypeInference.cpp
-+++ stablehlo/stablehlo/dialect/TypeInference.cpp
-@@ -879,7 +879,8 @@
- 
-   auto replicaIds = replicaGroups.getValues<int64_t>();
- 
--  llvm::SmallSet<int64_t, 8> replicaIdsSeen;
-+  // Large programs can have many replicas, use a set with efficient lookup.
-+  llvm::DenseSet<int64_t> replicaIdsSeen;
-   for (int64_t replicaId : replicaIds) {
-     // Replica groups are stored in a 2D tensor. If the op supports non-uniform
-     // groups, null replica IDs are stored as -1.
-@@ -1841,6 +1842,7 @@
-                                  /*allGroupsMustHaveSameSize=*/true,
-                                  /*useGlobalDeviceIds=*/false, splitCount)))
-     return failure();
-+
-   for (const Value& operand : operands) {
-     auto operandType = cast<RankedTensorType>(operand.getType());
- 
-@@ -3562,6 +3564,19 @@
-                                 DenseIntElementsAttr replicaGroups,
-                                 int64_t channelId, bool useGlobalDeviceIds,
-                                 ValueRange results) {
-+  // all_gather_i3, all_gather_c2, all_gather_c4
-+  if (failed(verifyReplicaGroups(location, replicaGroups,
-+                                 /*allGroupsMustHaveSameSize=*/true,
-+                                 useGlobalDeviceIds,
-+                                 /*expectedGroupSize=*/std::nullopt)))
-+    return failure();
-+
-+  // all_gather_c5
-+  if (useGlobalDeviceIds && channelId < 0)
-+    return emitOptionalError(
-+        location,
-+        "channel_id cannot be negative when useGlobalDeviceIds is set");
-+
-   for (const auto& [operand, result] : llvm::zip(operands, results)) {
-     auto operandType = cast<RankedTensorType>(operand.getType());
-     auto resultType = cast<RankedTensorType>(result.getType());
-@@ -3576,19 +3591,6 @@
-       return emitOptionalError(
-           location,
-           "dimension size of operand at 'all_gather_dim' cannot be zero");
--
--    // all_gather_i3, all_gather_c2, all_gather_c4
--    if (failed(verifyReplicaGroups(location, replicaGroups,
--                                   /*allGroupsMustHaveSameSize=*/true,
--                                   useGlobalDeviceIds,
--                                   /*expectedGroupSize=*/std::nullopt)))
--      return failure();
--
--    // all_gather_c5
--    if (useGlobalDeviceIds && channelId < 0)
--      return emitOptionalError(
--          location,
--          "channel_id cannot be negative when useGlobalDeviceIds is set");
- 
-     // all_gather_c6
-     if (resultType.getRank() != operandType.getRank())
-@@ -3788,7 +3790,7 @@
-         "but instead it is of rank ", replicaGroupType.getRank());
- 
-   auto replicaIds = replicaGroups.getValues<int64_t>();
--  llvm::SmallSet<int64_t, 8> replicaIdsSeen;
-+  llvm::DenseSet<int64_t> replicaIdsSeen;
-   for (int64_t replicaId : replicaIds) {
-     // collective_broadcast_c2
-     // We only check that is is not negative, as it is impossible
-diff --ruN a/stablehlo/stablehlo/integrations/c/StablehloDialectApi.cpp b/stablehlo/stablehlo/integrations/c/StablehloDialectApi.cpp
---- stablehlo/stablehlo/integrations/c/StablehloDialectApi.cpp
-+++ stablehlo/stablehlo/integrations/c/StablehloDialectApi.cpp
-@@ -78,10 +78,11 @@
- 
- MlirLogicalResult stablehloSerializePortableArtifactFromModule(
-     MlirModule moduleStr, MlirStringRef targetVersion,
--    MlirStringCallback callback, void *userData) {
-+    MlirStringCallback callback, void *userData, bool allowOtherDialects) {
-   mlir::detail::CallbackOstream stream(callback, userData);
-   if (failed(mlir::stablehlo::serializePortableArtifact(
--          unwrap(moduleStr), unwrap(targetVersion), stream)))
-+          unwrap(moduleStr), unwrap(targetVersion), stream,
-+          allowOtherDialects)))
-     return mlirLogicalResultFailure();
-   return mlirLogicalResultSuccess();
- }
-diff --ruN a/stablehlo/stablehlo/integrations/c/StablehloDialectApi.h b/stablehlo/stablehlo/integrations/c/StablehloDialectApi.h
---- stablehlo/stablehlo/integrations/c/StablehloDialectApi.h
-+++ stablehlo/stablehlo/integrations/c/StablehloDialectApi.h
-@@ -92,7 +92,8 @@
- stablehloSerializePortableArtifactFromModule(MlirModule moduleStr,
-                                              MlirStringRef targetVersion,
-                                              MlirStringCallback callback,
--                                             void* userData);
-+                                             void* userData,
-+                                             bool allowOtherDialects = false);
- 
- // Read a StableHLO program from a portable artifact, returning the module as
- // MLIR bytecode. Note, this bytecode returned is not a portable artifact,
-diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloApi.cpp b/stablehlo/stablehlo/integrations/python/StablehloApi.cpp
---- stablehlo/stablehlo/integrations/python/StablehloApi.cpp
-+++ stablehlo/stablehlo/integrations/python/StablehloApi.cpp
-@@ -102,20 +102,22 @@
-   //
-   m.def(
-       "serialize_portable_artifact",
--      [](MlirModule module, std::string_view target) -> nb::bytes {
-+      [](MlirModule module, std::string_view target,
-+         bool allowOtherDialects) -> nb::bytes {
-         StringWriterHelper accumulator;
-         if (mlirLogicalResultIsFailure(
-                 stablehloSerializePortableArtifactFromModule(
-                     module, toMlirStringRef(target),
-                     accumulator.getMlirStringCallback(),
--                    accumulator.getUserData()))) {
-+                    accumulator.getUserData(), allowOtherDialects))) {
-           throw nb::value_error("failed to serialize module");
-         }
- 
-         std::string serialized = accumulator.toString();
-         return nb::bytes(serialized.data(), serialized.size());
-       },
--      nb::arg("module"), nb::arg("target"));
-+      nb::arg("module"), nb::arg("target"),
-+      nb::arg("allow_other_dialects") = false);
- 
-   m.def(
-       "deserialize_portable_artifact",
-diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
---- stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
-+++ stablehlo/stablehlo/tests/transforms/stablehlo_convert_to_signless.mlir
-@@ -9,7 +9,7 @@
-   %3 = builtin.unrealized_conversion_cast %2 : memref<i16> to memref<ui16>
-   %4 = bufferization.to_tensor %3 : memref<ui16> to tensor<ui16>
-   %5 = builtin.unrealized_conversion_cast %4 : tensor<ui16> to tensor<i16>
--  %6 = bufferization.to_memref %5 : tensor<i16> to memref<i16>
-+  %6 = bufferization.to_buffer %5 : tensor<i16> to memref<i16>
-   %7 = builtin.unrealized_conversion_cast %6 : memref<i16> to memref<ui16>
-   func.return %7 : memref<ui16>
- }
+-class VHLO_TypeDef<string cppName, string name, string minVersion, string maxVersion>
+-  : TypeDef<VHLO_Dialect, cppName, [VHLO_VersionedTypeInterface]> {
++class VHLO_TypeDef<string cppName, string name, string minVersion, string maxVersion, list<Trait> traits = []>
++  : TypeDef<VHLO_Dialect, cppName, [VHLO_VersionedTypeInterface] # traits> {
+   let mnemonic = name;
+   let extraClassDeclaration = [{
+     mlir::vhlo::Version getMinVersion() {
+@@ -186,7 +187,8 @@
+ // At the moment, it is used to represent dimension bounds to support bounded
+ // dynamism, and we're planning to look into it as part of the work on the
+ // dynamism RFC.
+-def VHLO_RankedTensorV1 : VHLO_TypeDef<"RankedTensorV1", "tensor_v1", "0.9.0", "current"> {
++def VHLO_RankedTensorV1 : VHLO_TypeDef<"RankedTensorV1", "tensor_v1", "0.9.0", "current",
++                                       [DeclareTypeInterfaceMethods<ShapedTypeInterface>]> {
+   let parameters = (ins
+     VHLO_Dims:$shape,
+     "::mlir::Type":$elementType,
 

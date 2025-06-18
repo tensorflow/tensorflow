@@ -308,3 +308,18 @@ cc_library(
     # to make bazel query happy.
     name = "nvptxcompiler",
 )
+
+alias(
+    name = "runtime_fatbinary",
+    actual = "@cuda_nvcc//:fatbinary",
+)
+
+alias(
+    name = "runtime_nvlink",
+    actual = "@cuda_nvcc//:nvlink",
+)
+
+alias(
+    name = "runtime_ptxas",
+    actual = "@cuda_nvcc//:ptxas",
+)

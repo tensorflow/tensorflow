@@ -24,7 +24,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
@@ -459,6 +458,10 @@ class CoordinationService {
   // is set to true.
   void CheckBarrierStatusWithRecoverableTasks();
 
+  // Returns a map of ongoing barriers to count of unsynced tasks waiting on
+  // other barriers.
+  absl::flat_hash_map<std::string, int> GetCountOfOutOfSyncTasksPerBarrier();
+
   class ErrorPollingState {
    public:
     // Returns whether the error polling requests have been responded.
@@ -587,8 +590,9 @@ class CoordinationService {
   CoordinatedTaskSet AliveTasks(const CoordinatedTaskSet& tasks) const
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
-  // Returns the incarnation ids of the provided tasks in sorted order.
-  std::vector<uint64_t> CoordinationIds(const CoordinatedTaskSet& tasks) const
+  // Returns the incarnation ids of the provided tasks, in the same order.
+  std::vector<uint64_t> IncarnationIds(
+      absl::Span<const tensorflow::CoordinatedTask> tasks) const
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
   // Refreshes the AlivenessStates of all pending GetAliveTasks call,
@@ -639,6 +643,16 @@ class CoordinationService {
 
   absl::flat_hash_set<std::string> recoverable_jobs_;
 
+  // When the tasks connect to coordination service after cluster initialization
+  // is done, they will be added to this set.
+  // Tasks connecting after cluster initialization indicate that they
+  // reconnected to the service due to preemption or restart.
+  // Unsynced recoverable tasks will be excluded from the barrier check after
+  // the first cluster initialization.
+  // The service will remove them from the set when the tasks pass a
+  // barrier with other tasks.
+  absl::flat_hash_set<std::string> unsynced_recoverable_jobs_
+      ABSL_GUARDED_BY(state_mu_);
   // Whether the agents are polling for error from the service. It will be set
   // to true when the service sees the first error polling request. Once set to
   // true, the value will never change back to false.

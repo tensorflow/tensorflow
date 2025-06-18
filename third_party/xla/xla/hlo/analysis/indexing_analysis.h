@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"
@@ -36,12 +37,13 @@ limitations under the License.
 
 namespace xla {
 
-using IndexingMapSet = absl::flat_hash_set<IndexingMap>;
+class OperandIndexing;
+using OperandIndexingSet = absl::flat_hash_set<OperandIndexing>;
 
-// Contains indexing maps for all N-dimensional tensor input operands that
-// correspond to a particular output.
+// Contains indexing maps for all input operands.
+// Indexing is computed for one particular output.
 struct HloInstructionIndexing {
-  std::string ToString() const;
+  std::string ToString(absl::string_view separator = "\n") const;
 
   // Returns true if the indexing was simplified.
   bool Simplify();
@@ -52,8 +54,16 @@ struct HloInstructionIndexing {
   static HloInstructionIndexing FromIndexingMaps(
       absl::Span<const IndexingMap> indexing_maps);
 
-  // Maps input operand index to the indexing map for one particular output.
-  std::vector<IndexingMapSet> indexing_maps;
+  static HloInstructionIndexing FromOperandIndexing(
+      absl::Span<const OperandIndexing> operand_indexing);
+
+  // Each element is a set of indexing of the corresponding operand at the same
+  // position.
+  // TODO(b/417172838): rename?
+  // TODO(b/417172838): indexing_maps are often used as
+  // indexing_maps[X].begin()->map(), provide a method to access the map
+  // directly and also check that there is only one element in the set.
+  std::vector<OperandIndexingSet> indexing_maps;
 };
 std::ostream& operator<<(std::ostream& out,
                          const HloInstructionIndexing& instr_indexing);
@@ -98,27 +108,97 @@ IndexingMap ComputeEpilogueInputToOutputIndexing(
     HloInstructionAdaptor epilogue_parent, HloInstructionAdaptor epilogue_root,
     mlir::MLIRContext* mlir_context);
 
+// Indexing of the runtime variable of the HLO instruction.
+struct RuntimeVarIndexing {
+  // Instruction of the runtime variable. Note that while in trivial cases it
+  // points to one of the operands of the instruction, with multiple
+  // instructions and fusions it may point to an arbitrary instruction in the
+  // computation.
+  const HloInstruction* hlo;
+  // Output-to-input indexing map from the instruction to the output of `hlo`.
+  IndexingMap map;
+  std::string ToString() const;
+};
+
+std::ostream& operator<<(std::ostream& os, const RuntimeVarIndexing& var);
+bool operator==(const RuntimeVarIndexing& lhs, const RuntimeVarIndexing& rhs);
+
+// Indexing of an operand of a HLO instruction with information about runtime
+// variables.
+// Keeps invariant that the number of range variables in the map is the same as
+// the number of runtime variables it holds.
+class OperandIndexing {
+ public:
+  OperandIndexing(IndexingMap map, std::vector<RuntimeVarIndexing> rt_vars)
+      : map_(map), rt_vars_(rt_vars) {
+    VerifyOrDie();
+  }
+  explicit OperandIndexing(IndexingMap map) : map_(map) { VerifyOrDie(); }
+
+  const IndexingMap& map() const { return map_; }
+  const std::vector<RuntimeVarIndexing>& runtime_variables() const {
+    return rt_vars_;
+  }
+
+  std::string ToString() const;
+  // Removes unused symbols from the indexing map and updates the runtime
+  // variables accordingly.
+  // Returns a bit vector of symbols (i.e. range and runtime variables) that
+  // were removed. If none of the symbols were removed, returns an empty bit
+  // vector.
+  llvm::SmallBitVector RemoveUnusedSymbols();
+  // Few proxy methods to IndexingMap to simplify the migration.
+  bool Simplify() { return map_.Simplify(); }
+  bool IsUndefined() const { return map_.IsUndefined(); }
+
+  bool Verify(std::ostream& out) const;
+  // Checks invariants and crashes if they are not satisfied.
+  void VerifyOrDie() const;
+
+  friend bool operator==(const OperandIndexing& lhs,
+                         const OperandIndexing& rhs);
+
+ private:
+  IndexingMap map_;
+  std::vector<RuntimeVarIndexing> rt_vars_;
+};
+
+// Compose two operand indexings.
+OperandIndexing ComposeOperandIndexing(const OperandIndexing& first,
+                                       const OperandIndexing& second);
+
+std::ostream& operator<<(std::ostream& os, const OperandIndexing& var);
+
+template <typename H>
+H AbslHashValue(H h, const OperandIndexing& indexing_map) {
+  h = H::combine(std::move(h), indexing_map.map());
+  for (const auto& rt_var : indexing_map.runtime_variables()) {
+    h = H::combine(std::move(h), rt_var.map);
+  }
+  return h;
+}
+
+// TODO(b/417172838): some routines still use IndexingMapSet and
+// GroupedByOpIndexingMap. We should convert them to use OperandIndexing
+// equivalents.
+using IndexingMapSet = absl::flat_hash_set<IndexingMap>;
+IndexingMapSet ToIndexingMapSet(const OperandIndexingSet& operand_indexing_set);
+
 using GroupedByOpIndexingMap =
     absl::flat_hash_map<const HloInstruction*, IndexingMapSet>;
 
+using GroupedByOpIndexing =
+    absl::flat_hash_map<const HloInstruction*, OperandIndexingSet>;
+
 // Computes output-to-input indexing for every instruction within a fusion
 // cluster starting with `target_instr` and going from def to use.
-GroupedByOpIndexingMap ComputeGroupedOutputToInputIndexing(
+GroupedByOpIndexing ComputeGroupedOutputToInputIndexing(
     const HloFusionAdaptor& fusion_adaptor, HloInstructionAdaptor target_instr,
     mlir::MLIRContext* ctx);
 
 // Groups indexing maps by instructions.
-absl::flat_hash_map<const HloInstruction*, IndexingMapSet>
-GroupIndexingMapsByProducers(const HloInstructionIndexing& indexing,
-                             const HloInstruction* instr);
-
-// Computes producer indexing maps and fuse/compose them with the consumer
-// indexing maps.
-bool FuseProducerConsumerOutputToInputIndexing(
-    const HloInstruction* producer_instr,
-    absl::flat_hash_map<const HloInstruction*, IndexingMapSet>*
-        consumer_indexing,
-    mlir::MLIRContext* mlir_context);
+GroupedByOpIndexing GroupIndexingMapsByProducers(
+    const HloInstructionIndexing& indexing, const HloInstruction* instr);
 
 // Creates an indexing map for bitcasting from `input_shape` to `output_shape`.
 // Equivalent to linearizing the input_shape index and then delinearizing it

@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_module_util.h"
@@ -284,16 +285,9 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
     std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
     const std::vector<Literal>& fake_arguments, const bool run_hlo_passes,
     const bool use_threads, const std::optional<ErrorSpec>& error) {
-  std::vector<const Literal*> fake_argument_ptrs;
-  absl::c_transform(
-      /*input=*/fake_arguments,
-      /*output=*/std::back_inserter(fake_argument_ptrs),
-      /*unary_op=*/[](const Literal& literal) -> Literal* {
-        return const_cast<Literal*>(&literal);
-      });
   const HloRunnerInterface::ReplicatedExecuteOptions options{
       /*num_replicas=*/module_0->config().replica_count(),
-      /*arguments=*/fake_argument_ptrs,
+      /*arguments=*/LiteralUtil::MakePointers(fake_arguments),
       /*infeed_values=*/{},
       /*infeed_steps=*/-1,
       /*outfeed_shape=*/{},

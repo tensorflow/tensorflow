@@ -829,6 +829,9 @@ class BufferAssigner {
   BufferAssigner& operator=(const BufferAssigner&) = delete;
 };
 
+// Computes the peak memory usage through the proto's heap simulator traces.
+absl::StatusOr<int> ComputePeakMemory(const BufferAssignmentProto& proto);
+
 }  // namespace xla
 
 #endif  // XLA_SERVICE_BUFFER_ASSIGNMENT_H_

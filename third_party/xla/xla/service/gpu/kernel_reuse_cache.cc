@@ -127,14 +127,14 @@ CompilationCacheProto KernelReuseCache::Export() const {
     CHECK(inserted) << cache_entry.kernel_name;
     CompilationCacheEntryProto& proto_entry = it->second;
     proto_entry.set_fingerprint(fingerprint);
-    LaunchDimensionsProto launch_dimensions_proto;
+    CompilationCacheEntryProto::LaunchDimensionsProto launch_dimensions_proto;
     launch_dimensions_proto.set_num_blocks(
         cache_entry.launch_dimensions.num_blocks());
     launch_dimensions_proto.set_num_threads_per_block(
         cache_entry.launch_dimensions.num_threads_per_block());
     *proto_entry.mutable_launch_dimensions() = launch_dimensions_proto;
     if (cache_entry.cluster_dim.has_value()) {
-      ClusterDimProto cluster_dim_proto;
+      CompilationCacheEntryProto::ClusterDimProto cluster_dim_proto;
       cluster_dim_proto.set_x(cache_entry.cluster_dim->x);
       cluster_dim_proto.set_y(cache_entry.cluster_dim->y);
       cluster_dim_proto.set_z(cache_entry.cluster_dim->z);

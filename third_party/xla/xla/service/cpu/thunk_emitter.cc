@@ -28,13 +28,19 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/StringRef.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/Support/DebugStringHelper.h"
 #include "xla/backends/cpu/codegen/computation_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/dot/dot_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/elemental/concatenate_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/elemental/elemental_kernel_emitter.h"
 #include "xla/backends/cpu/codegen/emitters/cpu_scatter_emitter.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
+#include "xla/backends/cpu/codegen/fusion_emitter.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/runtime/all_gather_thunk.h"
@@ -84,9 +90,11 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/cpu/backend_config.pb.h"
+#include "xla/service/cpu/cpu_options.h"
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/ir_emission_utils.h"
 #include "xla/service/cpu/ir_emitter2.h"
+#include "xla/service/dump.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
@@ -108,18 +116,46 @@ limitations under the License.
 
 namespace xla::cpu {
 
+static FusionCompiler FusionCompilerFactory(const HloModule& hlo_module) {
+  FusionCompiler::Options options{
+      hlo_module.config().debug_options().xla_cpu_prefer_vector_width()};
+
+  FusionCompiler::CompilationHooks hooks;
+  if (DumpingEnabledForHloModule(hlo_module)) {
+    auto callback_factory = [&hlo_module](std::string stage_name) {
+      return [&hlo_module, stage_name](mlir::ModuleOp module) {
+        std::optional<llvm::StringRef> name = module.getName();
+        if (!name.has_value()) {
+          return;
+        }
+
+        DumpToFileInDirOrStdout(
+            hlo_module, "",
+            absl::StrCat(absl::string_view(*name), "-", stage_name, ".mlir"),
+            mlir::debugString(module));
+      };
+    };
+
+    hooks.pre_optimization = callback_factory("pre-optimization");
+    hooks.post_optimization = callback_factory("post-optimization");
+    hooks.post_lowering = callback_factory("post-lowering");
+  }
+
+  return FusionCompiler(std::move(options), std::move(hooks));
+}
+
 ThunkEmitter::ThunkEmitter(IrEmitter2& ir_emitter,
                            const BufferAssignment& buffer_assignment,
                            const TargetMachineFeatures& target_machine_features,
-                           const HloModuleConfig& hlo_module_config,
-                           const Options& options)
+                           const HloModule& hlo_module, const Options& options)
     : ir_emitter_(ir_emitter),
       buffer_assignment_(buffer_assignment),
       target_machine_features_(target_machine_features),
-      hlo_module_config_(hlo_module_config),
+      hlo_module_config_(hlo_module.config()),
       options_(options),
       communicator_resource_(
-          Resource::Create(Resource::kCollectiveCommunicator)) {}
+          Resource::Create(Resource::kCollectiveCommunicator)),
+      fusion_compiler_(FusionCompilerFactory(hlo_module)) {}
 
 static Thunk::Info ThunkInfo(const HloInstruction* instruction) {
   const HloModule* module = instruction->GetModule();
@@ -736,10 +772,34 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitFusionKernelThunk(
     auto [kernel_spec, kernel_source] =
         std::move(kernel_definition).ReleaseStorage();
 
-    FusionCompiler compiler(FusionCompiler::Options{
-        hlo_module_config_.debug_options().xla_cpu_prefer_vector_width()});
     TF_ASSIGN_OR_RETURN(LlvmIrKernelSource llvm_ir_kernel_source,
-                        compiler.Compile(std::move(kernel_source)));
+                        fusion_compiler_.Compile(std::move(kernel_source)));
+
+    kernels_.push_back({kernel_spec.name(),
+                        std::move(llvm_ir_kernel_source).thread_safe_module()});
+
+    return MakeKernelThunkSequence(
+        instruction, std::move(kernel_spec),
+        /*min_alignment=*/cpu_function_runtime::MinAlign());
+  }
+
+  // We currently only support loop fusion & the dot implementation is currently
+  // not efficient compared to the legacy emitter.
+  if (hlo_module_config_.debug_options().xla_cpu_use_fusion_emitters() &&
+      options::UseExperimentalLoopFusion(hlo_module_config_) &&
+      fusion->fusion_kind() == HloFusionInstruction::FusionKind::kLoop &&
+      fusion->fused_expression_root()->opcode() != HloOpcode::kDot) {
+    std::unique_ptr<mlir::MLIRContext> context =
+        FusionCompiler::CreateContext();
+    TF_ASSIGN_OR_RETURN(
+        MlirKernelDefinition kernel_definition,
+        EmitFusionKernel(*context, *fusion, &buffer_assignment_));
+
+    auto [kernel_spec, kernel_source] =
+        std::move(kernel_definition).ReleaseStorage();
+
+    TF_ASSIGN_OR_RETURN(LlvmIrKernelSource llvm_ir_kernel_source,
+                        fusion_compiler_.Compile(std::move(kernel_source)));
 
     kernels_.push_back({kernel_spec.name(),
                         std::move(llvm_ir_kernel_source).thread_safe_module()});

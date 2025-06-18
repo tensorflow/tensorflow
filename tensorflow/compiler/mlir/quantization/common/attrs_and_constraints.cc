@@ -33,13 +33,14 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
-#include "tensorflow/compiler/mlir/quantization/common/uniform_quantized_types.h"
+#include "tensorflow/compiler/mlir/quantization/common/tf_uniform_quantized_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
 
 namespace mlir::quant {
 
 using ::mlir::stablehlo::DotGeneralOp;
+using tf_quant::IsQuantizedTensorType;
 
 bool HasStaticShape(Value value) {
   auto shaped_type = mlir::dyn_cast<ShapedType>(value.getType());

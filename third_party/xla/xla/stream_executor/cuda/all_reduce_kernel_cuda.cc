@@ -36,13 +36,11 @@ limitations under the License.
       SINGLE_ARG(stream_executor::gpu::AllReduceKernel<                       \
                  XLA_TYPE, xla::ReductionKind::REDUCTION_KIND>),              \
       stream_executor::cuda::kCudaPlatformId, ([](size_t arity) {             \
-        stream_executor::MultiKernelLoaderSpec spec(arity);                   \
-        spec.AddInProcessSymbol(                                              \
+        return stream_executor::KernelLoaderSpec::CreateInProcessSymbolSpec(  \
             absl::bit_cast<void*>(                                            \
                 &stream_executor::gpu::AllReduceKernelImpl<                   \
                     NV_TYPE, xla::ReductionKind::REDUCTION_KIND>),            \
-            "one_shot_all_reduce_" #SUFFIX);                                  \
-        return spec;                                                          \
+            "one_shot_all_reduce_" #SUFFIX, arity);                           \
       }));
 
 // Register the kernel for different types using the macro

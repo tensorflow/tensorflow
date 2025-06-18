@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/base/optimization.h"
 #include "absl/container/fixed_array.h"
 #include "absl/status/status.h"
+#include "Eigen/ThreadPool"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
 #include "xla/tsl/lib/math/math_util.h"
@@ -109,7 +110,7 @@ class Worker {
   // available when all workers are completed.
   template <typename ParallelTask>
   static tsl::AsyncValueRef<tsl::Chain> Parallelize(
-      const Eigen::ThreadPoolDevice* device, size_t num_workers,
+      Eigen::ThreadPoolInterface* thread_pool, size_t num_workers,
       size_t num_tasks, ParallelTask&& parallel_task);
 
  private:
@@ -224,11 +225,11 @@ inline std::optional<size_t> Worker::Pop() {
 
 template <typename ParallelTask>
 struct Worker::ParallelizeContext {
-  ParallelizeContext(const Eigen::ThreadPoolDevice* device,
+  ParallelizeContext(Eigen::ThreadPoolInterface* thread_pool,
                      tsl::CountDownAsyncValueRef<tsl::Chain> count_down,
                      size_t num_tasks, ParallelTask&& parallel_task);
 
-  const Eigen::ThreadPoolDevice* device;
+  Eigen::ThreadPoolInterface* thread_pool;
   tsl::CountDownAsyncValueRef<tsl::Chain> count_down;
 
   WorkQueue work_queue;
@@ -237,10 +238,10 @@ struct Worker::ParallelizeContext {
 
 template <typename ParallelTask>
 Worker::ParallelizeContext<ParallelTask>::ParallelizeContext(
-    const Eigen::ThreadPoolDevice* device,
+    Eigen::ThreadPoolInterface* thread_pool,
     tsl::CountDownAsyncValueRef<tsl::Chain> count_down, size_t num_tasks,
     ParallelTask&& parallel_task)
-    : device(device),
+    : thread_pool(thread_pool),
       count_down(std::move(count_down)),
       work_queue(num_tasks, /*num_partitions=*/this->count_down.count()),
       parallel_task(std::forward<ParallelTask>(parallel_task)) {}
@@ -258,12 +259,12 @@ void Worker::Parallelize(std::shared_ptr<ParallelizeContext<ParallelTask>> ctx,
   // Recursively split assigned workers into two halves and schedule the
   // right half into the thread pool.
   while (end_index - start_index > 1) {
-    // If work queue is empty, we don't need to keep enqueuing more workers.
+    // If work queue is empty, we don't need to keep scheduling more workers.
     if (ABSL_PREDICT_FALSE(ctx->work_queue.IsEmpty())) {
       return;
     }
 
-    // If we have workers in the work stealing mode, we can skip enqueuing
+    // If we have workers in the work stealing mode, we can skip scheduling
     // more tasks as existing workers will process remaining partitions. By
     // doing this optimization we avoid unnecessary thread pool overheads.
     size_t skip_workers =
@@ -285,7 +286,7 @@ void Worker::Parallelize(std::shared_ptr<ParallelizeContext<ParallelTask>> ctx,
 
     DCHECK_GE(end_index - start_index, 1);
     uint16_t mid_index = (start_index + end_index) / 2;
-    ctx->device->enqueueNoNotification([ctx, mid_index, end_index] {
+    ctx->thread_pool->Schedule([ctx, mid_index, end_index] {
       Parallelize(ctx, mid_index, end_index);
     });
     end_index = mid_index;
@@ -335,8 +336,8 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE absl::Status Worker::ExecuteInline(
 
 template <typename ParallelTask>
 ABSL_ATTRIBUTE_ALWAYS_INLINE tsl::AsyncValueRef<tsl::Chain> Worker::Parallelize(
-    const Eigen::ThreadPoolDevice* device, size_t num_workers, size_t num_tasks,
-    ParallelTask&& parallel_task) {
+    Eigen::ThreadPoolInterface* thread_pool, size_t num_workers,
+    size_t num_tasks, ParallelTask&& parallel_task) {
   // Short-circuit single-threaded execution.
   if (ABSL_PREDICT_FALSE(num_workers == 1)) {
     if (absl::Status status =
@@ -356,7 +357,7 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE tsl::AsyncValueRef<tsl::Chain> Worker::Parallelize(
   auto execute_event = count_down.AsRef();
 
   auto ctx = std::make_shared<ParallelizeContext<ParallelTask>>(
-      device, std::move(count_down), num_tasks,
+      thread_pool, std::move(count_down), num_tasks,
       std::forward<ParallelTask>(parallel_task));
 
   Parallelize(std::move(ctx), 0, num_workers);

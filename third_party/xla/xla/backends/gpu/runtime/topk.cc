@@ -47,7 +47,7 @@ namespace xla::gpu::kernel::topk {
 
 namespace {
 
-using KernelArgsPacking = se::MultiKernelLoaderSpec::KernelArgsPacking;
+using KernelArgsPacking = se::KernelLoaderSpec::KernelArgsPacking;
 
 // The optimal number of threads is the smaller value between the number of
 // threads available per block and the number of slices of data.
@@ -86,7 +86,7 @@ KernelArgsPacking CreateTopKArgsPacking(size_t num_elements, size_t k) {
 // Finds the TopK kernel for the given platform registered in the global
 // registry.
 template <size_t K, typename T, typename VT>
-absl::StatusOr<se::MultiKernelLoaderSpec> GetTopKKernelForPlatform(
+absl::StatusOr<se::KernelLoaderSpec> GetTopKKernelForPlatform(
     se::Platform::Id id) {
   return se::gpu::GpuKernelRegistry::GetGlobalRegistry()
       .FindKernel<se::gpu::TopKKernel<K, T, VT>>(id);
@@ -94,7 +94,7 @@ absl::StatusOr<se::MultiKernelLoaderSpec> GetTopKKernelForPlatform(
 
 // Gets the right version of TopK kernel based on the value of `k`.
 template <typename T, typename VT>
-absl::StatusOr<se::MultiKernelLoaderSpec> GetTopKKernelForKAndPlatform(
+absl::StatusOr<se::KernelLoaderSpec> GetTopKKernelForKAndPlatform(
     size_t k, se::Platform::Id id) {
   if (k <= 1) {
     return GetTopKKernelForPlatform<1, T, VT>(id);
@@ -116,7 +116,7 @@ absl::StatusOr<se::MultiKernelLoaderSpec> GetTopKKernelForKAndPlatform(
 
 // Gets the right version of TopK kernel based on the value of `n`.
 template <typename T>
-absl::StatusOr<se::MultiKernelLoaderSpec> GetTopKKernelForKAndPlatformAndN(
+absl::StatusOr<se::KernelLoaderSpec> GetTopKKernelForKAndPlatformAndN(
     size_t k, se::Platform::Id id, size_t n) {
   // TODO(doak): Switch to uint32_t if we don't have an efficient
   // implementation for uint16_t.
@@ -146,7 +146,7 @@ absl::StatusOr<CustomKernel> GetTypedTopK(std::string name, size_t num_elements,
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       se::PlatformManager::PlatformWithName(platform_name));
   TF_ASSIGN_OR_RETURN(
-      se::MultiKernelLoaderSpec spec,
+      se::KernelLoaderSpec spec,
       GetTopKKernelForKAndPlatformAndN<T>(k, platform->id(), num_elements));
 
   spec.set_kernel_args_packing(CreateTopKArgsPacking<T>(num_elements, k));

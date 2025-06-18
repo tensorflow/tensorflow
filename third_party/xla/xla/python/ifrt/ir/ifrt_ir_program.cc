@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/Support/Casting.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/ifrt_ir_compile_options.pb.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -56,6 +58,13 @@ absl::StatusOr<std::unique_ptr<IfrtIRCompileOptions>> GetIfrtIRCompileOptions(
 
 absl::StatusOr<std::unique_ptr<IfrtIRCompileOptions>>
 IfrtIRCompileOptions::FromProto(const IfrtIrCompileOptionsProto& proto) {
+  const SerDesVersionNumber version_number(proto.version_number());
+  if (version_number != SerDesVersionNumber(0)) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Unsupported ", version_number,
+                     " for IfrtIRCompileOptions deserialization"));
+  }
+
   auto compile_options_overrides = std::make_unique<absl::flat_hash_map<
       std::string, std::unique_ptr<xla::ifrt::CompileOptions>>>();
   compile_options_overrides->reserve(proto.compile_option_overrides_size());
@@ -82,9 +91,16 @@ IfrtIRCompileOptions::FromProto(const IfrtIrCompileOptionsProto& proto) {
       std::move(compile_options_overrides), proto.propagate_shardings());
 }
 
-absl::StatusOr<IfrtIrCompileOptionsProto> IfrtIRCompileOptions::ToProto()
-    const {
+absl::StatusOr<IfrtIrCompileOptionsProto> IfrtIRCompileOptions::ToProto(
+    SerDesVersion version) const {
+  if (version.version_number() < SerDesVersionNumber(0)) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Unsupported ", version.version_number(),
+                     " for IfrtIRCompileOptions serialization"));
+  }
+
   IfrtIrCompileOptionsProto proto;
+  proto.set_version_number(SerDesVersionNumber(0).value());
   proto.mutable_device_ids()->Reserve(device_assignments.size());
   for (const DeviceId& device_id : device_assignments) {
     proto.add_device_ids(device_id.value());

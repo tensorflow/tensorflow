@@ -61,6 +61,9 @@ struct AutoShardingSolverParams {
 
 AutoShardingSolverParams GetParams(const AutoShardingSolverRequest& request);
 
+absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromProblem(
+    const iopddl::Problem& problem, const AutoShardingSolverParams& params);
+
 absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
     const AutoShardingSolverRequest& request,
     const AutoShardingSolverParams& params);
@@ -74,6 +77,9 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
 // - "brkga"
 absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
     const AutoShardingSolverRequest& request, const std::string& algorithm);
+
+absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
+    const iopddl::Problem& problem, const std::string& algorithm);
 
 enum AutoShardingViolationCode {
   kAliasViolationCode,     // Some node's strategy does not match its alias
@@ -136,6 +142,11 @@ AutoShardingEvaluation Evaluate(const iopddl::Problem& problem,
 double ComputeShardingCost(const AutoShardingSolverRequest& request,
                            const std::vector<NodeStrategyIdx>& node_strategies,
                            bool use_negative_violation_codes = true);
+
+iopddl::TotalCost ComputeShardingCost(
+    const iopddl::Problem& problem,
+    const std::vector<NodeStrategyIdx>& node_strategies,
+    bool use_negative_violation_codes = true);
 
 // Determines if strategy 'first' is dominated by strategy 'second' (i.e., its
 // costs are all equal or worse, and it has identical alias mappings).

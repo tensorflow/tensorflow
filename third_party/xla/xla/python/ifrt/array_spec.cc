@@ -19,13 +19,14 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array_spec.pb.h"
 #include "xla/python/ifrt/client.h"
-#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/tsl/platform/statusor.h"
@@ -35,6 +36,12 @@ namespace ifrt {
 
 absl::StatusOr<ArraySpec> ArraySpec::FromProto(Client* client,
                                                const ArraySpecProto& proto) {
+  const SerDesVersionNumber version_number(proto.version_number());
+  if (version_number != SerDesVersionNumber(0)) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "Unsupported ", version_number, " for ArraySpec deserialization"));
+  }
+
   TF_ASSIGN_OR_RETURN(auto dtype, DType::FromProto(proto.dtype()));
   TF_ASSIGN_OR_RETURN(auto shape, Shape::FromProto(proto.shape()));
   TF_ASSIGN_OR_RETURN(auto sharding,
@@ -51,11 +58,18 @@ absl::StatusOr<ArraySpec> ArraySpec::FromProto(Client* client,
   };
 }
 
-absl::StatusOr<ArraySpecProto> ArraySpec::ToProto() const {
+absl::StatusOr<ArraySpecProto> ArraySpec::ToProto(SerDesVersion version) const {
+  if (version.version_number() < SerDesVersionNumber(0)) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Unsupported ", version.version_number(),
+                     " for ArraySpec serialization"));
+  }
+
   ArraySpecProto proto;
-  *proto.mutable_dtype() = dtype.ToProto();
-  *proto.mutable_shape() = shape.ToProto();
-  TF_ASSIGN_OR_RETURN(*proto.mutable_sharding(), sharding->ToProto());
+  proto.set_version_number(SerDesVersionNumber(0).value());
+  *proto.mutable_dtype() = dtype.ToProto(version);
+  *proto.mutable_shape() = shape.ToProto(version);
+  TF_ASSIGN_OR_RETURN(*proto.mutable_sharding(), sharding->ToProto(version));
   if (layout != nullptr) {
     proto.set_layout(layout->Serialize());
   }

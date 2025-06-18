@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/local_client_test_base.h"
-#include "xla/tests/test_macros.h"
 #include "xla/tests/test_utils.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
@@ -54,7 +53,7 @@ class LocalClientExecuteTest : public LocalClientTestBase {
   ErrorSpec error_spec_{0.0001};
 };
 
-XLA_TEST_F(LocalClientExecuteTest, Constant) {
+TEST_F(LocalClientExecuteTest, Constant) {
   XlaBuilder builder(TestName());
   ConstantR0<float>(&builder, 123.0f);
 
@@ -63,10 +62,9 @@ XLA_TEST_F(LocalClientExecuteTest, Constant) {
                                        error_spec_);
 }
 
-XLA_TEST_F(LocalClientExecuteTest, AddScalars) {
+TEST_F(LocalClientExecuteTest, AddScalars) {
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(F32, {}).value(), "x");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
   auto y = ConstantR0<float>(&builder, 123.0f);
   Add(x, y);
 
@@ -77,10 +75,9 @@ XLA_TEST_F(LocalClientExecuteTest, AddScalars) {
                                        error_spec_);
 }
 
-XLA_TEST_F(LocalClientExecuteTest, AddZeroElementVectors) {
+TEST_F(LocalClientExecuteTest, AddZeroElementVectors) {
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(F32, {0}).value(), "x");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {0}), "x");
   auto y = ConstantR1<float>(&builder, {});
   Add(x, y);
 
@@ -91,10 +88,9 @@ XLA_TEST_F(LocalClientExecuteTest, AddZeroElementVectors) {
                                        error_spec_);
 }
 
-XLA_TEST_F(LocalClientExecuteTest, AddVectors) {
+TEST_F(LocalClientExecuteTest, AddVectors) {
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(F32, {3}).value(), "x");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {3}), "x");
   auto y = ConstantR1<float>(&builder, {2.0f, 3.0f, 4.0f});
   Add(x, y);
 
@@ -106,10 +102,9 @@ XLA_TEST_F(LocalClientExecuteTest, AddVectors) {
       {2.0f, 4.0f, 6.0f}, ShapedBufferToLiteral(result), error_spec_);
 }
 
-XLA_TEST_F(LocalClientExecuteTest, AddVectorsWithProfile) {
+TEST_F(LocalClientExecuteTest, AddVectorsWithProfile) {
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(F32, {3}).value(), "x");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {3}), "x");
   auto y = ConstantR1<float>(&builder, {2.0f, 3.0f, 4.0f});
   Add(x, y);
 
@@ -124,12 +119,10 @@ XLA_TEST_F(LocalClientExecuteTest, AddVectorsWithProfile) {
       {2.0f, 4.0f, 6.0f}, ShapedBufferToLiteral(result), error_spec_);
 }
 
-XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentInputLayouts) {
+TEST_F(LocalClientExecuteTest, AddArraysWithDifferentInputLayouts) {
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(F32, {2, 2}).value(), "x");
-  auto y = Parameter(&builder, 1,
-                     ShapeUtil::MakeValidatedShape(F32, {2, 2}).value(), "y");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2, 2}), "x");
+  auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {2, 2}), "y");
   Add(x, y);
   auto computation = builder.Build().value();
 
@@ -159,12 +152,10 @@ XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentInputLayouts) {
                                        error_spec_);
 }
 
-XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentOutputLayouts) {
+TEST_F(LocalClientExecuteTest, AddArraysWithDifferentOutputLayouts) {
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(F32, {2, 2}).value(), "x");
-  auto y = Parameter(&builder, 1,
-                     ShapeUtil::MakeValidatedShape(F32, {2, 2}).value(), "y");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2, 2}), "x");
+  auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {2, 2}), "y");
   Add(x, y);
   auto computation = builder.Build().value();
 
@@ -202,12 +193,10 @@ XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentOutputLayouts) {
                                        error_spec_);
 }
 
-XLA_TEST_F(LocalClientExecuteTest, TupleResult) {
+TEST_F(LocalClientExecuteTest, TupleResult) {
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(F32, {2, 2}).value(), "x");
-  auto y = Parameter(&builder, 1,
-                     ShapeUtil::MakeValidatedShape(F32, {2, 2}).value(), "y");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2, 2}), "x");
+  auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {2, 2}), "y");
   Tuple(&builder, {x, y, x});
   auto computation = builder.Build().value();
 
@@ -231,12 +220,10 @@ XLA_TEST_F(LocalClientExecuteTest, TupleResult) {
                                         LiteralSlice(result_literal, {2}));
 }
 
-XLA_TEST_F(LocalClientExecuteTest, NestedTupleResult) {
+TEST_F(LocalClientExecuteTest, NestedTupleResult) {
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(F32, {2, 2}).value(), "x");
-  auto y = Parameter(&builder, 1,
-                     ShapeUtil::MakeValidatedShape(F32, {2, 2}).value(), "y");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2, 2}), "x");
+  auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {2, 2}), "y");
   auto inner_tuple = Tuple(&builder, {x, y, x});
   Tuple(&builder, {inner_tuple, x});
   auto computation = builder.Build().value();
@@ -263,26 +250,22 @@ XLA_TEST_F(LocalClientExecuteTest, NestedTupleResult) {
                                         LiteralSlice(result_literal, {0, 2}));
 }
 
-XLA_TEST_F(LocalClientExecuteTest, TupleResultWithLayout) {
+TEST_F(LocalClientExecuteTest, TupleResultWithLayout) {
   // Verify setting the result layout of a computation with a tuple output.
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(F32, {2, 2}).value(), "x");
-  auto y = Parameter(&builder, 1,
-                     ShapeUtil::MakeValidatedShape(F32, {2, 2}).value(), "y");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2, 2}), "x");
+  auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {2, 2}), "y");
   Tuple(&builder, {x, y});
 
   auto array = LiteralToShapedBuffer(
       LiteralUtil::CreateR2<float>({{1.0f, 2.0f}, {3.0f, 4.0f}}));
 
   ExecutableBuildOptions options = DefaultExecutableBuildOptions();
-  Shape shape_with_layout =
-      ShapeUtil::MakeValidatedTupleShape(
-          {ShapeUtil::MakeShapeWithDenseLayout(F32, /*dimensions=*/{2, 2},
-                                               /*minor_to_major=*/{0, 1}),
-           ShapeUtil::MakeShapeWithDenseLayout(F32, /*dimensions=*/{2, 2},
-                                               /*minor_to_major=*/{1, 0})})
-          .value();
+  Shape shape_with_layout = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShapeWithDenseLayout(F32, /*dimensions=*/{2, 2},
+                                           /*minor_to_major=*/{0, 1}),
+       ShapeUtil::MakeShapeWithDenseLayout(F32, /*dimensions=*/{2, 2},
+                                           /*minor_to_major=*/{1, 0})});
   options.set_result_layout(shape_with_layout);
   ScopedShapedBuffer result =
       ExecuteLocallyOrDie(builder.Build().value(), {&array, &array}, options,
@@ -295,14 +278,14 @@ XLA_TEST_F(LocalClientExecuteTest, TupleResultWithLayout) {
                                         LiteralSlice(result_literal, {1}));
 }
 
-XLA_TEST_F(LocalClientExecuteTest, TupleArguments) {
-  const Shape array_shape = ShapeUtil::MakeValidatedShape(F32, {2, 2}).value();
-  const Shape vector_shape = ShapeUtil::MakeValidatedShape(F32, {3}).value();
+TEST_F(LocalClientExecuteTest, TupleArguments) {
+  const Shape array_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  const Shape vector_shape = ShapeUtil::MakeShape(F32, {3});
 
   const Shape tuple_shape0 =
-      ShapeUtil::MakeValidatedTupleShape({array_shape, vector_shape}).value();
+      ShapeUtil::MakeTupleShape({array_shape, vector_shape});
   const Shape tuple_shape1 =
-      ShapeUtil::MakeValidatedTupleShape({vector_shape, array_shape}).value();
+      ShapeUtil::MakeTupleShape({vector_shape, array_shape});
 
   // Computation adds the respective array and vector elements from each tuple
   // argument and returns the results as a tuple.
@@ -341,15 +324,14 @@ XLA_TEST_F(LocalClientExecuteTest, TupleArguments) {
                                         LiteralSlice(result_literal, {1}));
 }
 
-XLA_TEST_F(LocalClientExecuteTest, NestedTupleArgument) {
-  const Shape array_shape = ShapeUtil::MakeValidatedShape(F32, {2, 2}).value();
-  const Shape vector_shape = ShapeUtil::MakeValidatedShape(F32, {3}).value();
+TEST_F(LocalClientExecuteTest, NestedTupleArgument) {
+  const Shape array_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  const Shape vector_shape = ShapeUtil::MakeShape(F32, {3});
 
   const Shape inner_tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({array_shape, vector_shape}).value();
+      ShapeUtil::MakeTupleShape({array_shape, vector_shape});
   const Shape nested_tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({inner_tuple_shape, vector_shape})
-          .value();
+      ShapeUtil::MakeTupleShape({inner_tuple_shape, vector_shape});
 
   // Computation negates the array element and sums the two vector elements in
   // the nested tuple. The resulting array and vector are returned as a tuple.
@@ -381,14 +363,14 @@ XLA_TEST_F(LocalClientExecuteTest, NestedTupleArgument) {
                                         LiteralSlice(result_literal, {1}));
 }
 
-XLA_TEST_F(LocalClientExecuteTest, PassingTupleResultBackIntoComputation) {
+TEST_F(LocalClientExecuteTest, PassingTupleResultBackIntoComputation) {
   // Construct a computation which takes and returns the same shape (a
   // tuple). Feed the result of the computation back into the input. This
   // provides additional verification that the returned tuple is properly
   // constructed.
-  const Shape array_shape = ShapeUtil::MakeValidatedShape(F32, {2, 2}).value();
+  const Shape array_shape = ShapeUtil::MakeShape(F32, {2, 2});
   const Shape tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({array_shape, array_shape}).value();
+      ShapeUtil::MakeTupleShape({array_shape, array_shape});
 
   XlaBuilder builder(TestName());
   auto param = Parameter(&builder, 0, tuple_shape, "param");
@@ -417,16 +399,15 @@ XLA_TEST_F(LocalClientExecuteTest, PassingTupleResultBackIntoComputation) {
                                         LiteralSlice(result_1_literal, {1}));
 }
 
-XLA_TEST_F(LocalClientExecuteTest, LargeTuple) {
+TEST_F(LocalClientExecuteTest, LargeTuple) {
   // Construct a computation which takes a tuple parameter with a very large
   // number of elements.
   const int kElementCount = 1000;
 
   // Each element is a 2-element vector.
-  const Shape element_shape = ShapeUtil::MakeValidatedShape(F32, {2}).value();
+  const Shape element_shape = ShapeUtil::MakeShape(F32, {2});
   std::vector<Shape> element_shapes(kElementCount, element_shape);
-  const Shape tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape(element_shapes).value();
+  const Shape tuple_shape = ShapeUtil::MakeTupleShape(element_shapes);
 
   XlaBuilder builder(TestName());
   auto param = Parameter(&builder, 0, tuple_shape, "param");
@@ -460,19 +441,17 @@ XLA_TEST_F(LocalClientExecuteTest, LargeTuple) {
   }
 }
 
-XLA_TEST_F(LocalClientExecuteTest, LargeNestedTuple) {
+TEST_F(LocalClientExecuteTest, LargeNestedTuple) {
   // Construct and run a computation which takes a two-level nested tuple
   // parameter with a large fanout.
   const int kFanout = 40;
 
   // Tuple shape is full two-level tree with the given fanout.
-  const Shape element_shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
+  const Shape element_shape = ShapeUtil::MakeShape(F32, {});
   std::vector<Shape> element_shapes(kFanout, element_shape);
-  const Shape inner_tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape(element_shapes).value();
+  const Shape inner_tuple_shape = ShapeUtil::MakeTupleShape(element_shapes);
   std::vector<Shape> inner_tuple_shapes(kFanout, inner_tuple_shape);
-  const Shape tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape(inner_tuple_shapes).value();
+  const Shape tuple_shape = ShapeUtil::MakeTupleShape(inner_tuple_shapes);
 
   XlaBuilder builder(TestName());
   auto param = Parameter(&builder, 0, tuple_shape, "param");
@@ -523,15 +502,15 @@ XLA_TEST_F(LocalClientExecuteTest, LargeNestedTuple) {
   }
 }
 
-XLA_TEST_F(LocalClientExecuteTest, DeepTuple) {
+TEST_F(LocalClientExecuteTest, DeepTuple) {
   // Construct and run a computation which takes a very deep tuple. The tuple
   // has no fan out and a single scalar element at the bottom.
   const int kTupleDepth = 100;
 
   // Tuple shape is full two-level tree with the given fanout.
-  Shape shape = ShapeUtil::MakeValidatedShape(F32, {}).value();
+  Shape shape = ShapeUtil::MakeShape(F32, {});
   for (int i = 0; i < kTupleDepth; ++i) {
-    shape = ShapeUtil::MakeValidatedTupleShape({shape}).value();
+    shape = ShapeUtil::MakeTupleShape({shape});
   }
 
   XlaBuilder builder(TestName());
@@ -566,13 +545,11 @@ XLA_TEST_F(LocalClientExecuteTest, DeepTuple) {
                                         LiteralSlice(result_literal, index));
 }
 
-XLA_TEST_F(LocalClientExecuteTest, InvalidNumberOfArguments) {
+TEST_F(LocalClientExecuteTest, InvalidNumberOfArguments) {
   // Test passing in an invalid number of arguments.
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(F32, {3}).value(), "x");
-  auto y = Parameter(&builder, 1,
-                     ShapeUtil::MakeValidatedShape(F32, {3}).value(), "y");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {3}), "x");
+  auto y = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {3}), "y");
   Add(x, y);
 
   auto x_array =
@@ -584,11 +561,10 @@ XLA_TEST_F(LocalClientExecuteTest, InvalidNumberOfArguments) {
               ContainsRegex("Invalid number of arguments"));
 }
 
-XLA_TEST_F(LocalClientExecuteTest, IncorrectArgumentShape) {
+TEST_F(LocalClientExecuteTest, IncorrectArgumentShape) {
   // Test passing in an argument with the wrong shape.
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(F32, {3}).value(), "x");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {3}), "x");
   Neg(x);
 
   auto x_array = LiteralToShapedBuffer(
@@ -601,11 +577,10 @@ XLA_TEST_F(LocalClientExecuteTest, IncorrectArgumentShape) {
       << execute_status.status();
 }
 
-XLA_TEST_F(LocalClientExecuteTest, InvalidResultLayout) {
+TEST_F(LocalClientExecuteTest, InvalidResultLayout) {
   // Test passing in an invalid result layout parameter.
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(F32, {2, 2}).value(), "x");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2, 2}), "x");
   Neg(x);
 
   auto x_array = LiteralToShapedBuffer(
@@ -624,7 +599,7 @@ XLA_TEST_F(LocalClientExecuteTest, InvalidResultLayout) {
       << execute_status.status();
 }
 
-XLA_TEST_F(LocalClientExecuteTest, RunOnAllDeviceOrdinals) {
+TEST_F(LocalClientExecuteTest, RunOnAllDeviceOrdinals) {
   // Try to run a trivial computation on every device on the system. If a
   // specific device is not supported, check that the right error is returned.
   XlaBuilder builder(TestName());
@@ -651,7 +626,7 @@ XLA_TEST_F(LocalClientExecuteTest, RunOnAllDeviceOrdinals) {
   }
 }
 
-XLA_TEST_F(LocalClientExecuteTest, InvalidDeviceOrdinalValues) {
+TEST_F(LocalClientExecuteTest, InvalidDeviceOrdinalValues) {
   // Try running computations on devices with device ordinal values which do not
   // exist.
   XlaBuilder builder(TestName());
@@ -669,7 +644,7 @@ XLA_TEST_F(LocalClientExecuteTest, InvalidDeviceOrdinalValues) {
               ContainsRegex("Invalid device ordinal value"));
 }
 
-XLA_TEST_F(LocalClientExecuteTest, RunOnStream) {
+TEST_F(LocalClientExecuteTest, RunOnStream) {
   // Run a computation on a specific stream on each device on the system.
   XlaBuilder builder(TestName());
   ConstantR0<float>(&builder, 42.0f);
@@ -695,7 +670,7 @@ XLA_TEST_F(LocalClientExecuteTest, RunOnStream) {
 
 // Disable this test on CPU because we're using the CPU as the platform
 // which does not match the service platform.
-XLA_TEST_F(LocalClientExecuteTest, RunOnStreamForWrongPlatform) {
+TEST_F(LocalClientExecuteTest, RunOnStreamForWrongPlatform) {
   if (test::DeviceIs(test::kCpu)) {
     GTEST_SKIP();
   }
@@ -717,7 +692,7 @@ XLA_TEST_F(LocalClientExecuteTest, RunOnStreamForWrongPlatform) {
               ContainsRegex("stream is for platform .*, but service targets"));
 }
 
-XLA_TEST_F(LocalClientExecuteTest, AllocatorDoesNotMatchPlatform) {
+TEST_F(LocalClientExecuteTest, AllocatorDoesNotMatchPlatform) {
   if (test::DeviceIs(test::kCpu)) {
     GTEST_SKIP();
   }
@@ -736,10 +711,9 @@ XLA_TEST_F(LocalClientExecuteTest, AllocatorDoesNotMatchPlatform) {
               ContainsRegex("allocator platform .* does not match service"));
 }
 
-XLA_TEST_F(LocalClientExecuteTest, CompileExecutable) {
+TEST_F(LocalClientExecuteTest, CompileExecutable) {
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(F32, {3}).value(), "x");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {3}), "x");
   auto y = ConstantR1<float>(&builder, {2.0f, 3.0f, 4.0f});
   Add(x, y);
 
@@ -765,15 +739,16 @@ XLA_TEST_F(LocalClientExecuteTest, CompileExecutable) {
       {2.0f, 4.0f, 6.0f}, ShapedBufferToLiteral(result), error_spec_);
 }
 
-XLA_TEST_F(LocalClientExecuteTest,
-           DISABLED_ON_TPU(CompilePartitionedExecutable)) {
+TEST_F(LocalClientExecuteTest, CompilePartitionedExecutable) {
+  if (test::DeviceTypeIs(test::kTpu)) {
+    GTEST_SKIP();
+  }
   if (local_client_->device_count() < 2) {
     GTEST_SKIP_("requires two devices");
   }
 
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(F32, {3}).value(), "x");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {3}), "x");
   auto y = ConstantR1<float>(&builder, {2.0f, 3.0f, 4.0f});
   auto z = ConstantR1<float>(&builder, {5.0f, 6.0f, 7.0f});
   auto r = Add(x, y);
@@ -792,18 +767,16 @@ XLA_TEST_F(LocalClientExecuteTest,
   EXPECT_EQ(2, executables.size());
 }
 
-XLA_TEST_F(LocalClientExecuteTest, SizeOfGeneratedCodeInBytes) {
+TEST_F(LocalClientExecuteTest, SizeOfGeneratedCodeInBytes) {
   if (test::DeviceIsOneOf({test::kCpu, test::kInterpreter})) {
     GTEST_SKIP();
   }
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(F32, {}).value(), "x");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
   constexpr int size = 100000;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto literal,
-      LiteralUtil::CreateRandomLiteral<F32>(
-          ShapeUtil::MakeValidatedShape(F32, {size}).value(), 0.0, 1.0));
+  TF_ASSERT_OK_AND_ASSIGN(auto literal,
+                          LiteralUtil::CreateRandomLiteral<F32>(
+                              ShapeUtil::MakeShape(F32, {size}), 0.0, 1.0));
   auto y = ConstantLiteral(&builder, literal);
   Add(x, y);
 
@@ -819,7 +792,7 @@ XLA_TEST_F(LocalClientExecuteTest, SizeOfGeneratedCodeInBytes) {
             int64_t{sizeof(float) * size});
 }
 
-XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion) {
+TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion) {
   // Test copying Literals to the device as ShapedBuffers, then copying them
   // back again to Literals.
   auto test_to_device_and_back = [this](const Literal& literal) {
@@ -859,7 +832,7 @@ XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion) {
        LiteralUtil::CreateR0<bool>(false)}));
 }
 
-XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion64bit) {
+TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion64bit) {
   // Test copying Literals to the device as ShapedBuffers, then copying them
   // back again to Literals for 64-bit values.
   auto test_to_device_and_back = [this](const Literal& literal) {
@@ -884,12 +857,12 @@ XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion64bit) {
 }
 
 // Disabled on interpreter backend since infeed HLO is unsupported.
-XLA_TEST_F(LocalClientExecuteTest, InfeedTest) {
+TEST_F(LocalClientExecuteTest, InfeedTest) {
   if (test::DeviceIs(test::kInterpreter)) {
     GTEST_SKIP();
   }
   XlaBuilder builder(TestName());
-  const Shape shape = ShapeUtil::MakeValidatedShape(F32, {3}).value();
+  const Shape shape = ShapeUtil::MakeShape(F32, {3});
   auto in = Infeed(&builder, shape);
   auto constant = ConstantR1<float>(&builder, {1.0f, 2.0f, 3.0f});
   Add(in, constant);
@@ -912,12 +885,12 @@ XLA_TEST_F(LocalClientExecuteTest, InfeedTest) {
 }
 
 // Disabled on interpreter backend since infeed/outfeed HLOs are unsupported.
-XLA_TEST_F(LocalClientExecuteTest, InfeedOutfeedTest) {
+TEST_F(LocalClientExecuteTest, InfeedOutfeedTest) {
   if (test::DeviceIs(test::kInterpreter)) {
     GTEST_SKIP();
   }
   XlaBuilder builder(TestName());
-  const Shape shape = ShapeUtil::MakeValidatedShape(F32, {3}).value();
+  const Shape shape = ShapeUtil::MakeShape(F32, {3});
   auto in = Infeed(&builder, shape);
   auto constant = ConstantR1<float>(&builder, {1.0f, 2.0f, 3.0f});
   auto sum = Add(in, constant);
@@ -950,7 +923,7 @@ void BM_LocalClientOverhead(::testing::benchmark::State& state) {
 
   // Use a tiny add operation as the computation.
   XlaBuilder builder("Add");
-  auto shape = ShapeUtil::MakeValidatedShape(F32, {2, 3}).value();
+  auto shape = ShapeUtil::MakeShape(F32, {2, 3});
   auto x = Parameter(&builder, 0, shape, "x");
   Add(x, x);
   auto computation = builder.Build().value();
@@ -985,10 +958,9 @@ void BM_LocalClientOverhead(::testing::benchmark::State& state) {
   }
 }
 
-XLA_TEST_F(LocalClientExecuteTest, ValidateFDOProfile) {
+TEST_F(LocalClientExecuteTest, ValidateFDOProfile) {
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(F32, {3}).value(), "x");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {3}), "x");
   auto y = ConstantR1<float>(&builder, {2.0f, 3.0f, 4.0f});
   Add(x, y);
 
@@ -1010,10 +982,9 @@ XLA_TEST_F(LocalClientExecuteTest, ValidateFDOProfile) {
   EXPECT_EQ(proto.config().fdo_profile(), kFdoProfile);
 }
 
-XLA_TEST_F(LocalClientExecuteTest, ValidateDeviceMemorySize) {
+TEST_F(LocalClientExecuteTest, ValidateDeviceMemorySize) {
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(F32, {3}).value(), "x");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {3}), "x");
   auto y = ConstantR1<float>(&builder, {2.0f, 3.0f, 4.0f});
   Add(x, y);
 
@@ -1035,10 +1006,9 @@ XLA_TEST_F(LocalClientExecuteTest, ValidateDeviceMemorySize) {
   EXPECT_EQ(proto.config().device_memory_size(), kDeviceMemorySize);
 }
 
-XLA_TEST_F(LocalClientExecuteTest, ValidateUseShardyPartitioner) {
+TEST_F(LocalClientExecuteTest, ValidateUseShardyPartitioner) {
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(F32, {3}).value(), "x");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {3}), "x");
   auto y = ConstantR1<float>(&builder, {2.0f, 3.0f, 4.0f});
   Add(x, y);
   Shape argument_layout =
@@ -1059,10 +1029,9 @@ XLA_TEST_F(LocalClientExecuteTest, ValidateUseShardyPartitioner) {
   EXPECT_EQ(proto.config().use_shardy_partitioner(), true);
 }
 
-XLA_TEST_F(LocalClientExecuteTest, ValidateExecTimeOptimizationEffort) {
+TEST_F(LocalClientExecuteTest, ValidateExecTimeOptimizationEffort) {
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(F32, {3}).value(), "x");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {3}), "x");
   auto y = ConstantR1<float>(&builder, {2.0f, 3.0f, 4.0f});
   Add(x, y);
   Shape argument_layout =
@@ -1084,11 +1053,9 @@ XLA_TEST_F(LocalClientExecuteTest, ValidateExecTimeOptimizationEffort) {
   EXPECT_FLOAT_EQ(proto.config().exec_time_optimization_effort(), -1.5f);
 }
 
-
-XLA_TEST_F(LocalClientExecuteTest, ValidateOptimizationLevel) {
+TEST_F(LocalClientExecuteTest, ValidateOptimizationLevel) {
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(F32, {3}).value(), "x");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {3}), "x");
   auto y = ConstantR1<float>(&builder, {2.0f, 3.0f, 4.0f});
   Add(x, y);
   Shape argument_layout =
@@ -1110,10 +1077,9 @@ XLA_TEST_F(LocalClientExecuteTest, ValidateOptimizationLevel) {
   EXPECT_EQ(proto.config().optimization_level(), ExecutionOptions::EFFORT_O1);
 }
 
-XLA_TEST_F(LocalClientExecuteTest, ValidateMemoryFittingLevel) {
+TEST_F(LocalClientExecuteTest, ValidateMemoryFittingLevel) {
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0,
-                     ShapeUtil::MakeValidatedShape(F32, {3}).value(), "x");
+  auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {3}), "x");
   auto y = ConstantR1<float>(&builder, {2.0f, 3.0f, 4.0f});
   Add(x, y);
   Shape argument_layout =

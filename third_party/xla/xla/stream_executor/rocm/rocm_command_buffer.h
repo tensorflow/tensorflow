@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/scoped_update_mode.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor::gpu {
@@ -125,8 +126,8 @@ class RocmCommandBuffer : public GpuCommandBuffer {
                                const CommandBuffer& nested) override;
 
   absl::StatusOr<GraphNodeHandle> CreateKernelNode(
-      absl::Span<const GraphNodeHandle> dependencies, const ThreadDim& threads,
-      const BlockDim& blocks, const Kernel& kernel,
+      absl::Span<const GraphNodeHandle> dependencies, StreamPriority priority,
+      const ThreadDim& threads, const BlockDim& blocks, const Kernel& kernel,
       const KernelArgsPackedArrayBase& args) override;
 
   absl::Status UpdateKernelNode(GraphNodeHandle node_handle,
@@ -140,6 +141,10 @@ class RocmCommandBuffer : public GpuCommandBuffer {
   absl::Status LaunchGraph(Stream* stream) override;
 
   absl::StatusOr<size_t> GetNodeCount() const override;
+
+  absl::Status SetPriority(StreamPriority priority) override {
+    return absl::UnimplementedError("Not implemented.");
+  }
 
   absl::Status PrepareFinalization() override;
 

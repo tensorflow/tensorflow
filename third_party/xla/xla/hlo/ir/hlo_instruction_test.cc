@@ -43,8 +43,7 @@ using ::testing::ElementsAre;
 using HloInstructionTest = HloHardwareIndependentTestBase;
 
 TEST_F(HloInstructionTest, SetFrontendAttribute) {
-  HloConstantInstruction instr(
-      ShapeUtil::MakeValidatedShape(U32, {3, 2}).value());
+  HloConstantInstruction instr(ShapeUtil::MakeShape(U32, {3, 2}));
   instr.set_frontend_attribute("key1", "value1");
   EXPECT_EQ(instr.get_frontend_attribute("key1").value(), "value1");
   instr.set_frontend_attribute("key1", "value2");
@@ -52,8 +51,7 @@ TEST_F(HloInstructionTest, SetFrontendAttribute) {
 }
 
 TEST_F(HloInstructionTest, AddFrontendAttribute) {
-  HloConstantInstruction instr(
-      ShapeUtil::MakeValidatedShape(U32, {3, 2}).value());
+  HloConstantInstruction instr(ShapeUtil::MakeShape(U32, {3, 2}));
   EXPECT_TRUE(instr.add_frontend_attribute("key1", "value1"));
   EXPECT_EQ(instr.get_frontend_attribute("key1").value(), "value1");
   EXPECT_FALSE(instr.add_frontend_attribute("key1", "value2"));
@@ -61,8 +59,7 @@ TEST_F(HloInstructionTest, AddFrontendAttribute) {
 }
 
 TEST_F(HloInstructionTest, SetFrontendAttributes) {
-  HloConstantInstruction instr(
-      ShapeUtil::MakeValidatedShape(U32, {3, 2}).value());
+  HloConstantInstruction instr(ShapeUtil::MakeShape(U32, {3, 2}));
   instr.add_frontend_attribute("key1", "value1");
   FrontendAttributes attributes;
   attributes.mutable_map()->insert({"key1", "value2"});
@@ -74,8 +71,7 @@ TEST_F(HloInstructionTest, SetFrontendAttributes) {
 }
 
 TEST_F(HloInstructionTest, AddFrontendAttributes) {
-  HloConstantInstruction instr(
-      ShapeUtil::MakeValidatedShape(U32, {3, 2}).value());
+  HloConstantInstruction instr(ShapeUtil::MakeShape(U32, {3, 2}));
   instr.add_frontend_attribute("key1", "value1");
   FrontendAttributes attributes;
   attributes.mutable_map()->insert({"key1", "value2"});
@@ -87,10 +83,10 @@ TEST_F(HloInstructionTest, AddFrontendAttributes) {
 }
 
 TEST_F(HloInstructionTest, CustomCallInstructionStorage) {
-  HloCustomCallInstruction instr(
-      ShapeUtil::MakeValidatedShape(U32, {3, 2}).value(),
-      /*operands=*/{}, "custom_call_target",
-      /*opaque=*/"", CustomCallApiVersion::API_VERSION_ORIGINAL);
+  HloCustomCallInstruction instr(ShapeUtil::MakeShape(U32, {3, 2}),
+                                 /*operands=*/{}, "custom_call_target",
+                                 /*opaque=*/"",
+                                 CustomCallApiVersion::API_VERSION_ORIGINAL);
   EXPECT_EQ(instr.GetPerInstructionStorage(), nullptr);
   auto* storage1 = new HloCustomCallInstruction::PerInstructionStorage();
   auto* storage2 = new HloCustomCallInstruction::PerInstructionStorage();
@@ -106,11 +102,9 @@ TEST_F(HloInstructionTest, CustomCallInstructionStorage) {
 }
 
 TEST_F(HloInstructionTest, DeriveComputeTypeAttribute) {
-  HloConstantInstruction instr0(
-      ShapeUtil::MakeValidatedShape(U32, {3, 2}).value());
+  HloConstantInstruction instr0(ShapeUtil::MakeShape(U32, {3, 2}));
   instr0.add_frontend_attribute(kXlaComputeTypeAttr, kXlaComputeTypeHost);
-  HloConstantInstruction instr1(
-      ShapeUtil::MakeValidatedShape(U32, {3, 2}).value());
+  HloConstantInstruction instr1(ShapeUtil::MakeShape(U32, {3, 2}));
   instr0.SetupDerivedInstruction(&instr1);
   EXPECT_FALSE(instr1.has_frontend_attributes());
 }
@@ -170,6 +164,34 @@ TEST_F(HloInstructionTest, ComparatorWorksWith64BitUniqueIds) {
   absl::c_sort(instructions, HloPtrComparator());
   EXPECT_THAT(instructions,
               ElementsAre(param1.get(), param2.get(), param3.get()));
+}
+
+TEST_F(HloInstructionTest, PrintCompareOpWorksIfDead) {
+  const char* const kModuleStr = R"(
+    HloModule m
+    ENTRY main {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT result = pred[] compare(p0, p1), direction=GT, type=TOTALORDER
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(
+      root->ToString(),
+      "%result = pred[] compare(%p0, %p1), direction=GT, type=TOTALORDER");
+  module->entry_computation()->set_root_instruction(
+      root->mutable_operand(0), /*accept_different_shape=*/true);
+  root->DetachFromOperandsAndUsers();
+  EXPECT_EQ(
+      root->ToString(),
+      "%result = pred[] compare(null , null ), direction=GT, type=TOTALORDER");
+  TF_ASSERT_OK(module->entry_computation()->RemoveInstruction(root));
+  EXPECT_EQ(root->ToString(),
+            "%result = pred[] compare(), direction=GT, type=TOTALORDER");
+  *module->mutable_entry_computation_layout() =
+      module->compute_computation_layout();
 }
 }  // namespace
 }  // namespace xla

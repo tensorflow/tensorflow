@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/jit_compiler.h"
+#include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/runtime/kernel.h"
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
@@ -55,8 +56,11 @@ absl::StatusOr<KernelRunner> KernelRunner::Create(
     LlvmKernelDefinition kernel_definition, JitCompiler compiler) {
   auto [spec, source] = std::move(kernel_definition).ReleaseStorage();
 
-  TF_RETURN_IF_ERROR(
-      compiler.AddModule(std::move(source).thread_safe_module()));
+  auto thread_safe_module = std::move(source).thread_safe_module();
+  SetModuleMemoryRegionName(*thread_safe_module.getModuleUnlocked(),
+                            "kernel_runner_test");
+
+  TF_RETURN_IF_ERROR(compiler.AddModule(std::move(thread_safe_module)));
 
   const std::string& kernel_name = spec.name();
   TF_ASSIGN_OR_RETURN(std::unique_ptr<FunctionLibrary> library,

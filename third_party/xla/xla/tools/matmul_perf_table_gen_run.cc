@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
+#include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/service/platform_util.h"
@@ -63,7 +64,7 @@ int RunPerfTableCollection(int argc, char** argv) {
   };
 
   {
-    HloRunner runner(PlatformUtil::GetPlatform("cuda").value());
+    HloRunner runner(PlatformUtil::GetPlatform("gpu").value());
     const se::DeviceDescription& device_info =
         runner.backend().stream_executors()[0]->GetDeviceDescription();
     cfg.output = FilepathOutput(HloOpProfiles::GetProfileName(device_info));

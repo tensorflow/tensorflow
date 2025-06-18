@@ -61,7 +61,8 @@ absl::Status LaunchTypedKernel(
     absl::Span<const se::DeviceMemoryBase> remote_input_buffers,
     se::DeviceMemoryBase local_input_buffer, se::DeviceMemoryBase output_buffer,
     int64_t rank, int64_t num_ranks, int64_t num_elements,
-    absl::Span<const se::DeviceMemoryBase> signal_flags_buffers) {
+    absl::Span<const se::DeviceMemoryBase> signal_flags_buffers,
+    uint32_t signal_value) {
   using ElementType = typename T::ElementType;
 
   TF_ASSIGN_OR_RETURN(
@@ -90,7 +91,8 @@ absl::Status LaunchTypedKernel(
   return kernel.Launch(launch_dimensions.thread_counts_per_block(),
                        launch_dimensions.block_counts(), stream,
                        remote_input_ptrs, local_input_buffer, output_buffer,
-                       rank, num_ranks, num_elements, signal_flags_ptrs);
+                       rank, num_ranks, num_elements, signal_flags_ptrs,
+                       signal_value);
 }
 }  // namespace
 
@@ -122,12 +124,19 @@ bool IsAllReduceKernelSupported(int64_t num_inputs, int64_t num_elements,
 }
 
 absl::Status RunAllReduceKernel(
-    se::Stream* stream, const LaunchDimensions& launch_dimensions,
-    PrimitiveType element_type, ReductionKind reduction_kind,
-    absl::Span<const se::DeviceMemoryBase> remote_input_buffers,
-    se::DeviceMemoryBase local_input_buffer, se::DeviceMemoryBase output_buffer,
-    RankId rank, int64_t num_ranks, int64_t num_elements,
-    absl::Span<const se::DeviceMemoryBase> signal_flags_buffers) {
+    se::Stream* stream,                                           //
+    const LaunchDimensions& launch_dimensions,                    //
+    PrimitiveType element_type,                                   //
+    ReductionKind reduction_kind,                                 //
+    absl::Span<const se::DeviceMemoryBase> remote_input_buffers,  //
+    se::DeviceMemoryBase local_input_buffer,                      //
+    se::DeviceMemoryBase output_buffer,                           //
+    RankId rank,                                                  //
+    int64_t num_ranks,                                            //
+    int64_t num_elements,                                         //
+    absl::Span<const se::DeviceMemoryBase> signal_flags_buffers,  //
+    uint32_t signal_value                                         //
+) {
   if (!IsAllReduceKernelSupported(num_ranks, num_elements, element_type,
                                   reduction_kind)) {
     return absl::InvalidArgumentError(
@@ -150,7 +159,8 @@ absl::Status RunAllReduceKernel(
 
     return LaunchTypedKernel<T>(stream, launch_dimensions, remote_input_buffers,
                                 local_input_buffer, output_buffer, rank.value(),
-                                num_ranks, num_elements, signal_flags_buffers);
+                                num_ranks, num_elements, signal_flags_buffers,
+                                signal_value);
   };
 
   if (element_type == F32 && reduction_kind == ReductionKind::SUM) {

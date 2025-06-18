@@ -551,6 +551,7 @@ xla_cc_test(
         "data/add_mhlo.mlir",
         "data/add_stablehlo.mlir",
         "data/input_literal_f32_2_2.pbtxt",
+        "data/large_constant.hlo",
         "data/must_alias.hlo",
         "data/must_alias_with_sharding.hlo",
         ":run_hlo_module",
@@ -680,6 +681,7 @@ xla_test(
     local_defines = if_cuda(["GOOGLE_CUDA"]),
     deps = [
         ":matmul_perf_table_gen",
+        "//xla:xla_data_proto_cc",
         "//xla/service/gpu/model:hlo_op_profile_proto_cc",
         "//xla/stream_executor:device_description",
         "//xla/tests:hlo_test_base",
@@ -852,8 +854,9 @@ xla_test(
     # TODO(b/372714955): Fix the memory leak.
     args = if_google(["--heap_check="]),
     backends = [
-        "gpu_h100",
-        "gpu_b200",
+        "h100",
+        "b200",
+        "amdgpu_any",
     ],
     tags = [
         "gpu",
@@ -865,6 +868,7 @@ xla_test(
         ":matmul_perf_table_gen_main_lib",
         "//xla/service:hlo_runner",
         "//xla/service:platform_util",
+        "//xla/service/gpu/model:hlo_op_profile_proto_cc",
         "//xla/service/gpu/model:hlo_op_profiles",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/log:check",

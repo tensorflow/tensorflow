@@ -1049,70 +1049,39 @@ PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
   // usage holds have gone away.
   // TODO(misard) assess if it would be preferable to introduce a heuristic to
   // put the transfer into the calling thread for small literals.
-  auto transfer_h2d = [local_client = client(), transfer_manager, local_device,
-                       device_memory = device_buffer->device_memory(), device,
-                       event, literal, py_buffer{py_buffer.get()},
-                       on_device_shape{
-                           py_buffer->on_device_shape()}]() mutable {
-    // This function uses TF_CHECK_OK and value() since we have no way
-    // to report failures from a callback. However, the operations here are
-    // unlikely to fail and not recoverable even if we were to fail: DMAs to
-    // memory that has already been allocated, and a possible Event
-    // allocation.
+  auto transfer_h2d =
+      [local_client = client(), transfer_manager, local_device,
+       device_memory = device_buffer->device_memory(), device, event, literal,
+       py_buffer{py_buffer.get()},
+       on_device_shape{py_buffer->on_device_shape()}]() mutable {
+        // This function uses TF_CHECK_OK and value() since we have no way
+        // to report failures from a callback. However, the operations here are
+        // unlikely to fail and not recoverable even if we were to fail: DMAs to
+        // memory that has already been allocated, and a possible Event
+        // allocation.
 
-    se::Stream* h2d_stream = local_device->host_to_device_stream();
+        se::Stream* h2d_stream = local_device->host_to_device_stream();
 
-    ShapedBuffer buffer =
-        device_memory->AsShapedBuffer(device, on_device_shape);
-    TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
-        h2d_stream, literal, buffer));
+        ShapedBuffer buffer =
+            device_memory->AsShapedBuffer(device, on_device_shape);
+        TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
+            h2d_stream, literal, buffer));
 
-    TF_CHECK_OK(
-        AddDestinationBufferSynchronization(local_device, event, h2d_stream));
+        TF_CHECK_OK(AddDestinationBufferSynchronization(local_device, event,
+                                                        h2d_stream));
 
-    local_device->ThenRelease(h2d_stream, device_memory).IgnoreError();
+        local_device->ThenRelease(h2d_stream, device_memory).IgnoreError();
 
-    // This can sometimes catch the case where the literal memory has been
-    // freed before the H2D transfer was issued.
-    h2d_stream->RefreshStatus()
-        .IgnoreError();  // Can return error::Unimplemented
-    QCHECK(h2d_stream->ok());
-  };
+        // This can sometimes catch the case where the literal memory has been
+        // freed before the H2D transfer was issued.
+        h2d_stream->RefreshStatus()
+            .IgnoreError();  // Can return error::Unimplemented
+        QCHECK(h2d_stream->ok());
+      };
   thread_pool()->Schedule(WrapClosureAsCopyable(std::move(transfer_h2d)));
   RecordUsage(std::move(device_buffer), local_device, local_device, event,
               local_device->host_to_device_stream());
   return std::unique_ptr<PjRtBuffer>(std::move(py_buffer));
-}
-
-absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-PjRtStreamExecutorClient::MakeCrossHostReceiveBuffers(
-    absl::Span<const Shape> shapes, PjRtDevice* device,
-    PjRtCrossHostRecvNotifier notifier) {
-  if (shapes.empty()) {
-    return InvalidArgument(
-        "shapes parameter empty in MakeCrossHostReceiveBuffers");
-  }
-
-  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
-                          ->GetLocalDeviceState());
-  std::shared_ptr<BufferSequencingEvent> definition_event =
-      std::make_shared<BufferSequencingEvent>(this->thread_pool());
-  std::vector<std::unique_ptr<PjRtBuffer>> buffers;
-  buffers.reserve(shapes.size());
-  for (const auto& shape : shapes) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<PjRtBuffer> buffer,
-        AllocateDestinationBuffer(shape, device, local_device,
-                                  /*copy_stream=*/nullptr,
-                                  /*is_uninitialized_create=*/false, this,
-                                  definition_event));
-    buffers.push_back(std::move(buffer));
-  }
-
-  TF_RETURN_IF_ERROR(EnqueueCrossHostReceive(
-      buffers, std::move(definition_event), std::move(notifier)));
-  return buffers;
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
@@ -1295,15 +1264,12 @@ absl::Span<PjRtMemorySpace* const> PjRtStreamExecutorClient::memory_spaces()
 PjRtStreamExecutorBuffer::PjRtStreamExecutorBuffer(
     Shape on_device_shape, std::unique_ptr<TrackedDeviceBuffer> device_buffer,
     PjRtClient* client, PjRtDevice* device, PjRtMemorySpace* memory_space)
-    : CommonPjRtBuffer(std::move(device_buffer)),
+    : CommonPjRtBuffer(std::move(device_buffer), memory_space),
       client_(tensorflow::down_cast<PjRtStreamExecutorClient*>(client)),
       on_device_shape_(std::move(on_device_shape)),
-      device_(tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)),
-      memory_space_(memory_space) {}
+      device_(tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)) {}
 
-PjRtStreamExecutorBuffer::~PjRtStreamExecutorBuffer() {
-  Delete();
-}
+PjRtStreamExecutorBuffer::~PjRtStreamExecutorBuffer() { Delete(); }
 
 absl::StatusOr<tsl::RCReference<RawSEDeviceMemory>>
 PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
@@ -3415,7 +3381,7 @@ absl::Status PjRtStreamExecutorClient::UpdateCompileOptionsInternal(
     }
     if (addressable_devices.empty()) {
       if (build_options.device_ordinal() < 0) {
-        build_options.set_device_ordinal(0);
+        build_options.set_device_ordinal(client()->default_device_ordinal());
       }
     } else {
       if (build_options.device_ordinal() < 0) {

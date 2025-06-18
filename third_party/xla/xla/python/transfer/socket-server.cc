@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/python/transfer/socket-server.h"
 
+#include <netinet/tcp.h>  // for TCP_NODELAY
+
 #include <cerrno>
 #include <cstdint>
 #include <cstring>
@@ -22,17 +24,20 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/python/transfer/event_loop.h"
 #include "xla/python/transfer/streaming.h"
 #include "xla/python/transfer/transfer_socket.pb.h"
@@ -67,6 +72,9 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
     int value = 1;
     CHECK_GE(
         setsockopt(send_fd, SOL_SOCKET, SO_ZEROCOPY, &value, sizeof(value)), 0)
+        << strerror(errno) << " " << errno;
+    CHECK_GE(
+        setsockopt(send_fd, IPPROTO_TCP, TCP_NODELAY, &value, sizeof(value)), 0)
         << strerror(errno) << " " << errno;
     fd_ = send_fd;
   }
@@ -242,6 +250,26 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
     return req_id;
   }
 
+  std::optional<size_t> InstallPullList(
+      std::vector<tsl::RCReference<ChunkDestination>> dests) {
+    mu_.Lock();
+    if (is_poisoned_) {
+      auto poison_status = poison_status_;
+      for (auto& dest : dests) {
+        dest->Poison(poison_status);
+      }
+      mu_.Unlock();
+      return std::nullopt;
+    }
+    size_t req_id = next_req_id_;
+    for (auto& dest : dests) {
+      dests_[next_req_id_].dest = std::move(dest);
+      ++next_req_id_;
+    }
+    mu_.Unlock();
+    return req_id;
+  }
+
   void StartBulkTransporting() {
     auto info = factory_->InitBulkTransport();
     bulk_transport_ = std::move(info.bulk_transport);
@@ -282,6 +310,23 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
         state_->bulk_transport_->Send(std::move(msg));
       }
 
+      void SendError(size_t req_id, size_t offset, size_t size, bool is_largest,
+                     absl::Status error) override {
+        SocketTransferRequest response;
+        auto* packet = response.mutable_error_packet();
+        if (error.message().size() < 2048) {
+          packet->set_error_message(std::string(error.message()));
+        } else {
+          packet->set_error_message(absl::StrCat(
+              error.message().substr(0, 2048), "... truncated ..."));
+        }
+        packet->set_offset(offset);
+        packet->set_size(size);
+        packet->set_req_id(req_id);
+        packet->set_is_largest(is_largest);
+        state_->SendFrame(response);
+      }
+
      private:
       SocketNetworkState* state_;
     };
@@ -303,9 +348,18 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
         return HandlePacket(req.bulk_transport());
       case SocketTransferRequest::kHalfClose:
         return HandlePacket(req.half_close());
+      case SocketTransferRequest::kErrorPacket:
+        return HandlePacket(req.error_packet());
       default:
         LOG(FATAL) << "Implement: " << req.DebugString();
     }
+  }
+
+  void HandlePacket(const SocketTransferPacketErrorHeader& packet) {
+    auto dest = GetNextDest(packet.req_id(), packet.offset(), packet.size(),
+                            packet.is_largest());
+    dest->Poison(absl::InternalError(
+        absl::StrCat("Error while transferring: ", packet.error_message())));
   }
 
   void HandlePacket(const SocketTransferEstablishBulkTransport& req) {
@@ -377,6 +431,30 @@ class SocketServer::SocketNetworkState : public PollEventLoop::Handler {
     req.add_buffer_ids(buf_id);
     req.set_req_id(*req_id);
     SendFrame(msg);
+  }
+
+  void Pull(uint64_t uuid, absl::Span<const int> buffer_ids,
+            std::vector<tsl::RCReference<ChunkDestination>> dests) {
+    std::optional<size_t> req_id = InstallPullList(std::move(dests));
+    if (!req_id.has_value()) {
+      return;
+    }
+    constexpr size_t kBufferIdChunkSize = 256;
+    SocketTransferRequest msg;
+    SocketTransferPullRequest& req = *msg.mutable_pull();
+    req.set_uuid(uuid);
+    req.set_req_id(*req_id);
+    for (int buf_id : buffer_ids) {
+      req.add_buffer_ids(buf_id);
+      if (req.buffer_ids_size() == kBufferIdChunkSize) {
+        SendFrame(msg);
+        req.set_req_id(req.req_id() + kBufferIdChunkSize);
+        req.clear_buffer_ids();
+      }
+    }
+    if (req.buffer_ids_size() > 0) {
+      SendFrame(msg);
+    }
   }
 
   void InjectFailure() {
@@ -455,6 +533,12 @@ void SocketServer::Connection::Pull(uint64_t uuid, int buffer_id,
   local_->Pull(uuid, buffer_id, std::move(dest));
 }
 
+void SocketServer::Connection::Pull(
+    uint64_t uuid, absl::Span<const int> buffer_ids,
+    std::vector<tsl::RCReference<ChunkDestination>> dests) {
+  local_->Pull(uuid, buffer_ids, std::move(dests));
+}
+
 void SocketServer::Connection::InjectFailure() { local_->InjectFailure(); }
 
 absl::Status SocketServer::Start(
@@ -465,6 +549,11 @@ absl::Status SocketServer::Start(
       addr,
       [pull_table = pull_table_, factory = bulk_transport_factory_](
           int sockfd, const SocketAddress& addr) {
+        int value = 1;
+        CHECK_GE(
+            setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &value, sizeof(value)),
+            0)
+            << strerror(errno) << " " << errno;
         SocketNetworkState::Accept(pull_table, factory, sockfd);
       },
       SOCK_NONBLOCK);

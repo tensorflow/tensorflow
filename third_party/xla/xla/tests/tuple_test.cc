@@ -180,11 +180,9 @@ TEST_F(TupleTest, AddTupleElements) {
       {2.f, 4.f, 6.f},  // row 0
       {5.f, 7.f, 9.f},  // row 1
   });
-  ASSERT_TRUE(ShapeUtil::Equal(
-      vector_shape, ShapeUtil::MakeValidatedShape(F32, {3}).value()));
-  ASSERT_TRUE(ShapeUtil::Equal(
-      matrix_shape,
-      ShapeUtil::MakeValidatedShape(F32, {/*y=*/2, /*x=*/3}).value()));
+  ASSERT_TRUE(ShapeUtil::Equal(vector_shape, ShapeUtil::MakeShape(F32, {3})));
+  ASSERT_TRUE(ShapeUtil::Equal(matrix_shape,
+                               ShapeUtil::MakeShape(F32, {/*y=*/2, /*x=*/3})));
   ComputeAndCompareR2<float>(&builder, expected, {}, kErrorSpec);
 }
 
@@ -275,12 +273,10 @@ TEST_F(TupleTest, NestedTuples) {
 TEST_F(TupleTest, GetTupleElementOfNestedTuple) {
   XlaBuilder builder(TestName());
 
-  Shape data_shape = ShapeUtil::MakeValidatedShape(F32, {3}).value();
-  Shape inner_tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({data_shape, data_shape}).value();
+  Shape data_shape = ShapeUtil::MakeShape(F32, {3});
+  Shape inner_tuple_shape = ShapeUtil::MakeTupleShape({data_shape, data_shape});
   Shape outer_tuple_shape =
-      ShapeUtil::MakeValidatedTupleShape({inner_tuple_shape, data_shape})
-          .value();
+      ShapeUtil::MakeTupleShape({inner_tuple_shape, data_shape});
 
   auto input = Parameter(&builder, 0, outer_tuple_shape, "input");
   auto gte0 = GetTupleElement(input, 0);
@@ -301,12 +297,11 @@ TEST_F(TupleTest, GetTupleElementOfNestedTuple) {
 TEST_F(TupleTest, ComplexTuples) {
   XlaBuilder builder(TestName());
   {
-    Shape c64r0 = ShapeUtil::MakeValidatedShape(C64, {}).value();
-    Shape c64r1 = ShapeUtil::MakeValidatedShape(C64, {2}).value();
-    Shape c64r2 = ShapeUtil::MakeValidatedShape(C64, {3, 2}).value();
-    Shape arg0_shape = ShapeUtil::MakeValidatedTupleShape(
-                           {c64r0, ShapeUtil::MakeTupleShape({c64r1, c64r2})})
-                           .value();
+    Shape c64r0 = ShapeUtil::MakeShape(C64, {});
+    Shape c64r1 = ShapeUtil::MakeShape(C64, {2});
+    Shape c64r2 = ShapeUtil::MakeShape(C64, {3, 2});
+    Shape arg0_shape = ShapeUtil::MakeTupleShape(
+        {c64r0, ShapeUtil::MakeTupleShape({c64r1, c64r2})});
     auto input0 = Parameter(&builder, 0, arg0_shape, "input0");
     auto t0 = GetTupleElement(input0, 0);
     auto t1 = GetTupleElement(input0, 1);

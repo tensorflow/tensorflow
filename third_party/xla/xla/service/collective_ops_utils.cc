@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/global_device_id.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -100,6 +102,33 @@ std::optional<ReductionKind> MatchReductionComputation(
     kind = std::nullopt;
   }
   return kind;
+}
+
+std::unique_ptr<HloComputation> MakeReductionComputation(
+    ReductionKind reduction_kind, PrimitiveType element_type) {
+  auto builder = HloComputation::Builder("make_reduction_computation");
+  auto lhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(element_type, {}), "lhs"));
+  auto rhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(element_type, {}), "rhs"));
+  builder.AddInstruction(HloInstruction::CreateBinary(
+      lhs->shape(), *ReductionKindToOpcode(reduction_kind), lhs, rhs));
+  return builder.Build();
+}
+
+std::optional<HloOpcode> ReductionKindToOpcode(ReductionKind reduction_kind) {
+  switch (reduction_kind) {
+    case ReductionKind::SUM:
+      return HloOpcode::kAdd;
+    case ReductionKind::PRODUCT:
+      return HloOpcode::kMultiply;
+    case ReductionKind::MIN:
+      return HloOpcode::kMinimum;
+    case ReductionKind::MAX:
+      return HloOpcode::kMaximum;
+    default:
+      return std::nullopt;
+  }
 }
 
 std::optional<Literal> GetReductionIdentity(ReductionKind kind,
@@ -815,58 +844,6 @@ HloInstruction* IsOrHasCollectiveWithChannelId(HloInstruction* instruction) {
   return nullptr;
 }
 
-using SourceTargetPairType = std::pair<int64_t, int64_t>;
-using SourceTargetPairsType = std::vector<SourceTargetPairType>;
-
-std::pair<CycleType, std::set<int>> GetCycleTypeAndIndices(
-    const SourceTargetPairsType& pairs) {
-  std::set<int> seen_replica_ids;
-  std::set<std::pair<int64_t, int64_t>> tentative_results;
-  // first figure out if we're dealing with a potential forward or backward
-  // cycle.
-  int forward_edge_counter = 0;
-  int backward_edge_counter = 0;
-  for (auto pair : pairs) {
-    pair.first < pair.second ? forward_edge_counter++ : backward_edge_counter++;
-  }
-  bool is_forward_cycle = forward_edge_counter > backward_edge_counter;
-  for (int64_t i = 0; i < pairs.size(); ++i) {
-    const SourceTargetPairType& pair = pairs[i];
-    if (is_forward_cycle) {
-      // check if the source of the current pair is smaller than the target
-      if (pair.first < pair.second) {
-        seen_replica_ids.insert(pair.first);
-      } else {
-        // the source of the current pair is larger than the target, so the
-        // current pair may be part of a cycle. We keep track of the target ID
-        // and the index of the pair in the original pairs array.
-        tentative_results.insert(std::make_pair(pair.second, i));
-      }
-    } else {
-      // The backward cycle check uses similar logic but in reverse.
-      if (pair.first > pair.second) {
-        seen_replica_ids.insert(pair.second);
-      } else {
-        tentative_results.insert(std::make_pair(pair.first, i));
-      }
-    }
-  }
-  std::set<int> final_results;
-  // Iterate over the tentative results and only keep the indices that form an
-  // actual cycle. This is done by checking if the target replica ID of the
-  // pair is in the set of seen replica IDs. Note that the tentative results
-  // array will be fairly small in practice, so this is not adding too much to
-  // the runtime.
-  for (auto& [replica_id, index] : tentative_results) {
-    if (seen_replica_ids.find(replica_id) != seen_replica_ids.end()) {
-      final_results.insert(index);
-    }
-  }
-  CycleType cycle_type = final_results.empty() ? CycleType::kNone
-                         : is_forward_cycle    ? CycleType::kForward
-                                               : CycleType::kBackward;
-  return std::make_pair(cycle_type, final_results);
-}
 
 bool IsExclusivelyCrossModule(absl::Span<const ReplicaGroup> replica_groups,
                               bool use_global_ids, bool has_channel_id,
