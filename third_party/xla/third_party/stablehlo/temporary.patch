@@ -31,16 +31,23 @@ diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir b/s
 diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
 --- stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
 +++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
-@@ -71,6 +71,9 @@
- #include "stablehlo/conversions/linalg/transforms/Rewriters.h"
+@@ -30,6 +30,7 @@
+ #include "llvm/ADT/SetVector.h"
+ #include "llvm/ADT/SmallVector.h"
+ #include "llvm/ADT/SmallVectorExtras.h"
++#include "llvm/Support/Debug.h"
+ #include "llvm/Support/Casting.h"
+ #include "mlir/Dialect/Arith/IR/Arith.h"
+ #include "mlir/Dialect/Arith/Utils/Utils.h"
+@@ -72,6 +73,8 @@
  #include "stablehlo/conversions/linalg/transforms/TypeConversion.h"
  #include "stablehlo/dialect/StablehloOps.h"
-+#include "third_party/llvm/llvm-project/llvm/include/llvm/Support/Debug.h"
-+
-+#define DEBUG_TYPE "stablehlo-legalize-to-linalg"
  
++#define DEBUG_TYPE "stablehlo-legalize-to-linalg"
++
  namespace mlir::stablehlo {
  
+ #define GEN_PASS_DEF_STABLEHLOLEGALIZETOLINALGPASS
 @@ -1127,6 +1130,10 @@
      // collapse_shape.
      if (std::optional<SmallVector<ReassociationIndices>> reassociationMap =
