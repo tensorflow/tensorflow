@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/tests/pjrt_client_registry.h"
 
-#include <functional>
-#include <memory>
 #include <utility>
 
 namespace xla {
