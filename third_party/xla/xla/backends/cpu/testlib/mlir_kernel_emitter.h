@@ -51,6 +51,8 @@ class MlirTestKernelEmitter : public MlirKernelEmitter {
 
   absl::StatusOr<MlirKernelDefinition> EmitKernelDefinition() final;
 
+  std::string name() const override { return "mlir_test_kernel_emitter"; }
+
  private:
   std::string mlir_;
   std::string kernel_name_;

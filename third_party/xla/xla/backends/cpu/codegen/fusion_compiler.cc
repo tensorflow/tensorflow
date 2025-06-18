@@ -61,6 +61,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_dialect.h"
 #include "xla/backends/cpu/codegen/emitters/transforms/passes.h"
+#include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/codegen/emitters/ir/xla_attrs.h.inc"
 #include "xla/codegen/emitters/ir/xla_dialect.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
@@ -232,6 +233,12 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
         llvm::MDString::get(llvm_context, options_csv);
     llvm_module->addModuleFlag(llvm::Module::Error, "xla_backend_extra_options",
                                options_mdstring);
+  }
+
+  if (mlir::Attribute options =
+          mlir_module->getAttr(xla::CpuMemoryRegionNameAttr::name)) {
+    SetModuleMemoryRegionName(*llvm_module,
+                              mlir::cast<mlir::StringAttr>(options).str());
   }
 
   TF_RET_CHECK(llvm_module != nullptr)

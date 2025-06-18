@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/Support/MemoryBufferRef.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Target/TargetMachine.h"
+#include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -81,6 +82,8 @@ static absl::StatusOr<std::unique_ptr<llvm::Module>> ParseModule(
     return Internal("Failed to parse LLVM IR: %s",
                     diagnostic.getMessage().str());
   }
+
+  SetModuleMemoryRegionName(*m, "ir_compiler_test");
 
   return m;
 }

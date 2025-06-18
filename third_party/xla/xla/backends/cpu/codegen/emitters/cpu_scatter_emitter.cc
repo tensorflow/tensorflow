@@ -51,6 +51,7 @@ limitations under the License.
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
+#include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/emitters/ir/xla_attrs.h.inc"
@@ -261,6 +262,10 @@ absl::StatusOr<MlirKernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
       builder.getAttr<xla::ExtraBackendOptionsAttr>(
           llvm::ArrayRef{disable_loop_unrolling_attr}));
 
+  mlir_module->getOperation()->setAttr(
+      xla::CpuMemoryRegionNameAttr::name,
+      builder.getStringAttr(BuildModuleMemoryRegionName(name(), fusion_)));
+
   TF_ASSIGN_OR_RETURN(
       mlir::func::FuncOp entry_func,
       EmitEntryFunctionApi(mlir_module.get(), *fusion_,
@@ -316,6 +321,7 @@ absl::StatusOr<MlirKernelDefinition> CpuScatterFusion::EmitKernelDefinition() {
                          NumWorkGroups{static_cast<uint64_t>(num_threads_)},
                          std::move(argument_buffers), std::move(result_buffers),
                          std::move(invariant_arguments));
+
   return MlirKernelDefinition(
       std::move(kernel_spec),
       MlirKernelSource(std::move(context), std::move(mlir_module)));

@@ -30,7 +30,9 @@ limitations under the License.
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Metadata.h"
 #include "llvm/IR/Type.h"
+#include "llvm/Support/Casting.h"
 #include "xla/cpu_function_runtime.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -62,18 +64,20 @@ class KernelApiIrBuilderTestBase : public HloHardwareIndependentTestBase {
 
   llvm::IRBuilder<> getBuilder() { return llvm::IRBuilder<>(context_); }
 
-  auto EmitKernelPrototype(const HloInstruction* instr,
-                           const BufferAssignment* buffer_assignment) {
-    return kernel_api_ir_builder_.EmitKernelPrototype(module_, instr,
-                                                      buffer_assignment);
+  auto EmitKernelPrototype(
+      const HloInstruction* instr, const BufferAssignment* buffer_assignment,
+      const std::string& module_memory_region_name = "dummy_emitter") {
+    return kernel_api_ir_builder_.EmitKernelPrototype(
+        module_, instr, buffer_assignment, module_memory_region_name);
   }
 
   auto EmitKernelPrototype(
       absl::string_view name,
       absl::Span<const KernelApiIrBuilder::KernelParameter> arguments,
-      absl::Span<const KernelApiIrBuilder::KernelParameter> results) {
-    return kernel_api_ir_builder_.EmitKernelPrototype(module_, name, arguments,
-                                                      results);
+      absl::Span<const KernelApiIrBuilder::KernelParameter> results,
+      const std::string& module_memory_region_name = "dummy_emitter") {
+    return kernel_api_ir_builder_.EmitKernelPrototype(
+        module_, name, arguments, results, module_memory_region_name);
   }
 
   absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
@@ -92,6 +96,8 @@ class KernelApiIrBuilderTestBase : public HloHardwareIndependentTestBase {
 
   llvm::LLVMContext& context() { return context_; }
   std::string DumpToString() { return llvm_ir::DumpToString(&module_); }
+
+  llvm::Module& module() { return module_; }
 
  private:
   llvm::LLVMContext context_;
@@ -484,6 +490,27 @@ TEST_F(KernelApiIrBuilderTest, SetKernelFunctionAttributes) {
   EXPECT_FALSE(function->hasFnAttribute("prefer-vector-width"));
   SetKernelFunctionAttributes(function);
   EXPECT_TRUE(function->hasFnAttribute("prefer-vector-width"));
+}
+
+TEST_F(KernelApiIrBuilderTest, SetModuleMemoryRegionName) {
+  const std::string memory_region_name = "kernel_api_ir_builder_test";
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto prototype, EmitKernelPrototype("test", {}, {}, memory_region_name));
+
+  SetModuleMemoryRegionName(module(), memory_region_name);
+
+  llvm::NamedMDNode* memory_region_name_md =
+      module().getNamedMetadata(std::string(kMemoryRegionNameMetadataName));
+  EXPECT_NE(memory_region_name_md, nullptr);
+  EXPECT_GT(memory_region_name_md->getNumOperands(), 0);
+  llvm::MDNode* node = memory_region_name_md->getOperand(0);
+  EXPECT_NE(node, nullptr);
+  EXPECT_GT(node->getNumOperands(), 0);
+  llvm::MDString* md_str = llvm::dyn_cast<llvm::MDString>(node->getOperand(0));
+  EXPECT_NE(md_str, nullptr);
+  llvm::StringRef mem_region_name_str = md_str->getString();
+
+  EXPECT_EQ(mem_region_name_str.str(), memory_region_name);
 }
 
 }  // namespace

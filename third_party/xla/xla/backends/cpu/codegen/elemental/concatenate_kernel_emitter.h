@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_CODEGEN_ELEMENTAL_CONCATENATE_KERNEL_EMITTER_H_
 #define XLA_BACKENDS_CPU_CODEGEN_ELEMENTAL_CONCATENATE_KERNEL_EMITTER_H_
 
+#include <string>
+
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/codegen/kernel_definition.h"
@@ -33,6 +35,8 @@ class ConcatenateKernelEmitter final : public LlvmKernelEmitter {
                            const TargetMachineFeatures* target_machine);
 
   absl::StatusOr<LlvmKernelDefinition> EmitKernelDefinition() override;
+
+  std::string name() const final { return "concatenate_kernel_emitter"; }
 
  private:
   const HloInstruction* instr_;

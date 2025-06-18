@@ -65,6 +65,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -168,6 +169,7 @@ IrEmitter::IrEmitter(mlir::MLIRContext* mlir_context,
   absl::c_sort(thread_local_computations_);
   absl::c_sort(global_computations_);
   TF_CHECK_OK(s) << "Should have failed buffer assignment.";
+  SetModuleMemoryRegionName(*module_, "ir_emitter");
 }
 
 IrEmitter::~IrEmitter() {

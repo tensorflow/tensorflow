@@ -29,6 +29,7 @@ cc_library(
         "//xla/backends/cpu/codegen:fusion_compiler",
         "//xla/backends/cpu/codegen:ir_compiler",
         "//xla/backends/cpu/codegen:jit_compiler",
+        "//xla/backends/cpu/codegen:kernel_api_ir_builder",
         "//xla/backends/cpu/runtime:function_library",
         "//xla/backends/cpu/runtime:kernel",
         "//xla/backends/cpu/runtime:kernel_c_api",

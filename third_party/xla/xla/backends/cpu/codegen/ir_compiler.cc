@@ -61,6 +61,7 @@ limitations under the License.
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/Instrumentation/DataFlowSanitizer.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
+#include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/backends/cpu/codegen/polynomial_approximations.h"
 #include "xla/codegen/math/math_compiler_lib.h"
 #include "xla/codegen/math_lib.h"
@@ -395,8 +396,20 @@ std::unique_ptr<llvm::MemoryBuffer> IrCompiler::EmitMachineCode(
   target_machine->addPassesToEmitMC(codegen_passes, mc_context, ostream);
   codegen_passes.run(module);
 
+  llvm::NamedMDNode* memory_region_name_md =
+      module.getNamedMetadata(std::string(kMemoryRegionNameMetadataName));
+  CHECK(memory_region_name_md != nullptr)
+      << "Memory region name metadata not found in LLVM module.";
+  CHECK_GT(memory_region_name_md->getNumOperands(), 0);
+  llvm::MDNode* node = memory_region_name_md->getOperand(0);
+  CHECK(node != nullptr);
+  CHECK_GT(node->getNumOperands(), 0);
+  llvm::MDString* md_str = llvm::dyn_cast<llvm::MDString>(node->getOperand(0));
+  CHECK(md_str != nullptr);
+  llvm::StringRef mem_region_name_str = md_str->getString();
+
   return std::make_unique<llvm::SmallVectorMemoryBuffer>(
-      std::move(mc_stream_buffer), module.getName());
+      std::move(mc_stream_buffer), mem_region_name_str);
 }
 
 llvm::CodeGenOptLevel IrCompiler::GetCodeGenOptLevel(

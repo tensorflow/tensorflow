@@ -27,8 +27,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/cpu/alignment.h"
+#include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/emitters/loop_kernel_emitter.h"
@@ -46,6 +48,7 @@ limitations under the License.
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla::cpu {
@@ -139,11 +142,26 @@ absl::StatusOr<MlirKernelDefinition> EmitFusionKernel(
     VLOG(2) << "Emitting loop fusion kernel: " << fusion.name();
     HloFusionSpec fusion_spec = GetLoopFusionSpec(fusion);
     auto work_dimensions = GetLoopEmitterWorkDims(fusion, fusion_spec);
-    return emitters::LoopFusionKernelEmitter(
-               context, fusion, std::move(fusion_spec), buffer_assignment,
-               GetDefaultBufferAlignment(), work_dimensions, kUnrollFactor,
-               fusion.name(), BackendKind::kCpu)
-        .EmitKernelDefinition();
+
+    emitters::LoopFusionKernelEmitter loop_fusion_emitter(
+        context, fusion, std::move(fusion_spec), buffer_assignment,
+        GetDefaultBufferAlignment(), work_dimensions, kUnrollFactor,
+        fusion.name(), BackendKind::kCpu);
+    TF_ASSIGN_OR_RETURN(auto mlir_kernel_definition,
+                        loop_fusion_emitter.EmitKernelDefinition());
+
+    // We have to release otherwise the source wouldn't be mutable, and we
+    // wouldn't be able to set the CpuMemoryRegionNameAttr.
+    auto [kernel_spec, kernel_source] =
+        std::move(mlir_kernel_definition).ReleaseStorage();
+
+    mlir::OpBuilder builder(&context);
+    kernel_source.module().getOperation()->setAttr(
+        xla::CpuMemoryRegionNameAttr::name,
+        builder.getStringAttr(
+            BuildModuleMemoryRegionName(loop_fusion_emitter.name(), &fusion)));
+    return MlirKernelDefinition(std::move(kernel_spec),
+                                std::move(kernel_source));
   }
 
   return absl::UnimplementedError("Fusion kind not supported.");
