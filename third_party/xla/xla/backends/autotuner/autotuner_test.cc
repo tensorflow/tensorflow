@@ -162,6 +162,7 @@ TEST_F(AutotunerTest, AutotuneWithNoValidConfigs) {
 TEST_F(AutotunerTest, AutotuneAppliesBestConfig) {
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.push_back(GetTestConfig("test_config_1"));
+  configs.push_back(GetTestConfig("test_config_failing"));
   configs.push_back(GetTestConfig("test_config_2"));
 
   auto backend = std::make_unique<MockCodegenBackend>();
@@ -169,13 +170,14 @@ TEST_F(AutotunerTest, AutotuneAppliesBestConfig) {
       .WillOnce(Return(std::move(configs)));
   EXPECT_CALL(*backend, Compile(_, _))
       .WillOnce(Return(std::unique_ptr<Executable>()))
+      .WillOnce(Return(absl::InternalError("test error")))
       .WillOnce(Return(std::unique_ptr<Executable>()));
-  EXPECT_CALL(*backend, ApplyConfig(_, ConfigMatcher("test_config_1")))
+  EXPECT_CALL(*backend, ApplyConfig(_, ConfigMatcher("test_config_2")))
       .Times(1);
 
   auto profiler = std::make_unique<MockProfiler>();
-  std::vector<ProfileResult> profile_results = {{absl::Seconds(1)},
-                                                {absl::Seconds(2)}};
+  std::vector<ProfileResult> profile_results = {{absl::Seconds(2)},
+                                                {absl::Seconds(1)}};
   EXPECT_CALL(*profiler, ProfileWithSharedBuffers)
       .WillOnce(Return(profile_results));
 

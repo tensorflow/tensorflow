@@ -77,6 +77,7 @@ Autotuner::GetBestConfig(HloInstruction* instr) {
     VLOG(1) << "Got " << configs.size()
             << " configs from codegen backend: " << codegen_backend->name();
     std::vector<std::unique_ptr<Executable>> executables;
+    std::vector<std::unique_ptr<BackendConfig>> valid_configs;
     for (auto& config : configs) {
       VLOG(2) << "Trying to compile config: " << config->DebugString();
       auto executable = codegen_backend->Compile(*instr, *config);
@@ -87,14 +88,16 @@ Autotuner::GetBestConfig(HloInstruction* instr) {
         continue;
       }
       executables.push_back(std::move(executable.value()));
+      valid_configs.push_back(std::move(config));
     }
+    CHECK_EQ(executables.size(), valid_configs.size());
     TF_ASSIGN_OR_RETURN(
         std::vector<ProfileResult> results,
         profiler_->ProfileWithSharedBuffers(std::move(executables)));
     for (int i = 0; i < results.size(); ++i) {
       if (results[i].duration < min_duration) {
         min_duration = results[i].duration;
-        best_config = std::move(configs[i]);
+        best_config = std::move(valid_configs[i]);
         best_codegen_backend = codegen_backend.get();
       }
     }
