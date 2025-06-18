@@ -25,7 +25,8 @@ limitations under the License.
 
 bool RegisterDynamicPjrtPlugin(absl::string_view plugin_name,
                                absl::string_view library_env_name) {
-  char* library_path = std::getenv(library_env_name.data());
+  std::string library_env_name_str(library_env_name);
+  char* library_path = std::getenv(library_env_name_str.c_str());
   QCHECK(library_path != nullptr)
       << "Environment variable " << library_env_name
       << " is not set. Can't load PJRT plugin " << plugin_name << ".";
