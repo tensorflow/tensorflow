@@ -1126,7 +1126,7 @@ absl::StatusOr<BlockLevelParameters> FindBlockLevelParameters(
     if (!parameters_satisfy_constraints) {
       continue;
     }
-    TF_ASSIGN_OR_RETURN(std::vector<int64_t> flat_tiling_parameters,
+    TF_ASSIGN_OR_RETURN(FlatTiling flat_tiling_parameters,
                         tiling.Flatten(tiling_specification));
     auto mapped_dot_tile_sizes =
         EvaluateTileSizes(tiled_dot.symbolic_tile(), flat_tiling_parameters);

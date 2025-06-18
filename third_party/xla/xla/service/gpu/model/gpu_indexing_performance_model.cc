@@ -214,12 +214,12 @@ int64_t GpuPerformanceModelWithIndexingAnalysis::FlopsPerElement(
     // The Cost Model assumes that the reduction computation is applied N-1
     // times to reduce N elements. This is not true, because emitters will
     // generate a loop with N iterations. We don't fix it here to keep this
-    // estimate consistent with GpuHloCostAnalysis. This is like doesn't matter
+    // estimate consistent with `GpuHloCostAnalysis`. This likely doesn't matter
     // much for the application of the Cost Model.
     return (reduction_factor - 1) * flops_per_reduce_computation;
   }
 
-  // Encountered unexpected instruction, call to GpuHloCostAnalysis.
+  // Encountered unexpected instruction, call into `GpuHloCostAnalysis`.
   TF_CHECK_OK(
       cost_analysis_.RevisitInstruction(const_cast<HloInstruction*>(instr)));
 
@@ -608,7 +608,7 @@ GpuPerformanceModelWithIndexingAnalysis::TryFindBestTilingForFusion(
   SymbolicTileAnalysis analysis =
       std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
 
-  TF_ASSIGN_OR_RETURN(auto tilings, analysis.GetGoodTilings());
+  TF_ASSIGN_OR_RETURN(auto tilings, analysis.GetValidTilings());
 
   std::optional<TiledRunTimeData> best_tiled_run_time_data;
 

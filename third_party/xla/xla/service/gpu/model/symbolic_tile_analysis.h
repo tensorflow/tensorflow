@@ -155,6 +155,11 @@ class TilingSpecification {
   int64_t num_parameters_;
 };
 
+// A sequence of tile sizes.
+//
+// This is an inlined vector to avoid too many heap allocations.
+using FlatTiling = absl::InlinedVector<int64_t, 4>;
+
 // `Tiling`s are instantiations of `TilingSpecification`s, and the conformance
 // of a `Tiling` `t` to a `TilingSpecification` `spec` can be checked by calling
 // `t.ConformsTo(spec)`.
@@ -203,8 +208,16 @@ class Tiling {
   // Note that `Flatten` does not check whether this tiling conforms to the
   // parameter `TilingSpecification`, and it is the caller's responsibility to
   // ensure that this is the case.
-  absl::StatusOr<std::vector<int64_t>> Flatten(
+  absl::StatusOr<FlatTiling> Flatten(
       const TilingSpecification& tiling_specification) const;
+
+  // Returns a `Tiling` that conforms to the parameter `TilingSpecification`
+  // from the given flattened list of tile sizes.
+  //
+  // `Unflatten` is the dual of `Flatten`.
+  static absl::StatusOr<Tiling> Unflatten(
+      absl::Span<const int64_t> flat_tile_sizes,
+      const TilingSpecification& tiling_specification);
 
  private:
   TileMapping tile_sizes_;
@@ -270,11 +283,6 @@ using EmitterSpecificConstraintsBuilder =
 // Use `AnalyzeComputation` or `AnalyzeFusion` to construct a new analysis.
 class SymbolicTileAnalysis {
  public:
-  // A tile size for each dimension.
-  //
-  // This is an inlined vector to avoid too many heap allocations.
-  using Tiling = absl::InlinedVector<int64_t, 4>;
-
   // Tries to construct a symbolic tile analysis from a computation. Returns
   // a diagnostic if the construction fails for any reason.
   //
@@ -300,9 +308,9 @@ class SymbolicTileAnalysis {
   // constraints are satisfied by the chosen tiling parameters. Setting
   // `constraints_are_known_satisfied` to true bypasses this check.
   //
-  // TiledHloInstruction will have tile offset indexing map set if either:
+  // `TiledHloInstruction` will have tile offset indexing map set if either:
   // - compute_all_tile_offset_indexing_maps == true, or
-  // - there are at least two TiledHloInstruction with the same hash. In that
+  // - there are at least two `TiledHloInstruction`s with the same hash. In that
   //   case we need tile offset indexing map to decide if we can deduplicate
   //   those instruction.
   absl::StatusOr<TiledHloComputation> ComputeTiledHloInstructions(
@@ -398,13 +406,9 @@ class SymbolicTileAnalysis {
   // messages and debugging.
   std::string ToString() const;
 
-  // Returns a list of tilings for the symbolic tiled HLO computation of the
-  // analysis that are expected to perform well.
-  //
-  // Note: This is an initial implementation where the results may not perform
-  // that well, and now we're filtering the tilings with Triton in mind
-  // (allowing only powers of 2 or the full dimension size).
-  absl::StatusOr<std::vector<Tiling>> GetGoodTilings() const;
+  // Returns a list of valid tilings for the `SymbolicTiledHloComputation`
+  // produced by this analysis.
+  absl::StatusOr<std::vector<Tiling>> GetValidTilings() const;
 
  private:
   SymbolicTileAnalysis(
@@ -463,11 +467,11 @@ class SymbolicTileAnalysis {
 };
 
 namespace detail {
-// Only exposed for testing, please use SymbolicTileAnalysis::GetGoodTilings()
-// instead.
-std::vector<SymbolicTileAnalysis::Tiling> GetGoodTilings(
-    absl::Span<const int64_t> dim_sizes,
-    std::function<bool(absl::Span<const int64_t>)> is_valid);
+
+// Only exposed for testing.
+std::vector<FlatTiling> GetFlatTilingsForInputSpace(
+    absl::Span<const int64_t> input_space);
+
 }  // namespace detail
 }  // namespace gpu
 }  // namespace xla

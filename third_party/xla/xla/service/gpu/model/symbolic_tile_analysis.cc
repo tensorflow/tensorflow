@@ -24,7 +24,6 @@ limitations under the License.
 #include <optional>
 #include <sstream>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -40,7 +39,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -70,7 +68,6 @@ limitations under the License.
 #include "xla/service/instruction_fusion.h"
 #include "xla/service/name_uniquer.h"
 #include "xla/shape.h"
-#include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -779,9 +776,9 @@ absl::StatusOr<absl::Span<const int64_t>> Tiling::TileSizesForInstruction(
       absl::StrCat("No tile sizes found for instruction: ", hlo->ToString()));
 }
 
-absl::StatusOr<std::vector<int64_t>> Tiling::Flatten(
+absl::StatusOr<FlatTiling> Tiling::Flatten(
     const TilingSpecification& tiling_specification) const {
-  std::vector<int64_t> flat_tile_sizes;
+  FlatTiling flat_tile_sizes;
   flat_tile_sizes.reserve(tiling_specification.num_parameters());
   for (const auto& mapping : tiling_specification.parameter_mapping()) {
     TF_ASSIGN_OR_RETURN(absl::Span<const int64_t> tile_sizes,
@@ -797,6 +794,27 @@ absl::StatusOr<std::vector<int64_t>> Tiling::Flatten(
   }
 
   return flat_tile_sizes;
+}
+
+/*static*/ absl::StatusOr<Tiling> Tiling::Unflatten(
+    absl::Span<const int64_t> flat_tile_sizes,
+    const TilingSpecification& tiling_specification) {
+  if (flat_tile_sizes.size() != tiling_specification.num_parameters()) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Expected ", tiling_specification.num_parameters(),
+                     " tile sizes but got ", flat_tile_sizes.size(), "."));
+  }
+
+  TileMapping tile_mapping;
+  int64_t offset = 0;
+  for (const auto& [hlo, num_parameters] :
+       tiling_specification.parameter_mapping()) {
+    auto start_it = flat_tile_sizes.begin() + offset;
+    auto end_it = start_it + num_parameters;
+    tile_mapping[hlo] = {start_it, end_it};
+    offset += num_parameters;
+  }
+  return Tiling(std::move(tile_mapping));
 }
 
 absl::StatusOr<int64_t> TilingSpecification::ParameterIndex(
@@ -818,8 +836,7 @@ bool Tiling::ConformsTo(const TilingSpecification& tiling_specification) const {
 
   // Linearization takes care of checking that we have the right number of
   // tile sizes specified for each instruction.
-  absl::StatusOr<std::vector<int64_t>> flat_tile_sizes_or =
-      Flatten(tiling_specification);
+  absl::StatusOr<FlatTiling> flat_tile_sizes_or = Flatten(tiling_specification);
   if (!flat_tile_sizes_or.ok()) {
     return false;
   }
@@ -1407,19 +1424,19 @@ absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
   }
 
   const HloInstruction* real_root = root_indexing_.GetRealRoot();
-  ::xla::gpu::Tiling::TileMapping tile_mapping(
+  Tiling::TileMapping tile_mapping(
       {{real_root, absl::InlinedVector<int64_t, 4>(tile_parameters.begin(),
                                                    tile_parameters.end())}});
-  ::xla::gpu::Tiling tiling(std::move(tile_mapping));
+  Tiling tiling(std::move(tile_mapping));
   return ParametersSatisfyConstraints(tiling);
 }
 
 absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
-    const ::xla::gpu::Tiling& tiling) const {
+    const Tiling& tiling) const {
   const ConstraintExpression& constraints = tiling_specification_.constraints();
   CHECK(constraints.is_satisfiable());  // Crash OK
 
-  TF_ASSIGN_OR_RETURN(std::vector<int64_t> flat_tiling_parameters,
+  TF_ASSIGN_OR_RETURN(FlatTiling flat_tiling_parameters,
                       tiling.Flatten(tiling_specification_));
 
   if (emitter_specific_constraints_ != nullptr) {
@@ -1587,7 +1604,7 @@ std::vector<int64_t> ExtractDimensionIds(AffineExpr expr) {
 // `flat_tiling_parameters` sizes based on the given symbolic tiling `analysis`.
 absl::StatusOr<TiledHloComputation> ComputeTiledHloInstructionsImpl(
     const SymbolicTileAnalysis& analysis,
-    const std::vector<int64_t>& flat_tiling_parameters,
+    const FlatTiling& flat_tiling_parameters,
     std::vector<int64_t> major_to_minor_active_tiling_parameters,
     bool compute_all_tile_offset_indexing_maps,
     const std::optional<absl::Span<const Interval>>&
@@ -1784,7 +1801,7 @@ absl::StatusOr<TiledHloComputation> ComputeTiledHloInstructionsImpl(
 
 absl::StatusOr<TiledHloComputation>
 SymbolicTileAnalysis::ComputeTiledHloInstructions(
-    const ::xla::gpu::Tiling& tiling, bool constraints_are_known_satisfied,
+    const Tiling& tiling, bool constraints_are_known_satisfied,
     bool compute_all_tile_offset_indexing_maps) const {
   // We first check that the provided tiling satisfies the constraints, if
   // necessary. We do this here instead of in `ComputeTiledHloInstructionsImpl`
@@ -1798,7 +1815,7 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(std::vector<int64_t> flat_tiling_parameters,
+  TF_ASSIGN_OR_RETURN(FlatTiling flat_tiling_parameters,
                       tiling.Flatten(GetTilingSpecification()));
 
   return ComputeTiledHloInstructionsImpl(
@@ -1814,11 +1831,11 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
     absl::Span<const int64_t> output_tile_sizes,
     bool constraints_are_known_satisfied,
     bool compute_all_tile_offset_indexing_maps) const {
-  ::xla::gpu::Tiling::TileMapping tile_mapping(
+  Tiling::TileMapping tile_mapping(
       {{tiling_specification_.parameter_mapping().begin()->instruction,
         absl::InlinedVector<int64_t, 4>(output_tile_sizes.begin(),
                                         output_tile_sizes.end())}});
-  return ComputeTiledHloInstructions(::xla::gpu::Tiling(tile_mapping),
+  return ComputeTiledHloInstructions(Tiling(tile_mapping),
                                      constraints_are_known_satisfied,
                                      compute_all_tile_offset_indexing_maps);
 }
@@ -1864,68 +1881,49 @@ std::vector<int64_t> PossibleTileSizesForOneDimension(int64_t dim_size) {
 }  // namespace
 
 namespace detail {
-std::vector<SymbolicTileAnalysis::Tiling> GetGoodTilings(
-    absl::Span<const int64_t> dim_sizes,
-    std::function<bool(absl::Span<const int64_t>)> is_valid) {
-  CHECK(is_valid != nullptr);
 
-  std::vector<SymbolicTileAnalysis::Tiling> tilings;
-  tilings.push_back({});
-  for (int dim_size : dim_sizes) {
+std::vector<FlatTiling> GetFlatTilingsForInputSpace(
+    absl::Span<const int64_t> input_space) {
+  std::vector<FlatTiling> flat_tilings;
+  flat_tilings.push_back({});
+  for (int parameter_size : input_space) {
     std::vector<int64_t> possible_tile_sizes =
-        PossibleTileSizesForOneDimension(dim_size);
-    std::vector<SymbolicTileAnalysis::Tiling> extended_tilings;
-    extended_tilings.reserve(tilings.size() * possible_tile_sizes.size());
-    for (const SymbolicTileAnalysis::Tiling& tiling : tilings) {
+        PossibleTileSizesForOneDimension(parameter_size);
+    std::vector<FlatTiling> extended_tilings;
+    extended_tilings.reserve(flat_tilings.size() * possible_tile_sizes.size());
+    for (const FlatTiling& flat_tile_sizes : flat_tilings) {
       for (int64_t tile_size : possible_tile_sizes) {
-        SymbolicTileAnalysis::Tiling extended_tiling = tiling;
+        FlatTiling extended_tiling = flat_tile_sizes;
         extended_tiling.push_back(tile_size);
         extended_tilings.push_back(extended_tiling);
       }
     }
-    tilings = std::move(extended_tilings);
+    flat_tilings = std::move(extended_tilings);
   }
 
-  tilings.erase(
-      std::remove_if(tilings.begin(), tilings.end(), std::not_fn(is_valid)),
-      tilings.end());
-
-  return tilings;
+  return flat_tilings;
 }
+
 }  // namespace detail
 
-absl::StatusOr<std::vector<SymbolicTileAnalysis::Tiling>>
-SymbolicTileAnalysis::GetGoodTilings() const {
-  TF_RET_CHECK(!symbolic_tiled_hlo_instructions_.empty());
-  TF_RET_CHECK(symbolic_tiled_hlo_instructions_.back() != nullptr);
+absl::StatusOr<std::vector<Tiling>> SymbolicTileAnalysis::GetValidTilings()
+    const {
+  const TilingSpecification::ParameterMapping& parameter_mapping =
+      tiling_specification_.parameter_mapping();
 
-  const SymbolicTiledHloInstruction& instr =
-      *symbolic_tiled_hlo_instructions_.back();
-  TF_RET_CHECK(instr.hlo() != nullptr);
-  const Shape& shape = instr.hlo()->shape();
-  if (!absl::c_all_of(shape.dimensions(),
-                      [](int64_t dim_size) { return dim_size >= 1; })) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "Shape %s has zero or negative dimensions.", shape.ToString()));
+  std::vector<Tiling> tilings;
+  for (const FlatTiling& flat_tile_sizes : detail::GetFlatTilingsForInputSpace(
+           InputSpaceForParameterMapping(parameter_mapping))) {
+    TF_ASSIGN_OR_RETURN(
+        Tiling tiling,
+        Tiling::Unflatten(flat_tile_sizes, tiling_specification_));
+    TF_ASSIGN_OR_RETURN(bool parameters_satisfy_constraints,
+                        ParametersSatisfyConstraints(tiling));
+    if (parameters_satisfy_constraints) {
+      tilings.push_back(tiling);
+    }
   }
-
-  absl::Status status = absl::OkStatus();
-  std::vector<SymbolicTileAnalysis::Tiling> result = detail::GetGoodTilings(
-      shape.dimensions(), [&](absl::Span<const int64_t> tile_sizes) {
-        absl::StatusOr<bool> is_valid =
-            ParametersSatisfyConstraints(tile_sizes);
-        if (!is_valid.ok()) {
-          status = is_valid.status();
-          return false;
-        }
-        return is_valid.value();
-      });
-
-  if (status.ok()) {
-    return result;
-  }
-
-  return status;
+  return tilings;
 }
 
 }  // namespace gpu
