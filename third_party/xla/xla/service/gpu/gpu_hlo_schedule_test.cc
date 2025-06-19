@@ -45,8 +45,10 @@ limitations under the License.
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/literal_util.h"
 #include "xla/service/backend.h"
 #include "xla/service/gpu/gpu_compiler.h"
+#include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -1812,5 +1814,122 @@ TEST_F(GpuHloScheduleTest, LogAnErrorWhenArgumentSizeExceedsMemoryLimit) {
   EXPECT_EQ(metadata.scheduler_mem_limit, 0);
 }
 
+namespace detail {
+
+class IsUnifiedAnalyticalModelEnabledTest : public HloTestBase {
+ protected:
+  IsUnifiedAnalyticalModelEnabledTest()
+      : gpu_device_info_(TestGpuDeviceInfo::RTXA6000DeviceInfo()) {}
+
+  std::unique_ptr<HloModule> CreateTestModule(
+      const HloModuleConfig& config,
+      const std::string& module_name = "test_module") {
+    auto module = std::make_unique<HloModule>(module_name, config);
+    HloComputation::Builder builder("entry");
+    auto param = builder.AddInstruction(HloInstruction::CreateParameter(
+        0, ShapeUtil::MakeShape(F32, {}), "param"));
+    module->AddEntryComputation(builder.Build(param));
+    return module;
+  }
+
+  // Helper to add an AllReduce instruction to a module's entry computation.
+  void AddAllReduce(HloModule* module) {
+    HloComputation* entry = module->entry_computation();
+    Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+    auto dummy_operand = entry->AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::CreateR2<float>({{1, 2}, {3, 4}})));
+    Shape s(shape.element_type(), /*dimensions=*/{});
+    HloComputation::Builder wrapped_computation("wrapped_computation");
+    HloInstruction* a = wrapped_computation.AddInstruction(
+        HloInstruction::CreateParameter(0, s, "p0.1"));
+    HloInstruction* b = wrapped_computation.AddInstruction(
+        HloInstruction::CreateParameter(1, s, "p0.2"));
+    wrapped_computation.AddInstruction(
+        HloInstruction::CreateBinary(s, HloOpcode::kAdd, a, b));
+
+    HloComputation* subcomp =
+        module->AddEmbeddedComputation(wrapped_computation.Build());
+    entry->AddInstruction(HloInstruction::CreateAllReduce(
+        shape, {dummy_operand}, subcomp,
+        /*replica_groups=*/{}, /*constrain_layout=*/false,
+        /*channel_id=*/std::nullopt, /*use_global_device_ids=*/false));
+  }
+
+  // Helper to add a CollectivePermute instruction.
+  void AddCollectivePermute(HloModule* module) {
+    HloComputation* entry = module->entry_computation();
+    Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+    auto dummy_operand = entry->AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::CreateR2<float>({{1, 2}, {3, 4}})));
+    entry->AddInstruction(HloInstruction::CreateCollectivePermute(
+        shape, dummy_operand, /*source_target_pairs=*/{}, std::nullopt));
+  }
+
+  se::DeviceDescription gpu_device_info_;
+};
+
+TEST_F(IsUnifiedAnalyticalModelEnabledTest, EnabledBySolEstimatorFlagOnHopper) {
+  HloModuleConfig config;
+  config.mutable_debug_options()
+      .set_xla_gpu_enable_analytical_sol_latency_estimator(true);
+  gpu_device_info_.set_cuda_compute_capability(9, 0);  // Hopper
+
+  auto module = CreateTestModule(config);
+  EXPECT_TRUE(IsUnifiedAnalyticalModelEnabled(*module, gpu_device_info_));
+}
+
+TEST_F(IsUnifiedAnalyticalModelEnabledTest, DisabledIfFlagIsOffOnHopper) {
+  HloModuleConfig config;
+
+  gpu_device_info_.set_cuda_compute_capability(9, 0);  // Hopper
+
+  auto module = CreateTestModule(config);
+
+  EXPECT_FALSE(IsUnifiedAnalyticalModelEnabled(*module, gpu_device_info_));
+}
+
+TEST_F(IsUnifiedAnalyticalModelEnabledTest,
+       DisabledForHopperWithUnsupportedCollective) {
+  HloModuleConfig config;
+  config.mutable_debug_options()
+      .set_xla_gpu_enable_analytical_sol_latency_estimator(true);
+
+  gpu_device_info_.set_cuda_compute_capability(9, 0);  // Hopper
+
+  auto module = CreateTestModule(config);
+  AddCollectivePermute(module.get());  // Unsupported collective
+
+  EXPECT_FALSE(IsUnifiedAnalyticalModelEnabled(*module, gpu_device_info_));
+}
+
+TEST_F(IsUnifiedAnalyticalModelEnabledTest,
+       DisabledForHopperWithMixedCollectives) {
+  HloModuleConfig config;
+  config.mutable_debug_options()
+      .set_xla_gpu_enable_analytical_sol_latency_estimator(true);
+
+  gpu_device_info_.set_cuda_compute_capability(9, 0);  // Hopper
+
+  auto module = CreateTestModule(config);
+  AddAllReduce(module.get());          // Supported
+  AddCollectivePermute(module.get());  // Unsupported
+
+  EXPECT_FALSE(IsUnifiedAnalyticalModelEnabled(*module, gpu_device_info_));
+}
+
+TEST_F(IsUnifiedAnalyticalModelEnabledTest, DisabledIfNotHopper) {
+  HloModuleConfig config;
+  config.mutable_debug_options()
+      .set_xla_gpu_enable_analytical_sol_latency_estimator(true);
+
+  gpu_device_info_.set_cuda_compute_capability(8, 0);  // Not Hopper
+
+  auto module = CreateTestModule(config);
+  AddAllReduce(module.get());  // Supported collective
+
+  EXPECT_FALSE(IsUnifiedAnalyticalModelEnabled(*module, gpu_device_info_));
+}
+
+}  // namespace detail
 }  // namespace gpu
 }  // namespace xla

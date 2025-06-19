@@ -64,6 +64,13 @@ HloInstructionSequence PostProcessSchedule(const HloInstructionSequence& input);
 
 constexpr absl::string_view kFingerprintBeforeLHS = "fingerprint_before_lhs";
 
+namespace detail {
+
+bool IsUnifiedAnalyticalModelEnabled(
+    const HloModule& module, const se::DeviceDescription& gpu_device_info);
+
+}
+
 }  // namespace gpu
 }  // namespace xla
 
