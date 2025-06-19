@@ -18,7 +18,24 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//xla/python/ifrt",
+        "@highwayhash",
+        "@highwayhash//:arch_specific",
+        "@highwayhash//:hh_types",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_program_test",
+    srcs = ["hlo_program_test.cc"],
+    deps = [
+        ":hlo_program",
+        "//xla/pjrt:mlir_to_hlo",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
     ],
 )

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_HLO_HLO_PROGRAM_H_
 #define XLA_PYTHON_IFRT_HLO_HLO_PROGRAM_H_
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -40,6 +41,10 @@ struct HloProgram : llvm::RTTIExtends<HloProgram, Program> {
   mlir::ModuleOp mlir_module;
 
   static char ID;  // NOLINT
+
+  // Returns a fingerprint of the HLO program. Two HLO programs are equivalent
+  // if their fingerprints are the same. May ignore debug info.
+  uint64_t Fingerprint() const;
 
  private:
   std::unique_ptr<mlir::MLIRContext> mlir_context;
