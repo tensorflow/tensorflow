@@ -111,3 +111,8 @@ def ConvertCastComplexFFTToRFFT: Pat<
   (TF_RFFTOp $input,
              (Arith_ConstantOp (GetLastDimSizeAsI32 $input))),
   [(IsRankedShapeLastDimStatic $input), (IsNotComplexType $input)]>;
+
+// Remove SelectV2 if the true and false inputs are the same.
+def RemoveSelectV2IfInputsEqual : Pat<
+  (TF_SelectV2Op $condition, $input, $input),
+  (replaceWithValue $input)>;
