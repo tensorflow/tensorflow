@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -30,13 +31,72 @@ limitations under the License.
 #include "xla/backends/cpu/transforms/onednn_matcher.h"
 #include "xla/backends/cpu/transforms/xnn_matcher.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::cpu {
+namespace {
+
+bool IsCustomFusionWithKind(const HloInstruction* instr,
+                            absl::string_view fusion_kind) {
+  return instr->IsCustomFusion() &&
+         instr->backend_config<BackendConfig>()->fusion_config().kind() ==
+             fusion_kind;
+}
+
+// Fuses a consumer `to_fuse` into `fusion` as the new fusion root.
+// - We cannot call `HloFusionInstruction::FuseInstruction()` because it only
+//   supports fusing a producer into the fusion instruction.
+// - Putting `to_fuse` in a new fusion instruction and calling
+//   `to_fuse->MergeFusionInstruction(fusion)` is also not ideal because we will
+//   have to copy many instructions in `fusion` into the new fusion node.
+absl::Status FuseConsumerInstruction(HloFusionInstruction* fusion,
+                                     HloInstruction* to_fuse) {
+  HloComputation* fused_computation = fusion->fused_instructions_computation();
+  HloInstruction* old_root = fusion->fused_expression_root();
+  std::vector<HloInstruction*> new_operands;
+  for (auto operand : to_fuse->operands()) {
+    if (operand == fusion) {
+      new_operands.push_back(old_root);
+      continue;
+    }
+
+    // Check if the operand is already a fusion operand.
+    int fusion_param_idx = 0;
+    for (auto fusion_operand : fusion->operands()) {
+      if (fusion_operand == operand) {
+        break;
+      }
+      fusion_param_idx++;
+    }
+    if (fusion_param_idx < fusion->operand_count()) {
+      // Reuse the existing fusion parameter.
+      new_operands.push_back(
+          fused_computation->parameter_instruction(fusion_param_idx));
+    } else {
+      // Add a new fusion operand.
+      HloInstruction* new_operand = fusion->AddCallOperand(operand);
+      new_operands.push_back(new_operand);
+    }
+  }
+
+  HloInstruction* new_root = fused_computation->AddInstruction(
+      to_fuse->CloneWithNewOperands(to_fuse->shape(), new_operands));
+  fused_computation->set_root_instruction(
+      new_root,
+      /*accept_different_shape=*/old_root->shape() != new_root->shape());
+
+  TF_RETURN_IF_ERROR(fusion->parent()->ReplaceInstruction(to_fuse, fusion));
+  return absl::OkStatus();
+}
+
+}  // namespace
 
 class DotLibraryRewriteVisitor : public DfsHloRewriteVisitor {
  public:
@@ -50,6 +110,9 @@ class DotLibraryRewriteVisitor : public DfsHloRewriteVisitor {
     }
     if (options.use_xnnpack) {
       libs_.push_back(std::make_unique<XnnMatcher>(target_machine_features_));
+    }
+    for (std::unique_ptr<LibraryMatcher>& lib : libs_) {
+      supported_ops_.merge(lib->SupportedOps());
     }
   }
 
@@ -110,13 +173,45 @@ class DotLibraryRewriteVisitor : public DfsHloRewriteVisitor {
   }
 
   absl::Status DefaultAction(HloInstruction* instr) override {
-    // TODO(penporn): Fuse elementwise ops into dot when library backends
-    // support fusion.
+    // Skip this op if no library supports it.
+    if (!supported_ops_.contains(instr->opcode())) {
+      return absl::OkStatus();
+    }
+
+    // If this op follows a library fusion node and is fusible, fuse it.
+    for (std::unique_ptr<LibraryMatcher>& lib : libs_) {
+      TF_ASSIGN_OR_RETURN(bool op_supported, lib->IsOpSupported(instr));
+      if (!op_supported) {
+        continue;
+      }
+
+      // One of the operands must be a fusion of the same library kind.
+      // If there are more than one, we fuse with the first one.
+      HloFusionInstruction* fusion = nullptr;
+      for (auto operand : instr->operands()) {
+        if (IsCustomFusionWithKind(operand, lib->fusion_kind())) {
+          fusion = Cast<HloFusionInstruction>(
+              const_cast<HloInstruction*>(operand));  // NOLINT
+          break;
+        }
+      }
+
+      // If the custom fusion has multiple users, fusing `instr` into it will
+      // require multi-output support. So we do not fuse it for now.
+      // TODO(penporn): Support multi-output fusion.
+      if (fusion == nullptr || fusion->user_count() > 1) {
+        continue;
+      }
+
+      TF_RETURN_IF_ERROR(FuseConsumerInstruction(fusion, instr));
+      return absl::OkStatus();
+    }
     return absl::OkStatus();
   }
 
  private:
   std::vector<std::unique_ptr<LibraryMatcher>> libs_;
+  absl::flat_hash_set<HloOpcode> supported_ops_;
   const TargetMachineFeatures* target_machine_features_;
   const DotLibraryRewriterOptions options_;
 };

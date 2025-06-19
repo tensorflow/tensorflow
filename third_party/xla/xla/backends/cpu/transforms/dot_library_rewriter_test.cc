@@ -56,7 +56,13 @@ class CpuDotLibraryTest
   }
 
  protected:
-  void RunTest(absl::string_view hlo_template) {
+  struct FusionProperties {
+    HloOpcode fusion_root;
+    int num_fusion_params;
+    int num_instructions_in_fused_computation;
+  };
+
+  void RunTest(absl::string_view hlo_template, FusionProperties expected) {
     // Create TargetMachineFeatures.
     XnnDotRewriteTestSpec spec = GetParam();
     std::unique_ptr<TargetMachineFeatures> features =
@@ -87,11 +93,19 @@ class CpuDotLibraryTest
     HloFusionInstruction* fusion = Cast<HloFusionInstruction>(result);
     EXPECT_EQ(fusion->fusion_kind(), HloInstruction::FusionKind::kCustom);
 
-    // The fusion root must be a dot or a convert because we don't fuse other
-    // elementwise ops yet.
+    // A fusion that ends with dot may have a convert as root if the dot output
+    // must be converted.
     HloInstruction* fusion_root = fusion->fused_expression_root();
-    EXPECT_EQ(fusion_root->opcode(),
-              spec.out_dtype == "bf16" ? HloOpcode::kConvert : HloOpcode::kDot);
+    if (spec.out_dtype == "bf16") {
+      if (expected.fusion_root == HloOpcode::kDot) {
+        expected.fusion_root = HloOpcode::kConvert;
+      }
+      expected.num_instructions_in_fused_computation++;
+    }
+    EXPECT_EQ(fusion_root->opcode(), expected.fusion_root);
+    EXPECT_EQ(fusion->operand_count(), expected.num_fusion_params);
+    EXPECT_EQ(fusion->fused_instructions_computation()->instruction_count(),
+              expected.num_instructions_in_fused_computation);
   }
 };
 
@@ -106,7 +120,7 @@ TEST_P(CpuDotLibraryTest, MatMul) {
                   lhs_contracting_dims={1}, rhs_contracting_dims={0}
     })";
 
-  RunTest(hlo_template);
+  RunTest(hlo_template, {HloOpcode::kDot, 2, 3});
 }
 
 TEST_P(CpuDotLibraryTest, MatMulAndAdd) {
@@ -118,11 +132,101 @@ TEST_P(CpuDotLibraryTest, MatMulAndAdd) {
       %weight = $in_dtype[64,262144]{1,0} parameter(1)
       %addend = $out_dtype[64,262144]{1,0} parameter(2)
       %dot = $out_dtype[64,262144]{1,0} dot(%input, %weight),
-                  lhs_contracting_dims={1}, rhs_contracting_dims={0}
+             lhs_contracting_dims={1}, rhs_contracting_dims={0}
       ROOT %add = $out_dtype[64,262144]{1,0} add(%dot, %addend)
     })";
 
-  RunTest(hlo_template);
+  RunTest(hlo_template, {HloOpcode::kAdd, 3, 5});
+}
+
+TEST_P(CpuDotLibraryTest, MatMulAddSubMulSameInputs) {
+  const absl::string_view hlo_template = R"(
+    HloModule matmul
+
+    ENTRY %main {
+      %input = $in_dtype[64,64]{1,0} parameter(0)
+      %weight = $in_dtype[64,262144]{1,0} parameter(1)
+      %addend = $out_dtype[64,262144]{1,0} parameter(2)
+      %dot = $out_dtype[64,262144]{1,0} dot(%input, %weight),
+             lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      %add = $out_dtype[64,262144]{1,0} add(%dot, %addend)
+      %sub = $out_dtype[64,262144]{1,0} subtract(%add, %addend)
+      ROOT %mul = $out_dtype[64,262144]{1,0} multiply(%sub, %addend)
+    })";
+
+  RunTest(hlo_template, {HloOpcode::kMultiply, 3, 7});
+}
+
+TEST_P(CpuDotLibraryTest, MatMulAddSubMulDifferentInputs) {
+  const absl::string_view hlo_template = R"(
+    HloModule matmul
+
+    ENTRY %main {
+      %input = $in_dtype[64,64]{1,0} parameter(0)
+      %weight = $in_dtype[64,262144]{1,0} parameter(1)
+      %addend = $out_dtype[64,262144]{1,0} parameter(2)
+      %subtractor = $out_dtype[64,262144]{1,0} parameter(3)
+      %multiplier = $out_dtype[64,262144]{1,0} parameter(4)
+      %dot = $out_dtype[64,262144]{1,0} dot(%input, %weight),
+             lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      %add = $out_dtype[64,262144]{1,0} add(%dot, %addend)
+      %sub = $out_dtype[64,262144]{1,0} subtract(%add, %subtractor)
+      ROOT %mul = $out_dtype[64,262144]{1,0} multiply(%sub, %multiplier)
+    })";
+
+  RunTest(hlo_template, {HloOpcode::kMultiply, 5, 9});
+}
+
+TEST_P(CpuDotLibraryTest, MatMulAddSubMulSort) {
+  const absl::string_view hlo_template = R"(
+    HloModule matmul
+
+    compare {
+      lhs = f32[] parameter(0)
+      rhs = f32[] parameter(1)
+      ROOT result = pred[] compare(lhs, rhs), direction=LT
+    }
+
+    ENTRY %main {
+      %input = $in_dtype[64,64]{1,0} parameter(0)
+      %weight = $in_dtype[64,262144]{1,0} parameter(1)
+      %addend = $out_dtype[64,262144]{1,0} parameter(2)
+      %subtractor = $out_dtype[64,262144]{1,0} parameter(3)
+      %multiplier = $out_dtype[64,262144]{1,0} parameter(4)
+      %exponent = $out_dtype[64,262144]{1,0} parameter(5)
+      %dot = $out_dtype[64,262144]{1,0} dot(%input, %weight),
+             lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      %add = $out_dtype[64,262144]{1,0} add(%dot, %addend)
+      %sub = $out_dtype[64,262144]{1,0} subtract(%add, %subtractor)
+      %mul = $out_dtype[64,262144]{1,0} multiply(%sub, %multiplier)
+      ROOT %sorted = $out_dtype[64,262144] sort(%mul),
+                     dimensions={0}, to_apply=compare
+    })";
+
+  // Sort is not supported by xnn_emitter and should not be in the fusion.
+  RunTest(hlo_template, {HloOpcode::kMultiply, 5, 9});
+}
+
+TEST_P(CpuDotLibraryTest, DoNotFuseMultiOutputs) {
+  const absl::string_view hlo_template = R"(
+    HloModule matmul
+
+    ENTRY %main {
+      %input = $in_dtype[64,64]{1,0} parameter(0)
+      %weight = $in_dtype[64,262144]{1,0} parameter(1)
+      %addend = $out_dtype[64,262144]{1,0} parameter(2)
+      %val1 = $out_dtype[64,262144]{1,0} parameter(3)
+      %val2 = $out_dtype[64,262144]{1,0} parameter(4)
+      %dot = $out_dtype[64,262144]{1,0} dot(%input, %weight),
+             lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      %add = $out_dtype[64,262144]{1,0} add(%dot, %addend)
+      %sub1 = $out_dtype[64,262144]{1,0} subtract(%add, %val1)
+      %sub2 = $out_dtype[64,262144]{1,0} subtract(%add, %val2)
+      ROOT %mul = $out_dtype[64,262144]{1,0} multiply(%sub1, %sub2)
+    })";
+
+  // `dot + add` fusion has 2 users, so we cannot fuse further.
+  RunTest(hlo_template, {HloOpcode::kAdd, 3, 5});
 }
 
 std::vector<XnnDotRewriteTestSpec> GetXnnDotRewriteTestSpecs() {

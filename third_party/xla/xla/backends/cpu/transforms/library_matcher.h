@@ -18,10 +18,12 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 
 namespace xla::cpu {
 
@@ -30,6 +32,9 @@ class LibraryMatcher {
   explicit LibraryMatcher(const TargetMachineFeatures* target_machine_features)
       : target_machine_features_(target_machine_features) {}
   virtual ~LibraryMatcher() = default;
+
+  // Returns the set of supported HLO instructions.
+  virtual absl::flat_hash_set<HloOpcode> SupportedOps() const = 0;
 
   // Returns true if the HLO instruction is supported by the library.
   virtual absl::StatusOr<bool> IsOpSupported(const HloInstruction* instr) {

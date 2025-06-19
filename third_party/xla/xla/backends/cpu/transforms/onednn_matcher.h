@@ -16,10 +16,12 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_TRANSFORMS_ONEDNN_MATCHER_H_
 #define XLA_BACKENDS_CPU_TRANSFORMS_ONEDNN_MATCHER_H_
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/transforms/library_matcher.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 
 namespace xla::cpu {
 
@@ -28,6 +30,12 @@ class OneDnnMatcher : public LibraryMatcher {
   explicit OneDnnMatcher(const TargetMachineFeatures* target_machine_features)
       : LibraryMatcher(target_machine_features) {}
   ~OneDnnMatcher() override = default;
+
+  // Returns the set of supported HLO instructions.
+  absl::flat_hash_set<HloOpcode> SupportedOps() const override {
+    static const auto* kSupportedOps = new absl::flat_hash_set<HloOpcode>{};
+    return *kSupportedOps;
+  }
 
   // Returns true if the HLO instruction is supported by the library.
   absl::StatusOr<bool> IsOpSupported(const HloInstruction* instr) override {
