@@ -1493,8 +1493,10 @@ TEST_P(TritonAndBlasSupportForDifferentTensorSizes,
 // non-negative.
 void MakeNonNegative(std::vector<Literal>& fake_arguments) {
   for (Literal& literal : fake_arguments) {
-    literal.MutableEachCell<float>([](absl::Span<const int64_t> indices,
-                                      float value) { return std::abs(value); });
+    absl::Span<float> data = literal.data<float>();
+    for (int i = 0; i < data.size(); ++i) {
+      data[i] = std::abs(data[i]);
+    }
   }
 }
 
@@ -1617,16 +1619,24 @@ double CalculateStdDev(absl::Span<const double> values, double mean) {
 }
 
 template <typename T>
-void PrintStats(absl::string_view name, absl::Span<T> values,
-                const std::vector<double>& expected_values) {
-  // Build the histogram of the relative differences.
+std::vector<double> CalculateRelErrors(absl::Span<T> values,
+                                       const std::vector<double>& ref_values) {
   std::vector<double> rel_errors;
   rel_errors.reserve(values.size());
   for (int i = 0; i < values.size(); ++i) {
-    double rel_difference =
-        ((double)values[i] - expected_values[i]) / std::abs(expected_values[i]);
-    rel_errors.push_back(rel_difference);
+    double value = values[i];
+    double ref_value = ref_values[i];
+    double rel_error = (value - ref_value) / ref_value;
+    rel_errors.push_back(rel_error);
   }
+  return rel_errors;
+}
+
+template <typename T>
+void PrintStats(absl::string_view name, absl::Span<T> values,
+                const std::vector<double>& expected_values) {
+  // Build the histogram of the relative differences.
+  std::vector<double> rel_errors = CalculateRelErrors(values, expected_values);
   double max_rel_error =
       *std::max_element(rel_errors.begin(), rel_errors.end());
   double min_rel_error =
@@ -1739,6 +1749,7 @@ class PrecisionTests
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                         ParseAndReturnVerifiedModule(hlo_text));
     auto debug_options = module->config().debug_options();
+    debug_options.set_xla_gpu_enable_split_k_autotuning(false);
     if (backend == Backend::kTriton) {
       debug_options.set_xla_gpu_enable_triton_gemm(true);
       debug_options.set_xla_gpu_cublas_fallback(false);
@@ -1866,6 +1877,78 @@ TEST_P(PrecisionTests, PrecisionCheck) {
   EXPECT_THAT(llvm::zip(test_result.data<float>(), ref_result),
               ::testing::Each(RelativeDifferenceIsWithin(
                   GetMaxRelErrorForSmallContractingDim(backend, algorithm))));
+}
+
+TEST_P(PrecisionTests, CheckPrecisionDegradationAlongKDimension) {
+  // The goal of this test is to show the precision degradation along the
+  // contracting dimension. We want to check how much the relative error
+  // increases as we increase the size of the contracting dimension.
+  if (!VLOG_IS_ON(1)) {
+    GTEST_SKIP()
+        << "Precision degradation is only tested with vlog level > 0.\n"
+        << "To run the test, set --v=1 and rerun the test.\n"
+        << "The test is quite slow and produces output for manual inspection.";
+  }
+  if (std::holds_alternative<se::RocmComputeCapability>(GpuComputeComp())) {
+    GTEST_SKIP() << "Precision tests is unknown for ROCM.";
+  }
+  Backend backend = std::get<1>(GetParam());
+  if (backend == Backend::kBlas) {
+    GTEST_SKIP() << "Precision degradation is only tested for Triton.";
+  }
+  PC::Algorithm algorithm = std::get<0>(GetParam());
+  // Use small m and n and go over a range of k.
+  constexpr int kMSize = 32;
+  constexpr int kNSize = 32;
+  constexpr int kMinKSize = 64;
+  constexpr int kMaxKSize = 1024 * 1024;
+  CSVWriter csv_writer;
+  csv_writer.appendRow<std::string>(
+      {"iterations_along_k", "max(abs(rel_errors))", "std_dev(rel_errors)"});
+  for (int k = kMinKSize; k <= kMaxKSize; k *= 2) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<HloModule> test_module,
+        GetSimpleDotModule(kMSize, kNSize, k, algorithm, backend));
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::vector<Literal> fake_arguments,
+        MakeFakeArguments(test_module.get(), /*pseudo_random=*/
+                          true,
+                          /*use_large_range=*/false,
+                          /*treat_gte_as_data_formatting=*/false,
+                          /*max_bits_of_precision=*/23));
+    // Ensure there are no negative arguments to avoid unbounded relative errors
+    // due to subtracting two similarly large numbers.
+    MakeNonNegative(fake_arguments);
+    std::vector<const Literal*> fake_argument_ptrs =
+        GetLiteralPointers(fake_arguments);
+    std::vector<double> ref_result =
+        RunReferenceDot(fake_argument_ptrs, kMSize, kNSize, k);
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto executable,
+        test_runner().CreateExecutable(std::move(test_module), false));
+    TF_ASSERT_OK_AND_ASSIGN(
+        Literal test_result,
+        test_runner().ExecuteWithExecutable(executable.get(), fake_arguments));
+    std::vector<double> rel_errors =
+        CalculateRelErrors(test_result.data<float>(), ref_result);
+    double max_rel_error =
+        *std::max_element(rel_errors.begin(), rel_errors.end());
+    double min_rel_error =
+        *std::min_element(rel_errors.begin(), rel_errors.end());
+    double max_abs_rel_error =
+        std::max(std::abs(min_rel_error), std::abs(max_rel_error));
+    double mean_rel_error =
+        std::accumulate(rel_errors.begin(), rel_errors.end(), 0.0) /
+        rel_errors.size();
+    double std_dev_rel_error = CalculateStdDev(rel_errors, mean_rel_error);
+    csv_writer.nextRow();
+    csv_writer.appendValue(k / kMinKSize);
+    csv_writer.appendValue(absl::StrFormat("%1.3e", max_abs_rel_error));
+    csv_writer.appendValue(absl::StrFormat("%1.3e", std_dev_rel_error));
+  }
+  auto name =
+      absl::StrCat(BackendToString(backend), "_", AlgorithmToString(algorithm));
+  std::cerr << csv_writer.GetResult(name);
 }
 
 INSTANTIATE_TEST_SUITE_P(
