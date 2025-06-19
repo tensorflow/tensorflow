@@ -46,11 +46,11 @@ namespace xla::ifrt {
 char HloProgram::ID = 0;
 
 absl::StatusOr<std::string> HloProgram::ToBytes() const {
-  tsl::StatusScopedDiagnosticHandler diag_handler(mlir_module->getContext());
+  tsl::StatusScopedDiagnosticHandler diag_handler(mlir_module_->getContext());
   std::string serialized;
   llvm::raw_string_ostream out(serialized);
-  mlir::LogicalResult result =
-      mlir::writeBytecodeToFile(mlir_module, out, mlir::BytecodeWriterConfig());
+  mlir::LogicalResult result = mlir::writeBytecodeToFile(
+      mlir_module_, out, mlir::BytecodeWriterConfig());
   absl::Status status = diag_handler.consumeStatus();
   if (!status.ok()) {
     tsl::errors::AppendToMessage(
@@ -126,7 +126,7 @@ uint64_t HloProgram::Fingerprint() const {
   HighwayHashStream os;
   mlir::OpPrintingFlags flags;
   flags.enableDebugInfo(false);
-  mlir_module->print(os, flags);
+  mlir_module_->print(os, flags);
   return std::move(os).fingerprint();
 }
 

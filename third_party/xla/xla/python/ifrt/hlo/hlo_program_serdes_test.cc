@@ -87,7 +87,7 @@ module {
 
   // Verify that the deserialized program has no MHLO ops.
   bool has_unsupported_dialect = false;
-  xla_program->mlir_module->walk([&](mlir::Operation *op) {
+  xla_program->mlir_module()->walk([&](mlir::Operation *op) {
     if (!llvm::isa<mlir::BuiltinDialect, mlir::func::FuncDialect,
                    mlir::stablehlo::StablehloDialect>(op->getDialect())) {
       LOG(ERROR) << "Found an op with an unsupported dialect: "

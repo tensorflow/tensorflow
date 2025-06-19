@@ -764,7 +764,7 @@ class NanoExecutable final
       return InvalidArgument("NanoRT requires an HloProgram");
     }
     XlaComputation computation;
-    TF_RETURN_IF_ERROR(MlirToXlaComputation(xla_program->mlir_module,
+    TF_RETURN_IF_ERROR(MlirToXlaComputation(xla_program->mlir_module(),
                                             computation, false, true, false));
     TF_ASSIGN_OR_RETURN(auto nano_executable,
                         client->nano_client()->Compile(computation));
