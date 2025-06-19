@@ -247,6 +247,11 @@ void TfLiteQuantizationFree(TfLiteQuantization* quantization) {
     }
     free(q_params);
   }
+  if (quantization->type == kTfLiteBlockwiseQuantization) {
+    TfLiteBlockwiseQuantization* q_params =
+        reinterpret_cast<TfLiteBlockwiseQuantization*>(quantization->params);
+    free(q_params);
+  }
   quantization->params = nullptr;
   quantization->type = kTfLiteNoQuantization;
 }

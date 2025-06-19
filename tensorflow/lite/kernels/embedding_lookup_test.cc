@@ -42,16 +42,30 @@ class BaseEmbeddingLookupOpModel : public SingleOpModel {
       std::initializer_list<int> weight_shape,
       TensorType weight_type = TensorType_FLOAT32,
       TensorType output_type = TensorType_FLOAT32,
-      const std::vector<float>& per_channel_quantization_scales = {}) {
+      const std::vector<float>& per_channel_quantization_scales = {},
+      int blocksize = 0) {
     input_ = AddInput(TensorType_INT32);
     if (per_channel_quantization_scales.empty()) {
       weight_ = AddInput(weight_type);
     } else {
       std::vector<int64_t> per_channel_quantization_offsets(
           per_channel_quantization_scales.size(), 0);
-      weight_ = AddInput({weight_type, weight_shape, 0, 0, 0, 0, true,
+      weight_ = AddInput({/*type=*/weight_type,
+                          /*shape=*/weight_shape,
+                          /*min=*/0.0f,
+                          /*max=*/0.0f,
+                          /*scale=*/0.0f,
+                          /*zero_point=*/0,
+                          /*per_channel_quantization=*/true,
                           per_channel_quantization_scales,
-                          per_channel_quantization_offsets, 0});
+                          per_channel_quantization_offsets,
+                          /*channel_index=*/0,
+                          /*traversal_order=*/{},
+                          /*format=*/{},
+                          /*block_size=*/{},
+                          /*block_map=*/{},
+                          /*shape_signature=*/{},
+                          /*per_block_quantization=*/blocksize});
     }
     output_ = AddOutput(output_type);
     SetBuiltinOp(BuiltinOperator_EMBEDDING_LOOKUP, BuiltinOptions_NONE, 0);
@@ -136,6 +150,19 @@ class PerAxisHybridEmbeddingLookupOpModel : public BaseEmbeddingLookupOpModel {
 
   void SetSignedWeight(std::initializer_list<float> data) {
     PerChannelSymmetricQuantizeAndPopulate(weight_, data);
+  }
+};
+
+class PerBlockHybridEmbeddingLookupOpModel : public BaseEmbeddingLookupOpModel {
+ public:
+  PerBlockHybridEmbeddingLookupOpModel(std::initializer_list<int> index_shape,
+                                       std::initializer_list<int> weight_shape,
+                                       TensorType type, int blocksize,
+                                       std::vector<float> scales)
+      : BaseEmbeddingLookupOpModel(index_shape, weight_shape, type,
+                                   TensorType_FLOAT32, scales, blocksize) {}
+  void SetSignedWeight(std::initializer_list<float> data) {
+    PerBlockSymmetricQuantizeAndPopulate(weight_, data);
   }
 };
 
@@ -387,9 +414,38 @@ TEST(PerAxisHybridEmbeddingLookupHybridOpTest, PerAxisSimple4DTestInt8) {
                   kTestTolerance)));
 }
 
+TEST(PerBlockHybridEmbeddingLookupHybridOpTest, PerBlockSimple2DTestInt4) {
+  PerBlockHybridEmbeddingLookupOpModel m(
+      /*index_shape=*/{3},
+      /*weight_shape=*/{3, 8},
+      /*type=*/TensorType_INT4,
+      /*blocksize=*/4,
+      /*scales=*/{0.001, 0.001, 0.02, 0.02, 0.3, 0.3});
+  m.SetInput({1, 0, 2});
+  m.SetSignedWeight({
+      0.00, 0.007, 0.006, 0.005, 0.004, 0.003, 0.002, 0.001,  // Row 0
+      0.02, -0.02, 0.04,  0.06,  0.08,  -0.04, -0.08, -0.06,  // Row 1
+      0.3,  0.6,   0.9,   1.2,   1.5,   -0.3,  -0.6,  -0.9,   // Row 2
+  });
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(
+      m.GetOutput<float>(),
+      ElementsAreArray(ArrayFloatNear(
+          {
+              0.02, -0.02, 0.04,  0.06,  0.08,  -0.04, -0.08, -0.06,  // Row 1
+              0.00, 0.007, 0.006, 0.005, 0.004, 0.003, 0.002, 0.001,  // Row 0
+              0.3,  0.6,   0.9,   1.2,   1.5,   -0.3,  -0.6,  -0.9,   // Row 2
+          },
+          kTestTolerance)));
+}
+
 TEST(PerAxisHybridEmbeddingLookupHybridOpTest, PerAxisSimple2DTestInt4) {
-  PerAxisHybridEmbeddingLookupOpModel m({3}, {3, 8}, {0.001, 0.02, 0.3},
-                                        TensorType_INT4);
+  PerAxisHybridEmbeddingLookupOpModel m(
+      /*index_shape=*/{3}, /*weight_shape=*/{3, 8},
+      /*per_channel_quantization_scales=*/{0.001, 0.02, 0.3},
+      /*type=*/TensorType_INT4);
   m.SetInput({1, 0, 2});
   m.SetSignedWeight({
       0.00, 0.007, 0.006, 0.005, 0.004, 0.003, 0.002, 0.001,  // Row 0
