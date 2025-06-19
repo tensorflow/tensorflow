@@ -95,5 +95,21 @@ module @foo {
   EXPECT_EQ(hlo_program1->Fingerprint(), hlo_program2->Fingerprint());
 }
 
+TEST(HloProgramTest, BytesRoundTrip) {
+  static constexpr absl::string_view kModule = R"(
+module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
+  func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
+    %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
+    %1 = mhlo.add %arg0, %0 : tensor<f32>
+    return %1 : tensor<f32>
+  }
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto program, ParseHloProgramString(kModule));
+  TF_ASSERT_OK_AND_ASSIGN(auto serialized, program->ToBytes());
+  TF_ASSERT_OK_AND_ASSIGN(auto deserialized, HloProgram::FromBytes(serialized));
+  EXPECT_EQ(program->Fingerprint(), deserialized->Fingerprint());
+}
+
 }  // namespace
 }  // namespace xla::ifrt
