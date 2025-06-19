@@ -852,7 +852,6 @@ cc_library(
     hdrs = ["all_reduce_kernel.h"],
     deps = [
         "//xla/service:collective_ops_utils",
-        "//xla/stream_executor:device_memory",
         "//xla/stream_executor:kernel",
     ],
 )
