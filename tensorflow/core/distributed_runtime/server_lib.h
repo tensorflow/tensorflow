@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
