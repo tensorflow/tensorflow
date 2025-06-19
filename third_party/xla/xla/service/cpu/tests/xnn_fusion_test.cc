@@ -336,19 +336,19 @@ TEST_F(XnnFusionTest, UnsupportedOp) {
 
     xnn_fusion {
       %x = f32[10] parameter(0)
-      ROOT %sqrt = f32[10] sqrt(%x)
+      ROOT %e = f32[10] erf(%x)
     }
 
     ENTRY entry {
       %x = f32[10] parameter(0)
-      ROOT %sqrt = f32[10] fusion(%x), kind=kCustom, calls=xnn_fusion,
+      ROOT %e = f32[10] fusion(%x), kind=kCustom, calls=xnn_fusion,
         backend_config={"fusion_config": {kind: "__xnn_fusion"}}
     })";
 
   auto status = RunAndCompare(kModuleStr, ErrorSpec{0.0});
   EXPECT_FALSE(status);
   EXPECT_THAT(status.message(),
-              HasSubstr("Unsupported XNNPACK fusion instruction"));
+              HasSubstr("Unsupported elementwise instruction in XNN fusion"));
 }
 
 }  // namespace

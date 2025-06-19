@@ -1000,9 +1000,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
       // Decide whether to use XNNPACK or Eigen.
       bool use_xnn = hlo_module_config_.debug_options().xla_cpu_use_xnnpack();
       if (use_xnn) {
-        TF_ASSIGN_OR_RETURN(use_xnn,
-                            IsXnnDotSupported(dnums, lhs->shape(), rhs->shape(),
-                                              instruction->shape()));
+        TF_ASSIGN_OR_RETURN(
+            use_xnn, IsDotSupportedByXnn(dnums, lhs->shape(), rhs->shape(),
+                                         instruction->shape()));
       }
 
       if (use_xnn) {

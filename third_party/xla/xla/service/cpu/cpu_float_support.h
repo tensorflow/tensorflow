@@ -44,9 +44,9 @@ class CpuFloatSupport : public FloatSupport {
   // supported by XNNPACK.
   bool ShouldSkipInstruction(const HloInstruction& hlo) const override {
     return hlo.opcode() == HloOpcode::kDot && call_library_for_dot_(hlo) &&
-           IsXnnDotSupported(hlo.dot_dimension_numbers(),
-                             hlo.operand(0)->shape(), hlo.operand(1)->shape(),
-                             hlo.shape(), cpu_features_)
+           IsDotSupportedByXnn(hlo.dot_dimension_numbers(),
+                               hlo.operand(0)->shape(), hlo.operand(1)->shape(),
+                               hlo.shape(), cpu_features_)
                .value_or(false);
   }
 

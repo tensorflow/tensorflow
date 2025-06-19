@@ -39,7 +39,7 @@ class XnnMatcher : public LibraryMatcher {
     if (instr->opcode() != HloOpcode::kDot) {
       return false;
     }
-    return IsXnnDotSupported(
+    return IsDotSupportedByXnn(
         instr->dot_dimension_numbers(), instr->operand(0)->shape(),
         instr->operand(1)->shape(), instr->shape(), target_machine_features_);
   }

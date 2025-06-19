@@ -195,7 +195,7 @@ static absl::StatusOr<uint32_t> DefineBatchMatMul(xnn_subgraph_t subgraph,
   const Shape& rhs_shape = instr->operand(1)->shape();
   TF_ASSIGN_OR_RETURN(
       bool is_supported,
-      IsXnnDotSupported(dnums, lhs_shape, rhs_shape, instr->shape()));
+      IsDotSupportedByXnn(dnums, lhs_shape, rhs_shape, instr->shape()));
 
   if (!is_supported) {
     if (subgraph != nullptr) XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));
@@ -249,27 +249,41 @@ static absl::StatusOr<xnn_subgraph_t> EmitXnnSubgraph(
   auto instructions = computation->MakeInstructionPostOrder();
 
   for (const HloInstruction* instr : instructions) {
+    if (instr->IsConstant()) {
+      if (!IsConstantSupportedByXnn(instr)) {
+        XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));
+        return InvalidArgument(
+            "Unsupported constant instruction in XNN fusion: %s",
+            instr->ToString());
+      }
+      TF_ASSIGN_OR_RETURN(tensor_ids[instr],
+                          DefineConstant(subgraph, literals, instr));
+      continue;
+    }
+
+    if (instr->IsElementwise()) {
+      if (!IsElementwiseOpSupportedByXnn(instr)) {
+        XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));
+        return InvalidArgument(
+            "Unsupported elementwise instruction in XNN fusion: %s",
+            instr->ToString());
+      }
+      if (instr->operand_count() == 1) {
+        TF_ASSIGN_OR_RETURN(tensor_ids[instr],
+                            DefineUnaryOp(subgraph, tensor_ids, instr));
+      } else if (instr->operand_count() == 2) {
+        TF_ASSIGN_OR_RETURN(tensor_ids[instr],
+                            DefineBinaryOp(subgraph, tensor_ids, instr));
+      } else {
+        CHECK(false) << "Unexpected operand count " << instr->operand_count();
+      }
+      continue;
+    }
+
     switch (instr->opcode()) {
       case HloOpcode::kParameter: {
         TF_ASSIGN_OR_RETURN(tensor_ids[instr],
                             DefineParameter(subgraph, instr));
-      } break;
-
-      case HloOpcode::kConstant: {
-        TF_ASSIGN_OR_RETURN(tensor_ids[instr],
-                            DefineConstant(subgraph, literals, instr));
-      } break;
-
-      case HloOpcode::kConvert: {
-        TF_ASSIGN_OR_RETURN(tensor_ids[instr],
-                            DefineUnaryOp(subgraph, tensor_ids, instr));
-      } break;
-
-      case HloOpcode::kAdd:
-      case HloOpcode::kSubtract:
-      case HloOpcode::kMultiply: {
-        TF_ASSIGN_OR_RETURN(tensor_ids[instr],
-                            DefineBinaryOp(subgraph, tensor_ids, instr));
       } break;
 
       case HloOpcode::kDot: {

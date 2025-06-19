@@ -600,10 +600,10 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   };
   HloPredicate upcaster_filter = [&](const HloInstruction* instr) {
     if (!call_library_for_dot(*instr)) return true;
-    return !IsXnnDotSupported(instr->dot_dimension_numbers(),
-                              instr->operand(0)->shape(),
-                              instr->operand(1)->shape(), instr->shape(),
-                              target_machine_features)
+    return !IsDotSupportedByXnn(instr->dot_dimension_numbers(),
+                                instr->operand(0)->shape(),
+                                instr->operand(1)->shape(), instr->shape(),
+                                target_machine_features)
                 .value_or(false);
   };
   pipeline.AddPass<OperandUpcaster>(upcaster_filter);

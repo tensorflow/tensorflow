@@ -37,7 +37,7 @@ bool XnnShouldUseThreadPool(const HloComputation* computation);
 
 // Returns true if the dot operation is supported by XNNPACK. Returns an error
 // if the dot operation shape is invalid.
-absl::StatusOr<bool> IsXnnDotSupported(
+absl::StatusOr<bool> IsDotSupportedByXnn(
     const DotDimensionNumbers& dot_dimensions, const Shape& lhs_shape,
     const Shape& rhs_shape, const Shape& out_shape,
     const TargetMachineFeatures* cpu_features = nullptr);
@@ -45,6 +45,12 @@ absl::StatusOr<bool> IsXnnDotSupported(
 absl::StatusOr<xnn_datatype> XnnDatatype(const PrimitiveType& type);
 absl::StatusOr<xnn_unary_operator> XnnUnaryOperator(const HloOpcode& opcode);
 absl::StatusOr<xnn_binary_operator> XnnBinaryOperator(const HloOpcode& opcode);
+
+// Returns true if the constant is supported by XNNPACK.
+bool IsConstantSupportedByXnn(const HloInstruction* hlo);
+
+// Returns true if the nonconstant elementwise op is supported by XNNPACK.
+bool IsElementwiseOpSupportedByXnn(const HloInstruction* hlo);
 
 }  // namespace xla::cpu
 
