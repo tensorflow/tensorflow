@@ -53,6 +53,17 @@ def workspace():
     # but provides a script for setting up build rules via overlays.
     llvm("llvm-raw")
 
+    # Toolchains for ML projects hermetic builds.
+    # Details: https://github.com/google-ml-infra/rules_ml_toolchain
+    http_archive(
+        name = "rules_ml_toolchain",
+        sha256 = "368dbe2aecf6872c9e05bbee0e47b56f5b0d65827b76ed2219dd2bac2f170f93",
+        strip_prefix = "rules_ml_toolchain-25a2bd8b442e82543f223d507d3391d46ee99284",
+        urls = [
+            "https://github.com/google-ml-infra/rules_ml_toolchain/archive/25a2bd8b442e82543f223d507d3391d46ee99284.tar.gz",
+        ],
+    )
+
 # Alias so it can be loaded without assigning to a different symbol to prevent
 # shadowing previous loads and trigger a buildifier warning.
 tsl_workspace3 = workspace
