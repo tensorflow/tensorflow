@@ -25,9 +25,9 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
+#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/backends/cpu/runtime/sort_thunk.h"
@@ -256,6 +256,7 @@ class ThunkEmitter {
   std::vector<EmittedKernel> kernels_;
 
   FusionCompiler fusion_compiler_;
+  std::unique_ptr<mlir::MLIRContext> mlir_context_;
 };
 
 }  // namespace xla::cpu
