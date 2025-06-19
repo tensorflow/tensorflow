@@ -371,9 +371,13 @@ struct RewriteTensorExtract : OpRewritePattern<mlir::tensor::ExtractOp> {
     }
 
     auto gep = CreateGep(op.getTensor(), linear_index, b);
-    auto load =
-        rewriter.create<ml::LoadOp>(gep.getLoc(), gep.getElemType(), gep)
-            .getResult();
+    auto load_op =
+        rewriter.create<ml::LoadOp>(gep.getLoc(), gep.getElemType(), gep);
+    if (auto no_alias_attr = op->getAttrOfType<mlir::ArrayAttr>(
+            ml::LLVMDialect::getNoAliasAttrName())) {
+      load_op.setNoaliasScopesAttr(no_alias_attr);
+    }
+    auto load = load_op.getResult();
 
     if (is_low_nibble) {
       auto high_value = b.create<mlir::arith::ShRUIOp>(
@@ -519,7 +523,15 @@ struct RewriteTensorInsert : OpRewritePattern<mlir::tensor::InsertOp> {
               ? b.create<arith::BitcastOp>(llvm_type, scalar_value)
               : b.create<UnrealizedConversionCastOp>(llvm_type, scalar_value)
                     .getResult(0);
-      b.create<ml::StoreOp>(scalar_value, gep);
+      auto store_op = b.create<ml::StoreOp>(scalar_value, gep);
+      if (auto alias_scope_attr = op->getAttrOfType<mlir::ArrayAttr>(
+              ml::LLVMDialect::getAliasScopesAttrName())) {
+        store_op.setAliasScopesAttr(alias_scope_attr);
+      }
+      if (auto no_alias_attr = op->getAttrOfType<mlir::ArrayAttr>(
+              ml::LLVMDialect::getNoAliasAttrName())) {
+        store_op.setNoaliasScopesAttr(no_alias_attr);
+      }
       op.replaceAllUsesWith(op.getDest());
     }
 

@@ -198,6 +198,20 @@ def MergePointersToSameSlicePass :
   let constructor = "CreateMergePointersToSameSlicePass()";
 }
 
+def PropagateAliasScopesPass :
+   Pass<"xla-propagate-alias-scopes", "mlir::func::FuncOp"> {
+  let summary = "Propagates alias scopes from function args to tensor modifications.";
+
+  let description = [{
+      Propagates alias scopes from function args to tensor modifications.
+  }];
+
+  let dependentDialects = [
+    "mlir::func::FuncDialect",
+    "mlir::LLVM::LLVMDialect",
+  ];
+}
+
 def PropagateSliceIndicesPass :
    Pass<"xla-propagate-slice-indices", "mlir::ModuleOp"> {
   let summary = "Propagates slice indices from the entry function to all callees.";

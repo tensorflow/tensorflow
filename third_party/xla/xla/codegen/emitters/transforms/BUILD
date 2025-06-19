@@ -62,6 +62,7 @@ cc_library(
         ":atomic_rmw_utils",
         ":convert_pure_call_ops_pass",
         ":passes_inc_gen",
+        ":propagate_alias_scopes",
         ":simplify_affine_pass",
         ":simplify_arith_pass",
         "//xla:shape_util",
@@ -187,5 +188,23 @@ cc_library(
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+    ],
+)
+
+cc_library(
+    name = "propagate_alias_scopes",
+    srcs = ["propagate_alias_scopes.cc"],
+    deps = [
+        ":passes_inc_gen",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
     ],
 )
