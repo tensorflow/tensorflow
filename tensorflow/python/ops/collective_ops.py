@@ -122,16 +122,16 @@ def all_reduce_v2(t,
     timeout: a float. If set to a non zero, set a completion timeout to detect
       staleness.  If the timer goes off, a DeadlineExceededError is raised.  The
       timeout value in seconds. This feature is experimental.
-    ordering_token: a resource tensor on the same device as the op to order
-      the collectives in a per-device manner by auto control dependency.
-      This argument can be omited when there is one collective Op per
-      `tf.function`, or when explicit control dependency is used instead of
-      auto control dependency.
+    ordering_token: a resource tensor on the same device as the op to order the
+      collectives in a per-device manner by auto control dependency. This
+      argument can be omited when there is one collective Op per `tf.function`,
+      or when explicit control dependency is used instead of auto control
+      dependency.
     max_subdivs_per_device: int specifying the maximum number of subdivisions a
-      tensor on a device can be divided into. The runtime uses this contraint to
-      parallelize processing of each per-device tensor. Setting to -1 disables
-      subdivision and reverts to previous behavior of not sub-dividing tensor.
-      Setting to 0 uses sytem defaults.
+      tensor on a device can be divided into. The runtime uses this constraint
+      to parallelize processing of each per-device tensor. Setting to -1
+      disables subdivision and reverts to previous behavior of not sub-dividing
+      tensor. Setting to 0 uses system defaults.
     name: name of the Op.
 
   Returns:
@@ -220,11 +220,11 @@ def all_gather_v2(t,
     timeout: a float. If set to a non zero, set a completion timeout to detect
       staleness. If the timer goes off, a DeadlineExceededError is raised. The
       timeout value in seconds. This feature is experimental.
-    ordering_token: a resource tensor on the same device as the op to order
-      the collectives in a per-device manner by auto control dependency.
-      This argument can be omited when there is one collective Op per
-      `tf.function`, or when explicit control dependency is used instead of
-      auto control dependency.
+    ordering_token: a resource tensor on the same device as the op to order the
+      collectives in a per-device manner by auto control dependency. This
+      argument can be omitted when there is one collective Op per `tf.function`,
+      or when explicit control dependency is used instead of auto control
+      dependency.
     name: name of the Op.
 
   Returns:
@@ -477,7 +477,7 @@ def all_reduce_v3(communicator,
       `initialize_communicator`.
     t: the `tf.Tensor` to be reduced.
     reduction: a string. The name of the operation to reduce the values.
-      Accpeted values are `"min"`, `"max"`, `"mul"`, `"add"`.
+      Accepted values are `"min"`, `"max"`, `"mul"`, `"add"`.
     group_assignment: Optional int32 `tf.Tensor` with shape [num_groups,
       num_ranks_per_group]. `group_assignment[i]` represents the ranks in the
       `ith` subgroup.
@@ -525,7 +525,7 @@ def all_to_all_v2(
       timeout value in seconds. This feature is experimental.
     ordering_token: a resource tensor on the same device as the op to order the
       collectives in a per-device manner by auto control dependency. This
-      argument can be omited when there is one collective Op per `tf.function`,
+      argument can be omitted when there is one collective Op per `tf.function`,
       or when explicit control dependency is used instead of auto control
       dependency.
     name: name of the Op.
