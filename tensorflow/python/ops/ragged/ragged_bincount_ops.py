@@ -67,7 +67,7 @@ def bincount(arr: ragged_tensor.RaggedTensor,
   summed).
 
   There is an equivilance between bin-counting with weights and
-  `unsorted_segement_sum` where `data` is the weights and `segment_ids` are the
+  `unsorted_segment_sum` where `data` is the weights and `segment_ids` are the
   values.
 
   >>> data = tf.ragged.constant([[1, 1], [2, 3, 2, 4, 4, 5]])
