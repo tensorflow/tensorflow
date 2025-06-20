@@ -71,6 +71,33 @@ std::unique_ptr<tsl::protobuf::Message> ProcessNewEnv3(
   return env;
 }
 
+std::unique_ptr<tsl::protobuf::Message> ProcessCustomDescInFallbackTest(
+    std::unique_ptr<tsl::protobuf::Message> msg_dynamic) {
+  auto new_generated_env =
+      std::make_unique<xla::test::TestCompilationEnvironment1>();
+  // This value is used to identify that the environment was processed via this
+  // specific path for the custom descriptor. It should match the
+  // kExpectedFallbackValue in the test that uses this function.
+  auto kTestSpecificValue = 555;
+  auto kDefaultValueIfInputIsUnexpected = 558;
+
+  new_generated_env->set_some_flag(kDefaultValueIfInputIsUnexpected);
+
+  if (msg_dynamic) {
+    const tsl::protobuf::Reflection* refl = msg_dynamic->GetReflection();
+    const tsl::protobuf::Descriptor* d = msg_dynamic->GetDescriptor();
+    const tsl::protobuf::FieldDescriptor* f = d->FindFieldByName("some_flag");
+    // Check if the incoming dynamic message has the flag set to
+    // kTestSpecificValue
+    if (refl && f && refl->HasField(*msg_dynamic, f) &&
+        refl->GetUInt32(*msg_dynamic, f) == kTestSpecificValue) {
+      new_generated_env->set_some_flag(kTestSpecificValue);
+    }
+  }
+
+  return new_generated_env;
+}
+
 namespace test {
 namespace {
 
@@ -257,6 +284,44 @@ TEST_F(CompilationEnvironmentsTest, InitializeAllKnownEnvs) {
   EXPECT_TRUE(envs.HasEnv<TestCompilationEnvironment3>());
   EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment3>().a_third_flag(), 300);
 }
+
+TEST_F(CompilationEnvironmentsTest, GetEnvTriggersFullNameFallback) {
+  // Create a custom descriptor pool and load the proto into it.
+  const tsl::protobuf::Descriptor* desc_generated =
+      test::TestCompilationEnvironment1::descriptor();
+  tsl::protobuf::DescriptorPool custom_pool(
+      tsl::protobuf::DescriptorPool::generated_pool());
+  tsl::protobuf::FileDescriptorProto file_proto;
+  desc_generated->file()->CopyTo(&file_proto);
+  custom_pool.BuildFile(file_proto);
+
+  // Register a custom handler for the descriptor from the custom_pool.
+  const tsl::protobuf::Descriptor* desc_custom =
+      custom_pool.FindMessageTypeByName(desc_generated->full_name());
+  CompilationEnvironments::RegisterProcessNewEnvFn(
+      desc_custom, ProcessCustomDescInFallbackTest);
+
+  // Create and populate a dynamic message instance using the custom descriptor.
+  tsl::protobuf::DynamicMessageFactory factory(&custom_pool);
+  std::unique_ptr<tsl::protobuf::Message> dynamic_env_instance(
+      factory.GetPrototype(desc_custom)->New());
+  const tsl::protobuf::FieldDescriptor* flag_field =
+      desc_custom->FindFieldByName("some_flag");
+  auto kExpectedFallbackValue = 555;
+  dynamic_env_instance->GetReflection()->SetUInt32(
+      dynamic_env_instance.get(), flag_field, kExpectedFallbackValue);
+
+  // Add this dynamic instance to CompilationEnvironments.
+  CompilationEnvironments envs;
+  TF_ASSERT_OK(envs.AddEnv(std::move(dynamic_env_instance)));
+
+  // Trigger lookup by full_name.
+  const auto& retrieved_env = envs.GetEnv<test::TestCompilationEnvironment1>();
+
+  // Verify that the fallback value was used.
+  EXPECT_EQ(retrieved_env.some_flag(), kExpectedFallbackValue);
+}
+
 }  // namespace
 }  // namespace test
 }  // namespace xla
