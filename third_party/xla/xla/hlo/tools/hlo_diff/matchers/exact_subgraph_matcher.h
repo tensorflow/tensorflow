@@ -28,8 +28,10 @@ namespace hlo_diff {
 // Matcher that matches identical subgraphs starting with the tallest.
 class GreedySubGraphExactMatcher : public HloGumgraphMatcher {
  public:
-  GreedySubGraphExactMatcher(const HloGumgraph* left, const HloGumgraph* right)
-      : HloGumgraphMatcher(MatcherType::kGreedySubGraphExactMatcher),
+  GreedySubGraphExactMatcher(const HloGumgraph* left, const HloGumgraph* right,
+                             bool debug_mode = false)
+      : HloGumgraphMatcher(MatcherType::kGreedySubGraphExactMatcher,
+                           debug_mode),
         left_(*ABSL_DIE_IF_NULL(left)),
         right_(*ABSL_DIE_IF_NULL(right)) {}
   void Match(HloGumgraphMappings& mappings) const override;

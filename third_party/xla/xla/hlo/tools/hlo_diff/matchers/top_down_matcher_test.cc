@@ -267,7 +267,8 @@ ENTRY entry {
                           HloGumgraph::Create(module_r.get()));
   auto mappings = std::make_unique<HloGumgraphMappings>();
   auto matcher = std::make_unique<GreedyTopDownMatcher>(
-      graph_l.get(), graph_r.get(), /*require_same_children=*/true);
+      graph_l.get(), graph_r.get(), /*debug_mode=*/true,
+      /*require_same_children=*/true);
   // Root nodes are matched by default before the matcher is called.
   mappings->MapInstructionsIfAbsent(&graph_l->GetRoot(), &graph_r->GetRoot(),
                                     MatcherType::kManual);

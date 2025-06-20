@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -28,6 +29,8 @@ limitations under the License.
 namespace xla {
 namespace hlo_diff {
 namespace {
+
+using ::testing::DoubleEq;
 
 class HloSimilarityTest : public HloHardwareIndependentTestBase {};
 
@@ -77,6 +80,62 @@ TEST_F(HloSimilarityTest, NodeAttributesSimilarity) {
                                      GetNodeByName(*graph_r, "foo_R")),
             NodeAttributesSimilarity(GetNodeByName(*graph_l, "add_1"),
                                      GetNodeByName(*graph_r, "foo_R")));
+}
+
+TEST_F(HloSimilarityTest, AncestorSubGraphLcsSimilarity) {
+  // Create left module with entry computation containing the following
+  // structure:
+  // [Param foo_L] ------> ┌-------┐
+  //                       | add_1 | ---> ┌-------┐      ┌------┐
+  // [Constant bar_L] ---> └-------┘      | add_0 | ---> | ROOT |
+  // [Param baz_L] ---------------------> └-------┘      └------┘
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
+                          ParseAndReturnVerifiedModule(R"(
+  HloModule module, is_scheduled=true
+  
+  ENTRY entry {
+    foo_L = f32[8,2048]{1,0:T(8,128)} parameter(0)
+    bar_L = f32[8,2048]{1,0:T(8,128)} constant(0)
+    baz_L = f32[8,2048]{1,0:T(8,128)} parameter(1)
+    add_1 = f32[8,2048]{1,0:T(8,128)} add(foo_L, bar_L)
+    add_0 = f32[8,2048]{1,0:T(8,128)} add(add_1, baz_L)
+  }
+  )"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
+                          HloGumgraph::Create(module_l.get()));
+
+  // Create right module with entry computation containing the following
+  // structure:
+  // [Param foo_R] ------> ┌-------┐
+  //                       | add_1 | ---> ┌------------┐      ┌------┐
+  // [Constant bar_R] ---> └-------┘      | subtract_0 | ---> | ROOT |
+  // [Param baz_R] ---------------------> └------------┘      └------┘
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
+                          ParseAndReturnVerifiedModule(R"(
+  HloModule module, is_scheduled=true
+  
+  ENTRY entry {
+    foo_R = f32[8,2048]{1,0:T(8,128)} parameter(0)
+    bar_R = f32[8,2048]{1,0:T(8,128)} constant(0)
+    baz_R = f32[8,2048]{1,0:T(8,128)} parameter(1)
+    add_1 = f32[8,2048]{1,0:T(8,128)} add(foo_R, bar_R)
+    subtract_0 = f32[8,2048]{1,0:T(8,128)} subtract(add_1, baz_R)
+  }
+  )"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
+                          HloGumgraph::Create(module_r.get()));
+  const HloInstructionNode* left_p1 = GetNodeByName(*graph_l, "foo_L");
+  const HloInstructionNode* right_p1 = GetNodeByName(*graph_r, "foo_R");
+  const HloInstructionNode* right_p2 = GetNodeByName(*graph_r, "baz_R");
+  double sim_score_11 = AncestorSubGraphLcsSimilarity(left_p1, right_p1, 3, 1,
+                                                      graph_l->GetNodeCount(),
+                                                      graph_r->GetNodeCount());
+  double sim_score_12 = AncestorSubGraphLcsSimilarity(left_p1, right_p2, 3, 1,
+                                                      graph_l->GetNodeCount(),
+                                                      graph_r->GetNodeCount());
+  EXPECT_THAT(sim_score_11,
+              DoubleEq(2.0 * 2.0 / (3 + 3)));  // LCS(paa, pas) = 2
+  EXPECT_THAT(sim_score_12, DoubleEq(2.0 * 1.0 / (3 + 2)));  // LCS(paa, ps) = 1
 }
 
 TEST_F(HloSimilarityTest, AncestorSubGraphSimilarity) {
