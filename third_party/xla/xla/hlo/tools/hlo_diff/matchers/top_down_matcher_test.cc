@@ -18,9 +18,11 @@
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/log.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph.h"
+#include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph_node.h"
 #include "xla/hlo/tools/hlo_diff/hlo_gumgraph_mappings.h"
 #include "xla/hlo/tools/hlo_diff/utils/test_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -278,6 +280,57 @@ ENTRY entry {
               UnorderedElementsAre(
                   Pair("add.3", "add.3"), Pair("constant.4", "constant.4"),
                   Pair("add.4", "add.4"), Pair("root_L", "root_R")));
+}
+
+// TODO(camillesun): Make the reverse direction test(c20 c21 c22 <-> c20 c21
+// c21) pass. Currently the bipartite matcher only looks at the left to right
+// similarity and cause the problem.
+TEST_F(TopDownMatcherTest, BipartiteTopDownMatcher) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_l,
+                          ParseAndReturnVerifiedModule(R"(
+    HloModule module, is_scheduled=true
+
+    ENTRY entry {
+      c20 = bf16[2]{0} constant({1.1, 2.2})
+      c21 = bf16[2]{0} constant({1.1, 2.2})
+      c22 = bf16[2]{0} constant({5.5, 6.6})
+      p20 = f32[10]{0} parameter(0)
+      p21 = f32[30]{0} parameter(1)
+      ROOT tuple = (bf16[2]{0}, bf16[2]{0}, bf16[2]{0}, bf16[2]{0}, f32[10]{0}, f32[30]{0}) tuple(c20, c21, c21, c22, p20, p21)
+    }
+)"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_l,
+                          HloGumgraph::Create(module_l.get()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::VerifiedHloModule> module_r,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+      c20 = bf16[2]{0} constant({1.1, 2.2})
+      c21 = bf16[2]{0} constant({1.1, 2.2})
+      c22 = bf16[2]{0} constant({1.1, 2.2})
+      c23 = bf16[2]{0} constant({5.5, 6.6})
+      p20 = f32[30]{0} parameter(0)
+      p21 = f32[10]{0} parameter(1)
+      ROOT tuple = (bf16[2]{0}, bf16[2]{0}, bf16[2]{0}, bf16[2]{0}, f32[30]{0}, f32[10]{0}) tuple(c20, c21, c22, c23, p20, p21)
+    }
+)"));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<const HloGumgraph> graph_r,
+                          HloGumgraph::Create(module_r.get()));
+  auto mappings = std::make_unique<HloGumgraphMappings>();
+  auto matcher =
+      std::make_unique<BipartiteTopDownMatcher>(graph_l.get(), graph_r.get());
+  // Root nodes are matched by default before the matcher is called.
+  mappings->MapInstructionsIfAbsent(&graph_l->GetRoot(), &graph_r->GetRoot(),
+                                    MatcherType::kManual);
+  matcher->Match(*mappings);
+  auto mapped_nodes = ExtractMappedInstructionNames(*mappings);
+
+  EXPECT_THAT(mapped_nodes,
+              UnorderedElementsAre(Pair("c20", "c20"), Pair("c21", "c21"),
+                                   Pair("c22", "c23"), Pair("p20", "p21"),
+                                   Pair("p21", "p20"), Pair("tuple", "tuple"),
+                                   Pair("root_L", "root_R")));
 }
 
 }  // namespace
