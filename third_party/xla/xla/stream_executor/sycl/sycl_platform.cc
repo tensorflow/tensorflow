@@ -15,19 +15,13 @@ limitations under the License.
 
 #include "xla/stream_executor/sycl/sycl_platform.h"
 
-#include <algorithm>
-#include <cstdlib>
-#include <cstring>
 #include <memory>
 #include <string>
-#include <utility>
 
-#include "absl/base/call_once.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
