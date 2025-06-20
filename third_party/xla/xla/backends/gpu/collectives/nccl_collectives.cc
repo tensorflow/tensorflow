@@ -230,8 +230,9 @@ NcclCollectives::SplitCommunicators(absl::Span<const Communicator* const> comms,
     return split_comm;
   };
 
-  std::vector<absl::Status> statuses(comms.size());
   std::vector<std::unique_ptr<Communicator>> split_comms(comms.size());
+  absl::Status status;
+  absl::once_flag once;
   {
     tsl::thread::ThreadPool pool(tsl::Env::Default(), "SplitCommunicators",
                                  comms.size());
@@ -241,16 +242,14 @@ NcclCollectives::SplitCommunicators(absl::Span<const Communicator* const> comms,
             NcclCommunicator::Create(std::bind(make_comm, i),
                                      gpu_config.async_execution);
         if (!comm.ok()) {
-          statuses[i] = comm.status();
+          absl::call_once(once, [&] { status = comm.status(); });
           return;
         }
         split_comms[i] = *std::move(comm);
       });
     }
   }  // pool's destructor blocks until all scheduled work is done.
-  for (const absl::Status& s : statuses) {
-    TF_RETURN_IF_ERROR(s);
-  }
+  TF_RETURN_IF_ERROR(status);
   return split_comms;
 #else
   return absl::UnimplementedError(
