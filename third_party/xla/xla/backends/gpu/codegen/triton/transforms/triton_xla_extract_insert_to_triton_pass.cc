@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/codegen/emitter_loc_op_builder.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
+#include "xla/permutation_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -111,9 +112,9 @@ bool CanUseTMA(::xla::EmitterLocOpBuilder& builder, bool tma_enabled,
   if (!TmaIsEnabledForDevice(device_description)) {
     return false;
   }
-  // Currently only 1D/2D tensors are supported.
-  // TODO(b/417039624): Support more dimensions.
-  if (tile_shape.empty() || tile_shape.size() > 2) {
+
+  // Nvidia TMA supports between 1 and up to 5 dimensions.
+  if (tile_shape.empty() || tile_shape.size() > 5) {
     return false;
   }
 
@@ -289,6 +290,16 @@ SmallVector<Value> Normalize(ValueRange values, ArrayRef<int64_t> layout) {
 SmallVector<int64_t> Normalize(ArrayRef<int64_t> values,
                                ArrayRef<int64_t> layout) {
   return NormalizeImpl<int64_t>(values, layout);
+}
+
+// Given the layout of a tensor, return the inverse permutation required to
+// transpose an already normalized tensor to the original tensor.
+SmallVector<int32_t> GetInverseLayoutPermutation(ArrayRef<int64_t> layout) {
+  auto reversed_layout = llvm::to_vector(layout);
+  std::reverse(reversed_layout.begin(), reversed_layout.end());
+  auto permutation =
+      llvm::to_vector_of<int32_t>(::xla::InversePermutation(reversed_layout));
+  return SmallVector<int32_t>(permutation.begin(), permutation.end());
 }
 
 Value CreateAddPtrOp(::xla::EmitterLocOpBuilder& builder,
@@ -486,14 +497,11 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
           IndexCastUI(builder, builder.getI32Type(), normalized_offsets));
 
       // Insert a transpose if the layout is not normalized.
-      // TODO(b/417039624): This needs to be generalized beyond 2D tensors. We
-      // would need to figure out what dim_order should be used and pass it to
-      // the transpose op.
       if (!IsNormalizedLayout(op.getLayout())) {
-        auto dim_order = llvm::to_vector_of<int32_t>(op.getLayout());
-        std::reverse(dim_order.begin(), dim_order.end());
-        auto transpose = builder.create<TransOp>(op.getResultType(),
-                                                 descriptor_load, dim_order);
+        // Transpose an already normalized tensor back to the original layout.
+        auto transpose = builder.create<TransOp>(
+            op.getResultType(), descriptor_load,
+            GetInverseLayoutPermutation(op.getLayout()));
         rewriter.replaceOp(op, transpose);
         return mlir::success();
       }
@@ -574,15 +582,13 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
               .getResult(0);
 
       // Insert a transpose if the layout is not normalized.
-      // TODO(b/417039624): This needs to be generalized beyond 2D tensors. We
-      // would need to figure out what dim_order should be used and pass it to
-      // the transpose op.
       auto src = op.getSrc();
       if (!IsNormalizedLayout(op.getLayout())) {
-        auto dim_order = llvm::to_vector_of<int32_t>(op.getLayout());
-        std::reverse(dim_order.begin(), dim_order.end());
+        // Transpose to a normalized tensor by simply reversing the layout.
+        auto transpose_order = llvm::to_vector_of<int32_t>(op.getLayout());
+        std::reverse(transpose_order.begin(), transpose_order.end());
         src = builder.create<TransOp>(normalized_tile_type, op.getSrc(),
-                                      dim_order);
+                                      transpose_order);
       }
       builder.create<DescriptorStoreOp>(
           cast_to_tensor_desc, src,

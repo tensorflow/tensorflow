@@ -57,25 +57,29 @@ absl::StatusOr<TmaDescriptor> CreateTmaDescriptor(
     return absl::InvalidArgumentError(
         "global_shape and tile_shape must have the same size");
   }
-  if (global_shape.empty() || global_shape.size() > 2) {
-    return absl::InvalidArgumentError("expected 1D or 2D global/tile shapes");
+  if (global_shape.empty() || global_shape.size() > 5) {
+    return absl::InvalidArgumentError(
+        "expected global/tile shapes to be between 1D and 5D");
   }
 
-  SmallVector<uint64_t, 2> global_dims;
+  SmallVector<uint64_t, 5> global_dims;
   for (auto layout_dim : layout) {
     global_dims.push_back(global_shape[layout_dim]);
   }
 
-  SmallVector<uint64_t, 1> global_strides;
-  if (global_dims.size() == 2) {
-    global_strides = {global_dims[0] * element_byte_size};
+  SmallVector<uint64_t, 4> global_strides;
+  if (global_dims.size() >= 2) {
+    global_strides.push_back(global_dims[0] * element_byte_size);
+    for (int i = 1; i < global_dims.size() - 1; ++i) {
+      global_strides.push_back(global_dims[i] * global_strides[i - 1]);
+    }
   }
 
   // Tile strides are reflected in the element strides. Note that the most minor
   // dimension should have a stride of 1.
   CHECK(tile_strides[layout[0]] == 1)
       << "tile stride must be 1 for the most minor dimension";
-  SmallVector<uint32_t, 2> element_strides;
+  SmallVector<uint32_t, 5> element_strides;
   for (auto layout_dim : layout) {
     element_strides.push_back(tile_strides[layout_dim]);
   }
@@ -84,7 +88,7 @@ absl::StatusOr<TmaDescriptor> CreateTmaDescriptor(
   // number of elements in the tile. To load the correct number of
   // elements, we need to multiply the tile strides by the number of elements in
   // the tile.
-  SmallVector<uint32_t, 2> box_dims;
+  SmallVector<uint32_t, 5> box_dims;
   for (auto layout_dim : layout) {
     box_dims.push_back(static_cast<uint32_t>(tile_shape[layout_dim]) *
                        tile_strides[layout_dim]);

@@ -39,6 +39,7 @@ cc_library(
     hdrs = ["passes.h"],
     deps = [
         ":passes_inc_gen",
+        "//xla:permutation_util",
         "//xla:shape_util",
         "//xla/backends/gpu/codegen/triton:emitter_helpers",
         "//xla/backends/gpu/codegen/triton/ir:triton_xla",

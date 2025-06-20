@@ -98,6 +98,105 @@ class TmaParameterizedTritonEmitterTest
 INSTANTIATE_TEST_SUITE_P(TmaParameterizedTritonEmitterTestSuite,
                          TmaParameterizedTritonEmitterTest, ::testing::Bool());
 
+struct TmaAndDotLayoutTestParams {
+  std::vector<int64_t> lhs_layout;
+  std::vector<int64_t> rhs_layout;
+  std::vector<int64_t> out_layout;
+  bool enable_tma;
+};
+
+class TmaAndLayoutParameterizedTritonEmitterTest
+    : public TritonEmitterTest,
+      public ::testing::WithParamInterface<TmaAndDotLayoutTestParams> {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = TritonEmitterTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_enable_triton_tma(
+        GetParam().enable_tma);
+    return debug_options;
+  }
+};
+
+std::string TmaAndDotLayoutTestParamsToString(
+    const ::testing::TestParamInfo<TmaAndDotLayoutTestParams>& data) {
+  return absl::StrCat("lhs_", absl::StrJoin(data.param.lhs_layout, "_"),
+                      "_rhs_", absl::StrJoin(data.param.rhs_layout, "_"),
+                      "_out_", absl::StrJoin(data.param.out_layout, "_"),
+                      data.param.enable_tma ? "_tma" : "");
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    TmaAndLayoutParameterizedTritonEmitterTestSuite,
+    TmaAndLayoutParameterizedTritonEmitterTest,
+    ::testing::ValuesIn({
+        TmaAndDotLayoutTestParams{{2, 1, 0}, {2, 1, 0}, {2, 1, 0}, false},
+        TmaAndDotLayoutTestParams{{2, 1, 0}, {2, 1, 0}, {2, 1, 0}, true},
+        TmaAndDotLayoutTestParams{{0, 2, 1}, {2, 0, 1}, {2, 1, 0}, false},
+        TmaAndDotLayoutTestParams{{0, 2, 1}, {2, 0, 1}, {2, 1, 0}, true},
+        TmaAndDotLayoutTestParams{{2, 1, 0}, {2, 1, 0}, {1, 0, 2}, false},
+        TmaAndDotLayoutTestParams{{2, 1, 0}, {2, 1, 0}, {1, 0, 2}, true},
+        TmaAndDotLayoutTestParams{{2, 0, 1}, {0, 1, 2}, {2, 0, 1}, false},
+        TmaAndDotLayoutTestParams{{2, 0, 1}, {0, 1, 2}, {2, 0, 1}, true},
+    }),
+    TmaAndDotLayoutTestParamsToString);
+
+TEST_P(TmaAndLayoutParameterizedTritonEmitterTest, Dot) {
+  const std::string kHloText =
+      absl::Substitute(R"(
+flhs {
+  flhs.p0 = f32[32,16,256]{$0} parameter(0)
+  ROOT lhs.root = f32[32,16,256]{$0} negate(flhs.p0)
+}
+
+frhs {
+  frhs.p0 = f32[256,16,512]{$1} parameter(0)
+  ROOT frhs.root = f32[256,16,512]{$1} abs(frhs.p0)
+}
+
+fdot {
+  fdot.p0 = f32[32,16,256]{$0} parameter(0)
+  fdot.p1 = f32[256,16,512]{$1} parameter(1)
+  fdot.lhs = f32[32,16,256]{$0} fusion(fdot.p0), kind=kCustom, calls=flhs, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["16", "1", "32"]}]
+    }
+  }
+}
+
+fdot.rhs = f32[256,16,512]{$1} fusion(fdot.p1), kind=kCustom, calls=frhs, backend_config={
+  "fusion_backend_config":{
+    "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+      "output_tiles":[{"sizes":["32", "1", "64"]}]
+    }
+  }
+}
+
+ROOT fdot.root = f32[16,32,512]{$2} dot(fdot.lhs, fdot.rhs),
+  lhs_contracting_dims={2}, rhs_contracting_dims={0}, lhs_batch_dims={1}, rhs_batch_dims={1},
+  algorithm=dot_f32_f32_f32
+}
+
+ENTRY entry {
+  entry.p0 = f32[32,16,256]{$0} parameter(0)
+  entry.p1 = f32[256,16,512]{$1} parameter(1)
+  ROOT fusion = f32[16,32,512]{$2} fusion(entry.p0, entry.p1),
+    kind=kCustom, calls=fdot, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["1", "16", "64"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+})",
+                       absl::StrJoin(GetParam().lhs_layout, ","),
+                       absl::StrJoin(GetParam().rhs_layout, ","),
+                       absl::StrJoin(GetParam().out_layout, ","));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-6}));
+}
+
 // TODO(bchetioui): turn this into a general binary elementwise test.
 TEST_F(TritonEmitterTest, MinimumIsEmittedCorrectly) {
   constexpr absl::string_view kHloText = R"(
@@ -1405,18 +1504,18 @@ TEST_P(TmaParameterizedTritonEmitterTest, TestSliceWithNonMinorDimStrides) {
 HloModule m
 
 fused_computation {
-  p = f32[128,32] parameter(0)
-  ROOT slice = f32[12,16] slice(p), slice={[102:126:2], [16:32]}
+  p = f32[128,64,32] parameter(0)
+  ROOT slice = f32[12,16,16] slice(p), slice={[102:126:2], [6:38:2], [16:32]}
 }
 
 ENTRY entry_computation {
-  p = f32[128,32] parameter(0)
-  ROOT fusion = f32[12,16] fusion(p), kind=kCustom, calls=fused_computation,
+  p = f32[128,64,32] parameter(0)
+  ROOT fusion = f32[12,16,16] fusion(p), kind=kCustom, calls=fused_computation,
     backend_config={
       "fusion_backend_config":{
       "kind":"__triton",
       "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["4","4"]}],
+        "output_tiles":[{"sizes":["4","2","4"]}],
         "num_warps":"1",
         "num_ctas":"1",
         "num_stages":"1"}}}
@@ -1533,22 +1632,24 @@ ENTRY entry_computation {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
-TEST_F(TritonEmitterTest, ReshapeIntoBroadcastIsLoweredCorrectly) {
+// Parameterized to test TMA with various dimensionalities for loads/stores.
+TEST_P(TmaParameterizedTritonEmitterTest,
+       ReshapeIntoBroadcastIsLoweredCorrectly) {
   constexpr absl::string_view kHloText = R"(
 triton_computation {
   param_0 = f32[128,256]{1,0} parameter(0)
   reshape = f32[64,2,256]{2,1,0} reshape(param_0)
-  ROOT broadcast = f32[64,2,256,2]{3,2,1,0} broadcast(reshape), dimensions={0,1,2}
+  ROOT broadcast = f32[64,2,256,16]{3,2,1,0} broadcast(reshape), dimensions={0,1,2}
 }
 
 ENTRY main {
   param_0 = f32[128,256]{1,0} parameter(0)
-  ROOT triton_fusion = f32[64,2,256,2]{3,2,1,0} fusion(param_0), kind=kCustom,
+  ROOT triton_fusion = f32[64,2,256,16]{3,2,1,0} fusion(param_0), kind=kCustom,
     calls=triton_computation, backend_config={
       "fusion_backend_config":{
         "kind":"__triton",
         "block_level_fusion_config":{
-          "output_tiles":[{"sizes":["2","2","2","2"]}],
+          "output_tiles":[{"sizes":["2","2","4","4"]}],
           "num_warps":"1",
           "num_ctas":"1",
           "num_stages":"1"}}}
@@ -1675,18 +1776,18 @@ TEST_P(TmaParameterizedTritonEmitterTest,
        SimpleBitcastNormalizedLayoutIsLoweredCorrectly) {
   constexpr absl::string_view kHloText = R"(
 triton_computation {
-  p = s16[16,64]{1,0} parameter(0)
-  ROOT bitcast = s16[16,64] bitcast(p)
+  p = s16[16,32,64]{2,1,0} parameter(0)
+  ROOT bitcast = s16[16,32,64] bitcast(p)
 }
 
 ENTRY entry_computation {
-  p = s16[16,64]{1,0} parameter(0)
-  ROOT fusion = s16[16,64] fusion(p), kind=kCustom, calls=triton_computation,
+  p = s16[16,32,64]{2,1,0} parameter(0)
+  ROOT fusion = s16[16,32,64] fusion(p), kind=kCustom, calls=triton_computation,
     backend_config={
-    "fusion_backend_config":{
+      "fusion_backend_config":{
       "kind":"__triton",
       "block_level_fusion_config":{
-      "output_tiles":[{"sizes":["16","32"]}],
+      "output_tiles":[{"sizes":["16","16","32"]}],
       "num_warps":"1",
       "num_ctas":"1",
       "num_stages":"1"}}}
@@ -1701,18 +1802,18 @@ TEST_P(TmaParameterizedTritonEmitterTest,
        SimpleBitcastNonNormalizedInputLayoutIsLoweredCorrectly) {
   constexpr absl::string_view kHloText = R"(
 triton_computation {
-  p = s32[64,16]{0,1} parameter(0)
-  ROOT bitcast = s32[16,64] bitcast(p)
+  p = s32[64,32,16]{0,1,2} parameter(0)
+  ROOT bitcast = s32[16,32,64] bitcast(p)
 }
 
 ENTRY entry_computation {
-  p = s32[64,16]{0,1} parameter(0)
-  ROOT fusion = s32[16,64] fusion(p), kind=kCustom, calls=triton_computation,
+  p = s32[64,32,16]{0,1,2} parameter(0)
+  ROOT fusion = s32[16,32,64] fusion(p), kind=kCustom, calls=triton_computation,
     backend_config={
     "fusion_backend_config":{
       "kind":"__triton",
       "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["16","32"]}],
+        "output_tiles":[{"sizes":["16","16","32"]}],
         "num_warps":"1",
         "num_ctas":"1",
         "num_stages":"1"}}}
@@ -3143,30 +3244,30 @@ TEST_P(TmaParameterizedTritonEmitterTest, DotFromBroadcastIsEmittedCorrectly) {
   const std::string kHloText = R"(
 HloModule module
 
-flhs (parameter_0: f32[264]) -> f32[264,128] {
-  parameter_0 = f32[264]{0} parameter(0)
-  ROOT flhs.1 = f32[264,128]{1,0} broadcast(parameter_0), dimensions={0}
+flhs (parameter_0: f32[256]) -> f32[256,128] {
+  parameter_0 = f32[256]{0} parameter(0)
+  ROOT flhs.1 = f32[256,128]{1,0} broadcast(parameter_0), dimensions={0}
 }
 
 frhs (parameter_0.1: f32[128,32]) -> f32[128,32] {
   ROOT parameter_0.1 = f32[128,32]{1,0} parameter(0)
 }
 
-triton_dot (p0: f32[264], p1: f32[128,32]) -> f32[264,32] {
-  p0 = f32[264]{0} parameter(0)
-  lhs = f32[264,128]{1,0} fusion(p0), kind=kCustom, calls=flhs, backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion","block_level_fusion_config":{"num_warps":"1","output_tiles":[{"sizes":["32","16"]}]}}}
+triton_dot (p0: f32[256], p1: f32[128,32]) -> f32[256,32] {
+  p0 = f32[256]{0} parameter(0)
+  lhs = f32[256,128]{1,0} fusion(p0), kind=kCustom, calls=flhs, backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion","block_level_fusion_config":{"num_warps":"1","output_tiles":[{"sizes":["32","16"]}]}}}
   p1 = f32[128,32]{1,0} parameter(1)
   rhs = f32[128,32]{1,0} fusion(p1), kind=kCustom, calls=frhs, backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion","block_level_fusion_config":{"num_warps":"1","output_tiles":[{"sizes":["16","16"]}]}}}
-  ROOT result = f32[264,32]{1,0} dot(lhs, rhs),
+  ROOT result = f32[256,32]{1,0} dot(lhs, rhs),
     lhs_contracting_dims={1}, rhs_contracting_dims={0},
     algorithm=dot_f32_f32_f32
 }
 
-ENTRY e (p0.1: f32[11,1,24,1], p1.1: f32[128,32]) -> f32[264,32] {
+ENTRY e (p0.1: f32[11,1,24,1], p1.1: f32[128,32]) -> f32[256,32] {
   p0.1 = f32[11,1,24,1]{3,2,1,0} parameter(0)
-  bitcast = f32[264]{0} bitcast(p0.1)
+  bitcast = f32[256]{0} bitcast(p0.1)
   p1.1 = f32[128,32]{1,0} parameter(1)
-  ROOT result.1 = f32[264,32]{1,0} fusion(bitcast, p1.1), kind=kCustom,
+  ROOT result.1 = f32[256,32]{1,0} fusion(bitcast, p1.1), kind=kCustom,
     calls=triton_dot, backend_config={
       "fusion_backend_config":{
         "kind":"__triton_nested_gemm_fusion",
