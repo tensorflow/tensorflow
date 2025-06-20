@@ -1892,7 +1892,7 @@ class HloInstruction {
     return it.second;
   }
 
-  size_t erase_frontend_attribute(const std::string& key) {
+  size_t erase_frontend_attribute(absl::string_view key) {
     return mutable_rare()->frontend_attributes.mutable_map()->erase(key);
   }
 
