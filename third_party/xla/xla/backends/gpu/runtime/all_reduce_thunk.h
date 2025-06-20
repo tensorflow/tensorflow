@@ -76,10 +76,6 @@ class AllReduceStartThunk : public AllReduceReduceScatterThunkBase {
   static CollectiveOpGroupMode GetGroupMode(
       const HloAllReduceInstruction* inst);
 
-  absl::StatusOr<bool> ShouldUseOneShotAllReduceKernel(
-      const GpuCliqueKey& clique_key,
-      const CollectiveCliques* collective_cliques);
-
   absl::Status Prepare(const PrepareParams& params,
                        ResourceRequestsInterface& resource_requests) override;
   absl::Status Initialize(const InitializeParams& params) override;
@@ -90,7 +86,6 @@ class AllReduceStartThunk : public AllReduceReduceScatterThunkBase {
                                      CommunicatorHandle comm) override;
 
  private:
-  bool one_shot_kernel_enabled_ = false;
   CollectiveKernelThunk collective_kernel_thunk_;
 };
 

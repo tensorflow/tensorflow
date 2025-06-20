@@ -114,16 +114,22 @@ absl::Status LaunchTypedKernel(
 }
 }  // namespace
 
-bool IsAllReduceKernelSupported(int64_t num_inputs, int64_t num_elements,
+bool IsAllReduceKernelSupported(int64_t num_ranks, int64_t num_elements,
                                 PrimitiveType element_type,
-                                ReductionKind reduction_kind) {
-  // The kernel always vectorizes to 4 elements per thread.
-  if (num_elements % 4 != 0) {
+                                ReductionKind reduction_kind,
+                                AllReduceStrategy all_reduce_strategy) {
+  // For twoShot each rank processes: num_elements / num_ranks elements.
+  const int64_t alignment_requirement =
+      all_reduce_strategy == AllReduceStrategy::kOneShot
+          ? se::gpu::kNumElementsPerThread
+          : se::gpu::kNumElementsPerThread * num_ranks;
+
+  if (num_elements % alignment_requirement != 0) {
     return false;
   }
 
   // The kernel is only supported for up to 8 devices.
-  if (num_inputs > stream_executor::gpu::kMaxNumAllReduceInputPtrs) {
+  if (num_ranks > stream_executor::gpu::kMaxNumAllReduceInputPtrs) {
     return false;
   }
 
@@ -157,7 +163,7 @@ absl::Status RunAllReduceKernel(
     uint32_t signal_value                                         //
 ) {
   if (!IsAllReduceKernelSupported(num_ranks, num_elements, element_type,
-                                  reduction_kind)) {
+                                  reduction_kind, all_reduce_strategy)) {
     return absl::InvalidArgumentError(
         absl::StrCat("AllReduce kernel is not supported for the given number "
                      "of ranks, elements, element type and reduction kind: ",

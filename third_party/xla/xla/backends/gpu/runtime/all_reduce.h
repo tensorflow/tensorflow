@@ -33,9 +33,10 @@ namespace xla::gpu {
 
 // Returns true if the all-reduce kernel is supported for the given number of
 // inputs, elements, element type and reduction kind.
-bool IsAllReduceKernelSupported(int64_t num_inputs, int64_t num_elements,
+bool IsAllReduceKernelSupported(int64_t num_ranks, int64_t num_elements,
                                 PrimitiveType element_type,
-                                ReductionKind reduction_kind);
+                                ReductionKind reduction_kind,
+                                se::gpu::AllReduceStrategy all_reduce_strategy);
 
 // Performs element-wise addition of all input buffers and stores the result in
 // the output buffer.

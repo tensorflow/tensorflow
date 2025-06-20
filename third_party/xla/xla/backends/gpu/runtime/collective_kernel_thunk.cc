@@ -36,6 +36,7 @@ limitations under the License.*/
 #include "xla/core/collectives/rank_id.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/rendezvous.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_handle.h"
@@ -46,12 +47,17 @@ limitations under the License.*/
 
 namespace xla::gpu {
 namespace {
+using se::gpu::AllReduceStrategy;
+
+static constexpr int64_t kMaxOneShotAllReduceSizeBytes = 256 * 1024;  // 256 KB
+static constexpr int64_t kMaxTwoShotAllReduceSizeBytes =
+    2 * 1024 * 1024;  // 2 MB
+
 // Number of blocks to launch the kernel in X dimension.
 constexpr int64_t kLaunchBlockCountX = 8;
 constexpr LaunchDimensions kLaunchDimensions(
     /*block_x_count=*/kLaunchBlockCountX,
     /*thread_x_count_per_block=*/512);
-
 // Helper for allocating memory on the device.
 absl::StatusOr<se::DeviceMemoryHandle> AllocateMemory(
     se::StreamExecutor* executor, int64_t size,
@@ -64,7 +70,59 @@ absl::StatusOr<se::DeviceMemoryHandle> AllocateMemory(
   return local_buffer_alloc;
 };
 
+AllReduceStrategy GetAllReduceStrategy(int64_t input_size_bytes) {
+  return input_size_bytes > kMaxOneShotAllReduceSizeBytes
+             ? AllReduceStrategy::kTwoShot
+             : AllReduceStrategy::kOneShot;
+}
+
+int64_t GetMaxSupportedAllReduceSizeBytes(AllReduceStrategy strategy) {
+  switch (strategy) {
+    case AllReduceStrategy::kOneShot:
+      return kMaxOneShotAllReduceSizeBytes;
+    case AllReduceStrategy::kTwoShot:
+      return kMaxTwoShotAllReduceSizeBytes;
+  }
+}
+
 }  // namespace
+
+absl::StatusOr<bool> CollectiveKernelThunk::IsSupported(
+    const GpuCliqueKey& clique_key,
+    const CollectiveCliques* collective_cliques) const {
+  if (!collective_kernel_enabled_) {
+    return false;
+  }
+
+  // TODO(b/407736956): Support variadic all-reduce.
+  if (buffers_.size() != 1) {
+    return false;
+  }
+
+  const int64_t num_elements = buffers_[0].element_count;
+  const int64_t input_size_bytes = GetInputSizeBytes();
+  const AllReduceStrategy strategy = GetAllReduceStrategy(input_size_bytes);
+  // Comment the next two lines for testing out two-shot.
+  if (strategy != AllReduceStrategy::kOneShot) {
+    return false;
+  }
+  // Custom all-reduce strategy is only supported for small inputs.
+  if (input_size_bytes > GetMaxSupportedAllReduceSizeBytes(strategy)) {
+    return false;
+  }
+
+  TF_ASSIGN_OR_RETURN(bool peer_access_enabled,
+                      collective_cliques->peer_access_enabled(clique_key));
+
+  // Check that peer access is enabled.
+  if (!peer_access_enabled) {
+    return false;
+  }
+
+  return IsAllReduceKernelSupported(
+      clique_key.num_local_participants(), num_elements,
+      collective_config_.operand_element_type[0], reduction_kind_, strategy);
+}
 
 absl::Status CollectiveKernelThunk::Prepare(
     const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
@@ -72,6 +130,12 @@ absl::Status CollectiveKernelThunk::Prepare(
       GpuCliqueKey clique_key,
       GetCollectiveGpuCliqueKey(*params.collective_params, collective_config_));
   return resource_requests.AddClique(clique_key);
+}
+
+int64_t CollectiveKernelThunk::GetInputSizeBytes() const {
+  return buffers_[0].element_count *
+         ShapeUtil::ByteSizeOfPrimitiveType(
+             collective_config_.operand_element_type[0]);
 }
 
 absl::Status CollectiveKernelThunk::RendezvousAfterInit(
@@ -147,7 +211,7 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
       TF_ASSIGN_OR_RETURN(
           se::DeviceMemoryHandle local_buffer_alloc,
           AllocateMemory(params.executor,
-                         buffer_.source_buffer.size() * kNumBuffers,
+                         buffers_[0].source_buffer.size() * kNumBuffers,
                          "LocalBuffer"));
 
       // Step2: Allocate signal buffer
@@ -202,11 +266,12 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
     return absl::UnimplementedError(
         "Variadic arguments are not implemented for collective kernels.");
   }
+  const CollectiveThunk::Buffer& buffer = buffers_[0];
   const PrimitiveType element_type = collective_config_.operand_element_type[0];
   se::DeviceMemoryBase source_buffer =
-      params.buffer_allocations->GetDeviceAddress(buffer_.source_buffer);
+      params.buffer_allocations->GetDeviceAddress(buffer.source_buffer);
   se::DeviceMemoryBase destination_buffer =
-      params.buffer_allocations->GetDeviceAddress(buffer_.destination_buffer);
+      params.buffer_allocations->GetDeviceAddress(buffer.destination_buffer);
 
   const std::optional<RankId> rank =
       clique_key.rank(params.collective_params->global_device_id);
@@ -222,7 +287,9 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
     state = it->second.get();
   }
   const uint32_t buffer_index = state->invocation_count % kNumBuffers;
-  state->invocation_count++;
+  auto const strategy = GetAllReduceStrategy(GetInputSizeBytes());
+  // In case of two-shot we want to increment in multiples of 2.
+  state->invocation_count += 1 + static_cast<uint32_t>(strategy);
   VLOG(3) << "Performing one-shot all-reduce from device ordinal: "
           << device_ordinal << " for clique " << clique_key.ToString();
   // TODO(b/407736956): Change this to emitted kernel.
@@ -231,13 +298,13 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
       /*launch_dimensions=*/kLaunchDimensions,
       /*element_type=*/element_type,
       /*reduction_kind=*/reduction_kind_,
-      /*all_reduce_strategy=*/se::gpu::AllReduceStrategy::kOneShot,
+      /*all_reduce_strategy=*/strategy,
       /*remote_input_buffers=*/state->remote_buffer_ptrs[buffer_index],
       /*local_input_buffer=*/source_buffer,
       /*output_buffer=*/destination_buffer,
       /*rank=*/rank.value(),
       /*num_ranks=*/kNumRanks,
-      /*num_elements=*/buffer_.element_count,
+      /*num_elements=*/buffer.element_count,
       /*signal_flags_buffers=*/state->signal_buffer_ptrs[buffer_index],
       /*signal_value=*/state->invocation_count);
 }

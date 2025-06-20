@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 
-enum class AllReduceStrategy {
+enum class AllReduceStrategy : uint32_t {
   kOneShot,
   kTwoShot,
 };
