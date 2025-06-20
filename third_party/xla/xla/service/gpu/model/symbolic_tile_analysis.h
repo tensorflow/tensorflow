@@ -183,8 +183,7 @@ using FlatTiling = absl::InlinedVector<int64_t, 4>;
 // them.
 class Tiling {
  public:
-  using TileMapping = absl::flat_hash_map<const HloInstruction*,
-                                          absl::InlinedVector<int64_t, 4>>;
+  using TileMapping = absl::flat_hash_map<const HloInstruction*, FlatTiling>;
   explicit Tiling(TileMapping tile_sizes)
       : tile_sizes_(std::move(tile_sizes)) {}
 
@@ -369,26 +368,6 @@ class SymbolicTileAnalysis {
   const TilingSpecification& GetTilingSpecification() const {
     return tiling_specification_;
   }
-
-  // Returns true if a list of tile parameters satisfies the symbolic tile
-  // analysis's constraints. If provided, also checks the emitter-specific
-  // constraints.
-  //
-  // Returns false if the constraints are not satisfied but can be evaluated
-  // correctly. Returns an error if the constraints cannot be evaluated
-  // correctly. This is typically the case if too few tile parameters are
-  // provided to fully reduce the constraint expressions to constants.
-  //
-  // This is a convenience overload for the case when only output tile sizes
-  // need to be set.
-  //
-  // DEPRECATED: Use `ParametersSatisfyConstraints(const Tiling& tiling)`
-  // instead. This is not safe for fusions involving hidden parameters.
-  //
-  // TODO(b/421837868): deprecate `SymbolicTileAnalysis::Tiling` everywhere to
-  // use logic that supports nests everywhere.
-  [[deprecated]] absl::StatusOr<bool> ParametersSatisfyConstraints(
-      absl::Span<const int64_t> tile_parameters) const;
 
   // Returns `true` if a `Tiling` conforms to the symbolic tile analysis's
   // `TilingSpecification`. If provided, also checks the emitter-specific

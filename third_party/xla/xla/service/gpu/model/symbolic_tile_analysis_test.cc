@@ -933,6 +933,9 @@ ENTRY main {
 })"));
   std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
   ASSERT_TRUE(analysis.has_value());
+  const HloInstruction* fusion_root =
+      module->entry_computation()->root_instruction()->fused_expression_root();
+
   const ConstraintExpression& constraints =
       analysis->GetTilingSpecification().constraints();
   EXPECT_THAT(constraints, MatchConstraintExpressionString(
@@ -947,19 +950,20 @@ ENTRY main {
   //    8 mod d1 in [0, 0] && d0 mod 6 in [0, 0] ||
   //    d0 mod 6 in [0, 0] && d1 mod 8 in [0, 0],
   // Tile sizes {6, 8} satisfy these constraints.
-  std::vector<int64_t> possible_tile_parameters({6, 8});
+  Tiling possible_tile_parameters({{fusion_root, FlatTiling({6, 8})}});
   EXPECT_THAT(analysis->ParametersSatisfyConstraints(possible_tile_parameters),
               IsOkAndHolds(true));
 
   // However, tile sizes {6, 7} do not satisfy these constraints.
-  std::vector<int64_t> impossible_tile_parameters({6, 7});
+  Tiling impossible_tile_parameters({{fusion_root, FlatTiling({6, 7})}});
   EXPECT_THAT(
       analysis->ParametersSatisfyConstraints(impossible_tile_parameters),
       IsOkAndHolds(false));
 
   // Passing too few tile parameters results in an error since constraints can
   // not be properly evaluated.
-  EXPECT_THAT(analysis->ParametersSatisfyConstraints(/*tile_parameters==*/{6}),
+  EXPECT_THAT(analysis->ParametersSatisfyConstraints(
+                  Tiling({{fusion_root, FlatTiling({6})}})),
               StatusIs(absl::StatusCode::kFailedPrecondition));
 
   // Passing tile parameters that satisfy the constraints should let us compute
@@ -989,20 +993,22 @@ TEST_F(SymbolicTileAnalysisTest, EmitterSpecificConstraintsAreUsedCorrectly) {
     p0 = f32[16,32] parameter(0)
     ROOT fusion = f32[16,32] fusion(p0), kind=kLoop, calls=fusion
   })"));
-
   std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(
       module.get(), FakeEmitterSpecificConstraints::GetBuilder());
-
   ASSERT_TRUE(analysis.has_value());
+  const HloInstruction* fusion_root =
+      module->entry_computation()->root_instruction()->fused_expression_root();
 
   // FakeEmitterSpecificConstraints require that the tile size along the first
   // dimension is exactly half the size of the axis. Tile sizes {5, 32} do not
   // satisfy emitter-specific constraints.
-  EXPECT_THAT(analysis->ParametersSatisfyConstraints({5, 32}),
+  EXPECT_THAT(analysis->ParametersSatisfyConstraints(
+                  Tiling({{fusion_root, FlatTiling({5, 32})}})),
               IsOkAndHolds(false));
 
   // However, tile sizes {8, 32} do satisfy emitter-specific constraints.
-  EXPECT_THAT(analysis->ParametersSatisfyConstraints({8, 32}),
+  EXPECT_THAT(analysis->ParametersSatisfyConstraints(
+                  Tiling({{fusion_root, FlatTiling({8, 32})}})),
               IsOkAndHolds(true));
 }
 

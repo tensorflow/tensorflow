@@ -1416,22 +1416,6 @@ std::vector<OperandIndexingSet> GetOperandIndexingMaps(
 }
 
 absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
-    absl::Span<const int64_t> tile_parameters) const {
-  if (!tiling_specification_.constraints().is_satisfiable()) {
-    return absl::FailedPreconditionError(
-        "SymbolicTileAnalysis's constraints are not satisfiable. "
-        "This should never happen.");
-  }
-
-  const HloInstruction* real_root = root_indexing_.GetRealRoot();
-  Tiling::TileMapping tile_mapping(
-      {{real_root, absl::InlinedVector<int64_t, 4>(tile_parameters.begin(),
-                                                   tile_parameters.end())}});
-  Tiling tiling(std::move(tile_mapping));
-  return ParametersSatisfyConstraints(tiling);
-}
-
-absl::StatusOr<bool> SymbolicTileAnalysis::ParametersSatisfyConstraints(
     const Tiling& tiling) const {
   const ConstraintExpression& constraints = tiling_specification_.constraints();
   CHECK(constraints.is_satisfiable());  // Crash OK
