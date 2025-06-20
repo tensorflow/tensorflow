@@ -271,16 +271,9 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "absl_py",
-        sha256 = "a7c51b2a0aa6357a9cbb2d9437e8cd787200531867dc02565218930b6a32166e",
-        strip_prefix = "abseil-py-1.0.0",
-        system_build_file = "//third_party/systemlibs:absl_py.BUILD",
-        system_link_files = {
-            "//third_party/systemlibs:absl_py.absl.BUILD": "absl/BUILD",
-            "//third_party/systemlibs:absl_py.absl.flags.BUILD": "absl/flags/BUILD",
-            "//third_party/systemlibs:absl_py.absl.testing.BUILD": "absl/testing/BUILD",
-            "//third_party/systemlibs:absl_py.absl.logging.BUILD": "absl/logging/BUILD",
-        },
-        urls = tf_mirror_urls("https://github.com/abseil/abseil-py/archive/refs/tags/v1.0.0.tar.gz"),
+        sha256 = "8a3d0830e4eb4f66c4fa907c06edf6ce1c719ced811a12e26d9d3162f8471758",
+        strip_prefix = "abseil-py-2.1.0",
+        urls = tf_mirror_urls("https://github.com/abseil/abseil-py/archive/refs/tags/v2.1.0.tar.gz"),
     )
 
     filegroup_external(
@@ -294,14 +287,9 @@ def _tf_repositories():
     tf_http_archive(
         name = "com_google_protobuf",
         patch_file = ["//third_party/protobuf:protobuf.patch"],
-        sha256 = "f66073dee0bc159157b0bd7f502d7d1ee0bc76b3c1eac9836927511bdc4b3fc1",
-        strip_prefix = "protobuf-3.21.9",
-        system_build_file = "//third_party/systemlibs:protobuf.BUILD",
-        system_link_files = {
-            "//third_party/systemlibs:protobuf.bzl": "protobuf.bzl",
-            "//third_party/systemlibs:protobuf_deps.bzl": "protobuf_deps.bzl",
-        },
-        urls = tf_mirror_urls("https://github.com/protocolbuffers/protobuf/archive/v3.21.9.zip"),
+        sha256 = "f645e6e42745ce922ca5388b1883ca583bafe4366cc74cf35c3c9299005136e2",
+        strip_prefix = "protobuf-5.28.3",
+        urls = tf_mirror_urls("https://github.com/protocolbuffers/protobuf/archive/refs/tags/v5.28.3.zip"),
     )
 
     tf_http_archive(
@@ -356,23 +344,13 @@ def _tf_repositories():
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
     tf_http_archive(
         name = "com_github_grpc_grpc",
-        sha256 = "b956598d8cbe168b5ee717b5dafa56563eb5201a947856a6688bbeac9cac4e1f",
-        strip_prefix = "grpc-b54a5b338637f92bfcf4b0bc05e0f57a5fd8fadd",
+        sha256 = "afbc5d78d6ba6d509cc6e264de0d49dcd7304db435cbf2d630385bacf49e066c",
+        strip_prefix = "grpc-1.68.2",
         system_build_file = "//third_party/systemlibs:grpc.BUILD",
         patch_file = [
-            "//third_party/grpc:generate_cc_env_fix.patch",
-            "//third_party/grpc:register_go_toolchain.patch",
+            "//third_party/grpc:grpc.patch",
         ],
-        system_link_files = {
-            "//third_party/systemlibs:BUILD.bazel": "bazel/BUILD.bazel",
-            "//third_party/systemlibs:grpc.BUILD": "src/compiler/BUILD",
-            "//third_party/systemlibs:grpc.bazel.grpc_deps.bzl": "bazel/grpc_deps.bzl",
-            "//third_party/systemlibs:grpc.bazel.grpc_extra_deps.bzl": "bazel/grpc_extra_deps.bzl",
-            "//third_party/systemlibs:grpc.bazel.cc_grpc_library.bzl": "bazel/cc_grpc_library.bzl",
-            "//third_party/systemlibs:grpc.bazel.generate_cc.bzl": "bazel/generate_cc.bzl",
-            "//third_party/systemlibs:grpc.bazel.protobuf.bzl": "bazel/protobuf.bzl",
-        },
-        urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/b54a5b338637f92bfcf4b0bc05e0f57a5fd8fadd.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.68.2.tar.gz"),
     )
 
     llvm_setup(name = "llvm-project")

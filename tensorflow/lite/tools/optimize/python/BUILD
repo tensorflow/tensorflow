@@ -55,12 +55,14 @@ pybind_extension(
     name = "_pywrap_modify_model_interface",
     srcs = ["modify_model_interface.cc"],
     common_lib_packages = [
+        "litert/python",
         "third_party/tensorflow/lite/python",
     ],
     enable_stub_generation = True,
     pytype_srcs = [
         "_pywrap_modify_model_interface.pyi",
     ],
+    wrap_py_init = True,
     deps = [
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/optimize:modify_model_interface",

@@ -3137,9 +3137,10 @@ def pybind_extension_opensource(
         testonly = None,
         visibility = None,
         win_def_file = None,
-        starlark_only = False):
+        starlark_only = False,
+        wrap_py_init = False):
     """Builds a generic Python extension module."""
-    _ignore = [enable_stub_generation, additional_stubgen_deps, module_name, starlark_only]  # buildifier: disable=unused-variable
+    _ignore = [enable_stub_generation, additional_stubgen_deps, module_name, starlark_only, wrap_py_init]  # buildifier: disable=unused-variable
     p = name.rfind("/")
     if p == -1:
         sname = name

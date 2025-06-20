@@ -73,6 +73,10 @@ pybind_extension(
     ],
     hdrs = ["genai_ops.h"],
     additional_exported_symbols = ["GenAIOpsRegisterer"],
+    common_lib_packages = [
+        "litert/python",
+        "third_party/tensorflow/lite/python",
+    ],
     enable_stub_generation = True,
     link_in_framework = True,
     module_name = "pywrap_genai_ops",
@@ -80,6 +84,7 @@ pybind_extension(
         "pywrap_genai_ops.pyi",
     ],
     visibility = ["//visibility:public"],
+    wrap_py_init = True,
     deps = [
         ":genai_ops",
         "//tensorflow/lite:framework_stable",

@@ -1,7 +1,7 @@
 # Requirements for NumPy 1.x
 numpy ~= 1.26.0
 wheel ~= 0.41.2
-h5py >= 3.10.0
+h5py >= 3.11.0
 lit ~= 17.0.2
 opt_einsum == 3.3.0
 astunparse == 1.6.3
@@ -13,22 +13,27 @@ termcolor == 2.3.0
 wrapt == 1.16.0
 tblib == 2.0.0
 ml_dtypes >= 0.5.1, < 0.6.0
-auditwheel ~= 6.1.0
+auditwheel >= 6.1.0
 # Install tensorboard, and keras
 # Note that here we want the latest version that matches TF major.minor version
 # Note that we must use nightly here as these are used in nightly jobs
 # For release jobs, we will pin these on the release branch
 keras-nightly ~= 3.0.0.dev
-tb-nightly ~= 2.18.0.a
+tb-nightly ~= 2.20.0.a
+# For new protobuf, if V.x.y is gencode version, then runtime version U must be
+# V <= U <= V+1
+# More info at https://protobuf.dev/support/cross-version-runtime-guarantee/
+protobuf >= 5.28.0, < 7.0
 # Test dependencies
-grpcio >= 1.24.3, < 2.0
+grpcio >= 1.68.1, < 2.0
 portpicker == 1.6.0
-scipy == 1.11.3
+# Scipy 15.x and above have misc.derivative removed, but we still use it
+scipy >= 1.13.0, < 1.15.0
 requests >= 2.31.0
 packaging==23.2
 setuptools==70.0.0
 jax==0.4.7
-zstandard=0.23.0
+zstandard==0.23.0
 # NVIDIA CUDA dependencies
 # Note that the wheels are downloaded only when the targets in bazel command
 # contain dependencies on these wheels.
@@ -44,7 +49,7 @@ nvidia-cusparse-cu12 == 12.5.1.3
 nvidia-nccl-cu12 == 2.25.1
 nvidia-nvjitlink-cu12 == 12.5.82
 # The dependencies below are needed for TF wheel testing.
-tensorflow-io-gcs-filesystem==0.37.1
+tensorflow-io-gcs-filesystem==0.37.1 ; python_version <= "3.12"
 libclang >= 13.0.0
 google_pasta ~= 0.2
 flatbuffers ~= 24.3.25

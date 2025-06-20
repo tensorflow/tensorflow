@@ -1,12 +1,12 @@
-diff --git a/src/ortools/base/file.cc b/src/ortools/base/file.cc
---- a/ortools/base/file.cc
-+++ b/ortools/base/file.cc
-@@ -186,7 +186,7 @@
+diff --git a/ortools/base/file.cc b/ortools/base/file.cc
+--- a/ortools/base/file.cc	(revision ed94162b910fa58896db99191378d3b71a5313af)
++++ b/ortools/base/file.cc	(date 1746220885638)
+@@ -223,7 +223,7 @@
    }
  #endif  // _MSC_VER
  
--  file->Close(flags);  // Even if ReadToString() fails!
-+  static_cast<void>(file->Close(flags));  // Even if ReadToString() fails!
+-  file->Close(options).IgnoreError();  // Even if ReadToString() fails!
++  static_cast<void>(file->Close(options));  // Even if ReadToString() fails!
    return absl::Status(absl::StatusCode::kInvalidArgument,
                        absl::StrCat("Could not read from '", filename, "'."));
  }

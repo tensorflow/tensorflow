@@ -2,7 +2,7 @@ load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_contrib_test", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "pywrap_library")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "pywrap_binaries", "pywrap_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
 
@@ -20,7 +20,12 @@ package(
     licenses = ["notice"],
 )
 
-exports_files(["tflite_convert.py"])
+exports_files([
+    "tflite_convert.py",
+    "pywrap_tflite_common.json",
+    "pywrap_tflite_common.lds",
+    "pywrap_tflite_common_darwin.lds",
+])
 
 flatbuffer_py_library(
     name = "schema_py",
@@ -650,13 +655,11 @@ py_strict_test(
 # by Tensorflow under tensorflow/python:_pywrap_tensorflow
 # This isolate LiteRT's pybind11 dependencies. To use, add pybind deps under pywrap_tflite
 # and refer pywrap_tflite to any target that needsd to selected shared objects.
-pywrap_library(
-    name = "pywrap_tflite",
-    common_lib_versions = {
-        "framework": "2",
-    },
+py_strict_library(
+    name = "tflite_pywrap_deps",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/lite/experimental/genai:pywrap_genai_ops",
         "//tensorflow/lite/python/analyzer_wrapper:_pywrap_analyzer_wrapper",
         "//tensorflow/lite/python/interpreter_wrapper:_pywrap_tensorflow_interpreter_wrapper",
         "//tensorflow/lite/python/metrics:_pywrap_tensorflow_lite_metrics_wrapper",
@@ -665,4 +668,28 @@ pywrap_library(
         "//tensorflow/lite/tools/optimize/python:_pywrap_modify_model_interface",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter_wrapper_pybind11",
     ],
+)
+
+pywrap_library(
+    name = "pywrap_tflite",
+    common_lib_def_files_or_filters = {
+        "third_party/tensorflow/lite/python/pywrap_tflite_common": "pywrap_tflite_common.json",
+    },
+    common_lib_version_scripts = {
+        "third_party/tensorflow/lite/python/pywrap_tflite_common": select({
+            "@bazel_tools//src/conditions:windows": None,
+            "@bazel_tools//src/conditions:darwin": "pywrap_tflite_common_darwin.lds",
+            "//conditions:default": "pywrap_tflite_common.lds",
+        }),
+    },
+    pywrap_count = 8,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tflite_pywrap_deps",
+    ],
+)
+
+pywrap_binaries(
+    name = "pywrap_tflite_binaries",
+    dep = ":pywrap_tflite",
 )

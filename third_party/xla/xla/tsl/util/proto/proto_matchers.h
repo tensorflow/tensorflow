@@ -174,12 +174,7 @@ class EqualsProtoMatcher {
     ::tsl::protobuf::util::MessageDifferencer diff;
     diff.set_report_ignores(false);
     if (partial_) {
-      // This code needs to compile with different versions of protobuf.
-      // In earlier versions, AddIgnoreCriteria() takes a raw pointer.
-      // In later versions, it takes a unique_ptr. We use a wrapper to
-      // make it work with both versions.
-      diff.AddIgnoreCriteria(
-          UniquePtrWrapper<PartialIgnore>(std::make_unique<PartialIgnore>()));
+      diff.AddIgnoreCriteria(std::make_unique<PartialIgnore>());
     }
     std::string str_report;
     if (unordered_repeated_fields_) {

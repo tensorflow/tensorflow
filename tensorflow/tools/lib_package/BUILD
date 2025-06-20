@@ -16,23 +16,6 @@ pkg_zip(
 )
 
 pkg_tar(
-    name = "libtensorflow",
-    extension = "tar.gz",
-    # Mark as "manual" till
-    # https://github.com/bazelbuild/bazel/issues/2352
-    # and https://github.com/bazelbuild/bazel/issues/1580
-    # are resolved, otherwise these rules break when built
-    # with Python 3.
-    tags = ["manual"],
-    deps = [
-        ":cheaders",
-        ":clib",
-        ":clicenses",
-        ":eager_cheaders",
-    ],
-)
-
-pkg_tar(
     name = "libtensorflow_jni",
     srcs = [
         ":THIRD_PARTY_TF_JNI_LICENSES",

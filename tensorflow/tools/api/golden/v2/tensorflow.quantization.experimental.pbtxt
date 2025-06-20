@@ -2,15 +2,15 @@ path: "tensorflow.quantization.experimental"
 tf_module {
   member {
     name: "QuantizationComponentSpec"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+    mtype: "<class \'google._upb._message.MessageMeta\'>"
   }
   member {
     name: "QuantizationMethod"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+    mtype: "<class \'google._upb._message.MessageMeta\'>"
   }
   member {
     name: "QuantizationOptions"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+    mtype: "<class \'google._upb._message.MessageMeta\'>"
   }
   member {
     name: "TfRecordRepresentativeDatasetSaver"
@@ -18,7 +18,7 @@ tf_module {
   }
   member {
     name: "UnitWiseQuantizationSpec"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+    mtype: "<class \'google._upb._message.MessageMeta\'>"
   }
   member_method {
     name: "quantize_saved_model"

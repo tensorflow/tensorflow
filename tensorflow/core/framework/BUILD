@@ -1624,6 +1624,7 @@ tf_proto_library(
     name = "device_attributes_proto",
     srcs = ["device_attributes.proto"],
     make_default_target_header_only = True,
+    visibility = ["//visibility:public"],
 )
 
 tf_proto_library(

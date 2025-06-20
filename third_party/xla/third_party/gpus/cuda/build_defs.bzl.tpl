@@ -155,12 +155,18 @@ def cuda_header_library(
 
 def cuda_library(copts = [], tags = [], deps = [], **kwargs):
     """Wrapper over cc_library which adds default CUDA options."""
+    # A hacky way to to remove "register" specifier from old glibc-2.17 headers
+    # which we still build against. Otherwise nvcc compiler would fail with
+    # "use of the "register" storage class specifier is not allowed" error.
+    # This can and should be removed once we migrate on glibc-2.27 or newer.
+    local_defines = kwargs.pop("local_defines", []) + ["register="]
     native.cc_library(
         copts = cuda_default_copts() + copts,
         tags = tags + ["gpu"],
         deps = deps + if_cuda_is_configured([
             "@local_config_cuda//cuda:implicit_cuda_headers_dependency",
         ]),
+        local_defines = local_defines,
         **kwargs
     )
 

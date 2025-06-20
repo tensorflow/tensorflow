@@ -24,6 +24,7 @@ tensorflow/third_party/py/python_init_toolchains.bzl:
 tensorflow/third_party/py/python_repo.bzl:
 tensorflow/third_party/py/python_wheel.bzl:
 tensorflow/third_party/py/rules_pywrap/def_file_filter_tool.py:
+tensorflow/third_party/py/rules_pywrap/wrapped_py_init.cc:
 tensorflow/third_party/systemlibs/BUILD.tpl:
 tensorflow/third_party/systemlibs/absl_py.BUILD:
 tensorflow/third_party/systemlibs/absl_py.absl.flags.BUILD:
