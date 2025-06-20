@@ -42,15 +42,18 @@ class OriginalValue : public ShapeTree<std::optional<OriginalTensor>> {
   explicit OriginalValue(Shape shape) : ShapeTree(std::move(shape)) {}
   std::string ToString();
   OriginalValueProto ToProto();
-  static std::shared_ptr<OriginalValue> FromProto(
+  static std::unique_ptr<OriginalValue> FromProto(
       const xla::OriginalValueProto& original_value_proto);
 };
 
-// Copies the original value of the source to the destination instruction. This
-// performs a deep copy if clone is set to true. Otherwise, it performs a
-// shallow copy.
+// Moves the original value of the source to the destination instruction.
+void MoveOriginalValue(HloInstruction* src_instruction,
+                       HloInstruction* dest_instruction);
+
+// Copies the content of the original value of the source instruction to the
+// destination instruction.
 void CopyOriginalValue(const HloInstruction* src_instruction,
-                       HloInstruction* dest_instruction, bool clone);
+                       HloInstruction* dest_instruction);
 }  // namespace xla
 
 #endif  // XLA_HLO_IR_HLO_ORIGINAL_VALUE_H_

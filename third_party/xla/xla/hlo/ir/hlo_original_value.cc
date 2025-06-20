@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/log/log.h"
@@ -71,11 +72,11 @@ std::string OriginalValue::ToString() {
   return OriginalValueToString(*this, shape(), shape_index);
 }
 
-std::shared_ptr<OriginalValue> OriginalValue::FromProto(
+std::unique_ptr<OriginalValue> OriginalValue::FromProto(
     const xla::OriginalValueProto& original_value_proto) {
   xla::Shape original_value_shape(
       Shape::FromProto(original_value_proto.shape()).value_or(Shape()));
-  auto original_value = std::make_shared<OriginalValue>(original_value_shape);
+  auto original_value = std::make_unique<OriginalValue>(original_value_shape);
 
   for (const auto& leaf : original_value_proto.leaves()) {
     *original_value->mutable_element(ShapeIndex(leaf.leaf_shape_index())) = {
@@ -102,8 +103,8 @@ OriginalValueProto OriginalValue::ToProto() {
   return original_value_proto;
 }
 
-void CopyOriginalValue(const HloInstruction* src_instruction,
-                       HloInstruction* dest_instruction, bool clone) {
+void MoveOriginalValue(HloInstruction* src_instruction,
+                       HloInstruction* dest_instruction) {
   // This is not expected to happen in practice.
   if (!src_instruction || !dest_instruction ||
       !ShapeUtil::Compatible(src_instruction->shape(),
@@ -113,21 +114,37 @@ void CopyOriginalValue(const HloInstruction* src_instruction,
     return;
   }
 
-  std::shared_ptr<OriginalValue> original_value =
-      src_instruction->original_value();
+  std::unique_ptr<OriginalValue> original_value =
+      src_instruction->take_original_value();
+
   if (!original_value) {
     return;
   }
 
-  if (!clone) {
-    dest_instruction->set_original_value(original_value);
+  dest_instruction->set_original_value(std::move(original_value));
+}
+
+void CopyOriginalValue(const HloInstruction* src_instruction,
+                       HloInstruction* dest_instruction) {
+  // This is not expected to happen in practice.
+  if (!src_instruction || !dest_instruction ||
+      !ShapeUtil::Compatible(src_instruction->shape(),
+                             dest_instruction->shape())) {
+    VLOG(1) << "Expect the new instruction to have the same shape with the old "
+               "instruction when moving over original_value";
     return;
   }
 
-  std::shared_ptr<OriginalValue> original_value_clone =
-      std::make_shared<OriginalValue>(original_value->shape());
+  OriginalValue* original_value = src_instruction->original_value();
+
+  if (!original_value) {
+    return;
+  }
+
+  auto original_value_clone =
+      std::make_unique<OriginalValue>(original_value->shape());
   original_value_clone->CopySubtreeFrom(*original_value, {}, {});
-  dest_instruction->set_original_value(original_value_clone);
+  dest_instruction->set_original_value(std::move(original_value_clone));
 }
 
 }  // namespace xla

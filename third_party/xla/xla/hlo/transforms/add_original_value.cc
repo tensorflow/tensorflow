@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -39,7 +40,7 @@ absl::StatusOr<bool> AddOriginalValue::Run(
   for (const auto computation : module->computations()) {
     for (const auto instruction : computation->instructions()) {
       auto original_value =
-          std::make_shared<OriginalValue>(instruction->shape());
+          std::make_unique<OriginalValue>(instruction->shape());
 
       if (instruction->opcode() == HloOpcode::kGetTupleElement) {
         const auto* tuple = instruction->operand(0);
@@ -57,7 +58,7 @@ absl::StatusOr<bool> AddOriginalValue::Run(
           leaf.second = {std::string(instruction->name()), leaf.first};
         }
       }
-      instruction->set_original_value(original_value);
+      instruction->set_original_value(std::move(original_value));
       changed = true;
     }
   }
