@@ -2887,7 +2887,7 @@ GetDotGroupPartitionContractingOutputShardings(
           output_slice_dims.push_back(dim.output);
         }
       }
-      if (!output_slice_dims.empty()) {
+      if (!output_slice_dims.empty() && output_sharding.IsTiled()) {
         auto grouped = AlignGroupsWith(hlo_sharding_util::GroupShardingOnDims(
                                            output_sharding, output_slice_dims),
                                        lhs_grouped);
