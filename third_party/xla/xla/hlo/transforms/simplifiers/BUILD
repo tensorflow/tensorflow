@@ -414,6 +414,8 @@ xla_cc_test(
         "//xla/service:memory_annotations_hdr",
         "//xla/service:pattern_matcher",
         "//xla/service:shape_inference",
+        "//xla/service/spmd/shardy:constants",
+        "//xla/service/spmd/shardy:utils",
         "//xla/tests:test_utils",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",

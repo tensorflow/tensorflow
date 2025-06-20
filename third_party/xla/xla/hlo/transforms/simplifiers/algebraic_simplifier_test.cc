@@ -57,6 +57,8 @@ limitations under the License.
 #include "xla/service/memory_annotations.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/shape_inference.h"
+#include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
@@ -12618,6 +12620,23 @@ ENTRY main.1 {
   EXPECT_NE(root->operand(0)->operand(0)->opcode(), HloOpcode::kParameter);
   EXPECT_EQ(root->operand(0)->operand(1)->operand(0)->opcode(),
             HloOpcode::kParameter);
+}
+
+TEST_F(AlgebraicSimplifierTest, PreserveSdySharding) {
+  const std::string hlo_string = R"(
+  HloModule jit_matmul, entry_computation_layout={(f64[8,3]{1,0}, f64[])->f64[8,3]{1,0}}, allow_spmd_sharding_propagation_to_parameters={false,true}, allow_spmd_sharding_propagation_to_output={true}, num_partitions=2
+    ENTRY %main.4 (Arg_0.1: f64[8,3], Arg_1.2: f64[]) -> f64[8,3] {
+      %Arg_1.2 = f64[] parameter(1)
+      %Arg_0.1 = f64[8,3]{1,0} parameter(0), frontend_attributes={xla.sdy.sharding="#sdy.sharding<@mesh, [{\"x\"}, {}]>"}
+      ROOT %dot.3 = f64[8,3]{1,0} dot(f64[] %Arg_1.2, f64[8,3]{1,0} %Arg_0.1), lhs_contracting_dims={}, rhs_contracting_dims={}, metadata={op_name="jit(matmul)/jit(main)/dot_general[dimension_numbers=(((), ()), ((), ())) precision=None preferred_element_type=float64]" source_file="third_party/py/jax/tests/pjit_test.py" source_line=4021}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_EQ(
+      m->entry_computation()->parameter_instruction(0)->get_frontend_attribute(
+          sdy::toStringView(sdy::kShardingRoundTripAttr)),
+      "#sdy.sharding<@mesh, [{\"x\"}, {}]>");
 }
 
 TEST_F(AlgebraicSimplifierTest, ReduceOfConstantBroadcastS32) {

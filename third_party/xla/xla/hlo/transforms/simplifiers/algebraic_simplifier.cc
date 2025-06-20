@@ -3543,8 +3543,12 @@ AlgebraicSimplifierVisitor::RewriteAsMultiplyDotWithZeroLhsContractingDim(
   }
   auto new_instruction = HloInstruction::CreateBinary(
       dot->shape(), HloOpcode::kMultiply, new_lhs, new_rhs);
-  dot->SetupDerivedInstruction(new_lhs);
-  dot->SetupDerivedInstruction(new_rhs);
+  if (new_lhs != lhs) {
+    dot->SetupDerivedInstruction(new_lhs);
+  }
+  if (new_rhs != rhs) {
+    dot->SetupDerivedInstruction(new_rhs);
+  }
   dot->SetupDerivedInstruction(new_instruction.get());
   return ReplaceWithNewInstruction(dot, std::move(new_instruction));
 }
