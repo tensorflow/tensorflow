@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_KERNEL_DEF_BUILDER_H_
 #define TENSORFLOW_CORE_FRAMEWORK_KERNEL_DEF_BUILDER_H_
 
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
