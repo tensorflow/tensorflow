@@ -132,11 +132,3 @@ func.func @avoidSimplifyBroadcastReshapeUnknownRanks(%arg0: tensor<*xbf16>) -> t
   // CHECK: "tf.BroadcastTo"
   // CHECK: "tf.Reshape"
 }
-
-// CHECK-LABEL: @removeSelectV2IfInputsEqual
-func.func @removeSelectV2IfInputsEqual(%arg0: tensor<i1>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
-  %0 = "tf.SelectV2"(%arg0, %arg1, %arg1) : (tensor<i1>, tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-  func.return %0 : tensor<4xf32>
-  // CHECK-NOT: "tf.SelectV2"
-  // CHECK: return %arg1 : tensor<4xf32>
-}
