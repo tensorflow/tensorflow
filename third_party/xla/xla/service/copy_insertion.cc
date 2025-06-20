@@ -1188,7 +1188,7 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
           auto maybe_can_share_buffer = alias_info_->MayAlias(
               instruction->operand(operand_index.operand_number),
               operand_index.operand_index, instruction,
-              operand_and_output_index.second);
+              operand_index.operand_index);
           if (maybe_can_share_buffer.has_value()) {
             can_share_buffer = maybe_can_share_buffer.value();
           }
