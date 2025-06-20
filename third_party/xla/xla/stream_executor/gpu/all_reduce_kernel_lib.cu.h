@@ -28,11 +28,6 @@ limitations under the License.
 namespace stream_executor::gpu {
 
 template <typename T>
-using RestrictedPtr = T* __restrict__;
-
-constexpr int64_t kNumElementsPerThread = 4;
-
-template <typename T>
 union Vec;
 
 template <>
@@ -123,44 +118,42 @@ __device__ __forceinline__ void SyncRemoteBlocks(
 }
 
 template <typename T, xla::ReductionKind ReductionKindT>
-__global__ void AllReduceKernelImpl(                                //
-    std::array<RestrictedPtr<T>, kMaxNumAllReduceInputPtrs>         //
-        remote_input_ptrs,                                          //
-    RestrictedPtr<T> local_input_ptr,                               //
-    RestrictedPtr<T> output_ptr,                                    //
-    int64_t rank,                                                   //
-    int64_t num_ranks,                                              //
-    int64_t num_elements,                                           //
-    std::array<RestrictedPtr<uint32_t>, kMaxNumAllReduceInputPtrs>  //
-        signal_flags_ptrs,                                          //
-    uint32_t signal_value                                           //
-) {
+__device__ __forceinline__ void OneShotAllReduceKernelImpl(
+    const AllReduceKernelParams<T>& args) {
   int64_t offset =
       kNumElementsPerThread * (blockIdx.x * blockDim.x + threadIdx.x);
   int64_t stride = kNumElementsPerThread * blockDim.x * gridDim.x;
 
   // Copy data from local input buffer to remote input buffer.
-  for (int i = offset; i < num_elements; i += stride) {
-    VecStore(remote_input_ptrs[rank] + i, VecLoad(local_input_ptr + i));
+  for (int i = offset; i < args.num_elements; i += stride) {
+    VecStore(args.remote_input_buffers[args.rank] + i,
+             VecLoad(args.input_buffer + i));
   }
 
-  SyncRemoteBlocks(signal_flags_ptrs, rank, num_ranks, signal_value);
+  SyncRemoteBlocks(args.signal_flags_buffers, args.rank, args.num_ranks,
+                   args.signal_value);
   __syncthreads();
 
-  for (int i = offset; i < num_elements; i += stride) {
-    Vec<T> acc = VecLoad(remote_input_ptrs[0] + i);
+  for (int i = offset; i < args.num_elements; i += stride) {
+    Vec<T> acc = VecLoad(args.remote_input_buffers[0] + i);
 
-    // Since `remote_input_ptrs` are provided in rank order, we get stable
+    // Since `remote_input_buffers` are provided in rank order, we get stable
     // reduction results on all devices.
 #pragma unroll
     for (int j = 1; j < kMaxNumAllReduceInputPtrs; ++j) {
-      if (j < num_ranks) {
-        VecOp<T, ReductionKindT>(acc, VecLoad(remote_input_ptrs[j] + i));
+      if (j < args.num_ranks) {
+        VecOp<T, ReductionKindT>(acc,
+                                 VecLoad(args.remote_input_buffers[j] + i));
       }
     }
 
-    VecStore(output_ptr + i, acc);
+    VecStore(args.output_buffer + i, acc);
   }
+}
+
+template <typename T, xla::ReductionKind ReductionKindT>
+__global__ void AllReduceKernelImpl(AllReduceKernelParams<T> args) {
+  OneShotAllReduceKernelImpl<T, ReductionKindT>(args);
 }
 
 }  // namespace stream_executor::gpu
