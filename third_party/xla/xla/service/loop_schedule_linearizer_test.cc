@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -73,7 +74,8 @@ class LoopScheduleLinearizerTest : public HloHardwareIndependentTestBase {
     TF_ASSERT_OK_AND_ASSIGN(bool changed, loop_schedule_linearizer.Run(module));
     ASSERT_EQ(changed, expect_change);
 
-    CopyInsertion copy_insertion;
+    AliasInfo alias_info;
+    CopyInsertion copy_insertion(&alias_info);
     ASSERT_IS_OK(copy_insertion.Run(module).status());
   }
 };

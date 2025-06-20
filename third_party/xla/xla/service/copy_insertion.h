@@ -65,7 +65,7 @@ class CopyInsertion : public HloModulePass {
   // TODO(b/424109294): Remove this constructor and replace it with the one
   // below.
   explicit CopyInsertion(
-      const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr,
+      const HloDataflowAnalysis::CanShareBuffer& can_share_buffer,
       int64_t use_region_based_live_range_analysis = kUseRegionAnalysisLimit)
       : can_share_buffer_(can_share_buffer),
         use_region_based_live_range_analysis_(

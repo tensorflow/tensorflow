@@ -95,7 +95,7 @@ int64_t CountControlEdges(const HloModule& module) {
 class CopyInsertionTest : public HloHardwareIndependentTestBase {
  protected:
   void InsertCopies(HloModule* module) {
-    CopyInsertion copy_insertion;
+    CopyInsertion copy_insertion(&alias_info_);
     VLOG(3) << "Before copy inser: " << module->ToString();
     ASSERT_IS_OK(copy_insertion.Run(module).status());
     VLOG(2) << "After copy inser: " << module->ToString();
@@ -1999,7 +1999,8 @@ void BM_SequentialWhiles(::testing::benchmark::State& state) {
     }
     module.AddEntryComputation(builder.Build());
 
-    CopyInsertion copy_insertion;
+    AliasInfo alias_info;
+    CopyInsertion copy_insertion(&alias_info);
 
     state.ResumeTiming();
     ASSERT_IS_OK(copy_insertion.Run(&module).status());
@@ -2053,7 +2054,8 @@ void BM_ParallelWhiles(::testing::benchmark::State& state) {
     }
     module.AddEntryComputation(builder.Build());
 
-    CopyInsertion copy_insertion;
+    AliasInfo alias_info;
+    CopyInsertion copy_insertion(&alias_info);
 
     state.ResumeTiming();
     ASSERT_IS_OK(copy_insertion.Run(&module).status());
@@ -2086,7 +2088,8 @@ void BM_ManyElementTuple(::testing::benchmark::State& state) {
   const int num_tuple_inputs = state.range(0);
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsFromFlags());
-  CopyInsertion copy_insertion;
+  AliasInfo alias_info;
+  CopyInsertion copy_insertion(&alias_info);
   const Shape element_shape = ShapeUtil::MakeShape(F32, {});
   std::vector<HloInstruction*> tuple_params(num_tuple_inputs);
   for (auto s : state) {
@@ -3814,7 +3817,7 @@ ENTRY %main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
                           ParseAndReturnVerifiedModule(kModuleString));
 
-  CopyInsertion copy_insertion;
+  CopyInsertion copy_insertion(&alias_info_);
   ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   LOG(INFO) << module->ToString();
 

@@ -939,7 +939,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
         &alias_info,
         /*use_region_based_live_range_analysis=*/-1);
   } else {
-    pipeline.AddPass<CopyInsertion>();
+    pipeline.AddPass<CopyInsertion>(&alias_info);
   }
 
   // The hoisting of small while loops is only useful in the context of the

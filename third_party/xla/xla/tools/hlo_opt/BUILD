@@ -33,6 +33,7 @@ cc_library(
     deps = [
         "//xla:debug_options_flags",
         "//xla:xla_proto_cc",
+        "//xla/hlo/analysis:alias_info",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/tools/hlo_opt:opt_lib",
         "//xla/hlo/transforms/expanders:bitcast_dtypes_expander",

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/transforms/expanders/bitcast_dtypes_expander.h"
 #include "xla/service/all_reduce_simplifier.h"
@@ -150,6 +151,9 @@ std::set<std::string> CompiledOptProvider::SupportedStages() {
 ////////////////////////////////////////////////////////////////////////////////
 void CompiledOptProvider::RegisterSharedHardwareSpecificPasses() {
   // go/keep-sorted start
+  // TODO(b/424109294): We should use platform-specific alias info, which means
+  // CopyInsertion is also actually not a shared hardware specific pass.
+  AliasInfo alias_info;
   RegisterPass<AllGatherDynamicSliceSimplifier>();
   RegisterPass<AllReduceSimplifier>();
   RegisterPass<AllReduceSplitter>();
@@ -159,7 +163,7 @@ void CompiledOptProvider::RegisterSharedHardwareSpecificPasses() {
   RegisterPass<CallInliner>();
   RegisterPass<ConditionalSimplifier>();
   RegisterPass<ConditionalToSelect>();
-  RegisterPass<CopyInsertion>();
+  RegisterPass<CopyInsertion>(&alias_info);
   RegisterPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
   RegisterPass<GpuScatterExpander>();
   RegisterPass<MapInliner>();
