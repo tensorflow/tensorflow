@@ -40,10 +40,69 @@ struct OriginalTensor {
 class OriginalValue : public ShapeTree<std::optional<OriginalTensor>> {
  public:
   explicit OriginalValue(Shape shape) : ShapeTree(std::move(shape)) {}
-  std::string ToString();
-  OriginalValueProto ToProto();
+  std::string ToString() const;
+  OriginalValueProto ToProto() const;
   static std::shared_ptr<OriginalValue> FromProto(
       const xla::OriginalValueProto& original_value_proto);
+};
+
+struct OriginalValuePointer {
+  OriginalValuePointer() = default;
+  explicit OriginalValuePointer(
+      std::shared_ptr<xla::OriginalValue> original_value) {
+    this->original_value = std::move(original_value);
+  }
+
+  friend bool operator==(const OriginalValuePointer& lhs,
+                         const OriginalValuePointer& rhs) {
+    // Returns if any original value is empty.
+    if (!lhs.original_value || !rhs.original_value) {
+      return !lhs.original_value == !rhs.original_value;
+    }
+    // Returns if the original values have different shapes.
+    if (!xla::ShapeUtil::Compatible(lhs.original_value->shape(),
+                                    rhs.original_value->shape())) {
+      return false;
+    }
+    // Compares nodes.
+    for (auto& leaf : lhs.original_value->leaves()) {
+      xla::ShapeIndex index = leaf.first;
+      std::optional<xla::OriginalTensor> lhs_original_array = leaf.second;
+      std::optional<xla::OriginalTensor> rhs_original_array =
+          rhs.original_value->element(index);
+      if (!lhs_original_array.has_value() || !rhs_original_array.has_value() ||
+          (lhs_original_array->instruction_name !=
+           rhs_original_array->instruction_name) ||
+          (lhs_original_array->shape_index !=
+           rhs_original_array->shape_index)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const OriginalValuePointer& value) {
+    // Ignore layout information, which is added to shapes during the HLO
+    // transformation.
+    h = xla::Shape::template Hash<H, false /*kIsLayoutSensitive*/>(
+        std::move(h), value.original_value->shape());
+    value.original_value->ForEachElement(
+        [&h, &value](const xla::ShapeIndex& shape_index,
+                     const std::optional<xla::OriginalTensor>& original_array) {
+          if (!value.original_value->IsLeaf(shape_index)) {
+            return;
+          }
+          if (!original_array) {
+            return;
+          }
+          h = H::combine(std::move(h), original_array->instruction_name,
+                         original_array->shape_index);
+        });
+    return std::move(h);
+  }
+
+  std::shared_ptr<xla::OriginalValue> original_value = nullptr;
 };
 
 // Copies the original value of the source to the destination instruction. This
@@ -51,6 +110,10 @@ class OriginalValue : public ShapeTree<std::optional<OriginalTensor>> {
 // shallow copy.
 void CopyOriginalValue(const HloInstruction* src_instruction,
                        HloInstruction* dest_instruction, bool clone);
+
+// Removes duplicates of original value objects referenced in the module to save
+// memory storage.
+void DeduplicateOriginalValues(HloModule* module);
 }  // namespace xla
 
 #endif  // XLA_HLO_IR_HLO_ORIGINAL_VALUE_H_

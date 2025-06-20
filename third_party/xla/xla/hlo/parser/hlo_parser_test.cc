@@ -5684,6 +5684,31 @@ ENTRY %test {
                   "origin={(({}, {\"v2\"}), {\"v3\"})}");
 }
 
+TEST_F(HloParserTest, DeduplicateOriginalValues) {
+  const std::string hlo_string =
+      R"(HloModule test, entry_computation_layout={(s32[])->s32[]}
+
+%fused_computation (param_0: s32[]) -> s32[] {
+  %param_0 = s32[] parameter(0)
+  %constant = s32[] constant(32)
+  ROOT %add = s32[] add(%param_0, %constant), origin={{"concatenate"}}
+}
+
+ENTRY %test (Arg_0: s32[]) -> s32[] {
+  %Arg_0 = s32[] parameter(0), origin={{"Arg_0"}}
+  ROOT %pad_add_fusion = s32[] fusion(%Arg_0), kind=kLoop, calls=%fused_computation, origin={{"concatenate"}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+
+  auto fusion_inst = static_cast<HloFusionInstruction*>(
+      module->entry_computation()->root_instruction());
+
+  ASSERT_EQ(
+      fusion_inst->original_value(),
+      fusion_inst->called_computation()->root_instruction()->original_value());
+}
+
 TEST_F(HloParserTest, TranscendentalAccuracyMode) {
   constexpr absl::string_view hlo_string = R"(
   HloModule exponential_hw
