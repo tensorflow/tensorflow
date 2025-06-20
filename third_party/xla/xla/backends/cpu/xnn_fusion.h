@@ -46,6 +46,11 @@ absl::StatusOr<xnn_datatype> XnnDatatype(const PrimitiveType& type);
 absl::StatusOr<xnn_unary_operator> XnnUnaryOperator(const HloOpcode& opcode);
 absl::StatusOr<xnn_binary_operator> XnnBinaryOperator(const HloOpcode& opcode);
 
+// Returns true if the shape either doesn't have a layout or the layout is
+// descending. Shapes without layout are accepted to make HLO tests less
+// verbose.
+bool IsLayoutSupportedByXnn(const Shape& shape);
+
 // Returns true if the constant is supported by XNNPACK.
 bool IsConstantSupportedByXnn(const HloInstruction* hlo);
 

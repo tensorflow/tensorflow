@@ -65,6 +65,9 @@ HloInstruction* XnnGraphFusion::Fuse(HloInstruction* producer,
 }
 
 bool XnnGraphFusion::IsOpSupported(const HloInstruction* instr) const {
+  if (!IsLayoutSupportedByXnn(instr->shape())) {
+    return false;
+  }
   if (instr->IsConstant()) {
     return IsConstantSupportedByXnn(instr);
   }

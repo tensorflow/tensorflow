@@ -249,6 +249,13 @@ static absl::StatusOr<xnn_subgraph_t> EmitXnnSubgraph(
   auto instructions = computation->MakeInstructionPostOrder();
 
   for (const HloInstruction* instr : instructions) {
+    if (!IsLayoutSupportedByXnn(instr->shape())) {
+      XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));
+      return InvalidArgument(
+          "Instruction with unsupported layout in XNN fusion: %s",
+          instr->ToString());
+    }
+
     if (instr->IsConstant()) {
       if (!IsConstantSupportedByXnn(instr)) {
         XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));

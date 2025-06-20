@@ -85,5 +85,24 @@ ENTRY entry {
   ASSERT_FALSE(changed);
 }
 
+TEST_F(XnnGraphFusionTest, BasicFusionUnsupportedLayout) {
+  std::string hlo_string = R"(
+HloModule FusionDemonstration
+
+ENTRY entry {
+   %param.0 = f32[2,2]{0,1} parameter(0)
+   %constant.0 = f32[2,2]{0,1} constant({ { 0, 1 }, { 1, 0 } })
+   %add.0 = f32[2,2]{0,1} add(f32[2,2]{0,1} %param.0, f32[2,2]{0,1} %constant.0)
+   %sub.0 = f32[2,2]{0,1} subtract(f32[2,2]{0,1} %param.0, f32[2,2]{0,1} %constant.0)
+   ROOT %result = f32[2,2]{0,1} multiply(f32[2,2]{0,1} %add.0, f32[2,2]{0,1} %sub.0)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, XnnGraphFusion().Run(module.get()));
+  ASSERT_FALSE(changed);
+}
+
 }  // namespace
 }  // namespace xla::cpu

@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout_util.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -233,6 +234,10 @@ absl::StatusOr<xnn_binary_operator> XnnBinaryOperator(const HloOpcode& opcode) {
       return InvalidArgument("Unsupported XNNPACK binary operator: %s",
                              HloOpcodeString(opcode));
   }
+}
+
+bool IsLayoutSupportedByXnn(const Shape& shape) {
+  return !shape.has_layout() || LayoutUtil::HasDescendingLayout(shape.layout());
 }
 
 bool IsConstantSupportedByXnn(const HloInstruction* hlo) {
