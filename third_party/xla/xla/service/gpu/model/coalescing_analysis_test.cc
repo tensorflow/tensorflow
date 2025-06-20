@@ -529,7 +529,8 @@ class CoalescingForTiledHloTest : public CoalescingTest {
 
     TiledHloComputation tiled_hlo_computation =
         *symbolic_tile_analysis.ComputeTiledHloInstructions(
-            tile_sizes, /*constraints_are_known_satisfied=*/true,
+            Tiling({{root, FlatTiling(tile_sizes.begin(), tile_sizes.end())}}),
+            /*constraints_are_known_satisfied=*/true,
             /*compute_all_tile_offset_indexing_maps=*/true);
 
     const TiledHloInstruction* tiled_hlo_root =
@@ -551,7 +552,8 @@ class CoalescingForTiledHloTest : public CoalescingTest {
 
     TiledHloComputation tiled_hlo_computation =
         *symbolic_tile_analysis.ComputeTiledHloInstructions(
-            tile_sizes, /*constraints_are_known_satisfied=*/true,
+            Tiling({{root, FlatTiling(tile_sizes.begin(), tile_sizes.end())}}),
+            /*constraints_are_known_satisfied=*/true,
             /*compute_all_tile_offset_indexing_maps=*/true);
 
     const TiledHloInstruction* tiled_hlo_root =

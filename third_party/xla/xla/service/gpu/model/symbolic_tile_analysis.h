@@ -317,24 +317,6 @@ class SymbolicTileAnalysis {
       bool constraints_are_known_satisfied = false,
       bool compute_all_tile_offset_indexing_maps = false) const;
 
-  // Returns a graph of HLO instructions tiled with the given tiling parameters.
-  // The provided tiling parameters must satisfy the analysis's constraints.
-  // By default, `ComputeTiledHloInstructions` performs a check that the
-  // constraints are satisfied by the chosen tiling parameters. Setting
-  // `constraints_are_known_satisfied` to true bypasses this check.
-  //
-  // If `compute_all_tile_offset_indexing_maps == true`, all
-  // `TiledHloInstruction`s will have tile offset indexing maps set. Otherwise,
-  // the indexing maps will be set only for instructions that have equal hash to
-  // deduplicate them.
-  //
-  // This variant can only be used for fusions with no hidden nested parameters.
-  [[deprecated]] absl::StatusOr<TiledHloComputation>
-  ComputeTiledHloInstructions(
-      absl::Span<const int64_t> output_tile_sizes,
-      bool constraints_are_known_satisfied = false,
-      bool compute_all_tile_offset_indexing_maps = false) const;
-
   // Returns the roots of the computation in increasing order of their output
   // index.
   absl::Span<const HloInstruction* const> GetRoots() const {

@@ -546,9 +546,15 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
   SymbolicTileAnalysis analysis =
       std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
 
+  int64_t real_root_index = analysis.real_root_index();
+  absl::Span<int64_t const> real_root_tile_sizes = tile_sizes[real_root_index];
+  const HloInstruction* real_root =
+      &fusion_adaptor.GetRoots()[real_root_index].instruction();
+  Tiling tiling = Tiling({{real_root, FlatTiling(real_root_tile_sizes.begin(),
+                                                 real_root_tile_sizes.end())}});
+
   TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
-                      analysis.ComputeTiledHloInstructions(
-                          tile_sizes[analysis.real_root_index()]));
+                      analysis.ComputeTiledHloInstructions(tiling));
 
   return EstimateRunTimeForTiledHloComputation(
       fusion_adaptor, tiled_hlo_computation, launch_dimensions);
