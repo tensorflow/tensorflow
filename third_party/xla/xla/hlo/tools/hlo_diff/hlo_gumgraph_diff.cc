@@ -68,13 +68,14 @@ absl::StatusOr<std::unique_ptr<const HloGumgraphMappings>> FindMappings(
   matchers.push_back(
       std::make_unique<GreedySubGraphExactMatcher>(&left, &right));
   matchers.push_back(std::make_unique<GreedyTopDownMatcher>(
-      &left, &right, /*require_same_children=*/true));
-  matchers.push_back(
-      std::make_unique<GreedyLimitedCandidatesBottomUpMatcher>(&left, &right));
+      &left, &right, options.debug_mode, /*require_same_children=*/true));
+  matchers.push_back(std::make_unique<GreedyLimitedCandidatesBottomUpMatcher>(
+      &left, &right, options.debug_mode));
   if (options.use_top_down_matcher) {
     matchers.push_back(std::make_unique<GreedyTopDownMatcher>(
-        &left, &right, /*require_same_children=*/true));
-    matchers.push_back(std::make_unique<GreedyTopDownMatcher>(&left, &right));
+        &left, &right, options.debug_mode, /*require_same_children=*/true));
+    matchers.push_back(std::make_unique<GreedyTopDownMatcher>(
+        &left, &right, options.debug_mode));
   }
 
   for (auto& matcher : matchers) {
@@ -103,8 +104,9 @@ absl::StatusOr<HloGumgraphDiffResults> ComputeDiff(const HloModule& left,
             << right_graph->GetNodeCount()
             << " and height: " << right_graph->GetRoot().props.height;
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<const HloGumgraphMappings> mappings,
-                      FindMappings(*left_graph, *right_graph));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<const HloGumgraphMappings> mappings,
+      FindMappings(*left_graph, *right_graph, options.match_options));
 
   std::unique_ptr<const DiffResult> diff_result =
       ConstructDiffResult(*left_graph, *right_graph, *mappings);

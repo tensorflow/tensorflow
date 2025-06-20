@@ -38,11 +38,13 @@ class GreedyLimitedCandidatesBottomUpMatcher : public HloGumgraphMatcher {
  public:
   GreedyLimitedCandidatesBottomUpMatcher(
       const HloGumgraph* left, const HloGumgraph* right,
-      double min_similarity = 1.2, int max_dice_subgraph_size = 200,
-      int min_bfs_distance = 1, int max_ancestors_to_consider = 100,
-      int right_seeds_traversal_limit = 40, int candidate_traversal_limit = 200)
-      : HloGumgraphMatcher(
-            MatcherType::kGreedyLimitedCandidatesBottomUpMatcher),
+      bool debug_mode = false, double min_similarity = 1.2,
+      int max_dice_subgraph_size = 200, int min_bfs_distance = 1,
+      int max_ancestors_to_consider = 100, int right_seeds_traversal_limit = 40,
+      int candidate_traversal_limit = 200)
+
+      : HloGumgraphMatcher(MatcherType::kGreedyLimitedCandidatesBottomUpMatcher,
+                           debug_mode),
         left_(*ABSL_DIE_IF_NULL(left)),
         right_(*ABSL_DIE_IF_NULL(right)),
         min_similarity_(min_similarity),

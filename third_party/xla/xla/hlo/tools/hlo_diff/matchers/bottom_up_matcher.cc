@@ -24,6 +24,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -235,6 +236,13 @@ void GreedyLimitedCandidatesBottomUpMatcher::Match(
     double max_similarity = 0;
     const HloInstructionNode* right_candidate = nullptr;
     count = 0;
+    std::string debug_string;
+    if (debug_mode_) {
+      for (const HloInstructionNode* right_seed : right_seeds) {
+        absl::StrAppend(&debug_string,
+                        "seed: ", right_seed->instruction->name(), "\n");
+      }
+    }
     HloGumgraphBfs(
         right_seeds,
         [&](const HloInstructionNode& node, int distance) {
@@ -261,13 +269,23 @@ void GreedyLimitedCandidatesBottomUpMatcher::Match(
               max_similarity = similarity;
               right_candidate = &node;
             }
+            if (debug_mode_) {
+              absl::StrAppend(
+                  &debug_string, "Similarity(", left_node->instruction->name(),
+                  ", ", node.instruction->name(), "): ", similarity,
+                  " (operands_match_similarity: ", operands_match_similarity,
+                  ", node_attributes_similarity: ", node_attributes_similarity,
+                  ", dice_sim: ", dice_sim,
+                  ", ancestor_similarity: ", ancestor_similarity, ")\n");
+            }
           }
           return distance <= min_bfs_distance_ ||
                  ++count < right_seeds_traversal_limit_;
         },
         BfsTraversalDirection::kReverse, right_.GetNodeCount());
     if (max_similarity > min_similarity_) {
-      mappings.MapInstructionsIfAbsent(left_node, right_candidate, type_);
+      mappings.MapInstructionsIfAbsent(left_node, right_candidate, type_,
+                                       debug_string);
     }
   }
   LOG(INFO) << "Finished GreedyLimitedCandidatesBottomUpMatcher. Total left to "
