@@ -1,857 +1,924 @@
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 509398d..a7e07d3 100644
+index a7e07d3..47c6b76 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1 +1,727 @@
+@@ -1,727 +1,185 @@
  Auto generated patch. Do not edit or delete it, even if empty.
-+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp b/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp
-+--- a/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp
-++++ b/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp
-+@@ -953,6 +953,14 @@
-+     return expectedCost(UserVF).isValid();
-+   }
-+ 
-++  /// \return True if maximizing vector bandwidth is enabled by the target or
-++  /// user options, for the given register kind.
-++  bool useMaxBandwidth(TargetTransformInfo::RegisterKind RegKind);
-++
-++  /// \return True if maximizing vector bandwidth is enabled by the target or
-++  /// user options, for the given vector factor.
-++  bool useMaxBandwidth(ElementCount VF);
-++
-+   /// \return The size (in bits) of the smallest and widest types in the code
-+   /// that needs to be vectorized. We ignore values that remain scalar such as
-+   /// 64 bit loop indices.
-+@@ -3926,6 +3934,20 @@
-+   return FixedScalableVFPair::getNone();
-+ }
-+ 
-++bool LoopVectorizationCostModel::useMaxBandwidth(ElementCount VF) {
-++  return useMaxBandwidth(VF.isScalable()
-++                             ? TargetTransformInfo::RGK_ScalableVector
-++                             : TargetTransformInfo::RGK_FixedWidthVector);
-++}
-++
-++bool LoopVectorizationCostModel::useMaxBandwidth(
-++    TargetTransformInfo::RegisterKind RegKind) {
-++  return MaximizeBandwidth || (MaximizeBandwidth.getNumOccurrences() == 0 &&
-++                               (TTI.shouldMaximizeVectorBandwidth(RegKind) ||
-++                                (UseWiderVFIfCallVariantsPresent &&
-++                                 Legal->hasVectorCallVariants())));
-++}
-++
-+ ElementCount LoopVectorizationCostModel::getMaximizedVFForTarget(
-+     unsigned MaxTripCount, unsigned SmallestType, unsigned WidestType,
-+     ElementCount MaxSafeVF, bool FoldTailByMasking) {
-+@@ -3991,10 +4013,7 @@
-+       ComputeScalableMaxVF ? TargetTransformInfo::RGK_ScalableVector
-+                            : TargetTransformInfo::RGK_FixedWidthVector;
-+   ElementCount MaxVF = MaxVectorElementCount;
-+-  if (MaximizeBandwidth ||
-+-      (MaximizeBandwidth.getNumOccurrences() == 0 &&
-+-       (TTI.shouldMaximizeVectorBandwidth(RegKind) ||
-+-        (UseWiderVFIfCallVariantsPresent && Legal->hasVectorCallVariants())))) {
-++  if (useMaxBandwidth(RegKind)) {
-+     auto MaxVectorElementCountMaxBW = ElementCount::get(
-+         llvm::bit_floor(WidestRegister.getKnownMinValue() / SmallestType),
-+         ComputeScalableMaxVF);
-+@@ -4349,15 +4368,21 @@
-+   for (auto &P : VPlans) {
-+     ArrayRef<ElementCount> VFs(P->vectorFactors().begin(),
-+                                P->vectorFactors().end());
-+-    auto RUs = calculateRegisterUsageForPlan(*P, VFs, TTI, CM.ValuesToIgnore);
-+-    for (auto [VF, RU] : zip_equal(VFs, RUs)) {
-++
-++    SmallVector<VPRegisterUsage, 8> RUs;
-++    if (CM.useMaxBandwidth(TargetTransformInfo::RGK_ScalableVector) ||
-++        CM.useMaxBandwidth(TargetTransformInfo::RGK_FixedWidthVector))
-++      RUs = calculateRegisterUsageForPlan(*P, VFs, TTI, CM.ValuesToIgnore);
-++
-++    for (unsigned I = 0; I < VFs.size(); I++) {
-++      ElementCount VF = VFs[I];
-+       // The cost for scalar VF=1 is already calculated, so ignore it.
-+       if (VF.isScalar())
-+         continue;
-+ 
-+       /// Don't consider the VF if it exceeds the number of registers for the
-+       /// target.
-+-      if (RU.exceedsMaxNumRegs(TTI))
-++      if (CM.useMaxBandwidth(VF) && RUs[I].exceedsMaxNumRegs(TTI))
-+         continue;
-+ 
-+       InstructionCost C = CM.expectedCost(VF);
-+@@ -7108,8 +7133,14 @@
-+   for (auto &P : VPlans) {
-+     ArrayRef<ElementCount> VFs(P->vectorFactors().begin(),
-+                                P->vectorFactors().end());
-+-    auto RUs = calculateRegisterUsageForPlan(*P, VFs, TTI, CM.ValuesToIgnore);
-+-    for (auto [VF, RU] : zip_equal(VFs, RUs)) {
-++
-++    SmallVector<VPRegisterUsage, 8> RUs;
-++    if (CM.useMaxBandwidth(TargetTransformInfo::RGK_ScalableVector) ||
-++        CM.useMaxBandwidth(TargetTransformInfo::RGK_FixedWidthVector))
-++      RUs = calculateRegisterUsageForPlan(*P, VFs, TTI, CM.ValuesToIgnore);
-++
-++    for (unsigned I = 0; I < VFs.size(); I++) {
-++      ElementCount VF = VFs[I];
-+       if (VF.isScalar())
-+         continue;
-+       if (!ForceVectorization && !willGenerateVectors(*P, VF, TTI)) {
-+@@ -7131,7 +7162,7 @@
-+       InstructionCost Cost = cost(*P, VF);
-+       VectorizationFactor CurrentFactor(VF, Cost, ScalarCost);
-+ 
-+-      if (RU.exceedsMaxNumRegs(TTI)) {
-++      if (CM.useMaxBandwidth(VF) && RUs[I].exceedsMaxNumRegs(TTI)) {
-+         LLVM_DEBUG(dbgs() << "LV(REG): Not considering vector loop of width "
-+                           << VF << " because it uses too many registers\n");
-+         continue;
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/ARM/mve-reg-pressure-vmla.ll b/llvm/test/Transforms/LoopVectorize/ARM/mve-reg-pressure-vmla.ll
-+--- a/llvm/test/Transforms/LoopVectorize/ARM/mve-reg-pressure-vmla.ll
-++++ b/llvm/test/Transforms/LoopVectorize/ARM/mve-reg-pressure-vmla.ll
-+@@ -0,0 +1,136 @@
-++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --filter-out-after "^scalar.ph:" --version 5
-++; RUN: opt -mattr=+mve -passes=loop-vectorize < %s -S -o - | FileCheck %s
-++
-++target datalayout = "e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64"
-++target triple = "thumbv8.1m.main-unknown-none-eabihf"
-++
-++; Even though it has high register pressure, this example should still vectorise since the mul+add chains become VMLAs.
-++
-++define void @fn(i32 noundef %n, ptr %in, ptr %out) #0 {
-++; CHECK-LABEL: define void @fn(
-++; CHECK-SAME: i32 noundef [[N:%.*]], ptr [[IN:%.*]], ptr [[OUT:%.*]]) #[[ATTR0:[0-9]+]] {
-++; CHECK-NEXT:  [[ENTRY:.*:]]
-++; CHECK-NEXT:    [[CMP46_NOT:%.*]] = icmp eq i32 [[N]], 0
-++; CHECK-NEXT:    br i1 [[CMP46_NOT]], [[EXIT:label %.*]], label %[[FOR_BODY_PREHEADER:.*]]
-++; CHECK:       [[FOR_BODY_PREHEADER]]:
-++; CHECK-NEXT:    br i1 false, label %[[SCALAR_PH:.*]], label %[[VECTOR_MEMCHECK:.*]]
-++; CHECK:       [[VECTOR_MEMCHECK]]:
-++; CHECK-NEXT:    [[TMP0:%.*]] = mul i32 [[N]], 3
-++; CHECK-NEXT:    [[SCEVGEP:%.*]] = getelementptr i8, ptr [[OUT]], i32 [[TMP0]]
-++; CHECK-NEXT:    [[SCEVGEP1:%.*]] = getelementptr i8, ptr [[IN]], i32 [[TMP0]]
-++; CHECK-NEXT:    [[BOUND0:%.*]] = icmp ult ptr [[OUT]], [[SCEVGEP1]]
-++; CHECK-NEXT:    [[BOUND1:%.*]] = icmp ult ptr [[IN]], [[SCEVGEP]]
-++; CHECK-NEXT:    [[FOUND_CONFLICT:%.*]] = and i1 [[BOUND0]], [[BOUND1]]
-++; CHECK-NEXT:    br i1 [[FOUND_CONFLICT]], label %[[SCALAR_PH]], label %[[VECTOR_PH:.*]]
-++; CHECK:       [[VECTOR_PH]]:
-++; CHECK-NEXT:    [[N_RND_UP:%.*]] = add i32 [[N]], 3
-++; CHECK-NEXT:    [[N_MOD_VF:%.*]] = urem i32 [[N_RND_UP]], 4
-++; CHECK-NEXT:    [[N_VEC:%.*]] = sub i32 [[N_RND_UP]], [[N_MOD_VF]]
-++; CHECK-NEXT:    br label %[[VECTOR_BODY:.*]]
-++; CHECK:       [[VECTOR_BODY]]:
-++; CHECK-NEXT:    [[INDEX:%.*]] = phi i32 [ 0, %[[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ]
-++; CHECK-NEXT:    [[POINTER_PHI:%.*]] = phi ptr [ [[IN]], %[[VECTOR_PH]] ], [ [[PTR_IND:%.*]], %[[VECTOR_BODY]] ]
-++; CHECK-NEXT:    [[POINTER_PHI2:%.*]] = phi ptr [ [[OUT]], %[[VECTOR_PH]] ], [ [[PTR_IND3:%.*]], %[[VECTOR_BODY]] ]
-++; CHECK-NEXT:    [[VECTOR_GEP:%.*]] = getelementptr i8, ptr [[POINTER_PHI]], <4 x i32> <i32 0, i32 3, i32 6, i32 9>
-++; CHECK-NEXT:    [[VECTOR_GEP4:%.*]] = getelementptr i8, ptr [[POINTER_PHI2]], <4 x i32> <i32 0, i32 3, i32 6, i32 9>
-++; CHECK-NEXT:    [[ACTIVE_LANE_MASK:%.*]] = call <4 x i1> @llvm.get.active.lane.mask.v4i1.i32(i32 [[INDEX]], i32 [[N]])
-++; CHECK-NEXT:    [[TMP1:%.*]] = getelementptr inbounds nuw i8, <4 x ptr> [[VECTOR_GEP]], i32 1
-++; CHECK-NEXT:    [[WIDE_MASKED_GATHER:%.*]] = call <4 x i8> @llvm.masked.gather.v4i8.v4p0(<4 x ptr> [[VECTOR_GEP]], i32 1, <4 x i1> [[ACTIVE_LANE_MASK]], <4 x i8> poison), !alias.scope [[META0:![0-9]+]]
-++; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds nuw i8, <4 x ptr> [[VECTOR_GEP]], i32 2
-++; CHECK-NEXT:    [[WIDE_MASKED_GATHER5:%.*]] = call <4 x i8> @llvm.masked.gather.v4i8.v4p0(<4 x ptr> [[TMP1]], i32 1, <4 x i1> [[ACTIVE_LANE_MASK]], <4 x i8> poison), !alias.scope [[META0]]
-++; CHECK-NEXT:    [[WIDE_MASKED_GATHER6:%.*]] = call <4 x i8> @llvm.masked.gather.v4i8.v4p0(<4 x ptr> [[TMP2]], i32 1, <4 x i1> [[ACTIVE_LANE_MASK]], <4 x i8> poison), !alias.scope [[META0]]
-++; CHECK-NEXT:    [[TMP3:%.*]] = zext <4 x i8> [[WIDE_MASKED_GATHER]] to <4 x i32>
-++; CHECK-NEXT:    [[TMP4:%.*]] = mul nuw nsw <4 x i32> [[TMP3]], splat (i32 19595)
-++; CHECK-NEXT:    [[TMP5:%.*]] = zext <4 x i8> [[WIDE_MASKED_GATHER5]] to <4 x i32>
-++; CHECK-NEXT:    [[TMP6:%.*]] = mul nuw nsw <4 x i32> [[TMP5]], splat (i32 38470)
-++; CHECK-NEXT:    [[TMP7:%.*]] = zext <4 x i8> [[WIDE_MASKED_GATHER6]] to <4 x i32>
-++; CHECK-NEXT:    [[TMP8:%.*]] = mul nuw nsw <4 x i32> [[TMP7]], splat (i32 7471)
-++; CHECK-NEXT:    [[TMP9:%.*]] = add nuw nsw <4 x i32> [[TMP4]], splat (i32 32768)
-++; CHECK-NEXT:    [[TMP10:%.*]] = add nuw nsw <4 x i32> [[TMP9]], [[TMP6]]
-++; CHECK-NEXT:    [[TMP11:%.*]] = add nuw nsw <4 x i32> [[TMP10]], [[TMP8]]
-++; CHECK-NEXT:    [[TMP12:%.*]] = lshr <4 x i32> [[TMP11]], splat (i32 16)
-++; CHECK-NEXT:    [[TMP13:%.*]] = trunc <4 x i32> [[TMP12]] to <4 x i8>
-++; CHECK-NEXT:    [[TMP14:%.*]] = mul nuw nsw <4 x i32> [[TMP3]], splat (i32 32767)
-++; CHECK-NEXT:    [[TMP15:%.*]] = mul nuw <4 x i32> [[TMP5]], splat (i32 16762097)
-++; CHECK-NEXT:    [[TMP16:%.*]] = mul nuw <4 x i32> [[TMP7]], splat (i32 16759568)
-++; CHECK-NEXT:    [[TMP17:%.*]] = add nuw nsw <4 x i32> [[TMP14]], splat (i32 32768)
-++; CHECK-NEXT:    [[TMP18:%.*]] = add nuw <4 x i32> [[TMP17]], [[TMP15]]
-++; CHECK-NEXT:    [[TMP19:%.*]] = add <4 x i32> [[TMP18]], [[TMP16]]
-++; CHECK-NEXT:    [[TMP20:%.*]] = lshr <4 x i32> [[TMP19]], splat (i32 16)
-++; CHECK-NEXT:    [[TMP21:%.*]] = trunc <4 x i32> [[TMP20]] to <4 x i8>
-++; CHECK-NEXT:    [[TMP22:%.*]] = mul nuw nsw <4 x i32> [[TMP3]], splat (i32 13282)
-++; CHECK-NEXT:    [[TMP23:%.*]] = mul nuw <4 x i32> [[TMP5]], splat (i32 16744449)
-++; CHECK-NEXT:    [[TMP24:%.*]] = mul nuw nsw <4 x i32> [[TMP7]], splat (i32 19485)
-++; CHECK-NEXT:    [[TMP25:%.*]] = add nuw nsw <4 x i32> [[TMP22]], splat (i32 32768)
-++; CHECK-NEXT:    [[TMP26:%.*]] = add nuw <4 x i32> [[TMP25]], [[TMP23]]
-++; CHECK-NEXT:    [[TMP27:%.*]] = add nuw <4 x i32> [[TMP26]], [[TMP24]]
-++; CHECK-NEXT:    [[TMP28:%.*]] = lshr <4 x i32> [[TMP27]], splat (i32 16)
-++; CHECK-NEXT:    [[TMP29:%.*]] = trunc <4 x i32> [[TMP28]] to <4 x i8>
-++; CHECK-NEXT:    [[TMP30:%.*]] = getelementptr inbounds nuw i8, <4 x ptr> [[VECTOR_GEP4]], i32 1
-++; CHECK-NEXT:    call void @llvm.masked.scatter.v4i8.v4p0(<4 x i8> [[TMP13]], <4 x ptr> [[VECTOR_GEP4]], i32 1, <4 x i1> [[ACTIVE_LANE_MASK]]), !alias.scope [[META3:![0-9]+]], !noalias [[META0]]
-++; CHECK-NEXT:    [[TMP31:%.*]] = getelementptr inbounds nuw i8, <4 x ptr> [[VECTOR_GEP4]], i32 2
-++; CHECK-NEXT:    call void @llvm.masked.scatter.v4i8.v4p0(<4 x i8> [[TMP21]], <4 x ptr> [[TMP30]], i32 1, <4 x i1> [[ACTIVE_LANE_MASK]]), !alias.scope [[META3]], !noalias [[META0]]
-++; CHECK-NEXT:    call void @llvm.masked.scatter.v4i8.v4p0(<4 x i8> [[TMP29]], <4 x ptr> [[TMP31]], i32 1, <4 x i1> [[ACTIVE_LANE_MASK]]), !alias.scope [[META3]], !noalias [[META0]]
-++; CHECK-NEXT:    [[INDEX_NEXT]] = add i32 [[INDEX]], 4
-++; CHECK-NEXT:    [[PTR_IND]] = getelementptr i8, ptr [[POINTER_PHI]], i32 12
-++; CHECK-NEXT:    [[PTR_IND3]] = getelementptr i8, ptr [[POINTER_PHI2]], i32 12
-++; CHECK-NEXT:    [[TMP32:%.*]] = icmp eq i32 [[INDEX_NEXT]], [[N_VEC]]
-++; CHECK-NEXT:    br i1 [[TMP32]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP5:![0-9]+]]
-++; CHECK:       [[MIDDLE_BLOCK]]:
-++; CHECK-NEXT:    br [[EXIT_LOOPEXIT:label %.*]]
-++; CHECK:       [[SCALAR_PH]]:
+-diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp b/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp
+---- a/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp
+-+++ b/llvm/lib/Transforms/Vectorize/LoopVectorize.cpp
+-@@ -953,6 +953,14 @@
+-     return expectedCost(UserVF).isValid();
+-   }
+- 
+-+  /// \return True if maximizing vector bandwidth is enabled by the target or
+-+  /// user options, for the given register kind.
+-+  bool useMaxBandwidth(TargetTransformInfo::RegisterKind RegKind);
++diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Vectorize/VPlanUnroll.cpp b/llvm/lib/Transforms/Vectorize/VPlanUnroll.cpp
++--- a/llvm/lib/Transforms/Vectorize/VPlanUnroll.cpp
+++++ b/llvm/lib/Transforms/Vectorize/VPlanUnroll.cpp
++@@ -231,14 +231,19 @@
++       if (auto *VPI = dyn_cast<VPInstruction>(RdxPhi->getStartValue())) {
++         assert(VPI->getOpcode() == VPInstruction::ReductionStartVector &&
++                "unexpected start VPInstruction");
+++        if (Part != 1)
+++          continue;
+++        VPValue *StartV;
++         if (match(VPI->getOperand(2), m_SpecificInt(1))) {
++-          Copy->setOperand(0, VPI->getOperand(1));
++-        } else if (Part == 1) {
+++          StartV = VPI->getOperand(1);
+++        } else {
++           auto *C = VPI->clone();
++           C->setOperand(0, C->getOperand(1));
++           C->insertAfter(VPI);
++-          addUniformForAllParts(C);
+++          StartV = C;
++         }
+++        for (unsigned Part = 1; Part != UF; ++Part)
+++          VPV2Parts[VPI][Part - 1] = StartV;
++       }
++       Copy->addOperand(getConstantVPV(Part));
++     } else {
++diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/AArch64/partial-reduce-interleave.ll b/llvm/test/Transforms/LoopVectorize/AArch64/partial-reduce-interleave.ll
++--- a/llvm/test/Transforms/LoopVectorize/AArch64/partial-reduce-interleave.ll
+++++ b/llvm/test/Transforms/LoopVectorize/AArch64/partial-reduce-interleave.ll
++@@ -0,0 +1,154 @@
+++; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --version 5
+++; RUN: opt -p loop-vectorize -force-vector-width=16 -force-vector-interleave=2 -mattr=+dotprod -S %s | FileCheck --check-prefix=IC2 %s
+++; RUN: opt -p loop-vectorize -force-vector-width=16 -force-vector-interleave=4 -mattr=+dotprod -S %s | FileCheck --check-prefix=IC4 %s
+ +
+-+  /// \return True if maximizing vector bandwidth is enabled by the target or
+-+  /// user options, for the given vector factor.
+-+  bool useMaxBandwidth(ElementCount VF);
+++target triple = "arm64-apple-macosx"
+ +
+-   /// \return The size (in bits) of the smallest and widest types in the code
+-   /// that needs to be vectorized. We ignore values that remain scalar such as
+-   /// 64 bit loop indices.
+-@@ -3926,6 +3934,20 @@
+-   return FixedScalableVFPair::getNone();
+- }
+- 
+-+bool LoopVectorizationCostModel::useMaxBandwidth(ElementCount VF) {
+-+  return useMaxBandwidth(VF.isScalable()
+-+                             ? TargetTransformInfo::RGK_ScalableVector
+-+                             : TargetTransformInfo::RGK_FixedWidthVector);
+-+}
+-+
+-+bool LoopVectorizationCostModel::useMaxBandwidth(
+-+    TargetTransformInfo::RegisterKind RegKind) {
+-+  return MaximizeBandwidth || (MaximizeBandwidth.getNumOccurrences() == 0 &&
+-+                               (TTI.shouldMaximizeVectorBandwidth(RegKind) ||
+-+                                (UseWiderVFIfCallVariantsPresent &&
+-+                                 Legal->hasVectorCallVariants())));
+-+}
+-+
+- ElementCount LoopVectorizationCostModel::getMaximizedVFForTarget(
+-     unsigned MaxTripCount, unsigned SmallestType, unsigned WidestType,
+-     ElementCount MaxSafeVF, bool FoldTailByMasking) {
+-@@ -3991,10 +4013,7 @@
+-       ComputeScalableMaxVF ? TargetTransformInfo::RGK_ScalableVector
+-                            : TargetTransformInfo::RGK_FixedWidthVector;
+-   ElementCount MaxVF = MaxVectorElementCount;
+--  if (MaximizeBandwidth ||
+--      (MaximizeBandwidth.getNumOccurrences() == 0 &&
+--       (TTI.shouldMaximizeVectorBandwidth(RegKind) ||
+--        (UseWiderVFIfCallVariantsPresent && Legal->hasVectorCallVariants())))) {
+-+  if (useMaxBandwidth(RegKind)) {
+-     auto MaxVectorElementCountMaxBW = ElementCount::get(
+-         llvm::bit_floor(WidestRegister.getKnownMinValue() / SmallestType),
+-         ComputeScalableMaxVF);
+-@@ -4349,15 +4368,21 @@
+-   for (auto &P : VPlans) {
+-     ArrayRef<ElementCount> VFs(P->vectorFactors().begin(),
+-                                P->vectorFactors().end());
+--    auto RUs = calculateRegisterUsageForPlan(*P, VFs, TTI, CM.ValuesToIgnore);
+--    for (auto [VF, RU] : zip_equal(VFs, RUs)) {
+-+
+-+    SmallVector<VPRegisterUsage, 8> RUs;
+-+    if (CM.useMaxBandwidth(TargetTransformInfo::RGK_ScalableVector) ||
+-+        CM.useMaxBandwidth(TargetTransformInfo::RGK_FixedWidthVector))
+-+      RUs = calculateRegisterUsageForPlan(*P, VFs, TTI, CM.ValuesToIgnore);
+-+
+-+    for (unsigned I = 0; I < VFs.size(); I++) {
+-+      ElementCount VF = VFs[I];
+-       // The cost for scalar VF=1 is already calculated, so ignore it.
+-       if (VF.isScalar())
+-         continue;
+- 
+-       /// Don't consider the VF if it exceeds the number of registers for the
+-       /// target.
+--      if (RU.exceedsMaxNumRegs(TTI))
+-+      if (CM.useMaxBandwidth(VF) && RUs[I].exceedsMaxNumRegs(TTI))
+-         continue;
+- 
+-       InstructionCost C = CM.expectedCost(VF);
+-@@ -7108,8 +7133,14 @@
+-   for (auto &P : VPlans) {
+-     ArrayRef<ElementCount> VFs(P->vectorFactors().begin(),
+-                                P->vectorFactors().end());
+--    auto RUs = calculateRegisterUsageForPlan(*P, VFs, TTI, CM.ValuesToIgnore);
+--    for (auto [VF, RU] : zip_equal(VFs, RUs)) {
+-+
+-+    SmallVector<VPRegisterUsage, 8> RUs;
+-+    if (CM.useMaxBandwidth(TargetTransformInfo::RGK_ScalableVector) ||
+-+        CM.useMaxBandwidth(TargetTransformInfo::RGK_FixedWidthVector))
+-+      RUs = calculateRegisterUsageForPlan(*P, VFs, TTI, CM.ValuesToIgnore);
+-+
+-+    for (unsigned I = 0; I < VFs.size(); I++) {
+-+      ElementCount VF = VFs[I];
+-       if (VF.isScalar())
+-         continue;
+-       if (!ForceVectorization && !willGenerateVectors(*P, VF, TTI)) {
+-@@ -7131,7 +7162,7 @@
+-       InstructionCost Cost = cost(*P, VF);
+-       VectorizationFactor CurrentFactor(VF, Cost, ScalarCost);
+- 
+--      if (RU.exceedsMaxNumRegs(TTI)) {
+-+      if (CM.useMaxBandwidth(VF) && RUs[I].exceedsMaxNumRegs(TTI)) {
+-         LLVM_DEBUG(dbgs() << "LV(REG): Not considering vector loop of width "
+-                           << VF << " because it uses too many registers\n");
+-         continue;
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/ARM/mve-reg-pressure-vmla.ll b/llvm/test/Transforms/LoopVectorize/ARM/mve-reg-pressure-vmla.ll
+---- a/llvm/test/Transforms/LoopVectorize/ARM/mve-reg-pressure-vmla.ll
+-+++ b/llvm/test/Transforms/LoopVectorize/ARM/mve-reg-pressure-vmla.ll
+-@@ -0,0 +1,136 @@
+-+; NOTE: Assertions have been autogenerated by utils/update_test_checks.py UTC_ARGS: --filter-out-after "^scalar.ph:" --version 5
+-+; RUN: opt -mattr=+mve -passes=loop-vectorize < %s -S -o - | FileCheck %s
+-+
+-+target datalayout = "e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64"
+-+target triple = "thumbv8.1m.main-unknown-none-eabihf"
+-+
+-+; Even though it has high register pressure, this example should still vectorise since the mul+add chains become VMLAs.
+-+
+-+define void @fn(i32 noundef %n, ptr %in, ptr %out) #0 {
+-+; CHECK-LABEL: define void @fn(
+-+; CHECK-SAME: i32 noundef [[N:%.*]], ptr [[IN:%.*]], ptr [[OUT:%.*]]) #[[ATTR0:[0-9]+]] {
+-+; CHECK-NEXT:  [[ENTRY:.*:]]
+-+; CHECK-NEXT:    [[CMP46_NOT:%.*]] = icmp eq i32 [[N]], 0
+-+; CHECK-NEXT:    br i1 [[CMP46_NOT]], [[EXIT:label %.*]], label %[[FOR_BODY_PREHEADER:.*]]
+-+; CHECK:       [[FOR_BODY_PREHEADER]]:
+-+; CHECK-NEXT:    br i1 false, label %[[SCALAR_PH:.*]], label %[[VECTOR_MEMCHECK:.*]]
+-+; CHECK:       [[VECTOR_MEMCHECK]]:
+-+; CHECK-NEXT:    [[TMP0:%.*]] = mul i32 [[N]], 3
+-+; CHECK-NEXT:    [[SCEVGEP:%.*]] = getelementptr i8, ptr [[OUT]], i32 [[TMP0]]
+-+; CHECK-NEXT:    [[SCEVGEP1:%.*]] = getelementptr i8, ptr [[IN]], i32 [[TMP0]]
+-+; CHECK-NEXT:    [[BOUND0:%.*]] = icmp ult ptr [[OUT]], [[SCEVGEP1]]
+-+; CHECK-NEXT:    [[BOUND1:%.*]] = icmp ult ptr [[IN]], [[SCEVGEP]]
+-+; CHECK-NEXT:    [[FOUND_CONFLICT:%.*]] = and i1 [[BOUND0]], [[BOUND1]]
+-+; CHECK-NEXT:    br i1 [[FOUND_CONFLICT]], label %[[SCALAR_PH]], label %[[VECTOR_PH:.*]]
+-+; CHECK:       [[VECTOR_PH]]:
+-+; CHECK-NEXT:    [[N_RND_UP:%.*]] = add i32 [[N]], 3
+-+; CHECK-NEXT:    [[N_MOD_VF:%.*]] = urem i32 [[N_RND_UP]], 4
+-+; CHECK-NEXT:    [[N_VEC:%.*]] = sub i32 [[N_RND_UP]], [[N_MOD_VF]]
+-+; CHECK-NEXT:    br label %[[VECTOR_BODY:.*]]
+-+; CHECK:       [[VECTOR_BODY]]:
+-+; CHECK-NEXT:    [[INDEX:%.*]] = phi i32 [ 0, %[[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ]
+-+; CHECK-NEXT:    [[POINTER_PHI:%.*]] = phi ptr [ [[IN]], %[[VECTOR_PH]] ], [ [[PTR_IND:%.*]], %[[VECTOR_BODY]] ]
+-+; CHECK-NEXT:    [[POINTER_PHI2:%.*]] = phi ptr [ [[OUT]], %[[VECTOR_PH]] ], [ [[PTR_IND3:%.*]], %[[VECTOR_BODY]] ]
+-+; CHECK-NEXT:    [[VECTOR_GEP:%.*]] = getelementptr i8, ptr [[POINTER_PHI]], <4 x i32> <i32 0, i32 3, i32 6, i32 9>
+-+; CHECK-NEXT:    [[VECTOR_GEP4:%.*]] = getelementptr i8, ptr [[POINTER_PHI2]], <4 x i32> <i32 0, i32 3, i32 6, i32 9>
+-+; CHECK-NEXT:    [[ACTIVE_LANE_MASK:%.*]] = call <4 x i1> @llvm.get.active.lane.mask.v4i1.i32(i32 [[INDEX]], i32 [[N]])
+-+; CHECK-NEXT:    [[TMP1:%.*]] = getelementptr inbounds nuw i8, <4 x ptr> [[VECTOR_GEP]], i32 1
+-+; CHECK-NEXT:    [[WIDE_MASKED_GATHER:%.*]] = call <4 x i8> @llvm.masked.gather.v4i8.v4p0(<4 x ptr> [[VECTOR_GEP]], i32 1, <4 x i1> [[ACTIVE_LANE_MASK]], <4 x i8> poison), !alias.scope [[META0:![0-9]+]]
+-+; CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds nuw i8, <4 x ptr> [[VECTOR_GEP]], i32 2
+-+; CHECK-NEXT:    [[WIDE_MASKED_GATHER5:%.*]] = call <4 x i8> @llvm.masked.gather.v4i8.v4p0(<4 x ptr> [[TMP1]], i32 1, <4 x i1> [[ACTIVE_LANE_MASK]], <4 x i8> poison), !alias.scope [[META0]]
+-+; CHECK-NEXT:    [[WIDE_MASKED_GATHER6:%.*]] = call <4 x i8> @llvm.masked.gather.v4i8.v4p0(<4 x ptr> [[TMP2]], i32 1, <4 x i1> [[ACTIVE_LANE_MASK]], <4 x i8> poison), !alias.scope [[META0]]
+-+; CHECK-NEXT:    [[TMP3:%.*]] = zext <4 x i8> [[WIDE_MASKED_GATHER]] to <4 x i32>
+-+; CHECK-NEXT:    [[TMP4:%.*]] = mul nuw nsw <4 x i32> [[TMP3]], splat (i32 19595)
+-+; CHECK-NEXT:    [[TMP5:%.*]] = zext <4 x i8> [[WIDE_MASKED_GATHER5]] to <4 x i32>
+-+; CHECK-NEXT:    [[TMP6:%.*]] = mul nuw nsw <4 x i32> [[TMP5]], splat (i32 38470)
+-+; CHECK-NEXT:    [[TMP7:%.*]] = zext <4 x i8> [[WIDE_MASKED_GATHER6]] to <4 x i32>
+-+; CHECK-NEXT:    [[TMP8:%.*]] = mul nuw nsw <4 x i32> [[TMP7]], splat (i32 7471)
+-+; CHECK-NEXT:    [[TMP9:%.*]] = add nuw nsw <4 x i32> [[TMP4]], splat (i32 32768)
+-+; CHECK-NEXT:    [[TMP10:%.*]] = add nuw nsw <4 x i32> [[TMP9]], [[TMP6]]
+-+; CHECK-NEXT:    [[TMP11:%.*]] = add nuw nsw <4 x i32> [[TMP10]], [[TMP8]]
+-+; CHECK-NEXT:    [[TMP12:%.*]] = lshr <4 x i32> [[TMP11]], splat (i32 16)
+-+; CHECK-NEXT:    [[TMP13:%.*]] = trunc <4 x i32> [[TMP12]] to <4 x i8>
+-+; CHECK-NEXT:    [[TMP14:%.*]] = mul nuw nsw <4 x i32> [[TMP3]], splat (i32 32767)
+-+; CHECK-NEXT:    [[TMP15:%.*]] = mul nuw <4 x i32> [[TMP5]], splat (i32 16762097)
+-+; CHECK-NEXT:    [[TMP16:%.*]] = mul nuw <4 x i32> [[TMP7]], splat (i32 16759568)
+-+; CHECK-NEXT:    [[TMP17:%.*]] = add nuw nsw <4 x i32> [[TMP14]], splat (i32 32768)
+-+; CHECK-NEXT:    [[TMP18:%.*]] = add nuw <4 x i32> [[TMP17]], [[TMP15]]
+-+; CHECK-NEXT:    [[TMP19:%.*]] = add <4 x i32> [[TMP18]], [[TMP16]]
+-+; CHECK-NEXT:    [[TMP20:%.*]] = lshr <4 x i32> [[TMP19]], splat (i32 16)
+-+; CHECK-NEXT:    [[TMP21:%.*]] = trunc <4 x i32> [[TMP20]] to <4 x i8>
+-+; CHECK-NEXT:    [[TMP22:%.*]] = mul nuw nsw <4 x i32> [[TMP3]], splat (i32 13282)
+-+; CHECK-NEXT:    [[TMP23:%.*]] = mul nuw <4 x i32> [[TMP5]], splat (i32 16744449)
+-+; CHECK-NEXT:    [[TMP24:%.*]] = mul nuw nsw <4 x i32> [[TMP7]], splat (i32 19485)
+-+; CHECK-NEXT:    [[TMP25:%.*]] = add nuw nsw <4 x i32> [[TMP22]], splat (i32 32768)
+-+; CHECK-NEXT:    [[TMP26:%.*]] = add nuw <4 x i32> [[TMP25]], [[TMP23]]
+-+; CHECK-NEXT:    [[TMP27:%.*]] = add nuw <4 x i32> [[TMP26]], [[TMP24]]
+-+; CHECK-NEXT:    [[TMP28:%.*]] = lshr <4 x i32> [[TMP27]], splat (i32 16)
+-+; CHECK-NEXT:    [[TMP29:%.*]] = trunc <4 x i32> [[TMP28]] to <4 x i8>
+-+; CHECK-NEXT:    [[TMP30:%.*]] = getelementptr inbounds nuw i8, <4 x ptr> [[VECTOR_GEP4]], i32 1
+-+; CHECK-NEXT:    call void @llvm.masked.scatter.v4i8.v4p0(<4 x i8> [[TMP13]], <4 x ptr> [[VECTOR_GEP4]], i32 1, <4 x i1> [[ACTIVE_LANE_MASK]]), !alias.scope [[META3:![0-9]+]], !noalias [[META0]]
+-+; CHECK-NEXT:    [[TMP31:%.*]] = getelementptr inbounds nuw i8, <4 x ptr> [[VECTOR_GEP4]], i32 2
+-+; CHECK-NEXT:    call void @llvm.masked.scatter.v4i8.v4p0(<4 x i8> [[TMP21]], <4 x ptr> [[TMP30]], i32 1, <4 x i1> [[ACTIVE_LANE_MASK]]), !alias.scope [[META3]], !noalias [[META0]]
+-+; CHECK-NEXT:    call void @llvm.masked.scatter.v4i8.v4p0(<4 x i8> [[TMP29]], <4 x ptr> [[TMP31]], i32 1, <4 x i1> [[ACTIVE_LANE_MASK]]), !alias.scope [[META3]], !noalias [[META0]]
+-+; CHECK-NEXT:    [[INDEX_NEXT]] = add i32 [[INDEX]], 4
+-+; CHECK-NEXT:    [[PTR_IND]] = getelementptr i8, ptr [[POINTER_PHI]], i32 12
+-+; CHECK-NEXT:    [[PTR_IND3]] = getelementptr i8, ptr [[POINTER_PHI2]], i32 12
+-+; CHECK-NEXT:    [[TMP32:%.*]] = icmp eq i32 [[INDEX_NEXT]], [[N_VEC]]
+-+; CHECK-NEXT:    br i1 [[TMP32]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP5:![0-9]+]]
+-+; CHECK:       [[MIDDLE_BLOCK]]:
+-+; CHECK-NEXT:    br [[EXIT_LOOPEXIT:label %.*]]
+-+; CHECK:       [[SCALAR_PH]]:
+++define i32 @partial_reduce_with_non_constant_start_value(ptr %src, i32 %rdx.start, i64 %n) {
+++; IC2-LABEL: define i32 @partial_reduce_with_non_constant_start_value(
+++; IC2-SAME: ptr [[SRC:%.*]], i32 [[RDX_START:%.*]], i64 [[N:%.*]]) #[[ATTR0:[0-9]+]] {
+++; IC2-NEXT:  [[ENTRY:.*]]:
+++; IC2-NEXT:    [[MIN_ITERS_CHECK:%.*]] = icmp ult i64 [[N]], 32
+++; IC2-NEXT:    br i1 [[MIN_ITERS_CHECK]], label %[[SCALAR_PH:.*]], label %[[VECTOR_PH:.*]]
+++; IC2:       [[VECTOR_PH]]:
+++; IC2-NEXT:    [[N_MOD_VF:%.*]] = urem i64 [[N]], 32
+++; IC2-NEXT:    [[N_VEC:%.*]] = sub i64 [[N]], [[N_MOD_VF]]
+++; IC2-NEXT:    [[TMP0:%.*]] = insertelement <4 x i32> zeroinitializer, i32 [[RDX_START]], i32 0
+++; IC2-NEXT:    br label %[[VECTOR_BODY:.*]]
+++; IC2:       [[VECTOR_BODY]]:
+++; IC2-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ]
+++; IC2-NEXT:    [[VEC_PHI:%.*]] = phi <4 x i32> [ [[TMP0]], %[[VECTOR_PH]] ], [ [[PARTIAL_REDUCE:%.*]], %[[VECTOR_BODY]] ]
+++; IC2-NEXT:    [[VEC_PHI1:%.*]] = phi <4 x i32> [ zeroinitializer, %[[VECTOR_PH]] ], [ [[PARTIAL_REDUCE3:%.*]], %[[VECTOR_BODY]] ]
+++; IC2-NEXT:    [[TMP1:%.*]] = getelementptr inbounds i8, ptr [[SRC]], i64 [[INDEX]]
+++; IC2-NEXT:    [[TMP2:%.*]] = getelementptr inbounds i8, ptr [[TMP1]], i32 0
+++; IC2-NEXT:    [[TMP3:%.*]] = getelementptr inbounds i8, ptr [[TMP1]], i32 16
+++; IC2-NEXT:    [[WIDE_LOAD:%.*]] = load <16 x i8>, ptr [[TMP2]], align 1
+++; IC2-NEXT:    [[WIDE_LOAD2:%.*]] = load <16 x i8>, ptr [[TMP3]], align 1
+++; IC2-NEXT:    [[TMP4:%.*]] = zext <16 x i8> [[WIDE_LOAD]] to <16 x i32>
+++; IC2-NEXT:    [[TMP5:%.*]] = zext <16 x i8> [[WIDE_LOAD2]] to <16 x i32>
+++; IC2-NEXT:    [[TMP6:%.*]] = mul nuw nsw <16 x i32> [[TMP4]], [[TMP4]]
+++; IC2-NEXT:    [[TMP7:%.*]] = mul nuw nsw <16 x i32> [[TMP5]], [[TMP5]]
+++; IC2-NEXT:    [[PARTIAL_REDUCE]] = call <4 x i32> @llvm.experimental.vector.partial.reduce.add.v4i32.v16i32(<4 x i32> [[VEC_PHI]], <16 x i32> [[TMP6]])
+++; IC2-NEXT:    [[PARTIAL_REDUCE3]] = call <4 x i32> @llvm.experimental.vector.partial.reduce.add.v4i32.v16i32(<4 x i32> [[VEC_PHI1]], <16 x i32> [[TMP7]])
+++; IC2-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 32
+++; IC2-NEXT:    [[TMP10:%.*]] = icmp eq i64 [[INDEX_NEXT]], [[N_VEC]]
+++; IC2-NEXT:    br i1 [[TMP10]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP0:![0-9]+]]
+++; IC2:       [[MIDDLE_BLOCK]]:
+++; IC2-NEXT:    [[BIN_RDX:%.*]] = add <4 x i32> [[PARTIAL_REDUCE3]], [[PARTIAL_REDUCE]]
+++; IC2-NEXT:    [[TMP9:%.*]] = call i32 @llvm.vector.reduce.add.v4i32(<4 x i32> [[BIN_RDX]])
+++; IC2-NEXT:    [[CMP_N:%.*]] = icmp eq i64 [[N]], [[N_VEC]]
+++; IC2-NEXT:    br i1 [[CMP_N]], label %[[EXIT:.*]], label %[[SCALAR_PH]]
+++; IC2:       [[SCALAR_PH]]:
+++; IC2-NEXT:    [[BC_RESUME_VAL:%.*]] = phi i64 [ [[N_VEC]], %[[MIDDLE_BLOCK]] ], [ 0, %[[ENTRY]] ]
+++; IC2-NEXT:    [[BC_MERGE_RDX:%.*]] = phi i32 [ [[TMP9]], %[[MIDDLE_BLOCK]] ], [ [[RDX_START]], %[[ENTRY]] ]
+++; IC2-NEXT:    br label %[[LOOP:.*]]
+++; IC2:       [[LOOP]]:
+++; IC2-NEXT:    [[IV:%.*]] = phi i64 [ [[BC_RESUME_VAL]], %[[SCALAR_PH]] ], [ [[IV_NEXT:%.*]], %[[LOOP]] ]
+++; IC2-NEXT:    [[RDX:%.*]] = phi i32 [ [[BC_MERGE_RDX]], %[[SCALAR_PH]] ], [ [[RDX_NEXT:%.*]], %[[LOOP]] ]
+++; IC2-NEXT:    [[GEP_SRC:%.*]] = getelementptr inbounds i8, ptr [[SRC]], i64 [[IV]]
+++; IC2-NEXT:    [[L:%.*]] = load i8, ptr [[GEP_SRC]], align 1
+++; IC2-NEXT:    [[CONV:%.*]] = zext i8 [[L]] to i32
+++; IC2-NEXT:    [[MUL:%.*]] = mul nuw nsw i32 [[CONV]], [[CONV]]
+++; IC2-NEXT:    [[RDX_NEXT]] = add nsw i32 [[MUL]], [[RDX]]
+++; IC2-NEXT:    [[IV_NEXT]] = add nsw i64 [[IV]], 1
+++; IC2-NEXT:    [[EC:%.*]] = icmp eq i64 [[IV_NEXT]], [[N]]
+++; IC2-NEXT:    br i1 [[EC]], label %[[EXIT]], label %[[LOOP]], !llvm.loop [[LOOP3:![0-9]+]]
+++; IC2:       [[EXIT]]:
+++; IC2-NEXT:    [[RDX_NEXT_LCSSA:%.*]] = phi i32 [ [[RDX_NEXT]], %[[LOOP]] ], [ [[TMP9]], %[[MIDDLE_BLOCK]] ]
+++; IC2-NEXT:    ret i32 [[RDX_NEXT_LCSSA]]
 ++;
-++entry:
-++  %cmp46.not = icmp eq i32 %n, 0
-++  br i1 %cmp46.not, label %exit, label %for.body
-++
-++for.body:                                         ; preds = %for.body.preheader, %for.body
-++  %ptr.iv.1 = phi ptr [ %in, %entry ], [ %ptr.iv.1.next, %for.body ]
-++  %ptr.iv.2 = phi ptr [ %out, %entry ], [ %ptr.iv.2.next, %for.body ]
-++  %iv = phi i32 [ %iv.next, %for.body ], [ 0, %entry ]
-++  %incdec.ptr = getelementptr inbounds nuw i8, ptr %ptr.iv.1, i32 1
-++  %0 = load i8, ptr %ptr.iv.1, align 1
-++  %incdec.ptr1 = getelementptr inbounds nuw i8, ptr %ptr.iv.1, i32 2
-++  %1 = load i8, ptr %incdec.ptr, align 1
-++  %ptr.iv.1.next = getelementptr inbounds nuw i8, ptr %ptr.iv.1, i32 3
-++  %2 = load i8, ptr %incdec.ptr1, align 1
-++  %conv = zext i8 %0 to i32
-++  %mul = mul nuw nsw i32 %conv, 19595
-++  %conv3 = zext i8 %1 to i32
-++  %mul4 = mul nuw nsw i32 %conv3, 38470
-++  %conv5 = zext i8 %2 to i32
-++  %mul6 = mul nuw nsw i32 %conv5, 7471
-++  %add = add nuw nsw i32 %mul, 32768
-++  %add7 = add nuw nsw i32 %add, %mul4
-++  %add8 = add nuw nsw i32 %add7, %mul6
-++  %shr = lshr i32 %add8, 16
-++  %conv9 = trunc nuw i32 %shr to i8
-++  %mul11 = mul nuw nsw i32 %conv, 32767
-++  %mul13 = mul nuw i32 %conv3, 16762097
-++  %mul16 = mul nuw i32 %conv5, 16759568
-++  %add14 = add nuw nsw i32 %mul11, 32768
-++  %add17 = add nuw i32 %add14, %mul13
-++  %add18 = add i32 %add17, %mul16
-++  %shr19 = lshr i32 %add18, 16
-++  %conv20 = trunc i32 %shr19 to i8
-++  %mul22 = mul nuw nsw i32 %conv, 13282
-++  %mul24 = mul nuw i32 %conv3, 16744449
-++  %mul27 = mul nuw nsw i32 %conv5, 19485
-++  %add25 = add nuw nsw i32 %mul22, 32768
-++  %add28 = add nuw i32 %add25, %mul24
-++  %add29 = add nuw i32 %add28, %mul27
-++  %shr30 = lshr i32 %add29, 16
-++  %conv31 = trunc i32 %shr30 to i8
-++  %incdec.ptr32 = getelementptr inbounds nuw i8, ptr %ptr.iv.2, i32 1
-++  store i8 %conv9, ptr %ptr.iv.2, align 1
-++  %incdec.ptr33 = getelementptr inbounds nuw i8, ptr %ptr.iv.2, i32 2
-++  store i8 %conv20, ptr %incdec.ptr32, align 1
-++  %ptr.iv.2.next = getelementptr inbounds nuw i8, ptr %ptr.iv.2, i32 3
-++  store i8 %conv31, ptr %incdec.ptr33, align 1
-++  %iv.next = add nuw i32 %iv, 1
-++  %exitcond.not = icmp eq i32 %iv.next, %n
-++  br i1 %exitcond.not, label %exit, label %for.body
-++
-++exit:                                 ; preds = %for.cond.cleanup.loopexit, %entry
-++  ret void
-++}
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/RISCV/interleaved-masked-access.ll b/llvm/test/Transforms/LoopVectorize/RISCV/interleaved-masked-access.ll
-+--- a/llvm/test/Transforms/LoopVectorize/RISCV/interleaved-masked-access.ll
-++++ b/llvm/test/Transforms/LoopVectorize/RISCV/interleaved-masked-access.ll
-+@@ -11,44 +11,44 @@
-+ ; SCALAR_EPILOGUE-NEXT:  entry:
-+ ; SCALAR_EPILOGUE-NEXT:    [[CONV:%.*]] = zext i8 [[GUARD]] to i32
-+ ; SCALAR_EPILOGUE-NEXT:    [[TMP0:%.*]] = call i32 @llvm.vscale.i32()
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP1:%.*]] = shl i32 [[TMP0]], 3
-++; SCALAR_EPILOGUE-NEXT:    [[TMP1:%.*]] = shl i32 [[TMP0]], 4
-+ ; SCALAR_EPILOGUE-NEXT:    [[MIN_ITERS_CHECK:%.*]] = icmp ugt i32 [[TMP1]], 1024
-+ ; SCALAR_EPILOGUE-NEXT:    br i1 [[MIN_ITERS_CHECK]], label [[SCALAR_PH:%.*]], label [[VECTOR_PH:%.*]]
-+ ; SCALAR_EPILOGUE:       vector.ph:
-+ ; SCALAR_EPILOGUE-NEXT:    [[TMP2:%.*]] = call i32 @llvm.vscale.i32()
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP3:%.*]] = shl i32 [[TMP2]], 3
-++; SCALAR_EPILOGUE-NEXT:    [[TMP3:%.*]] = shl i32 [[TMP2]], 4
-+ ; SCALAR_EPILOGUE-NEXT:    [[N_MOD_VF:%.*]] = urem i32 1024, [[TMP3]]
-+ ; SCALAR_EPILOGUE-NEXT:    [[N_VEC:%.*]] = sub nuw nsw i32 1024, [[N_MOD_VF]]
-+ ; SCALAR_EPILOGUE-NEXT:    [[TMP4:%.*]] = call i32 @llvm.vscale.i32()
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP5:%.*]] = shl i32 [[TMP4]], 3
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP6:%.*]] = call <vscale x 8 x i32> @llvm.stepvector.nxv8i32()
-+-; SCALAR_EPILOGUE-NEXT:    [[BROADCAST_SPLATINSERT:%.*]] = insertelement <vscale x 8 x i32> poison, i32 [[CONV]], i64 0
-+-; SCALAR_EPILOGUE-NEXT:    [[BROADCAST_SPLAT:%.*]] = shufflevector <vscale x 8 x i32> [[BROADCAST_SPLATINSERT]], <vscale x 8 x i32> poison, <vscale x 8 x i32> zeroinitializer
-+-; SCALAR_EPILOGUE-NEXT:    [[DOTSPLATINSERT:%.*]] = insertelement <vscale x 8 x i32> poison, i32 [[TMP5]], i64 0
-+-; SCALAR_EPILOGUE-NEXT:    [[DOTSPLAT:%.*]] = shufflevector <vscale x 8 x i32> [[DOTSPLATINSERT]], <vscale x 8 x i32> poison, <vscale x 8 x i32> zeroinitializer
-++; SCALAR_EPILOGUE-NEXT:    [[TMP5:%.*]] = shl i32 [[TMP4]], 4
-++; SCALAR_EPILOGUE-NEXT:    [[TMP6:%.*]] = call <vscale x 16 x i32> @llvm.stepvector.nxv16i32()
-++; SCALAR_EPILOGUE-NEXT:    [[BROADCAST_SPLATINSERT:%.*]] = insertelement <vscale x 16 x i32> poison, i32 [[CONV]], i64 0
-++; SCALAR_EPILOGUE-NEXT:    [[BROADCAST_SPLAT:%.*]] = shufflevector <vscale x 16 x i32> [[BROADCAST_SPLATINSERT]], <vscale x 16 x i32> poison, <vscale x 16 x i32> zeroinitializer
-++; SCALAR_EPILOGUE-NEXT:    [[DOTSPLATINSERT:%.*]] = insertelement <vscale x 16 x i32> poison, i32 [[TMP5]], i64 0
-++; SCALAR_EPILOGUE-NEXT:    [[DOTSPLAT:%.*]] = shufflevector <vscale x 16 x i32> [[DOTSPLATINSERT]], <vscale x 16 x i32> poison, <vscale x 16 x i32> zeroinitializer
-+ ; SCALAR_EPILOGUE-NEXT:    br label [[VECTOR_BODY:%.*]]
-+ ; SCALAR_EPILOGUE:       vector.body:
-+ ; SCALAR_EPILOGUE-NEXT:    [[INDEX:%.*]] = phi i32 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
-+-; SCALAR_EPILOGUE-NEXT:    [[VEC_IND:%.*]] = phi <vscale x 8 x i32> [ [[TMP6]], [[VECTOR_PH]] ], [ [[VEC_IND_NEXT:%.*]], [[VECTOR_BODY]] ]
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP7:%.*]] = icmp ugt <vscale x 8 x i32> [[VEC_IND]], [[BROADCAST_SPLAT]]
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP8:%.*]] = shl nuw nsw <vscale x 8 x i32> [[VEC_IND]], splat (i32 1)
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP9:%.*]] = zext nneg <vscale x 8 x i32> [[TMP8]] to <vscale x 8 x i64>
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP10:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 8 x i64> [[TMP9]]
-+-; SCALAR_EPILOGUE-NEXT:    [[WIDE_MASKED_GATHER:%.*]] = call <vscale x 8 x i8> @llvm.masked.gather.nxv8i8.nxv8p0(<vscale x 8 x ptr> [[TMP10]], i32 1, <vscale x 8 x i1> [[TMP7]], <vscale x 8 x i8> poison)
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP11:%.*]] = or disjoint <vscale x 8 x i32> [[TMP8]], splat (i32 1)
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP12:%.*]] = zext nneg <vscale x 8 x i32> [[TMP11]] to <vscale x 8 x i64>
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP13:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 8 x i64> [[TMP12]]
-+-; SCALAR_EPILOGUE-NEXT:    [[WIDE_MASKED_GATHER1:%.*]] = call <vscale x 8 x i8> @llvm.masked.gather.nxv8i8.nxv8p0(<vscale x 8 x ptr> [[TMP13]], i32 1, <vscale x 8 x i1> [[TMP7]], <vscale x 8 x i8> poison)
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP14:%.*]] = call <vscale x 8 x i8> @llvm.smax.nxv8i8(<vscale x 8 x i8> [[WIDE_MASKED_GATHER]], <vscale x 8 x i8> [[WIDE_MASKED_GATHER1]])
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP15:%.*]] = zext nneg <vscale x 8 x i32> [[TMP8]] to <vscale x 8 x i64>
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP16:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 8 x i64> [[TMP15]]
-+-; SCALAR_EPILOGUE-NEXT:    call void @llvm.masked.scatter.nxv8i8.nxv8p0(<vscale x 8 x i8> [[TMP14]], <vscale x 8 x ptr> [[TMP16]], i32 1, <vscale x 8 x i1> [[TMP7]])
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP17:%.*]] = sub <vscale x 8 x i8> zeroinitializer, [[TMP14]]
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP18:%.*]] = zext nneg <vscale x 8 x i32> [[TMP11]] to <vscale x 8 x i64>
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP19:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 8 x i64> [[TMP18]]
-+-; SCALAR_EPILOGUE-NEXT:    call void @llvm.masked.scatter.nxv8i8.nxv8p0(<vscale x 8 x i8> [[TMP17]], <vscale x 8 x ptr> [[TMP19]], i32 1, <vscale x 8 x i1> [[TMP7]])
-++; SCALAR_EPILOGUE-NEXT:    [[VEC_IND:%.*]] = phi <vscale x 16 x i32> [ [[TMP6]], [[VECTOR_PH]] ], [ [[VEC_IND_NEXT:%.*]], [[VECTOR_BODY]] ]
-++; SCALAR_EPILOGUE-NEXT:    [[TMP7:%.*]] = icmp ugt <vscale x 16 x i32> [[VEC_IND]], [[BROADCAST_SPLAT]]
-++; SCALAR_EPILOGUE-NEXT:    [[TMP8:%.*]] = shl nuw nsw <vscale x 16 x i32> [[VEC_IND]], splat (i32 1)
-++; SCALAR_EPILOGUE-NEXT:    [[TMP9:%.*]] = zext nneg <vscale x 16 x i32> [[TMP8]] to <vscale x 16 x i64>
-++; SCALAR_EPILOGUE-NEXT:    [[TMP10:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 16 x i64> [[TMP9]]
-++; SCALAR_EPILOGUE-NEXT:    [[WIDE_MASKED_GATHER:%.*]] = call <vscale x 16 x i8> @llvm.masked.gather.nxv16i8.nxv16p0(<vscale x 16 x ptr> [[TMP10]], i32 1, <vscale x 16 x i1> [[TMP7]], <vscale x 16 x i8> poison)
-++; SCALAR_EPILOGUE-NEXT:    [[TMP11:%.*]] = or disjoint <vscale x 16 x i32> [[TMP8]], splat (i32 1)
-++; SCALAR_EPILOGUE-NEXT:    [[TMP12:%.*]] = zext nneg <vscale x 16 x i32> [[TMP11]] to <vscale x 16 x i64>
-++; SCALAR_EPILOGUE-NEXT:    [[TMP13:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 16 x i64> [[TMP12]]
-++; SCALAR_EPILOGUE-NEXT:    [[WIDE_MASKED_GATHER1:%.*]] = call <vscale x 16 x i8> @llvm.masked.gather.nxv16i8.nxv16p0(<vscale x 16 x ptr> [[TMP13]], i32 1, <vscale x 16 x i1> [[TMP7]], <vscale x 16 x i8> poison)
-++; SCALAR_EPILOGUE-NEXT:    [[TMP14:%.*]] = call <vscale x 16 x i8> @llvm.smax.nxv16i8(<vscale x 16 x i8> [[WIDE_MASKED_GATHER]], <vscale x 16 x i8> [[WIDE_MASKED_GATHER1]])
-++; SCALAR_EPILOGUE-NEXT:    [[TMP15:%.*]] = zext nneg <vscale x 16 x i32> [[TMP8]] to <vscale x 16 x i64>
-++; SCALAR_EPILOGUE-NEXT:    [[TMP16:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 16 x i64> [[TMP15]]
-++; SCALAR_EPILOGUE-NEXT:    call void @llvm.masked.scatter.nxv16i8.nxv16p0(<vscale x 16 x i8> [[TMP14]], <vscale x 16 x ptr> [[TMP16]], i32 1, <vscale x 16 x i1> [[TMP7]])
-++; SCALAR_EPILOGUE-NEXT:    [[TMP17:%.*]] = sub <vscale x 16 x i8> zeroinitializer, [[TMP14]]
-++; SCALAR_EPILOGUE-NEXT:    [[TMP18:%.*]] = zext nneg <vscale x 16 x i32> [[TMP11]] to <vscale x 16 x i64>
-++; SCALAR_EPILOGUE-NEXT:    [[TMP19:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 16 x i64> [[TMP18]]
-++; SCALAR_EPILOGUE-NEXT:    call void @llvm.masked.scatter.nxv16i8.nxv16p0(<vscale x 16 x i8> [[TMP17]], <vscale x 16 x ptr> [[TMP19]], i32 1, <vscale x 16 x i1> [[TMP7]])
-+ ; SCALAR_EPILOGUE-NEXT:    [[INDEX_NEXT]] = add nuw i32 [[INDEX]], [[TMP5]]
-+-; SCALAR_EPILOGUE-NEXT:    [[VEC_IND_NEXT]] = add <vscale x 8 x i32> [[VEC_IND]], [[DOTSPLAT]]
-++; SCALAR_EPILOGUE-NEXT:    [[VEC_IND_NEXT]] = add <vscale x 16 x i32> [[VEC_IND]], [[DOTSPLAT]]
-+ ; SCALAR_EPILOGUE-NEXT:    [[TMP20:%.*]] = icmp eq i32 [[INDEX_NEXT]], [[N_VEC]]
-+ ; SCALAR_EPILOGUE-NEXT:    br i1 [[TMP20]], label [[MIDDLE_BLOCK:%.*]], label [[VECTOR_BODY]], !llvm.loop [[LOOP0:![0-9]+]]
-+ ; SCALAR_EPILOGUE:       middle.block:
-+@@ -63,42 +63,42 @@
-+ ; PREDICATED_TAIL_FOLDING:       vector.ph:
-+ ; PREDICATED_TAIL_FOLDING-NEXT:    [[CONV:%.*]] = zext i8 [[GUARD]] to i32
-+ ; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP0:%.*]] = call i32 @llvm.vscale.i32()
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP1:%.*]] = shl i32 [[TMP0]], 3
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP1:%.*]] = shl i32 [[TMP0]], 4
-+ ; PREDICATED_TAIL_FOLDING-NEXT:    [[N_RND_UP:%.*]] = add i32 [[TMP1]], 1023
-+ ; PREDICATED_TAIL_FOLDING-NEXT:    [[N_MOD_VF:%.*]] = urem i32 [[N_RND_UP]], [[TMP1]]
-+ ; PREDICATED_TAIL_FOLDING-NEXT:    [[N_VEC:%.*]] = sub i32 [[N_RND_UP]], [[N_MOD_VF]]
-+ ; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP2:%.*]] = call i32 @llvm.vscale.i32()
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP3:%.*]] = shl i32 [[TMP2]], 3
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP4:%.*]] = call <vscale x 8 x i32> @llvm.stepvector.nxv8i32()
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[BROADCAST_SPLATINSERT:%.*]] = insertelement <vscale x 8 x i32> poison, i32 [[CONV]], i64 0
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[BROADCAST_SPLAT:%.*]] = shufflevector <vscale x 8 x i32> [[BROADCAST_SPLATINSERT]], <vscale x 8 x i32> poison, <vscale x 8 x i32> zeroinitializer
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[DOTSPLATINSERT:%.*]] = insertelement <vscale x 8 x i32> poison, i32 [[TMP3]], i64 0
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[DOTSPLAT:%.*]] = shufflevector <vscale x 8 x i32> [[DOTSPLATINSERT]], <vscale x 8 x i32> poison, <vscale x 8 x i32> zeroinitializer
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP3:%.*]] = shl i32 [[TMP2]], 4
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP4:%.*]] = call <vscale x 16 x i32> @llvm.stepvector.nxv16i32()
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[BROADCAST_SPLATINSERT:%.*]] = insertelement <vscale x 16 x i32> poison, i32 [[CONV]], i64 0
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[BROADCAST_SPLAT:%.*]] = shufflevector <vscale x 16 x i32> [[BROADCAST_SPLATINSERT]], <vscale x 16 x i32> poison, <vscale x 16 x i32> zeroinitializer
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[DOTSPLATINSERT:%.*]] = insertelement <vscale x 16 x i32> poison, i32 [[TMP3]], i64 0
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[DOTSPLAT:%.*]] = shufflevector <vscale x 16 x i32> [[DOTSPLATINSERT]], <vscale x 16 x i32> poison, <vscale x 16 x i32> zeroinitializer
-+ ; PREDICATED_TAIL_FOLDING-NEXT:    br label [[VECTOR_BODY:%.*]]
-+ ; PREDICATED_TAIL_FOLDING:       vector.body:
-+ ; PREDICATED_TAIL_FOLDING-NEXT:    [[INDEX:%.*]] = phi i32 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[VEC_IND:%.*]] = phi <vscale x 8 x i32> [ [[TMP4]], [[VECTOR_PH]] ], [ [[VEC_IND_NEXT:%.*]], [[VECTOR_BODY]] ]
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[ACTIVE_LANE_MASK:%.*]] = call <vscale x 8 x i1> @llvm.get.active.lane.mask.nxv8i1.i32(i32 [[INDEX]], i32 1024)
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP5:%.*]] = icmp ugt <vscale x 8 x i32> [[VEC_IND]], [[BROADCAST_SPLAT]]
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP6:%.*]] = select <vscale x 8 x i1> [[ACTIVE_LANE_MASK]], <vscale x 8 x i1> [[TMP5]], <vscale x 8 x i1> zeroinitializer
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP7:%.*]] = shl nuw nsw <vscale x 8 x i32> [[VEC_IND]], splat (i32 1)
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP8:%.*]] = zext nneg <vscale x 8 x i32> [[TMP7]] to <vscale x 8 x i64>
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP9:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 8 x i64> [[TMP8]]
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[WIDE_MASKED_GATHER:%.*]] = call <vscale x 8 x i8> @llvm.masked.gather.nxv8i8.nxv8p0(<vscale x 8 x ptr> [[TMP9]], i32 1, <vscale x 8 x i1> [[TMP6]], <vscale x 8 x i8> poison)
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP10:%.*]] = or disjoint <vscale x 8 x i32> [[TMP7]], splat (i32 1)
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP11:%.*]] = zext nneg <vscale x 8 x i32> [[TMP10]] to <vscale x 8 x i64>
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP12:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 8 x i64> [[TMP11]]
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[WIDE_MASKED_GATHER1:%.*]] = call <vscale x 8 x i8> @llvm.masked.gather.nxv8i8.nxv8p0(<vscale x 8 x ptr> [[TMP12]], i32 1, <vscale x 8 x i1> [[TMP6]], <vscale x 8 x i8> poison)
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP13:%.*]] = call <vscale x 8 x i8> @llvm.smax.nxv8i8(<vscale x 8 x i8> [[WIDE_MASKED_GATHER]], <vscale x 8 x i8> [[WIDE_MASKED_GATHER1]])
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP14:%.*]] = zext nneg <vscale x 8 x i32> [[TMP7]] to <vscale x 8 x i64>
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP15:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 8 x i64> [[TMP14]]
-+-; PREDICATED_TAIL_FOLDING-NEXT:    call void @llvm.masked.scatter.nxv8i8.nxv8p0(<vscale x 8 x i8> [[TMP13]], <vscale x 8 x ptr> [[TMP15]], i32 1, <vscale x 8 x i1> [[TMP6]])
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP16:%.*]] = sub <vscale x 8 x i8> zeroinitializer, [[TMP13]]
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP17:%.*]] = zext nneg <vscale x 8 x i32> [[TMP10]] to <vscale x 8 x i64>
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP18:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 8 x i64> [[TMP17]]
-+-; PREDICATED_TAIL_FOLDING-NEXT:    call void @llvm.masked.scatter.nxv8i8.nxv8p0(<vscale x 8 x i8> [[TMP16]], <vscale x 8 x ptr> [[TMP18]], i32 1, <vscale x 8 x i1> [[TMP6]])
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[VEC_IND:%.*]] = phi <vscale x 16 x i32> [ [[TMP4]], [[VECTOR_PH]] ], [ [[VEC_IND_NEXT:%.*]], [[VECTOR_BODY]] ]
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[ACTIVE_LANE_MASK:%.*]] = call <vscale x 16 x i1> @llvm.get.active.lane.mask.nxv16i1.i32(i32 [[INDEX]], i32 1024)
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP5:%.*]] = icmp ugt <vscale x 16 x i32> [[VEC_IND]], [[BROADCAST_SPLAT]]
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP6:%.*]] = select <vscale x 16 x i1> [[ACTIVE_LANE_MASK]], <vscale x 16 x i1> [[TMP5]], <vscale x 16 x i1> zeroinitializer
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP7:%.*]] = shl nuw nsw <vscale x 16 x i32> [[VEC_IND]], splat (i32 1)
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP8:%.*]] = zext nneg <vscale x 16 x i32> [[TMP7]] to <vscale x 16 x i64>
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP9:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 16 x i64> [[TMP8]]
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[WIDE_MASKED_GATHER:%.*]] = call <vscale x 16 x i8> @llvm.masked.gather.nxv16i8.nxv16p0(<vscale x 16 x ptr> [[TMP9]], i32 1, <vscale x 16 x i1> [[TMP6]], <vscale x 16 x i8> poison)
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP10:%.*]] = or disjoint <vscale x 16 x i32> [[TMP7]], splat (i32 1)
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP11:%.*]] = zext nneg <vscale x 16 x i32> [[TMP10]] to <vscale x 16 x i64>
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP12:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 16 x i64> [[TMP11]]
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[WIDE_MASKED_GATHER1:%.*]] = call <vscale x 16 x i8> @llvm.masked.gather.nxv16i8.nxv16p0(<vscale x 16 x ptr> [[TMP12]], i32 1, <vscale x 16 x i1> [[TMP6]], <vscale x 16 x i8> poison)
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP13:%.*]] = call <vscale x 16 x i8> @llvm.smax.nxv16i8(<vscale x 16 x i8> [[WIDE_MASKED_GATHER]], <vscale x 16 x i8> [[WIDE_MASKED_GATHER1]])
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP14:%.*]] = zext nneg <vscale x 16 x i32> [[TMP7]] to <vscale x 16 x i64>
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP15:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 16 x i64> [[TMP14]]
-++; PREDICATED_TAIL_FOLDING-NEXT:    call void @llvm.masked.scatter.nxv16i8.nxv16p0(<vscale x 16 x i8> [[TMP13]], <vscale x 16 x ptr> [[TMP15]], i32 1, <vscale x 16 x i1> [[TMP6]])
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP16:%.*]] = sub <vscale x 16 x i8> zeroinitializer, [[TMP13]]
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP17:%.*]] = zext nneg <vscale x 16 x i32> [[TMP10]] to <vscale x 16 x i64>
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP18:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 16 x i64> [[TMP17]]
-++; PREDICATED_TAIL_FOLDING-NEXT:    call void @llvm.masked.scatter.nxv16i8.nxv16p0(<vscale x 16 x i8> [[TMP16]], <vscale x 16 x ptr> [[TMP18]], i32 1, <vscale x 16 x i1> [[TMP6]])
-+ ; PREDICATED_TAIL_FOLDING-NEXT:    [[INDEX_NEXT]] = add nuw i32 [[INDEX]], [[TMP3]]
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[VEC_IND_NEXT]] = add <vscale x 8 x i32> [[VEC_IND]], [[DOTSPLAT]]
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[VEC_IND_NEXT]] = add <vscale x 16 x i32> [[VEC_IND]], [[DOTSPLAT]]
-+ ; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP19:%.*]] = icmp eq i32 [[INDEX_NEXT]], [[N_VEC]]
-+ ; PREDICATED_TAIL_FOLDING-NEXT:    br i1 [[TMP19]], label [[MIDDLE_BLOCK:%.*]], label [[VECTOR_BODY]], !llvm.loop [[LOOP0:![0-9]+]]
-+ ; PREDICATED_TAIL_FOLDING:       middle.block:
-+@@ -180,60 +180,60 @@
-+ ; SCALAR_EPILOGUE-NEXT:  entry:
-+ ; SCALAR_EPILOGUE-NEXT:    [[CONV:%.*]] = zext i8 [[GUARD]] to i32
-+ ; SCALAR_EPILOGUE-NEXT:    [[TMP0:%.*]] = call i32 @llvm.vscale.i32()
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP1:%.*]] = shl i32 [[TMP0]], 3
-++; SCALAR_EPILOGUE-NEXT:    [[TMP1:%.*]] = shl i32 [[TMP0]], 4
-+ ; SCALAR_EPILOGUE-NEXT:    [[MIN_ITERS_CHECK:%.*]] = icmp ugt i32 [[TMP1]], 1024
-+ ; SCALAR_EPILOGUE-NEXT:    br i1 [[MIN_ITERS_CHECK]], label [[SCALAR_PH:%.*]], label [[VECTOR_PH:%.*]]
-+ ; SCALAR_EPILOGUE:       vector.ph:
-+ ; SCALAR_EPILOGUE-NEXT:    [[TMP2:%.*]] = call i32 @llvm.vscale.i32()
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP3:%.*]] = shl i32 [[TMP2]], 3
-++; SCALAR_EPILOGUE-NEXT:    [[TMP3:%.*]] = shl i32 [[TMP2]], 4
-+ ; SCALAR_EPILOGUE-NEXT:    [[N_MOD_VF:%.*]] = urem i32 1024, [[TMP3]]
-+ ; SCALAR_EPILOGUE-NEXT:    [[N_VEC:%.*]] = sub nuw nsw i32 1024, [[N_MOD_VF]]
-+ ; SCALAR_EPILOGUE-NEXT:    [[TMP4:%.*]] = call i32 @llvm.vscale.i32()
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP5:%.*]] = shl i32 [[TMP4]], 3
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP6:%.*]] = call <vscale x 8 x i32> @llvm.stepvector.nxv8i32()
-+-; SCALAR_EPILOGUE-NEXT:    [[BROADCAST_SPLATINSERT:%.*]] = insertelement <vscale x 8 x i32> poison, i32 [[CONV]], i64 0
-+-; SCALAR_EPILOGUE-NEXT:    [[BROADCAST_SPLAT:%.*]] = shufflevector <vscale x 8 x i32> [[BROADCAST_SPLATINSERT]], <vscale x 8 x i32> poison, <vscale x 8 x i32> zeroinitializer
-+-; SCALAR_EPILOGUE-NEXT:    [[DOTSPLATINSERT:%.*]] = insertelement <vscale x 8 x i32> poison, i32 [[TMP5]], i64 0
-+-; SCALAR_EPILOGUE-NEXT:    [[DOTSPLAT:%.*]] = shufflevector <vscale x 8 x i32> [[DOTSPLATINSERT]], <vscale x 8 x i32> poison, <vscale x 8 x i32> zeroinitializer
-++; SCALAR_EPILOGUE-NEXT:    [[TMP5:%.*]] = shl i32 [[TMP4]], 4
-++; SCALAR_EPILOGUE-NEXT:    [[TMP6:%.*]] = call <vscale x 16 x i32> @llvm.stepvector.nxv16i32()
-++; SCALAR_EPILOGUE-NEXT:    [[BROADCAST_SPLATINSERT:%.*]] = insertelement <vscale x 16 x i32> poison, i32 [[CONV]], i64 0
-++; SCALAR_EPILOGUE-NEXT:    [[BROADCAST_SPLAT:%.*]] = shufflevector <vscale x 16 x i32> [[BROADCAST_SPLATINSERT]], <vscale x 16 x i32> poison, <vscale x 16 x i32> zeroinitializer
-++; SCALAR_EPILOGUE-NEXT:    [[DOTSPLATINSERT:%.*]] = insertelement <vscale x 16 x i32> poison, i32 [[TMP5]], i64 0
-++; SCALAR_EPILOGUE-NEXT:    [[DOTSPLAT:%.*]] = shufflevector <vscale x 16 x i32> [[DOTSPLATINSERT]], <vscale x 16 x i32> poison, <vscale x 16 x i32> zeroinitializer
-+ ; SCALAR_EPILOGUE-NEXT:    br label [[VECTOR_BODY:%.*]]
-+ ; SCALAR_EPILOGUE:       vector.body:
-+ ; SCALAR_EPILOGUE-NEXT:    [[INDEX:%.*]] = phi i32 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
-+-; SCALAR_EPILOGUE-NEXT:    [[VEC_IND:%.*]] = phi <vscale x 8 x i32> [ [[TMP6]], [[VECTOR_PH]] ], [ [[VEC_IND_NEXT:%.*]], [[VECTOR_BODY]] ]
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP7:%.*]] = icmp ugt <vscale x 8 x i32> [[VEC_IND]], [[BROADCAST_SPLAT]]
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP8:%.*]] = shl nuw nsw <vscale x 8 x i32> [[VEC_IND]], splat (i32 2)
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP9:%.*]] = or disjoint <vscale x 8 x i32> [[TMP8]], splat (i32 1)
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP10:%.*]] = or disjoint <vscale x 8 x i32> [[TMP8]], splat (i32 2)
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP11:%.*]] = or disjoint <vscale x 8 x i32> [[TMP8]], splat (i32 3)
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP12:%.*]] = zext nneg <vscale x 8 x i32> [[TMP8]] to <vscale x 8 x i64>
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP13:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 8 x i64> [[TMP12]]
-+-; SCALAR_EPILOGUE-NEXT:    [[WIDE_MASKED_GATHER:%.*]] = call <vscale x 8 x i8> @llvm.masked.gather.nxv8i8.nxv8p0(<vscale x 8 x ptr> [[TMP13]], i32 1, <vscale x 8 x i1> [[TMP7]], <vscale x 8 x i8> poison)
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP14:%.*]] = zext nneg <vscale x 8 x i32> [[TMP9]] to <vscale x 8 x i64>
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP15:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 8 x i64> [[TMP14]]
-+-; SCALAR_EPILOGUE-NEXT:    [[WIDE_MASKED_GATHER1:%.*]] = call <vscale x 8 x i8> @llvm.masked.gather.nxv8i8.nxv8p0(<vscale x 8 x ptr> [[TMP15]], i32 1, <vscale x 8 x i1> [[TMP7]], <vscale x 8 x i8> poison)
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP16:%.*]] = zext nneg <vscale x 8 x i32> [[TMP10]] to <vscale x 8 x i64>
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP17:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 8 x i64> [[TMP16]]
-+-; SCALAR_EPILOGUE-NEXT:    [[WIDE_MASKED_GATHER2:%.*]] = call <vscale x 8 x i8> @llvm.masked.gather.nxv8i8.nxv8p0(<vscale x 8 x ptr> [[TMP17]], i32 1, <vscale x 8 x i1> [[TMP7]], <vscale x 8 x i8> poison)
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP18:%.*]] = zext nneg <vscale x 8 x i32> [[TMP11]] to <vscale x 8 x i64>
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP19:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 8 x i64> [[TMP18]]
-+-; SCALAR_EPILOGUE-NEXT:    [[WIDE_MASKED_GATHER3:%.*]] = call <vscale x 8 x i8> @llvm.masked.gather.nxv8i8.nxv8p0(<vscale x 8 x ptr> [[TMP19]], i32 1, <vscale x 8 x i1> [[TMP7]], <vscale x 8 x i8> poison)
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP20:%.*]] = call <vscale x 8 x i8> @llvm.smax.nxv8i8(<vscale x 8 x i8> [[WIDE_MASKED_GATHER]], <vscale x 8 x i8> [[WIDE_MASKED_GATHER1]])
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP21:%.*]] = sub <vscale x 8 x i8> zeroinitializer, [[TMP20]]
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP22:%.*]] = call <vscale x 8 x i8> @llvm.smax.nxv8i8(<vscale x 8 x i8> [[WIDE_MASKED_GATHER2]], <vscale x 8 x i8> [[WIDE_MASKED_GATHER3]])
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP23:%.*]] = sub <vscale x 8 x i8> zeroinitializer, [[TMP22]]
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP24:%.*]] = zext nneg <vscale x 8 x i32> [[TMP8]] to <vscale x 8 x i64>
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP25:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 8 x i64> [[TMP24]]
-+-; SCALAR_EPILOGUE-NEXT:    call void @llvm.masked.scatter.nxv8i8.nxv8p0(<vscale x 8 x i8> [[TMP20]], <vscale x 8 x ptr> [[TMP25]], i32 1, <vscale x 8 x i1> [[TMP7]])
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP26:%.*]] = zext nneg <vscale x 8 x i32> [[TMP9]] to <vscale x 8 x i64>
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP27:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 8 x i64> [[TMP26]]
-+-; SCALAR_EPILOGUE-NEXT:    call void @llvm.masked.scatter.nxv8i8.nxv8p0(<vscale x 8 x i8> [[TMP21]], <vscale x 8 x ptr> [[TMP27]], i32 1, <vscale x 8 x i1> [[TMP7]])
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP28:%.*]] = zext nneg <vscale x 8 x i32> [[TMP10]] to <vscale x 8 x i64>
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP29:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 8 x i64> [[TMP28]]
-+-; SCALAR_EPILOGUE-NEXT:    call void @llvm.masked.scatter.nxv8i8.nxv8p0(<vscale x 8 x i8> [[TMP22]], <vscale x 8 x ptr> [[TMP29]], i32 1, <vscale x 8 x i1> [[TMP7]])
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP30:%.*]] = zext nneg <vscale x 8 x i32> [[TMP11]] to <vscale x 8 x i64>
-+-; SCALAR_EPILOGUE-NEXT:    [[TMP31:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 8 x i64> [[TMP30]]
-+-; SCALAR_EPILOGUE-NEXT:    call void @llvm.masked.scatter.nxv8i8.nxv8p0(<vscale x 8 x i8> [[TMP23]], <vscale x 8 x ptr> [[TMP31]], i32 1, <vscale x 8 x i1> [[TMP7]])
-++; SCALAR_EPILOGUE-NEXT:    [[VEC_IND:%.*]] = phi <vscale x 16 x i32> [ [[TMP6]], [[VECTOR_PH]] ], [ [[VEC_IND_NEXT:%.*]], [[VECTOR_BODY]] ]
-++; SCALAR_EPILOGUE-NEXT:    [[TMP7:%.*]] = icmp ugt <vscale x 16 x i32> [[VEC_IND]], [[BROADCAST_SPLAT]]
-++; SCALAR_EPILOGUE-NEXT:    [[TMP8:%.*]] = shl nuw nsw <vscale x 16 x i32> [[VEC_IND]], splat (i32 2)
-++; SCALAR_EPILOGUE-NEXT:    [[TMP9:%.*]] = or disjoint <vscale x 16 x i32> [[TMP8]], splat (i32 1)
-++; SCALAR_EPILOGUE-NEXT:    [[TMP10:%.*]] = or disjoint <vscale x 16 x i32> [[TMP8]], splat (i32 2)
-++; SCALAR_EPILOGUE-NEXT:    [[TMP11:%.*]] = or disjoint <vscale x 16 x i32> [[TMP8]], splat (i32 3)
-++; SCALAR_EPILOGUE-NEXT:    [[TMP12:%.*]] = zext nneg <vscale x 16 x i32> [[TMP8]] to <vscale x 16 x i64>
-++; SCALAR_EPILOGUE-NEXT:    [[TMP13:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 16 x i64> [[TMP12]]
-++; SCALAR_EPILOGUE-NEXT:    [[WIDE_MASKED_GATHER:%.*]] = call <vscale x 16 x i8> @llvm.masked.gather.nxv16i8.nxv16p0(<vscale x 16 x ptr> [[TMP13]], i32 1, <vscale x 16 x i1> [[TMP7]], <vscale x 16 x i8> poison)
-++; SCALAR_EPILOGUE-NEXT:    [[TMP14:%.*]] = zext nneg <vscale x 16 x i32> [[TMP9]] to <vscale x 16 x i64>
-++; SCALAR_EPILOGUE-NEXT:    [[TMP15:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 16 x i64> [[TMP14]]
-++; SCALAR_EPILOGUE-NEXT:    [[WIDE_MASKED_GATHER1:%.*]] = call <vscale x 16 x i8> @llvm.masked.gather.nxv16i8.nxv16p0(<vscale x 16 x ptr> [[TMP15]], i32 1, <vscale x 16 x i1> [[TMP7]], <vscale x 16 x i8> poison)
-++; SCALAR_EPILOGUE-NEXT:    [[TMP16:%.*]] = zext nneg <vscale x 16 x i32> [[TMP10]] to <vscale x 16 x i64>
-++; SCALAR_EPILOGUE-NEXT:    [[TMP17:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 16 x i64> [[TMP16]]
-++; SCALAR_EPILOGUE-NEXT:    [[WIDE_MASKED_GATHER2:%.*]] = call <vscale x 16 x i8> @llvm.masked.gather.nxv16i8.nxv16p0(<vscale x 16 x ptr> [[TMP17]], i32 1, <vscale x 16 x i1> [[TMP7]], <vscale x 16 x i8> poison)
-++; SCALAR_EPILOGUE-NEXT:    [[TMP18:%.*]] = zext nneg <vscale x 16 x i32> [[TMP11]] to <vscale x 16 x i64>
-++; SCALAR_EPILOGUE-NEXT:    [[TMP19:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 16 x i64> [[TMP18]]
-++; SCALAR_EPILOGUE-NEXT:    [[WIDE_MASKED_GATHER3:%.*]] = call <vscale x 16 x i8> @llvm.masked.gather.nxv16i8.nxv16p0(<vscale x 16 x ptr> [[TMP19]], i32 1, <vscale x 16 x i1> [[TMP7]], <vscale x 16 x i8> poison)
-++; SCALAR_EPILOGUE-NEXT:    [[TMP20:%.*]] = call <vscale x 16 x i8> @llvm.smax.nxv16i8(<vscale x 16 x i8> [[WIDE_MASKED_GATHER]], <vscale x 16 x i8> [[WIDE_MASKED_GATHER1]])
-++; SCALAR_EPILOGUE-NEXT:    [[TMP21:%.*]] = sub <vscale x 16 x i8> zeroinitializer, [[TMP20]]
-++; SCALAR_EPILOGUE-NEXT:    [[TMP22:%.*]] = call <vscale x 16 x i8> @llvm.smax.nxv16i8(<vscale x 16 x i8> [[WIDE_MASKED_GATHER2]], <vscale x 16 x i8> [[WIDE_MASKED_GATHER3]])
-++; SCALAR_EPILOGUE-NEXT:    [[TMP23:%.*]] = sub <vscale x 16 x i8> zeroinitializer, [[TMP22]]
-++; SCALAR_EPILOGUE-NEXT:    [[TMP24:%.*]] = zext nneg <vscale x 16 x i32> [[TMP8]] to <vscale x 16 x i64>
-++; SCALAR_EPILOGUE-NEXT:    [[TMP25:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 16 x i64> [[TMP24]]
-++; SCALAR_EPILOGUE-NEXT:    call void @llvm.masked.scatter.nxv16i8.nxv16p0(<vscale x 16 x i8> [[TMP20]], <vscale x 16 x ptr> [[TMP25]], i32 1, <vscale x 16 x i1> [[TMP7]])
-++; SCALAR_EPILOGUE-NEXT:    [[TMP26:%.*]] = zext nneg <vscale x 16 x i32> [[TMP9]] to <vscale x 16 x i64>
-++; SCALAR_EPILOGUE-NEXT:    [[TMP27:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 16 x i64> [[TMP26]]
-++; SCALAR_EPILOGUE-NEXT:    call void @llvm.masked.scatter.nxv16i8.nxv16p0(<vscale x 16 x i8> [[TMP21]], <vscale x 16 x ptr> [[TMP27]], i32 1, <vscale x 16 x i1> [[TMP7]])
-++; SCALAR_EPILOGUE-NEXT:    [[TMP28:%.*]] = zext nneg <vscale x 16 x i32> [[TMP10]] to <vscale x 16 x i64>
-++; SCALAR_EPILOGUE-NEXT:    [[TMP29:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 16 x i64> [[TMP28]]
-++; SCALAR_EPILOGUE-NEXT:    call void @llvm.masked.scatter.nxv16i8.nxv16p0(<vscale x 16 x i8> [[TMP22]], <vscale x 16 x ptr> [[TMP29]], i32 1, <vscale x 16 x i1> [[TMP7]])
-++; SCALAR_EPILOGUE-NEXT:    [[TMP30:%.*]] = zext nneg <vscale x 16 x i32> [[TMP11]] to <vscale x 16 x i64>
-++; SCALAR_EPILOGUE-NEXT:    [[TMP31:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 16 x i64> [[TMP30]]
-++; SCALAR_EPILOGUE-NEXT:    call void @llvm.masked.scatter.nxv16i8.nxv16p0(<vscale x 16 x i8> [[TMP23]], <vscale x 16 x ptr> [[TMP31]], i32 1, <vscale x 16 x i1> [[TMP7]])
-+ ; SCALAR_EPILOGUE-NEXT:    [[INDEX_NEXT]] = add nuw i32 [[INDEX]], [[TMP5]]
-+-; SCALAR_EPILOGUE-NEXT:    [[VEC_IND_NEXT]] = add <vscale x 8 x i32> [[VEC_IND]], [[DOTSPLAT]]
-++; SCALAR_EPILOGUE-NEXT:    [[VEC_IND_NEXT]] = add <vscale x 16 x i32> [[VEC_IND]], [[DOTSPLAT]]
-+ ; SCALAR_EPILOGUE-NEXT:    [[TMP32:%.*]] = icmp eq i32 [[INDEX_NEXT]], [[N_VEC]]
-+ ; SCALAR_EPILOGUE-NEXT:    br i1 [[TMP32]], label [[MIDDLE_BLOCK:%.*]], label [[VECTOR_BODY]], !llvm.loop [[LOOP4:![0-9]+]]
-+ ; SCALAR_EPILOGUE:       middle.block:
-+@@ -248,58 +248,58 @@
-+ ; PREDICATED_TAIL_FOLDING:       vector.ph:
-+ ; PREDICATED_TAIL_FOLDING-NEXT:    [[CONV:%.*]] = zext i8 [[GUARD]] to i32
-+ ; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP0:%.*]] = call i32 @llvm.vscale.i32()
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP1:%.*]] = shl i32 [[TMP0]], 3
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP1:%.*]] = shl i32 [[TMP0]], 4
-+ ; PREDICATED_TAIL_FOLDING-NEXT:    [[N_RND_UP:%.*]] = add i32 [[TMP1]], 1023
-+ ; PREDICATED_TAIL_FOLDING-NEXT:    [[N_MOD_VF:%.*]] = urem i32 [[N_RND_UP]], [[TMP1]]
-+ ; PREDICATED_TAIL_FOLDING-NEXT:    [[N_VEC:%.*]] = sub i32 [[N_RND_UP]], [[N_MOD_VF]]
-+ ; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP2:%.*]] = call i32 @llvm.vscale.i32()
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP3:%.*]] = shl i32 [[TMP2]], 3
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP4:%.*]] = call <vscale x 8 x i32> @llvm.stepvector.nxv8i32()
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[BROADCAST_SPLATINSERT:%.*]] = insertelement <vscale x 8 x i32> poison, i32 [[CONV]], i64 0
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[BROADCAST_SPLAT:%.*]] = shufflevector <vscale x 8 x i32> [[BROADCAST_SPLATINSERT]], <vscale x 8 x i32> poison, <vscale x 8 x i32> zeroinitializer
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[DOTSPLATINSERT:%.*]] = insertelement <vscale x 8 x i32> poison, i32 [[TMP3]], i64 0
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[DOTSPLAT:%.*]] = shufflevector <vscale x 8 x i32> [[DOTSPLATINSERT]], <vscale x 8 x i32> poison, <vscale x 8 x i32> zeroinitializer
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP3:%.*]] = shl i32 [[TMP2]], 4
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP4:%.*]] = call <vscale x 16 x i32> @llvm.stepvector.nxv16i32()
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[BROADCAST_SPLATINSERT:%.*]] = insertelement <vscale x 16 x i32> poison, i32 [[CONV]], i64 0
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[BROADCAST_SPLAT:%.*]] = shufflevector <vscale x 16 x i32> [[BROADCAST_SPLATINSERT]], <vscale x 16 x i32> poison, <vscale x 16 x i32> zeroinitializer
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[DOTSPLATINSERT:%.*]] = insertelement <vscale x 16 x i32> poison, i32 [[TMP3]], i64 0
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[DOTSPLAT:%.*]] = shufflevector <vscale x 16 x i32> [[DOTSPLATINSERT]], <vscale x 16 x i32> poison, <vscale x 16 x i32> zeroinitializer
-+ ; PREDICATED_TAIL_FOLDING-NEXT:    br label [[VECTOR_BODY:%.*]]
-+ ; PREDICATED_TAIL_FOLDING:       vector.body:
-+ ; PREDICATED_TAIL_FOLDING-NEXT:    [[INDEX:%.*]] = phi i32 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[VEC_IND:%.*]] = phi <vscale x 8 x i32> [ [[TMP4]], [[VECTOR_PH]] ], [ [[VEC_IND_NEXT:%.*]], [[VECTOR_BODY]] ]
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[ACTIVE_LANE_MASK:%.*]] = call <vscale x 8 x i1> @llvm.get.active.lane.mask.nxv8i1.i32(i32 [[INDEX]], i32 1024)
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP5:%.*]] = icmp ugt <vscale x 8 x i32> [[VEC_IND]], [[BROADCAST_SPLAT]]
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP6:%.*]] = select <vscale x 8 x i1> [[ACTIVE_LANE_MASK]], <vscale x 8 x i1> [[TMP5]], <vscale x 8 x i1> zeroinitializer
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP7:%.*]] = shl nuw nsw <vscale x 8 x i32> [[VEC_IND]], splat (i32 2)
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP8:%.*]] = or disjoint <vscale x 8 x i32> [[TMP7]], splat (i32 1)
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP9:%.*]] = or disjoint <vscale x 8 x i32> [[TMP7]], splat (i32 2)
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP10:%.*]] = or disjoint <vscale x 8 x i32> [[TMP7]], splat (i32 3)
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP11:%.*]] = zext nneg <vscale x 8 x i32> [[TMP7]] to <vscale x 8 x i64>
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP12:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 8 x i64> [[TMP11]]
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[WIDE_MASKED_GATHER:%.*]] = call <vscale x 8 x i8> @llvm.masked.gather.nxv8i8.nxv8p0(<vscale x 8 x ptr> [[TMP12]], i32 1, <vscale x 8 x i1> [[TMP6]], <vscale x 8 x i8> poison)
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP13:%.*]] = zext nneg <vscale x 8 x i32> [[TMP8]] to <vscale x 8 x i64>
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP14:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 8 x i64> [[TMP13]]
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[WIDE_MASKED_GATHER1:%.*]] = call <vscale x 8 x i8> @llvm.masked.gather.nxv8i8.nxv8p0(<vscale x 8 x ptr> [[TMP14]], i32 1, <vscale x 8 x i1> [[TMP6]], <vscale x 8 x i8> poison)
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP15:%.*]] = zext nneg <vscale x 8 x i32> [[TMP9]] to <vscale x 8 x i64>
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP16:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 8 x i64> [[TMP15]]
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[WIDE_MASKED_GATHER2:%.*]] = call <vscale x 8 x i8> @llvm.masked.gather.nxv8i8.nxv8p0(<vscale x 8 x ptr> [[TMP16]], i32 1, <vscale x 8 x i1> [[TMP6]], <vscale x 8 x i8> poison)
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP17:%.*]] = zext nneg <vscale x 8 x i32> [[TMP10]] to <vscale x 8 x i64>
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP18:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 8 x i64> [[TMP17]]
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[WIDE_MASKED_GATHER3:%.*]] = call <vscale x 8 x i8> @llvm.masked.gather.nxv8i8.nxv8p0(<vscale x 8 x ptr> [[TMP18]], i32 1, <vscale x 8 x i1> [[TMP6]], <vscale x 8 x i8> poison)
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP19:%.*]] = call <vscale x 8 x i8> @llvm.smax.nxv8i8(<vscale x 8 x i8> [[WIDE_MASKED_GATHER]], <vscale x 8 x i8> [[WIDE_MASKED_GATHER1]])
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP20:%.*]] = sub <vscale x 8 x i8> zeroinitializer, [[TMP19]]
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP21:%.*]] = call <vscale x 8 x i8> @llvm.smax.nxv8i8(<vscale x 8 x i8> [[WIDE_MASKED_GATHER2]], <vscale x 8 x i8> [[WIDE_MASKED_GATHER3]])
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP22:%.*]] = sub <vscale x 8 x i8> zeroinitializer, [[TMP21]]
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP23:%.*]] = zext nneg <vscale x 8 x i32> [[TMP7]] to <vscale x 8 x i64>
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP24:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 8 x i64> [[TMP23]]
-+-; PREDICATED_TAIL_FOLDING-NEXT:    call void @llvm.masked.scatter.nxv8i8.nxv8p0(<vscale x 8 x i8> [[TMP19]], <vscale x 8 x ptr> [[TMP24]], i32 1, <vscale x 8 x i1> [[TMP6]])
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP25:%.*]] = zext nneg <vscale x 8 x i32> [[TMP8]] to <vscale x 8 x i64>
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP26:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 8 x i64> [[TMP25]]
-+-; PREDICATED_TAIL_FOLDING-NEXT:    call void @llvm.masked.scatter.nxv8i8.nxv8p0(<vscale x 8 x i8> [[TMP20]], <vscale x 8 x ptr> [[TMP26]], i32 1, <vscale x 8 x i1> [[TMP6]])
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP27:%.*]] = zext nneg <vscale x 8 x i32> [[TMP9]] to <vscale x 8 x i64>
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP28:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 8 x i64> [[TMP27]]
-+-; PREDICATED_TAIL_FOLDING-NEXT:    call void @llvm.masked.scatter.nxv8i8.nxv8p0(<vscale x 8 x i8> [[TMP21]], <vscale x 8 x ptr> [[TMP28]], i32 1, <vscale x 8 x i1> [[TMP6]])
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP29:%.*]] = zext nneg <vscale x 8 x i32> [[TMP10]] to <vscale x 8 x i64>
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP30:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 8 x i64> [[TMP29]]
-+-; PREDICATED_TAIL_FOLDING-NEXT:    call void @llvm.masked.scatter.nxv8i8.nxv8p0(<vscale x 8 x i8> [[TMP22]], <vscale x 8 x ptr> [[TMP30]], i32 1, <vscale x 8 x i1> [[TMP6]])
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[VEC_IND:%.*]] = phi <vscale x 16 x i32> [ [[TMP4]], [[VECTOR_PH]] ], [ [[VEC_IND_NEXT:%.*]], [[VECTOR_BODY]] ]
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[ACTIVE_LANE_MASK:%.*]] = call <vscale x 16 x i1> @llvm.get.active.lane.mask.nxv16i1.i32(i32 [[INDEX]], i32 1024)
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP5:%.*]] = icmp ugt <vscale x 16 x i32> [[VEC_IND]], [[BROADCAST_SPLAT]]
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP6:%.*]] = select <vscale x 16 x i1> [[ACTIVE_LANE_MASK]], <vscale x 16 x i1> [[TMP5]], <vscale x 16 x i1> zeroinitializer
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP7:%.*]] = shl nuw nsw <vscale x 16 x i32> [[VEC_IND]], splat (i32 2)
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP8:%.*]] = or disjoint <vscale x 16 x i32> [[TMP7]], splat (i32 1)
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP9:%.*]] = or disjoint <vscale x 16 x i32> [[TMP7]], splat (i32 2)
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP10:%.*]] = or disjoint <vscale x 16 x i32> [[TMP7]], splat (i32 3)
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP11:%.*]] = zext nneg <vscale x 16 x i32> [[TMP7]] to <vscale x 16 x i64>
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP12:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 16 x i64> [[TMP11]]
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[WIDE_MASKED_GATHER:%.*]] = call <vscale x 16 x i8> @llvm.masked.gather.nxv16i8.nxv16p0(<vscale x 16 x ptr> [[TMP12]], i32 1, <vscale x 16 x i1> [[TMP6]], <vscale x 16 x i8> poison)
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP13:%.*]] = zext nneg <vscale x 16 x i32> [[TMP8]] to <vscale x 16 x i64>
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP14:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 16 x i64> [[TMP13]]
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[WIDE_MASKED_GATHER1:%.*]] = call <vscale x 16 x i8> @llvm.masked.gather.nxv16i8.nxv16p0(<vscale x 16 x ptr> [[TMP14]], i32 1, <vscale x 16 x i1> [[TMP6]], <vscale x 16 x i8> poison)
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP15:%.*]] = zext nneg <vscale x 16 x i32> [[TMP9]] to <vscale x 16 x i64>
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP16:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 16 x i64> [[TMP15]]
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[WIDE_MASKED_GATHER2:%.*]] = call <vscale x 16 x i8> @llvm.masked.gather.nxv16i8.nxv16p0(<vscale x 16 x ptr> [[TMP16]], i32 1, <vscale x 16 x i1> [[TMP6]], <vscale x 16 x i8> poison)
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP17:%.*]] = zext nneg <vscale x 16 x i32> [[TMP10]] to <vscale x 16 x i64>
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP18:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 16 x i64> [[TMP17]]
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[WIDE_MASKED_GATHER3:%.*]] = call <vscale x 16 x i8> @llvm.masked.gather.nxv16i8.nxv16p0(<vscale x 16 x ptr> [[TMP18]], i32 1, <vscale x 16 x i1> [[TMP6]], <vscale x 16 x i8> poison)
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP19:%.*]] = call <vscale x 16 x i8> @llvm.smax.nxv16i8(<vscale x 16 x i8> [[WIDE_MASKED_GATHER]], <vscale x 16 x i8> [[WIDE_MASKED_GATHER1]])
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP20:%.*]] = sub <vscale x 16 x i8> zeroinitializer, [[TMP19]]
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP21:%.*]] = call <vscale x 16 x i8> @llvm.smax.nxv16i8(<vscale x 16 x i8> [[WIDE_MASKED_GATHER2]], <vscale x 16 x i8> [[WIDE_MASKED_GATHER3]])
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP22:%.*]] = sub <vscale x 16 x i8> zeroinitializer, [[TMP21]]
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP23:%.*]] = zext nneg <vscale x 16 x i32> [[TMP7]] to <vscale x 16 x i64>
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP24:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 16 x i64> [[TMP23]]
-++; PREDICATED_TAIL_FOLDING-NEXT:    call void @llvm.masked.scatter.nxv16i8.nxv16p0(<vscale x 16 x i8> [[TMP19]], <vscale x 16 x ptr> [[TMP24]], i32 1, <vscale x 16 x i1> [[TMP6]])
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP25:%.*]] = zext nneg <vscale x 16 x i32> [[TMP8]] to <vscale x 16 x i64>
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP26:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 16 x i64> [[TMP25]]
-++; PREDICATED_TAIL_FOLDING-NEXT:    call void @llvm.masked.scatter.nxv16i8.nxv16p0(<vscale x 16 x i8> [[TMP20]], <vscale x 16 x ptr> [[TMP26]], i32 1, <vscale x 16 x i1> [[TMP6]])
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP27:%.*]] = zext nneg <vscale x 16 x i32> [[TMP9]] to <vscale x 16 x i64>
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP28:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 16 x i64> [[TMP27]]
-++; PREDICATED_TAIL_FOLDING-NEXT:    call void @llvm.masked.scatter.nxv16i8.nxv16p0(<vscale x 16 x i8> [[TMP21]], <vscale x 16 x ptr> [[TMP28]], i32 1, <vscale x 16 x i1> [[TMP6]])
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP29:%.*]] = zext nneg <vscale x 16 x i32> [[TMP10]] to <vscale x 16 x i64>
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP30:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 16 x i64> [[TMP29]]
-++; PREDICATED_TAIL_FOLDING-NEXT:    call void @llvm.masked.scatter.nxv16i8.nxv16p0(<vscale x 16 x i8> [[TMP22]], <vscale x 16 x ptr> [[TMP30]], i32 1, <vscale x 16 x i1> [[TMP6]])
-+ ; PREDICATED_TAIL_FOLDING-NEXT:    [[INDEX_NEXT]] = add nuw i32 [[INDEX]], [[TMP3]]
-+-; PREDICATED_TAIL_FOLDING-NEXT:    [[VEC_IND_NEXT]] = add <vscale x 8 x i32> [[VEC_IND]], [[DOTSPLAT]]
-++; PREDICATED_TAIL_FOLDING-NEXT:    [[VEC_IND_NEXT]] = add <vscale x 16 x i32> [[VEC_IND]], [[DOTSPLAT]]
-+ ; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP31:%.*]] = icmp eq i32 [[INDEX_NEXT]], [[N_VEC]]
-+ ; PREDICATED_TAIL_FOLDING-NEXT:    br i1 [[TMP31]], label [[MIDDLE_BLOCK:%.*]], label [[VECTOR_BODY]], !llvm.loop [[LOOP4:![0-9]+]]
-+ ; PREDICATED_TAIL_FOLDING:       middle.block:
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/RISCV/reg-usage-bf16.ll b/llvm/test/Transforms/LoopVectorize/RISCV/reg-usage-bf16.ll
-+--- a/llvm/test/Transforms/LoopVectorize/RISCV/reg-usage-bf16.ll
-++++ b/llvm/test/Transforms/LoopVectorize/RISCV/reg-usage-bf16.ll
-+@@ -3,8 +3,7 @@
-+ 
-+ define void @add(ptr noalias nocapture readonly %src1, ptr noalias nocapture readonly %src2, i32 signext %size, ptr noalias nocapture writeonly %result) {
-+ ; CHECK-LABEL: add
-+-; CHECK:       LV(REG): VF = 8
-+-; CHECK-NEXT:  LV(REG): Found max usage: 2 item
-++; CHECK:  LV(REG): Found max usage: 2 item
-+ ; CHECK-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 3 registers
-+ ; CHECK-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 4 registers
-+ ; CHECK-NEXT:  LV(REG): Found invariant usage: 1 item
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/RISCV/reg-usage-f16.ll b/llvm/test/Transforms/LoopVectorize/RISCV/reg-usage-f16.ll
-+--- a/llvm/test/Transforms/LoopVectorize/RISCV/reg-usage-f16.ll
-++++ b/llvm/test/Transforms/LoopVectorize/RISCV/reg-usage-f16.ll
-+@@ -4,14 +4,12 @@
-+ 
-+ define void @add(ptr noalias nocapture readonly %src1, ptr noalias nocapture readonly %src2, i32 signext %size, ptr noalias nocapture writeonly %result) {
-+ ; CHECK-LABEL: add
-+-; ZVFH:       LV(REG): VF = 8
-+-; ZVFH-NEXT:  LV(REG): Found max usage: 2 item
-++; ZVFH:  LV(REG): Found max usage: 2 item
-+ ; ZVFH-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 3 registers
-+ ; ZVFH-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 2 registers
-+ ; ZVFH-NEXT:  LV(REG): Found invariant usage: 1 item
-+ ; ZVFH-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 1 registers
-+-; ZVFHMIN:       LV(REG): VF = 8
-+-; ZVFHMIN-NEXT:  LV(REG): Found max usage: 2 item
-++; ZVFHMIN:  LV(REG): Found max usage: 2 item
-+ ; ZVFHMIN-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 3 registers
-+ ; ZVFHMIN-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 4 registers
-+ ; ZVFHMIN-NEXT:  LV(REG): Found invariant usage: 1 item
-+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/RISCV/reg-usage.ll b/llvm/test/Transforms/LoopVectorize/RISCV/reg-usage.ll
-+--- a/llvm/test/Transforms/LoopVectorize/RISCV/reg-usage.ll
-++++ b/llvm/test/Transforms/LoopVectorize/RISCV/reg-usage.ll
-+@@ -28,28 +28,24 @@
-+ ; CHECK-SCALAR-NEXT: LV(REG): RegisterClass: RISCV::FPRRC, 2 registers
-+ ; CHECK-SCALAR-NEXT: LV(REG): Found invariant usage: 1 item
-+ ; CHECK-SCALAR-NEXT: LV(REG): RegisterClass: RISCV::GPRRC, 1 registers
-+-; CHECK-LMUL1:       LV(REG): VF = 2
-+-; CHECK-LMUL1-NEXT:  LV(REG): Found max usage: 2 item
-++; CHECK-LMUL1:       LV(REG): Found max usage: 2 item
-+ ; CHECK-LMUL1-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 3 registers
-+ ; CHECK-LMUL1-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 2 registers
-+ ; CHECK-LMUL1-NEXT:  LV(REG): Found invariant usage: 1 item
-+ ; CHECK-LMUL1-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 1 registers
-+-; CHECK-LMUL2:       LV(REG): VF = 4
-+-; CHECK-LMUL2-NEXT:  LV(REG): Found max usage: 2 item
-++; CHECK-LMUL2:       LV(REG): Found max usage: 2 item
-+ ; CHECK-LMUL2-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 3 registers
-+-; CHECK-LMUL2-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 2 registers
-++; CHECK-LMUL2-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 4 registers
-+ ; CHECK-LMUL2-NEXT:  LV(REG): Found invariant usage: 1 item
-+ ; CHECK-LMUL2-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 1 registers
-+-; CHECK-LMUL4:       LV(REG): VF = 8
-+-; CHECK-LMUL4-NEXT:  LV(REG): Found max usage: 2 item
-++; CHECK-LMUL4:       LV(REG): Found max usage: 2 item
-+ ; CHECK-LMUL4-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 3 registers
-+-; CHECK-LMUL4-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 4 registers
-++; CHECK-LMUL4-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 8 registers
-+ ; CHECK-LMUL4-NEXT:  LV(REG): Found invariant usage: 1 item
-+ ; CHECK-LMUL4-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 1 registers
-+-; CHECK-LMUL8:       LV(REG): VF = 16
-+-; CHECK-LMUL8-NEXT:  LV(REG): Found max usage: 2 item
-++; CHECK-LMUL8:       LV(REG): Found max usage: 2 item
-+ ; CHECK-LMUL8-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 3 registers
-+-; CHECK-LMUL8-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 8 registers
-++; CHECK-LMUL8-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 16 registers
-+ ; CHECK-LMUL8-NEXT:  LV(REG): Found invariant usage: 1 item
-+ ; CHECK-LMUL8-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 1 registers
-+ 
-+@@ -80,21 +76,17 @@
-+ ; CHECK-SCALAR:      LV(REG): VF = 1
-+ ; CHECK-SCALAR-NEXT: LV(REG): Found max usage: 1 item
-+ ; CHECK-SCALAR-NEXT: LV(REG): RegisterClass: RISCV::GPRRC, 3 registers
-+-; CHECK-LMUL1:       LV(REG): VF = 2
-+-; CHECK-LMUL1-NEXT:  LV(REG): Found max usage: 2 item
-+-; CHECK-LMUL1-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 3 registers
-+-; CHECK-LMUL1-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 2 registers
-+-; CHECK-LMUL2:       LV(REG): VF = 4
-+-; CHECK-LMUL2-NEXT:  LV(REG): Found max usage: 2 item
-+-; CHECK-LMUL2-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 3 registers
-++; CHECK-LMUL1:       LV(REG): Found max usage: 2 item
-++; CHECK-LMUL1-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 2 registers
-++; CHECK-LMUL1-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 1 registers
-++; CHECK-LMUL2:       LV(REG): Found max usage: 2 item
-++; CHECK-LMUL2-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 2 registers
-+ ; CHECK-LMUL2-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 2 registers
-+-; CHECK-LMUL4:       LV(REG): VF = 8
-+-; CHECK-LMUL4-NEXT:  LV(REG): Found max usage: 2 item
-+-; CHECK-LMUL4-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 3 registers
-++; CHECK-LMUL4:       LV(REG): Found max usage: 2 item
-++; CHECK-LMUL4-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 2 registers
-+ ; CHECK-LMUL4-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 4 registers
-+-; CHECK-LMUL8:       LV(REG): VF = 16
-+-; CHECK-LMUL8-NEXT:  LV(REG): Found max usage: 2 item
-+-; CHECK-LMUL8-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 3 registers
-++; CHECK-LMUL8:       LV(REG): Found max usage: 2 item
-++; CHECK-LMUL8-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 2 registers
-+ ; CHECK-LMUL8-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 8 registers
-+ entry:
-+   %cmp3 = icmp sgt i32 %n, 0
-+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl b/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl
-+--- a/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl
-++++ b/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl
-+@@ -525,7 +525,7 @@
-+         td_file = td_file,
-+         test = test,
-+         deps = deps,
-+-        **kwargs,
-++        **kwargs
-+     )
-+     all_files = [hdr_out, src_out]
-+     for i in range(0, shard_count):
-+@@ -537,13 +537,13 @@
-+             out = out_file,
-+             sharder = sharder,
-+             src_file = src_file,
-+-            **kwargs,
-++            **kwargs
-+         )
-+         all_files.append(out_file)
-+     native.filegroup(
-+         name = name,
-+         srcs = all_files,
-+-        **kwargs,
-++        **kwargs
-+     )
-+ 
-+ def gentbl_sharded_op_defs(name, source_file, shard_count):
+++; IC4-LABEL: define i32 @partial_reduce_with_non_constant_start_value(
+++; IC4-SAME: ptr [[SRC:%.*]], i32 [[RDX_START:%.*]], i64 [[N:%.*]]) #[[ATTR0:[0-9]+]] {
+++; IC4-NEXT:  [[ENTRY:.*]]:
+++; IC4-NEXT:    [[MIN_ITERS_CHECK:%.*]] = icmp ult i64 [[N]], 64
+++; IC4-NEXT:    br i1 [[MIN_ITERS_CHECK]], label %[[SCALAR_PH:.*]], label %[[VECTOR_PH:.*]]
+++; IC4:       [[VECTOR_PH]]:
+++; IC4-NEXT:    [[N_MOD_VF:%.*]] = urem i64 [[N]], 64
+++; IC4-NEXT:    [[N_VEC:%.*]] = sub i64 [[N]], [[N_MOD_VF]]
+++; IC4-NEXT:    [[TMP0:%.*]] = insertelement <4 x i32> zeroinitializer, i32 [[RDX_START]], i32 0
+++; IC4-NEXT:    br label %[[VECTOR_BODY:.*]]
+++; IC4:       [[VECTOR_BODY]]:
+++; IC4-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, %[[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], %[[VECTOR_BODY]] ]
+++; IC4-NEXT:    [[VEC_PHI:%.*]] = phi <4 x i32> [ [[TMP0]], %[[VECTOR_PH]] ], [ [[PARTIAL_REDUCE:%.*]], %[[VECTOR_BODY]] ]
+++; IC4-NEXT:    [[VEC_PHI1:%.*]] = phi <4 x i32> [ zeroinitializer, %[[VECTOR_PH]] ], [ [[PARTIAL_REDUCE7:%.*]], %[[VECTOR_BODY]] ]
+++; IC4-NEXT:    [[VEC_PHI2:%.*]] = phi <4 x i32> [ zeroinitializer, %[[VECTOR_PH]] ], [ [[PARTIAL_REDUCE8:%.*]], %[[VECTOR_BODY]] ]
+++; IC4-NEXT:    [[VEC_PHI3:%.*]] = phi <4 x i32> [ zeroinitializer, %[[VECTOR_PH]] ], [ [[PARTIAL_REDUCE9:%.*]], %[[VECTOR_BODY]] ]
+++; IC4-NEXT:    [[TMP1:%.*]] = getelementptr inbounds i8, ptr [[SRC]], i64 [[INDEX]]
+++; IC4-NEXT:    [[TMP2:%.*]] = getelementptr inbounds i8, ptr [[TMP1]], i32 0
+++; IC4-NEXT:    [[TMP3:%.*]] = getelementptr inbounds i8, ptr [[TMP1]], i32 16
+++; IC4-NEXT:    [[TMP4:%.*]] = getelementptr inbounds i8, ptr [[TMP1]], i32 32
+++; IC4-NEXT:    [[TMP5:%.*]] = getelementptr inbounds i8, ptr [[TMP1]], i32 48
+++; IC4-NEXT:    [[WIDE_LOAD:%.*]] = load <16 x i8>, ptr [[TMP2]], align 1
+++; IC4-NEXT:    [[WIDE_LOAD4:%.*]] = load <16 x i8>, ptr [[TMP3]], align 1
+++; IC4-NEXT:    [[WIDE_LOAD5:%.*]] = load <16 x i8>, ptr [[TMP4]], align 1
+++; IC4-NEXT:    [[WIDE_LOAD6:%.*]] = load <16 x i8>, ptr [[TMP5]], align 1
+++; IC4-NEXT:    [[TMP6:%.*]] = zext <16 x i8> [[WIDE_LOAD]] to <16 x i32>
+++; IC4-NEXT:    [[TMP7:%.*]] = zext <16 x i8> [[WIDE_LOAD4]] to <16 x i32>
+++; IC4-NEXT:    [[TMP8:%.*]] = zext <16 x i8> [[WIDE_LOAD5]] to <16 x i32>
+++; IC4-NEXT:    [[TMP9:%.*]] = zext <16 x i8> [[WIDE_LOAD6]] to <16 x i32>
+++; IC4-NEXT:    [[TMP10:%.*]] = mul nuw nsw <16 x i32> [[TMP6]], [[TMP6]]
+++; IC4-NEXT:    [[TMP11:%.*]] = mul nuw nsw <16 x i32> [[TMP7]], [[TMP7]]
+++; IC4-NEXT:    [[TMP12:%.*]] = mul nuw nsw <16 x i32> [[TMP8]], [[TMP8]]
+++; IC4-NEXT:    [[TMP13:%.*]] = mul nuw nsw <16 x i32> [[TMP9]], [[TMP9]]
+++; IC4-NEXT:    [[PARTIAL_REDUCE]] = call <4 x i32> @llvm.experimental.vector.partial.reduce.add.v4i32.v16i32(<4 x i32> [[VEC_PHI]], <16 x i32> [[TMP10]])
+++; IC4-NEXT:    [[PARTIAL_REDUCE7]] = call <4 x i32> @llvm.experimental.vector.partial.reduce.add.v4i32.v16i32(<4 x i32> [[VEC_PHI1]], <16 x i32> [[TMP11]])
+++; IC4-NEXT:    [[PARTIAL_REDUCE8]] = call <4 x i32> @llvm.experimental.vector.partial.reduce.add.v4i32.v16i32(<4 x i32> [[VEC_PHI2]], <16 x i32> [[TMP12]])
+++; IC4-NEXT:    [[PARTIAL_REDUCE9]] = call <4 x i32> @llvm.experimental.vector.partial.reduce.add.v4i32.v16i32(<4 x i32> [[VEC_PHI3]], <16 x i32> [[TMP13]])
+++; IC4-NEXT:    [[INDEX_NEXT]] = add nuw i64 [[INDEX]], 64
+++; IC4-NEXT:    [[TMP18:%.*]] = icmp eq i64 [[INDEX_NEXT]], [[N_VEC]]
+++; IC4-NEXT:    br i1 [[TMP18]], label %[[MIDDLE_BLOCK:.*]], label %[[VECTOR_BODY]], !llvm.loop [[LOOP0:![0-9]+]]
+++; IC4:       [[MIDDLE_BLOCK]]:
+++; IC4-NEXT:    [[BIN_RDX:%.*]] = add <4 x i32> [[PARTIAL_REDUCE7]], [[PARTIAL_REDUCE]]
+++; IC4-NEXT:    [[BIN_RDX10:%.*]] = add <4 x i32> [[PARTIAL_REDUCE8]], [[BIN_RDX]]
+++; IC4-NEXT:    [[BIN_RDX11:%.*]] = add <4 x i32> [[PARTIAL_REDUCE9]], [[BIN_RDX10]]
+++; IC4-NEXT:    [[TMP15:%.*]] = call i32 @llvm.vector.reduce.add.v4i32(<4 x i32> [[BIN_RDX11]])
+++; IC4-NEXT:    [[CMP_N:%.*]] = icmp eq i64 [[N]], [[N_VEC]]
+++; IC4-NEXT:    br i1 [[CMP_N]], label %[[EXIT:.*]], label %[[SCALAR_PH]]
+++; IC4:       [[SCALAR_PH]]:
+++; IC4-NEXT:    [[BC_RESUME_VAL:%.*]] = phi i64 [ [[N_VEC]], %[[MIDDLE_BLOCK]] ], [ 0, %[[ENTRY]] ]
+++; IC4-NEXT:    [[BC_MERGE_RDX:%.*]] = phi i32 [ [[TMP15]], %[[MIDDLE_BLOCK]] ], [ [[RDX_START]], %[[ENTRY]] ]
+++; IC4-NEXT:    br label %[[LOOP:.*]]
+++; IC4:       [[LOOP]]:
+++; IC4-NEXT:    [[IV:%.*]] = phi i64 [ [[BC_RESUME_VAL]], %[[SCALAR_PH]] ], [ [[IV_NEXT:%.*]], %[[LOOP]] ]
+++; IC4-NEXT:    [[RDX:%.*]] = phi i32 [ [[BC_MERGE_RDX]], %[[SCALAR_PH]] ], [ [[RDX_NEXT:%.*]], %[[LOOP]] ]
+++; IC4-NEXT:    [[GEP_SRC:%.*]] = getelementptr inbounds i8, ptr [[SRC]], i64 [[IV]]
+++; IC4-NEXT:    [[L:%.*]] = load i8, ptr [[GEP_SRC]], align 1
+++; IC4-NEXT:    [[CONV:%.*]] = zext i8 [[L]] to i32
+++; IC4-NEXT:    [[MUL:%.*]] = mul nuw nsw i32 [[CONV]], [[CONV]]
+++; IC4-NEXT:    [[RDX_NEXT]] = add nsw i32 [[MUL]], [[RDX]]
+++; IC4-NEXT:    [[IV_NEXT]] = add nsw i64 [[IV]], 1
+++; IC4-NEXT:    [[EC:%.*]] = icmp eq i64 [[IV_NEXT]], [[N]]
+++; IC4-NEXT:    br i1 [[EC]], label %[[EXIT]], label %[[LOOP]], !llvm.loop [[LOOP3:![0-9]+]]
+++; IC4:       [[EXIT]]:
+++; IC4-NEXT:    [[RDX_NEXT_LCSSA:%.*]] = phi i32 [ [[RDX_NEXT]], %[[LOOP]] ], [ [[TMP15]], %[[MIDDLE_BLOCK]] ]
+++; IC4-NEXT:    ret i32 [[RDX_NEXT_LCSSA]]
+ +;
+ +entry:
+-+  %cmp46.not = icmp eq i32 %n, 0
+-+  br i1 %cmp46.not, label %exit, label %for.body
+++  br label %loop
+ +
+-+for.body:                                         ; preds = %for.body.preheader, %for.body
+-+  %ptr.iv.1 = phi ptr [ %in, %entry ], [ %ptr.iv.1.next, %for.body ]
+-+  %ptr.iv.2 = phi ptr [ %out, %entry ], [ %ptr.iv.2.next, %for.body ]
+-+  %iv = phi i32 [ %iv.next, %for.body ], [ 0, %entry ]
+-+  %incdec.ptr = getelementptr inbounds nuw i8, ptr %ptr.iv.1, i32 1
+-+  %0 = load i8, ptr %ptr.iv.1, align 1
+-+  %incdec.ptr1 = getelementptr inbounds nuw i8, ptr %ptr.iv.1, i32 2
+-+  %1 = load i8, ptr %incdec.ptr, align 1
+-+  %ptr.iv.1.next = getelementptr inbounds nuw i8, ptr %ptr.iv.1, i32 3
+-+  %2 = load i8, ptr %incdec.ptr1, align 1
+-+  %conv = zext i8 %0 to i32
+-+  %mul = mul nuw nsw i32 %conv, 19595
+-+  %conv3 = zext i8 %1 to i32
+-+  %mul4 = mul nuw nsw i32 %conv3, 38470
+-+  %conv5 = zext i8 %2 to i32
+-+  %mul6 = mul nuw nsw i32 %conv5, 7471
+-+  %add = add nuw nsw i32 %mul, 32768
+-+  %add7 = add nuw nsw i32 %add, %mul4
+-+  %add8 = add nuw nsw i32 %add7, %mul6
+-+  %shr = lshr i32 %add8, 16
+-+  %conv9 = trunc nuw i32 %shr to i8
+-+  %mul11 = mul nuw nsw i32 %conv, 32767
+-+  %mul13 = mul nuw i32 %conv3, 16762097
+-+  %mul16 = mul nuw i32 %conv5, 16759568
+-+  %add14 = add nuw nsw i32 %mul11, 32768
+-+  %add17 = add nuw i32 %add14, %mul13
+-+  %add18 = add i32 %add17, %mul16
+-+  %shr19 = lshr i32 %add18, 16
+-+  %conv20 = trunc i32 %shr19 to i8
+-+  %mul22 = mul nuw nsw i32 %conv, 13282
+-+  %mul24 = mul nuw i32 %conv3, 16744449
+-+  %mul27 = mul nuw nsw i32 %conv5, 19485
+-+  %add25 = add nuw nsw i32 %mul22, 32768
+-+  %add28 = add nuw i32 %add25, %mul24
+-+  %add29 = add nuw i32 %add28, %mul27
+-+  %shr30 = lshr i32 %add29, 16
+-+  %conv31 = trunc i32 %shr30 to i8
+-+  %incdec.ptr32 = getelementptr inbounds nuw i8, ptr %ptr.iv.2, i32 1
+-+  store i8 %conv9, ptr %ptr.iv.2, align 1
+-+  %incdec.ptr33 = getelementptr inbounds nuw i8, ptr %ptr.iv.2, i32 2
+-+  store i8 %conv20, ptr %incdec.ptr32, align 1
+-+  %ptr.iv.2.next = getelementptr inbounds nuw i8, ptr %ptr.iv.2, i32 3
+-+  store i8 %conv31, ptr %incdec.ptr33, align 1
+-+  %iv.next = add nuw i32 %iv, 1
+-+  %exitcond.not = icmp eq i32 %iv.next, %n
+-+  br i1 %exitcond.not, label %exit, label %for.body
+++loop:
+++  %iv = phi i64 [ 0, %entry ], [ %iv.next, %loop ]
+++  %rdx = phi i32 [ %rdx.start, %entry ], [ %rdx.next, %loop ]
+++  %gep.src = getelementptr inbounds i8, ptr %src, i64 %iv
+++  %l = load i8, ptr %gep.src, align 1
+++  %conv = zext i8 %l to i32
+++  %mul = mul nuw nsw i32 %conv, %conv
+++  %rdx.next = add nsw i32 %mul, %rdx
+++  %iv.next = add nsw i64 %iv, 1
+++  %ec = icmp eq i64 %iv.next, %n
+++  br i1 %ec, label %exit, label %loop
+ +
+-+exit:                                 ; preds = %for.cond.cleanup.loopexit, %entry
+-+  ret void
+++exit:
+++  ret i32 %rdx.next
+ +}
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/RISCV/interleaved-masked-access.ll b/llvm/test/Transforms/LoopVectorize/RISCV/interleaved-masked-access.ll
+---- a/llvm/test/Transforms/LoopVectorize/RISCV/interleaved-masked-access.ll
+-+++ b/llvm/test/Transforms/LoopVectorize/RISCV/interleaved-masked-access.ll
+-@@ -11,44 +11,44 @@
+- ; SCALAR_EPILOGUE-NEXT:  entry:
+- ; SCALAR_EPILOGUE-NEXT:    [[CONV:%.*]] = zext i8 [[GUARD]] to i32
+- ; SCALAR_EPILOGUE-NEXT:    [[TMP0:%.*]] = call i32 @llvm.vscale.i32()
+--; SCALAR_EPILOGUE-NEXT:    [[TMP1:%.*]] = shl i32 [[TMP0]], 3
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP1:%.*]] = shl i32 [[TMP0]], 4
+- ; SCALAR_EPILOGUE-NEXT:    [[MIN_ITERS_CHECK:%.*]] = icmp ugt i32 [[TMP1]], 1024
+- ; SCALAR_EPILOGUE-NEXT:    br i1 [[MIN_ITERS_CHECK]], label [[SCALAR_PH:%.*]], label [[VECTOR_PH:%.*]]
+- ; SCALAR_EPILOGUE:       vector.ph:
+- ; SCALAR_EPILOGUE-NEXT:    [[TMP2:%.*]] = call i32 @llvm.vscale.i32()
+--; SCALAR_EPILOGUE-NEXT:    [[TMP3:%.*]] = shl i32 [[TMP2]], 3
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP3:%.*]] = shl i32 [[TMP2]], 4
+- ; SCALAR_EPILOGUE-NEXT:    [[N_MOD_VF:%.*]] = urem i32 1024, [[TMP3]]
+- ; SCALAR_EPILOGUE-NEXT:    [[N_VEC:%.*]] = sub nuw nsw i32 1024, [[N_MOD_VF]]
+- ; SCALAR_EPILOGUE-NEXT:    [[TMP4:%.*]] = call i32 @llvm.vscale.i32()
+--; SCALAR_EPILOGUE-NEXT:    [[TMP5:%.*]] = shl i32 [[TMP4]], 3
+--; SCALAR_EPILOGUE-NEXT:    [[TMP6:%.*]] = call <vscale x 8 x i32> @llvm.stepvector.nxv8i32()
+--; SCALAR_EPILOGUE-NEXT:    [[BROADCAST_SPLATINSERT:%.*]] = insertelement <vscale x 8 x i32> poison, i32 [[CONV]], i64 0
+--; SCALAR_EPILOGUE-NEXT:    [[BROADCAST_SPLAT:%.*]] = shufflevector <vscale x 8 x i32> [[BROADCAST_SPLATINSERT]], <vscale x 8 x i32> poison, <vscale x 8 x i32> zeroinitializer
+--; SCALAR_EPILOGUE-NEXT:    [[DOTSPLATINSERT:%.*]] = insertelement <vscale x 8 x i32> poison, i32 [[TMP5]], i64 0
+--; SCALAR_EPILOGUE-NEXT:    [[DOTSPLAT:%.*]] = shufflevector <vscale x 8 x i32> [[DOTSPLATINSERT]], <vscale x 8 x i32> poison, <vscale x 8 x i32> zeroinitializer
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP5:%.*]] = shl i32 [[TMP4]], 4
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP6:%.*]] = call <vscale x 16 x i32> @llvm.stepvector.nxv16i32()
+-+; SCALAR_EPILOGUE-NEXT:    [[BROADCAST_SPLATINSERT:%.*]] = insertelement <vscale x 16 x i32> poison, i32 [[CONV]], i64 0
+-+; SCALAR_EPILOGUE-NEXT:    [[BROADCAST_SPLAT:%.*]] = shufflevector <vscale x 16 x i32> [[BROADCAST_SPLATINSERT]], <vscale x 16 x i32> poison, <vscale x 16 x i32> zeroinitializer
+-+; SCALAR_EPILOGUE-NEXT:    [[DOTSPLATINSERT:%.*]] = insertelement <vscale x 16 x i32> poison, i32 [[TMP5]], i64 0
+-+; SCALAR_EPILOGUE-NEXT:    [[DOTSPLAT:%.*]] = shufflevector <vscale x 16 x i32> [[DOTSPLATINSERT]], <vscale x 16 x i32> poison, <vscale x 16 x i32> zeroinitializer
+- ; SCALAR_EPILOGUE-NEXT:    br label [[VECTOR_BODY:%.*]]
+- ; SCALAR_EPILOGUE:       vector.body:
+- ; SCALAR_EPILOGUE-NEXT:    [[INDEX:%.*]] = phi i32 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
+--; SCALAR_EPILOGUE-NEXT:    [[VEC_IND:%.*]] = phi <vscale x 8 x i32> [ [[TMP6]], [[VECTOR_PH]] ], [ [[VEC_IND_NEXT:%.*]], [[VECTOR_BODY]] ]
+--; SCALAR_EPILOGUE-NEXT:    [[TMP7:%.*]] = icmp ugt <vscale x 8 x i32> [[VEC_IND]], [[BROADCAST_SPLAT]]
+--; SCALAR_EPILOGUE-NEXT:    [[TMP8:%.*]] = shl nuw nsw <vscale x 8 x i32> [[VEC_IND]], splat (i32 1)
+--; SCALAR_EPILOGUE-NEXT:    [[TMP9:%.*]] = zext nneg <vscale x 8 x i32> [[TMP8]] to <vscale x 8 x i64>
+--; SCALAR_EPILOGUE-NEXT:    [[TMP10:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 8 x i64> [[TMP9]]
+--; SCALAR_EPILOGUE-NEXT:    [[WIDE_MASKED_GATHER:%.*]] = call <vscale x 8 x i8> @llvm.masked.gather.nxv8i8.nxv8p0(<vscale x 8 x ptr> [[TMP10]], i32 1, <vscale x 8 x i1> [[TMP7]], <vscale x 8 x i8> poison)
+--; SCALAR_EPILOGUE-NEXT:    [[TMP11:%.*]] = or disjoint <vscale x 8 x i32> [[TMP8]], splat (i32 1)
+--; SCALAR_EPILOGUE-NEXT:    [[TMP12:%.*]] = zext nneg <vscale x 8 x i32> [[TMP11]] to <vscale x 8 x i64>
+--; SCALAR_EPILOGUE-NEXT:    [[TMP13:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 8 x i64> [[TMP12]]
+--; SCALAR_EPILOGUE-NEXT:    [[WIDE_MASKED_GATHER1:%.*]] = call <vscale x 8 x i8> @llvm.masked.gather.nxv8i8.nxv8p0(<vscale x 8 x ptr> [[TMP13]], i32 1, <vscale x 8 x i1> [[TMP7]], <vscale x 8 x i8> poison)
+--; SCALAR_EPILOGUE-NEXT:    [[TMP14:%.*]] = call <vscale x 8 x i8> @llvm.smax.nxv8i8(<vscale x 8 x i8> [[WIDE_MASKED_GATHER]], <vscale x 8 x i8> [[WIDE_MASKED_GATHER1]])
+--; SCALAR_EPILOGUE-NEXT:    [[TMP15:%.*]] = zext nneg <vscale x 8 x i32> [[TMP8]] to <vscale x 8 x i64>
+--; SCALAR_EPILOGUE-NEXT:    [[TMP16:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 8 x i64> [[TMP15]]
+--; SCALAR_EPILOGUE-NEXT:    call void @llvm.masked.scatter.nxv8i8.nxv8p0(<vscale x 8 x i8> [[TMP14]], <vscale x 8 x ptr> [[TMP16]], i32 1, <vscale x 8 x i1> [[TMP7]])
+--; SCALAR_EPILOGUE-NEXT:    [[TMP17:%.*]] = sub <vscale x 8 x i8> zeroinitializer, [[TMP14]]
+--; SCALAR_EPILOGUE-NEXT:    [[TMP18:%.*]] = zext nneg <vscale x 8 x i32> [[TMP11]] to <vscale x 8 x i64>
+--; SCALAR_EPILOGUE-NEXT:    [[TMP19:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 8 x i64> [[TMP18]]
+--; SCALAR_EPILOGUE-NEXT:    call void @llvm.masked.scatter.nxv8i8.nxv8p0(<vscale x 8 x i8> [[TMP17]], <vscale x 8 x ptr> [[TMP19]], i32 1, <vscale x 8 x i1> [[TMP7]])
+-+; SCALAR_EPILOGUE-NEXT:    [[VEC_IND:%.*]] = phi <vscale x 16 x i32> [ [[TMP6]], [[VECTOR_PH]] ], [ [[VEC_IND_NEXT:%.*]], [[VECTOR_BODY]] ]
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP7:%.*]] = icmp ugt <vscale x 16 x i32> [[VEC_IND]], [[BROADCAST_SPLAT]]
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP8:%.*]] = shl nuw nsw <vscale x 16 x i32> [[VEC_IND]], splat (i32 1)
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP9:%.*]] = zext nneg <vscale x 16 x i32> [[TMP8]] to <vscale x 16 x i64>
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP10:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 16 x i64> [[TMP9]]
+-+; SCALAR_EPILOGUE-NEXT:    [[WIDE_MASKED_GATHER:%.*]] = call <vscale x 16 x i8> @llvm.masked.gather.nxv16i8.nxv16p0(<vscale x 16 x ptr> [[TMP10]], i32 1, <vscale x 16 x i1> [[TMP7]], <vscale x 16 x i8> poison)
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP11:%.*]] = or disjoint <vscale x 16 x i32> [[TMP8]], splat (i32 1)
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP12:%.*]] = zext nneg <vscale x 16 x i32> [[TMP11]] to <vscale x 16 x i64>
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP13:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 16 x i64> [[TMP12]]
+-+; SCALAR_EPILOGUE-NEXT:    [[WIDE_MASKED_GATHER1:%.*]] = call <vscale x 16 x i8> @llvm.masked.gather.nxv16i8.nxv16p0(<vscale x 16 x ptr> [[TMP13]], i32 1, <vscale x 16 x i1> [[TMP7]], <vscale x 16 x i8> poison)
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP14:%.*]] = call <vscale x 16 x i8> @llvm.smax.nxv16i8(<vscale x 16 x i8> [[WIDE_MASKED_GATHER]], <vscale x 16 x i8> [[WIDE_MASKED_GATHER1]])
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP15:%.*]] = zext nneg <vscale x 16 x i32> [[TMP8]] to <vscale x 16 x i64>
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP16:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 16 x i64> [[TMP15]]
+-+; SCALAR_EPILOGUE-NEXT:    call void @llvm.masked.scatter.nxv16i8.nxv16p0(<vscale x 16 x i8> [[TMP14]], <vscale x 16 x ptr> [[TMP16]], i32 1, <vscale x 16 x i1> [[TMP7]])
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP17:%.*]] = sub <vscale x 16 x i8> zeroinitializer, [[TMP14]]
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP18:%.*]] = zext nneg <vscale x 16 x i32> [[TMP11]] to <vscale x 16 x i64>
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP19:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 16 x i64> [[TMP18]]
+-+; SCALAR_EPILOGUE-NEXT:    call void @llvm.masked.scatter.nxv16i8.nxv16p0(<vscale x 16 x i8> [[TMP17]], <vscale x 16 x ptr> [[TMP19]], i32 1, <vscale x 16 x i1> [[TMP7]])
+- ; SCALAR_EPILOGUE-NEXT:    [[INDEX_NEXT]] = add nuw i32 [[INDEX]], [[TMP5]]
+--; SCALAR_EPILOGUE-NEXT:    [[VEC_IND_NEXT]] = add <vscale x 8 x i32> [[VEC_IND]], [[DOTSPLAT]]
+-+; SCALAR_EPILOGUE-NEXT:    [[VEC_IND_NEXT]] = add <vscale x 16 x i32> [[VEC_IND]], [[DOTSPLAT]]
+- ; SCALAR_EPILOGUE-NEXT:    [[TMP20:%.*]] = icmp eq i32 [[INDEX_NEXT]], [[N_VEC]]
+- ; SCALAR_EPILOGUE-NEXT:    br i1 [[TMP20]], label [[MIDDLE_BLOCK:%.*]], label [[VECTOR_BODY]], !llvm.loop [[LOOP0:![0-9]+]]
+- ; SCALAR_EPILOGUE:       middle.block:
+-@@ -63,42 +63,42 @@
+- ; PREDICATED_TAIL_FOLDING:       vector.ph:
+- ; PREDICATED_TAIL_FOLDING-NEXT:    [[CONV:%.*]] = zext i8 [[GUARD]] to i32
+- ; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP0:%.*]] = call i32 @llvm.vscale.i32()
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP1:%.*]] = shl i32 [[TMP0]], 3
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP1:%.*]] = shl i32 [[TMP0]], 4
+- ; PREDICATED_TAIL_FOLDING-NEXT:    [[N_RND_UP:%.*]] = add i32 [[TMP1]], 1023
+- ; PREDICATED_TAIL_FOLDING-NEXT:    [[N_MOD_VF:%.*]] = urem i32 [[N_RND_UP]], [[TMP1]]
+- ; PREDICATED_TAIL_FOLDING-NEXT:    [[N_VEC:%.*]] = sub i32 [[N_RND_UP]], [[N_MOD_VF]]
+- ; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP2:%.*]] = call i32 @llvm.vscale.i32()
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP3:%.*]] = shl i32 [[TMP2]], 3
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP4:%.*]] = call <vscale x 8 x i32> @llvm.stepvector.nxv8i32()
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[BROADCAST_SPLATINSERT:%.*]] = insertelement <vscale x 8 x i32> poison, i32 [[CONV]], i64 0
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[BROADCAST_SPLAT:%.*]] = shufflevector <vscale x 8 x i32> [[BROADCAST_SPLATINSERT]], <vscale x 8 x i32> poison, <vscale x 8 x i32> zeroinitializer
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[DOTSPLATINSERT:%.*]] = insertelement <vscale x 8 x i32> poison, i32 [[TMP3]], i64 0
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[DOTSPLAT:%.*]] = shufflevector <vscale x 8 x i32> [[DOTSPLATINSERT]], <vscale x 8 x i32> poison, <vscale x 8 x i32> zeroinitializer
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP3:%.*]] = shl i32 [[TMP2]], 4
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP4:%.*]] = call <vscale x 16 x i32> @llvm.stepvector.nxv16i32()
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[BROADCAST_SPLATINSERT:%.*]] = insertelement <vscale x 16 x i32> poison, i32 [[CONV]], i64 0
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[BROADCAST_SPLAT:%.*]] = shufflevector <vscale x 16 x i32> [[BROADCAST_SPLATINSERT]], <vscale x 16 x i32> poison, <vscale x 16 x i32> zeroinitializer
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[DOTSPLATINSERT:%.*]] = insertelement <vscale x 16 x i32> poison, i32 [[TMP3]], i64 0
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[DOTSPLAT:%.*]] = shufflevector <vscale x 16 x i32> [[DOTSPLATINSERT]], <vscale x 16 x i32> poison, <vscale x 16 x i32> zeroinitializer
+- ; PREDICATED_TAIL_FOLDING-NEXT:    br label [[VECTOR_BODY:%.*]]
+- ; PREDICATED_TAIL_FOLDING:       vector.body:
+- ; PREDICATED_TAIL_FOLDING-NEXT:    [[INDEX:%.*]] = phi i32 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[VEC_IND:%.*]] = phi <vscale x 8 x i32> [ [[TMP4]], [[VECTOR_PH]] ], [ [[VEC_IND_NEXT:%.*]], [[VECTOR_BODY]] ]
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[ACTIVE_LANE_MASK:%.*]] = call <vscale x 8 x i1> @llvm.get.active.lane.mask.nxv8i1.i32(i32 [[INDEX]], i32 1024)
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP5:%.*]] = icmp ugt <vscale x 8 x i32> [[VEC_IND]], [[BROADCAST_SPLAT]]
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP6:%.*]] = select <vscale x 8 x i1> [[ACTIVE_LANE_MASK]], <vscale x 8 x i1> [[TMP5]], <vscale x 8 x i1> zeroinitializer
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP7:%.*]] = shl nuw nsw <vscale x 8 x i32> [[VEC_IND]], splat (i32 1)
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP8:%.*]] = zext nneg <vscale x 8 x i32> [[TMP7]] to <vscale x 8 x i64>
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP9:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 8 x i64> [[TMP8]]
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[WIDE_MASKED_GATHER:%.*]] = call <vscale x 8 x i8> @llvm.masked.gather.nxv8i8.nxv8p0(<vscale x 8 x ptr> [[TMP9]], i32 1, <vscale x 8 x i1> [[TMP6]], <vscale x 8 x i8> poison)
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP10:%.*]] = or disjoint <vscale x 8 x i32> [[TMP7]], splat (i32 1)
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP11:%.*]] = zext nneg <vscale x 8 x i32> [[TMP10]] to <vscale x 8 x i64>
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP12:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 8 x i64> [[TMP11]]
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[WIDE_MASKED_GATHER1:%.*]] = call <vscale x 8 x i8> @llvm.masked.gather.nxv8i8.nxv8p0(<vscale x 8 x ptr> [[TMP12]], i32 1, <vscale x 8 x i1> [[TMP6]], <vscale x 8 x i8> poison)
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP13:%.*]] = call <vscale x 8 x i8> @llvm.smax.nxv8i8(<vscale x 8 x i8> [[WIDE_MASKED_GATHER]], <vscale x 8 x i8> [[WIDE_MASKED_GATHER1]])
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP14:%.*]] = zext nneg <vscale x 8 x i32> [[TMP7]] to <vscale x 8 x i64>
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP15:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 8 x i64> [[TMP14]]
+--; PREDICATED_TAIL_FOLDING-NEXT:    call void @llvm.masked.scatter.nxv8i8.nxv8p0(<vscale x 8 x i8> [[TMP13]], <vscale x 8 x ptr> [[TMP15]], i32 1, <vscale x 8 x i1> [[TMP6]])
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP16:%.*]] = sub <vscale x 8 x i8> zeroinitializer, [[TMP13]]
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP17:%.*]] = zext nneg <vscale x 8 x i32> [[TMP10]] to <vscale x 8 x i64>
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP18:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 8 x i64> [[TMP17]]
+--; PREDICATED_TAIL_FOLDING-NEXT:    call void @llvm.masked.scatter.nxv8i8.nxv8p0(<vscale x 8 x i8> [[TMP16]], <vscale x 8 x ptr> [[TMP18]], i32 1, <vscale x 8 x i1> [[TMP6]])
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[VEC_IND:%.*]] = phi <vscale x 16 x i32> [ [[TMP4]], [[VECTOR_PH]] ], [ [[VEC_IND_NEXT:%.*]], [[VECTOR_BODY]] ]
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[ACTIVE_LANE_MASK:%.*]] = call <vscale x 16 x i1> @llvm.get.active.lane.mask.nxv16i1.i32(i32 [[INDEX]], i32 1024)
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP5:%.*]] = icmp ugt <vscale x 16 x i32> [[VEC_IND]], [[BROADCAST_SPLAT]]
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP6:%.*]] = select <vscale x 16 x i1> [[ACTIVE_LANE_MASK]], <vscale x 16 x i1> [[TMP5]], <vscale x 16 x i1> zeroinitializer
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP7:%.*]] = shl nuw nsw <vscale x 16 x i32> [[VEC_IND]], splat (i32 1)
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP8:%.*]] = zext nneg <vscale x 16 x i32> [[TMP7]] to <vscale x 16 x i64>
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP9:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 16 x i64> [[TMP8]]
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[WIDE_MASKED_GATHER:%.*]] = call <vscale x 16 x i8> @llvm.masked.gather.nxv16i8.nxv16p0(<vscale x 16 x ptr> [[TMP9]], i32 1, <vscale x 16 x i1> [[TMP6]], <vscale x 16 x i8> poison)
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP10:%.*]] = or disjoint <vscale x 16 x i32> [[TMP7]], splat (i32 1)
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP11:%.*]] = zext nneg <vscale x 16 x i32> [[TMP10]] to <vscale x 16 x i64>
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP12:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 16 x i64> [[TMP11]]
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[WIDE_MASKED_GATHER1:%.*]] = call <vscale x 16 x i8> @llvm.masked.gather.nxv16i8.nxv16p0(<vscale x 16 x ptr> [[TMP12]], i32 1, <vscale x 16 x i1> [[TMP6]], <vscale x 16 x i8> poison)
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP13:%.*]] = call <vscale x 16 x i8> @llvm.smax.nxv16i8(<vscale x 16 x i8> [[WIDE_MASKED_GATHER]], <vscale x 16 x i8> [[WIDE_MASKED_GATHER1]])
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP14:%.*]] = zext nneg <vscale x 16 x i32> [[TMP7]] to <vscale x 16 x i64>
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP15:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 16 x i64> [[TMP14]]
+-+; PREDICATED_TAIL_FOLDING-NEXT:    call void @llvm.masked.scatter.nxv16i8.nxv16p0(<vscale x 16 x i8> [[TMP13]], <vscale x 16 x ptr> [[TMP15]], i32 1, <vscale x 16 x i1> [[TMP6]])
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP16:%.*]] = sub <vscale x 16 x i8> zeroinitializer, [[TMP13]]
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP17:%.*]] = zext nneg <vscale x 16 x i32> [[TMP10]] to <vscale x 16 x i64>
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP18:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 16 x i64> [[TMP17]]
+-+; PREDICATED_TAIL_FOLDING-NEXT:    call void @llvm.masked.scatter.nxv16i8.nxv16p0(<vscale x 16 x i8> [[TMP16]], <vscale x 16 x ptr> [[TMP18]], i32 1, <vscale x 16 x i1> [[TMP6]])
+- ; PREDICATED_TAIL_FOLDING-NEXT:    [[INDEX_NEXT]] = add nuw i32 [[INDEX]], [[TMP3]]
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[VEC_IND_NEXT]] = add <vscale x 8 x i32> [[VEC_IND]], [[DOTSPLAT]]
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[VEC_IND_NEXT]] = add <vscale x 16 x i32> [[VEC_IND]], [[DOTSPLAT]]
+- ; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP19:%.*]] = icmp eq i32 [[INDEX_NEXT]], [[N_VEC]]
+- ; PREDICATED_TAIL_FOLDING-NEXT:    br i1 [[TMP19]], label [[MIDDLE_BLOCK:%.*]], label [[VECTOR_BODY]], !llvm.loop [[LOOP0:![0-9]+]]
+- ; PREDICATED_TAIL_FOLDING:       middle.block:
+-@@ -180,60 +180,60 @@
+- ; SCALAR_EPILOGUE-NEXT:  entry:
+- ; SCALAR_EPILOGUE-NEXT:    [[CONV:%.*]] = zext i8 [[GUARD]] to i32
+- ; SCALAR_EPILOGUE-NEXT:    [[TMP0:%.*]] = call i32 @llvm.vscale.i32()
+--; SCALAR_EPILOGUE-NEXT:    [[TMP1:%.*]] = shl i32 [[TMP0]], 3
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP1:%.*]] = shl i32 [[TMP0]], 4
+- ; SCALAR_EPILOGUE-NEXT:    [[MIN_ITERS_CHECK:%.*]] = icmp ugt i32 [[TMP1]], 1024
+- ; SCALAR_EPILOGUE-NEXT:    br i1 [[MIN_ITERS_CHECK]], label [[SCALAR_PH:%.*]], label [[VECTOR_PH:%.*]]
+- ; SCALAR_EPILOGUE:       vector.ph:
+- ; SCALAR_EPILOGUE-NEXT:    [[TMP2:%.*]] = call i32 @llvm.vscale.i32()
+--; SCALAR_EPILOGUE-NEXT:    [[TMP3:%.*]] = shl i32 [[TMP2]], 3
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP3:%.*]] = shl i32 [[TMP2]], 4
+- ; SCALAR_EPILOGUE-NEXT:    [[N_MOD_VF:%.*]] = urem i32 1024, [[TMP3]]
+- ; SCALAR_EPILOGUE-NEXT:    [[N_VEC:%.*]] = sub nuw nsw i32 1024, [[N_MOD_VF]]
+- ; SCALAR_EPILOGUE-NEXT:    [[TMP4:%.*]] = call i32 @llvm.vscale.i32()
+--; SCALAR_EPILOGUE-NEXT:    [[TMP5:%.*]] = shl i32 [[TMP4]], 3
+--; SCALAR_EPILOGUE-NEXT:    [[TMP6:%.*]] = call <vscale x 8 x i32> @llvm.stepvector.nxv8i32()
+--; SCALAR_EPILOGUE-NEXT:    [[BROADCAST_SPLATINSERT:%.*]] = insertelement <vscale x 8 x i32> poison, i32 [[CONV]], i64 0
+--; SCALAR_EPILOGUE-NEXT:    [[BROADCAST_SPLAT:%.*]] = shufflevector <vscale x 8 x i32> [[BROADCAST_SPLATINSERT]], <vscale x 8 x i32> poison, <vscale x 8 x i32> zeroinitializer
+--; SCALAR_EPILOGUE-NEXT:    [[DOTSPLATINSERT:%.*]] = insertelement <vscale x 8 x i32> poison, i32 [[TMP5]], i64 0
+--; SCALAR_EPILOGUE-NEXT:    [[DOTSPLAT:%.*]] = shufflevector <vscale x 8 x i32> [[DOTSPLATINSERT]], <vscale x 8 x i32> poison, <vscale x 8 x i32> zeroinitializer
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP5:%.*]] = shl i32 [[TMP4]], 4
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP6:%.*]] = call <vscale x 16 x i32> @llvm.stepvector.nxv16i32()
+-+; SCALAR_EPILOGUE-NEXT:    [[BROADCAST_SPLATINSERT:%.*]] = insertelement <vscale x 16 x i32> poison, i32 [[CONV]], i64 0
+-+; SCALAR_EPILOGUE-NEXT:    [[BROADCAST_SPLAT:%.*]] = shufflevector <vscale x 16 x i32> [[BROADCAST_SPLATINSERT]], <vscale x 16 x i32> poison, <vscale x 16 x i32> zeroinitializer
+-+; SCALAR_EPILOGUE-NEXT:    [[DOTSPLATINSERT:%.*]] = insertelement <vscale x 16 x i32> poison, i32 [[TMP5]], i64 0
+-+; SCALAR_EPILOGUE-NEXT:    [[DOTSPLAT:%.*]] = shufflevector <vscale x 16 x i32> [[DOTSPLATINSERT]], <vscale x 16 x i32> poison, <vscale x 16 x i32> zeroinitializer
+- ; SCALAR_EPILOGUE-NEXT:    br label [[VECTOR_BODY:%.*]]
+- ; SCALAR_EPILOGUE:       vector.body:
+- ; SCALAR_EPILOGUE-NEXT:    [[INDEX:%.*]] = phi i32 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
+--; SCALAR_EPILOGUE-NEXT:    [[VEC_IND:%.*]] = phi <vscale x 8 x i32> [ [[TMP6]], [[VECTOR_PH]] ], [ [[VEC_IND_NEXT:%.*]], [[VECTOR_BODY]] ]
+--; SCALAR_EPILOGUE-NEXT:    [[TMP7:%.*]] = icmp ugt <vscale x 8 x i32> [[VEC_IND]], [[BROADCAST_SPLAT]]
+--; SCALAR_EPILOGUE-NEXT:    [[TMP8:%.*]] = shl nuw nsw <vscale x 8 x i32> [[VEC_IND]], splat (i32 2)
+--; SCALAR_EPILOGUE-NEXT:    [[TMP9:%.*]] = or disjoint <vscale x 8 x i32> [[TMP8]], splat (i32 1)
+--; SCALAR_EPILOGUE-NEXT:    [[TMP10:%.*]] = or disjoint <vscale x 8 x i32> [[TMP8]], splat (i32 2)
+--; SCALAR_EPILOGUE-NEXT:    [[TMP11:%.*]] = or disjoint <vscale x 8 x i32> [[TMP8]], splat (i32 3)
+--; SCALAR_EPILOGUE-NEXT:    [[TMP12:%.*]] = zext nneg <vscale x 8 x i32> [[TMP8]] to <vscale x 8 x i64>
+--; SCALAR_EPILOGUE-NEXT:    [[TMP13:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 8 x i64> [[TMP12]]
+--; SCALAR_EPILOGUE-NEXT:    [[WIDE_MASKED_GATHER:%.*]] = call <vscale x 8 x i8> @llvm.masked.gather.nxv8i8.nxv8p0(<vscale x 8 x ptr> [[TMP13]], i32 1, <vscale x 8 x i1> [[TMP7]], <vscale x 8 x i8> poison)
+--; SCALAR_EPILOGUE-NEXT:    [[TMP14:%.*]] = zext nneg <vscale x 8 x i32> [[TMP9]] to <vscale x 8 x i64>
+--; SCALAR_EPILOGUE-NEXT:    [[TMP15:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 8 x i64> [[TMP14]]
+--; SCALAR_EPILOGUE-NEXT:    [[WIDE_MASKED_GATHER1:%.*]] = call <vscale x 8 x i8> @llvm.masked.gather.nxv8i8.nxv8p0(<vscale x 8 x ptr> [[TMP15]], i32 1, <vscale x 8 x i1> [[TMP7]], <vscale x 8 x i8> poison)
+--; SCALAR_EPILOGUE-NEXT:    [[TMP16:%.*]] = zext nneg <vscale x 8 x i32> [[TMP10]] to <vscale x 8 x i64>
+--; SCALAR_EPILOGUE-NEXT:    [[TMP17:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 8 x i64> [[TMP16]]
+--; SCALAR_EPILOGUE-NEXT:    [[WIDE_MASKED_GATHER2:%.*]] = call <vscale x 8 x i8> @llvm.masked.gather.nxv8i8.nxv8p0(<vscale x 8 x ptr> [[TMP17]], i32 1, <vscale x 8 x i1> [[TMP7]], <vscale x 8 x i8> poison)
+--; SCALAR_EPILOGUE-NEXT:    [[TMP18:%.*]] = zext nneg <vscale x 8 x i32> [[TMP11]] to <vscale x 8 x i64>
+--; SCALAR_EPILOGUE-NEXT:    [[TMP19:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 8 x i64> [[TMP18]]
+--; SCALAR_EPILOGUE-NEXT:    [[WIDE_MASKED_GATHER3:%.*]] = call <vscale x 8 x i8> @llvm.masked.gather.nxv8i8.nxv8p0(<vscale x 8 x ptr> [[TMP19]], i32 1, <vscale x 8 x i1> [[TMP7]], <vscale x 8 x i8> poison)
+--; SCALAR_EPILOGUE-NEXT:    [[TMP20:%.*]] = call <vscale x 8 x i8> @llvm.smax.nxv8i8(<vscale x 8 x i8> [[WIDE_MASKED_GATHER]], <vscale x 8 x i8> [[WIDE_MASKED_GATHER1]])
+--; SCALAR_EPILOGUE-NEXT:    [[TMP21:%.*]] = sub <vscale x 8 x i8> zeroinitializer, [[TMP20]]
+--; SCALAR_EPILOGUE-NEXT:    [[TMP22:%.*]] = call <vscale x 8 x i8> @llvm.smax.nxv8i8(<vscale x 8 x i8> [[WIDE_MASKED_GATHER2]], <vscale x 8 x i8> [[WIDE_MASKED_GATHER3]])
+--; SCALAR_EPILOGUE-NEXT:    [[TMP23:%.*]] = sub <vscale x 8 x i8> zeroinitializer, [[TMP22]]
+--; SCALAR_EPILOGUE-NEXT:    [[TMP24:%.*]] = zext nneg <vscale x 8 x i32> [[TMP8]] to <vscale x 8 x i64>
+--; SCALAR_EPILOGUE-NEXT:    [[TMP25:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 8 x i64> [[TMP24]]
+--; SCALAR_EPILOGUE-NEXT:    call void @llvm.masked.scatter.nxv8i8.nxv8p0(<vscale x 8 x i8> [[TMP20]], <vscale x 8 x ptr> [[TMP25]], i32 1, <vscale x 8 x i1> [[TMP7]])
+--; SCALAR_EPILOGUE-NEXT:    [[TMP26:%.*]] = zext nneg <vscale x 8 x i32> [[TMP9]] to <vscale x 8 x i64>
+--; SCALAR_EPILOGUE-NEXT:    [[TMP27:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 8 x i64> [[TMP26]]
+--; SCALAR_EPILOGUE-NEXT:    call void @llvm.masked.scatter.nxv8i8.nxv8p0(<vscale x 8 x i8> [[TMP21]], <vscale x 8 x ptr> [[TMP27]], i32 1, <vscale x 8 x i1> [[TMP7]])
+--; SCALAR_EPILOGUE-NEXT:    [[TMP28:%.*]] = zext nneg <vscale x 8 x i32> [[TMP10]] to <vscale x 8 x i64>
+--; SCALAR_EPILOGUE-NEXT:    [[TMP29:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 8 x i64> [[TMP28]]
+--; SCALAR_EPILOGUE-NEXT:    call void @llvm.masked.scatter.nxv8i8.nxv8p0(<vscale x 8 x i8> [[TMP22]], <vscale x 8 x ptr> [[TMP29]], i32 1, <vscale x 8 x i1> [[TMP7]])
+--; SCALAR_EPILOGUE-NEXT:    [[TMP30:%.*]] = zext nneg <vscale x 8 x i32> [[TMP11]] to <vscale x 8 x i64>
+--; SCALAR_EPILOGUE-NEXT:    [[TMP31:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 8 x i64> [[TMP30]]
+--; SCALAR_EPILOGUE-NEXT:    call void @llvm.masked.scatter.nxv8i8.nxv8p0(<vscale x 8 x i8> [[TMP23]], <vscale x 8 x ptr> [[TMP31]], i32 1, <vscale x 8 x i1> [[TMP7]])
+-+; SCALAR_EPILOGUE-NEXT:    [[VEC_IND:%.*]] = phi <vscale x 16 x i32> [ [[TMP6]], [[VECTOR_PH]] ], [ [[VEC_IND_NEXT:%.*]], [[VECTOR_BODY]] ]
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP7:%.*]] = icmp ugt <vscale x 16 x i32> [[VEC_IND]], [[BROADCAST_SPLAT]]
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP8:%.*]] = shl nuw nsw <vscale x 16 x i32> [[VEC_IND]], splat (i32 2)
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP9:%.*]] = or disjoint <vscale x 16 x i32> [[TMP8]], splat (i32 1)
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP10:%.*]] = or disjoint <vscale x 16 x i32> [[TMP8]], splat (i32 2)
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP11:%.*]] = or disjoint <vscale x 16 x i32> [[TMP8]], splat (i32 3)
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP12:%.*]] = zext nneg <vscale x 16 x i32> [[TMP8]] to <vscale x 16 x i64>
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP13:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 16 x i64> [[TMP12]]
+-+; SCALAR_EPILOGUE-NEXT:    [[WIDE_MASKED_GATHER:%.*]] = call <vscale x 16 x i8> @llvm.masked.gather.nxv16i8.nxv16p0(<vscale x 16 x ptr> [[TMP13]], i32 1, <vscale x 16 x i1> [[TMP7]], <vscale x 16 x i8> poison)
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP14:%.*]] = zext nneg <vscale x 16 x i32> [[TMP9]] to <vscale x 16 x i64>
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP15:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 16 x i64> [[TMP14]]
+-+; SCALAR_EPILOGUE-NEXT:    [[WIDE_MASKED_GATHER1:%.*]] = call <vscale x 16 x i8> @llvm.masked.gather.nxv16i8.nxv16p0(<vscale x 16 x ptr> [[TMP15]], i32 1, <vscale x 16 x i1> [[TMP7]], <vscale x 16 x i8> poison)
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP16:%.*]] = zext nneg <vscale x 16 x i32> [[TMP10]] to <vscale x 16 x i64>
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP17:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 16 x i64> [[TMP16]]
+-+; SCALAR_EPILOGUE-NEXT:    [[WIDE_MASKED_GATHER2:%.*]] = call <vscale x 16 x i8> @llvm.masked.gather.nxv16i8.nxv16p0(<vscale x 16 x ptr> [[TMP17]], i32 1, <vscale x 16 x i1> [[TMP7]], <vscale x 16 x i8> poison)
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP18:%.*]] = zext nneg <vscale x 16 x i32> [[TMP11]] to <vscale x 16 x i64>
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP19:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 16 x i64> [[TMP18]]
+-+; SCALAR_EPILOGUE-NEXT:    [[WIDE_MASKED_GATHER3:%.*]] = call <vscale x 16 x i8> @llvm.masked.gather.nxv16i8.nxv16p0(<vscale x 16 x ptr> [[TMP19]], i32 1, <vscale x 16 x i1> [[TMP7]], <vscale x 16 x i8> poison)
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP20:%.*]] = call <vscale x 16 x i8> @llvm.smax.nxv16i8(<vscale x 16 x i8> [[WIDE_MASKED_GATHER]], <vscale x 16 x i8> [[WIDE_MASKED_GATHER1]])
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP21:%.*]] = sub <vscale x 16 x i8> zeroinitializer, [[TMP20]]
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP22:%.*]] = call <vscale x 16 x i8> @llvm.smax.nxv16i8(<vscale x 16 x i8> [[WIDE_MASKED_GATHER2]], <vscale x 16 x i8> [[WIDE_MASKED_GATHER3]])
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP23:%.*]] = sub <vscale x 16 x i8> zeroinitializer, [[TMP22]]
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP24:%.*]] = zext nneg <vscale x 16 x i32> [[TMP8]] to <vscale x 16 x i64>
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP25:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 16 x i64> [[TMP24]]
+-+; SCALAR_EPILOGUE-NEXT:    call void @llvm.masked.scatter.nxv16i8.nxv16p0(<vscale x 16 x i8> [[TMP20]], <vscale x 16 x ptr> [[TMP25]], i32 1, <vscale x 16 x i1> [[TMP7]])
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP26:%.*]] = zext nneg <vscale x 16 x i32> [[TMP9]] to <vscale x 16 x i64>
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP27:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 16 x i64> [[TMP26]]
+-+; SCALAR_EPILOGUE-NEXT:    call void @llvm.masked.scatter.nxv16i8.nxv16p0(<vscale x 16 x i8> [[TMP21]], <vscale x 16 x ptr> [[TMP27]], i32 1, <vscale x 16 x i1> [[TMP7]])
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP28:%.*]] = zext nneg <vscale x 16 x i32> [[TMP10]] to <vscale x 16 x i64>
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP29:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 16 x i64> [[TMP28]]
+-+; SCALAR_EPILOGUE-NEXT:    call void @llvm.masked.scatter.nxv16i8.nxv16p0(<vscale x 16 x i8> [[TMP22]], <vscale x 16 x ptr> [[TMP29]], i32 1, <vscale x 16 x i1> [[TMP7]])
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP30:%.*]] = zext nneg <vscale x 16 x i32> [[TMP11]] to <vscale x 16 x i64>
+-+; SCALAR_EPILOGUE-NEXT:    [[TMP31:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 16 x i64> [[TMP30]]
+-+; SCALAR_EPILOGUE-NEXT:    call void @llvm.masked.scatter.nxv16i8.nxv16p0(<vscale x 16 x i8> [[TMP23]], <vscale x 16 x ptr> [[TMP31]], i32 1, <vscale x 16 x i1> [[TMP7]])
+- ; SCALAR_EPILOGUE-NEXT:    [[INDEX_NEXT]] = add nuw i32 [[INDEX]], [[TMP5]]
+--; SCALAR_EPILOGUE-NEXT:    [[VEC_IND_NEXT]] = add <vscale x 8 x i32> [[VEC_IND]], [[DOTSPLAT]]
+-+; SCALAR_EPILOGUE-NEXT:    [[VEC_IND_NEXT]] = add <vscale x 16 x i32> [[VEC_IND]], [[DOTSPLAT]]
+- ; SCALAR_EPILOGUE-NEXT:    [[TMP32:%.*]] = icmp eq i32 [[INDEX_NEXT]], [[N_VEC]]
+- ; SCALAR_EPILOGUE-NEXT:    br i1 [[TMP32]], label [[MIDDLE_BLOCK:%.*]], label [[VECTOR_BODY]], !llvm.loop [[LOOP4:![0-9]+]]
+- ; SCALAR_EPILOGUE:       middle.block:
+-@@ -248,58 +248,58 @@
+- ; PREDICATED_TAIL_FOLDING:       vector.ph:
+- ; PREDICATED_TAIL_FOLDING-NEXT:    [[CONV:%.*]] = zext i8 [[GUARD]] to i32
+- ; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP0:%.*]] = call i32 @llvm.vscale.i32()
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP1:%.*]] = shl i32 [[TMP0]], 3
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP1:%.*]] = shl i32 [[TMP0]], 4
+- ; PREDICATED_TAIL_FOLDING-NEXT:    [[N_RND_UP:%.*]] = add i32 [[TMP1]], 1023
+- ; PREDICATED_TAIL_FOLDING-NEXT:    [[N_MOD_VF:%.*]] = urem i32 [[N_RND_UP]], [[TMP1]]
+- ; PREDICATED_TAIL_FOLDING-NEXT:    [[N_VEC:%.*]] = sub i32 [[N_RND_UP]], [[N_MOD_VF]]
+- ; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP2:%.*]] = call i32 @llvm.vscale.i32()
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP3:%.*]] = shl i32 [[TMP2]], 3
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP4:%.*]] = call <vscale x 8 x i32> @llvm.stepvector.nxv8i32()
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[BROADCAST_SPLATINSERT:%.*]] = insertelement <vscale x 8 x i32> poison, i32 [[CONV]], i64 0
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[BROADCAST_SPLAT:%.*]] = shufflevector <vscale x 8 x i32> [[BROADCAST_SPLATINSERT]], <vscale x 8 x i32> poison, <vscale x 8 x i32> zeroinitializer
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[DOTSPLATINSERT:%.*]] = insertelement <vscale x 8 x i32> poison, i32 [[TMP3]], i64 0
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[DOTSPLAT:%.*]] = shufflevector <vscale x 8 x i32> [[DOTSPLATINSERT]], <vscale x 8 x i32> poison, <vscale x 8 x i32> zeroinitializer
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP3:%.*]] = shl i32 [[TMP2]], 4
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP4:%.*]] = call <vscale x 16 x i32> @llvm.stepvector.nxv16i32()
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[BROADCAST_SPLATINSERT:%.*]] = insertelement <vscale x 16 x i32> poison, i32 [[CONV]], i64 0
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[BROADCAST_SPLAT:%.*]] = shufflevector <vscale x 16 x i32> [[BROADCAST_SPLATINSERT]], <vscale x 16 x i32> poison, <vscale x 16 x i32> zeroinitializer
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[DOTSPLATINSERT:%.*]] = insertelement <vscale x 16 x i32> poison, i32 [[TMP3]], i64 0
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[DOTSPLAT:%.*]] = shufflevector <vscale x 16 x i32> [[DOTSPLATINSERT]], <vscale x 16 x i32> poison, <vscale x 16 x i32> zeroinitializer
+- ; PREDICATED_TAIL_FOLDING-NEXT:    br label [[VECTOR_BODY:%.*]]
+- ; PREDICATED_TAIL_FOLDING:       vector.body:
+- ; PREDICATED_TAIL_FOLDING-NEXT:    [[INDEX:%.*]] = phi i32 [ 0, [[VECTOR_PH]] ], [ [[INDEX_NEXT:%.*]], [[VECTOR_BODY]] ]
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[VEC_IND:%.*]] = phi <vscale x 8 x i32> [ [[TMP4]], [[VECTOR_PH]] ], [ [[VEC_IND_NEXT:%.*]], [[VECTOR_BODY]] ]
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[ACTIVE_LANE_MASK:%.*]] = call <vscale x 8 x i1> @llvm.get.active.lane.mask.nxv8i1.i32(i32 [[INDEX]], i32 1024)
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP5:%.*]] = icmp ugt <vscale x 8 x i32> [[VEC_IND]], [[BROADCAST_SPLAT]]
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP6:%.*]] = select <vscale x 8 x i1> [[ACTIVE_LANE_MASK]], <vscale x 8 x i1> [[TMP5]], <vscale x 8 x i1> zeroinitializer
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP7:%.*]] = shl nuw nsw <vscale x 8 x i32> [[VEC_IND]], splat (i32 2)
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP8:%.*]] = or disjoint <vscale x 8 x i32> [[TMP7]], splat (i32 1)
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP9:%.*]] = or disjoint <vscale x 8 x i32> [[TMP7]], splat (i32 2)
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP10:%.*]] = or disjoint <vscale x 8 x i32> [[TMP7]], splat (i32 3)
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP11:%.*]] = zext nneg <vscale x 8 x i32> [[TMP7]] to <vscale x 8 x i64>
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP12:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 8 x i64> [[TMP11]]
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[WIDE_MASKED_GATHER:%.*]] = call <vscale x 8 x i8> @llvm.masked.gather.nxv8i8.nxv8p0(<vscale x 8 x ptr> [[TMP12]], i32 1, <vscale x 8 x i1> [[TMP6]], <vscale x 8 x i8> poison)
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP13:%.*]] = zext nneg <vscale x 8 x i32> [[TMP8]] to <vscale x 8 x i64>
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP14:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 8 x i64> [[TMP13]]
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[WIDE_MASKED_GATHER1:%.*]] = call <vscale x 8 x i8> @llvm.masked.gather.nxv8i8.nxv8p0(<vscale x 8 x ptr> [[TMP14]], i32 1, <vscale x 8 x i1> [[TMP6]], <vscale x 8 x i8> poison)
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP15:%.*]] = zext nneg <vscale x 8 x i32> [[TMP9]] to <vscale x 8 x i64>
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP16:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 8 x i64> [[TMP15]]
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[WIDE_MASKED_GATHER2:%.*]] = call <vscale x 8 x i8> @llvm.masked.gather.nxv8i8.nxv8p0(<vscale x 8 x ptr> [[TMP16]], i32 1, <vscale x 8 x i1> [[TMP6]], <vscale x 8 x i8> poison)
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP17:%.*]] = zext nneg <vscale x 8 x i32> [[TMP10]] to <vscale x 8 x i64>
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP18:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 8 x i64> [[TMP17]]
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[WIDE_MASKED_GATHER3:%.*]] = call <vscale x 8 x i8> @llvm.masked.gather.nxv8i8.nxv8p0(<vscale x 8 x ptr> [[TMP18]], i32 1, <vscale x 8 x i1> [[TMP6]], <vscale x 8 x i8> poison)
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP19:%.*]] = call <vscale x 8 x i8> @llvm.smax.nxv8i8(<vscale x 8 x i8> [[WIDE_MASKED_GATHER]], <vscale x 8 x i8> [[WIDE_MASKED_GATHER1]])
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP20:%.*]] = sub <vscale x 8 x i8> zeroinitializer, [[TMP19]]
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP21:%.*]] = call <vscale x 8 x i8> @llvm.smax.nxv8i8(<vscale x 8 x i8> [[WIDE_MASKED_GATHER2]], <vscale x 8 x i8> [[WIDE_MASKED_GATHER3]])
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP22:%.*]] = sub <vscale x 8 x i8> zeroinitializer, [[TMP21]]
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP23:%.*]] = zext nneg <vscale x 8 x i32> [[TMP7]] to <vscale x 8 x i64>
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP24:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 8 x i64> [[TMP23]]
+--; PREDICATED_TAIL_FOLDING-NEXT:    call void @llvm.masked.scatter.nxv8i8.nxv8p0(<vscale x 8 x i8> [[TMP19]], <vscale x 8 x ptr> [[TMP24]], i32 1, <vscale x 8 x i1> [[TMP6]])
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP25:%.*]] = zext nneg <vscale x 8 x i32> [[TMP8]] to <vscale x 8 x i64>
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP26:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 8 x i64> [[TMP25]]
+--; PREDICATED_TAIL_FOLDING-NEXT:    call void @llvm.masked.scatter.nxv8i8.nxv8p0(<vscale x 8 x i8> [[TMP20]], <vscale x 8 x ptr> [[TMP26]], i32 1, <vscale x 8 x i1> [[TMP6]])
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP27:%.*]] = zext nneg <vscale x 8 x i32> [[TMP9]] to <vscale x 8 x i64>
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP28:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 8 x i64> [[TMP27]]
+--; PREDICATED_TAIL_FOLDING-NEXT:    call void @llvm.masked.scatter.nxv8i8.nxv8p0(<vscale x 8 x i8> [[TMP21]], <vscale x 8 x ptr> [[TMP28]], i32 1, <vscale x 8 x i1> [[TMP6]])
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP29:%.*]] = zext nneg <vscale x 8 x i32> [[TMP10]] to <vscale x 8 x i64>
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP30:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 8 x i64> [[TMP29]]
+--; PREDICATED_TAIL_FOLDING-NEXT:    call void @llvm.masked.scatter.nxv8i8.nxv8p0(<vscale x 8 x i8> [[TMP22]], <vscale x 8 x ptr> [[TMP30]], i32 1, <vscale x 8 x i1> [[TMP6]])
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[VEC_IND:%.*]] = phi <vscale x 16 x i32> [ [[TMP4]], [[VECTOR_PH]] ], [ [[VEC_IND_NEXT:%.*]], [[VECTOR_BODY]] ]
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[ACTIVE_LANE_MASK:%.*]] = call <vscale x 16 x i1> @llvm.get.active.lane.mask.nxv16i1.i32(i32 [[INDEX]], i32 1024)
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP5:%.*]] = icmp ugt <vscale x 16 x i32> [[VEC_IND]], [[BROADCAST_SPLAT]]
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP6:%.*]] = select <vscale x 16 x i1> [[ACTIVE_LANE_MASK]], <vscale x 16 x i1> [[TMP5]], <vscale x 16 x i1> zeroinitializer
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP7:%.*]] = shl nuw nsw <vscale x 16 x i32> [[VEC_IND]], splat (i32 2)
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP8:%.*]] = or disjoint <vscale x 16 x i32> [[TMP7]], splat (i32 1)
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP9:%.*]] = or disjoint <vscale x 16 x i32> [[TMP7]], splat (i32 2)
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP10:%.*]] = or disjoint <vscale x 16 x i32> [[TMP7]], splat (i32 3)
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP11:%.*]] = zext nneg <vscale x 16 x i32> [[TMP7]] to <vscale x 16 x i64>
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP12:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 16 x i64> [[TMP11]]
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[WIDE_MASKED_GATHER:%.*]] = call <vscale x 16 x i8> @llvm.masked.gather.nxv16i8.nxv16p0(<vscale x 16 x ptr> [[TMP12]], i32 1, <vscale x 16 x i1> [[TMP6]], <vscale x 16 x i8> poison)
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP13:%.*]] = zext nneg <vscale x 16 x i32> [[TMP8]] to <vscale x 16 x i64>
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP14:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 16 x i64> [[TMP13]]
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[WIDE_MASKED_GATHER1:%.*]] = call <vscale x 16 x i8> @llvm.masked.gather.nxv16i8.nxv16p0(<vscale x 16 x ptr> [[TMP14]], i32 1, <vscale x 16 x i1> [[TMP6]], <vscale x 16 x i8> poison)
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP15:%.*]] = zext nneg <vscale x 16 x i32> [[TMP9]] to <vscale x 16 x i64>
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP16:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 16 x i64> [[TMP15]]
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[WIDE_MASKED_GATHER2:%.*]] = call <vscale x 16 x i8> @llvm.masked.gather.nxv16i8.nxv16p0(<vscale x 16 x ptr> [[TMP16]], i32 1, <vscale x 16 x i1> [[TMP6]], <vscale x 16 x i8> poison)
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP17:%.*]] = zext nneg <vscale x 16 x i32> [[TMP10]] to <vscale x 16 x i64>
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP18:%.*]] = getelementptr inbounds i8, ptr [[P]], <vscale x 16 x i64> [[TMP17]]
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[WIDE_MASKED_GATHER3:%.*]] = call <vscale x 16 x i8> @llvm.masked.gather.nxv16i8.nxv16p0(<vscale x 16 x ptr> [[TMP18]], i32 1, <vscale x 16 x i1> [[TMP6]], <vscale x 16 x i8> poison)
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP19:%.*]] = call <vscale x 16 x i8> @llvm.smax.nxv16i8(<vscale x 16 x i8> [[WIDE_MASKED_GATHER]], <vscale x 16 x i8> [[WIDE_MASKED_GATHER1]])
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP20:%.*]] = sub <vscale x 16 x i8> zeroinitializer, [[TMP19]]
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP21:%.*]] = call <vscale x 16 x i8> @llvm.smax.nxv16i8(<vscale x 16 x i8> [[WIDE_MASKED_GATHER2]], <vscale x 16 x i8> [[WIDE_MASKED_GATHER3]])
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP22:%.*]] = sub <vscale x 16 x i8> zeroinitializer, [[TMP21]]
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP23:%.*]] = zext nneg <vscale x 16 x i32> [[TMP7]] to <vscale x 16 x i64>
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP24:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 16 x i64> [[TMP23]]
+-+; PREDICATED_TAIL_FOLDING-NEXT:    call void @llvm.masked.scatter.nxv16i8.nxv16p0(<vscale x 16 x i8> [[TMP19]], <vscale x 16 x ptr> [[TMP24]], i32 1, <vscale x 16 x i1> [[TMP6]])
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP25:%.*]] = zext nneg <vscale x 16 x i32> [[TMP8]] to <vscale x 16 x i64>
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP26:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 16 x i64> [[TMP25]]
+-+; PREDICATED_TAIL_FOLDING-NEXT:    call void @llvm.masked.scatter.nxv16i8.nxv16p0(<vscale x 16 x i8> [[TMP20]], <vscale x 16 x ptr> [[TMP26]], i32 1, <vscale x 16 x i1> [[TMP6]])
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP27:%.*]] = zext nneg <vscale x 16 x i32> [[TMP9]] to <vscale x 16 x i64>
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP28:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 16 x i64> [[TMP27]]
+-+; PREDICATED_TAIL_FOLDING-NEXT:    call void @llvm.masked.scatter.nxv16i8.nxv16p0(<vscale x 16 x i8> [[TMP21]], <vscale x 16 x ptr> [[TMP28]], i32 1, <vscale x 16 x i1> [[TMP6]])
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP29:%.*]] = zext nneg <vscale x 16 x i32> [[TMP10]] to <vscale x 16 x i64>
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP30:%.*]] = getelementptr inbounds i8, ptr [[Q]], <vscale x 16 x i64> [[TMP29]]
+-+; PREDICATED_TAIL_FOLDING-NEXT:    call void @llvm.masked.scatter.nxv16i8.nxv16p0(<vscale x 16 x i8> [[TMP22]], <vscale x 16 x ptr> [[TMP30]], i32 1, <vscale x 16 x i1> [[TMP6]])
+- ; PREDICATED_TAIL_FOLDING-NEXT:    [[INDEX_NEXT]] = add nuw i32 [[INDEX]], [[TMP3]]
+--; PREDICATED_TAIL_FOLDING-NEXT:    [[VEC_IND_NEXT]] = add <vscale x 8 x i32> [[VEC_IND]], [[DOTSPLAT]]
+-+; PREDICATED_TAIL_FOLDING-NEXT:    [[VEC_IND_NEXT]] = add <vscale x 16 x i32> [[VEC_IND]], [[DOTSPLAT]]
+- ; PREDICATED_TAIL_FOLDING-NEXT:    [[TMP31:%.*]] = icmp eq i32 [[INDEX_NEXT]], [[N_VEC]]
+- ; PREDICATED_TAIL_FOLDING-NEXT:    br i1 [[TMP31]], label [[MIDDLE_BLOCK:%.*]], label [[VECTOR_BODY]], !llvm.loop [[LOOP4:![0-9]+]]
+- ; PREDICATED_TAIL_FOLDING:       middle.block:
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/RISCV/reg-usage-bf16.ll b/llvm/test/Transforms/LoopVectorize/RISCV/reg-usage-bf16.ll
+---- a/llvm/test/Transforms/LoopVectorize/RISCV/reg-usage-bf16.ll
+-+++ b/llvm/test/Transforms/LoopVectorize/RISCV/reg-usage-bf16.ll
+-@@ -3,8 +3,7 @@
+- 
+- define void @add(ptr noalias nocapture readonly %src1, ptr noalias nocapture readonly %src2, i32 signext %size, ptr noalias nocapture writeonly %result) {
+- ; CHECK-LABEL: add
+--; CHECK:       LV(REG): VF = 8
+--; CHECK-NEXT:  LV(REG): Found max usage: 2 item
+-+; CHECK:  LV(REG): Found max usage: 2 item
+- ; CHECK-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 3 registers
+- ; CHECK-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 4 registers
+- ; CHECK-NEXT:  LV(REG): Found invariant usage: 1 item
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/RISCV/reg-usage-f16.ll b/llvm/test/Transforms/LoopVectorize/RISCV/reg-usage-f16.ll
+---- a/llvm/test/Transforms/LoopVectorize/RISCV/reg-usage-f16.ll
+-+++ b/llvm/test/Transforms/LoopVectorize/RISCV/reg-usage-f16.ll
+-@@ -4,14 +4,12 @@
+- 
+- define void @add(ptr noalias nocapture readonly %src1, ptr noalias nocapture readonly %src2, i32 signext %size, ptr noalias nocapture writeonly %result) {
+- ; CHECK-LABEL: add
+--; ZVFH:       LV(REG): VF = 8
+--; ZVFH-NEXT:  LV(REG): Found max usage: 2 item
+-+; ZVFH:  LV(REG): Found max usage: 2 item
+- ; ZVFH-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 3 registers
+- ; ZVFH-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 2 registers
+- ; ZVFH-NEXT:  LV(REG): Found invariant usage: 1 item
+- ; ZVFH-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 1 registers
+--; ZVFHMIN:       LV(REG): VF = 8
+--; ZVFHMIN-NEXT:  LV(REG): Found max usage: 2 item
+-+; ZVFHMIN:  LV(REG): Found max usage: 2 item
+- ; ZVFHMIN-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 3 registers
+- ; ZVFHMIN-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 4 registers
+- ; ZVFHMIN-NEXT:  LV(REG): Found invariant usage: 1 item
+-diff -ruN --strip-trailing-cr a/llvm/test/Transforms/LoopVectorize/RISCV/reg-usage.ll b/llvm/test/Transforms/LoopVectorize/RISCV/reg-usage.ll
+---- a/llvm/test/Transforms/LoopVectorize/RISCV/reg-usage.ll
+-+++ b/llvm/test/Transforms/LoopVectorize/RISCV/reg-usage.ll
+-@@ -28,28 +28,24 @@
+- ; CHECK-SCALAR-NEXT: LV(REG): RegisterClass: RISCV::FPRRC, 2 registers
+- ; CHECK-SCALAR-NEXT: LV(REG): Found invariant usage: 1 item
+- ; CHECK-SCALAR-NEXT: LV(REG): RegisterClass: RISCV::GPRRC, 1 registers
+--; CHECK-LMUL1:       LV(REG): VF = 2
+--; CHECK-LMUL1-NEXT:  LV(REG): Found max usage: 2 item
+-+; CHECK-LMUL1:       LV(REG): Found max usage: 2 item
+- ; CHECK-LMUL1-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 3 registers
+- ; CHECK-LMUL1-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 2 registers
+- ; CHECK-LMUL1-NEXT:  LV(REG): Found invariant usage: 1 item
+- ; CHECK-LMUL1-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 1 registers
+--; CHECK-LMUL2:       LV(REG): VF = 4
+--; CHECK-LMUL2-NEXT:  LV(REG): Found max usage: 2 item
+-+; CHECK-LMUL2:       LV(REG): Found max usage: 2 item
+- ; CHECK-LMUL2-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 3 registers
+--; CHECK-LMUL2-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 2 registers
+-+; CHECK-LMUL2-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 4 registers
+- ; CHECK-LMUL2-NEXT:  LV(REG): Found invariant usage: 1 item
+- ; CHECK-LMUL2-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 1 registers
+--; CHECK-LMUL4:       LV(REG): VF = 8
+--; CHECK-LMUL4-NEXT:  LV(REG): Found max usage: 2 item
+-+; CHECK-LMUL4:       LV(REG): Found max usage: 2 item
+- ; CHECK-LMUL4-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 3 registers
+--; CHECK-LMUL4-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 4 registers
+-+; CHECK-LMUL4-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 8 registers
+- ; CHECK-LMUL4-NEXT:  LV(REG): Found invariant usage: 1 item
+- ; CHECK-LMUL4-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 1 registers
+--; CHECK-LMUL8:       LV(REG): VF = 16
+--; CHECK-LMUL8-NEXT:  LV(REG): Found max usage: 2 item
+-+; CHECK-LMUL8:       LV(REG): Found max usage: 2 item
+- ; CHECK-LMUL8-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 3 registers
+--; CHECK-LMUL8-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 8 registers
+-+; CHECK-LMUL8-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 16 registers
+- ; CHECK-LMUL8-NEXT:  LV(REG): Found invariant usage: 1 item
+- ; CHECK-LMUL8-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 1 registers
+- 
+-@@ -80,21 +76,17 @@
+- ; CHECK-SCALAR:      LV(REG): VF = 1
+- ; CHECK-SCALAR-NEXT: LV(REG): Found max usage: 1 item
+- ; CHECK-SCALAR-NEXT: LV(REG): RegisterClass: RISCV::GPRRC, 3 registers
+--; CHECK-LMUL1:       LV(REG): VF = 2
+--; CHECK-LMUL1-NEXT:  LV(REG): Found max usage: 2 item
+--; CHECK-LMUL1-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 3 registers
+--; CHECK-LMUL1-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 2 registers
+--; CHECK-LMUL2:       LV(REG): VF = 4
+--; CHECK-LMUL2-NEXT:  LV(REG): Found max usage: 2 item
+--; CHECK-LMUL2-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 3 registers
+-+; CHECK-LMUL1:       LV(REG): Found max usage: 2 item
+-+; CHECK-LMUL1-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 2 registers
+-+; CHECK-LMUL1-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 1 registers
+-+; CHECK-LMUL2:       LV(REG): Found max usage: 2 item
+-+; CHECK-LMUL2-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 2 registers
+- ; CHECK-LMUL2-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 2 registers
+--; CHECK-LMUL4:       LV(REG): VF = 8
+--; CHECK-LMUL4-NEXT:  LV(REG): Found max usage: 2 item
+--; CHECK-LMUL4-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 3 registers
+-+; CHECK-LMUL4:       LV(REG): Found max usage: 2 item
+-+; CHECK-LMUL4-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 2 registers
+- ; CHECK-LMUL4-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 4 registers
+--; CHECK-LMUL8:       LV(REG): VF = 16
+--; CHECK-LMUL8-NEXT:  LV(REG): Found max usage: 2 item
+--; CHECK-LMUL8-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 3 registers
+-+; CHECK-LMUL8:       LV(REG): Found max usage: 2 item
+-+; CHECK-LMUL8-NEXT:  LV(REG): RegisterClass: RISCV::GPRRC, 2 registers
+- ; CHECK-LMUL8-NEXT:  LV(REG): RegisterClass: RISCV::VRRC, 8 registers
+- entry:
+-   %cmp3 = icmp sgt i32 %n, 0
+-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl b/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl
+---- a/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl
+-+++ b/utils/bazel/llvm-project-overlay/mlir/tblgen.bzl
+-@@ -525,7 +525,7 @@
+-         td_file = td_file,
+-         test = test,
+-         deps = deps,
+--        **kwargs,
+-+        **kwargs
+-     )
+-     all_files = [hdr_out, src_out]
+-     for i in range(0, shard_count):
+-@@ -537,13 +537,13 @@
+-             out = out_file,
+-             sharder = sharder,
+-             src_file = src_file,
+--            **kwargs,
+-+            **kwargs
+-         )
+-         all_files.append(out_file)
+-     native.filegroup(
+-         name = name,
+-         srcs = all_files,
+--        **kwargs,
+-+        **kwargs
+-     )
+- 
+- def gentbl_sharded_op_defs(name, source_file, shard_count):
+++;.
+++; IC2: [[LOOP0]] = distinct !{[[LOOP0]], [[META1:![0-9]+]], [[META2:![0-9]+]]}
+++; IC2: [[META1]] = !{!"llvm.loop.isvectorized", i32 1}
+++; IC2: [[META2]] = !{!"llvm.loop.unroll.runtime.disable"}
+++; IC2: [[LOOP3]] = distinct !{[[LOOP3]], [[META2]], [[META1]]}
+++;.
+++; IC4: [[LOOP0]] = distinct !{[[LOOP0]], [[META1:![0-9]+]], [[META2:![0-9]+]]}
+++; IC4: [[META1]] = !{!"llvm.loop.isvectorized", i32 1}
+++; IC4: [[META2]] = !{!"llvm.loop.unroll.runtime.disable"}
+++; IC4: [[LOOP3]] = distinct !{[[LOOP3]], [[META2]], [[META1]]}
+++;.
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index ae0c1b5..9827f05 100644
+index 9827f05..ff2a9d2 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "842377882a3f52e345668751fa6d46ba4f7268d2"
--    LLVM_SHA256 = "84a3195d2b046cec382c86a2838be597f92dfd69f825b10072c2e6aff9b77e5d"
-+    LLVM_COMMIT = "2c440232e261746970cdf6f74d6588464eecd48b"
-+    LLVM_SHA256 = "f0d11be8e0aecbc8fd1eeb64c446dbbdba6d854e51dc12cce37646821f4f3347"
+-    LLVM_COMMIT = "2c440232e261746970cdf6f74d6588464eecd48b"
+-    LLVM_SHA256 = "f0d11be8e0aecbc8fd1eeb64c446dbbdba6d854e51dc12cce37646821f4f3347"
++    LLVM_COMMIT = "af65cb68f553759eac307edda87ff7d8b5fdffa9"
++    LLVM_SHA256 = "c41b01bde22e9696d965adbf29f2a17a23dfde5bf6db3fd575a2d871d3ccfe1f"
  
      tf_http_archive(
          name = name,
-diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
-index ed29976..5eff407 100755
---- a/third_party/stablehlo/temporary.patch
-+++ b/third_party/stablehlo/temporary.patch
-@@ -1,3 +1,105 @@
-+diff --ruN a/stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir b/stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
-+--- stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
-++++ stablehlo/stablehlo/conversions/linalg/tests/miscellaneous.mlir
-+@@ -1051,9 +1051,9 @@
-+   %0 = "stablehlo.reshape"(%arg0) : (tensor<1x?xi32>) -> tensor<1xi32>
-+   func.return %0 : tensor<1xi32>
-+ }
-+-// CHECK: %[[CAST:.*]] = tensor.cast %{{.*}} : tensor<1x?xi32> to tensor<1x1xi32>
-+-// CHECK: %[[COLLAPSE:.*]] = tensor.collapse_shape %[[CAST]] {{\[}}[0, 1]] : tensor<1x1xi32> into tensor<1xi32>
-+-// CHECK: return %[[COLLAPSE:.*]] : tensor<1xi32>
-++// CHECK: %[[COLLAPSE:.*]] = tensor.collapse_shape %arg0 {{\[}}[0, 1]] : tensor<1x?xi32> into tensor<?xi32>
-++// CHECK: %[[CAST:.*]] = tensor.cast %[[COLLAPSE]] : tensor<?xi32> to tensor<1xi32>
-++// CHECK: return %[[CAST]] : tensor<1xi32>
-+ 
-+ // -----
-+ 
-+@@ -1084,9 +1084,10 @@
-+   %0 = "stablehlo.reshape"(%arg0) : (tensor<16x1x?xi32>) -> tensor<16xi32>
-+   func.return %0 : tensor<16xi32>
-+ }
-+-// CHECK: %[[CAST:.*]] = tensor.cast %{{.*}} : tensor<16x1x?xi32> to tensor<16x1x1xi32>
-+-// CHECK: %[[COLLAPSE:.*]] = tensor.collapse_shape %[[CAST]] {{\[}}[0, 1, 2]] : tensor<16x1x1xi32> into tensor<16xi32>
-+-// CHECK: return %[[COLLAPSE:.*]] : tensor<16xi32>
-++
-++// CHECK: %[[COLLAPSE:.*]] = tensor.collapse_shape %arg0 {{\[}}[0, 1, 2]] : tensor<16x1x?xi32> into tensor<?xi32>
-++// CHECK: %[[CAST:.*]] = tensor.cast %[[COLLAPSE]] : tensor<?xi32> to tensor<16xi32>
-++// CHECK: return %[[CAST]] : tensor<16xi32>
-+ 
-+ // -----
-+ 
-+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
-+--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
-++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloLegalizeToLinalg.cpp
-+@@ -71,6 +71,9 @@
-+ #include "stablehlo/conversions/linalg/transforms/Rewriters.h"
-+ #include "stablehlo/conversions/linalg/transforms/TypeConversion.h"
-+ #include "stablehlo/dialect/StablehloOps.h"
-++#include "third_party/llvm/llvm-project/llvm/include/llvm/Support/Debug.h"
-++
-++#define DEBUG_TYPE "stablehlo-legalize-to-linalg"
-+ 
-+ namespace mlir::stablehlo {
-+ 
-+@@ -1127,6 +1130,10 @@
-+     // collapse_shape.
-+     if (std::optional<SmallVector<ReassociationIndices>> reassociationMap =
-+             getReassociationIndicesForReshape(operandType, resultType)) {
-++      LLVM_DEBUG(llvm::dbgs() << "ReshapeOp: " << operandType << " -> "
-++                              << resultType << " \n"
-++                              << "  using reassociation map: "
-++                              << reassociationMap.value().size() << "\n");
-+       if (resultType.getRank() < operandType.getRank()) {
-+         // We have found a working reassociation map. If the operand is dynamic,
-+         // we first need to cast all unknown dimensions in the input that get
-+@@ -1134,9 +1141,10 @@
-+         SmallVector<int64_t> shape(operandType.getShape().begin(),
-+                                    operandType.getShape().end());
-+         for (auto [idx, dims] : llvm::enumerate(*reassociationMap)) {
-+-          // If the result dim is dynamic, we do not mind dynamic entries in the
-+-          // source.
-+-          if (resultType.isDynamicDim(idx)) continue;
-++          // If the result dim is dynamic or scalar, we do not mind dynamic
-++          // entries in the source.
-++          if (resultType.getRank() == 0 || resultType.isDynamicDim(idx))
-++            continue;
-+           for (auto targetDim : dims) {
-+             if (shape[targetDim] == ShapedType::kDynamic) shape[targetDim] = 1;
-+           }
-+@@ -1149,10 +1157,14 @@
-+                                                     newOperandType, operand);
-+         }
-+         // Generate collapse operation.
-++        // For scalar collapses must pass an empty reassociation map.
-++        if (resultType.getRank() == 0) reassociationMap->clear();
-+         rewriter.replaceOpWithNewOp<tensor::CollapseShapeOp>(
-+             reshapeOp, resultType, operand, *reassociationMap);
-+       } else {
-+         // Generate expand operation.
-++          // For scalar expands must pass an empty reassociation map.
-++        if (operandType.getRank() == 0) reassociationMap->clear();
-+         rewriter.replaceOpWithNewOp<tensor::ExpandShapeOp>(
-+             reshapeOp, resultType, operand, *reassociationMap);
-+       }
-+diff --ruN a/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgRandom.cpp b/stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgRandom.cpp
-+--- stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgRandom.cpp
-++++ stablehlo/stablehlo/conversions/linalg/transforms/StablehloToLinalgRandom.cpp
-+@@ -319,6 +319,7 @@
-+   auto reassociationIndices =
-+       getReassociationIndicesForCollapse(destTy.getShape(), srcTy.getShape());
-+   if (reassociationIndices.has_value()) {
-++    if (srcTy.getRank() == 0) reassociationIndices->clear();
-+     src = builder.create<tensor::ExpandShapeOp>(loc, destTy, src,
-+                                                 reassociationIndices.value());
-+   }
-+@@ -328,6 +329,7 @@
-+   reassociationIndices =
-+       getReassociationIndicesForCollapse(srcTy.getShape(), destTy.getShape());
-+   if (reassociationIndices.has_value()) {
-++    if (destTy.getRank() == 0) reassociationIndices->clear();
-+     src = builder.create<tensor::CollapseShapeOp>(loc, destTy, src,
-+                                                   reassociationIndices.value());
-+   }
- diff --ruN a/stablehlo/stablehlo/dialect/VhloTypes.cpp b/stablehlo/stablehlo/dialect/VhloTypes.cpp
- --- stablehlo/stablehlo/dialect/VhloTypes.cpp
- +++ stablehlo/stablehlo/dialect/VhloTypes.cpp
