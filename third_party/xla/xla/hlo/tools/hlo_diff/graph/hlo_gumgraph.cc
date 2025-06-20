@@ -237,8 +237,6 @@ HloGumgraph::PrecomputeGenerations() {
 
     for (int i = 0; i < current_generation_nodes.size(); ++i) {
       current_generation_nodes[i]->props.generation = current_generation;
-      current_generation_nodes[i]->props.sibling_position = {
-          i, static_cast<int64_t>(current_generation_nodes.size())};
       for (HloInstructionNode* child : current_generation_nodes[i]->children) {
         auto it = indegrees.find(child);
         if (it == indegrees.end()) {
@@ -313,21 +311,6 @@ absl::Status HloGumgraph::PrecomputeComputationFingerprint() {
   return absl::OkStatus();
 }
 
-void HloGumgraph::PrecomputeDfsPosition() {
-  LOG(INFO) << "Precomputing DFS position";
-  std::vector<const HloInstructionNode*> pre_order_nodes =
-      GetAllNodesInDfsOrder(root_, DfsTraversalOrder::kPreOrder,
-                            GetNodeCount());
-  for (int i = 0; i < pre_order_nodes.size(); ++i) {
-    if (pre_order_nodes[i]->is_root) {
-      continue;
-    }
-    instruction_to_node_[pre_order_nodes[i]->instruction]
-        ->props.pre_order_graph_position = {
-        i, static_cast<int64_t>(pre_order_nodes.size())};
-  }
-}
-
 absl::StatusOr<std::unique_ptr<const HloGumgraph>> HloGumgraph::Create(
     const HloModule* absl_nonnull hlo_module,
     const HloGumgraphFingerprintOptions& fingerprint_options) {
@@ -350,7 +333,6 @@ absl::StatusOr<std::unique_ptr<const HloGumgraph>> HloGumgraph::Create(
   }
   graph->PrecomputeSizeAndHeight();
   TF_RETURN_IF_ERROR(graph->PrecomputeComputationFingerprint());
-  graph->PrecomputeDfsPosition();
 
   return graph;
 };

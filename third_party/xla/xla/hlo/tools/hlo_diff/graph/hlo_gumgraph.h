@@ -149,10 +149,6 @@ class HloGumgraph {
   // instructions in the computation are hashed to compute the fingerprint.
   absl::Status PrecomputeComputationFingerprint();
 
-  // Precomputes the index of each node in a pre-order DFS traversal of the
-  // graph.
-  void PrecomputeDfsPosition();
-
   const HloModule& hlo_module_;
   const HloGumgraphFingerprintOptions& fingerprint_options_;
   HloInstructionNode root_;
