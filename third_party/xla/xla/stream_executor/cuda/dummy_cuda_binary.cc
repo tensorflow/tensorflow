@@ -50,5 +50,11 @@ int main(int argc, char** argv) {
     return 0;
   }
 
+  if (process_was_called_as("nvdisasm") &&
+      argv[1] == absl::string_view{"--version"}) {
+    std::cout << "nvdisasm dummy V999.1.2\n";
+    return 0;
+  }
+
   return -2;
 }
