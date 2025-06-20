@@ -30,18 +30,25 @@ limitations under the License.
 // __VA_ARGS__ to get around this.
 #define SINGLE_ARG(...) __VA_ARGS__
 
-#define REGISTER_ALL_REDUCE_KERNEL(SUFFIX, XLA_TYPE, NV_TYPE, REDUCTION_KIND) \
-  GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(                             \
-      AllReduceKernelCuda##SUFFIX,                                            \
-      SINGLE_ARG(stream_executor::gpu::AllReduceKernel<                       \
-                 XLA_TYPE, xla::ReductionKind::REDUCTION_KIND>),              \
-      stream_executor::cuda::kCudaPlatformId, ([](size_t arity) {             \
-        return stream_executor::KernelLoaderSpec::CreateInProcessSymbolSpec(  \
-            absl::bit_cast<void*>(                                            \
-                &stream_executor::gpu::AllReduceKernelImpl<                   \
-                    NV_TYPE, xla::ReductionKind::REDUCTION_KIND>),            \
-            "one_shot_all_reduce_" #SUFFIX, arity);                           \
+#define REGISTER_ALL_REDUCE_KERNEL_IMPL(SUFFIX, XLA_TYPE, NV_TYPE,             \
+                                        REDUCTION_KIND, STRATEGY)              \
+  GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(                              \
+      AllReduceKernelCuda##SUFFIX##STRATEGY,                                   \
+      SINGLE_ARG(stream_executor::gpu::AllReduceKernel<                        \
+                 XLA_TYPE, xla::ReductionKind::REDUCTION_KIND,                 \
+                 xla::se::gpu::AllReduceStrategy::STRATEGY>),                  \
+      stream_executor::cuda::kCudaPlatformId, ([](size_t arity) {              \
+        return stream_executor::KernelLoaderSpec::CreateInProcessSymbolSpec(   \
+            absl::bit_cast<void*>(&stream_executor::gpu::AllReduceKernelImpl<  \
+                                  NV_TYPE, xla::ReductionKind::REDUCTION_KIND, \
+                                  xla::se::gpu::AllReduceStrategy::STRATEGY>), \
+            "all_reduce_" #SUFFIX #STRATEGY, arity);                           \
       }));
+
+// Create instantiations for all all-reduce strategies.
+#define REGISTER_ALL_REDUCE_KERNEL(SUFFIX, XLA_TYPE, NV_TYPE, REDUCTION_KIND) \
+  REGISTER_ALL_REDUCE_KERNEL_IMPL(SUFFIX, XLA_TYPE, NV_TYPE, REDUCTION_KIND,  \
+                                  kOneShot)
 
 // Register the kernel for different types using the macro
 REGISTER_ALL_REDUCE_KERNEL(AddBF16, xla::bfloat16, __nv_bfloat16, SUM);

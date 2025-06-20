@@ -151,9 +151,14 @@ __device__ __forceinline__ void OneShotAllReduceKernelImpl(
   }
 }
 
-template <typename T, xla::ReductionKind ReductionKindT>
+template <typename T, xla::ReductionKind ReductionKindT,
+          AllReduceStrategy kAllReduceStrategy>
 __global__ void AllReduceKernelImpl(AllReduceKernelParams<T> args) {
-  OneShotAllReduceKernelImpl<T, ReductionKindT>(args);
+  if constexpr (kAllReduceStrategy == AllReduceStrategy::kOneShot) {
+    OneShotAllReduceKernelImpl<T, ReductionKindT>(args);
+  } else {
+    assert(false && "Unsupported all-reduce strategy");
+  }
 }
 
 }  // namespace stream_executor::gpu

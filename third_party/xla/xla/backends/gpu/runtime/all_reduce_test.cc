@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_format.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/core/collectives/rank_id.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_handle.h"
+#include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -48,16 +50,22 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
+using ::stream_executor::gpu::AllReduceStrategy;
+
 se::StreamExecutor* GetGpuExecutor(int64_t device_ordinal) {
   auto* platform =
       se::PlatformManager::PlatformWithName(se::GpuPlatformName()).value();
   return platform->ExecutorForDevice(device_ordinal).value();
 }
 
-class AllReduceKernelTest : public ::testing::Test {
+class AllReduceKernelTest
+    : public ::testing::Test,
+      public ::testing::WithParamInterface<AllReduceStrategy> {
  public:
+  AllReduceKernelTest() : all_reduce_strategy_(GetParam()) {}
+
   template <typename T>
-  static absl::StatusOr<std::vector<Array<T>>> RunKernel(
+  absl::StatusOr<std::vector<Array<T>>> RunKernel(
       const std::vector<se::StreamExecutor*>& executors,
       const std::vector<Array<T>>& input_data, ReductionKind reduction_kind) {
     constexpr LaunchDimensions kLaunchDimensions{
@@ -115,7 +123,9 @@ class AllReduceKernelTest : public ::testing::Test {
       TF_RETURN_IF_ERROR(RunAllReduceKernel(
           streams[i].get(), kLaunchDimensions,
           primitive_util::NativeToPrimitiveType<T>(),
-          /*reduction_kind=*/reduction_kind, remote_input_buffers_span,
+          /*reduction_kind=*/reduction_kind,
+          /*all_reduce_strategy=*/all_reduce_strategy_,
+          /*remote_input_buffers=*/remote_input_buffers_span,
           // Memory is aliased for both input and output (similar to what nccl
           // would do).
           /*local_input_buffer=*/local_input_buffers[i].memory(),
@@ -143,9 +153,11 @@ class AllReduceKernelTest : public ::testing::Test {
 
     return results;
   }
+
+  AllReduceStrategy all_reduce_strategy_;
 };
 
-TEST_F(AllReduceKernelTest, KernelTestAddF32) {
+TEST_P(AllReduceKernelTest, KernelTestAddF32) {
   constexpr int64_t kNumRanks = 2;
   constexpr int64_t kNumElements = 128000;
 
@@ -178,7 +190,7 @@ TEST_F(AllReduceKernelTest, KernelTestAddF32) {
   }
 }
 
-TEST_F(AllReduceKernelTest, KernelTestAddBF16) {
+TEST_P(AllReduceKernelTest, KernelTestAddBF16) {
   constexpr int64_t kNumRanks = 2;
   constexpr int64_t kNumElements = 128000;
 
@@ -212,7 +224,7 @@ TEST_F(AllReduceKernelTest, KernelTestAddBF16) {
   }
 }
 
-TEST_F(AllReduceKernelTest, KernelTestOrPred) {
+TEST_P(AllReduceKernelTest, KernelTestOrPred) {
   constexpr int64_t kNumRanks = 2;
   constexpr int64_t kNumElements = 128000;
 
@@ -247,7 +259,7 @@ TEST_F(AllReduceKernelTest, KernelTestOrPred) {
   }
 }
 
-TEST_F(AllReduceKernelTest, KernelTestAddPred_Unsupported) {
+TEST_P(AllReduceKernelTest, KernelTestAddPred_Unsupported) {
   constexpr int64_t kNumRanks = 2;
   constexpr int64_t kNumElements = 128000;
 
@@ -267,6 +279,13 @@ TEST_F(AllReduceKernelTest, KernelTestAddPred_Unsupported) {
   EXPECT_THAT(results.status().message(),
               ::testing::HasSubstr("AllReduce kernel is not supported"));
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    AllReduceKernelTest, AllReduceKernelTest,
+    ::testing::Values(AllReduceStrategy::kOneShot),
+    [](const ::testing::TestParamInfo<AllReduceStrategy>& info) {
+      return absl::StrFormat("%v", info.param);
+    });
 
 }  // namespace
 }  // namespace xla::gpu

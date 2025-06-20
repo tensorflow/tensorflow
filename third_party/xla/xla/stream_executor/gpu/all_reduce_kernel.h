@@ -24,6 +24,19 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 
+enum class AllReduceStrategy {
+  kOneShot,
+};
+
+template <typename Sink>
+void AbslStringify(Sink& sink, AllReduceStrategy strategy) {
+  switch (strategy) {
+    case AllReduceStrategy::kOneShot:
+      sink.Append("kOneShot");
+      break;
+  }
+}
+
 // The maximum number of input pointers that can be passed to the all-reduce
 // kernel.
 inline constexpr int64_t kMaxNumAllReduceInputPtrs = 8;
@@ -63,7 +76,8 @@ struct AllReduceKernelParams {
 
 // Defines a trait for the AllReduce kernel that can be used to register
 // and look up the kernel in the GPU kernel registry.
-template <typename ElementT, xla::ReductionKind ReductionKindT>
+template <typename ElementT, xla::ReductionKind ReductionKindT,
+          AllReduceStrategy kAllReduceStrategy>
 struct AllReduceKernel {
   using KernelType =
       stream_executor::TypedKernel<AllReduceKernelParams<ElementT>>;

@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
@@ -70,6 +71,7 @@ absl::Status RunAllReduceKernel(
     const LaunchDimensions& launch_dimensions,                    //
     PrimitiveType element_type,                                   //
     ReductionKind reduction_kind,                                 //
+    se::gpu::AllReduceStrategy all_reduce_strategy,               //
     absl::Span<const se::DeviceMemoryBase> remote_input_buffers,  //
     se::DeviceMemoryBase local_input_buffer,                      //
     se::DeviceMemoryBase output_buffer,                           //

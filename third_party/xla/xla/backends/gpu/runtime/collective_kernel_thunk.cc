@@ -39,6 +39,7 @@ limitations under the License.*/
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_handle.h"
+#include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -230,6 +231,7 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
       /*launch_dimensions=*/kLaunchDimensions,
       /*element_type=*/element_type,
       /*reduction_kind=*/reduction_kind_,
+      /*all_reduce_strategy=*/se::gpu::AllReduceStrategy::kOneShot,
       /*remote_input_buffers=*/state->remote_buffer_ptrs[buffer_index],
       /*local_input_buffer=*/source_buffer,
       /*output_buffer=*/destination_buffer,

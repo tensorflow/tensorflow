@@ -40,16 +40,27 @@ namespace xla::gpu {
 
 namespace {
 
+using ::stream_executor::gpu::AllReduceStrategy;
+
 template <typename T, ReductionKind kReductionKindV>
-struct Tag {
-  using ElementType = T;
-  static constexpr ReductionKind kReductionKind = kReductionKindV;
+class TagRegistry {
+ private:
+  template <AllReduceStrategy kAllReduceStrategyV>
+  struct Impl {
+    using ElementType = T;
+    static constexpr ReductionKind kReductionKind = kReductionKindV;
+    static constexpr AllReduceStrategy kAllReduceStrategy = kAllReduceStrategyV;
+  };
+
+ public:
+  static constexpr auto kOneShot = Impl<AllReduceStrategy::kOneShot>{};
 };
 
 // Static set of supported kernel tags.
-static constexpr auto kAddF32Tag = Tag<float, ReductionKind::SUM>{};
-static constexpr auto kAddBF16Tag = Tag<bfloat16, ReductionKind::SUM>{};
-static constexpr auto kOrPredTag = Tag<bool, ReductionKind::MAX>{};
+static constexpr auto kAddF32Tags = TagRegistry<float, ReductionKind::SUM>{};
+static constexpr auto kAddBF16Tags =
+    TagRegistry<bfloat16, ReductionKind::SUM>{};
+static constexpr auto kOrPredTags = TagRegistry<bool, ReductionKind::MAX>{};
 
 template <typename TagType>
 absl::Status LaunchTypedKernel(
@@ -65,7 +76,8 @@ absl::Status LaunchTypedKernel(
       auto kernel,
       (se::gpu::GpuKernelRegistry::GetGlobalRegistry()
            .LoadKernel<
-               se::gpu::AllReduceKernel<ElementType, TagType::kReductionKind>>(
+               se::gpu::AllReduceKernel<ElementType, TagType::kReductionKind,
+                                        TagType::kAllReduceStrategy>>(
                stream->parent())));
 
   se::gpu::AllReduceKernelParams<ElementType> params{};
@@ -131,6 +143,7 @@ absl::Status RunAllReduceKernel(
     const LaunchDimensions& launch_dimensions,                    //
     PrimitiveType element_type,                                   //
     ReductionKind reduction_kind,                                 //
+    AllReduceStrategy all_reduce_strategy,                        //
     absl::Span<const se::DeviceMemoryBase> remote_input_buffers,  //
     se::DeviceMemoryBase local_input_buffer,                      //
     se::DeviceMemoryBase output_buffer,                           //
@@ -157,23 +170,30 @@ absl::Status RunAllReduceKernel(
         "input pointers.");
   }
 
-  auto launch_kernel = [&](auto tag) -> absl::Status {
+  const auto launch_kernel_impl = [&](auto tag) -> absl::Status {
     return LaunchTypedKernel(tag, stream, launch_dimensions,
                              remote_input_buffers, local_input_buffer,
                              output_buffer, rank.value(), num_ranks,
                              num_elements, signal_flags_buffers, signal_value);
   };
+  const auto launch_kernel = [&](auto tag_registry,
+                                 AllReduceStrategy strategy) -> absl::Status {
+    switch (strategy) {
+      case AllReduceStrategy::kOneShot:
+        return launch_kernel_impl(tag_registry.kOneShot);
+    }
+  };
 
   if (element_type == F32 && reduction_kind == ReductionKind::SUM) {
-    return launch_kernel(kAddF32Tag);
+    return launch_kernel(kAddF32Tags, all_reduce_strategy);
   }
 
   if (element_type == BF16 && reduction_kind == ReductionKind::SUM) {
-    return launch_kernel(kAddBF16Tag);
+    return launch_kernel(kAddBF16Tags, all_reduce_strategy);
   }
 
   if (element_type == PRED && reduction_kind == ReductionKind::MAX) {
-    return launch_kernel(kOrPredTag);
+    return launch_kernel(kOrPredTags, all_reduce_strategy);
   }
 
   return absl::InvalidArgumentError(
