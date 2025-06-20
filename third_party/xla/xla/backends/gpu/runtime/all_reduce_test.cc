@@ -282,7 +282,7 @@ TEST_P(AllReduceKernelTest, KernelTestAddPred_Unsupported) {
 
 INSTANTIATE_TEST_SUITE_P(
     AllReduceKernelTest, AllReduceKernelTest,
-    ::testing::Values(AllReduceStrategy::kOneShot),
+    ::testing::Values(AllReduceStrategy::kOneShot, AllReduceStrategy::kTwoShot),
     [](const ::testing::TestParamInfo<AllReduceStrategy>& info) {
       return absl::StrFormat("%v", info.param);
     });

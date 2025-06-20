@@ -54,6 +54,7 @@ class TagRegistry {
 
  public:
   static constexpr auto kOneShot = Impl<AllReduceStrategy::kOneShot>{};
+  static constexpr auto kTwoShot = Impl<AllReduceStrategy::kTwoShot>{};
 };
 
 // Static set of supported kernel tags.
@@ -71,6 +72,8 @@ absl::Status LaunchTypedKernel(
     absl::Span<const se::DeviceMemoryBase> signal_flags_buffers,
     uint32_t signal_value) {
   using ElementType = typename TagType::ElementType;
+  static constexpr bool kIsTwoShot =
+      TagType::kAllReduceStrategy == AllReduceStrategy::kTwoShot;
 
   TF_ASSIGN_OR_RETURN(
       auto kernel,
@@ -93,7 +96,7 @@ absl::Status LaunchTypedKernel(
   params.rank = rank;
   params.num_ranks = num_ranks;
   params.num_elements = num_elements;
-  params.num_elements_per_rank = num_elements;
+  params.num_elements_per_rank = num_elements / (kIsTwoShot ? num_ranks : 1);
   params.num_elements_per_block = RoundUpTo(
       CeilOfRatio(params.num_elements_per_rank,
                   absl::implicit_cast<int64_t>(launch_dimensions.num_blocks())),
@@ -181,6 +184,8 @@ absl::Status RunAllReduceKernel(
     switch (strategy) {
       case AllReduceStrategy::kOneShot:
         return launch_kernel_impl(tag_registry.kOneShot);
+      case AllReduceStrategy::kTwoShot:
+        return launch_kernel_impl(tag_registry.kTwoShot);
     }
   };
 

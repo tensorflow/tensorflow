@@ -48,7 +48,9 @@ limitations under the License.
 // Create instantiations for all all-reduce strategies.
 #define REGISTER_ALL_REDUCE_KERNEL(SUFFIX, XLA_TYPE, NV_TYPE, REDUCTION_KIND) \
   REGISTER_ALL_REDUCE_KERNEL_IMPL(SUFFIX, XLA_TYPE, NV_TYPE, REDUCTION_KIND,  \
-                                  kOneShot)
+                                  kOneShot)                                   \
+  REGISTER_ALL_REDUCE_KERNEL_IMPL(SUFFIX, XLA_TYPE, NV_TYPE, REDUCTION_KIND,  \
+                                  kTwoShot)
 
 // Register the kernel for different types using the macro
 REGISTER_ALL_REDUCE_KERNEL(AddBF16, xla::bfloat16, __nv_bfloat16, SUM);

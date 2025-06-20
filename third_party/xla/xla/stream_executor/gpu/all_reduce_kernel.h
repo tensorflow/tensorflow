@@ -26,6 +26,7 @@ namespace stream_executor::gpu {
 
 enum class AllReduceStrategy {
   kOneShot,
+  kTwoShot,
 };
 
 template <typename Sink>
@@ -33,6 +34,9 @@ void AbslStringify(Sink& sink, AllReduceStrategy strategy) {
   switch (strategy) {
     case AllReduceStrategy::kOneShot:
       sink.Append("kOneShot");
+      break;
+    case AllReduceStrategy::kTwoShot:
+      sink.Append("kTwoShot");
       break;
   }
 }
@@ -62,7 +66,8 @@ struct AllReduceKernelParams {
   // Size of tensor on each device.
   int64_t num_elements;
   // Elements to be processed by each rank. This is equal to `num_elements` for
-  // one-shot all-reduce.
+  // one-shot all-reduce and `num_elements / num_ranks` for two-shot
+  // all-reduce.
   int64_t num_elements_per_rank;
   // Elements to be processed by each block.
   int64_t num_elements_per_block;
