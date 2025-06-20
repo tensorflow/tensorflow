@@ -1810,20 +1810,6 @@ SymbolicTileAnalysis::ComputeTiledHloInstructions(
       /*symbolic_to_tiled_hlo_map=*/{});
 }
 
-absl::StatusOr<TiledHloComputation>
-SymbolicTileAnalysis::ComputeTiledHloInstructions(
-    absl::Span<const int64_t> output_tile_sizes,
-    bool constraints_are_known_satisfied,
-    bool compute_all_tile_offset_indexing_maps) const {
-  Tiling::TileMapping tile_mapping(
-      {{tiling_specification_.parameter_mapping().begin()->instruction,
-        absl::InlinedVector<int64_t, 4>(output_tile_sizes.begin(),
-                                        output_tile_sizes.end())}});
-  return ComputeTiledHloInstructions(Tiling(tile_mapping),
-                                     constraints_are_known_satisfied,
-                                     compute_all_tile_offset_indexing_maps);
-}
-
 std::string SymbolicTileAnalysis::ToString() const {
   std::stringstream ss;
   NameUniquer name_uniquer("_");
