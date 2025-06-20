@@ -24,6 +24,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/logging.h"
 #include "tsl/platform/strcat.h"
 
@@ -107,8 +108,8 @@ SubProcess::SubProcess(int nfds)
 }
 
 SubProcess::~SubProcess() {
-  mutex_lock procLock(proc_mu_);
-  mutex_lock dataLock(data_mu_);
+  absl::MutexLock procLock(&proc_mu_);
+  absl::MutexLock dataLock(&data_mu_);
   if (win_pi_) {
     auto* pi = reinterpret_cast<PROCESS_INFORMATION*>(win_pi_);
     CloseHandle(pi->hProcess);
@@ -145,8 +146,8 @@ void SubProcess::ClosePipes() {
 
 void SubProcess::SetProgram(const string& file,
                             const std::vector<string>& argv) {
-  mutex_lock procLock(proc_mu_);
-  mutex_lock dataLock(data_mu_);
+  absl::MutexLock procLock(&proc_mu_);
+  absl::MutexLock dataLock(&data_mu_);
   if (running_) {
     LOG(FATAL) << "SetProgram called after the process was started.";
     return;
@@ -172,8 +173,8 @@ void SubProcess::SetProgram(const string& file,
 }
 
 void SubProcess::SetChannelAction(Channel chan, ChannelAction action) {
-  mutex_lock procLock(proc_mu_);
-  mutex_lock dataLock(data_mu_);
+  absl::MutexLock procLock(&proc_mu_);
+  absl::MutexLock dataLock(&data_mu_);
   if (running_) {
     LOG(FATAL) << "SetChannelAction called after the process was started.";
   } else if (!chan_valid(chan)) {
@@ -187,8 +188,8 @@ void SubProcess::SetChannelAction(Channel chan, ChannelAction action) {
 }
 
 bool SubProcess::Start() {
-  mutex_lock procLock(proc_mu_);
-  mutex_lock dataLock(data_mu_);
+  absl::MutexLock procLock(&proc_mu_);
+  absl::MutexLock dataLock(&data_mu_);
   if (running_) {
     LOG(ERROR) << "Start called after the process was started.";
     return false;
@@ -300,10 +301,10 @@ bool SubProcess::Wait() {
 
 bool SubProcess::WaitInternal(int* status) {
   // The waiter must release proc_mu_ while waiting in order for Kill() to work.
-  proc_mu_.lock();
+  proc_mu_.Lock();
   bool running = running_;
   PROCESS_INFORMATION pi_ = *reinterpret_cast<PROCESS_INFORMATION*>(win_pi_);
-  proc_mu_.unlock();
+  proc_mu_.Unlock();
 
   bool ret = false;
   if (running && pi_.hProcess) {
@@ -322,7 +323,7 @@ bool SubProcess::WaitInternal(int* status) {
     }
   }
 
-  proc_mu_.lock();
+  proc_mu_.Lock();
   if ((running_ == running) &&
       (pi_.hProcess ==
        reinterpret_cast<PROCESS_INFORMATION*>(win_pi_)->hProcess)) {
@@ -332,15 +333,15 @@ bool SubProcess::WaitInternal(int* status) {
     reinterpret_cast<PROCESS_INFORMATION*>(win_pi_)->hProcess = nullptr;
     reinterpret_cast<PROCESS_INFORMATION*>(win_pi_)->hThread = nullptr;
   }
-  proc_mu_.unlock();
+  proc_mu_.Unlock();
   return *status == 0;
 }
 
 bool SubProcess::Kill(int unused_signal) {
-  proc_mu_.lock();
+  proc_mu_.Lock();
   bool running = running_;
   PROCESS_INFORMATION pi_ = *reinterpret_cast<PROCESS_INFORMATION*>(win_pi_);
-  proc_mu_.unlock();
+  proc_mu_.Unlock();
 
   bool ret = false;
   if (running && pi_.hProcess) {
@@ -351,9 +352,9 @@ bool SubProcess::Kill(int unused_signal) {
 
 int SubProcess::Communicate(const string* stdin_input, string* stdout_output,
                             string* stderr_output) {
-  proc_mu_.lock();
+  proc_mu_.Lock();
   bool running = running_;
-  proc_mu_.unlock();
+  proc_mu_.Unlock();
   if (!running) {
     LOG(ERROR) << "Communicate called without a running process.";
     return 1;
@@ -365,11 +366,11 @@ int SubProcess::Communicate(const string* stdin_input, string* stdout_output,
 
   // Lock data_mu_ but not proc_mu_ while communicating with the child process
   // in order for Kill() to be able to terminate the child from another thread.
-  data_mu_.lock();
-  proc_mu_.lock();
+  data_mu_.Lock();
+  proc_mu_.Lock();
   bool process_finished = IsProcessFinished(
       reinterpret_cast<PROCESS_INFORMATION*>(win_pi_)->hProcess);
-  proc_mu_.unlock();
+  proc_mu_.Unlock();
   if (!process_finished || (parent_pipe_[CHAN_STDOUT] != nullptr) ||
       (parent_pipe_[CHAN_STDERR] != nullptr)) {
     if (parent_pipe_[CHAN_STDIN] != nullptr) {
@@ -426,7 +427,7 @@ int SubProcess::Communicate(const string* stdin_input, string* stdout_output,
     if (wait_result != WAIT_OBJECT_0) {
       LOG(ERROR) << "Waiting on the io threads failed! result: " << wait_result
                  << std::endl;
-      data_mu_.unlock();
+      data_mu_.Unlock();
       return -1;
     }
 
@@ -443,7 +444,7 @@ int SubProcess::Communicate(const string* stdin_input, string* stdout_output,
     }
   }
 
-  data_mu_.unlock();
+  data_mu_.Unlock();
 
   // Wait for the child process to exit and return its status.
   int status;

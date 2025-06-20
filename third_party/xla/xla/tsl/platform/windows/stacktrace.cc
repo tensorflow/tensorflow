@@ -22,7 +22,8 @@ limitations under the License.
 
 #include <string>
 
-#include "tsl/platform/mutex.h"
+#include "absl/base/const_init.h"
+#include "absl/synchronization/mutex.h"
 
 #pragma comment(lib, "dbghelp.lib")
 
@@ -68,7 +69,7 @@ std::string CurrentStackTrace() {
   void* trace[kMaxStackFrames];
   int num_frames = CaptureStackBackTrace(0, kMaxStackFrames, trace, NULL);
 
-  static mutex mu(tsl::LINKER_INITIALIZED);
+  static absl::Mutex mu(absl::kConstInit);
 
   std::string stacktrace;
   for (int i = 0; i < num_frames; ++i) {
@@ -82,7 +83,7 @@ std::string CurrentStackTrace() {
       symbol_ptr->MaxNameLen = MAX_SYM_NAME;
 
       // Because SymFromAddr is not threadsafe, we acquire a lock.
-      mutex_lock lock(mu);
+      absl::MutexLock lock(&mu);
       if (SymFromAddr(current_process, reinterpret_cast<DWORD64>(trace[i]), 0,
                       symbol_ptr)) {
         symbol = symbol_ptr->Name;

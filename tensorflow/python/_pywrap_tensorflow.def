@@ -86,8 +86,6 @@ EXPORTS
   ?RenameFile@Env@tsl@@QEAA?AVStatus@lts_20230802@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@0@Z
   ?DeleteRecursively@Env@tsl@@QEAA?AVStatus@lts_20230802@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEA_J1@Z
   ?IsDirectory@Env@tsl@@QEAA?AVStatus@lts_20230802@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
-  ?lock@mutex@tsl@@QEAAXXZ
-  ?unlock@mutex@tsl@@QEAAXXZ
   ?StartCancel@CancellationManager@tsl@@QEAAXXZ
   ??0CancellationManager@tsl@@QEAA@XZ
   ?Default@Env@tsl@@SAPEAV12@XZ
