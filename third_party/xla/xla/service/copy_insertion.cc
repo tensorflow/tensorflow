@@ -1184,24 +1184,13 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
             continue;
           }
 
-          bool can_share_buffer = false;
-          auto maybe_can_share_buffer = alias_info_->MayAlias(
-              instruction->operand(operand_index.operand_number),
-              operand_index.operand_index, instruction,
-              operand_index.operand_index);
-          if (maybe_can_share_buffer.has_value()) {
-            can_share_buffer = maybe_can_share_buffer.value();
-          }
-
           // Skip copies for aliasing input/output pairs iff:
-          // *) Operand can share buffer with 'instruction' output.
           // *) Instruction has frontend attribute which indicates that the
           //    write region of the input/output aliased buffer updated by
           //    'instruction' is disjoint from the read region of the shared
           //    buffer.
           // *) All uses of the operand are 'instruction'.
-          if (can_share_buffer &&
-              HasDisjointReadWriteRegionsAttr(instruction) &&
+          if (HasDisjointReadWriteRegionsAttr(instruction) &&
               absl::c_all_of(
                   instruction->operand(operand_index.operand_number)->users(),
                   [&instruction](const HloInstruction* user) {
