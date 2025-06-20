@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
-#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -62,27 +61,12 @@ class CopyInsertion : public HloModulePass {
   //
   // TODO(b/80315712): Find a better way to tell whether a fusion can share
   // buffer.
-  // TODO(b/424109294): Remove this constructor and replace it with the one
-  // below.
-  explicit CopyInsertion(
-      const HloDataflowAnalysis::CanShareBuffer& can_share_buffer,
-      int64_t use_region_based_live_range_analysis = kUseRegionAnalysisLimit)
-      : can_share_buffer_(can_share_buffer),
-        use_region_based_live_range_analysis_(
-            use_region_based_live_range_analysis) {}
-
   explicit CopyInsertion(
       const AliasInfo* alias_info,
       int64_t use_region_based_live_range_analysis = kUseRegionAnalysisLimit)
-      : use_region_based_live_range_analysis_(
-            use_region_based_live_range_analysis) {
-    // TODO(b/424109294): Avoid converting back to CanShareBuffer hook.
-    can_share_buffer_ = [alias_info](const HloInstruction* user,
-                                     const HloInstruction* operand,
-                                     const ShapeIndex& user_index) {
-      return alias_info->MayAlias(operand, {}, user, user_index);
-    };
-  }
+      : alias_info_(alias_info),
+        use_region_based_live_range_analysis_(
+            use_region_based_live_range_analysis) {}
 
   // Run the pass on the given module. Returns whether the module was changed
   // (copies were inserted).
@@ -134,9 +118,9 @@ class CopyInsertion : public HloModulePass {
   absl::Status AddCopiesForExplicitNonCopyableTransitions(
       const HloAliasAnalysis& alias_analysis, HloInstruction* chain_start);
 
-  // Backend specific function that decides whether an instruction can share
-  // buffer with its operand.
-  HloDataflowAnalysis::CanShareBuffer can_share_buffer_;
+  // Backend specific information about whether an instruction can share buffer
+  // with its operand.
+  const AliasInfo* alias_info_;
 
  private:
   absl::Status AddCopiesToResolveInterference(

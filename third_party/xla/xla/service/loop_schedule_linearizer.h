@@ -41,20 +41,8 @@ class LoopScheduleLinearizer : public HloModulePass {
  public:
   absl::string_view name() const override { return "loop-schedule-linearizer"; }
 
-  // TODO(b/424109294): Remove this constructor and replace it with the one
-  // below.
-  explicit LoopScheduleLinearizer(
-      const HloDataflowAnalysis::CanShareBuffer& can_share_buffer = nullptr)
-      : can_share_buffer_(can_share_buffer) {}
-
-  explicit LoopScheduleLinearizer(const AliasInfo* alias_info) {
-    // TODO(b/424109294): Avoid converting back to CanShareBuffer hook.
-    can_share_buffer_ = [alias_info](const HloInstruction* user,
-                                     const HloInstruction* operand,
-                                     const ShapeIndex& user_index) {
-      return alias_info->MayAlias(operand, {}, user, user_index);
-    };
-  }
+  explicit LoopScheduleLinearizer(const AliasInfo* alias_info)
+      : alias_info_(alias_info) {}
 
   using HloPassInterface::Run;
   absl::StatusOr<bool> Run(
@@ -62,9 +50,9 @@ class LoopScheduleLinearizer : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  // Backend specific function that decides whether an instruction can share
-  // buffer with its operand.
-  HloDataflowAnalysis::CanShareBuffer can_share_buffer_;
+  // Backend specific information about whether an instruction can share buffer
+  // with its operand.
+  const AliasInfo* alias_info_;
 };
 
 }  // namespace xla

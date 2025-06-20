@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <tuple>
@@ -1149,7 +1148,7 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module, can_share_buffer_));
+                      HloAliasAnalysis::Run(module, alias_info_));
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     if (computation->IsAsyncComputation()) {
@@ -1186,13 +1185,12 @@ absl::Status CopyInsertion::AddCopiesToResolveInterference(
           }
 
           bool can_share_buffer = false;
-          if (can_share_buffer_ != nullptr) {
-            auto maybe_can_share_buffer = can_share_buffer_(
-                instruction, instruction->operand(operand_index.operand_number),
-                operand_index.operand_index);
-            if (maybe_can_share_buffer.has_value()) {
-              can_share_buffer = maybe_can_share_buffer.value();
-            }
+          auto maybe_can_share_buffer = alias_info_->MayAlias(
+              instruction->operand(operand_index.operand_number),
+              operand_index.operand_index, instruction,
+              operand_and_output_index.second);
+          if (maybe_can_share_buffer.has_value()) {
+            can_share_buffer = maybe_can_share_buffer.value();
           }
 
           // Skip copies for aliasing input/output pairs iff:
@@ -1236,7 +1234,7 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     HloModule* module) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module, can_share_buffer_));
+                      HloAliasAnalysis::Run(module, alias_info_));
 
   // Identify which shape indices of which instructions need to be copied. Store
   // these results in 'instructions_to_copy'.
@@ -1427,7 +1425,7 @@ absl::Status CopyInsertion::RemoveUnnecessaryCopies(
   }
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module, can_share_buffer_));
+                      HloAliasAnalysis::Run(module, alias_info_));
   CopyRemover copy_remover(*module, *alias_analysis, ordering.get(),
                            check_live_range_ordering, execution_threads);
   if (VLOG_IS_ON(3)) {

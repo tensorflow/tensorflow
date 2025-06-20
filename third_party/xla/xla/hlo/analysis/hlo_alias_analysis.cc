@@ -33,18 +33,22 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/comparison_util.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_operand_index.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/map_util.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_value.h"
 #include "xla/shape_util.h"
-#include "xla/types.h"
+#include "xla/status_macros.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 
@@ -115,7 +119,9 @@ void ComputeWhileAliasedValues(const HloValue& value,
   }
   // Value is the root of a while body.
   for (const HloPosition& position : value.positions()) {
-    if (!position.instruction->IsRoot()) continue;
+    if (!position.instruction->IsRoot()) {
+      continue;
+    }
 
     const HloComputation* computation = position.instruction->parent();
     const CallGraphNode& call_graph_node =
@@ -148,7 +154,9 @@ void ComputeConditionalAliasedValues(const HloValue& value,
   // Aliases the buffers of the true/false computations roots, with the one of
   // the conditional.
   for (const HloPosition& position : value.positions()) {
-    if (!position.instruction->IsRoot()) continue;
+    if (!position.instruction->IsRoot()) {
+      continue;
+    }
 
     const HloComputation* computation = position.instruction->parent();
     const CallGraphNode& call_graph_node =
@@ -243,7 +251,9 @@ std::vector<HloBuffer> CreateBuffers(const HloDataflowAnalysis& dataflow) {
     VLOG(3) << "Merging colocated values, value: " << *value;
 
     FlatValueSet aliased_values = ComputeAliasedValues(*value, dataflow);
-    if (aliased_values.size() < 2) continue;  // Fast path.
+    if (aliased_values.size() < 2) {
+      continue;  // Fast path.
+    }
 
     // The sets of values that are transitively aliased together.
     std::vector<std::pair<FlatValueSet*, HloValue::Id>> aliased_sets;
@@ -400,6 +410,43 @@ absl::StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
                       HloDataflowAnalysis::Run(*module, /*ssa_form=*/true,
                                                /*bitcast_defines_value=*/false,
                                                can_share_buffer));
+
+  size_t num_values = alias_analysis->dataflow_analysis_->values().size();
+  alias_analysis->buffers_ = CreateBuffers(alias_analysis->dataflow_analysis());
+  alias_analysis->value_to_buffer_.reserve(num_values);
+
+  for (HloBuffer& buffer : alias_analysis->buffers_) {
+    for (const HloValue* value : buffer.values()) {
+      alias_analysis->value_to_buffer_[value] = &buffer;
+    }
+  }
+
+  CHECK_EQ(alias_analysis->value_to_buffer_.size(), num_values);
+  TF_DCHECK_OK(alias_analysis->Verify());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  ShapeUtil::ForEachSubshape(root->shape(), [&](const Shape& /*subshape*/,
+                                                const ShapeIndex& index) {
+    std::vector<const HloBuffer*> buffers =
+        alias_analysis->ComputeBuffersAt(root, index);
+    alias_analysis->live_out_buffers_.insert(buffers.begin(), buffers.end());
+  });
+
+  XLA_VLOG_LINES(2, alias_analysis->ToString());
+  return alias_analysis;
+}
+
+/* static */
+absl::StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
+    const HloModule* module, const AliasInfo* alias_info) {
+  VLOG(2) << "HloAliasAnalysis::Run on module " << module->name();
+  XLA_VLOG_LINES(2, module->ToString());
+
+  auto alias_analysis = absl::WrapUnique(new HloAliasAnalysis(module));
+  TF_ASSIGN_OR_RETURN(
+      alias_analysis->dataflow_analysis_,
+      HloDataflowAnalysis::Run(*module, alias_info, /*ssa_form=*/true,
+                               /*bitcast_defines_value=*/false));
 
   size_t num_values = alias_analysis->dataflow_analysis_->values().size();
   alias_analysis->buffers_ = CreateBuffers(alias_analysis->dataflow_analysis());
