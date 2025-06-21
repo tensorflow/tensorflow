@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
@@ -178,8 +179,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         per_channel_op_params.quantized_dimension =
             quantization_params->quantized_dimension;
         per_channel_op_params.scale = quantization_params->scale->data;
-        per_channel_op_params.zero_point =
-            quantization_params->zero_point->data;
+        std::vector<int> zero_points;
+        if (quantization_params->zero_point->size ==
+            quantization_params->scale->size) {
+          per_channel_op_params.zero_point =
+              quantization_params->zero_point->data;
+        } else {
+          zero_points.resize(quantization_params->scale->size,
+                             quantization_params->zero_point->data[0]);
+          per_channel_op_params.zero_point = zero_points.data();
+        }
 
         switch (output->type) {
           case kTfLiteInt8:
