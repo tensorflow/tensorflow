@@ -1323,6 +1323,28 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
       heap_buffer_interval_compare, isolation_options, temp_buffer_color);
 }
 
+bool BufferAssigner::LiveRangeWithSameEndPoints(const HloValue* buffer1,
+                                                const HloValue* buffer2,
+                                                BufferAssignment* assignment) {
+  CHECK((assignment->hlo_live_range().total_order_scheduled()));
+  const HloLiveRange& hlo_live_range = assignment->hlo_live_range();
+  const auto& buffer_live_ranges = hlo_live_range.buffer_live_ranges();
+
+  auto live_range_it1 = buffer_live_ranges.find(buffer1);
+  CHECK(live_range_it1 != buffer_live_ranges.end())
+      << "Buffer doesn't have a proper live range:" << buffer1->ToString();
+
+  auto live_range_it2 = buffer_live_ranges.find(buffer2);
+  CHECK(live_range_it2 != buffer_live_ranges.end())
+      << "Buffer doesn't have a proper live range:" << buffer2->ToString();
+
+  const auto& live_range_1 = live_range_it1->second;
+  const auto& live_range_2 = live_range_it2->second;
+
+  return live_range_1.end == live_range_2.start ||
+         live_range_2.end == live_range_1.start;
+}
+
 bool BufferAssigner::LiveRangeInterferes(const HloValue* buffer1,
                                          const HloValue* buffer2,
                                          BufferAssignment* assignment) {
@@ -1393,7 +1415,8 @@ bool BufferAssigner::LiveRangeInterferes(const HloValue* buffer1,
 
 bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
                                        const HloBuffer& hlo_buffer,
-                                       BufferAssignment* assignment) {
+                                       BufferAssignment* assignment,
+                                       bool prefer_same_end_points) {
   CHECK(!assignment->HasAllocation(hlo_buffer))
       << "buffer " << hlo_buffer << " already has an allocation assigned.";
 
@@ -1465,6 +1488,11 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
           VLOG(4) << "Can't assign: assignee " << assigned_buffer
                   << " live range interferes with "
                   << new_value->ToShortString();
+          return false;
+        }
+        if (prefer_same_end_points &&
+            !LiveRangeWithSameEndPoints(new_value, &assigned_buffer,
+                                        assignment)) {
           return false;
         }
       } else if (assignment->hlo_ordering().MayInterfere(
@@ -1582,7 +1610,8 @@ absl::Status BufferAssigner::AssignSingleHloBuffer(
              assignment->GetAllSlices(operand, /*index=*/{})) {
           BufferAllocation* allocation =
               assignment->GetMutableAllocation(operand_slice.index());
-          if (MaybeAssignBuffer(allocation, *hlo_buffer, assignment)) {
+          if (MaybeAssignBuffer(allocation, *hlo_buffer, assignment,
+                                /*prefer_same_end_points=*/true)) {
             VLOG(3) << "Reusing (operand) allocation #" << allocation->index()
                     << " for: " << *hlo_buffer;
             return absl::OkStatus();
@@ -1594,6 +1623,36 @@ absl::Status BufferAssigner::AssignSingleHloBuffer(
 
   // Find the smallest buffer which can be reused iterating from end of
   // allocation_indices (smallest) to beginning (largest).
+  for (int allocation_index = allocation_indices->size() - 1;
+       allocation_index >= 0; allocation_index--) {
+    BufferAllocation* allocation = assignment->GetMutableAllocation(
+        allocation_indices->at(allocation_index));
+    if (MaybeAssignBuffer(allocation, *hlo_buffer, assignment,
+                          /*prefer_same_end_points=*/true)) {
+      VLOG(3) << "Reusing allocation #" << allocation->index()
+              << " for: " << *hlo_buffer;
+      return absl::OkStatus();
+    }
+  }
+
+  for (const HloValue* value : hlo_buffer->values()) {
+    if (value->IsTopLevel() && !value->IsTuple()) {
+      const HloInstruction* instruction = value->instruction();
+      for (auto* operand : instruction->operands()) {
+        for (const auto& operand_slice :
+             assignment->GetAllSlices(operand, /*index=*/{})) {
+          BufferAllocation* allocation =
+              assignment->GetMutableAllocation(operand_slice.index());
+          if (MaybeAssignBuffer(allocation, *hlo_buffer, assignment)) {
+            VLOG(3) << "Reusing (operand) allocation #" << allocation->index()
+                    << " for: " << *hlo_buffer;
+            return absl::OkStatus();
+          }
+        }
+      }
+    }
+  }
+
   for (int allocation_index = allocation_indices->size() - 1;
        allocation_index >= 0; allocation_index--) {
     BufferAllocation* allocation = assignment->GetMutableAllocation(
