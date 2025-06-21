@@ -82,7 +82,7 @@ struct ReconfigBatchOpPassOptions {
   int64_t max_batch_size = 0;
   int64_t batch_timeout_micros = 0;
   llvm::ArrayRef<int64_t> allowed_batch_sizes = {};
-  int64_t max_enqueued_batches = 0;
+  int64_t max_enqueued_batches = -1;
 };
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateReconfigBatchOpPass(
     ReconfigBatchOpPassOptions options);
