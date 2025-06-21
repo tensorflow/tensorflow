@@ -81,15 +81,15 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
     if (std::shared_ptr<OriginalValue> original_value =
             new_hlo_pointer->original_value()) {
       for (auto& leaf : original_value->leaves()) {
-        std::optional<OriginalTensor>& original_tensor = leaf.second;
-        if (original_tensor.has_value()) {
+        std::optional<OriginalArray>& original_array = leaf.second;
+        if (original_array.has_value()) {
           std::string call_instruction_name;
           if (std::shared_ptr<OriginalValue> call_original_value =
                   call_->original_value()) {
             call_instruction_name =
                 call_original_value->leaf_begin()->second->instruction_name;
           }
-          absl::StrAppend(&original_tensor->instruction_name, "/",
+          absl::StrAppend(&original_array->instruction_name, "/",
                           call_instruction_name);
         }
       }

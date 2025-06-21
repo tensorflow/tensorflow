@@ -90,15 +90,15 @@ OriginalValueProto OriginalValue::ToProto() const {
   OriginalValueProto original_value_proto;
   *original_value_proto.mutable_shape() = shape().ToProto();
   for (const auto& leaf : leaves()) {
-    OriginalTensorProto* original_tensor_proto =
+    OriginalArrayProto* original_array_proto =
         original_value_proto.add_leaves();
     for (const auto& index : leaf.first) {
-      original_tensor_proto->add_leaf_shape_index(index);
+      original_array_proto->add_leaf_shape_index(index);
     }
-    *original_tensor_proto->mutable_instruction_name() =
+    *original_array_proto->mutable_instruction_name() =
         leaf.second->instruction_name;
     for (const auto& index : leaf.second->shape_index) {
-      original_tensor_proto->add_shape_index(index);
+      original_array_proto->add_shape_index(index);
     }
   }
   return original_value_proto;
