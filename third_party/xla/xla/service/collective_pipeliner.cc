@@ -349,7 +349,8 @@ CheckStoreIntoSliceIsCompatible(HloInstruction* instr,
                             HloOpcode::kPad, HloOpcode::kCollectivePermute,
                             HloOpcode::kConvert, HloOpcode::kReshape,
                             HloOpcode::kAllReduce, HloOpcode::kTranspose,
-                            HloOpcode::kBroadcast, HloOpcode::kAllGather>(i) ||
+                            HloOpcode::kBroadcast, HloOpcode::kAllGather,
+                            HloOpcode::kReduce>(i) ||
            (multi_uses_pipelining && i->IsElementwise()) ||
            i->IsCustomCall(CollectivePipeliner::kInsertedByPreviousStep) ||
            i->IsCustomCall(CollectivePipeliner::kSunkByPreviousStep);
@@ -1175,7 +1176,8 @@ void WhileLoopAnalysis::MergeIntoExistingCollectivesForwardSink(
           int64_t sliced_idx_to_merge,
           std::vector<int64_t>& output_indices_to_merge) {
         for (HloInstruction* op : collectives_to_merge) {
-          if (!existing_collectives_to_move.count(op)) {
+          if (!existing_collectives_to_move.count(op) &&
+              !existing_formatting_ops.count(op)) {
             move_infos_[target_idx].collectives_to_move.push_back(op);
           }
         }
