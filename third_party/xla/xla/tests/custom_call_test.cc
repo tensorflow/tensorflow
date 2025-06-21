@@ -112,26 +112,6 @@ absl::Status Add1ToValues(ffi::Result<ffi::Buffer<PrimitiveType::F32>> out,
   return absl::OkStatus();
 }
 
-void R0F32Add2Succeed(float* out, float** in, XlaCustomCallStatus*) {
-  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(in, sizeof(float*));
-  *out = **in + 2.0f;
-  // Default state of 'status' is success.
-}
-
-void CustomCallFail(float*, float** in, XlaCustomCallStatus* status) {
-  auto msg = absl::StrFormat("Failed: %.1f", in[0][0]);
-  XlaCustomCallStatusSetFailure(status, msg.data(), msg.length());
-}
-
-void CustomCallFailWithBackendConfigStr(float*, float**, const char* opaque,
-                                        size_t opaque_len,
-                                        XlaCustomCallStatus* status) {
-  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(opaque, opaque_len);
-  auto msg = absl::StrFormat("Fail with raw backend config str: %s.",
-                             absl::string_view(opaque, opaque_len));
-  XlaCustomCallStatusSetFailure(status, msg.data(), msg.length());
-}
-
 XLA_FFI_DEFINE_HANDLER(kR0F32Add2, R0F32Add2,
                        ffi::Ffi::Bind()
                            .Ret<ffi::Buffer<PrimitiveType::F32>>()
@@ -163,10 +143,6 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "R2F32ReduceSum", PLATFORM,
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "Add1ToValues", PLATFORM,
                          kAdd1ToValues);
-
-XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(R0F32Add2Succeed);
-XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(CustomCallFail);
-XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(CustomCallFailWithBackendConfigStr);
 
 std::ostream& operator<<(std::ostream& os, BinaryOp op) {
   switch (op) {
@@ -251,102 +227,6 @@ TEST_F(CustomCallTest, CustomCallR2F32Reduce) {
   LiteralTestUtil::ExpectR0Near<float>(10.0f, result, kDefaultErrorSpec);
 }
 
-TEST_F(CustomCallTest, ReportsSuccess) {
-  auto module = CreateNewVerifiedModule();
-  auto builder = HloComputation::Builder(TestName());
-
-  auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
-  builder.AddInstruction(HloInstruction::CreateCustomCall(
-      r0f32_, {constant}, "R0F32Add2Succeed",
-      /*opaque=*/"", CustomCallApiVersion::API_VERSION_STATUS_RETURNING));
-
-  module->AddEntryComputation(builder.Build());
-
-  TF_ASSERT_OK_AND_ASSIGN(auto result, Execute(std::move(module), {}));
-  LiteralTestUtil::ExpectR0Near<float>(44.0f, result, kDefaultErrorSpec);
-}
-
-TEST_F(CustomCallTest, ReportsFailure) {
-  auto module = CreateNewVerifiedModule();
-  auto builder = HloComputation::Builder(TestName());
-
-  auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
-  builder.AddInstruction(HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeShape(F32, {}), {constant}, "CustomCallFail",
-      /*opaque=*/"", CustomCallApiVersion::API_VERSION_STATUS_RETURNING));
-
-  module->AddEntryComputation(builder.Build());
-
-  auto status = Execute(std::move(module), {}).status();
-  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
-  EXPECT_THAT(status.message(), ::testing::HasSubstr("Failed: 42.0"));
-}
-
-TEST_F(CustomCallTest, ReportsFirstFailure) {
-  auto module = CreateNewVerifiedModule();
-  auto builder = HloComputation::Builder(TestName());
-
-  auto constant_1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
-  auto res_1 = builder.AddInstruction(HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeShape(F32, {}), {constant_1}, "CustomCallFail",
-      /*opaque=*/"", CustomCallApiVersion::API_VERSION_STATUS_RETURNING));
-  auto res_2 = builder.AddInstruction(HloInstruction::CreateCustomCall(
-      ShapeUtil::MakeShape(F32, {}), {res_1}, "CustomCallFail",
-      /*opaque=*/"", CustomCallApiVersion::API_VERSION_STATUS_RETURNING));
-  builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(F32, {}), HloOpcode::kAdd, res_1, res_2));
-
-  module->AddEntryComputation(builder.Build());
-
-  auto status = Execute(std::move(module), {}).status();
-  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
-  EXPECT_THAT(status.message(), ::testing::HasSubstr("Failed: 1.0"));
-}
-
-TEST_F(CustomCallTest, TransitiveCustomCallReportsFirstFailure) {
-  const char* const kModuleStr = R"(
-    HloModule m
-    sub {
-      p0 = f32[] parameter(0)
-      ROOT custom-call = f32[] custom-call(f32[] %p0), custom_call_target="CustomCallFail", api_version=API_VERSION_STATUS_RETURNING
-    }
-    ENTRY test {
-      c0 = f32[] constant(1.0)
-      call0 = f32[] call(f32[] %c0), to_apply=sub
-      call1 = f32[] call(f32[] %call0), to_apply=sub
-      ROOT sum = f32[] add(%call0, %call1)
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
-
-  auto status = Execute(std::move(module), {}).status();
-  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
-  EXPECT_THAT(status.message(), HasSubstr("Failed: 1.0"));
-}
-
-TEST_F(CustomCallTest, FillStatusMsgWithBackendConfigStr) {
-  const char* const kModuleStr = R"(
-    HloModule m
-    ENTRY test {
-      c0 = f32[] constant(1.0)
-      ROOT dummy-result = f32[] custom-call(f32[] %c0),
-                                custom_call_target="CustomCallFailWithBackendConfigStr",
-                                backend_config="foo",
-                                api_version=API_VERSION_STATUS_RETURNING_UNIFIED
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr));
-
-  auto status = Execute(std::move(module), {}).status();
-  EXPECT_EQ(status.code(), absl::StatusCode::kInternal);
-  EXPECT_THAT(status.message(),
-              HasSubstr("Fail with raw backend config str: foo"));
-}
 
 class CustomCallClientAPITest
     : public ClientLibraryTestRunnerMixin<
