@@ -101,7 +101,9 @@ absl::StatusOr<const PJRT_Api*> LoadPjrtPlugin(absl::string_view device_type,
   return absl::UnimplementedError(
       "LoadPjrtPlugin is not implemented on windows yet.");
 #else
-  void* library = dlopen(library_path.data(), RTLD_LAZY);
+  // RTLD_DEEPBIND is required to resolve conflicts in symbols with the same
+  // name in the calling/loading context.
+  void* library = dlopen(library_path.data(), RTLD_DEEPBIND | RTLD_LAZY);
   if (library == nullptr) {
     return absl::InternalError(
         absl::StrCat("Failed to open ", library_path, ": ", dlerror()));
