@@ -5524,61 +5524,6 @@ absl::StatusOr<CudnnGraph> GetCudnnFlashAttentionBackwardOperationGraph(
 #endif
 }
 
-absl::Status CudnnSupport::DoPrepareForConvolution(
-    dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
-    const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
-    const dnn::FilterDescriptor& filter_descriptor,
-    DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemoryBase output_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const dnn::AlgorithmConfig& algorithm_config,
-    ScratchAllocator* scratch_allocator, dnn::AlgorithmDesc* algorithm_desc,
-    DeviceMemory<uint8_t>* scratch_memory) {
-  CudnnTensorDescriptor input_nd(
-      input_descriptor,
-      ToCudnnDataType(element_type, input_descriptor.layout()));
-  CudnnFilterDescriptor filter_nd(
-      filter_descriptor,
-      ToCudnnDataType(element_type, filter_descriptor.layout()));
-  CudnnTensorDescriptor output_nd(
-      output_descriptor,
-      ToCudnnDataType(element_type, output_descriptor.layout()));
-
-  auto cudnn = cudnn_->GetHandle(parent_, stream);
-
-  switch (kind) {
-    case dnn::ConvolutionKind::FORWARD: {
-      TF_ASSIGN_OR_RETURN(*algorithm_desc,
-                          GetCudnnConvolutionForwardAlgorithm(
-                              stream, cudnn, algorithm_config, input_nd,
-                              filter_nd, element_type, convolution_descriptor,
-                              output_nd, scratch_allocator, scratch_memory));
-      break;
-    }
-    case dnn::ConvolutionKind::BACKWARD_DATA: {
-      TF_ASSIGN_OR_RETURN(*algorithm_desc,
-                          GetCudnnConvolutionBackwardDataAlgorithm(
-                              stream, cudnn, algorithm_config, input_nd,
-                              filter_nd, element_type, convolution_descriptor,
-                              output_nd, scratch_allocator, scratch_memory));
-      break;
-    }
-    case dnn::ConvolutionKind::BACKWARD_FILTER: {
-      TF_ASSIGN_OR_RETURN(*algorithm_desc,
-                          GetCudnnConvolutionBackwardFilterAlgorithm(
-                              stream, cudnn, algorithm_config, input_nd,
-                              filter_nd, element_type, convolution_descriptor,
-                              output_nd, scratch_allocator, scratch_memory));
-      break;
-    }
-    default:
-      return absl::InternalError(
-          absl::StrCat("Unexpected convolution kind ", static_cast<int>(kind)));
-  }
-
-  return absl::OkStatus();
-}
-
 absl::Status CudnnSupport::DoConvolve(
     dnn::ConvolutionKind kind, dnn::DataType element_type,
     dnn::DataType output_type, Stream* stream,
@@ -5589,15 +5534,8 @@ absl::Status CudnnSupport::DoConvolve(
     const dnn::ConvolutionDescriptor& convolution_descriptor,
     dnn::AlgorithmDesc algorithm_desc, DeviceMemory<uint8_t> scratch_memory,
     dnn::ProfileResult* profile_result) {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<const dnn::ConvRunner> runner,
-      ConvolveRunnerFromDesc(stream, algorithm_desc, kind,
-                             /*input_type=*/element_type, output_type,
-                             input_descriptor, filter_descriptor,
-                             output_descriptor, convolution_descriptor));
-
-  return (*runner)(stream, profile_result, scratch_memory, input_data,
-                   filter_data, output_data);
+  return absl::UnimplementedError(
+      "DoConvolve is not implemented on CUDA platform.");
 }
 
 // Utility for dealing with CUDA's type-erased scaling parameters, where some
