@@ -172,6 +172,10 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       std::vector<ShapeTree<PjRtStreamExecutorExecutionInput>> arguments,
       ExecutableRunOptions run_options) override;
 
+  absl::Status UpdateCompileOptionsInternal(
+      CompileOptions* options, ExecutableExtras* returned_extras,
+      bool lookup_addressable_devices) override;
+
  private:
   absl::StatusOr<absl::flat_hash_map<GlobalDeviceId, uint64_t>>
   GetLatestIncarnations();

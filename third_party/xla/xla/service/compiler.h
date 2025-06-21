@@ -164,6 +164,8 @@ class Compiler {
     std::optional<TargetConfig> target_config;
 
     MultiProcessKeyValueStore key_value_store;
+
+    std::vector<int> global_device_id_to_slice_id;
   };
 
   virtual ~Compiler() = default;
