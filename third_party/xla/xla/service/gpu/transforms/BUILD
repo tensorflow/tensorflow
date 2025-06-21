@@ -3331,3 +3331,91 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "thunk_pass_pipeline",
+    srcs = ["thunk_pass_pipeline.cc"],
+    hdrs = ["thunk_pass_pipeline.h"],
+    deps = [
+        "//xla/backends/gpu/runtime:sequential_thunk",
+        "//xla/service:hlo_module_config",
+        "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "thunk_pass_pipeline_test",
+    srcs = ["thunk_pass_pipeline_test.cc"],
+    deps = [
+        ":thunk_pass_pipeline",
+        "//xla/backends/gpu/runtime:sequential_thunk",
+        "//xla/backends/gpu/runtime:thunk",
+        "//xla/service:hlo_module_config",
+        "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "command_buffer_conversion_pass",
+    srcs = ["command_buffer_conversion_pass.cc"],
+    hdrs = ["command_buffer_conversion_pass.h"],
+    deps = [
+        ":thunk_pass_pipeline",
+        "//xla/backends/gpu/runtime:command_buffer_cmd",
+        "//xla/backends/gpu/runtime:command_buffer_cmd_emitter",
+        "//xla/backends/gpu/runtime:command_buffer_thunk",
+        "//xla/backends/gpu/runtime:conditional_thunk",
+        "//xla/backends/gpu/runtime:sequential_thunk",
+        "//xla/backends/gpu/runtime:thunk",
+        "//xla/backends/gpu/runtime:while_thunk",
+        "//xla/service:hlo_module_config",
+        "//xla/service:overload",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_test(
+    name = "command_buffer_conversion_pass_test",
+    srcs = ["command_buffer_conversion_pass_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        ":command_buffer_conversion_pass",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla/backends/gpu/runtime:command_buffer_thunk",
+        "//xla/backends/gpu/runtime:copy_thunk",
+        "//xla/backends/gpu/runtime:gemm_thunk",
+        "//xla/backends/gpu/runtime:sequential_thunk",
+        "//xla/service:backend",
+        "//xla/service:buffer_assignment",
+        "//xla/service:hlo_module_config",
+        "//xla/service:platform_util",
+        "//xla/service/gpu:matmul_utils",
+        "//xla/stream_executor:blas",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
