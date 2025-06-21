@@ -128,6 +128,17 @@ def workspace():
 
     android_workspace()
 
+    # Toolchains for ML projects hermetic builds.
+    # Details: https://github.com/google-ml-infra/rules_ml_toolchain
+    http_archive(
+        name = "rules_ml_toolchain",
+        sha256 = "31843a664ab4f2a8543c6c61669da2978397025161c78e4d6158c49641e3b241",
+        strip_prefix = "rules_ml_toolchain-41f43208545330c69f0fa40d3b2fc4f56e7c16c2",
+        urls = [
+            "https://github.com/google-ml-infra/rules_ml_toolchain/archive/41f43208545330c69f0fa40d3b2fc4f56e7c16c2.tar.gz",
+        ],
+    )
+
     # If a target is bound twice, the later one wins, so we have to do tf bindings
     # at the end of the WORKSPACE file.
     _tf_bind()
