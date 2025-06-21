@@ -74,7 +74,13 @@ bool XnnGraphFusion::IsOpSupported(const HloInstruction* instr) const {
   if (instr->IsElementwise()) {
     return IsElementwiseOpSupportedByXnn(instr);
   }
-  return false;
+
+  switch (instr->opcode()) {
+    case HloOpcode::kBitcast:
+      return true;
+    default:
+      return false;
+  }
 }
 
 bool XnnGraphFusion::IsXnnGraphFusion(const HloInstruction* instr) const {
