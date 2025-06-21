@@ -12,4 +12,7 @@ build:clang_local --repo_env USE_HERMETIC_CC_TOOLCHAIN=0
 import %workspace%/tensorflow.bazelrc
 import %workspace%/warnings.bazelrc
 
+build:ci_local_gpu --config=rbe_linux_cuda_nvcc
+build:ci_local_gpu --spawn_strategy=local
+
 try-import %workspace%/xla_configure.bazelrc
