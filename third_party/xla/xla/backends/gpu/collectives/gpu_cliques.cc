@@ -586,8 +586,10 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
   GpuCollectives::Config config;
   config.split_share = true;
   config.max_nchannels = max_nchannels;
-  config.blocking_communicators = true;
-  config.async_execution = false;
+  config.blocking_communicators =
+      xla::GetDebugOptionsFromFlags().xla_gpu_nccl_blocking_communicators();
+  config.async_execution =
+      xla::GetDebugOptionsFromFlags().xla_gpu_nccl_async_execution();
 
   if (enable_nccl_comm_splitting) {
     for (auto& [acquired_clique_key, acquired_clique] : acquired_cliques) {
