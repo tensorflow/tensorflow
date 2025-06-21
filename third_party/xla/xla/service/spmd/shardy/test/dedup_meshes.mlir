@@ -19,12 +19,9 @@ sdy.mesh @meshA = <["a"=4, "b"=4]>
 // CHECK:     sdy.mesh @mesh_one_device_before_empty = <["x"=1, "y"=1]>
 // CHECK:     sdy.mesh @empty_mesh1 = <[]>
 // CHECK-NOT: sdy.mesh @empty_mesh2 = <[]>
-// CHECK:     sdy.mesh @mesh_one_device_after_empty = <["a"=1, "b"=1, "c"=1]>
 sdy.mesh @mesh_one_device_before_empty = <["x"=1, "y"=1]>
 sdy.mesh @empty_mesh1 = <[]>
-sdy.mesh @mesh_one_device_after_empty = <["a"=1, "b"=1, "c"=1]>
 sdy.mesh @empty_mesh2 = <[]>
-
 // CHECK:     sdy.mesh @maximal_mesh1 = <[], device_ids=[0]>
 // CHECK-NOT: sdy.mesh @maximal_mesh2 = <[], device_ids=[0]>
 sdy.mesh @maximal_mesh1 = <[], device_ids=[0]>
@@ -41,19 +38,41 @@ sdy.mesh @mesh_with_size_1 = <["a"=8, "b"=1, "c"=8]>
 sdy.mesh @mesh_with_size_1_dup = <["a"=2, "b"=4, "c"=8]>
 
 // CHECK:     sdy.mesh @meshE = <["a"=8, "b"=4]>
-// CHECK-NOT: sdy.mesh @meshF = <["x"=4, "y"=2, "z"=2]>
+// CHECK-NOT: sdy.mesh @meshF = <["x"=2, "y"=4, "z"=4]>
+// CHECK-NOT: sdy.mesh @meshG = <["x"=32]>
+// CHECK-NOT: sdy.mesh @meshH = <["x"=4, "y"=4, "z"=2]>
+// CHECK-NOT: sdy.mesh @meshI = <["a"=4, "b"=1, "c"=2, "d"=1, "e"=4, "f"=1]>
 sdy.mesh @meshE = <["a"=8, "b"=4]>
 sdy.mesh @meshF = <["x"=2, "y"=4, "z"=4]>
+sdy.mesh @meshG = <["x"=32]>
+sdy.mesh @meshH = <["x"=4, "y"=4, "z"=2]>
+sdy.mesh @meshI = <["a"=4, "b"=1, "c"=2, "d"=1, "e"=4, "f"=1]>
 
 // CHECK-NOT: sdy.mesh @mesh_fake = <["_a"=3, "_b"=2, "_c"=2]>
 // CHECK:     sdy.mesh @mesh_main_replace_fake = <["x"=3, "y"=4]>
 sdy.mesh @mesh_fake = <["_a"=3, "_b"=2, "_c"=2]>
 sdy.mesh @mesh_main_replace_fake = <["x"=3, "y"=4]>
 
-// CHECK:     sdy.mesh @mesh_with_axis_of_size_1_main = <["a"=2, "b"=1, "c"=5]>
-// CHECK-NOT: sdy.mesh @mesh_with_axis_of_size_1_dup = <["x"=2, "y"=1, "z"=5]>
-sdy.mesh @mesh_with_axis_of_size_1_main = <["a"=2, "b"=1, "c"=5]>
-sdy.mesh @mesh_with_axis_of_size_1_dup = <["x"=2, "y"=1, "z"=5]>
+// CHECK:     sdy.mesh @mesh_one_in_middle = <["a"=2, "b"=1, "c"=5]>
+// CHECK-NOT: sdy.mesh @mesh_one_in_middle_dup = <["x"=2, "y"=1, "z"=5]>
+// CHECK-NOT: sdy.mesh @mesh_one_in_middle_dup_trailing_ones = <["x"=10, "y"=1, "z"=1]>
+// CHECK-NOT: sdy.mesh @mesh_one_in_middle_dup_leading_ones = <["a"=1, "b"=1, "c"=2, "d"=5]>
+// CHECK-NOT: sdy.mesh @mesh_one_in_middle_dup_no_size_one = <["x"=2, "y"=5]>
+sdy.mesh @mesh_one_in_middle = <["a"=2, "b"=1, "c"=5]>
+sdy.mesh @mesh_one_in_middle_dup = <["x"=2, "y"=1, "z"=5]>
+sdy.mesh @mesh_one_in_middle_dup_trailing_ones = <["x"=10, "y"=1, "z"=1]>
+sdy.mesh @mesh_one_in_middle_dup_leading_ones = <["a"=1, "b"=1, "c"=2, "d"=5]>
+sdy.mesh @mesh_one_in_middle_dup_no_size_one = <["x"=2, "y"=5]>
+
+// CHECK:     sdy.mesh @mesh_trailing_ones = <["a"=3, "b"=2, "c"=1, "d"=1]>
+// CHECK-NOT: sdy.mesh @mesh_trailing_ones_dup = <["a"=3, "b"=1, "c"=2]>
+sdy.mesh @mesh_trailing_ones = <["a"=3, "b"=2, "c"=1, "d"=1]>
+sdy.mesh @mesh_trailing_ones_dup = <["a"=3, "b"=1, "c"=2]>
+
+// CHECK:     sdy.mesh @mesh_leading_ones = <["a"=1, "b"=1, "c"=3, "d"=3]>
+// CHECK-NOT: sdy.mesh @mesh_leading_ones_dup = <["a"=9, "b"=1, "c"=1, "d"=1]>
+sdy.mesh @mesh_leading_ones = <["a"=1, "b"=1, "c"=3, "d"=3]>
+sdy.mesh @mesh_leading_ones_dup = <["a"=9, "b"=1, "c"=1, "d"=1]>
 
 // CHECK-LABEL: @full_axes
 // CHECK-SAME:  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh1, [{"a", ?}, {?}]>}
@@ -123,6 +142,30 @@ func.func @sub_axis_to_sub_axis(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.shar
   return %arg0 : tensor<8x8xf32>
 }
 
+// CHECK-LABEL: @axis_to_multiple_axes
+// CHECK-SAME:  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshE, [{"a", "b"}, {}]>}
+func.func @axis_to_multiple_axes(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshG, [{"x"}, {}]>}) -> tensor<8x8xf32> {
+  return %arg0 : tensor<8x8xf32>
+}
+
+// CHECK-LABEL: @sub_axis_to_multiple_axes
+// CHECK-SAME:  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshE, [{"a":(1)4}, {"b":(2)2}]>}
+func.func @sub_axis_to_multiple_axes(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshG, [{"x":(1)4}, {"x":(16)2}]>}) -> tensor<8x8xf32> {
+  return %arg0 : tensor<8x8xf32>
+}
+
+// CHECK-LABEL: @sub_axis_to_second_axis
+// CHECK-SAME:  %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshE, [{"a":(4)2}, {"b"}]>}
+func.func @sub_axis_to_second_axis(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@meshH, [{"y":(1)2}, {"y":(2)2, "z"}]>}) -> tensor<8x8xf32> {
+  return %arg0 : tensor<8x8xf32>
+}
+
+// CHECK-LABEL: @target_axis_size_one
+// CHECK-SAME:  %arg0: tensor<8x8x8xf32> {sdy.sharding = #sdy.sharding<@meshE, [{"a"}, {"b"}, {}]>}
+func.func @target_axis_size_one(%arg0: tensor<8x8x8xf32> {sdy.sharding = #sdy.sharding<@meshI, [{"a", "b", "c"}, {"d", "e"}, {"f"}]>}) -> tensor<8x8x8xf32> {
+  return %arg0 : tensor<8x8x8xf32>
+}
+
 // CHECK-LABEL: @fake_axis_to_real_axis
 // CHECK-SAME:  %arg0: tensor<3x8xf32> {sdy.sharding = #sdy.sharding<@mesh_main_replace_fake, [{"x"}, {"y":(1)2}]>}
 func.func @fake_axis_to_real_axis(%arg0: tensor<3x8xf32> {sdy.sharding = #sdy.sharding<@mesh_fake, [{"_a"}, {"_b"}]>}) -> tensor<3x8xf32> {
@@ -184,3 +227,4 @@ func.func @manual_computation_inlined_meshes(%arg0: tensor<8x16xf32>, %arg1: ten
   } : (tensor<8x16xf32>, tensor<16x32xf32>) -> tensor<8x32xf32>
   return %0 : tensor<8x32xf32>
 }
+
