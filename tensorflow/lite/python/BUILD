@@ -120,6 +120,7 @@ py_strict_library(
     ],
 )
 
+# TESTING
 py_strict_test(
     name = "test_util_test",
     srcs = ["test_util_test.py"],
