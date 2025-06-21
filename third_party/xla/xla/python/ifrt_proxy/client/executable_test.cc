@@ -177,7 +177,7 @@ TEST_F(LoadedExecutableTest, Metadata) {
   EXPECT_EQ(output_layouts[0]->xla_layout(),
             xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2));
   EXPECT_THAT(executable.GetOutputMemoryKinds(),
-              IsOkAndHolds(ElementsAre(ElementsAre("foo"))));
+              IsOkAndHolds(ElementsAre("foo")));
 }
 
 // TODO(b/315809436): Test needs rewrite because protobuf matchers are not OSS

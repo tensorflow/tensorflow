@@ -1547,12 +1547,12 @@ IfrtBackend::HandleLoadedExecutableMetadataRequest(
 
     auto output_memory_kinds = executable->GetOutputMemoryKinds();
     if (output_memory_kinds.ok()) {
-      for (const auto& memory_kinds : *output_memory_kinds) {
-        auto* const list = metadata_resp->mutable_output_memory_kinds()
-                               ->add_memory_kind_lists()
-                               ->mutable_memory_kinds();
-        list->Reserve(memory_kinds.size());
-        list->Add(memory_kinds.begin(), memory_kinds.end());
+      auto* const list = metadata_resp->mutable_output_memory_kinds()
+                             ->add_memory_kind_lists()
+                             ->mutable_memory_kinds();
+      list->Reserve((*output_memory_kinds)[0].size());
+      for (const auto& memory_kind : *output_memory_kinds) {
+        list->Add(std::string(memory_kind));
       }
     } else {
       *metadata_resp->mutable_output_memory_kinds()->mutable_status() =

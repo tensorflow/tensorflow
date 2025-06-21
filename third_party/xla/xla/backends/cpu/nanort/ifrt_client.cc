@@ -918,12 +918,12 @@ class NanoExecutable final
     return hlo_modules;
   }
 
-  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
-  GetOutputMemoryKinds() const override {
-    std::vector<std::vector<absl::string_view>> memory_kinds;
+  absl::StatusOr<std::vector<absl::string_view>> GetOutputMemoryKinds()
+      const override {
+    std::vector<absl::string_view> memory_kinds;
     memory_kinds.reserve(output_shardings_.size());
     for (const auto& _ : output_shardings_) {
-      memory_kinds.push_back({kMemoryKind});
+      memory_kinds.push_back(kMemoryKind);
     }
     return memory_kinds;
   }

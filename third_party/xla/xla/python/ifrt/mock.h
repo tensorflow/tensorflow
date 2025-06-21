@@ -307,7 +307,7 @@ class MockLoadedExecutable
   MOCK_METHOD(
       absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>,
       GetOutputLayouts, (), (const, final));
-  MOCK_METHOD(absl::StatusOr<std::vector<std::vector<absl::string_view>>>,
+  MOCK_METHOD(absl::StatusOr<std::vector<absl::string_view>>,
               GetOutputMemoryKinds, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>,
               GetHloModules, (), (const, final));

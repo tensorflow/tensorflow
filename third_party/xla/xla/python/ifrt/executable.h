@@ -87,12 +87,9 @@ class Executable : public llvm::RTTIExtends<Executable, llvm::RTTIRoot> {
   virtual absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
   GetHloModules() const = 0;
 
-  // Returns a list of lists of memory kind strings for output. The returned
-  // value is `[num_programs, num_output]`. The size of the outer list should be
-  // equal to `GetHloModules()`. Under SPMD, one can use
-  // `GetOutputMemoryKinds().front()`.
-  virtual absl::StatusOr<std::vector<std::vector<absl::string_view>>>
-  GetOutputMemoryKinds() const = 0;
+  // Returns a list of memory kind strings for output.
+  virtual absl::StatusOr<std::vector<absl::string_view>> GetOutputMemoryKinds()
+      const = 0;
 
   // Returns named values for cost properties of this executable (such as
   // operations, size of input/outputs, and run time estimate). Properties may
@@ -205,12 +202,9 @@ class LoadedExecutable
   // Return an HloModule (optimized) per partition.
   virtual absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
   GetHloModules() const = 0;
-  // Returns a list of lists of memory kind strings for output. The returned
-  // value is `[num_programs, num_output]`. The size of the outer list should be
-  // equal to `GetHloModules()`. Under SPMD, one can use
-  // `GetOutputMemoryKinds().front()`.
-  virtual absl::StatusOr<std::vector<std::vector<absl::string_view>>>
-  GetOutputMemoryKinds() const = 0;
+  // Returns a list memory kind strings for output.
+  virtual absl::StatusOr<std::vector<absl::string_view>> GetOutputMemoryKinds()
+      const = 0;
 
   // Returns named values for cost properties of this executable (such as
   // operations, size of input/outputs, and run time estimate). Properties may

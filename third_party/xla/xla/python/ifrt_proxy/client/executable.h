@@ -85,8 +85,8 @@ class LoadedExecutable final
   GetParameterLayouts() const override;
   absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
   GetOutputLayouts() const override;
-  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
-  GetOutputMemoryKinds() const override;
+  absl::StatusOr<std::vector<absl::string_view>> GetOutputMemoryKinds()
+      const override;
   absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override;
 
@@ -119,8 +119,7 @@ class LoadedExecutable final
     // Required since `GetOutputMemoryKinds()` returns `absl::string_view`.
     // `memory_kinds` uses `absl::node_hash_set` for pointer stability.
     absl::node_hash_set<std::string> memory_kinds;
-    absl::StatusOr<std::vector<std::vector<absl::string_view>>>
-        output_memory_kinds;
+    absl::StatusOr<std::vector<absl::string_view>> output_memory_kinds;
 
     absl::StatusOr<std::vector<int>> donatable_input_indices;
 
