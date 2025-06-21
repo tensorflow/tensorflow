@@ -27,9 +27,11 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Visitors.h"
+#include "mlir/Interfaces/CallInterfaces.h"
 #include "mlir/Pass/Pass.h"  // IWYU pragma: keep
 #include "mlir/Support/LLVM.h"
 
@@ -52,6 +54,8 @@ class PropagateAliasScopesPass final
  private:
   // Main callback for the walking the ops withing the function.
   mlir::WalkResult WalkCallback(mlir::Operation* op);
+  // Propagate the slice index to the arguments of the function.
+  mlir::WalkResult WalkCall(mlir::CallOpInterface call_op);
   // Propagate the slice index to the iter-args of the for loop.
   mlir::WalkResult WalkFor(mlir::scf::ForOp for_op);
   // Add the noalias scope to the extract op.
@@ -89,15 +93,33 @@ static void SetNoAliasScopeMetadata(mlir::Operation& op,
 }
 
 void PropagateAliasScopesPass::runOnOperation() {
-  mlir::func::FuncOp func_op = getOperation();
+  mlir::ModuleOp module_op = getOperation();
 
-  InitializeBookeeping(func_op);
+  mlir::func::FuncOp entry;
+  for (auto func : getOperation().getOps<mlir::func::FuncOp>()) {
+    if (func->getAttr("xla.entry")) {
+      entry = func;
+      break;
+    }
+  }
 
-  func_op->walk<mlir::WalkOrder::PreOrder>(
+  if (!entry) {
+    getOperation()->emitOpError("No entry function found.");
+    signalPassFailure();
+    return;
+  }
+
+  InitializeBookeeping(entry);
+
+  module_op->walk<mlir::WalkOrder::PreOrder>(
       [this](mlir::Operation* op) { return WalkCallback(op); });
 }
 
 mlir::WalkResult PropagateAliasScopesPass::WalkCallback(mlir::Operation* op) {
+  if (auto call_op = mlir::dyn_cast_or_null<mlir::CallOpInterface>(op)) {
+    return WalkCall(call_op);
+  }
+
   if (auto for_op = mlir::dyn_cast_or_null<mlir::scf::ForOp>(op)) {
     return WalkFor(for_op);
   }
@@ -108,6 +130,27 @@ mlir::WalkResult PropagateAliasScopesPass::WalkCallback(mlir::Operation* op) {
 
   if (auto extract_op = mlir::dyn_cast_or_null<mlir::tensor::ExtractOp>(op)) {
     return WalkExtract(extract_op);
+  }
+
+  return mlir::WalkResult::advance();
+}
+
+mlir::WalkResult PropagateAliasScopesPass::WalkCall(
+    mlir::CallOpInterface call_op) {
+  mlir::func::FuncOp callee =
+      mlir::dyn_cast<mlir::func::FuncOp>(call_op.resolveCallable());
+  if (!callee) {
+    // Could be a call to an external function.
+    return mlir::WalkResult::advance();
+  }
+
+  // Forward the slice index to the arguments of the callee.
+  for (auto [arg, operand] :
+       llvm::zip(callee.getArguments(), call_op.getArgOperands())) {
+    auto slice_index_itr = value_to_index_.find(operand);
+    if (slice_index_itr != value_to_index_.end()) {
+      value_to_index_.insert({arg, slice_index_itr->second});
+    }
   }
 
   return mlir::WalkResult::advance();
@@ -130,7 +173,7 @@ mlir::WalkResult PropagateAliasScopesPass::WalkExtract(
     mlir::tensor::ExtractOp extract_op) {
   auto index_itr = value_to_index_.find(extract_op.getTensor());
   if (index_itr == value_to_index_.end()) {
-    return mlir::WalkResult::skip();
+    return mlir::WalkResult::advance();
   }
 
   int64_t slice_index = index_itr->second;
@@ -147,7 +190,7 @@ mlir::WalkResult PropagateAliasScopesPass::WalkInsert(
     mlir::tensor::InsertOp insert_op) {
   auto index_itr = value_to_index_.find(insert_op.getDest());
   if (index_itr == value_to_index_.end()) {
-    return mlir::WalkResult::skip();
+    return mlir::WalkResult::advance();
   }
 
   int64_t slice_index = index_itr->second;
