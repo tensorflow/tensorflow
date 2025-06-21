@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_C_PJRT_C_API_H_
 #define XLA_PJRT_C_PJRT_C_API_H_
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -26,11 +27,24 @@ limitations under the License.
 #define PJRT_STRUCT_SIZE(struct_type, last_field) \
   offsetof(struct_type, last_field) + sizeof(((struct_type*)0)->last_field)
 
+#ifdef __cplusplus
+#define PJRT_CHECK_STRUCT_SIZE(sname, last_field)                       \
+  static_assert(                                                        \
+      sizeof(struct sname) ==                                           \
+          ((PJRT_STRUCT_SIZE(sname, last_field) + alignof(sname) - 1) / \
+           alignof(sname)) *                                            \
+              alignof(sname),                                           \
+      "Failed to update last_field");
+#else
+#define PJRT_CHECK_STRUCT_SIZE(sname, last_field)
+#endif
+
 // Must update PJRT_DEFINE_STRUCT_TRAITS with the new `last_field` after
 // adding a new member to a struct.
-#define PJRT_DEFINE_STRUCT_TRAITS(sname, last_field) \
-  typedef struct sname sname;                        \
-  enum { sname##_STRUCT_SIZE = PJRT_STRUCT_SIZE(sname, last_field) }
+#define PJRT_DEFINE_STRUCT_TRAITS(sname, last_field)                  \
+  typedef struct sname sname;                                         \
+  enum { sname##_STRUCT_SIZE = PJRT_STRUCT_SIZE(sname, last_field) }; \
+  PJRT_CHECK_STRUCT_SIZE(sname, last_field)
 
 #ifdef __cplusplus
 extern "C" {
@@ -216,7 +230,7 @@ struct PJRT_Plugin_Attributes_Args {
   const PJRT_NamedValue* attributes;  // out
   size_t num_attributes;              // out
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Plugin_Attributes_Args, attributes);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Plugin_Attributes_Args, num_attributes);
 
 // Returns an array of plugin attributes which are key-value pairs. Common keys
 // include `xla_version`, `stablehlo_current_version`, and
@@ -1812,7 +1826,7 @@ struct PJRT_Executable_DeserializeAndLoad_Args {
   size_t overridden_serialized_compile_options_size;
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_DeserializeAndLoad_Args,
-                          loaded_executable);
+                          overridden_serialized_compile_options_size);
 
 // Deserializes an executable serialized by `PJRT_Executable_Serialize`.
 // `serialized_executable` must have been produced by the same platform and
