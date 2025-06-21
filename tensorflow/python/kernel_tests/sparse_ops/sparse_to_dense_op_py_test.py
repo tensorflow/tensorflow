@@ -124,7 +124,7 @@ class SparseToDenseTest(test.TestCase, parameterized.TestCase):
     # the reference error messages between GPUs and CPUs.
     error_msg = (r"out of bounds" if test_util.is_gpu_available() else
                  r"indices\[1\] = \[10\] is out of bounds: need 0 <= "
-                 "index < \[5\]")
+                 r"index < \[5\]")
     with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
                                 error_msg):
       self.evaluate(
