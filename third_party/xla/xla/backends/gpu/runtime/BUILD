@@ -1402,7 +1402,6 @@ cc_library(
         "//xla/core/collectives:rank_id",
         "//xla/ffi:execution_context",
         "//xla/hlo/ir:hlo",
-        "//xla/pjrt/distributed:client",
         "//xla/service:buffer_assignment",
         "//xla/service:executable",
         "//xla/service:global_device_id",
