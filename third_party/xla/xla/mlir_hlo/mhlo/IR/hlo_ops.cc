@@ -4449,9 +4449,80 @@ OpFoldResult SelectOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
+namespace {
+
+static ComparisonDirection invertDirection(ComparisonDirection direction) {
+  switch (direction) {
+    case ComparisonDirection::EQ:
+    case ComparisonDirection::NE:
+      return direction;
+    case ComparisonDirection::GE:
+      return ComparisonDirection::LE;
+    case ComparisonDirection::GT:
+      return ComparisonDirection::LT;
+    case ComparisonDirection::LE:
+      return ComparisonDirection::GE;
+    case ComparisonDirection::LT:
+      return ComparisonDirection::GT;
+  }
+
+  llvm::report_fatal_error(llvm::formatv(
+      "Undefined enum value for `ComparisonDirection`: {0}",
+      static_cast<std::underlying_type_t<ComparisonDirection>>(direction)));
+}
+
+// select({LT,LE}, a, b) -> min(a, b)
+// select({GT,GE}, a, b) -> max(a, b)
+struct CompareSelectIntoMinMax final : OpRewritePattern<SelectOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(SelectOp op,
+                                PatternRewriter& rewriter) const override {
+    Value pred = op.getPred();
+    Value trueVal = op.getOnTrue();
+    Value falseVal = op.getOnFalse();
+
+    auto cmpOp = pred.getDefiningOp<CompareOp>();
+    if (!cmpOp) return failure();
+
+    ComparisonDirection direction = cmpOp.getComparisonDirection();
+    Value cmpLhs = cmpOp.getLhs();
+    Value cmpRhs = cmpOp.getRhs();
+
+    // Turn into canonical form:
+    // b <= a ? a : b  ---> a >= b ? a : b
+    // b <  a ? a : b  ---> a >  b ? a : b
+    // b >= a ? a : b  ---> a <= b ? a : b
+    // b >  a ? a : b  ---> a <  b ? a : b
+    if (cmpLhs == falseVal && cmpRhs == trueVal) {
+      direction = invertDirection(direction);
+    } else if (!(cmpLhs == trueVal && cmpRhs == falseVal)) {
+      return failure();
+    }
+
+    switch (direction) {
+      case ComparisonDirection::GE:
+      case ComparisonDirection::GT: {
+        rewriter.replaceOpWithNewOp<MaxOp>(op, trueVal, falseVal);
+        return success();
+      }
+      case ComparisonDirection::LE:
+      case ComparisonDirection::LT: {
+        rewriter.replaceOpWithNewOp<MinOp>(op, trueVal, falseVal);
+        return success();
+      }
+      default: {
+        return failure();
+      }
+    }
+  }
+};
+}  // namespace
+
 void SelectOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                            MLIRContext* context) {
-  results.add<FusePredNegIntoSelect, FuseBroadcastedPredNegIntoSelect>(context);
+  results.add<FusePredNegIntoSelect, FuseBroadcastedPredNegIntoSelect,
+              CompareSelectIntoMinMax>(context);
 }
 
 // Makes it such that a SelectOp that is a non-root operation in a DRR infers
