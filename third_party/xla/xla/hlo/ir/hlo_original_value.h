@@ -33,6 +33,10 @@ struct OriginalTensor {
   std::string instruction_name;
   // Shape index of the tensor if the instruction produces a tuple.
   ShapeIndex shape_index;
+  // A concatenation of instruction names that tracks the call instructions in
+  // the unoptimized HLO module. The instruction names are separated by '/'
+  // characters.
+  std::string call_history;
 };
 
 // The information of an HLO value produced by an instruction in an unoptimized
