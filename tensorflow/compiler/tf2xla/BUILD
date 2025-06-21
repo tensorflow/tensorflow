@@ -940,6 +940,7 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_xla//xla:status_macros",
         "@local_xla//xla/hlo/builder:sharding_builder",
@@ -956,6 +957,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_googletest//:gtest",
     ],
 )
 

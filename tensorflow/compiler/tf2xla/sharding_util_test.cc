@@ -16,6 +16,8 @@ limitations under the License.
 
 #include <functional>
 
+#include <gmock/gmock.h>
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -54,6 +56,59 @@ TEST(CoreUtilTest, ParseShardingFromDevice) {
   parse_status = ParseShardingFromDevice("/cpu:0", 100);
   TF_EXPECT_OK(parse_status.status());
   EXPECT_EQ(-1, core_from_sharding(parse_status.value()));
+}
+
+// Tests GetShardingFromNodeDef for getting the sharding from the expected
+// attribute.
+TEST(CoreUtilTest, ShardingMetadataAttributes) {
+  AttrValue xla_sharding_v1;
+  xla_sharding_v1.set_s("{devices=[2,1]0,1}");
+  AttrValue xla_sharding_v2;
+  xla_sharding_v2.set_s("{devices=[2,1]<=[2]}");
+  AttrValue xla_sharding_v1_diff;
+  xla_sharding_v1_diff.set_s("{devices=[2,1]1,0}");
+  AttrValue index;
+  index.set_i(0);
+  AttrValue type;
+  type.set_type(DataType::DT_FLOAT);
+
+  NodeDef node1;
+  node1.set_op("XlaSharding");
+  node1.set_name("with_sharding");
+  node1.mutable_attr()->insert(
+      {{"sharding", xla_sharding_v1}, {"index", index}, {"T", type}});
+  auto sharding1 = GetShardingFromNodeDef(node1, /*add_metadata=*/false);
+  TF_ASSERT_OK(sharding1.status());
+  EXPECT_TRUE(sharding1->has_value());
+  EXPECT_EQ(sharding1->value().tile_assignment_devices_size(), 2);
+  EXPECT_EQ(sharding1->value().tile_assignment_devices(0), 0);
+  EXPECT_EQ(sharding1->value().tile_assignment_devices(1), 1);
+
+  NodeDef node2;
+  node2.set_op("XlaSharding");
+  node2.set_name("with_sharding_and_XlaShardingV2_consistent");
+  node2.mutable_attr()->insert({{"sharding", xla_sharding_v1},
+                                {"_XlaShardingV2", xla_sharding_v2},
+                                {"index", index},
+                                {"T", type}});
+  auto sharding2 = GetShardingFromNodeDef(node2, /*add_metadata=*/false);
+  TF_ASSERT_OK(sharding2.status());
+  EXPECT_TRUE(sharding2->has_value());
+  EXPECT_EQ(sharding2->value().tile_assignment_devices_size(), 0);
+
+  NodeDef node3;
+  node3.set_op("XlaSharding");
+  node3.set_name("with_sharding_and_XlaShardingV2_inconsistent");
+  node3.mutable_attr()->insert({{"sharding", xla_sharding_v1_diff},
+                                {"_XlaShardingV2", xla_sharding_v2},
+                                {"index", index},
+                                {"T", type}});
+  auto sharding3 = GetShardingFromNodeDef(node3, /*add_metadata=*/false);
+  EXPECT_FALSE(sharding3.status().ok());
+  EXPECT_THAT(
+      sharding3.status().message(),
+      ::testing::HasSubstr(
+          "Sharding attribute was not equivalent to XlaShardingV2 attribute"));
 }
 
 class ShardingWithMetadataTest
