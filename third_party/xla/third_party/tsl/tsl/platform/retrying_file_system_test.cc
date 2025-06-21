@@ -312,7 +312,8 @@ TEST(RetryingFileSystemTest, NewRandomAccessFile_NoRetriesForSomeErrors) {
   absl::string_view result;
   char scratch[10];
   EXPECT_EQ("Failed precondition",
-            random_access_file->Read(0, 10, &result, scratch).message());
+            random_access_file->Read(0, result, absl::MakeSpan(scratch, 10))
+                .message());
 }
 
 TEST(RetryingFileSystemTest, NewWritableFile_ImmediateSuccess) {
