@@ -406,41 +406,29 @@ const NumpyScalarTypes& GetNumpyScalarTypes() {
     nb::module_ numpy = nb::module_::import_("numpy");
     nb::module_ ml_dtypes = nb::module_::import_("ml_dtypes");
     dtypes->np_bool = nb::object(numpy.attr("bool_"));
-    if (nb::hasattr(ml_dtypes, "int2")) {
-      dtypes->np_int2 = nb::object(ml_dtypes.attr("int2"));
-    }
+    dtypes->np_int2 = nb::object(ml_dtypes.attr("int2"));
     dtypes->np_int4 = nb::object(ml_dtypes.attr("int4"));
     dtypes->np_int8 = nb::object(numpy.attr("int8"));
     dtypes->np_int16 = nb::object(numpy.attr("int16"));
     dtypes->np_int32 = nb::object(numpy.attr("int32"));
     dtypes->np_int64 = nb::object(numpy.attr("int64"));
-    if (nb::hasattr(ml_dtypes, "uint2")) {
-      dtypes->np_uint2 = nb::object(ml_dtypes.attr("uint2"));
-    }
+    dtypes->np_uint2 = nb::object(ml_dtypes.attr("uint2"));
     dtypes->np_uint4 = nb::object(ml_dtypes.attr("uint4"));
     dtypes->np_uint8 = nb::object(numpy.attr("uint8"));
     dtypes->np_uint16 = nb::object(numpy.attr("uint16"));
     dtypes->np_uint32 = nb::object(numpy.attr("uint32"));
     dtypes->np_uint64 = nb::object(numpy.attr("uint64"));
     dtypes->np_bfloat16 = nb::object(ml_dtypes.attr("bfloat16"));
-    if (nb::hasattr(ml_dtypes, "float4_e2m1fn")) {
-      dtypes->np_float4_e2m1fn = nb::object(ml_dtypes.attr("float4_e2m1fn"));
-    }
-    if (nb::hasattr(ml_dtypes, "float8_e3m4")) {
-      dtypes->np_float8_e3m4 = nb::object(ml_dtypes.attr("float8_e3m4"));
-    }
-    if (nb::hasattr(ml_dtypes, "float8_e4m3")) {
-      dtypes->np_float8_e4m3 = nb::object(ml_dtypes.attr("float8_e4m3"));
-    }
+    dtypes->np_float4_e2m1fn = nb::object(ml_dtypes.attr("float4_e2m1fn"));
+    dtypes->np_float8_e3m4 = nb::object(ml_dtypes.attr("float8_e3m4"));
+    dtypes->np_float8_e4m3 = nb::object(ml_dtypes.attr("float8_e4m3"));
     dtypes->np_float8_e4m3fn = nb::object(ml_dtypes.attr("float8_e4m3fn"));
     dtypes->np_float8_e4m3b11fnuz =
         nb::object(ml_dtypes.attr("float8_e4m3b11fnuz"));
     dtypes->np_float8_e5m2 = nb::object(ml_dtypes.attr("float8_e5m2"));
     dtypes->np_float8_e4m3fnuz = nb::object(ml_dtypes.attr("float8_e4m3fnuz"));
     dtypes->np_float8_e5m2fnuz = nb::object(ml_dtypes.attr("float8_e5m2fnuz"));
-    if (nb::hasattr(ml_dtypes, "float8_e8m0fnu")) {
-      dtypes->np_float8_e8m0fnu = nb::object(ml_dtypes.attr("float8_e8m0fnu"));
-    }
+    dtypes->np_float8_e8m0fnu = nb::object(ml_dtypes.attr("float8_e8m0fnu"));
     dtypes->np_float16 = nb::object(numpy.attr("float16"));
     dtypes->np_float32 = nb::object(numpy.attr("float32"));
     dtypes->np_float64 = nb::object(numpy.attr("float64"));

@@ -89,6 +89,7 @@ struct NumpyScalarTypes {
   nanobind::object np_float8_e4m3fnuz;
   nanobind::object np_float8_e5m2;
   nanobind::object np_float8_e5m2fnuz;
+  // Remove std::optional once the minimum ml_dtypes in JAX is >= 0.5.0.
   std::optional<nanobind::object> np_float8_e8m0fnu;
   nanobind::object np_float16;
   nanobind::object np_float32;
@@ -97,6 +98,12 @@ struct NumpyScalarTypes {
   nanobind::object np_complex128;
   nanobind::object np_longlong;
   nanobind::object np_intc;
+  nanobind::object np_int2_v() { return np_int2.value(); };
+  nanobind::object np_uint2_v() { return np_uint2.value(); };
+  nanobind::object np_float4_e2m1fn_v() { return np_float4_e2m1fn.value(); };
+  nanobind::object np_float8_e3m4_v() { return np_float8_e3m4.value(); };
+  nanobind::object np_float8_e4m3_v() { return np_float8_e4m3.value(); };
+  nanobind::object np_float8_e8m0fnu_v() { return np_float8_e8m0fnu.value(); };
 };
 const NumpyScalarTypes& GetNumpyScalarTypes();
 
