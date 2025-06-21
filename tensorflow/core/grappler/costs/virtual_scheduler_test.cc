@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <string>
 
 #include "absl/strings/match.h"
@@ -2097,7 +2098,7 @@ versions {
 }
   )EOF";
 
-    grappler_item_.reset(new GrapplerItem);
+    grappler_item_ = std::make_unique<GrapplerItem>();
     CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii,
                                                 &grappler_item_->graph));
     grappler_item_->id = "test_graph";
