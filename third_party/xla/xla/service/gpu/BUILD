@@ -1182,8 +1182,8 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
-        "//xla/service:overload",
         "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/functional:overload",
     ],
 )
 
@@ -2564,10 +2564,11 @@ xla_test(
     deps = [
         "//xla:error_spec",
         "//xla:xla_proto_cc",
-        "//xla/service:overload",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:hlo_test_base",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/functional:overload",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
     ],
