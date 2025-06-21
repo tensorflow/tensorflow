@@ -25,6 +25,7 @@ cc_library(
         "symbolic_tile_propagation.h",
     ],
     deps = [
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu/model:constraint_expression",
