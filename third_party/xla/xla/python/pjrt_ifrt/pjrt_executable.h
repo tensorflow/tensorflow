@@ -156,9 +156,10 @@ class PjRtExecutable final
     return xla::ifrt::FromPjRtAttributeMap(std::move(result));
   }
 
-  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
-  GetOutputMemoryKinds() const override {
-    return pjrt_executable_->GetOutputMemoryKinds();
+  absl::StatusOr<std::vector<absl::string_view>> GetOutputMemoryKinds()
+      const override {
+    TF_ASSIGN_OR_RETURN(auto result, pjrt_executable_->GetOutputMemoryKinds());
+    return std::move(result.front());
   }
 
   static char ID;  // NOLINT
@@ -278,10 +279,12 @@ class PjRtLoadedExecutable final
     return pjrt_loaded_executable_->GetHloModules();
   }
 
-  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
-  GetOutputMemoryKinds() const override {
+  absl::StatusOr<std::vector<absl::string_view>> GetOutputMemoryKinds()
+      const override {
     DCHECK(this);
-    return pjrt_loaded_executable_->GetOutputMemoryKinds();
+    TF_ASSIGN_OR_RETURN(auto result,
+                        pjrt_loaded_executable_->GetOutputMemoryKinds());
+    return std::move(result.front());
   }
 
   PjRtCompatibleClient* client() const override {
