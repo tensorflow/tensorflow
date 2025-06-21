@@ -70,6 +70,15 @@ constexpr char kSolChunkSizeBytes[] = "chunk_size_bytes";
 // cost model.
 constexpr char kSolGpusPerNode[] = "gpus_per_node";
 
+// Defines the frontend attribute when compiler determines whether a collective
+// is trivially pipelineable.
+constexpr char kTriviallyPipelineable[] = "trivially_pipelineable";
+
+// Defines the frontend attribute which tells the compiler how much spare memory
+// there is post heap simulation.
+constexpr char kAvailableMemoryPostScheduling[] =
+    "available_memory_post_scheduling";
+
 }  // namespace xla
 
 #endif  // XLA_SERVICE_COLLECTIVE_UTILS_H_
