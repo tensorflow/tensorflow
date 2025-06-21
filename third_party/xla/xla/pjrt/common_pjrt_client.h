@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -148,6 +149,17 @@ class CommonPjRtClient : public PjRtClient {
       tsl::RCReference<CommonPjRtRawBuffer> raw_buffer) {
     return absl::UnimplementedError("LinearizeHostBufferInto is not supported");
   }
+};
+
+// TODO(parkers): Merge everything here into CommonPjRtBuffer.
+class CommonPjRtBufferImpl : public CommonPjRtBuffer {
+ public:
+  using CommonPjRtBuffer::CommonPjRtBuffer;
+
+  // This behaves like CopyToMemorySpace for memory space pairs which
+  // require no layout changes.
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> DirectCopyToMemorySpace(
+      PjRtMemorySpace* dst_memory_space);
 };
 
 }  // namespace xla
