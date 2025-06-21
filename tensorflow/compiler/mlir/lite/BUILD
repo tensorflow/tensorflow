@@ -1863,13 +1863,13 @@ tf_cc_binary(
     ],
     deps = [
         ":common",
+        ":converter_flags_proto_cc",
         ":flatbuffer_translate_lib",
         ":flatbuffer_translate_registration",
         ":tensorflow_lite",
         ":tf_tfl_translate_cl_options",
         ":tf_to_tfl_flatbuffer",
         "//tensorflow/compiler/mlir:init_mlir",
-        "//tensorflow/compiler/mlir/lite:converter_flags_proto_cc",
         "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib:quantization_config",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
@@ -1889,6 +1889,7 @@ tf_cc_binary(
         "@llvm-project//mlir:Support",
         "@local_xla//xla/hlo/translate/hlo_to_mhlo:translate",
         "@local_xla//xla/mlir_hlo",
+        "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
     ],
 )
