@@ -2955,8 +2955,7 @@ PjRtFuture<> TfrtGpuBuffer::LazyToLiteral(
   return ToLiteral(buffer.value());
 }
 
-// TODO - b/383558503: Fix cognitive complexity from ClangTidy.
-PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst,
+PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst_future,
                                                 int64_t offset,
                                                 int64_t transfer_size) {
   VLOG(3) << "TfrtGpuBuffer::CopyRawToHostFuture";
@@ -2964,102 +2963,99 @@ PjRtFuture<> TfrtGpuBuffer::CopyRawToHostFuture(PjRtFuture<void*> dst,
   auto promise = PjRtFuture<>::CreatePromise();
   auto usage_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   auto* device_buffer = AcquireUsage(usage_event);
+  MarkGpuEventReadyOnExit usage_event_holder(std::move(usage_event));
   if (device_buffer == nullptr) {
     return PjRtFuture<>(
         InvalidArgument("ToLiteral() called on deleted or donated buffer"));
   }
-  EnqueueWorkWhenReady(
-      client_->blocking_thread_pool(),
-      {device_buffer->definition_event().CopyRCRef()},
-      [device(device_), device_buffer, usage_event(std::move(usage_event)), dst,
-       promise, client = client_, offset, transfer_size]() mutable {
-        tsl::profiler::TraceMe traceme("CopyRawToHostFuture::D2H_copy");
-        if (device_buffer->definition_event().IsError()) {
-          usage_event.SetStateConcrete();
-          LOG(ERROR) << "device_buffer->definition_event().GetError(): "
-                     << device_buffer->definition_event().GetError();
-          promise.Set(device_buffer->definition_event().GetError());
-          return;
-        }
-        se::DeviceMemoryBase device_memory = device_buffer->buffer()->buffer();
-        if (offset < 0 || offset > device_memory.size() ||
-            device_memory.size() - offset < transfer_size) {
-          usage_event.SetStateConcrete();
-          LOG(ERROR) << "Copy raw buffer called on buffer size "
-                     << device_memory.size() << " with invalid offset "
-                     << offset << ", transfer size " << transfer_size;
-          promise.Set(
-              InvalidArgument("Copy raw buffer called on buffer size %lld with "
-                              "invalid offset %lld, transfer size %lld",
-                              device_memory.size(), offset, transfer_size));
-          return;
-        }
+  auto copy_to_host = [device(device_), device_buffer, promise,
+                       usage_event_holder = std::move(usage_event_holder),
+                       client = client_, offset,
+                       transfer_size](void* dst) mutable {
+    if (device_buffer->definition_event().IsError()) {
+      LOG(ERROR) << "device_buffer->definition_event().GetError(): "
+                 << device_buffer->definition_event().GetError();
+      promise.Set(device_buffer->definition_event().GetError());
+      return;
+    }
+    se::DeviceMemoryBase device_memory = device_buffer->buffer()->buffer();
+    if (offset < 0 || offset > device_memory.size() ||
+        device_memory.size() - offset < transfer_size) {
+      LOG(ERROR) << "Copy raw buffer called on buffer size "
+                 << device_memory.size() << " with invalid offset " << offset
+                 << ", transfer size " << transfer_size;
+      promise.Set(
+          InvalidArgument("Copy raw buffer called on buffer size %lld with "
+                          "invalid offset %lld, transfer size %lld",
+                          device_memory.size(), offset, transfer_size));
+      return;
+    }
 
-        std::unique_ptr<se::DeviceMemoryBase> sub_buffer;
-        if (transfer_size < device_memory.size()) {
-          sub_buffer = std::make_unique<se::DeviceMemoryBase>(
-              device_memory.GetByteSlice(offset, transfer_size));
-        } else {
-          sub_buffer = std::make_unique<se::DeviceMemoryBase>(device_memory);
-        }
-        dst.OnReady([client = std::move(client), promise = std::move(promise),
-                     usage_event = std::move(usage_event),
-                     device = std::move(device),
-                     sub_buffer = std::move(sub_buffer),
-                     transfer_size](absl::StatusOr<void*> dst) mutable {
-          HostMemoryAllocator::OwnedPtr staging_buffer;
-          if (client->should_stage_host_to_device_transfers() &&
-              !client->IsDmaMapped(dst.value(), transfer_size)) {
-            staging_buffer =
-                client->host_memory_allocator()->Allocate(transfer_size);
-          }
+    std::unique_ptr<se::DeviceMemoryBase> sub_buffer;
+    if (transfer_size < device_memory.size()) {
+      sub_buffer = std::make_unique<se::DeviceMemoryBase>(
+          device_memory.GetByteSlice(offset, transfer_size));
+    } else {
+      sub_buffer = std::make_unique<se::DeviceMemoryBase>(device_memory);
+    }
 
-          {
-            tsl::profiler::TraceMe traceme2([&] {
-              return tsl::profiler::TraceMeEncode(
-                  "CopyRawToHostFuture::D2H_GPU_copy",
-                  {
-                      {"device", device->id()},
-                      {"size", transfer_size},
-                  });
-            });
-            MarkGpuEventReadyOnExit ready_on_exit(std::move(usage_event));
-            auto stream = device->stream();
-            void* host_ptr =
-                staging_buffer != nullptr ? staging_buffer.get() : dst.value();
+    HostMemoryAllocator::OwnedPtr staging_buffer;
+    if (client->should_stage_host_to_device_transfers() &&
+        !client->IsDmaMapped(dst, transfer_size)) {
+      staging_buffer = client->host_memory_allocator()->Allocate(transfer_size);
+    }
 
-            VLOG(3) << "D2H copy: " << sub_buffer->opaque() << " -> "
-                    << host_ptr << " (" << transfer_size << " bytes)";
-            CHECK_OK(stream->Memcpy(host_ptr, *sub_buffer, transfer_size))
-                << "stream->Memcpy failed copying from GPU to host";
-            absl::Status status;
-            {
-              tsl::profiler::TraceMe traceme("BlockHostUntilDone");
-              status = stream->BlockHostUntilDone();
-            }
-            VLOG(3) << "D2H copy done. " << status;
-            if (!status.ok()) {
-              LOG(ERROR) << "stream->BlockHostUntilDone failed: " << status;
-              promise.Set(status);
-              return;
-            }
-          }
-          if (!dst.ok()) {
-            promise.Set(dst.status());
-            LOG(ERROR) << "dst.status(): " << dst.status();
-            return;
-          }
-          if (staging_buffer != nullptr) {
-            tsl::profiler::TraceMe traceme3(
-                "CopyRawToHostFuture::D2H staging copy");
-            std::memcpy(dst.value(), staging_buffer.get(), transfer_size);
-            VLOG(3) << "D2H staging copy done: " << staging_buffer.get()
-                    << " -> " << dst.value() << " (" << transfer_size
-                    << " bytes)";
-          }
-          promise.Set(absl::OkStatus());
-        });
+    {
+      tsl::profiler::TraceMe traceme2([&] {
+        return tsl::profiler::TraceMeEncode("CopyRawToHostFuture::D2H_GPU_copy",
+                                            {
+                                                {"device", device->id()},
+                                                {"size", transfer_size},
+                                            });
       });
+      auto stream = device->stream();
+      void* host_ptr = staging_buffer != nullptr ? staging_buffer.get() : dst;
+
+      VLOG(3) << "D2H copy: " << sub_buffer->opaque() << " -> " << host_ptr
+              << " (" << transfer_size << " bytes)";
+      CHECK_OK(stream->Memcpy(host_ptr, *sub_buffer, transfer_size))
+          << "stream->Memcpy failed copying from GPU to host";
+      absl::Status status;
+      {
+        tsl::profiler::TraceMe traceme("BlockHostUntilDone");
+        status = stream->BlockHostUntilDone();
+      }
+      VLOG(3) << "D2H copy done. " << status;
+      if (!status.ok()) {
+        LOG(ERROR) << "stream->BlockHostUntilDone failed: " << status;
+        promise.Set(status);
+        return;
+      }
+    }
+    if (staging_buffer != nullptr) {
+      tsl::profiler::TraceMe traceme3("CopyRawToHostFuture::D2H_staging_copy");
+      std::memcpy(dst, staging_buffer.get(), transfer_size);
+      VLOG(3) << "D2H staging copy done: " << staging_buffer.get() << " -> "
+              << dst << " (" << transfer_size << " bytes)";
+    }
+    promise.Set(absl::OkStatus());
+  };
+
+  dst_future.OnReady([client(client_), promise, device_buffer,
+                      copy_to_host = std::move(copy_to_host)](
+                         absl::StatusOr<void*> dst_or) mutable {
+    if (!dst_or.ok()) {
+      promise.Set(dst_or.status());
+      LOG(ERROR) << "dst resolved to an error: " << dst_or.status();
+      return;
+    }
+    EnqueueWorkWhenReady(client->blocking_thread_pool(),
+                         {device_buffer->definition_event().CopyRCRef()},
+                         [dst = std::move(dst_or.value()),
+                          copy_to_host = std::move(copy_to_host)]() mutable {
+                           std::move(copy_to_host)(dst);
+                         });
+  });
 
   return PjRtFuture<>(
       std::move(promise),
