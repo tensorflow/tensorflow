@@ -53,12 +53,14 @@
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/program_serdes.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt_proxy/common/array_util.h"
@@ -112,7 +114,6 @@ using ::tsl::testing::StatusIs;
 
 #if defined(PLATFORM_GOOGLE)
 using ::testing::EquivToProto;
-using ::testing::proto::IgnoringRepeatedFieldOrdering;
 using ::testing::proto::Partially;
 #endif
 
@@ -124,6 +125,10 @@ class IfrtBackendTest
   IfrtProxyVersion Version() {
     IfrtProxyVersion version;
     version.set_protocol_version(GetParam());
+    // TODO(hyeontaek): For a more realistic test setup, the IFRT SerDes version
+    // should vary by the IFRT Proxy protocol version.
+    version.set_ifrt_serdes_version_number(
+        SerDesVersion::current().version_number().value());
     return version;
   }
 };
@@ -1200,15 +1205,15 @@ TEST_P(IfrtBackendHandlerTest, LoadedExecutableMetadata) {
 
     std::vector<std::shared_ptr<const xla::PjRtLayout>> parameter_layouts;
     parameter_layouts.push_back(std::make_shared<xla::PjRtLayout>(
-        xla::LayoutUtil::MakeDescendingLayout(/*rank=*/1)));
+        xla::LayoutUtil::MakeDescendingLayout(/*num_dims=*/1)));
     parameter_layouts.push_back(std::make_shared<xla::PjRtLayout>(
-        xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2)));
+        xla::LayoutUtil::MakeDescendingLayout(/*num_dims=*/2)));
     EXPECT_CALL(*executable, GetParameterLayouts())
         .WillOnce(Return(std::move(parameter_layouts)));
 
     std::vector<std::shared_ptr<const xla::PjRtLayout>> output_layouts;
     output_layouts.push_back(std::make_shared<xla::PjRtLayout>(
-        xla::LayoutUtil::MakeDescendingLayout(/*rank=*/2)));
+        xla::LayoutUtil::MakeDescendingLayout(/*num_dims=*/2)));
     EXPECT_CALL(*executable, GetOutputLayouts())
         .WillOnce(Return(std::move(output_layouts)));
     EXPECT_CALL(*executable, GetOutputMemoryKinds())

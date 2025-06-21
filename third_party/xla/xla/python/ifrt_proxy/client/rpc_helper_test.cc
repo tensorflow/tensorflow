@@ -24,6 +24,7 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt_proxy/client/client_session.h"
 #include "xla/python/ifrt_proxy/client/mock_client_session.h"
 #include "xla/python/ifrt_proxy/client/version.h"
@@ -77,6 +78,8 @@ class RpcHelperTest : public ::testing::Test {
     session_ = std::make_shared<MockClientSession>();
     IfrtProxyVersion version;
     version.set_protocol_version(kClientMaxVersion);
+    version.set_ifrt_serdes_version_number(
+        SerDesVersion::current().version_number().value());
     rpc_helper_ = std::make_shared<RpcHelper>(version, session_);
     EXPECT_CALL(*session_, Finish(_)).Times(1);
     ON_CALL(*session_, Enqueue)

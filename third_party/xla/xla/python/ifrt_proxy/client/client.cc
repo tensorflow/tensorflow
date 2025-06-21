@@ -93,7 +93,7 @@ absl::StatusOr<std::unique_ptr<Client>> Client::Create(
       init_response.addressable_device_ids().begin(),
       init_response.addressable_device_ids().end());
   absl::flat_hash_set<int> primary_device_ids;
-  if (rpc_helper->version().protocol_version() < 7) {
+  if (rpc_helper->protocol_version() < 7) {
     // Legacy implementation for servers do not support Client::GetAllDevices()
     // and thus do not provide device_ids(). Assume that it contains all device
     // ids from devices().
@@ -123,7 +123,7 @@ absl::StatusOr<std::unique_ptr<Client>> Client::Create(
   for (const auto& d : init_response.all_devices()) {
     absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>
         pjrt_device_attributes;
-    if (rpc_helper->version().protocol_version() <= 3) {
+    if (rpc_helper->protocol_version() <= 3) {
       for (const auto& [key, attr] : d.deprecated_attributes()) {
         TF_ASSIGN_OR_RETURN(xla::PjRtDeviceAttribute value,
                             FromVariantProto(attr));
@@ -335,7 +335,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
   req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
 
   std::vector<uint64_t> result_handles;
-  if (rpc_helper_->version().protocol_version() <
+  if (rpc_helper_->protocol_version() <
       protocol_version::kClientHandlesOptimization2) {
     TF_ASSIGN_OR_RETURN(auto response,
                         rpc_helper_->CopyArrays(std::move(req)).Await());
@@ -462,7 +462,7 @@ absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> Client::GetDefaultLayout(
     }
   }
 
-  *req->mutable_dtype() = dtype.ToProto();
+  *req->mutable_dtype() = dtype.ToProto(rpc_helper_->ifrt_serdes_version());
   req->mutable_dims()->Reserve(dims.size());
   for (int64_t dim : dims) {
     req->add_dims(dim);

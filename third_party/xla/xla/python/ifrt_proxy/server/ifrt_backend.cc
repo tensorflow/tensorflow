@@ -61,6 +61,8 @@
 #include "xla/python/ifrt/program_serdes.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes_any_version_accessor.h"
+#include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/value.h"
@@ -463,6 +465,17 @@ absl::StatusOr<std::unique_ptr<IfrtBackend>> IfrtBackend::Create(
         " is unsupported by IFRT Proxy server; supported versions: [",
         kServerMinVersion, ",", kServerMaxVersion, "]"));
   }
+  const SerDesVersionNumber ifrt_serdes_version_number(
+      SerDesVersion::current().version_number());
+  if (ifrt_serdes_version_number <
+          SerDesAnyVersionAccessor::GetMinimum().version_number() ||
+      ifrt_serdes_version_number > SerDesVersion::current().version_number()) {
+    return absl::FailedPreconditionError(absl::StrCat(
+        "IFRT SerDes ", ifrt_serdes_version_number,
+        " is unsupported by IFRT Proxy server; supported versions: [",
+        SerDesAnyVersionAccessor::GetMinimum().version_number(), ",",
+        SerDesVersion::current().version_number(), "]"));
+  }
   return absl::WrapUnique<IfrtBackend>(
       new IfrtBackend(std::move(version), session_id, std::move(ifrt_client),
                       std::move(host_buffer_store)));
@@ -688,7 +701,7 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleInit(
   init_resp->set_process_index(client_->process_index());
 
   absl::Span<xla::ifrt::Device* const> all_devices;
-  if (version_.protocol_version() < 7) {
+  if (protocol_version() < 7) {
     all_devices = client_->devices();
   } else {
     all_devices = client_->GetAllDevices();
@@ -705,7 +718,7 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleInit(
     }
     d->set_debug_string(AsProtoStringData(device->DebugString()));
     d->set_to_string(AsProtoStringData(device->ToString()));
-    if (version_.protocol_version() <= 3) {
+    if (protocol_version() <= 3) {
       for (const auto& [name, attr] : device->Attributes().map()) {
         TF_ASSIGN_OR_RETURN(
             (*d->mutable_deprecated_attributes())[name],
@@ -714,7 +727,8 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleInit(
                 attr));
       }
     } else {
-      *d->mutable_attributes() = device->Attributes().ToProto();
+      *d->mutable_attributes() =
+          device->Attributes().ToProto(ifrt_serdes_version());
     }
 
     if (device->IsAddressable()) {
@@ -747,7 +761,8 @@ absl::StatusOr<BackendInterface::Response> IfrtBackend::HandleInit(
     m->set_debug_string(AsProtoStringData(memory->DebugString()));
     m->set_to_string(AsProtoStringData(memory->ToString()));
   }
-  *init_resp->mutable_client_attributes() = client_->Attributes().ToProto();
+  *init_resp->mutable_client_attributes() =
+      client_->Attributes().ToProto(ifrt_serdes_version());
 
   return response;
 }
@@ -1004,7 +1019,7 @@ IfrtBackend::HandleAssembleArrayFromSingleDeviceArraysRequest(
       auto array_copy_semantics,
       FromArrayCopySemanticsProto(assemble_request.copy_semantics()));
   SingleDeviceShardSemantics single_device_shard_semantics;
-  if (version_.protocol_version() < 8) {
+  if (protocol_version() < 8) {
     single_device_shard_semantics = SingleDeviceShardSemantics::kAllShards;
   } else {
     TF_ASSIGN_OR_RETURN(single_device_shard_semantics,
@@ -1012,7 +1027,7 @@ IfrtBackend::HandleAssembleArrayFromSingleDeviceArraysRequest(
                             assemble_request.single_device_shard_semantics()));
   }
   IfrtArrayRef array;
-  if (version_.protocol_version() <
+  if (protocol_version() <
       protocol_version::kAssembleArrayFromSingleDeviceArraysWithDType) {
     if (arrays.empty()) {
       return absl::InvalidArgumentError(
@@ -1195,7 +1210,7 @@ IfrtBackend::HandleDisassembleIntoSingleDeviceArraysRequest(
   TF_ASSIGN_OR_RETURN(IfrtArrayRef array,
                       array_store_.Find(disassemble_request.array_handle()));
   SingleDeviceShardSemantics single_device_shard_semantics;
-  if (version_.protocol_version() < 8) {
+  if (protocol_version() < 8) {
     single_device_shard_semantics = SingleDeviceShardSemantics::kAllShards;
   } else {
     TF_ASSIGN_OR_RETURN(
@@ -1590,7 +1605,7 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
   // Force the old behavior where `fill_status` was implicitly true before
   // protocol version 6. Can be cleaned up once version 6 is outside the
   // compatibility window.
-  if (version_.protocol_version() < 6) {
+  if (protocol_version() < 6) {
     execute_options.fill_status = true;
   }
 
@@ -1671,8 +1686,9 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
   if (execute.result_array_handle().empty()) {
     output_sharding_protos.reserve(result.outputs.size());
     for (int i = 0; i < result.outputs.size(); ++i) {
-      TF_ASSIGN_OR_RETURN(output_sharding_protos.emplace_back(),
-                          result.outputs[i]->sharding().ToProto());
+      TF_ASSIGN_OR_RETURN(
+          output_sharding_protos.emplace_back(),
+          result.outputs[i]->sharding().ToProto(ifrt_serdes_version()));
     }
   }
 
@@ -1704,8 +1720,10 @@ IfrtBackend::HandleLoadedExecutableExecuteRequest(
       for (int i = 0; i < result.outputs.size(); ++i) {
         LoadedExecutableExecuteResponse::Output* output =
             execute_response->add_outputs();
-        *output->mutable_dtype() = result.outputs[i]->dtype().ToProto();
-        *output->mutable_shape() = result.outputs[i]->shape().ToProto();
+        *output->mutable_dtype() =
+            result.outputs[i]->dtype().ToProto(ifrt_serdes_version());
+        *output->mutable_shape() =
+            result.outputs[i]->shape().ToProto(ifrt_serdes_version());
         *output->mutable_sharding() = std::move(output_sharding_protos[i]);
         output->set_array_handle(result_handles[i]);
       }
