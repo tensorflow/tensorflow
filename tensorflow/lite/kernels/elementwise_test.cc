@@ -54,12 +54,13 @@ class ElementWiseOpIntModel : public ElementWiseOpBaseModel {
   }
 };
 
+template <typename T>
 class ElementWiseOpFloatModel : public ElementWiseOpBaseModel {
  public:
   ElementWiseOpFloatModel(BuiltinOperator op,
                           std::initializer_list<int> input_shape) {
-    input_ = AddInput(TensorType_FLOAT32);
-    output_ = AddOutput(TensorType_FLOAT32);
+    input_ = AddInput(GetTensorType<T>());
+    output_ = AddOutput(GetTensorType<T>());
     SetBuiltinOp(op, BuiltinOptions_NONE, 0);
     BuildInterpreter({input_shape});
   }
@@ -158,7 +159,7 @@ float GetQuantizationStep(float min, float max) {
 }
 
 TEST(ElementWise, Sin) {
-  ElementWiseOpFloatModel m(BuiltinOperator_SIN, {1, 1, 4, 1});
+  ElementWiseOpFloatModel<float> m(BuiltinOperator_SIN, {1, 1, 4, 1});
   m.PopulateTensor<float>(m.input(), {0, 3.1415926, -3.1415926, 1});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractVector<float>(m.output()),
@@ -166,8 +167,56 @@ TEST(ElementWise, Sin) {
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
 }
 
+TEST(ElementWise, SinFloat16) {
+  ElementWiseOpFloatModel<Eigen::half> m(BuiltinOperator_SIN, {1, 1, 4, 1});
+  m.PopulateTensor<Eigen::half>(
+      m.input(), {Eigen::half(-4.940800e-02), Eigen::half(-6.596680e-01),
+                  Eigen::half(7.641600e-01), Eigen::half(4.597660e+00)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  ASSERT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+  EXPECT_THAT(m.ExtractVector<Eigen::half>(m.output()),
+              ElementsAreArray(ArrayFloatNear({-4.937740e-02, -6.127930e-01,
+                                               6.918940e-01, -9.936520e-01})));
+}
+
+TEST(ElementWise, SinBfloat16) {
+  ElementWiseOpFloatModel<Eigen::bfloat16> m(BuiltinOperator_SIN, {1, 1, 4, 1});
+  m.PopulateTensor<Eigen::bfloat16>(
+      m.input(),
+      {Eigen::bfloat16(-2.250000e+00), Eigen::bfloat16(6.468750e+00),
+       Eigen::bfloat16(1.007810e+00), Eigen::bfloat16(1.796880e-01)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  ASSERT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+  EXPECT_THAT(m.ExtractVector<Eigen::bfloat16>(m.output()),
+              ElementsAreArray(ArrayFloatNear(
+                  {-7.773430e-01, 1.845700e-01, 8.437500e-01, 1.787110e-01})));
+}
+
+TEST(ElementWise, SinInt16) {
+  const float input_min = -13.2f;
+  const float input_max = 13.2f;
+  const float output_min = -2.5802f;
+  const float output_max = 2.5802f;
+  const float kQuantizedTolerance =
+      GetLUTTolerance<int16_t>(input_min, input_max, output_min, output_max);
+  ElementWiseOpQuantizedModel m(
+      BuiltinOperator_SIN,
+      {TensorType_INT16, {1, 2, 2, 2}, input_min, input_max},
+      {TensorType_INT16, {}, output_min, output_max});
+  m.QuantizeAndPopulate<int16_t>(
+      m.input(), {0.1f, 0.5f, 1.0f, 1.15f, 2.3f, 5.01f, 11.0f, 13.2f});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  ASSERT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 2, 2, 2}));
+  EXPECT_THAT(
+      m.ExtractDequantVector<int16_t>(m.output()),
+      ElementsAreArray(ArrayFloatNear(
+          {std::sin(0.1f), std::sin(0.5f), std::sin(1.0f), std::sin(1.15f),
+           std::sin(2.3f), std::sin(5.01f), std::sin(11.0f), std::sin(13.2f)},
+          kQuantizedTolerance)));
+}
+
 TEST(ElementWise, Cos) {
-  ElementWiseOpFloatModel m(BuiltinOperator_COS, {1, 1, 4, 1});
+  ElementWiseOpFloatModel<float> m(BuiltinOperator_COS, {1, 1, 4, 1});
   m.PopulateTensor<float>(m.input(), {0, 3.1415926, -3.1415926, 1});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractVector<float>(m.output()),
@@ -175,13 +224,63 @@ TEST(ElementWise, Cos) {
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
 }
 
+TEST(ElementWise, CosFloat16) {
+  ElementWiseOpFloatModel<Eigen::half> m(BuiltinOperator_COS, {1, 1, 4, 1});
+  m.PopulateTensor<Eigen::half>(
+      m.input(), {Eigen::half(-9.057610e-01), Eigen::half(-1.757810e+00),
+                  Eigen::half(4.667970e-01), Eigen::half(2.005860e+00)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  ASSERT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+  EXPECT_THAT(m.ExtractVector<Eigen::half>(m.output()),
+              ElementsAreArray(ArrayFloatNear(
+                  {6.171880e-01, -1.859130e-01, 8.930660e-01, -4.213870e-01})));
+}
+
+TEST(ElementWise, CosBfloat16) {
+  ElementWiseOpFloatModel<Eigen::bfloat16> m(BuiltinOperator_COS, {1, 1, 4, 1});
+  m.PopulateTensor<Eigen::bfloat16>(
+      m.input(),
+      {Eigen::bfloat16(4.093750e+00), Eigen::bfloat16(-2.609380e+00),
+       Eigen::bfloat16(3.453130e+00), Eigen::bfloat16(5.843750e+00)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  ASSERT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+  EXPECT_THAT(m.ExtractVector<Eigen::bfloat16>(m.output()),
+              ElementsAreArray(ArrayFloatNear({-5.781250e-01, -8.632810e-01,
+                                               -9.531250e-01, 9.062500e-01})));
+}
+
 TEST(ElementWise, Log) {
-  ElementWiseOpFloatModel m(BuiltinOperator_LOG, {1, 1, 4, 1});
+  ElementWiseOpFloatModel<float> m(BuiltinOperator_LOG, {1, 1, 4, 1});
   m.PopulateTensor<float>(m.input(), {1, 3.1415926, 1, 1});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractVector<float>(m.output()),
               ElementsAreArray(ArrayFloatNear({0, 1.14473, 0, 0})));
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+}
+
+TEST(ElementWise, LogFloat16) {
+  ElementWiseOpFloatModel<Eigen::half> m(BuiltinOperator_LOG, {1, 1, 4, 1});
+  m.PopulateTensor<Eigen::half>(
+      m.input(), {Eigen::half(1.576170e+00), Eigen::half(5.097660e+00),
+                  Eigen::half(4.453130e+00), Eigen::half(4.390630e+00)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  ASSERT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+  EXPECT_THAT(m.ExtractVector<Eigen::half>(m.output()),
+              ElementsAreArray(ArrayFloatNear(
+                  {4.550780e-01, 1.628910e+00, 1.493160e+00, 1.479490e+00})));
+}
+
+TEST(ElementWise, LogBfloat16) {
+  ElementWiseOpFloatModel<Eigen::bfloat16> m(BuiltinOperator_LOG, {1, 1, 4, 1});
+  m.PopulateTensor<Eigen::bfloat16>(
+      m.input(),
+      {Eigen::bfloat16(1.914060e+00), Eigen::bfloat16(1.570310e+00),
+       Eigen::bfloat16(2.187500e+00), Eigen::bfloat16(1.460940e+00)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  ASSERT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+  EXPECT_THAT(m.ExtractVector<Eigen::bfloat16>(m.output()),
+              ElementsAreArray(ArrayFloatNear(
+                  {6.484380e-01, 4.511720e-01, 7.812500e-01, 3.789060e-01})));
 }
 
 TEST(ElementWise, LogInt8) {
@@ -231,7 +330,7 @@ TEST(ElementWise, LogInt16) {
 }
 
 TEST(ElementWise, Abs) {
-  ElementWiseOpFloatModel m(BuiltinOperator_ABS, {1, 2, 4, 1});
+  ElementWiseOpFloatModel<float> m(BuiltinOperator_ABS, {1, 2, 4, 1});
   m.PopulateTensor<float>(m.input(), {
                                          0.f, -6.2f, 2.f, 4.f,  //
                                          3.f, -2.f, 10.f, 1.f,  //
@@ -335,8 +434,34 @@ TEST(ElementWise, AbsInt16) {
       ElementsAreArray(ArrayFloatNear(expected_output, kQuantizedTolerance)));
 }
 
+TEST(ElementWise, AbsFloat16) {
+  ElementWiseOpFloatModel<Eigen::half> m(BuiltinOperator_ABS, {1, 1, 4, 1});
+  m.PopulateTensor<Eigen::half>(
+      m.input(), {Eigen::half(1.576170e+00), Eigen::half(5.097660e+00),
+                  Eigen::half(4.453130e+00), Eigen::half(4.390630e+00)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  ASSERT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+  EXPECT_THAT(m.ExtractVector<Eigen::half>(m.output()),
+              ElementsAreArray(ArrayFloatNear(
+                  {Eigen::half(1.576170e+00), Eigen::half(5.097660e+00),
+                   Eigen::half(4.453130e+00), Eigen::half(4.390630e+00)})));
+}
+
+TEST(ElementWise, AbsBfloat16) {
+  ElementWiseOpFloatModel<Eigen::bfloat16> m(BuiltinOperator_ABS, {1, 1, 4, 1});
+  m.PopulateTensor<Eigen::bfloat16>(
+      m.input(),
+      {Eigen::bfloat16(-1.914060e+00), Eigen::bfloat16(-1.570310e+00),
+       Eigen::bfloat16(2.187500e+00), Eigen::bfloat16(-1.460940e+00)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  ASSERT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+  EXPECT_THAT(m.ExtractVector<Eigen::bfloat16>(m.output()),
+              ElementsAreArray(ArrayFloatNear(
+                  {1.914060e+00, 1.570310e+00, 2.187500e+00, 1.460940e+00})));
+}
+
 TEST(ElementWise, Sqrt) {
-  ElementWiseOpFloatModel m(BuiltinOperator_SQRT, {1, 1, 4, 1});
+  ElementWiseOpFloatModel<float> m(BuiltinOperator_SQRT, {1, 1, 4, 1});
   m.PopulateTensor<float>(m.input(), {0, 1, 2, 4});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractVector<float>(m.output()),
@@ -344,13 +469,66 @@ TEST(ElementWise, Sqrt) {
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
 }
 
+TEST(ElementWise, SqrtFloat16) {
+  ElementWiseOpFloatModel<Eigen::half> m(BuiltinOperator_SQRT, {1, 1, 4, 1});
+  m.PopulateTensor<Eigen::half>(m.input(), {Eigen::half(0), Eigen::half(1),
+                                            Eigen::half(2), Eigen::half(4)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  ASSERT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+  EXPECT_THAT(
+      m.ExtractVector<Eigen::half>(m.output()),
+      ElementsAreArray(ArrayFloatNear({Eigen::half(0), Eigen::half(1),
+                                       Eigen::half(1.41421), Eigen::half(2)})));
+}
+
+TEST(ElementWise, SqrtBfloat16) {
+  ElementWiseOpFloatModel<Eigen::bfloat16> m(BuiltinOperator_SQRT,
+                                             {1, 1, 4, 1});
+  m.PopulateTensor<Eigen::bfloat16>(
+      m.input(), {Eigen::bfloat16(0), Eigen::bfloat16(1), Eigen::bfloat16(2),
+                  Eigen::bfloat16(4)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  ASSERT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+  EXPECT_THAT(m.ExtractVector<Eigen::bfloat16>(m.output()),
+              ElementsAreArray(ArrayFloatNear(
+                  {Eigen::bfloat16(0), Eigen::bfloat16(1),
+                   Eigen::bfloat16(1.41421), Eigen::bfloat16(2)})));
+}
+
 TEST(ElementWise, Rsqrt) {
-  ElementWiseOpFloatModel m(BuiltinOperator_RSQRT, {1, 1, 4, 1});
+  ElementWiseOpFloatModel<float> m(BuiltinOperator_RSQRT, {1, 1, 4, 1});
   m.PopulateTensor<float>(m.input(), {1, 2, 4, 9});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractVector<float>(m.output()),
               ElementsAreArray(ArrayFloatNear({1, 0.7071, 0.5, 0.33333})));
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+}
+
+TEST(ElementWise, RsqrtFloat16) {
+  ElementWiseOpFloatModel<Eigen::half> m(BuiltinOperator_RSQRT, {1, 1, 4, 1});
+  m.PopulateTensor<Eigen::half>(
+      m.input(), {Eigen::half(3.244140e+00), Eigen::half(3.066410e+00),
+                  Eigen::half(7.031250e-02), Eigen::half(5.570310e+00)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  ASSERT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+  EXPECT_THAT(m.ExtractVector<Eigen::half>(m.output()),
+              ElementsAreArray(ArrayFloatNear(
+                  {Eigen::half(5.551760e-01), Eigen::half(5.712890e-01),
+                   Eigen::half(3.771480e+00), Eigen::half(4.235840e-01)})));
+}
+
+TEST(ElementWise, RsqrtBfloat16) {
+  ElementWiseOpFloatModel<Eigen::bfloat16> m(BuiltinOperator_RSQRT,
+                                             {1, 1, 4, 1});
+  m.PopulateTensor<Eigen::bfloat16>(
+      m.input(),
+      {Eigen::bfloat16(1.304630e-03), Eigen::bfloat16(1.570310e+00),
+       Eigen::bfloat16(6.156250e+00), Eigen::bfloat16(6.562500e-01)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  ASSERT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+  EXPECT_THAT(m.ExtractVector<Eigen::bfloat16>(m.output()),
+              ElementsAreArray(ArrayFloatNear(
+                  {2.762500e+01, 7.968750e-01, 4.023440e-01, 1.234380e+00})));
 }
 
 TEST(ElementWise, RsqrtInt8) {
@@ -489,11 +667,38 @@ TEST(ElementWise, RsqrtNegativeInt16) {
 }
 
 TEST(ElementWise, Square) {
-  ElementWiseOpFloatModel m(BuiltinOperator_SQUARE, {1, 1, 4, 1});
+  ElementWiseOpFloatModel<float> m(BuiltinOperator_SQUARE, {1, 1, 4, 1});
   m.PopulateTensor<float>(m.input(), {1, 2, 0.5, -3.0});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractVector<float>(m.output()),
               ElementsAreArray(ArrayFloatNear({1, 4.0, 0.25, 9.0})));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+}
+
+TEST(ElementWise, SquareFloat16) {
+  ElementWiseOpFloatModel<Eigen::half> m(BuiltinOperator_SQUARE, {1, 1, 4, 1});
+  m.PopulateTensor<Eigen::half>(
+      m.input(),
+      {Eigen::half(1), Eigen::half(2), Eigen::half(0.5), Eigen::half(-3.0)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(
+      m.ExtractVector<Eigen::half>(m.output()),
+      ElementsAreArray(ArrayFloatNear({Eigen::half(1), Eigen::half(4.0),
+                                       Eigen::half(0.25), Eigen::half(9.0)})));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+}
+
+TEST(ElementWise, SquareBFloat16) {
+  ElementWiseOpFloatModel<Eigen::bfloat16> m(BuiltinOperator_SQUARE,
+                                             {1, 1, 4, 1});
+  m.PopulateTensor<Eigen::bfloat16>(
+      m.input(), {Eigen::bfloat16(1), Eigen::bfloat16(2), Eigen::bfloat16(0.5),
+                  Eigen::bfloat16(-3.0)});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<Eigen::bfloat16>(m.output()),
+              ElementsAreArray(ArrayFloatNear(
+                  {Eigen::bfloat16(1), Eigen::bfloat16(4.0),
+                   Eigen::bfloat16(0.25), Eigen::bfloat16(9.0)})));
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
 }
 
