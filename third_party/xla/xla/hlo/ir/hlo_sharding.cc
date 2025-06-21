@@ -889,33 +889,43 @@ absl::Status HloSharding::ValidateNonTuple(
     }
     return std::move(
         HloSharding(std::move(tuple_shardings)).SetShardGroupFromProto(proto));
-  } else if (proto.type() == OpSharding::REPLICATED) {
+  }
+  if (proto.type() == OpSharding::REPLICATED) {
     return std::move(Replicate(metadata).SetShardGroupFromProto(proto));
-  } else if (proto.type() == OpSharding::MANUAL) {
+  }
+  if (proto.type() == OpSharding::MANUAL) {
     return std::move(Manual(metadata).SetShardGroupFromProto(proto));
-  } else if (proto.type() == OpSharding::UNKNOWN) {
+  }
+  if (proto.type() == OpSharding::UNKNOWN) {
     return std::move(Unknown(metadata).SetShardGroupFromProto(proto));
-  } else if (proto.tile_assignment_devices().size() == 1) {
+  }
+  if (proto.type() == OpSharding::MAXIMAL) {
+    TF_RET_CHECK(proto.tile_assignment_devices().size() == 1)
+        << "Maximal sharding is expected to have single device assignment, but "
+        << proto.tile_assignment_devices().size() << " has provided.";
     return std::move(HloSharding(proto.tile_assignment_devices(0), metadata)
                          .SetShardGroupFromProto(proto));
-  } else if (!proto.iota_reshape_dims().empty() &&
-             absl::c_all_of(proto.iota_reshape_dims(),
-                            [](int64_t d) { return d == 1; })) {
-    return std::move(HloSharding(0, metadata).SetShardGroupFromProto(proto));
   }
 
-  TF_RET_CHECK(proto.type() != OpSharding::MAXIMAL)
-      << "Maximal sharding is expected to have single device assignment, but "
-      << proto.tile_assignment_devices().size() << " has provided.";
-
+  TF_RET_CHECK(proto.type() == OpSharding::OTHER);
   const bool use_iota_tile_assignments = !proto.iota_reshape_dims().empty();
   if (use_iota_tile_assignments) {
     TF_RET_CHECK(proto.tile_assignment_devices().empty());
     TF_RET_CHECK(proto.iota_reshape_dims().size() ==
                  proto.iota_transpose_perm().size());
   } else {
-    TF_RET_CHECK(proto.tile_assignment_devices().size() > 1)
-        << proto.ShortDebugString();
+    TF_RET_CHECK(!proto.tile_assignment_devices().empty());
+  }
+
+  // If there is only one device, returns replicated sharding.
+  if (use_iota_tile_assignments &&
+      absl::c_all_of(proto.iota_reshape_dims(),
+                     [](int64_t d) { return d == 1; })) {
+    return std::move(Replicate(metadata).SetShardGroupFromProto(proto));
+  }
+  if (!use_iota_tile_assignments &&
+      proto.tile_assignment_devices().size() == 1) {
+    return std::move(Replicate(metadata).SetShardGroupFromProto(proto));
   }
 
   TF_RET_CHECK(!proto.tile_assignment_dimensions().empty());
