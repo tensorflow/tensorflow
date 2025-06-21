@@ -1,17 +1,62 @@
 Add patch to use tf build rules to prevent 'protobuf_python_genproto' error
 
 
-diff --git a/python/riegeli/records/BUILD b/python/riegeli/records/BUILD
-index cde6d546..7fe18a93 100644
---- a/python/riegeli/records/BUILD
-+++ b/python/riegeli/records/BUILD
-@@ -1,5 +1,5 @@
--load("@com_google_protobuf//:protobuf.bzl", "py_proto_library")
-+load("@local_xla//xla/tsl/platform/default:build_config.bzl", "py_proto_library")
- load("//python/riegeli:py_extension.bzl", "py_extension")
+diff --git a/python/riegeli/records/record_reader.cc b/python/riegeli/records/record_reader.cc
+index bf72d45c..c71cff18 100644
+--- a/python/riegeli/records/record_reader.cc
++++ b/python/riegeli/records/record_reader.cc
+@@ -220,12 +220,16 @@ extern "C" {
 
- package(
-     default_visibility = ["//python/riegeli:__subpackages__"],
+ static void RecordReaderDestructor(PyRecordReaderObject* self) {
+   PyObject_GC_UnTrack(self);
++#if PY_VERSION_HEX < 0x030D0000  // < 3.13
+   Py_TRASHCAN_SAFE_BEGIN(self);
++#endif
+   PythonUnlocked([&] { self->record_reader.reset(); });
+   Py_XDECREF(self->recovery);
+   self->recovery_exception.reset();
+   Py_TYPE(self)->tp_free(self);
++#if PY_VERSION_HEX < 0x030D0000  // < 3.13
+   Py_TRASHCAN_SAFE_END(self);
++#endif
+ }
+
+ static int RecordReaderTraverse(PyRecordReaderObject* self, visitproc visit,
+@@ -1383,11 +1387,15 @@ extern "C" {
+
+ static void RecordIterDestructor(PyRecordIterObject* self) {
+   PyObject_GC_UnTrack(self);
++#if PY_VERSION_HEX < 0x030D0000  // < 3.13
+   Py_TRASHCAN_SAFE_BEGIN(self);
++#endif
+   Py_XDECREF(self->record_reader);
+   Py_XDECREF(self->args);
+   Py_TYPE(self)->tp_free(self);
++#if PY_VERSION_HEX < 0x030D0000  // < 3.13
+   Py_TRASHCAN_SAFE_END(self);
++#endif
+ }
+
+ static int RecordIterTraverse(PyRecordIterObject* self, visitproc visit,
+diff --git a/python/riegeli/records/record_writer.cc b/python/riegeli/records/record_writer.cc
+index bc2d6504..3d89d2fc 100644
+--- a/python/riegeli/records/record_writer.cc
++++ b/python/riegeli/records/record_writer.cc
+@@ -217,10 +217,14 @@ extern "C" {
+
+ static void RecordWriterDestructor(PyRecordWriterObject* self) {
+   PyObject_GC_UnTrack(self);
++#if PY_VERSION_HEX < 0x030D0000  // < 3.13
+   Py_TRASHCAN_SAFE_BEGIN(self);
++#endif
+   PythonUnlocked([&] { self->record_writer.reset(); });
+   Py_TYPE(self)->tp_free(self);
++#if PY_VERSION_HEX < 0x030D0000  // < 3.13
+   Py_TRASHCAN_SAFE_END(self);
++#endif
+ }
+
+ static int RecordWriterTraverse(PyRecordWriterObject* self, visitproc visit,
+
 --
 2.25.1
-

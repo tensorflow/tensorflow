@@ -885,6 +885,7 @@ def _tf_repositories():
     tf_http_archive(
         name = "riegeli_py",
         sha256 = "eb56368777297b23686ffdb1edbe96af85f88c74cba74a7557518fe3bb7a4aeb",
+        patch_file = ["//third_party:riegeli_fix.patch"],
         strip_prefix = "riegeli-dc364cecf108d151f52b0a810657e43451be0ebf",
         urls = tf_mirror_urls("https://github.com/google/riegeli/archive/dc364cecf108d151f52b0a810657e43451be0ebf.zip"),
     )
