@@ -518,6 +518,11 @@ class Thunk {
       absl::AnyInvocable<absl::StatusOr<std::unique_ptr<Thunk>>(
           const ThunkProto&) const>;
 
+ protected:
+  // Returns a ThunkProto that has the common Thunk fields already set.
+  // It's meant to be called by subclasses in its implementation of `ToProto()`.
+  absl::StatusOr<ThunkInfoProto> GetThunkInfoProto() const;
+
  private:
   Kind kind_;
   std::string profile_annotation_;
