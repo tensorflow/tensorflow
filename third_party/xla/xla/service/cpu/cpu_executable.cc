@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/service/cpu/cpu_executable.h"
 
+#include <cfenv>
+
 #define EIGEN_USE_THREADS
 
 #include <stdint.h>
@@ -26,7 +28,6 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/base/dynamic_annotations.h"
@@ -66,10 +67,13 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/host/host_stream.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/denormal.h"
+#include "tsl/platform/setround.h"
 
 namespace xla {
 namespace cpu {
@@ -455,8 +459,6 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     }
   }
 
-  auto* host_stream =
-      dynamic_cast<se::host::HostStream*>(run_options->stream());
   se::Stream* stream = run_options->stream();
   se::DeviceMemoryAllocator* memory_allocator = run_options->allocator();
   TF_ASSIGN_OR_RETURN(
@@ -469,29 +471,38 @@ absl::StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
       CreateResultShapedBuffer(run_options, absl::MakeSpan(buffers),
                                absl::MakeSpan(arguments)));
 
-  // We need to change the types of some of the variables we capture:
-  // - store run_options by value instead of pointer; and
-  // - take ownership of buffers.
-  //  We use a struct instead of a lambda to make this explicit.
-  struct AsyncRunTask {
-    CpuExecutable* executable;
-    ServiceExecutableRunOptions run_options;
-    std::vector<MaybeOwningDeviceMemory> task_buffers;
+  // IMPORTANT: State of the world as of June 2025 by ezhulenev@.
+  //
+  // Although the function is called ExecuteAsyncOnStream, we invoke compiled
+  // executable on the caller thread, because the concept of device stream and
+  // implicit ordering of operations does not make much sense on CPU. We use
+  // stream semantics on GPU because host can run ahead of the device (which is
+  // impossible on CPU because host and device are the same), and because of
+  // stream-ordered memory allocation via BFC allocator (on the host we use
+  // regular host allocator).
+  //
+  // Furthermore, this execution path is deprecated, and nearly all users
+  // (certainly all important ones) go via the PjRtCpuClient route, which is not
+  // affected by this code. This code is used mostly in legacy tests (not yet
+  // migrated to PjRt) and in Tensorflow/XLA integration.
+  //
+  // By using the caller thread to kick off the execution, we avoid the
+  // overhead of thread hopping for small executables, and it allows Tensorflow
+  // to execute multiple XLA executable in parallel.
 
-    absl::Status operator()() {
-      if (executable->has_compute_function()) {
-        return executable->ExecuteComputeFunction(&run_options.run_options(),
-                                                  task_buffers);
-      } else if (executable->has_thunks()) {
-        return executable->ExecuteThunks(&run_options.run_options(),
-                                         task_buffers);
-      } else {
-        return Internal("No compute function or thunks found.");
-      }
-    }
-  };
-  host_stream->EnqueueTaskWithStatus(
-      AsyncRunTask{this, *run_options, std::move(buffers)});
+  // Because we do not control the caller thread, we need to explicitly set
+  // flags to be consistent with compute thread pools used by TF and XLA.
+  tsl::port::ScopedFlushDenormal flush;
+  tsl::port::ScopedSetRound round(FE_TONEAREST);
+
+  if (has_compute_function()) {
+    TF_RETURN_IF_ERROR(
+        ExecuteComputeFunction(&run_options->run_options(), buffers));
+  } else if (has_thunks()) {
+    TF_RETURN_IF_ERROR(ExecuteThunks(&run_options->run_options(), buffers));
+  } else {
+    return Internal("No compute function or thunks found.");
+  }
 
   MarkToBeReleasedArguments(absl::MakeSpan(arguments), result);
   return std::move(result);
