@@ -15,3 +15,10 @@ message DiffResultProto {
   repeated MatchedInstructionPairProto unchanged_instructions = 3;
   repeated MatchedInstructionPairProto changed_instructions = 4;
 }
+
+// Represents the result or error of computing the diff between two HLO modules.
+message DiffResultOrErrorProto {
+  DiffResultProto diff_result = 1;
+  int32 status = 2;
+  string error = 3;
+}

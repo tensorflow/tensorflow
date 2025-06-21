@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package xla.hlo_diff;
+
+message OptionsProto {
+  message HloPath {
+    string hlo_snapshot = 1;
+    string hlo_proto = 2;
+    string hlo_module_proto = 3;
+    string hlo_text = 4;
+  }
+
+  message HloGumgraphFingerprintOptions {
+    // Ignore shape when computing the instruction fingerprint.
+    bool ignore_shape = 1;
+  }
+
+  message DiffOptions {
+    HloGumgraphFingerprintOptions fingerprint_options = 1;
+  }
+
+  HloPath first = 1;
+  HloPath second = 2;
+  DiffOptions diff_options = 3;
+}
