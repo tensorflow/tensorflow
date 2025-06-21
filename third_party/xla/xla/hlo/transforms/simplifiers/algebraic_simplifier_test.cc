@@ -666,6 +666,27 @@ TEST_F(AlgebraicSimplifierTest, MulZero) {
   EXPECT_EQ(computation->root_instruction(), zero);
 }
 
+TEST_F(AlgebraicSimplifierTest, FastMulZero) {
+  auto m = CreateNewVerifiedModule();
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32, "param0"));
+  HloInstruction* zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32, HloOpcode::kMultiply, param0, zero));
+
+  auto computation = m->AddEntryComputationWithLayouts(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kMultiply);
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_fast_math(true);
+  AlgebraicSimplifier simplifier(options);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_EQ(computation->root_instruction(), zero);
+}
+
 TEST_F(AlgebraicSimplifierTest, MultiplyReassociateMergeConstants) {
   const char* kModuleStr = R"(
     HloModule m
