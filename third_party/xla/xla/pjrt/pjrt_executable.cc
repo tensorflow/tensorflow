@@ -228,6 +228,7 @@ CompiledMemoryStatsProto CompiledMemoryStats::ToProto() const {
   proto.set_host_output_size_in_bytes(host_output_size_in_bytes);
   proto.set_host_alias_size_in_bytes(host_alias_size_in_bytes);
   proto.set_host_temp_size_in_bytes(host_temp_size_in_bytes);
+  proto.set_peak_memory_in_bytes(peak_memory_in_bytes);
   return proto;
 }
 
@@ -246,6 +247,7 @@ CompiledMemoryStats CompiledMemoryStats::FromProto(
   stats.host_output_size_in_bytes = proto.host_output_size_in_bytes();
   stats.host_alias_size_in_bytes = proto.host_alias_size_in_bytes();
   stats.host_temp_size_in_bytes = proto.host_temp_size_in_bytes();
+  stats.peak_memory_in_bytes = proto.peak_memory_in_bytes();
   return stats;
 }
 
