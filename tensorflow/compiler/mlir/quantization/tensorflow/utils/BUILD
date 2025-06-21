@@ -84,8 +84,7 @@ cc_library(
     hdrs = ["tf_to_xla_attribute_utils.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        "//tensorflow/compiler/mlir/lite/core/c:tflite_common",
-        "//tensorflow/compiler/mlir/lite/kernels:padding",
+        "//tensorflow/compiler/mlir/kernels:padding",
         "//tensorflow/compiler/mlir/quantization/common:attrs_and_constraints",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:constant_fold",
         "@com_google_absl//absl/algorithm:container",
