@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.72
+
+* Added `PJRT_Client_UpdateGlobalProcessInfo`.
+
 ## 0.71
 
 *   Added `overridden_serialized_compile_options` and
