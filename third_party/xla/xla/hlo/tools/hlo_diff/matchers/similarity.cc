@@ -48,10 +48,37 @@ bool AllInstructionUsersAreMatched(const HloInstructionNode* left,
   return true;
 }
 
+bool SameChildrenPosition(const HloInstructionNode* left,
+                          const HloInstructionNode* right) {
+  if (left->i_th_children.size() != right->i_th_children.size()) {
+    return false;
+  }
+  for (int i = 0; i < left->i_th_children.size(); ++i) {
+    if (left->i_th_children[i] != right->i_th_children[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool SameParentsPosition(const HloInstructionNode* left,
+                         const HloInstructionNode* right) {
+  if (left->i_th_parents.size() != right->i_th_parents.size()) {
+    return false;
+  }
+  for (int i = 0; i < left->i_th_parents.size(); ++i) {
+    if (left->i_th_parents[i] != right->i_th_parents[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 constexpr double kFingerprintMatchScore = 0.5;
 constexpr double kUnitMatchScore = 0.1;
+constexpr double kPositionMatchBonus = 0.01;
 
 double NodeAttributesSimilarity(const HloInstructionNode* absl_nonnull left,
                                 const HloInstructionNode* absl_nonnull right) {
@@ -139,6 +166,14 @@ double NodePropertySimilarity(const HloInstructionNode* left,
 
   if (AllInstructionUsersAreMatched(left, right)) {
     sim_score += kUnitMatchScore;
+  }
+
+  if (SameChildrenPosition(left, right)) {
+    sim_score += kPositionMatchBonus;
+  }
+
+  if (SameParentsPosition(left, right)) {
+    sim_score += kPositionMatchBonus;
   }
 
   return sim_score;
