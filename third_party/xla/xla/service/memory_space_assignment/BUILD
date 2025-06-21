@@ -639,6 +639,7 @@ cc_library(
 
 cc_library(
     name = "allocation_value",
+    srcs = ["allocation_value.cc"],
     hdrs = ["allocation_value.h"],
     deps = [
         ":allocation",
@@ -646,6 +647,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_value",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )
