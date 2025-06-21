@@ -2928,13 +2928,12 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
       TF_RETURN_IF_ERROR(VerifyNoHostMemorySpace(instruction));
     }
     if (!opts_.InstructionCanChangeLayout(instruction) &&
-        LayoutUtil::IsDenseArray(instruction->shape()) &&
-        instruction->shape().has_layout()) {
+        instruction->shape().IsArray() && instruction->shape().has_layout()) {
       const Shape& result_shape = instruction->shape();
       const Layout& result_layout = result_shape.layout();
       for (HloInstruction* operand : instruction->operands()) {
         const Shape& operand_shape = operand->shape();
-        if (LayoutUtil::IsDenseArray(operand_shape) &&
+        if (operand_shape.IsArray() &&
             operand_shape.dimensions().size() ==
                 result_shape.dimensions().size() &&
             operand_shape.has_layout()) {
