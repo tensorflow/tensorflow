@@ -50,10 +50,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/map_util.h"
+#include "xla/service/buffer_value.h"
 #include "xla/service/dump.h"
+#include "xla/service/heap_simulator/heap_simulator.h"
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
+#include "xla/service/memory_space_assignment/options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -177,6 +180,45 @@ GetNumResourcesNeededForAnnotationWithKeepOriginalOrderAttrs(
   }
   return max_resources_needed;
 }
+
+int64_t EstimateFragmentationSize(
+    HloModule* module, std::vector<HloComputation*> computations,
+    const absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>&
+        saved_schedules,
+    const HloAliasAnalysis& alias_analysis) {
+  // Run heap simulator on the whole module to estimate the fragmentation size.
+  memory_space_assignment::Options memory_space_assignment_options;
+  auto algorithm = std::make_unique<GlobalDecreasingSizeBestFitHeap<HloValue>>(
+      /*alignment=*/memory_space_assignment_options.alignment_in_bytes);
+  auto size_fn = [](const BufferValue& buffer) -> int64_t {
+    const Shape& shape = buffer.shape();
+    if (!shape.IsArray()) {
+      return 0;
+    }
+    return ShapeUtil::ByteSizeOf(shape);
+  };
+  HloSchedule before_schedule(module);
+  for (HloComputation* computation : computations) {
+    before_schedule.set_sequence(
+        computation,
+        absl::MakeConstSpan(
+            module->schedule().sequence(computation).instructions()));
+    module->schedule().set_sequence(
+        computation, absl::MakeConstSpan(saved_schedules.at(computation)));
+  }
+  auto result = HeapSimulator::Run(std::move(algorithm), *module,
+                                   module->schedule(), alias_analysis, size_fn);
+  CHECK_OK(result.status());
+  for (HloComputation* computation : computations) {
+    module->schedule().set_sequence(
+        computation, absl::MakeConstSpan(
+                         before_schedule.sequence(computation).instructions()));
+  }
+  VLOG(3) << module->name() << ": Heap simulator estimated fragmentation size: "
+          << result.value().fragmentation_size;
+  return result.value().fragmentation_size;
+}
+
 }  // namespace
 
 CanonicalAsyncOp DefaultGetCanonicalAsyncOp(const HloInstruction& hlo) {
@@ -3180,13 +3222,16 @@ absl::StatusOr<bool> LatencyHidingScheduler::Run(
     saved_schedules[computation] = std::move(new_schedule);
     scheduling_context_->GetAsyncTracker()->ResetTargetDefinedStates();
   }
+  int64_t fragmentation_size = EstimateFragmentationSize(
+      module, computations_to_schedule_, saved_schedules,
+      *scheduling_context_->GetAliasAnalysis());
   uint64_t initial_memory_limit = scheduler_core_->GetMemoryLimit();
-  for (int64_t iter = 0;
-       iter < scheduler_core_->GetRerunTimes() &&
-       scheduler_core_->GetMemoryPeak() > initial_memory_limit;
+  for (int64_t iter = 0; iter < scheduler_core_->GetRerunTimes() &&
+                         scheduler_core_->GetMemoryPeak() + fragmentation_size >
+                             initial_memory_limit;
        iter++) {
     LOG(INFO) << "LatencyHidingScheduler current memory usage: "
-              << scheduler_core_->GetMemoryPeak()
+              << scheduler_core_->GetMemoryPeak() + fragmentation_size
               << " bytes, does not fit in limit: "
               << scheduler_core_->GetMemoryLimit()
               << ". Setting the new limit to "
@@ -3200,6 +3245,9 @@ absl::StatusOr<bool> LatencyHidingScheduler::Run(
           computation);
       saved_schedules[computation] = std::move(new_schedule);
       scheduling_context_->GetAsyncTracker()->ResetTargetDefinedStates();
+      fragmentation_size = EstimateFragmentationSize(
+          module, computations_to_schedule_, saved_schedules,
+          *scheduling_context_->GetAliasAnalysis());
     }
   }
   LOG(INFO) << "[" << name() << "]"

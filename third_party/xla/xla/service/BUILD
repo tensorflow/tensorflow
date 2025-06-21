@@ -1178,6 +1178,7 @@ cc_library(
     srcs = ["latency_hiding_scheduler.cc"],
     hdrs = ["latency_hiding_scheduler.h"],
     deps = [
+        ":buffer_value",
         ":dump",
         ":hlo_buffer",
         ":hlo_cost_analysis",
@@ -1192,6 +1193,8 @@ cc_library(
         "//xla/hlo/analysis:hlo_reachability",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
+        "//xla/service/heap_simulator",
+        "//xla/service/memory_space_assignment:options",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
