@@ -15,12 +15,10 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/compatibility/gpu_compatibility.h"
 
 #include <algorithm>
-#include <cstddef>
 #include <map>
 #include <memory>
 #include <string>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/experimental/acceleration/compatibility/devicedb-sample.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/variables.h"
