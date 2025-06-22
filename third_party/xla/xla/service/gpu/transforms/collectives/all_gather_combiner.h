@@ -39,13 +39,12 @@ class GpuAllGatherCombiner : public AllGatherCombiner {
                        const int64_t combine_threshold_in_bytes,
                        const int64_t combine_threshold_count,
                        const bool combine_by_dim,
-                       const bool combine_different_dtypes,
-                       const int64_t pointer_size)
+                       const bool combine_different_dtypes)
       : AllGatherCombiner(combine_threshold_in_bytes, combine_threshold_count,
                           combine_by_dim, combine_different_dtypes),
         device_info_(device_info),
-        default_combine_threshold_in_bytes_(default_combine_threshold_in_bytes),
-        pointer_size_(pointer_size) {}
+        default_combine_threshold_in_bytes_(
+            default_combine_threshold_in_bytes) {}
 
   absl::string_view name() const override { return "gpu-all-gather-combiner"; }
 
@@ -57,7 +56,6 @@ class GpuAllGatherCombiner : public AllGatherCombiner {
  private:
   const se::DeviceDescription& device_info_;
   const int default_combine_threshold_in_bytes_;
-  const int64_t pointer_size_;
 };
 
 }  // namespace xla::gpu
