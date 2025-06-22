@@ -51,6 +51,7 @@ xla_cc_test(
     deps = [
         ":cycle_detector",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/tools/hlo_diff/graph:hlo_gumgraph_node",
         "@com_google_absl//absl/strings:string_view",
