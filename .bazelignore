@@ -13,3 +13,4 @@
 # limitations under the License.
 # ==============================================================================
 third_party/py/numpy
+third_party/py/scipy
