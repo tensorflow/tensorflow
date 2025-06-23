@@ -959,6 +959,7 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:logging",
@@ -1264,6 +1265,7 @@ cc_library(
         ":hlo_op_profiles",
         ":interpolator",
         ":matmul_interpolator_utils",
+        "//third_party/protobuf",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -1290,6 +1292,7 @@ xla_cc_test(
     deps = [
         ":hlo_op_profile_proto_cc",
         ":matmul_interpolator",
+        "//third_party/protobuf",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
@@ -1361,6 +1364,7 @@ xla_cc_test(
     deps = [
         ":hlo_op_profile_proto_cc",
         ":matmul_ptable_stats_collection",
+        "//third_party/protobuf",
         "//xla/hlo/parser:hlo_parser",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
