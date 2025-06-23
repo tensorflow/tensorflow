@@ -498,7 +498,6 @@ xla_test(
     ],
     tags = [
         "test_migrated_to_hlo_runner_pjrt",
-        "test_xla_cpu_no_thunks",
     ],
     deps = [
         "//xla/hlo/testlib:verified_hlo_module",

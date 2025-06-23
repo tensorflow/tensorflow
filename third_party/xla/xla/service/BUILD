@@ -3043,7 +3043,6 @@ cc_library(
 xla_test(
     name = "dynamic_padder_test",
     srcs = ["dynamic_padder_test.cc"],
-    tags = ["test_xla_cpu_no_thunks"],
     deps = [
         ":dynamic_dimension_inference",
         ":dynamic_padder",

@@ -87,10 +87,6 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "xla_h100": "Runs on an h100.",
     "xla_b200": "Runs on a b200.",
     # Below tags are consumed by `xla_test`.
-    "test_xla_cpu_no_thunks": (
-        "Internally, `xla_test` sets `--xla_cpu_use_thunk_runtime` to false."
-        " Unused on OpenXLA CI."
-    ),
     "test_migrated_to_hlo_runner_pjrt": (
         "Adds the appropriate `xla/tests:pjrt_$BACKEND_client_registry` to the"
         " annotated `xla_test` target. Adding this tag does not synthesize"
