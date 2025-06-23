@@ -167,6 +167,17 @@ bool AreInputOutputShapesStaticallyKnownForSplitSharding(
 // Returns a map of dimension indices and number of splits for tiled sharding.
 absl::StatusOr<std::map<int, int>> GetDimensionIndicesAndNumSplitsFromSharding(
     const xla::OpSharding& sharding);
+
+// Verifies that the two sharding attributes are equivalent, by converting them
+// to OpSharding and then HloSharding and performing a comparison. Returns
+// failure if the attributes are not equivalent or if there is any problem
+// in converting the attributes to OpSharding or HloSharding.
+mlir::LogicalResult VerifyShardingEquivalent(mlir::Attribute sharding_attr1,
+                                             mlir::Attribute sharding_attr2);
+
+mlir::LogicalResult VerifyShardingEquivalent(
+    const xla::OpSharding& sharding_proto1,
+    const xla::OpSharding& sharding_proto2);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_XLA_SHARDING_UTIL_H_
