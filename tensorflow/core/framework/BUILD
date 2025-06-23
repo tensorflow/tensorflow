@@ -735,6 +735,7 @@ cc_library(
         "//third_party/py/grain/_src/tensorflow/ops:__pkg__",
         "//waymo/ml/compiler/frontend/kernels:__pkg__",
         "//waymo/ml/compiler/runtime/alpine/core:__pkg__",
+        "//waymo/ml/woodshed/ops:__pkg__",
     ],
     deps = [
         "//tensorflow/core/lib/core:refcount",
