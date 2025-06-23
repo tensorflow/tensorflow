@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/while_util.h"
 
 namespace xla {
 
@@ -180,6 +181,31 @@ class WhileLoopUnroller : public HloModulePass {
   bool wrap_in_trivial_loop_;
   UnrollConfig unroll_config_;
 };
+
+// Creates a partially unrolled while loop in `computation`. The structure of
+// the while loop is as follows, in pseudocode:
+//
+//  loop_state while_loop() {
+//    indvar = 0;
+//    loop_state = init_values
+//    while (indvar < trip_count) {
+//      loop_state = loop_body_generator(indvar, loop_state)
+//      indvar++;
+//      loop_state = loop_body_generator(indvar, loop_state)
+//      indvar++;
+//      ...
+//    }
+//    return loop_state;
+//  }
+//
+// Where there are `unroll_factor` calls to `loop_body_generator` for each
+// iteration of the while loop, resulting in `trip_count` total calls to
+// `loop_body_generator`. When `trip_count` is not divisible by `unroll_factor`,
+// the remainder is handled by creating an additional rolled loop.
+absl::StatusOr<std::vector<HloInstruction*>> CreatePartiallyUnrolledLoop(
+    HloComputation* computation, std::vector<HloInstruction*>& init_values,
+    WhileUtil::LoopBodyGeneratorTy loop_body_generator, int32_t trip_count,
+    int32_t unroll_factor, const OpMetadata& metadata);
 
 }  // namespace xla
 
