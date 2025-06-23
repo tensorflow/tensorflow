@@ -795,6 +795,30 @@ cc_library(
 )
 
 cc_library(
+    name = "dynamic_slicing_utils",
+    srcs = ["dynamic_slicing_utils.cc"],
+    hdrs = ["dynamic_slicing_utils.h"],
+    tags = ["gpu"],
+    deps = [
+        ":gpu_constants",
+        ":ir_emission_utils",
+        "//xla:shape_util",
+        "//xla/hlo/analysis:while_loop_analysis",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/hlo/utils:hlo_traversal",
+        "//xla/service:call_graph",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "triton_tiling_propagation",
     srcs = ["triton_tiling_propagation.cc"],
     hdrs = ["triton_tiling_propagation.h"],
