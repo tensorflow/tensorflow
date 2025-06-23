@@ -124,10 +124,7 @@ cc_library(
         ],
         "//conditions:default": [],
     }),
-    linkopts = select({
-        "@local_xla//xla/tsl:is_cuda_enabled_and_oss": cuda_rpath_flags("nvidia/cuda_runtime/lib"),
-        "//conditions:default": [],
-    }),
+    linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/cuda_runtime/lib")),
     local_defines = [
         "IMPLIB_EXPORT_SHIMS=1",
     ],
