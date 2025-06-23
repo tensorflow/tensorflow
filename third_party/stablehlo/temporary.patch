@@ -1,1 +1,223 @@
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir b/stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir
+--- stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir
++++ stablehlo/stablehlo/tests/vhlo/stablehlo_legalize_to_vhlo.mlir
+@@ -411,6 +411,12 @@
+   func.return %arg0 : tensor<?x?xf32, #stablehlo.type_extensions<bounds = [16, ?]>>
+ }
+ 
++// CHECK-LABEL: "attr_frontend_attributes"
++func.func @attr_frontend_attributes(%arg0: tensor<f32>) -> tensor<f32> {
++  // CHECK: some.unregistered_attr
++  %1 = stablehlo.cosine %arg0 {some.unregistered_attr = 1 : i32} : tensor<f32>
++  return %1 : tensor<f32>
++}
+ 
+ // ============ DEFAULTS ============
+ 
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade.1_8_0.mlir b/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade.1_8_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade.1_8_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade.1_8_0.mlir
+@@ -22,3 +22,14 @@
+   } : (tensor<f32>) -> tensor<f32>
+   func.return %0 : tensor<f32>
+ }
++
++// CHECK-LABEL: vhlo.func_v1 @exp_op_default_unregistered_attrs
++func.func @exp_op_default_unregistered_attrs(%arg0: tensor<f32>) -> tensor<f32> {
++  %0 = "stablehlo.exponential"(%arg0) {
++    // CHECK: vhlo.exponential_v1
++    // CHECK-SAME: some.unregistered_attr
++    result_accuracy = #stablehlo.result_accuracy<atol = 0.000000e+00, rtol = 0.000000e+00, ulps = 0, mode = #stablehlo.result_accuracy_mode<DEFAULT>>,
++    some.unregistered_attr = 1 : i32
++  } : (tensor<f32>) -> tensor<f32>
++  func.return %0 : tensor<f32>
++}
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade.1_9_0.mlir b/stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade.1_9_0.mlir
+--- stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade.1_9_0.mlir
++++ stablehlo/stablehlo/tests/vhlo/vhlo_to_version_downgrade.1_9_0.mlir
+@@ -36,6 +36,16 @@
+ 
+ // -----
+ 
++// CHECK-LABEL: vhlo.func_v1 @cosine_op_unregistered_attrs
++func.func public @cosine_op_unregistered_attrs(%arg0: tensor<f32>) -> tensor<f32> {
++  // CHECK: vhlo.cosine_v1
++  // CHECK-SAME: some.unregistered_attr
++  %0 = "stablehlo.cosine"(%arg0) { some.unregistered_attr = 1 : i32 } : (tensor<f32>) -> tensor<f32>
++  return %0 : tensor<f32>
++}
++
++// -----
++
+ // CHECK-LABEL: vhlo.func_v1 @cosine_default
+ func.func @cosine_default(%arg0: tensor<f32>) -> tensor<f32> {
+   %0 = "stablehlo.cosine"(%arg0) {
+diff --ruN a/stablehlo/stablehlo/transforms/VhloToVersion.cpp b/stablehlo/stablehlo/transforms/VhloToVersion.cpp
+--- stablehlo/stablehlo/transforms/VhloToVersion.cpp
++++ stablehlo/stablehlo/transforms/VhloToVersion.cpp
+@@ -336,6 +336,14 @@
+ /// Upgrade and Downgrade Definitions ///
+ /////////////////////////////////////////
+ 
++void copyDiscardableAttrs(Operation* src, Operation* dst){
++  dst->setDiscardableAttrs(src->getDiscardableAttrDictionary());
++}
++
++void copyDiscardableAttrs(Value src, Value dst){
++  copyDiscardableAttrs(src.getDefiningOp(), dst.getDefiningOp());
++}
++
+ TensorV1Attr getEmptyI64Tensor(OpBuilder& builder) {
+   auto shape = vhlo::RankedTensorV1Type::get(
+       builder.getContext(), {0},
+@@ -412,6 +420,7 @@
+         op.getIndicesAreSorted(), op.getUniqueIndices());
+     Region& body = newOp.getUpdateComputation();
+     rewriter.inlineRegionBefore(op.getUpdateComputation(), body, body.begin());
++    copyDiscardableAttrs(op, newOp);
+     return success();
+   }
+ };
+@@ -429,6 +438,7 @@
+         op.getIndicesAreSorted(), op.getUniqueIndices());
+     Region& body = newOp.getUpdateComputation();
+     rewriter.inlineRegionBefore(op.getUpdateComputation(), body, body.begin());
++    copyDiscardableAttrs(op, newOp);
+     return success();
+   }
+ };
+@@ -443,6 +453,7 @@
+         op.getChannelId(), op.getUseGlobalDeviceIds());
+     Region& body = newOp.getComputation();
+     rewriter.inlineRegionBefore(op.getComputation(), body, body.begin());
++    copyDiscardableAttrs(op, newOp);
+     return success();
+   }
+ };
+@@ -460,6 +471,7 @@
+         op.getReplicaGroups(), op.getChannelId(), op.getUseGlobalDeviceIds());
+     Region& body = newOp.getComputation();
+     rewriter.inlineRegionBefore(op.getComputation(), body, body.begin());
++    copyDiscardableAttrs(op, newOp);
+     return success();
+   }
+ };
+diff --ruN a/stablehlo/stablehlo/transforms/VhloToVersionPatterns.td b/stablehlo/stablehlo/transforms/VhloToVersionPatterns.td
+--- stablehlo/stablehlo/transforms/VhloToVersionPatterns.td
++++ stablehlo/stablehlo/transforms/VhloToVersionPatterns.td
+@@ -37,60 +37,71 @@
+ 
+ def VHLO_GetDefaultResultAccuracyAttr : NativeCodeCall<"getDefaultResultAccuracy($_builder)">;
+ 
+-
+ def VHLO_DefaultResultAccuracy : AttrConstraint<CPred<"isDefaultResultAccuracy($_self)">, "Default result accuracy">;
+ 
++def VHLO_CopyDiscardableAttrs: NativeCodeCallVoid<"copyDiscardableAttrs($0, $1)">;
++
+ def DynamicConvUpgradeV1ToV2:
+-  Pat<(VHLO_DynamicConvOpV1 $lhs, $rhs, $d_padding, $window_strides, $padding, $lhs_dilation, $rhs_dilation, $window_reversal, $input_batch_dimension, $input_feature_dimension, $input_spatial_dimensions, $kernel_input_feature_dimension, $kernel_output_feature_dimension, $kernel_spatial_dimensions, $output_batch_dimension, $output_feature_dimension, $output_spatial_dimensions, $feature_group_count, $batch_group_count, $precision_config),
+-      (VHLO_DynamicConvOpV2 $lhs, $rhs, $d_padding, $window_strides, $lhs_dilation, $rhs_dilation, $window_reversal, $input_batch_dimension, $input_feature_dimension, $input_spatial_dimensions, $kernel_input_feature_dimension, $kernel_output_feature_dimension, $kernel_spatial_dimensions, $output_batch_dimension, $output_feature_dimension, $output_spatial_dimensions, $feature_group_count, $batch_group_count, $precision_config)>;
++  Pat<(VHLO_DynamicConvOpV1:$src $lhs, $rhs, $d_padding, $window_strides, $padding, $lhs_dilation, $rhs_dilation, $window_reversal, $input_batch_dimension, $input_feature_dimension, $input_spatial_dimensions, $kernel_input_feature_dimension, $kernel_output_feature_dimension, $kernel_spatial_dimensions, $output_batch_dimension, $output_feature_dimension, $output_spatial_dimensions, $feature_group_count, $batch_group_count, $precision_config),
++      (VHLO_DynamicConvOpV2:$dst $lhs, $rhs, $d_padding, $window_strides, $lhs_dilation, $rhs_dilation, $window_reversal, $input_batch_dimension, $input_feature_dimension, $input_spatial_dimensions, $kernel_input_feature_dimension, $kernel_output_feature_dimension, $kernel_spatial_dimensions, $output_batch_dimension, $output_feature_dimension, $output_spatial_dimensions, $feature_group_count, $batch_group_count, $precision_config),
++      [], [(VHLO_CopyDiscardableAttrs $src, $dst)]>;
+ 
+ def DynamicConvDowngradeV2ToV1:
+-  Pat<(VHLO_DynamicConvOpV2 $lhs, $rhs, $d_padding, $window_strides, $lhs_dilation, $rhs_dilation, $window_reversal, $input_batch_dimension, $input_feature_dimension, $input_spatial_dimensions, $kernel_input_feature_dimension, $kernel_output_feature_dimension, $kernel_spatial_dimensions, $output_batch_dimension, $output_feature_dimension, $output_spatial_dimensions, $feature_group_count, $batch_group_count, $precision_config),
+-      (VHLO_DynamicConvOpV1 $lhs, $rhs, $d_padding, $window_strides, (VHLO_GetDefaultConvPadding $lhs), $lhs_dilation, $rhs_dilation, $window_reversal, $input_batch_dimension, $input_feature_dimension, $input_spatial_dimensions, $kernel_input_feature_dimension, $kernel_output_feature_dimension, $kernel_spatial_dimensions, $output_batch_dimension, $output_feature_dimension, $output_spatial_dimensions, $feature_group_count, $batch_group_count, $precision_config)>;
++  Pat<(VHLO_DynamicConvOpV2:$src $lhs, $rhs, $d_padding, $window_strides, $lhs_dilation, $rhs_dilation, $window_reversal, $input_batch_dimension, $input_feature_dimension, $input_spatial_dimensions, $kernel_input_feature_dimension, $kernel_output_feature_dimension, $kernel_spatial_dimensions, $output_batch_dimension, $output_feature_dimension, $output_spatial_dimensions, $feature_group_count, $batch_group_count, $precision_config),
++      (VHLO_DynamicConvOpV1:$dst $lhs, $rhs, $d_padding, $window_strides, (VHLO_GetDefaultConvPadding $lhs), $lhs_dilation, $rhs_dilation, $window_reversal, $input_batch_dimension, $input_feature_dimension, $input_spatial_dimensions, $kernel_input_feature_dimension, $kernel_output_feature_dimension, $kernel_spatial_dimensions, $output_batch_dimension, $output_feature_dimension, $output_spatial_dimensions, $feature_group_count, $batch_group_count, $precision_config),
++      [], [(VHLO_CopyDiscardableAttrs $src, $dst)]>;
+ 
+ def GatherOpUpgradeV1ToV2:
+-  Pat<(VHLO_GatherOpV1 $operand, $start_indices, $offset_dims, $collapsed_slice_dims, $start_index_map, $index_vector_dim, $slice_sizes, $indices_are_sorted),
+-      (VHLO_GatherOpV2 $operand, $start_indices, $offset_dims, $collapsed_slice_dims, (VHLO_GetEmptyDims), (VHLO_GetEmptyDims), $start_index_map, $index_vector_dim, $slice_sizes, $indices_are_sorted)>;
++  Pat<(VHLO_GatherOpV1:$src $operand, $start_indices, $offset_dims, $collapsed_slice_dims, $start_index_map, $index_vector_dim, $slice_sizes, $indices_are_sorted),
++      (VHLO_GatherOpV2:$dst $operand, $start_indices, $offset_dims, $collapsed_slice_dims, (VHLO_GetEmptyDims), (VHLO_GetEmptyDims), $start_index_map, $index_vector_dim, $slice_sizes, $indices_are_sorted),
++      [], [(VHLO_CopyDiscardableAttrs $src, $dst)]>;
+ 
+ def GatherOpDowngradeV2ToV1 :
+-  Pat<(VHLO_GatherOpV2 $operand, $start_indices, $offset_dims, $collapsed_slice_dims, VHLO_EmptyDims:$operand_batching_dims, VHLO_EmptyDims:$start_indices_batching_dims, $start_index_map, $index_vector_dim, $slice_sizes, $indices_are_sorted),
+-      (VHLO_GatherOpV1 $operand, $start_indices, $offset_dims, $collapsed_slice_dims, $start_index_map, $index_vector_dim, $slice_sizes, $indices_are_sorted)>;
++  Pat<(VHLO_GatherOpV2:$src $operand, $start_indices, $offset_dims, $collapsed_slice_dims, VHLO_EmptyDims:$operand_batching_dims, VHLO_EmptyDims:$start_indices_batching_dims, $start_index_map, $index_vector_dim, $slice_sizes, $indices_are_sorted),
++      (VHLO_GatherOpV1:$dst $operand, $start_indices, $offset_dims, $collapsed_slice_dims, $start_index_map, $index_vector_dim, $slice_sizes, $indices_are_sorted),
++      [], [(VHLO_CopyDiscardableAttrs $src, $dst)]>;
+ 
+ def DynamicGatherOpUpgradeV1ToV2:
+-  Pat<(VHLO_DynamicGatherOpV1 $operand, $start_indices, $slice_sizes, $offset_dims, $collapsed_slice_dims, $start_index_map, $index_vector_dim, $indices_are_sorted),
+-      (VHLO_DynamicGatherOpV2 $operand, $start_indices, $slice_sizes, $offset_dims, $collapsed_slice_dims, (VHLO_GetEmptyDims), (VHLO_GetEmptyDims), $start_index_map, $index_vector_dim, $indices_are_sorted)>;
++  Pat<(VHLO_DynamicGatherOpV1:$src $operand, $start_indices, $slice_sizes, $offset_dims, $collapsed_slice_dims, $start_index_map, $index_vector_dim, $indices_are_sorted),
++      (VHLO_DynamicGatherOpV2:$dst $operand, $start_indices, $slice_sizes, $offset_dims, $collapsed_slice_dims, (VHLO_GetEmptyDims), (VHLO_GetEmptyDims), $start_index_map, $index_vector_dim, $indices_are_sorted),
++      [], [(VHLO_CopyDiscardableAttrs $src, $dst)]>;
+ 
+ def DynamicGatherOpDowngradeV2ToV1 :
+-  Pat<(VHLO_DynamicGatherOpV2 $operand, $start_indices, $slice_sizes, $offset_dims, $collapsed_slice_dims, VHLO_EmptyDims:$operand_batching_dims, VHLO_EmptyDims:$start_indices_batching_dims, $start_index_map, $index_vector_dim, $indices_are_sorted),
+-      (VHLO_DynamicGatherOpV1 $operand, $start_indices, $slice_sizes, $offset_dims, $collapsed_slice_dims, $start_index_map, $index_vector_dim, $indices_are_sorted)>;
++  Pat<(VHLO_DynamicGatherOpV2:$src $operand, $start_indices, $slice_sizes, $offset_dims, $collapsed_slice_dims, VHLO_EmptyDims:$operand_batching_dims, VHLO_EmptyDims:$start_indices_batching_dims, $start_index_map, $index_vector_dim, $indices_are_sorted),
++      (VHLO_DynamicGatherOpV1:$dst $operand, $start_indices, $slice_sizes, $offset_dims, $collapsed_slice_dims, $start_index_map, $index_vector_dim, $indices_are_sorted),
++      [], [(VHLO_CopyDiscardableAttrs $src, $dst)]>;
+ 
+ def AllGatherOpUpgradeV1ToV2 :
+-  Pat<(VHLO_AllGatherOpV1 $operand, $all_gather_dim, $replica_groups, $channel_id, $use_global_device_ids),
+-      (VHLO_AllGatherOpV2 (VHLO_WrapInVector $operand), $all_gather_dim, $replica_groups, $channel_id, $use_global_device_ids)>;
++  Pat<(VHLO_AllGatherOpV1:$src $operand, $all_gather_dim, $replica_groups, $channel_id, $use_global_device_ids),
++      (VHLO_AllGatherOpV2:$dst (VHLO_WrapInVector $operand), $all_gather_dim, $replica_groups, $channel_id, $use_global_device_ids),
++      [], [(VHLO_CopyDiscardableAttrs $src, (VHLO_GetFirstOperand $dst))]>;
+ 
+ def AllGatherOpDowngradeV2ToV1 :
+-  Pat<(VHLO_AllGatherOpV2 $operand, $all_gather_dim, $replica_groups, $channel_id, $use_global_device_ids),
+-      (VHLO_AllGatherOpV1 (VHLO_GetFirstOperand $operand), $all_gather_dim, $replica_groups, $channel_id, $use_global_device_ids),
+-      [(VHLO_IsSingleOperand $operand)]>;
++  Pat<(VHLO_AllGatherOpV2:$src $operand, $all_gather_dim, $replica_groups, $channel_id, $use_global_device_ids),
++      (VHLO_AllGatherOpV1:$dst (VHLO_GetFirstOperand $operand), $all_gather_dim, $replica_groups, $channel_id, $use_global_device_ids),
++      [(VHLO_IsSingleOperand $operand)], [(VHLO_CopyDiscardableAttrs (VHLO_GetFirstOperand $src), $dst)]>;
+ 
+ def AllToAllOpUpgradeV1ToV2 :
+-  Pat<(VHLO_AllToAllOpV1 $operand, $split_dimension, $concat_dimension, $split_count, $replica_groups, $channel_id),
+-      (VHLO_AllToAllOpV2 (VHLO_WrapInVector $operand), $split_dimension, $concat_dimension, $split_count, $replica_groups, $channel_id)>;
++  Pat<(VHLO_AllToAllOpV1:$src $operand, $split_dimension, $concat_dimension, $split_count, $replica_groups, $channel_id),
++      (VHLO_AllToAllOpV2:$dst (VHLO_WrapInVector $operand), $split_dimension, $concat_dimension, $split_count, $replica_groups, $channel_id),
++      [], [(VHLO_CopyDiscardableAttrs $src, (VHLO_GetFirstOperand $dst))]>;
+ 
+ def AllToAllOpDowngradeV2ToV1 :
+-  Pat<(VHLO_AllToAllOpV2 $operand, $split_dimension, $concat_dimension, $split_count, $replica_groups, $channel_id),
+-      (VHLO_AllToAllOpV1 (VHLO_GetFirstOperand $operand), $split_dimension, $concat_dimension, $split_count, $replica_groups, $channel_id),
+-      [(VHLO_IsSingleOperand $operand)]>;
++  Pat<(VHLO_AllToAllOpV2:$src $operand, $split_dimension, $concat_dimension, $split_count, $replica_groups, $channel_id),
++      (VHLO_AllToAllOpV1:$dst (VHLO_GetFirstOperand $operand), $split_dimension, $concat_dimension, $split_count, $replica_groups, $channel_id),
++      [(VHLO_IsSingleOperand $operand)], [(VHLO_CopyDiscardableAttrs (VHLO_GetFirstOperand $src), $dst)]>;
+ 
+ def DotGeneralOpDowngradeV2ToV1 :
+-  Pat<(VHLO_DotGeneralOpV2 $lhs, $rhs, $lhs_batching_dimensions, $rhs_batching_dimensions, $lhs_contracting_dimensions, $rhs_contracting_dimensions, $precision_config,
++  Pat<(VHLO_DotGeneralOpV2:$src $lhs, $rhs, $lhs_batching_dimensions, $rhs_batching_dimensions, $lhs_contracting_dimensions, $rhs_contracting_dimensions, $precision_config,
+          VHLO_NoneType:$lhs_precision_type, VHLO_NoneType:$rhs_precision_type, VHLO_NoneType:$accumulation_type, VHLO_NoneType:$lhs_component_count, VHLO_NoneType:$rhs_component_count, VHLO_NoneType:$num_primitive_operations, VHLO_NoneType:$allow_imprecise_accumulation),
+-      (VHLO_DotGeneralOpV1 $lhs, $rhs, $lhs_batching_dimensions, $rhs_batching_dimensions, $lhs_contracting_dimensions, $rhs_contracting_dimensions, $precision_config)>;
++      (VHLO_DotGeneralOpV1:$dst $lhs, $rhs, $lhs_batching_dimensions, $rhs_batching_dimensions, $lhs_contracting_dimensions, $rhs_contracting_dimensions, $precision_config),
++      [], [(VHLO_CopyDiscardableAttrs $src, $dst)]>;
+ 
+ def DotGeneralOpUpradeV1ToV2 :
+-  Pat<(VHLO_DotGeneralOpV1 $lhs, $rhs, $lhs_batching_dimensions, $rhs_batching_dimensions, $lhs_contracting_dimensions, $rhs_contracting_dimensions, $precision_config),
+-      (VHLO_DotGeneralOpV2 $lhs, $rhs, $lhs_batching_dimensions, $rhs_batching_dimensions, $lhs_contracting_dimensions, $rhs_contracting_dimensions, $precision_config,
+-         (VHLO_GetNoneType), (VHLO_GetNoneType), (VHLO_GetNoneType), (VHLO_GetNoneType), (VHLO_GetNoneType), (VHLO_GetNoneType), (VHLO_GetNoneType))>;
++  Pat<(VHLO_DotGeneralOpV1:$src $lhs, $rhs, $lhs_batching_dimensions, $rhs_batching_dimensions, $lhs_contracting_dimensions, $rhs_contracting_dimensions, $precision_config),
++      (VHLO_DotGeneralOpV2:$dst $lhs, $rhs, $lhs_batching_dimensions, $rhs_batching_dimensions, $lhs_contracting_dimensions, $rhs_contracting_dimensions, $precision_config,
++         (VHLO_GetNoneType), (VHLO_GetNoneType), (VHLO_GetNoneType), (VHLO_GetNoneType), (VHLO_GetNoneType), (VHLO_GetNoneType), (VHLO_GetNoneType)),
++         [], [(VHLO_CopyDiscardableAttrs $src, $dst)]>;
+ 
+ foreach resultAccuracyOpV1V2Pair = [
+   [VHLO_CbrtOpV1, VHLO_CbrtOpV2],
+@@ -105,8 +116,10 @@
+   [VHLO_SqrtOpV1, VHLO_SqrtOpV2],
+   [VHLO_TanOpV1, VHLO_TanOpV2],
+   [VHLO_TanhOpV1, VHLO_TanhOpV2]] in {
+-  def : Pat<(resultAccuracyOpV1V2Pair[0] $operand),
+-            (resultAccuracyOpV1V2Pair[1] $operand, (VHLO_GetDefaultResultAccuracyAttr))>;
+-  def : Pat<(resultAccuracyOpV1V2Pair[1] $operand, VHLO_DefaultResultAccuracy:$result_accuracy),
+-            (resultAccuracyOpV1V2Pair[0] $operand)>;
++  def : Pat<(resultAccuracyOpV1V2Pair[0]:$src $operand),
++            (resultAccuracyOpV1V2Pair[1]:$dst $operand, (VHLO_GetDefaultResultAccuracyAttr)),
++            [], [(VHLO_CopyDiscardableAttrs $src, $dst)]>;
++  def : Pat<(resultAccuracyOpV1V2Pair[1]:$src $operand, VHLO_DefaultResultAccuracy:$result_accuracy),
++            (resultAccuracyOpV1V2Pair[0]:$dst $operand),
++            [], [(VHLO_CopyDiscardableAttrs $src, $dst)]>;
+ }
 
