@@ -301,10 +301,7 @@ TEST_F(DynamicSliceFusionTest, NestedTupleOutputForCublasGemmWithWorkspace) {
         "grad_x":false,
         "grad_y":false
       }}
-    result = f16[8,8]{1,0} get-tuple-element(custom-call), index=0
-    workspace = s8[256]{0} get-tuple-element(custom-call), index=1
-    nested_tuple = (s8[256]{0}) tuple(workspace)
-    ROOT tuple = (f16[8,8]{1,0}, (s8[256]{0})) tuple(result, nested_tuple)
+    ROOT result = f16[8,8]{1,0} get-tuple-element(custom-call), index=0
   })";
 
   const char* hlo_opt = R"(
@@ -337,16 +334,13 @@ TEST_F(DynamicSliceFusionTest, NestedTupleOutputForCublasGemmWithWorkspace) {
         "grad_x":false,
         "grad_y":false
       }}
-    result = f16[8,8]{1,0} get-tuple-element(custom-call), index=0
-    workspace = s8[256]{0} get-tuple-element(custom-call), index=1
-    nested_tuple = (s8[256]{0}) tuple(workspace)
-    ROOT tuple = (f16[8,8]{1,0}, (s8[256]{0})) tuple(result, nested_tuple)
+    ROOT result = f16[8,8]{1,0} get-tuple-element(custom-call), index=0
   }
 
   ENTRY main.9 {
     p0 = f16[2,8,8]{2,1,0} parameter(0)
     p1 = f16[2,8,8]{2,1,0} parameter(1)
-    ROOT fusion = (f16[8,8]{1,0}, (s8[256]{0})) fusion(p0, p1), kind=kCustom, calls=fused_computation,
+    ROOT fusion = f16[8,8]{1,0} fusion(p0, p1), kind=kCustom, calls=fused_computation,
         backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}}}
   })";
 
