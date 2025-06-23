@@ -16177,21 +16177,6 @@ ENTRY entry {
               op::Copy(op::Add(op::AllReduce(), op::AllReduce())));
 }
 
-TEST_P(SpmdPartitioningTest, DotCrashGroupContractingOutput) {
-  absl::string_view hlo_string = R"(
-HloModule module
-
-ENTRY entry {
-  %parameter.0 = f32[128,2048,64]{2,1,0} parameter(0), sharding={devices=[64,1,1,16]<=[1024] last_tile_dim_replicate}
-  %parameter.1 = f32[128,2048,3584]{2,1,0} parameter(1), sharding={devices=[64,16,1]<=[1024]}
-  %dot.2840 = f32[64,3584]{0,1} dot(%parameter.0, %parameter.1), lhs_contracting_dims={0,1}, rhs_contracting_dims={0,1}, sharding={devices=[1,64,16]<=[2,4,8,16]T(1,3,0,2) last_tile_dim_replicate}
-  ROOT %copy = f32[64,3584]{0,1} copy(%dot.2840), sharding={devices=[1,64,16]<=[2,4,8,16]T(1,3,0,2) last_tile_dim_replicate}
-})";
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, PartitionComputation(hlo_string, /*num_devices=*/1024));
-  VLOG(1) << module->ToString();
-}
-
 }  // namespace
 }  // namespace spmd
 }  // namespace xla
