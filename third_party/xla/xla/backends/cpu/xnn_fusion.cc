@@ -205,11 +205,10 @@ absl::StatusOr<xnn_binary_operator> XnnBinaryOperator(const HloOpcode& opcode) {
       return xnn_binary_add;
     case HloOpcode::kAnd:
       return xnn_binary_bitwise_and;
-    // TODO(ashaposhnikov): debug crashes with these instructions.
-    // case HloOpcode::kDivide:
-    //  return xnn_binary_divide;
-    // case HloOpcode::kMaximum:
-    //  return xnn_binary_maximum;
+    case HloOpcode::kDivide:
+      return xnn_binary_divide;
+    case HloOpcode::kMaximum:
+      return xnn_binary_maximum;
     case HloOpcode::kMinimum:
       return xnn_binary_minimum;
     case HloOpcode::kMultiply:
