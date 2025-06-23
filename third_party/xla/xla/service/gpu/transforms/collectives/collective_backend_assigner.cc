@@ -56,13 +56,13 @@ int64_t GetShapeSize(const Shape& shape) {
 }
 
 absl::StatusOr<GPUCommunicationType> GetCommunicationType(
-    const HloInstruction* instr, int num_devices_per_host,
+    const HloInstruction* instr, int num_visible_devices_per_process,
     const se::GpuComputeCapability& gpu_version) {
-  if (num_devices_per_host == -1) {
+  if (num_visible_devices_per_process == -1) {
     return absl::FailedPreconditionError(
         "Could not determine number of devices per host");
   }
-  return CommunicationType(num_devices_per_host,
+  return CommunicationType(num_visible_devices_per_process,
                            *xla::Cast<HloChannelInstruction>(instr),
                            gpu_version);
 }
@@ -85,12 +85,13 @@ absl::StatusOr<bool> CollectiveBackendAssigner::Run(
 
       TF_ASSIGN_OR_RETURN(
           GPUCommunicationType comm_type,
-          GetCommunicationType(instr, num_devices_per_host_, gpu_version_));
+          GetCommunicationType(instr, num_visible_devices_per_process_,
+                               gpu_version_));
       VLOG(1) << "CollectiveBackendAssigner: comm_type="
               << static_cast<int>(comm_type)
               << " shape_size=" << GetShapeSize(instr->shape())
               << " threshold_in_bytes_=" << threshold_in_bytes_;
-      bool use_nvshmem = (num_devices_per_host_ == 1 ||
+      bool use_nvshmem = (num_visible_devices_per_process_ == 1 ||
                           comm_type == GPUCommunicationType::SINGLE_HOST) &&
                          GetShapeSize(instr->shape()) < threshold_in_bytes_;
       if (!use_nvshmem) {

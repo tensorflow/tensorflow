@@ -42,10 +42,11 @@ constexpr int64_t kDefaultThresholdInBytes = 16 * 1024 * 1024;  // 16MB
 class CollectiveBackendAssigner : public HloModulePass {
  public:
   explicit CollectiveBackendAssigner(
-      const se::GpuComputeCapability& gpu_version, int num_devices_per_host,
+      const se::GpuComputeCapability& gpu_version,
+      int num_visible_devices_per_process,
       int64_t threshold_in_bytes = kDefaultThresholdInBytes)
       : gpu_version_(gpu_version),
-        num_devices_per_host_(num_devices_per_host),
+        num_visible_devices_per_process_(num_visible_devices_per_process),
         threshold_in_bytes_(threshold_in_bytes) {}
 
   absl::string_view name() const override {
@@ -58,7 +59,7 @@ class CollectiveBackendAssigner : public HloModulePass {
 
  private:
   se::GpuComputeCapability gpu_version_;
-  int num_devices_per_host_;
+  int num_visible_devices_per_process_;
   int64_t threshold_in_bytes_;
 };
 
