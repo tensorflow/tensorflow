@@ -194,5 +194,61 @@ class LoopFusionTest(parameterized.TestCase):
     self.assertTrue(np.isnan(np_result[2]))
 
 
+class FusionEmitterTest(parameterized.TestCase):
+
+  def test_exp_nan_dce(self):
+    dtype = np.dtype(np.float64)
+
+    hlo = """
+      HloModule test_module
+
+      fusion_computation {
+        %param = f64[3] parameter(0)
+        %multiplier = f64[3] constant({1, 0, nan})
+        %mult = f64[3] multiply(%param, %multiplier)
+        ROOT %exp = f64[3] exponential(%mult) 
+      }
+
+      ENTRY main {
+        %param = f64[3] parameter(0)
+        ROOT %wrapped_fusion = f64[3]
+                               fusion(%param),
+                               kind=kLoop, calls=%fusion_computation
+      }
+    """
+
+    hlo_module, buffer_assignment = utilities.parse_hlo_module(hlo)
+    jit_compiler = testlib_cpu.JitCompiler(hlo_module.get_config())
+    mlir_context = testlib_cpu.MLIRContext()
+    kernel_definition = testlib_cpu.emit_fusion_kernel(
+        mlir_context, hlo_module.get_root_instruction(), buffer_assignment
+    )
+
+    kernel_runner = testlib_cpu.KernelRunner.create(
+        kernel_definition, jit_compiler
+    )
+    operand_shape = (3,)
+
+    param = base_utilities.create_literal_from_np(
+        np.ndarray(operand_shape, dtype)
+    )
+    np_param = np.asarray(param)
+    np_param[0] = 1
+    np_param[1] = 0
+    np_param[2] = np.nan
+
+    result = base_utilities.create_literal_from_np(
+        np.zeros(operand_shape, dtype)
+    )
+
+    kernel_runner.call([param, result])
+
+    np_result = np.asarray(result)
+
+    self.assertAlmostEqual(np_result[0], np.exp(1))
+    self.assertAlmostEqual(np_result[1], np.exp(0))
+    self.assertTrue(np.isnan(np_result[2]))
+
+
 if __name__ == "__main__":
   absltest.main()
