@@ -153,7 +153,7 @@ bool MMapHandle::Map(const char* path, const size_t offset) {
   return this->Map(FileDescriptor::Open(path, O_RDONLY), offset, path);
 }
 
-bool MMapHandle::Map(const FileDescriptor& fd, const size_t offset,
+bool MMapHandle::Map(const FileDescriptorView& fd, const size_t offset,
                      const char* const path) {
   this->UnMap();
 
@@ -171,7 +171,7 @@ bool MMapHandle::Map(const FileDescriptor& fd, const size_t offset,
   size_ = file_stats.st_size - offset;
   offset_ = offset;
 #if defined(_MSC_VER) || defined(XNNPACK_CACHE_NO_MMAP_FOR_TEST)
-  // This allocation is freed in UnMap and in the desctructor.
+  // This allocation is freed in UnMap and in the destructor.
   data_ = new uint8_t[size_];
   fd.SetPos(offset);
   XNNPACK_RETURN_CHECK(fd.Read(data_, size_), "could not read file ('%s'): %s.",
@@ -248,22 +248,13 @@ WeightCacheBuilder& WeightCacheBuilder::operator=(WeightCacheBuilder&& other) {
   return *this;
 }
 
-bool WeightCacheBuilder::Start(const char* path, FileDescriptor fd) {
+bool WeightCacheBuilder::Start(const char* path, const FileDescriptor& fd) {
   XNNPACK_RETURN_CHECK(!IsStarted());
   file_path_ = Sanitize(path);
 
-  if (fd.IsValid()) {
-    fd_ = std::move(fd);
-  } else {
-    if (IsInMemoryCachePath(file_path_)) {
-      fd_ = CreateInMemoryFileDescriptor("XNNPack in-memory weight cache");
-    } else {
-      fd_ = FileDescriptor::Open(file_path_.c_str(), O_CREAT | O_TRUNC | O_RDWR,
-                                 0644);
-    }
-    XNNPACK_RETURN_CHECK(fd_.IsValid(), "could not open file ('%s'): %s.",
-                         file_path_.c_str(), strerror(errno));
-  }
+  XNNPACK_RETURN_CHECK(fd.IsValid(), "File descriptor isn't valid ('%s'): %s.",
+                       file_path_.c_str(), strerror(errno));
+  fd_ = fd;
 
   // Write data in the header, this will be overwritten in the `Finalize` call.
   // We explicitly set the header as invalid. If any error happens during
@@ -272,8 +263,8 @@ bool WeightCacheBuilder::Start(const char* path, FileDescriptor fd) {
   header.buffer_list_offset = sizeof(header);
 
   XNNPACK_RETURN_CHECK(fd_.Write(&header, sizeof(header)),
-                       "could not write initial cache header in %s.",
-                       file_path_.c_str());
+                       "could not write initial cache header in %s: %s.",
+                       file_path_.c_str(), strerror(errno));
 
   schema_.base_offset = Align(sizeof(header), kMinAlignment);
   return true;
@@ -484,10 +475,19 @@ bool MMapWeightCacheProvider::LoadOrStartBuild(const char* path,
 bool MMapWeightCacheProvider::StartBuild(const char* path, FileDescriptor fd) {
   const char* const safe_path = Sanitize(path);
   SetFilePath(safe_path);
-  building_run_ = builder_.Start(safe_path, std::move(fd));
-  // Duplicate the file descriptor to avoid loosing the temporary file when
-  // the builder is reset.
-  file_descriptor_ = builder_.GetFileDescriptor().Duplicate();
+
+  if (!fd.IsValid()) {
+    if (IsInMemoryCachePath(file_path_)) {
+      fd = CreateInMemoryFileDescriptor("XNNPack in-memory weight cache");
+    } else {
+      fd = FileDescriptor::Open(file_path_.c_str(), O_CREAT | O_TRUNC | O_RDWR,
+                                0644);
+    }
+  }
+  XNNPACK_RETURN_CHECK(fd.IsValid(), "could not open file ('%s'): %s.",
+                       file_path_.c_str(), strerror(errno));
+  file_descriptor_ = std::move(fd);
+  building_run_ = builder_.Start(safe_path, file_descriptor_);
   return building_run_;
 }
 
