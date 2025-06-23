@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/ffi/ffi_api.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/utils/hlo_longest_prefix.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -59,6 +61,7 @@ namespace xla::gpu {
 
 using CommandBuffer = CommandBufferScheduling::CommandBuffer;
 using CommandBufferConfig = CommandBufferScheduling::CommandBufferConfig;
+using ::xla::hlo_longest_prefix::GetLongestOpNamePrefix;
 
 // Returns true if HLO computation can be executed as a command buffer.
 static bool IsCommand(const HloComputation* computation,
@@ -869,6 +872,13 @@ absl::StatusOr<HloComputation*> CommandBufferScheduling::RewriteCommandBuffer(
   for (int32_t i = seq.instructions().size() - 1; i >= 0; i--) {
     TF_RETURN_IF_ERROR(parent->RemoveInstruction(seq.instructions()[i]));
   }
+
+  absl::string_view call_prefix =
+      GetLongestOpNamePrefix(*call, /*ignore_malformed_op_names=*/true);
+  std::string call_op_name = (call_prefix.empty())
+                                 ? (std::string)call->name()
+                                 : absl::StrCat(call_prefix, "/", call->name());
+  call->set_metadata_op_name(call_op_name);
 
   return computation;
 }
