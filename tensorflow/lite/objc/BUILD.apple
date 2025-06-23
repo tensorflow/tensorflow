@@ -120,6 +120,7 @@ objc_library(
     data = [
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/add_quantized.bin",
+        "//tensorflow/lite:testdata/multi_add.bin",
         "//tensorflow/lite:testdata/multi_signatures.bin",
     ],
     sdk_frameworks = ["XCTest"],
