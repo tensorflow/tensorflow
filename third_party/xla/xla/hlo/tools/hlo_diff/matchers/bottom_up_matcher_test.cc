@@ -257,10 +257,10 @@ ENTRY entry {
               UnorderedElementsAre(
                   Pair("constant.0", "constant.0"),
                   Pair("bitcast.0", "bitcast.0"), Pair("copy.0", "copy.0"),
-                  Pair("fusion.0", "fusion.0"), Pair("fusion.1", "fusion.1"),
+                  Pair("fusion.0", "fusion.1"), Pair("fusion.1", "fusion.0"),
                   Pair("add.0", "add.0"), Pair("negate.0", "negate.0"),
-                  Pair("abs.0", "abs.0"), Pair("param_0", "param_1"),
-                  Pair("param_1", "param_0"), Pair("root_L", "root_R")));
+                  Pair("abs.0", "abs.0"), Pair("param_0", "param_0"),
+                  Pair("param_1", "param_1"), Pair("root_L", "root_R")));
 }
 
 }  // namespace
