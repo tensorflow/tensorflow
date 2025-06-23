@@ -289,20 +289,20 @@ TEST_F(CompilationEnvironmentsTest, GetEnvTriggersFullNameFallback) {
   // Create a custom descriptor pool and load the proto into it.
   const tsl::protobuf::Descriptor* desc_generated =
       test::TestCompilationEnvironment1::descriptor();
-  tsl::protobuf::DescriptorPool custom_pool(
+  auto* custom_pool = new tsl::protobuf::DescriptorPool(
       tsl::protobuf::DescriptorPool::generated_pool());
   tsl::protobuf::FileDescriptorProto file_proto;
   desc_generated->file()->CopyTo(&file_proto);
-  custom_pool.BuildFile(file_proto);
+  custom_pool->BuildFile(file_proto);
 
   // Register a custom handler for the descriptor from the custom_pool.
   const tsl::protobuf::Descriptor* desc_custom =
-      custom_pool.FindMessageTypeByName(desc_generated->full_name());
+      custom_pool->FindMessageTypeByName(desc_generated->full_name());
   CompilationEnvironments::RegisterProcessNewEnvFn(
       desc_custom, ProcessCustomDescInFallbackTest);
 
   // Create and populate a dynamic message instance using the custom descriptor.
-  tsl::protobuf::DynamicMessageFactory factory(&custom_pool);
+  tsl::protobuf::DynamicMessageFactory factory(custom_pool);
   std::unique_ptr<tsl::protobuf::Message> dynamic_env_instance(
       factory.GetPrototype(desc_custom)->New());
   const tsl::protobuf::FieldDescriptor* flag_field =
