@@ -94,12 +94,12 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: "Checking out openxla/xla"
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           path: "openxla/xla"
       - name: Checking out ${{ matrix.job_info.repo }}
         if: ${{ matrix.job_info.repo != 'openxla/xla' }}
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: ${{ matrix.job_info.repo }}
           path: ${{ matrix.job_info.repo }}

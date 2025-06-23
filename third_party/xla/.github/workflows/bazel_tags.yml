@@ -34,7 +34,7 @@ jobs:
     timeout-minutes: 6
     steps:
       - name: "Checking out repository"
-        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: "Install bazelisk"
         run: parallel --ungroup --retries 3 --delay 15 --nonall -- go install github.com/bazelbuild/bazelisk@24651ab # v1.20.0
       - name: "Run bazel build --nobuild //xla/... with retries"
