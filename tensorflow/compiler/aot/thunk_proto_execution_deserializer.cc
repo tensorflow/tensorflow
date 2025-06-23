@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/numeric/int128.h"
@@ -111,6 +112,11 @@ ThunkProtoExecutionDeserializer::ThunkSpecificRunImplFromThunkSequence(
                             GetSortThunkRunImpl(thunk));
         break;
       }
+      case xla::cpu::ThunkProto::kTopKThunk: {
+        TF_ASSIGN_OR_RETURN(thunk_run_impls.emplace_back(),
+                            GetTopKThunkRunImpl(thunk));
+        break;
+      }
       default: {
         return xla::Internal("Unsupported thunk type: %s.", thunk.kind());
       }
@@ -143,6 +149,10 @@ absl::StatusOr<std::string> ThunkProtoExecutionDeserializer::GetMatmulFunction(
       return is_single_threaded
                  ? "__xla_cpu_runtime_EigenSingleThreadedMatMulC128"
                  : "__xla_cpu_runtime_EigenMatMulC128";
+    case xla::S32:
+      return is_single_threaded
+                 ? "__xla_cpu_runtime_EigenSingleThreadedMatMulS32"
+                 : "__xla_cpu_runtime_EigenMatMulS32";
     default:
       return xla::Internal("Unsupported xla type: %d", xla_type);
   }
@@ -156,20 +166,43 @@ absl::StatusOr<std::string> ThunkProtoExecutionDeserializer::GetDotThunkRunImpl(
   }
   const xla::cpu::DotThunkProto& dot_thunk = thunk.dot_thunk();
 
-  absl::string_view dot_thunk_invocation_format = R"(
+  absl::string_view dot_thunk_invocation_format = xla_cpu_multi_thread_eigen_
+                                                      ? R"(
      // Dot Thunk
      {
-         if (run_options->intra_op_thread_pool() != nullptr) {
-           {{MATMUL_FUNCTION}}(
-            run_options, {{OUTPUT_PTR}}, {{LHS_PTR}}, {{RHS_PTR}},
-            {{M}}, {{N}}, {{K}}, {{TRANSPOSE_LHS}}, {{TRANSPOSE_RHS}});
-         } else {
-           {{SINGLE_THREADED_MATMUL_FUNCTION}}(
-            nullptr, {{OUTPUT_PTR}}, {{LHS_PTR}}, {{RHS_PTR}},
-            {{M}}, {{N}}, {{K}}, {{TRANSPOSE_LHS}}, {{TRANSPOSE_RHS}});
-         }
+        for (int64_t i = 0; i < {{BATCH_SIZE}}; ++i) {
+          if (run_options->intra_op_thread_pool() != nullptr) {
+            {{MATMUL_FUNCTION}}(
+              run_options,
+              {{OUTPUT_PTR}} + {{OUTPUT_STRIDE}} * i,
+              {{LHS_PTR}} + {{LHS_STRIDE}} * i,
+              {{RHS_PTR}} + {{RHS_STRIDE}} * i,
+              {{M}}, {{N}}, {{K}}, {{TRANSPOSE_LHS}}, {{TRANSPOSE_RHS}});
+          } else {
+            {{SINGLE_THREADED_MATMUL_FUNCTION}}(
+                nullptr, 
+                {{OUTPUT_PTR}} + {{OUTPUT_STRIDE}} * i,
+                {{LHS_PTR}} + {{LHS_STRIDE}} * i,
+                {{RHS_PTR}} + {{RHS_STRIDE}} * i,
+                {{M}}, {{N}}, {{K}}, {{TRANSPOSE_LHS}}, {{TRANSPOSE_RHS}});
+          }
+        }
      }
-     )";
+     )"
+                                                      :
+                                                      R"(
+      // Dot Thunk
+      {
+         for (int64_t i = 0; i < {{BATCH_SIZE}}; ++i) {
+          {{SINGLE_THREADED_MATMUL_FUNCTION}}(
+                nullptr,
+                {{OUTPUT_PTR}} + {{OUTPUT_STRIDE}} * i,
+                {{LHS_PTR}} + {{LHS_STRIDE}} * i,
+                {{RHS_PTR}} + {{RHS_STRIDE}} * i,
+                {{M}}, {{N}}, {{K}}, {{TRANSPOSE_LHS}}, {{TRANSPOSE_RHS}});
+         }
+      }
+      )";
 
   if (!(dot_thunk.lhs_buffer_shape().shape().element_type() ==
             dot_thunk.rhs_buffer_shape().shape().element_type() &&
@@ -240,18 +273,32 @@ absl::StatusOr<std::string> ThunkProtoExecutionDeserializer::GetDotThunkRunImpl(
     transpose_rhs = !transpose_rhs;
   }
 
-  return absl::StrReplaceAll(
-      dot_thunk_invocation_format,
-      {{"{{MATMUL_FUNCTION}}", matmul_function},
-       {"{{SINGLE_THREADED_MATMUL_FUNCTION}}", single_threaded_matmul_function},
-       {"{{OUTPUT_PTR}}", output_ptr},
-       {"{{LHS_PTR}}", lhs_ptr},
-       {"{{RHS_PTR}}", rhs_ptr},
-       {"{{M}}", absl::StrCat(m)},
-       {"{{N}}", absl::StrCat(n)},
-       {"{{K}}", absl::StrCat(k)},
-       {"{{TRANSPOSE_LHS}}", transpose_lhs ? "true" : "false"},
-       {"{{TRANSPOSE_RHS}}", transpose_rhs ? "true" : "false"}});
+  // NOTE: Don't use byte width because the buffer pointers will already be cast
+  // to the correct type. Reference xla/backends/cpu/runtime/dot_thunk.cc.
+  int64_t lhs_stride = m * k;
+  int64_t rhs_stride = k * n;
+  int64_t out_stride = m * n;
+
+  std::vector<std::pair<std::string, std::string>> rewrites = {
+      {"{{SINGLE_THREADED_MATMUL_FUNCTION}}", single_threaded_matmul_function},
+      {"{{OUTPUT_PTR}}", output_ptr},
+      {"{{OUTPUT_STRIDE}}", absl::StrCat(out_stride)},
+      {"{{LHS_PTR}}", lhs_ptr},
+      {"{{LHS_STRIDE}}", absl::StrCat(lhs_stride)},
+      {"{{RHS_PTR}}", rhs_ptr},
+      {"{{RHS_STRIDE}}", absl::StrCat(rhs_stride)},
+      {"{{M}}", absl::StrCat(m)},
+      {"{{N}}", absl::StrCat(n)},
+      {"{{K}}", absl::StrCat(k)},
+      {"{{TRANSPOSE_LHS}}", transpose_lhs ? "true" : "false"},
+      {"{{TRANSPOSE_RHS}}", transpose_rhs ? "true" : "false"},
+      {"{{BATCH_SIZE}}", absl::StrCat(dot_shape.batch_size)}};
+
+  if (xla_cpu_multi_thread_eigen_) {
+    rewrites.push_back({"{{MATMUL_FUNCTION}}", matmul_function});
+  }
+
+  return absl::StrReplaceAll(dot_thunk_invocation_format, rewrites);
 };
 
 absl::StatusOr<std::string>
@@ -307,7 +354,8 @@ ThunkProtoExecutionDeserializer::GetConvolution2DRunImpl(
           convolution_thunk.input_buffer_shape().shape().element_type(),
           /*is_single_threaded=*/true));
 
-  absl::string_view convolution_thunk_invocation_format = R"(
+  absl::string_view convolution_thunk_invocation_format =
+      xla_cpu_multi_thread_eigen_ ? R"(
      // Convolution Thunk
      {
          if (run_options->intra_op_thread_pool() != nullptr) {
@@ -333,38 +381,58 @@ ThunkProtoExecutionDeserializer::GetConvolution2DRunImpl(
              {{RHS_ROW_DILATION}}, {{RHS_COL_DILATION}}, {{FEATURE_GROUP_COUNT}}
            );
          }
-     })";
+     })"
+                                  :
+                                  R"(
+      // Convolution Thunk
+      {
+        {{SINGLE_THREADED_CONVOLUTION_FUNCTION}}(
+              nullptr,
+              {{OUTPUT_PTR}}, {{LHS_PTR}}, {{RHS_PTR}}, {{INPUT_BATCH}},
+              {{INPUT_ROWS}}, {{INPUT_COLS}}, {{INPUT_CHANNELS}}, {{KERNEL_ROWS}},
+              {{KERNEL_COLS}}, {{KERNEL_CHANNELS}}, {{KERNEL_FILTERS}},
+              {{OUTPUT_ROWS}}, {{OUTPUT_COLS}}, {{ROW_STRIDE}}, {{COL_STRIDE}},
+              {{PADDING_TOP}}, {{PADDING_BOTTOM}}, {{PADDING_LEFT}},
+              {{PADDING_RIGHT}}, {{LHS_ROW_DILATION}}, {{LHS_COL_DILATION}},
+              {{RHS_ROW_DILATION}}, {{RHS_COL_DILATION}}, {{FEATURE_GROUP_COUNT}}
+            );
+      }
+      )";
 
-  return absl::StrReplaceAll(
-      convolution_thunk_invocation_format,
-      {{"{{CONVOLUTION_FUNCTION}}", convolution_function},
-       {"{{SINGLE_THREADED_CONVOLUTION_FUNCTION}}",
-        single_threaded_convolution_function},
-       {"{{OUTPUT_PTR}}", output_ptr},
-       {"{{LHS_PTR}}", lhs_ptr},
-       {"{{RHS_PTR}}", rhs_ptr},
-       {"{{INPUT_BATCH}}", absl::StrCat(canonical_dims.input_batch)},
-       {"{{INPUT_ROWS}}", absl::StrCat(canonical_dims.input_dims.x)},
-       {"{{INPUT_COLS}}", absl::StrCat(canonical_dims.input_dims.y)},
-       {"{{INPUT_CHANNELS}}", absl::StrCat(canonical_dims.input_channels)},
-       {"{{KERNEL_ROWS}}", absl::StrCat(canonical_dims.kernel_dims.x)},
-       {"{{KERNEL_COLS}}", absl::StrCat(canonical_dims.kernel_dims.y)},
-       {"{{KERNEL_CHANNELS}}", absl::StrCat(canonical_dims.kernel_channels)},
-       {"{{KERNEL_FILTERS}}", absl::StrCat(canonical_dims.kernel_filters)},
-       {"{{OUTPUT_ROWS}}", absl::StrCat(canonical_dims.output_dims.x)},
-       {"{{OUTPUT_COLS}}", absl::StrCat(canonical_dims.output_dims.y)},
-       {"{{ROW_STRIDE}}", absl::StrCat(canonical_dims.strides.x)},
-       {"{{COL_STRIDE}}", absl::StrCat(canonical_dims.strides.y)},
-       {"{{PADDING_TOP}}", absl::StrCat(canonical_dims.padding_before.x)},
-       {"{{PADDING_BOTTOM}}", absl::StrCat(canonical_dims.padding_after.x)},
-       {"{{PADDING_LEFT}}", absl::StrCat(canonical_dims.padding_before.y)},
-       {"{{PADDING_RIGHT}}", absl::StrCat(canonical_dims.padding_after.y)},
-       {"{{LHS_ROW_DILATION}}", absl::StrCat(canonical_dims.base_dilation.x)},
-       {"{{LHS_COL_DILATION}}", absl::StrCat(canonical_dims.base_dilation.y)},
-       {"{{RHS_ROW_DILATION}}", absl::StrCat(canonical_dims.window_dilation.x)},
-       {"{{RHS_COL_DILATION}}", absl::StrCat(canonical_dims.window_dilation.y)},
-       {"{{FEATURE_GROUP_COUNT}}",
-        absl::StrCat(canonical_dims.feature_group_count)}});
+  std::vector<std::pair<std::string, std::string>> rewrites = {
+      {"{{SINGLE_THREADED_CONVOLUTION_FUNCTION}}",
+       single_threaded_convolution_function},
+      {"{{OUTPUT_PTR}}", output_ptr},
+      {"{{LHS_PTR}}", lhs_ptr},
+      {"{{RHS_PTR}}", rhs_ptr},
+      {"{{INPUT_BATCH}}", absl::StrCat(canonical_dims.input_batch)},
+      {"{{INPUT_ROWS}}", absl::StrCat(canonical_dims.input_dims.x)},
+      {"{{INPUT_COLS}}", absl::StrCat(canonical_dims.input_dims.y)},
+      {"{{INPUT_CHANNELS}}", absl::StrCat(canonical_dims.input_channels)},
+      {"{{KERNEL_ROWS}}", absl::StrCat(canonical_dims.kernel_dims.x)},
+      {"{{KERNEL_COLS}}", absl::StrCat(canonical_dims.kernel_dims.y)},
+      {"{{KERNEL_CHANNELS}}", absl::StrCat(canonical_dims.kernel_channels)},
+      {"{{KERNEL_FILTERS}}", absl::StrCat(canonical_dims.kernel_filters)},
+      {"{{OUTPUT_ROWS}}", absl::StrCat(canonical_dims.output_dims.x)},
+      {"{{OUTPUT_COLS}}", absl::StrCat(canonical_dims.output_dims.y)},
+      {"{{ROW_STRIDE}}", absl::StrCat(canonical_dims.strides.x)},
+      {"{{COL_STRIDE}}", absl::StrCat(canonical_dims.strides.y)},
+      {"{{PADDING_TOP}}", absl::StrCat(canonical_dims.padding_before.x)},
+      {"{{PADDING_BOTTOM}}", absl::StrCat(canonical_dims.padding_after.x)},
+      {"{{PADDING_LEFT}}", absl::StrCat(canonical_dims.padding_before.y)},
+      {"{{PADDING_RIGHT}}", absl::StrCat(canonical_dims.padding_after.y)},
+      {"{{LHS_ROW_DILATION}}", absl::StrCat(canonical_dims.base_dilation.x)},
+      {"{{LHS_COL_DILATION}}", absl::StrCat(canonical_dims.base_dilation.y)},
+      {"{{RHS_ROW_DILATION}}", absl::StrCat(canonical_dims.window_dilation.x)},
+      {"{{RHS_COL_DILATION}}", absl::StrCat(canonical_dims.window_dilation.y)},
+      {"{{FEATURE_GROUP_COUNT}}",
+       absl::StrCat(canonical_dims.feature_group_count)}};
+
+  if (xla_cpu_multi_thread_eigen_) {
+    rewrites.push_back({"{{CONVOLUTION_FUNCTION}}", convolution_function});
+  }
+
+  return absl::StrReplaceAll(convolution_thunk_invocation_format, rewrites);
 }
 
 absl::StatusOr<std::string>
@@ -598,6 +666,39 @@ ThunkProtoExecutionDeserializer::GetSortThunkRunImpl(
 }
 
 absl::StatusOr<std::string>
+ThunkProtoExecutionDeserializer::GetTopKThunkRunImpl(
+    const xla::cpu::ThunkProto& thunk) {
+  if (!thunk.has_top_k_thunk()) {
+    return xla::Internal(
+        "TopK thunk was expected when getting thunk run implementation.");
+  }
+  const xla::cpu::TopKThunkProto& topk_thunk_proto = thunk.top_k_thunk();
+
+  absl::string_view topk_thunk_invocation_format = R"(
+     // TopK Thunk
+     {
+    __xla_cpu_runtime_TopKF32({{BATCH_SIZE}}, {{INPUT_SIZE}}, {{K}},
+                              reinterpret_cast<const float*>({{VALUES_PTR}}),
+                              reinterpret_cast<float*>({{OUTPUT_PTR}}),
+                              reinterpret_cast<int32_t*>({{INDICES_PTR}}));
+     })";
+
+  return absl::StrReplaceAll(
+      topk_thunk_invocation_format,
+      {
+          {"{{BATCH_SIZE}}", absl::StrCat(topk_thunk_proto.batch_size())},
+          {"{{INPUT_SIZE}}", absl::StrCat(topk_thunk_proto.input_size())},
+          {"{{K}}", absl::StrCat(topk_thunk_proto.k())},
+          {"{{VALUES_PTR}}",
+           GetBufferAllocationString(topk_thunk_proto.values_buffer())},
+          {"{{OUTPUT_PTR}}",
+           GetBufferAllocationString(topk_thunk_proto.output_buffer())},
+          {"{{INDICES_PTR}}",
+           GetBufferAllocationString(topk_thunk_proto.indices_buffer())},
+      });
+}
+
+absl::StatusOr<std::string>
 ThunkProtoExecutionDeserializer::GetKernelThunkRunImpl(
     const xla::cpu::ThunkProto& thunk) {
   if (!thunk.has_kernel_thunk()) {
@@ -649,8 +750,7 @@ ThunkProtoExecutionDeserializer::GetKernelThunkRunImpl(
            }
          }
        }
-     }
-     )";
+     })";
 
   return absl::StrReplaceAll(
       kernel_invocation_format,
@@ -803,6 +903,8 @@ ThunkProtoExecutionDeserializer::CppDataTypeFromXlaType(
       return "std::complex<float>";
     case xla::C128:
       return "std::complex<double>";
+    case xla::S32:
+      return "int32_t";
     default:
       return xla::Internal("Unsupported xla type: %d", xla_type);
   }

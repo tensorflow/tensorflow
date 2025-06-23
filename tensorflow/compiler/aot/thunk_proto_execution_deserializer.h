@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/convolution_lib.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
+#include "xla/debug_options_flags.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -32,6 +33,10 @@ namespace tfcompile {
 // that is used to codegen the `Run` method of the tfcompiled models.
 class ThunkProtoExecutionDeserializer {
  public:
+  explicit ThunkProtoExecutionDeserializer()
+      : xla_cpu_multi_thread_eigen_(
+            xla::GetDebugOptionsFromFlags().xla_cpu_multi_thread_eigen()) {}
+
   absl::StatusOr<std::string> GetThunkSpecificRunImpl(
       const xla::cpu::CompilationResultProto& proto) &&;
 
@@ -79,6 +84,9 @@ class ThunkProtoExecutionDeserializer {
   absl::StatusOr<std::string> GetSortThunkRunImpl(
       const xla::cpu::ThunkProto& thunk);
 
+  absl::StatusOr<std::string> GetTopKThunkRunImpl(
+      const xla::cpu::ThunkProto& thunk);
+
   absl::StatusOr<std::string> CppDataTypeFromXlaType(
       xla::PrimitiveType xla_type);
 
@@ -86,6 +94,8 @@ class ThunkProtoExecutionDeserializer {
   // The index of the next rng state to use when deserializing the rng state
   // from the ThunkProto.
   int64_t rng_state_index_ = 0;
+
+  bool xla_cpu_multi_thread_eigen_;
 };
 
 }  // namespace tfcompile
