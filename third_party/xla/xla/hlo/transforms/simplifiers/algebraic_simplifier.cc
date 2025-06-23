@@ -4784,13 +4784,15 @@ absl::Status AlgebraicSimplifierVisitor::HandleMultiply(
 
   // 0*RHS => 0. Only applies for integral types for correct NaN-handling.
   if (IsAll(lhs, 0) &&
-      primitive_util::IsIntegralType(multiply->shape().element_type()) &&
+      (options_.enable_fast_math() ||
+       primitive_util::IsIntegralType(multiply->shape().element_type())) &&
       ReplaceInstructionIfCompatible(multiply, lhs)) {
     return absl::OkStatus();
   }
   // LHS*0 => 0
   if (IsAll(rhs, 0) &&
-      primitive_util::IsIntegralType(multiply->shape().element_type()) &&
+      (options_.enable_fast_math() ||
+       primitive_util::IsIntegralType(multiply->shape().element_type())) &&
       ReplaceInstructionIfCompatible(multiply, rhs)) {
     return absl::OkStatus();
   }
