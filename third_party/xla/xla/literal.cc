@@ -1794,7 +1794,7 @@ absl::StatusOr<Literal> ConvertSwitch(const LiteralBase& literal,
   if (literal.shape().element_type() == primitive_dest_type) {
     return literal.Clone();
   }
-  // Source Array type requirement is ensured by IsDenseArray before.
+  // Source Array type requirement is ensured before.
   if (!primitive_util::IsArrayType(primitive_dest_type) ||
       !primitive_util::IsArrayType(literal.shape().element_type())) {
     return Unimplemented("%s from type %s to type %s is not implemented.",
