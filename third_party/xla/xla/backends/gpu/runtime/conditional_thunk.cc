@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/functional/function_ref.h"
+#include "absl/functional/overload.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/overload.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/tsl/platform/errors.h"
@@ -122,14 +122,15 @@ absl::Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
                     &stream, blocked.message());
   }
 
-  int32_t branch_index =
-      std::visit(Overload{[](int32_t* branch_index) { return *branch_index; },
-                          [](bool* pred) { return *pred ? 0 : 1; }},
-                 branch_index_or_pred);
-
-  absl::string_view branch_kind = std::visit(
-      Overload{[](int32_t*) { return "index"; }, [](bool*) { return "pred"; }},
+  int32_t branch_index = std::visit(
+      absl::Overload([](int32_t* branch_index) { return *branch_index; },
+                     [](bool* pred) { return *pred ? 0 : 1; }),
       branch_index_or_pred);
+
+  absl::string_view branch_kind =
+      std::visit(absl::Overload([](int32_t*) { return "index"; },
+                                [](bool*) { return "pred"; }),
+                 branch_index_or_pred);
 
   VLOG(3) << "ConditionalThunk: branch_index=" << branch_index
           << " (kind: " << branch_kind << ")";

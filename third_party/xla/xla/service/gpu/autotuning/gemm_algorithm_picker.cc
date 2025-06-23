@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/overload.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -42,10 +43,10 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/service/overload.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_memory_allocator.h"
@@ -444,17 +445,17 @@ absl::StatusOr<bool> RunOnInstruction(HloInstruction* gemm,
   auto old_algorithm = backend_config.selected_algorithm();
   bool update_algorithm =
       IsCublasLtMatmulF8(*gemm) ||
-      std::visit(
-          Overload{[](const se::CudaComputeCapability& cc) {
-                     // We only set the 'algorithm' field on
-                     // non-Ampere architectures, as for Ampere
-                     // it's ignored in any case.
-                     return !cc.IsAtLeast(se::CudaComputeCapability::kAmpere);
-                   },
-                   [](const se::RocmComputeCapability&) {
-                     return true;  // TODO: not decided yet
-                   }},
-          config.GetGpuComputeCapability());
+      std::visit(absl::Overload(
+                     [](const se::CudaComputeCapability& cc) {
+                       // We only set the 'algorithm' field on
+                       // non-Ampere architectures, as for Ampere
+                       // it's ignored in any case.
+                       return !cc.IsAtLeast(se::CudaComputeCapability::kAmpere);
+                     },
+                     [](const se::RocmComputeCapability&) {
+                       return true;  // TODO: not decided yet
+                     }),
+                 config.GetGpuComputeCapability());
 
   if (update_algorithm) {
     int64_t new_algorithm{};

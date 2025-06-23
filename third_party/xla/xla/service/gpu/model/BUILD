@@ -1135,7 +1135,7 @@ xla_cc_test(
     srcs = ["interpolator_test.cc"],
     deps = [
         ":interpolator",
-        "//xla/service:overload",
+        "@com_google_absl//absl/functional:overload",
         "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
     ],
