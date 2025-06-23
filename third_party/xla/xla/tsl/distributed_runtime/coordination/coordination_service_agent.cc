@@ -282,7 +282,7 @@ absl::Status CoordinationServiceAgent::Connect() {
       absl::UnknownError("Connection not attempted yet.");
   RegisterTaskRequest request;
   *request.mutable_source_task() = task_;
-  request.set_incarnation(incarnation_id_);
+  request.set_incarnation(incarnation_id_.value());
   RegisterTaskResponse response;
 
   const int64_t register_timeout =
@@ -355,7 +355,7 @@ absl::Status CoordinationServiceAgent::Connect() {
 void CoordinationServiceAgent::StartSendingHeartbeats() {
   HeartbeatRequest request;
   *request.mutable_source_task() = task_;
-  request.set_incarnation(incarnation_id_);
+  request.set_incarnation(incarnation_id_.value());
   HeartbeatResponse response;
   const int64_t heartbeat_interval_ms =
       configs_.heartbeat_timeout_in_ms() > 0
@@ -1101,10 +1101,10 @@ CoordinationServiceAgent::GetAliveTasks(
       response->alive_tasks().begin(), response->alive_tasks().end());
 }
 
-absl::StatusOr<std::vector<uint64_t>> CoordinationServiceAgent::Incarnations(
-    absl::Span<const int> tasks) const {
+absl::StatusOr<std::vector<IncarnationId>>
+CoordinationServiceAgent::Incarnations(absl::Span<const int> tasks) const {
   absl::MutexLock lock(&incarnations_mu_);
-  std::vector<uint64_t> incarnations;
+  std::vector<IncarnationId> incarnations;
   for (const auto& task_id : tasks) {
     auto it = incarnations_.find(task_id);
     if (it == incarnations_.end()) {

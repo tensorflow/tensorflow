@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
 #include "xla/tsl/distributed_runtime/coordination/key_value_store.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
@@ -43,6 +44,8 @@ limitations under the License.
 #include "tsl/platform/random.h"
 
 namespace tsl {
+
+TSL_LIB_GTL_DEFINE_INT_TYPE(IncarnationId, uint64_t);
 
 // Coordination service is used for controlling and coordinating distributed
 // execution in a cluster of multiple tasks.
@@ -67,7 +70,7 @@ class CoordinationService {
   using BarrierCallback = std::function<void(const absl::Status&, int64_t)>;
   using GetAliveTasksCallback = std::function<void(
       const absl::Status&, const std::vector<tensorflow::CoordinatedTask>&,
-      const std::vector<uint64_t> incarnations)>;
+      const std::vector<IncarnationId> incarnations)>;
 
   // Convenience structs to allow using CoordinatedTask as container keys.
   struct CoordinatedTaskHash {
@@ -116,9 +119,9 @@ class CoordinationService {
   //       with a different incarnation, indicating that it restarted.
   //   - DeadlineExceeded: waited too long for straggler tasks to register.
   absl::Status RegisterTask(const tensorflow::CoordinatedTask& task,
-                            uint64_t incarnation);
+                            IncarnationId incarnation);
   void RegisterTaskAsync(const tensorflow::CoordinatedTask& task,
-                         uint64_t incarnation, StatusCallback done);
+                         IncarnationId incarnation, StatusCallback done);
 
   // Wait for all tasks to be up and running, and register local device
   // info. The callback is invoked when all tasks are up and registered, or some
@@ -150,7 +153,7 @@ class CoordinationService {
   // the leader of the cluster.
   //   - Internal: Service has shut down.
   absl::Status RecordHeartbeat(const tensorflow::CoordinatedTask& task,
-                               uint64_t incarnation);
+                               IncarnationId incarnation);
 
   // Set a task in error state permanently.
   absl::Status ReportTaskError(const tensorflow::CoordinatedTask& task,
@@ -297,19 +300,19 @@ class CoordinationService {
 
   const tensorflow::DeviceInfo& ListClusterDevices()
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
-  uint64_t GetServiceIncarnation();
+  IncarnationId GetServiceIncarnation();
   void BarrierAsyncLocked(
       absl::string_view barrier_id, int64_t counter, absl::Duration timeout,
       const tensorflow::CoordinatedTask& task,
       const std::vector<tensorflow::CoordinatedTask>& participating_tasks,
       BarrierCallback done) ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   BarrierCallback ConnectAfterBarrierPasses(absl::string_view task_name,
-                                            uint64_t incarnation,
+                                            IncarnationId incarnation,
                                             StatusCallback done);
   // Connects a task to the service, and leaves any previously ongoing barriers
   // for recoverable tasks.
   void ConnectTask(const tensorflow::CoordinatedTask& task,
-                   uint64_t incarnation)
+                   IncarnationId incarnation)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   // Checks if any task has stopped sending heartbeats.
   void CheckHeartbeatTimeout();
@@ -514,8 +517,8 @@ class CoordinationService {
     absl::Status GetStatus() const { return status_; }
     bool IsRecoverable() const { return recoverable_; }
     void SetRecoverable(bool recoverable) { recoverable_ = recoverable; }
-    uint64_t GetTaskIncarnation() const { return task_incarnation_; }
-    void SetTaskIncarnation(uint64_t task_incarnation) {
+    IncarnationId GetTaskIncarnation() const { return task_incarnation_; }
+    void SetTaskIncarnation(IncarnationId task_incarnation) {
       task_incarnation_ = task_incarnation;
     }
     void Connect() {
@@ -524,9 +527,9 @@ class CoordinationService {
                 << " has connected to coordination service. Incarnation: "
                 << task_incarnation_;
     }
-    void SetConnected(uint64_t task_incarnation);
+    void SetConnected(IncarnationId task_incarnation);
     void Disconnect(uint64_t grace_period_duration_us);
-    absl::Status RecordHeartbeat(uint64_t task_incarnation);
+    absl::Status RecordHeartbeat(IncarnationId task_incarnation);
     int64_t TimeSinceLastHeartbeatMs();
     // Sets the error and returns true if the task state is not ERROR.
     // Otherwise, don't overwrite the error and return false.
@@ -556,7 +559,7 @@ class CoordinationService {
    private:
     std::string task_name_;
     // Incarnation ID for CPU:0 on remote task.
-    uint64_t task_incarnation_ = 0;
+    IncarnationId task_incarnation_{0};
 
     tensorflow::CoordinatedTaskState state_ =
         tensorflow::CoordinatedTaskState::TASKSTATE_DISCONNECTED;
@@ -591,7 +594,7 @@ class CoordinationService {
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
   // Returns the incarnation ids of the provided tasks, in the same order.
-  std::vector<uint64_t> IncarnationIds(
+  std::vector<IncarnationId> IncarnationIds(
       absl::Span<const tensorflow::CoordinatedTask> tasks) const
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
@@ -605,7 +608,7 @@ class CoordinationService {
 
   std::unique_ptr<CoordinationClientCache> client_cache_;
   Env& env_;
-  const uint64_t service_incarnation_ = random::New64();
+  const IncarnationId service_incarnation_{random::New64()};
   const uint64_t heartbeat_timeout_ms_;
   bool cluster_register_with_barrier_ = false;
   const absl::Duration cluster_register_timeout_;
@@ -619,9 +622,9 @@ class CoordinationService {
       post_aggregate_device_fn_;
 
   const std::string device_propagation_barrier_id_ =
-      absl::StrCat("WaitForAllTasks::", service_incarnation_);
+      absl::StrCat("WaitForAllTasks::", service_incarnation_.value());
   const std::string shutdown_barrier_id_ =
-      absl::StrCat("Shutdown::", service_incarnation_);
+      absl::StrCat("Shutdown::", service_incarnation_.value());
   std::vector<tensorflow::CoordinatedTask> shutdown_barrier_tasks_
       ABSL_GUARDED_BY(state_mu_);
 

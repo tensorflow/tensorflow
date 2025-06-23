@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/hash/hash.h"
 #include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -47,7 +48,7 @@ GpuCliqueKey::GpuCliqueKey(
     std::vector<GlobalDeviceId> devices, int64_t num_local_participants,
     CollectiveStreamId stream_id, AsyncStreamKind stream_kind,
     std::vector<std::vector<GlobalDeviceId>> participant_groups,
-    GlobalDeviceId root_device, std::vector<uint64_t> incarnations)
+    GlobalDeviceId root_device, std::vector<IncarnationId> incarnations)
     : CliqueKey(std::move(devices)),
       num_local_participants_(num_local_participants),
       stream_id_(stream_id),
@@ -119,7 +120,10 @@ std::string GpuCliqueKey::ToString() const {
       "num_local_participants=%lld; incarnations=[%s]",
       GlobalDeviceIdsToString(devices()), stream_id_.value(), group_string,
       root_device_.value(), num_local_participants_,
-      absl::StrJoin(incarnations_, ", "));
+      absl::StrJoin(incarnations_, ", ",
+                    [](std::string* out, IncarnationId id) {
+                      absl::StrAppend(out, id.value());
+                    }));
 }
 
 void GpuCliqueKey::HashValue(absl::HashState state) const {

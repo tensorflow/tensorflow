@@ -608,19 +608,22 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
 // Returns true if key contains any of the provided incarnations.
 bool CliqueKeyContainsIncarnation(
     const GpuCliqueKey& key,
-    const absl::flat_hash_set<uint64_t>& incarnations) {
+    const absl::flat_hash_set<IncarnationId>& incarnations) {
   return absl::c_any_of(key.incarnations(),
-                        [&incarnations](uint64_t incarnation) {
+                        [&incarnations](IncarnationId incarnation) {
                           return incarnations.contains(incarnation);
                         });
 }
 
 absl::Status AbortCliquesWithIncarnations(
-    absl::Span<const uint64_t> incarnations) {
+    absl::Span<const IncarnationId> incarnations) {
   VLOG(1) << "Aborting GPU cliques for incarnations "
-          << absl::StrJoin(incarnations, ", ");
-  const absl::flat_hash_set<uint64_t> incarnation_set(incarnations.begin(),
-                                                      incarnations.end());
+          << absl::StrJoin(incarnations, ", ",
+                           [](std::string* out, IncarnationId i) {
+                             absl::StrAppend(out, i.value());
+                           });
+  const absl::flat_hash_set<IncarnationId> incarnation_set(incarnations.begin(),
+                                                           incarnations.end());
   ProcessGpuCliques& cliques = GetProcessGpuCliques();
   absl::MutexLock lock(&cliques.mu);
   absl::Status result;

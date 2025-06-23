@@ -74,7 +74,7 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
 // incarnations is [1, 2], then all cliques with a clique key that includes
 // incarnations 1 or 2 will be aborted.
 absl::Status AbortCliquesWithIncarnations(
-    absl::Span<const uint64_t> incarnations);
+    absl::Span<const IncarnationId> incarnations);
 
 }  // namespace xla::gpu
 
