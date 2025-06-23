@@ -148,7 +148,12 @@ def inverse_stft_window_fn(frame_step,
       denom = array_ops.tile(denom, [overlaps, 1])
       denom = array_ops.reshape(denom, [overlaps * frame_step_])
 
-      return forward_window / denom[:frame_length]
+      denom = denom[:frame_length]
+      return array_ops.where(
+          math_ops.equal(denom, 0.0),
+          array_ops.zeros_like(forward_window),
+          forward_window / denom,
+      )
   return inverse_stft_window_fn_inner
 
 
