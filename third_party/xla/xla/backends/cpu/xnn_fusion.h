@@ -57,6 +57,9 @@ bool IsConstantSupportedByXnn(const HloInstruction* hlo);
 // Returns true if the nonconstant elementwise op is supported by XNNPACK.
 bool IsElementwiseOpSupportedByXnn(const HloInstruction* hlo);
 
+// Returns true if the bitcast op is supported by XNNPACK.
+bool IsBitcastOpSupportedByXnn(const HloInstruction* hlo);
+
 }  // namespace xla::cpu
 
 #endif  // XLA_BACKENDS_CPU_XNN_FUSION_H_

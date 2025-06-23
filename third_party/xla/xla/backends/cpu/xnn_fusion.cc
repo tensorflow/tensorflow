@@ -269,4 +269,13 @@ bool IsElementwiseOpSupportedByXnn(const HloInstruction* hlo) {
   }
 }
 
+bool IsBitcastOpSupportedByXnn(const HloInstruction* hlo) {
+  CHECK(hlo->opcode() == HloOpcode::kBitcast);
+  if (!XnnDatatype(hlo->shape().element_type()).ok()) {
+    return false;
+  }
+  const HloInstruction* input = hlo->operand(0);
+  return hlo->shape().element_type() == input->shape().element_type();
+}
+
 }  // namespace xla::cpu

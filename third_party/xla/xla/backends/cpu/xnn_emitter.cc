@@ -139,6 +139,24 @@ static absl::StatusOr<uint32_t> DefineParameter(xnn_subgraph_t subgraph,
   return tensor_id;
 }
 
+static absl::StatusOr<uint32_t> DefineBitcastOp(xnn_subgraph_t subgraph,
+                                                TensorIdMap& tensor_ids,
+                                                const HloInstruction* instr) {
+  VLOG(3) << absl::StreamFormat("Define tensor value for bitcast op: %s",
+                                instr->ToString());
+  CHECK(instr->opcode() == HloOpcode::kBitcast);
+  const HloInstruction* input = instr->operand(0);
+  CHECK(input->shape().element_type() == instr->shape().element_type());
+  TF_ASSIGN_OR_RETURN(auto in, FindTensorValue(tensor_ids, input));
+  TF_ASSIGN_OR_RETURN(auto out, DefineTensorValue(subgraph, instr));
+
+  auto dims = XnnDimensions(instr->shape());
+  XNN_RETURN_IF_ERROR(xnn_define_static_reshape(subgraph, dims.size(),
+                                                dims.data(), in, out,
+                                                /*flags=*/0));
+  return out;
+}
+
 static absl::StatusOr<uint32_t> DefineUnaryOp(xnn_subgraph_t subgraph,
                                               TensorIdMap& tensor_ids,
                                               const HloInstruction* instr) {
@@ -291,6 +309,17 @@ static absl::StatusOr<xnn_subgraph_t> EmitXnnSubgraph(
       case HloOpcode::kParameter: {
         TF_ASSIGN_OR_RETURN(tensor_ids[instr],
                             DefineParameter(subgraph, instr));
+      } break;
+
+      case HloOpcode::kBitcast: {
+        if (!IsBitcastOpSupportedByXnn(instr)) {
+          XNN_LOG_IF_ERROR(xnn_delete_subgraph(subgraph));
+          return InvalidArgument(
+              "Unsupported bitcast instruction in XNN fusion: %s",
+              instr->ToString());
+        }
+        TF_ASSIGN_OR_RETURN(tensor_ids[instr],
+                            DefineBitcastOp(subgraph, tensor_ids, instr));
       } break;
 
       case HloOpcode::kDot: {
