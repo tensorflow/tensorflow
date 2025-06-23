@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/codegen/math/string_interner.h"
 #include "xla/codegen/math/vec_name_mangler.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::codegen {
 
