@@ -2054,6 +2054,7 @@ func.func @main(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, !mhlo.token> {
 // CHECK:  HloModule
 func.func @main(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, !mhlo.token> {
   %0:2 = "mhlo.recv"(%token) {
+    source_target_pairs = dense<[[0,1],[1,2]]> : tensor<2x2xi64>,
     channel_handle = #mhlo.channel_handle<
       handle = 5,
       type = 1  // Device to device channel
@@ -2067,7 +2068,10 @@ func.func @main(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, !mhlo.token> {
 // CHECK:  ENTRY
 // CHECK:  [[TOKEN:%.*]] = token[] parameter(0)
 // CHECK:  [[RECV:%.*]] = (s32[3,4], u32[], token[]) recv([[TOKEN]]), channel_id=5
-// CHECK:  (s32[3,4], token[]) recv-done([[RECV]]), channel_id=5
+// CHECK-SAME: frontend_attributes
+// CHECK-SAME: _xla_send_recv_source_target_pairs
+// CHECK-SAME{LITERAL}: {{0,1},{1,2}}
+// CHECK-NEXT:  (s32[3,4], token[]) recv-done([[RECV]]), channel_id=5
 
 
 // -----
@@ -2075,6 +2079,7 @@ func.func @main(%token: !mhlo.token) -> tuple<tensor<3x4xi32>, !mhlo.token> {
 // CHECK:  HloModule
 func.func @main(%token: !mhlo.token) -> !mhlo.token {
   %0 = "mhlo.recv"(%token) {
+    source_target_pairs = dense<[[0,1],[1,2]]> : tensor<2x2xi64>,
     channel_handle = #mhlo.channel_handle<
       handle = 5,
       type = 1  // Device to device channel
@@ -2087,6 +2092,9 @@ func.func @main(%token: !mhlo.token) -> !mhlo.token {
 // CHECK:  ENTRY
 // CHECK-NEXT:  [[ARG:%.*]] = token[] parameter(0)
 // CHECK-NEXT:  [[RECV:%.*]] = ((), u32[], token[]) recv([[ARG]]), channel_id=5
+// CHECK-SAME: frontend_attributes
+// CHECK-SAME: _xla_send_recv_source_target_pairs
+// CHECK-SAME{LITERAL}: {{0,1},{1,2}}
 // CHECK-NEXT:  [[RECV_DONE:%.*]] = ((), token[]) recv-done([[RECV]]), channel_id=5
 // CHECK-NEXT:  [[DATA:%.*]] =   () get-tuple-element([[RECV_DONE]]), index=0
 // CHECK-NEXT:  ROOT [[TOKEN:%.*]] =   token[] get-tuple-element([[RECV_DONE]]), index=1
@@ -2362,7 +2370,8 @@ func.func @main(%arg: tensor<3x4xi32>, %token: !mhlo.token) -> !mhlo.token {
       handle = 5,
       type = 1  // Device to device channel
     >,
-    is_host_transfer = false
+    is_host_transfer = false,
+    source_target_pairs = dense<[[0,1],[1,2]]> : tensor<2x2xi64>
   } : (tensor<3x4xi32>, !mhlo.token) -> !mhlo.token
   func.return %0 : !mhlo.token
 }
@@ -2371,7 +2380,10 @@ func.func @main(%arg: tensor<3x4xi32>, %token: !mhlo.token) -> !mhlo.token {
 // CHECK:  [[ARG:%.*]] = s32[3,4] parameter(0)
 // CHECK:  [[TOKEN:%.*]] = token[] parameter(1)
 // CHECK:  [[SEND:%.*]] = (s32[3,4], u32[], token[]) send([[ARG]], [[TOKEN]]), channel_id=5
-// CHECK:  ROOT
+// CHECK-SAME: frontend_attributes
+// CHECK-SAME: _xla_send_recv_source_target_pairs
+// CHECK-SAME{LITERAL}: {{0,1},{1,2}}
+// CHECK-NEXT:  ROOT
 // CHECK-SAME:  token[] send-done([[SEND]]), channel_id=5
 
 // -----
@@ -2383,7 +2395,9 @@ func.func @main(%token: !mhlo.token) -> !mhlo.token {
       handle = 5,
       type = 1
     >,
-    is_host_transfer = false
+    is_host_transfer = false,
+    source_target_pairs = dense<[[0,1],[1,2]]> : tensor<2x2xi64>,
+    mhlo.frontend_attributes = {_xla_host_transfer_rendezvous = "fe_attr_just_for_testing"}
   } : (!mhlo.token) -> !mhlo.token
   func.return %0 : !mhlo.token
 }
@@ -2392,7 +2406,36 @@ func.func @main(%token: !mhlo.token) -> !mhlo.token {
 // CHECK-DAG:   [[ARG:%.*]] = () tuple()
 // CHECK-DAG:   [[TOKEN:%.*]] = token[] parameter(0)
 // CHECK:   [[SEND:%.*]] = ((), u32[], token[]) send([[ARG]], [[TOKEN]]), channel_id=5
-// CHECK:  ROOT
+// CHECK-SAME: frontend_attributes
+// CHECK-SAME{LITERAL}: _xla_host_transfer_rendezvous="fe_attr_just_for_testing",
+// CHECK-SAME: _xla_send_recv_source_target_pairs
+// CHECK-SAME{LITERAL}: {{0,1},{1,2}}
+// CHECK-NEXT:  ROOT
+// CHECK-SAME:   token[] send-done([[SEND]]), channel_id=5
+
+// -----
+
+// CHECK:  HloModule
+func.func @main(%token: !mhlo.token) -> !mhlo.token {
+  %0 = "mhlo.send"(%token) {
+    channel_handle = #mhlo.channel_handle<
+      handle = 5,
+      type = 1
+    >,
+    is_host_transfer = false,
+    source_target_pairs = dense<[[0,1],[1,2]]> : tensor<2x2xi64>
+  } : (!mhlo.token) -> !mhlo.token
+  func.return %0 : !mhlo.token
+}
+
+// CHECK: ENTRY
+// CHECK-DAG:   [[ARG:%.*]] = () tuple()
+// CHECK-DAG:   [[TOKEN:%.*]] = token[] parameter(0)
+// CHECK:   [[SEND:%.*]] = ((), u32[], token[]) send([[ARG]], [[TOKEN]]), channel_id=5
+// CHECK-SAME: frontend_attributes
+// CHECK-SAME: _xla_send_recv_source_target_pairs
+// CHECK-SAME{LITERAL}: {{0,1},{1,2}}
+// CHECK-NEXT:  ROOT
 // CHECK-SAME:   token[] send-done([[SEND]]), channel_id=5
 
 // -----

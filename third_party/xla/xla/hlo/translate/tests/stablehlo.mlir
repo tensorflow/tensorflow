@@ -611,6 +611,28 @@ func.func @main(%arg0: tensor<f32>, %arg1: tensor<i32>) -> tuple<tensor<f32>, te
 // CHECK:       ENTRY %[[$main_5:[^ ]+]]
 // CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[] parameter(0)
 // CHECK-NEXT:  %[[Arg_1_2:[^ ]+]] = token[] parameter(1)
+// CHECK-NEXT:  %[[send_3:[^ ]+]] = (f32[], u32[], token[]) send(%[[Arg_0_1]], %[[Arg_1_2]]), frontend_attributes=
+// CHECK-SAME{LITERAL}: _xla_send_recv_source_target_pairs={{0,1},{1,2}}}
+// CHECK-NEXT: ROOT
+// CHECK-SAME: send-done
+
+func.func @main(%arg0: tensor<f32>, %arg1: !stablehlo.token) -> !stablehlo.token {
+  %0 = "stablehlo.send"(%arg0, %arg1) {
+  channel_handle = #stablehlo.channel_handle<handle = 0, type = 1>,
+  is_host_transfer = false,
+  source_target_pairs = dense<[[0,1],[1,2]]> : tensor<2x2xi64>
+  } : (tensor<f32>, !stablehlo.token) -> !stablehlo.token
+  func.return %0 : !stablehlo.token
+}
+// CHECK-DIRECT: stablehlo.send
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(f32[], token[])->token[]}
+
+// CHECK:       ENTRY %[[$main_5:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = f32[] parameter(0)
+// CHECK-NEXT:  %[[Arg_1_2:[^ ]+]] = token[] parameter(1)
 // CHECK-NEXT:  %[[send_3:[^ ]+]] = (f32[], u32[], token[]) send(%[[Arg_0_1]], %[[Arg_1_2]]), is_host_transfer=true, metadata
 // CHECK-NEXT:  ROOT %[[send_done_4:[^ ]+]] = token[] send-done(%[[send_3]]), is_host_transfer=true, metadata=
 
@@ -639,6 +661,26 @@ func.func @main(%arg0: !stablehlo.token) -> (tensor<f32>, !stablehlo.token) {
   %0:2 = "stablehlo.recv"(%arg0) {
   channel_handle = #stablehlo.channel_handle<handle = 0, type = 3>,
   is_host_transfer = true
+  } : (!stablehlo.token) -> (tensor<f32>, !stablehlo.token)
+  func.return %0#0, %0#1 : tensor<f32>, !stablehlo.token
+}
+// CHECK-DIRECT: stablehlo.recv
+
+// -----
+
+// CHECK-LABEL: HloModule main, entry_computation_layout={(token[])->(f32[], token[])}
+
+// CHECK:       ENTRY %[[$main_7:[^ ]+]]
+// CHECK-NEXT:  %[[Arg_0_1:[^ ]+]] = token[] parameter(0)
+// CHECK-NEXT:  %[[recv_2:[^ ]+]] = (f32[], u32[], token[]) recv(%[[Arg_0_1]]), frontend_attributes=
+// CHECK-SAME{LITERAL}: _xla_send_recv_source_target_pairs={{0,1},{1,2}}}
+// CHECK-NEXT: recv-done
+
+func.func @main(%arg0: !stablehlo.token) -> (tensor<f32>, !stablehlo.token) {
+  %0:2 = "stablehlo.recv"(%arg0) {
+  channel_handle = #stablehlo.channel_handle<handle = 0, type = 1>,
+  is_host_transfer = false,
+  source_target_pairs = dense<[[0,1],[1,2]]> : tensor<2x2xi64>
   } : (!stablehlo.token) -> (tensor<f32>, !stablehlo.token)
   func.return %0#0, %0#1 : tensor<f32>, !stablehlo.token
 }

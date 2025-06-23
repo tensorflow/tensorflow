@@ -1372,6 +1372,21 @@ func.func @op_recv(%arg0: !mhlo.token) -> (tensor<f32>, !mhlo.token) {
   func.return %0#0, %0#1 : tensor<f32>, !mhlo.token
 }
 
+// CHECK-LABEL: "op_recv_d2d"
+func.func @op_recv_d2d(%arg0: !mhlo.token) -> (tensor<f32>, !mhlo.token) {
+  //      CHECK: "stablehlo.recv"([[ARG0:%arg[0-9]+]]) <{
+  // CHECK-SAME:   channel_handle = #stablehlo.channel_handle<handle = 0, type = 1>,
+  // CHECK-SAME:   is_host_transfer = false
+  // CHECK-SAME{LITERAL}:   source_target_pairs = dense<[[0, 1], [1, 2]]> : tensor<2x2xi64>
+  // CHECK-SAME: }> : (!stablehlo.token) -> (tensor<f32>, !stablehlo.token)
+  %0:2 = "mhlo.recv"(%arg0) {
+    channel_handle = #mhlo.channel_handle<handle = 0, type = 1>,
+    is_host_transfer = false,
+    source_target_pairs = dense<[[0, 1], [1, 2]]> : tensor<2x2xi64>
+  } : (!mhlo.token) -> (tensor<f32>, !mhlo.token)
+  func.return %0#0, %0#1 : tensor<f32>, !mhlo.token
+}
+
 // CHECK-LABEL: "op_reduce"
 func.func @op_reduce(%arg0: tensor<16xf32>, %arg1: tensor<f32>) -> tensor<f32> {
   %0 = "mhlo.reduce"(%arg0, %arg1) ({
@@ -1615,6 +1630,21 @@ func.func @op_send(%arg0: tensor<f32>, %arg1: !mhlo.token) -> !mhlo.token {
   %0 = "mhlo.send"(%arg0, %arg1) {
     channel_handle = #mhlo.channel_handle<handle = 0, type = 2>,
     is_host_transfer = true
+  } : (tensor<f32>, !mhlo.token) -> !mhlo.token
+  func.return %0 : !mhlo.token
+}
+
+// CHECK-LABEL: "op_send_d2d"
+func.func @op_send_d2d(%arg0: tensor<f32>, %arg1: !mhlo.token) -> !mhlo.token {
+  //      CHECK: "stablehlo.send"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) <{
+  // CHECK-SAME:   channel_handle = #stablehlo.channel_handle<handle = 0, type = 1>,
+  // CHECK-SAME:   is_host_transfer = false
+  // CHECK-SAME{LITERAL}:   source_target_pairs = dense<[[0, 1], [1, 2]]> : tensor<2x2xi64>
+  // CHECK-SAME: }> : (tensor<f32>, !stablehlo.token) -> !stablehlo.token
+  %0 = "mhlo.send"(%arg0, %arg1) {
+    channel_handle = #mhlo.channel_handle<handle = 0, type = 1>,
+    is_host_transfer = false,
+    source_target_pairs = dense<[[0, 1], [1, 2]]> : tensor<2x2xi64>
   } : (tensor<f32>, !mhlo.token) -> !mhlo.token
   func.return %0 : !mhlo.token
 }
