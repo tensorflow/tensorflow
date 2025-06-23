@@ -3,6 +3,7 @@
 func.func @nested_for(
     %arg0: tensor<8x128xf32> {xla.invariant, xla.slice_index = 0 : index},
     %arg1: tensor<128x8xf32> {xla.slice_index = 1 : index}) -> tensor<128x8xf32>
+    attributes { xla.entry }
 {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -31,7 +32,7 @@ func.func @multi_output(
     %arg0: tensor<8x128xf32> {xla.invariant, xla.slice_index = 0 : index},
     %arg1: tensor<128x8xf32> {xla.slice_index = 1 : index},
     %arg2: tensor<128x8xf32> {xla.slice_index = 2 : index}
-  ) -> (tensor<128x8xf32>, tensor<128x8xf32>)
+  ) -> (tensor<128x8xf32>, tensor<128x8xf32>) attributes { xla.entry }
 {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
@@ -61,3 +62,36 @@ func.func @multi_output(
 // CHECK-DAG-SAME: llvm.noalias = [#[[ALIAS_SCOPE_2]]]
 // CHECK-DAG : tensor.insert {{.*}}alias_scopes = [#[[ALIAS_SCOPE_2]]],
 // CHECK-DAG-SAME: llvm.noalias = [#[[ALIAS_SCOPE_1]]]
+
+// -----
+
+func.func @sub_call(
+    %arg0: tensor<128xf32> {xla.invariant, xla.slice_index = 0 : index},
+    %arg1: tensor<128xf32> {xla.slice_index = 1 : index}) -> tensor<128xf32>
+    attributes { xla.entry }
+{
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c128 = arith.constant 128 : index
+  %0 = scf.for %index = %c0 to %c128 step %c1
+      iter_args(%arg3 = %arg1) -> (tensor<128xf32>) {
+    %result = xla.pure_call @sub_call_sub(%index, %arg0, %arg1)
+      : (index, tensor<128xf32>, tensor<128xf32>) -> tensor<128xf32>
+    scf.yield %result : tensor<128xf32>
+  }
+  func.return %0 : tensor<128xf32>
+}
+
+func.func @sub_call_sub(
+    %index: index, %arg0: tensor<128xf32>, %arg1: tensor<128xf32>
+  ) -> tensor<128xf32>
+{
+  %extracted = tensor.extract %arg0[%index] : tensor<128xf32>
+  %inserted = tensor.insert %extracted into %arg1[%index] : tensor<128xf32>
+  func.return %inserted : tensor<128xf32>
+}
+
+// CHECK-LABEL: func.func @sub_call
+// CHECK-LABEL: func.func @sub_call_sub
+// CHECK: tensor.extract {{.*}}llvm.noalias = [#[[ALIAS_SCOPE:[a-z0-9_]+]]
+// CHECK: tensor.insert {{.*}}alias_scopes = [#[[ALIAS_SCOPE]]

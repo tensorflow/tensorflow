@@ -199,7 +199,7 @@ def MergePointersToSameSlicePass :
 }
 
 def PropagateAliasScopesPass :
-   Pass<"xla-propagate-alias-scopes", "mlir::func::FuncOp"> {
+   Pass<"xla-propagate-alias-scopes", "mlir::ModuleOp"> {
   let summary = "Propagates alias scopes from function args to tensor modifications.";
 
   let description = [{
