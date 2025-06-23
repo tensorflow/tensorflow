@@ -44,16 +44,37 @@ echo "Using Config ID for baseline lookup: $SCRIPT_CONFIG_ID_FOR_BASELINE_LOOKUP
 
 echo "Constructed Config ID for baseline lookup: $SCRIPT_CONFIG_ID_FOR_BASELINE_LOOKUP"
 
+# Run the python comparison script and capture its exit code.
+set +e
 python3 "$RESOLVED_COMPARISON_SCRIPT" \
   --results-json-file="$ACTUAL_RESULTS_JSON_PATH" \
   --baseline-yaml-file="$RESOLVED_BASELINE_YAML" \
   --config-id="$SCRIPT_CONFIG_ID_FOR_BASELINE_LOOKUP"
-
 COMPARISON_EXIT_CODE=$?
-if [ $COMPARISON_EXIT_CODE -ne 0 ]; then
-  echo "::error::Baseline comparison script failed or regressions detected (Exit Code: $COMPARISON_EXIT_CODE)."
+set -e
+
+# --- Handle Exit Code and Set GitHub Actions Output ---
+
+# Default to no regression detected. This will be the output unless overridden.
+echo "regression_detected=false" >> "$GITHUB_OUTPUT"
+
+# Assumed Python script exit codes:
+# 0: Success, no regressions.
+# 1: Script execution error.
+# 2: Success, but regressions were detected.
+
+if [ $COMPARISON_EXIT_CODE -eq 0 ]; then
+  echo "Baseline comparison successful: No regressions detected or no applicable baselines found."
+elif [ $COMPARISON_EXIT_CODE -eq 2 ]; then
+  echo "::error::Performance regression detected when comparing with baseline."
+  echo "Setting 'regression_detected=true' for GCS upload."
+  # Set the output for the workflow to use in conditional steps.
+  echo "regression_detected=true" >> "$GITHUB_OUTPUT"
+  exit 0
+else
+  echo "::error::Baseline comparison script failed with an unexpected error (Exit Code: $COMPARISON_EXIT_CODE)."
+  # Exit with the original error code to mark this workflow step as failed.
   exit $COMPARISON_EXIT_CODE
 fi
 
-echo "Baseline comparison successful: No regressions detected or no applicable baselines found."
 echo "--- Comparison Script Finished ---"

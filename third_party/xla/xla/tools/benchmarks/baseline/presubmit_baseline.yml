@@ -17,11 +17,11 @@
 {
   "gemma3_1b_flax_call_l4_1h1d_presubmit": {  # config_id
     "GPU_DEVICE_TIME": {
-      "baseline_ms": 15,
+      "baseline_ms": 1,
       "threshold": 0.30 # Allow 30% regression max
     },
     "GPU_DEVICE_MEMCPY_TIME": {
-      "baseline_ms": 0.3,
+      "baseline_ms": 0.1,
       "threshold": 0.30 # Allow 30% regression max
     }
   },

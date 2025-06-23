@@ -190,12 +190,35 @@ jobs:
            echo "---------------------------------------------"
 
       - name: Compare Results to Baseline
+        id: compare_results
         if: (steps.run_hlo.outcome == 'success' || (steps.run_hlo.outcome == 'failure' && (hashFiles(format('{0}/results.json', env.RESOLVED_OUTPUT_DIR)) != '' || hashFiles(format('{0}/results.json.txt', env.RESOLVED_OUTPUT_DIR)) != ''))) && env.skip_comparison_due_to_yaml_install_failure != 'true'
         run: |
           echo "Starting baseline comparison..."
           bash "$RESOLVED_RUN_COMPARISON_SCRIPT"
           echo "Baseline comparison finished."
           echo "---------------------------------------------"
+
+      - name: Upload results.json to GCS on Regression
+        # This step only runs if the comparison step found a regression.
+        if: steps.compare_results.outputs.regression_detected == 'true'
+        run: |
+          GCS_BUCKET="gs://openxla-presubmit-transient"
+          RESULTS_JSON_FILE_PATH="${{ env.RESOLVED_OUTPUT_DIR }}/results.json"
+
+          # Check if the results file exists
+          if [ ! -f "$RESULTS_JSON_FILE_PATH" ]; then
+            echo "::error::results.json not found at $RESULTS_JSON_FILE_PATH"
+            exit 1
+          fi
+
+          # Construct a GCS object name
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          DATE_FOLDER=$(date +%Y%m%d)
+          COMMIT_SHA_SHORT=$(echo "${{ env.COMMIT_SHA }}" | cut -c1-8)
+          GCS_OBJECT_NAME="${BENCHMARK_NAME}/${DATE_FOLDER}/${TIMESTAMP}_run_${WORKFLOW_RUN_ID}_commit_${COMMIT_SHA_SHORT}.json"
+
+          echo "Uploading $RESULTS_JSON_FILE_PATH to $GCS_BUCKET/$GCS_OBJECT_NAME"
+          gsutil cp "$RESULTS_JSON_FILE_PATH" "$GCS_BUCKET/$GCS_OBJECT_NAME"
 
       - name: Upload Benchmark Artifacts
         if: always()

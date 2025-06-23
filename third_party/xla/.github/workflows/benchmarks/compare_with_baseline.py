@@ -12,7 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""Compares benchmark results to predefined baselines and checks for regressions."""
+"""Compares benchmark results to predefined baselines and checks for regressions.
+
+This script uses specific exit codes to signal outcomes to CI systems:
+- Exit Code 0: Success. No regressions were found, or no baselines were
+  applicable.
+- Exit Code 1: Fatal Error. The script failed to run (e.g., file not found,
+  JSON/YAML parse error).
+- Exit Code 2: Regressions Found. The script ran successfully, but one or more
+  metrics regressed.
+"""
 import argparse
 import json
 import os
@@ -297,7 +306,9 @@ def main():
         "\n::error::One or more benchmark metrics regressed beyond the allowed"
         " threshold. Failing the check."
     )
-    sys.exit(1)  # Exit with error code 1 to fail the GitHub Actions step
+    # Exit with code 2 to indicate regressions were found. The calling CI
+    # script uses this to trigger follow-up actions like uploading artifacts.
+    sys.exit(2)
   else:
     print(
         "\nAll benchmark metrics are within allowed thresholds (or no"
