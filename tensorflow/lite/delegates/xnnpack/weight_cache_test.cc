@@ -25,6 +25,7 @@ limitations under the License.
 #include <cstring>
 #include <iterator>
 #include <map>
+#include <memory>
 #include <ostream>
 #include <random>
 #include <string>
@@ -103,7 +104,7 @@ class TempFileDesc : public FileDescriptor {
   } kAutoClose{};
 
 #if defined(_MSC_VER)
-  TempFileDesc() : fd_() {
+  TempFileDesc() {
     char filename[L_tmpnam_s];
     errno_t err = tmpnam_s(filename, L_tmpnam_s);
     if (err) {
@@ -111,11 +112,13 @@ class TempFileDesc : public FileDescriptor {
       std::abort();
     }
     path_ = filename;
-    fd_ = open(path_.c_str(), O_CREAT | O_EXCL | O_RDWR | O_BINARY, 0644);
-    if (fd_ < 0) {
-      fprintf(stderr, "Could not create temporary filename.\n");
+    FileDescriptor fd =
+        FileDescriptor::Open(path_.c_str(), O_CREAT | O_EXCL | O_RDWR, 0644);
+    if (!fd.IsValid()) {
+      fprintf(stderr, "Could not create temporary file.\n");
       std::abort();
     }
+    Reset(fd.Release());
   }
 #else
   TempFileDesc() {
@@ -291,7 +294,9 @@ TEST(WeightCacheBuilderTest, ReserveAppendWriteWorks) {
 
   WeightCacheBuilder builder;
   const std::string cache_path = testing::TempDir() + "/cache";
-  ASSERT_TRUE(builder.Start(cache_path.c_str(), FileDescriptor()));
+  FileDescriptor file_descriptor = FileDescriptor::Open(
+      cache_path.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
+  ASSERT_TRUE(builder.Start(cache_path.c_str(), file_descriptor));
   ASSERT_TRUE(builder.StartBuildStep());
 
   const size_t payload_size = size(payload);
@@ -355,8 +360,10 @@ TEST(WeightCacheBuilderTest, AppendWithoutReserveWriteWorks) {
   const PackIdentifier dummy_id{1, 2, 3};
 
   const std::string cache_path = testing::TempDir() + "/cache";
+  FileDescriptor file_descriptor = FileDescriptor::Open(
+      cache_path.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0644);
   WeightCacheBuilder builder;
-  ASSERT_TRUE(builder.Start(cache_path.c_str(), FileDescriptor()));
+  ASSERT_TRUE(builder.Start(cache_path.c_str(), file_descriptor));
   ASSERT_TRUE(builder.StartBuildStep());
 
   const size_t payload_size = size(payload);
@@ -409,44 +416,25 @@ TEST(WeightCacheBuilderTest, AppendWithoutReserveWriteWorks) {
   EXPECT_THAT(cache_data, ElementsAreArray(payload));
 }
 
-TEST(WeightCacheBuilderTest, NonExistingPathFails) {
+TEST(WeightCacheBuilderTest, InvalidFileDescriptorFails) {
   WeightCacheBuilder builder;
   EXPECT_FALSE(builder.Start("", FileDescriptor()));
   EXPECT_FALSE(builder.Start("/seldf/sedsft", FileDescriptor()));
 }
 
-TEST(WeightCacheBuilderTest, InMemoryCacheTriggeredByCorrectPrefix) {
+TEST(WeightCacheBuilderTest, InMemoryCacheCanBeBuilt) {
   if (!TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider()) {
     GTEST_SKIP() << "In-memory weight cache isn't enabled for this build or "
                     "isn't supported by the current system, skipping test.";
   }
-  {  // Exact in-memory flag used starts an in-memory build.
-    WeightCacheBuilder builder;
-    EXPECT_TRUE(builder.Start(kInMemoryCachePath, FileDescriptor()));
-    EXPECT_TRUE(builder.IsStarted());
-#if defined(_MSC_VER)
-    const FileDescriptor file_fd(open(kInMemoryCachePath, O_RDONLY | O_BINARY));
-#else
-    const FileDescriptor file_fd(open(kInMemoryCachePath, O_RDONLY));
-#endif
-    EXPECT_FALSE(file_fd.IsValid());
-    EXPECT_EQ(errno, ENOENT);
-  }
-  {  // Prefixed in-memory flag used starts an in-memory build.
-    WeightCacheBuilder builder;
-    const std::string path_with_in_memory_prefix =
-        std::string(kInMemoryCachePath) + "/slkdjfsldf";
-    EXPECT_TRUE(
-        builder.Start(path_with_in_memory_prefix.c_str(), FileDescriptor()));
-    EXPECT_TRUE(builder.IsStarted());
-#if defined(_MSC_VER)
-    const FileDescriptor file_fd(open(kInMemoryCachePath, O_RDONLY | O_BINARY));
-#else
-    const FileDescriptor file_fd(open(kInMemoryCachePath, O_RDONLY));
-#endif
-    EXPECT_FALSE(file_fd.IsValid());
-    EXPECT_EQ(errno, ENOENT);
-  }
+  WeightCacheBuilder builder;
+  EXPECT_TRUE(
+      builder.Start(kInMemoryCachePath, CreateInMemoryFileDescriptor(nullptr)));
+  EXPECT_TRUE(builder.IsStarted());
+  const FileDescriptor file_fd =
+      FileDescriptor::Open(kInMemoryCachePath, O_RDONLY);
+  EXPECT_FALSE(file_fd.IsValid());
+  EXPECT_EQ(errno, ENOENT);
 }
 
 TEST(WeightCacheBuilderTest, MultipleStepBuild) {
@@ -462,8 +450,10 @@ TEST(WeightCacheBuilderTest, MultipleStepBuild) {
 
   TempFileDesc tmp_file{TempFileDesc::kAutoClose};
 
+  FileDescriptor file_descriptor = FileDescriptor::Open(
+      tmp_file.GetCPath(), O_CREAT | O_TRUNC | O_RDWR, 0644);
   WeightCacheBuilder builder;
-  ASSERT_TRUE(builder.Start(tmp_file.GetCPath(), FileDescriptor()));
+  ASSERT_TRUE(builder.Start(tmp_file.GetCPath(), file_descriptor));
   ASSERT_TRUE(builder.StartBuildStep());
 
   {
@@ -658,9 +648,13 @@ struct FakeContext {
 
 struct TestVariant {
   bool use_explicit_fd;
-  const char* explicit_fd_path;
+  const char* explicit_fd_path = nullptr;
+  bool use_in_memory_cache = false;
 
   static std::string Name(const testing::TestParamInfo<TestVariant>& info) {
+    if (info.param.use_in_memory_cache) {
+      return "WithInMemoryCache";
+    }
     if (info.param.use_explicit_fd) {
       if (info.param.explicit_fd_path) {
         return "WithExplicitFileDescriptorAndPath";
@@ -677,7 +671,9 @@ auto TestVariants() {
       TestVariant{/*use_explicit_fd=*/false, /*explicit_fd_path=*/nullptr},
       TestVariant{/*use_explicit_fd=*/true, /*explicit_fd_path=*/nullptr},
       TestVariant{/*use_explicit_fd=*/true,
-                  /*explicit_fd_path=*/"explicit file descriptor"});
+                  /*explicit_fd_path=*/"explicit file descriptor"},
+      TestVariant{/*use_explicit_fd=*/false, /*explicit_fd_path=*/nullptr,
+                  /*use_in_memory_cache=*/true});
 }
 
 struct BuildMMapWeightCacheProviderTest : testing::TestWithParam<TestVariant> {
@@ -705,15 +701,20 @@ struct BuildMMapWeightCacheProviderTest : testing::TestWithParam<TestVariant> {
           cache_provider.StartBuild(explicit_fd_path, tmp_file.Duplicate()));
     } else {
       tmp_file.Close();
-      ASSERT_TRUE(cache_provider.StartBuild(tmp_file.GetCPath()));
+      if (use_in_memory_cache) {
+        ASSERT_TRUE(cache_provider.StartBuild(kInMemoryCachePath));
+      } else {
+        ASSERT_TRUE(cache_provider.StartBuild(tmp_file.GetCPath()));
+      }
     }
   }
 
   FakeContext ctx;
   MMapWeightCacheProvider cache_provider;
   TempFileDesc tmp_file;
-  bool use_explicit_fd = GetParam().use_explicit_fd;
+  const bool use_explicit_fd = GetParam().use_explicit_fd;
   const char* explicit_fd_path = GetParam().explicit_fd_path;
+  const bool use_in_memory_cache = GetParam().use_in_memory_cache;
 };
 
 INSTANTIATE_TEST_SUITE_P(Test, BuildMMapWeightCacheProviderTest, TestVariants(),
@@ -890,6 +891,7 @@ TEST_P(LoadMMapWeightCacheProviderTest, LookUpSucceeds) {
 struct MMapWeightCacheProviderTest : testing::TestWithParam<TestVariant> {
   bool use_explicit_fd = GetParam().use_explicit_fd;
   const char* const explicit_fd_path = GetParam().explicit_fd_path;
+  const bool use_in_memory_cache = GetParam().use_in_memory_cache;
 };
 
 INSTANTIATE_TEST_SUITE_P(Test, MMapWeightCacheProviderTest, TestVariants(),
@@ -904,6 +906,9 @@ TEST_P(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
     temp_fd.Close();
     temp_fd_cpath = temp_fd.GetCPath();
     temp_fd_value.Close();
+    if (use_in_memory_cache) {
+      temp_fd_cpath = kInMemoryCachePath;
+    }
   }
   const int32_t fake_packing_algo_seed = 0xBA0BAB;
   const char packed_data_ref_1[] = "abcdefghij";
@@ -917,6 +922,9 @@ TEST_P(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
   // address to map to a buffer identifier.
   char fake_buffer_pointer[kBufferCount] = {0};
 
+  auto build_cache_provider = std::make_unique<MMapWeightCacheProvider>();
+  auto load_cache_provider = std::make_unique<MMapWeightCacheProvider>();
+
   {  // Build and reload scenario.
     // This isn't factored between the two scenarios. When reloading the cache
     // in another process, the buffer addresses will have changed.
@@ -927,7 +935,7 @@ TEST_P(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
       tensor_buffer_identifiers[i] = i;
     }
 
-    MMapWeightCacheProvider cache_provider;
+    MMapWeightCacheProvider& cache_provider = *build_cache_provider;
     ASSERT_TRUE(cache_provider.LoadOrStartBuild(temp_fd_cpath,
                                                 temp_fd_value.Duplicate()));
     // 1st build step.
@@ -1043,13 +1051,20 @@ TEST_P(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
       tensor_buffer_identifiers[i] = i;
     }
 
-    MMapWeightCacheProvider cache_provider;
-    ASSERT_TRUE(cache_provider.LoadOrStartBuild(temp_fd_cpath,
-                                                temp_fd_value.Duplicate()));
-
-    xnn_weights_cache_t cache = &cache_provider.GetCacheProvider();
-    cache_provider.MapTensorIdentifiers(tensors, size(tensors),
-                                        tensor_buffer_identifiers);
+    // When testing the in-memory cache, we reuse the cache provider used for
+    // building the cache. Otherwise we us a new one.
+    MMapWeightCacheProvider* cache_provider = build_cache_provider.get();
+    if (use_in_memory_cache) {
+      load_cache_provider.reset();
+    } else {
+      build_cache_provider.reset();
+      cache_provider = load_cache_provider.get();
+      ASSERT_TRUE(cache_provider->LoadOrStartBuild(temp_fd_cpath,
+                                                   temp_fd_value.Duplicate()));
+      cache_provider->MapTensorIdentifiers(tensors, size(tensors),
+                                           tensor_buffer_identifiers);
+    }
+    xnn_weights_cache_t cache = &cache_provider->GetCacheProvider();
 
     const xnn_weights_cache_look_up_key look_up_key_1{
         .seed = fake_packing_algo_seed,

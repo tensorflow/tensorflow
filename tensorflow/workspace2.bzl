@@ -828,13 +828,6 @@ def _tf_repositories():
     )
 
     tf_http_archive(
-        name = "com_github_glog_glog",
-        sha256 = "f28359aeba12f30d73d9e4711ef356dc842886968112162bc73002645139c39c",
-        strip_prefix = "glog-0.4.0",
-        urls = tf_mirror_urls("https://github.com/google/glog/archive/refs/tags/v0.4.0.tar.gz"),
-    )
-
-    tf_http_archive(
         name = "com_google_ortools",
         sha256 = "f6a0bd5b9f3058aa1a814b798db5d393c31ec9cbb6103486728997b49ab127bc",
         strip_prefix = "or-tools-9.11",

@@ -67,17 +67,17 @@ void FileDescriptor::Reset(int new_fd) {
   fd_ = new_fd;
 }
 
-off_t FileDescriptor::GetPos() const { return lseek(fd_, 0, SEEK_CUR); }
+off_t FileDescriptorView::GetPos() const { return lseek(fd_, 0, SEEK_CUR); }
 
-off_t FileDescriptor::SetPos(off_t position) const {
+off_t FileDescriptorView::SetPos(off_t position) const {
   return lseek(fd_, position, SEEK_SET);
 }
 
-off_t FileDescriptor::SetPosFromEnd(off_t offset) const {
+off_t FileDescriptorView::SetPosFromEnd(off_t offset) const {
   return lseek(fd_, offset, SEEK_END);
 }
 
-off_t FileDescriptor::MovePos(off_t offset) const {
+off_t FileDescriptorView::MovePos(off_t offset) const {
   return lseek(fd_, offset, SEEK_CUR);
 }
 
@@ -92,7 +92,7 @@ FileDescriptor FileDescriptor::Open(const char* path, int flags, mode_t mode) {
 
 void FileDescriptor::Close() { Reset(-1); }
 
-bool FileDescriptor::Read(void* dst, size_t count) const {
+bool FileDescriptorView::Read(void* dst, size_t count) const {
   char* dst_it = reinterpret_cast<char*>(dst);
   while (count > 0) {
     const auto bytes = read(fd_, dst_it, count);
@@ -105,7 +105,7 @@ bool FileDescriptor::Read(void* dst, size_t count) const {
   return true;
 }
 
-bool FileDescriptor::Write(const void* src, size_t count) const {
+bool FileDescriptorView::Write(const void* src, size_t count) const {
   const char* src_it = reinterpret_cast<const char*>(src);
   while (count > 0) {
     const auto bytes = write(fd_, src_it, count);
@@ -132,8 +132,8 @@ bool InMemoryFileDescriptorAvailable() {
 
 FileDescriptor CreateInMemoryFileDescriptor(const char* path) {
 #ifdef TFLITE_XNNPACK_IN_MEMORY_FILE_ENABLED
-  return FileDescriptor(
-      syscall(SYS_memfd_create, "XNNPack in-memory weight cache", 0));
+  return FileDescriptor(syscall(
+      SYS_memfd_create, path ? path : "XNNPack in-memory weight cache", 0));
 #else
   TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,
                   "XNNPack weight cache: in-memory cache is not enabled for "
