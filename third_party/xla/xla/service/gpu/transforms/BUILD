@@ -3331,3 +3331,34 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "thunk_pass_pipeline",
+    srcs = ["thunk_pass_pipeline.cc"],
+    hdrs = ["thunk_pass_pipeline.h"],
+    deps = [
+        "//xla/backends/gpu/runtime:sequential_thunk",
+        "//xla/service:hlo_module_config",
+        "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "thunk_pass_pipeline_test",
+    srcs = ["thunk_pass_pipeline_test.cc"],
+    deps = [
+        ":thunk_pass_pipeline",
+        "//xla/backends/gpu/runtime:sequential_thunk",
+        "//xla/backends/gpu/runtime:thunk",
+        "//xla/service:hlo_module_config",
+        "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
