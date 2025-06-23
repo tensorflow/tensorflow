@@ -1195,7 +1195,7 @@ message OutputOperandAliasing {
   repeated int64 operand_shape_index = 3;
 }
 
-message OriginalTensorProto {
+message OriginalArrayProto {
   repeated int64 leaf_shape_index = 1;
   string instruction_name = 2;
   repeated int64 shape_index = 3;
@@ -1203,7 +1203,7 @@ message OriginalTensorProto {
 
 message OriginalValueProto {
   ShapeProto shape = 1;
-  repeated OriginalTensorProto leaves = 2;
+  repeated OriginalArrayProto leaves = 2;
 }
 
 message GemmPerfTableEntry {

@@ -26,18 +26,18 @@ limitations under the License.
 
 namespace xla {
 
-// The information of a tensor in an unoptimized HLO module.
-struct OriginalTensor {
-  // The name of the instruction that produces this tensor or a tuple that
-  // includes this tensor.
+// The information of an array in an unoptimized HLO module.
+struct OriginalArray {
+  // The name of the instruction in the unoptimized HLO module that produces
+  // this array or a tuple that includes this array.
   std::string instruction_name;
-  // Shape index of the tensor if the instruction produces a tuple.
+  // Shape index of the array if the instruction produces a tuple.
   ShapeIndex shape_index;
 };
 
 // The information of an HLO value produced by an instruction in an unoptimized
 // HLO module.
-class OriginalValue : public ShapeTree<std::optional<OriginalTensor>> {
+class OriginalValue : public ShapeTree<std::optional<OriginalArray>> {
  public:
   explicit OriginalValue(Shape shape) : ShapeTree(std::move(shape)) {}
   std::string ToString() const;
@@ -67,8 +67,8 @@ struct OriginalValuePointer {
     // Compares nodes.
     for (auto& leaf : lhs.original_value->leaves()) {
       xla::ShapeIndex index = leaf.first;
-      std::optional<xla::OriginalTensor> lhs_original_array = leaf.second;
-      std::optional<xla::OriginalTensor> rhs_original_array =
+      std::optional<xla::OriginalArray> lhs_original_array = leaf.second;
+      std::optional<xla::OriginalArray> rhs_original_array =
           rhs.original_value->element(index);
       if (!lhs_original_array.has_value() || !rhs_original_array.has_value() ||
           (lhs_original_array->instruction_name !=
@@ -89,7 +89,7 @@ struct OriginalValuePointer {
         std::move(h), value.original_value->shape());
     value.original_value->ForEachElement(
         [&h, &value](const xla::ShapeIndex& shape_index,
-                     const std::optional<xla::OriginalTensor>& original_array) {
+                     const std::optional<xla::OriginalArray>& original_array) {
           if (!value.original_value->IsLeaf(shape_index)) {
             return;
           }
