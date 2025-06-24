@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/backends/cpu/runtime/thunk_proto_serdes.h"
 #include "xla/cpu_function_runtime.h"
+#include "xla/debug_options_flags.h"
 #include "xla/service/cpu/buffer_info_util.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/cpu_executable.h"
@@ -668,6 +669,9 @@ absl::Status ExtendRewrites(
         " is outside the range of temp sizes: [0,", buffer_infos_size, ")"));
   }
 
+  const bool xla_cpu_multi_thread_eigen =
+      xla::GetDebugOptionsFromFlags().xla_cpu_multi_thread_eigen();
+
   std::vector<std::string> runtime_specific_includes = {R"(
 #include "absl/log/check.h"
 #include "xla/backends/cpu/runtime/kernel_c_api.h"
@@ -675,16 +679,20 @@ absl::Status ExtendRewrites(
 
   if (HasThunkKind(aot_thunks->proto().thunk_sequence(),
                    xla::cpu::ThunkProto::kDotThunk)) {
-    runtime_specific_includes.push_back(
-        R"(#include "xla/service/cpu/runtime_matmul.h")");
+    if (xla_cpu_multi_thread_eigen) {
+      runtime_specific_includes.push_back(
+          R"(#include "xla/service/cpu/runtime_matmul.h")");
+    }
     runtime_specific_includes.push_back(
         R"(#include "xla/service/cpu/runtime_single_threaded_matmul.h")");
   }
 
   if (HasThunkKind(aot_thunks->proto().thunk_sequence(),
                    xla::cpu::ThunkProto::kConvolutionThunk)) {
-    runtime_specific_includes.push_back(
-        R"(#include "xla/service/cpu/runtime_conv2d.h")");
+    if (xla_cpu_multi_thread_eigen) {
+      runtime_specific_includes.push_back(
+          R"(#include "xla/service/cpu/runtime_conv2d.h")");
+    }
 
     runtime_specific_includes.push_back(
         R"(#include "xla/service/cpu/runtime_single_threaded_conv2d.h")");
@@ -694,6 +702,12 @@ absl::Status ExtendRewrites(
                    xla::cpu::ThunkProto::kSortThunk)) {
     runtime_specific_includes.push_back(
         R"(#include "xla/service/cpu/runtime_key_value_sort.h")");
+  }
+
+  if (HasThunkKind(aot_thunks->proto().thunk_sequence(),
+                   xla::cpu::ThunkProto::kTopKThunk)) {
+    runtime_specific_includes.push_back(
+        R"(#include "xla/service/cpu/runtime_topk.h")");
   }
 
   TF_ASSIGN_OR_RETURN(
