@@ -177,7 +177,7 @@ TEST_P(CpuDotLibraryTest, MatMulAddSubMulDifferentInputs) {
   RunTest(hlo_template, {HloOpcode::kMultiply, 5, 9});
 }
 
-TEST_P(CpuDotLibraryTest, MatMulAddSubMulSort) {
+TEST_P(CpuDotLibraryTest, MatMulAddMinExpSort) {
   const absl::string_view hlo_template = R"(
     HloModule matmul
 
@@ -191,20 +191,18 @@ TEST_P(CpuDotLibraryTest, MatMulAddSubMulSort) {
       %input = $in_dtype[64,64]{1,0} parameter(0)
       %weight = $in_dtype[64,262144]{1,0} parameter(1)
       %addend = $out_dtype[64,262144]{1,0} parameter(2)
-      %subtractor = $out_dtype[64,262144]{1,0} parameter(3)
-      %multiplier = $out_dtype[64,262144]{1,0} parameter(4)
-      %exponent = $out_dtype[64,262144]{1,0} parameter(5)
+      %threshold = $out_dtype[64,262144]{1,0} parameter(3)
       %dot = $out_dtype[64,262144]{1,0} dot(%input, %weight),
              lhs_contracting_dims={1}, rhs_contracting_dims={0}
       %add = $out_dtype[64,262144]{1,0} add(%dot, %addend)
-      %sub = $out_dtype[64,262144]{1,0} subtract(%add, %subtractor)
-      %mul = $out_dtype[64,262144]{1,0} multiply(%sub, %multiplier)
-      ROOT %sorted = $out_dtype[64,262144] sort(%mul),
+      %min = $out_dtype[64,262144]{1,0} minimum(%add, %threshold)
+      %exp = $out_dtype[64,262144]{1,0} exponential(%min)
+      ROOT %sorted = $out_dtype[64,262144] sort(%exp),
                      dimensions={0}, to_apply=compare
     })";
 
   // Sort is not supported by xnn_emitter and should not be in the fusion.
-  RunTest(hlo_template, {HloOpcode::kMultiply, 5, 9});
+  RunTest(hlo_template, {HloOpcode::kExp, 4, 8});
 }
 
 TEST_P(CpuDotLibraryTest, DoNotFuseMultiOutputs) {
