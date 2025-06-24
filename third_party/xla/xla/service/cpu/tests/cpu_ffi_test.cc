@@ -75,7 +75,7 @@ TEST_P(CpuFFITest, EmulateImpureCallbackWithTokens) {
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    FFITest, CpuFFITest, ::testing::Values(true),
+    FFITest, CpuFFITest, ::testing::Values(true, false),
     [](const ::testing::TestParamInfo<CpuFFITest::ParamType>& info) {
       return info.param ? "ThunkRuntime" : "LegacyRuntime";
     });
