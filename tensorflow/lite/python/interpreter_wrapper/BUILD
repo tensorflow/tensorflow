@@ -47,6 +47,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@flatbuffers",
         "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )
