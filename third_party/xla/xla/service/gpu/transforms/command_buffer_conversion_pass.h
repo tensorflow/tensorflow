@@ -13,55 +13,44 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_TRANSFORMS_THUNK_PASS_PIPELINE_H_
-#define XLA_SERVICE_GPU_TRANSFORMS_THUNK_PASS_PIPELINE_H_
+#ifndef XLA_SERVICE_GPU_TRANSFORMS_COMMAND_BUFFER_CONVERSION_PASS_H_
+#define XLA_SERVICE_GPU_TRANSFORMS_COMMAND_BUFFER_CONVERSION_PASS_H_
 
 #include <memory>
 #include <string>
-#include <utility>
-#include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/service/gpu/transforms/thunk_pass_pipeline.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
 
-class ThunkPassInterface {
+// Converts compatible sequences of Thunks into CommandBufferThunks.
+class CommandBufferConversionPass : public ThunkPassInterface {
  public:
-  virtual ~ThunkPassInterface() = default;
+  CommandBufferConversionPass() = default;
 
-  virtual absl::StatusOr<bool> Run(
-      SequentialThunk* root_thunk, const DebugOptions& debug_options,
-      const se::DeviceDescription& device_info) = 0;
-
-  virtual absl::string_view name() const = 0;
-};
-
-class ThunkPassPipeline : public ThunkPassInterface {
- public:
-  explicit ThunkPassPipeline(absl::string_view name) : name_(name) {}
-
-  void AddPass(std::unique_ptr<ThunkPassInterface> pass) {
-    passes_.push_back(std::move(pass));
+  absl::string_view name() const override {
+    return "command-buffer-conversion";
   }
 
-  absl::string_view name() const override { return name_; }
-
-  // Runs all optimization passes on the given thunk sequence.
-  // Returns true if any pass changed the thunk tree.
   absl::StatusOr<bool> Run(SequentialThunk* root_thunk,
                            const DebugOptions& debug_options,
                            const se::DeviceDescription& device_info) override;
-
- private:
-  std::string name_;
-  std::vector<std::unique_ptr<ThunkPassInterface>> passes_;
+  struct CommandBufferConfig {
+    // DebugOptions control which commands are enabled. Long term we want to
+    // remove that flag and enable all supported commands by default.
+    absl::flat_hash_set<DebugOptions::CommandBufferCmdType> enabled_commands;
+    absl::flat_hash_set<std::string> enabled_legacy_custom_call_targets;
+    const se::DeviceDescription& device_description;
+  };
 };
 
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_TRANSFORMS_THUNK_PASS_PIPELINE_H_
+#endif  // XLA_SERVICE_GPU_TRANSFORMS_COMMAND_BUFFER_CONVERSION_PASS_H_
