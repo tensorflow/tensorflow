@@ -105,10 +105,6 @@ class TrackedGpuDeviceBuffer {
     return ready_event_;
   }
 
-  const tsl::AsyncValueRef<GpuEvent>& deallocation_event() const {
-    return deallocation_event_;
-  }
-
   // Adds usage events to the buffer. This usage events could be any device
   // buffer related events, e.g. D2H/D2D
   void AddUsageEvents(absl::Span<tsl::AsyncValueRef<GpuEvent>> events);

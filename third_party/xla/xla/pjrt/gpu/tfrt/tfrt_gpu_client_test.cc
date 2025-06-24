@@ -472,12 +472,14 @@ TEST(TfrtGpuClientTest, AcquireDonation) {
 
   // Create TfrtGpuBuffer.
   Shape on_device_shape = ShapeUtil::MakeShapeWithType<int32_t>({4, 4});
+  TfrtGpuClient* tfrt_client =
+      tensorflow::down_cast<TfrtGpuClient*>(client.get());
   TfrtGpuDevice* device =
       tensorflow::down_cast<TfrtGpuDevice*>(client->devices()[0]);
   auto size_in_bytes = ShapeUtil::ByteSizeOf(on_device_shape);
   TF_ASSERT_OK_AND_ASSIGN(
       auto device_buffer,
-      GpuDeviceMemory::Allocate(device->allocator(),
+      GpuDeviceMemory::Allocate(tfrt_client->allocator(),
                                 device->local_device_id().value(),
                                 size_in_bytes));
   auto buffer_async_value_ref =
@@ -489,8 +491,7 @@ TEST(TfrtGpuClientTest, AcquireDonation) {
       tsl::MakeAvailableAsyncValueRef<GpuEvent>());
   auto memory_space = device->default_memory_space().value();
   auto tfrt_buffer = std::make_unique<TfrtGpuBuffer>(
-      on_device_shape, std::move(tracked_device_buffer),
-      tensorflow::down_cast<TfrtGpuClient*>(client.get()), device,
+      on_device_shape, std::move(tracked_device_buffer), tfrt_client, device,
       memory_space);
 
   auto donation_transaction =

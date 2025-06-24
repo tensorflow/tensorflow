@@ -1052,7 +1052,9 @@ TfrtGpuDevice::~TfrtGpuDevice() {
   }
 }
 
-void TfrtGpuDevice::SetClient(PjRtClient* client) {
+PjRtClient* TfrtGpuDevice::client() const { return client_; }
+
+void TfrtGpuDevice::SetClient(TfrtGpuClient* client) {
   CHECK(client_ == nullptr);
   client_ = client;
 
@@ -1068,11 +1070,10 @@ void TfrtGpuDevice::SetClient(PjRtClient* client) {
 
 absl::StatusOr<TransferManager*> TfrtGpuDevice::GetTransferManager() {
   // Downcast Base class to TfrtGpuClient.
-  TfrtGpuClient* client = tensorflow::down_cast<TfrtGpuClient*>(client_);
-  if (client == nullptr) {
+  if (client_ == nullptr) {
     return absl::InternalError("Client is null");
   }
-  return client->xla_client()->backend().transfer_manager();
+  return client_->xla_client()->backend().transfer_manager();
 }
 
 absl::Status TfrtGpuDevice::TransferToInfeed(const LiteralSlice& literal) {
@@ -1156,7 +1157,8 @@ absl::StatusOr<tsl::AllocatorStats> TfrtGpuDevice::GetAllocatorStats() const {
         "GetAllocatorStats() is allowed only for addressable devices");
   }
 
-  auto* allocator_adapter = dynamic_cast<se::MultiDeviceAdapter*>(allocator());
+  auto* allocator_adapter =
+      dynamic_cast<se::MultiDeviceAdapter*>(client_->allocator());
   if (!allocator_adapter) {
     return Unimplemented(
         "GetAllocatorStats() is only implemented with MultiDeviceAdapter "
@@ -1169,10 +1171,6 @@ absl::StatusOr<tsl::AllocatorStats> TfrtGpuDevice::GetAllocatorStats() const {
   auto stats = allocator->GetStats();
   TF_RET_CHECK(stats.has_value());
   return stats.value();
-}
-
-se::DeviceMemoryAllocator* TfrtGpuDevice::allocator() const {
-  return tensorflow::down_cast<TfrtGpuClient*>(client())->allocator();
 }
 
 tsl::AsyncValueRef<GpuEvent> TfrtGpuDevice::SetLastCollectiveLaunchEvent(
@@ -1200,7 +1198,7 @@ std::vector<PjRtMemorySpace*> GetMemorySpacePointers(
 }
 
 std::vector<PjRtDevice*> InitializeDevices(
-    PjRtClient* client,
+    TfrtGpuClient* client,
     const std::vector<std::unique_ptr<TfrtGpuDevice>>& owned_devices) {
   std::vector<PjRtDevice*> devices;
   devices.reserve(owned_devices.size());
@@ -3804,7 +3802,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
             VLOG(3) << "untuple: output_buffers[" << i
                     << "].emplace: " << elem->opaque();
             output_buffers[i].emplace(stream_executor::OwningDeviceMemory(
-                *elem, device->local_device_id().value(), device->allocator()));
+                *elem, device->local_device_id().value(), client->allocator()));
             *elem = se::DeviceMemoryBase();
           }
         } else {
@@ -3812,7 +3810,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
           auto* elem = output.buffers().mutable_element({});
           VLOG(3) << "output_buffers[0].emplace: " << elem->opaque();
           output_buffers.front().emplace(stream_executor::OwningDeviceMemory(
-              *elem, device->local_device_id().value(), device->allocator()));
+              *elem, device->local_device_id().value(), client->allocator()));
           *elem = se::DeviceMemoryBase();
         }
 
@@ -3842,8 +3840,8 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
       };
 
   auto prepare_inputs =
-      [replica, blocking_thread_pool = client_->blocking_thread_pool(),
-       launch_id(options.launch_id), executable_name(name()), device,
+      [replica, client = client_, launch_id(options.launch_id),
+       executable_name(name()), device,
        tracked_buffers(std::move(tracked_buffers)),
        buffer_is_donated(std::move(buffer_is_donated)),
        prepare_inputs_avs(CopyAsyncValues(prepare_input_deps)),
@@ -3906,7 +3904,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
                   {i}, MaybeOwningDeviceMemory(se::OwningDeviceMemory(
                            tracked_buffers[i]->buffer()->buffer(),
                            device->local_hardware_id().value(),
-                           device->allocator())));
+                           client->allocator())));
             } else {
               input.SetBuffer({i}, MaybeOwningDeviceMemory(
                                        tracked_buffers[i]->buffer()->buffer()));
@@ -3925,7 +3923,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
                   {}, MaybeOwningDeviceMemory(se::OwningDeviceMemory(
                           tracked_buffers[i]->buffer()->buffer(),
                           device->local_hardware_id().value(),
-                          device->allocator())));
+                          client->allocator())));
             } else {
               input.SetBuffer({}, MaybeOwningDeviceMemory(
                                       tracked_buffers[i]->buffer()->buffer()));
@@ -3933,7 +3931,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
           }
         }
 
-        EnqueueWorkWhenReady(blocking_thread_pool, input_deps,
+        EnqueueWorkWhenReady(client->blocking_thread_pool(), input_deps,
                              [execute_fn(std::move(execute_fn)),
                               inputs(std::move(inputs))]() mutable {
                                execute_fn(std::move(inputs));
