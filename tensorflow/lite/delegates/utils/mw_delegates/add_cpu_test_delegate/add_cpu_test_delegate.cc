@@ -8,7 +8,7 @@
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/utils/simple_delegate.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
-#include "tensorflow/lite/kernels/internal/tensor_utils.h"
+// #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/builtin_ops.h"
 
 namespace tflite {
