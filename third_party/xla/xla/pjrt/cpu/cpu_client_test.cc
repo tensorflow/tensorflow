@@ -106,14 +106,14 @@ TEST(PjRtCpuClientTest, MemorySpace) {
         auto cpu_device_memory_space,
         device->memory_space_by_kind(CpuDeviceMemorySpace::kKind));
     TF_ASSERT_OK_AND_ASSIGN(
-        auto unpinned_host_memory_space,
-        device->memory_space_by_kind(UnpinnedHostMemorySpace::kKind));
-    TF_ASSERT_OK_AND_ASSIGN(
         auto pinned_host_memory_space,
         device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto unpinned_host_memory_space,
+        device->memory_space_by_kind(UnpinnedHostMemorySpace::kKind));
     device->memory_spaces(),
-        ElementsAre(cpu_device_memory_space, unpinned_host_memory_space,
-                    pinned_host_memory_space);
+        ElementsAre(cpu_device_memory_space, pinned_host_memory_space,
+                    unpinned_host_memory_space);
   }
 }
 

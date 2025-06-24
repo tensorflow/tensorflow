@@ -318,17 +318,17 @@ PjRtCpuClient::PjRtCpuClient(
       memory_spaces_.push_back(cpu_device_memory_space.get());
       owned_memory_spaces_.push_back(std::move(cpu_device_memory_space));
 
-      auto unpinned_memory_space =
-          std::make_unique<UnpinnedHostMemorySpace>(id * 3 + 1, device);
-      cpu_device->AttachMemorySpace(unpinned_memory_space.get());
-      memory_spaces_.push_back(unpinned_memory_space.get());
-      owned_memory_spaces_.push_back(std::move(unpinned_memory_space));
-
       auto pinned_memory_space =
-          std::make_unique<PinnedHostMemorySpace>(id * 3 + 2, device);
+          std::make_unique<PinnedHostMemorySpace>(id * 3 + 1, device);
       cpu_device->AttachMemorySpace(pinned_memory_space.get());
       memory_spaces_.push_back(pinned_memory_space.get());
       owned_memory_spaces_.push_back(std::move(pinned_memory_space));
+
+      auto unpinned_memory_space =
+          std::make_unique<UnpinnedHostMemorySpace>(id * 3 + 2, device);
+      cpu_device->AttachMemorySpace(unpinned_memory_space.get());
+      memory_spaces_.push_back(unpinned_memory_space.get());
+      owned_memory_spaces_.push_back(std::move(unpinned_memory_space));
     }
   }
   VLOG(1) << "PjRtCpuClient created.";
