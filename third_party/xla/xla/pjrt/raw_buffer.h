@@ -117,6 +117,15 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
   // constructed AsyncValueRef which will have its dimensions updated.
   virtual void ReadDynamicShape(tsl::AsyncValueRef<xla::Shape> output_shape,
                                 xla::Shape shape) = 0;
+
+  // Copies directly into dst_raw_buffer. Must set definition_event_promise,
+  // when dst_raw_buffer is ready, allocation_event before using dst_raw_buffer
+  // and src_usage_event_promise when done using this buffer.
+  virtual void CopyTo(
+      tsl::RCReference<CommonPjRtRawBuffer> dst_raw_buffer,
+      tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise,
+      tsl::RCReference<PjRtDeviceEventPromise> src_usage_event_promise,
+      ::tsl::AsyncValueRef<bool> allocation_event) = 0;
 };
 
 class RegisterRawBufferFactory {

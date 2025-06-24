@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -96,6 +97,17 @@ class CommonPjRtClient : public PjRtClient {
     return absl::UnimplementedError(
         "CreateLinkedEventPromise is not supported");
   }
+  template <typename T, std::enable_if_t<std::is_invocable_v<T>, bool> = true>
+  absl::StatusOr<std::pair<tsl::RCReference<PjRtDeviceEventPromise>,
+                           tsl::RCReference<PjRtDeviceEvent>>>
+  CreateLinkedEventPromise(PjRtMemorySpace* memory_space, T&& debug_info_cb) {
+    if (event_tracking_enabled()) {
+      return CreateLinkedEventPromise(memory_space,
+                                      std::forward<T>(debug_info_cb)());
+    } else {
+      return CreateLinkedEventPromise(memory_space, "CreateLinkedEventPromise");
+    }
+  }
 
   // Registers the necessary debug information for an allocation event.
   // TODO(parkers): Once everything is unified this should be controlled
@@ -148,6 +160,27 @@ class CommonPjRtClient : public PjRtClient {
       tsl::RCReference<CommonPjRtRawBuffer> raw_buffer) {
     return absl::UnimplementedError("LinearizeHostBufferInto is not supported");
   }
+};
+
+// TODO(parkers): Merge everything here into CommonPjRtBuffer.
+class CommonPjRtBufferImpl : public CommonPjRtBuffer {
+ public:
+  using CommonPjRtBuffer::CommonPjRtBuffer;
+
+  // The implementation of logical_on_device_shape may involve a blocking
+  // device to host transfer to read the metadata of dynamic shape.
+  absl::StatusOr<Shape> logical_on_device_shape() override;
+
+  // This behaves like CopyToMemorySpace for memory space pairs which
+  // require no layout changes.
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> DirectCopyToMemorySpace(
+      PjRtMemorySpace* dst_memory_space);
+
+  PjRtFuture<> CopyRawToHost(void* dst, int64_t offset,
+                             int64_t transfer_size) override;
+
+  PjRtFuture<> CopyRawToHostFuture(PjRtFuture<void*> dst, int64_t offset,
+                                   int64_t transfer_size) override;
 };
 
 }  // namespace xla

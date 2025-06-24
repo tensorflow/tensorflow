@@ -20,12 +20,16 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
@@ -34,13 +38,18 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/casts.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/context_types.h"
+#include "tsl/profiler/lib/scoped_memory_debug_annotation.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 
@@ -230,6 +239,262 @@ absl::StatusOr<xla::Shape> CommonPjRtClient::MakeDefaultShapeForMemorySpace(
             ->GetDefaultLayout(shape.element_type(), shape.dimensions()));
   }
   return shape;
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>>
+CommonPjRtBufferImpl::DirectCopyToMemorySpace(
+    PjRtMemorySpace* dst_memory_space) {
+  tsl::profiler::TraceMe traceme("CopyToMemorySpace");
+  auto* src_memory_space = memory_space();
+  CommonPjRtClient* const src_client =
+      tensorflow::down_cast<CommonPjRtClient*>(client());
+  CommonPjRtClient* const dst_client =
+      dynamic_cast<CommonPjRtClient*>(dst_memory_space->client());
+  if (!dst_client) {
+    return absl::InvalidArgumentError(
+        "DirectCopyToMemorySpace only supported across CommonPjRtClient "
+        "subclassed clients");
+  }
+  TF_ASSIGN_OR_RETURN(const int64_t on_device_bytes_count,
+                      GetOnDeviceSizeInBytes());
+
+  std::optional<std::string> debug_info = std::nullopt;
+  if (dst_client->event_tracking_enabled()) {
+    const auto& current_anno =
+        tsl::profiler::ScopedMemoryDebugAnnotation::CurrentAnnotation();
+    if (!current_anno.pending_op_name.empty() &&
+        !current_anno.pending_region_type.empty()) {
+      debug_info = std::make_optional<std::string>(absl::StrCat(
+          current_anno.pending_op_name, " ", current_anno.pending_region_type));
+    }
+  }
+
+  auto allocation_event = dst_client->CreateAllocationEventForTransfers(
+      dst_memory_space, debug_info);
+  tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise;
+  tsl::RCReference<PjRtDeviceEvent> definition_event;
+  if (dst_client->event_tracking_enabled()) {
+    TF_ASSIGN_OR_RETURN(
+        std::tie(definition_event_promise, definition_event),
+        dst_client->CreateLinkedEventPromise(
+            dst_memory_space, absl::StrCat("CopyToMemorySpace_H2D Op:",
+                                           debug_info.value_or(""))));
+  } else {
+    TF_ASSIGN_OR_RETURN(
+        std::tie(definition_event_promise, definition_event),
+        dst_client->CreateLinkedEventPromise(dst_memory_space, ""));
+  }
+
+  tsl::RCReference<PjRtDeviceEventPromise> src_usage_event_promise;
+  tsl::RCReference<CommonPjRtRawBuffer> src_raw_buffer;
+  tsl::RCReference<CommonPjRtRawBuffer> dst_raw_buffer;
+  std::unique_ptr<PjRtBuffer> dst_buffer;
+  std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events;
+  auto status = [&]() -> absl::Status {
+    TF_ASSIGN_OR_RETURN(
+        dst_raw_buffer,
+        dst_client->AllocateRawBuffer(dst_memory_space, on_device_bytes_count,
+                                      /*retry_on_oom=*/true, allocation_event));
+    TF_ASSIGN_OR_RETURN(
+        dst_buffer, dst_client->DefineBuffer(on_device_shape(), dst_raw_buffer,
+                                             {std::move(definition_event)},
+                                             /*raw_buffer_is_mutable=*/true));
+    TF_RETURN_IF_ERROR(AcquireScopedRawBuffer(
+        [&](tsl::RCReference<CommonPjRtRawBuffer> buf_raw_buffer,
+            std::vector<tsl::RCReference<tsl::AsyncValue>>
+                buf_definition_events)
+            -> absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> {
+          src_raw_buffer = std::move(buf_raw_buffer);
+          tsl::RCReference<PjRtDeviceEvent> usage_event;
+          definition_events = std::move(buf_definition_events);
+          if (src_client->event_tracking_enabled()) {
+            TF_ASSIGN_OR_RETURN(
+                std::tie(src_usage_event_promise, usage_event),
+                dst_client->CreateLinkedEventPromise(
+                    src_memory_space, absl::StrCat("CopyToMemorySpace_D2H Op:",
+                                                   debug_info.value_or(""))));
+          } else {
+            TF_ASSIGN_OR_RETURN(
+                std::tie(src_usage_event_promise, usage_event),
+                dst_client->CreateLinkedEventPromise(src_memory_space, ""));
+          }
+          return usage_event;
+        }));
+    return absl::OkStatus();
+  }();
+  if (!status.ok()) {
+    definition_event_promise->SetError(status);
+    return status;
+  }
+
+  absl::Span<const tsl::RCReference<tsl::AsyncValue>> definition_events_span =
+      definition_events;
+  src_client->async_work_runner()->ScheduleWhenReady(
+      definition_events_span,
+      [src_raw_buffer = std::move(src_raw_buffer),
+       dst_raw_buffer = std::move(dst_raw_buffer),
+       definition_events = std::move(definition_events),
+       definition_event_promise = std::move(definition_event_promise),
+       src_usage_event_promise = std::move(src_usage_event_promise),
+       allocation_event = std::move(allocation_event)]() {
+        for (const auto& av : definition_events) {
+          if (auto* error = av->GetErrorIfPresent()) {
+            auto status = *error;
+            if (allocation_event) {
+              allocation_event.SetError(status);
+            }
+            definition_event_promise->SetError(status);
+            src_usage_event_promise->SetError(status);
+            return;
+          }
+        }
+
+        src_raw_buffer->CopyTo(
+            std::move(dst_raw_buffer), std::move(definition_event_promise),
+            std::move(src_usage_event_promise), std::move(allocation_event));
+      });
+
+  return dst_buffer;
+}
+
+PjRtFuture<> CommonPjRtBufferImpl::CopyRawToHost(void* dst, int64_t offset,
+                                                 int64_t transfer_size) {
+  return CopyRawToHostFuture(PjRtFuture<void*>(dst), offset, transfer_size);
+}
+
+PjRtFuture<> CommonPjRtBufferImpl::CopyRawToHostFuture(PjRtFuture<void*> dst,
+                                                       int64_t offset,
+                                                       int64_t transfer_size) {
+  auto buf_client = tensorflow::down_cast<CommonPjRtClient*>(client());
+  std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events;
+  tsl::RCReference<CommonPjRtRawBuffer> raw_buffer;
+  // tsl::RCReference<tsl::IndirectAsyncValue> indirect_usage_event;
+  tsl::RCReference<PjRtDeviceEventPromise> usage_event_promise;
+  tsl::RCReference<PjRtDeviceEvent> usage_event;
+  auto hold_status = AcquireScopedRawBuffer(
+      [&](tsl::RCReference<CommonPjRtRawBuffer> buf_raw_buffer,
+          std::vector<tsl::RCReference<tsl::AsyncValue>> buf_definition_events)
+          -> absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> {
+        definition_events = std::move(buf_definition_events);
+        if (buf_raw_buffer) {
+          auto on_device_size = buf_raw_buffer->GetOnDeviceSizeInBytes();
+          if (offset < 0 || offset > on_device_size ||
+              on_device_size - offset < transfer_size) {
+            return InvalidArgument(
+                "Copy raw buffer called on buffer size %lld with "
+                "invalid offset %lld, transfer size %lld",
+                on_device_size, offset, transfer_size);
+          }
+          raw_buffer = std::move(buf_raw_buffer);
+        }
+        TF_ASSIGN_OR_RETURN(
+            std::tie(usage_event_promise, usage_event),
+            buf_client->CreateLinkedEventPromise(memory_space(), [&]() {
+              const auto& current_anno = tsl::profiler::
+                  ScopedMemoryDebugAnnotation::CurrentAnnotation();
+              std::string op_name =
+                  !current_anno.pending_op_name.empty()
+                      ? absl::StrCat(" Op:", current_anno.pending_op_name)
+                      : "";
+              return absl::StrCat("CopyRawSubBufferToHost offset:", offset,
+                                  " size:", transfer_size, op_name);
+            }));
+        return usage_event;
+      },
+      "CopyRawSubBufferToHost()");
+  if (!hold_status.ok()) {
+    return PjRtFuture<>(std::move(hold_status));
+  }
+
+  if (buf_client->event_tracking_enabled()) {
+    if (!dst.IsReady()) {
+      usage_event_promise->RegisterClientThreadWait("CopyRawToHostFuture");
+    }
+    usage_event_promise->AddEventDependencies(definition_events);
+  }
+
+  dst.OnReady([buf_client, transfer_size, offset,
+               raw_buffer = std::move(raw_buffer),
+               definition_events = std::move(definition_events),
+               usage_event_promise = std::move(usage_event_promise)](
+                  absl::StatusOr<void*> dst) mutable {
+    if (!dst.ok()) {
+      usage_event_promise->SetError(dst.status());
+      return;
+    }
+
+    // We do this before the call to EnqueueWorkWhenReady because we are going
+    // to std::move(definition_events) and indirect_usage_event.
+    absl::Span<const tsl::RCReference<tsl::AsyncValue>> definition_events_ref =
+        definition_events;
+    buf_client->async_work_runner()->ScheduleWhenReady(
+        definition_events_ref,
+        [dst = *dst, transfer_size, offset, raw_buffer = std::move(raw_buffer),
+         definition_events = std::move(definition_events),
+         usage_event_promise = std::move(usage_event_promise)]() mutable {
+          // Errors in src buffer are surfaced to user.
+          for (const auto& av : definition_events) {
+            if (auto* error = av->GetErrorIfPresent()) {
+              // Signal the usage event to unblock consumers of buffer.
+              usage_event_promise->SetError(*error);
+              return;
+            }
+          }
+          auto d2h_event = raw_buffer->CopyRawDeviceToHostAndReturnEvent(
+              dst, offset, transfer_size);
+          if (!d2h_event.ok()) {
+            usage_event_promise->SetError(d2h_event.status());
+          } else {
+            usage_event_promise->Set(*d2h_event);
+          }
+        });
+  });
+  return usage_event->GetReadyFuture();
+}
+
+absl::StatusOr<Shape> CommonPjRtBufferImpl::logical_on_device_shape() {
+  Shape device_shape = on_device_shape();
+  if (device_shape.is_static()) {
+    return device_shape;
+  }
+  auto buf_client = tensorflow::down_cast<CommonPjRtClient*>(client());
+  auto output_shape = tsl::MakeConstructedAsyncValueRef<Shape>(device_shape);
+  RETURN_IF_ERROR(AcquireScopedRawBuffer(
+      [&](tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
+          std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events)
+          -> absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> {
+        absl::Span<const tsl::RCReference<tsl::AsyncValue>>
+            definition_events_ref = definition_events;
+        buf_client->async_work_runner()->ScheduleWhenReady(
+            definition_events_ref,
+            [definition_events = std::move(definition_events),
+             raw_buffer = raw_buffer, output_shape = output_shape,
+             device_shape = std::move(device_shape)]() mutable {
+              tsl::profiler::TraceMe traceme("D2H Read Shape Metadata");
+              // Errors in src buffer are surfaced to user.
+              for (const auto& av : definition_events) {
+                if (auto* error = av->GetErrorIfPresent()) {
+                  output_shape.SetError(absl::InternalError(
+                      absl::StrCat("Cannot read dynamic shape due to error in "
+                                   "device buffer: ",
+                                   error->message())));
+                  return;
+                }
+              }
+              raw_buffer->ReadDynamicShape(output_shape,
+                                           std::move(device_shape));
+            });
+        tsl::BlockUntilReady(output_shape.CopyRCRef().get());
+        if (auto* error = output_shape.GetErrorIfPresent()) {
+          return Internal("logical_on_device_shape failed: %s",
+                          error->message());
+        }
+
+        return tsl::RCReference<PjRtDeviceEvent>();
+      },
+      "logical_on_device_shape()"));
+
+  return output_shape.get();
 }
 
 }  // namespace xla

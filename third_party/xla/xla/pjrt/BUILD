@@ -121,6 +121,7 @@ cc_library(
         "host_to_device_transfer_manager.h",
     ],
     deps = [
+        ":abstract_tracked_device_buffer",
         ":async_work_runner",
         ":device_event",
         ":pjrt_client",
@@ -131,6 +132,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:ref_count",
+        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
@@ -145,6 +147,7 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:connected_traceme",
         "@local_tsl//tsl/profiler/lib:context_types_hdrs",
         "@local_tsl//tsl/profiler/lib:scoped_memory_debug_annotation",
+        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 
