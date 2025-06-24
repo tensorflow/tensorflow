@@ -1,3 +1,4 @@
+load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/backends/cpu:package_groups.bzl", "xla_cpu_backend_access")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
@@ -111,10 +112,23 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@XNNPACK",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "xnn_fusion_test",
+    srcs = ["xnn_fusion_test.cc"],
+    deps = [
+        ":xnn_fusion",
+        "//xla/hlo/ir:hlo",
+        "@XNNPACK",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

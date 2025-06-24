@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "xnnpack.h"
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
@@ -151,88 +152,71 @@ absl::StatusOr<xnn_datatype> XnnDatatype(const PrimitiveType& type) {
   }
 }
 
+const absl::flat_hash_map<HloOpcode, xnn_unary_operator>* GetXnnUnaryOpMap() {
+  // TODO(ashaposhnikov): Investigate adding support for kErf, kExpm1, kLog1p,
+  // kNot, kRoundNearestAfz, kTan.
+  static const auto* map =
+      new absl::flat_hash_map<HloOpcode, xnn_unary_operator>{
+          {HloOpcode::kAbs, xnn_unary_abs},
+          {HloOpcode::kCeil, xnn_unary_ceiling},
+          {HloOpcode::kClz, xnn_unary_count_leading_zeros},
+          {HloOpcode::kConvert, xnn_unary_convert},
+          {HloOpcode::kCos, xnn_unary_cosine},
+          {HloOpcode::kExp, xnn_unary_exp},
+          {HloOpcode::kCbrt, xnn_unary_cube_root},
+          {HloOpcode::kFloor, xnn_unary_floor},
+          {HloOpcode::kLog, xnn_unary_log},
+          {HloOpcode::kLogistic, xnn_unary_sigmoid},
+          {HloOpcode::kNegate, xnn_unary_negate},
+          {HloOpcode::kRoundNearestEven, xnn_unary_bankers_rounding},
+          {HloOpcode::kRsqrt, xnn_unary_reciprocal_square_root},
+          {HloOpcode::kSign, xnn_unary_sign},
+          {HloOpcode::kSin, xnn_unary_sine},
+          {HloOpcode::kSqrt, xnn_unary_square_root},
+          {HloOpcode::kTanh, xnn_unary_tanh}};
+  return map;
+}
+
 absl::StatusOr<xnn_unary_operator> XnnUnaryOperator(const HloOpcode& opcode) {
-  switch (opcode) {
-    case HloOpcode::kAbs:
-      return xnn_unary_abs;
-    case HloOpcode::kCeil:
-      return xnn_unary_ceiling;
-    case HloOpcode::kClz:
-      return xnn_unary_count_leading_zeros;
-    case HloOpcode::kConvert:
-      return xnn_unary_convert;
-    case HloOpcode::kCos:
-      return xnn_unary_cosine;
-    case HloOpcode::kExp:
-      return xnn_unary_exp;
-    case HloOpcode::kCbrt:
-      return xnn_unary_cube_root;
-    // case HloOpcode::kErf:
-    // case HloOpcode::kExpm1:
-    case HloOpcode::kFloor:
-      return xnn_unary_floor;
-    case HloOpcode::kLog:
-      return xnn_unary_log;
-    // case HloOpcode::kLog1p:
-    case HloOpcode::kLogistic:
-      return xnn_unary_sigmoid;
-    case HloOpcode::kNegate:
-      return xnn_unary_negate;
-    // case HloOpcode::kNot:
-    // case HloOpcode::kRoundNearestAfz:
-    case HloOpcode::kRoundNearestEven:
-      return xnn_unary_bankers_rounding;
-    case HloOpcode::kRsqrt:
-      return xnn_unary_reciprocal_square_root;
-    case HloOpcode::kSign:
-      return xnn_unary_sign;
-    case HloOpcode::kSin:
-      return xnn_unary_sine;
-    case HloOpcode::kSqrt:
-      return xnn_unary_square_root;
-    // case HloOpcode::kTan:
-    case HloOpcode::kTanh:
-      return xnn_unary_tanh;
-    default:
-      return InvalidArgument("Unsupported XNNPACK unary operator: %s",
-                             HloOpcodeString(opcode));
+  const absl::flat_hash_map<HloOpcode, xnn_unary_operator>* map =
+      GetXnnUnaryOpMap();
+  auto result = map->find(opcode);
+  if (result == map->end()) {
+    return InvalidArgument("Unsupported XNNPACK unary operator: %s",
+                           HloOpcodeString(opcode));
   }
+  return result->second;
+}
+
+const absl::flat_hash_map<HloOpcode, xnn_binary_operator>* GetXnnBinaryOpMap() {
+  static const auto* map =
+      new absl::flat_hash_map<HloOpcode, xnn_binary_operator>{
+          {HloOpcode::kAdd, xnn_binary_add},
+          {HloOpcode::kAnd, xnn_binary_bitwise_and},
+          {HloOpcode::kDivide, xnn_binary_divide},
+          {HloOpcode::kMaximum, xnn_binary_maximum},
+          {HloOpcode::kMinimum, xnn_binary_minimum},
+          {HloOpcode::kMultiply, xnn_binary_multiply},
+          {HloOpcode::kOr, xnn_binary_bitwise_or},
+          {HloOpcode::kPower, xnn_binary_pow},
+          {HloOpcode::kRemainder, xnn_binary_modulus},
+          {HloOpcode::kShiftLeft, xnn_binary_shift_left},
+          {HloOpcode::kShiftRightArithmetic, xnn_binary_shift_right_arithmetic},
+          {HloOpcode::kShiftRightLogical, xnn_binary_shift_right_logical},
+          {HloOpcode::kSubtract, xnn_binary_subtract},
+          {HloOpcode::kXor, xnn_binary_bitwise_xor}};
+  return map;
 }
 
 absl::StatusOr<xnn_binary_operator> XnnBinaryOperator(const HloOpcode& opcode) {
-  switch (opcode) {
-    case HloOpcode::kAdd:
-      return xnn_binary_add;
-    case HloOpcode::kAnd:
-      return xnn_binary_bitwise_and;
-    case HloOpcode::kDivide:
-      return xnn_binary_divide;
-    case HloOpcode::kMaximum:
-      return xnn_binary_maximum;
-    case HloOpcode::kMinimum:
-      return xnn_binary_minimum;
-    case HloOpcode::kMultiply:
-      return xnn_binary_multiply;
-    case HloOpcode::kOr:
-      return xnn_binary_bitwise_or;
-    case HloOpcode::kPower:
-      return xnn_binary_pow;
-    case HloOpcode::kRemainder:
-      return xnn_binary_modulus;
-    case HloOpcode::kShiftLeft:
-      return xnn_binary_shift_left;
-    case HloOpcode::kShiftRightArithmetic:
-      return xnn_binary_shift_right_arithmetic;
-    case HloOpcode::kShiftRightLogical:
-      return xnn_binary_shift_right_logical;
-    case HloOpcode::kSubtract:
-      return xnn_binary_subtract;
-    case HloOpcode::kXor:
-      return xnn_binary_bitwise_xor;
-    default:
-      return InvalidArgument("Unsupported XNNPACK binary operator: %s",
-                             HloOpcodeString(opcode));
+  const absl::flat_hash_map<HloOpcode, xnn_binary_operator>* map =
+      GetXnnBinaryOpMap();
+  auto result = map->find(opcode);
+  if (result == map->end()) {
+    return InvalidArgument("Unsupported XNNPACK binary operator: %s",
+                           HloOpcodeString(opcode));
   }
+  return result->second;
 }
 
 bool IsLayoutSupportedByXnn(const Shape& shape) {
