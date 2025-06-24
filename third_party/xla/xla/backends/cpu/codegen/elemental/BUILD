@@ -106,6 +106,7 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/codegen:kernel_definition",
         "//xla/codegen:llvm_kernel_definition",
+        "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_ordering",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",

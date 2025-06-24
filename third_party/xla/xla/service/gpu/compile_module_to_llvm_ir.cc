@@ -47,7 +47,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
-#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -269,19 +268,12 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(
           module, std::make_unique<SequentialHloOrdering>(module->schedule()),
-          buffer_size_bytes_function,
+          buffer_size_bytes_function, alias_info,
           /*color_alignment=*/
           [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; },
           /*allocate_buffers_for_constants=*/true,
           /*colorer=*/colorer,
           /*must_not_live_out=*/{},
-          // TODO(b/424109294): Avoid converting back to CanShareBuffer hook.
-          /*can_share_buffer*/
-          [alias_info](const HloInstruction* user,
-                       const HloInstruction* operand,
-                       const ShapeIndex& user_index) {
-            return alias_info->MayAlias(operand, {}, user, user_index);
-          },
           /*preset_assignments*/ {},
           /*private_stack*/ {}, /*heap_buffer_interval_compare*/ nullptr,
           /*isolation_options*/ std::nullopt, color));

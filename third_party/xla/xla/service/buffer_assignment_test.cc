@@ -120,7 +120,7 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
                                                         int64_t alignment = 1) {
     return BufferAssigner::Run(
                module, std::make_unique<DependencyHloOrdering>(module),
-               &BufferSizeBytes,
+               &BufferSizeBytes, &alias_info_,
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true)
         .value();
@@ -144,10 +144,10 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
     return BufferAssigner::Run(
                module,
                std::make_unique<SequentialHloOrdering>(module->schedule()),
-               &BufferSizeBytes,
+               &BufferSizeBytes, &alias_info_,
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true, colorer,
-               /*must_not_live_out=*/std::nullopt, /*can_share_buffer=*/nullptr,
+               /*must_not_live_out=*/std::nullopt,
                /*preset_assignments=*/{}, private_stacks,
                /*heap_buffer_interval_compare=*/nullptr, isolation_options)
         .value();
@@ -157,7 +157,7 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
       HloModule* module, int64_t alignment = 1) {
     return BufferAssigner::Run(
                module, std::make_unique<DependencyHloOrdering>(module),
-               &BufferSizeBytes,
+               &BufferSizeBytes, &alias_info_,
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/false)
         .value();
@@ -173,7 +173,7 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
 
     return BufferAssigner::Run(
                module, std::make_unique<DependencyHloOrdering>(module),
-               &BufferSizeBytes,
+               &BufferSizeBytes, &alias_info_,
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/false,
                /*colorer=*/BufferAssigner::DefaultColorer(),
@@ -186,7 +186,7 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
       int64_t alignment = 1) {
     return BufferAssigner::Run(
                module, std::make_unique<DependencyHloOrdering>(module),
-               &BufferSizeBytes,
+               &BufferSizeBytes, &alias_info_,
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true, std::move(colorer))
         .value();
@@ -199,7 +199,7 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
     schedule.set_sequence(module->entry_computation(), instruction_sequence);
     return BufferAssigner::Run(
                module, std::make_unique<SequentialHloOrdering>(schedule),
-               &BufferSizeBytes,
+               &BufferSizeBytes, &alias_info_,
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true)
         .value();
@@ -210,12 +210,12 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
       int64_t alignment = 1) {
     return BufferAssigner::Run(
                module, std::make_unique<DependencyHloOrdering>(module),
-               &BufferSizeBytes,
+               &BufferSizeBytes, &alias_info_,
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true,
                BufferAssigner::DefaultColorer(),
                /*must_not_live_out=*/std::nullopt,
-               /*can_share_buffer=*/nullptr, std::move(preset_assignments))
+               std::move(preset_assignments))
         .value();
   }
 
@@ -225,10 +225,11 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
     return BufferAssigner::Run(
                module,
                std::make_unique<SequentialHloOrdering>(module->schedule()),
-               &BufferSizeBytes, [](LogicalBuffer::Color) { return 1; },
+               &BufferSizeBytes, &alias_info_,
+               [](LogicalBuffer::Color) { return 1; },
                /*allocate_buffers_for_constants=*/true,
                BufferAssigner::DefaultColorer(),
-               /*must_not_live_out=*/std::nullopt, /*can_share_buffer=*/nullptr,
+               /*must_not_live_out=*/std::nullopt,
                /*preset_assignments=*/{}, /*private_stacks=*/{},
                /*heap_buffer_interval_compare=*/nullptr, isolation_options)
         .value();
@@ -388,6 +389,7 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
   Shape f32a100x10_ = ShapeUtil::MakeShape(F32, {100, 10});
   Shape t_s32_f32v4_ = ShapeUtil::MakeTupleShape({s32_, f32vec4_});
   Shape t_s32_f32v10_ = ShapeUtil::MakeTupleShape({s32_, f32vec10_});
+  const AliasInfo alias_info_;
 };
 
 // Returns true if the buffers assigned to instructions in "a" are distinct
@@ -2330,7 +2332,7 @@ class WhileBufferAssignmentTest : public HloHardwareIndependentTestBase {
     HloSchedule schedule = ScheduleModule(module, ByteSizeOf).value();
     return BufferAssigner::Run(
                module, std::make_unique<SequentialHloOrdering>(schedule),
-               ByteSizeOf,
+               ByteSizeOf, &alias_info_,
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true)
         .value();
@@ -2343,6 +2345,7 @@ class WhileBufferAssignmentTest : public HloHardwareIndependentTestBase {
   Shape data_shape_ = ShapeUtil::MakeShape(F32, {4});
   Shape loop_state_shape_ =
       ShapeUtil::MakeTupleShape({data_shape_, data_shape_, data_shape_});
+  AliasInfo alias_info_;
 };
 
 static void RunCopyInsertion(HloModule* module) {
@@ -2653,7 +2656,8 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
       auto assignment,
       BufferAssigner::Run(
           module.get(), std::make_unique<SequentialHloOrdering>(schedule),
-          &BufferSizeBytes, [](LogicalBuffer::Color) { return 1; },
+          &BufferSizeBytes, &alias_info_,
+          [](LogicalBuffer::Color) { return 1; },
           /*allocate_buffers_for_constants=*/true));
 
   // The result tuple elements must be assigned with different buffers.
@@ -3385,7 +3389,7 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
   auto assignment =
       BufferAssigner::Run(
           module.get(), std::make_unique<SequentialHloOrdering>(schedule),
-          ByteSizeOf, [](LogicalBuffer::Color) { return 1; },
+          ByteSizeOf, &alias_info_, [](LogicalBuffer::Color) { return 1; },
           /*allocate_buffers_for_constants=*/true)
           .value();
 
