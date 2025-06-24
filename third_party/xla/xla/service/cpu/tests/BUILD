@@ -156,15 +156,19 @@ xla_cc_test(
     deps = [
         "//xla:debug_options_flags",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/ffi",
         "//xla/ffi:ffi_api",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_proto_cc",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:pjrt_cpu_client_registry",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
