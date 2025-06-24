@@ -27,6 +27,8 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
@@ -68,6 +70,7 @@ limitations under the License.
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/cpu_info.h"
@@ -424,6 +427,35 @@ llvm::CodeGenOptLevel IrCompiler::GetCodeGenOptLevel(
     default:
       return llvm::CodeGenOptLevel::None;
   }
+}
+
+absl::StatusOr<std::unique_ptr<llvm::TargetMachine>>
+IrCompiler::build_target_machine() const {
+  TF_ASSIGN_OR_RETURN(auto target_machine, target_machine_builder_());
+
+  absl::string_view current_features(target_machine->getTargetFeatureString());
+
+  std::vector<std::string> additional_features;
+  for (absl::string_view feature : absl::StrSplit(current_features, ',')) {
+    // Scatter & gather can result in very poor performance.
+    if (absl::StartsWith(feature, "+avx512")) {
+      additional_features.push_back("+prefer-no-scatter");
+      additional_features.push_back("+prefer-no-gather");
+    }
+  }
+
+  if (additional_features.empty()) {
+    return target_machine;
+  }
+  std::string additional_features_str = absl::StrJoin(additional_features, ",");
+  if (current_features.empty()) {
+    target_machine->setTargetFeatureString(additional_features_str);
+  } else {
+    target_machine->setTargetFeatureString(
+        absl::StrCat(current_features, ",", additional_features_str));
+  }
+
+  return target_machine;
 }
 
 }  // namespace xla::cpu

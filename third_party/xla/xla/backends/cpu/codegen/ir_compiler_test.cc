@@ -16,20 +16,28 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/ir_compiler.h"
 
 #include <memory>
+#include <optional>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBufferRef.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/TargetParser/Triple.h"
 #include "xla/backends/cpu/codegen/kernel_api_ir_builder.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -40,6 +48,9 @@ limitations under the License.
 namespace xla::cpu {
 
 namespace {
+
+using ::testing::HasSubstr;
+using ::testing::Not;
 
 constexpr absl::string_view kUnoptimizedIr = R"(
   define void @sum_vectors(ptr noalias %a, ptr noalias %b, ptr noalias %c, i64 %n) {
@@ -154,6 +165,57 @@ TEST(IrCompilerTest, OverrideIrCompilerCompileOptions) {
   EXPECT_THAT(non_vectorized_module_ir,
               ::testing::Not(::testing::ContainsRegex("fadd <[0-9]+ x float>")))
       << non_vectorized_module_ir;
+}
+
+TEST(IrCompilerTest, TestAdditionalFeatures) {
+#if !defined(__x86_64__)
+  GTEST_SKIP()
+      << "Test only supported on native x86_64 (InitializeNativeTarget).";
+#endif
+
+  llvm::InitializeNativeTarget();
+
+  bool has_avx512;
+  auto builder =
+      [&has_avx512]() -> absl::StatusOr<std::unique_ptr<llvm::TargetMachine>> {
+    absl::string_view cpu_name = "skylake";
+    absl::string_view features = has_avx512 ? "+avx512f" : "-avx512f";
+    absl::string_view triple = "x86_64-unknown-linux-gnu";
+    std::string error;
+    const llvm::Target* target =
+        llvm::TargetRegistry::lookupTarget(triple, error);
+    if (target == nullptr) {
+      return absl::InternalError("Failed to lookup target: " + error);
+    }
+
+    llvm::TargetOptions target_options;
+    return absl::WrapUnique(target->createTargetMachine(
+        llvm::Triple(triple), cpu_name, features, target_options,
+        /*RM=*/std::nullopt));
+  };
+
+  IrCompiler ir_compiler(std::move(builder), IrCompiler::Options(),
+                         IrCompiler::CompilationHooks());
+
+  {
+    has_avx512 = true;
+    TF_ASSERT_OK_AND_ASSIGN(auto target_machine,
+                            ir_compiler.build_target_machine());
+
+    absl::string_view features = target_machine->getTargetFeatureString();
+    EXPECT_THAT(features, HasSubstr("+prefer-no-scatter"));
+    EXPECT_THAT(features, HasSubstr("+prefer-no-gather"));
+  }
+
+  {
+    has_avx512 = false;
+    TF_ASSERT_OK_AND_ASSIGN(auto target_machine,
+                            ir_compiler.build_target_machine());
+
+    absl::string_view features = target_machine->getTargetFeatureString();
+    EXPECT_THAT(features, Not(HasSubstr("+prefer-no-scatter")));
+    EXPECT_THAT(features, Not(HasSubstr("+prefer-no-gather")));
+  }
 }
 
 }  // namespace

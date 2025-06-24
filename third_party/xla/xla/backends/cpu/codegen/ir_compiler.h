@@ -126,10 +126,9 @@ class IrCompiler : public llvm::orc::IRCompileLayer::IRCompiler {
   static llvm::CodeGenOptLevel GetCodeGenOptLevel(
       const HloModuleConfig& module_config);
 
+  // Build the target machine and add any target specific features.
   absl::StatusOr<std::unique_ptr<llvm::TargetMachine>> build_target_machine()
-      const {
-    return target_machine_builder_();
-  }
+      const;
 
  private:
   TargetMachineBuilder target_machine_builder_;
