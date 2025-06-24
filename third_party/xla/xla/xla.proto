@@ -677,6 +677,19 @@ message DebugOptions {
   // Whether to use multiple compute streams to run windowed einsum.
   optional bool xla_gpu_multi_streamed_windowed_einsum = 280;
 
+  // If true, NCCL collectives (e.g., AllReduce) execute asynchronously. If
+  // xla_gpu_nccl_blocking_communicators is false, then
+  // xla_gpu_nccl_async_execution must be true.
+  bool xla_gpu_nccl_async_execution = 393;
+
+  // There are two types of NCCL communicators: blocking and non-blocking.  When
+  // a collective operation is called on a blocking communicator, the
+  // communicator blocks until the operation has been scheduled on the GPU. A
+  // non-blocking communicator, on the other hand, returns immediately.
+  //
+  // https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/api/types.html#c.blocking
+  bool xla_gpu_nccl_blocking_communicators = 390;
+
   // Specify the maximum number of channels(SMs) NCCL
   // will use for collective operations.
   optional int64 xla_gpu_nccl_collective_max_nchannels = 273;
@@ -1218,7 +1231,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 390
+  // Next id: 394
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
