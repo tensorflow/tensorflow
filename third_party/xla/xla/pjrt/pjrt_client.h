@@ -929,6 +929,10 @@ class PjRtClient {
     return Unimplemented("MakeCrossHostReceiveBuffers is not implemented.");
   }
 
+  // Should be overridden to return true if `MakeCrossHostReceiveBuffers` and
+  // `PjRtBuffer::CopyToRemoteDevice` are both implemented.
+  virtual bool SupportsCrossHostTransfers() const { return false; }
+
   // Return the PjRtHostMemoryForDeviceManager for this client. It can be
   // nullptr if the implementation does not provide one.
   virtual PjRtHostMemoryForDeviceManager* GetPjRtHostMemoryForDeviceManager()

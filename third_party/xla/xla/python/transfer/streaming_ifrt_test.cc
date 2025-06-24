@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
+#include "tsl/platform/casts.h"
 
 namespace aux {
 namespace {
@@ -99,11 +100,15 @@ TEST(PremappedCopierState, RoundTrip) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto arr, tests::CopyTestPatternToDevice(
                     client.get(), client->devices()[0], test_pattern));
+  std::shared_ptr<xla::PjRtClient> pjrt_client =
+      tensorflow::down_cast<xla::ifrt::PjRtClient*>(arr->client())
+          ->shared_ptr_pjrt_client();
   TF_ASSERT_OK_AND_ASSIGN(
-      auto scratch, AllocateAndMapPjrtMemory(arr->client(), 1024 * 1024 * 16));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto src_work_units,
-      DmaCopyChunk::DivideBufferCopiesEvenly(arr, xfer_size, 0));
+      auto scratch, AllocateAndMapPjrtMemory(pjrt_client, 1024 * 1024 * 16));
+  auto* array = static_cast<xla::ifrt::PjRtCompatibleArray*>(arr.get());
+  TF_ASSERT_OK_AND_ASSIGN(auto src_work_units,
+                          DmaCopyChunk::DivideBufferCopiesEvenly(
+                              array->pjrt_buffers()[0], xfer_size, 0));
   TF_ASSERT_OK_AND_ASSIGN(
       auto dest_copy_plan,
       SetupTransferDestList(ShapeFromIfrt(arr), GetOtherDevice(arr),

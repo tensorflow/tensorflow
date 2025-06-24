@@ -144,6 +144,8 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
                           absl::string_view serialized_descriptor,
                           PjRtBuffer::RemoteSendCallback on_done) override;
 
+  bool SupportsCrossHostTransfers() const override { return true; }
+
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
   MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
                               PjRtDevice* device,
