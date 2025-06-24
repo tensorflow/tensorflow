@@ -1178,9 +1178,10 @@ def MHLO_SendOp : MHLO_Op<"send",
     ```mlir
     %result = "mhlo.send"(%operand, %token) {
       // channel_id = 5 : i64,
-      // channel_type = #stablehlo<channel_type DEVICE_TO_HOST>,
-      channel_handle = #mhlo.channel_handle<handle = 5, type = 2>,
-      is_host_transfer = true
+      // channel_type = #stablehlo<channel_type DEVICE_TO_DEVICE>,
+      channel_handle = #mhlo.channel_handle<handle = 5, type = 1>,
+      is_host_transfer = false,
+      source_target_pairs = dense<[[0, 1], [1, 2]]> : tensor<2x2xi64>
     } : (tensor<3x4xi32>, !mhlo.token) -> !mhlo.token
     ```
   }];
@@ -1189,10 +1190,16 @@ def MHLO_SendOp : MHLO_Op<"send",
     Variadic<MHLO_Tensor>:$inputs,
     MHLO_Token:$token,
     MHLO_ChannelHandle:$channel_handle,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_host_transfer
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_host_transfer,
+    OptionalAttr<I64ElementsAttr>:$source_target_pairs
   );
 
   let results = (outs MHLO_Token);
+  let builders = [
+    OpBuilder<(ins
+      "::mlir::Type":$result_type, "::mlir::Value":$operand,
+      "::mlir::mhlo::ChannelHandleAttr":$channel_handle,
+      "::mlir::DenseIntElementsAttr":$source_target_pairs)>];
   let hasCustomHLOConverter = 1;
 }
 
@@ -1208,9 +1215,10 @@ def MHLO_RecvOp : MHLO_Op<"recv", []> {
     ```mlir
     %results:2 = "mhlo.recv"(%token) {
       // channel_id = 5 : i64,
-      // channel_type = #stablehlo<channel_type HOST_TO_DEVICE>,
-      channel_handle = #mhlo.channel_handle<handle = 5, type = 3>,
-      is_host_transfer = true
+      // channel_type = #stablehlo<channel_type DEVICE_TO_DEVICE>,
+      channel_handle = #mhlo.channel_handle<handle = 5, type = 1>,
+      is_host_transfer = false,
+      source_target_pairs = dense<[[0, 1], [1, 2]]> : tensor<2x2xi64>
     } : (!mhlo.token) -> (tensor<3x4xi32>, !mhlo.token)
     ```
   }];
@@ -1218,10 +1226,16 @@ def MHLO_RecvOp : MHLO_Op<"recv", []> {
   let arguments = (ins
     MHLO_Token:$token,
     MHLO_ChannelHandle:$channel_handle,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_host_transfer
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_host_transfer,
+    OptionalAttr<I64ElementsAttr>:$source_target_pairs
   );
 
   let results = (outs Variadic<MHLO_StaticShapeTensorOrToken>);
+  let builders = [
+    OpBuilder<(ins
+      "::mlir::Type":$result_type, "::mlir::Value":$operand,
+      "::mlir::mhlo::ChannelHandleAttr":$channel_handle,
+      "::mlir::DenseIntElementsAttr":$source_target_pairs)>];
   let hasCustomHLOConverter = 1;
   let hasVerifier = 1;
 }

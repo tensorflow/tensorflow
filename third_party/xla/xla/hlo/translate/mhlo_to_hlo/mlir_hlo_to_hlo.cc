@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/APInt.h"
@@ -97,9 +98,11 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -682,6 +685,21 @@ static xla::ComparisonDirection Convert_comparison_direction(
       .value();
 }
 
+std::string Format_source_target_pairs_string(
+    std::vector<std::pair<int64_t, int64_t>> source_target_pairs) {
+  return "{" +
+         absl::StrJoin(source_target_pairs, ",",
+                       absl::PairFormatter(
+                           [](std::string* out, int64_t value) {
+                             absl::StrAppend(out, "{", value);
+                           },
+                           ",",
+                           [](std::string* out, int64_t value) {
+                             absl::StrAppend(out, value, "}");
+                           })) +
+         "}";
+}
+
 template <typename T>
 static xla::GatherDimensionNumbers Convert_dimension_numbers(T input) {
   xla::GatherDimensionNumbers output;
@@ -1211,6 +1229,19 @@ struct OpLoweringContext {
   mlir::StackFrameIndexBuilder* frame_index_builder;
 };
 
+void SetSourceTargetPairsAttributes(xla::XlaBuilder* builder,
+                                    std::string source_target_pairs_string) {
+  xla::FrontendAttributes fe_attrs;
+  for (const auto& attr : builder->frontend_attributes().map()) {
+    fe_attrs.mutable_map()->insert({attr.first, attr.second});
+  }
+  if (!source_target_pairs_string.empty()) {
+    fe_attrs.mutable_map()->insert(
+        {xla::kSendRecvSourceTargetPairsAttr, source_target_pairs_string});
+  }
+  builder->SetFrontendAttributes(fe_attrs);
+}
+
 mlir::LogicalResult GetTuple(mlir::Operation* op,
                              mlir::Operation::operand_range values,
                              OpLoweringContext ctx,
@@ -1486,6 +1517,12 @@ LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
   xla::XlaOp token;
   if (failed(GetXlaOp(op.getToken(), value_map, &token, op))) return failure();
 
+  std::string source_target_pairs_string;
+  if (op.getSourceTargetPairs().has_value() &&
+      !op.getSourceTargetPairs()->empty()) {
+    source_target_pairs_string = Format_source_target_pairs_string(
+        Convert_source_target_pairs(op.getSourceTargetPairs()));
+  }
   // SendOp has 1 result, but HLO Send has 3 results. Convert the sharding to a
   // tuple sharding with 3 entries.
   if (ctx.builder->sharding().has_value()) {
@@ -1497,10 +1534,12 @@ LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
     tuple_shardings->Add(xla::OpSharding(single_sharding));
     tuple_shardings->Add(xla::OpSharding(single_sharding));
     xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, sharding);
+    SetSourceTargetPairsAttributes(ctx.builder, source_target_pairs_string);
     token = xla::internal::XlaBuilderFriend::BuildSend(
         ctx.builder, operand, token,
         Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
   } else {
+    SetSourceTargetPairsAttributes(ctx.builder, source_target_pairs_string);
     token = xla::internal::XlaBuilderFriend::BuildSend(
         ctx.builder, operand, token,
         Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
@@ -1516,6 +1555,12 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
 
   xla::XlaOp token;
   if (failed(GetXlaOp(op.getToken(), value_map, &token, op))) return failure();
+  std::string source_target_pairs_string;
+  if (op.getSourceTargetPairs().has_value() &&
+      !op.getSourceTargetPairs()->empty()) {
+    source_target_pairs_string = Format_source_target_pairs_string(
+        Convert_source_target_pairs(op.getSourceTargetPairs()));
+  }
 
   // stablehlo.recvOp produces multiple results. The shape argument expected by
   // the xla client API is a tuple type with two element-types: data_type : A
@@ -1558,10 +1603,12 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
       tuple_shardings->Add(xla::OpSharding(single_sharding));
     }
     xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, sharding);
+    SetSourceTargetPairsAttributes(ctx.builder, source_target_pairs_string);
     token = xla::internal::XlaBuilderFriend::BuildRecv(
         ctx.builder, token, data_shape,
         Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
   } else {
+    SetSourceTargetPairsAttributes(ctx.builder, source_target_pairs_string);
     token = xla::internal::XlaBuilderFriend::BuildRecv(
         ctx.builder, token, data_shape,
         Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
@@ -4453,6 +4500,12 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
     data_shape = subshapes[0];
   else
     data_shape = xla::ShapeUtil::MakeTupleShape(subshapes);
+  std::string source_target_pairs_string;
+  if (op.getSourceTargetPairs().has_value() &&
+      !op.getSourceTargetPairs()->empty()) {
+    source_target_pairs_string = Format_source_target_pairs_string(
+        Convert_source_target_pairs(op.getSourceTargetPairs()));
+  }
 
   auto get_sharding = [](const xla::OpSharding& sharding) {
     xla::OpSharding ret;
@@ -4474,10 +4527,12 @@ LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
       tuple_shardings->Add(xla::OpSharding(single_sharding));
     }
     xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, sharding);
+    SetSourceTargetPairsAttributes(ctx.builder, source_target_pairs_string);
     token = xla::internal::XlaBuilderFriend::BuildRecv(
         ctx.builder, token, data_shape,
         Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
   } else {
+    SetSourceTargetPairsAttributes(ctx.builder, source_target_pairs_string);
     token = xla::internal::XlaBuilderFriend::BuildRecv(
         ctx.builder, token, data_shape,
         Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
@@ -4736,6 +4791,13 @@ LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
   xla::XlaOp token;
   if (failed(GetXlaOp(op.getToken(), value_map, &token, op))) return failure();
 
+  std::string source_target_pairs_string;
+  if (op.getSourceTargetPairs().has_value() &&
+      !op.getSourceTargetPairs()->empty()) {
+    source_target_pairs_string = Format_source_target_pairs_string(
+        Convert_source_target_pairs(op.getSourceTargetPairs()));
+  }
+
   // SendOp has 1 result, but HLO Send has 3 results. Convert the sharding to a
   // tuple sharding with 3 entries.
   if (ctx.builder->sharding().has_value()) {
@@ -4747,10 +4809,12 @@ LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
     tuple_shardings->Add(xla::OpSharding(single_sharding));
     tuple_shardings->Add(xla::OpSharding(single_sharding));
     xla::XlaScopedShardingAssignment sharding_scope(ctx.builder, sharding);
+    SetSourceTargetPairsAttributes(ctx.builder, source_target_pairs_string);
     token = xla::internal::XlaBuilderFriend::BuildSend(
         ctx.builder, operand, token,
         Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
   } else {
+    SetSourceTargetPairsAttributes(ctx.builder, source_target_pairs_string);
     token = xla::internal::XlaBuilderFriend::BuildSend(
         ctx.builder, operand, token,
         Convert_channel_handle(op.getChannelHandle()), op.getIsHostTransfer());
