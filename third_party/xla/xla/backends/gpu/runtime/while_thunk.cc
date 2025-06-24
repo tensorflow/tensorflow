@@ -194,7 +194,9 @@ std::string WhileThunk::ToString(int indent) const {
 }
 
 absl::StatusOr<ThunkProto> WhileThunk::ToProto() const {
-  TF_ASSIGN_OR_RETURN(ThunkProto proto, Thunk::ToProto());
+  ThunkProto proto;
+  TF_ASSIGN_OR_RETURN(*proto.mutable_thunk_info(), GetThunkInfoProto());
+
   auto* while_proto = proto.mutable_while_thunk();
   TF_ASSIGN_OR_RETURN(*while_proto->mutable_condition_result_buffer_index(),
                       condition_result_buffer_index_.ToProto());

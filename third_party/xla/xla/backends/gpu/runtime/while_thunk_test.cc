@@ -69,6 +69,12 @@ struct DummyThunk : public Thunk {
                         Thunk::ThunkInfo::FromProto(thunk_proto.thunk_info()));
     return std::make_unique<DummyThunk>(kind, std::move(thunk_info));
   }
+
+  absl::StatusOr<ThunkProto> ToProto() const override {
+    ThunkProto proto;
+    TF_ASSIGN_OR_RETURN(*proto.mutable_thunk_info(), GetThunkInfoProto());
+    return proto;
+  }
 };
 
 WhileThunk CreateWhileThunk(
