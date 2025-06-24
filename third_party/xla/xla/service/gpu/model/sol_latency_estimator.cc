@@ -342,8 +342,7 @@ LatencyEstimator::TimeCost SolLatencyEstimator::NodeCost(
   }
 
   LatencyEstimator::TimeCost cost_in_us;
-  if (instr->opcode() == HloOpcode::kFusion &&
-      (instr->IsLoopFusion() || instr->IsInputFusion())) {
+  if (instr->IsLoopFusion() || instr->IsInputFusion()) {
     absl::Duration total_estimated_time =
         gpu_performance_model_
             .EstimateRunTimeForInstruction(instr, &*cost_analysis_)
