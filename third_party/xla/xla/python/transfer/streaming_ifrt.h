@@ -15,7 +15,8 @@ limitations under the License.
 #ifndef XLA_PYTHON_TRANSFER_STREAMING_IFRT_H_
 #define XLA_PYTHON_TRANSFER_STREAMING_IFRT_H_
 
-#include <atomic>
+#include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <memory>
 #include <vector>
@@ -28,12 +29,11 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
-#include "xla/python/pjrt_ifrt/pjrt_array.h"
-#include "xla/python/pjrt_ifrt/pjrt_client.h"
-#include "xla/python/pjrt_ifrt/pjrt_device.h"
 #include "xla/python/transfer/streaming.h"
 #include "xla/python/transfer/transfer_socket.pb.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -44,8 +44,15 @@ inline constexpr uint64_t kCpuPageSize = 4096;
 
 // Maps a preallocated buffer into device memory and i
 absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> MapPjrtMemory(
+    std::shared_ptr<xla::PjRtClient> client, void* data, size_t buffer_size,
+    std::shared_ptr<void> owner);
+
+absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> MapPjrtMemory(
     xla::ifrt::Client* client, void* data, size_t buffer_size,
     std::shared_ptr<void> owner);
+
+absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> AllocateAndMapPjrtMemory(
+    std::shared_ptr<xla::PjRtClient> client, size_t buffer_size);
 
 absl::StatusOr<std::shared_ptr<absl::Span<uint8_t>>> AllocateAndMapPjrtMemory(
     xla::ifrt::Client* client, size_t buffer_size);
@@ -72,7 +79,8 @@ struct DmaCopyChunk {
 
   // Divides an IFRT array up evenly for copying.
   static absl::StatusOr<std::vector<DmaCopyChunk>> DivideBufferCopiesEvenly(
-      xla::ifrt::ArrayRef arr, size_t xfer_size, size_t buffer_id);
+      std::shared_ptr<xla::PjRtBuffer> buffer, size_t xfer_size,
+      size_t buffer_id);
 };
 
 // Copies into subdivisions of scratch asyncly in parallel calling on_done
