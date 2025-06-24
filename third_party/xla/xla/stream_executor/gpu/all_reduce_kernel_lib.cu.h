@@ -31,41 +31,63 @@ template <typename T>
 union Vec;
 
 template <>
-union alignas(16) Vec<float> {
+union alignas(kVectorOpSize) Vec<float> {
   using PackedType = int4;
 
-  float data[4];
+  float data[kNumElementsPerThread<float>];
   PackedType packed;
 };
 
 template <>
-union alignas(8) Vec<__nv_bfloat16> {
-  using PackedType = int2;
+union alignas(kVectorOpSize) Vec<__nv_bfloat16> {
+  using PackedType = int4;
 
-  __nv_bfloat16 data[4];
+  __nv_bfloat162 data[kNumElementsPerThread<__nv_bfloat162>];
   PackedType packed;
-};
+
+  __device__ Vec() = default;
+  __device__ Vec(const Vec& other) : packed(other.packed) {}
+  __device__ Vec& operator=(const Vec& other) {
+    packed = other.packed;
+    return *this;
+  }
+};  // namespace stream_executor::gpu
 
 template <>
-union alignas(4) Vec<uint8_t> {
-  using PackedType = int32_t;
+union alignas(kVectorOpSize) Vec<uint8_t> {
+  using PackedType = int4;
 
-  uint8_t data[4];
+  uint8_t data[kNumElementsPerThread<uint8_t>];
   PackedType packed;
+
+  __device__ Vec& operator|=(const Vec& other) {
+    packed.x |= other.packed.x;
+    packed.y |= other.packed.y;
+    packed.z |= other.packed.z;
+    packed.w |= other.packed.w;
+    return *this;
+  }
 };
 
 template <typename T, xla::ReductionKind ReductionKindT>
-__device__ __forceinline__
-    typename std::enable_if<ReductionKindT == xla::ReductionKind::SUM, T>::type
-    ApplyBinaryOp(T a, T b) {
-  return a + b;
+__device__ __forceinline__ Vec<
+    typename std::enable_if<ReductionKindT == xla::ReductionKind::SUM, T>::type>
+ApplyBinaryOp(Vec<T> a, const Vec<T>& b) {
+#pragma unroll
+  for (int i = 0; i < kNumElementsPerThread<T>; ++i) {
+    a.data[i] += b.data[i];
+  }
+  return a;
 }
 
 template <typename T, xla::ReductionKind ReductionKindT>
-__device__ __forceinline__
-    typename std::enable_if<ReductionKindT == xla::ReductionKind::MAX, T>::type
-    ApplyBinaryOp(T a, T b) {
-  return max(a, b);
+__device__ __forceinline__ Vec<
+    typename std::enable_if<ReductionKindT == xla::ReductionKind::MAX, T>::type>
+ApplyBinaryOp(Vec<T> a, const Vec<T>& b) {
+  static_assert(std::is_same<T, uint8_t>::value, "Only bool is supported.");
+  // This only works for predicate types aka booleans.
+  a |= b;
+  return a;
 }
 
 template <typename T>
@@ -82,10 +104,7 @@ __device__ __forceinline__ void VecStore(T* addr, const Vec<T>& vec) {
 
 template <typename T, xla::ReductionKind ReductionKindT>
 __device__ __forceinline__ void VecOp(Vec<T>& res, const Vec<T>& vec) {
-  res.data[0] = ApplyBinaryOp<T, ReductionKindT>(res.data[0], vec.data[0]);
-  res.data[1] = ApplyBinaryOp<T, ReductionKindT>(res.data[1], vec.data[1]);
-  res.data[2] = ApplyBinaryOp<T, ReductionKindT>(res.data[2], vec.data[2]);
-  res.data[3] = ApplyBinaryOp<T, ReductionKindT>(res.data[3], vec.data[3]);
+  res = ApplyBinaryOp<T, ReductionKindT>(res, vec);
 }
 
 __device__ __forceinline__ void PutSignalFlag(uint32_t* addr, uint32_t val) {
@@ -123,8 +142,8 @@ template <typename T, xla::ReductionKind ReductionKindT>
 __device__ __forceinline__ void OneShotAllReduceKernelImpl(
     const AllReduceKernelParams<T>& args) {
   int64_t offset =
-      kNumElementsPerThread * (blockIdx.x * blockDim.x + threadIdx.x);
-  int64_t stride = kNumElementsPerThread * blockDim.x * gridDim.x;
+      kNumElementsPerThread<T> * (blockIdx.x * blockDim.x + threadIdx.x);
+  int64_t stride = kNumElementsPerThread<T> * blockDim.x * gridDim.x;
 
   // Copy data from local input buffer to remote input buffer.
   for (int i = offset; i < args.num_elements; i += stride) {
@@ -157,12 +176,12 @@ template <typename T, xla::ReductionKind ReductionKindT>
 __device__ __forceinline__ void TwoShotAllReduceKernelImpl(
     const AllReduceKernelParams<T>& args) {
   const int64_t offset = blockIdx.x * args.num_elements_per_block +
-                         threadIdx.x * kNumElementsPerThread;
+                         threadIdx.x * kNumElementsPerThread<T>;
   const int64_t offset_end = (blockIdx.x + 1) * args.num_elements_per_block;
 
-  const int64_t block_stride = kNumElementsPerThread * blockDim.x;
   // Responsibility for accumulation for this rank.
   const int64_t rank_offset = args.rank * args.num_elements_per_rank;
+  const int64_t block_stride = kNumElementsPerThread<T> * blockDim.x;
 
   // Step1: Copy data from input buffer to the local shared buffer.
   // Each GPU will copy data from its local input buffer to its own local shared
@@ -170,8 +189,9 @@ __device__ __forceinline__ void TwoShotAllReduceKernelImpl(
   // We use a grid stride loop for simplicity.
   {
     const int64_t grid_offset =
-        kNumElementsPerThread * (blockIdx.x * blockDim.x + threadIdx.x);
-    const int64_t grid_stride = kNumElementsPerThread * blockDim.x * gridDim.x;
+        kNumElementsPerThread<T> * (blockIdx.x * blockDim.x + threadIdx.x);
+    const int64_t grid_stride =
+        kNumElementsPerThread<T> * blockDim.x * gridDim.x;
     for (int i = grid_offset; i < args.num_elements; i += grid_stride) {
       VecStore(args.remote_input_buffers[args.rank] + i,
                VecLoad(args.input_buffer + i));

@@ -100,7 +100,7 @@ absl::Status LaunchTypedKernel(
   params.num_elements_per_block = RoundUpTo(
       CeilOfRatio(params.num_elements_per_rank,
                   absl::implicit_cast<int64_t>(launch_dimensions.num_blocks())),
-      se::gpu::kNumElementsPerThread);
+      se::gpu::kNumElementsPerThread<ElementType>);
   absl::c_transform(
       signal_flags_buffers, params.signal_flags_buffers.begin(),
       [](se::DeviceMemoryBase buffer) {
@@ -112,30 +112,25 @@ absl::Status LaunchTypedKernel(
                        launch_dimensions.block_counts(), stream,
                        std::move(params));
 }
-}  // namespace
 
-bool IsAllReduceKernelSupported(int64_t num_ranks, int64_t num_elements,
-                                PrimitiveType element_type,
-                                ReductionKind reduction_kind,
-                                AllReduceStrategy all_reduce_strategy) {
-  // For twoShot each rank processes: num_elements / num_ranks elements.
-  const int64_t alignment_requirement =
-      all_reduce_strategy == AllReduceStrategy::kOneShot
-          ? se::gpu::kNumElementsPerThread
-          : se::gpu::kNumElementsPerThread * num_ranks;
-
-  if (num_elements % alignment_requirement != 0) {
-    return false;
+int64_t GetNumElementsPerThread(PrimitiveType element_type) {
+  switch (element_type) {
+    case PrimitiveType::F32:
+      return se::gpu::kNumElementsPerThread<float>;
+    case PrimitiveType::BF16:
+      return se::gpu::kNumElementsPerThread<bfloat16>;
+    case PrimitiveType::PRED:
+      return se::gpu::kNumElementsPerThread<bool>;
+    default:
+      LOG(FATAL) << "Unsupported element type: " << element_type;
   }
+}
 
-  // The kernel is only supported for up to 8 devices.
-  if (num_ranks > stream_executor::gpu::kMaxNumAllReduceInputPtrs) {
-    return false;
-  }
-
-  // More types of one-shot all-reduce kernel can be supported. Each element
-  // type + reduction kind combination need a new template instantiation.
-  // Register more kernel in xla/stream_executor/cuda/all_reduce_kernel_cuda.cc
+// More types of one-shot all-reduce kernel can be supported. Each element
+// type + reduction kind combination need a new template instantiation.
+// Register more kernel in xla/stream_executor/cuda/all_reduce_kernel_cuda.cc
+bool IsElementReductionSupported(PrimitiveType element_type,
+                                 ReductionKind reduction_kind) {
   switch (reduction_kind) {
     case ReductionKind::SUM:
       return element_type == PrimitiveType::F32 ||
@@ -145,6 +140,29 @@ bool IsAllReduceKernelSupported(int64_t num_ranks, int64_t num_elements,
     default:
       return false;
   }
+}
+
+}  // namespace
+
+bool IsAllReduceKernelSupported(int64_t num_ranks, int64_t num_elements,
+                                PrimitiveType element_type,
+                                ReductionKind reduction_kind,
+                                AllReduceStrategy all_reduce_strategy) {
+  if (!IsElementReductionSupported(element_type, reduction_kind)) {
+    return false;
+  }
+  const int64_t num_elements_per_thread = GetNumElementsPerThread(element_type);
+  const int64_t alignment_requirement =
+      all_reduce_strategy == AllReduceStrategy::kOneShot
+          ? num_elements_per_thread
+          : num_elements_per_thread * num_ranks;
+
+  if (num_elements % alignment_requirement != 0) {
+    return false;
+  }
+
+  // The kernel is only supported for up to 8 devices.
+  return num_ranks <= stream_executor::gpu::kMaxNumAllReduceInputPtrs;
 }
 
 absl::Status RunAllReduceKernel(
