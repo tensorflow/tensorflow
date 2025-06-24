@@ -1326,6 +1326,7 @@ cc_library(
 
 cc_library(
     name = "runtime_single_threaded_matmul_nomkl",
+    hdrs = ["runtime_single_threaded_matmul.h"],
     compatible_with = get_compatible_with_portable(),
     copts = runtime_copts(),
     visibility = ["//visibility:public"],
@@ -1334,6 +1335,7 @@ cc_library(
         "//xla/tsl/framework/contraction:eigen_contraction_kernel_no_mkl",
         "@com_google_absl//absl/base:core_headers",
         "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:ml_dtypes",
     ],
 )
 
