@@ -33,6 +33,10 @@ struct OriginalArray {
   std::string instruction_name;
   // Shape index of the array if the instruction produces a tuple.
   ShapeIndex shape_index;
+  std::string ToString() const;
+  OriginalArrayProto ToProto() const;
+  static OriginalArray FromProto(
+      const xla::OriginalArrayProto& original_array_proto);
 };
 
 // The information of an HLO value produced by an instruction in an unoptimized

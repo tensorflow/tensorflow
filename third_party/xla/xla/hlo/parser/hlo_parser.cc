@@ -584,6 +584,7 @@ class HloParserImpl : public HloParser {
   bool ParseToken(TokKind kind, const std::string& msg,
                   uint64_t lexer_skip_mask = kNoneMask);
   bool ParseUnsignedIntegerType(PrimitiveType* primitive_type);
+  bool ParseOriginalArray(OriginalArray& original_array);
   bool ParseOriginalValue(std::shared_ptr<OriginalValue>& original_value);
 
   using AliasingData =
@@ -6515,8 +6516,32 @@ bool HloParserImpl::ParsePaddingConfig(PaddingConfig* padding) {
   return true;
 }
 
-// original_tensor ::= '{' instruction_name [shape_index] '}'
-// original_value ::= '{' '('* original_tensor [','] ')'* | original_value '}'
+// original_array ::= '{' instruction_name [shape_index] '}'
+bool HloParserImpl::ParseOriginalArray(OriginalArray& original_array) {
+  VLOG(kDebugLevel) << "ParseOriginalArray";
+
+  if (!ParseToken(TokKind::kLbrace, "Expects '{'")) {
+    return false;
+  }
+
+  if (lexer_.GetKind() == TokKind::kString) {
+    if (!ParseString(&original_array.instruction_name)) {
+      return false;
+    }
+    if (lexer_.GetKind() == TokKind::kLbrace) {
+      if (!ParseShapeIndex(&original_array.shape_index)) {
+        return false;
+      }
+    }
+  }
+
+  if (!ParseToken(TokKind::kRbrace, "Expects '} at end of OriginalArray'")) {
+    return false;
+  }
+  return true;
+}
+
+// original_value ::= '{' '('* original_array [','] ')'* | original_value '}'
 bool HloParserImpl::ParseOriginalValue(
     std::shared_ptr<OriginalValue>& original_value) {
   VLOG(kDebugLevel) << "ParseOriginalValue";
@@ -6537,29 +6562,17 @@ bool HloParserImpl::ParseOriginalValue(
       lexer_.Lex();
       ++leaf_shape_index.back();
     } else if (lexer_.GetKind() == TokKind::kLbrace) {
-      lexer_.Lex();
-      if (lexer_.GetKind() != TokKind::kRbrace) {
-        std::string instruction_name;
-        ShapeIndex shape_index;
-        if (!ParseString(&instruction_name)) {
-          return false;
-        }
-        if (lexer_.GetKind() != TokKind::kRbrace) {
-          if (!ParseShapeIndex(&shape_index)) {
-            return false;
-          }
-        }
-        *original_value->mutable_element(leaf_shape_index) = {instruction_name,
-                                                              shape_index};
+      OriginalArray original_array;
+      if (!ParseOriginalArray(original_array)) {
+        return false;
+      }
+      if (!original_array.instruction_name.empty()) {
+        *original_value->mutable_element(leaf_shape_index) = original_array;
       } else {
         // The original value is not expected to have any leaf without values.
         // However we should not fail the execution here. This should
         // be done in HloVerifier instead.
         LOG(WARNING) << "Found an empty leaf node in an original value";
-      }
-      if (!ParseToken(TokKind::kRbrace,
-                      "Expects '} at end of each OriginalTensor'")) {
-        return false;
       }
     } else {
       return false;
