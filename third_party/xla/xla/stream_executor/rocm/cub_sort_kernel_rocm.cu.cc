@@ -49,6 +49,13 @@ struct float_bit_mask<tsl::bfloat16> {
   static constexpr uint16_t mantissa = 0x007F;
   using bit_type = uint16_t;
 };
+
+template <>
+struct radix_key_codec_base<Eigen::half>
+    : radix_key_codec_floating<Eigen::half, uint16_t> {};
+template <>
+struct radix_key_codec_base<tsl::bfloat16>
+    : radix_key_codec_floating<tsl::bfloat16, uint16_t> {};
 }  // namespace detail
 #else   // TF_ROCM_VERSION >= 70000
 namespace traits {
@@ -74,14 +81,6 @@ struct rocprim::traits::define<tsl::bfloat16> {
 }  // namespace traits
 #endif  // TF_ROCM_VERSION >= 50200 && TF_ROCM_VERSION < 70000
 
-namespace detail {
-template <>
-struct radix_key_codec_base<Eigen::half>
-    : radix_key_codec_floating<Eigen::half, uint16_t> {};
-template <>
-struct radix_key_codec_base<tsl::bfloat16>
-    : radix_key_codec_floating<tsl::bfloat16, uint16_t> {};
-};  // namespace detail
 };  // namespace rocprim
 
 namespace stream_executor {
