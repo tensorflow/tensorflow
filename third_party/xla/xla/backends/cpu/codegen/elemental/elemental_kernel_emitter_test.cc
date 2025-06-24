@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/IR/Type.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/llvm_kernel_definition.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -60,11 +61,12 @@ class ElementalKernelEmitterTest : public HloHardwareIndependentTestBase {
         [](const BufferValue& buffer) {
           return CpuExecutable::ShapeSizeBytes(buffer.shape());
         },
-        [](LogicalBuffer::Color) { return /*alignment=*/1; });
+        &alias_info_, [](LogicalBuffer::Color) { return /*alignment=*/1; });
   }
 
  private:
   TargetMachineFeaturesStub target_machine_features_;
+  AliasInfo alias_info_;
 };
 
 namespace {
@@ -78,11 +80,11 @@ TEST_F(ElementalKernelEmitterTest, EmitElementalKernel) {
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignement, RunBufferAssignment(*hlo));
+  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignment, RunBufferAssignment(*hlo));
   TF_ASSERT_OK_AND_ASSIGN(
       KernelDefinition kernel_definition,
       EmitKernelDefinition(hlo->entry_computation()->root_instruction(),
-                           buffer_assignement.get()));
+                           buffer_assignment.get()));
 
   ASSERT_TRUE(*RunFileCheck(kernel_definition.source().ToString(), R"(
     CHECK: define ptr @convert_kernel(ptr %0) #0 {
@@ -104,11 +106,11 @@ TEST_F(ElementalKernelEmitterTest, EmitParallelKernel) {
     })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto hlo, ParseAndReturnUnverifiedModule(hlo_text));
-  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignement, RunBufferAssignment(*hlo));
+  TF_ASSERT_OK_AND_ASSIGN(auto buffer_assignment, RunBufferAssignment(*hlo));
   TF_ASSERT_OK_AND_ASSIGN(
       KernelDefinition kernel_definition,
       EmitKernelDefinition(hlo->entry_computation()->root_instruction(),
-                           buffer_assignement.get()));
+                           buffer_assignment.get()));
 
   ASSERT_TRUE(*RunFileCheck(kernel_definition.source().ToString(), R"(
     CHECK: @convert_parallel_bounds = private constant [8 x [4 x [2 x i64]]]

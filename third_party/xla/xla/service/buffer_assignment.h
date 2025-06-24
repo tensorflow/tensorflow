@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
@@ -687,12 +688,11 @@ class BufferAssigner {
   // valid and they do not overwrite each other.
   static absl::StatusOr<std::unique_ptr<BufferAssignment>> Run(
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-      BufferValue::SizeFunction buffer_size,
+      BufferValue::SizeFunction buffer_size, const AliasInfo* alias_info,
       LogicalBuffer::AlignmentFunction color_alignment,
       bool allocate_buffers_for_constants = false,
       Colorer colorer = DefaultColorer(),
       std::optional<MustNotLiveOut> must_not_live_out = std::nullopt,
-      HloDataflowAnalysis::CanShareBuffer can_share_buffer = nullptr,
       std::unique_ptr<memory_space_assignment::PresetAssignments>
           preset_assignments = {},
       const PrivateStacks& private_stacks = {},
@@ -716,9 +716,8 @@ class BufferAssigner {
   // Create a buffer assignment.
   absl::StatusOr<std::unique_ptr<BufferAssignment>> CreateAssignment(
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-      BufferValue::SizeFunction buffer_size,
+      BufferValue::SizeFunction buffer_size, const AliasInfo* alias_info,
       LogicalBuffer::AlignmentFunction color_alignment,
-      HloDataflowAnalysis::CanShareBuffer can_share_buffer,
       const PrivateStacks& private_stacks,
       GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
           heap_buffer_interval_compare,

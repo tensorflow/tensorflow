@@ -78,9 +78,12 @@ class NVPTXCompilerTest : public HloTestBase {
       return ShapeSizeBytesFunction(pointer_size)(buffer_value.shape());
     };
 
+    NVPTXCompiler compiler;
+    std::unique_ptr<GpuAliasInfo> alias_info =
+        compiler.GetAliasInfo(gpu_device_info);
     return BufferAssigner::Run(
         module, std::make_unique<SequentialHloOrdering>(module->schedule()),
-        buffer_size_bytes_function,
+        buffer_size_bytes_function, alias_info.get(),
         /*color_alignment=*/
         [](LogicalBuffer::Color) { return kXlaAllocatedBufferAlignBytes; });
   }
