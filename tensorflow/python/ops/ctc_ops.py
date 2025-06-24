@@ -326,7 +326,7 @@ def ctc_greedy_decoder(inputs,
 
   - Unlike `ctc_beam_search_decoder`, `ctc_greedy_decoder` considers blanks
     as regular elements when computing the probability of a sequence.
-  - Default `blank_index` is `(num_classes - 1)`, unless overriden.
+  - Default `blank_index` is `(num_classes - 1)`, unless overridden.
 
   If `merge_repeated` is `True`, merge repeated classes in output.
   This means that if consecutive logits' maximum indices are the same,

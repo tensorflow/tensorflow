@@ -2979,7 +2979,7 @@ def _get_row_partition_type_tensor_pairs(rt_input):
   """Gets a list of the row partitions for rt_input.
 
   If value_rowids are defined, then they are used. Otherwise, row_splits
-  are used. If the outermost level has value_rowids defind, then nrows is
+  are used. If the outermost level has value_rowids defined, then nrows is
   also added.
 
   Args:
