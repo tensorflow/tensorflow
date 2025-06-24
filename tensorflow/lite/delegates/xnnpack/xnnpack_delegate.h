@@ -56,6 +56,9 @@ extern "C" {
 // to avoid using faster codepaths that are numerically inconsistent with any
 // other codepath that could be used in the same compiled delegate.
 #define TFLITE_XNNPACK_DELEGATE_FLAG_SLOW_CONSISTENT_ARITHMETIC 0x00000200
+// Disable XNNPack subgraph reshaping. This means that models with dynamic
+// tensors are not supported.
+#define TFLITE_XNNPACK_DELEGATE_FLAG_DISABLE_SUBGRAPH_RESHAPING 0x00000400
 
 struct TfLiteXNNPackDelegateWeightsCache;
 
@@ -74,6 +77,7 @@ typedef struct {
   // - TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER
   // - TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS
   // - TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SUBGRAPH_RESHAPING
+  // - TFLITE_XNNPACK_DELEGATE_FLAG_DISABLE_SUBGRAPH_RESHAPING
   // - TFLITE_XNNPACK_DELEGATE_FLAG_SLOW_CONSISTENT_ARITHMETIC
   uint32_t flags;
   // Cache for packed weights, can be shared between multiple instances of

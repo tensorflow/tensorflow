@@ -700,7 +700,8 @@ class Delegate {
   }
 
   bool enable_subgraph_reshaping() const {
-    return true;
+    return (options_.flags &
+            TFLITE_XNNPACK_DELEGATE_FLAG_DISABLE_SUBGRAPH_RESHAPING) == 0;
   }
 
   bool enable_slinky() const {
