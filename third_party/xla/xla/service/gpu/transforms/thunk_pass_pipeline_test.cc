@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -36,7 +35,7 @@ class TestPass : public ThunkPassInterface {
  public:
   absl::string_view name() const override { return "test-pass"; }
   absl::StatusOr<bool> Run(SequentialThunk* root_thunk,
-                           const HloModuleConfig& hlo_module_config,
+                           const DebugOptions& debug_options,
                            const se::DeviceDescription& device_info) override {
     root_thunk->thunks().push_back(std::make_unique<SequentialThunk>(
         Thunk::ThunkInfo(), std::vector<std::unique_ptr<Thunk>>()));
@@ -50,13 +49,13 @@ TEST(ThunkPassPipelineTest, PipelineRunsPass) {
 
   auto root_thunk = std::make_unique<SequentialThunk>(
       Thunk::ThunkInfo(), std::vector<std::unique_ptr<Thunk>>());
-  HloModuleConfig config;
+  DebugOptions debug_options;
   se::DeviceDescription device_info;
 
   EXPECT_EQ(root_thunk->thunks().size(), 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          pipeline.Run(root_thunk.get(), config, device_info));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, pipeline.Run(root_thunk.get(), debug_options, device_info));
   EXPECT_TRUE(changed);
   EXPECT_EQ(root_thunk->thunks().size(), 1);
 }

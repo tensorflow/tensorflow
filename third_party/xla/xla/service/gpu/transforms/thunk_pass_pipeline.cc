@@ -20,7 +20,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
-#include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -28,13 +27,13 @@ namespace xla {
 namespace gpu {
 
 absl::StatusOr<bool> ThunkPassPipeline::Run(
-    SequentialThunk* root_thunk, const HloModuleConfig& hlo_module_config,
+    SequentialThunk* root_thunk, const DebugOptions& debug_options,
     const se::DeviceDescription& device_info) {
   bool changed = false;
   for (const auto& pass : passes_) {
     VLOG(1) << "Running ThunkPass: " << pass->name();
     TF_ASSIGN_OR_RETURN(bool pass_changed,
-                        pass->Run(root_thunk, hlo_module_config, device_info));
+                        pass->Run(root_thunk, debug_options, device_info));
     changed |= pass_changed;
   }
   return changed;
