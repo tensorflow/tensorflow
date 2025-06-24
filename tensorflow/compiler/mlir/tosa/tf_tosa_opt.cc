@@ -76,6 +76,7 @@ int main(int argc, char** argv) {
   mlir::DialectRegistry registry;
   mlir::RegisterCommonToolingDialects(registry);
   registry.insert<mlir::TFL::TensorFlowLiteDialect>();
+  registry.insert<mlir::quantfork::QuantizationForkDialect>();
 
   return failed(
       mlir::MlirOptMain(argc, argv, "TensorFlow pass driver\n", registry));
