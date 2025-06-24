@@ -70,8 +70,9 @@ TEST(TestUtilTest, RangeDataset) {
       standalone::Dataset::FromGraph(params, dataset_def.graph(), &dataset));
   std::unique_ptr<standalone::Iterator> iterator;
   TF_ASSERT_OK(dataset->MakeIterator(&iterator));
-  EXPECT_THAT(GetIteratorOutput<int64_t>(*iterator),
-              IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+  EXPECT_THAT(
+      GetIteratorOutput<int64_t>(*iterator),
+      absl_testing::IsOkAndHolds(ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
 }
 
 TEST(TestUtilTest, RangeSquareDataset) {
@@ -83,7 +84,8 @@ TEST(TestUtilTest, RangeSquareDataset) {
   std::unique_ptr<standalone::Iterator> iterator;
   TF_ASSERT_OK(dataset->MakeIterator(&iterator));
   EXPECT_THAT(GetIteratorOutput<int64_t>(*iterator),
-              IsOkAndHolds(ElementsAre(0, 1, 4, 9, 16, 25, 36, 49, 64, 81)));
+              absl_testing::IsOkAndHolds(
+                  ElementsAre(0, 1, 4, 9, 16, 25, 36, 49, 64, 81)));
 }
 
 TEST(TestUtilTest, InfiniteDataset) {
@@ -112,7 +114,8 @@ TEST(TestUtilTest, EmptyDataset) {
       standalone::Dataset::FromGraph(params, dataset_def.graph(), &dataset));
   std::unique_ptr<standalone::Iterator> iterator;
   TF_ASSERT_OK(dataset->MakeIterator(&iterator));
-  EXPECT_THAT(GetIteratorOutput<int64_t>(*iterator), IsOkAndHolds(IsEmpty()));
+  EXPECT_THAT(GetIteratorOutput<int64_t>(*iterator),
+              absl_testing::IsOkAndHolds(IsEmpty()));
 }
 
 TEST(TestUtilTest, InterleaveTextline) {
@@ -126,7 +129,7 @@ TEST(TestUtilTest, InterleaveTextline) {
   std::unique_ptr<standalone::Iterator> iterator;
   TF_ASSERT_OK(dataset->MakeIterator(&iterator));
   EXPECT_THAT(GetIteratorOutput<tstring>(*iterator),
-              IsOkAndHolds(ElementsAre("0", "1")));
+              absl_testing::IsOkAndHolds(ElementsAre("0", "1")));
 }
 
 TEST(TestUtilTest, InterleaveTextlineWithNewLines) {
@@ -141,8 +144,8 @@ TEST(TestUtilTest, InterleaveTextlineWithNewLines) {
   std::unique_ptr<standalone::Iterator> iterator;
   TF_ASSERT_OK(dataset->MakeIterator(&iterator));
   EXPECT_THAT(GetIteratorOutput<tstring>(*iterator),
-              IsOkAndHolds(ElementsAre("0", "1", "2", "3", "4", "5", "6", "7",
-                                       "8", "9")));
+              absl_testing::IsOkAndHolds(ElementsAre("0", "1", "2", "3", "4",
+                                                     "5", "6", "7", "8", "9")));
 }
 
 TEST(TestUtilTest, InterleaveTextlineEmptyFiles) {
@@ -155,7 +158,8 @@ TEST(TestUtilTest, InterleaveTextlineEmptyFiles) {
       standalone::Dataset::FromGraph(params, dataset_def.graph(), &dataset));
   std::unique_ptr<standalone::Iterator> iterator;
   TF_ASSERT_OK(dataset->MakeIterator(&iterator));
-  EXPECT_THAT(GetIteratorOutput<tstring>(*iterator), IsOkAndHolds(IsEmpty()));
+  EXPECT_THAT(GetIteratorOutput<tstring>(*iterator),
+              absl_testing::IsOkAndHolds(IsEmpty()));
 }
 
 TEST(TestUtilTest, GetTestDataset) {
@@ -168,8 +172,9 @@ TEST(TestUtilTest, GetTestDataset) {
   std::unique_ptr<standalone::Iterator> iterator;
   TF_ASSERT_OK(dataset->MakeIterator(&iterator));
   EXPECT_THAT(GetIteratorOutput<tstring>(*iterator),
-              IsOkAndHolds(ElementsAre("a", "b", "c", "a", "b", "c", "a", "b",
-                                       "c", "a", "b", "c", "a", "b", "c")));
+              absl_testing::IsOkAndHolds(ElementsAre("a", "b", "c", "a", "b",
+                                                     "c", "a", "b", "c", "a",
+                                                     "b", "c", "a", "b", "c")));
 }
 
 }  // namespace

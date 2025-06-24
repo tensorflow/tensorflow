@@ -122,7 +122,8 @@ TEST_F(IfrtDeviceUtilsTest, EmptyDeviceAssignmentShallReturnDefault) {
 TEST_F(IfrtDeviceUtilsTest, MismatchCoordinatesShallFail) {
   std::vector<int> device_assignment_attr = {1, 0, 0, 1, 3, 0, 0, 0};
   auto status = GetAssignedIfrtDevices(client_, 1, 2, device_assignment_attr);
-  EXPECT_THAT(status, StatusIs(absl::StatusCode::kFailedPrecondition));
+  EXPECT_THAT(status,
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 }  // namespace

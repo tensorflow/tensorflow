@@ -39,20 +39,20 @@ namespace {
 TEST(IfrtRestoreTensorRegistryTest, RetrieveNonRegisteredTensorFails) {
   IfrtRestoreTensorRegistry registry;
   EXPECT_THAT(registry.GetRestoredTensor("input_tensor_1").Await(),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST(IfrtRestoreTensorRegistryTest,
      RetrieveNonRegisteredTensorDTypeAndShapeFails) {
   IfrtRestoreTensorRegistry registry;
   EXPECT_THAT(registry.GetDtypeAndShape("input_tensor_1"),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST(IfrtRestoreTensorRegistryTest, SetNonExistedTensorAsUsedByHostFails) {
   IfrtRestoreTensorRegistry registry;
   EXPECT_THAT(registry.SetUsedByHost("input_tensor_1"),
-              StatusIs(absl::StatusCode::kNotFound));
+              absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST(IfrtRestoreTensorRegistryTest, RegisteredExistedTensorFails) {
@@ -71,10 +71,10 @@ TEST(IfrtRestoreTensorRegistryTest, RegisteredExistedTensorFails) {
       .tensor_future = future};
   IfrtRestoreTensorRegistry registry;
   EXPECT_THAT(registry.TryRegister("input_tensor_2", restored_tensor_info),
-              IsOk());
+              absl_testing::IsOk());
   promise.Set(input_tensor);
   EXPECT_THAT(registry.TryRegister("input_tensor_2", restored_tensor_info),
-              StatusIs(absl::StatusCode::kAlreadyExists));
+              absl_testing::StatusIs(absl::StatusCode::kAlreadyExists));
 }
 
 TEST(IfrtRestoreTensorRegistryTest, SetTensorAsUsedByHost) {
@@ -90,8 +90,8 @@ TEST(IfrtRestoreTensorRegistryTest, SetTensorAsUsedByHost) {
       .tensor_future = future};
   IfrtRestoreTensorRegistry registry;
   EXPECT_THAT(registry.TryRegister("input_tensor_1", restored_tensor_info),
-              IsOk());
-  EXPECT_THAT(registry.SetUsedByHost("input_tensor_1"), IsOk());
+              absl_testing::IsOk());
+  EXPECT_THAT(registry.SetUsedByHost("input_tensor_1"), absl_testing::IsOk());
 }
 
 TEST(IfrtRestoreTensorRegistryTest, RegisteredTensorCanBeRetrieved) {
@@ -110,7 +110,7 @@ TEST(IfrtRestoreTensorRegistryTest, RegisteredTensorCanBeRetrieved) {
       .tensor_future = future};
   IfrtRestoreTensorRegistry registry;
   EXPECT_THAT(registry.TryRegister("input_tensor_1", restored_tensor_info),
-              IsOk());
+              absl_testing::IsOk());
   promise.Set(input_tensor);
   TF_ASSERT_OK_AND_ASSIGN(tensorflow::Tensor retrieved,
                           registry.GetRestoredTensor("input_tensor_1").Await());
@@ -139,7 +139,7 @@ TEST(IfrtRestoreTensorRegistryTest,
       .tensor_future = future};
   IfrtRestoreTensorRegistry registry;
   EXPECT_THAT(registry.TryRegister("input_tensor_1", restored_tensor_info),
-              IsOk());
+              absl_testing::IsOk());
   TF_ASSERT_OK_AND_ASSIGN(DtypeAndShape dtype_and_shape,
                           registry.GetDtypeAndShape("input_tensor_1"));
   EXPECT_TRUE(
@@ -179,7 +179,7 @@ TEST(IfrtRestoreTensorRegistryTest, FeezeTensorRegistry) {
   registry.Freeze();
   // Tensor with `used_by_host` set to false will be freed after freeze.
   EXPECT_THAT(registry.GetRestoredTensor("input_tensor_1").Await(),
-              StatusIs(absl::StatusCode::kUnavailable));
+              absl_testing::StatusIs(absl::StatusCode::kUnavailable));
   // Tensor with `used_by_host` set to true will be kept after freeze.
   TF_ASSERT_OK_AND_ASSIGN(tensorflow::Tensor retrieved,
                           registry.GetRestoredTensor("input_tensor_2").Await());

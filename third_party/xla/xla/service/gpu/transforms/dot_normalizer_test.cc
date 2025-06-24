@@ -46,7 +46,7 @@ TEST_F(DotNormalizerTest, DotWithoutContractingDims) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kHlo));
-  EXPECT_THAT(DotNormalizer().Run(m.get()), IsOkAndHolds(true));
+  EXPECT_THAT(DotNormalizer().Run(m.get()), absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(
@@ -68,7 +68,7 @@ TEST_F(DotNormalizerTest, DotWithContractingDims) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kHlo));
-  EXPECT_THAT(DotNormalizer().Run(m.get()), IsOkAndHolds(false));
+  EXPECT_THAT(DotNormalizer().Run(m.get()), absl_testing::IsOkAndHolds(false));
 }
 
 }  // namespace

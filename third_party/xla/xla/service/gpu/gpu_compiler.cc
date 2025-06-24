@@ -2525,7 +2525,7 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
       absl::StrCat("GpuCompiler::RunBackend for ", module->name()),
       !options.is_autotuning_compilation);
   std::string slow_compilation_msg =
-      absl::StrCat("Compiling module ", module->name());
+      absl::StrCat("Compiling module ", module->name(), " for GPU");
   auto slow_compile_alarm = SlowCompilationAlarm(slow_compilation_msg);
 
   if (options.is_autotuning_compilation) {

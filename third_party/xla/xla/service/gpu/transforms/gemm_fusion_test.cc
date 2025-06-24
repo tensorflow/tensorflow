@@ -886,7 +886,7 @@ ENTRY e {
       GemmFusion(
           se::CudaComputeCapability{se::CudaComputeCapability::kVolta, 0})
           .Run(module.get()),
-      tsl::testing::StatusIs(
+      absl_testing::StatusIs(
           absl::StatusCode::kFailedPrecondition,
           ::testing::HasSubstr("Triton support is only enabled for Ampere GPUs "
                                "(compute capability 8.0) and up, but got")));

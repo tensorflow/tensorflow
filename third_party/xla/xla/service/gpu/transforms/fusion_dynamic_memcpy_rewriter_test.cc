@@ -74,7 +74,7 @@ TEST_F(FusionDynamicMemcpyRewriterTest, AnnotatesMemcpyFusion) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kSliceMemcpyModule));
   EXPECT_THAT(FusionDynamicMemcpyRewriter().Run(module.get()),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
 
   auto config =
       GetMemcpyConfig(module->entry_computation()->root_instruction());
@@ -102,7 +102,7 @@ TEST_F(FusionDynamicMemcpyRewriterTest, DoesNotAnnotateCall) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kSliceCallModule));
   EXPECT_THAT(FusionDynamicMemcpyRewriter().Run(module.get()),
-              IsOkAndHolds(false))
+              absl_testing::IsOkAndHolds(false))
       << module->ToString();
   EXPECT_FALSE(GetMemcpyConfig(module->entry_computation()->root_instruction())
                    .has_value())
@@ -157,7 +157,7 @@ TEST_F(FusionDynamicMemcpyRewriterTest,
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(kLoopUpdateSliceMemcpyModule));
   EXPECT_THAT(FusionDynamicMemcpyRewriter().Run(module.get()),
-              IsOkAndHolds(true));
+              absl_testing::IsOkAndHolds(true));
   auto config = GetMemcpyConfig(
       module->GetComputationWithName("body")->GetInstructionWithName(
           "updated"));

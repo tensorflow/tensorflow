@@ -252,7 +252,8 @@ e {
   BinaryMap dnn_compiled_graphs;
   CuDnnFusionCompiler cudnn_compiler(*backend().default_stream_executor(),
                                      dnn_compiled_graphs);
-  EXPECT_THAT(cudnn_compiler.Run(module.get()), IsOkAndHolds(false));
+  EXPECT_THAT(cudnn_compiler.Run(module.get()),
+              absl_testing::IsOkAndHolds(false));
   EXPECT_TRUE(RunAndCompareTwoModules(kHloText, R"(e {
     a = f32[32,96] parameter(0)
     b = f32[96,64] parameter(1)

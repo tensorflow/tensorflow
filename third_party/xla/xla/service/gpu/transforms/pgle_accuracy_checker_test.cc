@@ -156,7 +156,7 @@ TEST_F(PGLEAccuracyCheckerTest,
   auto pgle_estimator = GetProfileGuidedLatencyEstimator(profile);
   PGLEAccuracyChecker pgle_accuracy_checker(*pgle_estimator);
   EXPECT_THAT(pgle_accuracy_checker.Run(module.get()),
-              StatusIs(absl::StatusCode::kInvalidArgument));
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

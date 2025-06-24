@@ -90,7 +90,7 @@ ENTRY entry {
   EXPECT_THAT(
       FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize)
           .Run(module.get()),
-      IsOkAndHolds(false));
+      absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(FusionBlockLevelRewriterTest,
@@ -111,7 +111,7 @@ ENTRY entry {
   EXPECT_THAT(
       FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize)
           .Run(module.get()),
-      IsOkAndHolds(true));
+      absl_testing::IsOkAndHolds(true));
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kFusion);
   EXPECT_EQ(root->fusion_kind(), HloInstruction::FusionKind::kCustom);
@@ -141,7 +141,7 @@ ENTRY entry {
   EXPECT_THAT(
       FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize)
           .Run(module.get()),
-      IsOkAndHolds(false));
+      absl_testing::IsOkAndHolds(false));
 }
 
 TEST_F(FusionBlockLevelRewriterTest,
@@ -165,7 +165,7 @@ ENTRY entry {
   EXPECT_THAT(
       FusionBlockLevelRewriter(device_info_, HloCostAnalysis::DefaultShapeSize)
           .Run(module.get()),
-      IsOkAndHolds(false));
+      absl_testing::IsOkAndHolds(false));
 }
 
 }  // namespace

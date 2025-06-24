@@ -103,7 +103,8 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/source_target_pairs.h"
+#include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -891,9 +892,10 @@ static xla::ResultAccuracy Convert_result_accuracy(
 // returns std::nullopt.
 static std::optional<xla::OpSharding> CreateOpShardingFromAttribute(
     mlir::Operation* op) {
-  auto shardingAttr = op->getAttrOfType<mlir::StringAttr>(kShardingAttr);
-  if (!shardingAttr) return std::nullopt;
-  return xla::ConvertSharding(shardingAttr.getValue());
+  if (auto shardingAttr = op->getAttrOfType<mlir::StringAttr>(kShardingAttr)) {
+    return xla::ConvertSharding(shardingAttr.getValue());
+  }
+  return xla::ExtractShardingFromFrontendAttrs(op);
 }
 
 // Returns a FrontendAttributes proto from the "frontend_attributes" attribute
@@ -955,19 +957,32 @@ static void ExtractShardingsFromFunction(
     llvm::SmallVectorImpl<std::optional<xla::OpSharding>>* ret_shardings) {
   arg_shardings->resize(function.getNumArguments(),
                         std::optional<xla::OpSharding>());
-  for (int i = 0, end = function.getNumArguments(); i < end; ++i)
+  auto module = function->getParentOfType<mlir::ModuleOp>();
+  std::optional<mlir::DictionaryAttr> sdy_meshes =
+      xla::sdy::tryGetFrontendAttr<mlir::DictionaryAttr>(
+          module, xla::sdy::kMeshesRoundTripAttr);
+
+  for (int i = 0, end = function.getNumArguments(); i < end; ++i) {
     if (auto sharding =
             function.getArgAttrOfType<mlir::StringAttr>(i, kShardingAttr)) {
       (*arg_shardings)[i] = xla::ConvertSharding(sharding.getValue());
+    } else if (auto sharding = xla::ExtractArgShardingFromFrontendAttrs(
+                   function, i, sdy_meshes)) {
+      (*arg_shardings)[i] = sharding;
     }
+  }
 
   ret_shardings->resize(function.getNumResults(),
                         std::optional<xla::OpSharding>());
-  for (int i = 0, end = function.getNumResults(); i < end; ++i)
+  for (int i = 0, end = function.getNumResults(); i < end; ++i) {
     if (auto sharding =
             function.getResultAttrOfType<mlir::StringAttr>(i, kShardingAttr)) {
       (*ret_shardings)[i] = xla::ConvertSharding(sharding.getValue());
+    } else if (auto sharding = xla::ExtractResultShardingFromFrontendAttrs(
+                   function, i, sdy_meshes)) {
+      (*ret_shardings)[i] = sharding;
     }
+  }
 }
 
 // Creates a tuple sharding with the given shardings if at least one is present.
