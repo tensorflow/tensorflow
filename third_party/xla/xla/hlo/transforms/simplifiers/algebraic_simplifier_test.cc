@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -56,8 +57,6 @@ limitations under the License.
 #include "xla/service/memory_annotations.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/shape_inference.h"
-#include "xla/service/spmd/shardy/constants.h"
-#include "xla/service/spmd/shardy/utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/test_utils.h"
@@ -12376,7 +12375,7 @@ TEST_F(AlgebraicSimplifierTest, PreserveSdySharding) {
               IsOkAndHolds(true));
   EXPECT_EQ(
       m->entry_computation()->parameter_instruction(0)->get_frontend_attribute(
-          sdy::toStringView(sdy::kShardingRoundTripAttr)),
+          HloSharding::kShardingFrontendAttrName),
       "#sdy.sharding<@mesh, [{\"x\"}, {}]>");
 }
 

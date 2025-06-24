@@ -264,9 +264,8 @@ HloSharding getHloShardingForOp(
     Operation* op, ArrayRef<TensorShardingAttr> shardings,
     std::function<MeshAttr(TensorShardingAttr)> getMeshAttr,
     ArrayRef<StringAttr> manualAxes) {
-  // TODO(bartchr): pass through a symbol table to `getMesh(...)` below.
   bool isNoResultMaximal = op->getNumResults() == 0 && shardings.size() == 1 &&
-                           (shardings.front().getMesh(op).isMaximal() ||
+                           (getMeshAttr(shardings.front()).isMaximal() ||
                             shardings.front().isFullyReplicated());
   CHECK(shardings.size() == op->getNumResults() || isNoResultMaximal);
   if (op->getNumResults() == 1 || isNoResultMaximal) {
