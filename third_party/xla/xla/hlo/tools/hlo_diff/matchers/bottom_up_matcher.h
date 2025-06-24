@@ -39,8 +39,8 @@ class GreedyLimitedCandidatesBottomUpMatcher : public HloGumgraphMatcher {
   GreedyLimitedCandidatesBottomUpMatcher(
       const HloGumgraph* left, const HloGumgraph* right,
       bool debug_mode = false, double min_similarity = 1.2,
-      int max_dice_subgraph_size = 200, int min_bfs_distance = 1,
-      int max_ancestors_to_consider = 100, int right_seeds_traversal_limit = 40,
+      int max_dice_subgraph_size = 250, int min_bfs_distance = 1,
+      int max_ancestors_to_consider = 50, int right_seeds_traversal_limit = 40,
       int candidate_traversal_limit = 200)
 
       : HloGumgraphMatcher(MatcherType::kGreedyLimitedCandidatesBottomUpMatcher,

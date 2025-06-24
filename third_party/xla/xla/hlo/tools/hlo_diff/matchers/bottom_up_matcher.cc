@@ -264,7 +264,7 @@ void GreedyLimitedCandidatesBottomUpMatcher::Match(
             // in comparison to dice similarity and node attributes similarity.
             double similarity = operands_match_similarity +
                                 node_attributes_similarity + dice_sim +
-                                ancestor_similarity / 2;
+                                ancestor_similarity;
             if (similarity > max_similarity) {
               max_similarity = similarity;
               right_candidate = &node;
