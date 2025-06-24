@@ -1493,6 +1493,7 @@ cc_library(
         "//xla/hlo/transforms/expanders:logistic_expander",
         "//xla/hlo/transforms/expanders:optimization_barrier_expander",
         "//xla/hlo/transforms/expanders:qr_expander",
+        "//xla/hlo/transforms/expanders:ragged_dot_rewriter",
         "//xla/hlo/transforms/expanders:real_imag_expander",
         "//xla/hlo/transforms/expanders:reduce_decomposer",
         "//xla/hlo/transforms/expanders:reshape_decomposer",
