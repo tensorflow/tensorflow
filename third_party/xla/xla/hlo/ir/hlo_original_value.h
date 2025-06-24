@@ -48,6 +48,8 @@ class OriginalValue : public ShapeTree<std::optional<OriginalArray>> {
   OriginalValueProto ToProto() const;
   static std::shared_ptr<OriginalValue> FromProto(
       const xla::OriginalValueProto& original_value_proto);
+  static std::unique_ptr<OriginalValue> CreateFromInstruction(
+      const HloInstruction* instruction, absl::string_view prefix = "");
 };
 
 struct OriginalValuePointer {

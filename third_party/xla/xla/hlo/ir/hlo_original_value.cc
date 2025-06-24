@@ -24,8 +24,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/xla_data.pb.h"
@@ -116,6 +118,29 @@ std::shared_ptr<OriginalValue> OriginalValue::FromProto(
   for (const auto& leaf : original_value_proto.leaves()) {
     *original_value->mutable_element(ShapeIndex(leaf.shape_index())) =
         OriginalArray::FromProto(leaf.original_array());
+  }
+  return original_value;
+}
+
+std::unique_ptr<OriginalValue> OriginalValue::CreateFromInstruction(
+    const HloInstruction* instruction, absl::string_view prefix) {
+  auto original_value = std::make_unique<OriginalValue>(instruction->shape());
+
+  if (instruction->opcode() == HloOpcode::kGetTupleElement) {
+    const auto* tuple = instruction->operand(0);
+    original_value->CopySubtreeFrom(*tuple->original_value(),
+                                    {instruction->tuple_index()}, {});
+  } else if (instruction->opcode() == HloOpcode::kTuple) {
+    for (int64_t operand_number = 0;
+         operand_number < instruction->operand_count(); ++operand_number) {
+      original_value->CopySubtreeFrom(
+          *instruction->operand(operand_number)->original_value(), {},
+          {operand_number});
+    }
+  } else {
+    for (auto& leaf : original_value->leaves()) {
+      leaf.second = {absl::StrCat(prefix, instruction->name()), leaf.first};
+    }
   }
   return original_value;
 }
