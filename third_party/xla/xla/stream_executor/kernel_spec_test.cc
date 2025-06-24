@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
+#include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -55,10 +57,39 @@ TEST(KernelLoaderSpec, CudaCubin) {
   EXPECT_THAT(spec.kernel_name(), "kernel24");
 }
 
+TEST(KernelLoaderSpec, OwningCudaCubin) {
+  static constexpr std::array<uint8_t, 4> kCubinData = {0xDE, 0xAD, 0xBE, 0xEF};
+  auto spec =
+      stream_executor::KernelLoaderSpec::CreateOwningCudaCubinInMemorySpec(
+          std::vector<uint8_t>{kCubinData.begin(), kCubinData.end()},
+          "kernel24", 2);
+  EXPECT_TRUE(spec.has_cuda_cubin_in_memory());
+  EXPECT_FALSE(spec.has_cuda_ptx_in_memory());
+  EXPECT_FALSE(spec.has_in_process_symbol());
+
+  EXPECT_THAT(spec.cuda_cubin_in_memory(),
+              Optional(Field(&CudaCubinInMemory::cubin_bytes, kCubinData)));
+  EXPECT_THAT(spec.kernel_name(), "kernel24");
+}
+
 TEST(KernelLoaderSpec, CudaPtx) {
   static constexpr absl::string_view kPtxData = "PTX DEADBEEF";
   auto spec = stream_executor::KernelLoaderSpec::CreateCudaPtxInMemorySpec(
       kPtxData, "kernel24", 2);
+  EXPECT_FALSE(spec.has_cuda_cubin_in_memory());
+  EXPECT_TRUE(spec.has_cuda_ptx_in_memory());
+  EXPECT_FALSE(spec.has_in_process_symbol());
+
+  EXPECT_THAT(spec.cuda_ptx_in_memory(),
+              Optional(Field(&CudaPtxInMemory::ptx, kPtxData)));
+  EXPECT_THAT(spec.kernel_name(), "kernel24");
+}
+
+TEST(KernelLoaderSpec, OwningCudaPtx) {
+  static constexpr absl::string_view kPtxData = "PTX DEADBEEF";
+  auto spec =
+      stream_executor::KernelLoaderSpec::CreateOwningCudaPtxInMemorySpec(
+          std::string{kPtxData}, "kernel24", 2);
   EXPECT_FALSE(spec.has_cuda_cubin_in_memory());
   EXPECT_TRUE(spec.has_cuda_ptx_in_memory());
   EXPECT_FALSE(spec.has_in_process_symbol());

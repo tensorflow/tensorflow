@@ -45,6 +45,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
@@ -65,9 +66,19 @@ struct CudaPtxInMemory {
   absl::string_view ptx;
 };
 
+// Like CudaPtxInMemory but the PTX is owned by the loader spec.
+struct OwningCudaPtxInMemory {
+  std::string ptx;
+};
+
 // Kernel loader specification for a CUBIN blob that resides in memory.
 struct CudaCubinInMemory {
   absl::Span<const uint8_t> cubin_bytes;
+};
+
+// Like CudaCubinInMemory but the CUBIN data is owned by the loader spec.
+struct OwningCudaCubinInMemory {
+  std::vector<uint8_t> cubin_bytes;
 };
 
 // Describes how to load a kernel on any subset of a number of target platforms.
@@ -90,10 +101,12 @@ class KernelLoaderSpec {
     return std::holds_alternative<InProcessSymbol>(payload_);
   }
   bool has_cuda_cubin_in_memory() const {
-    return std::holds_alternative<CudaCubinInMemory>(payload_);
+    return std::holds_alternative<CudaCubinInMemory>(payload_) ||
+           std::holds_alternative<OwningCudaCubinInMemory>(payload_);
   }
   bool has_cuda_ptx_in_memory() const {
-    return std::holds_alternative<CudaPtxInMemory>(payload_);
+    return std::holds_alternative<CudaPtxInMemory>(payload_) ||
+           std::holds_alternative<OwningCudaPtxInMemory>(payload_);
   }
 
   // Accessors for platform variant kernel load specifications.
@@ -105,17 +118,24 @@ class KernelLoaderSpec {
   }
 
   std::optional<CudaCubinInMemory> cuda_cubin_in_memory() const {
-    if (!has_cuda_cubin_in_memory()) {
-      return std::nullopt;
+    if (std::holds_alternative<CudaCubinInMemory>(payload_)) {
+      return std::get<CudaCubinInMemory>(payload_);
     }
-    return std::get<CudaCubinInMemory>(payload_);
+    if (std::holds_alternative<OwningCudaCubinInMemory>(payload_)) {
+      return CudaCubinInMemory{
+          std::get<OwningCudaCubinInMemory>(payload_).cubin_bytes};
+    }
+    return std::nullopt;
   }
 
   std::optional<CudaPtxInMemory> cuda_ptx_in_memory() const {
-    if (!has_cuda_ptx_in_memory()) {
-      return std::nullopt;
+    if (std::holds_alternative<CudaPtxInMemory>(payload_)) {
+      return std::get<CudaPtxInMemory>(payload_);
     }
-    return std::get<CudaPtxInMemory>(payload_);
+    if (std::holds_alternative<OwningCudaPtxInMemory>(payload_)) {
+      return CudaPtxInMemory{std::get<OwningCudaPtxInMemory>(payload_).ptx};
+    }
+    return std::nullopt;
   }
 
   // Use these factory functions to create a spec of any supported type.
@@ -129,8 +149,14 @@ class KernelLoaderSpec {
   static KernelLoaderSpec CreateCudaCubinInMemorySpec(
       absl::Span<const uint8_t> cubin_bytes, std::string kernel_name,
       size_t arity, KernelArgsPacking kernel_args_packing = nullptr);
+  static KernelLoaderSpec CreateOwningCudaCubinInMemorySpec(
+      std::vector<uint8_t> cubin_bytes, std::string kernel_name, size_t arity,
+      KernelArgsPacking kernel_args_packing = nullptr);
   static KernelLoaderSpec CreateCudaPtxInMemorySpec(
       absl::string_view ptx, std::string kernel_name, size_t arity,
+      KernelArgsPacking kernel_args_packing = nullptr);
+  static KernelLoaderSpec CreateOwningCudaPtxInMemorySpec(
+      std::string ptx, std::string kernel_name, size_t arity,
       KernelArgsPacking kernel_args_packing = nullptr);
 
   void set_kernel_args_packing(KernelArgsPacking kernel_args_packing) {
@@ -145,7 +171,8 @@ class KernelLoaderSpec {
 
  private:
   using Payload =
-      std::variant<InProcessSymbol, CudaCubinInMemory, CudaPtxInMemory>;
+      std::variant<InProcessSymbol, CudaCubinInMemory, CudaPtxInMemory,
+                   OwningCudaCubinInMemory, OwningCudaPtxInMemory>;
 
   explicit KernelLoaderSpec(Payload payload, std::string kernel_name,
                             size_t arity,

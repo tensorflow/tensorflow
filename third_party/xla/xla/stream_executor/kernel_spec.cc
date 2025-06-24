@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -39,11 +40,25 @@ KernelLoaderSpec KernelLoaderSpec::CreateCudaCubinInMemorySpec(
                           std::move(kernel_name), arity, kernel_args_packing};
 }
 
+KernelLoaderSpec KernelLoaderSpec::CreateOwningCudaCubinInMemorySpec(
+    std::vector<uint8_t> cubin_bytes, std::string kernel_name, size_t arity,
+    KernelArgsPacking kernel_args_packing) {
+  return KernelLoaderSpec{OwningCudaCubinInMemory{std::move(cubin_bytes)},
+                          std::move(kernel_name), arity, kernel_args_packing};
+}
+
 KernelLoaderSpec KernelLoaderSpec::CreateCudaPtxInMemorySpec(
     absl::string_view ptx, std::string kernel_name, size_t arity,
     KernelArgsPacking kernel_args_packing) {
   return KernelLoaderSpec{CudaPtxInMemory{ptx}, std::move(kernel_name), arity,
                           kernel_args_packing};
+}
+
+KernelLoaderSpec KernelLoaderSpec::CreateOwningCudaPtxInMemorySpec(
+    std::string ptx, std::string kernel_name, size_t arity,
+    KernelArgsPacking kernel_args_packing) {
+  return KernelLoaderSpec{OwningCudaPtxInMemory{std::move(ptx)},
+                          std::move(kernel_name), arity, kernel_args_packing};
 }
 
 }  // namespace stream_executor
