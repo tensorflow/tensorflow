@@ -103,6 +103,7 @@ xla_cc_test(
         "//xla/codegen:kernel_definition",
         "//xla/codegen:llvm_ir_kernel_source",
         "//xla/codegen:mlir_kernel_source",
+        "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_ordering",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
