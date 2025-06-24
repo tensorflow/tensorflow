@@ -491,7 +491,8 @@ std::unique_ptr<LatencyEstimator> GetLatencyEstimator(
     auto pg_latency_estimator = std::make_unique<ProfileGuidedLatencyEstimator>(
         config, std::move(gpu_latency_estimator), profile.value(),
         std::move(aggregator));
-    LOG(INFO) << "Found profile, using profile guided latency estimator";
+    LOG(INFO) << "Found profile for module " << module.name()
+              << ", using profile guided latency estimator";
     VLOG(1) << "Profile:\n" << profile->DebugString();
     return pg_latency_estimator;
   }
