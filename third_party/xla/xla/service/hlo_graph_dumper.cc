@@ -1451,10 +1451,58 @@ std::string HloDotDumper::GetInstructionNodeBackendConfig(
   return StrCat("backend_config=\"", instr->raw_backend_config_string(), "\"");
 }
 
+// Returns the op that produced the given instruction's input, ignoring
+// uninteresting ops like get-tuple-element.
+const HloInstruction* GetInterestingProducer(const HloInstruction* instr) {
+  std::vector<int64_t> tuple_index;
+  while (true) {
+    switch (instr->opcode()) {
+      case HloOpcode::kBitcast:
+      case HloOpcode::kCopy:
+        // Ignore data-movement instructions and move on.
+        instr = instr->operand(0);
+        break;
+      case HloOpcode::kGetTupleElement:
+        // Ignore get-tuple-element instructions but remember the tuple index.
+        tuple_index.push_back(instr->tuple_index());
+        instr = instr->operand(0);
+        break;
+      case HloOpcode::kTuple:
+        // Resolve the tuple index and move on.
+        if (instr->operand_count() <= tuple_index.back()) {
+          LOG(ERROR) << "Tuple index " << tuple_index.back()
+                     << " is out of bounds for " << instr->ToString();
+          return instr;
+        }
+        instr = instr->operand(tuple_index.back());
+        tuple_index.pop_back();
+        break;
+      case HloOpcode::kCall:
+        // Move on from the root of the called computation.
+        instr = instr->to_apply()->root_instruction();
+        break;
+      default:
+        // Consider this instructions interesting and return it.
+        return instr;
+    }
+  }
+}
+
 std::string HloDotDumper::GetInstructionNodeExtraInfo(
     const HloInstruction* instr) {
   std::vector<std::string> lines;
 
+  // Inside a kCall op's called computation, annonate each parameter with the
+  // name of the instruction that produced it.
+  std::optional<HloInstruction*> caller =
+      instr->parent()->GetUniqueCaller(HloOpcode::kCall);
+  if (caller.has_value() && instr->opcode() == HloOpcode::kParameter) {
+    const HloInstruction* operand =
+        caller.value()->operand(instr->parameter_number());
+    lines.push_back(StrFormat(
+        "<i>%s</i>",
+        HtmlLikeStringSanitize(GetInterestingProducer(operand)->name())));
+  }
   // Get the instruction's extra attributes excluding the names of its
   // subcomputations, since those are drawn explicitly in the graph.
   for (const auto& line : instr->ExtraAttributesToString(

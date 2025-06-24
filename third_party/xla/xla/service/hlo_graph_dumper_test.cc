@@ -251,5 +251,42 @@ TEST_F(HloGraphDumperTest, OverrideColors) {
   EXPECT_THAT(graph, HasSubstr("2.220"));
 }
 
+TEST_F(HloGraphDumperTest, AnnotateCalledComputationsParameters) {
+  const char* hlo_string = R"(
+    command_buffer {
+      p0 = f32[1024] parameter(0)
+      add.123 = f32[1024] add(p0, p0)
+      mul.456 = f32[1024] multiply(add.123, p0)
+      ROOT tuple = (f32[1024], f32[1024]) tuple(add.123, mul.456)
+    }
+    command_buffer.1 {
+      p0 = f32[1024] parameter(0)  // Output of add.123, but hard to tell due to
+                                   // get-tuple-element, call, bitcast, etc.
+      p1 = f32[1024] parameter(1)  // Output of mul.456.
+      ROOT mul = f32[1024] multiply(p1, p0)
+    }
+    ENTRY comp {
+      p0 = f32[1024] parameter(0)
+      call.0 = (f32[1024], f32[1024]) call(p0), to_apply=command_buffer
+      gte.0 = f32[1024] get-tuple-element(call.0), index=0
+      gte.1 = f32[1024] get-tuple-element(call.0), index=1
+      bitcast = f32[32,32] bitcast(gte.0)
+      tuple = (f32[1024], f32[32,32]) tuple(gte.1, bitcast)
+      gte.2 = f32[1024] get-tuple-element(tuple), index=0
+      gte.3 = f32[32,32] get-tuple-element(tuple), index=1
+      bitcast.1 = f32[1024] bitcast(gte.3)
+      ROOT call.1 = f32[1024] call(bitcast.1, gte.2), to_apply=command_buffer.1
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::string graph,
+      RenderGraph(*module->entry_computation()->root_instruction()->to_apply(),
+                  /*label=*/"command buffer", DebugOptions(),
+                  RenderedGraphFormat::kDot));
+  EXPECT_THAT(graph, HasSubstr("<b>Parameter 0</b><br/><i>add.123</i>"));
+  EXPECT_THAT(graph, HasSubstr("<b>Parameter 1</b><br/><i>mul.456</i>"));
+}
+
 }  // anonymous namespace
 }  // namespace xla
