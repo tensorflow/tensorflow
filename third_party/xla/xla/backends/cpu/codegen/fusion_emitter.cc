@@ -83,26 +83,18 @@ int64_t GetWorkGroupCount(const HloFusionInstruction& fusion) {
 WorkDimensions GetWorkDimensions(const Shape& shape, int64_t work_group_count) {
   auto minor_to_major = LayoutUtil::MinorToMajor(shape.layout());
 
-  NumWorkGroups num_work_groups{1, 1, static_cast<uint64_t>(work_group_count)};
+  if (minor_to_major.empty()) {
+    return WorkDimensions{};
+  }
+
+  NumWorkGroups num_work_groups{1, static_cast<uint64_t>(work_group_count)};
+
+  int64_t total_elements = ShapeUtil::ElementsIn(shape);
+  int64_t minor_size = ShapeUtil::GetDimension(shape, minor_to_major[0]);
 
   NumWorkItems num_work_items;
-  if (minor_to_major.size() > 2) {
-    for (int64_t dim : minor_to_major.subspan(2)) {
-      num_work_items.z =
-          CeilOfRatio(ShapeUtil::GetDimension(shape, dim), work_group_count);
-      work_group_count = 1;
-    }
-  }
-  if (minor_to_major.size() > 1) {
-    num_work_items.y = CeilOfRatio(
-        ShapeUtil::GetDimension(shape, minor_to_major[1]), work_group_count);
-    work_group_count = 1;
-  }
-  if (!minor_to_major.empty()) {
-    num_work_items.x = CeilOfRatio(
-        ShapeUtil::GetDimension(shape, minor_to_major[0]), work_group_count);
-    work_group_count = 1;
-  }
+  num_work_items.x = minor_size;
+  num_work_items.y = CeilOfRatio(total_elements, minor_size * work_group_count);
 
   return WorkDimensions{NumWorkClusters{}, num_work_groups, num_work_items};
 }
