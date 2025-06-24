@@ -81,46 +81,6 @@ double NodeAttributesSimilarity(const HloInstructionNode* absl_nonnull left,
   return sim_score;
 }
 
-double AncestorSubGraphSimilarity(const HloInstructionNode* left,
-                                  const HloInstructionNode* right,
-                                  int candidate_traversal_limit,
-                                  int min_bfs_distance, int left_graph_size,
-                                  int right_graph_size) {
-  absl::flat_hash_map<uint64_t, int> left_ancestor_fingerprints,
-      right_ancestor_fingerprints;
-  int left_traversal_count = 0;
-  HloGumgraphBfs(
-      *left,
-      [&](const HloInstructionNode& node, int distance) {
-        ++left_ancestor_fingerprints[node.props.fingerprint];
-        ++left_traversal_count;
-        return distance <= min_bfs_distance ||
-               left_traversal_count < candidate_traversal_limit;
-      },
-      BfsTraversalDirection::kReverse, left_graph_size);
-  int right_traversal_count = 0;
-  HloGumgraphBfs(
-      *right,
-      [&](const HloInstructionNode& node, int distance) {
-        ++right_ancestor_fingerprints[node.props.fingerprint];
-        ++right_traversal_count;
-        return distance <= min_bfs_distance ||
-               right_traversal_count < candidate_traversal_limit;
-      },
-      BfsTraversalDirection::kReverse, right_graph_size);
-
-  int matching_ancestors = 0;
-  for (const auto& [fingerprint, count] : left_ancestor_fingerprints) {
-    if (right_ancestor_fingerprints.contains(fingerprint)) {
-      matching_ancestors +=
-          std::min(count, right_ancestor_fingerprints[fingerprint]);
-    }
-  }
-
-  return 2.0 * static_cast<double>(matching_ancestors) /
-         static_cast<double>(left_traversal_count + right_traversal_count);
-}
-
 double AncestorSubGraphLcsSimilarity(const HloInstructionNode* left,
                                      const HloInstructionNode* right,
                                      int candidate_traversal_limit,
