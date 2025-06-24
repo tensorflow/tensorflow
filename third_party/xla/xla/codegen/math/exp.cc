@@ -94,7 +94,6 @@ llvm::Function* CreateExpF64(llvm::Module* module, llvm::Type* input_type) {
   llvm::Constant* kVecOne = v_const(1.0);
   llvm::Constant* kVecTwo = v_const(2.0);
   llvm::Constant* kVecHalf = v_const(0.5);
-  llvm::Constant* kVecNan = v_const(std::numeric_limits<double>::quiet_NaN());
 
   // Upper and lower bounds for the input argument to avoid overflow/underflow
   // during intermediate calculations.
@@ -198,8 +197,12 @@ llvm::Function* CreateExpF64(llvm::Module* module, llvm::Type* input_type) {
 
   // Convert n (stored as float vector) to an integer vector for ldexp.
   llvm::Function* ldexp_fn = CreateLdexpF64(module, input_type);
-  llvm::Value* n_int =
-      builder.CreateFPToSI(n, ldexp_fn->getArg(1)->getType(), "n_float_to_int");
+  // FPtoSI(nan) yields a poison value. We freeze the output to halt propagation
+  // of UB and let the compiler know we will accept any arbitrary value of that
+  // type here.
+  // This works because ldexp(nan, n_int) = nan for any n_int.
+  llvm::Value* n_int = builder.CreateFreeze(builder.CreateFPToSI(
+      n, ldexp_fn->getArg(1)->getType(), "n_float_to_int"));
 
   // Reconstruct exp(x) = exp(g) * 2^n using ldexp(exp_g_approx, n_int_vec).
   llvm::Value* calculated_exp_val = builder.CreateCall(
@@ -216,12 +219,8 @@ llvm::Function* CreateExpF64(llvm::Module* module, llvm::Type* input_type) {
   llvm::Value* result_with_underflow =
       builder.CreateSelect(is_below_exp_lo_mask, kVecZero, calculated_exp_val,
                            "result_with_underflow");
-  llvm::Value* is_nan_mask =
-      builder.CreateFCmpUNO(input_x_arg, input_x_arg, "is_nan");
-  llvm::Value* result_with_nan = builder.CreateSelect(
-      is_nan_mask, kVecNan, result_with_underflow, "result_with_nan");
   llvm::Value* final_result =
-      builder.CreateSelect(is_above_exp_hi_mask, kVecInf, result_with_nan,
+      builder.CreateSelect(is_above_exp_hi_mask, kVecInf, result_with_underflow,
                            "final_result_with_overflow");
 
   builder.CreateRet(final_result);
