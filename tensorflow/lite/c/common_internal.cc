@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common_internal.h"
 
+#include <cstdint>
+
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 
