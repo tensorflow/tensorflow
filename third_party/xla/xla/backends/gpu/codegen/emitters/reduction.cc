@@ -681,7 +681,8 @@ llvm::SmallVector<mlir::Value> ColumnReductionFusion::EmitReduction(
   HloValueMap inits = GetInits(group_id, state);
   auto per_thread =
       state.EmitPerThreadElements(group_id, inits, state.FusionOutputs());
-  return state.ReduceViaSharedMemory(group_id, per_thread, inits);
+  return state.ReduceViaSharedMemory(group_id, per_thread, inits, std::nullopt,
+                                     kTileSize / 2);
 }
 
 SmallColumnReductionFusion::SmallColumnReductionFusion(
