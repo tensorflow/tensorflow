@@ -61,6 +61,7 @@ std::string OriginalValueToString(const OriginalValue& original_value,
     absl::StrAppend(
         &result, "{", "\"", leaf->instruction_name, "\"",
         (leaf->shape_index.empty() ? "" : " " + leaf->shape_index.ToString()),
+        (leaf->call_history.empty() ? "" : " \"" + leaf->call_history + "\""),
         "}");
   } else {
     absl::StrAppend(&result, "{}");
@@ -81,7 +82,8 @@ std::shared_ptr<OriginalValue> OriginalValue::FromProto(
 
   for (const auto& leaf : original_value_proto.leaves()) {
     *original_value->mutable_element(ShapeIndex(leaf.leaf_shape_index())) = {
-        leaf.instruction_name(), ShapeIndex(leaf.shape_index())};
+        leaf.instruction_name(), ShapeIndex(leaf.shape_index()),
+        leaf.call_history()};
   }
   return original_value;
 }
@@ -100,6 +102,7 @@ OriginalValueProto OriginalValue::ToProto() const {
     for (const auto& index : leaf.second->shape_index) {
       original_array_proto->add_shape_index(index);
     }
+    *original_tensor_proto->mutable_call_history() = leaf.second->call_history;
   }
   return original_value_proto;
 }

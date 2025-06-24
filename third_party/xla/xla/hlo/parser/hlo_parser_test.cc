@@ -1534,14 +1534,16 @@ ENTRY %test (p: f32[100]) -> u32[100] {
 
 {
 "OriginalValue",
-R"(HloModule test, entry_computation_layout={(f32[], f32[3]{0}, f32[2,3]{1,0})->((f32[], f32[3]{0}), f32[2,3]{1,0})}
+R"(HloModule test, entry_computation_layout={(f32[], f32[])->((f32[], f32[]), f32[])}
 
-ENTRY %test (v1: f32[], v2: f32[3], v3: f32[2,3]) -> ((f32[], f32[3]), f32[2,3]) {
-  %v1 = f32[] parameter(0), origin={{"v1"}}
-  %v2 = f32[3]{0} parameter(1), origin={{"v2"}}
-  %tuple = (f32[], f32[3]{0}) tuple(f32[] %v1, f32[3]{0} %v2), origin={({"v1"}, {"v2"})}
-  %v3 = f32[2,3]{1,0} parameter(2), origin={{"v3"}}
-  ROOT %nested_tuple = ((f32[], f32[3]{0}), f32[2,3]{1,0}) tuple((f32[], f32[3]{0}) %tuple, f32[2,3]{1,0} %v3), origin={(({"v1"}, {"v2"}), {"v3"})}
+ENTRY %main (v1: f32[], v2: f32[]) -> ((f32[], f32[]), f32[]) {
+  %v1 = f32[] parameter(0)
+  %v2 = f32[] parameter(1)
+  %a = f32[] add(f32[] %v1, f32[] %v2), origin={{"a" {0,1} "call.0/while_body"}}
+  %b = f32[] sine(f32[] %v1), origin={{"b" {2}}}
+  %tuple = (f32[], f32[]) tuple(f32[] %a, f32[] %b)
+  %c = f32[] tan(f32[] %v2), origin={{"c" "call.1"}}
+  ROOT %nested_tuple = ((f32[], f32[]), f32[]) tuple((f32[], f32[]) %tuple, f32[] %c), origin={(({"a" {0,1} "call.0/while_body"}, {"b" {2}}), {"c" "call.1"})}
 }
 
 )"
